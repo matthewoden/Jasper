@@ -1,10 +1,11 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+
+import App from "./App";
 import "./theme.css";
 
-// Plan 03 will replace this with `import App from "./App"; ... <App />`.
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <div>Jasper — bootstrap</div>
+    <App />
   </React.StrictMode>,
 );
