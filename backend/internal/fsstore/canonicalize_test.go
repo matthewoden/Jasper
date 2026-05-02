@@ -1,0 +1,222 @@
+package fsstore
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// Helper: resolve a path through EvalSymlinks for comparison. macOS prefixes
+// /var paths with /private/var, so any "expected" we build by hand-joining
+// rootDir + relPath needs the same resolution to compare equal. All tests
+// use t.TempDir() so this is the right comparison strategy.
+func resolved(t *testing.T, p string) string {
+	t.Helper()
+	r, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", p, err)
+	}
+	return r
+}
+
+// Test 1: input with mixed case lowercases.
+func TestCanonicalize_LowercasesMixedCase(t *testing.T) {
+	root := t.TempDir()
+	got, err := Canonicalize(root, "Foo.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := filepath.Join(root, "foo.md")
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+// Test 2: case-different inputs canonicalize to the same path.
+func TestCanonicalize_CaseEquivalence(t *testing.T) {
+	root := t.TempDir()
+	a, err := Canonicalize(root, "FOO.md")
+	if err != nil {
+		t.Fatalf("FOO.md: %v", err)
+	}
+	b, err := Canonicalize(root, "foo.md")
+	if err != nil {
+		t.Fatalf("foo.md: %v", err)
+	}
+	if a != b {
+		t.Fatalf("case-different inputs canonicalize differently: %q vs %q", a, b)
+	}
+}
+
+// Test 3: NFD- and NFC-encoded inputs canonicalize to the same path.
+// "café.md" with U+0301 combining acute (NFD) vs U+00E9 precomposed é (NFC)
+// must collapse to identical bytes after Canonicalize.
+func TestCanonicalize_NFDvsNFCEquivalence(t *testing.T) {
+	root := t.TempDir()
+	// NFD: 'c', 'a', 'f', 'e', U+0301 combining acute, '.', 'm', 'd'
+	nfd := "café.md"
+	// NFC: 'c', 'a', 'f', U+00E9 precomposed é, '.', 'm', 'd'
+	nfc := "café.md"
+	if nfd == nfc {
+		t.Fatalf("test inputs are byte-equal; setup error")
+	}
+	a, err := Canonicalize(root, nfd)
+	if err != nil {
+		t.Fatalf("NFD: %v", err)
+	}
+	b, err := Canonicalize(root, nfc)
+	if err != nil {
+		t.Fatalf("NFC: %v", err)
+	}
+	if a != b {
+		t.Fatalf("NFD and NFC canonicalize differently: %q vs %q", a, b)
+	}
+}
+
+// Test 4: a top-level ".." escape is rejected with ErrPathEscape.
+func TestCanonicalize_RejectsParentEscape(t *testing.T) {
+	root := t.TempDir()
+	_, err := Canonicalize(root, "../escape.md")
+	if !errors.Is(err, ErrPathEscape) {
+		t.Fatalf("expected ErrPathEscape, got %v", err)
+	}
+}
+
+// Test 5: an absolute path is rejected with ErrAbsolutePath.
+func TestCanonicalize_RejectsAbsolutePath(t *testing.T) {
+	root := t.TempDir()
+	_, err := Canonicalize(root, "/absolute/path.md")
+	if !errors.Is(err, ErrAbsolutePath) {
+		t.Fatalf("expected ErrAbsolutePath, got %v", err)
+	}
+}
+
+// Test 6: a "valid/../../escape" path that cleans to "../escape" is rejected.
+func TestCanonicalize_RejectsCleanedEscape(t *testing.T) {
+	root := t.TempDir()
+	_, err := Canonicalize(root, "valid/../../escape.md")
+	if !errors.Is(err, ErrPathEscape) {
+		t.Fatalf("expected ErrPathEscape, got %v", err)
+	}
+}
+
+// Test 7: a sub-directory relative path canonicalizes to <root>/subdir/note.md.
+func TestCanonicalize_PreservesSubdir(t *testing.T) {
+	root := t.TempDir()
+	got, err := Canonicalize(root, "subdir/Note.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := filepath.Join(root, "subdir", "note.md")
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+// Test 8: a symlink that points outside the root is rejected with ErrNotInRoot.
+func TestCanonicalize_RejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir() // separate temp, definitely not under root.
+	// Create root/evil -> outside (a directory symlink). Then ask
+	// Canonicalize for root/evil/passwd; the resolution must land
+	// inside `outside` and fail isUnder(rootResolved).
+	if err := os.Symlink(outside, filepath.Join(root, "evil")); err != nil {
+		t.Skipf("symlink unsupported on this platform: %v", err)
+	}
+	_, err := Canonicalize(root, "evil/passwd")
+	if !errors.Is(err, ErrNotInRoot) {
+		t.Fatalf("expected ErrNotInRoot, got %v", err)
+	}
+}
+
+// Test 9: empty input is rejected.
+func TestCanonicalize_RejectsEmpty(t *testing.T) {
+	root := t.TempDir()
+	_, err := Canonicalize(root, "")
+	if !errors.Is(err, ErrEmptyPath) {
+		t.Fatalf("expected ErrEmptyPath, got %v", err)
+	}
+}
+
+// Test 10: spaces in filenames are preserved (only the case is lowered).
+func TestCanonicalize_PreservesSpaces(t *testing.T) {
+	root := t.TempDir()
+	got, err := Canonicalize(root, "Note With Spaces.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := filepath.Join(root, "note with spaces.md")
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+// Sanity test: the documented behavior for a current-dir-only "." input
+// is empty-path rejection. This guards against accidentally canonicalizing
+// "." to the root itself, which would let a writer overwrite the root dir.
+func TestCanonicalize_RejectsDotPath(t *testing.T) {
+	root := t.TempDir()
+	_, err := Canonicalize(root, ".")
+	if err == nil {
+		t.Fatalf("expected error for \".\" input")
+	}
+}
+
+// Sanity: errors round-trip through fmt.Errorf wrapping (callers in
+// fsstore.Store wrap the error with %w; this confirms the sentinels are
+// detectable by errors.Is even after wrapping).
+func TestCanonicalize_SentinelWrapping(t *testing.T) {
+	root := t.TempDir()
+	_, err := Canonicalize(root, "../x.md")
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	wrapped := wrap(err, "outer")
+	if !errors.Is(wrapped, ErrPathEscape) {
+		t.Fatalf("ErrPathEscape lost across wrapping; got %v", wrapped)
+	}
+}
+
+func wrap(err error, prefix string) error {
+	if err == nil {
+		return nil
+	}
+	return &wrappedErr{prefix: prefix, err: err}
+}
+
+type wrappedErr struct {
+	prefix string
+	err    error
+}
+
+func (w *wrappedErr) Error() string { return w.prefix + ": " + w.err.Error() }
+func (w *wrappedErr) Unwrap() error { return w.err }
+
+// Sanity: confirm filepath.Separator is the byte we expected — guards
+// against this test's HasPrefix check working only on macOS/Linux but
+// not on Windows. (Phase 1 doesn't target Windows but this keeps the
+// test honest about its assumption.)
+func TestCanonicalize_PathSeparatorAssumption(t *testing.T) {
+	if !strings.ContainsRune("/\\", rune(filepath.Separator)) {
+		t.Fatalf("unexpected filepath.Separator: %q", filepath.Separator)
+	}
+}
+
+// Sanity: a path that resolves cleanly to within the root works even
+// when the leaf file does not yet exist. AtomicWrite relies on this —
+// it's called before the target file has been created.
+func TestCanonicalize_AcceptsNonExistentTarget(t *testing.T) {
+	root := t.TempDir()
+	got, err := Canonicalize(root, "brand-new-file.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The returned path is the unresolved join (not the EvalSymlinks form)
+	// so callers can use it directly with os.Create / os.Open.
+	wantUnderlying := filepath.Join(resolved(t, root), "brand-new-file.md")
+	if resolved(t, filepath.Dir(got))+string(filepath.Separator)+filepath.Base(got) != wantUnderlying {
+		t.Fatalf("got %q, want under %q", got, wantUnderlying)
+	}
+}
