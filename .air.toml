@@ -1,0 +1,16 @@
+root = "backend"
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ../tmp/jasper ./cmd/jasper"
+  bin = "../tmp/jasper"
+  # D-13: dev backend MUST listen on 127.0.0.1:3001 so Vite proxy at :5173
+  # forwards /api → :3001. Production binary defaults to :3000 (Plan 04 serve.go).
+  full_bin = "../tmp/jasper serve --data-dir ./tmp/jasper-data --addr 127.0.0.1:3001"
+  include_ext = ["go", "sql"]
+  include_dir = ["cmd", "internal", "migrations"]
+  exclude_dir = ["tmp", "node_modules"]
+  delay = 500
+
+[log]
+  time = true

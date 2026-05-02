@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+/* Per UI-SPEC §Color and CONTEXT.md D-10:
+   semantic CSS variables in :root, mapped through Tailwind v4 @theme
+   so utilities like bg-bg / text-fg / text-accent work.
+   Phase 5 adds [data-theme='light'] overrides under the same names. */
+:root {
+  /* Concrete hex values from UI-SPEC §Color palette table */
+  --color-bg:          #18181b; /* zinc-900 — dominant 60% */
+  --color-surface:     #27272a; /* zinc-800 — secondary 30% */
+  --color-fg:          #e4e4e7; /* zinc-200 — foreground primary */
+  --color-muted:       #a1a1aa; /* zinc-400 — foreground muted */
+  --color-border:      #3f3f46; /* zinc-700 — 1px dividers */
+  --color-accent:      #60a5fa; /* blue-400 — accent 10% */
+  --color-success:     #4ade80; /* green-400 — save-indicator saved only */
+  --color-destructive: #f87171; /* red-400 — save-indicator error only */
+
+  /* Font stacks from UI-SPEC Design System table */
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+               "Liberation Mono", monospace;
+}
+
+@theme {
+  --color-bg:          var(--color-bg);
+  --color-surface:     var(--color-surface);
+  --color-fg:          var(--color-fg);
+  --color-muted:       var(--color-muted);
+  --color-border:      var(--color-border);
+  --color-accent:      var(--color-accent);
+  --color-success:     var(--color-success);
+  --color-destructive: var(--color-destructive);
+  --font-sans:         var(--font-sans);
+  --font-mono:         var(--font-mono);
+}
+
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background-color: var(--color-bg);
+  color:            var(--color-fg);
+  font-family:      var(--font-sans);
+  font-size:        14px;   /* UI-SPEC Typography: Body 14px / 1.5 */
+  line-height:      1.5;
+}

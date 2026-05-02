@@ -1,0 +1,16 @@
+/bin/
+/tmp/
+/node_modules/
+frontend/node_modules/
+*.test
+coverage.out
+.DS_Store
+.env
+.env.local
+# NOTE: frontend/dist/.gitkeep is committed solely so `npm run build` does not
+# fail on a fresh clone if some dev tool expects the directory to exist; it is
+# NOT used by go:embed. The Go binary's embedded dist/ lives at
+# backend/internal/static/dist/ — Plan 04 manages that directory and its own
+# .gitkeep there. The frontend/dist/ build output itself is gitignored:
+frontend/dist/*
+!frontend/dist/.gitkeep
