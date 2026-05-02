@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -14,11 +15,17 @@ import (
 // Plan 04's app.New wires the concrete *notes.Service in.
 type Server struct {
 	notes *notes.Service
+	log   *slog.Logger
 }
 
 // NewServer constructs a Server bound to the given notes domain service.
-func NewServer(notesSvc *notes.Service) *Server {
-	return &Server{notes: notesSvc}
+// If log is nil, slog.Default() is used so older callers (and tests) keep
+// working unchanged.
+func NewServer(notesSvc *notes.Service, log *slog.Logger) *Server {
+	if log == nil {
+		log = slog.Default()
+	}
+	return &Server{notes: notesSvc, log: log}
 }
 
 // Compile-time assertion: Server satisfies StrictServerInterface.
@@ -45,10 +52,16 @@ func (s *Server) GetNoteById(
 		if errors.Is(err, notes.ErrNotFound) {
 			return GetNoteById404JSONResponse(newError("not_found", err.Error())), nil
 		}
-		// Any other error is a 500 — return it to the strict-server
-		// middleware which calls ResponseErrorHandlerFunc (default:
-		// http.StatusInternalServerError with the error message).
-		return nil, err
+		// Any other error is a 500. The OpenAPI spec for GET does not
+		// declare a typed 500 response, so we return through the
+		// strict-server's default error path — but with a deliberately
+		// generic message. The wrapped chain (which includes filesystem
+		// paths) is logged server-side only.
+		s.log.Error("GetNoteById: domain error",
+			"id", uuid.UUID(request.Id).String(),
+			"err", err,
+		)
+		return nil, errors.New("could not load note")
 	}
 	return GetNoteById200JSONResponse{
 		Id:        openapi_types.UUID(note.ID),
@@ -75,8 +88,15 @@ func (s *Server) PutNoteById(
 		}
 		// Any other error from the domain layer (Canonicalize escape,
 		// AtomicWrite IO, Stat, etc.) maps to a 500 with code
-		// "write_failed" — same shape as the openapi.yaml Error schema.
-		return PutNoteById500JSONResponse(newError("write_failed", err.Error())), nil
+		// "write_failed". The wire-format message is intentionally
+		// generic — the wrapped chain contains absolute filesystem
+		// paths that should not leave the process. We log the full
+		// error server-side so an operator can correlate by request ID.
+		s.log.Error("PutNoteById: domain error",
+			"id", uuid.UUID(request.Id).String(),
+			"err", err,
+		)
+		return PutNoteById500JSONResponse(newError("write_failed", "could not save note")), nil
 	}
 	return PutNoteById200JSONResponse{
 		Id:        openapi_types.UUID(note.ID),

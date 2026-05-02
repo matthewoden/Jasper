@@ -56,7 +56,7 @@ func setupTestServer(t *testing.T, files notes.FileStore) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := notes.NewService(files, nil, logger)
-	srv := NewServer(svc)
+	srv := NewServer(svc, logger)
 	si := NewStrictHandler(srv, nil)
 
 	r := chi.NewRouter()
@@ -270,8 +270,14 @@ func TestPutNoteById_WriteFailure(t *testing.T) {
 	if got.Code != "write_failed" {
 		t.Errorf("Code: got %q, want %q", got.Code, "write_failed")
 	}
-	if !strings.Contains(got.Message, "disk full") {
-		t.Errorf("Message did not include sentinel: %q", got.Message)
+	// CR-02: the wire-format message MUST be generic — the wrapped
+	// error chain (which can include absolute filesystem paths like
+	// the temp file in the data root) is logged server-side only.
+	if strings.Contains(got.Message, "disk full") {
+		t.Errorf("Message leaked underlying error sentinel: %q", got.Message)
+	}
+	if got.Message == "" {
+		t.Errorf("Message empty — expected a generic user-facing string")
 	}
 }
 

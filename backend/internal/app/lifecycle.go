@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -39,12 +40,13 @@ func EnsureDataDir(dataDir string) error {
 // exist. Idempotent — safe to call on every startup. Per CONTEXT.md
 // D-08 / UI-SPEC §Copywriting Contract.
 //
-// We use os.WriteFile here rather than fsstore.AtomicWrite because
-// the seed is a single-shot operation with no concurrent writers,
-// and pulling fsstore in here would create a lifecycle → fsstore
-// dependency that the package layout deliberately avoids. The
-// runtime save path (Service.Update → FileStore.WriteAtomic) uses
-// fsstore.AtomicWrite per DATA-13.
+// Uses fsstore.AtomicWrite per DATA-13 / Pitfall 3 — every byte that
+// reaches the data root must go through temp+fsync+rename+fsync(parent).
+// A SIGKILL between O_TRUNC and the data-flush of a non-atomic write
+// would leave a zero-byte scratchpad on disk; under launchd KeepAlive
+// the binary would then restart, see a zero-length file (the seed is
+// idempotent on existence, NOT on emptiness), and the user would lose
+// the welcome content with no visible error.
 func SeedScratchpadIfMissing(dataDir string, log *slog.Logger) error {
 	path := filepath.Join(notesDirFor(dataDir), notes.ScratchpadRelPath)
 	if _, err := os.Stat(path); err == nil {
@@ -53,7 +55,7 @@ func SeedScratchpadIfMissing(dataDir string, log *slog.Logger) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("stat scratchpad: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(notes.ScratchpadWelcome), 0o644); err != nil {
+	if err := fsstore.AtomicWrite(path, []byte(notes.ScratchpadWelcome)); err != nil {
 		return fmt.Errorf("seed scratchpad: %w", err)
 	}
 	log.Info("seeded scratchpad", "path", path, "bytes", len(notes.ScratchpadWelcome))

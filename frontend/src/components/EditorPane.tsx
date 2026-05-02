@@ -59,6 +59,13 @@ export function EditorPane() {
   const inFlight = useRef(false);
   // Exactly-one trailing save coalescing — UI-SPEC §Save-trigger timing.
   const trailingPending = useRef(false);
+  // CR-04: tracks whether the user has typed since mount. The load
+  // effect only seeds latestContentRef before any typing — under React
+  // 19 StrictMode the load effect runs twice, and a stale GET resolving
+  // after the user starts typing would otherwise clobber the typed text
+  // and the next debounced save would persist the loaded content as if
+  // the typed bytes never happened (silent data loss).
+  const userHasEdited = useRef(false);
 
   // 1. Load on mount.
   useEffect(() => {
@@ -70,8 +77,13 @@ export function EditorPane() {
         setLoadStatus("error");
         return;
       }
-      setContent(data.content);
-      latestContentRef.current = data.content;
+      // Only seed the textarea + latest-content ref if the user hasn't
+      // started typing. Without this guard a slow / double-mount GET
+      // can overwrite typed bytes (CR-04).
+      if (!userHasEdited.current) {
+        setContent(data.content);
+        latestContentRef.current = data.content;
+      }
       setLoadStatus("loaded");
     })();
     return () => {
@@ -142,6 +154,10 @@ export function EditorPane() {
   const onChange = useCallback(
     (e: ChangeEvent<HTMLTextAreaElement>) => {
       const next = e.target.value;
+      // CR-04: latch the edited flag so a late-arriving GET cannot
+      // overwrite the typed text. Set BEFORE the state writes so a
+      // concurrent load-effect resolution observes it.
+      userHasEdited.current = true;
       setContent(next);
       latestContentRef.current = next;
       dispatch({ type: "edit" });

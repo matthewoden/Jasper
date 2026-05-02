@@ -58,7 +58,7 @@ type App struct {
 //  1. fsstore.NewStore(<DataDir>/notes) — concrete FileStore adapter.
 //  2. notes.NewService(files, nil, log) — domain service. The nil
 //     Index parameter is the Phase 2 hook point per ports.go.
-//  3. api.NewServer(notesSvc) — the StrictServerInterface impl.
+//  3. api.NewServer(notesSvc, log) — the StrictServerInterface impl.
 //  4. chi router with RequestID + Recoverer + requestLogger middleware
 //     (RequestID FIRST so requestLogger can include the id).
 //  5. r.Route("/api/v1", ...) wrapping api.HandlerFromMux — CRUCIAL
@@ -73,7 +73,7 @@ func New(cfg Config) (*App, error) {
 	files := fsstore.NewStore(notesDir)
 	// Phase 1 passes nil Index — Phase 2 will inject *db.Index here.
 	notesSvc := notes.NewService(files, nil, cfg.Logger)
-	apiServer := api.NewServer(notesSvc)
+	apiServer := api.NewServer(notesSvc, cfg.Logger)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -90,6 +90,12 @@ func New(cfg Config) (*App, error) {
 	//    serve different URLs.
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
+		// CR-03: cap PUT body size before oapi-codegen reads it into
+		// memory. 10 MiB is well above any plausible markdown file
+		// (the largest notes in the wild are <1 MiB) and far below
+		// the gigabyte-class allocations a runaway frontend bug or
+		// curl typo could otherwise force.
+		r.Use(maxBodyBytes(maxRequestBodyBytes))
 		api.HandlerFromMux(si, r)
 	})
 
