@@ -1,0 +1,7 @@
+pre-commit:
+  parallel: true
+  commands:
+    gen-check:
+      run: make gen-check
+    lint:
+      run: make lint
