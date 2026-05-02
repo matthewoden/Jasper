@@ -14,6 +14,9 @@ gen-check: gen
 
 build:
 	cd frontend && npm install && npm run build
+	rm -rf backend/internal/static/dist
+	mkdir -p backend/internal/static/dist
+	cp -R frontend/dist/. backend/internal/static/dist/
 	cd backend && go build -o ../bin/jasper ./cmd/jasper
 
 test:

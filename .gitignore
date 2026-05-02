@@ -21,3 +21,9 @@ frontend/vite.config.d.ts
 frontend/vite.config.js
 frontend/vitest.config.d.ts
 frontend/vitest.config.js
+
+# backend/internal/static/dist/ is populated by `make build` from
+# frontend/dist/; only the .gitkeep is committed so //go:embed all:dist
+# compiles on a fresh clone before make build has run.
+backend/internal/static/dist/*
+!backend/internal/static/dist/.gitkeep
