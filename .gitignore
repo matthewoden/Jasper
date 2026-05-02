@@ -14,3 +14,10 @@ coverage.out
 # .gitkeep there. The frontend/dist/ build output itself is gitignored:
 frontend/dist/*
 !frontend/dist/.gitkeep
+
+# TypeScript incremental build cache and emitted JS for config files
+frontend/*.tsbuildinfo
+frontend/vite.config.d.ts
+frontend/vite.config.js
+frontend/vitest.config.d.ts
+frontend/vitest.config.js
