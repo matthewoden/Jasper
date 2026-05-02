@@ -1,0 +1,130 @@
+openapi: 3.1.0
+info:
+  title: Jasper API
+  version: 0.1.0
+  description: |
+    Jasper HTTP API. Phase 1 surface: a single hard-coded note keyed by UUID.
+    Source of truth: every route Jasper exposes lives in this file (API-01).
+    Adding a route here without a Go handler causes a compile error
+    under oapi-codegen StrictServerInterface (API-02).
+servers:
+  - url: /api/v1
+    description: Same-origin (Go binary or Vite dev proxy)
+tags:
+  - name: notes
+    description: Note read and write operations
+paths:
+  /notes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/NoteId"
+    get:
+      tags: [notes]
+      operationId: getNoteById
+      summary: Read a note by UUID
+      responses:
+        "200":
+          description: Note found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "404":
+          description: Note not found (unknown UUID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags: [notes]
+      operationId: putNoteById
+      summary: Replace the content of a note by UUID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNoteRequest"
+      responses:
+        "200":
+          description: Note updated; atomic write committed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateNoteResponse"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Note not found (unknown UUID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Write failure on disk (atomic-rename or fsync error)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  parameters:
+    NoteId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code)
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    Note:
+      type: object
+      required: [id, path, content, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "00000000-0000-4000-a000-000000000001"
+        path:
+          type: string
+          description: Canonicalized relative path under notes/ (NFC + lowercase per DATA-11)
+          example: "scratchpad.md"
+        content:
+          type: string
+          description: Raw markdown content of the note
+        updated_at:
+          type: string
+          format: date-time
+          description: Wall-clock UTC time of the last successful write
+    UpdateNoteRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          description: New raw markdown content; replaces the entire file
+    UpdateNoteResponse:
+      type: object
+      required: [id, path, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        path:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: "not_found"
+        message:
+          type: string
+          example: "no note with id 00000000-0000-4000-a000-000000000001"
