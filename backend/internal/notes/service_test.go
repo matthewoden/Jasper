@@ -85,6 +85,17 @@ func (f *fakeIndex) List(_ context.Context) ([]NoteSummary, error) {
 	return f.listResult, nil
 }
 
+// Phase 3 Plan 03-03 — extended port methods. Defaults that suit the
+// Phase 1+2 tests (which never call them); the Plan 03-03 tests
+// override these via stubIndex below where richer behavior is needed.
+func (f *fakeIndex) LookupByPath(_ context.Context, _ string) (NoteRecord, error) {
+	return NoteRecord{}, ErrNotFound
+}
+func (f *fakeIndex) MovePathPrefix(_ context.Context, _, _ string) (int, error) { return 0, nil }
+func (f *fakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
 func newSvc(t *testing.T, files FileStore) *Service {
 	t.Helper()
 	// Discard logs — tests assert on returned values, not log output.

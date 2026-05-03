@@ -59,6 +59,29 @@ type Index interface {
 	// notes-list UI. Order is undefined at the port level; the API
 	// handler / UI is responsible for any sort.
 	List(ctx context.Context) ([]NoteSummary, error)
+
+	// LookupByPath finds a NoteRecord by its canonical relative path
+	// (NFC + lowercase per DATA-11). Returns ErrNotFound when missing.
+	// Used by Service.Move to look up the existing record before issuing
+	// the rename. Phase 3 Plan 03-03 addition.
+	LookupByPath(ctx context.Context, canonicalPath string) (NoteRecord, error)
+
+	// MovePathPrefix updates every notes row whose path starts with
+	// oldPrefix to start with newPrefix instead. Used by Service.MoveFolder
+	// to recursively re-canonicalize every note under a renamed folder
+	// in one BEGIN IMMEDIATE transaction. Both prefixes MUST end with "/"
+	// (or be empty for the vault root). Returns the count of updated rows.
+	// Returns ErrCaseCollision if any row already lives under newPrefix
+	// and that row's source is NOT itself under oldPrefix — i.e., a
+	// foreign note would collide. Phase 3 Plan 03-03 addition.
+	MovePathPrefix(ctx context.Context, oldPrefix, newPrefix string) (int, error)
+
+	// DeleteByPathPrefix removes every row whose path starts with prefix
+	// (treated as a folder, with children matching prefix + "/..." plus
+	// the bare prefix itself). The empty prefix means "all rows" — used
+	// by Path 2 (RebuildAndReindex) drop-and-rebuild. Returns the count
+	// of deleted rows. Phase 3 Plan 03-03 addition.
+	DeleteByPathPrefix(ctx context.Context, prefix string) (int, error)
 }
 
 // NoteRecord is the canonical projection of a .md file into the index.

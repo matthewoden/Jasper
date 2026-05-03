@@ -165,6 +165,15 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string) (Not
 // exercises the real wiring path end-to-end.
 type nopIndex struct{}
 
-func (nopIndex) Upsert(_ context.Context, _ NoteRecord) error    { return nil }
-func (nopIndex) Delete(_ context.Context, _ uuid.UUID) error     { return nil }
-func (nopIndex) List(_ context.Context) ([]NoteSummary, error)   { return nil, nil }
+func (nopIndex) Upsert(_ context.Context, _ NoteRecord) error  { return nil }
+func (nopIndex) Delete(_ context.Context, _ uuid.UUID) error   { return nil }
+func (nopIndex) List(_ context.Context) ([]NoteSummary, error) { return nil, nil }
+
+// Phase 3 Plan 03-03 additions — nopIndex no-ops. The reconciler heals
+// any state in a real-index world (T-03-03-08 mitigation: misconfigured
+// caller gets a quiet failure mode rather than a panic).
+func (nopIndex) LookupByPath(_ context.Context, _ string) (NoteRecord, error) {
+	return NoteRecord{}, ErrNotFound
+}
+func (nopIndex) MovePathPrefix(_ context.Context, _, _ string) (int, error) { return 0, nil }
+func (nopIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) { return 0, nil }

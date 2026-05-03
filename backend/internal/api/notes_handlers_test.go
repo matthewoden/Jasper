@@ -23,9 +23,20 @@ type fakeIndex struct {
 	listErr    error
 }
 
-func (f *fakeIndex) Upsert(_ context.Context, _ notes.NoteRecord) error    { return nil }
-func (f *fakeIndex) Delete(_ context.Context, _ uuid.UUID) error           { return nil }
-func (f *fakeIndex) List(_ context.Context) ([]notes.NoteSummary, error)   { return f.listResult, f.listErr }
+func (f *fakeIndex) Upsert(_ context.Context, _ notes.NoteRecord) error  { return nil }
+func (f *fakeIndex) Delete(_ context.Context, _ uuid.UUID) error         { return nil }
+func (f *fakeIndex) List(_ context.Context) ([]notes.NoteSummary, error) { return f.listResult, f.listErr }
+
+// Phase 3 Plan 03-03 — extended notes.Index port methods. The api-package
+// tests do not exercise these; default no-op implementations keep the
+// port satisfied at compile time.
+func (f *fakeIndex) LookupByPath(_ context.Context, _ string) (notes.NoteRecord, error) {
+	return notes.NoteRecord{}, notes.ErrNotFound
+}
+func (f *fakeIndex) MovePathPrefix(_ context.Context, _, _ string) (int, error) { return 0, nil }
+func (f *fakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
 
 // setupGetNotesServer builds a Server wired with the given index and
 // mounts the strict-server bridge under /api/v1.
