@@ -27,3 +27,8 @@ frontend/vitest.config.js
 # compiles on a fresh clone before make build has run.
 backend/internal/static/dist/*
 !backend/internal/static/dist/.gitkeep
+
+# Playwright E2E artifacts
+frontend/e2e/.artifacts/
+frontend/playwright-report/
+frontend/test-results/
