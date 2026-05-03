@@ -16,9 +16,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
+	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/migrations"
@@ -305,4 +307,243 @@ func writeFixtureNotes(notesDir string, files map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// ----------------------------------------------------------------------
+// Plan 03-10 Gap 6a tests — POST /admin/reindex MUST hydrate the in-memory
+// notes Registry from the post-rebuild SQLite state. Without this, every
+// note that gets a fresh UUID during the rebuild walk (i.e., any externally-
+// created file the rebuild discovers) is unreachable via GET /notes/{id}
+// (404) until the server restarts. Diagnosed in
+// .planning/debug/scratchpad-vanishes-self-move.md Evidence C.
+// ----------------------------------------------------------------------
+
+// adminReindexHydrateFixture wires a full-strength stack against a real
+// SQLite Pair, real *index.Indexer, real fsstore.Store, real notes.Service
+// (with empty Registry), and a real *migrate.Runner whose Path2Rebuild
+// invokes idx.Reconcile(ModeFull) — exactly mirroring lifecycle.Run's
+// production wiring. Returns the httptest.Server, the notes.Service so
+// tests can inspect the Registry, the notesDir so tests can seed external
+// files BEFORE the reindex, and the *index.Indexer so tests can enumerate
+// post-rebuild SQLite state.
+func adminReindexHydrateFixture(t *testing.T) (*httptest.Server, *notes.Service, string, *index.Indexer) {
+	t.Helper()
+	r, pair, dir := newRealRunner(t)
+	notesDir := filepath.Join(dir, "notes")
+	if err := os.MkdirAll(notesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	idx := index.New(pair, notesDir, logger)
+	// Mirror lifecycle.go Path2Rebuild wiring so RebuildAndReindex's
+	// rebuild walk goes through reconcileFull (which mints fresh UUIDs).
+	r.Path2Rebuild = func(ctx context.Context) (int, error) {
+		return idx.Reconcile(ctx, index.ModeFull)
+	}
+	store := fsstore.NewStore(notesDir)
+	svc := notes.NewService(store, idx, logger)
+	srv := NewServerWithIndex(svc, r, r, idx, logger)
+	si := NewStrictHandler(srv, nil)
+	mux := chi.NewRouter()
+	mux.Route("/api/v1", func(rt chi.Router) {
+		HandlerFromMux(si, rt)
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	return ts, svc, notesDir, idx
+}
+
+// TestPostAdminReindex_HydratesRegistryAfterFullRebuild proves Gap 6a from
+// 03-HUMAN-UAT.md is closed: a UUID minted by the rebuild walk MUST be
+// reachable via the in-memory Registry (and therefore via GET /notes/{id})
+// immediately after POST /admin/reindex returns 202. Pre-fix this assertion
+// fails because the in-memory Registry is never re-hydrated after the
+// rebuild — Service.Get returns 404 on the new UUID until the server
+// restarts. The reproducer is the exact scenario from
+// .planning/debug/scratchpad-vanishes-self-move.md Evidence C.
+func TestPostAdminReindex_HydratesRegistryAfterFullRebuild(t *testing.T) {
+	t.Parallel()
+	ts, svc, notesDir, idx := adminReindexHydrateFixture(t)
+
+	// Seed an externally-created file before the rebuild. reconcileFull
+	// will discover this and mint a fresh UUID for it. Pre-fix, that UUID
+	// will never make it into the in-memory Registry; post-fix, Hydrate
+	// pulls every (id,path) from SQLite into the Registry.
+	if err := writeFixtureNotes(notesDir, map[string]string{
+		"external.md": "# External\n",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// POST /admin/reindex with mode=full.
+	resp, body := mustReindexPost(t, ts, `{"mode":"full"}`)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("POST /admin/reindex: status=%d, want 202; body=%s",
+			resp.StatusCode, body)
+	}
+
+	// Post-condition: enumerate the post-rebuild SQLite state via the
+	// indexer's List, and assert that every (id, path) it returns is
+	// reachable via the in-memory Registry. Pre-fix, the fresh UUID for
+	// external.md is in SQLite but NOT in the Registry → Lookup fails.
+	summaries, err := idx.List(context.Background())
+	if err != nil {
+		t.Fatalf("indexer.List: %v", err)
+	}
+	if len(summaries) == 0 {
+		t.Fatalf("post-rebuild: indexer.List returned no rows — fixture broken")
+	}
+	var externalSummary *notes.NoteSummary
+	for i := range summaries {
+		s := &summaries[i]
+		if s.Path == "external.md" {
+			externalSummary = s
+		}
+		// Every UUID in SQLite MUST be in the Registry post-rebuild.
+		// Pre-fix this assertion fails for the fresh UUIDs reconcileFull
+		// mints.
+		if relPath, ok := svc.Registry().Lookup(s.ID); !ok || relPath != s.Path {
+			t.Errorf("Gap 6a regression: Registry does not know UUID %s after reindex; SQLite says path=%q, Registry.Lookup → (%q, %v)",
+				s.ID, s.Path, relPath, ok)
+		}
+	}
+	if externalSummary == nil {
+		t.Fatalf("post-rebuild: indexer.List did not include external.md; rows=%v", summaries)
+	}
+
+	// Sanity: GET /notes/{externalID} returns 200 — proves the registry
+	// → service lookup chain is correct end-to-end. Pre-fix this is 404
+	// because the registry doesn't know the freshly-minted UUID.
+	resp2, body2 := mustGetReindex(t, ts, "/api/v1/notes/"+externalSummary.ID.String())
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("Gap 6a regression: GET /notes/%s: status=%d, want 200; body=%s",
+			externalSummary.ID, resp2.StatusCode, body2)
+	}
+}
+
+// TestPostAdminReindex_HydratesRegistryAfterIncremental proves the same
+// invariant for the mode=incremental branch. The incremental path goes
+// through idx.Reconcile(ModeIncremental), which mints fresh UUIDs for any
+// newly-discovered files but DOES NOT drop existing rows. Pre-fix the
+// Registry is not hydrated on success; post-fix it is.
+func TestPostAdminReindex_HydratesRegistryAfterIncremental(t *testing.T) {
+	t.Parallel()
+	ts, svc, notesDir, idx := adminReindexHydrateFixture(t)
+
+	// Seed an externally-created file. Incremental reconcile will pick
+	// it up and mint a fresh UUID.
+	if err := writeFixtureNotes(notesDir, map[string]string{
+		"external.md": "# External\n",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, body := mustReindexPost(t, ts, `{"mode":"incremental"}`)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("POST /admin/reindex incremental: status=%d, want 202; body=%s",
+			resp.StatusCode, body)
+	}
+
+	// Post-condition: every (id, path) in SQLite MUST be reachable via the
+	// Registry. Same enumerate-from-SQLite-then-Lookup pattern as the full
+	// case. Pre-fix this fails for the fresh UUID reconcileIncremental
+	// minted for external.md.
+	summaries, err := idx.List(context.Background())
+	if err != nil {
+		t.Fatalf("indexer.List: %v", err)
+	}
+	if len(summaries) == 0 {
+		t.Fatalf("post-incremental: indexer.List returned no rows — fixture broken")
+	}
+	sawExternal := false
+	for _, s := range summaries {
+		if s.Path == "external.md" {
+			sawExternal = true
+		}
+		if relPath, ok := svc.Registry().Lookup(s.ID); !ok || relPath != s.Path {
+			t.Errorf("Gap 6a regression: Registry does not know UUID %s after incremental reindex; SQLite says path=%q, Registry.Lookup → (%q, %v)",
+				s.ID, s.Path, relPath, ok)
+		}
+	}
+	if !sawExternal {
+		t.Fatalf("post-incremental: indexer.List did not include external.md; rows=%v", summaries)
+	}
+}
+
+// TestPostAdminReindex_DoesNotHydrateWhenRebuildFails proves the failure
+// path leaves the Registry untouched. We seed a known stale entry into the
+// Registry, force RebuildAndReindex into ErrUnrecoverable (no Path2Rebuild
+// → Path 3), and verify the Registry still contains the seed. Hydrate
+// MUST NOT run when the rebuild errors — both before and after the fix
+// (the failure path returns early, before the new Hydrate call).
+func TestPostAdminReindex_DoesNotHydrateWhenRebuildFails(t *testing.T) {
+	t.Parallel()
+	// Build the stack inline so we have full control: the fixture wires
+	// Path2Rebuild for success-path tests, but here we want it nil so
+	// RebuildAndReindex fires Path 3 (ErrUnrecoverable).
+	r, pair, dir := newRealRunner(t)
+	notesDir := filepath.Join(dir, "notes")
+	if err := os.MkdirAll(notesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	idx := index.New(pair, notesDir, logger)
+	// r.Path2Rebuild left nil → RebuildAndReindex fires Path 3
+	// (ErrUnrecoverable). Handler maps to 503 "unrecoverable".
+	store := fsstore.NewStore(notesDir)
+	failSvc := notes.NewService(store, idx, logger)
+
+	// Seed a known stale entry into the Registry so we can detect any
+	// accidental Hydrate-on-failure (which would replace the map).
+	stale := uuid.New()
+	failSvc.Registry().Add(stale, "stale-marker.md")
+
+	srv := NewServerWithIndex(failSvc, r, r, idx, logger)
+	si := NewStrictHandler(srv, nil)
+	mux := chi.NewRouter()
+	mux.Route("/api/v1", func(rt chi.Router) {
+		HandlerFromMux(si, rt)
+	})
+	failTS := httptest.NewServer(mux)
+	defer failTS.Close()
+
+	resp, body := mustReindexPost(t, failTS, `{"mode":"full"}`)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("POST /admin/reindex (failure path): status=%d, want 503; body=%s",
+			resp.StatusCode, body)
+	}
+	var got Error
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("unmarshal: %v; body=%s", err, body)
+	}
+	if got.Code != "unrecoverable" {
+		t.Errorf("code: got %q, want %q", got.Code, "unrecoverable")
+	}
+
+	// Post-condition: the stale entry is STILL in the Registry. If Hydrate
+	// had run on the failure path, it would have replaced the map and
+	// cleared this entry. (This test passes both pre- and post-fix; it's
+	// a regression-prevention guard against accidentally calling Hydrate
+	// outside the success branch.)
+	if relPath, ok := failSvc.Registry().Lookup(stale); !ok || relPath != "stale-marker.md" {
+		t.Errorf("Hydrate ran on failure path (or stale entry was lost): Lookup(%s) = (%q, %v), want (%q, true)",
+			stale, relPath, ok, "stale-marker.md")
+	}
+}
+
+// mustGetReindex is a GET helper local to this file (handlers_test.go's
+// mustGet uses a different signature pattern; we keep test functions self-
+// contained for clarity).
+func mustGetReindex(t *testing.T, ts *httptest.Server, path string) (*http.Response, []byte) {
+	t.Helper()
+	resp, err := http.Get(ts.URL + path)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	respBody, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return resp, respBody
 }

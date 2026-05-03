@@ -20,6 +20,49 @@ import (
 // ensures a Service.Update cannot interleave with the rebuild's DROP
 // (T-02-04b-08 mitigation).
 
+// hydrateRegistryFromIndex re-hydrates the in-memory Registry from the
+// post-rebuild SQLite notes table. Mirrors lifecycle.go:249-257 — same
+// idempotent pattern, same warning-on-List-failure fallback.
+//
+// Without this call, /admin/reindex (mode=full or mode=incremental)
+// leaves the Registry holding pre-rebuild UUIDs; any UUID minted by
+// reconcileFull / reconcileIncremental — including any UUID for an
+// externally-created file the rebuild discovers — is unreachable via
+// Service.Get (404) until the server restarts. Gap 6a from
+// 03-HUMAN-UAT.md, diagnosed in
+// .planning/debug/scratchpad-vanishes-self-move.md (Resolution).
+//
+// Concurrency contract: the caller (PostAdminReindex) holds
+// s.reindexBusy.Lock() across the entire rebuild. This helper runs
+// inside that critical section, AFTER RebuildAndReindex / Reconcile
+// succeed and BEFORE the JSON 202 response is returned, so a client
+// receiving the 202 is guaranteed the Registry is consistent. The
+// Registry has its own write-lock around Hydrate (registry.go:97);
+// notes.Service.Get takes a Registry read-lock, so concurrent reads
+// serialize correctly against this write. T-03-10-01 mitigation.
+//
+// Failure path: if List itself fails (transient SQLite error), we log
+// and return WITHOUT touching the Registry. The pre-rebuild Registry
+// state is preserved. The user can re-issue /admin/reindex; the next
+// startup will re-hydrate from the canonical lifecycle path either way.
+func (s *Server) hydrateRegistryFromIndex(ctx context.Context) {
+	if s.notes == nil || s.index == nil {
+		return
+	}
+	idx, ok := s.index.(*index.Indexer)
+	if !ok || idx == nil {
+		return
+	}
+	summaries, err := idx.List(ctx)
+	if err != nil {
+		s.log.Warn("admin/reindex: registry hydrate List failed (proceeding)",
+			"err", err)
+		return
+	}
+	s.notes.Registry().Hydrate(summaries)
+	s.log.Info("admin/reindex: registry hydrated", "count", len(summaries))
+}
+
 // PostAdminReindex implements POST /api/v1/admin/reindex (DATA-10).
 //
 // Body: {mode: "full" | "incremental"} — "full" defaults if omitted.
@@ -80,6 +123,12 @@ func (s *Server) PostAdminReindex(
 			s.log.Error("PostAdminReindex: rebuild failed", "err", err)
 			return nil, errors.New("could not rebuild index")
 		}
+		// Plan 03-10 Gap 6a fix: rebuild dropped+rebuilt the SQLite notes
+		// table with freshly-minted UUIDs; re-hydrate the in-memory
+		// Registry so Service.Get / GET /notes/{id} can resolve them
+		// before the 202 response goes out. Mirrors the canonical
+		// pattern at lifecycle.go:249-257.
+		s.hydrateRegistryFromIndex(ctx)
 		n := status.NotesIndexed
 		return PostAdminReindex202JSONResponse{
 			StartedAt:    started,
@@ -101,6 +150,11 @@ func (s *Server) PostAdminReindex(
 			s.log.Error("PostAdminReindex: incremental reconcile failed", "err", err)
 			return nil, errors.New("could not run incremental reindex")
 		}
+		// Plan 03-10 Gap 6a fix: incremental reconcile may have minted
+		// fresh UUIDs for newly-discovered files; re-hydrate the
+		// in-memory Registry so any new UUID is reachable via
+		// Service.Get before the 202 response goes out.
+		s.hydrateRegistryFromIndex(ctx)
 		return PostAdminReindex202JSONResponse{
 			StartedAt:    started,
 			NotesIndexed: &n,
