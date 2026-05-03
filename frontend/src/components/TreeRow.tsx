@@ -17,15 +17,13 @@
  *   - background: rgba(255, 255, 255, 0.04)  via "hover:bg-..." utility
  *   - reveals the kebab `⋯` (MoreHorizontal) button
  *
- * Plan 03-07 hook points (the chassis-only design boundary for Plan
- * 03-06's deliverable):
- *   - data-tree-row=<id-or-path>   on the row root, for context-menu
- *                                  scoping + drag-handle targeting
- *   - data-tree-row-kind=          "folder" | "note", for menu-item set
- *   - data-tree-row-label          on the label span, for hover-tooltip
- *                                  enrichment if needed in 03-07
- *   - data-tree-row-kebab          on the kebab button — Plan 03-07 wires
- *                                  the actual Radix DropdownMenu trigger
+ * Plan 03-07 wires:
+ *   - Right-click → <TreeRowContextMenu> wraps the row root.
+ *   - Kebab click → <TreeRowDropdownMenu> with controlled open state.
+ *   - Inline rename: when useTreeStore.pendingRename matches this row,
+ *     the label slot renders <RenameInput> instead of the static span.
+ *   - F2 / Backspace / Delete keys + double-click on the row trigger
+ *     onRequestRename / onRequestDelete callbacks.
  *
  * XSS hardening: this file MUST NOT use the React inner-HTML escape
  * hatch (the `dangerously...` prop). Labels are rendered as React text
@@ -35,7 +33,7 @@
  * forbidden token is split across the test source so this comment can
  * mention the family of escape hatches without tripping the gate.
  */
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties, type KeyboardEvent } from "react";
 import type { NodeApi } from "react-arborist";
 import {
   ChevronDown,
@@ -46,6 +44,11 @@ import {
 } from "lucide-react";
 
 import { useTreeStore } from "../lib/useTreeStore";
+import { RenameInput } from "./RenameInput";
+import {
+  TreeRowContextMenu,
+  TreeRowDropdownMenu,
+} from "./TreeRowMenu";
 
 export type FolderNodeData = {
   kind: "folder";
@@ -66,12 +69,38 @@ export interface TreeRowProps {
   node: NodeApi<TreeRowData>;
   style: CSSProperties;
   onSelectNote: (id: string) => void;
+  onRequestRename?: (target: TreeRowData) => void;
+  onRequestDelete?: (target: TreeRowData) => void;
+  onRequestNewNote?: (parentPath: string) => void;
+  onRequestNewFolder?: (parentPath: string) => void;
+  siblingNames?: string[];
+  commitRename?: (target: TreeRowData, newValue: string) => Promise<void>;
 }
 
 const muted: CSSProperties = { color: "var(--color-muted)", flexShrink: 0 };
 
-export function TreeRow({ node, style, onSelectNote }: TreeRowProps) {
+function parentDirOf(path: string): string {
+  const idx = path.lastIndexOf("/");
+  return idx === -1 ? "" : path.slice(0, idx);
+}
+
+function noop() {
+  /* placeholder when callback not wired */
+}
+
+export function TreeRow({
+  node,
+  style,
+  onSelectNote,
+  onRequestRename,
+  onRequestDelete,
+  onRequestNewNote,
+  onRequestNewFolder,
+  siblingNames = [],
+  commitRename,
+}: TreeRowProps) {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
+  const pendingRename = useTreeStore((s) => s.pendingRename);
   const data = node.data;
   const isFolder = data.kind === "folder";
   const isActive = !isFolder && activeNoteId === data.id;
@@ -79,12 +108,39 @@ export function TreeRow({ node, style, onSelectNote }: TreeRowProps) {
   // depth level. Verified by TestRow_IndentScalesWithLevel.
   const indent = 16 + 16 * node.level;
 
+  const [kebabOpen, setKebabOpen] = useState(false);
+
+  const isRenamingThis =
+    pendingRename != null &&
+    pendingRename.kind === data.kind &&
+    pendingRename.target === (data.kind === "folder" ? data.path : data.id);
+
   const handleClick = () => {
+    if (isRenamingThis) return; // guarded — clicks inside the input are handled by RenameInput
     if (isFolder) {
       node.toggle();
     } else {
       onSelectNote(data.id);
       useTreeStore.getState().setActiveNote(data.id);
+    }
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onRequestRename) onRequestRename(data);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (isRenamingThis) return; // RenameInput owns key handling while open
+    if (e.key === "F2") {
+      e.preventDefault();
+      if (onRequestRename) onRequestRename(data);
+      return;
+    }
+    if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      if (onRequestDelete) onRequestDelete(data);
+      return;
     }
   };
 
@@ -94,7 +150,56 @@ export function TreeRow({ node, style, onSelectNote }: TreeRowProps) {
 
   const dataTreeRowValue = isFolder ? data.path : data.id;
 
-  return (
+  // Compute the parent path used for "New note" / "New folder" from this row's
+  // context menu or kebab. Folder rows create children inside themselves;
+  // note rows create siblings (same parent folder).
+  const parentPathForCreate = isFolder
+    ? data.path
+    : parentDirOf(data.path);
+
+  // For the rename input we strip ".md" from notes; folders keep the
+  // full name. The caller (FileTree) reattaches ".md" before calling
+  // moveNote.
+  const renameInitial =
+    data.kind === "folder"
+      ? data.name
+      : data.title.endsWith(".md")
+        ? data.title.slice(0, -3)
+        : data.title;
+
+  const labelOrInput = isRenamingThis ? (
+    <RenameInput
+      initialValue={renameInitial}
+      isFolder={isFolder}
+      siblingNames={siblingNames}
+      onCommit={async (v) => {
+        if (!commitRename) {
+          useTreeStore.getState().endRename();
+          return;
+        }
+        await commitRename(data, v);
+      }}
+      onCancel={() => useTreeStore.getState().endRename()}
+    />
+  ) : (
+    <span
+      style={{
+        flex: 1,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        fontSize: 14,
+        fontWeight: 400,
+        color: "var(--color-fg)",
+      }}
+      title={isFolder ? data.name : data.title}
+      data-tree-row-label
+    >
+      {isFolder ? data.name : data.title}
+    </span>
+  );
+
+  const rowContent = (
     <div
       style={{
         ...style, // react-arborist virtualization: top, height, etc.
@@ -111,10 +216,12 @@ export function TreeRow({ node, style, onSelectNote }: TreeRowProps) {
       data-tree-row={dataTreeRowValue}
       data-tree-row-kind={data.kind}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
+      onKeyDown={handleKeyDown}
       role="treeitem"
       aria-expanded={isFolder ? node.isOpen : undefined}
       aria-current={isActive ? "page" : undefined}
-      tabIndex={-1}
+      tabIndex={0}
     >
       {isActive && (
         <span
@@ -153,50 +260,99 @@ export function TreeRow({ node, style, onSelectNote }: TreeRowProps) {
           <span aria-hidden="true" style={{ width: 4, flexShrink: 0 }} />
         </>
       )}
-      {/* Label — React text-content escape is the XSS gate; no
-          inner-HTML escape hatch anywhere in this file. */}
-      <span
-        style={{
-          flex: 1,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          fontSize: 14,
-          fontWeight: 400,
-          color: "var(--color-fg)",
-        }}
-        title={isFolder ? data.name : data.title}
-        data-tree-row-label
+      {/* Label OR inline-rename input. React text-content escape is
+          the XSS gate; no inner-HTML escape hatch anywhere. */}
+      {labelOrInput}
+      {/* Kebab — wraps a TreeRowDropdownMenu so click reveals the same
+          item set as the right-click context menu. Hidden until row
+          hover or focus-within (Plan 03-06 chassis kept the visibility
+          behavior verbatim). */}
+      <TreeRowDropdownMenu
+        rowKind={isFolder ? "folder" : "note"}
+        noteId={!isFolder ? (data as NoteNodeData).id : undefined}
+        parentPath={parentPathForCreate}
+        onOpen={
+          !isFolder
+            ? () => onSelectNote((data as NoteNodeData).id)
+            : undefined
+        }
+        onNewNote={() =>
+          onRequestNewNote ? onRequestNewNote(parentPathForCreate) : noop()
+        }
+        onNewFolder={
+          isFolder
+            ? () =>
+                onRequestNewFolder
+                  ? onRequestNewFolder(parentPathForCreate)
+                  : noop()
+            : undefined
+        }
+        onRename={() =>
+          onRequestRename ? onRequestRename(data) : noop()
+        }
+        onDelete={() =>
+          onRequestDelete ? onRequestDelete(data) : noop()
+        }
+        open={kebabOpen}
+        onOpenChange={setKebabOpen}
       >
-        {isFolder ? data.name : data.title}
-      </span>
-      {/* Kebab — visible on hover or focus-within. Placeholder slot:
-          Plan 03-07 wires the Radix DropdownMenu trigger here. */}
-      <button
-        type="button"
-        data-tree-row-kebab
-        aria-label="Row menu"
-        onClick={(e) => {
-          e.stopPropagation();
-          // Plan 03-07 wires the actual menu open. Until then, no-op.
-        }}
-        className="invisible group-hover:visible group-focus-within:visible"
-        style={{
-          background: "transparent",
-          border: "none",
-          padding: 4,
-          color: "var(--color-muted)",
-          cursor: "pointer",
-          width: 24,
-          height: 24,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <MoreHorizontal size={16} aria-hidden="true" />
-      </button>
+        <button
+          type="button"
+          data-tree-row-kebab
+          aria-label="Row menu"
+          // Stop propagation in the bubbling phase so the row's onClick
+          // (which would toggle/select) doesn't also fire. We intentionally
+          // do NOT call e.preventDefault — Radix's DropdownMenu.Trigger
+          // (via asChild) needs the native click to fire its own
+          // open-on-click handler.
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          className="invisible group-hover:visible group-focus-within:visible"
+          style={{
+            background: "transparent",
+            border: "none",
+            padding: 4,
+            color: "var(--color-muted)",
+            cursor: "pointer",
+            width: 24,
+            height: 24,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <MoreHorizontal size={16} aria-hidden="true" />
+        </button>
+      </TreeRowDropdownMenu>
     </div>
+  );
+
+  return (
+    <TreeRowContextMenu
+      rowKind={isFolder ? "folder" : "note"}
+      noteId={!isFolder ? (data as NoteNodeData).id : undefined}
+      parentPath={parentPathForCreate}
+      onOpen={
+        !isFolder
+          ? () => onSelectNote((data as NoteNodeData).id)
+          : undefined
+      }
+      onNewNote={() =>
+        onRequestNewNote ? onRequestNewNote(parentPathForCreate) : noop()
+      }
+      onNewFolder={
+        isFolder
+          ? () =>
+              onRequestNewFolder
+                ? onRequestNewFolder(parentPathForCreate)
+                : noop()
+          : undefined
+      }
+      onRename={() => (onRequestRename ? onRequestRename(data) : noop())}
+      onDelete={() => (onRequestDelete ? onRequestDelete(data) : noop())}
+    >
+      {rowContent}
+    </TreeRowContextMenu>
   );
 }

@@ -327,4 +327,174 @@ describe("<TreeRow />", () => {
     const row = container.querySelector("[data-tree-row]") as HTMLElement;
     expect(row.style.top).toBe("96px");
   });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Plan 03-07 — interaction wiring (context menu, kebab dropdown,
+  // F2/Backspace, double-click, RenameInput slot).
+  // ──────────────────────────────────────────────────────────────────
+
+  it("TestRow_RightClickOpensContextMenu", async () => {
+    const node = makeNoteNode();
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const row = container.querySelector("[data-tree-row]") as HTMLElement;
+    fireEvent.contextMenu(row);
+    // Radix portals the context-menu content; use document-wide query.
+    const open = await import("@testing-library/react").then((m) =>
+      m.screen.findByText("Open"),
+    );
+    expect(open).toBeInTheDocument();
+  });
+
+  it("TestRow_KebabClickOpensDropdown", async () => {
+    const node = makeNoteNode();
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const kebab = container.querySelector(
+      "[data-tree-row-kebab]",
+    ) as HTMLElement;
+    // Radix DropdownMenu.Trigger listens for pointerdown to open the
+    // menu; jsdom's fireEvent.click alone doesn't fire pointer events.
+    fireEvent.pointerDown(kebab, { button: 0 });
+    fireEvent.click(kebab);
+    const open = await import("@testing-library/react").then((m) =>
+      m.screen.findByText("Open"),
+    );
+    expect(open).toBeInTheDocument();
+  });
+
+  it("TestRow_F2KeyTriggersRename", () => {
+    const onRequestRename = vi.fn();
+    const node = makeNoteNode();
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+        onRequestRename={onRequestRename}
+      />,
+    );
+    const row = container.querySelector("[data-tree-row]") as HTMLElement;
+    fireEvent.keyDown(row, { key: "F2" });
+    expect(onRequestRename).toHaveBeenCalledWith(node.data);
+  });
+
+  it("TestRow_BackspaceTriggersDelete", () => {
+    const onRequestDelete = vi.fn();
+    const node = makeNoteNode();
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+        onRequestDelete={onRequestDelete}
+      />,
+    );
+    const row = container.querySelector("[data-tree-row]") as HTMLElement;
+    fireEvent.keyDown(row, { key: "Backspace" });
+    expect(onRequestDelete).toHaveBeenCalledWith(node.data);
+  });
+
+  it("TestRow_DoubleClickTriggersRename", () => {
+    const onRequestRename = vi.fn();
+    const node = makeNoteNode();
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+        onRequestRename={onRequestRename}
+      />,
+    );
+    const row = container.querySelector("[data-tree-row]") as HTMLElement;
+    fireEvent.doubleClick(row);
+    expect(onRequestRename).toHaveBeenCalledWith(node.data);
+  });
+
+  it("TestRow_PendingRenameRendersInput — note", () => {
+    useTreeStore.setState({
+      pendingRename: { kind: "note", target: "uuid-9" },
+    });
+    const node = makeNoteNode({ id: "uuid-9", title: "scratchpad.md" });
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+        siblingNames={[]}
+      />,
+    );
+    // The label span is replaced by an <input>.
+    const input = container.querySelector(
+      "input[type='text']",
+    ) as HTMLInputElement;
+    expect(input).not.toBeNull();
+    // For notes, the .md extension is stripped before display.
+    expect(input.value).toBe("scratchpad");
+  });
+
+  it("TestRow_PendingRenameRendersInput — folder", () => {
+    useTreeStore.setState({
+      pendingRename: { kind: "folder", target: "projects" },
+    });
+    const node = makeFolderNode({ path: "projects", name: "projects" });
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+        siblingNames={[]}
+      />,
+    );
+    const input = container.querySelector(
+      "input[type='text']",
+    ) as HTMLInputElement;
+    expect(input).not.toBeNull();
+    expect(input.value).toBe("projects");
+  });
+
+  it("TestRow_RenameInputCommit_CallsCommitRename", async () => {
+    useTreeStore.setState({
+      pendingRename: { kind: "note", target: "uuid-9" },
+    });
+    const commitRename = vi.fn().mockResolvedValue(undefined);
+    const node = makeNoteNode({ id: "uuid-9", title: "scratchpad.md" });
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+        siblingNames={[]}
+        commitRename={commitRename}
+      />,
+    );
+    const input = container.querySelector(
+      "input[type='text']",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "renamed" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await import("@testing-library/react").then((m) =>
+      m.waitFor(() => {
+        expect(commitRename).toHaveBeenCalledWith(node.data, "renamed");
+      }),
+    );
+  });
 });
