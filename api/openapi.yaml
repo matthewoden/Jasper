@@ -4,6 +4,9 @@ info:
   version: 0.1.0
   description: |
     Jasper HTTP API. Phase 1 surface: a single hard-coded note keyed by UUID.
+    Phase 2 adds the canonical notes-list endpoint and two admin endpoints
+    (migration status, full re-index) backing UX-03 and DATA-10.
+
     Source of truth: every route Jasper exposes lives in this file (API-01).
     Adding a route here without a Go handler causes a compile error
     under oapi-codegen StrictServerInterface (API-02).
@@ -11,9 +14,25 @@ servers:
   - url: /api/v1
     description: Same-origin (Go binary or Vite dev proxy)
 tags:
-  - name: notes
-    description: Note read and write operations
+  - { name: notes, description: "Note read and write operations" }
+  - { name: admin, description: "Operational endpoints — migration status, full re-index" }
 paths:
+  /notes:
+    get:
+      tags: [notes]
+      operationId: getNotes
+      summary: List all indexed notes (metadata only)
+      description: |
+        List all indexed notes (metadata only — no content). Backed by the SQLite
+        derived index (DATA-09). Phase 2 has no query parameters; Phase 7 will add
+        `?q=` and `?tag=` for search and tag filtering.
+      responses:
+        "200":
+          description: List of note metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteList"
   /notes/{id}:
     parameters:
       - $ref: "#/components/parameters/NoteId"
@@ -69,6 +88,58 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /admin/status:
+    get:
+      tags: [admin]
+      operationId: getAdminStatus
+      summary: Report the migration runner state
+      description: |
+        Returns the migration runner state for the UX-03 banner. The frontend
+        `useMigrationStatus()` hook polls this on mount; Phase 4 will swap the
+        client to a `migration:status` WebSocket event without changing the
+        wire shape.
+      responses:
+        "200":
+          description: Current migration runner state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MigrationStatus"
+  /admin/reindex:
+    post:
+      tags: [admin]
+      operationId: postAdminReindex
+      summary: Trigger a full or incremental re-index
+      description: |
+        Phase 2 backs DATA-10: drop the derived tables, re-run migrations on a
+        clean schema, and walk every `.md` file. Phase 2 runs synchronously and
+        returns 202 only after the rebuild finishes; Phase 4 will switch to async
+        execution streaming progress over WebSocket without a contract break.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReindexRequest"
+      responses:
+        "202":
+          description: Re-index accepted; Phase 2 returns after completion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReindexResponse"
+        "409":
+          description: A re-index is already in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Database is in unrecoverable state (Path 3 fired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   parameters:
     NoteId:
@@ -118,6 +189,80 @@ components:
         updated_at:
           type: string
           format: date-time
+    NoteSummary:
+      type: object
+      required: [id, path, title, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        path:
+          type: string
+          description: Canonical relative path under notes/ (NFC + lowercase per DATA-11)
+          example: "scratchpad.md"
+        title:
+          type: string
+          description: First-H1 title or filename without `.md`; never empty
+          example: "Welcome to Jasper"
+        updated_at:
+          type: string
+          format: date-time
+          description: Wall-clock UTC of last filesystem mtime observed by the indexer
+    NoteList:
+      type: object
+      required: [notes]
+      properties:
+        notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteSummary"
+    MigrationStatus:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          description: |
+            Current migration runner state. Surfaces the three-path resilience
+            model from DESIGN.md §4.4.
+              - "ok"            — schema is current; no action required
+              - "rolled_back"   — Path 1 fired; previous schema active; banner shown (UX-03)
+              - "rebuilding"    — Path 2 in progress; UI shows ReindexProgress overlay
+              - "unrecoverable" — Path 3 fired; static error page is served and the SPA cannot reach this endpoint (documented for future use)
+          enum: [ok, rolled_back, rebuilding, unrecoverable]
+        failed_migration:
+          type: string
+          description: Filename of the migration that triggered Path 1 (only set when state=rolled_back)
+          example: "003_tags.sql"
+        logs_path:
+          type: string
+          description: Absolute path to the structured log file (only set when state in {rolled_back, unrecoverable})
+          example: "/Users/me/.jasper/storage/logs/jasper.log"
+        notes_indexed:
+          type: integer
+          description: Count of rows currently in the `notes` table (informational)
+          example: 1247
+    ReindexRequest:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [full, incremental]
+          default: full
+          description: |
+            "full"        — Path 2: drop derived tables, re-run all migrations on the new (clean) schema, walk every .md file
+            "incremental" — re-run the cheap mtime-based delta scan only (DATA-09)
+    ReindexResponse:
+      type: object
+      required: [started_at]
+      properties:
+        started_at:
+          type: string
+          format: date-time
+          description: Wall-clock UTC when the reindex began (Phase 2 returns AFTER it finishes; this is still the start time)
+        notes_indexed:
+          type: integer
+          description: Count of rows in the `notes` table after the reindex completed (Phase 2 only — Phase 4 streams this via WS)
     Error:
       type: object
       required: [code, message]
