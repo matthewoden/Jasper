@@ -454,3 +454,30 @@ describe("<EditorPane />", () => {
     expect(getNoteMock).toHaveBeenCalledWith("other-id");
   });
 });
+
+describe("generic load-error copy (Gap 6b)", () => {
+  it("LOAD_ERROR_COPY does not mention scratchpad", async () => {
+    getNoteMock.mockResolvedValue(errGet("boom"));
+
+    render(<EditorPane noteId="any-uuid" />);
+    const alert = await screen.findByRole("alert");
+
+    expect(alert.textContent ?? "").toMatch(/Could not load note/);
+    expect(alert.textContent ?? "").not.toMatch(/scratchpad/i);
+    expect(alert.textContent ?? "").toMatch(
+      /Check that the server is running/,
+    );
+  });
+
+  it("textarea aria-label is generic 'Note content', not 'Scratchpad note content'", async () => {
+    getNoteMock.mockResolvedValue(okGet("hi"));
+
+    render(<EditorPane noteId="any-uuid" />);
+    await flushMicrotasks();
+
+    const textarea = (await screen.findByRole(
+      "textbox",
+    )) as HTMLTextAreaElement;
+    expect(textarea.getAttribute("aria-label")).toBe("Note content");
+  });
+});
