@@ -121,7 +121,7 @@ describe("<EditorPane />", () => {
       }) as ReturnType<typeof getNote>,
     );
 
-    render(<EditorPane />);
+    render(<EditorPane noteId={ScratchpadUUID} />);
 
     const textarea = screen.getByLabelText(
       "Scratchpad note content",
@@ -143,7 +143,7 @@ describe("<EditorPane />", () => {
   it("E2: GET error renders the locked failure copy + leaves textarea disabled", async () => {
     getNoteMock.mockResolvedValue(errGet("broken"));
 
-    render(<EditorPane />);
+    render(<EditorPane noteId={ScratchpadUUID} />);
     await flushMicrotasks();
 
     expect(
@@ -162,7 +162,7 @@ describe("<EditorPane />", () => {
     getNoteMock.mockResolvedValue(okGet("hello"));
     updateNoteMock.mockResolvedValue(okPut());
 
-    render(<EditorPane />);
+    render(<EditorPane noteId={ScratchpadUUID} />);
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
@@ -202,7 +202,7 @@ describe("<EditorPane />", () => {
     getNoteMock.mockResolvedValue(okGet("hi"));
     updateNoteMock.mockResolvedValue(okPut());
 
-    render(<EditorPane />);
+    render(<EditorPane noteId={ScratchpadUUID} />);
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
@@ -241,7 +241,7 @@ describe("<EditorPane />", () => {
     getNoteMock.mockResolvedValue(okGet("hi"));
     updateNoteMock.mockResolvedValue(okPut());
 
-    render(<EditorPane />);
+    render(<EditorPane noteId={ScratchpadUUID} />);
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
@@ -260,7 +260,7 @@ describe("<EditorPane />", () => {
     getNoteMock.mockResolvedValue(okGet("a"));
     updateNoteMock.mockResolvedValueOnce(errPut("disk full"));
 
-    render(<EditorPane />);
+    render(<EditorPane noteId={ScratchpadUUID} />);
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
@@ -309,7 +309,7 @@ describe("<EditorPane />", () => {
           }) as ReturnType<typeof updateNote>,
       );
 
-    render(<EditorPane />);
+    render(<EditorPane noteId={ScratchpadUUID} />);
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
@@ -366,7 +366,7 @@ describe("<EditorPane />", () => {
     getNoteMock.mockResolvedValue(okGet("a"));
     updateNoteMock.mockResolvedValue(okPut());
 
-    render(<EditorPane />);
+    render(<EditorPane noteId={ScratchpadUUID} />);
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
@@ -389,7 +389,7 @@ describe("<EditorPane />", () => {
     getNoteMock.mockResolvedValue(okGet("a"));
     updateNoteMock.mockResolvedValue(okPut());
 
-    render(<EditorPane />);
+    render(<EditorPane noteId={ScratchpadUUID} />);
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
@@ -407,7 +407,7 @@ describe("<EditorPane />", () => {
     getNoteMock.mockResolvedValue(okGet("a"));
     updateNoteMock.mockResolvedValue(okPut());
 
-    render(<EditorPane reindexing={true} />);
+    render(<EditorPane noteId={ScratchpadUUID} reindexing={true} />);
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
@@ -415,5 +415,42 @@ describe("<EditorPane />", () => {
     ) as HTMLTextAreaElement;
     expect(textarea).toBeDisabled();
     expect(textarea.placeholder).toBe("Index is rebuilding…");
+  });
+
+  it("TestEditorPane_NullNoteId_RendersPlaceholder", async () => {
+    render(<EditorPane noteId={null} />);
+    await flushMicrotasks();
+    expect(
+      screen.getByText("Select a note to start editing."),
+    ).toBeInTheDocument();
+    // No textarea / no API call when noteId is null.
+    expect(screen.queryByLabelText("Scratchpad note content")).toBeNull();
+    expect(getNoteMock).not.toHaveBeenCalled();
+  });
+
+  it("TestEditorPane_NoteIdChange_TriggersReload", async () => {
+    getNoteMock.mockImplementation((id: string) =>
+      Promise.resolve(okGet(`content for ${id}`)),
+    );
+    updateNoteMock.mockResolvedValue(okPut());
+
+    const { rerender } = render(
+      <EditorPane noteId="00000000-0000-4000-a000-000000000001" />,
+    );
+    await flushMicrotasks();
+    let textarea = screen.getByLabelText(
+      "Scratchpad note content",
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea).not.toBeDisabled());
+
+    // Re-render with a different noteId; the load effect should re-fire
+    // and getNote should be called with the new id.
+    rerender(<EditorPane noteId="other-id" />);
+    await flushMicrotasks();
+    textarea = screen.getByLabelText(
+      "Scratchpad note content",
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea).not.toBeDisabled());
+    expect(getNoteMock).toHaveBeenCalledWith("other-id");
   });
 });

@@ -1,13 +1,21 @@
 /**
- * EditorPane — the Phase 1 editor: controlled <textarea> + load on mount +
- * 2s debounced autosave + Cmd+S immediate save + in-flight save coalescing,
- * all driving the locked SaveIndicator state machine (Task 1).
+ * EditorPane — the editor pane: controlled <textarea> + load on mount /
+ * noteId-change + 2s debounced autosave + Cmd+S immediate save +
+ * in-flight save coalescing, all driving the locked SaveIndicator
+ * state machine (Phase 1 Task 1).
  *
- * Per 01-UI-SPEC.md §"Forward-looking constraint": Phase 5's CodeMirror swap
- * replaces ONLY the <textarea> element. The autosave debounce, Cmd+S handler,
- * coalescing logic, and SaveIndicator remain unchanged. That is why every
- * piece of save logic lives in this component (or in pure modules under
- * lib/) — none of it is coupled to the textarea DOM API.
+ * Phase 3 (Plan 03-07) refactor: the hardcoded ScratchpadUUID is
+ * replaced by a `noteId: string | null` prop driven from
+ * useTreeStore.activeNoteId. When noteId === null, render the locked
+ * placeholder ("Select a note to start editing.") with no API calls.
+ * When noteId changes, the load effect re-runs against the new id,
+ * the userHasEdited latch resets, and the existing save-state machine
+ * is re-initialized for the new note.
+ *
+ * Per 01-UI-SPEC.md §"Forward-looking constraint": Phase 5's
+ * CodeMirror swap replaces ONLY the <textarea> element. The autosave
+ * debounce, Cmd+S handler, coalescing logic, and SaveIndicator remain
+ * unchanged.
  */
 
 import {
@@ -20,11 +28,7 @@ import {
   useState,
 } from "react";
 
-import {
-  ScratchpadUUID,
-  getNote,
-  updateNote,
-} from "../lib/notesApi";
+import { getNote, updateNote } from "../lib/notesApi";
 import {
   initialSaveState,
   saveStateReducer,
@@ -48,11 +52,15 @@ const LOAD_ERROR_COPY =
 // the unmount cannot leak through.
 const REINDEXING_PLACEHOLDER = "Index is rebuilding…";
 
+// Phase 3 (Plan 03-07 §Surface): null noteId placeholder copy.
+const NULL_NOTE_PLACEHOLDER_COPY = "Select a note to start editing.";
+
 interface EditorPaneProps {
+  noteId: string | null;
   reindexing?: boolean;
 }
 
-export function EditorPane({ reindexing = false }: EditorPaneProps = {}) {
+export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
   const [content, setContent] = useState("");
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const [saveState, dispatch] = useReducer(
@@ -70,19 +78,37 @@ export function EditorPane({ reindexing = false }: EditorPaneProps = {}) {
   const inFlight = useRef(false);
   // Exactly-one trailing save coalescing — UI-SPEC §Save-trigger timing.
   const trailingPending = useRef(false);
-  // CR-04: tracks whether the user has typed since mount. The load
-  // effect only seeds latestContentRef before any typing — under React
-  // 19 StrictMode the load effect runs twice, and a stale GET resolving
-  // after the user starts typing would otherwise clobber the typed text
-  // and the next debounced save would persist the loaded content as if
-  // the typed bytes never happened (silent data loss).
+  // CR-04: tracks whether the user has typed since (re-)mount / noteId
+  // change. The load effect only seeds latestContentRef before any
+  // typing — under React 19 StrictMode the load effect runs twice, and
+  // a stale GET resolving after the user starts typing would otherwise
+  // clobber the typed text.
   const userHasEdited = useRef(false);
-
-  // 1. Load on mount.
+  // Pin the noteId in a ref so the save callback (memoized with stable
+  // identity) reads the current value without rebinding the whole hook
+  // chain when noteId changes.
+  const noteIdRef = useRef<string | null>(noteId);
   useEffect(() => {
+    noteIdRef.current = noteId;
+  }, [noteId]);
+
+  // 1. Load on mount AND whenever noteId changes (Phase 3).
+  useEffect(() => {
+    if (noteId === null) {
+      // No note selected — leave the component in a non-loading,
+      // non-error state. The placeholder branch below renders before
+      // we reach the textarea path.
+      setLoadStatus("loaded");
+      setContent("");
+      latestContentRef.current = "";
+      userHasEdited.current = false;
+      return;
+    }
     let cancelled = false;
+    setLoadStatus("loading");
+    userHasEdited.current = false;
     (async () => {
-      const { data, error } = await getNote(ScratchpadUUID);
+      const { data, error } = await getNote(noteId);
       if (cancelled) return;
       if (error || !data) {
         setLoadStatus("error");
@@ -100,16 +126,16 @@ export function EditorPane({ reindexing = false }: EditorPaneProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [noteId]);
 
   // 1b. Focus the textarea after the enabled state commits. Running this from
   // the load-effect's promise chain races the disabled→enabled re-render —
   // a dedicated effect keyed on loadStatus runs AFTER React commits.
   useEffect(() => {
-    if (loadStatus === "loaded") {
+    if (loadStatus === "loaded" && noteId !== null) {
       textareaRef.current?.focus();
     }
-  }, [loadStatus]);
+  }, [loadStatus, noteId]);
 
   // Keep the freshest reindexing flag in a ref so the save callback (which
   // is memoized with [] deps for stable identity across renders) reads the
@@ -125,6 +151,8 @@ export function EditorPane({ reindexing = false }: EditorPaneProps = {}) {
     // overlay is up, but a debounced save fired moments before unmount can
     // still race through. Drop it.
     if (reindexingRef.current) return;
+    const id = noteIdRef.current;
+    if (id === null) return; // no note selected — guard
     if (inFlight.current) {
       // Coalesce — mark exactly ONE trailing save; subsequent saves during the
       // same in-flight window overwrite this single slot (no save storm).
@@ -134,10 +162,7 @@ export function EditorPane({ reindexing = false }: EditorPaneProps = {}) {
     inFlight.current = true;
     dispatch({ type: "requestSave" });
     try {
-      const { data, error } = await updateNote(
-        ScratchpadUUID,
-        latestContent,
-      );
+      const { data, error } = await updateNote(id, latestContent);
       if (error || !data) {
         const msg =
           (error as { message?: string } | undefined)?.message ??
@@ -223,6 +248,36 @@ export function EditorPane({ reindexing = false }: EditorPaneProps = {}) {
       }
     };
   }, []);
+
+  // Phase 3: null noteId → render placeholder, NOT the textarea. We
+  // still mount the SaveIndicator so the surface chrome remains
+  // identical to a populated editor, and so a future "you typed but
+  // there's no active note" affordance can sit alongside it without
+  // remounting the parent.
+  if (noteId === null) {
+    return (
+      <section
+        className="flex flex-col h-full bg-bg"
+        data-testid="editor-pane-placeholder"
+      >
+        <SaveIndicator state={saveState} />
+        <div
+          className="flex items-center justify-center"
+          style={{ flex: 1 }}
+        >
+          <p
+            style={{
+              fontSize: 14,
+              fontWeight: 400,
+              color: "var(--color-muted)",
+            }}
+          >
+            {NULL_NOTE_PLACEHOLDER_COPY}
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="flex flex-col h-full bg-bg">

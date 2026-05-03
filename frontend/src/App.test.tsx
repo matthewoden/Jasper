@@ -53,11 +53,24 @@ vi.mock("./lib/useFileTree", () => ({
 }));
 
 import App from "./App";
+import { useTreeStore } from "./lib/useTreeStore";
+
+const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
 
 describe("<App /> — Phase 2 shell composition", () => {
   beforeEach(() => {
     getAdminStatusMock.mockReset();
     postAdminReindexMock.mockReset();
+    // Plan 03-07: EditorPane now requires noteId. Pre-seed the store
+    // so the existing Phase 1+2 assertions (textarea enabled, save
+    // flow) still apply. A6's tree-selection test resets it to null
+    // so the placeholder branch is exercised.
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: SCRATCHPAD,
+      pendingRename: null,
+      draftCreate: null,
+    });
   });
 
   afterEach(() => {
@@ -236,5 +249,62 @@ describe("<App /> — Phase 2 shell composition", () => {
       'div[role="region"][aria-label^="Notifications"]',
     );
     expect(viewports.length).toBe(1);
+  });
+
+  it("A7: TestApp_NullActiveNote_RendersPlaceholder — Plan 03-07 wiring", async () => {
+    // Reset the store so activeNoteId is null instead of the default
+    // SCRATCHPAD seed from beforeEach.
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: null,
+      pendingRename: null,
+      draftCreate: null,
+    });
+    getAdminStatusMock.mockResolvedValue({
+      data: { state: "ok" },
+      error: undefined,
+    });
+    render(<App />);
+    await waitFor(() => {
+      expect(
+        screen.getByText("Select a note to start editing."),
+      ).toBeInTheDocument();
+    });
+    // No textarea when noteId is null — the editor placeholder branch
+    // is mounted instead of the normal pane.
+    expect(screen.queryByLabelText("Scratchpad note content")).toBeNull();
+  });
+
+  it("A8: TestApp_TreeSelection_DrivesEditor — Plan 03-07 wiring", async () => {
+    // Start with no active note; toggle the store programmatically
+    // (proxy for clicking a note row, since the FileTree mock here is
+    // empty). The EditorPane should re-render with the new noteId
+    // and call getNote.
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: null,
+      pendingRename: null,
+      draftCreate: null,
+    });
+    getAdminStatusMock.mockResolvedValue({
+      data: { state: "ok" },
+      error: undefined,
+    });
+    render(<App />);
+    await waitFor(() => {
+      expect(
+        screen.getByText("Select a note to start editing."),
+      ).toBeInTheDocument();
+    });
+    // Simulate Sidebar.onSelectNote firing.
+    await act(async () => {
+      useTreeStore.getState().setActiveNote(SCRATCHPAD);
+    });
+    // EditorPane re-renders with a textarea.
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Scratchpad note content"),
+      ).toBeInTheDocument();
+    });
   });
 });
