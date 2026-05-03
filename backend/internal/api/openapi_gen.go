@@ -9,7 +9,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -22,11 +24,81 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for MigrationStatusState.
+const (
+	Ok            MigrationStatusState = "ok"
+	Rebuilding    MigrationStatusState = "rebuilding"
+	RolledBack    MigrationStatusState = "rolled_back"
+	Unrecoverable MigrationStatusState = "unrecoverable"
+)
+
+// Valid indicates whether the value is a known member of the MigrationStatusState enum.
+func (e MigrationStatusState) Valid() bool {
+	switch e {
+	case Ok:
+		return true
+	case Rebuilding:
+		return true
+	case RolledBack:
+		return true
+	case Unrecoverable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReindexRequestMode.
+const (
+	Full        ReindexRequestMode = "full"
+	Incremental ReindexRequestMode = "incremental"
+)
+
+// Valid indicates whether the value is a known member of the ReindexRequestMode enum.
+func (e ReindexRequestMode) Valid() bool {
+	switch e {
+	case Full:
+		return true
+	case Incremental:
+		return true
+	default:
+		return false
+	}
+}
+
 // Error defines model for Error.
 type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
+
+// MigrationStatus defines model for MigrationStatus.
+type MigrationStatus struct {
+	// FailedMigration Filename of the migration that triggered Path 1 (only set when state=rolled_back)
+	FailedMigration *string `json:"failed_migration,omitempty"`
+
+	// LogsPath Absolute path to the structured log file (only set when state in {rolled_back, unrecoverable})
+	LogsPath *string `json:"logs_path,omitempty"`
+
+	// NotesIndexed Count of rows currently in the `notes` table (informational)
+	NotesIndexed *int `json:"notes_indexed,omitempty"`
+
+	// State Current migration runner state. Surfaces the three-path resilience
+	// model from DESIGN.md §4.4.
+	//   - "ok"            — schema is current; no action required
+	//   - "rolled_back"   — Path 1 fired; previous schema active; banner shown (UX-03)
+	//   - "rebuilding"    — Path 2 in progress; UI shows ReindexProgress overlay
+	//   - "unrecoverable" — Path 3 fired; static error page is served and the SPA cannot reach this endpoint (documented for future use)
+	State MigrationStatusState `json:"state"`
+}
+
+// MigrationStatusState Current migration runner state. Surfaces the three-path resilience
+// model from DESIGN.md §4.4.
+//   - "ok"            — schema is current; no action required
+//   - "rolled_back"   — Path 1 fired; previous schema active; banner shown (UX-03)
+//   - "rebuilding"    — Path 2 in progress; UI shows ReindexProgress overlay
+//   - "unrecoverable" — Path 3 fired; static error page is served and the SPA cannot reach this endpoint (documented for future use)
+type MigrationStatusState string
 
 // Note defines model for Note.
 type Note struct {
@@ -39,6 +111,45 @@ type Note struct {
 
 	// UpdatedAt Wall-clock UTC time of the last successful write
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// NoteList defines model for NoteList.
+type NoteList struct {
+	Notes []NoteSummary `json:"notes"`
+}
+
+// NoteSummary defines model for NoteSummary.
+type NoteSummary struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Path Canonical relative path under notes/ (NFC + lowercase per DATA-11)
+	Path string `json:"path"`
+
+	// Title First-H1 title or filename without `.md`; never empty
+	Title string `json:"title"`
+
+	// UpdatedAt Wall-clock UTC of last filesystem mtime observed by the indexer
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ReindexRequest defines model for ReindexRequest.
+type ReindexRequest struct {
+	// Mode "full"        — Path 2: drop derived tables, re-run all migrations on the new (clean) schema, walk every .md file
+	// "incremental" — re-run the cheap mtime-based delta scan only (DATA-09)
+	Mode *ReindexRequestMode `json:"mode,omitempty"`
+}
+
+// ReindexRequestMode "full"        — Path 2: drop derived tables, re-run all migrations on the new (clean) schema, walk every .md file
+// "incremental" — re-run the cheap mtime-based delta scan only (DATA-09)
+type ReindexRequestMode string
+
+// ReindexResponse defines model for ReindexResponse.
+type ReindexResponse struct {
+	// NotesIndexed Count of rows in the `notes` table after the reindex completed (Phase 2 only — Phase 4 streams this via WS)
+	NotesIndexed *int `json:"notes_indexed,omitempty"`
+
+	// StartedAt Wall-clock UTC when the reindex began (Phase 2 returns AFTER it finishes; this is still the start time)
+	StartedAt time.Time `json:"started_at"`
 }
 
 // UpdateNoteRequest defines model for UpdateNoteRequest.
@@ -57,11 +168,23 @@ type UpdateNoteResponse struct {
 // NoteId defines model for NoteId.
 type NoteId = openapi_types.UUID
 
+// PostAdminReindexJSONRequestBody defines body for PostAdminReindex for application/json ContentType.
+type PostAdminReindexJSONRequestBody = ReindexRequest
+
 // PutNoteByIdJSONRequestBody defines body for PutNoteById for application/json ContentType.
 type PutNoteByIdJSONRequestBody = UpdateNoteRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Trigger a full or incremental re-index
+	// (POST /admin/reindex)
+	PostAdminReindex(w http.ResponseWriter, r *http.Request)
+	// Report the migration runner state
+	// (GET /admin/status)
+	GetAdminStatus(w http.ResponseWriter, r *http.Request)
+	// List all indexed notes (metadata only)
+	// (GET /notes)
+	GetNotes(w http.ResponseWriter, r *http.Request)
 	// Read a note by UUID
 	// (GET /notes/{id})
 	GetNoteById(w http.ResponseWriter, r *http.Request, id NoteId)
@@ -73,6 +196,24 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Trigger a full or incremental re-index
+// (POST /admin/reindex)
+func (_ Unimplemented) PostAdminReindex(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Report the migration runner state
+// (GET /admin/status)
+func (_ Unimplemented) GetAdminStatus(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List all indexed notes (metadata only)
+// (GET /notes)
+func (_ Unimplemented) GetNotes(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Read a note by UUID
 // (GET /notes/{id})
@@ -94,6 +235,48 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// PostAdminReindex operation middleware
+func (siw *ServerInterfaceWrapper) PostAdminReindex(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAdminReindex(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetNotes operation middleware
+func (siw *ServerInterfaceWrapper) GetNotes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNotes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetNoteById operation middleware
 func (siw *ServerInterfaceWrapper) GetNoteById(w http.ResponseWriter, r *http.Request) {
@@ -261,6 +444,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/reindex", wrapper.PostAdminReindex)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/status", wrapper.GetAdminStatus)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/notes", wrapper.GetNotes)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/notes/{id}", wrapper.GetNoteById)
 	})
 	r.Group(func(r chi.Router) {
@@ -268,6 +460,98 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 
 	return r
+}
+
+type PostAdminReindexRequestObject struct {
+	Body *PostAdminReindexJSONRequestBody
+}
+
+type PostAdminReindexResponseObject interface {
+	VisitPostAdminReindexResponse(w http.ResponseWriter) error
+}
+
+type PostAdminReindex202JSONResponse ReindexResponse
+
+func (response PostAdminReindex202JSONResponse) VisitPostAdminReindexResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAdminReindex409JSONResponse Error
+
+func (response PostAdminReindex409JSONResponse) VisitPostAdminReindexResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAdminReindex503JSONResponse Error
+
+func (response PostAdminReindex503JSONResponse) VisitPostAdminReindexResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminStatusRequestObject struct {
+}
+
+type GetAdminStatusResponseObject interface {
+	VisitGetAdminStatusResponse(w http.ResponseWriter) error
+}
+
+type GetAdminStatus200JSONResponse MigrationStatus
+
+func (response GetAdminStatus200JSONResponse) VisitGetAdminStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotesRequestObject struct {
+}
+
+type GetNotesResponseObject interface {
+	VisitGetNotesResponse(w http.ResponseWriter) error
+}
+
+type GetNotes200JSONResponse NoteList
+
+func (response GetNotes200JSONResponse) VisitGetNotesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetNoteByIdRequestObject struct {
@@ -373,6 +657,15 @@ func (response PutNoteById500JSONResponse) VisitPutNoteByIdResponse(w http.Respo
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Trigger a full or incremental re-index
+	// (POST /admin/reindex)
+	PostAdminReindex(ctx context.Context, request PostAdminReindexRequestObject) (PostAdminReindexResponseObject, error)
+	// Report the migration runner state
+	// (GET /admin/status)
+	GetAdminStatus(ctx context.Context, request GetAdminStatusRequestObject) (GetAdminStatusResponseObject, error)
+	// List all indexed notes (metadata only)
+	// (GET /notes)
+	GetNotes(ctx context.Context, request GetNotesRequestObject) (GetNotesResponseObject, error)
 	// Read a note by UUID
 	// (GET /notes/{id})
 	GetNoteById(ctx context.Context, request GetNoteByIdRequestObject) (GetNoteByIdResponseObject, error)
@@ -408,6 +701,88 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// PostAdminReindex operation middleware
+func (sh *strictHandler) PostAdminReindex(w http.ResponseWriter, r *http.Request) {
+	var request PostAdminReindexRequestObject
+
+	var body PostAdminReindexJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostAdminReindex(ctx, request.(PostAdminReindexRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostAdminReindex")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostAdminReindexResponseObject); ok {
+		if err := validResponse.VisitPostAdminReindexResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminStatus operation middleware
+func (sh *strictHandler) GetAdminStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetAdminStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminStatus(ctx, request.(GetAdminStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminStatusResponseObject); ok {
+		if err := validResponse.VisitGetAdminStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetNotes operation middleware
+func (sh *strictHandler) GetNotes(w http.ResponseWriter, r *http.Request) {
+	var request GetNotesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNotes(ctx, request.(GetNotesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNotes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetNotesResponseObject); ok {
+		if err := validResponse.VisitGetNotesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetNoteById operation middleware
@@ -474,24 +849,47 @@ func (sh *strictHandler) PutNoteById(w http.ResponseWriter, r *http.Request, id 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"zFbdbhs3E32VAb/vQkb1m7o3ypXitK4K1BBiu7mIjWC8HGkZ75KbIVfy1hDQh+gT9kmKIdeWHW1qF02K",
-	"6kL2rkjOmTlnzvBWZa6snCUbvJreqgoZSwrE8enEBZpr+U+Tz9hUwTirpur8fP4a3BJCTmBdIOgtcvQE",
-	"E8jRA91gFooGnCX447ffwROBzxhDlleoIW42FjKn6UD1lZETKwy56iuLJampMlr1FdPH2jBpNQ1cU1/5",
-	"LKcSBczScYlBTVVdx5WhqWSXD2zsSm2327vFMYnvmR3H3NhVxMFQfC3h5S/dYFkVst+68H7pattxZF+V",
-	"5D2u9nak9Dcm5GA0jNvPIH4dyhfePbafSQfeh7m+S8B2AS/v17urD5QFASO8dGVkA9mwT9cb3ECJfK3d",
-	"RsoeVz2krytfox+n+szUnqCmn4jeQ3iE1lmTYWF+JQ1MBQazJpDFUFtNHHH6EfROfjiCb6BwG+JMJFcR",
-	"w+vZ2WwwmYiYdoB3ihuWnUjqSmMg/R47KvYWi2KQFS67hvOzIwimpLuCFegD+DrLyPtlXcCGTazgfeZy",
-	"6kB2PMl0rFCr/DvyHuHq4v48/iwKeEMfa/LhbwjhhDbAHWJ4CUxVgRn5mCLZYJhgaQp6hlpTrKeg+spZ",
-	"3yHapLNny+YJFv8hCX9Zetlo7NLtl/Un9CLDH8/OFjBbzIdw54a+5iVmNAUEb+yqIMiR9UA6XCfnuKaG",
-	"NFw10RWHF/bU1ZwlrXEd8inQmrgBdnUgaOPQTeU8eSjMmrw4aciNj2xBb7aYD8aTg+GFnWlt7Aqw3ZsT",
-	"J59ydQCEYwc5Wl0QQ4a1nIYgk0AOITHMC5v6zmFlIuAVWTgNbLJwSrwmnttAMbs26AsJKtU2IfZfC3a2",
-	"mKu+WhP7VKvxcDIcC3GuIouVUVP1bXyVSIiaGKVmvzV6K48rityKalAqLhNJHVMQYb1q5mlWJH3F7S/G",
-	"40+6AKuqMFncPPrgBcftg3Hyf6almqr/jXajcNTOj1F02kj9J50k5KVhse2rw/HhF4uYxtXnQloXUljo",
-	"1fbaSg+Lcg6irH1dlsiNOD6hBkwSa8Ul1ODKi+RjedVlbKvduH/XjWu3ZNReB7aXfVXVHZws6secRHt6",
-	"5XTzxYqzb37bx/0sV4XtV9RDh6V9jqrWTF4CBleaLA0KabLShECtbsZfXzc/YyG2GOdqrBlcCSX/Edn2",
-	"1Xf/RhHexuIv0RQ1EzgL2vhr6CVqBkxy8QTHsPSNzZID7vdUHJFxQj64RD3ZZfGUaJmpyR4DO8WSBo7N",
-	"yljoHTu4Mha5ESi/CGJNa6jY3TRyuam5UFM1wsqM1pPYhm2s266ac/QAq1vh3beq392zE8Tt5fbPAAAA",
-	"//8=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

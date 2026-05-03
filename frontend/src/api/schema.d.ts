@@ -4,6 +4,28 @@
  */
 
 export interface paths {
+    "/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all indexed notes (metadata only)
+         * @description List all indexed notes (metadata only — no content). Backed by the SQLite
+         *     derived index (DATA-09). Phase 2 has no query parameters; Phase 7 will add
+         *     `?q=` and `?tag=` for search and tag filtering.
+         */
+        get: operations["getNotes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notes/{id}": {
         parameters: {
             query?: never;
@@ -19,6 +41,52 @@ export interface paths {
         /** Replace the content of a note by UUID */
         put: operations["putNoteById"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the migration runner state
+         * @description Returns the migration runner state for the UX-03 banner. The frontend
+         *     `useMigrationStatus()` hook polls this on mount; Phase 4 will swap the
+         *     client to a `migration:status` WebSocket event without changing the
+         *     wire shape.
+         */
+        get: operations["getAdminStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger a full or incremental re-index
+         * @description Phase 2 backs DATA-10: drop the derived tables, re-run migrations on a
+         *     clean schema, and walk every `.md` file. Phase 2 runs synchronously and
+         *     returns 202 only after the rebuild finishes; Phase 4 will switch to async
+         *     execution streaming progress over WebSocket without a contract break.
+         */
+        post: operations["postAdminReindex"];
         delete?: never;
         options?: never;
         head?: never;
@@ -59,6 +127,73 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        NoteSummary: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Canonical relative path under notes/ (NFC + lowercase per DATA-11)
+             * @example scratchpad.md
+             */
+            path: string;
+            /**
+             * @description First-H1 title or filename without `.md`; never empty
+             * @example Welcome to Jasper
+             */
+            title: string;
+            /**
+             * Format: date-time
+             * @description Wall-clock UTC of last filesystem mtime observed by the indexer
+             */
+            updated_at: string;
+        };
+        NoteList: {
+            notes: components["schemas"]["NoteSummary"][];
+        };
+        MigrationStatus: {
+            /**
+             * @description Current migration runner state. Surfaces the three-path resilience
+             *     model from DESIGN.md §4.4.
+             *       - "ok"            — schema is current; no action required
+             *       - "rolled_back"   — Path 1 fired; previous schema active; banner shown (UX-03)
+             *       - "rebuilding"    — Path 2 in progress; UI shows ReindexProgress overlay
+             *       - "unrecoverable" — Path 3 fired; static error page is served and the SPA cannot reach this endpoint (documented for future use)
+             * @enum {string}
+             */
+            state: "ok" | "rolled_back" | "rebuilding" | "unrecoverable";
+            /**
+             * @description Filename of the migration that triggered Path 1 (only set when state=rolled_back)
+             * @example 003_tags.sql
+             */
+            failed_migration?: string;
+            /**
+             * @description Absolute path to the structured log file (only set when state in {rolled_back, unrecoverable})
+             * @example /Users/me/.jasper/storage/logs/jasper.log
+             */
+            logs_path?: string;
+            /**
+             * @description Count of rows currently in the `notes` table (informational)
+             * @example 1247
+             */
+            notes_indexed?: number;
+        };
+        ReindexRequest: {
+            /**
+             * @description "full"        — Path 2: drop derived tables, re-run all migrations on the new (clean) schema, walk every .md file
+             *     "incremental" — re-run the cheap mtime-based delta scan only (DATA-09)
+             * @default full
+             * @enum {string}
+             */
+            mode: "full" | "incremental";
+        };
+        ReindexResponse: {
+            /**
+             * Format: date-time
+             * @description Wall-clock UTC when the reindex began (Phase 2 returns AFTER it finishes; this is still the start time)
+             */
+            started_at: string;
+            /** @description Count of rows in the `notes` table after the reindex completed (Phase 2 only — Phase 4 streams this via WS) */
+            notes_indexed?: number;
+        };
         Error: {
             /** @example not_found */
             code: string;
@@ -77,6 +212,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getNotes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of note metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteList"];
+                };
+            };
+        };
+    };
     getNoteById: {
         parameters: {
             query?: never;
@@ -154,6 +309,68 @@ export interface operations {
             };
             /** @description Write failure on disk (atomic-rename or fsync error) */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAdminStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current migration runner state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationStatus"];
+                };
+            };
+        };
+    };
+    postAdminReindex: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReindexRequest"];
+            };
+        };
+        responses: {
+            /** @description Re-index accepted; Phase 2 returns after completion */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReindexResponse"];
+                };
+            };
+            /** @description A re-index is already in progress */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Database is in unrecoverable state (Path 3 fired) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
