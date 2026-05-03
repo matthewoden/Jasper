@@ -123,6 +123,27 @@ func (a *App) Run(ctx context.Context) error {
 	// 4. Phase 2 NEW — open sqlite Pair.
 	backupPath := dbPath + ".backup"
 	logsPath := filepath.Join(logsDir, "jasper.log")
+
+	// 4a. Disk-space preflight BEFORE sqlite.Open. This must run first
+	// so JASPER_TEST_FORCE_DISK_FULL=1 — and the production case of a
+	// data volume actually being full — surface as ErrDiskFull rather
+	// than a sqlite NOTADB / ping error from a corrupt or unreachable
+	// app.db. The runner's own preflight inside Run() still fires; this
+	// is the boot-time gate that catches it before we ever touch the DB.
+	if err := migrate.PreflightFreeSpace(dbPath); err != nil {
+		if errors.Is(err, migrate.ErrDiskFull) {
+			a.cfg.Logger.Error("boot failed: disk-full preflight aborted before sqlite.Open — serving static error page",
+				"err", err, "data_dir", a.cfg.DataDir, "logs_path", logsPath)
+			a.diskFullHandler = newBootErrorHandler(
+				"disk-full.html",
+				buildDiskFullData(dbPath, a.cfg.DataDir),
+			)
+			a.handler = a.diskFullHandler
+			return a.serveListener(ctx)
+		}
+		return fmt.Errorf("disk preflight: %w", err)
+	}
+
 	pair, err := sqlite.Open(ctx, dbPath)
 	if err != nil {
 		return fmt.Errorf("sqlite open: %w", err)

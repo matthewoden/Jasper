@@ -608,14 +608,20 @@ func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
 	}
 }
 
-// TestRun_DiskFull_PairClosed (W-3) — proves the deferred pair.Close()
-// fires even on the disk-full path. After Run exits via ErrDiskFull,
-// pair.Reader.PingContext must return a "database is closed" error.
-func TestRun_DiskFull_PairClosed(t *testing.T) {
+// TestRun_DiskFull_PreflightHaltsBeforeOpen — strengthens the W-3
+// invariant. Boot-time disk-full preflight (lifecycle step 4a) MUST
+// fire before sqlite.Open, so on a disk-full data volume we never
+// open a DB connection at all (a.pair stays nil) and the listener
+// still serves the static disk-full handler. This catches both
+// JASPER_TEST_FORCE_DISK_FULL=1 and the production "data volume
+// actually full" case — without this gate, sqlite.Open would crash
+// with NOTADB on a corrupt/zero-filled app.db before we ever check
+// free disk space.
+func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 	dir := t.TempDir()
-	// Seed a real SQLite DB (size > 0) so the runner.preflight
-	// computes non-zero `required` and the 0-free hook actually
-	// trips ErrDiskFull (vs. silent fresh-DB skip).
+	// Seed a real SQLite DB (size > 0) so PreflightFreeSpace computes
+	// a non-zero `required` and the 0-free env-var hook actually trips
+	// ErrDiskFull (vs. silent fresh-DB skip when the file doesn't exist).
 	seedRealSQLiteDB(t, dir)
 
 	t.Setenv("JASPER_TEST_FORCE_DISK_FULL", "1")
@@ -636,8 +642,8 @@ func TestRun_DiskFull_PairClosed(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	// Wait for listener so we know boot reached serveListener (=
-	// the deferred pair.Close has not yet fired but pair is open).
+	// Wait for listener so we know boot reached serveListener via the
+	// disk-full static-page path (not via successful migration).
 	probe := func() error {
 		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 		if err != nil {
@@ -652,21 +658,18 @@ func TestRun_DiskFull_PairClosed(t *testing.T) {
 		t.Fatalf("listener did not come up: %v", err)
 	}
 
-	// Cancel and wait for Run to return — this triggers the
-	// deferred pair.Close(). Then assert the pair really is closed.
+	// Listener is up via the disk-full handler. Pair MUST still be nil
+	// — the preflight ran before sqlite.Open, so no connection was ever
+	// opened. This is a stronger invariant than the previous "pair was
+	// opened, then closed via defer": now there is no connection to
+	// leak in the first place.
+	if a.pair != nil {
+		t.Fatalf("a.pair is non-nil after disk-full preflight; expected nil (sqlite.Open should not have run)")
+	}
+	if a.diskFullHandler == nil {
+		t.Fatalf("a.diskFullHandler is nil; expected disk-full static handler installed")
+	}
+
 	cancel()
 	<-runErr
-	if a.pair == nil {
-		t.Fatalf("a.pair is nil; expected populated before disk-full halt")
-	}
-	pingCtx, pingCancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer pingCancel()
-	if err := a.pair.Reader.PingContext(pingCtx); err == nil {
-		t.Errorf("pair.Reader.Ping returned nil after Run exit; expected closed-db error")
-	} else if !strings.Contains(err.Error(), "closed") {
-		// modernc.org/sqlite + database/sql wraps the closed pool as
-		// "sql: database is closed". Match on the substring "closed"
-		// to avoid coupling to the exact wrapper text.
-		t.Errorf("pair.Reader.Ping err = %q; want substring 'closed'", err)
-	}
 }
