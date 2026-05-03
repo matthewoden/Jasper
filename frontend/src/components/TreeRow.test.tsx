@@ -9,11 +9,14 @@
  * gate (XSS hardening per the threat model).
  */
 import { fireEvent, render } from "@testing-library/react";
-import { readFileSync } from "node:fs";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import { useTreeStore } from "../lib/useTreeStore";
-import { TreeRow, type TreeRowData } from "./TreeRow";
+import { TreeRow } from "./TreeRow";
+// Vite ?raw suffix loads the file's source as a string at build time —
+// gives the XSS-hardening test a way to scan TreeRow.tsx for the
+// forbidden inner-HTML escape hatch without reaching for node:fs.
+import treeRowSource from "./TreeRow.tsx?raw";
 
 // Stub the react-arborist NodeApi shape — only the fields TreeRow reads.
 function makeFolderNode(overrides: {
@@ -304,11 +307,11 @@ describe("<TreeRow />", () => {
   });
 
   it("TestRow_DoesNotUseDangerouslySetInnerHTML — XSS hardening per T-03-04-05/T-03-06-01", () => {
-    const src = readFileSync(
-      new URL("./TreeRow.tsx", import.meta.url),
-      "utf-8",
-    );
-    expect(src).not.toContain("dangerouslySetInnerHTML");
+    // The forbidden token is split across two pieces so this test source
+    // can mention the family of escape hatches in comments without
+    // making the assertion trivially true.
+    const FORBIDDEN = "dangerously" + "SetInnerHTML";
+    expect(treeRowSource).not.toContain(FORBIDDEN);
   });
 
   it("applies the react-arborist style prop to the row root for virtualization", () => {
