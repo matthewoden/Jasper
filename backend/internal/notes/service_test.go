@@ -6,10 +6,16 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/matthewoden/jasper/backend/internal/fsstore"
 )
 
 // fakeFileStore is the in-test impl of FileStore. Only the fields a given
@@ -402,5 +408,745 @@ func TestService_NewService_NilIndex_FallsBackToNopIndex(t *testing.T) {
 	}
 	if files.writeCalls != 1 {
 		t.Errorf("writeCalls: got %d, want 1", files.writeCalls)
+	}
+}
+
+// ----------------------------------------------------------------------
+// Plan 03-03 Task 2: Service mutations + Registry dynamic ops tests
+// ----------------------------------------------------------------------
+
+// stubIndex is a richer in-memory Index spy for the Phase 3 mutation
+// tests. Maintains a path → NoteRecord map plus per-method failure
+// injection. Concurrent-safe via a single RWMutex (the Service does
+// NOT issue concurrent calls in any production path, but the test
+// harness builds them up sequentially under the same lock to keep the
+// race detector quiet).
+type stubIndex struct {
+	mu sync.RWMutex
+
+	byPath map[string]NoteRecord
+	byID   map[uuid.UUID]NoteRecord
+
+	// Failure injection
+	upsertErr             error
+	deleteErr             error
+	lookupErr             error
+	movePathPrefixErr     error
+	deleteByPathPrefixErr error
+}
+
+func newStubIndex() *stubIndex {
+	return &stubIndex{
+		byPath: make(map[string]NoteRecord),
+		byID:   make(map[uuid.UUID]NoteRecord),
+	}
+}
+
+func (s *stubIndex) Upsert(_ context.Context, rec NoteRecord) error {
+	if s.upsertErr != nil {
+		return s.upsertErr
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Detect case-insensitive path collisions with a different id (DATA-12).
+	if existing, ok := s.byPath[rec.Path]; ok && existing.ID != rec.ID {
+		return ErrCaseCollision
+	}
+	// Replace any old path mapping for this id.
+	if old, ok := s.byID[rec.ID]; ok && old.Path != rec.Path {
+		delete(s.byPath, old.Path)
+	}
+	s.byPath[rec.Path] = rec
+	s.byID[rec.ID] = rec
+	return nil
+}
+
+func (s *stubIndex) Delete(_ context.Context, id uuid.UUID) error {
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if rec, ok := s.byID[id]; ok {
+		delete(s.byPath, rec.Path)
+		delete(s.byID, id)
+	}
+	return nil
+}
+
+func (s *stubIndex) List(_ context.Context) ([]NoteSummary, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]NoteSummary, 0, len(s.byID))
+	for _, rec := range s.byID {
+		out = append(out, NoteSummary{
+			ID:        rec.ID,
+			Path:      rec.Path,
+			Title:     rec.Title,
+			UpdatedAt: time.Unix(rec.MTimeUnix, 0).UTC(),
+		})
+	}
+	return out, nil
+}
+
+func (s *stubIndex) LookupByPath(_ context.Context, p string) (NoteRecord, error) {
+	if s.lookupErr != nil {
+		return NoteRecord{}, s.lookupErr
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if rec, ok := s.byPath[p]; ok {
+		return rec, nil
+	}
+	return NoteRecord{}, ErrNotFound
+}
+
+func (s *stubIndex) MovePathPrefix(_ context.Context, oldPrefix, newPrefix string) (int, error) {
+	if s.movePathPrefixErr != nil {
+		return 0, s.movePathPrefixErr
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Collision pre-check: any existing row under newPrefix that is not
+	// already under oldPrefix is a foreign collision.
+	for p := range s.byPath {
+		if strings.HasPrefix(p, newPrefix) && !strings.HasPrefix(p, oldPrefix) {
+			return 0, ErrCaseCollision
+		}
+	}
+
+	// Collect rows to move.
+	moves := []NoteRecord{}
+	for p, rec := range s.byPath {
+		if strings.HasPrefix(p, oldPrefix) {
+			moves = append(moves, rec)
+		}
+	}
+	for _, rec := range moves {
+		newPath := newPrefix + strings.TrimPrefix(rec.Path, oldPrefix)
+		delete(s.byPath, rec.Path)
+		rec.Path = newPath
+		s.byPath[newPath] = rec
+		s.byID[rec.ID] = rec
+	}
+	return len(moves), nil
+}
+
+func (s *stubIndex) DeleteByPathPrefix(_ context.Context, prefix string) (int, error) {
+	if s.deleteByPathPrefixErr != nil {
+		return 0, s.deleteByPathPrefixErr
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	matched := []NoteRecord{}
+	for p, rec := range s.byPath {
+		if prefix == "" || p == prefix || strings.HasPrefix(p, prefix+"/") {
+			matched = append(matched, rec)
+		}
+	}
+	for _, rec := range matched {
+		delete(s.byPath, rec.Path)
+		delete(s.byID, rec.ID)
+	}
+	return len(matched), nil
+}
+
+// recByID returns the in-memory record for assertions. Test-only.
+func (s *stubIndex) recByID(id uuid.UUID) (NoteRecord, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	rec, ok := s.byID[id]
+	return rec, ok
+}
+
+func (s *stubIndex) recByPath(p string) (NoteRecord, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	rec, ok := s.byPath[p]
+	return rec, ok
+}
+
+func (s *stubIndex) count() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.byID)
+}
+
+// newRealFSSvc constructs a Service backed by a real fsstore.Store
+// rooted at a freshly-allocated tempdir + a stubIndex for SQLite-like
+// behavior. Returns the service, the store root, and the stub for
+// assertions.
+func newRealFSSvc(t *testing.T) (*Service, string, *stubIndex) {
+	t.Helper()
+	root := t.TempDir()
+	store := fsstore.NewStore(root)
+	idx := newStubIndex()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := NewService(store, idx, logger)
+	return svc, root, idx
+}
+
+// fileExists reports whether a file (not a dir) exists at root/relPath.
+func fileExists(t *testing.T, root, relPath string) bool {
+	t.Helper()
+	info, err := os.Stat(filepath.Join(root, relPath))
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
+}
+
+// dirExists reports whether a directory exists at root/relPath.
+func dirExists(t *testing.T, root, relPath string) bool {
+	t.Helper()
+	info, err := os.Stat(filepath.Join(root, relPath))
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
+// --- Service.Create ---
+
+func TestService_Create_HappyPath(t *testing.T) {
+	t.Parallel()
+	svc, root, idx := newRealFSSvc(t)
+
+	summary, err := svc.Create(context.Background(), "", "alpha")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if summary.Path != "alpha.md" {
+		t.Errorf("Path: got %q, want %q", summary.Path, "alpha.md")
+	}
+	if !fileExists(t, root, "alpha.md") {
+		t.Errorf("file not created on disk")
+	}
+	if _, ok := idx.recByID(summary.ID); !ok {
+		t.Errorf("index has no row for created note")
+	}
+	if _, ok := svc.registry.Lookup(summary.ID); !ok {
+		t.Errorf("registry has no entry for created note id")
+	}
+}
+
+func TestService_Create_InFolder(t *testing.T) {
+	t.Parallel()
+	svc, root, idx := newRealFSSvc(t)
+
+	// Need to mkdir parent first per single-level mkdir policy
+	if _, err := svc.CreateFolder(context.Background(), "", "projects"); err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	summary, err := svc.Create(context.Background(), "projects", "alpha")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if summary.Path != "projects/alpha.md" {
+		t.Errorf("Path: got %q, want %q", summary.Path, "projects/alpha.md")
+	}
+	if !fileExists(t, root, "projects/alpha.md") {
+		t.Errorf("file not created on disk at projects/alpha.md")
+	}
+	if _, ok := idx.recByPath("projects/alpha.md"); !ok {
+		t.Errorf("index missing row for projects/alpha.md")
+	}
+}
+
+func TestService_Create_RejectsTitleWithSlash(t *testing.T) {
+	t.Parallel()
+	svc, root, idx := newRealFSSvc(t)
+
+	_, err := svc.Create(context.Background(), "", "a/b")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if fileExists(t, root, "a/b.md") || fileExists(t, root, "a") {
+		t.Errorf("file created despite invalid title")
+	}
+	if idx.count() != 0 {
+		t.Errorf("index touched: %d rows", idx.count())
+	}
+}
+
+func TestService_Create_RejectsTitleWithMdSuffix(t *testing.T) {
+	t.Parallel()
+	svc, _, _ := newRealFSSvc(t)
+
+	_, err := svc.Create(context.Background(), "", "x.md")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestService_Create_RejectsBackslash(t *testing.T) {
+	t.Parallel()
+	svc, _, _ := newRealFSSvc(t)
+	_, err := svc.Create(context.Background(), "", "a\\b")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestService_Create_RejectsControlChars(t *testing.T) {
+	t.Parallel()
+	svc, _, _ := newRealFSSvc(t)
+	_, err := svc.Create(context.Background(), "", "a\x00b")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestService_Create_RejectsEmptyTitle(t *testing.T) {
+	t.Parallel()
+	svc, _, _ := newRealFSSvc(t)
+	_, err := svc.Create(context.Background(), "", "")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestService_Create_Collision(t *testing.T) {
+	t.Parallel()
+	svc, _, idx := newRealFSSvc(t)
+
+	if _, err := svc.Create(context.Background(), "", "alpha"); err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	_, err := svc.Create(context.Background(), "", "alpha")
+	if err == nil {
+		t.Fatalf("expected ErrCaseCollision, got nil")
+	}
+	if !errors.Is(err, fsstore.ErrCaseCollision) {
+		t.Fatalf("err: got %v, want fsstore.ErrCaseCollision", err)
+	}
+	if idx.count() != 1 {
+		t.Errorf("index rows: got %d, want 1", idx.count())
+	}
+}
+
+func TestService_Create_IndexUpsertFailureRollsBackFile(t *testing.T) {
+	t.Parallel()
+	svc, root, idx := newRealFSSvc(t)
+	idx.upsertErr = errors.New("simulated index failure")
+
+	_, err := svc.Create(context.Background(), "", "alpha")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if fileExists(t, root, "alpha.md") {
+		t.Errorf("file not rolled back on index upsert failure")
+	}
+}
+
+// --- Service.Delete ---
+
+func TestService_Delete_HappyPath(t *testing.T) {
+	t.Parallel()
+	svc, root, idx := newRealFSSvc(t)
+
+	summary, err := svc.Create(context.Background(), "", "alpha")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := svc.Delete(context.Background(), summary.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if fileExists(t, root, "alpha.md") {
+		t.Errorf("file still on disk after Delete")
+	}
+	if _, ok := idx.recByID(summary.ID); ok {
+		t.Errorf("index row still present after Delete")
+	}
+	if _, ok := svc.registry.Lookup(summary.ID); ok {
+		t.Errorf("registry entry still present after Delete")
+	}
+}
+
+func TestService_Delete_UnknownId(t *testing.T) {
+	t.Parallel()
+	svc, _, _ := newRealFSSvc(t)
+	err := svc.Delete(context.Background(), uuid.New())
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err: got %v, want ErrNotFound", err)
+	}
+}
+
+func TestService_Delete_FSFailure_RollsBackIndex(t *testing.T) {
+	t.Parallel()
+	svc, root, idx := newRealFSSvc(t)
+	summary, err := svc.Create(context.Background(), "", "alpha")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// Inject FS failure by making the path unwritable: out-of-band remove
+	// the underlying file so DeleteFile sees fs.ErrNotExist. This
+	// simulates a race where the file was already gone — the service
+	// should detect the FS error AFTER the index delete and re-Upsert
+	// the row to maintain consistency.
+	if err := os.Remove(filepath.Join(root, "alpha.md")); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	err = svc.Delete(context.Background(), summary.ID)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	// Index row was index-FIRST deleted, then re-Upserted on FS failure.
+	if _, ok := idx.recByID(summary.ID); !ok {
+		t.Errorf("index row not rolled back on FS failure (reconciler-heals OK, but best-effort rollback expected)")
+	}
+	// Registry was never removed (we removed AFTER FS success).
+	if _, ok := svc.registry.Lookup(summary.ID); !ok {
+		t.Errorf("registry entry missing despite FS-delete failure")
+	}
+}
+
+// --- Service.Move ---
+
+func TestService_Move_HappyPath(t *testing.T) {
+	t.Parallel()
+	svc, root, idx := newRealFSSvc(t)
+	summary, err := svc.Create(context.Background(), "", "alpha")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	moved, err := svc.Move(context.Background(), summary.ID, "renamed.md")
+	if err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	if moved.Path != "renamed.md" {
+		t.Errorf("Path: got %q, want %q", moved.Path, "renamed.md")
+	}
+	if fileExists(t, root, "alpha.md") {
+		t.Errorf("old file still present")
+	}
+	if !fileExists(t, root, "renamed.md") {
+		t.Errorf("new file not present")
+	}
+	rec, ok := idx.recByID(summary.ID)
+	if !ok {
+		t.Fatalf("index row missing")
+	}
+	if rec.Path != "renamed.md" {
+		t.Errorf("index path: got %q, want %q", rec.Path, "renamed.md")
+	}
+	if relPath, _ := svc.registry.Lookup(summary.ID); relPath != "renamed.md" {
+		t.Errorf("registry: got %q, want %q", relPath, "renamed.md")
+	}
+}
+
+func TestService_Move_Collision(t *testing.T) {
+	t.Parallel()
+	svc, root, _ := newRealFSSvc(t)
+	a, err := svc.Create(context.Background(), "", "alpha")
+	if err != nil {
+		t.Fatalf("Create A: %v", err)
+	}
+	b, err := svc.Create(context.Background(), "", "beta")
+	if err != nil {
+		t.Fatalf("Create B: %v", err)
+	}
+	_, err = svc.Move(context.Background(), a.ID, "beta.md")
+	if err == nil {
+		t.Fatalf("expected ErrCaseCollision, got nil")
+	}
+	if !errors.Is(err, fsstore.ErrCaseCollision) {
+		t.Fatalf("err: got %v, want fsstore.ErrCaseCollision", err)
+	}
+	// Both notes survive at original paths.
+	if !fileExists(t, root, "alpha.md") || !fileExists(t, root, "beta.md") {
+		t.Errorf("survivors missing")
+	}
+	if relPathA, _ := svc.registry.Lookup(a.ID); relPathA != "alpha.md" {
+		t.Errorf("registry A: got %q, want alpha.md", relPathA)
+	}
+	if relPathB, _ := svc.registry.Lookup(b.ID); relPathB != "beta.md" {
+		t.Errorf("registry B: got %q, want beta.md", relPathB)
+	}
+}
+
+// --- Service.CreateFolder ---
+
+func TestService_CreateFolder_HappyPath(t *testing.T) {
+	t.Parallel()
+	svc, root, _ := newRealFSSvc(t)
+	canon, err := svc.CreateFolder(context.Background(), "", "projects")
+	if err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	if canon != "projects" {
+		t.Errorf("canon: got %q, want %q", canon, "projects")
+	}
+	if !dirExists(t, root, "projects") {
+		t.Errorf("dir not created")
+	}
+}
+
+func TestService_CreateFolder_RejectsDoubleDot(t *testing.T) {
+	t.Parallel()
+	svc, _, _ := newRealFSSvc(t)
+	_, err := svc.CreateFolder(context.Background(), "", "..")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestService_CreateFolder_RejectsSlash(t *testing.T) {
+	t.Parallel()
+	svc, _, _ := newRealFSSvc(t)
+	_, err := svc.CreateFolder(context.Background(), "", "a/b")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+// --- Service.DeleteFolder ---
+
+func TestService_DeleteFolder_NotEmpty_NoRecursive(t *testing.T) {
+	t.Parallel()
+	svc, root, _ := newRealFSSvc(t)
+	if _, err := svc.CreateFolder(context.Background(), "", "projects"); err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	if _, err := svc.Create(context.Background(), "projects", "a"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	err := svc.DeleteFolder(context.Background(), "projects", false)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !errors.Is(err, fsstore.ErrFolderNotEmpty) {
+		t.Fatalf("err: got %v, want ErrFolderNotEmpty", err)
+	}
+	if !dirExists(t, root, "projects") {
+		t.Errorf("dir gone")
+	}
+	if !fileExists(t, root, "projects/a.md") {
+		t.Errorf("file gone")
+	}
+}
+
+func TestService_DeleteFolder_Recursive_BatchDeletesIndex(t *testing.T) {
+	t.Parallel()
+	svc, root, idx := newRealFSSvc(t)
+	if _, err := svc.CreateFolder(context.Background(), "", "trash"); err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	created := []NoteSummary{}
+	for _, name := range []string{"a", "b", "c"} {
+		s, err := svc.Create(context.Background(), "trash", name)
+		if err != nil {
+			t.Fatalf("Create %s: %v", name, err)
+		}
+		created = append(created, s)
+	}
+	if err := svc.DeleteFolder(context.Background(), "trash", true); err != nil {
+		t.Fatalf("DeleteFolder: %v", err)
+	}
+	if dirExists(t, root, "trash") {
+		t.Errorf("dir still present")
+	}
+	for _, s := range created {
+		if _, ok := idx.recByID(s.ID); ok {
+			t.Errorf("index still has row for %v", s.ID)
+		}
+		if _, ok := svc.registry.Lookup(s.ID); ok {
+			t.Errorf("registry still has entry for %v", s.ID)
+		}
+	}
+}
+
+// --- Service.MoveFolder ---
+
+func TestService_MoveFolder_HappyPath(t *testing.T) {
+	t.Parallel()
+	svc, root, idx := newRealFSSvc(t)
+	if _, err := svc.CreateFolder(context.Background(), "", "old"); err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	noteSummary, err := svc.Create(context.Background(), "old", "a")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	canon, err := svc.MoveFolder(context.Background(), "old", "new")
+	if err != nil {
+		t.Fatalf("MoveFolder: %v", err)
+	}
+	if canon != "new" {
+		t.Errorf("canon: got %q, want %q", canon, "new")
+	}
+	if dirExists(t, root, "old") {
+		t.Errorf("old dir still present")
+	}
+	if !fileExists(t, root, "new/a.md") {
+		t.Errorf("file not at new/a.md")
+	}
+	rec, ok := idx.recByID(noteSummary.ID)
+	if !ok {
+		t.Fatalf("index row missing")
+	}
+	if rec.Path != "new/a.md" {
+		t.Errorf("index path: got %q, want %q", rec.Path, "new/a.md")
+	}
+	if relPath, _ := svc.registry.Lookup(noteSummary.ID); relPath != "new/a.md" {
+		t.Errorf("registry path: got %q, want %q", relPath, "new/a.md")
+	}
+}
+
+func TestService_MoveFolder_NestedSubtree(t *testing.T) {
+	t.Parallel()
+	svc, root, idx := newRealFSSvc(t)
+	// Build old/a.md, old/b/c.md, old/d/e/f.md
+	_, _ = svc.CreateFolder(context.Background(), "", "old")
+	_, _ = svc.CreateFolder(context.Background(), "old", "b")
+	_, _ = svc.CreateFolder(context.Background(), "old", "d")
+	_, _ = svc.CreateFolder(context.Background(), "old/d", "e")
+	a, _ := svc.Create(context.Background(), "old", "a")
+	c, _ := svc.Create(context.Background(), "old/b", "c")
+	f, _ := svc.Create(context.Background(), "old/d/e", "f")
+
+	if _, err := svc.MoveFolder(context.Background(), "old", "new"); err != nil {
+		t.Fatalf("MoveFolder: %v", err)
+	}
+	if dirExists(t, root, "old") {
+		t.Errorf("old dir still present")
+	}
+
+	for _, tt := range []struct {
+		id   uuid.UUID
+		want string
+	}{
+		{a.ID, "new/a.md"},
+		{c.ID, "new/b/c.md"},
+		{f.ID, "new/d/e/f.md"},
+	} {
+		if !fileExists(t, root, tt.want) {
+			t.Errorf("file not at %s", tt.want)
+		}
+		if rec, ok := idx.recByID(tt.id); !ok || rec.Path != tt.want {
+			t.Errorf("index for %v: got %q, want %q", tt.id, rec.Path, tt.want)
+		}
+		if relPath, _ := svc.registry.Lookup(tt.id); relPath != tt.want {
+			t.Errorf("registry for %v: got %q, want %q", tt.id, relPath, tt.want)
+		}
+	}
+}
+
+func TestService_MoveFolder_Cycle(t *testing.T) {
+	t.Parallel()
+	svc, root, _ := newRealFSSvc(t)
+	if _, err := svc.CreateFolder(context.Background(), "", "x"); err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	_, err := svc.MoveFolder(context.Background(), "x", "x/y")
+	if err == nil {
+		t.Fatalf("expected ErrCycle, got nil")
+	}
+	if !errors.Is(err, fsstore.ErrCycle) {
+		t.Fatalf("err: got %v, want ErrCycle", err)
+	}
+	if !dirExists(t, root, "x") {
+		t.Errorf("source dir vanished")
+	}
+}
+
+// --- Registry dynamic ops ---
+
+func TestRegistry_Add_AndLookup(t *testing.T) {
+	t.Parallel()
+	r := NewRegistry()
+	id := uuid.New()
+	r.Add(id, "foo.md")
+	got, ok := r.Lookup(id)
+	if !ok {
+		t.Fatalf("not found")
+	}
+	if got != "foo.md" {
+		t.Errorf("got %q, want %q", got, "foo.md")
+	}
+}
+
+func TestRegistry_Remove_Idempotent(t *testing.T) {
+	t.Parallel()
+	r := NewRegistry()
+	id := uuid.New()
+	r.Add(id, "foo.md")
+	r.Remove(id)
+	r.Remove(id) // idempotent
+	if _, ok := r.Lookup(id); ok {
+		t.Errorf("entry still present")
+	}
+}
+
+func TestRegistry_Rename_OnlyIfPresent(t *testing.T) {
+	t.Parallel()
+	r := NewRegistry()
+	id := uuid.New()
+	r.Rename(id, "new.md") // no-op for unknown id
+	if _, ok := r.Lookup(id); ok {
+		t.Errorf("Rename should not insert for unknown id")
+	}
+	r.Add(id, "old.md")
+	r.Rename(id, "new.md")
+	got, _ := r.Lookup(id)
+	if got != "new.md" {
+		t.Errorf("got %q, want %q", got, "new.md")
+	}
+}
+
+func TestRegistry_Hydrate_ReplacesAll(t *testing.T) {
+	t.Parallel()
+	r := NewRegistry()
+	preExistingID := uuid.New()
+	r.Add(preExistingID, "old.md")
+	id1 := uuid.New()
+	id2 := uuid.New()
+	r.Hydrate([]NoteSummary{
+		{ID: id1, Path: "a.md"},
+		{ID: id2, Path: "b.md"},
+	})
+	// pre-existing entry removed unless in summaries
+	if _, ok := r.Lookup(preExistingID); ok {
+		t.Errorf("pre-existing entry should have been replaced")
+	}
+	if got, _ := r.Lookup(id1); got != "a.md" {
+		t.Errorf("id1: got %q", got)
+	}
+	if got, _ := r.Lookup(id2); got != "b.md" {
+		t.Errorf("id2: got %q", got)
+	}
+}
+
+func TestRegistry_AddRemoveRename_Concurrency(t *testing.T) {
+	t.Parallel()
+	r := NewRegistry()
+	const n = 50
+	ids := make([]uuid.UUID, n)
+	for i := range ids {
+		ids[i] = uuid.New()
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			r.Add(ids[idx], "p.md")
+			r.Rename(ids[idx], "q.md")
+			r.Remove(ids[idx])
+		}(i)
+	}
+	wg.Wait()
+	// All entries removed at the end (last write was Remove).
+	for _, id := range ids {
+		if _, ok := r.Lookup(id); ok {
+			t.Errorf("entry %v still present after concurrent Remove", id)
+		}
 	}
 }
