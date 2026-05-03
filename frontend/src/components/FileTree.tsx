@@ -274,8 +274,9 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           const newPath = composeNewPath(parent, newValue);
           await muts.moveFolder(d.path, newPath);
         }
+        // Plan 03-09 (Gap 1): the mutator already refreshed the tree
+        // on success — no need to refresh again here.
         useTreeStore.getState().endRename();
-        await refresh();
       } catch (e) {
         surfaceError(e, "rename");
         // Re-throw so RenameInput catches and re-renders with the
@@ -283,7 +284,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         throw e;
       }
     },
-    [muts, refresh, surfaceError],
+    [muts, surfaceError],
   );
 
   const handleRequestDelete = useCallback(
@@ -324,12 +325,13 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         }
         await muts.deleteFolder(folderPath, true);
       }
+      // Plan 03-09 (Gap 1): the mutator already refreshed the tree
+      // on success — no need to refresh again here.
       setDeleteTarget(null);
-      await refresh();
     } catch (e) {
       surfaceError(e, "delete");
     }
-  }, [deleteTarget, muts, refresh, surfaceError, tree]);
+  }, [deleteTarget, muts, surfaceError, tree]);
 
   // ──────────────────────────────────────────────────────────────────
   // Drag-drop wiring. react-arborist's onMove gives us a destination
@@ -369,11 +371,14 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           if (newPath === sourceData.path) return; // no-op drop
           await muts.moveNote(sourceData.id, newPath);
         }
-        await refresh();
+        // Plan 03-09 (Gap 1): the mutator already refreshed the tree
+        // on success — no need to refresh again here.
       } catch (e) {
         surfaceError(e, "move");
-        // Server is the truth — refresh again to revert the optimistic
-        // arborist tree state.
+        // Server is the truth — refresh to revert the optimistic
+        // arborist tree state. (KEEP this one — the mutator threw
+        // before its own refresh fired, and arborist is now showing
+        // an optimistic-but-rejected layout.)
         await refresh();
       }
     },

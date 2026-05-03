@@ -20,11 +20,43 @@
  * localStorage entries for nodes that no longer exist get silently
  * dropped (UI-SPEC §State persistence — "Stale entries are silently
  * dropped on hydration").
+ *
+ * Plan 03-09 (Gap 1) — broadcast refresh: refresh() now triggers EVERY
+ * mounted useFileTree instance to re-fetch, not just the one whose
+ * `refresh` was invoked. This is required because useTreeMutations
+ * calls useFileTree() to get its own refresh handle (per Plan 03-09's
+ * "lift the contract into the data layer" decision); without
+ * broadcasting, only the mutator's instance would see the new tree —
+ * the FileTree-rendered instance would stay stale, which IS the bug
+ * Gap 1 reported.
+ *
+ * Implementation: a module-level Set<() => Promise<void>> of
+ * subscriber-fetch callbacks. Each useFileTree instance registers its
+ * fetchTree on mount and unregisters on unmount. refresh() iterates
+ * the Set and awaits all of them (instances that have unmounted
+ * silently no-op via the cancelled flag — same pattern as the
+ * existing StrictMode-safety guard).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getTree, type Tree, type TreeNode } from "./treeApi";
 import { pruneStaleTreeState } from "./useTreeStore";
+
+// Module-level subscriber registry — one entry per mounted useFileTree
+// instance. refresh() (from any instance) iterates the Set and calls
+// each registered fetcher so every UI surface that reads useFileTree
+// re-fetches in lockstep. Phase 4 will swap this for a WebSocket
+// broadcast, but the public API (refresh: () => Promise<void>) stays
+// the same.
+const treeFetchSubscribers = new Set<() => Promise<void>>();
+
+async function broadcastRefresh(): Promise<void> {
+  // Snapshot first — a subscriber whose effect cleanup runs during
+  // refresh might unregister itself mid-iteration. Iterating a
+  // snapshot avoids missing or double-firing.
+  const snapshot = Array.from(treeFetchSubscribers);
+  await Promise.all(snapshot.map((fn) => fn()));
+}
 
 export interface UseFileTreeResult {
   tree: Tree | null;
@@ -93,18 +125,28 @@ export function useFileTree(): UseFileTreeResult {
   // pattern (CR-04): under React 19 StrictMode the effect runs twice; the
   // resolution from the first (cancelled) run is ignored so we don't
   // double-set state.
+  //
+  // We also register/unregister this instance's fetchTree in the
+  // module-level subscriber Set so refresh() from ANY instance
+  // (notably the one inside useTreeMutations — Plan 03-09) triggers
+  // a re-fetch on this instance too.
   useEffect(() => {
     cancelled.current = false;
     void fetchTree();
+    treeFetchSubscribers.add(fetchTree);
     return () => {
       cancelled.current = true;
+      treeFetchSubscribers.delete(fetchTree);
     };
   }, [fetchTree]);
 
   const refresh = useCallback(async () => {
+    // Reset cancelled so the local instance's setState calls land on
+    // its own fetch path; broadcastRefresh fires every other
+    // subscriber too (Plan 03-09 — Gap 1 broadcast contract).
     cancelled.current = false;
-    await fetchTree();
-  }, [fetchTree]);
+    await broadcastRefresh();
+  }, []);
 
   const mutate = useCallback((recipe: (current: Tree) => Tree) => {
     setTree((cur) => (cur ? recipe(cur) : cur));

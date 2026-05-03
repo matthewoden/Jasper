@@ -9,8 +9,8 @@
  * without touching the network. UI-SPEC §Surface 5 lists the canonical error
  * codes the consumer (Plan 03-07) maps to toast copy.
  */
-import { renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const postNotesMock = vi.fn();
 const deleteNoteByIdMock = vi.fn();
@@ -18,8 +18,10 @@ const postNoteMoveMock = vi.fn();
 const postFoldersMock = vi.fn();
 const deleteFolderMock = vi.fn();
 const postFolderMoveMock = vi.fn();
+const getTreeMock = vi.fn();
 
 vi.mock("./treeApi", () => ({
+  getTree: (...args: unknown[]) => getTreeMock(...args),
   postNotes: (...args: unknown[]) => postNotesMock(...args),
   deleteNoteById: (...args: unknown[]) => deleteNoteByIdMock(...args),
   postNoteMove: (...args: unknown[]) => postNoteMoveMock(...args),
@@ -38,6 +40,10 @@ describe("useTreeMutations", () => {
     postFoldersMock.mockReset();
     deleteFolderMock.mockReset();
     postFolderMoveMock.mockReset();
+    getTreeMock.mockReset();
+    // Default: getTree resolves to an empty tree so the post-success
+    // refresh() inside each mutator (Plan 03-09) doesn't blow up.
+    getTreeMock.mockResolvedValue({ data: { root: [] } });
   });
 
   it("TestCreateNote_HappyPath: returns NoteSummary on 201", async () => {
@@ -178,5 +184,271 @@ describe("useTreeMutations", () => {
       "projects/old",
       "projects/new",
     );
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Plan 03-09 — auto-refresh contract (Gap 1)
+//
+// After every successful mutation, useTreeMutations MUST trigger a
+// useFileTree refresh — i.e. one additional GET /tree call beyond the
+// mount-time fetch — so the consumer never has to remember to call
+// refresh() manually. On error, no refresh fires (server is the truth;
+// failed mutation = no change).
+//
+// useTreeMutations now calls useFileTree() internally (Plan 03-09
+// GREEN design — the contract lives in the data layer, not the
+// caller). The harness renders ONLY useTreeMutations so there is a
+// single useFileTree instance subscribed to the module-level
+// broadcast (one mount → one getTree call). After a successful
+// mutation, refresh() broadcasts to that subscriber → second
+// getTree call lands.
+// ────────────────────────────────────────────────────────────────────
+describe("auto-refresh contract (Gap 1)", () => {
+  beforeEach(() => {
+    postNotesMock.mockReset();
+    deleteNoteByIdMock.mockReset();
+    postNoteMoveMock.mockReset();
+    postFoldersMock.mockReset();
+    deleteFolderMock.mockReset();
+    postFolderMoveMock.mockReset();
+    getTreeMock.mockReset();
+    // Default: getTree resolves to an empty tree so each mutator's
+    // post-success refresh() (Plan 03-09 GREEN) doesn't blow up.
+    getTreeMock.mockResolvedValue({ data: { root: [] } });
+  });
+
+  // Clean up the previous renderHook between tests so leftover hooks
+  // (especially useFileTree's mount-time fetch effect) don't pollute
+  // the getTree call count of the next test.
+  afterEach(() => {
+    cleanup();
+  });
+
+  function harness() {
+    return renderHook(() => ({
+      muts: useTreeMutations(),
+    }));
+  }
+
+  // ──────────────────────────── createNote ────────────────────────────
+  it("createNote refreshes useFileTree after success", async () => {
+    postNotesMock.mockResolvedValue({
+      data: {
+        id: "n1",
+        path: "untitled.md",
+        title: "untitled",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    });
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.muts.createNote("", "untitled");
+    });
+
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("createNote does NOT refresh useFileTree on error", async () => {
+    postNotesMock.mockResolvedValue({
+      error: { code: "case_collision", message: "x", status: 409 },
+    });
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await expect(
+      act(async () => {
+        await result.current.muts.createNote("", "untitled");
+      }),
+    ).rejects.toBeInstanceOf(TreeMutationError);
+
+    // Give any erroneous trailing fetch a tick to land — then assert it didn't.
+    await new Promise((r) => setTimeout(r, 10));
+    expect(getTreeMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ──────────────────────────── deleteNote ────────────────────────────
+  it("deleteNote refreshes useFileTree after success", async () => {
+    deleteNoteByIdMock.mockResolvedValue({});
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.muts.deleteNote("n1");
+    });
+
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("deleteNote does NOT refresh useFileTree on error", async () => {
+    deleteNoteByIdMock.mockResolvedValue({
+      error: { code: "not_found", message: "missing", status: 404 },
+    });
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await expect(
+      act(async () => {
+        await result.current.muts.deleteNote("missing");
+      }),
+    ).rejects.toBeInstanceOf(TreeMutationError);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(getTreeMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ──────────────────────────── moveNote ────────────────────────────
+  it("moveNote refreshes useFileTree after success", async () => {
+    postNoteMoveMock.mockResolvedValue({
+      data: {
+        id: "n1",
+        path: "ideas/n1.md",
+        title: "n1",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    });
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.muts.moveNote("n1", "ideas/n1.md");
+    });
+
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("moveNote does NOT refresh useFileTree on error", async () => {
+    postNoteMoveMock.mockResolvedValue({
+      error: { code: "case_collision", message: "x", status: 409 },
+    });
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await expect(
+      act(async () => {
+        await result.current.muts.moveNote("n1", "ideas/n1.md");
+      }),
+    ).rejects.toBeInstanceOf(TreeMutationError);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(getTreeMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ──────────────────────────── createFolder ────────────────────────────
+  it("createFolder refreshes useFileTree after success", async () => {
+    postFoldersMock.mockResolvedValue({
+      data: { kind: "folder", path: "ideas", name: "ideas" },
+    });
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.muts.createFolder("", "ideas");
+    });
+
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("createFolder does NOT refresh useFileTree on error", async () => {
+    postFoldersMock.mockResolvedValue({
+      error: { code: "invalid_request", message: "bad name", status: 400 },
+    });
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await expect(
+      act(async () => {
+        await result.current.muts.createFolder("", "bad/name");
+      }),
+    ).rejects.toBeInstanceOf(TreeMutationError);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(getTreeMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ──────────────────────────── deleteFolder ────────────────────────────
+  it("deleteFolder refreshes useFileTree after success", async () => {
+    deleteFolderMock.mockResolvedValue({});
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.muts.deleteFolder("projects/old", true);
+    });
+
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("deleteFolder does NOT refresh useFileTree on error", async () => {
+    deleteFolderMock.mockResolvedValue({
+      error: {
+        code: "folder_not_empty",
+        message: "has children",
+        status: 409,
+      },
+    });
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await expect(
+      act(async () => {
+        await result.current.muts.deleteFolder("projects", false);
+      }),
+    ).rejects.toBeInstanceOf(TreeMutationError);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(getTreeMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ──────────────────────────── moveFolder ────────────────────────────
+  it("moveFolder refreshes useFileTree after success", async () => {
+    postFolderMoveMock.mockResolvedValue({
+      data: { kind: "folder", path: "projects/new", name: "new" },
+    });
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.muts.moveFolder(
+        "projects/old",
+        "projects/new",
+      );
+    });
+
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("moveFolder does NOT refresh useFileTree on error", async () => {
+    postFolderMoveMock.mockResolvedValue({
+      error: { code: "case_collision", message: "x", status: 409 },
+    });
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await expect(
+      act(async () => {
+        await result.current.muts.moveFolder(
+          "projects/old",
+          "projects/new",
+        );
+      }),
+    ).rejects.toBeInstanceOf(TreeMutationError);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(getTreeMock).toHaveBeenCalledTimes(1);
   });
 });

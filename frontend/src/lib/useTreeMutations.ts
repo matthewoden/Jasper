@@ -8,21 +8,30 @@
  *   1. Calls the matching treeApi.* function (ZERO hand-written shapes per
  *      API-03; treeApi already routes through openapi-fetch).
  *   2. On success, returns the typed payload (NoteSummary / FolderNode /
- *      void for deletes).
+ *      void for deletes) AND calls useFileTree().refresh() so the tree
+ *      observed by every consumer reflects the new server state.
  *   3. On error, throws a TreeMutationError carrying { code, message,
  *      status } so callers (Plan 03-07 toast layer) can branch on the
  *      server's locked codes — `case_collision`, `folder_not_empty`,
- *      `invalid_request`, `not_found` (UI-SPEC §Surface 5).
+ *      `invalid_request`, `not_found` (UI-SPEC §Surface 5). On the error
+ *      path the throw happens BEFORE the await refresh() line, so a
+ *      failed mutation never refreshes — the server is the source of
+ *      truth and a failed mutation means the tree did NOT change.
  *
- * The hook does NOT auto-refresh the file tree. The caller (Plan 03-07)
- * decides whether to call useFileTree's refresh() (after create / delete)
- * or mutate() (drag-drop optimistic update + rollback on throw). This
- * separation keeps the optimistic-update knob available without baking
- * data-flow choices into this layer.
+ * Plan 03-09 note (Gap 1): the auto-refresh contract was lifted into
+ * this hook so consumers (useTreeCreateActions, FileTree handlers,
+ * Sidebar) don't have to remember to thread refresh() after every
+ * mutation. The previous "caller chooses refresh-vs-optimistic" design
+ * looked correct in unit tests (vitest mocks treeApi), but in the live
+ * binary every consumer simply forgot — every successful POST /notes,
+ * DELETE /notes/{id}, POST /notes/{id}/move returned 2xx and the
+ * server-side GET /tree reflected the change, yet the React tree
+ * never repainted until a hard reload.
  */
 import { useCallback } from "react";
 
 import * as treeApi from "./treeApi";
+import { useFileTree } from "./useFileTree";
 
 export class TreeMutationError extends Error {
   code: string;
@@ -60,6 +69,8 @@ export interface UseTreeMutationsResult {
 }
 
 export function useTreeMutations(): UseTreeMutationsResult {
+  const { refresh } = useFileTree();
+
   const createNote = useCallback(
     async (parentPath: string, title: string): Promise<treeApi.NoteSummary> => {
       const r = throwOnError(
@@ -68,21 +79,27 @@ export function useTreeMutations(): UseTreeMutationsResult {
       // r.data is non-undefined on the success branch (throwOnError ensures
       // we throw before reaching here on error). The non-null assertion is
       // safe and gives the caller a non-optional type.
+      await refresh();
       return r.data as treeApi.NoteSummary;
     },
-    [],
+    [refresh],
   );
 
-  const deleteNote = useCallback(async (id: string): Promise<void> => {
-    throwOnError(await treeApi.deleteNoteById(id));
-  }, []);
+  const deleteNote = useCallback(
+    async (id: string): Promise<void> => {
+      throwOnError(await treeApi.deleteNoteById(id));
+      await refresh();
+    },
+    [refresh],
+  );
 
   const moveNote = useCallback(
     async (id: string, newPath: string): Promise<treeApi.NoteSummary> => {
       const r = throwOnError(await treeApi.postNoteMove(id, newPath));
+      await refresh();
       return r.data as treeApi.NoteSummary;
     },
-    [],
+    [refresh],
   );
 
   const createFolder = useCallback(
@@ -90,16 +107,18 @@ export function useTreeMutations(): UseTreeMutationsResult {
       const r = throwOnError(
         await treeApi.postFolders({ parent_path: parentPath, name }),
       );
+      await refresh();
       return r.data as treeApi.FolderNode;
     },
-    [],
+    [refresh],
   );
 
   const deleteFolder = useCallback(
     async (path: string, recursive: boolean): Promise<void> => {
       throwOnError(await treeApi.deleteFolder(path, recursive));
+      await refresh();
     },
-    [],
+    [refresh],
   );
 
   const moveFolder = useCallback(
@@ -108,9 +127,10 @@ export function useTreeMutations(): UseTreeMutationsResult {
       newPath: string,
     ): Promise<treeApi.FolderNode> => {
       const r = throwOnError(await treeApi.postFolderMove(oldPath, newPath));
+      await refresh();
       return r.data as treeApi.FolderNode;
     },
-    [],
+    [refresh],
   );
 
   return {
