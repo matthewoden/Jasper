@@ -291,3 +291,269 @@ func TestMoveFile_FsyncParent(t *testing.T) {
 		t.Logf("parent dir mtime did not advance (before=%v, after=%v) — accepted as platform-dependent", subBefore.ModTime(), subAfter.ModTime())
 	}
 }
+
+// ============================================================================
+// Directory primitive tests (Plan 03-02 Task 2)
+// ============================================================================
+
+// TestCreateDir_HappyPath: mkdir; the dir exists with mode 0o755.
+func TestCreateDir_HappyPath(t *testing.T) {
+	root := t.TempDir()
+	if err := CreateDir(root, "folder"); err != nil {
+		t.Fatalf("CreateDir: %v", err)
+	}
+	info, err := os.Stat(filepath.Join(root, "folder"))
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("expected directory, got mode %v", info.Mode())
+	}
+	// Mode bits sans type — compare just the permission bits.
+	if info.Mode().Perm() != 0o755 {
+		t.Fatalf("perm: got %v, want 0o755", info.Mode().Perm())
+	}
+}
+
+// TestCreateDir_Collision_FileExists: CreateDir("foo") when "foo" exists as a
+// directory returns ErrCaseCollision.
+func TestCreateDir_Collision_FileExists(t *testing.T) {
+	root := t.TempDir()
+	if err := CreateDir(root, "foo"); err != nil {
+		t.Fatalf("first CreateDir: %v", err)
+	}
+	err := CreateDir(root, "foo")
+	if !errors.Is(err, ErrCaseCollision) {
+		t.Fatalf("expected ErrCaseCollision (dir-exists), got %v", err)
+	}
+	// Also: a file at that name collides.
+	if err := CreateFile(root, "bar.md"); err != nil {
+		t.Fatalf("CreateFile bar.md: %v", err)
+	}
+	if err := CreateDir(root, "bar.md"); !errors.Is(err, ErrCaseCollision) {
+		t.Fatalf("expected ErrCaseCollision (file-exists), got %v", err)
+	}
+}
+
+// TestCreateDir_ParentMissing: CreateDir("a/b") when "a" doesn't exist
+// returns ErrParentNotFound.
+func TestCreateDir_ParentMissing(t *testing.T) {
+	root := t.TempDir()
+	err := CreateDir(root, filepath.Join("a", "b"))
+	if !errors.Is(err, ErrParentNotFound) {
+		t.Fatalf("expected ErrParentNotFound, got %v", err)
+	}
+}
+
+// TestCreateDir_NFCCollision: CreateDir("café") with NFD form after CreateDir
+// with NFC form returns ErrCaseCollision.
+func TestCreateDir_NFCCollision(t *testing.T) {
+	root := t.TempDir()
+	nfc := norm.NFC.String("café")
+	nfd := norm.NFD.String("café")
+	if nfc == nfd {
+		t.Skip("NFC and NFD identical on this platform")
+	}
+	if err := CreateDir(root, nfc); err != nil {
+		t.Fatalf("CreateDir NFC: %v", err)
+	}
+	err := CreateDir(root, nfd)
+	if !errors.Is(err, ErrCaseCollision) {
+		t.Fatalf("expected ErrCaseCollision on NFD-form, got %v", err)
+	}
+}
+
+// TestDeleteDir_HappyPath_Empty: empty dir, recursive=false → removed.
+func TestDeleteDir_HappyPath_Empty(t *testing.T) {
+	root := t.TempDir()
+	if err := CreateDir(root, "empty"); err != nil {
+		t.Fatalf("CreateDir: %v", err)
+	}
+	if err := DeleteDir(root, "empty", false); err != nil {
+		t.Fatalf("DeleteDir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "empty")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("expected dir gone, stat err = %v", err)
+	}
+}
+
+// TestDeleteDir_NotEmpty_NoRecursive: dir with one .md inside, recursive=false
+// → ErrFolderNotEmpty; the dir AND its contents are unchanged.
+func TestDeleteDir_NotEmpty_NoRecursive(t *testing.T) {
+	root := t.TempDir()
+	if err := CreateDir(root, "with-content"); err != nil {
+		t.Fatalf("CreateDir: %v", err)
+	}
+	if err := CreateFile(root, filepath.Join("with-content", "child.md")); err != nil {
+		t.Fatalf("CreateFile child: %v", err)
+	}
+	err := DeleteDir(root, "with-content", false)
+	if !errors.Is(err, ErrFolderNotEmpty) {
+		t.Fatalf("expected ErrFolderNotEmpty, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "with-content")); err != nil {
+		t.Fatalf("dir should still exist: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "with-content", "child.md")); err != nil {
+		t.Fatalf("child should still exist: %v", err)
+	}
+}
+
+// TestDeleteDir_Recursive: dir with nested subtree, recursive=true → entire
+// subtree gone.
+func TestDeleteDir_Recursive(t *testing.T) {
+	root := t.TempDir()
+	if err := CreateDir(root, "top"); err != nil {
+		t.Fatalf("CreateDir top: %v", err)
+	}
+	if err := CreateDir(root, filepath.Join("top", "nested")); err != nil {
+		t.Fatalf("CreateDir nested: %v", err)
+	}
+	if err := CreateFile(root, filepath.Join("top", "a.md")); err != nil {
+		t.Fatalf("CreateFile a: %v", err)
+	}
+	if err := CreateFile(root, filepath.Join("top", "nested", "b.md")); err != nil {
+		t.Fatalf("CreateFile b: %v", err)
+	}
+	if err := DeleteDir(root, "top", true); err != nil {
+		t.Fatalf("DeleteDir recursive: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "top")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("top should be gone, err = %v", err)
+	}
+}
+
+// TestDeleteDir_NotExist: DeleteDir on missing path → error wrapping
+// fs.ErrNotExist.
+func TestDeleteDir_NotExist(t *testing.T) {
+	root := t.TempDir()
+	err := DeleteDir(root, "missing", false)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("expected wrapped fs.ErrNotExist, got %v", err)
+	}
+}
+
+// TestMoveDir_HappyPath: dir with files inside; MoveDir to a sibling parent →
+// dir + contents at new path; old path gone.
+func TestMoveDir_HappyPath(t *testing.T) {
+	root := t.TempDir()
+	if err := CreateDir(root, "src-dir"); err != nil {
+		t.Fatalf("CreateDir src: %v", err)
+	}
+	if err := CreateFile(root, filepath.Join("src-dir", "a.md")); err != nil {
+		t.Fatalf("CreateFile a: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "src-dir", "a.md"), []byte("content"), 0o644); err != nil {
+		t.Fatalf("write a: %v", err)
+	}
+	if err := MoveDir(root, "src-dir", "dst-dir"); err != nil {
+		t.Fatalf("MoveDir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "src-dir")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("src should be gone, err = %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(root, "dst-dir", "a.md"))
+	if err != nil {
+		t.Fatalf("read moved child: %v", err)
+	}
+	if string(got) != "content" {
+		t.Fatalf("content: got %q, want %q", got, "content")
+	}
+}
+
+// TestMoveDir_Collision: new path exists → ErrCaseCollision; source unchanged.
+func TestMoveDir_Collision(t *testing.T) {
+	root := t.TempDir()
+	if err := CreateDir(root, "src-dir"); err != nil {
+		t.Fatalf("CreateDir src: %v", err)
+	}
+	if err := CreateDir(root, "dst-dir"); err != nil {
+		t.Fatalf("CreateDir dst: %v", err)
+	}
+	err := MoveDir(root, "src-dir", "dst-dir")
+	if !errors.Is(err, ErrCaseCollision) {
+		t.Fatalf("expected ErrCaseCollision, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "src-dir")); err != nil {
+		t.Fatalf("src should be unchanged: %v", err)
+	}
+}
+
+// TestMoveDir_Cycle_IntoOwnDescendant: MoveDir("a", "a/b") → ErrCycle;
+// source unchanged.
+func TestMoveDir_Cycle_IntoOwnDescendant(t *testing.T) {
+	root := t.TempDir()
+	if err := CreateDir(root, "a"); err != nil {
+		t.Fatalf("CreateDir a: %v", err)
+	}
+	err := MoveDir(root, "a", filepath.Join("a", "b"))
+	if !errors.Is(err, ErrCycle) {
+		t.Fatalf("expected ErrCycle, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "a")); err != nil {
+		t.Fatalf("source should be unchanged: %v", err)
+	}
+}
+
+// TestMoveDir_Cycle_IntoSelf: MoveDir("a", "a") → ErrCycle (same-path is a
+// degenerate cycle).
+func TestMoveDir_Cycle_IntoSelf(t *testing.T) {
+	root := t.TempDir()
+	if err := CreateDir(root, "a"); err != nil {
+		t.Fatalf("CreateDir a: %v", err)
+	}
+	err := MoveDir(root, "a", "a")
+	if !errors.Is(err, ErrCycle) {
+		t.Fatalf("expected ErrCycle, got %v", err)
+	}
+}
+
+// TestMoveDir_NewParentMissing: MoveDir target's parent doesn't exist →
+// ErrParentNotFound.
+func TestMoveDir_NewParentMissing(t *testing.T) {
+	root := t.TempDir()
+	if err := CreateDir(root, "src"); err != nil {
+		t.Fatalf("CreateDir src: %v", err)
+	}
+	err := MoveDir(root, "src", filepath.Join("no", "such", "parent", "dst"))
+	if !errors.Is(err, ErrParentNotFound) {
+		t.Fatalf("expected ErrParentNotFound, got %v", err)
+	}
+}
+
+// TestMoveDir_OldNotExist: source doesn't exist → error wrapping
+// fs.ErrNotExist.
+func TestMoveDir_OldNotExist(t *testing.T) {
+	root := t.TempDir()
+	err := MoveDir(root, "missing", "target")
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("expected wrapped fs.ErrNotExist, got %v", err)
+	}
+}
+
+// TestMoveDir_OldIsFile: source exists but is a regular file (not a dir) →
+// returns an error indicating "source is not a directory".
+func TestMoveDir_OldIsFile(t *testing.T) {
+	root := t.TempDir()
+	if err := CreateFile(root, "actually-a-file.md"); err != nil {
+		t.Fatalf("CreateFile: %v", err)
+	}
+	err := MoveDir(root, "actually-a-file.md", "target-dir")
+	if err == nil {
+		t.Fatalf("expected error for non-directory source, got nil")
+	}
+	if errMsg := err.Error(); !contains(errMsg, "source is not a directory") {
+		t.Fatalf("error message should mention source-is-not-a-directory, got %q", errMsg)
+	}
+}
+
+// contains is a tiny helper to avoid pulling strings into a test where it's
+// only used once.
+func contains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
