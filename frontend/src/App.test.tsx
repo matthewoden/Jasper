@@ -37,6 +37,21 @@ vi.mock("./lib/adminApi", () => ({
   postAdminReindex: (...args: unknown[]) => postAdminReindexMock(...args),
 }));
 
+// Phase 3 — Sidebar consumes useFileTree (which calls GET /tree on
+// mount). Mock it here so the App-shell tests don't trigger a real
+// fetch. An empty tree keeps the sidebar's <FileTree> in its empty-state
+// branch, which has no role="alert" and won't collide with the
+// migration banner's role="alert" in tests A3 and A5.
+vi.mock("./lib/useFileTree", () => ({
+  useFileTree: () => ({
+    tree: { root: [] },
+    loading: false,
+    error: null,
+    refresh: () => Promise.resolve(),
+    mutate: () => {},
+  }),
+}));
+
 import App from "./App";
 
 describe("<App /> — Phase 2 shell composition", () => {
@@ -72,7 +87,10 @@ describe("<App /> — Phase 2 shell composition", () => {
 
     // Sidebar + BacklinksColumn anchors still mount.
     expect(screen.getByText("NOTES")).toBeInTheDocument();
-    expect(screen.getByText("scratchpad")).toBeInTheDocument();
+    // Phase 3: the static Phase 1 "scratchpad" hardcoded sidebar row is
+    // gone. With the mocked-empty tree we expect the FileTree empty
+    // state to render in its place.
+    expect(screen.getByTestId("tree-empty-state")).toBeInTheDocument();
     const aside = document.querySelector("aside[aria-hidden]");
     expect(aside).not.toBeNull();
   });

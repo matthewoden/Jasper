@@ -1,0 +1,330 @@
+/**
+ * TreeRow tests — UI-SPEC §Tree row anatomy + §Active row + §Hover state.
+ *
+ * The component receives a stub NodeApi shape (we cast as any since
+ * react-arborist's NodeApi class is internal). Tests cover folder vs.
+ * note variants, single-click behavior, indent scaling, active-state
+ * left-border, kebab placeholder + data-tree-row attributes for Plan
+ * 03-07's context-menu hookup, and the no-dangerouslySetInnerHTML
+ * gate (XSS hardening per the threat model).
+ */
+import { fireEvent, render } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+import { useTreeStore } from "../lib/useTreeStore";
+import { TreeRow } from "./TreeRow";
+// Vite ?raw suffix loads the file's source as a string at build time —
+// gives the XSS-hardening test a way to scan TreeRow.tsx for the
+// forbidden inner-HTML escape hatch without reaching for node:fs.
+import treeRowSource from "./TreeRow.tsx?raw";
+
+// Stub the react-arborist NodeApi shape — only the fields TreeRow reads.
+function makeFolderNode(overrides: {
+  path?: string;
+  name?: string;
+  level?: number;
+  isOpen?: boolean;
+} = {}) {
+  const path = overrides.path ?? "projects";
+  const name = overrides.name ?? path.split("/").slice(-1)[0];
+  return {
+    data: { kind: "folder" as const, path, name },
+    level: overrides.level ?? 0,
+    isOpen: overrides.isOpen ?? false,
+    toggle: vi.fn(),
+  };
+}
+
+function makeNoteNode(overrides: {
+  id?: string;
+  path?: string;
+  title?: string;
+  level?: number;
+} = {}) {
+  return {
+    data: {
+      kind: "note" as const,
+      id: overrides.id ?? "uuid-1",
+      path: overrides.path ?? "scratchpad.md",
+      title: overrides.title ?? "Scratchpad",
+    },
+    level: overrides.level ?? 0,
+    isOpen: false,
+    toggle: vi.fn(),
+  };
+}
+
+beforeEach(() => {
+  // Reset store between tests so activeNoteId doesn't leak.
+  useTreeStore.setState({
+    expanded: new Set(),
+    activeNoteId: null,
+    pendingRename: null,
+    draftCreate: null,
+  });
+});
+
+describe("<TreeRow />", () => {
+  it("TestRow_RendersFolder_WithChevronRightAndFolderIcon", () => {
+    const node = makeFolderNode({ path: "projects", name: "projects" });
+    const { container, getByText } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    expect(getByText("projects")).toBeInTheDocument();
+    // Two svgs: ChevronRight + Folder. Verify by class names lucide injects.
+    const svgs = container.querySelectorAll("svg");
+    expect(svgs.length).toBeGreaterThanOrEqual(2);
+    const classes = Array.from(svgs).map((s) => s.getAttribute("class") ?? "");
+    expect(classes.some((c) => c.includes("chevron-right"))).toBe(true);
+    expect(
+      classes.some((c) => c.includes("lucide-folder") && !c.includes("folder-open")),
+    ).toBe(true);
+  });
+
+  it("TestRow_RendersFolder_OpenSwapsIcons", () => {
+    const node = makeFolderNode({
+      path: "projects",
+      name: "projects",
+      isOpen: true,
+    });
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const classes = Array.from(container.querySelectorAll("svg")).map(
+      (s) => s.getAttribute("class") ?? "",
+    );
+    expect(classes.some((c) => c.includes("chevron-down"))).toBe(true);
+    expect(classes.some((c) => c.includes("folder-open"))).toBe(true);
+  });
+
+  it("TestRow_RendersNote_LabelOnly_NoChevronOrIcon", () => {
+    const node = makeNoteNode();
+    const { container, getByText } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    expect(getByText("Scratchpad")).toBeInTheDocument();
+    const svgs = Array.from(container.querySelectorAll("svg"));
+    const classes = svgs.map((s) => s.getAttribute("class") ?? "");
+    // No chevron, no folder/folder-open icon on note rows. The kebab
+    // (MoreHorizontal) IS rendered (hidden via class until hover) — that's
+    // the only svg expected on a note row.
+    expect(classes.some((c) => c.includes("chevron"))).toBe(false);
+    expect(classes.some((c) => c.includes("lucide-folder"))).toBe(false);
+  });
+
+  it("TestRow_NoteRow_HasSpacerForAlignment", () => {
+    const node = makeNoteNode();
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    // The first <span> with width: 16 inside the row is the chevron-spacer
+    // that keeps note-row labels aligned with their parent folder labels.
+    const spacers = Array.from(
+      container.querySelectorAll("span[aria-hidden='true']"),
+    ) as HTMLElement[];
+    const widthSixteenSpacer = spacers.find((el) => el.style.width === "16px");
+    expect(widthSixteenSpacer).toBeDefined();
+  });
+
+  it("TestRow_FolderClick_TogglesNode", () => {
+    const node = makeFolderNode();
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const row = container.querySelector("[data-tree-row]") as HTMLElement;
+    fireEvent.click(row);
+    expect(node.toggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("TestRow_NoteClick_CallsOnSelectNote", () => {
+    const node = makeNoteNode({ id: "uuid-1" });
+    const onSelectNote = vi.fn();
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={onSelectNote}
+      />,
+    );
+    const row = container.querySelector("[data-tree-row]") as HTMLElement;
+    fireEvent.click(row);
+    expect(onSelectNote).toHaveBeenCalledWith("uuid-1");
+  });
+
+  it("TestRow_NoteClick_SetsActiveNoteInStore", () => {
+    const node = makeNoteNode({ id: "uuid-2" });
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const row = container.querySelector("[data-tree-row]") as HTMLElement;
+    fireEvent.click(row);
+    expect(useTreeStore.getState().activeNoteId).toBe("uuid-2");
+  });
+
+  it("TestRow_ActiveNoteRow_RendersLeftBorder", () => {
+    useTreeStore.setState({ activeNoteId: "uuid-1" });
+    const node = makeNoteNode({ id: "uuid-1" });
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    // Active rows render an absolutely-positioned 2px-wide span with
+    // background --color-accent on the row's left edge.
+    const spans = Array.from(
+      container.querySelectorAll("span[aria-hidden='true']"),
+    ) as HTMLElement[];
+    const activeBorder = spans.find(
+      (el) =>
+        el.style.width === "2px" &&
+        (el.style.background.includes("--color-accent") ||
+          el.style.background.includes("color-accent")),
+    );
+    expect(activeBorder).toBeDefined();
+  });
+
+  it("TestRow_LabelTitleAttr — folder", () => {
+    const node = makeFolderNode({ path: "projects", name: "projects" });
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const label = container.querySelector(
+      "[data-tree-row-label]",
+    ) as HTMLElement;
+    expect(label.getAttribute("title")).toBe("projects");
+  });
+
+  it("TestRow_LabelTitleAttr — note", () => {
+    const node = makeNoteNode({ title: "Scratchpad" });
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const label = container.querySelector(
+      "[data-tree-row-label]",
+    ) as HTMLElement;
+    expect(label.getAttribute("title")).toBe("Scratchpad");
+  });
+
+  it("TestRow_KebabHasDataAttribute", () => {
+    const node = makeNoteNode();
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const kebab = container.querySelector("[data-tree-row-kebab]");
+    expect(kebab).not.toBeNull();
+    expect(kebab?.tagName).toBe("BUTTON");
+  });
+
+  it("TestRow_RowHasDataAttribute — note uses id, folder uses path", () => {
+    const noteNode = makeNoteNode({ id: "uuid-99" });
+    const { container: nc } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={noteNode as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    expect(
+      nc.querySelector("[data-tree-row]")?.getAttribute("data-tree-row"),
+    ).toBe("uuid-99");
+
+    const folderNode = makeFolderNode({ path: "projects/jasper" });
+    const { container: fc } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={folderNode as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    expect(
+      fc.querySelector("[data-tree-row]")?.getAttribute("data-tree-row"),
+    ).toBe("projects/jasper");
+  });
+
+  it("TestRow_IndentScalesWithLevel — level=2 → paddingLeft=48", () => {
+    const node = makeFolderNode({ level: 2 });
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const row = container.querySelector("[data-tree-row]") as HTMLElement;
+    expect(row.style.paddingLeft).toBe("48px");
+  });
+
+  it("TestRow_DoesNotUseDangerouslySetInnerHTML — XSS hardening per T-03-04-05/T-03-06-01", () => {
+    // The forbidden token is split across two pieces so this test source
+    // can mention the family of escape hatches in comments without
+    // making the assertion trivially true.
+    const FORBIDDEN = "dangerously" + "SetInnerHTML";
+    expect(treeRowSource).not.toContain(FORBIDDEN);
+  });
+
+  it("applies the react-arborist style prop to the row root for virtualization", () => {
+    const node = makeNoteNode();
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{ position: "absolute", top: 96 }}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const row = container.querySelector("[data-tree-row]") as HTMLElement;
+    expect(row.style.top).toBe("96px");
+  });
+});

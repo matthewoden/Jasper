@@ -1,16 +1,62 @@
 /**
- * Phase 1 sidebar — static. Per CONTEXT.md D-02 + 01-UI-SPEC.md §Sidebar:
- *   - "NOTES" header (12px semibold uppercased, text-muted, letter-spacing 0.05em)
- *   - One static row labelled "scratchpad" with the active-row treatment
- *     (2px left border in --color-accent, text-accent)
- *   - NO toolbar icons, NO interactivity in Phase 1 — Phase 3 fills the tree
- *     with react-arborist; Phase 4 adds the connection-status dot.
+ * Phase 3 sidebar — replaces the Phase 1 hardcoded single-row stub.
  *
- * The fixed 260px width comes from the parent grid template in App.tsx; we
- * also set width here so the sidebar still has a stable size if the
- * component is reused outside the grid in tests.
+ * Structure (UI-SPEC §Sidebar internal structure):
+ *   <nav width=260>
+ *     <header>NOTES + SidebarToolbar</header>
+ *     <FileTree onSelectNote={...} />   (flex: 1; scrolls)
+ *   </nav>
+ *
+ * State ownership: useFileTree owns tree state; useTreeStore owns
+ * activeNoteId + expanded. Sidebar itself is a layout shell with one
+ * piece of behavior — wiring the toolbar's Refresh button to
+ * postAdminReindex("incremental") + useFileTree.refresh().
+ *
+ * onSelectNote prop hook for App.tsx (Plan 03-07): until then, the
+ * default no-op preserves Phase 1+2 App.test.tsx behavior — the
+ * scratchpad UUID still drives the EditorPane via the legacy hardcoded
+ * path; Plan 03-07 will wire activeNoteId into the editor.
+ *
+ * onNewNote / onNewFolder are intentional no-ops in 03-06 — Plan 03-07
+ * wires the create flow + inline-rename mode. The buttons still render
+ * + click without crashing per UI-SPEC §Surface 6.
  */
-export function Sidebar() {
+import { useCallback } from "react";
+
+import { FileTree } from "./FileTree";
+import { SidebarToolbar } from "./SidebarToolbar";
+import { postAdminReindex } from "../lib/adminApi";
+import { useFileTree } from "../lib/useFileTree";
+
+export interface SidebarProps {
+  onSelectNote?: (id: string) => void;
+}
+
+export function Sidebar({ onSelectNote = () => {} }: SidebarProps) {
+  const { refresh } = useFileTree();
+
+  const handleRefresh = useCallback(async () => {
+    const { error } = await postAdminReindex("incremental");
+    if (error) {
+      // Plan 03-07 surfaces a destructive toast here. For 03-06's
+      // chassis, we just propagate so the toolbar's catch clears spin.
+      const message =
+        typeof error === "string"
+          ? error
+          : (error as { message?: string }).message ?? "refresh failed";
+      throw new Error(message);
+    }
+    await refresh();
+  }, [refresh]);
+
+  const handleNewNote = useCallback(() => {
+    // TODO(03-07): wire create-note flow + inline rename mode
+  }, []);
+
+  const handleNewFolder = useCallback(() => {
+    // TODO(03-07): wire create-folder flow + inline rename mode
+  }, []);
+
   return (
     <nav
       className="bg-surface border-r border-border h-full flex flex-col"
@@ -18,26 +64,33 @@ export function Sidebar() {
       aria-label="Notes navigation"
     >
       <header
-        className="px-4 py-6 text-muted uppercase font-semibold"
+        className="flex items-center justify-between"
         style={{
-          fontSize: "12px",
-          letterSpacing: "0.05em",
-          lineHeight: 1.4,
+          height: 32,
+          paddingLeft: 16,
+          paddingRight: 16,
+          borderBottom: "1px solid var(--color-border)",
         }}
       >
-        NOTES
-      </header>
-      <ul className="list-none p-0 m-0">
-        <li
-          className="text-accent border-l-2 border-accent py-2"
-          // Active-row treatment per UI-SPEC §Color §"Accent reserved for".
-          // padding-left = 16px - 2px so the border doesn't shift content.
-          style={{ paddingLeft: "calc(16px - 2px)" }}
-          aria-current="page"
+        <span
+          className="text-muted uppercase font-semibold"
+          style={{
+            fontSize: 12,
+            letterSpacing: "0.05em",
+            lineHeight: 1.4,
+          }}
         >
-          scratchpad
-        </li>
-      </ul>
+          NOTES
+        </span>
+        <SidebarToolbar
+          onNewNote={handleNewNote}
+          onNewFolder={handleNewFolder}
+          onRefresh={handleRefresh}
+        />
+      </header>
+      <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+        <FileTree onSelectNote={onSelectNote} />
+      </div>
     </nav>
   );
 }
