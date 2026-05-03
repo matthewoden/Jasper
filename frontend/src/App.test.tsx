@@ -117,7 +117,7 @@ describe("<App /> — Phase 2 shell composition", () => {
     render(<App />);
     expect(screen.queryByRole("alert")).toBeNull();
     const textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     expect(textarea).toBeInTheDocument();
     await waitFor(() => expect(textarea).not.toBeDisabled());
@@ -272,7 +272,7 @@ describe("<App /> — Phase 2 shell composition", () => {
     });
     // No textarea when noteId is null — the editor placeholder branch
     // is mounted instead of the normal pane.
-    expect(screen.queryByLabelText("Scratchpad note content")).toBeNull();
+    expect(screen.queryByLabelText("Note content")).toBeNull();
   });
 
   it("A8: TestApp_TreeSelection_DrivesEditor — Plan 03-07 wiring", async () => {
@@ -303,7 +303,7 @@ describe("<App /> — Phase 2 shell composition", () => {
     // EditorPane re-renders with a textarea.
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Scratchpad note content"),
+        screen.getByLabelText("Note content"),
       ).toBeInTheDocument();
     });
   });
