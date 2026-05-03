@@ -19,7 +19,14 @@ export interface paths {
          */
         get: operations["getNotes"];
         put?: never;
-        post?: never;
+        /**
+         * Create a new note (TREE-03)
+         * @description Create a new note under {parent_path}/{title}.md. The server canonicalizes
+         *     the resulting path (NFC + lowercase per DATA-11) and rejects case-insensitive
+         *     collisions per DATA-12. parent_path "" means the vault root. The created
+         *     file is empty (zero bytes) and immediately re-indexed.
+         */
+        post: operations["postNotes"];
         delete?: never;
         options?: never;
         head?: never;
@@ -41,6 +48,122 @@ export interface paths {
         /** Replace the content of a note by UUID */
         put: operations["putNoteById"];
         post?: never;
+        /**
+         * Delete a note by UUID (TREE-06)
+         * @description Delete the note identified by UUID. Removes the underlying `.md` file
+         *     atomically and clears the SQLite index row in the same write transaction.
+         *     404 when the UUID is unknown; 500 when the FS / SQLite operation fails
+         *     and the two stores would be left inconsistent.
+         */
+        delete: operations["deleteNoteById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notes/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                id: components["parameters"]["NoteId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename or move a note (TREE-05, TREE-07)
+         * @description Rename and/or move a note in a single atomic transaction. new_path is a
+         *     canonical relative path under notes/; the server NFC-lowercases it before
+         *     applying. Wiki-link rewrite (LINKS-07) is DEFERRED to Phase 6 — Phase 3 only
+         *     updates the file location and the SQLite index row. Returns the post-move
+         *     NoteSummary so the client can reconcile against any server-side path
+         *     normalization.
+         */
+        post: operations["postNoteMove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the full folder/file hierarchy under notes/ (TREE-01)
+         * @description Returns one nested tree document for the entire vault. The shape is a
+         *     tagged union — TreeNode is either {kind:"folder", path, name, children[]}
+         *     or {kind:"note", id, path, title, updated_at}. Sort order: alphabetical
+         *     by name within each level, folders before notes. Used by the sidebar
+         *     FileTree (react-arborist) — Plan 03-06.
+         */
+        get: operations["getTree"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a folder (TREE-04)
+         * @description Create an empty folder under {parent_path}/{name}. The server
+         *     canonicalizes the resulting path (NFC + lowercase per DATA-11) and
+         *     rejects case-insensitive collisions. parent_path "" means the vault
+         *     root. Folders are pure FS constructs — there is no `folders` table.
+         */
+        post: operations["postFolders"];
+        /**
+         * Delete a folder (TREE-06) — non-empty requires recursive=true
+         * @description Delete the folder at the given canonical path. By default (recursive=false)
+         *     the server returns 409 folder_not_empty if the folder has any children.
+         *     The Phase 3 Delete-folder dialog (UI-SPEC §Surface 4) always sets
+         *     recursive=true after the user confirms the content-count copy. Path is
+         *     passed as a query parameter so URL-encoding handles `/` separators
+         *     cleanly — folders have no SQLite identity and so cannot be addressed by
+         *     UUID.
+         */
+        delete: operations["deleteFolder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/folders/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename or move a folder (TREE-05, TREE-07)
+         * @description Atomically renames/moves a folder and re-canonicalizes every contained
+         *     note's path under the new prefix. Implementation note: folders are pure
+         *     FS constructs — there is no `folders` table — so the SQLite update is a
+         *     batch UPDATE notes SET path=... WHERE path LIKE 'old_prefix/%' inside one
+         *     BEGIN IMMEDIATE transaction.
+         */
+        post: operations["postFolderMove"];
         delete?: never;
         options?: never;
         head?: never;
@@ -194,6 +317,101 @@ export interface components {
             /** @description Count of rows in the `notes` table after the reindex completed (Phase 2 only — Phase 4 streams this via WS) */
             notes_indexed?: number;
         };
+        CreateNoteRequest: {
+            /**
+             * @description Canonical relative path under notes/ to the parent folder, or ""
+             *     for the vault root. NFC + lowercase per DATA-11; the server
+             *     re-canonicalizes defensively.
+             * @example projects/jasper
+             */
+            parent_path: string;
+            /**
+             * @description Note title (basename without `.md`); the server appends `.md`.
+             * @example design-notes
+             */
+            title: string;
+        };
+        MoveNoteRequest: {
+            /**
+             * @description New canonical relative path under notes/ (with `.md` extension).
+             * @example projects/jasper/design.md
+             */
+            new_path: string;
+        };
+        CreateFolderRequest: {
+            /**
+             * @description Canonical relative path under notes/ to the parent folder, or ""
+             *     for the vault root.
+             * @example projects
+             */
+            parent_path: string;
+            /**
+             * @description New folder basename (single path segment, no `/`).
+             * @example jasper
+             */
+            name: string;
+        };
+        MoveFolderRequest: {
+            /**
+             * @description Current canonical relative path under notes/ for the folder.
+             * @example projects/old-name
+             */
+            old_path: string;
+            /**
+             * @description New canonical relative path under notes/ for the folder.
+             * @example projects/new-name
+             */
+            new_path: string;
+        };
+        FolderNode: {
+            /**
+             * @description Discriminator value identifying this node as a folder. (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            kind: "folder";
+            /**
+             * @description Canonical relative path under notes/ (NFC + lowercase per DATA-11)
+             * @example projects/jasper
+             */
+            path: string;
+            /**
+             * @description Basename (last path segment).
+             * @example jasper
+             */
+            name: string;
+            /**
+             * @description ONLY populated when this FolderNode appears inside a Tree response.
+             *     Empty (or omitted) when used as a standalone response (POST /folders,
+             *     POST /folders/move).
+             */
+            children?: components["schemas"]["TreeNode"][];
+        };
+        NoteNode: {
+            /**
+             * @description Discriminator value identifying this node as a note. (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            kind: "note";
+            /** Format: uuid */
+            id: string;
+            /** @description Canonical relative path under notes/ (NFC + lowercase per DATA-11) */
+            path: string;
+            /** @description First-H1 title or filename without `.md`; never empty. */
+            title: string;
+            /**
+             * Format: date-time
+             * @description Wall-clock UTC of last filesystem mtime observed by the indexer.
+             */
+            updated_at: string;
+        };
+        TreeNode: components["schemas"]["FolderNode"] | components["schemas"]["NoteNode"];
+        Tree: {
+            /**
+             * @description Top-level (root) entries — children of the vault root (notes/). The
+             *     ROOT itself is implicit; folders nest via children[].
+             */
+            root: components["schemas"]["TreeNode"][];
+        };
         Error: {
             /** @example not_found */
             code: string;
@@ -228,6 +446,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NoteList"];
+                };
+            };
+        };
+    };
+    postNotes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Note created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteSummary"];
+                };
+            };
+            /** @description Invalid request (missing fields, illegal title chars, parent traversal) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Case-insensitive collision (DATA-12) OR parent_path does not resolve to a folder */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
@@ -308,6 +568,303 @@ export interface operations {
                 };
             };
             /** @description Write failure on disk (atomic-rename or fsync error) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteNoteById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                id: components["parameters"]["NoteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Note not found (unknown UUID) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Delete failed (FS / SQLite mismatch) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postNoteMove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                id: components["parameters"]["NoteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Move committed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteSummary"];
+                };
+            };
+            /** @description Invalid request (empty new_path, illegal chars, ".." escape) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Note not found (unknown UUID) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Case-insensitive collision with an existing note (DATA-12) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Move failed (FS / SQLite mismatch) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTree: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Full tree */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tree"];
+                };
+            };
+            /** @description Tree projection failed (FS walk / SQLite error) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFolderRequest"];
+            };
+        };
+        responses: {
+            /** @description Folder created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderNode"];
+                };
+            };
+            /** @description Invalid request (empty name, illegal chars, parent traversal) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Case-insensitive collision OR parent_path does not resolve to a folder */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteFolder: {
+        parameters: {
+            query: {
+                /** @description Canonical relative path under notes/ (NFC + lowercase per DATA-11) */
+                path: string;
+                /**
+                 * @description When false (default), the server returns 409 folder_not_empty if the
+                 *     folder has any children. The Phase 3 Delete-folder dialog (UI-SPEC
+                 *     §Surface 4) always sets recursive=true after the user confirms the
+                 *     content-count copy.
+                 */
+                recursive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request (missing path, ".." escape) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Folder not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Folder not empty (recursive=false and folder has children) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Delete failed (FS / SQLite mismatch) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postFolderMove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveFolderRequest"];
+            };
+        };
+        responses: {
+            /** @description Move committed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderNode"];
+                };
+            };
+            /** @description Invalid request (empty paths, illegal chars, ".." escape) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description old_path does not resolve to a folder */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Case-insensitive collision with an existing folder */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Move failed (FS / SQLite mismatch) */
             500: {
                 headers: {
                     [name: string]: unknown;

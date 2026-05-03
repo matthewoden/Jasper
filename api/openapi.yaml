@@ -16,6 +16,8 @@ servers:
 tags:
   - { name: notes, description: "Note read and write operations" }
   - { name: admin, description: "Operational endpoints — migration status, full re-index" }
+  - { name: tree, description: "File-tree projection over notes/ (TREE-01)" }
+  - { name: folders, description: "Folder-only operations (TREE-04, TREE-05, TREE-06, TREE-07)" }
 paths:
   /notes:
     get:
@@ -33,6 +35,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NoteList"
+    post:
+      tags: [notes]
+      operationId: postNotes
+      summary: Create a new note (TREE-03)
+      description: |
+        Create a new note under {parent_path}/{title}.md. The server canonicalizes
+        the resulting path (NFC + lowercase per DATA-11) and rejects case-insensitive
+        collisions per DATA-12. parent_path "" means the vault root. The created
+        file is empty (zero bytes) and immediately re-indexed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNoteRequest"
+      responses:
+        "201":
+          description: Note created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteSummary"
+        "400":
+          description: Invalid request (missing fields, illegal title chars, parent traversal)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Case-insensitive collision (DATA-12) OR parent_path does not resolve to a folder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /notes/{id}:
     parameters:
       - $ref: "#/components/parameters/NoteId"
@@ -84,6 +120,245 @@ paths:
                 $ref: "#/components/schemas/Error"
         "500":
           description: Write failure on disk (atomic-rename or fsync error)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [notes]
+      operationId: deleteNoteById
+      summary: Delete a note by UUID (TREE-06)
+      description: |
+        Delete the note identified by UUID. Removes the underlying `.md` file
+        atomically and clears the SQLite index row in the same write transaction.
+        404 when the UUID is unknown; 500 when the FS / SQLite operation fails
+        and the two stores would be left inconsistent.
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Note not found (unknown UUID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Delete failed (FS / SQLite mismatch)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /notes/{id}/move:
+    parameters:
+      - $ref: "#/components/parameters/NoteId"
+    post:
+      tags: [notes]
+      operationId: postNoteMove
+      summary: Rename or move a note (TREE-05, TREE-07)
+      description: |
+        Rename and/or move a note in a single atomic transaction. new_path is a
+        canonical relative path under notes/; the server NFC-lowercases it before
+        applying. Wiki-link rewrite (LINKS-07) is DEFERRED to Phase 6 — Phase 3 only
+        updates the file location and the SQLite index row. Returns the post-move
+        NoteSummary so the client can reconcile against any server-side path
+        normalization.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveNoteRequest"
+      responses:
+        "200":
+          description: Move committed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteSummary"
+        "400":
+          description: Invalid request (empty new_path, illegal chars, ".." escape)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Note not found (unknown UUID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Case-insensitive collision with an existing note (DATA-12)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Move failed (FS / SQLite mismatch)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /tree:
+    get:
+      tags: [tree]
+      operationId: getTree
+      summary: Return the full folder/file hierarchy under notes/ (TREE-01)
+      description: |
+        Returns one nested tree document for the entire vault. The shape is a
+        tagged union — TreeNode is either {kind:"folder", path, name, children[]}
+        or {kind:"note", id, path, title, updated_at}. Sort order: alphabetical
+        by name within each level, folders before notes. Used by the sidebar
+        FileTree (react-arborist) — Plan 03-06.
+      responses:
+        "200":
+          description: Full tree
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tree"
+        "500":
+          description: Tree projection failed (FS walk / SQLite error)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /folders:
+    post:
+      tags: [folders]
+      operationId: postFolders
+      summary: Create a folder (TREE-04)
+      description: |
+        Create an empty folder under {parent_path}/{name}. The server
+        canonicalizes the resulting path (NFC + lowercase per DATA-11) and
+        rejects case-insensitive collisions. parent_path "" means the vault
+        root. Folders are pure FS constructs — there is no `folders` table.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFolderRequest"
+      responses:
+        "201":
+          description: Folder created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FolderNode"
+        "400":
+          description: Invalid request (empty name, illegal chars, parent traversal)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Case-insensitive collision OR parent_path does not resolve to a folder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [folders]
+      operationId: deleteFolder
+      summary: Delete a folder (TREE-06) — non-empty requires recursive=true
+      description: |
+        Delete the folder at the given canonical path. By default (recursive=false)
+        the server returns 409 folder_not_empty if the folder has any children.
+        The Phase 3 Delete-folder dialog (UI-SPEC §Surface 4) always sets
+        recursive=true after the user confirms the content-count copy. Path is
+        passed as a query parameter so URL-encoding handles `/` separators
+        cleanly — folders have no SQLite identity and so cannot be addressed by
+        UUID.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Canonical relative path under notes/ (NFC + lowercase per DATA-11)
+        - name: recursive
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            When false (default), the server returns 409 folder_not_empty if the
+            folder has any children. The Phase 3 Delete-folder dialog (UI-SPEC
+            §Surface 4) always sets recursive=true after the user confirms the
+            content-count copy.
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          description: Invalid request (missing path, ".." escape)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Folder not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Folder not empty (recursive=false and folder has children)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Delete failed (FS / SQLite mismatch)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /folders/move:
+    post:
+      tags: [folders]
+      operationId: postFolderMove
+      summary: Rename or move a folder (TREE-05, TREE-07)
+      description: |
+        Atomically renames/moves a folder and re-canonicalizes every contained
+        note's path under the new prefix. Implementation note: folders are pure
+        FS constructs — there is no `folders` table — so the SQLite update is a
+        batch UPDATE notes SET path=... WHERE path LIKE 'old_prefix/%' inside one
+        BEGIN IMMEDIATE transaction.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveFolderRequest"
+      responses:
+        "200":
+          description: Move committed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FolderNode"
+        "400":
+          description: Invalid request (empty paths, illegal chars, ".." escape)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: old_path does not resolve to a folder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Case-insensitive collision with an existing folder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Move failed (FS / SQLite mismatch)
           content:
             application/json:
               schema:
@@ -263,6 +538,120 @@ components:
         notes_indexed:
           type: integer
           description: Count of rows in the `notes` table after the reindex completed (Phase 2 only — Phase 4 streams this via WS)
+    CreateNoteRequest:
+      type: object
+      required: [parent_path, title]
+      properties:
+        parent_path:
+          type: string
+          description: |
+            Canonical relative path under notes/ to the parent folder, or ""
+            for the vault root. NFC + lowercase per DATA-11; the server
+            re-canonicalizes defensively.
+          example: "projects/jasper"
+        title:
+          type: string
+          description: Note title (basename without `.md`); the server appends `.md`.
+          example: "design-notes"
+    MoveNoteRequest:
+      type: object
+      required: [new_path]
+      properties:
+        new_path:
+          type: string
+          description: New canonical relative path under notes/ (with `.md` extension).
+          example: "projects/jasper/design.md"
+    CreateFolderRequest:
+      type: object
+      required: [parent_path, name]
+      properties:
+        parent_path:
+          type: string
+          description: |
+            Canonical relative path under notes/ to the parent folder, or ""
+            for the vault root.
+          example: "projects"
+        name:
+          type: string
+          description: New folder basename (single path segment, no `/`).
+          example: "jasper"
+    MoveFolderRequest:
+      type: object
+      required: [old_path, new_path]
+      properties:
+        old_path:
+          type: string
+          description: Current canonical relative path under notes/ for the folder.
+          example: "projects/old-name"
+        new_path:
+          type: string
+          description: New canonical relative path under notes/ for the folder.
+          example: "projects/new-name"
+    FolderNode:
+      type: object
+      required: [kind, path, name]
+      properties:
+        kind:
+          type: string
+          enum: [folder]
+          description: Discriminator value identifying this node as a folder.
+        path:
+          type: string
+          description: Canonical relative path under notes/ (NFC + lowercase per DATA-11)
+          example: "projects/jasper"
+        name:
+          type: string
+          description: Basename (last path segment).
+          example: "jasper"
+        children:
+          type: array
+          description: |
+            ONLY populated when this FolderNode appears inside a Tree response.
+            Empty (or omitted) when used as a standalone response (POST /folders,
+            POST /folders/move).
+          items:
+            $ref: "#/components/schemas/TreeNode"
+    NoteNode:
+      type: object
+      required: [kind, id, path, title, updated_at]
+      properties:
+        kind:
+          type: string
+          enum: [note]
+          description: Discriminator value identifying this node as a note.
+        id:
+          type: string
+          format: uuid
+        path:
+          type: string
+          description: Canonical relative path under notes/ (NFC + lowercase per DATA-11)
+        title:
+          type: string
+          description: First-H1 title or filename without `.md`; never empty.
+        updated_at:
+          type: string
+          format: date-time
+          description: Wall-clock UTC of last filesystem mtime observed by the indexer.
+    TreeNode:
+      oneOf:
+        - $ref: "#/components/schemas/FolderNode"
+        - $ref: "#/components/schemas/NoteNode"
+      discriminator:
+        propertyName: kind
+        mapping:
+          folder: "#/components/schemas/FolderNode"
+          note: "#/components/schemas/NoteNode"
+    Tree:
+      type: object
+      required: [root]
+      properties:
+        root:
+          type: array
+          description: |
+            Top-level (root) entries — children of the vault root (notes/). The
+            ROOT itself is implicit; folders nest via children[].
+          items:
+            $ref: "#/components/schemas/TreeNode"
     Error:
       type: object
       required: [code, message]
