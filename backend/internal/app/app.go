@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -86,6 +87,20 @@ type App struct {
 	pair    *sqlite.Pair
 	runner  *migrate.Runner
 	indexer *index.Indexer
+
+	// notesSvc is populated by lifecycle.Run during Phase 2/3 startup
+	// (step 8 — rebuild api.Server with full wiring). Plan 03-04 adds
+	// a NotesService() accessor so app_test.go can verify that the
+	// composition root hydrated the registry from indexer.List
+	// before the listener accepted connections.
+	//
+	// Access is synchronized via mu — Run writes notesSvc on the
+	// goroutine that runs the lifecycle, and the test reads it from
+	// the testing goroutine; the network listener boundary is not a
+	// Go memory-model happens-before edge, so we must serialize
+	// explicitly.
+	mu       sync.RWMutex
+	notesSvc *notes.Service
 
 	// diskFullHandler is the static error page handler installed
 	// when migrate.Run returns ErrDiskFull or ErrUnrecoverable.
@@ -153,3 +168,19 @@ func (a *App) Handler() http.Handler { return a.handler }
 
 // Config returns the resolved configuration the app was built with.
 func (a *App) Config() Config { return a.cfg }
+
+// NotesService returns the wired *notes.Service. Returns nil if Run
+// has not yet executed step 8 (or if Run took the disk-full /
+// unrecoverable error path which never builds the notes service).
+//
+// Plan 03-04 introduces this accessor for app_test.go's
+// TestRun_HydrateRegistry — it lets the test assert that the registry
+// was populated from indexer.List before the listener accepted
+// connections (T-03-04-07). Access is synchronized via a.mu to
+// satisfy the Go memory model when called from a different goroutine
+// than the one running Run.
+func (a *App) NotesService() *notes.Service {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.notesSvc
+}

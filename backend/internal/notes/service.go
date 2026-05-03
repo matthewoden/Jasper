@@ -56,6 +56,18 @@ func NewService(files FileStore, index Index, log *slog.Logger) *Service {
 	}
 }
 
+// Registry returns the in-memory UUID → relPath registry. Exposed
+// ONLY for the composition root in Plan 03-04: lifecycle.Run calls
+// svc.Registry().Hydrate(summaries) after the startup incremental
+// reindex completes, so every indexed note has a registry entry
+// before the HTTP listener accepts connections (DESIGN.md §6.1
+// listener gating preserved).
+//
+// Production callers other than lifecycle.Run should NOT use this
+// accessor — Service.Get / Update / Create / Delete / Move / *Folder
+// maintain the registry internally.
+func (s *Service) Registry() *Registry { return s.registry }
+
 // Get returns the Note for the given UUID, or ErrNotFound if the UUID is
 // not in the registry or the underlying file is missing on disk.
 //
