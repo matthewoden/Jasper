@@ -15,37 +15,6 @@ import (
 // immediately rather than masquerading as success (T-03-01-07).
 var errStubNotImplementedPhase3 = errors.New("phase 3 handler not yet implemented")
 
-// PostNotes is the Plan 03-04 stub for POST /notes (TREE-03).
-//
-//nolint:revive // generated interface name
-func (s *Server) PostNotes(
-	_ context.Context,
-	_ PostNotesRequestObject,
-) (PostNotesResponseObject, error) {
-	return nil, errStubNotImplementedPhase3
-}
-
-// DeleteNoteById is the Plan 03-04 stub for DELETE /notes/{id} (TREE-06).
-//
-//nolint:revive // generated interface name
-func (s *Server) DeleteNoteById(
-	_ context.Context,
-	_ DeleteNoteByIdRequestObject,
-) (DeleteNoteByIdResponseObject, error) {
-	return nil, errStubNotImplementedPhase3
-}
-
-// PostNoteMove is the Plan 03-04 stub for POST /notes/{id}/move
-// (TREE-05, TREE-07).
-//
-//nolint:revive // generated interface name
-func (s *Server) PostNoteMove(
-	_ context.Context,
-	_ PostNoteMoveRequestObject,
-) (PostNoteMoveResponseObject, error) {
-	return nil, errStubNotImplementedPhase3
-}
-
 // GetTree is the Plan 03-04 stub for GET /tree (TREE-01).
 //
 //nolint:revive // generated interface name

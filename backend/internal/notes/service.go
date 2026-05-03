@@ -405,12 +405,16 @@ func (s *Service) MoveFolder(ctx context.Context, oldPath, newPath string) (stri
 // characters, leading dots, the literal "..", and the ".md" suffix
 // (which the server appends; re-appending would yield "foo.md.md").
 // Threat T-03-03-01 mitigation.
+//
+// Returned errors wrap ErrInvalidContent so the API layer (Plan 03-04)
+// can map every validation failure to 400 invalid_request via
+// errors.Is, keeping validation errors distinct from internal 500s.
 func validateNoteTitle(title string) error {
 	if title == "" {
-		return fmt.Errorf("title is empty")
+		return fmt.Errorf("title is empty: %w", ErrInvalidContent)
 	}
 	if strings.HasSuffix(strings.ToLower(title), ".md") {
-		return fmt.Errorf("title must not include the .md suffix")
+		return fmt.Errorf("title must not include the .md suffix: %w", ErrInvalidContent)
 	}
 	return validateBareName(title)
 }
@@ -419,29 +423,31 @@ func validateNoteTitle(title string) error {
 // the .md-suffix rule. Folders may legitimately be named "notes.md" if
 // the user wanted, but we keep the conservative rule and reject any
 // dot-prefix to avoid hidden directories.
+//
+// Returned errors wrap ErrInvalidContent so callers can use errors.Is.
 func validateFolderName(name string) error {
 	if name == "" {
-		return fmt.Errorf("folder name is empty")
+		return fmt.Errorf("folder name is empty: %w", ErrInvalidContent)
 	}
 	return validateBareName(name)
 }
 
 func validateBareName(name string) error {
 	if name == "." || name == ".." {
-		return fmt.Errorf("name cannot be %q", name)
+		return fmt.Errorf("name cannot be %q: %w", name, ErrInvalidContent)
 	}
 	if strings.HasPrefix(name, ".") {
-		return fmt.Errorf("name cannot start with a dot: %q", name)
+		return fmt.Errorf("name cannot start with a dot: %q: %w", name, ErrInvalidContent)
 	}
 	if strings.ContainsAny(name, "/\\") {
-		return fmt.Errorf("name contains path separator: %q", name)
+		return fmt.Errorf("name contains path separator: %q: %w", name, ErrInvalidContent)
 	}
 	if !utf8.ValidString(name) {
-		return fmt.Errorf("name is not valid UTF-8")
+		return fmt.Errorf("name is not valid UTF-8: %w", ErrInvalidContent)
 	}
 	for _, r := range name {
 		if unicode.IsControl(r) {
-			return fmt.Errorf("name contains control character")
+			return fmt.Errorf("name contains control character: %w", ErrInvalidContent)
 		}
 	}
 	return nil
