@@ -14,15 +14,20 @@
 import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
 
-import { useMigrationStatus } from "../lib/useMigrationStatus";
+import type { UseMigrationStatusResult } from "../lib/useMigrationStatus";
 import { useToast } from "./Toast";
 
 interface Props {
   onResetConfirm: () => void;
+  // Status is provided by the parent (App.tsx) so the same hook instance
+  // is shared with the rebuild flow's `refresh()` after a successful
+  // POST /admin/reindex. Calling useMigrationStatus() here would create
+  // a second, independent state machine and the banner would never see
+  // the post-rebuild `state: "ok"` transition.
+  status: UseMigrationStatusResult;
 }
 
-export function MigrationBanner({ onResetConfirm }: Props) {
-  const status = useMigrationStatus();
+export function MigrationBanner({ onResetConfirm, status }: Props) {
   const { toast } = useToast();
   const [dismissed, setDismissed] = useState(false);
 

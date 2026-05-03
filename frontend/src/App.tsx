@@ -110,7 +110,10 @@ function AppInner() {
         minHeight: "100vh",
       }}
     >
-      <MigrationBanner onResetConfirm={() => setDialogOpen(true)} />
+      <MigrationBanner
+        onResetConfirm={() => setDialogOpen(true)}
+        status={status}
+      />
       <ResetAndRebuildDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}

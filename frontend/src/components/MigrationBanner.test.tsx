@@ -14,27 +14,42 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockUseMigrationStatus = vi.fn();
 const mockToast = vi.fn();
-
-vi.mock("../lib/useMigrationStatus", () => ({
-  useMigrationStatus: () => mockUseMigrationStatus(),
-}));
 
 vi.mock("./Toast", () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
 import { MigrationBanner } from "./MigrationBanner";
+import type {
+  MigrationState,
+  UseMigrationStatusResult,
+} from "../lib/useMigrationStatus";
 
 const noop = () => undefined;
+
+// Status is now a prop owned by App.tsx (so a single hook instance is
+// shared between the banner and the rebuild flow's refresh()). Tests
+// pass a fixture rather than mocking the hook.
+function makeStatus(
+  overrides: Partial<UseMigrationStatusResult> & { state: MigrationState },
+): UseMigrationStatusResult {
+  return {
+    state: overrides.state,
+    failedMigration: overrides.failedMigration,
+    logsPath: overrides.logsPath,
+    notesIndexed: overrides.notesIndexed,
+    loading: overrides.loading ?? false,
+    error: overrides.error ?? null,
+    refresh: overrides.refresh ?? vi.fn(),
+  };
+}
 
 describe("<MigrationBanner />", () => {
   let writeTextMock: ReturnType<typeof vi.fn>;
   let originalClipboard: typeof navigator.clipboard | undefined;
 
   beforeEach(() => {
-    mockUseMigrationStatus.mockReset();
     mockToast.mockReset();
     writeTextMock = vi.fn().mockResolvedValue(undefined);
     originalClipboard = navigator.clipboard;
@@ -54,28 +69,26 @@ describe("<MigrationBanner />", () => {
   });
 
   it("MB1: renders nothing when state=ok", () => {
-    mockUseMigrationStatus.mockReturnValue({
-      state: "ok",
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
-
-    render(<MigrationBanner onResetConfirm={noop} />);
+    render(
+      <MigrationBanner
+        onResetConfirm={noop}
+        status={makeStatus({ state: "ok" })}
+      />,
+    );
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("MB2: renders the locked copy when state=rolled_back with concrete filename + path", () => {
-    mockUseMigrationStatus.mockReturnValue({
-      state: "rolled_back",
-      failedMigration: "003_tags.sql",
-      logsPath: "/Users/me/.jasper/storage/logs/jasper.log",
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
-
-    render(<MigrationBanner onResetConfirm={noop} />);
+    render(
+      <MigrationBanner
+        onResetConfirm={noop}
+        status={makeStatus({
+          state: "rolled_back",
+          failedMigration: "003_tags.sql",
+          logsPath: "/Users/me/.jasper/storage/logs/jasper.log",
+        })}
+      />,
+    );
     expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(
       screen.getByText("Migration 003_tags.sql failed."),
@@ -94,16 +107,16 @@ describe("<MigrationBanner />", () => {
   });
 
   it("MB3: clicking the logs path button writes to clipboard and fires the locked toast", async () => {
-    mockUseMigrationStatus.mockReturnValue({
-      state: "rolled_back",
-      failedMigration: "003_tags.sql",
-      logsPath: "/tmp/jasper.log",
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
-
-    render(<MigrationBanner onResetConfirm={noop} />);
+    render(
+      <MigrationBanner
+        onResetConfirm={noop}
+        status={makeStatus({
+          state: "rolled_back",
+          failedMigration: "003_tags.sql",
+          logsPath: "/tmp/jasper.log",
+        })}
+      />,
+    );
     const logsButton = screen.getByText("/tmp/jasper.log");
     fireEvent.click(logsButton);
 
@@ -117,17 +130,17 @@ describe("<MigrationBanner />", () => {
   });
 
   it("MB4: clicking Reset-and-rebuild calls the onResetConfirm prop", () => {
-    mockUseMigrationStatus.mockReturnValue({
-      state: "rolled_back",
-      failedMigration: "003.sql",
-      logsPath: "/x",
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
-
     const onResetConfirm = vi.fn();
-    render(<MigrationBanner onResetConfirm={onResetConfirm} />);
+    render(
+      <MigrationBanner
+        onResetConfirm={onResetConfirm}
+        status={makeStatus({
+          state: "rolled_back",
+          failedMigration: "003.sql",
+          logsPath: "/x",
+        })}
+      />,
+    );
     fireEvent.click(
       screen.getByRole("button", { name: "Reset and rebuild database" }),
     );
@@ -135,56 +148,77 @@ describe("<MigrationBanner />", () => {
   });
 
   it("MB5: clicking Dismiss hides the banner (session-local)", () => {
-    mockUseMigrationStatus.mockReturnValue({
-      state: "rolled_back",
-      failedMigration: "003.sql",
-      logsPath: "/x",
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
-
-    render(<MigrationBanner onResetConfirm={noop} />);
+    render(
+      <MigrationBanner
+        onResetConfirm={noop}
+        status={makeStatus({
+          state: "rolled_back",
+          failedMigration: "003.sql",
+          logsPath: "/x",
+        })}
+      />,
+    );
     expect(screen.getByRole("alert")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("MB6: falls back to '(unknown)' filename when failedMigration is absent", () => {
-    mockUseMigrationStatus.mockReturnValue({
-      state: "rolled_back",
-      failedMigration: undefined,
-      logsPath: "/x",
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
-
-    render(<MigrationBanner onResetConfirm={noop} />);
+    render(
+      <MigrationBanner
+        onResetConfirm={noop}
+        status={makeStatus({
+          state: "rolled_back",
+          failedMigration: undefined,
+          logsPath: "/x",
+        })}
+      />,
+    );
     expect(screen.getByText("Migration (unknown) failed.")).toBeInTheDocument();
   });
 
   it("MB7: renders nothing for state=rebuilding (server is mid-reindex)", () => {
-    mockUseMigrationStatus.mockReturnValue({
-      state: "rebuilding",
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
-
-    render(<MigrationBanner onResetConfirm={noop} />);
+    render(
+      <MigrationBanner
+        onResetConfirm={noop}
+        status={makeStatus({ state: "rebuilding" })}
+      />,
+    );
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("MB8: renders nothing for state=unrecoverable (Path 3 — static error page handles UI)", () => {
-    mockUseMigrationStatus.mockReturnValue({
-      state: "unrecoverable",
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
+    render(
+      <MigrationBanner
+        onResetConfirm={noop}
+        status={makeStatus({ state: "unrecoverable" })}
+      />,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 
-    render(<MigrationBanner onResetConfirm={noop} />);
+  it("MB9: hides when state transitions from rolled_back to ok (post-rebuild refresh)", () => {
+    // The bug being fixed: a second useMigrationStatus() instance inside
+    // MigrationBanner used to make App's status.refresh() invisible to
+    // the banner. Now the parent passes one shared status; flipping it
+    // from rolled_back → ok must hide the banner without remount.
+    const { rerender } = render(
+      <MigrationBanner
+        onResetConfirm={noop}
+        status={makeStatus({
+          state: "rolled_back",
+          failedMigration: "002_break.sql",
+          logsPath: "/x",
+        })}
+      />,
+    );
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    rerender(
+      <MigrationBanner
+        onResetConfirm={noop}
+        status={makeStatus({ state: "ok" })}
+      />,
+    );
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
