@@ -518,11 +518,11 @@ func TestDiscoverPending_RejectsBadFilename(t *testing.T) {
 	}
 }
 
-// TestRebuildAndReindex_StubReturnsErrUnrecoverable — Plan 02-04b owns
-// the body; this plan ships a skeleton that returns the sentinel.
-// Locking the behavior so 02-04b's wiring tests can detect when the
-// real body lands.
-func TestRebuildAndReindex_StubReturnsErrUnrecoverable(t *testing.T) {
+// TestRebuildAndReindex_NoPath2Rebuild_FiresPath3 — Path2Rebuild is
+// nil (composition root forgot to wire it). The drop + re-apply
+// migrations succeeds, but the rebuild step has no callable, so we
+// fall through to Path 3.
+func TestRebuildAndReindex_NoPath2Rebuild_FiresPath3(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	pair := newTestPair(t, dir)
@@ -535,9 +535,96 @@ func TestRebuildAndReindex_StubReturnsErrUnrecoverable(t *testing.T) {
 		Pair:       pair,
 		Log:        silentLogger(),
 	})
+	// Pre-apply 001 so the drop + re-apply has something to work on.
+	if _, err := r.Run(context.Background()); err != nil {
+		t.Fatalf("seed Run: %v", err)
+	}
+	// Path2Rebuild left nil — rebuild has no callable.
 	st, err := r.RebuildAndReindex(context.Background())
 	if err == nil {
-		t.Fatalf("RebuildAndReindex stub: got nil err, want ErrUnrecoverable")
+		t.Fatalf("RebuildAndReindex: got nil err, want ErrUnrecoverable (no Path2Rebuild)")
+	}
+	if !errors.Is(err, ErrUnrecoverable) {
+		t.Fatalf("err: got %v, want errors.Is(err, ErrUnrecoverable)", err)
+	}
+	if st.State != StateUnrecoverable {
+		t.Errorf("State: got %q, want %q", st.State, StateUnrecoverable)
+	}
+}
+
+// TestRebuildAndReindex_HappyPath — Path2Rebuild returns (5, nil);
+// rebuild drops the table, re-applies migrations, calls Path2Rebuild,
+// and reports State=OK with NotesIndexed=5.
+func TestRebuildAndReindex_HappyPath(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	pair := newTestPair(t, dir)
+
+	r := NewRunner(RunnerOptions{
+		DBPath:     filepath.Join(dir, "app.db"),
+		BackupPath: filepath.Join(dir, "app.db.backup"),
+		LogsPath:   filepath.Join(dir, "logs", "jasper.log"),
+		Migrations: realMigrationsFS(t),
+		Pair:       pair,
+		Log:        silentLogger(),
+	})
+	// Seed the schema so the drop has something to drop.
+	if _, err := r.Run(context.Background()); err != nil {
+		t.Fatalf("seed Run: %v", err)
+	}
+	rebuildCalls := 0
+	r.Path2Rebuild = func(_ context.Context) (int, error) {
+		rebuildCalls++
+		return 5, nil
+	}
+	st, err := r.RebuildAndReindex(context.Background())
+	if err != nil {
+		t.Fatalf("RebuildAndReindex: %v", err)
+	}
+	if st.State != StateOK {
+		t.Errorf("State: got %q, want %q", st.State, StateOK)
+	}
+	if st.NotesIndexed != 5 {
+		t.Errorf("NotesIndexed: got %d, want 5", st.NotesIndexed)
+	}
+	if rebuildCalls != 1 {
+		t.Errorf("Path2Rebuild calls: got %d, want 1", rebuildCalls)
+	}
+	// schema_migrations should have exactly one row again (re-applied).
+	var n int
+	if err := pair.Reader.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {
+		t.Fatalf("count schema_migrations: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("schema_migrations rows: got %d, want 1", n)
+	}
+}
+
+// TestRebuildAndReindex_RebuildFails_FiresPath3 — Path2Rebuild returns
+// an error; rebuild surfaces ErrUnrecoverable + StateUnrecoverable.
+func TestRebuildAndReindex_RebuildFails_FiresPath3(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	pair := newTestPair(t, dir)
+
+	r := NewRunner(RunnerOptions{
+		DBPath:     filepath.Join(dir, "app.db"),
+		BackupPath: filepath.Join(dir, "app.db.backup"),
+		LogsPath:   filepath.Join(dir, "logs", "jasper.log"),
+		Migrations: realMigrationsFS(t),
+		Pair:       pair,
+		Log:        silentLogger(),
+	})
+	if _, err := r.Run(context.Background()); err != nil {
+		t.Fatalf("seed Run: %v", err)
+	}
+	r.Path2Rebuild = func(_ context.Context) (int, error) {
+		return 0, errors.New("rebuild boom")
+	}
+	st, err := r.RebuildAndReindex(context.Background())
+	if err == nil {
+		t.Fatalf("RebuildAndReindex: got nil err, want ErrUnrecoverable")
 	}
 	if !errors.Is(err, ErrUnrecoverable) {
 		t.Fatalf("err: got %v, want errors.Is(err, ErrUnrecoverable)", err)

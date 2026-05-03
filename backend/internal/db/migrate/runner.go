@@ -430,20 +430,107 @@ func (r *Runner) refreshNoteCount(ctx context.Context) {
 	r.store.set(cur)
 }
 
-// RebuildAndReindex implements Path 2. Called by api.Server.PostAdminReindex
-// (Plan 02-04b). Drops all derived tables EXCEPT schema_migrations,
-// truncates schema_migrations, re-runs all migrations on the clean
-// schema, then invokes r.Path2Rebuild to walk the filesystem and
-// repopulate `notes`. On any failure → Status = Unrecoverable, returns
-// ErrUnrecoverable.
+// RebuildAndReindex implements Path 2 (DATA-10). Called by
+// api.Server.PostAdminReindex with mode=full.
 //
-// Skeleton only in this plan; the full body (drop list, applyAll,
-// Path2Rebuild call) lands in Plan 02-04b Task 2. This plan compiles
-// the method signature so admin/reindex can refer to it; tests for the
-// body live in 02-04b.
+// Lifecycle:
+//
+//  1. Set Status = Rebuilding so admin/status surfaces the progress
+//     overlay.
+//  2. BEGIN IMMEDIATE; DROP TABLE IF EXISTS notes; DELETE FROM
+//     schema_migrations; COMMIT. The notes table is the only derived
+//     table in Phase 2; future phases (6 tags, 6 backlinks, 7 FTS5)
+//     extend the drop list.
+//  3. Re-run every migration on the clean schema via discoverPending +
+//     applyAll. If any migration breaks on the now-clean schema, the
+//     whole rebuild is unrecoverable (Path 3) — there is no prior
+//     schema to fall back to.
+//  4. Invoke r.Path2Rebuild(ctx) — wired by Plan 02-06's app.New as a
+//     bridge to *index.Indexer.Reconcile(ctx, ModeFull). This walks the
+//     filesystem and repopulates the notes table.
+//  5. Status = OK on success; Status = Unrecoverable + wrapped
+//     ErrUnrecoverable on any failure (the composition root must
+//     refuse to start the listener; the user must restore-from-backup
+//     or wipe the data dir).
+//
+// T-02-04b-08 mitigation: the api.Server.PostAdminReindex handler
+// holds reindexBusy for the entire call; combined with
+// Pair.Writer.SetMaxOpenConns(1), no concurrent Service.Update can
+// interleave with the DROP.
 func (r *Runner) RebuildAndReindex(ctx context.Context) (Status, error) {
-	_ = ctx
-	out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
-	r.store.set(out)
-	return out, fmt.Errorf("%w: RebuildAndReindex body lands in Plan 02-04b", ErrUnrecoverable)
+	r.store.set(Status{State: StateRebuilding, LogsPath: r.LogsPath})
+
+	// 1. Drop derived tables. schema_migrations is preserved as a
+	// table but truncated separately so the next applyAll re-runs
+	// every migration on the clean schema.
+	tx, err := r.Pair.BeginImmediate(ctx)
+	if err != nil {
+		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
+		r.store.set(out)
+		return out, fmt.Errorf("%w: rebuild begin: %v", ErrUnrecoverable, err)
+	}
+	dropStatements := []string{
+		`DROP TABLE IF EXISTS notes`,
+		// Future drops live here: tags, note_tags, backlinks, daily_notes
+		// (Phase 6), notes_fts (Phase 7). Each new derived table adds a
+		// line.
+		// schema_migrations is dropped (NOT just truncated via
+		// `DELETE FROM schema_migrations`) because the 001_initial.sql
+		// migration body itself creates the table — if we kept the
+		// table around with rows deleted, re-running 001 would fail on
+		// the duplicate CREATE TABLE schema_migrations. Dropping it
+		// lets applyAll rebuild the entire derived schema from a truly
+		// clean slate.
+		// (Rule 1 deviation from 02-04b plan text: the plan suggested
+		// `DELETE FROM schema_migrations` but that conflicts with the
+		// CREATE TABLE schema_migrations statement inside 001_initial.sql.)
+		`DROP TABLE IF EXISTS schema_migrations`,
+	}
+	for _, stmt := range dropStatements {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			_ = tx.Rollback()
+			out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
+			r.store.set(out)
+			return out, fmt.Errorf("%w: drop: %v", ErrUnrecoverable, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
+		r.store.set(out)
+		return out, fmt.Errorf("%w: drop commit: %v", ErrUnrecoverable, err)
+	}
+
+	// 2. Re-discover pending (now ALL migrations are pending again)
+	// and re-apply.
+	pending, err := r.discoverPending(ctx)
+	if err != nil {
+		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
+		r.store.set(out)
+		return out, fmt.Errorf("%w: discover: %v", ErrUnrecoverable, err)
+	}
+	if failed := r.applyAll(ctx, pending); failed != "" {
+		// Migrations broke on a clean schema → Path 3.
+		out := Status{
+			State:           StateUnrecoverable,
+			FailedMigration: failed,
+			LogsPath:        r.LogsPath,
+		}
+		r.store.set(out)
+		return out, fmt.Errorf("%w: migration %s broken on clean schema", ErrUnrecoverable, failed)
+	}
+
+	// 3. Path2Rebuild = full re-index; wired by app.New (Plan 02-06).
+	if r.Path2Rebuild == nil {
+		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
+		r.store.set(out)
+		return out, fmt.Errorf("%w: Path2Rebuild not wired", ErrUnrecoverable)
+	}
+	n, err := r.Path2Rebuild(ctx)
+	if err != nil {
+		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
+		r.store.set(out)
+		return out, fmt.Errorf("%w: rebuild: %v", ErrUnrecoverable, err)
+	}
+	r.store.set(Status{State: StateOK, LogsPath: r.LogsPath, NotesIndexed: n})
+	return r.store.Status(ctx), nil
 }
