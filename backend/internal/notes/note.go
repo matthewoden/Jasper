@@ -35,4 +35,12 @@ var (
 	// ErrInvalidContent is reserved for Phase 2+ validation (e.g. content
 	// too large). Phase 1 accepts any content (including empty markdown).
 	ErrInvalidContent = errors.New("notes: invalid content")
+	// ErrCaseCollision is returned by Index.Upsert (and propagated by
+	// Service.Update) when a note's canonical path conflicts case-
+	// insensitively with an existing different note (DATA-12). The API
+	// layer maps this to HTTP 409 Conflict; the UI surfaces a "rename
+	// would collide with an existing note" toast. The underlying SQLite
+	// UNIQUE constraint on notes.path is the enforcement point — see
+	// 001_initial.sql.
+	ErrCaseCollision = errors.New("notes: case-insensitive path collision with existing note")
 )
