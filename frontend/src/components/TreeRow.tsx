@@ -134,11 +134,18 @@ export function TreeRow({
     if (isRenamingThis) return; // RenameInput owns key handling while open
     if (e.key === "F2") {
       e.preventDefault();
+      // Gap 3 — keep arborist's keymap from also handling F2. Without
+      // stopPropagation react-arborist's tree-container keymap receives
+      // the bubble and may swallow / re-route the key before our
+      // onRequestRename callback fires.
+      e.stopPropagation();
       if (onRequestRename) onRequestRename(data);
       return;
     }
     if (e.key === "Backspace" || e.key === "Delete") {
       e.preventDefault();
+      // Gap 3 — same reason as F2 above.
+      e.stopPropagation();
       if (onRequestDelete) onRequestDelete(data);
       return;
     }
