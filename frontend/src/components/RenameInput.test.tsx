@@ -245,3 +245,117 @@ describe("<RenameInput />", () => {
     expect(inp.style.borderColor).toContain("destructive");
   });
 });
+
+// ──────────────────────────────────────────────────────────────────
+// Plan 03-12 Gap 4 — RenameInput must trap key events so they do
+// NOT bubble up to the tree's keymap. react-arborist listens at the
+// tree-container level for first-letter-jump (alphanumerics), Enter
+// (open / toggle), Escape (close), arrow keys (navigation). While
+// the inline-rename input is mounted, NONE of those should fire —
+// the input is the active control.
+// ──────────────────────────────────────────────────────────────────
+
+describe("key event trap (Gap 4)", () => {
+  it("alphanumeric key does not bubble to parent", () => {
+    const parentKeyDown = vi.fn();
+    const onCommit = vi.fn(async () => {});
+    const onCancel = vi.fn();
+    const { getByRole } = render(
+      <div onKeyDown={parentKeyDown}>
+        <RenameInput
+          initialValue="x"
+          isFolder={false}
+          siblingNames={[]}
+          onCommit={onCommit}
+          onCancel={onCancel}
+        />
+      </div>,
+    );
+    const input = getByRole("textbox") as HTMLInputElement;
+    fireEvent.keyDown(input, { key: "t" });
+    expect(parentKeyDown).not.toHaveBeenCalled();
+  });
+
+  it("Enter does not bubble to parent and commits", async () => {
+    const parentKeyDown = vi.fn();
+    const onCommit = vi.fn(async () => {});
+    const onCancel = vi.fn();
+    const { getByRole } = render(
+      <div onKeyDown={parentKeyDown}>
+        <RenameInput
+          initialValue="hello"
+          isFolder={false}
+          siblingNames={[]}
+          onCommit={onCommit}
+          onCancel={onCancel}
+        />
+      </div>,
+    );
+    const input = getByRole("textbox") as HTMLInputElement;
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(onCommit).toHaveBeenCalledWith("hello"));
+    expect(parentKeyDown).not.toHaveBeenCalled();
+  });
+
+  it("Escape does not bubble to parent and cancels", () => {
+    const parentKeyDown = vi.fn();
+    const onCommit = vi.fn(async () => {});
+    const onCancel = vi.fn();
+    const { getByRole } = render(
+      <div onKeyDown={parentKeyDown}>
+        <RenameInput
+          initialValue="x"
+          isFolder={false}
+          siblingNames={[]}
+          onCommit={onCommit}
+          onCancel={onCancel}
+        />
+      </div>,
+    );
+    const input = getByRole("textbox") as HTMLInputElement;
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalled();
+    expect(parentKeyDown).not.toHaveBeenCalled();
+  });
+
+  it("Tab does not bubble to parent and commits", async () => {
+    const parentKeyDown = vi.fn();
+    const onCommit = vi.fn(async () => {});
+    const onCancel = vi.fn();
+    const { getByRole } = render(
+      <div onKeyDown={parentKeyDown}>
+        <RenameInput
+          initialValue="hello"
+          isFolder={false}
+          siblingNames={[]}
+          onCommit={onCommit}
+          onCancel={onCancel}
+        />
+      </div>,
+    );
+    const input = getByRole("textbox") as HTMLInputElement;
+    fireEvent.keyDown(input, { key: "Tab" });
+    await waitFor(() => expect(onCommit).toHaveBeenCalledWith("hello"));
+    expect(parentKeyDown).not.toHaveBeenCalled();
+  });
+
+  it("mousedown on the input does not bubble to parent", () => {
+    const parentMouseDown = vi.fn();
+    const onCommit = vi.fn(async () => {});
+    const onCancel = vi.fn();
+    const { getByRole } = render(
+      <div onMouseDown={parentMouseDown}>
+        <RenameInput
+          initialValue="x"
+          isFolder={false}
+          siblingNames={[]}
+          onCommit={onCommit}
+          onCancel={onCancel}
+        />
+      </div>,
+    );
+    const input = getByRole("textbox") as HTMLInputElement;
+    fireEvent.mouseDown(input);
+    expect(parentMouseDown).not.toHaveBeenCalled();
+  });
+});
