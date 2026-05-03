@@ -23,14 +23,14 @@ func TestApplyConnectionPragmas_AllSucceed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		t.Fatalf("db.Conn: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := applyConnectionPragmas(ctx, conn); err != nil {
 		t.Fatalf("applyConnectionPragmas: %v", err)

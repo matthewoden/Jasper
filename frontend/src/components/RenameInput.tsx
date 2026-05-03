@@ -31,6 +31,7 @@ import {
 
 import { TreeMutationError } from "../lib/useTreeMutations";
 
+// eslint-disable-next-line no-control-regex -- intentionally rejects ASCII control chars in user-typed names
 const ILLEGAL_CHAR_REGEX = /[/\\:*?"<>|\x00-\x1F]/;
 
 export interface ValidateResult {

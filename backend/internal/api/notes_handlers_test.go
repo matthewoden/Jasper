@@ -28,9 +28,11 @@ type fakeIndex struct {
 	listErr    error
 }
 
-func (f *fakeIndex) Upsert(_ context.Context, _ notes.NoteRecord) error  { return nil }
-func (f *fakeIndex) Delete(_ context.Context, _ uuid.UUID) error         { return nil }
-func (f *fakeIndex) List(_ context.Context) ([]notes.NoteSummary, error) { return f.listResult, f.listErr }
+func (f *fakeIndex) Upsert(_ context.Context, _ notes.NoteRecord) error { return nil }
+func (f *fakeIndex) Delete(_ context.Context, _ uuid.UUID) error        { return nil }
+func (f *fakeIndex) List(_ context.Context) ([]notes.NoteSummary, error) {
+	return f.listResult, f.listErr
+}
 
 // Phase 3 Plan 03-03 — extended notes.Index port methods. The api-package
 // tests do not exercise these; default no-op implementations keep the
@@ -774,12 +776,12 @@ type leakyFileStore struct {
 	createErr error
 }
 
-func (l *leakyFileStore) Read(_ string) ([]byte, error)         { return nil, nil }
-func (l *leakyFileStore) WriteAtomic(_ string, _ []byte) error  { return nil }
-func (l *leakyFileStore) Stat(_ string) (time.Time, error)      { return time.Time{}, nil }
-func (l *leakyFileStore) CreateFile(_ string) error             { return l.createErr }
-func (l *leakyFileStore) DeleteFile(_ string) error             { return nil }
-func (l *leakyFileStore) MoveFile(_, _ string) error            { return nil }
-func (l *leakyFileStore) CreateDir(_ string) error              { return nil }
-func (l *leakyFileStore) DeleteDir(_ string, _ bool) error      { return nil }
-func (l *leakyFileStore) MoveDir(_, _ string) error             { return nil }
+func (l *leakyFileStore) Read(_ string) ([]byte, error)        { return nil, nil }
+func (l *leakyFileStore) WriteAtomic(_ string, _ []byte) error { return nil }
+func (l *leakyFileStore) Stat(_ string) (time.Time, error)     { return time.Time{}, nil }
+func (l *leakyFileStore) CreateFile(_ string) error            { return l.createErr }
+func (l *leakyFileStore) DeleteFile(_ string) error            { return nil }
+func (l *leakyFileStore) MoveFile(_, _ string) error           { return nil }
+func (l *leakyFileStore) CreateDir(_ string) error             { return nil }
+func (l *leakyFileStore) DeleteDir(_ string, _ bool) error     { return nil }
+func (l *leakyFileStore) MoveDir(_, _ string) error            { return nil }

@@ -61,29 +61,40 @@ func (s *Store) Stat(relPath string) (time.Time, error) {
 	return info.ModTime(), nil
 }
 
-// CRUD wrappers — each delegates to the package-level primitive in ops.go,
-// supplying s.root as the data root. Plan 03-03's notes service uses these
-// to pair every FS mutation with an index update under a single transaction.
+// CreateFile delegates to the package-level primitive in ops.go,
+// supplying s.root as the data root. Plan 03-03's notes service uses
+// these wrappers to pair every FS mutation with an index update under
+// a single transaction.
 func (s *Store) CreateFile(relPath string) error {
 	return CreateFile(s.root, relPath)
 }
 
+// DeleteFile delegates to the package-level DeleteFile primitive,
+// supplying s.root as the data root.
 func (s *Store) DeleteFile(relPath string) error {
 	return DeleteFile(s.root, relPath)
 }
 
+// MoveFile delegates to the package-level MoveFile primitive, supplying
+// s.root as the data root.
 func (s *Store) MoveFile(oldRelPath, newRelPath string) error {
 	return MoveFile(s.root, oldRelPath, newRelPath)
 }
 
+// CreateDir delegates to the package-level CreateDir primitive, supplying
+// s.root as the data root.
 func (s *Store) CreateDir(relPath string) error {
 	return CreateDir(s.root, relPath)
 }
 
+// DeleteDir delegates to the package-level DeleteDir primitive, supplying
+// s.root as the data root.
 func (s *Store) DeleteDir(relPath string, recursive bool) error {
 	return DeleteDir(s.root, relPath, recursive)
 }
 
+// MoveDir delegates to the package-level MoveDir primitive, supplying
+// s.root as the data root.
 func (s *Store) MoveDir(oldRelPath, newRelPath string) error {
 	return MoveDir(s.root, oldRelPath, newRelPath)
 }

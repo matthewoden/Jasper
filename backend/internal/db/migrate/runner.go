@@ -54,8 +54,8 @@ type RunnerOptions struct {
 //  5. For each pending migration in order:
 //     BEGIN IMMEDIATE; tx.Exec(<sql>); INSERT INTO schema_migrations; COMMIT.
 //     On any failure inside the transaction: rollback + Path 1.
-//  6a. All succeed → DeleteBackup; Status = OK; return.
-//  6b. Any failed → Path 1 — RestoreBackup; Status = RolledBack; Run
+//     6a. All succeed → DeleteBackup; Status = OK; return.
+//     6b. Any failed → Path 1 — RestoreBackup; Status = RolledBack; Run
 //     returns nil error (the app keeps running on the prior schema).
 //  7. Path 2 (RebuildAndReindex) is triggered by POST /admin/reindex —
 //     wired by Plan 02-04b; the body of RebuildAndReindex lands in

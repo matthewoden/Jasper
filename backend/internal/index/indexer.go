@@ -40,6 +40,8 @@ import (
 //     before invoking us.
 type Mode string
 
+// Index reconcile modes — incremental processes only changed paths since
+// the last index write; full forces a complete rescan.
 const (
 	ModeIncremental Mode = "incremental"
 	ModeFull        Mode = "full"

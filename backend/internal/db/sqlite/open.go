@@ -139,7 +139,7 @@ func verifyAndApplyPragmas(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("acquire conn: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if err := applyConnectionPragmas(ctx, conn); err != nil {
 		return err
 	}
