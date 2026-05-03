@@ -8,25 +8,24 @@
  *   </nav>
  *
  * State ownership: useFileTree owns tree state; useTreeStore owns
- * activeNoteId + expanded. Sidebar itself is a layout shell with one
- * piece of behavior — wiring the toolbar's Refresh button to
- * postAdminReindex("incremental") + useFileTree.refresh().
- *
- * onSelectNote prop hook for App.tsx (Plan 03-07): until then, the
- * default no-op preserves Phase 1+2 App.test.tsx behavior — the
- * scratchpad UUID still drives the EditorPane via the legacy hardcoded
- * path; Plan 03-07 will wire activeNoteId into the editor.
- *
- * onNewNote / onNewFolder are intentional no-ops in 03-06 — Plan 03-07
- * wires the create flow + inline-rename mode. The buttons still render
- * + click without crashing per UI-SPEC §Surface 6.
+ * activeNoteId + expanded. Sidebar itself is a layout shell with
+ * toolbar wiring:
+ *   - New note / New folder click → useTreeCreateActions().createNoteAt("")
+ *     / .createFolderAt("") so the new node is created at the root and
+ *     immediately enters inline-rename mode.
+ *   - Refresh click → postAdminReindex("incremental"). On error, surface
+ *     the locked toast tuple per UI-SPEC §Surface 5
+ *     ("Couldn't refresh the index.") AND re-throw so the toolbar's
+ *     spin-disabled treatment clears.
  */
 import { useCallback } from "react";
 
 import { FileTree } from "./FileTree";
 import { SidebarToolbar } from "./SidebarToolbar";
+import { useToast } from "./Toast";
 import { postAdminReindex } from "../lib/adminApi";
 import { useFileTree } from "../lib/useFileTree";
+import { useTreeCreateActions } from "../lib/useTreeCreateActions";
 
 export interface SidebarProps {
   onSelectNote?: (id: string) => void;
@@ -34,28 +33,35 @@ export interface SidebarProps {
 
 export function Sidebar({ onSelectNote = () => {} }: SidebarProps) {
   const { refresh } = useFileTree();
+  const { createNoteAt, createFolderAt } = useTreeCreateActions();
+  const { toast } = useToast();
 
   const handleRefresh = useCallback(async () => {
     const { error } = await postAdminReindex("incremental");
     if (error) {
-      // Plan 03-07 surfaces a destructive toast here. For 03-06's
-      // chassis, we just propagate so the toolbar's catch clears spin.
       const message =
         typeof error === "string"
           ? error
-          : (error as { message?: string }).message ?? "refresh failed";
+          : ((error as { message?: string }).message ?? "Try again.");
+      toast({
+        title: "Couldn't refresh the index.",
+        description: message,
+        variant: "error",
+      });
+      // Re-throw so the toolbar's catch clears the spin-disabled
+      // treatment and the user can immediately try again.
       throw new Error(message);
     }
     await refresh();
-  }, [refresh]);
+  }, [refresh, toast]);
 
   const handleNewNote = useCallback(() => {
-    // TODO(03-07): wire create-note flow + inline rename mode
-  }, []);
+    void createNoteAt("");
+  }, [createNoteAt]);
 
   const handleNewFolder = useCallback(() => {
-    // TODO(03-07): wire create-folder flow + inline rename mode
-  }, []);
+    void createFolderAt("");
+  }, [createFolderAt]);
 
   return (
     <nav

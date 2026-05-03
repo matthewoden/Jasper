@@ -1,15 +1,14 @@
 /**
- * Sidebar tests — Phase 3 chassis.
+ * Sidebar tests — Phase 3 chassis + Plan 03-07 wiring.
  *
- * The Phase 1 hardcoded single-scratchpad-row stub is GONE: the new
- * sidebar mounts SidebarToolbar in the header + FileTree below. The
- * FileTree consumes useFileTree (hook); we mock it here to control the
- * tree state per test.
- *
- * The Refresh button (in SidebarToolbar) calls postAdminReindex("incremental")
- * via Sidebar's own onRefresh wrapper, then re-fetches the tree via
- * useFileTree.refresh(). Phase 2's reindex banner / progress overlay are
- * App-shell concerns — Sidebar does NOT mount them.
+ * Plan 03-07 changes:
+ *   - Sidebar's New note / New folder buttons now call
+ *     useTreeCreateActions() (which itself uses useToast +
+ *     useTreeMutations + useFileTree). Tests wrap Sidebar in
+ *     <ToastProvider> + mock useTreeMutations.
+ *   - Refresh-error path now surfaces a destructive toast with the
+ *     locked title "Couldn't refresh the index." in addition to
+ *     re-throwing for the toolbar's spin-clear.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
@@ -27,24 +26,54 @@ vi.mock("../lib/useFileTree", () => ({
 vi.mock("../lib/adminApi", () => ({
   postAdminReindex: vi.fn(),
 }));
+vi.mock("../lib/useTreeMutations", async () => {
+  const actual = await vi.importActual<
+    typeof import("../lib/useTreeMutations")
+  >("../lib/useTreeMutations");
+  return {
+    ...actual,
+    useTreeMutations: vi.fn(),
+  };
+});
 
 import { useFileTree } from "../lib/useFileTree";
 import { postAdminReindex } from "../lib/adminApi";
+import { useTreeMutations } from "../lib/useTreeMutations";
 import { Sidebar } from "./Sidebar";
+import { ToastProvider } from "./Toast";
 
 const mockedUseFileTree = vi.mocked(useFileTree);
 const mockedPostAdminReindex = vi.mocked(postAdminReindex);
+const mockedUseTreeMutations = vi.mocked(useTreeMutations);
 
 const noopMutate = () => {};
+
+function defaultMutsResult() {
+  return {
+    createNote: vi.fn(),
+    deleteNote: vi.fn(),
+    moveNote: vi.fn(),
+    createFolder: vi.fn(),
+    deleteFolder: vi.fn(),
+    moveFolder: vi.fn(),
+  };
+}
+
+function renderWithProvider(ui: React.ReactElement) {
+  return render(<ToastProvider>{ui}</ToastProvider>);
+}
 
 beforeEach(() => {
   mockedUseFileTree.mockReset();
   mockedPostAdminReindex.mockReset();
+  mockedUseTreeMutations.mockReset();
+  mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
 });
 
 afterEach(() => {
   mockedUseFileTree.mockReset();
   mockedPostAdminReindex.mockReset();
+  mockedUseTreeMutations.mockReset();
 });
 
 describe("<Sidebar /> — Phase 3 chassis", () => {
@@ -56,7 +85,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       refresh: () => Promise.resolve(),
       mutate: noopMutate,
     });
-    render(<Sidebar />);
+    renderWithProvider(<Sidebar />);
     expect(screen.getByLabelText("Notes navigation")).toBeInTheDocument();
   });
 
@@ -68,7 +97,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       refresh: () => Promise.resolve(),
       mutate: noopMutate,
     });
-    render(<Sidebar />);
+    renderWithProvider(<Sidebar />);
     expect(screen.getByText("NOTES")).toBeInTheDocument();
   });
 
@@ -80,7 +109,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       refresh: () => Promise.resolve(),
       mutate: noopMutate,
     });
-    render(<Sidebar />);
+    renderWithProvider(<Sidebar />);
     expect(
       screen.getByRole("button", { name: "New note" }),
     ).toBeInTheDocument();
@@ -100,22 +129,20 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       refresh: () => Promise.resolve(),
       mutate: noopMutate,
     });
-    render(<Sidebar />);
+    renderWithProvider(<Sidebar />);
     const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
     expect(nav.style.width).toBe("260px");
   });
 
   it("TestSidebar_NoStaticScratchpadRow — Phase 1 hardcoded row is gone", () => {
     mockedUseFileTree.mockReturnValue({
-      tree: { root: [] }, // empty tree → empty state, no row should mention scratchpad
+      tree: { root: [] },
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
       mutate: noopMutate,
     });
-    render(<Sidebar />);
-    // The literal text "scratchpad" must NOT appear when the tree is
-    // empty — Phase 1's hardcoded row is gone.
+    renderWithProvider(<Sidebar />);
     expect(screen.queryByText("scratchpad")).toBeNull();
   });
 
@@ -132,7 +159,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       error: undefined,
       response: new Response(),
     });
-    render(<Sidebar />);
+    renderWithProvider(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await waitFor(() => {
       expect(mockedPostAdminReindex).toHaveBeenCalledWith("incremental");
@@ -159,7 +186,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         response: new Response(),
       };
     });
-    render(<Sidebar />);
+    renderWithProvider(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await waitFor(() => {
       expect(refresh).toHaveBeenCalled();
@@ -181,16 +208,35 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       error: { code: "internal", message: "boom" },
       response: new Response(),
     });
-    render(<Sidebar />);
+    renderWithProvider(<Sidebar />);
     const btn = screen.getByRole("button", { name: "Refresh" });
     fireEvent.click(btn);
-    // The toolbar's catch handler clears the spin-disabled treatment.
     await waitFor(() => {
       expect(btn).not.toBeDisabled();
     });
-    // Refresh from useFileTree should NOT have been called because the
-    // POST errored out — the wrapper threw before reaching refresh.
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("TestSidebar_RefreshError_SurfacesToast — Plan 03-07 locked tuple", async () => {
+    mockedUseFileTree.mockReturnValue({
+      tree: { root: [] },
+      loading: false,
+      error: null,
+      refresh: () => Promise.resolve(),
+      mutate: noopMutate,
+    });
+    mockedPostAdminReindex.mockResolvedValue({
+      data: undefined,
+      error: { code: "internal", message: "db locked" },
+      response: new Response(),
+    });
+    renderWithProvider(<Sidebar />);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Couldn't refresh the index."),
+      ).toBeInTheDocument();
+    });
   });
 
   it("TestSidebar_RendersFileTreeRoot — populated tree shows note titles", async () => {
@@ -211,13 +257,26 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       refresh: () => Promise.resolve(),
       mutate: noopMutate,
     });
-    render(<Sidebar />);
+    renderWithProvider(<Sidebar />);
     await waitFor(() => {
       expect(screen.getByText("Scratchpad")).toBeInTheDocument();
     });
   });
 
-  it("TestSidebar_NewNoteAndNewFolder_Click — buttons render and click without crashing (handlers are 03-07 stubs)", () => {
+  it("TestSidebar_NewNoteAndNewFolder_Click — buttons render and click without crashing", async () => {
+    const muts = defaultMutsResult();
+    muts.createNote.mockResolvedValue({
+      id: "n-new",
+      path: "untitled.md",
+      title: "untitled",
+      updated_at: new Date().toISOString(),
+    });
+    muts.createFolder.mockResolvedValue({
+      kind: "folder",
+      path: "untitled",
+      name: "untitled",
+    });
+    mockedUseTreeMutations.mockReturnValue(muts);
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -225,9 +284,12 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       refresh: () => Promise.resolve(),
       mutate: noopMutate,
     });
-    render(<Sidebar />);
-    // Should not throw — handlers are intentional no-ops in 03-06.
+    renderWithProvider(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: "New note" }));
     fireEvent.click(screen.getByRole("button", { name: "New folder" }));
+    await waitFor(() => {
+      expect(muts.createNote).toHaveBeenCalledWith("", "untitled");
+      expect(muts.createFolder).toHaveBeenCalledWith("", "untitled");
+    });
   });
 });

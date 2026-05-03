@@ -26,6 +26,7 @@ import { Sidebar } from "./components/Sidebar";
 import { ToastProvider } from "./components/Toast";
 import { postAdminReindex } from "./lib/adminApi";
 import { useMigrationStatus } from "./lib/useMigrationStatus";
+import { useTreeStore } from "./lib/useTreeStore";
 
 // W-4 LOCKED: the parent owns the phase enum; ReindexProgress is purely
 // presentational. 'starting' is reserved for Phase 4 (when WS-driven
@@ -53,6 +54,9 @@ function AppInner() {
   const [reindexPhase, setReindexPhase] = useState<ReindexPhase>("idle");
   const [reindexError, setReindexError] = useState<string | undefined>();
   const status = useMigrationStatus();
+  // Phase 3 (Plan 03-07): the tree's selected-note id drives the
+  // editor pane. setActiveNote is exposed via Sidebar.onSelectNote.
+  const activeNoteId = useTreeStore((s) => s.activeNoteId);
 
   const fireReindex = useCallback(async () => {
     setReindexPhase("running");
@@ -126,7 +130,9 @@ function AppInner() {
           flex: 1,
         }}
       >
-        <Sidebar />
+        <Sidebar
+          onSelectNote={(id) => useTreeStore.getState().setActiveNote(id)}
+        />
         {reindexing ? (
           <ReindexProgress
             phase={reindexPhase}
@@ -135,7 +141,7 @@ function AppInner() {
             onClose={onCloseOverlay}
           />
         ) : (
-          <EditorPane reindexing={false} />
+          <EditorPane noteId={activeNoteId} reindexing={false} />
         )}
         <BacklinksColumn />
       </div>
