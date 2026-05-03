@@ -1,8 +1,10 @@
-// Package-level documentation lives in canonicalize.go. This file owns the
-// higher-level CRUD primitives (Create/Delete/Move for files and directories).
-// Each primitive routes through Canonicalize FIRST so the data-root invariant
-// from Phase 1 (Pitfall 2) holds for every entry point.
 package fsstore
+
+// File-level documentation: package-level docs live in canonicalize.go.
+// This file owns the higher-level CRUD primitives (Create/Delete/Move for
+// files and directories). Each primitive routes through Canonicalize FIRST
+// so the data-root invariant from Phase 1 (Pitfall 2) holds for every
+// entry point.
 
 import (
 	"errors"

@@ -149,7 +149,7 @@ func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 // (so the same UUID stays attached to the moved file).
 func (x *Indexer) LookupByPath(ctx context.Context, canonicalPath string) (notes.NoteRecord, error) {
 	var (
-		idStr, path, title, checksum string
+		idStr, path, title, checksum      string
 		mtime, size, createdAt, updatedAt int64
 	)
 	err := x.Pair.Reader.QueryRowContext(ctx,
@@ -256,9 +256,7 @@ func (x *Indexer) DeleteByPathPrefix(ctx context.Context, prefix string) (int, e
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var (
-		res sql.Result
-	)
+	var res sql.Result
 	if prefix == "" {
 		res, err = tx.ExecContext(ctx, `DELETE FROM notes`)
 	} else {

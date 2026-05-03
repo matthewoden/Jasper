@@ -529,5 +529,5 @@ func (nopIndex) List(_ context.Context) ([]NoteSummary, error) { return nil, nil
 func (nopIndex) LookupByPath(_ context.Context, _ string) (NoteRecord, error) {
 	return NoteRecord{}, ErrNotFound
 }
-func (nopIndex) MovePathPrefix(_ context.Context, _, _ string) (int, error) { return 0, nil }
+func (nopIndex) MovePathPrefix(_ context.Context, _, _ string) (int, error)  { return 0, nil }
 func (nopIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) { return 0, nil }

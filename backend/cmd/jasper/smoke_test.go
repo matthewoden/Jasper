@@ -57,7 +57,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "smoke: mktempdir:", err)
 		os.Exit(2)
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 	jasperBin = filepath.Join(tmp, "jasper")
 	cmd := exec.Command("go", "build", "-o", jasperBin, ".")
 	cmd.Stderr = os.Stderr
@@ -232,7 +232,7 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 	}
 	var listOut struct {
 		Notes []struct {
-			Id   string `json:"id"`
+			ID   string `json:"id"`
 			Path string `json:"path"`
 		} `json:"notes"`
 	}
@@ -243,8 +243,8 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 	for _, n := range listOut.Notes {
 		if n.Path == notes.ScratchpadRelPath {
 			foundScratchpad = true
-			if n.Id != notes.ScratchpadUUID.String() {
-				t.Errorf("scratchpad id: got %q, want %q", n.Id, notes.ScratchpadUUID.String())
+			if n.ID != notes.ScratchpadUUID.String() {
+				t.Errorf("scratchpad id: got %q, want %q", n.ID, notes.ScratchpadUUID.String())
 			}
 		}
 	}
@@ -809,7 +809,7 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 		t.Fatalf("POST /notes status: got %d, want 201; body=%s", status, body)
 	}
 	var summary struct {
-		Id        string `json:"id"`
+		ID        string `json:"id"`
 		Path      string `json:"path"`
 		Title     string `json:"title"`
 		UpdatedAt string `json:"updated_at"`
@@ -820,10 +820,10 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 	if summary.Path != "smoke-alpha.md" {
 		t.Errorf("create path: got %q, want %q", summary.Path, "smoke-alpha.md")
 	}
-	if summary.Id == "" {
+	if summary.ID == "" {
 		t.Errorf("create response missing id; body=%s", body)
 	}
-	id := summary.Id
+	id := summary.ID
 
 	// 2. GET /notes/{id} — content === "" (empty file just created).
 	status, body = httpGet(t, base+"/notes/"+id)
@@ -832,7 +832,7 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 	}
 	var note struct {
 		Content string `json:"content"`
-		Id      string `json:"id"`
+		ID      string `json:"id"`
 		Path    string `json:"path"`
 	}
 	if err := json.Unmarshal(body, &note); err != nil {
@@ -864,7 +864,7 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 		t.Fatalf("POST /notes/{id}/move status: got %d, want 200; body=%s", status, body)
 	}
 	var moved struct {
-		Id   string `json:"id"`
+		ID   string `json:"id"`
 		Path string `json:"path"`
 	}
 	if err := json.Unmarshal(body, &moved); err != nil {
@@ -947,7 +947,7 @@ func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 		t.Fatalf("POST /notes (in folder) status: got %d, want 201; body=%s", status, body)
 	}
 	var noteSummary struct {
-		Id   string `json:"id"`
+		ID   string `json:"id"`
 		Path string `json:"path"`
 	}
 	if err := json.Unmarshal(body, &noteSummary); err != nil {
@@ -1142,7 +1142,7 @@ func TestSmoke_Phase3_TreeProjection(t *testing.T) {
 		case "note":
 			noteCount++
 			// Locked field set: id, path, title, updated_at, kind.
-			if _, hasId := n["id"].(string); !hasId {
+			if _, hasID := n["id"].(string); !hasID {
 				t.Errorf("note node missing id: %v", n)
 			}
 			if _, hasPath := n["path"].(string); !hasPath {

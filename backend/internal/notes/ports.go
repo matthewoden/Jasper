@@ -120,7 +120,7 @@ type Index interface {
 //
 // Checksum is reserved for Phase 7 (FTS5 + DATA-09 checksum-fallback);
 // Phase 2 always populates this as the empty string. The notes table
-// schema includes a `checksum_sha256 TEXT NOT NULL DEFAULT ''` column
+// schema includes a `checksum_sha256 TEXT NOT NULL DEFAULT ”` column
 // from 001_initial.sql, populated as "" throughout Phase 2.
 //
 // MTimeUnix is the file's last-modified time as observed by os.Stat at

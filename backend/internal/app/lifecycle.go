@@ -85,12 +85,12 @@ func SeedScratchpadIfMissing(dataDir string, log *slog.Logger) error {
 //  5. Build *index.Indexer + *migrate.Runner; wire Path2Rebuild.
 //  6. runner.Run — apply pending migrations on the live DB. Three
 //     outcomes:
-//       - StateOK / StateRolledBack → continue to step 7.
-//       - ErrDiskFull → install the disk-full static handler and
-//         serve it on the listener (the user must free space and
-//         restart the binary).
-//       - ErrUnrecoverable → install the unrecoverable static
-//         handler and serve it on the listener.
+//     - StateOK / StateRolledBack → continue to step 7.
+//     - ErrDiskFull → install the disk-full static handler and
+//     serve it on the listener (the user must free space and
+//     restart the binary).
+//     - ErrUnrecoverable → install the unrecoverable static
+//     handler and serve it on the listener.
 //  7. indexer.Reconcile(ModeIncremental) — DATA-09 startup delta scan.
 //     Only runs when state != Unrecoverable.
 //  8. Rebuild api.Server with full wiring (NewServerWithIndex 5-arg

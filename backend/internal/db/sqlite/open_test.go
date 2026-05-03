@@ -84,11 +84,11 @@ func TestOpen_PragmasActive_BothHalves(t *testing.T) {
 		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			assertPragma(t, ctx, c.db, "journal_mode", "wal")
-			assertPragmaInt(t, ctx, c.db, "synchronous", 1) // NORMAL = 1
-			assertPragmaInt(t, ctx, c.db, "busy_timeout", 5000)
-			assertPragmaInt(t, ctx, c.db, "wal_autocheckpoint", 1000)
-			assertPragmaInt(t, ctx, c.db, "foreign_keys", 1)
+			assertPragma(ctx, t, c.db, "journal_mode", "wal")
+			assertPragmaInt(ctx, t, c.db, "synchronous", 1) // NORMAL = 1
+			assertPragmaInt(ctx, t, c.db, "busy_timeout", 5000)
+			assertPragmaInt(ctx, t, c.db, "wal_autocheckpoint", 1000)
+			assertPragmaInt(ctx, t, c.db, "foreign_keys", 1)
 		})
 	}
 }
@@ -148,7 +148,7 @@ func TestPair_Close_Idempotent(t *testing.T) {
 // assertPragma queries `PRAGMA <name>` on db and asserts the string
 // result equals want (case-insensitive — SQLite returns "wal" lower
 // but verifying with EqualFold matches our verifier semantics).
-func assertPragma(t *testing.T, ctx context.Context, db *sql.DB, name, want string) {
+func assertPragma(ctx context.Context, t *testing.T, db *sql.DB, name, want string) {
 	t.Helper()
 	var got string
 	if err := db.QueryRowContext(ctx, "PRAGMA "+name).Scan(&got); err != nil {
@@ -161,7 +161,7 @@ func assertPragma(t *testing.T, ctx context.Context, db *sql.DB, name, want stri
 
 // assertPragmaInt queries `PRAGMA <name>` on db and asserts the integer
 // result equals want.
-func assertPragmaInt(t *testing.T, ctx context.Context, db *sql.DB, name string, want int) {
+func assertPragmaInt(ctx context.Context, t *testing.T, db *sql.DB, name string, want int) {
 	t.Helper()
 	var got int
 	if err := db.QueryRowContext(ctx, "PRAGMA "+name).Scan(&got); err != nil {
@@ -171,4 +171,3 @@ func assertPragmaInt(t *testing.T, ctx context.Context, db *sql.DB, name string,
 		t.Errorf("PRAGMA %s = %d, want %d", name, got, want)
 	}
 }
-

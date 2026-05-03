@@ -328,7 +328,7 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 	}
 	var listOut struct {
 		Notes []struct {
-			Id   string `json:"id"`
+			ID   string `json:"id"`
 			Path string `json:"path"`
 		} `json:"notes"`
 	}
@@ -346,8 +346,8 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 	for _, n := range listOut.Notes {
 		if n.Path == notes.ScratchpadRelPath {
 			foundScratchpad = true
-			if n.Id != notes.ScratchpadUUID.String() {
-				t.Errorf("scratchpad id: got %q, want %q", n.Id, notes.ScratchpadUUID.String())
+			if n.ID != notes.ScratchpadUUID.String() {
+				t.Errorf("scratchpad id: got %q, want %q", n.ID, notes.ScratchpadUUID.String())
 			}
 		}
 	}
@@ -550,7 +550,7 @@ func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
 	seedRealSQLiteDB(t, dir)
 
 	t.Setenv("JASPER_TEST_FORCE_DISK_FULL", "1")
-	defer os.Unsetenv("JASPER_TEST_FORCE_DISK_FULL")
+	defer func() { _ = os.Unsetenv("JASPER_TEST_FORCE_DISK_FULL") }()
 
 	addr := pickFreePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -625,7 +625,7 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 	seedRealSQLiteDB(t, dir)
 
 	t.Setenv("JASPER_TEST_FORCE_DISK_FULL", "1")
-	defer os.Unsetenv("JASPER_TEST_FORCE_DISK_FULL")
+	defer func() { _ = os.Unsetenv("JASPER_TEST_FORCE_DISK_FULL") }()
 
 	addr := pickFreePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -765,7 +765,7 @@ func TestRun_HydrateRegistry(t *testing.T) {
 	}
 	var listOut struct {
 		Notes []struct {
-			Id   string `json:"id"`
+			ID   string `json:"id"`
 			Path string `json:"path"`
 		} `json:"notes"`
 	}
@@ -785,17 +785,17 @@ func TestRun_HydrateRegistry(t *testing.T) {
 	//    resolve — proving the registry was hydrated, not just the
 	//    scratchpad.
 	for _, n := range listOut.Notes {
-		id, perr := uuid.Parse(n.Id)
+		id, perr := uuid.Parse(n.ID)
 		if perr != nil {
 			cancel()
 			<-runErr
-			t.Fatalf("parse id %q: %v", n.Id, perr)
+			t.Fatalf("parse id %q: %v", n.ID, perr)
 		}
 		if _, gerr := svc.Get(ctx, id); gerr != nil {
 			cancel()
 			<-runErr
 			t.Fatalf("Service.Get(%s, path=%s) failed: %v (registry not hydrated for non-scratchpad UUIDs)",
-				n.Id, n.Path, gerr)
+				n.ID, n.Path, gerr)
 		}
 	}
 
