@@ -30,7 +30,7 @@ func setupAdminStatusServer(t *testing.T, status migrate.StatusProvider) *httpte
 	files := &fakeFileStore{} // re-use the helper from handlers_test.go
 	svc := notes.NewService(files, nil, logger)
 
-	srv := NewServerWithStatus(svc, status, logger)
+	srv := NewServerWithIndex(svc, status, nil, nil, logger)
 	si := NewStrictHandler(srv, nil)
 
 	r := chi.NewRouter()
