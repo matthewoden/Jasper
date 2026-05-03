@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"io/fs"
 
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/notes"
@@ -48,7 +49,7 @@ func newError(code, message string) Error {
 // single errors.Is gate above — no structural string-matching fallback.
 func mapServiceErrorToWire(err error) (code, message string, ok bool) {
 	switch {
-	case errors.Is(err, notes.ErrNotFound):
+	case errors.Is(err, notes.ErrNotFound), errors.Is(err, fs.ErrNotExist):
 		return "not_found", "note or folder does not exist", true
 	case errors.Is(err, fsstore.ErrCaseCollision), errors.Is(err, notes.ErrCaseCollision):
 		return "case_collision", "a note or folder with this name already exists", true
