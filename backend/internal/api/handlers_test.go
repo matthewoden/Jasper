@@ -49,6 +49,17 @@ func (f *fakeFileStore) Stat(_ string) (time.Time, error) {
 	return f.statTime, f.statErr
 }
 
+// Phase 3 Plan 03-03 — extended notes.FileStore port methods. The
+// api-package tests do not exercise these mutation primitives directly
+// (those are covered by service_test.go + ops_test.go); default no-ops
+// keep the port satisfied at compile time.
+func (f *fakeFileStore) CreateFile(_ string) error                  { return nil }
+func (f *fakeFileStore) DeleteFile(_ string) error                  { return nil }
+func (f *fakeFileStore) MoveFile(_, _ string) error                 { return nil }
+func (f *fakeFileStore) CreateDir(_ string) error                   { return nil }
+func (f *fakeFileStore) DeleteDir(_ string, _ bool) error           { return nil }
+func (f *fakeFileStore) MoveDir(_, _ string) error                  { return nil }
+
 // setupTestServer mounts the StrictServerInterface bridge under
 // `r.Route("/api/v1", ...)` so the test URLs match the production
 // routes from Plan 04 (Pitfall 13).

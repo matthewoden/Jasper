@@ -262,6 +262,304 @@ func TestList_TitleAndUpdatedAtPopulated(t *testing.T) {
 	}
 }
 
+// ----------------------------------------------------------------------
+// Plan 03-03 Task 1: Index extensions for tree projection + folder ops
+// ----------------------------------------------------------------------
+
+// TestLookupByPath_Hit — Insert a row via Upsert, then LookupByPath
+// returns the same NoteRecord (every field round-trips).
+func TestLookupByPath_Hit(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	id := uuid.New()
+	r := rec1(id)
+	if err := idx.Upsert(context.Background(), r); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	got, err := idx.LookupByPath(context.Background(), "a.md")
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if got.ID != id {
+		t.Errorf("ID: got %v, want %v", got.ID, id)
+	}
+	if got.Path != "a.md" {
+		t.Errorf("Path: got %q, want %q", got.Path, "a.md")
+	}
+	if got.Title != "First" {
+		t.Errorf("Title: got %q, want %q", got.Title, "First")
+	}
+	if got.MTimeUnix != r.MTimeUnix {
+		t.Errorf("MTimeUnix: got %d, want %d", got.MTimeUnix, r.MTimeUnix)
+	}
+	if got.SizeBytes != r.SizeBytes {
+		t.Errorf("SizeBytes: got %d, want %d", got.SizeBytes, r.SizeBytes)
+	}
+}
+
+// TestLookupByPath_Miss — LookupByPath on an unknown path returns
+// notes.ErrNotFound (errors.Is check).
+func TestLookupByPath_Miss(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	_, err := idx.LookupByPath(context.Background(), "missing.md")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !errors.Is(err, notes.ErrNotFound) {
+		t.Fatalf("err: got %v, want notes.ErrNotFound", err)
+	}
+}
+
+// upsertAt is a helper that inserts a row with a given path + fresh UUID.
+func upsertAt(t *testing.T, idx *Indexer, path string) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	r := rec1(id)
+	r.Path = path
+	if err := idx.Upsert(context.Background(), r); err != nil {
+		t.Fatalf("upsert %q: %v", path, err)
+	}
+	return id
+}
+
+// TestMovePathPrefix_HappyPath — Insert 3 rows under "old/", call
+// MovePathPrefix("old/", "new/"), assert all 3 paths now start with
+// "new/" and the count returned is 3.
+func TestMovePathPrefix_HappyPath(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	upsertAt(t, idx, "old/a.md")
+	upsertAt(t, idx, "old/b.md")
+	upsertAt(t, idx, "old/c.md")
+
+	n, err := idx.MovePathPrefix(context.Background(), "old/", "new/")
+	if err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if n != 3 {
+		t.Fatalf("count: got %d, want 3", n)
+	}
+	got, _ := idx.List(context.Background())
+	if len(got) != 3 {
+		t.Fatalf("len: got %d, want 3", len(got))
+	}
+	for _, s := range got {
+		if !startsWith(s.Path, "new/") {
+			t.Errorf("path %q does not start with new/", s.Path)
+		}
+	}
+}
+
+// TestMovePathPrefix_NestedSubtree — Insert "old/a.md", "old/b/c.md",
+// "old/d/e/f.md"; MovePathPrefix("old/", "newer/"); all 3 are correctly
+// re-prefixed (the deeper subpaths preserve their internal structure).
+func TestMovePathPrefix_NestedSubtree(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	upsertAt(t, idx, "old/a.md")
+	upsertAt(t, idx, "old/b/c.md")
+	upsertAt(t, idx, "old/d/e/f.md")
+
+	n, err := idx.MovePathPrefix(context.Background(), "old/", "newer/")
+	if err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if n != 3 {
+		t.Fatalf("count: got %d, want 3", n)
+	}
+	got, _ := idx.List(context.Background())
+	want := map[string]bool{
+		"newer/a.md":     true,
+		"newer/b/c.md":   true,
+		"newer/d/e/f.md": true,
+	}
+	for _, s := range got {
+		if !want[s.Path] {
+			t.Errorf("unexpected path: %q", s.Path)
+		}
+		delete(want, s.Path)
+	}
+	if len(want) != 0 {
+		t.Errorf("missing paths: %v", want)
+	}
+}
+
+// TestMovePathPrefix_CollisionWithForeignRow — Insert "old/x.md" AND
+// "new/y.md" (separate origins); MovePathPrefix("old/", "new/") returns
+// ErrCaseCollision; rows unchanged.
+func TestMovePathPrefix_CollisionWithForeignRow(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	upsertAt(t, idx, "old/x.md")
+	upsertAt(t, idx, "new/y.md")
+
+	_, err := idx.MovePathPrefix(context.Background(), "old/", "new/")
+	if err == nil {
+		t.Fatalf("expected ErrCaseCollision, got nil")
+	}
+	if !errors.Is(err, notes.ErrCaseCollision) {
+		t.Fatalf("err: got %v, want ErrCaseCollision", err)
+	}
+	got, _ := idx.List(context.Background())
+	if len(got) != 2 {
+		t.Fatalf("len: got %d, want 2", len(got))
+	}
+	// Both rows survive at their original paths.
+	paths := map[string]bool{}
+	for _, s := range got {
+		paths[s.Path] = true
+	}
+	if !paths["old/x.md"] {
+		t.Errorf("old/x.md missing")
+	}
+	if !paths["new/y.md"] {
+		t.Errorf("new/y.md missing")
+	}
+}
+
+// TestMovePathPrefix_NoMatchingRows — Empty source prefix → returns 0,
+// nil.
+func TestMovePathPrefix_NoMatchingRows(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	upsertAt(t, idx, "keep/a.md")
+
+	n, err := idx.MovePathPrefix(context.Background(), "ghost/", "new/")
+	if err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("count: got %d, want 0", n)
+	}
+	got, _ := idx.List(context.Background())
+	if len(got) != 1 || got[0].Path != "keep/a.md" {
+		t.Errorf("unrelated row mutated")
+	}
+}
+
+// TestMovePathPrefix_LikeEscape_Underscore — Insert "old_actual/note.md";
+// MovePathPrefix("old_actual/", "new/") moves only that row (NOT
+// "olda/note.md" if such a row existed — the underscore must not function
+// as a wildcard).
+func TestMovePathPrefix_LikeEscape_Underscore(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	upsertAt(t, idx, "old_actual/note.md")
+	upsertAt(t, idx, "olda/note.md") // would match if `_` works as LIKE wildcard
+
+	n, err := idx.MovePathPrefix(context.Background(), "old_actual/", "new/")
+	if err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("count: got %d, want 1 (LIKE wildcard escape verified)", n)
+	}
+	got, _ := idx.List(context.Background())
+	paths := map[string]bool{}
+	for _, s := range got {
+		paths[s.Path] = true
+	}
+	if !paths["new/note.md"] {
+		t.Errorf("expected new/note.md, paths=%v", paths)
+	}
+	if !paths["olda/note.md"] {
+		t.Errorf("olda/note.md must NOT have moved (LIKE escape)")
+	}
+}
+
+// TestDeleteByPathPrefix_Cascade — Insert 5 rows under "trash/" + 1 row
+// under "keep/"; DeleteByPathPrefix("trash"); only the 5 trash rows are
+// gone; "keep/" survives.
+func TestDeleteByPathPrefix_Cascade(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	upsertAt(t, idx, "trash/a.md")
+	upsertAt(t, idx, "trash/b.md")
+	upsertAt(t, idx, "trash/c/d.md")
+	upsertAt(t, idx, "trash/c/e.md")
+	upsertAt(t, idx, "trash/c/f/g.md")
+	upsertAt(t, idx, "keep/h.md")
+
+	n, err := idx.DeleteByPathPrefix(context.Background(), "trash")
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if n != 5 {
+		t.Errorf("count: got %d, want 5", n)
+	}
+	got, _ := idx.List(context.Background())
+	if len(got) != 1 || got[0].Path != "keep/h.md" {
+		t.Errorf("survivors: %+v", got)
+	}
+}
+
+// TestDeleteByPathPrefix_RootEmpty — DeleteByPathPrefix("") deletes all
+// rows (treat as "wipe") — used by RebuildAndReindex's drop path;
+// verified by inserting 3 rows then asserting 0 after.
+func TestDeleteByPathPrefix_RootEmpty(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	upsertAt(t, idx, "a.md")
+	upsertAt(t, idx, "b/c.md")
+	upsertAt(t, idx, "d/e/f.md")
+
+	n, err := idx.DeleteByPathPrefix(context.Background(), "")
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("count: got %d, want 3", n)
+	}
+	got, _ := idx.List(context.Background())
+	if len(got) != 0 {
+		t.Errorf("after wipe: got %d rows, want 0", len(got))
+	}
+}
+
+// TestDeleteByPathPrefix_LikeEscape — Insert "evidence%/note.md";
+// DeleteByPathPrefix("evidence%") removes only that row (not
+// "evidenceX/..."); the escape is verified.
+func TestDeleteByPathPrefix_LikeEscape(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	// Note: a literal % in a stored path is unusual but legal as raw
+	// bytes in SQLite — the canonical relpath layer accepts it (it's
+	// not a path separator). The LIKE-escape is what protects us.
+	upsertAt(t, idx, "evidence%/note.md")
+	upsertAt(t, idx, "evidencex/note.md") // would match if `%` works as LIKE wildcard
+
+	n, err := idx.DeleteByPathPrefix(context.Background(), "evidence%")
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("count: got %d, want 1 (LIKE wildcard escape verified)", n)
+	}
+	got, _ := idx.List(context.Background())
+	if len(got) != 1 || got[0].Path != "evidencex/note.md" {
+		t.Errorf("unexpected survivors: %+v", got)
+	}
+}
+
+// startsWith is a tiny helper to keep test reads clean.
+func startsWith(s, prefix string) bool {
+	if len(prefix) > len(s) {
+		return false
+	}
+	return s[:len(prefix)] == prefix
+}
+
 // TestUpsert_NFC_Equivalence — paths that compare equal under NFC
 // (e.g. NFD "café" vs NFC "café") collide. The pre-check that we
 // store paths in their canonical lowercased+NFC form means inserting

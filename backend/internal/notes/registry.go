@@ -1,6 +1,7 @@
 package notes
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -53,4 +54,82 @@ func (r *Registry) Lookup(id uuid.UUID) (string, bool) {
 	defer r.mu.RUnlock()
 	relPath, ok := r.byID[id]
 	return relPath, ok
+}
+
+// Add inserts (or overwrites) the id → relPath mapping. Phase 3 Plan
+// 03-03 addition — called by Service.Create after the file write +
+// index upsert succeed. Idempotent: re-Adding the same id replaces the
+// path in place.
+func (r *Registry) Add(id uuid.UUID, relPath string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.byID[id] = relPath
+}
+
+// Remove deletes the mapping for id. Idempotent — removing an absent id
+// is a no-op (the registry can be ahead/behind reality during reconcile).
+// Phase 3 Plan 03-03 addition — called by Service.Delete after a
+// successful FS delete.
+func (r *Registry) Remove(id uuid.UUID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.byID, id)
+}
+
+// Rename updates the relPath for id IF the id is already present.
+// Insert-on-rename is intentionally NOT supported: Service.Move is the
+// only caller and it always calls Add → Rename → ... never Rename for
+// a fresh id. Phase 3 Plan 03-03 addition.
+func (r *Registry) Rename(id uuid.UUID, newRelPath string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.byID[id]; ok {
+		r.byID[id] = newRelPath
+	}
+}
+
+// Hydrate replaces the entire id → path map atomically with the given
+// summaries. Used by the composition root (Plan 03-04) at startup AFTER
+// the incremental reindex so the in-memory registry reflects every
+// indexed note. The ScratchpadUUID is included in summaries because
+// chooseID assigns it when the scratchpad.md path is walked. Phase 3
+// Plan 03-03 addition.
+func (r *Registry) Hydrate(summaries []NoteSummary) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.byID = make(map[uuid.UUID]string, len(summaries))
+	for _, s := range summaries {
+		r.byID[s.ID] = s.Path
+	}
+}
+
+// idsUnder returns the ids of every entry whose relPath is the bare
+// folder path or starts with `<folderPath>/`. Used by Service.DeleteFolder
+// to remove every doomed registry entry after a recursive FS rmtree.
+// Package-private — exposed only to Service.
+func (r *Registry) idsUnder(folderPath string) []uuid.UUID {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var out []uuid.UUID
+	prefix := folderPath + "/"
+	for id, p := range r.byID {
+		if p == folderPath || strings.HasPrefix(p, prefix) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// renamePrefix re-prefixes every entry whose relPath starts with
+// oldPrefix to start with newPrefix. Both prefixes MUST end with "/"
+// (or be empty). Used by Service.MoveFolder after a successful FS+index
+// move. Package-private.
+func (r *Registry) renamePrefix(oldPrefix, newPrefix string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, p := range r.byID {
+		if strings.HasPrefix(p, oldPrefix) {
+			r.byID[id] = newPrefix + strings.TrimPrefix(p, oldPrefix)
+		}
+	}
 }

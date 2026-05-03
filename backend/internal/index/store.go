@@ -141,6 +141,162 @@ func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 	return out, nil
 }
 
+// LookupByPath finds a NoteRecord by its canonical relative path. Returns
+// notes.ErrNotFound when no row matches. Phase 3 Plan 03-03 addition.
+//
+// Reads via Pair.Reader (no transaction — pure read). Used by
+// Service.Move to look up the existing record before issuing the rename
+// (so the same UUID stays attached to the moved file).
+func (x *Indexer) LookupByPath(ctx context.Context, canonicalPath string) (notes.NoteRecord, error) {
+	var (
+		idStr, path, title, checksum string
+		mtime, size, createdAt, updatedAt int64
+	)
+	err := x.Pair.Reader.QueryRowContext(ctx,
+		`SELECT id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at
+         FROM notes WHERE path = ?`,
+		canonicalPath).Scan(&idStr, &path, &title, &mtime, &size, &checksum, &createdAt, &updatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return notes.NoteRecord{}, fmt.Errorf("LookupByPath(%q): %w", canonicalPath, notes.ErrNotFound)
+		}
+		return notes.NoteRecord{}, fmt.Errorf("LookupByPath(%q): %w", canonicalPath, err)
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return notes.NoteRecord{}, fmt.Errorf("LookupByPath(%q): parse uuid %q: %w", canonicalPath, idStr, err)
+	}
+	return notes.NoteRecord{
+		ID:            id,
+		Path:          path,
+		Title:         title,
+		MTimeUnix:     mtime,
+		SizeBytes:     size,
+		Checksum:      checksum,
+		UpdatedAtUnix: updatedAt,
+	}, nil
+}
+
+// MovePathPrefix updates every notes row whose path starts with oldPrefix
+// to start with newPrefix instead. Used by Service.MoveFolder to
+// recursively re-canonicalize every note under a renamed folder in one
+// BEGIN IMMEDIATE transaction. Returns the count of updated rows.
+//
+// Returns notes.ErrCaseCollision if any row already lives under newPrefix
+// AND that row is NOT itself under oldPrefix (i.e. a foreign note would
+// collide on rename). The destination contents that ARE under oldPrefix
+// are the ones being moved — we must not mistake them for a collision
+// against themselves (consider MovePathPrefix("a/", "a/") — degenerate
+// no-op, never collides).
+//
+// LIKE-escape note: SQLite LIKE treats `%` and `_` as wildcards. Canonical
+// paths can contain `_` legitimately (a valid filename character) and
+// theoretically `%` (filenames are bytes; canonical form does not strip
+// `%`). The ESCAPE '\' clause + escapeLike() ensures `_` and `%` in the
+// prefix bind as literal characters. T-03-03-03 mitigation.
+func (x *Indexer) MovePathPrefix(ctx context.Context, oldPrefix, newPrefix string) (int, error) {
+	tx, err := x.Pair.BeginImmediate(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("MovePathPrefix begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // no-op after Commit
+
+	escapedOld := escapeLike(oldPrefix)
+	escapedNew := escapeLike(newPrefix)
+
+	// Collision precheck: any row whose path starts with newPrefix BUT
+	// does not also start with oldPrefix is a foreign collision.
+	// (If newPrefix == oldPrefix, every row matches both filters, so n=0
+	// and no collision is reported — the move becomes a no-op.)
+	var collisions int
+	err = tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM notes WHERE path LIKE ? || '%' ESCAPE '\' AND path NOT LIKE ? || '%' ESCAPE '\'`,
+		escapedNew, escapedOld).Scan(&collisions)
+	if err != nil {
+		return 0, fmt.Errorf("MovePathPrefix collision check: %w", err)
+	}
+	if collisions > 0 {
+		return 0, fmt.Errorf("MovePathPrefix(%q→%q): %w", oldPrefix, newPrefix, notes.ErrCaseCollision)
+	}
+
+	// Honor cancellation between SQL ops.
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	now := x.nowUnix()
+	res, err := tx.ExecContext(ctx,
+		`UPDATE notes SET path = ? || SUBSTR(path, LENGTH(?) + 1), updated_at = ?
+         WHERE path LIKE ? || '%' ESCAPE '\'`,
+		newPrefix, oldPrefix, now, escapedOld)
+	if err != nil {
+		return 0, fmt.Errorf("MovePathPrefix exec: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("MovePathPrefix rowsaffected: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("MovePathPrefix commit: %w", err)
+	}
+	return int(affected), nil
+}
+
+// DeleteByPathPrefix removes every row whose path starts with prefix
+// (treated as a folder root). Matches both the bare prefix (e.g.
+// "trash") AND children "trash/...". The empty prefix means "all rows" —
+// used by Path 2 (RebuildAndReindex) drop-and-rebuild. Returns the count
+// of deleted rows.
+//
+// LIKE-escape applied to `prefix` to neutralize `_` / `%` wildcards.
+func (x *Indexer) DeleteByPathPrefix(ctx context.Context, prefix string) (int, error) {
+	tx, err := x.Pair.BeginImmediate(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("DeleteByPathPrefix begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var (
+		res sql.Result
+	)
+	if prefix == "" {
+		res, err = tx.ExecContext(ctx, `DELETE FROM notes`)
+	} else {
+		escaped := escapeLike(prefix)
+		res, err = tx.ExecContext(ctx,
+			`DELETE FROM notes WHERE path = ? OR path LIKE ? || '/%' ESCAPE '\'`,
+			prefix, escaped)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("DeleteByPathPrefix exec: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("DeleteByPathPrefix rowsaffected: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("DeleteByPathPrefix commit: %w", err)
+	}
+	return int(affected), nil
+}
+
+// escapeLike escapes the SQLite LIKE wildcards `%` and `_` (and the
+// escape character itself, `\`) so the supplied prefix binds as a
+// literal substring under `LIKE ? ESCAPE '\'`. Without this, an
+// underscore in a path segment (a valid filename character) would
+// silently match any single character, and a literal `%` would match
+// any substring. T-03-03-03 mitigation.
+func escapeLike(s string) string {
+	// Order matters: escape the escape character first, then the wildcards,
+	// otherwise we'd double-escape the backslashes we just inserted.
+	r := strings.NewReplacer(
+		`\`, `\\`,
+		`%`, `\%`,
+		`_`, `\_`,
+	)
+	return r.Replace(s)
+}
+
 // existingRow is the per-row projection used by reconcile to decide
 // whether a freshly-walked file is new / unchanged / dirty.
 type existingRow struct {

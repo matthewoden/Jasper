@@ -27,6 +27,34 @@ type FileStore interface {
 	// populate Note.UpdatedAt. Returns an error wrapping fs.ErrNotExist
 	// if the file is missing.
 	Stat(relPath string) (modTime time.Time, err error)
+
+	// Phase 3 Plan 03-03 mutation primitives. Implementations route
+	// through fsstore.Canonicalize internally for DATA-11 + DATA-12 +
+	// DATA-13 enforcement. See backend/internal/fsstore/ops.go for the
+	// full contract:
+	//
+	//   - CreateFile creates a zero-byte .md file; ErrCaseCollision if
+	//     the path is already taken; ErrParentNotFound if the immediate
+	//     parent does not exist (single-level mkdir policy).
+	//   - DeleteFile removes a file; fs.ErrNotExist propagates so the
+	//     API layer maps to 404.
+	//   - MoveFile renames a file; ErrCaseCollision / ErrParentNotFound
+	//     for the destination; both paths are canonicalized.
+	//   - CreateDir creates a directory with mode 0755; ErrCaseCollision
+	//     if anything (file or dir) already exists at the path;
+	//     ErrParentNotFound if the immediate parent does not exist.
+	//   - DeleteDir(recursive=false) returns ErrFolderNotEmpty if the
+	//     directory has any children; recursive=true removes the entire
+	//     subtree.
+	//   - MoveDir renames a directory; ErrCycle if the destination is
+	//     the source itself or a descendant of it; ErrCaseCollision /
+	//     ErrParentNotFound otherwise.
+	CreateFile(relPath string) error
+	DeleteFile(relPath string) error
+	MoveFile(oldRelPath, newRelPath string) error
+	CreateDir(relPath string) error
+	DeleteDir(relPath string, recursive bool) error
+	MoveDir(oldRelPath, newRelPath string) error
 }
 
 // Index is the port over the SQLite derived-index adapter. The
@@ -59,6 +87,29 @@ type Index interface {
 	// notes-list UI. Order is undefined at the port level; the API
 	// handler / UI is responsible for any sort.
 	List(ctx context.Context) ([]NoteSummary, error)
+
+	// LookupByPath finds a NoteRecord by its canonical relative path
+	// (NFC + lowercase per DATA-11). Returns ErrNotFound when missing.
+	// Used by Service.Move to look up the existing record before issuing
+	// the rename. Phase 3 Plan 03-03 addition.
+	LookupByPath(ctx context.Context, canonicalPath string) (NoteRecord, error)
+
+	// MovePathPrefix updates every notes row whose path starts with
+	// oldPrefix to start with newPrefix instead. Used by Service.MoveFolder
+	// to recursively re-canonicalize every note under a renamed folder
+	// in one BEGIN IMMEDIATE transaction. Both prefixes MUST end with "/"
+	// (or be empty for the vault root). Returns the count of updated rows.
+	// Returns ErrCaseCollision if any row already lives under newPrefix
+	// and that row's source is NOT itself under oldPrefix — i.e., a
+	// foreign note would collide. Phase 3 Plan 03-03 addition.
+	MovePathPrefix(ctx context.Context, oldPrefix, newPrefix string) (int, error)
+
+	// DeleteByPathPrefix removes every row whose path starts with prefix
+	// (treated as a folder, with children matching prefix + "/..." plus
+	// the bare prefix itself). The empty prefix means "all rows" — used
+	// by Path 2 (RebuildAndReindex) drop-and-rebuild. Returns the count
+	// of deleted rows. Phase 3 Plan 03-03 addition.
+	DeleteByPathPrefix(ctx context.Context, prefix string) (int, error)
 }
 
 // NoteRecord is the canonical projection of a .md file into the index.
