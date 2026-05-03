@@ -1,12 +1,18 @@
 /**
- * App-shell tests — confirms the locked 3-column grid renders Sidebar /
- * EditorPane / BacklinksColumn in the right tracks.
- *
- * notesApi is mocked so EditorPane mounts cleanly without hitting the real
- * client (no backend in this plan).
+ * App-shell tests — Phase 2 composition. Phase 1's three-column grid is now
+ * nested inside a flex column with the migration banner row above. We mock
+ * the admin status hook so each test can drive the migration-banner branch
+ * without spinning up real fetch.
  */
-import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 vi.mock("./lib/notesApi", () => ({
   ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
@@ -23,32 +29,194 @@ vi.mock("./lib/notesApi", () => ({
   updateNote: vi.fn(),
 }));
 
+const getAdminStatusMock = vi.fn();
+const postAdminReindexMock = vi.fn();
+
+vi.mock("./lib/adminApi", () => ({
+  getAdminStatus: (...args: unknown[]) => getAdminStatusMock(...args),
+  postAdminReindex: (...args: unknown[]) => postAdminReindexMock(...args),
+}));
+
 import App from "./App";
 
-describe("<App />", () => {
-  it("A1: renders the locked three-column CSS grid (260px 1fr 0)", () => {
+describe("<App /> — Phase 2 shell composition", () => {
+  beforeEach(() => {
+    getAdminStatusMock.mockReset();
+    postAdminReindexMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("A1: when status=ok, the locked three-column grid still renders inside the flex column", async () => {
+    getAdminStatusMock.mockResolvedValue({
+      data: { state: "ok", notes_indexed: 0 },
+      error: undefined,
+    });
+
     const { container } = render(<App />);
     const root = container.firstChild as HTMLElement;
     expect(root).not.toBeNull();
-    expect(root.style.display).toBe("grid");
-    expect(root.style.gridTemplateColumns).toBe("260px 1fr 0");
+    expect(root.style.display).toBe("flex");
+    expect(root.style.flexDirection).toBe("column");
     expect(root.style.minHeight).toBe("100vh");
-  });
 
-  it("A2: renders Sidebar, EditorPane, and BacklinksColumn", async () => {
-    render(<App />);
-    // Sidebar.
+    // The three-column grid is now an inner div under the flex column
+    // (the banner is a sibling but renders nothing when state=ok).
+    const grid = root.querySelector(
+      'div[style*="grid-template-columns"]',
+    ) as HTMLElement | null;
+    expect(grid).not.toBeNull();
+    expect(grid!.style.gridTemplateColumns).toBe("260px 1fr 0");
+
+    // Sidebar + BacklinksColumn anchors still mount.
     expect(screen.getByText("NOTES")).toBeInTheDocument();
     expect(screen.getByText("scratchpad")).toBeInTheDocument();
-    // EditorPane (textarea).
+    const aside = document.querySelector("aside[aria-hidden]");
+    expect(aside).not.toBeNull();
+  });
+
+  it("A2: status=ok renders no banner and the editor textarea is enabled", async () => {
+    getAdminStatusMock.mockResolvedValue({
+      data: { state: "ok" },
+      error: undefined,
+    });
+
+    render(<App />);
+    expect(screen.queryByRole("alert")).toBeNull();
     const textarea = screen.getByLabelText(
       "Scratchpad note content",
     ) as HTMLTextAreaElement;
     expect(textarea).toBeInTheDocument();
-    // BacklinksColumn — aside with width 0; aria-hidden.
-    const aside = document.querySelector("aside[aria-hidden]");
-    expect(aside).not.toBeNull();
-    // EditorPane finishes loading.
     await waitFor(() => expect(textarea).not.toBeDisabled());
+  });
+
+  it("A3: status=rolled_back renders the migration banner with locked copy + Reset button", async () => {
+    getAdminStatusMock.mockResolvedValue({
+      data: {
+        state: "rolled_back",
+        failed_migration: "003_tags.sql",
+        logs_path: "/tmp/jasper.log",
+      },
+      error: undefined,
+    });
+
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText("Migration 003_tags.sql failed."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Reset and rebuild database" }),
+    ).toBeInTheDocument();
+  });
+
+  it("A4: clicking Reset → Confirm fires postAdminReindex and the success path mounts/unmounts ReindexProgress", async () => {
+    getAdminStatusMock.mockResolvedValue({
+      data: {
+        state: "rolled_back",
+        failed_migration: "003.sql",
+        logs_path: "/tmp/log",
+      },
+      error: undefined,
+    });
+    postAdminReindexMock.mockResolvedValue({
+      data: { started_at: "2025-01-01T00:00:00Z", notes_indexed: 7 },
+      error: undefined,
+    });
+
+    render(<App />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Reset and rebuild database" }),
+      ).toBeInTheDocument(),
+    );
+
+    // Click Reset → opens dialog.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset and rebuild database" }),
+    );
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+    // Click Confirm → dialog closes, POST fires, overlay mounts.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset and rebuild" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("Index rebuilt.")).toBeInTheDocument(),
+    );
+    expect(postAdminReindexMock).toHaveBeenCalledWith("full");
+
+    // Subsequent status refresh — server now reports ok.
+    getAdminStatusMock.mockResolvedValueOnce({
+      data: { state: "ok" },
+      error: undefined,
+    });
+
+    // Wait for the parent's 600ms transient → overlay unmounts.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 700));
+    });
+    expect(screen.queryByText("Index rebuilt.")).toBeNull();
+  });
+
+  it("A5: postAdminReindex error → ReindexProgress shows error copy; Close returns to the editor", async () => {
+    getAdminStatusMock.mockResolvedValue({
+      data: {
+        state: "rolled_back",
+        failed_migration: "003.sql",
+        logs_path: "/tmp/log",
+      },
+      error: undefined,
+    });
+    postAdminReindexMock.mockResolvedValue({
+      data: undefined,
+      error: { code: "unrecoverable", message: "db is busy" },
+    });
+
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset and rebuild database" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset and rebuild" }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Couldn.t rebuild the index/),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByText("db is busy")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/Couldn.t rebuild the index/),
+      ).toBeNull(),
+    );
+  });
+
+  it("A6: Toast viewport is rendered exactly once (UI-SPEC §Forward-Compat assert #3)", () => {
+    getAdminStatusMock.mockResolvedValue({
+      data: { state: "ok" },
+      error: undefined,
+    });
+    render(<App />);
+    // Radix Toast.Viewport renders as a wrapper div with
+    // role="region" aria-label="Notifications (F8)". Asserting count==1
+    // proves the provider is mounted exactly once at the App root.
+    const viewports = document.querySelectorAll(
+      'div[role="region"][aria-label^="Notifications"]',
+    );
+    expect(viewports.length).toBe(1);
   });
 });

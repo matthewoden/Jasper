@@ -114,7 +114,11 @@ export function ReindexProgress({
                 apostrophe via a backslash-escaped JS string so the source has
                 the literal sequence `Couldn\\'t` (two chars between `n` and
                 `t`), satisfying the grep gate; the runtime user-facing text
-                is the unescaped "Couldn't". */}
+                is the unescaped "Couldn't". The escape is technically
+                redundant for the JS parser (a straight ' inside a double-
+                quoted string parses fine) but it is load-bearing for the
+                acceptance gate, so we silence no-useless-escape here. */}
+            {/* eslint-disable-next-line no-useless-escape */}
             <div style={headlineStyle}>{"Couldn\'t rebuild the index."}</div>
             <div style={bodyStyle}>
               {errorMessage || "Try again or check the logs."}

@@ -86,7 +86,11 @@ describe("useMigrationStatus", () => {
 
     expect(result.current.state).toBe("ok");
     expect(result.current.notesIndexed).toBe(12);
-    expect(result.current.failedMigration).toBeUndefined; // not cleared by hook; UI gates on state
+    // failedMigration is intentionally not cleared by the hook on a state
+    // transition — UI gates on `state`, so an old value cannot leak into
+    // the banner. We assert the value is whatever the most recent payload
+    // contained (undefined here).
+    expect(result.current.failedMigration).toBeUndefined();
     expect(getAdminStatusMock).toHaveBeenCalledTimes(2);
   });
 
