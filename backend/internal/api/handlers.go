@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -19,9 +20,8 @@ import (
 // passes a real runner.
 //
 // Lives in handlers.go (next to the Server constructors) so the
-// fallback is co-located with its only callers — Plan 02-04b's
-// NewServerWithIndex will continue to use this same type without
-// reaching across files.
+// fallback is co-located with its only callers — both NewServer and
+// NewServerWithIndex substitute it when the status arg is nil.
 type nilStatusProvider struct{}
 
 // Status returns Status{State: ok} so the wire format never carries
@@ -32,40 +32,68 @@ func (nilStatusProvider) Status(_ context.Context) migrate.Status {
 }
 
 // Server bundles dependencies and implements api.StrictServerInterface.
-// Plan 02-06's app.New wires the concrete *notes.Service + runner in
-// via NewServerWithStatus. Plan 02-04b will extend the constructor to
-// 5 args (NewServerWithIndex) by adding the runner + indexer.
+// Plan 02-06's app.New wires the concrete *notes.Service + runner +
+// indexer via NewServerWithIndex (the 5-arg constructor introduced by
+// Plan 02-04b, which replaces the 3-arg NewServerWithStatus from Plan
+// 02-03 — locked decision B-2).
+//
+// status, runner, and index can each be nil; the constructor
+// substitutes a no-op fallback for status (so admin_status always has
+// a source) and the handlers are written to gracefully degrade when
+// runner / index are nil (Phase 1 NewServer compatibility):
+//   - GetNotes with nil index → returns an empty list (NOT 503).
+//   - PostAdminReindex with nil runner → 503 with code "no_runner".
 type Server struct {
 	notes  *notes.Service
 	status migrate.StatusProvider
+	runner *migrate.Runner
+	index  notes.Index
 	log    *slog.Logger
+
+	// reindexBusy serializes /admin/reindex calls per-Server.
+	// admin_reindex_handler.go uses TryLock to return 409
+	// "reindex_in_progress" when busy.
+	reindexBusy sync.Mutex
 }
 
 // NewServer keeps Phase 1's 2-arg signature so existing call sites and
 // tests continue to compile unchanged. Internally delegates to
-// NewServerWithStatus with the nilStatusProvider fallback so
-// GetAdminStatus always has a non-nil source to read from.
+// NewServerWithIndex with nil status/runner/index so the
+// nilStatusProvider fallback applies and GetNotes / PostAdminReindex
+// degrade gracefully.
 func NewServer(notesSvc *notes.Service, log *slog.Logger) *Server {
-	return NewServerWithStatus(notesSvc, nilStatusProvider{}, log)
+	return NewServerWithIndex(notesSvc, nil, nil, nil, log)
 }
 
-// NewServerWithStatus is the 3-arg constructor introduced in Plan
-// 02-03. status is the migration runner's StatusProvider — Plan 02-06
-// passes a *migrate.Runner directly (it implements the interface).
+// NewServerWithIndex is the 5-arg constructor introduced in Plan
+// 02-04b — supersedes Plan 02-03's NewServerWithStatus (3-arg, REMOVED
+// at the same time per locked decision B-2).
 //
-// Plan 02-04b will extend this constructor to NewServerWithIndex
-// (notesSvc, status, runner, index, log) and replace this 3-arg form
-// at the same time. Callers in this plan use NewServer (2-arg) for
-// backwards compatibility OR NewServerWithStatus when they need to
-// inject a real status source.
-func NewServerWithStatus(notesSvc *notes.Service, status migrate.StatusProvider, log *slog.Logger) *Server {
+// Argument order: notesSvc, status, runner, index, log.
+//
+// Plan 02-06's composition root passes a *migrate.Runner for both
+// status (it implements StatusProvider) and runner (the same value),
+// and a *index.Indexer for index (which implements notes.Index).
+func NewServerWithIndex(
+	notesSvc *notes.Service,
+	status migrate.StatusProvider,
+	runner *migrate.Runner,
+	index notes.Index,
+	log *slog.Logger,
+) *Server {
 	if log == nil {
 		log = slog.Default()
 	}
 	if status == nil {
 		status = nilStatusProvider{}
 	}
-	return &Server{notes: notesSvc, status: status, log: log}
+	return &Server{
+		notes:  notesSvc,
+		status: status,
+		runner: runner,
+		index:  index,
+		log:    log,
+	}
 }
 
 // Compile-time assertion: Server satisfies StrictServerInterface.
