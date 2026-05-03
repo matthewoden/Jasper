@@ -4,17 +4,16 @@ package api
 //
 // The compile-time assertion `var _ StrictServerInterface = (*Server)(nil)`
 // in handlers.go requires every spec-declared route to have a method on
-// *Server. Plan 02-02 extends openapi.yaml with three new routes, but
-// the handlers themselves land in Plans 02-03 and 02-04. These stubs
-// keep the build green during Wave 1 by returning a hard 501-shaped
-// error.
+// *Server. Plan 02-02 extends openapi.yaml with three new routes; the
+// real handlers land in Plans 02-03 and 02-04. These stubs keep the
+// build green during Wave 1 by returning a hard 501-shaped error.
 //
-// *** REMOVE when Plans 02-03 and 02-04 land. ***
+// *** REMOVE the rest of this file when Plan 02-04b lands. ***
 //
-// Removal ledger (so Plan 02-04, the last stub-removing plan, can delete
-// the now-empty file once both downstream plans land):
-//   - Plan 02-03 owns: GetAdminStatus stub
-//   - Plan 02-04 owns: GetNotes stub, PostAdminReindex stub, and the
+// Removal ledger (so Plan 02-04b, the last stub-removing plan, can
+// delete this file once both downstream plans land):
+//   - Plan 02-03 OWNED: GetAdminStatus stub — REMOVED in Plan 02-03.
+//   - Plan 02-04b OWNS: GetNotes stub, PostAdminReindex stub, and the
 //     deletion of this entire file once the last stub is replaced.
 
 import (
@@ -29,16 +28,6 @@ var errStubNotImplemented = errors.New("stub: handler not yet implemented (Wave 
 //
 //nolint:revive // generated interface name
 func (s *Server) GetNotes(ctx context.Context, req GetNotesRequestObject) (GetNotesResponseObject, error) {
-	_ = ctx
-	_ = req
-	return nil, errStubNotImplemented
-}
-
-// PLAN-02-03 IMPL — replace with the real admin/status handler that
-// surfaces the migration runner state for the UX-03 banner.
-//
-//nolint:revive // generated interface name
-func (s *Server) GetAdminStatus(ctx context.Context, req GetAdminStatusRequestObject) (GetAdminStatusResponseObject, error) {
 	_ = ctx
 	_ = req
 	return nil, errStubNotImplemented

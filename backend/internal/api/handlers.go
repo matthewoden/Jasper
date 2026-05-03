@@ -8,24 +8,64 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// Server bundles dependencies and implements api.StrictServerInterface.
-// Plan 04's app.New wires the concrete *notes.Service in.
-type Server struct {
-	notes *notes.Service
-	log   *slog.Logger
+// nilStatusProvider is a no-op StatusProvider used when callers (Phase 1
+// tests, fresh-boot paths) construct a Server without wiring the
+// migration runner. Always reports StateOK — safe for tests, never
+// reached in production because Plan 02-06's composition root always
+// passes a real runner.
+//
+// Lives in handlers.go (next to the Server constructors) so the
+// fallback is co-located with its only callers — Plan 02-04b's
+// NewServerWithIndex will continue to use this same type without
+// reaching across files.
+type nilStatusProvider struct{}
+
+// Status returns Status{State: ok} so the wire format never carries
+// the empty-string state value (which would fail openapi enum
+// validation client-side).
+func (nilStatusProvider) Status(_ context.Context) migrate.Status {
+	return migrate.Status{State: migrate.StateOK}
 }
 
-// NewServer constructs a Server bound to the given notes domain service.
-// If log is nil, slog.Default() is used so older callers (and tests) keep
-// working unchanged.
+// Server bundles dependencies and implements api.StrictServerInterface.
+// Plan 02-06's app.New wires the concrete *notes.Service + runner in
+// via NewServerWithStatus. Plan 02-04b will extend the constructor to
+// 5 args (NewServerWithIndex) by adding the runner + indexer.
+type Server struct {
+	notes  *notes.Service
+	status migrate.StatusProvider
+	log    *slog.Logger
+}
+
+// NewServer keeps Phase 1's 2-arg signature so existing call sites and
+// tests continue to compile unchanged. Internally delegates to
+// NewServerWithStatus with the nilStatusProvider fallback so
+// GetAdminStatus always has a non-nil source to read from.
 func NewServer(notesSvc *notes.Service, log *slog.Logger) *Server {
+	return NewServerWithStatus(notesSvc, nilStatusProvider{}, log)
+}
+
+// NewServerWithStatus is the 3-arg constructor introduced in Plan
+// 02-03. status is the migration runner's StatusProvider — Plan 02-06
+// passes a *migrate.Runner directly (it implements the interface).
+//
+// Plan 02-04b will extend this constructor to NewServerWithIndex
+// (notesSvc, status, runner, index, log) and replace this 3-arg form
+// at the same time. Callers in this plan use NewServer (2-arg) for
+// backwards compatibility OR NewServerWithStatus when they need to
+// inject a real status source.
+func NewServerWithStatus(notesSvc *notes.Service, status migrate.StatusProvider, log *slog.Logger) *Server {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Server{notes: notesSvc, log: log}
+	if status == nil {
+		status = nilStatusProvider{}
+	}
+	return &Server{notes: notesSvc, status: status, log: log}
 }
 
 // Compile-time assertion: Server satisfies StrictServerInterface.
