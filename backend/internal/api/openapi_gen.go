@@ -24,6 +24,21 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for FolderNodeKind.
+const (
+	Folder FolderNodeKind = "folder"
+)
+
+// Valid indicates whether the value is a known member of the FolderNodeKind enum.
+func (e FolderNodeKind) Valid() bool {
+	switch e {
+	case Folder:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MigrationStatusState.
 const (
 	Ok            MigrationStatusState = "ok"
@@ -48,6 +63,21 @@ func (e MigrationStatusState) Valid() bool {
 	}
 }
 
+// Defines values for NoteNodeKind.
+const (
+	NoteNodeKindNote NoteNodeKind = "note"
+)
+
+// Valid indicates whether the value is a known member of the NoteNodeKind enum.
+func (e NoteNodeKind) Valid() bool {
+	switch e {
+	case NoteNodeKindNote:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReindexRequestMode.
 const (
 	Full        ReindexRequestMode = "full"
@@ -66,11 +96,52 @@ func (e ReindexRequestMode) Valid() bool {
 	}
 }
 
+// CreateFolderRequest defines model for CreateFolderRequest.
+type CreateFolderRequest struct {
+	// Name New folder basename (single path segment, no `/`).
+	Name string `json:"name"`
+
+	// ParentPath Canonical relative path under notes/ to the parent folder, or ""
+	// for the vault root.
+	ParentPath string `json:"parent_path"`
+}
+
+// CreateNoteRequest defines model for CreateNoteRequest.
+type CreateNoteRequest struct {
+	// ParentPath Canonical relative path under notes/ to the parent folder, or ""
+	// for the vault root. NFC + lowercase per DATA-11; the server
+	// re-canonicalizes defensively.
+	ParentPath string `json:"parent_path"`
+
+	// Title Note title (basename without `.md`); the server appends `.md`.
+	Title string `json:"title"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
+
+// FolderNode defines model for FolderNode.
+type FolderNode struct {
+	// Children ONLY populated when this FolderNode appears inside a Tree response.
+	// Empty (or omitted) when used as a standalone response (POST /folders,
+	// POST /folders/move).
+	Children *[]TreeNode `json:"children,omitempty"`
+
+	// Kind Discriminator value identifying this node as a folder.
+	Kind FolderNodeKind `json:"kind"`
+
+	// Name Basename (last path segment).
+	Name string `json:"name"`
+
+	// Path Canonical relative path under notes/ (NFC + lowercase per DATA-11)
+	Path string `json:"path"`
+}
+
+// FolderNodeKind Discriminator value identifying this node as a folder.
+type FolderNodeKind string
 
 // MigrationStatus defines model for MigrationStatus.
 type MigrationStatus struct {
@@ -100,6 +171,21 @@ type MigrationStatus struct {
 //   - "unrecoverable" — Path 3 fired; static error page is served and the SPA cannot reach this endpoint (documented for future use)
 type MigrationStatusState string
 
+// MoveFolderRequest defines model for MoveFolderRequest.
+type MoveFolderRequest struct {
+	// NewPath New canonical relative path under notes/ for the folder.
+	NewPath string `json:"new_path"`
+
+	// OldPath Current canonical relative path under notes/ for the folder.
+	OldPath string `json:"old_path"`
+}
+
+// MoveNoteRequest defines model for MoveNoteRequest.
+type MoveNoteRequest struct {
+	// NewPath New canonical relative path under notes/ (with `.md` extension).
+	NewPath string `json:"new_path"`
+}
+
 // Note defines model for Note.
 type Note struct {
 	// Content Raw markdown content of the note
@@ -117,6 +203,26 @@ type Note struct {
 type NoteList struct {
 	Notes []NoteSummary `json:"notes"`
 }
+
+// NoteNode defines model for NoteNode.
+type NoteNode struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Discriminator value identifying this node as a note.
+	Kind NoteNodeKind `json:"kind"`
+
+	// Path Canonical relative path under notes/ (NFC + lowercase per DATA-11)
+	Path string `json:"path"`
+
+	// Title First-H1 title or filename without `.md`; never empty.
+	Title string `json:"title"`
+
+	// UpdatedAt Wall-clock UTC of last filesystem mtime observed by the indexer.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// NoteNodeKind Discriminator value identifying this node as a note.
+type NoteNodeKind string
 
 // NoteSummary defines model for NoteSummary.
 type NoteSummary struct {
@@ -152,6 +258,18 @@ type ReindexResponse struct {
 	StartedAt time.Time `json:"started_at"`
 }
 
+// Tree defines model for Tree.
+type Tree struct {
+	// Root Top-level (root) entries — children of the vault root (notes/). The
+	// ROOT itself is implicit; folders nest via children[].
+	Root []TreeNode `json:"root"`
+}
+
+// TreeNode defines model for TreeNode.
+type TreeNode struct {
+	union json.RawMessage
+}
+
 // UpdateNoteRequest defines model for UpdateNoteRequest.
 type UpdateNoteRequest struct {
 	// Content New raw markdown content; replaces the entire file
@@ -168,11 +286,124 @@ type UpdateNoteResponse struct {
 // NoteId defines model for NoteId.
 type NoteId = openapi_types.UUID
 
+// DeleteFolderParams defines parameters for DeleteFolder.
+type DeleteFolderParams struct {
+	// Path Canonical relative path under notes/ (NFC + lowercase per DATA-11)
+	Path string `form:"path" json:"path"`
+
+	// Recursive When false (default), the server returns 409 folder_not_empty if the
+	// folder has any children. The Phase 3 Delete-folder dialog (UI-SPEC
+	// §Surface 4) always sets recursive=true after the user confirms the
+	// content-count copy.
+	Recursive *bool `form:"recursive,omitempty" json:"recursive,omitempty"`
+}
+
 // PostAdminReindexJSONRequestBody defines body for PostAdminReindex for application/json ContentType.
 type PostAdminReindexJSONRequestBody = ReindexRequest
 
+// PostFoldersJSONRequestBody defines body for PostFolders for application/json ContentType.
+type PostFoldersJSONRequestBody = CreateFolderRequest
+
+// PostFolderMoveJSONRequestBody defines body for PostFolderMove for application/json ContentType.
+type PostFolderMoveJSONRequestBody = MoveFolderRequest
+
+// PostNotesJSONRequestBody defines body for PostNotes for application/json ContentType.
+type PostNotesJSONRequestBody = CreateNoteRequest
+
 // PutNoteByIdJSONRequestBody defines body for PutNoteById for application/json ContentType.
 type PutNoteByIdJSONRequestBody = UpdateNoteRequest
+
+// PostNoteMoveJSONRequestBody defines body for PostNoteMove for application/json ContentType.
+type PostNoteMoveJSONRequestBody = MoveNoteRequest
+
+// AsFolderNode returns the union data inside the TreeNode as a FolderNode
+func (t TreeNode) AsFolderNode() (FolderNode, error) {
+	var body FolderNode
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromFolderNode overwrites any union data inside the TreeNode as the provided FolderNode
+func (t *TreeNode) FromFolderNode(v FolderNode) error {
+	v.Kind = "folder"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeFolderNode performs a merge with any union data inside the TreeNode, using the provided FolderNode
+func (t *TreeNode) MergeFolderNode(v FolderNode) error {
+	v.Kind = "folder"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsNoteNode returns the union data inside the TreeNode as a NoteNode
+func (t TreeNode) AsNoteNode() (NoteNode, error) {
+	var body NoteNode
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromNoteNode overwrites any union data inside the TreeNode as the provided NoteNode
+func (t *TreeNode) FromNoteNode(v NoteNode) error {
+	v.Kind = "note"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeNoteNode performs a merge with any union data inside the TreeNode, using the provided NoteNode
+func (t *TreeNode) MergeNoteNode(v NoteNode) error {
+	v.Kind = "note"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t TreeNode) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"kind"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t TreeNode) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "folder":
+		return t.AsFolderNode()
+	case "note":
+		return t.AsNoteNode()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t TreeNode) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *TreeNode) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -182,15 +413,36 @@ type ServerInterface interface {
 	// Report the migration runner state
 	// (GET /admin/status)
 	GetAdminStatus(w http.ResponseWriter, r *http.Request)
+	// Delete a folder (TREE-06) — non-empty requires recursive=true
+	// (DELETE /folders)
+	DeleteFolder(w http.ResponseWriter, r *http.Request, params DeleteFolderParams)
+	// Create a folder (TREE-04)
+	// (POST /folders)
+	PostFolders(w http.ResponseWriter, r *http.Request)
+	// Rename or move a folder (TREE-05, TREE-07)
+	// (POST /folders/move)
+	PostFolderMove(w http.ResponseWriter, r *http.Request)
 	// List all indexed notes (metadata only)
 	// (GET /notes)
 	GetNotes(w http.ResponseWriter, r *http.Request)
+	// Create a new note (TREE-03)
+	// (POST /notes)
+	PostNotes(w http.ResponseWriter, r *http.Request)
+	// Delete a note by UUID (TREE-06)
+	// (DELETE /notes/{id})
+	DeleteNoteById(w http.ResponseWriter, r *http.Request, id NoteId)
 	// Read a note by UUID
 	// (GET /notes/{id})
 	GetNoteById(w http.ResponseWriter, r *http.Request, id NoteId)
 	// Replace the content of a note by UUID
 	// (PUT /notes/{id})
 	PutNoteById(w http.ResponseWriter, r *http.Request, id NoteId)
+	// Rename or move a note (TREE-05, TREE-07)
+	// (POST /notes/{id}/move)
+	PostNoteMove(w http.ResponseWriter, r *http.Request, id NoteId)
+	// Return the full folder/file hierarchy under notes/ (TREE-01)
+	// (GET /tree)
+	GetTree(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -209,9 +461,39 @@ func (_ Unimplemented) GetAdminStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Delete a folder (TREE-06) — non-empty requires recursive=true
+// (DELETE /folders)
+func (_ Unimplemented) DeleteFolder(w http.ResponseWriter, r *http.Request, params DeleteFolderParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a folder (TREE-04)
+// (POST /folders)
+func (_ Unimplemented) PostFolders(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Rename or move a folder (TREE-05, TREE-07)
+// (POST /folders/move)
+func (_ Unimplemented) PostFolderMove(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // List all indexed notes (metadata only)
 // (GET /notes)
 func (_ Unimplemented) GetNotes(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a new note (TREE-03)
+// (POST /notes)
+func (_ Unimplemented) PostNotes(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a note by UUID (TREE-06)
+// (DELETE /notes/{id})
+func (_ Unimplemented) DeleteNoteById(w http.ResponseWriter, r *http.Request, id NoteId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -224,6 +506,18 @@ func (_ Unimplemented) GetNoteById(w http.ResponseWriter, r *http.Request, id No
 // Replace the content of a note by UUID
 // (PUT /notes/{id})
 func (_ Unimplemented) PutNoteById(w http.ResponseWriter, r *http.Request, id NoteId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Rename or move a note (TREE-05, TREE-07)
+// (POST /notes/{id}/move)
+func (_ Unimplemented) PostNoteMove(w http.ResponseWriter, r *http.Request, id NoteId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Return the full folder/file hierarchy under notes/ (TREE-01)
+// (GET /tree)
+func (_ Unimplemented) GetTree(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -264,11 +558,125 @@ func (siw *ServerInterfaceWrapper) GetAdminStatus(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteFolder operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteFolderParams
+
+	// ------------- Required query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "recursive" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "recursive", r.URL.Query(), &params.Recursive, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "recursive"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "recursive", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFolder(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFolders operation middleware
+func (siw *ServerInterfaceWrapper) PostFolders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFolders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFolderMove operation middleware
+func (siw *ServerInterfaceWrapper) PostFolderMove(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFolderMove(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetNotes operation middleware
 func (siw *ServerInterfaceWrapper) GetNotes(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetNotes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostNotes operation middleware
+func (siw *ServerInterfaceWrapper) PostNotes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostNotes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteNoteById operation middleware
+func (siw *ServerInterfaceWrapper) DeleteNoteById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id NoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteNoteById(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -321,6 +729,46 @@ func (siw *ServerInterfaceWrapper) PutNoteById(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutNoteById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostNoteMove operation middleware
+func (siw *ServerInterfaceWrapper) PostNoteMove(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id NoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostNoteMove(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTree operation middleware
+func (siw *ServerInterfaceWrapper) GetTree(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTree(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -450,13 +898,34 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/status", wrapper.GetAdminStatus)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/folders", wrapper.DeleteFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/folders", wrapper.PostFolders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/folders/move", wrapper.PostFolderMove)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/notes", wrapper.GetNotes)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/notes", wrapper.PostNotes)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/notes/{id}", wrapper.DeleteNoteById)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/notes/{id}", wrapper.GetNoteById)
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/notes/{id}", wrapper.PutNoteById)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/notes/{id}/move", wrapper.PostNoteMove)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tree", wrapper.GetTree)
 	})
 
 	return r
@@ -533,6 +1002,206 @@ func (response GetAdminStatus200JSONResponse) VisitGetAdminStatusResponse(w http
 	return err
 }
 
+type DeleteFolderRequestObject struct {
+	Params DeleteFolderParams
+}
+
+type DeleteFolderResponseObject interface {
+	VisitDeleteFolderResponse(w http.ResponseWriter) error
+}
+
+type DeleteFolder204Response struct {
+}
+
+func (response DeleteFolder204Response) VisitDeleteFolderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteFolder400JSONResponse Error
+
+func (response DeleteFolder400JSONResponse) VisitDeleteFolderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFolder404JSONResponse Error
+
+func (response DeleteFolder404JSONResponse) VisitDeleteFolderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFolder409JSONResponse Error
+
+func (response DeleteFolder409JSONResponse) VisitDeleteFolderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFolder500JSONResponse Error
+
+func (response DeleteFolder500JSONResponse) VisitDeleteFolderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostFoldersRequestObject struct {
+	Body *PostFoldersJSONRequestBody
+}
+
+type PostFoldersResponseObject interface {
+	VisitPostFoldersResponse(w http.ResponseWriter) error
+}
+
+type PostFolders201JSONResponse FolderNode
+
+func (response PostFolders201JSONResponse) VisitPostFoldersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostFolders400JSONResponse Error
+
+func (response PostFolders400JSONResponse) VisitPostFoldersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostFolders409JSONResponse Error
+
+func (response PostFolders409JSONResponse) VisitPostFoldersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostFolderMoveRequestObject struct {
+	Body *PostFolderMoveJSONRequestBody
+}
+
+type PostFolderMoveResponseObject interface {
+	VisitPostFolderMoveResponse(w http.ResponseWriter) error
+}
+
+type PostFolderMove200JSONResponse FolderNode
+
+func (response PostFolderMove200JSONResponse) VisitPostFolderMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostFolderMove400JSONResponse Error
+
+func (response PostFolderMove400JSONResponse) VisitPostFolderMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostFolderMove404JSONResponse Error
+
+func (response PostFolderMove404JSONResponse) VisitPostFolderMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostFolderMove409JSONResponse Error
+
+func (response PostFolderMove409JSONResponse) VisitPostFolderMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostFolderMove500JSONResponse Error
+
+func (response PostFolderMove500JSONResponse) VisitPostFolderMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetNotesRequestObject struct {
 }
 
@@ -550,6 +1219,100 @@ func (response GetNotes200JSONResponse) VisitGetNotesResponse(w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostNotesRequestObject struct {
+	Body *PostNotesJSONRequestBody
+}
+
+type PostNotesResponseObject interface {
+	VisitPostNotesResponse(w http.ResponseWriter) error
+}
+
+type PostNotes201JSONResponse NoteSummary
+
+func (response PostNotes201JSONResponse) VisitPostNotesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostNotes400JSONResponse Error
+
+func (response PostNotes400JSONResponse) VisitPostNotesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostNotes409JSONResponse Error
+
+func (response PostNotes409JSONResponse) VisitPostNotesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteNoteByIdRequestObject struct {
+	Id NoteId `json:"id"`
+}
+
+type DeleteNoteByIdResponseObject interface {
+	VisitDeleteNoteByIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteNoteById204Response struct {
+}
+
+func (response DeleteNoteById204Response) VisitDeleteNoteByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteNoteById404JSONResponse Error
+
+func (response DeleteNoteById404JSONResponse) VisitDeleteNoteByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteNoteById500JSONResponse Error
+
+func (response DeleteNoteById500JSONResponse) VisitDeleteNoteByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -655,6 +1418,120 @@ func (response PutNoteById500JSONResponse) VisitPutNoteByIdResponse(w http.Respo
 	return err
 }
 
+type PostNoteMoveRequestObject struct {
+	Id   NoteId `json:"id"`
+	Body *PostNoteMoveJSONRequestBody
+}
+
+type PostNoteMoveResponseObject interface {
+	VisitPostNoteMoveResponse(w http.ResponseWriter) error
+}
+
+type PostNoteMove200JSONResponse NoteSummary
+
+func (response PostNoteMove200JSONResponse) VisitPostNoteMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostNoteMove400JSONResponse Error
+
+func (response PostNoteMove400JSONResponse) VisitPostNoteMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostNoteMove404JSONResponse Error
+
+func (response PostNoteMove404JSONResponse) VisitPostNoteMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostNoteMove409JSONResponse Error
+
+func (response PostNoteMove409JSONResponse) VisitPostNoteMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostNoteMove500JSONResponse Error
+
+func (response PostNoteMove500JSONResponse) VisitPostNoteMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTreeRequestObject struct {
+}
+
+type GetTreeResponseObject interface {
+	VisitGetTreeResponse(w http.ResponseWriter) error
+}
+
+type GetTree200JSONResponse Tree
+
+func (response GetTree200JSONResponse) VisitGetTreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTree500JSONResponse Error
+
+func (response GetTree500JSONResponse) VisitGetTreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Trigger a full or incremental re-index
@@ -663,15 +1540,36 @@ type StrictServerInterface interface {
 	// Report the migration runner state
 	// (GET /admin/status)
 	GetAdminStatus(ctx context.Context, request GetAdminStatusRequestObject) (GetAdminStatusResponseObject, error)
+	// Delete a folder (TREE-06) — non-empty requires recursive=true
+	// (DELETE /folders)
+	DeleteFolder(ctx context.Context, request DeleteFolderRequestObject) (DeleteFolderResponseObject, error)
+	// Create a folder (TREE-04)
+	// (POST /folders)
+	PostFolders(ctx context.Context, request PostFoldersRequestObject) (PostFoldersResponseObject, error)
+	// Rename or move a folder (TREE-05, TREE-07)
+	// (POST /folders/move)
+	PostFolderMove(ctx context.Context, request PostFolderMoveRequestObject) (PostFolderMoveResponseObject, error)
 	// List all indexed notes (metadata only)
 	// (GET /notes)
 	GetNotes(ctx context.Context, request GetNotesRequestObject) (GetNotesResponseObject, error)
+	// Create a new note (TREE-03)
+	// (POST /notes)
+	PostNotes(ctx context.Context, request PostNotesRequestObject) (PostNotesResponseObject, error)
+	// Delete a note by UUID (TREE-06)
+	// (DELETE /notes/{id})
+	DeleteNoteById(ctx context.Context, request DeleteNoteByIdRequestObject) (DeleteNoteByIdResponseObject, error)
 	// Read a note by UUID
 	// (GET /notes/{id})
 	GetNoteById(ctx context.Context, request GetNoteByIdRequestObject) (GetNoteByIdResponseObject, error)
 	// Replace the content of a note by UUID
 	// (PUT /notes/{id})
 	PutNoteById(ctx context.Context, request PutNoteByIdRequestObject) (PutNoteByIdResponseObject, error)
+	// Rename or move a note (TREE-05, TREE-07)
+	// (POST /notes/{id}/move)
+	PostNoteMove(ctx context.Context, request PostNoteMoveRequestObject) (PostNoteMoveResponseObject, error)
+	// Return the full folder/file hierarchy under notes/ (TREE-01)
+	// (GET /tree)
+	GetTree(ctx context.Context, request GetTreeRequestObject) (GetTreeResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -761,6 +1659,94 @@ func (sh *strictHandler) GetAdminStatus(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// DeleteFolder operation middleware
+func (sh *strictHandler) DeleteFolder(w http.ResponseWriter, r *http.Request, params DeleteFolderParams) {
+	var request DeleteFolderRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteFolder(ctx, request.(DeleteFolderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteFolder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteFolderResponseObject); ok {
+		if err := validResponse.VisitDeleteFolderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostFolders operation middleware
+func (sh *strictHandler) PostFolders(w http.ResponseWriter, r *http.Request) {
+	var request PostFoldersRequestObject
+
+	var body PostFoldersJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostFolders(ctx, request.(PostFoldersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostFolders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostFoldersResponseObject); ok {
+		if err := validResponse.VisitPostFoldersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostFolderMove operation middleware
+func (sh *strictHandler) PostFolderMove(w http.ResponseWriter, r *http.Request) {
+	var request PostFolderMoveRequestObject
+
+	var body PostFolderMoveJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostFolderMove(ctx, request.(PostFolderMoveRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostFolderMove")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostFolderMoveResponseObject); ok {
+		if err := validResponse.VisitPostFolderMoveResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetNotes operation middleware
 func (sh *strictHandler) GetNotes(w http.ResponseWriter, r *http.Request) {
 	var request GetNotesRequestObject
@@ -778,6 +1764,63 @@ func (sh *strictHandler) GetNotes(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetNotesResponseObject); ok {
 		if err := validResponse.VisitGetNotesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostNotes operation middleware
+func (sh *strictHandler) PostNotes(w http.ResponseWriter, r *http.Request) {
+	var request PostNotesRequestObject
+
+	var body PostNotesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostNotes(ctx, request.(PostNotesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostNotes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostNotesResponseObject); ok {
+		if err := validResponse.VisitPostNotesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteNoteById operation middleware
+func (sh *strictHandler) DeleteNoteById(w http.ResponseWriter, r *http.Request, id NoteId) {
+	var request DeleteNoteByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteNoteById(ctx, request.(DeleteNoteByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteNoteById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteNoteByIdResponseObject); ok {
+		if err := validResponse.VisitDeleteNoteByIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -844,52 +1887,147 @@ func (sh *strictHandler) PutNoteById(w http.ResponseWriter, r *http.Request, id 
 	}
 }
 
+// PostNoteMove operation middleware
+func (sh *strictHandler) PostNoteMove(w http.ResponseWriter, r *http.Request, id NoteId) {
+	var request PostNoteMoveRequestObject
+
+	request.Id = id
+
+	var body PostNoteMoveJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostNoteMove(ctx, request.(PostNoteMoveRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostNoteMove")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostNoteMoveResponseObject); ok {
+		if err := validResponse.VisitPostNoteMoveResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTree operation middleware
+func (sh *strictHandler) GetTree(w http.ResponseWriter, r *http.Request) {
+	var request GetTreeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTree(ctx, request.(GetTreeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTree")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTreeResponseObject); ok {
+		if err := validResponse.VisitGetTreeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"aPpmBaPi2lXz/ubdzf8FAAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
