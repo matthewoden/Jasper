@@ -23,6 +23,7 @@
 import {
   type ChangeEvent,
   type KeyboardEvent,
+  type SyntheticEvent,
   useCallback,
   useEffect,
   useRef,
@@ -155,6 +156,12 @@ export function RenameInput({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
+      // Stop EVERY key from bubbling to the tree's keymap. react-arborist
+      // listens at the tree-container level for first-letter-jump
+      // (alphanumerics), Enter (open / toggle), Escape (close), and arrow
+      // keys (navigation). While the rename input is mounted, NONE of
+      // those should fire — the input is the active control. (Gap 4)
+      e.stopPropagation();
       if (e.key === "Enter") {
         e.preventDefault();
         void commit();
@@ -170,9 +177,19 @@ export function RenameInput({
         cancel();
         return;
       }
+      // For all other keys (alphanumeric, etc.) we let the input's
+      // default behavior insert the character — propagation is already
+      // stopped above, so the tree's keymap never sees it.
     },
     [commit, cancel],
   );
+
+  // Some browsers' keyboard pipelines listen on keyup / keypress phases
+  // as well; trap those too so nothing escapes to the tree's keymap.
+  // (Gap 4)
+  const handleKeyUpOrPress = useCallback((e: SyntheticEvent) => {
+    e.stopPropagation();
+  }, []);
 
   // Click outside → commit (VS Code convention). Listens on document
   // mousedown so it fires before focus shifts.
@@ -205,6 +222,10 @@ export function RenameInput({
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        onKeyUp={handleKeyUpOrPress}
+        onKeyPress={handleKeyUpOrPress}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
         style={inputStyle}
         aria-invalid={error ? "true" : undefined}
         spellCheck={false}

@@ -497,4 +497,60 @@ describe("<TreeRow />", () => {
       }),
     );
   });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Plan 03-12 Gap 3 — F2 / Backspace key plumbing.
+  //
+  // The 03-07 SUMMARY claims F2 / Backspace bindings reach
+  // onRequestRename / onRequestDelete, but in Phase 3 human-UAT
+  // (Finding F.1) F2 with a tree row focused did nothing. Diagnosis:
+  // either react-arborist's keymap intercepts F2 first or focus lives
+  // on document.body, never reaching the row's onKeyDown. Fix:
+  // TreeRow's handleKeyDown must call BOTH preventDefault AND
+  // stopPropagation so neither React's continuation nor arborist's
+  // bubble listener also handles the key.
+  // ──────────────────────────────────────────────────────────────────
+
+  describe("F2 / Backspace key plumbing (Gap 3)", () => {
+    it("F2 with row focused fires onRequestRename once", () => {
+      const onRequestRename = vi.fn();
+      const node = makeNoteNode({ id: "n1", path: "x.md", title: "x" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+          onRequestRename={onRequestRename}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      row.focus();
+      fireEvent.keyDown(row, { key: "F2" });
+      expect(onRequestRename).toHaveBeenCalledTimes(1);
+      expect(onRequestRename).toHaveBeenCalledWith(node.data);
+    });
+
+    it("F2 does not bubble to parent (stopPropagation)", () => {
+      const parentKeyDown = vi.fn();
+      const onRequestRename = vi.fn();
+      const node = makeNoteNode({ id: "n1", path: "x.md", title: "x" });
+      const { container } = render(
+        <div onKeyDown={parentKeyDown}>
+          <TreeRow
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            node={node as any}
+            style={{}}
+            onSelectNote={vi.fn()}
+            onRequestRename={onRequestRename}
+          />
+        </div>,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      row.focus();
+      fireEvent.keyDown(row, { key: "F2" });
+      expect(onRequestRename).toHaveBeenCalledTimes(1);
+      expect(parentKeyDown).not.toHaveBeenCalled();
+    });
+  });
 });
