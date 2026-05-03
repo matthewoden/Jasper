@@ -1,35 +1,49 @@
-// Package app is the Phase 1 composition root. It wires concrete
-// adapters (fsstore.Store) → ports (notes.FileStore) → service
-// (notes.Service) → API (api.Server + StrictHandler) → router (chi)
-// → SPA fallback (static.Handler).
+// Package app is the composition root. It wires concrete adapters
+// (fsstore.Store) → ports (notes.FileStore) → service (notes.Service)
+// → API (api.Server + StrictHandler) → router (chi) → SPA fallback
+// (static.Handler).
 //
 // chi mount order is FIRST API under r.Route("/api/v1", ...) and LAST
 // the SPA fallback (Pitfall 13). Plan 02's handler tests use the same
 // r.Route("/api/v1", ...) wrapper so dev tests and the production
 // binary serve identical URLs.
+//
+// Phase 2 boundary: New() builds a Phase-1-compatible router with the
+// API server in nil-everything mode (no migration runner, no SQLite
+// pair, no real indexer). The REAL composition (sqlite.Open →
+// migrate.NewRunner → index.New → api.NewServerWithIndex) happens in
+// lifecycle.Run because it is side-effecting (mkdir + open DB) and
+// must run BEFORE the HTTP listener accepts connections (DESIGN.md
+// §6.1). Run replaces a.handler with the fully-wired router after
+// migrations + incremental reindex complete.
 package app
 
 import (
+	"io/fs"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/matthewoden/jasper/backend/internal/api"
+	"github.com/matthewoden/jasper/backend/internal/db/migrate"
+	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
+	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/internal/static"
 )
 
 // Config is the resolved runtime configuration for `jasper serve`.
-// Plan 04's cmd/jasper/serve.go populates this after applying the
+// cmd/jasper/serve.go populates this after applying the
 // flag → env → default precedence chain (D-07).
 type Config struct {
 	// DataDir is the resolved absolute path under which <DataDir>/notes/
-	// holds .md files and <DataDir>/storage/ is reserved for Phase 2's
-	// SQLite database. Caller passes an absolute path; lifecycle.go
-	// creates the subdirs on Run.
+	// holds .md files and <DataDir>/storage/ holds Phase 2's SQLite
+	// database (app.db) and logs. Caller passes an absolute path;
+	// lifecycle.go creates the subdirs on Run.
 	DataDir string
 
 	// ListenAddr is the host:port to bind. Phase 1 enforces loopback
@@ -39,39 +53,79 @@ type Config struct {
 	// Logger is the structured logger used by middleware and lifecycle.
 	// Must be non-nil; cmd/jasper/serve.go passes slog.New(...).
 	Logger *slog.Logger
+
+	// MigrationsOverride is a TEST-ONLY override for the embedded
+	// migrations FS. When non-nil, lifecycle.Run uses this fs.FS
+	// instead of migrations.FS. Production callers leave it nil.
+	//
+	// Used by:
+	//   - app_test.go (TestApp_Run_BrokenMigration_FiresPath1) to
+	//     inject a deliberately broken 002_break.sql
+	//   - cmd/jasper/smoke_test.go via JASPER_TEST_MIGRATIONS_DIR
+	//     env var (cmd/jasper/serve.go reads the env var and sets
+	//     this field to os.DirFS(<dir>) before calling app.New).
+	MigrationsOverride fs.FS
 }
 
-// App bundles the wired application. New constructs all dependencies
-// and returns the composed *App; Run executes the startup sequence and
-// serves until ctx is canceled.
+// App bundles the wired application. New constructs Phase-1-shape
+// dependencies and returns the composed *App; Run executes the Phase 2
+// startup sequence (sqlite + migrate + reindex) and serves until ctx
+// is canceled.
+//
+// pair, runner, and indexer are populated by lifecycle.Run, NOT by
+// New. They are nil between New and Run so Phase 1 tests that call
+// New + Handler() directly continue to work unchanged.
+//
+// diskFullHandler is non-nil ONLY when boot fails (ErrDiskFull or
+// ErrUnrecoverable). When non-nil, lifecycle.Run installs it as
+// a.handler and serves it on the listener instead of the API + SPA.
 type App struct {
 	cfg     Config
 	handler http.Handler
+
+	pair    *sqlite.Pair
+	runner  *migrate.Runner
+	indexer *index.Indexer
+
+	// diskFullHandler is the static error page handler installed
+	// when migrate.Run returns ErrDiskFull or ErrUnrecoverable.
+	// nil during normal operation.
+	diskFullHandler http.Handler
 }
 
-// New builds the composition root. Pure wiring with no side effects
-// on disk — startup steps (mkdir + seed scratchpad.md) are in
-// lifecycle.go and run from App.Run.
+// storageDBPath returns <dataDir>/storage/app.db — the canonical
+// location of the SQLite derived index. Centralized so app.New,
+// lifecycle.Run, and tests agree.
+func storageDBPath(dataDir string) string {
+	return filepath.Join(dataDir, "storage", "app.db")
+}
+
+// New builds a Phase-1-compatible composition for `jasper serve`. The
+// real Phase 2 wiring (sqlite.Open → migrate.NewRunner → index.New →
+// api.NewServerWithIndex) lives in lifecycle.Run because it is side-
+// effecting (mkdir + open DB) and must run BEFORE the listener accepts
+// connections (DESIGN.md §6.1).
 //
-// Wiring sequence (locked):
+// Wiring sequence (Phase-1-shape — kept here for backward compatibility
+// with app_test.go's httptest.NewServer(a.Handler()) pattern):
 //
 //  1. fsstore.NewStore(<DataDir>/notes) — concrete FileStore adapter.
-//  2. notes.NewService(files, nil, log) — domain service. The nil
-//     Index parameter is the Phase 2 hook point per ports.go.
-//  3. api.NewServer(notesSvc, log) — the StrictServerInterface impl.
-//  4. chi router with RequestID + Recoverer + requestLogger middleware
-//     (RequestID FIRST so requestLogger can include the id).
-//  5. r.Route("/api/v1", ...) wrapping api.HandlerFromMux — CRUCIAL
-//     Pitfall 13 mount: the openapi.yaml `servers: - url: /api/v1`
-//     declaration means generated routes are /notes/{id}, NOT
-//     /api/v1/notes/{id}. The wrapper adds the prefix.
-//  6. r.Mount("/", static.Handler()) — SPA fallback LAST. Anything
-//     not matching the API tree falls through to the embedded
-//     index.html.
+//  2. notes.NewService(files, nil, log) — domain service with nil
+//     Index (Service substitutes nopIndex). Phase 2 lifecycle.Run
+//     replaces this with a real *index.Indexer-backed Service.
+//  3. api.NewServer(notesSvc, log) — 2-arg constructor; internally
+//     delegates to NewServerWithIndex with nil status/runner/index
+//     so handlers gracefully degrade.
+//  4. chi router with RequestID + Recoverer + requestLogger.
+//  5. r.Route("/api/v1", ...) wrapping api.HandlerFromMux — Pitfall
+//     13 mount.
+//  6. r.Mount("/", static.Handler()) — SPA fallback LAST.
 func New(cfg Config) (*App, error) {
 	notesDir := notesDirFor(cfg.DataDir)
 	files := fsstore.NewStore(notesDir)
-	// Phase 1 passes nil Index — Phase 2 will inject *db.Index here.
+	// Phase-1-shape: nil Index → Service substitutes nopIndex.
+	// lifecycle.Run rebuilds the Service with a real *index.Indexer
+	// after sqlite.Open + migrate.Run succeed.
 	notesSvc := notes.NewService(files, nil, cfg.Logger)
 	apiServer := api.NewServer(notesSvc, cfg.Logger)
 
@@ -81,29 +135,13 @@ func New(cfg Config) (*App, error) {
 	r.Use(requestLogger(cfg.Logger))
 
 	// ORDER MATTERS — Pitfall 13.
-	//
-	// 1) API FIRST, mounted UNDER /api/v1 so the generated routes
-	//    (which are /notes/{id} per openapi.yaml `paths:` block)
-	//    resolve at /api/v1/notes/{id} per the openapi.yaml
-	//    `servers: - url: /api/v1` declaration. This MUST match
-	//    Plan 02's handler-test mount pattern or dev tests and prod
-	//    serve different URLs.
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
-		// CR-03: cap PUT body size before oapi-codegen reads it into
-		// memory. 10 MiB is well above any plausible markdown file
-		// (the largest notes in the wild are <1 MiB) and far below
-		// the gigabyte-class allocations a runaway frontend bug or
-		// curl typo could otherwise force.
 		r.Use(maxBodyBytes(maxRequestBodyBytes))
 		api.HandlerFromMux(si, r)
 	})
 
-	// 2) (no /ws in Phase 1 — Phase 4 will add)
-
-	// 3) SPA fallback LAST. r.Mount registers a catch-all that the
-	//    chi tree only consults after the /api/v1 subrouter has had
-	//    a chance to match (and 404 cleanly) the request.
+	// SPA fallback LAST.
 	r.Mount("/", static.Handler())
 
 	return &App{cfg: cfg, handler: r}, nil
