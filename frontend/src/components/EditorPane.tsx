@@ -41,7 +41,18 @@ export const SAVED_STICKY_MS = 2000;
 const LOAD_ERROR_COPY =
   "Could not load scratchpad. Check that the server is running, then refresh the page.";
 
-export function EditorPane() {
+// Phase 2 (UI-SPEC §Surface 3 + §Layout Contract): when reindexing=true the
+// textarea disables and shows this placeholder. App.tsx mounts the
+// <ReindexProgress /> overlay in the editor pane's place during a real
+// reindex; this prop is the in-component guard so save attempts that race
+// the unmount cannot leak through.
+const REINDEXING_PLACEHOLDER = "Index is rebuilding…";
+
+interface EditorPaneProps {
+  reindexing?: boolean;
+}
+
+export function EditorPane({ reindexing = false }: EditorPaneProps = {}) {
   const [content, setContent] = useState("");
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const [saveState, dispatch] = useReducer(
@@ -100,8 +111,20 @@ export function EditorPane() {
     }
   }, [loadStatus]);
 
+  // Keep the freshest reindexing flag in a ref so the save callback (which
+  // is memoized with [] deps for stable identity across renders) reads the
+  // current value without rebinding the whole hook chain.
+  const reindexingRef = useRef(reindexing);
+  useEffect(() => {
+    reindexingRef.current = reindexing;
+  }, [reindexing]);
+
   // 2. Save the latest content. Implements coalescing per UI-SPEC.
   const performSave = useCallback(async (latestContent: string) => {
+    // Phase 2 reindex guard: the parent will unmount the editor while the
+    // overlay is up, but a debounced save fired moments before unmount can
+    // still race through. Drop it.
+    if (reindexingRef.current) return;
     if (inFlight.current) {
       // Coalesce — mark exactly ONE trailing save; subsequent saves during the
       // same in-flight window overwrite this single slot (no save storm).
@@ -213,11 +236,17 @@ export function EditorPane() {
         ref={textareaRef}
         className="flex-1 bg-bg text-fg font-mono p-4 outline-none resize-none border-0"
         style={{ fontSize: "15px", lineHeight: 1.6 }}
-        value={loadStatus === "loaded" ? content : ""}
-        placeholder={loadStatus === "loading" ? "Loading…" : ""}
+        value={loadStatus === "loaded" && !reindexing ? content : ""}
+        placeholder={
+          reindexing
+            ? REINDEXING_PLACEHOLDER
+            : loadStatus === "loading"
+              ? "Loading…"
+              : ""
+        }
         onChange={onChange}
         onKeyDown={onKeyDown}
-        disabled={loadStatus !== "loaded"}
+        disabled={loadStatus !== "loaded" || reindexing}
         spellCheck={false}
         autoComplete="off"
         autoCorrect="off"

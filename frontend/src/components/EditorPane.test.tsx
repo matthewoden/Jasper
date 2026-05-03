@@ -402,4 +402,18 @@ describe("<EditorPane />", () => {
     await flushMicrotasks();
     expect(updateNoteMock).not.toHaveBeenCalled();
   });
+
+  it("Phase 2: when reindexing=true, textarea is disabled with the locked placeholder", async () => {
+    getNoteMock.mockResolvedValue(okGet("a"));
+    updateNoteMock.mockResolvedValue(okPut());
+
+    render(<EditorPane reindexing={true} />);
+    await flushMicrotasks();
+
+    const textarea = screen.getByLabelText(
+      "Scratchpad note content",
+    ) as HTMLTextAreaElement;
+    expect(textarea).toBeDisabled();
+    expect(textarea.placeholder).toBe("Index is rebuilding…");
+  });
 });
