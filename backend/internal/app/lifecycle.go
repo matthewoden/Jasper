@@ -232,6 +232,33 @@ func (a *App) Run(ctx context.Context) error {
 	// replace with the real one now that pair / indexer / runner exist.
 	files := fsstore.NewStore(notesDir)
 	notesSvc := notes.NewService(files, a.indexer, a.cfg.Logger)
+
+	// 8a. Phase 3 Plan 03-04 NEW — hydrate the in-memory registry from
+	// indexed summaries so any UUID returned by GET /notes / GET /tree
+	// resolves via Service.Get. ScratchpadUUID is included automatically
+	// because the indexer's chooseID assigns it during reconcile when it
+	// sees scratchpad.md.
+	//
+	// Listener-gating contract from DESIGN.md §6.1 is preserved: this
+	// runs strictly before serveListener (step 9), so no incoming
+	// connection observes the registry in its pre-hydration (single-
+	// scratchpad-only) state. T-03-04-07 mitigation.
+	//
+	// Skip cleanly when state == Unrecoverable (the indexer DB tables
+	// may not exist) — list would error and nothing is gained.
+	if a.indexer != nil && status.State != migrate.StateUnrecoverable {
+		if summaries, err := a.indexer.List(ctx); err == nil {
+			notesSvc.Registry().Hydrate(summaries)
+			a.cfg.Logger.Info("registry hydrated", "count", len(summaries))
+		} else {
+			a.cfg.Logger.Warn("registry hydrate: List failed (proceeding with empty registry)",
+				"err", err)
+		}
+	}
+	a.mu.Lock()
+	a.notesSvc = notesSvc
+	a.mu.Unlock()
+
 	// B-2 locked 5-arg form: (notesSvc, status, runner, index, log).
 	// a.runner implements migrate.StatusProvider, so it's passed twice:
 	// once as the status reader for /admin/status and once as the

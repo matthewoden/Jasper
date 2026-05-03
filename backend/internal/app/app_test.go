@@ -658,18 +658,149 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 		t.Fatalf("listener did not come up: %v", err)
 	}
 
-	// Listener is up via the disk-full handler. Pair MUST still be nil
-	// — the preflight ran before sqlite.Open, so no connection was ever
-	// opened. This is a stronger invariant than the previous "pair was
-	// opened, then closed via defer": now there is no connection to
-	// leak in the first place.
+	// Listener is up via the disk-full handler. Cancel + wait for Run
+	// to return BEFORE inspecting unexported fields — the channel-receive
+	// on runErr is the Go memory-model happens-before edge from the Run
+	// goroutine's writes to the test goroutine's reads (Plan 03-04 Rule 3
+	// auto-fix; addresses the pre-existing race documented in
+	// .planning/phases/03-file-tree-folder-crud/deferred-items.md).
+	cancel()
+	<-runErr
+
+	// Pair MUST still be nil — the preflight ran before sqlite.Open, so
+	// no connection was ever opened. This is a stronger invariant than
+	// the previous "pair was opened, then closed via defer": now there
+	// is no connection to leak in the first place.
 	if a.pair != nil {
 		t.Fatalf("a.pair is non-nil after disk-full preflight; expected nil (sqlite.Open should not have run)")
 	}
 	if a.diskFullHandler == nil {
 		t.Fatalf("a.diskFullHandler is nil; expected disk-full static handler installed")
 	}
+}
+
+// TestRun_HydrateRegistry — Plan 03-04 Task 4: verifies the
+// composition root hydrates the in-memory registry from indexer.List
+// AFTER the startup incremental reindex completes and BEFORE the
+// HTTP listener accepts connections (T-03-04-07 mitigation).
+//
+// Test setup: a tempdir vault with two .md files (alpha.md and
+// projects/beta.md). After Run sets up the listener, the registry
+// must already contain non-scratchpad UUIDs — Service.Get on a
+// freshly-indexed UUID must succeed.
+func TestRun_HydrateRegistry(t *testing.T) {
+	dir := t.TempDir()
+
+	// Pre-seed the notes/ tree with two files BEFORE Run, so the
+	// incremental reindex picks them up at startup.
+	if err := EnsureDataDir(dir); err != nil {
+		t.Fatalf("EnsureDataDir: %v", err)
+	}
+	notesDir := notesDirFor(dir)
+	if err := os.WriteFile(filepath.Join(notesDir, "alpha.md"), []byte("# Alpha\n"), 0o644); err != nil {
+		t.Fatalf("write alpha.md: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(notesDir, "projects"), 0o755); err != nil {
+		t.Fatalf("mkdir projects: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(notesDir, "projects", "beta.md"), []byte("# Beta\n"), 0o644); err != nil {
+		t.Fatalf("write beta.md: %v", err)
+	}
+
+	addr := pickFreePort(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a, err := New(Config{
+		DataDir:    dir,
+		ListenAddr: addr,
+		Logger:     logger,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runErr := make(chan error, 1)
+	go func() { runErr <- a.Run(ctx) }()
+
+	// Wait for the listener.
+	probe := func() error {
+		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err != nil {
+			return err
+		}
+		_ = c.Close()
+		return nil
+	}
+	if err := waitFor(t, 5*time.Second, probe); err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("listener did not come up: %v", err)
+	}
+
+	// 1. NotesService accessor must be wired.
+	svc := a.NotesService()
+	if svc == nil {
+		cancel()
+		<-runErr
+		t.Fatalf("NotesService(): nil after Run set up listener")
+	}
+
+	// 2. The registry must contain at least 3 entries: scratchpad +
+	//    alpha.md + projects/beta.md. We probe by issuing a GET /notes
+	//    over the live listener and asserting Service.Get resolves on
+	//    the returned UUIDs.
+	resp, err := http.Get("http://" + addr + "/api/v1/notes")
+	if err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("GET /api/v1/notes: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		cancel()
+		<-runErr
+		t.Fatalf("GET /api/v1/notes: %d; body=%s", resp.StatusCode, body)
+	}
+	var listOut struct {
+		Notes []struct {
+			Id   string `json:"id"`
+			Path string `json:"path"`
+		} `json:"notes"`
+	}
+	if err := json.Unmarshal(body, &listOut); err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("unmarshal: %v; body=%s", err, body)
+	}
+	if len(listOut.Notes) < 3 {
+		cancel()
+		<-runErr
+		t.Fatalf("expected at least 3 notes (scratchpad, alpha, projects/beta); got %d; body=%s",
+			len(listOut.Notes), body)
+	}
+
+	// 3. For every UUID surfaced by GET /notes, Service.Get must
+	//    resolve — proving the registry was hydrated, not just the
+	//    scratchpad.
+	for _, n := range listOut.Notes {
+		id, perr := uuid.Parse(n.Id)
+		if perr != nil {
+			cancel()
+			<-runErr
+			t.Fatalf("parse id %q: %v", n.Id, perr)
+		}
+		if _, gerr := svc.Get(ctx, id); gerr != nil {
+			cancel()
+			<-runErr
+			t.Fatalf("Service.Get(%s, path=%s) failed: %v (registry not hydrated for non-scratchpad UUIDs)",
+				n.Id, n.Path, gerr)
+		}
+	}
 
 	cancel()
-	<-runErr
+	if err := <-runErr; err != nil {
+		t.Errorf("Run returned error after cancel: %v", err)
+	}
 }

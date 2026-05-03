@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"errors"
+	"time"
 
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -53,4 +55,111 @@ func (s *Server) GetNotes(
 		})
 	}
 	return out, nil
+}
+
+// PostNotes implements POST /api/v1/notes (TREE-03 — note creation).
+//
+// Thin shim per Plan 03-04: validate body presence → call
+// notes.Service.Create → translate response. All business logic lives
+// in the service layer; the handler only fan-outs the locked error
+// table.
+//
+//nolint:revive // generated interface name
+func (s *Server) PostNotes(
+	ctx context.Context,
+	req PostNotesRequestObject,
+) (PostNotesResponseObject, error) {
+	if req.Body == nil {
+		return PostNotes400JSONResponse(newError("invalid_request", "request body required")), nil
+	}
+	summary, err := s.notes.Create(ctx, req.Body.ParentPath, req.Body.Title)
+	if err != nil {
+		s.log.Error("PostNotes: domain error",
+			"parent", req.Body.ParentPath,
+			"title", req.Body.Title,
+			"err", err,
+		)
+		if code, msg, ok := mapServiceErrorToWire(err); ok {
+			switch code {
+			case "case_collision":
+				return PostNotes409JSONResponse(newError(code, msg)), nil
+			case "parent_not_found", "invalid_path", "invalid_request":
+				return PostNotes400JSONResponse(newError(code, msg)), nil
+			}
+		}
+		// Bare error → strict-server emits 500 with a generic message.
+		return nil, errors.New("could not create note")
+	}
+	return PostNotes201JSONResponse{
+		Id:        openapi_types.UUID(summary.ID),
+		Path:      summary.Path,
+		Title:     summary.Title,
+		UpdatedAt: summary.UpdatedAt,
+	}, nil
+}
+
+// DeleteNoteById implements DELETE /api/v1/notes/{id} (TREE-06).
+//
+//nolint:revive // generated interface name
+func (s *Server) DeleteNoteById(
+	ctx context.Context,
+	req DeleteNoteByIdRequestObject,
+) (DeleteNoteByIdResponseObject, error) {
+	if err := s.notes.Delete(ctx, uuid.UUID(req.Id)); err != nil {
+		s.log.Error("DeleteNoteById: domain error",
+			"id", uuid.UUID(req.Id).String(),
+			"err", err,
+		)
+		if code, msg, ok := mapServiceErrorToWire(err); ok {
+			if code == "not_found" {
+				return DeleteNoteById404JSONResponse(newError(code, msg)), nil
+			}
+		}
+		// Any other error: 500 via bare error.
+		return nil, errors.New("could not delete note")
+	}
+	return DeleteNoteById204Response{}, nil
+}
+
+// PostNoteMove implements POST /api/v1/notes/{id}/move (TREE-05, TREE-07).
+//
+//nolint:revive // generated interface name
+func (s *Server) PostNoteMove(
+	ctx context.Context,
+	req PostNoteMoveRequestObject,
+) (PostNoteMoveResponseObject, error) {
+	if req.Body == nil {
+		return PostNoteMove400JSONResponse(newError("invalid_request", "request body required")), nil
+	}
+	summary, err := s.notes.Move(ctx, uuid.UUID(req.Id), req.Body.NewPath)
+	if err != nil {
+		s.log.Error("PostNoteMove: domain error",
+			"id", uuid.UUID(req.Id).String(),
+			"new_path", req.Body.NewPath,
+			"err", err,
+		)
+		if code, msg, ok := mapServiceErrorToWire(err); ok {
+			switch code {
+			case "not_found":
+				return PostNoteMove404JSONResponse(newError(code, msg)), nil
+			case "case_collision":
+				return PostNoteMove409JSONResponse(newError(code, msg)), nil
+			case "parent_not_found", "invalid_path", "invalid_request":
+				return PostNoteMove400JSONResponse(newError(code, msg)), nil
+			}
+		}
+		return nil, errors.New("could not move note")
+	}
+	// Service.Move returns NoteSummary with UpdatedAt synthesized from
+	// the index mtime. Wire that through unchanged.
+	updatedAt := summary.UpdatedAt
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+	return PostNoteMove200JSONResponse{
+		Id:        openapi_types.UUID(summary.ID),
+		Path:      summary.Path,
+		Title:     summary.Title,
+		UpdatedAt: updatedAt,
+	}, nil
 }

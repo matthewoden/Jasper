@@ -1,0 +1,104 @@
+package api
+
+import (
+	"context"
+	"errors"
+
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
+	"github.com/matthewoden/jasper/backend/internal/index"
+)
+
+// GetTree implements GET /api/v1/tree (TREE-01 — file-tree endpoint).
+//
+// Calls *index.Indexer.BuildTree (the canonical projection of SQLite
+// rows + filesystem directory listing into a nested folder/note
+// hierarchy) and translates the package-internal *index.Tree into the
+// wire-shape api.Tree declared in Plan 03-01's openapi.yaml. The
+// translation goes through oapi-codegen-generated FromFolderNode /
+// FromNoteNode helpers — they're the only safe way to populate the
+// discriminated TreeNode oneOf union (T-03-04-09 mitigation).
+//
+// Phase 1 compatibility: when the Server has a nil index (the 2-arg
+// NewServer constructor), GetTree returns an empty Tree so the
+// frontend can render an empty file-tree without surfacing a 503.
+//
+// The returned Tree is a strict subset of internal NoteRecord fields
+// (T-03-04-03 / T-03-01-02 mitigation: NEVER ship checksum_sha256,
+// size_bytes, mtime_unix, or updated_at_unix to the wire).
+//
+//nolint:revive // generated interface name
+func (s *Server) GetTree(
+	ctx context.Context,
+	_ GetTreeRequestObject,
+) (GetTreeResponseObject, error) {
+	if s.index == nil {
+		return GetTree200JSONResponse{Root: []TreeNode{}}, nil
+	}
+	idx, ok := s.index.(*index.Indexer)
+	if !ok || idx == nil {
+		// The Server.index field is the notes.Index port; in production
+		// it's always a *index.Indexer (lifecycle.Run wires it). Phase
+		// 1 nil-falls-through above; tests that pass a fake notes.Index
+		// land here. Return empty tree rather than 500 — BuildTree is
+		// not part of the port contract, only the *Indexer concrete
+		// implementation has it.
+		return GetTree200JSONResponse{Root: []TreeNode{}}, nil
+	}
+	t, err := idx.BuildTree(ctx)
+	if err != nil {
+		s.log.Error("GetTree: BuildTree failed", "err", err)
+		return nil, errors.New("could not build tree")
+	}
+	return GetTree200JSONResponse(translateTreeToWire(t)), nil
+}
+
+// translateTreeToWire converts the package-internal *index.Tree into
+// the api.Tree wire shape declared in Plan 03-01's openapi.yaml. The
+// discriminated TreeNode is built via oapi-codegen-generated
+// FromFolderNode / FromNoteNode — they set the `kind` discriminator
+// for us so the JSON shape matches the spec.
+func translateTreeToWire(t *index.Tree) Tree {
+	if t == nil {
+		return Tree{Root: []TreeNode{}}
+	}
+	out := Tree{Root: make([]TreeNode, 0, len(t.Root))}
+	for _, n := range t.Root {
+		out.Root = append(out.Root, translateNodeToWire(n))
+	}
+	return out
+}
+
+// translateNodeToWire converts a single index.TreeNode tagged-union
+// into the wire's TreeNode discriminated union. Exactly one of
+// n.Folder / n.Note is non-nil per the *index.TreeNode contract.
+func translateNodeToWire(n index.TreeNode) TreeNode {
+	if n.Folder != nil {
+		kids := make([]TreeNode, 0, len(n.Folder.Children))
+		for _, c := range n.Folder.Children {
+			kids = append(kids, translateNodeToWire(c))
+		}
+		folder := FolderNode{
+			Kind:     FolderNodeKind("folder"),
+			Path:     n.Folder.Path,
+			Name:     n.Folder.Name,
+			Children: &kids,
+		}
+		var wire TreeNode
+		_ = wire.FromFolderNode(folder)
+		return wire
+	}
+	if n.Note != nil {
+		note := NoteNode{
+			Kind:      NoteNodeKind("note"),
+			Id:        openapi_types.UUID(n.Note.ID),
+			Path:      n.Note.Path,
+			Title:     n.Note.Title,
+			UpdatedAt: n.Note.UpdatedAt,
+		}
+		var wire TreeNode
+		_ = wire.FromNoteNode(note)
+		return wire
+	}
+	return TreeNode{}
+}
