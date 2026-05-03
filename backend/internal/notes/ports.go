@@ -27,6 +27,34 @@ type FileStore interface {
 	// populate Note.UpdatedAt. Returns an error wrapping fs.ErrNotExist
 	// if the file is missing.
 	Stat(relPath string) (modTime time.Time, err error)
+
+	// Phase 3 Plan 03-03 mutation primitives. Implementations route
+	// through fsstore.Canonicalize internally for DATA-11 + DATA-12 +
+	// DATA-13 enforcement. See backend/internal/fsstore/ops.go for the
+	// full contract:
+	//
+	//   - CreateFile creates a zero-byte .md file; ErrCaseCollision if
+	//     the path is already taken; ErrParentNotFound if the immediate
+	//     parent does not exist (single-level mkdir policy).
+	//   - DeleteFile removes a file; fs.ErrNotExist propagates so the
+	//     API layer maps to 404.
+	//   - MoveFile renames a file; ErrCaseCollision / ErrParentNotFound
+	//     for the destination; both paths are canonicalized.
+	//   - CreateDir creates a directory with mode 0755; ErrCaseCollision
+	//     if anything (file or dir) already exists at the path;
+	//     ErrParentNotFound if the immediate parent does not exist.
+	//   - DeleteDir(recursive=false) returns ErrFolderNotEmpty if the
+	//     directory has any children; recursive=true removes the entire
+	//     subtree.
+	//   - MoveDir renames a directory; ErrCycle if the destination is
+	//     the source itself or a descendant of it; ErrCaseCollision /
+	//     ErrParentNotFound otherwise.
+	CreateFile(relPath string) error
+	DeleteFile(relPath string) error
+	MoveFile(oldRelPath, newRelPath string) error
+	CreateDir(relPath string) error
+	DeleteDir(relPath string, recursive bool) error
+	MoveDir(oldRelPath, newRelPath string) error
 }
 
 // Index is the port over the SQLite derived-index adapter. The

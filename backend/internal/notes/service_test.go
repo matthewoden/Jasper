@@ -56,6 +56,17 @@ func (f *fakeFileStore) Stat(_ string) (time.Time, error) {
 	return f.statTime, f.statErr
 }
 
+// Phase 3 Plan 03-03 — extended notes.FileStore port methods. The
+// Phase 1+2 tests in this file do not exercise mutation primitives;
+// the new Plan 03-03 tests use a real fsstore.Store via newRealFSSvc.
+// Default no-ops keep the port satisfied at compile time.
+func (f *fakeFileStore) CreateFile(_ string) error          { return nil }
+func (f *fakeFileStore) DeleteFile(_ string) error          { return nil }
+func (f *fakeFileStore) MoveFile(_, _ string) error         { return nil }
+func (f *fakeFileStore) CreateDir(_ string) error           { return nil }
+func (f *fakeFileStore) DeleteDir(_ string, _ bool) error   { return nil }
+func (f *fakeFileStore) MoveDir(_, _ string) error          { return nil }
+
 // fakeIndex is the in-test Index spy. Captures Upsert/Delete/List
 // calls so tests can assert ordering (file-FIRST), call counts, and
 // the NoteRecord shape Service constructs from the on-disk metadata.
