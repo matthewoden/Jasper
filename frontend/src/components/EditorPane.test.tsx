@@ -124,7 +124,7 @@ describe("<EditorPane />", () => {
     render(<EditorPane noteId={ScratchpadUUID} />);
 
     const textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     expect(textarea).toBeDisabled();
     expect(textarea).toHaveAttribute("placeholder", "Loading…");
@@ -148,12 +148,12 @@ describe("<EditorPane />", () => {
 
     expect(
       screen.getByText(
-        "Could not load scratchpad. Check that the server is running, then refresh the page.",
+        "Could not load note. Check that the server is running, then refresh the page.",
       ),
     ).toBeInTheDocument();
 
     const textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     expect(textarea).toBeDisabled();
   });
@@ -166,7 +166,7 @@ describe("<EditorPane />", () => {
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     await waitFor(() => expect(textarea).not.toBeDisabled());
 
@@ -206,7 +206,7 @@ describe("<EditorPane />", () => {
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     await waitFor(() => expect(textarea).not.toBeDisabled());
 
@@ -245,7 +245,7 @@ describe("<EditorPane />", () => {
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     await waitFor(() => expect(textarea).not.toBeDisabled());
 
@@ -264,7 +264,7 @@ describe("<EditorPane />", () => {
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     await waitFor(() => expect(textarea).not.toBeDisabled());
 
@@ -313,7 +313,7 @@ describe("<EditorPane />", () => {
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     await waitFor(() => expect(textarea).not.toBeDisabled());
 
@@ -370,7 +370,7 @@ describe("<EditorPane />", () => {
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     await waitFor(() => expect(textarea).not.toBeDisabled());
 
@@ -393,7 +393,7 @@ describe("<EditorPane />", () => {
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     await waitFor(() => expect(textarea).not.toBeDisabled());
 
@@ -411,7 +411,7 @@ describe("<EditorPane />", () => {
     await flushMicrotasks();
 
     const textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     expect(textarea).toBeDisabled();
     expect(textarea.placeholder).toBe("Index is rebuilding…");
@@ -424,7 +424,7 @@ describe("<EditorPane />", () => {
       screen.getByText("Select a note to start editing."),
     ).toBeInTheDocument();
     // No textarea / no API call when noteId is null.
-    expect(screen.queryByLabelText("Scratchpad note content")).toBeNull();
+    expect(screen.queryByLabelText("Note content")).toBeNull();
     expect(getNoteMock).not.toHaveBeenCalled();
   });
 
@@ -439,7 +439,7 @@ describe("<EditorPane />", () => {
     );
     await flushMicrotasks();
     let textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     await waitFor(() => expect(textarea).not.toBeDisabled());
 
@@ -448,9 +448,36 @@ describe("<EditorPane />", () => {
     rerender(<EditorPane noteId="other-id" />);
     await flushMicrotasks();
     textarea = screen.getByLabelText(
-      "Scratchpad note content",
+      "Note content",
     ) as HTMLTextAreaElement;
     await waitFor(() => expect(textarea).not.toBeDisabled());
     expect(getNoteMock).toHaveBeenCalledWith("other-id");
+  });
+});
+
+describe("generic load-error copy (Gap 6b)", () => {
+  it("LOAD_ERROR_COPY does not mention scratchpad", async () => {
+    getNoteMock.mockResolvedValue(errGet("boom"));
+
+    render(<EditorPane noteId="any-uuid" />);
+    const alert = await screen.findByRole("alert");
+
+    expect(alert.textContent ?? "").toMatch(/Could not load note/);
+    expect(alert.textContent ?? "").not.toMatch(/scratchpad/i);
+    expect(alert.textContent ?? "").toMatch(
+      /Check that the server is running/,
+    );
+  });
+
+  it("textarea aria-label is generic 'Note content', not 'Scratchpad note content'", async () => {
+    getNoteMock.mockResolvedValue(okGet("hi"));
+
+    render(<EditorPane noteId="any-uuid" />);
+    await flushMicrotasks();
+
+    const textarea = (await screen.findByRole(
+      "textbox",
+    )) as HTMLTextAreaElement;
+    expect(textarea.getAttribute("aria-label")).toBe("Note content");
   });
 });

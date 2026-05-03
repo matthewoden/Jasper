@@ -4,13 +4,13 @@
  * in-flight save coalescing, all driving the locked SaveIndicator
  * state machine (Phase 1 Task 1).
  *
- * Phase 3 (Plan 03-07) refactor: the hardcoded ScratchpadUUID is
- * replaced by a `noteId: string | null` prop driven from
- * useTreeStore.activeNoteId. When noteId === null, render the locked
- * placeholder ("Select a note to start editing.") with no API calls.
- * When noteId changes, the load effect re-runs against the new id,
- * the userHasEdited latch resets, and the existing save-state machine
- * is re-initialized for the new note.
+ * Phase 3 (Plan 03-07) refactor: the prior single-note model (Phase 1's
+ * hardcoded note UUID) is replaced by a `noteId: string | null` prop
+ * driven from useTreeStore.activeNoteId. When noteId === null, render
+ * the locked placeholder ("Select a note to start editing.") with no
+ * API calls. When noteId changes, the load effect re-runs against the
+ * new id, the userHasEdited latch resets, and the existing save-state
+ * machine is re-initialized for the new note.
  *
  * Per 01-UI-SPEC.md §"Forward-looking constraint": Phase 5's
  * CodeMirror swap replaces ONLY the <textarea> element. The autosave
@@ -43,7 +43,7 @@ export const AUTOSAVE_DEBOUNCE_MS = 2000;
 export const SAVED_STICKY_MS = 2000;
 
 const LOAD_ERROR_COPY =
-  "Could not load scratchpad. Check that the server is running, then refresh the page.";
+  "Could not load note. Check that the server is running, then refresh the page.";
 
 // Phase 2 (UI-SPEC §Surface 3 + §Layout Contract): when reindexing=true the
 // textarea disables and shows this placeholder. App.tsx mounts the
@@ -306,7 +306,7 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
         autoComplete="off"
         autoCorrect="off"
         autoCapitalize="off"
-        aria-label="Scratchpad note content"
+        aria-label="Note content"
       />
     </section>
   );
