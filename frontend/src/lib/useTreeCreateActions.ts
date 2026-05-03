@@ -7,10 +7,15 @@
  *
  * Behavior:
  *   1. POST /notes (or /folders) with parentPath + a "untitled" name.
- *   2. Refresh the tree.
- *   3. Set useTreeStore.pendingRename to the new node so it immediately
- *      enters inline-rename mode with the locked default name selected.
- *   4. On TreeMutationError or any other failure, surface a destructive
+ *      The mutator inside useTreeMutations refreshes the tree on
+ *      success automatically (Plan 03-09 — Gap 1 contract is in the
+ *      data layer, not the caller).
+ *   2. Set useTreeStore.pendingRename to the new node so it
+ *      immediately enters inline-rename mode with the locked default
+ *      name selected. This runs AFTER muts.createNote / muts.createFolder
+ *      resolves — by then the auto-refresh has landed and the new row
+ *      exists in the freshly-fetched tree.
+ *   3. On TreeMutationError or any other failure, surface a destructive
  *      toast with the matching locked tuple per UI-SPEC §Surface 5.
  */
 import { useCallback } from "react";
@@ -19,7 +24,6 @@ import {
   TreeMutationError,
   useTreeMutations,
 } from "./useTreeMutations";
-import { useFileTree } from "./useFileTree";
 import { useTreeStore } from "./useTreeStore";
 import { useToast } from "../components/Toast";
 
@@ -30,7 +34,6 @@ export interface UseTreeCreateActions {
 
 export function useTreeCreateActions(): UseTreeCreateActions {
   const muts = useTreeMutations();
-  const { refresh } = useFileTree();
   const { toast } = useToast();
 
   const handleErr = useCallback(
@@ -69,26 +72,24 @@ export function useTreeCreateActions(): UseTreeCreateActions {
     async (parentPath: string) => {
       try {
         const s = await muts.createNote(parentPath, "untitled");
-        await refresh();
         useTreeStore.getState().startRename("note", s.id);
       } catch (e) {
         handleErr(e);
       }
     },
-    [muts, refresh, handleErr],
+    [muts, handleErr],
   );
 
   const createFolderAt = useCallback(
     async (parentPath: string) => {
       try {
         const f = await muts.createFolder(parentPath, "untitled");
-        await refresh();
         useTreeStore.getState().startRename("folder", f.path);
       } catch (e) {
         handleErr(e);
       }
     },
-    [muts, refresh, handleErr],
+    [muts, handleErr],
   );
 
   return { createNoteAt, createFolderAt };

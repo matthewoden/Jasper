@@ -30,7 +30,6 @@ vi.mock("./treeApi", () => ({
   postFolderMove: (...args: unknown[]) => postFolderMoveMock(...args),
 }));
 
-import { useFileTree } from "./useFileTree";
 import { TreeMutationError, useTreeMutations } from "./useTreeMutations";
 
 describe("useTreeMutations", () => {
@@ -197,12 +196,13 @@ describe("useTreeMutations", () => {
 // refresh() manually. On error, no refresh fires (server is the truth;
 // failed mutation = no change).
 //
-// We render BOTH hooks in the same renderHook so they share the same
-// useFileTree-internal fetch path. The harness:
-//   1. mount → useFileTree fires getTree once.
-//   2. await waitFor: getTree calls === 1.
-//   3. invoke mutator (success or error).
-//   4. assert getTree calls === 2 (success) or 1 (error).
+// useTreeMutations now calls useFileTree() internally (Plan 03-09
+// GREEN design — the contract lives in the data layer, not the
+// caller). The harness renders ONLY useTreeMutations so there is a
+// single useFileTree instance subscribed to the module-level
+// broadcast (one mount → one getTree call). After a successful
+// mutation, refresh() broadcasts to that subscriber → second
+// getTree call lands.
 // ────────────────────────────────────────────────────────────────────
 describe("auto-refresh contract (Gap 1)", () => {
   beforeEach(() => {
@@ -228,7 +228,6 @@ describe("auto-refresh contract (Gap 1)", () => {
   function harness() {
     return renderHook(() => ({
       muts: useTreeMutations(),
-      ft: useFileTree(),
     }));
   }
 
