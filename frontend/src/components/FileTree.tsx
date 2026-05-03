@@ -112,6 +112,71 @@ function composeNewPath(parent: string, name: string): string {
   return `${parent}/${name}`;
 }
 
+// ────────────────────────────────────────────────────────────────────
+// computeMoveTarget — Gap 2 closure (Plan 03-11).
+//
+// Pure resolver for drag-drop destination paths. Given the source's
+// wire path and the resolved destination parent NodeApi, compute the
+// proposed newPath and decide whether this drop is a no-op (the user
+// dragged a row onto its own parent — same path → no server-side
+// change required).
+//
+// Why this exists as a pure function:
+//   - The previous handleMove read parentId (a string) and reconstructed
+//     the destination parent path by string-slicing on the "folder:"
+//     prefix. That worked when parentId was the parent's prefixed id,
+//     but in the live runtime react-arborist sometimes hands us a
+//     parentId that doesn't begin with "folder:" — the slice falls
+//     through, parentPath collapses to "", and we ask the server to
+//     move "projects/jasper/scratch.md" → "scratch.md" (which then
+//     409s as a same-name collision at root, OR worse, if the
+//     fallthrough happened mid-tree, generates a same-path move).
+//   - Reading parentNode (the resolved NodeApi) and pulling its
+//     wire-path directly off `.data.data.path` avoids the slicing
+//     ambiguity entirely. parentNode is null IFF the drop target is
+//     root; otherwise parentNode.data.data.kind is "folder" (notes are
+//     leaves).
+//
+// The no-op guard is byte-identical equality of the computed newPath
+// to sourcePath. That catches:
+//   - root → root drag of a root-level note
+//   - same-folder drag at any depth
+//   - same-folder drag of a folder onto its current parent
+// ────────────────────────────────────────────────────────────────────
+export interface MoveTarget {
+  newPath: string;
+  isNoOp: boolean;
+}
+
+export function computeMoveTarget(args: {
+  sourcePath: string;
+  parentNode: NodeApi<ArboristNode> | null;
+}): MoveTarget {
+  const { sourcePath, parentNode } = args;
+  let parentPath = "";
+  if (parentNode != null) {
+    const pData = parentNode.data.data;
+    if (pData.kind === "folder") {
+      parentPath = pData.path;
+    } else {
+      // Defensive: react-arborist treats notes as leaves, so a note
+      // should never appear as a parentNode. If it ever does (bug in
+      // arborist or in our adapter), walk up to the note's own parent
+      // (which IS a folder, or null = root) instead of constructing a
+      // path that would include the note's basename.
+      const grand = parentNode.parent;
+      if (grand && grand.data.data.kind === "folder") {
+        parentPath = grand.data.data.path;
+      } else {
+        parentPath = "";
+      }
+    }
+  }
+  const baseName = basename(sourcePath);
+  const newPath = composeNewPath(parentPath, baseName);
+  return { newPath, isNoOp: newPath === sourcePath };
+}
+
 /**
  * Walk the wire tree starting at the matching folder path; returns the
  * counts of immediate notes + immediate subfolders for the delete
@@ -334,9 +399,12 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   }, [deleteTarget, muts, surfaceError, tree]);
 
   // ──────────────────────────────────────────────────────────────────
-  // Drag-drop wiring. react-arborist's onMove gives us a destination
-  // {parentId, index}; we translate the prefixed arborist ids back to
-  // wire paths and dispatch the matching server operation.
+  // Drag-drop wiring. react-arborist's onMove hands us a resolved
+  // parentNode (NodeApi for the drop destination, null = root). We
+  // delegate path computation + same-parent detection to the pure
+  // computeMoveTarget resolver (Gap 2 closure — Plan 03-11), then
+  // dispatch the matching server operation only if the drop actually
+  // changes the wire path.
   // ──────────────────────────────────────────────────────────────────
   const handleMove = useCallback(
     async (args: {
@@ -349,27 +417,25 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       const dragNode = args.dragNodes[0];
       if (!dragNode) return;
       const sourceData = dragNode.data.data;
-      const newParentPath =
-        args.parentId == null
-          ? ""
-          : args.parentId.startsWith("folder:")
-            ? args.parentId.slice("folder:".length)
-            : "";
+      const target = computeMoveTarget({
+        sourcePath: sourceData.path,
+        parentNode: args.parentNode,
+      });
+      if (target.isNoOp) {
+        // Same-parent drop — react-arborist's reordering within the
+        // same parent is a UI concern only; we don't track ordering
+        // server-side (notes order alphabetically per UI-SPEC §Surface
+        // 1). No API call needed. Logged at debug for triage.
+        console.debug("FileTree: same-parent drop ignored", {
+          sourcePath: sourceData.path,
+        });
+        return;
+      }
       try {
         if (sourceData.kind === "folder") {
-          const newPath = composeNewPath(
-            newParentPath,
-            basename(sourceData.path),
-          );
-          if (newPath === sourceData.path) return; // no-op drop
-          await muts.moveFolder(sourceData.path, newPath);
+          await muts.moveFolder(sourceData.path, target.newPath);
         } else {
-          const newPath = composeNewPath(
-            newParentPath,
-            basename(sourceData.path),
-          );
-          if (newPath === sourceData.path) return; // no-op drop
-          await muts.moveNote(sourceData.id, newPath);
+          await muts.moveNote(sourceData.id, target.newPath);
         }
         // Plan 03-09 (Gap 1): the mutator already refreshed the tree
         // on success — no need to refresh again here.

@@ -33,8 +33,12 @@ import {
   FileTree,
   adaptToArborist,
   basename,
+  computeMoveTarget,
   countDescendants,
+  type ArboristNode,
 } from "./FileTree";
+import type { TreeRowData } from "./TreeRow";
+import type { NodeApi } from "react-arborist";
 import { ToastProvider } from "./Toast";
 
 // ──────────────────────────────────────────────────────────────────────
@@ -624,5 +628,127 @@ describe("FileTree.disableDrop — cycle prevention semantics", () => {
     expect(
       fn({ parentNode: target, dragNodes: [sourceFolder], index: 0 }),
     ).toBe(false);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Plan 03-11 — Gap 2 closure. Drag-drop onto the same parent must
+// produce ZERO move requests; cross-parent drops must produce exactly
+// one. The UAT log evidence (`untitled.md → untitled.md` repeating with
+// 409s) is the literal symptom these tests prove gone.
+//
+// We test computeMoveTarget directly — a pure function exported from
+// FileTree.tsx — because the full Tree.onMove harness in jsdom is
+// fragile and react-arborist owns the DnD machinery. The behaviour
+// we OWN is the resolver; locking it down with unit tests is the
+// strongest guarantee that the production handleMove cannot regress.
+// ────────────────────────────────────────────────────────────────────
+describe("handleMove same-parent no-op (Gap 2)", () => {
+  // Hand-build a NodeApi-shaped stub: only the fields handleMove /
+  // computeMoveTarget read are populated. The cast through `unknown` is
+  // necessary because NodeApi has many getters we don't simulate.
+  function nodeStub(args: {
+    data: TreeRowData;
+    parent?: ReturnType<typeof nodeStub> | null;
+  }): NodeApi<ArboristNode> {
+    const arboristNode: ArboristNode = {
+      id:
+        args.data.kind === "folder"
+          ? "folder:" + args.data.path
+          : "note:" + args.data.id,
+      name: args.data.kind === "folder" ? args.data.name : args.data.title,
+      data: args.data,
+    };
+    const stub = {
+      id: arboristNode.id,
+      data: arboristNode,
+      parent: args.parent ?? null,
+    };
+    return stub as unknown as NodeApi<ArboristNode>;
+  }
+
+  it("same-parent drop on a root-level note → isNoOp (no move call)", () => {
+    // dragNode: a note at path "untitled.md" living at root.
+    // parentNode: null (drop onto root).
+    const result = computeMoveTarget({
+      sourcePath: "untitled.md",
+      parentNode: null,
+    });
+    expect(result.isNoOp).toBe(true);
+    expect(result.newPath).toBe("untitled.md");
+  });
+
+  it("same-parent drop on a nested note → isNoOp (no move call)", () => {
+    // dragNode: note at "projects/jasper/scratchpad.md".
+    // parentNode: folder at "projects/jasper" (the note's current parent).
+    const parentNode = nodeStub({
+      data: {
+        kind: "folder",
+        path: "projects/jasper",
+        name: "jasper",
+      },
+    });
+    const result = computeMoveTarget({
+      sourcePath: "projects/jasper/scratchpad.md",
+      parentNode,
+    });
+    expect(result.isNoOp).toBe(true);
+    expect(result.newPath).toBe("projects/jasper/scratchpad.md");
+  });
+
+  it("cross-parent drop on a note → not no-op; newPath under destination folder", () => {
+    // dragNode: note at "untitled.md" (root).
+    // parentNode: folder at "projects/jasper".
+    const parentNode = nodeStub({
+      data: {
+        kind: "folder",
+        path: "projects/jasper",
+        name: "jasper",
+      },
+    });
+    const result = computeMoveTarget({
+      sourcePath: "untitled.md",
+      parentNode,
+    });
+    expect(result.isNoOp).toBe(false);
+    expect(result.newPath).toBe("projects/jasper/untitled.md");
+  });
+
+  it("same-parent drop on a folder → isNoOp (no folder move)", () => {
+    // dragNode: folder at "projects/jasper".
+    // parentNode: folder at "projects" (jasper's actual parent).
+    // The would-be newPath "projects/jasper" equals sourcePath → no-op.
+    const parentNode = nodeStub({
+      data: {
+        kind: "folder",
+        path: "projects",
+        name: "projects",
+      },
+    });
+    const result = computeMoveTarget({
+      sourcePath: "projects/jasper",
+      parentNode,
+    });
+    expect(result.isNoOp).toBe(true);
+    expect(result.newPath).toBe("projects/jasper");
+  });
+
+  it("cross-parent drop on a folder → not no-op; folder rebased under new parent", () => {
+    // dragNode: folder at "archive/old".
+    // parentNode: folder at "projects".
+    // newPath should be "projects/old".
+    const parentNode = nodeStub({
+      data: {
+        kind: "folder",
+        path: "projects",
+        name: "projects",
+      },
+    });
+    const result = computeMoveTarget({
+      sourcePath: "archive/old",
+      parentNode,
+    });
+    expect(result.isNoOp).toBe(false);
+    expect(result.newPath).toBe("projects/old");
   });
 });
