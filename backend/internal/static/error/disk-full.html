@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jasper — Disk Space</title>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: #18181b;
+      color: #e4e4e7;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    main { max-width: 520px; }
+    h1 { font-size: 16px; font-weight: 600; margin: 24px 0 16px; }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 16px 0; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+    dt { color: #a1a1aa; }
+    dd { margin: 0; }
+    .icon { color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <main>
+    <svg class="icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <!-- Lucide HardDriveDownload outline (verbatim) -->
+      <path d="M12 2v8" />
+      <path d="m16 6-4 4-4-4" />
+      <rect width="20" height="8" x="2" y="14" rx="2" />
+      <path d="M6 18h.01" />
+      <path d="M10 18h.01" />
+    </svg>
+    <h1>Not enough disk space to start.</h1>
+    <p>Jasper needs at least {{.RequiredMB}} MB free on the data volume to migrate safely. You currently have {{.AvailableMB}} MB free.</p>
+    <dl>
+      <dt>Required:</dt>  <dd>{{.RequiredMB}} MB</dd>
+      <dt>Available:</dt> <dd>{{.AvailableMB}} MB</dd>
+      <dt>Data dir:</dt>  <dd>{{.DataDir}}</dd>
+    </dl>
+    <p>Free up some space and try again. Your notes are not affected — they live in plain <code>.md</code> files at the path above.</p>
+  </main>
+</body>
+</html>

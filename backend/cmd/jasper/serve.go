@@ -21,6 +21,23 @@ import (
 // per CONTEXT.md D-13. Both pass requireLoopbackBind below.
 const defaultListenAddr = "127.0.0.1:3000"
 
+// envMigrationsOverride names the test-only environment variable that
+// swaps the embedded migrations.FS for an on-disk directory tree. When
+// set, runServe wires `os.DirFS(<value>)` into app.Config.MigrationsOverride
+// and the migration runner reads its SQL files from there instead of
+// the binary-embedded migrations/*.sql.
+//
+// Plan 02-06 / Task 3 introduces this hook so backend/cmd/jasper/smoke_test.go
+// can drive the broken-migration / Path 1 / Path 2 scenarios end-to-end
+// against the production binary without rebuilding the migrations FS.
+//
+// PRODUCTION USE IS UNSUPPORTED. The launchd plist and systemd unit
+// shipped in Phase 8 do NOT set this variable. A WARN is logged at
+// startup if the variable is set so that an accidental production
+// deployment surfaces in the standard slog stream (T-02-06-01
+// mitigation).
+const envMigrationsOverride = "JASPER_TEST_MIGRATIONS_DIR"
+
 // runServe parses flags, resolves the data directory per D-07
 // precedence (flag > env > default), enforces the loopback bind rule,
 // and runs app.Run until SIGINT/SIGTERM.
@@ -59,11 +76,27 @@ func runServe(args []string) error {
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	a, err := app.New(app.Config{
+
+	cfg := app.Config{
 		DataDir:    absDataDir,
 		ListenAddr: *addrFlag,
 		Logger:     log,
-	})
+	}
+
+	// Test-only: JASPER_TEST_MIGRATIONS_DIR replaces the embedded
+	// migrations.FS with os.DirFS(<dir>). Plan 02-06 / Task 3
+	// smoke_test.go drives Path 1 and Path 2 by mutating the dir
+	// between calls (e.g. removing 002_break.sql to flip from
+	// rolled_back → ok on the next admin/reindex).
+	if mDir := os.Getenv(envMigrationsOverride); mDir != "" {
+		log.Warn(
+			"JASPER_TEST_MIGRATIONS_DIR is set; swapping embedded migrations.FS for on-disk directory — TEST USE ONLY",
+			"dir", mDir,
+		)
+		cfg.MigrationsOverride = os.DirFS(mDir)
+	}
+
+	a, err := app.New(cfg)
 	if err != nil {
 		return err
 	}

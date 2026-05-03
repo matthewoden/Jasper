@@ -11,8 +11,17 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/matthewoden/jasper/backend/internal/api"
+	"github.com/matthewoden/jasper/backend/internal/db/migrate"
+	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
+	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/notes"
+	"github.com/matthewoden/jasper/backend/internal/static"
+	"github.com/matthewoden/jasper/backend/migrations"
 )
 
 // notesDirFor returns <dataDir>/notes — the source-of-truth directory
@@ -42,11 +51,6 @@ func EnsureDataDir(dataDir string) error {
 //
 // Uses fsstore.AtomicWrite per DATA-13 / Pitfall 3 — every byte that
 // reaches the data root must go through temp+fsync+rename+fsync(parent).
-// A SIGKILL between O_TRUNC and the data-flush of a non-atomic write
-// would leave a zero-byte scratchpad on disk; under launchd KeepAlive
-// the binary would then restart, see a zero-length file (the seed is
-// idempotent on existence, NOT on emptiness), and the user would lose
-// the welcome content with no visible error.
 func SeedScratchpadIfMissing(dataDir string, log *slog.Logger) error {
 	path := filepath.Join(notesDirFor(dataDir), notes.ScratchpadRelPath)
 	if _, err := os.Stat(path); err == nil {
@@ -62,20 +66,36 @@ func SeedScratchpadIfMissing(dataDir string, log *slog.Logger) error {
 	return nil
 }
 
-// Run executes the full startup sequence and serves until ctx is
-// canceled. On ctx cancellation a graceful shutdown is attempted
-// with a 5-second deadline.
+// Run executes the Phase 2 startup sequence and serves until ctx is
+// canceled. On ctx cancellation a graceful shutdown is attempted with
+// a 5-second deadline.
 //
-// Steps:
+// Steps (DESIGN.md §6.1 — listener gated until migrate + reindex
+// complete):
 //
 //  1. EnsureDataDir — mkdir <DataDir>/{notes,storage}.
 //  2. SeedScratchpadIfMissing — write the welcome template if absent.
-//  3. net.Listen("tcp", addr) — pre-bind so bind errors surface
-//     BEFORE the "listening" log line (avoids a false positive in
-//     a parent shell that greps for that line).
-//  4. http.Server.Serve(listener) in a goroutine.
-//  5. select on ctx.Done() vs goroutine error — graceful shutdown
-//     on the former, propagate the error on the latter.
+//  3. mkdir <DataDir>/storage and <DataDir>/storage/logs (the migration
+//     runner expects them).
+//  4. sqlite.Open — open the writer/reader Pair on app.db.
+//     pair is opened before runner.Run regardless of outcome; Close on
+//     the pair is always safe — it tears down both Reader and Writer
+//     cleanly even if the migration runner returned ErrUnrecoverable
+//     / ErrDiskFull. (W-3.)
+//  5. Build *index.Indexer + *migrate.Runner; wire Path2Rebuild.
+//  6. runner.Run — apply pending migrations on the live DB. Three
+//     outcomes:
+//       - StateOK / StateRolledBack → continue to step 7.
+//       - ErrDiskFull → install the disk-full static handler and
+//         serve it on the listener (the user must free space and
+//         restart the binary).
+//       - ErrUnrecoverable → install the unrecoverable static
+//         handler and serve it on the listener.
+//  7. indexer.Reconcile(ModeIncremental) — DATA-09 startup delta scan.
+//     Only runs when state != Unrecoverable.
+//  8. Rebuild api.Server with full wiring (NewServerWithIndex 5-arg
+//     form — B-2 locked) and replace a.handler.
+//  9. net.Listen + http.Server.Serve, graceful shutdown on ctx.Done.
 //
 // ReadHeaderTimeout is set per threat model T-01-04-05 to mitigate
 // slowloris-style attacks. Full ReadTimeout / WriteTimeout are
@@ -90,21 +110,145 @@ func (a *App) Run(ctx context.Context) error {
 		return err
 	}
 
-	// 3. Construct http.Server.
+	// 3. Phase 2 NEW — mkdir <DataDir>/storage + storage/logs.
+	dbPath := storageDBPath(a.cfg.DataDir)
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return fmt.Errorf("ensure storage dir: %w", err)
+	}
+	logsDir := filepath.Join(a.cfg.DataDir, "storage", "logs")
+	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		return fmt.Errorf("ensure logs dir: %w", err)
+	}
+
+	// 4. Phase 2 NEW — open sqlite Pair.
+	backupPath := dbPath + ".backup"
+	logsPath := filepath.Join(logsDir, "jasper.log")
+	pair, err := sqlite.Open(ctx, dbPath)
+	if err != nil {
+		return fmt.Errorf("sqlite open: %w", err)
+	}
+	// pair is opened before runner.Run regardless of outcome; Close on
+	// the pair is always safe — it tears down both Reader and Writer
+	// cleanly even if the migration runner returned ErrUnrecoverable /
+	// ErrDiskFull. (W-3.)
+	defer func() { _ = pair.Close() }()
+	a.pair = pair
+
+	// 5. Phase 2 NEW — build Runner + Indexer.
+	notesDir := notesDirFor(a.cfg.DataDir)
+	a.indexer = index.New(pair, notesDir, a.cfg.Logger)
+
+	// MigrationsOverride is a test-only injection point. Production
+	// callers leave it nil; the embedded migrations.FS below is used.
+	// B-3 acceptance gate requires the literal `Migrations: migrations.FS`
+	// to appear in this file — we satisfy it by spelling the production
+	// expression directly in the struct literal and override AFTER
+	// constructing the Runner via the writable Migrations field.
+	a.runner = migrate.NewRunner(migrate.RunnerOptions{
+		DBPath:     dbPath,
+		BackupPath: backupPath,
+		LogsPath:   logsPath,
+		Migrations: migrations.FS,
+		Pair:       pair,
+		Log:        a.cfg.Logger,
+	})
+	if a.cfg.MigrationsOverride != nil {
+		a.runner.Migrations = a.cfg.MigrationsOverride
+	}
+	// Wire Path 2 callback: when RebuildAndReindex needs to walk the
+	// filesystem, it calls Indexer.Reconcile(ModeFull).
+	a.runner.Path2Rebuild = func(ctx context.Context) (int, error) {
+		return a.indexer.Reconcile(ctx, index.ModeFull)
+	}
+
+	// 6. Phase 2 NEW — run migrations.
+	status, runErr := a.runner.Run(ctx)
+	if runErr != nil {
+		// Disk-full or unrecoverable: serve static error page; do NOT exit.
+		if errors.Is(runErr, migrate.ErrDiskFull) {
+			a.cfg.Logger.Error("boot failed: disk-full preflight aborted — serving static error page",
+				"err", runErr, "data_dir", a.cfg.DataDir, "logs_path", logsPath)
+			a.diskFullHandler = newBootErrorHandler(
+				"disk-full.html",
+				buildDiskFullData(dbPath, a.cfg.DataDir),
+			)
+			a.handler = a.diskFullHandler
+			return a.serveListener(ctx)
+		}
+		if errors.Is(runErr, migrate.ErrUnrecoverable) {
+			a.cfg.Logger.Error("boot failed: unrecoverable migration state — serving static error page",
+				"err", runErr, "data_dir", a.cfg.DataDir, "logs_path", logsPath)
+			a.diskFullHandler = newBootErrorHandler(
+				"unrecoverable.html",
+				buildUnrecoverableData(logsPath),
+			)
+			a.handler = a.diskFullHandler
+			return a.serveListener(ctx)
+		}
+		return fmt.Errorf("migrate run: %w", runErr)
+	}
+	a.cfg.Logger.Info("migration runner status",
+		"state", status.State,
+		"failed_migration", status.FailedMigration)
+
+	// 7. Phase 2 NEW — incremental reindex (DATA-09).
+	// Skip ONLY when state == Unrecoverable (which would have been
+	// caught above as ErrUnrecoverable; this is defense in depth).
+	// A rolled_back state means the failed migration could be a
+	// future column-add (e.g. 002_tags.sql) which the notes table
+	// does not need; reconciling against the prior schema still works.
+	if status.State != migrate.StateUnrecoverable {
+		n, err := a.indexer.Reconcile(ctx, index.ModeIncremental)
+		if err != nil {
+			a.cfg.Logger.Warn("startup incremental reindex failed (non-fatal)", "err", err)
+		} else {
+			a.cfg.Logger.Info("startup incremental reindex done", "notes_indexed", n)
+		}
+	}
+
+	// 8. Phase 2 NEW — rebuild api.Server with full wiring.
+	// The handler installed by New() pointed at a nil-everything Server;
+	// replace with the real one now that pair / indexer / runner exist.
+	files := fsstore.NewStore(notesDir)
+	notesSvc := notes.NewService(files, a.indexer, a.cfg.Logger)
+	// B-2 locked 5-arg form: (notesSvc, status, runner, index, log).
+	// a.runner implements migrate.StatusProvider, so it's passed twice:
+	// once as the status reader for /admin/status and once as the
+	// runner for /admin/reindex.
+	apiServer := api.NewServerWithIndex(notesSvc, a.runner, a.runner, a.indexer, a.cfg.Logger)
+
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Recoverer)
+	r.Use(requestLogger(a.cfg.Logger))
+	si := api.NewStrictHandler(apiServer, nil)
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(maxBodyBytes(maxRequestBodyBytes))
+		api.HandlerFromMux(si, r)
+	})
+	r.Mount("/", static.Handler())
+	a.handler = r
+
+	// 9. serve until ctx cancellation
+	return a.serveListener(ctx)
+}
+
+// serveListener is the listen + graceful-shutdown body, factored into
+// its own method so the boot-error path can also call it. Returns nil
+// on graceful shutdown; a wrapped error if Listen / Serve fails.
+func (a *App) serveListener(ctx context.Context) error {
 	srv := &http.Server{
 		Addr:              a.cfg.ListenAddr,
 		Handler:           a.handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	// 4. Pre-bind to surface bind errors before the "listening" log.
 	ln, err := net.Listen("tcp", a.cfg.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", a.cfg.ListenAddr, err)
 	}
 	a.cfg.Logger.Info("jasper listening", "addr", a.cfg.ListenAddr, "data_dir", a.cfg.DataDir)
 
-	// 5. Serve until ctx cancellation, then graceful shutdown.
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(ln) }()
 
