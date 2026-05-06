@@ -26,6 +26,14 @@ import {
   useTreeStore,
 } from "./useTreeStore";
 
+const FULL_DEFAULT_STATE = {
+  expanded: new Set<string>(),
+  activeNoteId: null,
+  pendingRename: null,
+  draftCreate: null,
+  selectedRow: null,
+};
+
 describe("useTreeStore — default + mutators", () => {
   beforeEach(() => {
     // Reset store to defaults between tests; localStorage is cleared too.
@@ -256,5 +264,140 @@ describe("pruneStaleTreeState", () => {
     // Object identity for `expanded` should be preserved if nothing changed.
     expect(after.expanded).toBe(before.expanded);
     expect(after.activeNoteId).toBe(before.activeNoteId);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Plan 03-20 Gap R2-4 — selectedRow transient slot.
+//
+// Document-level F2 routing in App.tsx reads useTreeStore.selectedRow at
+// fire time to dispatch rename to the most-recently-clicked tree row,
+// even when DOM focus has shifted to the editor textarea.
+//
+// The slot is purely transient — same precedent as pendingRename and
+// draftCreate. It MUST NOT be persisted to localStorage and MUST NOT be
+// touched by pruneStaleTreeState.
+// ──────────────────────────────────────────────────────────────────────────
+describe("useTreeStore — selectedRow (Gap R2-4)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useTreeStore.setState(FULL_DEFAULT_STATE);
+  });
+
+  it("TestStore_SelectedRow_DefaultIsNull", () => {
+    expect(useTreeStore.getState().selectedRow).toBeNull();
+  });
+
+  it("TestStore_SetSelectedRow_Note: sets {kind:'note', target:<id>}", () => {
+    const { result } = renderHook(() => useTreeStore());
+    act(() =>
+      result.current.setSelectedRow({ kind: "note", target: "abc-uuid" }),
+    );
+    expect(result.current.selectedRow).toEqual({
+      kind: "note",
+      target: "abc-uuid",
+    });
+  });
+
+  it("TestStore_SetSelectedRow_Folder: sets {kind:'folder', target:<path>}", () => {
+    const { result } = renderHook(() => useTreeStore());
+    act(() =>
+      result.current.setSelectedRow({
+        kind: "folder",
+        target: "projects/jasper",
+      }),
+    );
+    expect(result.current.selectedRow).toEqual({
+      kind: "folder",
+      target: "projects/jasper",
+    });
+  });
+
+  it("TestStore_SetSelectedRow_Null: clears the slot", () => {
+    const { result } = renderHook(() => useTreeStore());
+    act(() =>
+      result.current.setSelectedRow({ kind: "note", target: "abc-uuid" }),
+    );
+    expect(result.current.selectedRow).not.toBeNull();
+    act(() => result.current.setSelectedRow(null));
+    expect(result.current.selectedRow).toBeNull();
+  });
+
+  it("TestStore_SelectedRow_NotPersisted: setSelectedRow does NOT touch localStorage", () => {
+    vi.useFakeTimers();
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      act(() => {
+        useTreeStore.getState().setSelectedRow({
+          kind: "note",
+          target: "abc-uuid",
+        });
+      });
+      // Even after the debounce window, no key should have been written
+      // for selectedRow. The persistence subscriber only watches
+      // expanded + activeNoteId.
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      const writes = setItemSpy.mock.calls.map((c) => c[0]);
+      // No selectedRow-shaped key.
+      expect(
+        writes.some(
+          (k) =>
+            typeof k === "string" &&
+            k.toLowerCase().includes("selectedrow"),
+        ),
+      ).toBe(false);
+      // Specifically, neither of the persisted keys was touched as a
+      // side-effect of setSelectedRow alone.
+      expect(writes).not.toContain(LS_KEY_EXPANDED);
+      expect(writes).not.toContain(LS_KEY_ACTIVE_NOTE);
+    } finally {
+      setItemSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("TestStore_PreExistingSlots_StillWork — adding selectedRow is purely additive", () => {
+    const { result } = renderHook(() => useTreeStore());
+    act(() => {
+      result.current.toggleExpanded("projects");
+      result.current.setActiveNote("uuid-foo");
+      result.current.startRename("note", "uuid-bar");
+      result.current.startDraftCreate("folder", "ideas");
+      result.current.setSelectedRow({ kind: "note", target: "uuid-zzz" });
+    });
+    const s = result.current;
+    expect(s.expanded.has("projects")).toBe(true);
+    expect(s.activeNoteId).toBe("uuid-foo");
+    expect(s.pendingRename).toEqual({ kind: "note", target: "uuid-bar" });
+    expect(s.draftCreate).toEqual({ kind: "folder", parent: "ideas" });
+    expect(s.selectedRow).toEqual({ kind: "note", target: "uuid-zzz" });
+  });
+
+  it("TestPruneStaleTreeState_DoesNotTouchSelectedRow", () => {
+    useTreeStore.setState({
+      expanded: new Set(["a"]),
+      activeNoteId: "uuid-keep",
+      selectedRow: { kind: "note", target: "uuid-zzz" },
+    });
+    pruneStaleTreeState(new Set(["a"]), new Set(["uuid-keep"]));
+    expect(useTreeStore.getState().selectedRow).toEqual({
+      kind: "note",
+      target: "uuid-zzz",
+    });
+    // Even when the prune ALSO drops a stale active note, selectedRow
+    // is left alone — it's a transient slot driven by row clicks.
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: "ghost-uuid",
+      selectedRow: { kind: "folder", target: "projects" },
+    });
+    pruneStaleTreeState(new Set(), new Set());
+    expect(useTreeStore.getState().selectedRow).toEqual({
+      kind: "folder",
+      target: "projects",
+    });
+    expect(useTreeStore.getState().activeNoteId).toBeNull();
   });
 });
