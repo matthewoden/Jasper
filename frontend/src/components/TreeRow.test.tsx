@@ -55,12 +55,13 @@ function makeNoteNode(overrides: {
 }
 
 beforeEach(() => {
-  // Reset store between tests so activeNoteId doesn't leak.
+  // Reset store between tests so activeNoteId / selectedRow don't leak.
   useTreeStore.setState({
     expanded: new Set(),
     activeNoteId: null,
     pendingRename: null,
     draftCreate: null,
+    selectedRow: null,
   });
 });
 
@@ -616,6 +617,103 @@ describe("<TreeRow />", () => {
           />,
         ),
       ).not.toThrow();
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Plan 03-20 Gap R2-4 — selectedRow population on row click.
+  //
+  // Clicking a tree row populates useTreeStore.selectedRow so App.tsx's
+  // document-level F2 listener can route rename to the right row even
+  // after the editor textarea has stolen focus
+  // (EditorPane.useEffect → loadStatus === "loaded"). The local
+  // handleKeyDown F2 path (Plan 03-12) stays as a fallback for the
+  // auto-focused-row case.
+  // ──────────────────────────────────────────────────────────────────
+  describe("selectedRow on click (Gap R2-4)", () => {
+    it("note row click sets selectedRow to {kind:'note', target:<id>}", () => {
+      const node = makeNoteNode({ id: "uuid-77" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row);
+      expect(useTreeStore.getState().selectedRow).toEqual({
+        kind: "note",
+        target: "uuid-77",
+      });
+    });
+
+    it("folder row click sets selectedRow to {kind:'folder', target:<path>}", () => {
+      const node = makeFolderNode({ path: "projects/jasper" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row);
+      expect(useTreeStore.getState().selectedRow).toEqual({
+        kind: "folder",
+        target: "projects/jasper",
+      });
+    });
+
+    it("clicking a row currently in rename mode does NOT change selectedRow", () => {
+      // Pre-seed selectedRow to a different value, then mount the row
+      // in rename mode and click it. Because handleClick short-circuits
+      // on isRenamingThis, setSelectedRow must not fire — the previous
+      // selection survives.
+      useTreeStore.setState({
+        pendingRename: { kind: "note", target: "uuid-9" },
+        selectedRow: { kind: "folder", target: "previous/selection" },
+      });
+      const node = makeNoteNode({ id: "uuid-9", title: "scratchpad.md" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+          siblingNames={[]}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row);
+      // Unchanged — the renaming-this short-circuit fires first.
+      expect(useTreeStore.getState().selectedRow).toEqual({
+        kind: "folder",
+        target: "previous/selection",
+      });
+    });
+
+    it("note row click also still calls onSelectNote and sets activeNoteId (no regression)", () => {
+      const onSelectNote = vi.fn();
+      const node = makeNoteNode({ id: "uuid-pre-existing" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={onSelectNote}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row);
+      expect(onSelectNote).toHaveBeenCalledWith("uuid-pre-existing");
+      expect(useTreeStore.getState().activeNoteId).toBe("uuid-pre-existing");
+      expect(useTreeStore.getState().selectedRow).toEqual({
+        kind: "note",
+        target: "uuid-pre-existing",
+      });
     });
   });
 });
