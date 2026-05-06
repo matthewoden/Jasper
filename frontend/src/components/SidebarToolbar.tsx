@@ -14,6 +14,16 @@
  *   - on error: spin stops, button re-enables. NO toast surfaced from this
  *     component — that's Plan 03-07's wiring; the parent's `onRefresh` is
  *     re-thrown so the parent can decide.
+ *
+ * Create in-flight visuals (Gap R2-2):
+ *   - `creating` prop (defaults to false) drives the New Note + New Folder
+ *     buttons' disabled-state visuals identically to the Refresh button's
+ *     spin-disabled treatment (opacity 0.5, cursor "wait", disabled
+ *     attribute). The flag itself is owned by the parent (Sidebar reads it
+ *     from `useTreeCreateActions().isCreating`) so the toolbar stays a
+ *     pure presentational component for the create path. The Refresh and
+ *     Create pipelines are independent — both can be disabled
+ *     simultaneously without interference.
  */
 import { useCallback, useState } from "react";
 import { FilePlus, FolderPlus, RefreshCw } from "lucide-react";
@@ -22,6 +32,13 @@ export interface SidebarToolbarProps {
   onNewNote: () => void;
   onNewFolder: () => void;
   onRefresh: () => Promise<void>;
+  /**
+   * Gap R2-2 — when true, disables the New Note + New Folder buttons
+   * (visually + functionally) while a create is in flight. Mirrors the
+   * existing in-component `refreshing` state on the Refresh button.
+   * Owned by the parent (Sidebar reads from useTreeCreateActions().isCreating).
+   */
+  creating?: boolean;
 }
 
 const buttonBase: React.CSSProperties = {
@@ -42,6 +59,7 @@ export function SidebarToolbar({
   onNewNote,
   onNewFolder,
   onRefresh,
+  creating = false,
 }: SidebarToolbarProps) {
   const [refreshing, setRefreshing] = useState(false);
 
@@ -69,7 +87,12 @@ export function SidebarToolbar({
         title="New note"
         aria-label="New note"
         onClick={onNewNote}
-        style={buttonBase}
+        disabled={creating}
+        style={{
+          ...buttonBase,
+          opacity: creating ? 0.5 : 1,
+          cursor: creating ? "wait" : "pointer",
+        }}
       >
         <FilePlus size={16} aria-hidden="true" />
       </button>
@@ -78,7 +101,12 @@ export function SidebarToolbar({
         title="New folder"
         aria-label="New folder"
         onClick={onNewFolder}
-        style={buttonBase}
+        disabled={creating}
+        style={{
+          ...buttonBase,
+          opacity: creating ? 0.5 : 1,
+          cursor: creating ? "wait" : "pointer",
+        }}
       >
         <FolderPlus size={16} aria-hidden="true" />
       </button>
