@@ -140,10 +140,21 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string) (Not
 	}
 	// Index SECOND. ALWAYS runs AFTER WriteAtomic. nopIndex is a no-op
 	// for callers that didn't wire the real indexer.
+	//
+	// Plan 03-23 (Gap R2-6 closure cohort): re-extract the title from the
+	// just-written content so the index row's Title field reflects the
+	// CURRENT H1 (or filename fallback for files without an H1). Mirrors
+	// Plan 03-21's Service.Move title-refresh — the same property
+	// (Title-current-after-write) is required of Service.Update for
+	// Direction A of the filename↔H1 binding (PROJECT.md 2026-05-03):
+	// without this, after a Move-then-Update sequence the Move-derived
+	// title would be clobbered by Title="" on the subsequent Update,
+	// leaving the tree label stale until the next Reconcile pass.
+	freshTitle := markdown.ExtractTitle([]byte(content), relPath)
 	rec := NoteRecord{
 		ID:            id,
 		Path:          relPath,
-		Title:         "", // index-side extractTitle is the source of truth (Plan 02-04a Task 3 / 02-04b store.go)
+		Title:         freshTitle,
 		MTimeUnix:     modTime.UTC().Unix(),
 		SizeBytes:     int64(len(content)),
 		Checksum:      "", // Phase 7 only

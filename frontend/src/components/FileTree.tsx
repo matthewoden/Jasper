@@ -447,6 +447,15 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
                         "The filename and the H1 in the file may not match. Open the note and re-save to align them.",
                       variant: "error",
                     });
+                  } else {
+                    // Plan 03-23 — broadcast refresh so the tree picks
+                    // up the title freshly extracted from the rewritten
+                    // H1 (Service.Update title-refresh). Without this,
+                    // moveNote's refresh fired with the OLD H1 still
+                    // in the file (Title="Old Title"), and the
+                    // subsequent updateNote landed Title="New Name" in
+                    // the index but the FileTree never re-fetched.
+                    await refresh();
                   }
                 }
               }
@@ -484,7 +493,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         throw e;
       }
     },
-    [muts, surfaceError, toast],
+    [muts, surfaceError, toast, refresh],
   );
 
   const handleRequestDelete = useCallback(

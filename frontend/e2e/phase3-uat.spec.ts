@@ -20,15 +20,23 @@
  *     not first-letter-jump the tree), Enter commits to disk + tree
  *     (Plan 03-12 RenameInput key trap + TreeRow F2 stopPropagation).
  *
+ * Plan 03-23 (Wave 4) strengthens Scenario F to assert on the displayed
+ * tree row label after rename — closing the false-positive surface
+ * documented in 03-15-SUMMARY.md. Adds Scenario G + G.2 covering both
+ * directions of the filename↔H1 binding (Plan 03-22, locked by
+ * PROJECT.md 2026-05-03).
+ *
  * Manual revert-spike (run by hand to confirm the suite catches regressions):
  *   1. From the gap-closure-merged main, revert ONE line of one of
- *      Plans 03-09 / 03-10 / 03-12 / 03-13's GREEN edits, e.g.
- *      delete `await refresh();` from useTreeMutations.createNote.
+ *      Plans 03-09 / 03-10 / 03-12 / 03-13 / 03-21 / 03-22's GREEN edits,
+ *      e.g. delete `await refresh();` from useTreeMutations.createNote,
+ *      or delete `rec.Title = freshTitle` from backend Service.Move.
  *   2. `make build && cd frontend && npx playwright test`
  *   3. The corresponding scenario MUST fail with a concrete assertion
  *      mismatch — Scenario A loses tree-update-without-reload, Scenario
- *      D loses the open-after-refresh path, Scenario F loses key trap
- *      or F2 binding.
+ *      D loses the open-after-refresh path, Scenario F's strengthened
+ *      DOM label assertion catches stale-title regressions, Scenarios
+ *      G/G.2 catch broken binding directions.
  *   4. Restore the line and re-run; suite returns to green.
  *
  * Plan 03-11 (drag-drop same-parent no-op) is NOT covered by this suite
@@ -256,17 +264,151 @@ test.describe("Phase 3 UAT regression suite", () => {
     // mounted).
     await expect(renameInput).toHaveCount(0, { timeout: 5_000 });
 
-    // And the server should agree — GET /tree contains a note at the
-    // new path "renamed.md". This is the authoritative on-disk check;
-    // we don't assert against the row's display label because the
-    // backend's title field is the H1-derived title (or filename
-    // fallback at create time) and Move preserves it across renames —
-    // the path is what changes, the label only follows when the file
-    // content changes.
+    // After Plan 03-22's bidirectional binding ships, the displayed
+    // label MUST follow the rename — Direction B rewrites the H1 to
+    // match the new basename, AND Plan 03-21's server-side title
+    // refresh in Service.Move ensures GET /tree returns the fresh title.
+    // (Pre-Plan-03-22, the assertion below would have been a false
+    // positive — we asserted on the wire path, not on the user-
+    // perceived label. See 03-HUMAN-UAT-ROUND2.md line 26.)
     const r = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
     expect(r.status()).toBe(200);
     const j = await r.json();
     expect(treeContainsNoteAtPath(j, "renamed.md")).toBe(true);
+
+    // Strengthening per Plan 03-23: assert the displayed tree row label
+    // matches the new name. Pre-binding this would have failed; after
+    // Plan 03-22 + Plan 03-21 it passes.
+    await expect
+      .poll(
+        async () => {
+          const row = await findTreeRowLocatorByLabel(page, /renamed/i, "note");
+          return row !== null;
+        },
+        { timeout: 5_000, message: "tree row label did not update to 'renamed' after rename" },
+      )
+      .toBe(true);
+  });
+
+  test("Scenario G: editor H1 edit drives filename rename + tree label refresh (Direction A)", async ({
+    page,
+  }) => {
+    await page.goto(jasper.baseURL);
+    await waitForTreeRowCount(page, "note", 1);
+
+    // Create a fresh untitled note via the toolbar.
+    await page.getByRole("button", { name: /new note/i }).click();
+    await dismissAnyOpenRenameInput(page);
+    await waitForTreeRowCount(page, "note", 2);
+
+    // Click the new untitled row to open it in the editor.
+    const untitledRow = await findTreeRowLocatorByLabel(page, /untitled/i, "note");
+    if (!untitledRow) throw new Error("untitled row not found after create");
+    await untitledRow.click();
+
+    // Wait for the editor to load (textarea enabled).
+    const textarea = page.getByRole("textbox", { name: /note content/i });
+    await expect(textarea).toBeEnabled({ timeout: 5_000 });
+
+    // Type an H1 as the first line. This drives Direction A.
+    await textarea.click();
+    await page.keyboard.type("# My Plan\n\nbody text");
+
+    // Wait for the autosave debounce (2s) PLUS a margin so the move
+    // resolves and the tree refreshes.
+    await page.waitForTimeout(4_000);
+
+    // The tree row label should now read "My Plan".
+    await expect
+      .poll(
+        async () => {
+          const row = await findTreeRowLocatorByLabel(page, /my plan/i, "note");
+          return row !== null;
+        },
+        { timeout: 5_000, message: "tree label did not refresh to 'My Plan' after H1 edit" },
+      )
+      .toBe(true);
+
+    // The server-side wire path should reflect the new filename.
+    // Note: the EXACT path depends on server canonicalization (NFC +
+    // lowercase + spaces preserved). We accept either "my plan.md" or
+    // "my-plan.md" — match the path of any note in the tree whose
+    // title contains "my plan" (case-insensitive).
+    const r = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
+    const j = await r.json();
+    const myPlanNote = findNoteByTitleInsensitive(j, /my plan/i);
+    expect(myPlanNote).toBeTruthy();
+
+    // The original "untitled.md" should no longer be in the tree
+    // (it was renamed away by Direction A).
+    expect(treeContainsNoteAtPath(j, "untitled.md")).toBe(false);
+  });
+
+  test("Scenario G.2: tree rename rewrites first H1 in content (Direction B)", async ({
+    page,
+  }) => {
+    await page.goto(jasper.baseURL);
+    await waitForTreeRowCount(page, "note", 1);
+
+    // Seed a note with an H1 directly via the editor. Use the existing
+    // scratchpad row as the target; fill it with `# Old Title\n\nbody`
+    // and flush via Cmd+S so we don't need to wait on autosave.
+    const scratchpadRow = page.locator('[data-tree-row-kind="note"]').first();
+    await scratchpadRow.click();
+    const textarea = page.getByRole("textbox", { name: /note content/i });
+    await expect(textarea).toBeEnabled({ timeout: 5_000 });
+    await textarea.fill("# Old Title\n\nbody");
+    // Cmd+S to flush immediately (avoid waiting on autosave).
+    await page.keyboard.press("Meta+s");
+    await page.waitForTimeout(500); // let save settle
+
+    // F2 to enter rename mode. We use F2 (verified working in Scenario F)
+    // rather than right-click → context menu → "Rename" because Radix's
+    // ContextMenu role surface is finicky in synthetic events; F2 lands
+    // the same RenameInput surface and is the documented keyboard path
+    // (UI-SPEC §Surface 3 + Plan 03-12 binding).
+    //
+    // Note: we click the row again BEFORE the rename to refresh
+    // useTreeStore.selectedRow (Plan 03-20 doc-level F2 routing —
+    // selectedRow is read at F2-fire time). The intermediate Cmd+S
+    // didn't change selection, but scrolling / focus shifts may have.
+    await scratchpadRow.click();
+    await page.waitForTimeout(200);
+    await scratchpadRow.focus();
+    await scratchpadRow.press("F2");
+
+    const renameInput = scratchpadRow.locator('input[type="text"]');
+    await expect(renameInput).toBeVisible({ timeout: 2_000 });
+    await renameInput.click();
+    await renameInput.fill("");
+    await page.keyboard.type("New Name");
+    await renameInput.press("Enter");
+
+    // Wait for the move + H1 rewrite + content update + tree refresh.
+    await page.waitForTimeout(2_000);
+
+    // The tree row label is "New Name".
+    await expect
+      .poll(
+        async () => {
+          const row = await findTreeRowLocatorByLabel(page, /new name/i, "note");
+          return row !== null;
+        },
+        { timeout: 5_000, message: "tree label did not update to 'New Name'" },
+      )
+      .toBe(true);
+
+    // The file content's first H1 has been rewritten.
+    // Re-load the note's content via the API and inspect.
+    const treeResp = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
+    const tree = await treeResp.json();
+    const renamedNote = findNoteByTitleInsensitive(tree, /new name/i);
+    expect(renamedNote).toBeTruthy();
+    const noteResp = await page.request.get(
+      `${jasper.baseURL}/api/v1/notes/${(renamedNote as { id: string }).id}`,
+    );
+    const noteJson = await noteResp.json();
+    expect(noteJson.content).toMatch(/^# New Name/m);
   });
 });
 
@@ -385,6 +527,33 @@ function treeContainsNoteAtPath(tree: unknown, targetPath: string): boolean {
       if (typeof node !== "object" || node === null) continue;
       const obj = node as { kind?: string; path?: string; children?: unknown };
       if (obj.kind === "note" && obj.path === targetPath) found = true;
+      if (obj.kind === "folder") visit(obj.children);
+    }
+  };
+  visit((tree as { root?: unknown }).root);
+  return found;
+}
+
+function findNoteByTitleInsensitive(
+  tree: unknown,
+  pattern: RegExp,
+): { id: string; path: string; title: string } | null {
+  let found: { id: string; path: string; title: string } | null = null;
+  const visit = (nodes: unknown) => {
+    if (found || !Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      if (typeof node !== "object" || node === null) continue;
+      const obj = node as {
+        kind?: string;
+        id?: string;
+        path?: string;
+        title?: string;
+        children?: unknown;
+      };
+      if (obj.kind === "note" && obj.title && pattern.test(obj.title)) {
+        found = { id: obj.id!, path: obj.path!, title: obj.title };
+        return;
+      }
       if (obj.kind === "folder") visit(obj.children);
     }
   };

@@ -51,6 +51,7 @@ import {
   saveStateReducer,
 } from "../lib/saveStateMachine";
 import { postNoteMove } from "../lib/treeApi";
+import { useFileTree } from "../lib/useFileTree";
 import { SaveIndicator } from "./SaveIndicator";
 
 type LoadStatus = "loading" | "loaded" | "error";
@@ -103,6 +104,16 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
     saveStateReducer,
     initialSaveState,
   );
+  // Plan 03-23 — broadcast-refresh hook for Direction A. After a
+  // successful Direction A move, we must trigger the same broadcast
+  // refresh that useTreeMutations.moveNote uses, so the FileTree
+  // re-fetches GET /tree (which now carries the fresh title via
+  // Service.Move's Plan-03-21 title refresh) and the tree row label
+  // updates in the live browser. Without this, the move succeeds on the
+  // wire but the user sees a stale label until reload — exactly the
+  // false-positive surface that Plan 03-23's Scenario G is designed to
+  // catch.
+  const { refresh: refreshTree } = useFileTree();
   // Plan 03-22 (Gap R2-6) — surface for the H1-rename failure path.
   // Soft errors (illegal H1) and hard errors (case_collision on move)
   // both render here as a thin banner above the textarea. Cleared on
@@ -309,6 +320,18 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
         dispatch({ type: "saveFailed", error: msg });
         return;
       }
+      // Plan 03-23 — broadcast refresh so the FileTree re-fetches
+      // GET /tree and the tree row label reflects the latest title.
+      // Service.Update (post-Plan-03-23 fix) re-extracts the H1 on
+      // every write; Service.Move (Plan 03-21) does the same. Either
+      // way, the tree's title field is fresh after this Update — but
+      // the FileTree only re-fetches when refresh() is called. Without
+      // this, after a Direction A H1-edit the user sees the stale
+      // label until the next reload (the false-positive surface that
+      // Plan 03-23 Scenario G is designed to catch).
+      if (h1Changed) {
+        await refreshTree();
+      }
       dispatch({
         type: "saveSucceeded",
         updatedAt: new Date(data.updated_at),
@@ -335,7 +358,7 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
         void performSave(latestContentRef.current);
       }
     }
-  }, []);
+  }, [refreshTree]);
 
   // 3. Debounced autosave on edit.
   const onChange = useCallback(
