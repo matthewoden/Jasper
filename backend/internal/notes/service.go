@@ -13,6 +13,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+
+	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
 
 // Service is the Phase 1 notes domain service. Get reads the file via
@@ -277,6 +279,17 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 // back (best-effort).
 //
 // The new path is canonicalized inside FileStore.MoveFile per DATA-11.
+//
+// After the FS rename succeeds, the file's content is re-read and the
+// title is re-extracted (markdown.ExtractTitle — the same scanner the
+// indexer uses) so the index row's Title field reflects the current
+// first-H1 (or filename fallback) for the renamed file. Gap R2-6
+// closure (Plan 03-21).
+//
+// A read failure post-rename is non-fatal: a warn log is emitted and
+// the filename fallback is used (markdown.ExtractTitle handles nil
+// content by returning the filename without ".md"). The reconciler
+// heals at the next pass if the read failure was transient.
 func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteSummary, error) {
 	oldRelPath, ok := s.registry.Lookup(id)
 	if !ok {
@@ -288,23 +301,37 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 		return NoteSummary{}, fmt.Errorf("notes.Move(%s): %w", id, err)
 	}
 
-	// Capture existing record from the index so we preserve title /
-	// mtime / size while updating the path. LookupByPath uses the OLD
+	// Gap R2-6 — re-extract title from the renamed file's content so
+	// the tree row label refreshes on the next GET /tree. Read failure
+	// is non-fatal: surface a warn log + use the filename fallback so
+	// the reconciler can heal at its next pass.
+	content, readErr := s.files.Read(canonNew)
+	if readErr != nil {
+		s.log.Warn("notes.Move: post-rename Read failed; using filename fallback for title (reconciler will heal)",
+			"id", id.String(), "newPath", canonNew, "err", readErr)
+		content = nil // markdown.ExtractTitle handles nil → filename fallback
+	}
+	freshTitle := markdown.ExtractTitle(content, canonNew)
+
+	// Capture existing record from the index so we preserve mtime /
+	// size while updating the path + title. LookupByPath uses the OLD
 	// path (the row hasn't been touched yet).
 	rec, err := s.index.LookupByPath(ctx, oldRelPath)
 	if err != nil {
 		// The FS rename succeeded but the index has no row — most
 		// likely a transient state during reconcile. Mint a fresh
 		// minimal record so the index gets re-populated; the
-		// reconciler will heal title/size/mtime later.
+		// reconciler will heal size/mtime later.
 		rec = NoteRecord{
 			ID:            id,
 			Path:          canonNew,
+			Title:         freshTitle,
 			MTimeUnix:     time.Now().UTC().Unix(),
 			UpdatedAtUnix: time.Now().UTC().Unix(),
 		}
 	} else {
 		rec.Path = canonNew
+		rec.Title = freshTitle
 		rec.UpdatedAtUnix = time.Now().UTC().Unix()
 	}
 

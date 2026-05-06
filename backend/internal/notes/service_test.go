@@ -3,6 +3,7 @@ package notes
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -879,6 +880,171 @@ func TestService_Move_Collision(t *testing.T) {
 	}
 	if relPathB, _ := svc.registry.Lookup(b.ID); relPathB != "beta.md" {
 		t.Errorf("registry B: got %q, want beta.md", relPathB)
+	}
+}
+
+// --- Plan 03-21 Gap R2-6: Move refreshes title from renamed-file content ---
+
+// TestService_Move_RefreshesTitle proves the contract introduced by Plan
+// 03-21 Task 2: after Service.Move renames a file, the index row's
+// Title is re-extracted from the renamed file's CURRENT content via
+// markdown.ExtractTitle. The H1 wins over the filename when present;
+// the filename change does NOT change the H1, so we observe the H1 in
+// both the returned summary and the index row.
+func TestService_Move_RefreshesTitle(t *testing.T) {
+	t.Parallel()
+	svc, _, idx := newRealFSSvc(t)
+	summary, err := svc.Create(context.Background(), "", "alpha")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// Write H1 content into the file via Update (file-FIRST contract;
+	// the index Title field after Update is still empty per the
+	// service.go convention — the indexer is the source of truth).
+	if _, err := svc.Update(context.Background(), summary.ID, "# Alpha Title\n\nbody"); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	moved, err := svc.Move(context.Background(), summary.ID, "beta.md")
+	if err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	if moved.Title != "Alpha Title" {
+		t.Errorf("returned Title: got %q, want %q", moved.Title, "Alpha Title")
+	}
+	rec, ok := idx.recByID(summary.ID)
+	if !ok {
+		t.Fatalf("index row missing")
+	}
+	if rec.Title != "Alpha Title" {
+		t.Errorf("index Title: got %q, want %q", rec.Title, "Alpha Title")
+	}
+}
+
+// TestService_Move_RefreshesTitle_NoH1_FallsBackToFilename: when the
+// renamed file has no H1, the title falls back to the new filename
+// (without the .md suffix). This matches the markdown.ExtractTitle
+// contract and ensures the tree label tracks the filename when no H1
+// is present (Obsidian-style binding).
+func TestService_Move_RefreshesTitle_NoH1_FallsBackToFilename(t *testing.T) {
+	t.Parallel()
+	svc, _, idx := newRealFSSvc(t)
+	summary, err := svc.Create(context.Background(), "", "alpha")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// Write content with NO H1 at all.
+	if _, err := svc.Update(context.Background(), summary.ID, "body without heading"); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	moved, err := svc.Move(context.Background(), summary.ID, "beta.md")
+	if err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	if moved.Title != "beta" {
+		t.Errorf("returned Title: got %q, want %q", moved.Title, "beta")
+	}
+	rec, ok := idx.recByID(summary.ID)
+	if !ok {
+		t.Fatalf("index row missing")
+	}
+	if rec.Title != "beta" {
+		t.Errorf("index Title: got %q, want %q", rec.Title, "beta")
+	}
+}
+
+// TestService_Move_RefreshesTitle_AfterContentChange: the Move re-reads
+// the LATEST content on disk, not a stale snapshot. After two updates
+// (# Old → # New Title), the Move sees # New Title.
+func TestService_Move_RefreshesTitle_AfterContentChange(t *testing.T) {
+	t.Parallel()
+	svc, _, idx := newRealFSSvc(t)
+	summary, err := svc.Create(context.Background(), "", "alpha")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := svc.Update(context.Background(), summary.ID, "# Old"); err != nil {
+		t.Fatalf("Update 1: %v", err)
+	}
+	if _, err := svc.Update(context.Background(), summary.ID, "# New Title\n\nbody"); err != nil {
+		t.Fatalf("Update 2: %v", err)
+	}
+
+	moved, err := svc.Move(context.Background(), summary.ID, "beta.md")
+	if err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	if moved.Title != "New Title" {
+		t.Errorf("returned Title: got %q, want %q (Move must re-read current content, not stale)", moved.Title, "New Title")
+	}
+	rec, ok := idx.recByID(summary.ID)
+	if !ok {
+		t.Fatalf("index row missing")
+	}
+	if rec.Title != "New Title" {
+		t.Errorf("index Title: got %q, want %q", rec.Title, "New Title")
+	}
+}
+
+// readFailingFileStore wraps a real FileStore and returns fs.ErrNotExist
+// from Read for a single canonical path AFTER MoveFile has succeeded —
+// simulating a contrived race where the filesystem watcher / external
+// process deletes the file between rename and read.
+type readFailingFileStore struct {
+	FileStore
+	failReadFor string
+}
+
+func (r *readFailingFileStore) Read(relPath string) ([]byte, error) {
+	if relPath == r.failReadFor {
+		return nil, fmt.Errorf("simulated read failure: %w", fs.ErrNotExist)
+	}
+	return r.FileStore.Read(relPath)
+}
+
+// TestService_Move_RefreshesTitle_ReadFailureFallsBackGracefully: a
+// post-rename Read failure does NOT fail the Move outright. The Move
+// MUST succeed and the index row's Title falls back to the filename
+// derivation (markdown.ExtractTitle handles nil content). The
+// reconciler heals at its next pass if the read failure was transient.
+func TestService_Move_RefreshesTitle_ReadFailureFallsBackGracefully(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	realStore := fsstore.NewStore(root)
+	idx := newStubIndex()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	wrapped := &readFailingFileStore{FileStore: realStore, failReadFor: "beta.md"}
+	svc := NewService(wrapped, idx, logger)
+
+	summary, err := svc.Create(context.Background(), "", "alpha")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := svc.Update(context.Background(), summary.ID, "# Will Not Be Read"); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	// MoveFile succeeds (real FileStore handles it), but the subsequent
+	// Read("beta.md") returns fs.ErrNotExist due to our wrapper.
+	moved, err := svc.Move(context.Background(), summary.ID, "beta.md")
+	if err != nil {
+		t.Fatalf("Move must NOT fail on post-rename read failure; got: %v", err)
+	}
+	if moved.Path != "beta.md" {
+		t.Errorf("Path: got %q, want %q", moved.Path, "beta.md")
+	}
+	// On read failure the title falls back to the filename-derived
+	// value via markdown.ExtractTitle(nil, "beta.md") = "beta".
+	if moved.Title != "beta" {
+		t.Errorf("Title fallback: got %q, want %q (filename fallback on read failure)", moved.Title, "beta")
+	}
+	rec, ok := idx.recByID(summary.ID)
+	if !ok {
+		t.Fatalf("index row missing")
+	}
+	if rec.Title != "beta" {
+		t.Errorf("index Title fallback: got %q, want %q", rec.Title, "beta")
 	}
 }
 
