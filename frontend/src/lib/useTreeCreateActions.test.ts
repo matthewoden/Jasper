@@ -12,7 +12,7 @@
  * useToast is real (we wrap with <ToastProvider>) so error-path tests
  * could be added later without restructuring.
  */
-import { renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement, type ReactNode } from "react";
 
@@ -186,5 +186,155 @@ describe("useTreeCreateActions — auto-increment default name (Gap 5)", () => {
 
     expect(muts.createNote).toHaveBeenCalledTimes(1);
     expect(muts.createNote).toHaveBeenCalledWith("projects", "untitled 1");
+  });
+});
+
+/**
+ * Gap R2-2 — in-flight guard.
+ *
+ * Per `03-RESEARCH-ROUND2.md` §3.2 the auto-increment helper is correct; the
+ * bug is a race condition. Rapid double-clicks of New Folder fire two
+ * createFolderAt calls in the same React tick, both reading the pre-create
+ * snapshot of `tree`, both computing `"untitled"`, and the second 409s.
+ *
+ * Fix: a useState boolean `isCreating` guards both create paths and is
+ * surfaced on the hook return so SidebarToolbar can disable its New Note +
+ * New Folder buttons mirroring the Refresh button's spin-disabled pattern.
+ */
+function deferred<T = void>() {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+describe("useTreeCreateActions — in-flight guard (Gap R2-2)", () => {
+  let muts: ReturnType<typeof defaultMutsResult>;
+
+  beforeEach(() => {
+    muts = defaultMutsResult();
+    mockedUseTreeMutations.mockReturnValue(muts);
+    setUseFileTree({ root: [] });
+  });
+
+  afterEach(() => {
+    mockedUseFileTree.mockReset();
+    mockedUseTreeMutations.mockReset();
+  });
+
+  it("isCreating is false on initial render", () => {
+    const { result } = renderHook(() => useTreeCreateActions(), { wrapper });
+    expect(result.current.isCreating).toBe(false);
+  });
+
+  it("isCreating flips true while createNoteAt is in flight, false after resolve", async () => {
+    const d = deferred<{
+      id: string;
+      path: string;
+      title: string;
+      updated_at: string;
+    }>();
+    muts.createNote.mockReturnValue(d.promise);
+
+    const { result } = renderHook(() => useTreeCreateActions(), { wrapper });
+    expect(result.current.isCreating).toBe(false);
+
+    let pending: Promise<void>;
+    act(() => {
+      pending = result.current.createNoteAt("");
+    });
+
+    await waitFor(() => {
+      expect(result.current.isCreating).toBe(true);
+    });
+
+    await act(async () => {
+      d.resolve({
+        id: "n1",
+        path: "untitled.md",
+        title: "untitled",
+        updated_at: "2026-01-01T00:00:00Z",
+      });
+      await pending!;
+    });
+
+    await waitFor(() => {
+      expect(result.current.isCreating).toBe(false);
+    });
+  });
+
+  it("createFolderAt during in-flight createNoteAt is a no-op (zero mutator calls)", async () => {
+    const d = deferred<{
+      id: string;
+      path: string;
+      title: string;
+      updated_at: string;
+    }>();
+    muts.createNote.mockReturnValue(d.promise);
+
+    const { result } = renderHook(() => useTreeCreateActions(), { wrapper });
+
+    let firstPending: Promise<void>;
+    act(() => {
+      firstPending = result.current.createNoteAt("");
+    });
+
+    // Wait until the in-flight flag has flipped — proves the first call has
+    // committed to the guard before we attempt the second.
+    await waitFor(() => {
+      expect(result.current.isCreating).toBe(true);
+    });
+
+    // Second call MUST early-return without invoking createFolder.
+    await act(async () => {
+      await result.current.createFolderAt("");
+    });
+    expect(muts.createFolder).not.toHaveBeenCalled();
+
+    // Clean up: resolve the first call so the hook settles.
+    await act(async () => {
+      d.resolve({
+        id: "n1",
+        path: "untitled.md",
+        title: "untitled",
+        updated_at: "2026-01-01T00:00:00Z",
+      });
+      await firstPending!;
+    });
+  });
+
+  it("isCreating returns to false when the mutator throws", async () => {
+    muts.createNote.mockRejectedValue(new Error("boom"));
+
+    const { result } = renderHook(() => useTreeCreateActions(), { wrapper });
+
+    await act(async () => {
+      await result.current.createNoteAt("");
+    });
+
+    expect(result.current.isCreating).toBe(false);
+  });
+
+  it("a second createNoteAt call after the first resolves succeeds (guard is per-flight)", async () => {
+    muts.createNote.mockResolvedValue({
+      id: "n1",
+      path: "untitled.md",
+      title: "untitled",
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+
+    const { result } = renderHook(() => useTreeCreateActions(), { wrapper });
+
+    await act(async () => {
+      await result.current.createNoteAt("");
+    });
+    await act(async () => {
+      await result.current.createNoteAt("");
+    });
+
+    expect(muts.createNote).toHaveBeenCalledTimes(2);
   });
 });
