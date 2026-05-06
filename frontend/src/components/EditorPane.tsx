@@ -50,7 +50,7 @@ import {
   initialSaveState,
   saveStateReducer,
 } from "../lib/saveStateMachine";
-import { postNoteMove } from "../lib/treeApi";
+import { postNoteMove, type Tree, type TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
 import { SaveIndicator } from "./SaveIndicator";
 
@@ -97,6 +97,33 @@ function composeNewPath(parent: string, name: string): string {
   return parent === "" ? name : `${parent}/${name}`;
 }
 
+// CR-02 fix — walk the live tree to recover the active note's CURRENT path.
+// EditorPane previously cached lastNotePath in a ref that was only refreshed
+// on noteId change or after EditorPane's own postNoteMove. Tree-side renames
+// (FileTree.handleCommitRename → moveNote) leave the ref pointing at the
+// PRE-rename path, and the next H1 edit silently relocates the file based on
+// that stale parent. Reading from the live tree closes that window.
+function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
+  if (tree === null) return null;
+  const visit = (node: TreeNode): string | null => {
+    if (node.kind === "note") {
+      return node.id === noteId ? node.path : null;
+    }
+    if (node.children) {
+      for (const child of node.children) {
+        const hit = visit(child);
+        if (hit !== null) return hit;
+      }
+    }
+    return null;
+  };
+  for (const node of tree.root) {
+    const hit = visit(node);
+    if (hit !== null) return hit;
+  }
+  return null;
+}
+
 export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
   const [content, setContent] = useState("");
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
@@ -113,7 +140,7 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
   // wire but the user sees a stale label until reload — exactly the
   // false-positive surface that Plan 03-23's Scenario G is designed to
   // catch.
-  const { refresh: refreshTree } = useFileTree();
+  const { tree, refresh: refreshTree } = useFileTree();
   // Plan 03-22 (Gap R2-6) — surface for the H1-rename failure path.
   // Soft errors (illegal H1) and hard errors (case_collision on move)
   // both render here as a thin banner above the textarea. Cleared on
@@ -159,6 +186,21 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
   const lastH1Sent = useRef<string | null>(null);
   const isRenameInProgress = useRef(false);
   const lastNotePath = useRef<string>("");
+
+  // CR-02 fix — keep lastNotePath in sync with the LIVE tree so tree-side
+  // renames of the active note (FileTree.handleCommitRename → moveNote)
+  // are observed without needing to remount EditorPane. Falls back to the
+  // load-effect's seed value when the tree hasn't fetched yet OR the note
+  // hasn't appeared in the tree yet (race during very-first mount). The
+  // load effect is still authoritative for the initial seed; this effect
+  // only updates on subsequent tree changes.
+  useEffect(() => {
+    if (noteId === null) return;
+    const livePath = findNotePathInTree(tree, noteId);
+    if (livePath !== null && livePath !== lastNotePath.current) {
+      lastNotePath.current = livePath;
+    }
+  }, [tree, noteId]);
 
   // 1. Load on mount AND whenever noteId changes (Phase 3).
   useEffect(() => {
@@ -284,7 +326,14 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
               parent,
               sanitized.value + ".md",
             );
-            if (newPath !== lastNotePath.current) {
+            // CR-01 fix — compare against the server's canonical
+            // (lowercase per DATA-11) form so a case-only H1 change
+            // (e.g. "# my plan" → "# MY PLAN" on a file already named
+            // "my plan.md") is recognised as a no-op instead of being
+            // dispatched as a move that would 409 with case_collision.
+            // This mirrors Plan 03-19's same-name short-circuit in
+            // RenameInput; the H1-driven path needs the same guard.
+            if (newPath.toLowerCase() !== lastNotePath.current.toLowerCase()) {
               const moveResp = await postNoteMove(id, newPath);
               if (moveResp.error) {
                 const msg =
@@ -301,8 +350,9 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
               lastH1Sent.current = currentH1;
               setH1RenameError(null);
             } else {
-              // Path matches — record the H1 as persisted so we don't
-              // re-detect it as changed on the next save.
+              // Canonical path matches — record the H1 as persisted so
+              // we don't re-detect it as changed on the next save. Skip
+              // the dispatch (it would no-op or 409 server-side anyway).
               lastH1Sent.current = currentH1;
               setH1RenameError(null);
             }

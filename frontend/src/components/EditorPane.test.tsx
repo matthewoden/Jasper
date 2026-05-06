@@ -37,10 +37,17 @@ vi.mock("../lib/notesApi", () => ({
 // import below picks up the mock.
 vi.mock("../lib/treeApi", () => ({
   postNoteMove: vi.fn(),
+  // CR-02 regression — useFileTree calls getTree(); EditorPane reads
+  // tree from useFileTree() to derive the active note's live path.
+  // Mock returns a Tree that lists the active note at path
+  // "scratchpad.md" by default; individual tests reassign the mock to
+  // simulate a tree-side rename (path mutates while noteId stays the
+  // same).
+  getTree: vi.fn(),
 }));
 
 import { ScratchpadUUID, getNote, updateNote } from "../lib/notesApi";
-import { postNoteMove } from "../lib/treeApi";
+import { getTree, postNoteMove } from "../lib/treeApi";
 import {
   AUTOSAVE_DEBOUNCE_MS,
   EditorPane,
@@ -50,6 +57,26 @@ import {
 const getNoteMock = vi.mocked(getNote);
 const updateNoteMock = vi.mocked(updateNote);
 const postNoteMoveMock = vi.mocked(postNoteMove);
+const getTreeMock = vi.mocked(getTree);
+
+type GetTreeReturn = Awaited<ReturnType<typeof getTree>>;
+
+function okTree(notePath: string): GetTreeReturn {
+  return {
+    data: {
+      root: [
+        {
+          kind: "note",
+          id: "00000000-0000-4000-a000-000000000001",
+          path: notePath,
+          title: "scratchpad",
+        },
+      ],
+    },
+    error: undefined,
+    response: new Response(),
+  } as GetTreeReturn;
+}
 
 // Shapes that match the openapi-fetch return contract closely enough for the
 // component's destructure (`{ data, error }`). The exact `response` field is
@@ -102,6 +129,10 @@ beforeEach(() => {
   getNoteMock.mockReset();
   updateNoteMock.mockReset();
   postNoteMoveMock.mockReset();
+  getTreeMock.mockReset();
+  // Default tree mirrors the default getNote path so EditorPane's
+  // CR-02 effect sees a live path matching its load-effect seed.
+  getTreeMock.mockResolvedValue(okTree("scratchpad.md"));
   // shouldAdvanceTime: true keeps real-time microtasks flowing so
   // @testing-library's waitFor() retries make progress; manual
   // advanceTimersByTimeAsync calls still drive the 2s debounce + sticky window.
@@ -739,6 +770,114 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
     // Research §2.1: "filename does NOT auto-bind when H1 is empty."
     expect(postNoteMoveMock).not.toHaveBeenCalled();
     expect(updateNoteMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("CR-01: case-only H1 change → ZERO moveNote (would have 409'd as case_collision); updateNote still runs", async () => {
+    // Server canonicalizes paths to lowercase per DATA-11; a case-only
+    // H1 change against a file whose canonical name already matches
+    // lowercase would be dispatched as a move that the server rejects
+    // with case_collision 409. The H1-driven path needs the same
+    // same-name guard Plan 03-19 added to RenameInput.commit.
+    getNoteMock.mockResolvedValue(okGet("# my plan\n\nbody"));
+    updateNoteMock.mockResolvedValue(okPut());
+    // Override the default tree to put the note at the canonical path.
+    getTreeMock.mockResolvedValue(okTree("my plan.md"));
+
+    render(<EditorPane noteId={ScratchpadUUID} />);
+    await flushMicrotasks();
+
+    const textarea = screen.getByLabelText(
+      "Note content",
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea).not.toBeDisabled());
+
+    // User changes ONLY the case of the H1.
+    fireEvent.change(textarea, {
+      target: { value: "# MY PLAN\n\nbody" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await flushMicrotasks();
+
+    // No spurious moveNote — case-only delta should short-circuit.
+    expect(postNoteMoveMock).not.toHaveBeenCalled();
+    // Content save still runs.
+    expect(updateNoteMock).toHaveBeenCalledTimes(1);
+    expect(updateNoteMock).toHaveBeenCalledWith(
+      ScratchpadUUID,
+      "# MY PLAN\n\nbody",
+    );
+    // No banner — case-only is a clean no-op for the rename pipeline.
+    expect(
+      screen.queryByText(/aren't allowed in filenames/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/that filename is already taken/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("CR-02: live tree path overrides the load-effect seed; H1 edit composes new path against the LIVE parent dir", async () => {
+    // EditorPane previously cached lastNotePath in a ref that was only
+    // refreshed on noteId change or after EditorPane's own move. After
+    // a tree-side rename (FileTree.handleCommitRename → moveNote), the
+    // cached path was stale; the next H1 edit composed against the OLD
+    // parent dir, silently relocating the file. The CR-02 fix derives
+    // currentPath from the live tree (useFileTree().tree).
+    //
+    // To exercise the fix without simulating a real broadcast, this
+    // test sets the load-effect seed (getNote.path) and the tree path
+    // to DIFFERENT values — the disagreement that exists in production
+    // immediately after a tree-side rename. The CR-02 effect must
+    // override the seed with the live tree value so the H1-driven move
+    // dispatches against the LIVE parent.
+    //
+    // Stale seed: getNote returns path "untitled.md" (root).
+    // Live tree: note appears at "projects/manual.md" (subfolder).
+    getNoteMock.mockResolvedValue({
+      data: {
+        id: ScratchpadUUID,
+        path: "untitled.md", // stale — what the ref WOULD have cached
+        content: "# Original\n\nbody",
+        updated_at: "2025-01-01T00:00:00Z",
+      },
+      error: undefined,
+      response: new Response(),
+    } as GetReturn);
+    updateNoteMock.mockResolvedValue(okPut());
+    postNoteMoveMock.mockResolvedValue(
+      okMove("projects/renamed by editor.md"),
+    );
+    getTreeMock.mockResolvedValue(okTree("projects/manual.md"));
+
+    render(<EditorPane noteId={ScratchpadUUID} />);
+    await flushMicrotasks();
+
+    const textarea = screen.getByLabelText(
+      "Note content",
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea).not.toBeDisabled());
+
+    // User types a new H1.
+    fireEvent.change(textarea, {
+      target: { value: "# renamed by editor\n\nbody" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await flushMicrotasks();
+
+    // The dispatched move must respect the LIVE parent ("projects/"),
+    // not the stale seed (root). If CR-02 regresses, postNoteMove
+    // would be called with "renamed by editor.md" (no projects/
+    // prefix), silently re-promoting the note to root.
+    expect(postNoteMoveMock).toHaveBeenCalledTimes(1);
+    expect(postNoteMoveMock).toHaveBeenCalledWith(
+      ScratchpadUUID,
+      "projects/renamed by editor.md",
+    );
   });
 
   it("R2-6 T7: pre-existing autosave behavior stays green when the H1 hook is dormant", async () => {
