@@ -28,8 +28,21 @@
  *      `case_collision` toasts now only fire for genuine race-condition
  *      collisions (e.g., another process created an identically-named
  *      file between the tree fetch and the POST).
+ *   5. In-flight guard (Gap R2-2): a single `isCreating` boolean is
+ *      surfaced on the hook return. While true, both `createNoteAt` and
+ *      `createFolderAt` early-return, and the toolbar in Sidebar visibly
+ *      disables the New Note + New Folder buttons (mirroring the existing
+ *      Refresh-button spin-disabled pattern in `SidebarToolbar.tsx`). This
+ *      closes the rapid-double-click race where the second click read the
+ *      pre-create snapshot of `tree`, recomputed `"untitled"`, and 409'd.
+ *      The guard is per-flight (not permanent): it clears in the `finally`
+ *      block so the user can retry immediately on either success or
+ *      failure. The early-return is also defense-in-depth for the
+ *      per-row create paths (FileTree's context-menu / kebab "New note"
+ *      and "New folder") which don't currently expose their own
+ *      disable-while-creating affordance.
  */
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import { nextUntitledName } from "./nextUntitledName";
 import type { FolderNode, Tree, TreeNode } from "./treeApi";
@@ -44,6 +57,16 @@ import { useToast } from "../components/Toast";
 export interface UseTreeCreateActions {
   createNoteAt: (parentPath: string) => Promise<void>;
   createFolderAt: (parentPath: string) => Promise<void>;
+  /**
+   * Gap R2-2 — true while a create is in flight. Drives:
+   *   - SidebarToolbar's New Note + New Folder disabled-state visuals
+   *     (mirrors the existing Refresh-button spin-disabled pattern).
+   *   - The hook's own internal early-return so a second click during
+   *     a same-tick race is a no-op rather than a 409.
+   * Cleared in the create handlers' `finally` block, so a retry after a
+   * failure is always available immediately.
+   */
+  isCreating: boolean;
 }
 
 /**
@@ -110,6 +133,10 @@ export function useTreeCreateActions(): UseTreeCreateActions {
   const muts = useTreeMutations();
   const { tree } = useFileTree();
   const { toast } = useToast();
+  // Gap R2-2 — in-flight guard. A single boolean covers BOTH create
+  // actions so a rapid New Note → New Folder combo (or vice versa) is
+  // also serialized.
+  const [isCreating, setIsCreating] = useState(false);
 
   const handleErr = useCallback(
     (e: unknown) => {
@@ -145,6 +172,13 @@ export function useTreeCreateActions(): UseTreeCreateActions {
 
   const createNoteAt = useCallback(
     async (parentPath: string) => {
+      // Gap R2-2: while a create is in flight, ignore additional clicks.
+      // The button is also visibly disabled in SidebarToolbar so this is
+      // defense-in-depth; the early-return covers per-row create paths
+      // (FileTree's context-menu / kebab "New note") which don't have
+      // their own disable-while-creating affordance yet.
+      if (isCreating) return;
+      setIsCreating(true);
       try {
         const siblings = siblingNamesForCreate(tree, parentPath, "note");
         const title = nextUntitledName(siblings, "untitled");
@@ -152,13 +186,20 @@ export function useTreeCreateActions(): UseTreeCreateActions {
         useTreeStore.getState().startRename("note", s.id);
       } catch (e) {
         handleErr(e);
+      } finally {
+        setIsCreating(false);
       }
     },
-    [muts, tree, handleErr],
+    [muts, tree, handleErr, isCreating],
   );
 
   const createFolderAt = useCallback(
     async (parentPath: string) => {
+      // Gap R2-2: same in-flight guard semantics as createNoteAt — a New
+      // Folder click while New Note is in flight (or vice versa) is also
+      // short-circuited.
+      if (isCreating) return;
+      setIsCreating(true);
       try {
         const siblings = siblingNamesForCreate(tree, parentPath, "folder");
         const name = nextUntitledName(siblings, "untitled");
@@ -166,10 +207,12 @@ export function useTreeCreateActions(): UseTreeCreateActions {
         useTreeStore.getState().startRename("folder", f.path);
       } catch (e) {
         handleErr(e);
+      } finally {
+        setIsCreating(false);
       }
     },
-    [muts, tree, handleErr],
+    [muts, tree, handleErr, isCreating],
   );
 
-  return { createNoteAt, createFolderAt };
+  return { createNoteAt, createFolderAt, isCreating };
 }
