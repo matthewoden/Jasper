@@ -24,6 +24,8 @@
  *     the label slot renders <RenameInput> instead of the static span.
  *   - F2 / Backspace / Delete keys + double-click on the row trigger
  *     onRequestRename / onRequestDelete callbacks.
+ *   - react-arborist's `dragHandle` ref is attached to the row container
+ *     so the HTML5Backend registers the row as a drag source (Gap R2-1).
  *
  * XSS hardening: this file MUST NOT use the React inner-HTML escape
  * hatch (the `dangerously...` prop). Labels are rendered as React text
@@ -75,6 +77,16 @@ export interface TreeRowProps {
   onRequestNewFolder?: (parentPath: string) => void;
   siblingNames?: string[];
   commitRename?: (target: TreeRowData, newValue: string) => Promise<void>;
+  /**
+   * react-arborist's drag source registration callback ref. Forwarded
+   * from the <Tree> children render-prop. Attached to the row container
+   * <div> so react-dnd's HTML5Backend registers the row as a drag
+   * source. Without this attachment, drag-and-drop is silently dead in
+   * the browser (Gap R2-1 closure — 03-RESEARCH-ROUND2.md §1.2). The
+   * prop is optional so existing unit tests that omit it stay valid;
+   * react-arborist always provides it at runtime.
+   */
+  dragHandle?: (el: HTMLDivElement | null) => void;
 }
 
 const muted: CSSProperties = { color: "var(--color-muted)", flexShrink: 0 };
@@ -98,6 +110,7 @@ export function TreeRow({
   onRequestNewFolder,
   siblingNames = [],
   commitRename,
+  dragHandle,
 }: TreeRowProps) {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const pendingRename = useTreeStore((s) => s.pendingRename);
@@ -208,6 +221,12 @@ export function TreeRow({
 
   const rowContent = (
     <div
+      // Gap R2-1: arborist hands us a callback ref via the children
+      // render-prop; attaching it on the row container is what registers
+      // the row as a react-dnd drag source. Without this, ALL drag
+      // events are silently dropped — both Playwright synthetic AND
+      // real mouse drags (03-RESEARCH-ROUND2.md §1.2).
+      ref={dragHandle}
       style={{
         ...style, // react-arborist virtualization: top, height, etc.
         position: "relative",

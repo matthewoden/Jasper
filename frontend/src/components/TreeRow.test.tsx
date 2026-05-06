@@ -553,4 +553,69 @@ describe("<TreeRow />", () => {
       expect(parentKeyDown).not.toHaveBeenCalled();
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Plan 03-16 Gap R2-1 — drag-and-drop dead in browser.
+  //
+  // Root cause (verified in 03-RESEARCH-ROUND2.md §1): TreeRow never
+  // attached react-arborist's `dragHandle` callback ref to a DOM node,
+  // so react-dnd's HTML5Backend never registered the row as a drag
+  // source. Fix: TreeRow accepts an optional `dragHandle` prop and
+  // attaches it as `ref={dragHandle}` on the row container <div>.
+  //
+  // These tests prove the wiring without exercising real DnD events
+  // (synthetic DnD events do NOT round-trip through HTML5Backend in
+  // jsdom — that's why Gap R2-1 needs manual UAT to fully verify; see
+  // 03-15-SUMMARY for the documented limitation).
+  // ──────────────────────────────────────────────────────────────────
+
+  describe("dragHandle wiring (Gap R2-1)", () => {
+    it("invokes dragHandle with a non-null HTMLDivElement on mount", () => {
+      const spy = vi.fn<(el: HTMLDivElement | null) => void>();
+      const node = makeNoteNode();
+      render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+          dragHandle={spy}
+        />,
+      );
+      // React invokes a callback ref once with the element on mount.
+      // (StrictMode would invoke it again with null then with the
+      // element — but the test renderer here is not in StrictMode, so
+      // a single call with the HTMLDivElement is the contract.)
+      expect(spy).toHaveBeenCalled();
+      // The most recent non-null call must hand us the row container
+      // <div> — that's the DOM node react-dnd's HTML5Backend will
+      // register as a drag source.
+      const nonNullCalls = spy.mock.calls.filter((c) => c[0] !== null);
+      expect(nonNullCalls.length).toBeGreaterThanOrEqual(1);
+      const lastEl = nonNullCalls[nonNullCalls.length - 1]![0];
+      expect(lastEl).toBeInstanceOf(HTMLDivElement);
+      // Sanity: the element handed to dragHandle must be the same row
+      // container that carries the data-tree-row marker. Without this,
+      // we could be attaching the ref to the wrong inner div. Note
+      // rows put their UUID id on data-tree-row (folder rows put path).
+      expect(lastEl!.getAttribute("data-tree-row")).toBe(node.data.id);
+    });
+
+    it("does not throw when dragHandle is omitted (prop is optional)", () => {
+      // react-arborist always provides dragHandle, but the existing
+      // unit tests across this file render TreeRow without it. The
+      // prop addition must remain optional so they keep working.
+      const node = makeNoteNode();
+      expect(() =>
+        render(
+          <TreeRow
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            node={node as any}
+            style={{}}
+            onSelectNote={vi.fn()}
+          />,
+        ),
+      ).not.toThrow();
+    });
+  });
 });
