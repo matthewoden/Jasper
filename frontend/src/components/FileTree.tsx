@@ -28,9 +28,13 @@
  *     with recursive=true.
  *   - The 5 locked toast tuples (UI-SPEC §Surface 5) are surfaced from
  *     surfaceError() based on TreeMutationError.code + the operation name.
+ *   - Plan 03-18 (Gap R2-3): a `treeRef` imperative handle into the
+ *     react-arborist <Tree> lets us poke its react-window
+ *     FixedSizeList row-position cache after a successful create — see
+ *     resetTreeListLayout helper below.
  */
-import { useCallback, useMemo, useState } from "react";
-import { Tree, type NodeApi } from "react-arborist";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Tree, type NodeApi, type TreeApi } from "react-arborist";
 
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
@@ -211,6 +215,52 @@ export function countDescendants(
   return { notes, folders };
 }
 
+/**
+ * resetTreeListLayout — Gap R2-3 closure (Plan 03-18).
+ *
+ * react-arborist v3.5 wraps rows in react-window's FixedSizeList,
+ * which caches per-row Y-offsets. When the wire-tree grows by one node
+ * (optimistic create + broadcast refresh), the cache briefly returns
+ * stale offsets and the new row paints at the wrong `top` (visually:
+ * "halfway under the title bar"). The fix is to invalidate the cache
+ * once after a successful create.
+ *
+ * Three-tier fallback:
+ *   1. Prefer resetAfterIndex(0) if exposed — forward-compat for any
+ *      future arborist version that swaps to VariableSizeList.
+ *   2. Fall back to forceUpdate() — the FixedSizeList's built-in
+ *      React.Component method (always present today; re-renders the
+ *      list against current state).
+ *   3. Final fallback: silent no-op (defensive — neither method should
+ *      ever be missing on a real <Tree> ref).
+ *
+ * The helper is also a no-op when `treeRef.current` or its `list.current`
+ * is null (covers mount-time races and unit-test environments without a
+ * real react-window mount).
+ *
+ * Exported for direct unit testing.
+ */
+export function resetTreeListLayout(
+  ref: React.RefObject<TreeApi<ArboristNode> | null>,
+): void {
+  const tree = ref.current;
+  if (!tree) return;
+  const list = tree.list?.current;
+  if (!list) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const anyList = list as any;
+  if (typeof anyList.resetAfterIndex === "function") {
+    anyList.resetAfterIndex(0);
+    return;
+  }
+  if (typeof anyList.forceUpdate === "function") {
+    anyList.forceUpdate();
+    return;
+  }
+  // No-op — neither primitive available. Defensive guard; unreachable
+  // against react-arborist v3.5 + react-window 1.x.
+}
+
 export interface FileTreeProps {
   onSelectNote: (id: string) => void;
 }
@@ -225,7 +275,25 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     null,
   );
 
+  // Gap R2-3 (Plan 03-18) — imperative handle into react-arborist's
+  // <Tree> so we can poke its react-window FixedSizeList row-position
+  // cache after a create. Without this, optimistic-update +
+  // broadcast-refresh layouts the new row at a stale Y-offset until the
+  // next interaction. See resetTreeListLayout helper above.
+  const treeRef = useRef<TreeApi<ArboristNode> | null>(null);
+
   const data = useMemo(() => (tree ? adaptTree(tree) : []), [tree]);
+
+  // Gap R2-3 — when the wire shape changes (a new node was added by
+  // any path: toolbar `+`, per-row context-menu, drag-drop, etc.),
+  // invalidate the FixedSizeList row-position cache once. data is
+  // re-derived only when `tree` (the wire shape) changes — on
+  // expand/collapse, `tree` is unchanged, so this effect does NOT
+  // fire. T-R2-3-01 disposition (accept): bounded by the rate of
+  // human-driven create/delete/move actions.
+  useEffect(() => {
+    resetTreeListLayout(treeRef);
+  }, [data]);
 
   // Compute the initial open-state map ONCE per FileTree mount. After
   // mount, react-arborist owns its own open-state and our zustand store
@@ -297,10 +365,15 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   );
 
   // Per-row "New note" / "New folder" — delegate to the shared hook
-  // (Sidebar's toolbar uses the same).
+  // (Sidebar's toolbar uses the same). After the create resolves, fire
+  // the FixedSizeList layout reset (Gap R2-3) so the new row paints at
+  // its correct Y-offset on the first paint. The data-effect above is
+  // the primary path; these per-handler calls are belt-and-suspenders
+  // for the per-row context-menu create case.
   const handleRequestNewNote = useCallback(
     async (parentPath: string) => {
       await createNoteAt(parentPath);
+      resetTreeListLayout(treeRef);
     },
     [createNoteAt],
   );
@@ -308,6 +381,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   const handleRequestNewFolder = useCallback(
     async (parentPath: string) => {
       await createFolderAt(parentPath);
+      resetTreeListLayout(treeRef);
     },
     [createFolderAt],
   );
@@ -535,6 +609,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   return (
     <>
       <Tree<ArboristNode>
+        ref={treeRef}
         data={data}
         idAccessor="id"
         childrenAccessor="children"
