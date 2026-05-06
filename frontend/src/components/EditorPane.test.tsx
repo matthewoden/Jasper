@@ -31,7 +31,16 @@ vi.mock("../lib/notesApi", () => ({
   updateNote: vi.fn(),
 }));
 
+// Plan 03-22 (Gap R2-6) — performSave dispatches a move BEFORE updateNote
+// when the H1 changes. The H1 detection branch routes through treeApi's
+// postNoteMove wrapper; mock it here at module-load time so the EditorPane
+// import below picks up the mock.
+vi.mock("../lib/treeApi", () => ({
+  postNoteMove: vi.fn(),
+}));
+
 import { ScratchpadUUID, getNote, updateNote } from "../lib/notesApi";
+import { postNoteMove } from "../lib/treeApi";
 import {
   AUTOSAVE_DEBOUNCE_MS,
   EditorPane,
@@ -40,6 +49,7 @@ import {
 
 const getNoteMock = vi.mocked(getNote);
 const updateNoteMock = vi.mocked(updateNote);
+const postNoteMoveMock = vi.mocked(postNoteMove);
 
 // Shapes that match the openapi-fetch return contract closely enough for the
 // component's destructure (`{ data, error }`). The exact `response` field is
@@ -91,6 +101,7 @@ function errPut(message: string): PutReturn {
 beforeEach(() => {
   getNoteMock.mockReset();
   updateNoteMock.mockReset();
+  postNoteMoveMock.mockReset();
   // shouldAdvanceTime: true keeps real-time microtasks flowing so
   // @testing-library's waitFor() retries make progress; manual
   // advanceTimersByTimeAsync calls still drive the 2s debounce + sticky window.
@@ -479,5 +490,296 @@ describe("generic load-error copy (Gap 6b)", () => {
       "textbox",
     )) as HTMLTextAreaElement;
     expect(textarea.getAttribute("aria-label")).toBe("Note content");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Plan 03-22 (Gap R2-6) — H1 → filename binding (Direction A).
+//
+// performSave detects an H1 delta vs lastH1Sent and dispatches
+// moveNote BEFORE updateNote. Loop prevention via isRenameInProgress.
+// Sanitization rejects illegal H1s with an inline editor banner;
+// case_collision aborts the save with a different banner.
+// ────────────────────────────────────────────────────────────────────
+
+type MoveReturn = Awaited<ReturnType<typeof postNoteMove>>;
+
+function okMove(path: string): MoveReturn {
+  return {
+    data: {
+      id: ScratchpadUUID,
+      path,
+      title: "title",
+      updated_at: "2025-01-01T00:00:00Z",
+    },
+  } as MoveReturn;
+}
+
+function errMove(code: string, message: string, status = 409): MoveReturn {
+  return {
+    error: { code, message, status },
+  } as MoveReturn;
+}
+
+describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
+  it("R2-6 T1: H1 change → moveNote fires BEFORE updateNote with the sanitized basename", async () => {
+    getNoteMock.mockResolvedValue(okGet("# Original\n\nbody"));
+    postNoteMoveMock.mockResolvedValue(okMove("new title.md"));
+    updateNoteMock.mockResolvedValue(okPut());
+
+    render(<EditorPane noteId={ScratchpadUUID} />);
+    await flushMicrotasks();
+
+    const textarea = screen.getByLabelText(
+      "Note content",
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea).not.toBeDisabled());
+
+    fireEvent.change(textarea, {
+      target: { value: "# new title\n\nbody" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await flushMicrotasks();
+
+    // moveNote called with sanitized basename + .md (root parent → no slash).
+    expect(postNoteMoveMock).toHaveBeenCalledTimes(1);
+    expect(postNoteMoveMock).toHaveBeenCalledWith(
+      ScratchpadUUID,
+      "new title.md",
+    );
+    // updateNote called once after moveNote with the new content.
+    expect(updateNoteMock).toHaveBeenCalledTimes(1);
+    expect(updateNoteMock).toHaveBeenCalledWith(
+      ScratchpadUUID,
+      "# new title\n\nbody",
+    );
+    // Order: moveNote BEFORE updateNote (the move semantics: collision
+    // must abort cleanly before content commits).
+    expect(postNoteMoveMock.mock.invocationCallOrder[0]).toBeLessThan(
+      updateNoteMock.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("R2-6 T2: body-only change (H1 unchanged) → ZERO moveNote calls; one updateNote", async () => {
+    getNoteMock.mockResolvedValue(okGet("# Title\n\nbody"));
+    updateNoteMock.mockResolvedValue(okPut());
+
+    render(<EditorPane noteId={ScratchpadUUID} />);
+    await flushMicrotasks();
+
+    const textarea = screen.getByLabelText(
+      "Note content",
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea).not.toBeDisabled());
+
+    fireEvent.change(textarea, {
+      target: { value: "# Title\n\nbody changed" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await flushMicrotasks();
+
+    expect(postNoteMoveMock).not.toHaveBeenCalled();
+    expect(updateNoteMock).toHaveBeenCalledTimes(1);
+    expect(updateNoteMock).toHaveBeenCalledWith(
+      ScratchpadUUID,
+      "# Title\n\nbody changed",
+    );
+  });
+
+  it("R2-6 T3: H1 with illegal char (e.g. '/') → no moveNote; updateNote still runs; banner surfaces", async () => {
+    getNoteMock.mockResolvedValue(okGet("# Original\n\nbody"));
+    updateNoteMock.mockResolvedValue(okPut());
+
+    render(<EditorPane noteId={ScratchpadUUID} />);
+    await flushMicrotasks();
+
+    const textarea = screen.getByLabelText(
+      "Note content",
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea).not.toBeDisabled());
+
+    fireEvent.change(textarea, {
+      target: { value: "# my/note\n\nbody" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await flushMicrotasks();
+
+    expect(postNoteMoveMock).not.toHaveBeenCalled();
+    // Content save still goes through (soft error — research §2.3
+    // recommended treatment).
+    expect(updateNoteMock).toHaveBeenCalledTimes(1);
+    expect(updateNoteMock).toHaveBeenCalledWith(
+      ScratchpadUUID,
+      "# my/note\n\nbody",
+    );
+    // Inline banner mentions filename / characters language.
+    expect(
+      screen.getByText(/aren't allowed in filenames/i),
+    ).toBeInTheDocument();
+  });
+
+  it("R2-6 T4: in-flight rename loop guard — concurrent H1-change saves do NOT dispatch a second moveNote", async () => {
+    getNoteMock.mockResolvedValue(okGet("# Original\n\nbody"));
+    let resolveMove: (v: MoveReturn) => void = () => {};
+    postNoteMoveMock.mockImplementation(
+      () =>
+        new Promise<MoveReturn>((r) => {
+          resolveMove = r;
+        }) as ReturnType<typeof postNoteMove>,
+    );
+    updateNoteMock.mockResolvedValue(okPut());
+
+    render(<EditorPane noteId={ScratchpadUUID} />);
+    await flushMicrotasks();
+
+    const textarea = screen.getByLabelText(
+      "Note content",
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea).not.toBeDisabled());
+
+    // First H1 change → first moveNote dispatched (in flight).
+    fireEvent.change(textarea, {
+      target: { value: "# first\n\nbody" },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await flushMicrotasks();
+    expect(postNoteMoveMock).toHaveBeenCalledTimes(1);
+
+    // Second H1 change while the first move is still in flight. The
+    // existing autosave coalesces saves via inFlight; isRenameInProgress
+    // separately guards the H1 detector. No second moveNote should
+    // fire while the first is unresolved.
+    fireEvent.change(textarea, {
+      target: { value: "# second\n\nbody" },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    });
+    fireEvent.keyDown(textarea, { key: "s", metaKey: true });
+    await flushMicrotasks();
+
+    // Still only one moveNote call.
+    expect(postNoteMoveMock).toHaveBeenCalledTimes(1);
+
+    // Resolve the in-flight move; the trailing autosave fires.
+    await act(async () => {
+      resolveMove(okMove("first.md"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  });
+
+  it("R2-6 T5: case_collision on moveNote → updateNote does NOT run; banner mentions taken filename", async () => {
+    getNoteMock.mockResolvedValue(okGet("# Original\n\nbody"));
+    postNoteMoveMock.mockResolvedValue(
+      errMove("case_collision", "taken.md", 409),
+    );
+    updateNoteMock.mockResolvedValue(okPut());
+
+    render(<EditorPane noteId={ScratchpadUUID} />);
+    await flushMicrotasks();
+
+    const textarea = screen.getByLabelText(
+      "Note content",
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea).not.toBeDisabled());
+
+    fireEvent.change(textarea, {
+      target: { value: "# taken\n\nbody" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await flushMicrotasks();
+
+    expect(postNoteMoveMock).toHaveBeenCalledTimes(1);
+    // Bail early — content save does NOT run on rename failure.
+    expect(updateNoteMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/that filename is already taken/i),
+    ).toBeInTheDocument();
+  });
+
+  it("R2-6 T6: H1 erased to empty → no moveNote; updateNote runs normally", async () => {
+    getNoteMock.mockResolvedValue(okGet("# Original\n\nbody"));
+    updateNoteMock.mockResolvedValue(okPut());
+
+    render(<EditorPane noteId={ScratchpadUUID} />);
+    await flushMicrotasks();
+
+    const textarea = screen.getByLabelText(
+      "Note content",
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea).not.toBeDisabled());
+
+    // User erases the heading line entirely.
+    fireEvent.change(textarea, {
+      target: { value: "\n\nbody only" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await flushMicrotasks();
+
+    // Empty H1 (extractH1FromContent returns null) is a no-op — the
+    // file keeps its current filename until the user types an H1.
+    // Research §2.1: "filename does NOT auto-bind when H1 is empty."
+    expect(postNoteMoveMock).not.toHaveBeenCalled();
+    expect(updateNoteMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("R2-6 T7: pre-existing autosave behavior stays green when the H1 hook is dormant", async () => {
+    // Repeat E3's debounce → saving → saved → idle path with the new
+    // hook installed but no H1 change. The new branch must not perturb
+    // the SaveIndicator state machine or the timer cadence.
+    getNoteMock.mockResolvedValue(okGet("# Title\n\nhello"));
+    updateNoteMock.mockResolvedValue(okPut());
+
+    render(<EditorPane noteId={ScratchpadUUID} />);
+    await flushMicrotasks();
+
+    const textarea = screen.getByLabelText(
+      "Note content",
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea).not.toBeDisabled());
+
+    fireEvent.change(textarea, {
+      target: { value: "# Title\n\nhello world" },
+    });
+
+    expect(screen.getByRole("status")).not.toHaveAttribute("title");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await flushMicrotasks();
+
+    expect(postNoteMoveMock).not.toHaveBeenCalled();
+    expect(updateNoteMock).toHaveBeenCalledWith(
+      ScratchpadUUID,
+      "# Title\n\nhello world",
+    );
+    expect(screen.getByRole("status")).toHaveAttribute(
+      "title",
+      expect.stringMatching(/^Saved at \d{2}:\d{2}:\d{2}$/),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SAVED_STICKY_MS + 10);
+    });
+    expect(screen.getByRole("status")).not.toHaveAttribute("title");
   });
 });

@@ -16,6 +16,22 @@
  * CodeMirror swap replaces ONLY the <textarea> element. The autosave
  * debounce, Cmd+S handler, coalescing logic, and SaveIndicator remain
  * unchanged.
+ *
+ * Plan 03-22 (Gap R2-6 — filename↔H1 bidirectional binding) — DIRECTION A:
+ *   When the H1 in the editor changes (e.g. user types "# new title"),
+ *   the next debounced performSave detects the H1 delta vs the
+ *   most-recently-persisted H1 (lastH1Sent ref), sanitizes it through
+ *   the same illegal-char regex RenameInput uses, and dispatches
+ *   postNoteMove(id, parent + sanitized + ".md") BEFORE updateNote.
+ *   On move success, updateNote then commits the latest content. On
+ *   move failure (e.g. case_collision), the save aborts entirely and
+ *   surfaces an inline banner so the user can retry with a different
+ *   heading. A single isRenameInProgress ref short-circuits the H1
+ *   detector while a move is in flight (loop prevention mirroring the
+ *   Obsidian plugin's pattern; PROJECT.md Key Decision 2026-05-03 LOCKED).
+ *   Empty H1 → no-op (research §2.1: filename does NOT auto-bind when
+ *   the H1 is empty). Invalid H1 → soft error: content still saves,
+ *   banner explains the rename was skipped.
  */
 
 import {
@@ -28,11 +44,13 @@ import {
   useState,
 } from "react";
 
+import { extractH1FromContent, sanitizeH1ForFilename } from "../lib/h1Extract";
 import { getNote, updateNote } from "../lib/notesApi";
 import {
   initialSaveState,
   saveStateReducer,
 } from "../lib/saveStateMachine";
+import { postNoteMove } from "../lib/treeApi";
 import { SaveIndicator } from "./SaveIndicator";
 
 type LoadStatus = "loading" | "loaded" | "error";
@@ -60,6 +78,24 @@ interface EditorPaneProps {
   reindexing?: boolean;
 }
 
+// ────────────────────────────────────────────────────────────────────
+// Plan 03-22 — pure path helpers used by the H1-rename branch.
+//
+// Mirrors the (currently duplicated) basename / composeNewPath pair in
+// FileTree.tsx. A future refactor should lift both pairs to a shared
+// frontend/src/lib/pathUtil.ts; for now duplicating two ~5-LOC helpers
+// is the project's accepted convention (mirrors the Go-side
+// validateBareName ↔ JS validateRename pattern).
+// ────────────────────────────────────────────────────────────────────
+function parentDirOf(p: string): string {
+  const i = p.lastIndexOf("/");
+  return i === -1 ? "" : p.slice(0, i);
+}
+
+function composeNewPath(parent: string, name: string): string {
+  return parent === "" ? name : `${parent}/${name}`;
+}
+
 export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
   const [content, setContent] = useState("");
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
@@ -67,6 +103,11 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
     saveStateReducer,
     initialSaveState,
   );
+  // Plan 03-22 (Gap R2-6) — surface for the H1-rename failure path.
+  // Soft errors (illegal H1) and hard errors (case_collision on move)
+  // both render here as a thin banner above the textarea. Cleared on
+  // every successful H1 round-trip OR when the H1 stops being invalid.
+  const [h1RenameError, setH1RenameError] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Latest content the component has seen — read by the trailing-save closure
@@ -92,6 +133,22 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
     noteIdRef.current = noteId;
   }, [noteId]);
 
+  // Plan 03-22 (Gap R2-6) — H1-driven rename pipeline state.
+  //   lastH1Sent       tracks the most-recently-persisted H1 so we
+  //                    know when the H1 has changed since the last
+  //                    save (and a moveNote is needed). Seeded to
+  //                    extractH1FromContent(loadedContent) on mount.
+  //   isRenameInProgress  loop-prevention flag mirroring the Obsidian
+  //                    plugin's pattern. While set, the H1-change
+  //                    detector skips dispatching another moveNote.
+  //   lastNotePath     caches the canonical post-load (or post-move)
+  //                    path so we can compute the parent directory
+  //                    for the new filename. Updated from the move
+  //                    response on every successful rename.
+  const lastH1Sent = useRef<string | null>(null);
+  const isRenameInProgress = useRef(false);
+  const lastNotePath = useRef<string>("");
+
   // 1. Load on mount AND whenever noteId changes (Phase 3).
   useEffect(() => {
     if (noteId === null) {
@@ -102,11 +159,21 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
       setContent("");
       latestContentRef.current = "";
       userHasEdited.current = false;
+      // Plan 03-22 — reset H1-binding state too. If the user later
+      // selects a different note, the load effect re-runs and seeds
+      // these from the new content.
+      lastH1Sent.current = null;
+      lastNotePath.current = "";
+      isRenameInProgress.current = false;
+      setH1RenameError(null);
       return;
     }
     let cancelled = false;
     setLoadStatus("loading");
     userHasEdited.current = false;
+    // Plan 03-22 — clear the rename error banner on note switch so a
+    // stale message from the previous note doesn't bleed across.
+    setH1RenameError(null);
     (async () => {
       const { data, error } = await getNote(noteId);
       if (cancelled) return;
@@ -121,6 +188,12 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
         setContent(data.content);
         latestContentRef.current = data.content;
       }
+      // Plan 03-22 — seed the H1-binding refs from the loaded content
+      // and the canonical path returned by the server. The path may
+      // include a parent directory; performSave's H1 detector uses it
+      // to compose the new path on rename.
+      lastH1Sent.current = extractH1FromContent(data.content);
+      lastNotePath.current = data.path;
       setLoadStatus("loaded");
     })();
     return () => {
@@ -162,6 +235,72 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
     inFlight.current = true;
     dispatch({ type: "requestSave" });
     try {
+      // Plan 03-22 (Gap R2-6) — Direction A: H1 → filename.
+      //
+      // If the H1 in the latest content differs from the most-recently-
+      // persisted H1 AND we're not already inside a rename round-trip,
+      // dispatch postNoteMove(id, parent + sanitized + ".md") BEFORE
+      // updateNote. Putting the move first makes a collision abort the
+      // sequence cleanly (no half-saved state where the file got renamed
+      // but the content also got committed under the old path).
+      //
+      // Failure modes:
+      //   - extractH1FromContent returns null (no H1 / empty H1) →
+      //     no-op; fall through to updateNote.
+      //   - sanitize fails (illegal chars / leading dot / empty) →
+      //     soft error: surface a banner, skip the move, but STILL
+      //     run updateNote so the user's typing is not lost.
+      //   - postNoteMove returns error.code === "case_collision" →
+      //     hard error: surface a different banner, BAIL OUT entirely
+      //     (do NOT updateNote). Subsequent edits will retry once the
+      //     user changes the H1.
+      //   - postNoteMove returns any other error → bail out with a
+      //     generic message; same retry semantics.
+      const currentH1 = extractH1FromContent(latestContent);
+      const h1Changed =
+        currentH1 !== null && currentH1 !== lastH1Sent.current;
+
+      if (h1Changed && !isRenameInProgress.current) {
+        const sanitized = sanitizeH1ForFilename(currentH1);
+        if (!sanitized.ok) {
+          // Soft error — content save still proceeds.
+          setH1RenameError(sanitized.error);
+        } else {
+          isRenameInProgress.current = true;
+          try {
+            const parent = parentDirOf(lastNotePath.current);
+            const newPath = composeNewPath(
+              parent,
+              sanitized.value + ".md",
+            );
+            if (newPath !== lastNotePath.current) {
+              const moveResp = await postNoteMove(id, newPath);
+              if (moveResp.error) {
+                const msg =
+                  moveResp.error.code === "case_collision"
+                    ? "Couldn't rename to match the heading — that filename is already taken."
+                    : "Couldn't rename to match the heading. Try a different heading.";
+                setH1RenameError(msg);
+                dispatch({ type: "saveFailed", error: msg });
+                return;
+              }
+              if (moveResp.data) {
+                lastNotePath.current = moveResp.data.path;
+              }
+              lastH1Sent.current = currentH1;
+              setH1RenameError(null);
+            } else {
+              // Path matches — record the H1 as persisted so we don't
+              // re-detect it as changed on the next save.
+              lastH1Sent.current = currentH1;
+              setH1RenameError(null);
+            }
+          } finally {
+            isRenameInProgress.current = false;
+          }
+        }
+      }
+
       const { data, error } = await updateNote(id, latestContent);
       if (error || !data) {
         const msg =
@@ -285,6 +424,18 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
       {loadStatus === "error" && (
         <div className="px-4 text-destructive" role="alert">
           {LOAD_ERROR_COPY}
+        </div>
+      )}
+      {h1RenameError && (
+        <div
+          className="px-4"
+          role="alert"
+          style={{
+            color: "var(--color-destructive)",
+            fontSize: 12,
+          }}
+        >
+          {h1RenameError}
         </div>
       )}
       <textarea
