@@ -264,6 +264,11 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
   });
 
   it("TestSidebar_NewNoteAndNewFolder_Click — buttons render and click without crashing", async () => {
+    // Gap R2-2: the in-flight guard now serializes create clicks so a
+    // synchronous double-click of New Note → New Folder no longer fires
+    // both mutators in the same tick. We click New Note, await its
+    // mutator settling, THEN click New Folder. Both still trigger their
+    // respective mutators — they just can't race.
     const muts = defaultMutsResult();
     muts.createNote.mockResolvedValue({
       id: "n-new",
@@ -286,9 +291,11 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     });
     renderWithProvider(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: "New note" }));
-    fireEvent.click(screen.getByRole("button", { name: "New folder" }));
     await waitFor(() => {
       expect(muts.createNote).toHaveBeenCalledWith("", "untitled");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "New folder" }));
+    await waitFor(() => {
       expect(muts.createFolder).toHaveBeenCalledWith("", "untitled");
     });
   });

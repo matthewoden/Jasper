@@ -17,6 +17,10 @@
  *     the locked toast tuple per UI-SPEC §Surface 5
  *     ("Couldn't refresh the index.") AND re-throw so the toolbar's
  *     spin-disabled treatment clears.
+ *   - Gap R2-2: while a create is in flight, the toolbar's New Note +
+ *     New Folder buttons are visibly disabled — see
+ *     `useTreeCreateActions.isCreating`. The flag is threaded straight
+ *     through to `<SidebarToolbar creating=... />`.
  */
 import { useCallback } from "react";
 
@@ -33,7 +37,7 @@ export interface SidebarProps {
 
 export function Sidebar({ onSelectNote = () => {} }: SidebarProps) {
   const { refresh } = useFileTree();
-  const { createNoteAt, createFolderAt } = useTreeCreateActions();
+  const { createNoteAt, createFolderAt, isCreating } = useTreeCreateActions();
   const { toast } = useToast();
 
   const handleRefresh = useCallback(async () => {
@@ -92,6 +96,7 @@ export function Sidebar({ onSelectNote = () => {} }: SidebarProps) {
           onNewNote={handleNewNote}
           onNewFolder={handleNewFolder}
           onRefresh={handleRefresh}
+          creating={isCreating}
         />
       </header>
       <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
