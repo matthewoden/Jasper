@@ -566,6 +566,12 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
               }) as unknown as NodeApi<TreeRowData>
             }
             style={props.style}
+            // Gap R2-1: arborist hands us a callback ref via children
+            // render-prop; attaching it on the row container is what
+            // registers the row as a react-dnd drag source. Without
+            // this forward, ALL drag events are silently dropped —
+            // both Playwright synthetic AND real mouse drags.
+            dragHandle={props.dragHandle}
             onSelectNote={onSelectNote}
             onRequestRename={handleRequestRename}
             onRequestDelete={handleRequestDelete}
