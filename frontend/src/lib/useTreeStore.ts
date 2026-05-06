@@ -7,6 +7,7 @@
  *     activeNoteId:  string | null         // currently active note's UUID
  *     pendingRename: { kind, target } | null
  *     draftCreate:   { kind, parent } | null
+ *     selectedRow:   { kind, target } | null  // ← Plan 03-20 (Gap R2-4)
  *   }
  *
  * Persistence (UI-SPEC §State persistence):
@@ -15,11 +16,18 @@
  *   - Writes are debounced 250ms to avoid storage thrash on rapid expand/collapse.
  *   - Hydration (top-level side-effect) tolerates corrupted storage — bad JSON
  *     silently falls back to defaults; the user just sees their tree as it is.
- *   - `pendingRename` and `draftCreate` are NEVER persisted (transient slots).
+ *   - `pendingRename`, `draftCreate`, and `selectedRow` are NEVER persisted
+ *     (transient slots).
+ *
+ * `selectedRow` is consumed by App.tsx's document-level F2 listener (Plan
+ * 03-20, Gap R2-4): clicking a tree row populates `selectedRow`, then F2
+ * dispatched at the document level reads `selectedRow` to route rename to
+ * the right row even after focus has shifted to the editor textarea.
  *
  * pruneStaleTreeState(folderPaths, noteIds) is exported for useFileTree to call
  * after every successful tree fetch — it drops expanded entries / activeNoteId
- * that no longer exist in the freshly-fetched tree.
+ * that no longer exist in the freshly-fetched tree. It does NOT touch
+ * transient slots.
  */
 import { create } from "zustand";
 
@@ -30,6 +38,7 @@ export type RenameKind = "note" | "folder";
 
 export type PendingRename = { kind: RenameKind; target: string };
 export type DraftCreate = { kind: RenameKind; parent: string };
+export type SelectedRow = { kind: RenameKind; target: string };
 
 export interface TreeStore {
   // Persisted slots:
@@ -39,6 +48,14 @@ export interface TreeStore {
   // Transient slots (never persisted):
   pendingRename: PendingRename | null;
   draftCreate: DraftCreate | null;
+  // Plan 03-20 (Gap R2-4): tracks the most-recently-clicked tree row
+  // regardless of where DOM focus actually is. App.tsx's document-level
+  // F2 listener reads this to route the keystroke to the right row even
+  // when DOM focus has shifted to the editor textarea (the
+  // EditorPane.useEffect at EditorPane.tsx focuses the textarea on
+  // loadStatus === "loaded"). NOT persisted (matches pendingRename /
+  // draftCreate precedent).
+  selectedRow: SelectedRow | null;
 
   // Mutators:
   toggleExpanded: (path: string) => void;
@@ -47,6 +64,7 @@ export interface TreeStore {
   endRename: () => void;
   startDraftCreate: (kind: RenameKind, parent: string) => void;
   endDraftCreate: () => void;
+  setSelectedRow: (sr: SelectedRow | null) => void;
 }
 
 export const useTreeStore = create<TreeStore>((set) => ({
@@ -54,6 +72,7 @@ export const useTreeStore = create<TreeStore>((set) => ({
   activeNoteId: null,
   pendingRename: null,
   draftCreate: null,
+  selectedRow: null,
   toggleExpanded: (path) =>
     set((s) => {
       const next = new Set(s.expanded);
@@ -66,6 +85,7 @@ export const useTreeStore = create<TreeStore>((set) => ({
   endRename: () => set({ pendingRename: null }),
   startDraftCreate: (kind, parent) => set({ draftCreate: { kind, parent } }),
   endDraftCreate: () => set({ draftCreate: null }),
+  setSelectedRow: (sr) => set({ selectedRow: sr }),
 }));
 
 /**

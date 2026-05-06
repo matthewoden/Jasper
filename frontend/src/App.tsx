@@ -15,7 +15,7 @@
  * error → idle (error path, after Close).
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { BacklinksColumn } from "./components/BacklinksColumn";
 import { EditorPane } from "./components/EditorPane";
@@ -41,6 +41,59 @@ type ReindexPhase =
 
 const SUCCESS_TRANSIENT_MS = 600;
 
+/**
+ * Plan 03-20 Gap R2-4 — document-level F2 routing.
+ *
+ * Clicking a tree row mounts the editor and EditorPane.useEffect
+ * focuses the textarea on `loadStatus === "loaded"`. Without this
+ * handler, F2 dispatched by the user would arrive at the textarea
+ * (or whichever element holds focus) and Plan 03-12's row-local F2
+ * handler would never see it. Routing F2 through the document level
+ * + reading the most-recently-clicked row from
+ * useTreeStore.selectedRow ensures rename works regardless of which
+ * element holds focus.
+ *
+ * Guard order (intentional):
+ *   1. e.key !== "F2"             → fast bail-out for the common case
+ *   2. target is form-control     → don't hijack typing in inputs /
+ *                                   textareas / contenteditable
+ *      (RenameInput.tsx itself stops propagation on every keystroke
+ *      per Plan 03-12, so this guard is mostly defense-in-depth +
+ *      the load-bearing case for Gap R2-4 — the editor textarea)
+ *   3. pendingRename != null      → a rename is already in progress;
+ *                                   defer to RenameInput's own
+ *                                   handlers
+ *   4. selectedRow == null        → nothing to rename; no-op
+ *
+ * Only when all guards pass do we preventDefault + dispatch
+ * startRename. The TreeRow's local F2 handler (Plan 03-12) is
+ * unchanged — it remains the fallback for the auto-focused-row
+ * case (e.g., right after a toolbar create when arborist auto-
+ * focuses the new row before the editor takes over).
+ *
+ * Exported as a named function so unit tests can drive it as a
+ * pure function instead of reaching into a mounted React tree's
+ * effect — same pattern other one-shot handlers in the codebase
+ * follow.
+ */
+export function handleAppF2KeyDown(e: KeyboardEvent): void {
+  if (e.key !== "F2") return;
+  const target = e.target;
+  if (
+    target instanceof HTMLElement &&
+    target.matches("input, textarea, [contenteditable=true]")
+  ) {
+    return;
+  }
+  const state = useTreeStore.getState();
+  // If a rename is already in progress, defer to its own handlers.
+  if (state.pendingRename !== null) return;
+  const sr = state.selectedRow;
+  if (sr === null) return;
+  e.preventDefault();
+  state.startRename(sr.kind, sr.target);
+}
+
 export default function App() {
   return (
     <ToastProvider>
@@ -57,6 +110,17 @@ function AppInner() {
   // Phase 3 (Plan 03-07): the tree's selected-note id drives the
   // editor pane. setActiveNote is exposed via Sidebar.onSelectNote.
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
+
+  // Plan 03-20 Gap R2-4 — document-level F2 routing. See
+  // handleAppF2KeyDown's JSDoc for the full rationale. The empty
+  // dependency array is correct because the handler reads
+  // useTreeStore.getState() at fire time — no stale-closure risk.
+  useEffect(() => {
+    document.addEventListener("keydown", handleAppF2KeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleAppF2KeyDown);
+    };
+  }, []);
 
   const fireReindex = useCallback(async () => {
     setReindexPhase("running");

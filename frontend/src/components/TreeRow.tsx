@@ -26,6 +26,12 @@
  *     onRequestRename / onRequestDelete callbacks.
  *   - react-arborist's `dragHandle` ref is attached to the row container
  *     so the HTML5Backend registers the row as a drag source (Gap R2-1).
+ *   - Gap R2-4 (Plan 03-20): handleClick sets useTreeStore.selectedRow so
+ *     App.tsx's document-level F2 listener can route rename to this row
+ *     even when DOM focus has shifted to the editor textarea
+ *     (EditorPane.useEffect → loadStatus === "loaded" focuses the
+ *     textarea on note selection). The local handleKeyDown F2 path
+ *     stays as a fallback for the auto-focused-row case.
  *
  * XSS hardening: this file MUST NOT use the React inner-HTML escape
  * hatch (the `dangerously...` prop). Labels are rendered as React text
@@ -130,6 +136,18 @@ export function TreeRow({
 
   const handleClick = () => {
     if (isRenamingThis) return; // guarded — clicks inside the input are handled by RenameInput
+    // Gap R2-4 (Plan 03-20): track this row as the F2 routing target.
+    // App.tsx's document-level keydown listener reads
+    // useTreeStore.selectedRow at fire time to dispatch rename to the
+    // right row even after the editor textarea has stolen focus
+    // (EditorPane focuses the textarea on loadStatus === "loaded").
+    // Both folder and note rows participate — folders rename via the
+    // same selectedRow → startRename path.
+    useTreeStore.getState().setSelectedRow(
+      data.kind === "folder"
+        ? { kind: "folder", target: data.path }
+        : { kind: "note", target: data.id },
+    );
     if (isFolder) {
       node.toggle();
     } else {
