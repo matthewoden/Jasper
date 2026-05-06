@@ -292,8 +292,15 @@ describe("key event trap (Gap 4)", () => {
       </div>,
     );
     const input = getByRole("textbox") as HTMLInputElement;
+    // Type a changed value so commit() takes the onCommit path
+    // (the same-name short-circuit added in Plan 03-19 would otherwise
+    // route to onCancel — which is also fine for the bubble check, but
+    // assertion below specifically targets the commit branch).
+    fireEvent.change(input, { target: { value: "hello-renamed" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(onCommit).toHaveBeenCalledWith("hello"));
+    await waitFor(() =>
+      expect(onCommit).toHaveBeenCalledWith("hello-renamed"),
+    );
     expect(parentKeyDown).not.toHaveBeenCalled();
   });
 
@@ -334,8 +341,13 @@ describe("key event trap (Gap 4)", () => {
       </div>,
     );
     const input = getByRole("textbox") as HTMLInputElement;
+    // Type a changed value so commit() takes the onCommit path
+    // (Plan 03-19 same-name short-circuit otherwise routes to onCancel).
+    fireEvent.change(input, { target: { value: "hello-renamed" } });
     fireEvent.keyDown(input, { key: "Tab" });
-    await waitFor(() => expect(onCommit).toHaveBeenCalledWith("hello"));
+    await waitFor(() =>
+      expect(onCommit).toHaveBeenCalledWith("hello-renamed"),
+    );
     expect(parentKeyDown).not.toHaveBeenCalled();
   });
 
@@ -357,5 +369,174 @@ describe("key event trap (Gap 4)", () => {
     const input = getByRole("textbox") as HTMLInputElement;
     fireEvent.mouseDown(input);
     expect(parentMouseDown).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// Plan 03-19 Gap R2-5 — same-name commit is a no-op.
+//
+// When the user presses Enter / Tab / clicks outside without changing
+// the value (or types a new value and erases back to the original),
+// RenameInput must call onCancel (NOT onCommit). This avoids a
+// false-positive 409 case-collision against the row's own current
+// path in Service.Move (research §3.4 — the server's Move does not
+// short-circuit oldRelPath == canonNew, and FileStore's collision
+// check has no source-vs-destination distinction at that layer).
+//
+// Symmetric to Plan 03-11's computeMoveTarget same-parent guard for
+// the drag path.
+// ──────────────────────────────────────────────────────────────────
+
+describe("same-name no-op short-circuit (Gap R2-5)", () => {
+  it("Enter on unchanged value calls onCancel, never onCommit", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <RenameInput
+        initialValue="alpha"
+        isFolder={false}
+        siblingNames={[]}
+        onCommit={onCommit}
+        onCancel={onCancel}
+      />,
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    // Press Enter WITHOUT typing.
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => {
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("Tab on unchanged value calls onCancel, never onCommit", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <RenameInput
+        initialValue="alpha"
+        isFolder={false}
+        siblingNames={[]}
+        onCommit={onCommit}
+        onCancel={onCancel}
+      />,
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    fireEvent.keyDown(input, { key: "Tab" });
+    await waitFor(() => {
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("click-outside on unchanged value calls onCancel, never onCommit", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <div>
+        <RenameInput
+          initialValue="alpha"
+          isFolder={false}
+          siblingNames={[]}
+          onCommit={onCommit}
+          onCancel={onCancel}
+        />
+        <button data-testid="outside">outside</button>
+      </div>,
+    );
+    fireEvent.mouseDown(screen.getByTestId("outside"));
+    await waitFor(() => {
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("typing a new value and pressing Enter still commits normally", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <RenameInput
+        initialValue="alpha"
+        isFolder={false}
+        siblingNames={[]}
+        onCommit={onCommit}
+        onCancel={onCancel}
+      />,
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "beta" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => {
+      expect(onCommit).toHaveBeenCalledWith("beta");
+    });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("typing a new value then erasing back to initialValue, then Enter, calls onCancel", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <RenameInput
+        initialValue="alpha"
+        isFolder={false}
+        siblingNames={[]}
+        onCommit={onCommit}
+        onCancel={onCancel}
+      />,
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    // Type a new value then erase back to the original.
+    fireEvent.change(input, { target: { value: "alphabet" } });
+    fireEvent.change(input, { target: { value: "alpha" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => {
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("empty initialValue + empty value does NOT short-circuit — empty validation still fires", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <RenameInput
+        initialValue=""
+        isFolder={false}
+        siblingNames={[]}
+        onCommit={onCommit}
+        onCancel={onCancel}
+      />,
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    expect(input.value).toBe("");
+    fireEvent.keyDown(input, { key: "Enter" });
+    // The "empty" validation path runs — onCancel must NOT fire (the
+    // short-circuit is gated on value !== ""), and onCommit also must
+    // NOT fire (validation rejects).
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+    // The empty-validation error stays rendered.
+    expect(screen.getByText("Name cannot be empty.")).toBeInTheDocument();
+  });
+
+  it("pre-existing collision validation still fires on changed-to-collide value", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <RenameInput
+        initialValue="alpha"
+        isFolder={false}
+        siblingNames={["beta"]}
+        onCommit={onCommit}
+        onCancel={onCancel}
+      />,
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "BETA" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByText("Already exists.")).toBeInTheDocument();
   });
 });
