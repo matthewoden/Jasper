@@ -17,6 +17,16 @@
  * stays mounted and the inline error switches to the server's
  * message — the user can edit + retry.
  *
+ * Gap R2-5 — same-name commit is a no-op:
+ * If the user presses Enter / Tab / clicks outside without changing
+ * the value (or types a new value and erases back to the original),
+ * RenameInput calls onCancel (NOT onCommit). This prevents a
+ * 409 case-collision against the row's own current path — the
+ * server's Service.Move does not short-circuit oldRelPath ==
+ * canonNew, and FileStore's collision check then rejects the rename
+ * even though it's a no-op (research §3.4). Symmetric to Plan 03-11's
+ * computeMoveTarget same-parent guard for the drag path.
+ *
  * The .md extension is stripped by the caller; we only render the
  * basename. Folder names render in full.
  */
@@ -128,6 +138,24 @@ export function RenameInput({
 
   const commit = useCallback(async () => {
     if (committedOrCancelled.current) return;
+    // Gap R2-5: same-name rename is a no-op. If the user pressed Enter
+    // (or Tab, or clicked outside) without changing the value — or
+    // typed a new value and erased back to the original — close the
+    // input cleanly. The server would otherwise 409 on a
+    // case-collision against the row's own current path because
+    // Service.Move does not short-circuit oldRelPath == canonNew
+    // (research §3.4). Symmetric to Plan 03-11's drag-drop same-parent
+    // guard in computeMoveTarget.
+    //
+    // The `value !== ""` guard prevents this short-circuit from
+    // masking the "Name cannot be empty." validation for the
+    // degenerate empty-initialValue case (which the caller never
+    // produces in normal use, but we will not regress on).
+    if (value === initialValue && value !== "") {
+      committedOrCancelled.current = true;
+      onCancel();
+      return;
+    }
     const r = validateRename(value, siblingNames);
     if (!r.valid) {
       setError(r.error);
@@ -146,7 +174,7 @@ export function RenameInput({
         setError("Server error.");
       }
     }
-  }, [value, siblingNames, onCommit]);
+  }, [value, initialValue, siblingNames, onCommit, onCancel]);
 
   const cancel = useCallback(() => {
     if (committedOrCancelled.current) return;
