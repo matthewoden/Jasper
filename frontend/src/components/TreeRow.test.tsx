@@ -596,8 +596,9 @@ describe("<TreeRow />", () => {
       expect(lastEl).toBeInstanceOf(HTMLDivElement);
       // Sanity: the element handed to dragHandle must be the same row
       // container that carries the data-tree-row marker. Without this,
-      // we could be attaching the ref to the wrong inner div.
-      expect(lastEl!.getAttribute("data-tree-row")).toBe(node.data.path);
+      // we could be attaching the ref to the wrong inner div. Note
+      // rows put their UUID id on data-tree-row (folder rows put path).
+      expect(lastEl!.getAttribute("data-tree-row")).toBe(node.data.id);
     });
 
     it("does not throw when dragHandle is omitted (prop is optional)", () => {
