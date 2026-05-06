@@ -35,10 +35,11 @@ import {
   basename,
   computeMoveTarget,
   countDescendants,
+  resetTreeListLayout,
   type ArboristNode,
 } from "./FileTree";
 import type { TreeRowData } from "./TreeRow";
-import type { NodeApi } from "react-arborist";
+import type { NodeApi, TreeApi } from "react-arborist";
 import { ToastProvider } from "./Toast";
 
 // ──────────────────────────────────────────────────────────────────────
@@ -750,5 +751,71 @@ describe("handleMove same-parent no-op (Gap 2)", () => {
     });
     expect(result.isNoOp).toBe(false);
     expect(result.newPath).toBe("projects/old");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Plan 03-18 — Gap R2-3 closure. resetTreeListLayout is the helper
+// that pokes react-arborist's react-window FixedSizeList after a
+// successful create so the new row paints at the correct Y-offset.
+// The helper is defensively layered: prefer resetAfterIndex(0) (a
+// VariableSizeList API, kept as a forward-compat hook for future
+// arborist versions); fall back to forceUpdate() (FixedSizeList's
+// built-in React.Component method); silently no-op if neither
+// exists (covers null refs at mount time / jsdom test envs).
+// ────────────────────────────────────────────────────────────────────
+describe("resetTreeListLayout (Gap R2-3)", () => {
+  // Build a TreeApi-shaped stub exposing only `.list.current`. Using
+  // `unknown` casts because TreeApi has dozens of getters we don't
+  // simulate; the helper only reads `.list.current.{resetAfterIndex|
+  // forceUpdate}`.
+  function makeTreeApiStub(listCurrent: unknown): TreeApi<ArboristNode> {
+    return {
+      list: { current: listCurrent },
+    } as unknown as TreeApi<ArboristNode>;
+  }
+
+  it("calls resetAfterIndex(0) when available (preferred primitive)", () => {
+    const resetAfterIndex = vi.fn();
+    const forceUpdate = vi.fn();
+    const tree = makeTreeApiStub({ resetAfterIndex, forceUpdate });
+    const ref = { current: tree } as React.RefObject<TreeApi<ArboristNode> | null>;
+    resetTreeListLayout(ref);
+    expect(resetAfterIndex).toHaveBeenCalledWith(0);
+    expect(resetAfterIndex).toHaveBeenCalledTimes(1);
+    expect(forceUpdate).not.toHaveBeenCalled();
+  });
+
+  it("falls back to forceUpdate() when resetAfterIndex is absent", () => {
+    const forceUpdate = vi.fn();
+    // FixedSizeList in react-window has forceUpdate (from React.Component)
+    // but not resetAfterIndex (that's VariableSizeList).
+    const tree = makeTreeApiStub({ forceUpdate });
+    const ref = { current: tree } as React.RefObject<TreeApi<ArboristNode> | null>;
+    resetTreeListLayout(ref);
+    expect(forceUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a no-op when treeRef.current is null (mount-time race)", () => {
+    const ref = {
+      current: null,
+    } as React.RefObject<TreeApi<ArboristNode> | null>;
+    // Should not throw.
+    expect(() => resetTreeListLayout(ref)).not.toThrow();
+  });
+
+  it("is a no-op when treeRef.current.list.current is null", () => {
+    const tree = makeTreeApiStub(null);
+    const ref = { current: tree } as React.RefObject<TreeApi<ArboristNode> | null>;
+    // Should not throw.
+    expect(() => resetTreeListLayout(ref)).not.toThrow();
+  });
+
+  it("is a no-op when neither primitive is exposed (defensive last branch)", () => {
+    // No resetAfterIndex, no forceUpdate — defensive against unknown
+    // future react-window versions.
+    const tree = makeTreeApiStub({});
+    const ref = { current: tree } as React.RefObject<TreeApi<ArboristNode> | null>;
+    expect(() => resetTreeListLayout(ref)).not.toThrow();
   });
 });
