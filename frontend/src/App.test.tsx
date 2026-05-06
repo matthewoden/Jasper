@@ -52,7 +52,7 @@ vi.mock("./lib/useFileTree", () => ({
   }),
 }));
 
-import App from "./App";
+import App, { handleAppF2KeyDown } from "./App";
 import { useTreeStore } from "./lib/useTreeStore";
 
 const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
@@ -273,6 +273,208 @@ describe("<App /> — Phase 2 shell composition", () => {
     // No textarea when noteId is null — the editor placeholder branch
     // is mounted instead of the normal pane.
     expect(screen.queryByLabelText("Note content")).toBeNull();
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Plan 03-20 Gap R2-4 — document-level F2 routing.
+  //
+  // Clicking a tree row shifts DOM focus to the editor textarea
+  // (EditorPane.useEffect on loadStatus === "loaded"); F2 dispatched
+  // by the user would otherwise hit the textarea and be silently
+  // dropped. Routing F2 through document + reading
+  // useTreeStore.selectedRow at fire time makes rename work
+  // regardless of which element holds focus.
+  //
+  // We test the extracted handler (handleAppF2KeyDown) as a pure
+  // function — easier to reason about than reaching into a mounted
+  // tree's effect. A mounted-App lifecycle test verifies the
+  // listener is registered + torn down correctly.
+  // ──────────────────────────────────────────────────────────────────
+  describe("Document-level F2 routing (Gap R2-4)", () => {
+    beforeEach(() => {
+      useTreeStore.setState({
+        expanded: new Set(),
+        activeNoteId: null,
+        pendingRename: null,
+        draftCreate: null,
+        selectedRow: null,
+      });
+    });
+
+    function makeKeyDownEvent(opts: {
+      key: string;
+      target?: EventTarget | null;
+    }): KeyboardEvent {
+      // KeyboardEvent in jsdom doesn't let you easily spoof `target`,
+      // so we construct + dispatch on a real DOM node and pass the
+      // resulting event-shaped object straight to the handler under
+      // test. The handler reads only `.key`, `.target`, and
+      // `.preventDefault` — match that shape minimally.
+      let preventDefaultCalls = 0;
+      const e = {
+        key: opts.key,
+        target: opts.target ?? null,
+        preventDefault: () => {
+          preventDefaultCalls += 1;
+        },
+        // expose the call count for assertions
+        get _preventDefaultCalls() {
+          return preventDefaultCalls;
+        },
+      } as unknown as KeyboardEvent & { _preventDefaultCalls: number };
+      return e;
+    }
+
+    it("F2 with selectedRow set + non-form target → calls startRename", () => {
+      useTreeStore.setState({
+        selectedRow: { kind: "note", target: "abc" },
+      });
+      // Use a generic <div> as target — not an input/textarea.
+      const div = document.createElement("div");
+      const e = makeKeyDownEvent({ key: "F2", target: div });
+      handleAppF2KeyDown(e);
+      expect(useTreeStore.getState().pendingRename).toEqual({
+        kind: "note",
+        target: "abc",
+      });
+      expect(
+        (e as unknown as { _preventDefaultCalls: number })
+          ._preventDefaultCalls,
+      ).toBe(1);
+    });
+
+    it("F2 with <input> as target → does NOT call startRename (form-control guard)", () => {
+      useTreeStore.setState({
+        selectedRow: { kind: "note", target: "abc" },
+      });
+      const input = document.createElement("input");
+      const e = makeKeyDownEvent({ key: "F2", target: input });
+      handleAppF2KeyDown(e);
+      expect(useTreeStore.getState().pendingRename).toBeNull();
+      expect(
+        (e as unknown as { _preventDefaultCalls: number })
+          ._preventDefaultCalls,
+      ).toBe(0);
+    });
+
+    it("F2 with <textarea> as target → does NOT call startRename (form-control guard)", () => {
+      useTreeStore.setState({
+        selectedRow: { kind: "note", target: "abc" },
+      });
+      const ta = document.createElement("textarea");
+      const e = makeKeyDownEvent({ key: "F2", target: ta });
+      handleAppF2KeyDown(e);
+      expect(useTreeStore.getState().pendingRename).toBeNull();
+    });
+
+    it("F2 with [contenteditable=true] as target → does NOT call startRename", () => {
+      useTreeStore.setState({
+        selectedRow: { kind: "note", target: "abc" },
+      });
+      const div = document.createElement("div");
+      div.setAttribute("contenteditable", "true");
+      const e = makeKeyDownEvent({ key: "F2", target: div });
+      handleAppF2KeyDown(e);
+      expect(useTreeStore.getState().pendingRename).toBeNull();
+    });
+
+    it("F2 with selectedRow=null → no-op (no startRename)", () => {
+      useTreeStore.setState({ selectedRow: null });
+      const div = document.createElement("div");
+      const e = makeKeyDownEvent({ key: "F2", target: div });
+      handleAppF2KeyDown(e);
+      expect(useTreeStore.getState().pendingRename).toBeNull();
+      expect(
+        (e as unknown as { _preventDefaultCalls: number })
+          ._preventDefaultCalls,
+      ).toBe(0);
+    });
+
+    it("F2 with pendingRename already set → no-op (defers to RenameInput)", () => {
+      useTreeStore.setState({
+        selectedRow: { kind: "note", target: "abc" },
+        pendingRename: { kind: "note", target: "xyz" },
+      });
+      const div = document.createElement("div");
+      const e = makeKeyDownEvent({ key: "F2", target: div });
+      handleAppF2KeyDown(e);
+      // pendingRename remains the original 'xyz' — the listener did
+      // not overwrite it with 'abc'.
+      expect(useTreeStore.getState().pendingRename).toEqual({
+        kind: "note",
+        target: "xyz",
+      });
+    });
+
+    it("non-F2 keys are ignored: Enter, Escape, Backspace, alphanumerics", () => {
+      useTreeStore.setState({
+        selectedRow: { kind: "note", target: "abc" },
+      });
+      const div = document.createElement("div");
+      for (const key of ["Enter", "Escape", "Backspace", "a", "Z", "1"]) {
+        const e = makeKeyDownEvent({ key, target: div });
+        handleAppF2KeyDown(e);
+        expect(useTreeStore.getState().pendingRename).toBeNull();
+      }
+    });
+
+    it("listener is added on mount and removed on unmount (no leaked listeners)", () => {
+      getAdminStatusMock.mockResolvedValue({
+        data: { state: "ok" },
+        error: undefined,
+      });
+      const addSpy = vi.spyOn(document, "addEventListener");
+      const removeSpy = vi.spyOn(document, "removeEventListener");
+      try {
+        const { unmount } = render(<App />);
+        const keydownAdds = addSpy.mock.calls.filter(
+          (c) => c[0] === "keydown",
+        );
+        expect(keydownAdds.length).toBeGreaterThanOrEqual(1);
+        // Capture the registered handler so we can verify it's the
+        // same one removed at teardown.
+        const registered = keydownAdds[keydownAdds.length - 1]![1];
+
+        unmount();
+
+        const keydownRemoves = removeSpy.mock.calls.filter(
+          (c) => c[0] === "keydown",
+        );
+        // At least one removeEventListener call for "keydown" must
+        // match the handler that was registered.
+        expect(
+          keydownRemoves.some((c) => c[1] === registered),
+        ).toBe(true);
+      } finally {
+        addSpy.mockRestore();
+        removeSpy.mockRestore();
+      }
+    });
+
+    it("end-to-end: real keydown on document with selectedRow set → startRename fires", async () => {
+      useTreeStore.setState({
+        selectedRow: { kind: "folder", target: "projects/jasper" },
+      });
+      getAdminStatusMock.mockResolvedValue({
+        data: { state: "ok" },
+        error: undefined,
+      });
+      render(<App />);
+      // Dispatch a real KeyboardEvent on document with a non-form
+      // target (document.body is a generic element, not an input).
+      await act(async () => {
+        const ev = new KeyboardEvent("keydown", {
+          key: "F2",
+          bubbles: true,
+          cancelable: true,
+        });
+        document.body.dispatchEvent(ev);
+      });
+      expect(useTreeStore.getState().pendingRename).toEqual({
+        kind: "folder",
+        target: "projects/jasper",
+      });
+    });
   });
 
   it("A8: TestApp_TreeSelection_DrivesEditor — Plan 03-07 wiring", async () => {
