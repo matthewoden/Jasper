@@ -59,10 +59,23 @@ vi.mock("../lib/useTreeMutations", async () => {
   };
 });
 
+// Plan 03-22 (Gap R2-6) — Direction B: handleCommitRename's note branch
+// fetches the renamed note's content, rewrites the first H1 line to
+// match the new basename, and writes the content back. The fetch +
+// write route through notesApi; mock both at module-load time.
+vi.mock("../lib/notesApi", () => ({
+  ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
+  getNote: vi.fn(),
+  updateNote: vi.fn(),
+}));
+
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeMutations } from "../lib/useTreeMutations";
+import { getNote, updateNote } from "../lib/notesApi";
 const mockedUseFileTree = vi.mocked(useFileTree);
 const mockedUseTreeMutations = vi.mocked(useTreeMutations);
+const mockedGetNote = vi.mocked(getNote);
+const mockedUpdateNote = vi.mocked(updateNote);
 
 beforeEach(() => {
   useTreeStore.setState({
@@ -71,6 +84,8 @@ beforeEach(() => {
     pendingRename: null,
     draftCreate: null,
   });
+  mockedGetNote.mockReset();
+  mockedUpdateNote.mockReset();
 });
 
 afterEach(() => {
@@ -817,5 +832,291 @@ describe("resetTreeListLayout (Gap R2-3)", () => {
     const tree = makeTreeApiStub({});
     const ref = { current: tree } as React.RefObject<TreeApi<ArboristNode> | null>;
     expect(() => resetTreeListLayout(ref)).not.toThrow();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Plan 03-22 — Gap R2-6 Direction B (filename → H1).
+//
+// After a successful tree-rename of a note, handleCommitRename
+// additionally fetches the renamed note's content via getNote, rewrites
+// the first H1 line to match the new basename via rewriteH1, and writes
+// the content back via updateNote. No-op cases:
+//   - file has no H1 (research §2.4: do NOT auto-insert)
+//   - existing H1 already matches the new basename (loop guard)
+//
+// All assertions drive handleCommitRename through the existing
+// pendingRename → RenameInput → onCommit chain so the test exercises
+// the production code path end-to-end.
+// ────────────────────────────────────────────────────────────────────
+describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)", () => {
+  type GetReturn = Awaited<ReturnType<typeof getNote>>;
+  type PutReturn = Awaited<ReturnType<typeof updateNote>>;
+
+  function okGet(content: string, path = "renamed.md"): GetReturn {
+    return {
+      data: {
+        id: "uuid-1",
+        path,
+        content,
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+      error: undefined,
+      response: new Response(),
+    } as GetReturn;
+  }
+
+  function okPut(): PutReturn {
+    return {
+      data: {
+        id: "uuid-1",
+        path: "renamed.md",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+      error: undefined,
+      response: new Response(),
+    } as PutReturn;
+  }
+
+  function errPut(): PutReturn {
+    return {
+      data: undefined,
+      error: { code: "io", message: "disk full" },
+      response: new Response(),
+    } as unknown as PutReturn;
+  }
+
+  function setupNoteRename(opts: { content: string }) {
+    useTreeStore.setState({
+      pendingRename: { kind: "note", target: "uuid-1" },
+    });
+    const tree: Tree = {
+      root: [
+        {
+          kind: "note",
+          id: "uuid-1",
+          path: "scratchpad.md",
+          title: "scratchpad.md",
+          updated_at: new Date().toISOString(),
+        },
+      ],
+    };
+    const muts = defaultMutsResult();
+    muts.moveNote.mockResolvedValue({
+      id: "uuid-1",
+      path: "renamed.md",
+      title: "renamed.md",
+      updated_at: new Date().toISOString(),
+    });
+    mockedUseFileTree.mockReturnValue({
+      tree,
+      loading: false,
+      error: null,
+      refresh: vi.fn().mockResolvedValue(undefined),
+      mutate: noopMutate,
+    });
+    mockedUseTreeMutations.mockReturnValue(muts);
+    mockedGetNote.mockResolvedValue(okGet(opts.content));
+    return { muts };
+  }
+
+  it("R2-6 D1: tree-rename of a note WITH an H1 → moveNote → getNote → updateNote with rewritten H1", async () => {
+    const { muts } = setupNoteRename({ content: "# Original\n\nbody" });
+    mockedUpdateNote.mockResolvedValue(okPut());
+
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    const input = document.querySelector(
+      "input[type='text']",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "renamed" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(muts.moveNote).toHaveBeenCalledWith("uuid-1", "renamed.md");
+    });
+    await waitFor(() => {
+      expect(mockedGetNote).toHaveBeenCalledWith("uuid-1");
+    });
+    await waitFor(() => {
+      expect(mockedUpdateNote).toHaveBeenCalledWith(
+        "uuid-1",
+        "# renamed\n\nbody",
+      );
+    });
+  });
+
+  it("R2-6 D2: tree-rename of a note WITHOUT an H1 → no getNote/updateNote follow-up (research §2.4 — no auto-insert)", async () => {
+    const { muts } = setupNoteRename({
+      content: "body without heading\nmore body",
+    });
+
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    const input = document.querySelector(
+      "input[type='text']",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "renamed" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(muts.moveNote).toHaveBeenCalledWith("uuid-1", "renamed.md");
+    });
+    // getNote is still called (we look BEFORE deciding to skip), but
+    // the rewrite-vs-content equality check short-circuits before
+    // updateNote fires.
+    await waitFor(() => {
+      expect(mockedGetNote).toHaveBeenCalledWith("uuid-1");
+    });
+    // No updateNote — no H1 to rewrite, and we DO NOT auto-insert one.
+    expect(mockedUpdateNote).not.toHaveBeenCalled();
+  });
+
+  it("R2-6 D3: folder rename → H1 rewrite path does NOT fire (folders have no H1)", async () => {
+    useTreeStore.setState({
+      pendingRename: { kind: "folder", target: "projects" },
+    });
+    const tree: Tree = {
+      root: [
+        {
+          kind: "folder",
+          path: "projects",
+          name: "projects",
+          children: [],
+        },
+      ],
+    };
+    const muts = defaultMutsResult();
+    muts.moveFolder.mockResolvedValue({
+      kind: "folder",
+      path: "renamed",
+      name: "renamed",
+      children: [],
+    });
+    mockedUseFileTree.mockReturnValue({
+      tree,
+      loading: false,
+      error: null,
+      refresh: vi.fn().mockResolvedValue(undefined),
+      mutate: noopMutate,
+    });
+    mockedUseTreeMutations.mockReturnValue(muts);
+
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    const input = document.querySelector(
+      "input[type='text']",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "renamed" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(muts.moveFolder).toHaveBeenCalledWith("projects", "renamed");
+    });
+    // Folder branch must not touch getNote / updateNote.
+    expect(mockedGetNote).not.toHaveBeenCalled();
+    expect(mockedUpdateNote).not.toHaveBeenCalled();
+  });
+
+  it("R2-6 D4: H1 already matches new name → no redundant updateNote (loop guard)", async () => {
+    // The user renames the file to "renamed" but the file already has
+    // "# renamed" as its H1 (e.g. Direction A just landed on the
+    // server). rewriteH1 on already-equal content returns the input
+    // byte-for-byte; we detect that and skip updateNote.
+    const { muts } = setupNoteRename({ content: "# renamed\n\nbody" });
+
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    const input = document.querySelector(
+      "input[type='text']",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "renamed" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(muts.moveNote).toHaveBeenCalledWith("uuid-1", "renamed.md");
+    });
+    await waitFor(() => {
+      expect(mockedGetNote).toHaveBeenCalledWith("uuid-1");
+    });
+    // H1 already matches — no rewrite needed, no updateNote dispatched.
+    expect(mockedUpdateNote).not.toHaveBeenCalled();
+  });
+
+  it("R2-6 D5: getNote fails after a successful move → rename still succeeds; warn-level log; no toast", async () => {
+    const { muts } = setupNoteRename({ content: "# unused\n\nbody" });
+    mockedGetNote.mockResolvedValue({
+      data: undefined,
+      error: { code: "not_found", message: "vanished" },
+      response: new Response(),
+    } as unknown as GetReturn);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    const input = document.querySelector(
+      "input[type='text']",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "renamed" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(muts.moveNote).toHaveBeenCalledWith("uuid-1", "renamed.md");
+    });
+    await waitFor(() => {
+      expect(mockedGetNote).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalled();
+    });
+    // No updateNote, no toast (the move already committed; reconciler
+    // / next save will heal).
+    expect(mockedUpdateNote).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(/couldn't update the heading/i),
+    ).not.toBeInTheDocument();
+
+    warnSpy.mockRestore();
+  });
+
+  it("R2-6 D6: updateNote fails after a successful move → toast surfaces the half-state warning", async () => {
+    const { muts } = setupNoteRename({ content: "# Original\n\nbody" });
+    mockedUpdateNote.mockResolvedValue(errPut());
+
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    const input = document.querySelector(
+      "input[type='text']",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "renamed" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(muts.moveNote).toHaveBeenCalledWith("uuid-1", "renamed.md");
+    });
+    await waitFor(() => {
+      expect(mockedUpdateNote).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByText(/couldn't update the heading/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("R2-6 D7: pre-existing happy-path rename (no H1 in content) is unchanged — moveNote only, no toast", async () => {
+    // Belt-and-suspenders for D2 — confirms the new code does not
+    // introduce a regression in the original Plan 03-07 rename path.
+    const { muts } = setupNoteRename({ content: "" });
+
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    const input = document.querySelector(
+      "input[type='text']",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "renamed" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(muts.moveNote).toHaveBeenCalledWith("uuid-1", "renamed.md");
+    });
+    expect(mockedUpdateNote).not.toHaveBeenCalled();
+    // No toast surfaces — empty file with no H1 is a normal happy path.
+    expect(
+      screen.queryByText(/couldn't update the heading/i),
+    ).not.toBeInTheDocument();
   });
 });

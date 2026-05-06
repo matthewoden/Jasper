@@ -32,10 +32,21 @@
  *     react-arborist <Tree> lets us poke its react-window
  *     FixedSizeList row-position cache after a successful create — see
  *     resetTreeListLayout helper below.
+ *   - Plan 03-22 (Gap R2-6) — Direction B (filename → H1): after a
+ *     successful note rename, handleCommitRename additionally fetches
+ *     the renamed note's content via getNote, rewrites the first H1
+ *     line to match the new basename via rewriteH1, and writes the
+ *     content back via updateNote. No-op when the file has no H1
+ *     (research §2.4: do NOT auto-insert) or when the existing H1
+ *     already matches the new basename (loop guard against
+ *     Direction-A round-trips). Folder renames bypass this path —
+ *     folders have no H1.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Tree, type NodeApi, type TreeApi } from "react-arborist";
 
+import { extractH1FromContent, rewriteH1 } from "../lib/h1Extract";
+import { getNote, updateNote } from "../lib/notesApi";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
 import {
@@ -405,6 +416,56 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           })();
           const newPath = composeNewPath(parent, newValue + ".md");
           await muts.moveNote(d.id, newPath);
+
+          // Plan 03-22 (Gap R2-6) — Direction B: bidirectional binding
+          // per PROJECT.md 2026-05-03 Key Decision. After a successful
+          // tree-rename, rewrite the first H1 in the file content to
+          // match the new basename. No-op cases:
+          //   - file has no H1 (research §2.4: do NOT auto-insert).
+          //   - existing H1 already matches newValue (rewriteH1
+          //     returns the input byte-for-byte; we detect that and
+          //     skip the redundant updateNote — also serves as the
+          //     loop guard against a Direction-A round-trip that just
+          //     landed on the server with the H1 already in sync).
+          //
+          // Best-effort path — the move already committed. A getNote
+          // failure (file vanished) drops to a warn-level log; an
+          // updateNote failure surfaces a half-state toast so the user
+          // knows the filename and the H1 may not match.
+          try {
+            const noteResp = await getNote(d.id);
+            if (noteResp.data) {
+              const currentH1 = extractH1FromContent(noteResp.data.content);
+              if (currentH1 !== null && currentH1 !== newValue) {
+                const newContent = rewriteH1(noteResp.data.content, newValue);
+                if (newContent !== noteResp.data.content) {
+                  const updResp = await updateNote(d.id, newContent);
+                  if (updResp.error) {
+                    toast({
+                      title: "Renamed the file, but couldn't update the heading.",
+                      description:
+                        "The filename and the H1 in the file may not match. Open the note and re-save to align them.",
+                      variant: "error",
+                    });
+                  }
+                }
+              }
+            } else if (noteResp.error) {
+              console.warn(
+                "FileTree.handleCommitRename: post-rename getNote failed; H1 not rewritten (reconciler / next save will heal)",
+                noteResp.error,
+              );
+            }
+          } catch (rewriteErr) {
+            // Defense-in-depth — the rewrite is best-effort. Don't fail
+            // the whole rename if it can't run; the move already
+            // succeeded. Log at warn level so it surfaces in the
+            // browser console for triage but doesn't reach the toast.
+            console.warn(
+              "FileTree.handleCommitRename: H1 rewrite failed; rename still committed",
+              rewriteErr,
+            );
+          }
         } else {
           const parent = (() => {
             const i = d.path.lastIndexOf("/");
@@ -423,7 +484,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         throw e;
       }
     },
-    [muts, surfaceError],
+    [muts, surfaceError, toast],
   );
 
   const handleRequestDelete = useCallback(
