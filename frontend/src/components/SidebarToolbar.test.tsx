@@ -192,4 +192,102 @@ describe("<SidebarToolbar />", () => {
       screen.getByRole("button", { name: "Refresh" }).getAttribute("title"),
     ).toBe("Refresh — pick up external file changes");
   });
+
+  // ── Gap R2-2: in-flight guard for create buttons ─────────────────────
+  // Mirrors the existing Refresh-button spin-disabled pattern. While
+  // `creating === true`, both New Note and New Folder render disabled
+  // with opacity 0.5 + cursor "wait", and their onClick handlers are
+  // not invoked.
+
+  it("TestToolbar_CreatingFalse_ButtonsEnabled — default state", () => {
+    render(
+      <SidebarToolbar
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+        onRefresh={() => Promise.resolve()}
+        creating={false}
+      />,
+    );
+    const newNote = screen.getByRole("button", { name: "New note" });
+    const newFolder = screen.getByRole("button", { name: "New folder" });
+    expect(newNote).not.toBeDisabled();
+    expect(newFolder).not.toBeDisabled();
+    expect(newNote.style.opacity).not.toBe("0.5");
+    expect(newFolder.style.opacity).not.toBe("0.5");
+  });
+
+  it("TestToolbar_CreatingTrue_DisablesNewNoteAndNewFolder", () => {
+    render(
+      <SidebarToolbar
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+        onRefresh={() => Promise.resolve()}
+        creating={true}
+      />,
+    );
+    const newNote = screen.getByRole("button", { name: "New note" });
+    const newFolder = screen.getByRole("button", { name: "New folder" });
+    expect(newNote).toBeDisabled();
+    expect(newFolder).toBeDisabled();
+    // Visual treatment matches the Refresh button's spin-disabled pattern.
+    expect(newNote.style.opacity).toBe("0.5");
+    expect(newNote.style.cursor).toBe("wait");
+    expect(newFolder.style.opacity).toBe("0.5");
+    expect(newFolder.style.cursor).toBe("wait");
+  });
+
+  it("TestToolbar_CreatingTrue_PreventsClicks — onClick spies are not called", () => {
+    const onNewNote = vi.fn();
+    const onNewFolder = vi.fn();
+    render(
+      <SidebarToolbar
+        onNewNote={onNewNote}
+        onNewFolder={onNewFolder}
+        onRefresh={() => Promise.resolve()}
+        creating={true}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New note" }));
+    fireEvent.click(screen.getByRole("button", { name: "New folder" }));
+    expect(onNewNote).not.toHaveBeenCalled();
+    expect(onNewFolder).not.toHaveBeenCalled();
+  });
+
+  it("TestToolbar_CreatingAndRefreshing_AllThreeButtonsDisabled", async () => {
+    const d = deferred();
+    const onRefresh = vi.fn(() => d.promise);
+    render(
+      <SidebarToolbar
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+        onRefresh={onRefresh}
+        creating={true}
+      />,
+    );
+    const refreshBtn = screen.getByRole("button", { name: "Refresh" });
+    fireEvent.click(refreshBtn);
+    await waitFor(() => {
+      expect(refreshBtn).toBeDisabled();
+    });
+    expect(screen.getByRole("button", { name: "New note" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "New folder" })).toBeDisabled();
+    await act(async () => {
+      d.resolve();
+      await d.promise;
+    });
+  });
+
+  it("TestToolbar_CreatingDefaultsToFalse — omitting prop keeps existing behavior", () => {
+    // Existing call sites (Sidebar, App.test.tsx) that don't pass
+    // `creating` must continue to render exactly as they did before.
+    render(
+      <SidebarToolbar
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+        onRefresh={() => Promise.resolve()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "New note" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "New folder" })).not.toBeDisabled();
+  });
 });
