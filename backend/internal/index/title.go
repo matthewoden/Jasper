@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// extractTitle returns the first H1 heading from markdown content, or
+// ExtractTitle returns the first H1 heading from markdown content, or
 // the filename without ".md" (filepath.Base + strip ".md") as fallback.
 //
 // YAML frontmatter (--- ... ---) at the top of the file is skipped
@@ -37,7 +37,11 @@ import (
 //     CommonMark §4.2): treated as not-a-heading.
 //   - Multiple leading "#" before the space (e.g. "## H2"): treated
 //     as not-an-H1 (Phase 6 may extend; Phase 2 only matches "# ").
-func extractTitle(content []byte, fallbackPath string) string {
+//
+// Exported (PascalCase) so package `notes.Service.Move` can refresh
+// the title field after a rename without duplicating the scanner.
+// Plan 03-21 (Gap R2-6 server-side closure).
+func ExtractTitle(content []byte, fallbackPath string) string {
 	scanner := bufio.NewScanner(bytes.NewReader(content))
 	// Bump the scanner buffer so a single >64 KB line does not bail
 	// out with bufio.ErrTooLong. 1 MiB is generous; titles live on

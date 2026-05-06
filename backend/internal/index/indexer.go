@@ -6,7 +6,7 @@
 //
 // Plan boundary: Plan 02-04a landed the SKELETON only — the package
 // structure, the type declarations, the constructor, the Mode enum,
-// the extractTitle helper, and method signatures with no-op bodies.
+// the ExtractTitle helper, and method signatures with no-op bodies.
 // Plan 02-04b (this plan) lands the real bodies:
 //
 //   - walk.go: WalkVault filesystem traversal (FileMeta yield).

@@ -79,7 +79,7 @@ func (x *Indexer) reconcileIncremental(ctx context.Context) (int, error) {
 		rec := notes.NoteRecord{
 			ID:            id,
 			Path:          fm.CanonicalRelPath,
-			Title:         extractTitle(content, fm.CanonicalRelPath),
+			Title:         ExtractTitle(content, fm.CanonicalRelPath),
 			MTimeUnix:     fm.MTimeUnix,
 			SizeBytes:     fm.Size,
 			Checksum:      "", // DATA-09 checksum fallback deferred to Phase 7
@@ -141,7 +141,7 @@ func (x *Indexer) reconcileFull(ctx context.Context) (int, error) {
 		rec := notes.NoteRecord{
 			ID:            id,
 			Path:          fm.CanonicalRelPath,
-			Title:         extractTitle(content, fm.CanonicalRelPath),
+			Title:         ExtractTitle(content, fm.CanonicalRelPath),
 			MTimeUnix:     fm.MTimeUnix,
 			SizeBytes:     fm.Size,
 			Checksum:      "", // DATA-09 checksum fallback deferred to Phase 7
