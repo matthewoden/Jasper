@@ -31,9 +31,10 @@ export function getNote(id: string) {
   });
 }
 
-export function updateNote(id: string, content: string) {
+export function updateNote(id: string, content: string, ifMatch?: string) {
   return client.PUT("/notes/{id}", {
     params: { path: { id } },
     body: { content },
+    ...(ifMatch ? { headers: { "If-Match": ifMatch } } : {}),
   });
 }
