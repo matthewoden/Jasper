@@ -381,6 +381,26 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 		return NoteSummary{}, fmt.Errorf("notes.Move(%s): %w", id, err)
 	}
 
+	// BL-01 — stat the file AFTER rename so the broadcast `updated_at`
+	// reflects the post-rename mtime (nanosecond precision) rather than
+	// the stale mtime captured at index time. The fresh modTime is the
+	// single source of truth for both rec.MTimeUnix and the wire payload;
+	// per the OpenAPI spec (api/openapi.yaml WSNoteMovedPayload) the
+	// `updated_at` field is the post-move file mtime.
+	modTime, statErr := s.files.Stat(canonNew)
+	if statErr != nil {
+		// Best-effort rollback — the rename succeeded but we cannot
+		// observe the new mtime, so the broadcast/index would carry an
+		// inconsistent timestamp. Surface to the caller; the reconciler
+		// heals on the next pass.
+		if mvErr := s.files.MoveFile(canonNew, oldRelPath); mvErr != nil {
+			s.log.Warn("notes.Move: rollback MoveFile failed after stat error (reconciler will heal)",
+				"id", id.String(), "oldPath", oldRelPath, "newPath", canonNew, "err", mvErr)
+		}
+		return NoteSummary{}, fmt.Errorf("notes.Move(%s): stat after rename: %w", id, statErr)
+	}
+	postMoveMTime := modTime.UTC()
+
 	// Gap R2-6 — re-extract title from the renamed file's content so
 	// the tree row label refreshes on the next GET /tree. Read failure
 	// is non-fatal: surface a warn log + use the filename fallback so
@@ -393,26 +413,27 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 	}
 	freshTitle := markdown.ExtractTitle(content, canonNew)
 
-	// Capture existing record from the index so we preserve mtime /
-	// size while updating the path + title. LookupByPath uses the OLD
-	// path (the row hasn't been touched yet).
+	// Capture existing record from the index so we preserve size while
+	// updating the path + title + mtime. LookupByPath uses the OLD path
+	// (the row hasn't been touched yet).
 	rec, err := s.index.LookupByPath(ctx, oldRelPath)
 	if err != nil {
 		// The FS rename succeeded but the index has no row — most
 		// likely a transient state during reconcile. Mint a fresh
 		// minimal record so the index gets re-populated; the
-		// reconciler will heal size/mtime later.
+		// reconciler will heal size later.
 		rec = NoteRecord{
 			ID:            id,
 			Path:          canonNew,
 			Title:         freshTitle,
-			MTimeUnix:     time.Now().UTC().Unix(),
-			UpdatedAtUnix: time.Now().UTC().Unix(),
+			MTimeUnix:     postMoveMTime.Unix(),
+			UpdatedAtUnix: postMoveMTime.Unix(),
 		}
 	} else {
 		rec.Path = canonNew
 		rec.Title = freshTitle
-		rec.UpdatedAtUnix = time.Now().UTC().Unix()
+		rec.MTimeUnix = postMoveMTime.Unix()
+		rec.UpdatedAtUnix = postMoveMTime.Unix()
 	}
 
 	if err := s.index.Upsert(ctx, rec); err != nil {
@@ -426,20 +447,22 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 	s.registry.Rename(id, canonNew)
 
 	// BROADCAST — THIRD step. After successful index upsert + registry rename.
-	// T-04-04: no content.
-	updatedAt := time.Unix(rec.MTimeUnix, 0).UTC()
+	// T-04-04: no content. BL-01: use the post-rename Stat result so the
+	// wire payload's nanosecond-precision mtime matches the file's actual
+	// mtime — receivers comparing this against their cached `updated_at`
+	// must see a fresh value.
 	s.broadcaster.Broadcast(EventNoteMoved, map[string]any{
 		"id":         id.String(),
 		"old_path":   oldRelPath,
 		"new_path":   canonNew,
-		"updated_at": updatedAt.Format(time.RFC3339Nano),
+		"updated_at": postMoveMTime.Format(time.RFC3339Nano),
 	}, SessionIDFromContext(ctx))
 
 	return NoteSummary{
 		ID:        id,
 		Path:      canonNew,
 		Title:     rec.Title,
-		UpdatedAt: updatedAt,
+		UpdatedAt: postMoveMTime,
 	}, nil
 }
 
