@@ -782,12 +782,19 @@ components:
         path: { type: string }
     WSNoteMovedPayload:
       type: object
-      required: [id, old_path, new_path, updated_at]
+      # title is REQUIRED so receiving tabs do not need to round-trip
+      # GET /tree to refresh the tree row label after a rename — the
+      # broadcast carries the freshly-extracted H1 (or filename
+      # fallback) directly. Service.Move re-extracts the title on
+      # every move (Plan 03-21); this field exposes it on the wire.
+      # WR-06.
+      required: [id, old_path, new_path, updated_at, title]
       properties:
         id: { type: string, format: uuid }
         old_path: { type: string }
         new_path: { type: string }
         updated_at: { type: string, format: date-time }
+        title: { type: string }
     WSFolderCreatedPayload:
       type: object
       required: [path, name]

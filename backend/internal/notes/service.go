@@ -456,12 +456,15 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 	// T-04-04: no content. BL-01: use the post-rename Stat result so the
 	// wire payload's nanosecond-precision mtime matches the file's actual
 	// mtime — receivers comparing this against their cached `updated_at`
-	// must see a fresh value.
+	// must see a fresh value. WR-06: include title so receiving tabs can
+	// refresh the tree-row label without a follow-up GET /tree round-trip
+	// (the schema marks title required as of WR-06).
 	s.broadcaster.Broadcast(EventNoteMoved, map[string]any{
 		"id":         id.String(),
 		"old_path":   oldRelPath,
 		"new_path":   canonNew,
 		"updated_at": postMoveMTime.Format(time.RFC3339Nano),
+		"title":      rec.Title,
 	}, SessionIDFromContext(ctx))
 
 	return NoteSummary{

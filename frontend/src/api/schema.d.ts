@@ -499,6 +499,7 @@ export interface components {
             new_path: string;
             /** Format: date-time */
             updated_at: string;
+            title: string;
         };
         WSFolderCreatedPayload: {
             path: string;
