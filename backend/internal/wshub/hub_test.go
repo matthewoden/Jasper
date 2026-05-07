@@ -26,6 +26,10 @@ func newTestHub(t *testing.T) *wshub.Hub {
 // dialClient opens a WS to srv.URL with `?session_id=<sid>`, reads the
 // first message which is the handshake envelope, and returns the
 // connection + the confirmed session_id from the handshake.
+//
+// WR-01: ServeHTTP rejects empty Origin headers as defense-in-depth
+// against the coder/websocket authenticateOrigin no-op-on-empty path,
+// so the dial sets an explicit localhost Origin matching OriginPatterns.
 func dialClient(t *testing.T, srvURL, sid string) (*websocket.Conn, string) {
 	t.Helper()
 	wsURL := strings.Replace(srvURL, "http://", "ws://", 1)
@@ -34,7 +38,9 @@ func dialClient(t *testing.T, srvURL, sid string) (*websocket.Conn, string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": []string{srvURL}},
+	})
 	if err != nil {
 		t.Fatalf("dialClient: websocket.Dial: %v", err)
 	}
@@ -188,6 +194,36 @@ func TestHub_DisconnectCleanup(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Errorf("expected 0 clients after disconnect, got %d", hub.ClientCount())
+}
+
+// TestHub_RejectsEmptyOrigin (WR-01 defense-in-depth) verifies that
+// a request with no Origin header is rejected with 403, even though
+// coder/websocket's authenticateOrigin would otherwise return nil for
+// the empty-Origin case. This guards against a future bind-to-LAN
+// regression: the localhost-bind posture in cmd/jasper makes empty-
+// Origin unexploitable today, but the rejection here is the
+// belt-and-suspenders if that posture ever changes.
+func TestHub_RejectsEmptyOrigin(t *testing.T) {
+	hub := newTestHub(t)
+	srv := httptest.NewServer(hub)
+	defer srv.Close()
+
+	// Issue a non-WebSocket plain GET with no Origin header — exercises
+	// the early-return before the upgrade attempt. The actual upgrade
+	// would also fail, but this is the cheapest assertion.
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/?session_id=sid-noorigin", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	// Explicitly do NOT set Origin.
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 for empty Origin, got %d", resp.StatusCode)
+	}
 }
 
 // Verify that the hub satisfies http.Handler (ServeHTTP).

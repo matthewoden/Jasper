@@ -25,7 +25,20 @@ const maxSessionIDLen = 128
 // upgrades whose Origin header doesn't match. coder/websocket v1.8.14
 // REQUIRES this option (or InsecureSkipVerify) — without it the
 // connection is rejected.
+//
+// WR-01 defense-in-depth: coder/websocket's authenticateOrigin returns
+// nil when Origin is empty (e.g. native HTTP clients, curl, scripts),
+// bypassing OriginPatterns. The localhost-bind posture in cmd/jasper
+// (requireLoopbackBind) already mitigates this, but reject empty
+// Origin here so a future bind-to-LAN regression cannot silently
+// open the door.
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Origin") == "" {
+		h.log.Warn("hub: rejecting upgrade with empty Origin header (WR-01)",
+			"remote_addr", r.RemoteAddr)
+		http.Error(w, "missing Origin header", http.StatusForbidden)
+		return
+	}
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: []string{"localhost:*", "127.0.0.1:*"},
 	})
