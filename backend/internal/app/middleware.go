@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+	"unicode"
 
 	"github.com/go-chi/chi/v5/middleware"
 
@@ -48,8 +49,13 @@ const maxSessionIDHeaderLen = 128
 //   - Length cap: 128 chars. Anything longer is silently coerced to ""
 //     so the broadcaster sees "server-originated" and the bad value is
 //     never echoed in any broadcast envelope.
-//   - Control characters (rune < 0x20 or rune == 0x7F) are rejected
-//     for the same reason.
+//   - Control characters are rejected via unicode.IsControl, which
+//     covers BOTH the ASCII C0 range (U+0000–U+001F) AND the Unicode
+//     C1 range (U+0080–U+009F). DEL (U+007F) is not in IsControl's
+//     categories so we keep the explicit check. WR-02 fix — the prior
+//     `ch < 0x20 || ch == 0x7F` loop only covered ASCII controls,
+//     contradicting the doc claim that "control characters are
+//     rejected" for non-ASCII inputs.
 //   - Empty value is allowed (curl, automation, server-originated
 //     paths) — see Pitfall 5 in RESEARCH.md.
 //   - Pitfall 5 (origin spoofing): a malicious client could send any
@@ -63,7 +69,7 @@ func sessionIDMiddleware(next http.Handler) http.Handler {
 			sid = ""
 		} else {
 			for _, ch := range sid {
-				if ch < 0x20 || ch == 0x7F {
+				if unicode.IsControl(ch) || ch == 0x7F {
 					sid = ""
 					break
 				}

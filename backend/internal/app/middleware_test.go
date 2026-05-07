@@ -79,3 +79,34 @@ func TestSessionIDMiddleware_RejectsControlChars(t *testing.T) {
 		t.Errorf("control-char value should coerce to empty; got %q", captured)
 	}
 }
+
+// TestSessionIDMiddleware_RejectsC1Controls (WR-02 fix): the Unicode C1
+// control range (U+0080–U+009F) must also be rejected. Prior to the
+// unicode.IsControl switchover, the loop only filtered ASCII controls
+// (rune < 0x20 || rune == 0x7F), letting C1 controls through despite
+// the docstring claim that "control characters are rejected."
+func TestSessionIDMiddleware_RejectsC1Controls(t *testing.T) {
+	cases := []struct {
+		name string
+		sid  string
+	}{
+		{"u+0080-padding-character", "abc\u0080def"},
+		{"u+0085-next-line", "abc\u0085def"},
+		{"u+009F-app-program-cmd", "abc\u009fdef"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var captured string
+			inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				captured = notes.SessionIDFromContext(r.Context())
+			})
+			h := sessionIDMiddleware(inner)
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("X-Session-ID", tc.sid)
+			h.ServeHTTP(httptest.NewRecorder(), req)
+			if captured != "" {
+				t.Errorf("C1 control %q should coerce to empty; got %q", tc.sid, captured)
+			}
+		})
+	}
+}
