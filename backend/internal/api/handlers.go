@@ -177,20 +177,30 @@ func (s *Server) PutNoteById(
 		}
 		// SYNC-06: stale-write 409 with current_updated_at so the
 		// client can surface the SYNC-05 conflict banner.
+		//
+		// BL-02: extract the comparator from the typed *notes.StaleWriteInfo
+		// (same Stat result that produced the mismatch verdict) instead of
+		// issuing a second s.notes.Get — that follow-up read raced a third
+		// writer between Service.Update's Stat and the handler's Get, so the
+		// returned current_updated_at could be tied to a write the client
+		// never knew about. It also avoided pointless I/O reading the entire
+		// file content just to drop everything but the mtime.
 		if errors.Is(err, notes.ErrStaleWrite) {
 			s.log.Error("PutNoteById: stale write detected",
 				"id", uuid.UUID(request.Id).String(),
 				"err", err,
 			)
-			// Get the current note to populate current_updated_at.
-			cur, getErr := s.notes.Get(ctx, uuid.UUID(request.Id))
-			if getErr != nil {
-				return nil, errors.New("stale write: could not load current note state for conflict response")
+			var swInfo *notes.StaleWriteInfo
+			if !errors.As(err, &swInfo) || swInfo == nil {
+				// Defensive: any code path that wraps ErrStaleWrite
+				// without the typed payload is a bug — surface a 500
+				// rather than re-introducing the second-Get race.
+				return nil, errors.New("stale write: missing typed payload for conflict response")
 			}
 			return PutNoteById409JSONResponse(StaleWriteError{
 				Code:             StaleWrite,
 				Message:          "note was updated in another session; check current_updated_at and retry",
-				CurrentUpdatedAt: cur.UpdatedAt,
+				CurrentUpdatedAt: swInfo.Current,
 			}), nil
 		}
 		// Any other error from the domain layer (Canonicalize escape,

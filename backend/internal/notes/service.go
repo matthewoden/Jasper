@@ -159,10 +159,16 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 		if statErr != nil {
 			return Note{}, fmt.Errorf("notes.Update(%s): stat for if-match: %w", id, statErr)
 		}
-		currentTag := currentMTime.UTC().Format(time.RFC3339Nano)
+		currentMTimeUTC := currentMTime.UTC()
+		currentTag := currentMTimeUTC.Format(time.RFC3339Nano)
 		if ifMatch != currentTag {
+			// BL-02: surface the same Stat result that produced the
+			// mismatch verdict via a typed error so the API handler can
+			// build current_updated_at without a second filesystem Stat
+			// (which would race a third writer between the two calls).
+			// errors.Is(err, ErrStaleWrite) keeps working via Unwrap.
 			return Note{}, fmt.Errorf("notes.Update(%s): %w (current=%s, if-match=%s)",
-				id, ErrStaleWrite, currentTag, ifMatch)
+				id, &StaleWriteInfo{Current: currentMTimeUTC}, currentTag, ifMatch)
 		}
 	}
 

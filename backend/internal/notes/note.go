@@ -49,5 +49,34 @@ var (
 	// The API layer maps this to HTTP 409 with `code: stale_write` and
 	// `current_updated_at` in the body so the client can show the
 	// Save-anyway / Discard banner per SYNC-05.
+	//
+	// BL-02: Service.Update returns a *StaleWriteInfo that wraps this
+	// sentinel — handlers should `errors.As(err, &swErr)` to obtain the
+	// already-statted mtime instead of issuing a second Get (which races
+	// against a third writer between the failed Update's Stat and the
+	// follow-up Get's Stat).
 	ErrStaleWrite = errors.New("notes: stale write — If-Match mismatch")
 )
+
+// StaleWriteInfo carries the current file mtime alongside ErrStaleWrite
+// so callers can surface a comparator without a second filesystem Stat
+// (which would race a third writer — BL-02). Implements errors.Is for
+// ErrStaleWrite so existing `errors.Is(err, ErrStaleWrite)` checks
+// continue to work.
+type StaleWriteInfo struct {
+	// Current is the file's mtime at the moment Service.Update detected
+	// the If-Match mismatch — same Stat call that produced the mismatch
+	// verdict, so there is no TOCTOU window between the verdict and the
+	// reported comparator.
+	Current time.Time
+}
+
+// Error implements the error interface.
+func (e *StaleWriteInfo) Error() string {
+	return ErrStaleWrite.Error()
+}
+
+// Unwrap allows errors.Is(err, ErrStaleWrite) to keep matching.
+func (e *StaleWriteInfo) Unwrap() error {
+	return ErrStaleWrite
+}
