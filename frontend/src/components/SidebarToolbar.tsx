@@ -27,6 +27,7 @@
  */
 import { useCallback, useState } from "react";
 import { FilePlus, FolderPlus, RefreshCw } from "lucide-react";
+import { ConnectionStatusDot } from "./ConnectionStatusDot";
 
 export interface SidebarToolbarProps {
   onNewNote: () => void;
@@ -128,6 +129,8 @@ export function SidebarToolbar({
           className={refreshing ? "animate-spin" : undefined}
         />
       </button>
+      {/* Phase 4 — TREE-12: connection status dot appended after Refresh button */}
+      <ConnectionStatusDot />
     </div>
   );
 }

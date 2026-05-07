@@ -15,10 +15,10 @@
  * error → idle (error path, after Close).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { BacklinksColumn } from "./components/BacklinksColumn";
-import { EditorPane } from "./components/EditorPane";
+import { EditorPane, type EditorPaneHandlers } from "./components/EditorPane";
 import { MigrationBanner } from "./components/MigrationBanner";
 import { ReindexProgress } from "./components/ReindexProgress";
 import { ResetAndRebuildDialog } from "./components/ResetAndRebuildDialog";
@@ -26,12 +26,13 @@ import { Sidebar } from "./components/Sidebar";
 import { ToastProvider } from "./components/Toast";
 import { postAdminReindex } from "./lib/adminApi";
 import { useMigrationStatus } from "./lib/useMigrationStatus";
+import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
 import { useTreeStore } from "./lib/useTreeStore";
 
 // W-4 LOCKED: the parent owns the phase enum; ReindexProgress is purely
-// presentational. 'starting' is reserved for Phase 4 (when WS-driven
-// reindex pre-flight produces a "starting" event before "running"); Phase 2
-// transitions directly idle → running on confirm.
+// presentational. 'starting' is driven by WS reindex:started events (Plan
+// 04-05 / UX-04); Phase 2 transitions directly idle → running on confirm
+// for the manual reindex path.
 type ReindexPhase =
   | "idle"
   | "starting"
@@ -110,6 +111,38 @@ function AppInner() {
   // Phase 3 (Plan 03-07): the tree's selected-note id drives the
   // editor pane. setActiveNote is exposed via Sidebar.onSelectNote.
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
+
+  // Phase 4 (Plan 04-05) — EditorPane handler ref (D-09: no new event bus).
+  // App passes this ref to EditorPane; EditorPane writes its handlers on mount.
+  // useSessionSync then dispatches WS events into EditorPane via this ref.
+  const editorHandlersRef = useRef<EditorPaneHandlers | null>(null);
+
+  // Phase 4 (Plan 04-05, UX-04) — session sync handlers.
+  // onReindexStarted/Complete wire WS reindex events to the ReindexProgress
+  // overlay phase state; onNoteUpdated/Deleted fan out to EditorPane via ref.
+  const sessionSyncHandlers: SessionSyncHandlers = useMemo(
+    () => ({
+      onNoteUpdated: (p) => {
+        editorHandlersRef.current?.onNoteUpdated(p);
+      },
+      onNoteDeleted: (p) => {
+        editorHandlersRef.current?.onNoteDeleted(p);
+      },
+      onReindexStarted: () => {
+        // UX-04: WS reindex:started → flip phase to 'starting' so the
+        // ReindexProgress overlay appears while the server re-indexes.
+        setReindexPhase("starting");
+      },
+      onReindexComplete: () => {
+        // UX-04: reindex:complete → hide the overlay.
+        setReindexPhase("idle");
+      },
+    }),
+    [],
+  );
+
+  // Phase 4 (Plan 04-05): mount the WebSocket session-sync hook once at root.
+  useSessionSync(sessionSyncHandlers);
 
   // Plan 03-20 Gap R2-4 — document-level F2 routing. See
   // handleAppF2KeyDown's JSDoc for the full rationale. The empty
@@ -205,7 +238,11 @@ function AppInner() {
             onClose={onCloseOverlay}
           />
         ) : (
-          <EditorPane noteId={activeNoteId} reindexing={false} />
+          <EditorPane
+            noteId={activeNoteId}
+            reindexing={false}
+            editorHandlersRef={editorHandlersRef}
+          />
         )}
         <BacklinksColumn />
       </div>

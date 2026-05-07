@@ -15,6 +15,13 @@ import {
     waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { components } from "../api/schema";
+
+// Amendment 2 — schema-typed WS payload type aliases.
+// Adding a non-optional field to openapi.yaml MUST cause `tsc --noEmit` to
+// fail on these type annotations — that's the compile-time drift guard.
+type WSNoteUpdatedPayload = components["schemas"]["WSNoteUpdatedPayload"];
+type WSNoteDeletedPayload = components["schemas"]["WSNoteDeletedPayload"];
 
 // Mocked at module-load time so the EditorPane import below picks up the
 // mocked exports. vi.mock is hoisted above the imports by Vitest.
@@ -41,6 +48,8 @@ vi.mock("../lib/treeApi", () => ({
 
 import { ScratchpadUUID, getNote, updateNote } from "../lib/notesApi";
 import { getTree, postNoteMove } from "../lib/treeApi";
+import { useTreeStore } from "../lib/useTreeStore";
+import type { EditorPaneHandlers } from "./EditorPane";
 import {
     AUTOSAVE_DEBOUNCE_MS,
     EditorPane,
@@ -127,6 +136,9 @@ beforeEach(() => {
     // Default tree mirrors the default getNote path so EditorPane's
     // CR-02 effect sees a live path matching its load-effect seed.
     getTreeMock.mockResolvedValue(okTree("scratchpad.md"));
+    // Phase 4: ensure connectionStatus is "connected" so existing autosave
+    // tests are not gated by the D-06 connection guard.
+    useTreeStore.setState({ connectionStatus: "connected" });
     // shouldAdvanceTime: true keeps real-time microtasks flowing so
     // @testing-library's waitFor() retries make progress; manual
     // advanceTimersByTimeAsync calls still drive the 2s debounce + sticky window.
@@ -912,5 +924,262 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
             await vi.advanceTimersByTimeAsync(SAVED_STICKY_MS + 10);
         });
         expect(screen.getByRole("status")).not.toHaveAttribute("title");
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Phase 4 (Plan 04-05) — EditorPane WebSocket handler integration.
+//
+// Amendment 2: every synthetic WS payload is type-annotated via
+// components["schemas"][...] aliases. No `as unknown as Foo` bypass casts.
+// ────────────────────────────────────────────────────────────────────
+
+describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
+    function renderEditorWithHandlers(noteId: string | null = ScratchpadUUID) {
+        const handlersRef: { current: EditorPaneHandlers | null } = { current: null };
+        const view = render(
+            <EditorPane noteId={noteId} editorHandlersRef={handlersRef} />,
+        );
+        return { ...view, handlersRef };
+    }
+
+    it("P4-conflict-banner: note:updated for open note while userHasEdited=true renders banner with both actions", async () => {
+        getNoteMock.mockResolvedValue(okGet("initial content"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const { handlersRef } = renderEditorWithHandlers();
+        await flushMicrotasks();
+        const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+        await waitFor(() => expect(textarea).not.toBeDisabled());
+
+        // Simulate user edit — sets userHasEdited.current = true.
+        fireEvent.change(textarea, { target: { value: "edited content" } });
+
+        // Dispatch a synthetic note:updated WS event (schema-typed, no as-cast).
+        const updatedPayload: WSNoteUpdatedPayload = {
+            id: ScratchpadUUID,
+            path: "scratchpad.md",
+            updated_at: "2026-05-06T13:00:00Z",
+        };
+        act(() => {
+            handlersRef.current!.onNoteUpdated(updatedPayload);
+        });
+
+        expect(screen.getByTestId("conflict-banner")).toBeInTheDocument();
+        expect(screen.getByText(/This note was updated in another session/)).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /Save anyway/i })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /Discard/i })).toBeInTheDocument();
+    });
+
+    it("P4-save-anyway: click Save anyway re-issues updateNote with the server-supplied current_updated_at; on success clears banner", async () => {
+        getNoteMock.mockResolvedValue(okGet("original content"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const { handlersRef } = renderEditorWithHandlers();
+        await flushMicrotasks();
+        const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+        await waitFor(() => expect(textarea).not.toBeDisabled());
+
+        // Create conflict: user edits, then note:updated arrives.
+        fireEvent.change(textarea, { target: { value: "edited" } });
+        const updatedPayload: WSNoteUpdatedPayload = {
+            id: ScratchpadUUID,
+            path: "scratchpad.md",
+            updated_at: "2026-05-06T13:00:00Z",
+        };
+        act(() => {
+            handlersRef.current!.onNoteUpdated(updatedPayload);
+        });
+        await waitFor(() => expect(screen.getByTestId("conflict-banner")).toBeInTheDocument());
+
+        // Mock a successful save.
+        updateNoteMock.mockClear();
+        updateNoteMock.mockResolvedValue(okPut());
+
+        // Click Save anyway.
+        fireEvent.click(screen.getByRole("button", { name: /Save anyway/i }));
+        await waitFor(() => expect(updateNoteMock).toHaveBeenCalled());
+        // Verify the If-Match (current_updated_at) was passed.
+        expect(updateNoteMock).toHaveBeenCalledWith(
+            ScratchpadUUID,
+            "edited",
+            "2026-05-06T13:00:00Z",
+        );
+        // Banner clears on success.
+        await waitFor(() =>
+            expect(screen.queryByTestId("conflict-banner")).not.toBeInTheDocument(),
+        );
+    });
+
+    it("P4-discard: click Discard re-fetches note, replaces content, clears banner", async () => {
+        getNoteMock.mockResolvedValue(okGet("original content"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const { handlersRef } = renderEditorWithHandlers();
+        await flushMicrotasks();
+        const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+        await waitFor(() => expect(textarea).not.toBeDisabled());
+
+        // Create conflict.
+        fireEvent.change(textarea, { target: { value: "user edits" } });
+        const updatedPayload: WSNoteUpdatedPayload = {
+            id: ScratchpadUUID,
+            path: "scratchpad.md",
+            updated_at: "2026-05-06T13:00:00Z",
+        };
+        act(() => {
+            handlersRef.current!.onNoteUpdated(updatedPayload);
+        });
+        await waitFor(() => expect(screen.getByTestId("conflict-banner")).toBeInTheDocument());
+
+        // Server has newer content.
+        getNoteMock.mockClear();
+        getNoteMock.mockResolvedValue(okGet("server content"));
+
+        fireEvent.click(screen.getByRole("button", { name: /Discard/i }));
+        await waitFor(() => expect(getNoteMock).toHaveBeenCalled());
+        await waitFor(() =>
+            expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+                "server content",
+            ),
+        );
+        expect(screen.queryByTestId("conflict-banner")).not.toBeInTheDocument();
+    });
+
+    it("P4-silent-reload: note:updated while no edit / no pending save replaces content WITHOUT banner", async () => {
+        getNoteMock.mockResolvedValue(okGet("initial"));
+        const { handlersRef } = renderEditorWithHandlers();
+        await flushMicrotasks();
+        const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+        await waitFor(() => expect(textarea).not.toBeDisabled());
+
+        // No user edit — userHasEdited.current is still false.
+        // Server has fresh content.
+        getNoteMock.mockClear();
+        getNoteMock.mockResolvedValue(okGet("fresh from server"));
+
+        const updatedPayload: WSNoteUpdatedPayload = {
+            id: ScratchpadUUID,
+            path: "scratchpad.md",
+            updated_at: "2026-05-06T13:00:00Z",
+        };
+        act(() => {
+            handlersRef.current!.onNoteUpdated(updatedPayload);
+        });
+        await waitFor(() =>
+            expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+                "fresh from server",
+            ),
+        );
+        expect(screen.queryByTestId("conflict-banner")).not.toBeInTheDocument();
+    });
+
+    it("P4-deletion-banner: note:deleted for open note shows banner WITHOUT clearing content", async () => {
+        getNoteMock.mockResolvedValue(okGet("user typed work"));
+        const { handlersRef } = renderEditorWithHandlers();
+        await flushMicrotasks();
+        const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+        await waitFor(() => expect(textarea).not.toBeDisabled());
+
+        // User typed something.
+        fireEvent.change(textarea, { target: { value: "user typed work" } });
+
+        const deletedPayload: WSNoteDeletedPayload = {
+            id: ScratchpadUUID,
+            path: "scratchpad.md",
+        };
+        act(() => {
+            handlersRef.current!.onNoteDeleted(deletedPayload);
+        });
+
+        expect(screen.getByTestId("deleted-banner")).toBeInTheDocument();
+        expect(
+            screen.getByText("This note was deleted in another session"),
+        ).toBeInTheDocument();
+        // D-03: content NOT cleared.
+        expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+            "user typed work",
+        );
+    });
+
+    it("P4-deletion-banner-other-note: note:deleted for DIFFERENT id does NOT show banner", async () => {
+        getNoteMock.mockResolvedValue(okGet("my note"));
+        const { handlersRef } = renderEditorWithHandlers();
+        await flushMicrotasks();
+        await waitFor(() =>
+            expect(screen.getByRole("textbox")).not.toBeDisabled(),
+        );
+
+        const deletedPayload: WSNoteDeletedPayload = {
+            id: "00000000-0000-4000-a000-000000000099",
+            path: "other.md",
+        };
+        act(() => {
+            handlersRef.current!.onNoteDeleted(deletedPayload);
+        });
+
+        expect(screen.queryByTestId("deleted-banner")).not.toBeInTheDocument();
+    });
+
+    it("P4-autosave-paused-when-disconnected: edits during reconnecting do NOT call updateNote", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        // Set connection status to reconnecting BEFORE render.
+        useTreeStore.setState({ connectionStatus: "reconnecting" });
+
+        renderEditorWithHandlers();
+        await flushMicrotasks();
+        const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+        await waitFor(() => expect(textarea).not.toBeDisabled());
+
+        fireEvent.change(textarea, { target: { value: "typed during disconnect" } });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 50);
+        });
+        await flushMicrotasks();
+
+        expect(updateNoteMock).not.toHaveBeenCalled();
+    });
+
+    it("P4-autosave-resumes-on-reconnect: status flips to connected, edits trigger updateNote", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        // Start connected.
+        useTreeStore.setState({ connectionStatus: "connected" });
+
+        renderEditorWithHandlers();
+        await flushMicrotasks();
+        const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+        await waitFor(() => expect(textarea).not.toBeDisabled());
+
+        // Flip to reconnecting — autosave paused.
+        act(() => {
+            useTreeStore.setState({ connectionStatus: "reconnecting" });
+        });
+
+        // Edit while disconnected.
+        fireEvent.change(textarea, { target: { value: "edit during disconnect" } });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 50);
+        });
+        await flushMicrotasks();
+        expect(updateNoteMock).not.toHaveBeenCalled();
+
+        // Flip back to connected.
+        act(() => {
+            useTreeStore.setState({ connectionStatus: "connected" });
+        });
+
+        // New edit after reconnect should trigger autosave.
+        fireEvent.change(textarea, { target: { value: "edit after reconnect" } });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 50);
+        });
+        await flushMicrotasks();
+        expect(updateNoteMock).toHaveBeenCalled();
+    });
+
+    afterEach(() => {
+        // Reset connection status to connected (default for most tests).
+        useTreeStore.setState({ connectionStatus: "connected" });
     });
 });

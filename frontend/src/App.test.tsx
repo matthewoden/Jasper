@@ -52,6 +52,16 @@ vi.mock("./lib/useFileTree", () => ({
   }),
 }));
 
+// Phase 4 — mock useSessionSync so tests can capture handlers and
+// dispatch synthetic WS events without a real WebSocket connection.
+import type { SessionSyncHandlers } from "./lib/useSessionSync";
+let capturedSessionSyncHandlers: SessionSyncHandlers | null = null;
+vi.mock("./lib/useSessionSync", () => ({
+  useSessionSync: (h: SessionSyncHandlers) => {
+    capturedSessionSyncHandlers = h;
+  },
+}));
+
 import App, { handleAppF2KeyDown } from "./App";
 import { useTreeStore } from "./lib/useTreeStore";
 
@@ -507,6 +517,63 @@ describe("<App /> — Phase 2 shell composition", () => {
       expect(
         screen.getByLabelText("Note content"),
       ).toBeInTheDocument();
+    });
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 4 (Plan 04-05) — App.tsx mounts useSessionSync and wires reindex
+// events to ReindexProgress (UX-04).
+// ──────────────────────────────────────────────────────────────────────────
+describe("<App /> — Phase 4 session sync (Plan 04-05)", () => {
+  beforeEach(() => {
+    capturedSessionSyncHandlers = null;
+    getAdminStatusMock.mockReset();
+    postAdminReindexMock.mockReset();
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: null,
+      pendingRename: null,
+      draftCreate: null,
+      connectionStatus: "connected",
+    });
+    getAdminStatusMock.mockResolvedValue({
+      data: { state: "ok" },
+      error: undefined,
+    });
+  });
+
+  it("A-Phase4-1: mounts useSessionSync on render and captures handlers", async () => {
+    render(<App />);
+    await waitFor(() => expect(capturedSessionSyncHandlers).not.toBeNull());
+  });
+
+  it("A-Phase4-2: onReindexStarted flips ReindexProgress to running (shows Rebuilding…)", async () => {
+    render(<App />);
+    await waitFor(() => expect(capturedSessionSyncHandlers).not.toBeNull());
+    act(() => {
+      capturedSessionSyncHandlers!.onReindexStarted();
+    });
+    // ReindexProgress shows "Rebuilding the index…" for starting/running phases.
+    await waitFor(() => {
+      expect(screen.getByText(/Rebuilding/i)).toBeInTheDocument();
+    });
+  });
+
+  it("A-Phase4-3: onReindexComplete returns ReindexProgress to idle (hides Rebuilding…)", async () => {
+    render(<App />);
+    await waitFor(() => expect(capturedSessionSyncHandlers).not.toBeNull());
+    act(() => {
+      capturedSessionSyncHandlers!.onReindexStarted();
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Rebuilding/i)).toBeInTheDocument();
+    });
+    act(() => {
+      capturedSessionSyncHandlers!.onReindexComplete({ notes_indexed: 3 });
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(/Rebuilding/i)).not.toBeInTheDocument();
     });
   });
 });
