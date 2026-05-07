@@ -136,6 +136,9 @@ beforeEach(() => {
     // Default tree mirrors the default getNote path so EditorPane's
     // CR-02 effect sees a live path matching its load-effect seed.
     getTreeMock.mockResolvedValue(okTree("scratchpad.md"));
+    // Phase 4: ensure connectionStatus is "connected" so existing autosave
+    // tests are not gated by the D-06 connection guard.
+    useTreeStore.setState({ connectionStatus: "connected" });
     // shouldAdvanceTime: true keeps real-time microtasks flowing so
     // @testing-library's waitFor() retries make progress; manual
     // advanceTimersByTimeAsync calls still drive the 2s debounce + sticky window.

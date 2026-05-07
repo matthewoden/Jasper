@@ -32,11 +32,22 @@
  *   Empty H1 → no-op (research §2.1: filename does NOT auto-bind when
  *   the H1 is empty). Invalid H1 → soft error: content still saves,
  *   banner explains the rename was skipped.
+ *
+ * Plan 04-05 (Phase 4 — WebSocket session sync):
+ *   - Subscribes to useTreeStore.connectionStatus for autosave gate (D-06).
+ *   - Adds conflictBanner + deletedBanner state.
+ *   - Renders both banners above the textarea in the banner-stack region (D-01).
+ *   - Implements onNoteUpdated: silent reload OR conflict banner (D-10/D-11).
+ *   - Implements onNoteDeleted: deletion banner without clearing content (UX-05/D-03).
+ *   - Exposes handlers via editorHandlersRef prop (D-09 — no new event bus).
+ *   - On connectionStatus !== 'connected': dispatches connectionLost to
+ *     saveStateMachine; on reconnect: dispatches connectionRestored (D-06).
  */
 
 import {
   type ChangeEvent,
   type KeyboardEvent,
+  type MutableRefObject,
   useCallback,
   useEffect,
   useReducer,
@@ -52,9 +63,26 @@ import {
 } from "../lib/saveStateMachine";
 import { postNoteMove, type Tree, type TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
+import { useTreeStore } from "../lib/useTreeStore";
 import { SaveIndicator } from "./SaveIndicator";
+import type { components } from "../api/schema";
 
 type LoadStatus = "loading" | "loaded" | "error";
+
+// Amendment 2 — schema-typed WS payload type aliases for Phase 4.
+type WSNoteUpdatedPayload = components["schemas"]["WSNoteUpdatedPayload"];
+type WSNoteDeletedPayload = components["schemas"]["WSNoteDeletedPayload"];
+
+/**
+ * Phase 4 (D-09): handler ref shape written by EditorPane on mount so
+ * App's useSessionSync can dispatch WS events directly into this editor.
+ * Using a plain MutableRefObject ref instead of an event-bus abstraction
+ * (no new pub/sub layer needed for a single-pane app).
+ */
+export interface EditorPaneHandlers {
+  onNoteUpdated: (p: WSNoteUpdatedPayload) => void;
+  onNoteDeleted: (p: WSNoteDeletedPayload) => void;
+}
 
 // Locked timing constants (UI-SPEC §Save-trigger timing). Exported as named
 // consts so the verification grep can prove they exist; Phase 5 reuses them.
@@ -77,6 +105,12 @@ const NULL_NOTE_PLACEHOLDER_COPY = "Select a note to start editing.";
 interface EditorPaneProps {
   noteId: string | null;
   reindexing?: boolean;
+  /**
+   * Phase 4 (D-09): handler ref written to by EditorPane on mount so
+   * App's useSessionSync can dispatch WS events directly into this editor.
+   * No new event-bus abstraction — a plain ref per Plan 04-05.
+   */
+  editorHandlersRef?: MutableRefObject<EditorPaneHandlers | null>;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -124,7 +158,7 @@ function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
   return null;
 }
 
-export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
+export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: EditorPaneProps) {
   const [content, setContent] = useState("");
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const [saveState, dispatch] = useReducer(
@@ -146,6 +180,21 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
   // both render here as a thin banner above the textarea. Cleared on
   // every successful H1 round-trip OR when the H1 stops being invalid.
   const [h1RenameError, setH1RenameError] = useState<string | null>(null);
+
+  // Phase 4 (Plan 04-05) — connection status for autosave gate (D-06).
+  const connectionStatus = useTreeStore((s) => s.connectionStatus);
+
+  // Phase 4 (Plan 04-05) — conflict banner (SYNC-05, D-11).
+  const [conflictBanner, setConflictBanner] = useState<{
+    visible: boolean;
+    currentUpdatedAt: string;
+  } | null>(null);
+
+  // Phase 4 (Plan 04-05) — deletion banner (UX-05, D-03).
+  const [deletedBanner, setDeletedBanner] = useState<{
+    visible: boolean;
+    deletedPath: string;
+  } | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Latest content the component has seen — read by the trailing-save closure
@@ -170,6 +219,13 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
   useEffect(() => {
     noteIdRef.current = noteId;
   }, [noteId]);
+
+  // Phase 4 (D-06) — keep a ref to connectionStatus to allow the save
+  // callback (stable memoized identity) to read it without stale closure.
+  const connectionStatusRef = useRef(connectionStatus);
+  useEffect(() => {
+    connectionStatusRef.current = connectionStatus;
+  }, [connectionStatus]);
 
   // Plan 03-22 (Gap R2-6) — H1-driven rename pipeline state.
   //   lastH1Sent       tracks the most-recently-persisted H1 so we
@@ -219,6 +275,9 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
       lastNotePath.current = "";
       isRenameInProgress.current = false;
       setH1RenameError(null);
+      // Phase 4 — clear banners on note switch.
+      setConflictBanner(null);
+      setDeletedBanner(null);
       return;
     }
     let cancelled = false;
@@ -227,6 +286,9 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
     // Plan 03-22 — clear the rename error banner on note switch so a
     // stale message from the previous note doesn't bleed across.
     setH1RenameError(null);
+    // Phase 4 — clear WS banners on note switch.
+    setConflictBanner(null);
+    setDeletedBanner(null);
     (async () => {
       const { data, error } = await getNote(noteId);
       if (cancelled) return;
@@ -271,6 +333,22 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
     reindexingRef.current = reindexing;
   }, [reindexing]);
 
+  // Phase 4 (D-06) — observe connectionStatus transitions and dispatch
+  // saveStateMachine events accordingly.
+  const prevConnectionStatusRef = useRef(connectionStatus);
+  useEffect(() => {
+    const prev = prevConnectionStatusRef.current;
+    if (prev !== connectionStatus) {
+      if (connectionStatus !== "connected") {
+        dispatch({ type: "connectionLost" });
+      } else if (prev !== "connected") {
+        // Transition into connected (from connecting OR reconnecting).
+        dispatch({ type: "connectionRestored" });
+      }
+      prevConnectionStatusRef.current = connectionStatus;
+    }
+  }, [connectionStatus]);
+
   // 2. Save the latest content. Implements coalescing per UI-SPEC.
   const performSave = useCallback(async (latestContent: string) => {
     // Phase 2 reindex guard: the parent will unmount the editor while the
@@ -279,6 +357,8 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
     if (reindexingRef.current) return;
     const id = noteIdRef.current;
     if (id === null) return; // no note selected — guard
+    // Phase 4 (D-06): skip autosave while WS is down or mid-reconnect.
+    if (connectionStatusRef.current !== "connected") return;
     if (inFlight.current) {
       // Coalesce — mark exactly ONE trailing save; subsequent saves during the
       // same in-flight window overwrite this single slot (no save storm).
@@ -461,6 +541,76 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
     };
   }, []);
 
+  // Phase 4 (Plan 04-05) — WS event handlers.
+
+  /**
+   * D-10: when note:updated arrives for the OPEN note AND userHasEdited is false
+   * AND no debounce/inflight pending, silently re-fetch and replace content;
+   * cursor preserved.
+   * D-11: when unsaved edits OR pending autosave OR in-flight save, surface the
+   * conflict banner (SYNC-05) — never silent overwrite.
+   */
+  const onNoteUpdated = useCallback(
+    (p: WSNoteUpdatedPayload) => {
+      if (p.id !== noteIdRef.current) return; // not the open note
+      const debouncePending = debounceTimer.current !== null;
+      const inFlightSave = inFlight.current;
+      if (!userHasEdited.current && !debouncePending && !inFlightSave) {
+        // D-10: silent reload.
+        void (async () => {
+          try {
+            const { data } = await getNote(p.id);
+            if (!data) return;
+            const ta = textareaRef.current;
+            const prevStart = ta?.selectionStart ?? 0;
+            const prevEnd = ta?.selectionEnd ?? 0;
+            setContent(data.content);
+            latestContentRef.current = data.content;
+            // Restore cursor after React commits, clamped to new length.
+            requestAnimationFrame(() => {
+              if (!ta) return;
+              ta.selectionStart = Math.min(prevStart, data.content.length);
+              ta.selectionEnd = Math.min(prevEnd, data.content.length);
+            });
+          } catch {
+            // Silent reload failed — surface conflict banner as fallback so
+            // the user knows state is unclear.
+            setConflictBanner({ visible: true, currentUpdatedAt: p.updated_at });
+          }
+        })();
+        return;
+      }
+      // D-11: unsaved edits OR pending save → conflict banner.
+      setConflictBanner({ visible: true, currentUpdatedAt: p.updated_at });
+    },
+    [], // uses refs only (noteIdRef, debounceTimer, inFlight, userHasEdited)
+  );
+
+  /**
+   * UX-05 / D-03: note:deleted for the open note → deletion banner; editor
+   * content stays intact for recovery. Never clears content state.
+   */
+  const onNoteDeleted = useCallback(
+    (p: WSNoteDeletedPayload) => {
+      if (p.id !== noteIdRef.current) return;
+      setDeletedBanner({ visible: true, deletedPath: p.path });
+    },
+    [], // uses refs only
+  );
+
+  // Publish handlers to the ref so App.tsx's useSessionSync can dispatch
+  // WS events into this editor without a new event-bus abstraction (D-09).
+  useEffect(() => {
+    if (editorHandlersRef) {
+      editorHandlersRef.current = { onNoteUpdated, onNoteDeleted };
+    }
+    return () => {
+      if (editorHandlersRef) {
+        editorHandlersRef.current = null;
+      }
+    };
+  }, [editorHandlersRef, onNoteUpdated, onNoteDeleted]);
+
   // Phase 3: null noteId → render placeholder, NOT the textarea. We
   // still mount the SaveIndicator so the surface chrome remains
   // identical to a populated editor, and so a future "you typed but
@@ -509,6 +659,93 @@ export function EditorPane({ noteId, reindexing = false }: EditorPaneProps) {
           }}
         >
           {h1RenameError}
+        </div>
+      )}
+      {/* Phase 4 (D-01): conflict banner — stacks AFTER h1RenameError, BEFORE textarea */}
+      {conflictBanner?.visible && (
+        <div className="px-4" role="alert" data-testid="conflict-banner">
+          <span>
+            This note was updated in another session. Save anyway, or discard your changes?
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              // D-02: manual × dismiss — banner can re-appear on next event.
+              // Save anyway: re-issue PUT with the server-supplied
+              // current_updated_at as the new If-Match (T-04-06).
+              // The server may still reject (a third writer raced) — in that
+              // case we re-show the banner with the newer comparator.
+              void (async () => {
+                const result = await updateNote(
+                  noteIdRef.current!,
+                  latestContentRef.current,
+                  conflictBanner.currentUpdatedAt,
+                );
+                if (result.error) {
+                  const staleErr = result.error as {
+                    code?: string;
+                    current_updated_at?: string;
+                  };
+                  if (
+                    staleErr.code === "stale_write" &&
+                    staleErr.current_updated_at
+                  ) {
+                    // Re-show with the newer comparator.
+                    setConflictBanner({
+                      visible: true,
+                      currentUpdatedAt: staleErr.current_updated_at,
+                    });
+                  }
+                  return;
+                }
+                // Success — clear banner and reset edited flag.
+                setConflictBanner(null);
+                userHasEdited.current = false;
+              })();
+            }}
+          >
+            Save anyway
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              // Discard: re-fetch and replace content; clear banner;
+              // mark not-edited so silent reloads work again.
+              void (async () => {
+                const id = noteIdRef.current;
+                if (!id) return;
+                const { data } = await getNote(id);
+                if (data) {
+                  setContent(data.content);
+                  latestContentRef.current = data.content;
+                  userHasEdited.current = false;
+                }
+                setConflictBanner(null);
+              })();
+            }}
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setConflictBanner(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {/* Phase 4 (D-01, UX-05, D-03): deletion banner — informational only; no content clear */}
+      {deletedBanner?.visible && (
+        <div className="px-4" role="alert" data-testid="deleted-banner">
+          <span>This note was deleted in another session</span>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setDeletedBanner(null)}
+          >
+            ×
+          </button>
         </div>
       )}
       <textarea
