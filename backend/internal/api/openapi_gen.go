@@ -96,6 +96,69 @@ func (e ReindexRequestMode) Valid() bool {
 	}
 }
 
+// Defines values for StaleWriteErrorCode.
+const (
+	StaleWrite StaleWriteErrorCode = "stale_write"
+)
+
+// Valid indicates whether the value is a known member of the StaleWriteErrorCode enum.
+func (e StaleWriteErrorCode) Valid() bool {
+	switch e {
+	case StaleWrite:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WSEnvelopeEvent.
+const (
+	WSEnvelopeEventFolderCreated   WSEnvelopeEvent = "folder:created"
+	WSEnvelopeEventFolderDeleted   WSEnvelopeEvent = "folder:deleted"
+	WSEnvelopeEventFolderMoved     WSEnvelopeEvent = "folder:moved"
+	WSEnvelopeEventMigrationStatus WSEnvelopeEvent = "migration:status"
+	WSEnvelopeEventNoteCreated     WSEnvelopeEvent = "note:created"
+	WSEnvelopeEventNoteDeleted     WSEnvelopeEvent = "note:deleted"
+	WSEnvelopeEventNoteMoved       WSEnvelopeEvent = "note:moved"
+	WSEnvelopeEventNoteUpdated     WSEnvelopeEvent = "note:updated"
+	WSEnvelopeEventReindexComplete WSEnvelopeEvent = "reindex:complete"
+	WSEnvelopeEventReindexStarted  WSEnvelopeEvent = "reindex:started"
+	WSEnvelopeEventSessionAssigned WSEnvelopeEvent = "session:assigned"
+	WSEnvelopeEventTagsUpdated     WSEnvelopeEvent = "tags:updated"
+)
+
+// Valid indicates whether the value is a known member of the WSEnvelopeEvent enum.
+func (e WSEnvelopeEvent) Valid() bool {
+	switch e {
+	case WSEnvelopeEventFolderCreated:
+		return true
+	case WSEnvelopeEventFolderDeleted:
+		return true
+	case WSEnvelopeEventFolderMoved:
+		return true
+	case WSEnvelopeEventMigrationStatus:
+		return true
+	case WSEnvelopeEventNoteCreated:
+		return true
+	case WSEnvelopeEventNoteDeleted:
+		return true
+	case WSEnvelopeEventNoteMoved:
+		return true
+	case WSEnvelopeEventNoteUpdated:
+		return true
+	case WSEnvelopeEventReindexComplete:
+		return true
+	case WSEnvelopeEventReindexStarted:
+		return true
+	case WSEnvelopeEventSessionAssigned:
+		return true
+	case WSEnvelopeEventTagsUpdated:
+		return true
+	default:
+		return false
+	}
+}
+
 // CreateFolderRequest defines model for CreateFolderRequest.
 type CreateFolderRequest struct {
 	// Name New folder basename (single path segment, no `/`).
@@ -258,6 +321,19 @@ type ReindexResponse struct {
 	StartedAt time.Time `json:"started_at"`
 }
 
+// StaleWriteError Returned by PUT /notes/{id} when If-Match does not match the
+// current file's updated_at (SYNC-06). The client surfaces
+// SYNC-05's Save-anyway / Discard banner using
+// current_updated_at as the new comparator.
+type StaleWriteError struct {
+	Code             StaleWriteErrorCode `json:"code"`
+	CurrentUpdatedAt time.Time           `json:"current_updated_at"`
+	Message          string              `json:"message"`
+}
+
+// StaleWriteErrorCode defines model for StaleWriteError.Code.
+type StaleWriteErrorCode string
+
 // Tree defines model for Tree.
 type Tree struct {
 	// Root Top-level (root) entries — children of the vault root (notes/). The
@@ -283,6 +359,82 @@ type UpdateNoteResponse struct {
 	UpdatedAt time.Time          `json:"updated_at"`
 }
 
+// WSEnvelope WebSocket event envelope (DESIGN.md §5.2). The `event` enum is
+// locked verbatim and mirrors the Go const block in
+// backend/internal/wshub/envelope.go and the TS dispatch table
+// in frontend/src/lib/useSessionSync.ts.
+type WSEnvelope struct {
+	Event WSEnvelopeEvent `json:"event"`
+
+	// OriginSessionId UUID of the session that originated the mutation. Empty
+	// string for server-originated events (reindex:*,
+	// migration:status). Clients ignore events whose
+	// origin_session_id matches their own (SYNC-03 origin
+	// filter).
+	OriginSessionId string `json:"origin_session_id"`
+
+	// Payload Event-specific payload; shape determined by `event`.
+	Payload interface{} `json:"payload"`
+}
+
+// WSEnvelopeEvent defines model for WSEnvelope.Event.
+type WSEnvelopeEvent string
+
+// WSFolderCreatedPayload defines model for WSFolderCreatedPayload.
+type WSFolderCreatedPayload struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// WSFolderDeletedPayload defines model for WSFolderDeletedPayload.
+type WSFolderDeletedPayload struct {
+	Path      string `json:"path"`
+	Recursive bool   `json:"recursive"`
+}
+
+// WSFolderMovedPayload defines model for WSFolderMovedPayload.
+type WSFolderMovedPayload struct {
+	NewPath string `json:"new_path"`
+	OldPath string `json:"old_path"`
+}
+
+// WSNoteCreatedPayload defines model for WSNoteCreatedPayload.
+type WSNoteCreatedPayload struct {
+	Id        openapi_types.UUID `json:"id"`
+	Path      string             `json:"path"`
+	Title     string             `json:"title"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
+
+// WSNoteDeletedPayload defines model for WSNoteDeletedPayload.
+type WSNoteDeletedPayload struct {
+	Id   openapi_types.UUID `json:"id"`
+	Path string             `json:"path"`
+}
+
+// WSNoteMovedPayload defines model for WSNoteMovedPayload.
+type WSNoteMovedPayload struct {
+	Id        openapi_types.UUID `json:"id"`
+	NewPath   string             `json:"new_path"`
+	OldPath   string             `json:"old_path"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
+
+// WSNoteUpdatedPayload defines model for WSNoteUpdatedPayload.
+type WSNoteUpdatedPayload struct {
+	Id        openapi_types.UUID `json:"id"`
+	Path      string             `json:"path"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
+
+// WSReindexCompletePayload defines model for WSReindexCompletePayload.
+type WSReindexCompletePayload struct {
+	NotesIndexed int `json:"notes_indexed"`
+}
+
+// WSReindexStartedPayload Empty payload — server-originated.
+type WSReindexStartedPayload = map[string]interface{}
+
 // NoteId defines model for NoteId.
 type NoteId = openapi_types.UUID
 
@@ -296,6 +448,29 @@ type DeleteFolderParams struct {
 	// §Surface 4) always sets recursive=true after the user confirms the
 	// content-count copy.
 	Recursive *bool `form:"recursive,omitempty" json:"recursive,omitempty"`
+}
+
+// PutNoteByIdParams defines parameters for PutNoteById.
+type PutNoteByIdParams struct {
+	// IfMatch Optimistic concurrency comparator (SYNC-06). When present,
+	// the server compares this value against the file's current
+	// updated_at (RFC3339Nano UTC). On mismatch the server
+	// returns 409 with `code: stale_write` and
+	// `current_updated_at` in the body — the client surfaces
+	// SYNC-05's Save-anyway / Discard banner. Permissive when
+	// absent (curl / automation friendly). Server treats the
+	// value as an opaque string round-trip; max length 256 chars.
+	IfMatch *string `json:"If-Match,omitempty"`
+}
+
+// GetApiV1WsParams defines parameters for GetApiV1Ws.
+type GetApiV1WsParams struct {
+	// SessionId Per-tab UUID generated by the client (sessionStorage).
+	// Server adopts this as the connection's session_id; the
+	// handshake message echoes it for confirmation. Treated as
+	// opaque; max length 128 chars enforced in middleware
+	// (T-04-03).
+	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
 }
 
 // PostAdminReindexJSONRequestBody defines body for PostAdminReindex for application/json ContentType.
@@ -436,13 +611,16 @@ type ServerInterface interface {
 	GetNoteById(w http.ResponseWriter, r *http.Request, id NoteId)
 	// Replace the content of a note by UUID
 	// (PUT /notes/{id})
-	PutNoteById(w http.ResponseWriter, r *http.Request, id NoteId)
+	PutNoteById(w http.ResponseWriter, r *http.Request, id NoteId, params PutNoteByIdParams)
 	// Rename or move a note (TREE-05, TREE-07)
 	// (POST /notes/{id}/move)
 	PostNoteMove(w http.ResponseWriter, r *http.Request, id NoteId)
 	// Return the full folder/file hierarchy under notes/ (TREE-01)
 	// (GET /tree)
 	GetTree(w http.ResponseWriter, r *http.Request)
+	// WebSocket endpoint (HTTP/1.1 Upgrade)
+	// (GET /ws)
+	GetApiV1Ws(w http.ResponseWriter, r *http.Request, params GetApiV1WsParams)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -505,7 +683,7 @@ func (_ Unimplemented) GetNoteById(w http.ResponseWriter, r *http.Request, id No
 
 // Replace the content of a note by UUID
 // (PUT /notes/{id})
-func (_ Unimplemented) PutNoteById(w http.ResponseWriter, r *http.Request, id NoteId) {
+func (_ Unimplemented) PutNoteById(w http.ResponseWriter, r *http.Request, id NoteId, params PutNoteByIdParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -518,6 +696,12 @@ func (_ Unimplemented) PostNoteMove(w http.ResponseWriter, r *http.Request, id N
 // Return the full folder/file hierarchy under notes/ (TREE-01)
 // (GET /tree)
 func (_ Unimplemented) GetTree(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// WebSocket endpoint (HTTP/1.1 Upgrade)
+// (GET /ws)
+func (_ Unimplemented) GetApiV1Ws(w http.ResponseWriter, r *http.Request, params GetApiV1WsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -727,8 +911,32 @@ func (siw *ServerInterfaceWrapper) PutNoteById(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutNoteByIdParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PutNoteById(w, r, id)
+		siw.Handler.PutNoteById(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -769,6 +977,39 @@ func (siw *ServerInterfaceWrapper) GetTree(w http.ResponseWriter, r *http.Reques
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetTree(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetApiV1Ws operation middleware
+func (siw *ServerInterfaceWrapper) GetApiV1Ws(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetApiV1WsParams
+
+	// ------------- Optional query parameter "session_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "session_id", r.URL.Query(), &params.SessionId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "session_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "session_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApiV1Ws(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -926,6 +1167,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/tree", wrapper.GetTree)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/ws", wrapper.GetApiV1Ws)
 	})
 
 	return r
@@ -1354,8 +1598,9 @@ func (response GetNoteById404JSONResponse) VisitGetNoteByIdResponse(w http.Respo
 }
 
 type PutNoteByIdRequestObject struct {
-	Id   NoteId `json:"id"`
-	Body *PutNoteByIdJSONRequestBody
+	Id     NoteId `json:"id"`
+	Params PutNoteByIdParams
+	Body   *PutNoteByIdJSONRequestBody
 }
 
 type PutNoteByIdResponseObject interface {
@@ -1400,6 +1645,20 @@ func (response PutNoteById404JSONResponse) VisitPutNoteByIdResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutNoteById409JSONResponse StaleWriteError
+
+func (response PutNoteById409JSONResponse) VisitPutNoteByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1532,6 +1791,30 @@ func (response GetTree500JSONResponse) VisitGetTreeResponse(w http.ResponseWrite
 	return err
 }
 
+type GetApiV1WsRequestObject struct {
+	Params GetApiV1WsParams
+}
+
+type GetApiV1WsResponseObject interface {
+	VisitGetApiV1WsResponse(w http.ResponseWriter) error
+}
+
+type GetApiV1Ws101Response struct {
+}
+
+func (response GetApiV1Ws101Response) VisitGetApiV1WsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(101)
+	return nil
+}
+
+type GetApiV1Ws400Response struct {
+}
+
+func (response GetApiV1Ws400Response) VisitGetApiV1WsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(400)
+	return nil
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Trigger a full or incremental re-index
@@ -1570,6 +1853,9 @@ type StrictServerInterface interface {
 	// Return the full folder/file hierarchy under notes/ (TREE-01)
 	// (GET /tree)
 	GetTree(ctx context.Context, request GetTreeRequestObject) (GetTreeResponseObject, error)
+	// WebSocket endpoint (HTTP/1.1 Upgrade)
+	// (GET /ws)
+	GetApiV1Ws(ctx context.Context, request GetApiV1WsRequestObject) (GetApiV1WsResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1855,10 +2141,11 @@ func (sh *strictHandler) GetNoteById(w http.ResponseWriter, r *http.Request, id 
 }
 
 // PutNoteById operation middleware
-func (sh *strictHandler) PutNoteById(w http.ResponseWriter, r *http.Request, id NoteId) {
+func (sh *strictHandler) PutNoteById(w http.ResponseWriter, r *http.Request, id NoteId, params PutNoteByIdParams) {
 	var request PutNoteByIdRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body PutNoteByIdJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -1944,90 +2231,140 @@ func (sh *strictHandler) GetTree(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetApiV1Ws operation middleware
+func (sh *strictHandler) GetApiV1Ws(w http.ResponseWriter, r *http.Request, params GetApiV1WsParams) {
+	var request GetApiV1WsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetApiV1Ws(ctx, request.(GetApiV1WsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetApiV1Ws")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetApiV1WsResponseObject); ok {
+		if err := validResponse.VisitGetApiV1WsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"5Fx9chvHcr9K1yYpAxV8UaLtMlmuV5RE2cyTJYYfUVJelTjYbQBjDmbWM7OkYBWrcojc4d3jHSUnSXXP",
-	"LHYBLEjKpii/iv6wRWJ3pqc/fv3rnoY+JpmZF0aj9i7Z+5gUwoo5erT802vj8Sinv+XoMisLL41O9pLz",
-	"86MXYCbgZwjaeITO8Uw4hB2YCQf4QWReLcBohP/97/8Bhwgus8Jns0LkwC9LDZnJsZv0EkkrFsLPkl6i",
-	"xRyTvUTmSS+x+GspLebJnrcl9hKXzXAuSJiJsXPhk72kLPlJvyjoLeet1NPk5uamepgP8dyi8PjSqBzt",
-	"Cf5aovN8UmsKtF4iPxQ2Xj/na7yGCb8IY+GQHoKOk3qqEEhicDido/Y90AYuhhfdQdJL8IOYF4oE+kW4",
-	"Au2mgD1SM2r/nk+9setzoY2WmVBgUQkvr+JmpSZBSN9uCN6w9sNCUcgeGAtpkiapnhjLn1+JUnmwxvhB",
-	"qleEK6z5BTPvWvTX1P3PK7JGC71bvmPGtAgdKaiZPGarkr/EqeH1y+fwr6DMNdqMfLRACy8Ozg76Ozv7",
-	"/LBDe4U21Rb7WSWD/A0d5DhB7eQVqsU25Q23m9hLr9pcisKFP4PO0qeupZ+Z0sPFYJ5fdJtigSgK1LkL",
-	"H626V45OTnWfVfOJVgzCtZnx0FpjN01HwUr/r3fXxr+fmFLnbYefo3NiuvFGAAs6LcgcRvFPn/+zS/8R",
-	"1Y/xz86d52LB6g3bjhRC/3U8wdq5ZlLlFvWmod68fvVfUJiiVMJjDtcz1OBn0kG9HBtHWAdSO0k/wplF",
-	"BIuuMNrhINWH88IvoGMsmLn0HvNuWKh0mINwIMB5oXOhCCur96Bz/Ob0DIbBvV0v1Ss/D+fmCrvBI6XH",
-	"OZ/jny1Okr3kn4Y1nA8jBg5JKD79zVI5wlqxoJ8vpW7B9xeSfppLLbyxcCVUiSBz1F5OFlJPgx40a4DO",
-	"EARj59TlnKwSftOwRu0a7Uj7bAmvSji/Aq6fAKq/G1c6t6BE99Mif80/WcG95C70/ElOrSCJT73wpdt0",
-	"1ImQCvP38+q5zYO+lCqoMCbm5aPgZ8KDt3I6RYs5HNPxd6BjtFqAQx9c0nnh8XtrFG0zFtnl6rlHo6fv",
-	"vZi6gftVtSlfmanbguwHY2dU6aPeI4Q7b8vMlySPMlOYSALEFomIKXxsSNWDUlvMzBVaMVZ4syrl8Nxx",
-	"hOBwEOwzdN5YMcUhyRdtNlBm2nYE9oX3Uuf4AVuC4rkptSflWnPtICstAapakIB0oAt+/QI8iQUdqQNL",
-	"kUYLtSLkzpPdb5e7S+1xipa25+O2bBs2apjTllqjDeoZwGlpJyJDx0L4mUXss54tOqkk6gxTPTc5KphY",
-	"M4cXh6dHP7wezHP4+992B7uDVAP0IU3MZZpA4w8TNwYQkMvT7hPPEVmQIjp5tUDDRrwSLRA9bULP7UNh",
-	"8Uqa0lXr0kJXuA9jEc4zM9caOuf/2R897S5XxXEpVS71NIi3XPUJ6b2wZmrRuX04P+L3HZwgG/A4fgLk",
-	"KEosqvVWnCdN6vWeVlKSWmUGSHkQCjFFOj8n4xyEzlnNp8cHkAmtjQeLIpsFQESdF0ZqD53cZCVBF+ZA",
-	"lGRSkqMT6HcDj4goaS6J5tZ6Y9JbnTfprQrbAqZrUBMcqBVdzNWdBBivt4QvkeDsPiBasa9GOtiETY3X",
-	"fUbBlgA0Kt9GDmMQPJwcRuVb5FjT6lKoXq2jbTq+lf0+gIY7TJ2YCgJ+8MROje4ObktQw8ASB/P8zpPe",
-	"ejw6Whst1B613zzSibiGubCXOcV0fKpZMbaZX+arfPGe/PCOavBOXiB/w/xhuEFd5Laqu5eURU5k8r1o",
-	"0dhboVQ/Uya7hPOz5+BlncmZErkyy9C5Sang2krW4PLktGqf3rjTxrJBRirjrci1zfavZKtPc+2x9/F+",
-	"RJTWOS3nc2EXm1x03Rl55W3StJP54EB3+sODcF6Sr8l42anfPS4rvW/N+VJa5/s/7sS6kzJSxRVXKs99",
-	"0Eg1J1LVMviDDmwmwW9pK7dwHucwD049jtl0vGDvDoSLcfp3OHTk102/Dlq4l1dX3vh7XelRSo47YeUh",
-	"zb6y81tUmZkjcfZ/21p2fUaf+OMYd09fiKxxa+6eR7zJcSJKReJMSkV10OpxU/51TaRrtroHuTUF5Ggl",
-	"HZOLBNcDi31bahBK1fzegQkVhcZr6GQKhe5GytyDa6Eugay1AOLwpMhUp4nUmUVinEJFUhtXpnWyGYoi",
-	"KLo/Fg5zyFF5AS4TGrjk6rDfjb5bpafxiI212znodm2GfsaWtHHfSqu1vhITj4Hl2bAZUL5RSJQ7NqOf",
-	"hLOxDfgXu1R0opi7gOVXUsDb0waOrtZi9p4+HRtDtSBjnApdC2HRl1Y7OHh5dngCkpxfSzdDtx/EoOrC",
-	"S6ViVSys59zf/X2+3xC8zc/PLLaYwxrTcs4zU/QVXqGCDj3QBdTeSnSs0apvVlGUuuMKnQBw3QGczTDV",
-	"J2/enIH0DtWEzirnhZKZ9PuRnjvQ6Dwbo1rz53cP0txa0wwfcptOKj6RN0kAB74oCtIzJwPuaW2Ro9Fk",
-	"DJ2E20hQJXA0w+J1uPbgXEZ1kMY3k2Tv59tP3tjxpnc38QoPvrvpJeeMhbfWKlt5PZUqtoXb74PFQi37",
-	"EESbLDI83aODG/Zqs01T1G1g8omp+o789Qfzza15hl6UemI21RqyK/x4dnYMB8dHA6ju01zo7uyBgHjv",
-	"NBM272cmxzx00y9xEfLm+fnRi0GqK9wReR5sUVeWHJh9JZ2vexXc0rg2IPK51Mtfu1R36oaT455kDygh",
-	"UGJhnOvCWGSXxIy5Y8MLBfoyGqQ61aemtFkoYWzpZ3sxa1lTeoxsAvBDYRw6UPIKI9BLF3uBB8dH/dFO",
-	"d5DqgzynbUR8d4a2JjACfjAwEzpXaCETJa0mOBfQItzESXXgXUYUkhU3RQ2n3srMn/Idy5H2yFqOmz6J",
-	"zfVIqyrjHBwfJb3kCq0LNhsNdgYjDtcCtShkspc85V8FZ2DfHLJahzE1sO8a1xJWldFIpa5SY+QMZMMt",
-	"vGGVM4hUM1tYkgUySYMwhL4BabfyrydgS+3ALXQ2s0ab0qkFvZXqKms9GcU02ky43KJq5LEqvV5TGnPX",
-	"0mfc5hW0bqrxA2Zl9CNKv2TLotmeg7c4PjXZJfqGWQkVrMg8jC2Ky2AQino+7lFOOjPOH5B6I92IV8bo",
-	"/DOTL9ZQTBSUdvjl4S8utM/rC+XbsHONGt7chPAPaMRGfjJ68vC7RbTj3dZaKzEAQWQZFh7zfVjnGsFY",
-	"kRHRWze9ZHf03YNJGS4JW2Q7WMID5XqhLIp80ezUkiRfj55+fkleCC+I7DLn0KuXBvFmodNs/HYZ1l1V",
-	"DyZn4boEREA9Y6HBg5enJJQQU0dZgCM9eUerxKh3y6ucKba1yKKxVu9qms39ZSczIGzokzOtgoll7eWp",
-	"vigdrt0edboXMDPmEgqjVGS7RsOcaPVGtApGGIIOidpz3MLFUp69cIiLRoziFT1XRWo2E3oa+iOY6mvK",
-	"+m4mCmyL2B8wBGy849oIo9GDucX6dVqLg9x+r7LmDSdYGCLmW021xREixw3Gp+qkpe/Ev280rEGEjaby",
-	"CnUje1NSGcCzBcQiFDoWs9I6eYXfT4Tiy4XG4ECFBbuj7+LC77Xx77nIBzlpbjgTDoReLAn4INXkY8FR",
-	"nkKQsB8fzqVQZgqd86P+6fHhc/j73+INFOx2QahrsXDgkBhELZ63ZbNkKx2jk55IO48cJRi9n3Hll5li",
-	"MQiFs3SpLoRbXpf/WlImW04pgTNwfvKqjzozTBICFXBwMbwAh/ScN9bFxBirwarwmIkrBG3g9N9fSV81",
-	"+zwnQFo3XvCMkagUYRfTrFRHnrXh3UFNgZUzB6gnqX7+LB0iHpxihdSTU5GGbp+d2qCyG+Ut1bPsT9CJ",
-	"ntbtwac5Vqq3eRbc27FSvc2z4P6OleoWzwrFZYvylusmTY0tez6slCWpHxtDPpXc3LzbALLdbWGeh0w8",
-	"+vz570hfCSVziJQIOnPpHFMv4Wc9SJPBIE0AXSYK7Aapdj+/VCE6yMEhzA49FjFpbBwcdR08OeobXlt5",
-	"bDcwlkewWEwEYdADOi9PYVhB01y6ufDZbJ2kxFeqCRzonJ0cHvZH33QZ57TR/XDYCAfrkdNIWlWiekeV",
-	"cmuJEub7QOiowLhlQKyPjfGym+FHiqebEOvVdN3qaF2oI1ypfOWSt6NdVZTwzSbQx32pHWonGTszo5Sk",
-	"sswNoCEJTwXCHEVkWdykSnWYC3wZs4CwCEVpEV6eEnSEuZTQ5PJcavK1D1xEDcUG5LaCJK76mWqRtlHW",
-	"m9V2BNl1s0DZeTARml2nrWGWsZxfEOyCi5Ib9kAqhVOhiKla16tmR70VVMoL1X00DHq+1W3hzcmK3+YG",
-	"HYTpEmfUFQZWHhuQqxBQheUaBOx2W4O7wUl5jHB7R+LAmzmFqyL0IEWGF+pxPwbMjZnZ0GkgPQqpMU+J",
-	"QuFXrsluqquNwuJEfhjAEVWpXFcxq6YX9pYcrYrOVH9SeIbxpTBpFjE0dOa4LE31mNAUzo9fHJwdBroF",
-	"p4dnLOX3g8EA3v54eHIYhH519NdD+IqnQFjg4b98Vc17Go2pfnb4w9FrOPrpp8MXR7Sat0K7MCN1O0j8",
-	"ZJhofA6c2Jz3uRdKjB4JJUg8yMw8jMR+aZTgZt0GTHwhglRNG90BAV8esXgSicjAB+k4ideiPQpbYh/6",
-	"FK50EodjLRCObQDm1z0If/l2O3Iup11a+zmvpPN8kxvvNSOudOboRS68qK8jtakK3u4Anonssr74DodI",
-	"ddXwDb205f1s3bgljqrNej28bMZ+G9o7Is9TffGXX7+/YLi++IsX0+8vuK/kUNhsFvr/ggdwPVJNuKVx",
-	"8zp+y+CzQcZyyKjF2KxaMwkXHpU+1+x7L/U3bRsnjO4kvJyseOdWrsu3BDeDed7ku7CSFUNf5lP5Lmyj",
-	"u1TUVny38daTu7lv/EoMyRkpWqr5tkW6qiz6Da2B8cKjC0LI+RxzKTwyEehH5W7LbLWXfC7y27y2fGTq",
-	"uzK+tumk/M2eL858qzJ/IlHljbQWZoD+zBy4E924+xBseBmzEd6ftkX+EtOHH2V+c88mLa8aBwNl4+YV",
-	"TjAQZG5EEVIonhusb91SLWpSTbGVKf72UIOkBri35rqaenE8rWXps1ViuTvarUdPwlcqHZT6UptrvQ9f",
-	"j0b1p83suAxZzp0u1dVIu7824Lyx6ODalCqHMYLCiQepiXZLR06xve1Jzv9scZQnn9wLewRSxZG57DlB",
-	"J6qJ1faP0d9hp4ueVnd5WpNZ5CatCbzdQg+bw7caoNHw+/I2X6OGIl9TcjtPWG3pt8lVPzKMX56+eddL",
-	"irLFJsflqk0ePmNuDvo8chnYMr6zzVRxcGYfAkZGzHv8IvEnoSbGzrFOqWMyyf8vqHrLyiekKi2C0ZBL",
-	"dwmdYJq+XVZSE7fQ8atSmzHF42DN2z1i8HdG2WpOrptUvzv0Wrl9LAaFzod1QRgyu65HraIrNhMvVF+S",
-	"iY2k+3xtZ+X73K9fPu8vOb8D6WGME2OJHBQFM4YBvJWXsq+kvgSLIQ46r45e//WUilPa98Xhy8OTk8MX",
-	"RIRCufdNY8z1KVc6qQ4RFegFk3xlgpfUX2NbIx3EYeqZBNJcn1ST6gbzrbpqcVwgExosZkZntIOYCqmp",
-	"DNOLeN4+N8pIJanWxs6pIBK39cZoq8/cGfuCgHhHCfHnaoxVrv5n6Y3diY1/up5YqECquuYfqDfWLJ3a",
-	"O2NNvPZxqvzWMSejkUe9MQd6HqrvyC6HnOLMMDcqYi9lJoqqY+/FdIo5lJoUTWBXjW1z70L6GVr4eCl1",
-	"vpfGrl2a9OJld7gHqsfLb1Jt6qfpJPSszKvnuVbuQT3LezOAU2M9GJuj3QOhipkYoyfcT/U4XDSx9aUG",
-	"/j4wz833lrcYAeJDOhjAuav7fQSPY2FT/VIq5H89omNRZL4v7NhY6Xy4yj1WQsPoaX/0zZb2HA/2f0bg",
-	"4vXbLvxKpdiej+bcrKT4Jdeqjo1+zrOuS2ffQkvIG0NOJNGDhYacH2cSrbDZbLE2hhO8f6fp/Xzid+Ff",
-	"GuI81zbkcyrm2DdWTqWGzg8GxlJTAjUW/oPky/GKzvGBm5KlVcleMhSFHF7tMHGJW7X++zGWCxadR5a8",
-	"9AZXz7KE+Nwc73lTPStUPe3NPnbHvHe9dBhw21yaXLjv18zDA74tmoxrRdf52HqP3OeOeX265eVmhUhL",
-	"aPpmBaPi2lXz/ubdzf8FAAD//w==",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

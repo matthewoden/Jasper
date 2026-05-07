@@ -8,7 +8,7 @@
 // backend/internal/static/embed.go — so `all:dist` resolves to
 // backend/internal/static/dist/. Plan 04's Makefile build target copies
 // frontend/dist/ → backend/internal/static/dist/ before `go build`.
-// A .gitkeep file in dist/ ensures this package compiles on a fresh
+// A .keep file in dist/ ensures this package compiles on a fresh
 // clone (before `make build` has been run) for `go test ./...`.
 package static
 

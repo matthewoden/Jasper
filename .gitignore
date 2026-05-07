@@ -7,13 +7,11 @@ coverage.out
 .DS_Store
 .env
 .env.local
-# NOTE: frontend/dist/.gitkeep is committed solely so `npm run build` does not
-# fail on a fresh clone if some dev tool expects the directory to exist; it is
-# NOT used by go:embed. The Go binary's embedded dist/ lives at
-# backend/internal/static/dist/ — Plan 04 manages that directory and its own
-# .gitkeep there. The frontend/dist/ build output itself is gitignored:
+# frontend/dist/ is populated by `npm run build` (Vite output).
+# The .gitkeep was removed in Phase 3 cleanup; run `npm run build`
+# before `make build` to populate this directory. It is not go:embedded
+# directly — make build copies it to backend/internal/static/dist/.
 frontend/dist/*
-!frontend/dist/.gitkeep
 
 # TypeScript incremental build cache and emitted JS for config files
 frontend/*.tsbuildinfo
@@ -23,10 +21,11 @@ frontend/vitest.config.d.ts
 frontend/vitest.config.js
 
 # backend/internal/static/dist/ is populated by `make build` from
-# frontend/dist/; only the .gitkeep is committed so //go:embed all:dist
-# compiles on a fresh clone before make build has run.
+# frontend/dist/; a .keep placeholder is committed so //go:embed all:dist
+# compiles on a fresh clone (before make build has run). The .gitkeep
+# was removed in Phase 3 cleanup; this .keep replaces it.
 backend/internal/static/dist/*
-!backend/internal/static/dist/.gitkeep
+!backend/internal/static/dist/.keep
 
 # Playwright E2E artifacts
 frontend/e2e/.artifacts/
