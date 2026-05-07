@@ -2,6 +2,7 @@ package wshub
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -24,11 +25,19 @@ const (
 
 // client owns one WebSocket connection. Created on Accept, registered
 // with the Hub, drained by writePump, fed by Broadcast.
+//
+// WR-03: closeOnce gates closeSlow so a slow client receiving a burst
+// of broadcasts does not spawn one closeSlow goroutine per Broadcast
+// call until unregister catches up. coder/websocket's conn.Close is
+// idempotent today, but if closeSlow is ever extended (metrics, logs)
+// the duplicate work would become meaningful — sync.Once is cheap
+// belt-and-suspenders.
 type client struct {
 	sid       string          // adopted from ?session_id=<sid> query param (Pitfall 1)
 	conn      *websocket.Conn // owned for the connection's lifetime
 	send      chan []byte     // pre-encoded envelope bytes; cap = sendBufferSize
 	closeSlow func()          // invoked when send chan fills (drop path)
+	closeOnce sync.Once       // gates closeSlow — one invocation per client
 }
 
 // writePump drains c.send and writes each envelope as a single text

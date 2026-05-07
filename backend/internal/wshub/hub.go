@@ -84,8 +84,10 @@ func (h *Hub) Broadcast(eventType string, payload any, originSessionID string) {
 			// SYNC-08: slow client; drop without blocking the broadcast
 			// goroutine. closeSlow runs in a goroutine so it can acquire
 			// the unregister Lock without deadlocking on our held RLock
-			// (Pitfall 6).
-			go c.closeSlow()
+			// (Pitfall 6). WR-03: closeOnce gates the call so a 100-event
+			// burst does not spawn 100 redundant closeSlow goroutines on
+			// the same already-closing connection.
+			go c.closeOnce.Do(c.closeSlow)
 		}
 	}
 }
