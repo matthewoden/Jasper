@@ -82,8 +82,19 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Wire shape: Envelope{event: "session:assigned", origin_session_id: "",
 	// payload: {"session_id": "<sid>"}}. The origin_session_id is empty
 	// here because this is a server-originated (not mutation-originated) event.
+	//
+	// WR-04: use context.Background as the parent of the handshake
+	// timeout, NOT r.Context(). After Hijack the request context's
+	// Done channel is no longer guaranteed to fire on client disconnect
+	// (the relationship between r.Context() and the hijacked TCP conn
+	// is fuzzy in net/http). The timeout itself bounds wallet-of-time
+	// the goroutine spends on a half-open client. Drop from 5s to 1s —
+	// for a 36-byte handshake on localhost, 1s is generous; rejecting
+	// faster shrinks the per-attempt goroutine-time pinned by attackers
+	// flooding the upgrade endpoint (combined with localhost-bind in
+	// cmd/jasper, this is defense in depth).
 	payloadBytes, _ := json.Marshal(map[string]string{"session_id": sid})
-	handshakeCtx, hsCancel := context.WithTimeout(r.Context(), 5*time.Second)
+	handshakeCtx, hsCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	err = wsjson.Write(handshakeCtx, conn, Envelope{
 		Event:           EventSessionAssigned,
 		OriginSessionID: "",
