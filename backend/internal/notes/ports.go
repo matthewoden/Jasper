@@ -57,6 +57,36 @@ type FileStore interface {
 	MoveDir(oldRelPath, newRelPath string) error
 }
 
+// Broadcaster is the port over the WebSocket hub adapter
+// (internal/wshub). Defined here per the hexagonal-lite layout: notes/
+// owns the interface, wshub/ implements it. The third port in the same
+// fashion as FileStore + Index.
+//
+// Per ARCHITECTURE.md §11.1 the canonical save path is filesystem
+// FIRST, SQLite index SECOND, broadcast THIRD. Service mutations call
+// Broadcast AFTER a successful Index.Upsert — NEVER before.
+// originSessionID is sourced from the request context via
+// SessionIDFromContext (chi middleware extracts X-Session-ID per request).
+//
+// SECURITY (T-04-04): Broadcast payloads MUST contain ONLY metadata
+// (id, path, updated_at, title, etc.) — NEVER note content. The
+// broadcaster has no enforcement mechanism; this is a Service-layer
+// contract that fakeBroadcaster's tests assert.
+//
+// Open Question §6 (RESEARCH.md): the reconciler does NOT call
+// Broadcast — only API mutation paths do. Per-file note:updated
+// during a 5,000-note reindex would fill SYNC-08 per-client buffers
+// and drop slow clients. UX-04 covers reindex visibility via the
+// aggregated reindex:started / reindex:complete events.
+//
+// Phase 4 tests construct notes.Service with nil Broadcaster — Service
+// substitutes nopBroadcaster (see service.go) so callers that don't
+// wire the real hub continue to work unchanged. Plan 04-04's
+// composition root always passes a real *wshub.Hub.
+type Broadcaster interface {
+	Broadcast(eventType string, payload any, originSessionID string)
+}
+
 // Index is the port over the SQLite derived-index adapter. The
 // concrete implementation lives in internal/index (Phase 2 Plan 02-04).
 //

@@ -149,10 +149,35 @@ func (s *Server) PutNoteById(
 	if request.Body == nil {
 		return PutNoteById400JSONResponse(newError("invalid_request", "request body required")), nil
 	}
-	note, err := s.notes.Update(ctx, uuid.UUID(request.Id), request.Body.Content)
+
+	// SYNC-06: extract If-Match header (oapi-codegen emits *string).
+	ifMatch := ""
+	if request.Params.IfMatch != nil {
+		ifMatch = *request.Params.IfMatch
+	}
+
+	note, err := s.notes.Update(ctx, uuid.UUID(request.Id), request.Body.Content, ifMatch)
 	if err != nil {
 		if errors.Is(err, notes.ErrNotFound) {
 			return PutNoteById404JSONResponse(newError("not_found", err.Error())), nil
+		}
+		// SYNC-06: stale-write 409 with current_updated_at so the
+		// client can surface the SYNC-05 conflict banner.
+		if errors.Is(err, notes.ErrStaleWrite) {
+			s.log.Error("PutNoteById: stale write detected",
+				"id", uuid.UUID(request.Id).String(),
+				"err", err,
+			)
+			// Get the current note to populate current_updated_at.
+			cur, getErr := s.notes.Get(ctx, uuid.UUID(request.Id))
+			if getErr != nil {
+				return nil, errors.New("stale write: could not load current note state for conflict response")
+			}
+			return PutNoteById409JSONResponse(StaleWriteError{
+				Code:             StaleWrite,
+				Message:          "note was updated in another session; check current_updated_at and retry",
+				CurrentUpdatedAt: cur.UpdatedAt,
+			}), nil
 		}
 		// Any other error from the domain layer (Canonicalize escape,
 		// AtomicWrite IO, Stat, etc.) maps to a 500 with code

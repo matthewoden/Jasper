@@ -66,7 +66,7 @@ func (f *fakeFileStore) MoveDir(_, _ string) error        { return nil }
 func setupTestServer(t *testing.T, files notes.FileStore) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := notes.NewService(files, nil, logger)
+	svc := notes.NewService(files, nil, nil, logger)
 	srv := NewServer(svc, logger)
 	si := NewStrictHandler(srv, nil)
 

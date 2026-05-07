@@ -141,7 +141,7 @@ func New(cfg Config) (*App, error) {
 	// Phase-1-shape: nil Index → Service substitutes nopIndex.
 	// lifecycle.Run rebuilds the Service with a real *index.Indexer
 	// after sqlite.Open + migrate.Run succeed.
-	notesSvc := notes.NewService(files, nil, cfg.Logger)
+	notesSvc := notes.NewService(files, nil, nil, cfg.Logger)
 	apiServer := api.NewServer(notesSvc, cfg.Logger)
 
 	r := chi.NewRouter()

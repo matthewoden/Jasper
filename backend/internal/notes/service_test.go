@@ -114,11 +114,44 @@ func (f *fakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error)
 	return 0, nil
 }
 
+// --------------------------------------------------------------------------
+// Plan 04-04 Task 1: fakeBroadcaster + 5 new If-Match / broadcast tests
+// --------------------------------------------------------------------------
+
+// broadcastCall records a single Broadcast invocation for test assertions.
+type broadcastCall struct {
+	event           string
+	payload         any
+	originSessionID string
+}
+
+// fakeBroadcaster is the in-test Broadcaster spy. Captures all Broadcast
+// calls. observedSeq, when non-nil, appends "broadcast" to support
+// file→upsert→broadcast ordering assertions (same pattern as fakeIndex).
+type fakeBroadcaster struct {
+	calls       []broadcastCall
+	observedSeq *[]string
+}
+
+func (f *fakeBroadcaster) Broadcast(event string, payload any, sid string) {
+	f.calls = append(f.calls, broadcastCall{event, payload, sid})
+	if f.observedSeq != nil {
+		*f.observedSeq = append(*f.observedSeq, "broadcast")
+	}
+}
+
+// newSvcWithBroadcaster constructs a Service with index + broadcaster.
+func newSvcWithBroadcaster(t *testing.T, files FileStore, idx Index, bc Broadcaster) *Service {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return NewService(files, idx, bc, logger)
+}
+
 func newSvc(t *testing.T, files FileStore) *Service {
 	t.Helper()
 	// Discard logs — tests assert on returned values, not log output.
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewService(files, nil, logger)
+	return NewService(files, nil, nil, logger)
 }
 
 // newSvcWithIndex constructs a Service with a real fakeIndex for tests
@@ -126,7 +159,7 @@ func newSvc(t *testing.T, files FileStore) *Service {
 func newSvcWithIndex(t *testing.T, files FileStore, idx Index) *Service {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewService(files, idx, logger)
+	return NewService(files, idx, nil, logger)
 }
 
 // Test 1: known UUID returns a populated Note.
@@ -189,7 +222,7 @@ func TestService_Update_Known(t *testing.T) {
 	files := &fakeFileStore{statTime: now}
 	svc := newSvc(t, files)
 
-	note, err := svc.Update(context.Background(), ScratchpadUUID, "new content")
+	note, err := svc.Update(context.Background(), ScratchpadUUID, "new content", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -212,7 +245,7 @@ func TestService_Update_Unknown(t *testing.T) {
 	files := &fakeFileStore{}
 	svc := newSvc(t, files)
 
-	_, err := svc.Update(context.Background(), uuid.New(), "ignored")
+	_, err := svc.Update(context.Background(), uuid.New(), "ignored", "")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
@@ -226,7 +259,7 @@ func TestService_Update_EmptyContent(t *testing.T) {
 	files := &fakeFileStore{statTime: time.Now()}
 	svc := newSvc(t, files)
 
-	if _, err := svc.Update(context.Background(), ScratchpadUUID, ""); err != nil {
+	if _, err := svc.Update(context.Background(), ScratchpadUUID, "", ""); err != nil {
 		t.Fatalf("expected empty content to be legal, got %v", err)
 	}
 	if files.writeCalls != 1 {
@@ -243,7 +276,7 @@ func TestService_Update_WriteErrorPropagates(t *testing.T) {
 	files := &fakeFileStore{writeErr: sentinel}
 	svc := newSvc(t, files)
 
-	_, err := svc.Update(context.Background(), ScratchpadUUID, "content")
+	_, err := svc.Update(context.Background(), ScratchpadUUID, "content", "")
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -311,7 +344,7 @@ func TestService_Update_CallsIndexUpsertAfterWrite(t *testing.T) {
 	svc := newSvcWithIndex(t, files, idx)
 
 	const content = "new content"
-	note, err := svc.Update(context.Background(), ScratchpadUUID, content)
+	note, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -365,7 +398,7 @@ func TestService_Update_CaseCollision_PropagatesError(t *testing.T) {
 	idx := &fakeIndex{upsertErr: ErrCaseCollision}
 	svc := newSvcWithIndex(t, files, idx)
 
-	_, err := svc.Update(context.Background(), ScratchpadUUID, "content")
+	_, err := svc.Update(context.Background(), ScratchpadUUID, "content", "")
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -389,7 +422,7 @@ func TestService_Update_OtherIndexError_DoesNotFailSave(t *testing.T) {
 	idx := &fakeIndex{upsertErr: transient}
 	svc := newSvcWithIndex(t, files, idx)
 
-	note, err := svc.Update(context.Background(), ScratchpadUUID, "content")
+	note, err := svc.Update(context.Background(), ScratchpadUUID, "content", "")
 	if err != nil {
 		t.Fatalf("file-FIRST contract violated: transient index error must not fail save, got %v", err)
 	}
@@ -412,10 +445,10 @@ func TestService_NewService_NilIndex_FallsBackToNopIndex(t *testing.T) {
 	files := &fakeFileStore{statTime: now}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewService(files, nil, logger) // nil Index
+	svc := NewService(files, nil, nil, logger) // nil Index, nil Broadcaster
 
 	// Should not panic; should not error.
-	if _, err := svc.Update(context.Background(), ScratchpadUUID, "content"); err != nil {
+	if _, err := svc.Update(context.Background(), ScratchpadUUID, "content", ""); err != nil {
 		t.Fatalf("nil Index path failed: %v", err)
 	}
 	if files.writeCalls != 1 {
@@ -596,7 +629,7 @@ func newRealFSSvc(t *testing.T) (*Service, string, *stubIndex) {
 	store := fsstore.NewStore(root)
 	idx := newStubIndex()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewService(store, idx, logger)
+	svc := NewService(store, idx, nil, logger)
 	return svc, root, idx
 }
 
@@ -901,7 +934,7 @@ func TestService_Move_RefreshesTitle(t *testing.T) {
 	// Write H1 content into the file via Update (file-FIRST contract;
 	// the index Title field after Update is still empty per the
 	// service.go convention — the indexer is the source of truth).
-	if _, err := svc.Update(context.Background(), summary.ID, "# Alpha Title\n\nbody"); err != nil {
+	if _, err := svc.Update(context.Background(), summary.ID, "# Alpha Title\n\nbody", ""); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -934,7 +967,7 @@ func TestService_Move_RefreshesTitle_NoH1_FallsBackToFilename(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	// Write content with NO H1 at all.
-	if _, err := svc.Update(context.Background(), summary.ID, "body without heading"); err != nil {
+	if _, err := svc.Update(context.Background(), summary.ID, "body without heading", ""); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -964,10 +997,10 @@ func TestService_Move_RefreshesTitle_AfterContentChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := svc.Update(context.Background(), summary.ID, "# Old"); err != nil {
+	if _, err := svc.Update(context.Background(), summary.ID, "# Old", ""); err != nil {
 		t.Fatalf("Update 1: %v", err)
 	}
-	if _, err := svc.Update(context.Background(), summary.ID, "# New Title\n\nbody"); err != nil {
+	if _, err := svc.Update(context.Background(), summary.ID, "# New Title\n\nbody", ""); err != nil {
 		t.Fatalf("Update 2: %v", err)
 	}
 
@@ -1015,13 +1048,13 @@ func TestService_Move_RefreshesTitle_ReadFailureFallsBackGracefully(t *testing.T
 	idx := newStubIndex()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	wrapped := &readFailingFileStore{FileStore: realStore, failReadFor: "beta.md"}
-	svc := NewService(wrapped, idx, logger)
+	svc := NewService(wrapped, idx, nil, logger)
 
 	summary, err := svc.Create(context.Background(), "", "alpha")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := svc.Update(context.Background(), summary.ID, "# Will Not Be Read"); err != nil {
+	if _, err := svc.Update(context.Background(), summary.ID, "# Will Not Be Read", ""); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -1325,5 +1358,146 @@ func TestRegistry_AddRemoveRename_Concurrency(t *testing.T) {
 		if _, ok := r.Lookup(id); ok {
 			t.Errorf("entry %v still present after concurrent Remove", id)
 		}
+	}
+}
+
+// --------------------------------------------------------------------------
+// Plan 04-04 Task 1: 5 new If-Match / broadcast tests (TDD GREEN)
+// --------------------------------------------------------------------------
+
+// TestService_Update_IfMatch_Mismatch_ReturnsErrStaleWrite: when the
+// client-supplied If-Match does not match the current file mtime, Update
+// returns ErrStaleWrite and does NOT write the file or broadcast.
+func TestService_Update_IfMatch_Mismatch_ReturnsErrStaleWrite(t *testing.T) {
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	files := &fakeFileStore{statTime: now}
+	idx := &fakeIndex{}
+	bc := &fakeBroadcaster{}
+	svc := newSvcWithBroadcaster(t, files, idx, bc)
+
+	// ifMatch does NOT match now.UTC().Format(time.RFC3339Nano)
+	_, err := svc.Update(context.Background(), ScratchpadUUID, "new content", "wrong-ifmatch-value")
+	if !errors.Is(err, ErrStaleWrite) {
+		t.Fatalf("expected ErrStaleWrite, got %v", err)
+	}
+	// File must NOT be written on rejected stale write.
+	if files.writeCalls != 0 {
+		t.Errorf("WriteAtomic must not be called on stale write; got %d calls", files.writeCalls)
+	}
+	// No broadcast on rejected write.
+	if len(bc.calls) != 0 {
+		t.Errorf("no broadcast expected on rejected stale write; got %v", bc.calls)
+	}
+}
+
+// TestService_Update_IfMatch_Empty_SkipsValidation: empty ifMatch is
+// permissive — the write succeeds even though the stat mtime is set.
+// This is the curl/automation-friendly path (SYNC-06).
+func TestService_Update_IfMatch_Empty_SkipsValidation(t *testing.T) {
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	files := &fakeFileStore{statTime: now}
+	idx := &fakeIndex{}
+	bc := &fakeBroadcaster{}
+	svc := newSvcWithBroadcaster(t, files, idx, bc)
+
+	// Empty ifMatch → permissive, no validation step.
+	note, err := svc.Update(context.Background(), ScratchpadUUID, "content", "")
+	if err != nil {
+		t.Fatalf("empty ifMatch should be permissive; got error: %v", err)
+	}
+	if files.writeCalls != 1 {
+		t.Errorf("writeCalls: got %d, want 1", files.writeCalls)
+	}
+	if note.UpdatedAt.IsZero() {
+		t.Errorf("UpdatedAt is zero")
+	}
+}
+
+// TestService_Update_IfMatch_Match_ProceedsAsNormal: a correctly-formed
+// If-Match that matches the current file's mtime proceeds and broadcasts.
+func TestService_Update_IfMatch_Match_ProceedsAsNormal(t *testing.T) {
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	files := &fakeFileStore{statTime: now}
+	idx := &fakeIndex{}
+	bc := &fakeBroadcaster{}
+	svc := newSvcWithBroadcaster(t, files, idx, bc)
+
+	// Format mtime as RFC3339Nano UTC — same as Service.Update does.
+	ifMatch := now.UTC().Format(time.RFC3339Nano)
+	note, err := svc.Update(context.Background(), ScratchpadUUID, "content", ifMatch)
+	if err != nil {
+		t.Fatalf("matching If-Match should succeed; got error: %v", err)
+	}
+	if files.writeCalls != 1 {
+		t.Errorf("writeCalls: got %d, want 1", files.writeCalls)
+	}
+	if note.UpdatedAt.IsZero() {
+		t.Errorf("UpdatedAt is zero")
+	}
+	// Successful match → broadcast must fire.
+	if len(bc.calls) != 1 {
+		t.Errorf("expected 1 broadcast; got %d", len(bc.calls))
+	}
+}
+
+// TestService_Update_BroadcastsAfterIndexUpsert: verifies the canonical
+// file-FIRST ordering (ARCHITECTURE.md §11.1): write → upsert → broadcast.
+// Also asserts T-04-04: payload must NOT contain a "content" key.
+func TestService_Update_BroadcastsAfterIndexUpsert(t *testing.T) {
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	var seq []string
+	files := &fakeFileStore{statTime: now, observedSeq: &seq}
+	idx := &fakeIndex{observedSeq: &seq}
+	bc := &fakeBroadcaster{observedSeq: &seq}
+	svc := newSvcWithBroadcaster(t, files, idx, bc)
+
+	_, err := svc.Update(context.Background(), ScratchpadUUID, "new content", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Ordering: write → upsert → broadcast (Pitfall 2).
+	want := []string{"write", "upsert", "broadcast"}
+	if len(seq) != 3 || seq[0] != want[0] || seq[1] != want[1] || seq[2] != want[2] {
+		t.Fatalf("ordering: got %v, want %v", seq, want)
+	}
+
+	// T-04-04: payload must not include note content.
+	if len(bc.calls) != 1 {
+		t.Fatalf("expected 1 broadcast call; got %d", len(bc.calls))
+	}
+	payload, ok := bc.calls[0].payload.(map[string]any)
+	if !ok {
+		t.Fatalf("payload is not map[string]any; got %T", bc.calls[0].payload)
+	}
+	if _, hasContent := payload["content"]; hasContent {
+		t.Fatal("T-04-04 violation: broadcast payload must not include note content")
+	}
+	// Verify metadata fields present.
+	for _, key := range []string{"id", "path", "updated_at"} {
+		if _, ok := payload[key]; !ok {
+			t.Errorf("broadcast payload missing key %q", key)
+		}
+	}
+}
+
+// TestService_Update_NoBroadcastOnTransientIndexError: when Index.Upsert
+// returns a transient (non-collision) error, the file is on disk but the
+// broadcast must NOT fire (Pitfall 2 — broadcast only after index succeeds).
+func TestService_Update_NoBroadcastOnTransientIndexError(t *testing.T) {
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	files := &fakeFileStore{statTime: now}
+	idx := &fakeIndex{upsertErr: errors.New("transient sqlite busy")}
+	bc := &fakeBroadcaster{}
+	svc := newSvcWithBroadcaster(t, files, idx, bc)
+
+	// Update returns success (file-FIRST contract: transient index errors
+	// are logged+swallowed). But broadcast must NOT have fired.
+	_, err := svc.Update(context.Background(), ScratchpadUUID, "content", "")
+	if err != nil {
+		t.Fatalf("transient index error must not propagate; got %v", err)
+	}
+	if len(bc.calls) != 0 {
+		t.Errorf("no broadcast expected on transient index error; got %v", bc.calls)
 	}
 }

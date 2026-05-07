@@ -231,7 +231,7 @@ func (a *App) Run(ctx context.Context) error {
 	// The handler installed by New() pointed at a nil-everything Server;
 	// replace with the real one now that pair / indexer / runner exist.
 	files := fsstore.NewStore(notesDir)
-	notesSvc := notes.NewService(files, a.indexer, a.cfg.Logger)
+	notesSvc := notes.NewService(files, a.indexer, nil, a.cfg.Logger)
 
 	// 8a. Phase 3 Plan 03-04 NEW — hydrate the in-memory registry from
 	// indexed summaries so any UUID returned by GET /notes / GET /tree
