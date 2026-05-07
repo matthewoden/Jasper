@@ -7,6 +7,7 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/index"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 // Server.reindexBusy is the per-Server mutex preventing concurrent
@@ -110,6 +111,12 @@ func (s *Server) PostAdminReindex(
 		mode = string(*req.Body.Mode)
 	}
 
+	// UX-04: emit reindex:started so connected tabs can show a spinner.
+	// originSessionID="" — server-originated, reaches all clients.
+	if s.broadcaster != nil {
+		s.broadcaster.Broadcast(notes.EventReindexStarted, map[string]any{"mode": mode}, "")
+	}
+
 	switch mode {
 	case "full":
 		status, err := s.runner.RebuildAndReindex(ctx)
@@ -129,7 +136,14 @@ func (s *Server) PostAdminReindex(
 		// before the 202 response goes out. Mirrors the canonical
 		// pattern at lifecycle.go:249-257.
 		s.hydrateRegistryFromIndex(ctx)
+		// UX-04: emit reindex:complete after successful rebuild.
 		n := status.NotesIndexed
+		if s.broadcaster != nil {
+			s.broadcaster.Broadcast(notes.EventReindexComplete, map[string]any{
+				"mode":          mode,
+				"notes_indexed": n,
+			}, "")
+		}
 		return PostAdminReindex202JSONResponse{
 			StartedAt:    started,
 			NotesIndexed: &n,
@@ -155,6 +169,13 @@ func (s *Server) PostAdminReindex(
 		// in-memory Registry so any new UUID is reachable via
 		// Service.Get before the 202 response goes out.
 		s.hydrateRegistryFromIndex(ctx)
+		// UX-04: emit reindex:complete after successful incremental reconcile.
+		if s.broadcaster != nil {
+			s.broadcaster.Broadcast(notes.EventReindexComplete, map[string]any{
+				"mode":          mode,
+				"notes_indexed": n,
+			}, "")
+		}
 		return PostAdminReindex202JSONResponse{
 			StartedAt:    started,
 			NotesIndexed: &n,

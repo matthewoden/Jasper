@@ -61,8 +61,8 @@ func setupTreeServer(t *testing.T) (*httptest.Server, *index.Indexer, string, *n
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	idx := index.New(pair, notesDir, logger)
 	store := fsstore.NewStore(notesDir)
-	svc := notes.NewService(store, idx, logger)
-	srv := NewServerWithIndex(svc, nil, nil, idx, logger)
+	svc := notes.NewService(store, idx, nil, logger)
+	srv := NewServerWithIndex(svc, nil, nil, idx, nil, logger)
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
@@ -252,7 +252,7 @@ func TestGetTree_NilIndex_ReturnsEmpty(t *testing.T) {
 	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
-	svc := notes.NewService(files, nil, logger)
+	svc := notes.NewService(files, nil, nil, logger)
 	srv := NewServer(svc, logger)
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()

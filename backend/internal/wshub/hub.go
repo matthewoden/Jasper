@@ -4,7 +4,14 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sync"
+
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
+
+// Compile-time assertion: Hub satisfies the notes.Broadcaster port.
+// The assertion lives here so the generated-types boundary is verified
+// in the concrete implementation file (Plan 04-04 — Pitfall 6).
+var _ notes.Broadcaster = (*Hub)(nil)
 
 // Hub is the registry of connected WebSocket clients and the broadcast
 // fan-out point. Per-client outbound buffering + non-blocking sends

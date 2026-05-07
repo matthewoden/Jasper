@@ -35,6 +35,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/internal/static"
+	"github.com/matthewoden/jasper/backend/internal/wshub"
 )
 
 // Config is the resolved runtime configuration for `jasper serve`.
@@ -102,6 +103,11 @@ type App struct {
 	mu       sync.RWMutex
 	notesSvc *notes.Service
 
+	// hub is the WebSocket broadcast hub. Populated by lifecycle.Run
+	// step 8 (Phase 4 Plan 04-04). Nil between New and Run. Guarded
+	// by mu (same mutex as notesSvc for simplicity).
+	hub *wshub.Hub
+
 	// diskFullHandler is the static error page handler installed
 	// when migrate.Run returns ErrDiskFull or ErrUnrecoverable.
 	// nil during normal operation.
@@ -141,7 +147,7 @@ func New(cfg Config) (*App, error) {
 	// Phase-1-shape: nil Index → Service substitutes nopIndex.
 	// lifecycle.Run rebuilds the Service with a real *index.Indexer
 	// after sqlite.Open + migrate.Run succeed.
-	notesSvc := notes.NewService(files, nil, cfg.Logger)
+	notesSvc := notes.NewService(files, nil, nil, cfg.Logger)
 	apiServer := api.NewServer(notesSvc, cfg.Logger)
 
 	r := chi.NewRouter()

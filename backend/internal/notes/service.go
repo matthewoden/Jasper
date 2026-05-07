@@ -29,10 +29,11 @@ import (
 // index. The only error class that propagates to the caller is
 // ErrCaseCollision (DATA-12), which the API layer maps to 409.
 type Service struct {
-	files    FileStore
-	index    Index
-	registry *Registry
-	log      *slog.Logger
+	files       FileStore
+	index       Index
+	broadcaster Broadcaster
+	registry    *Registry
+	log         *slog.Logger
 }
 
 // NewService constructs the service. The index parameter is required
@@ -41,22 +42,37 @@ type Service struct {
 // nopIndex no-op so Phase 1 tests and any callers that don't need the
 // derived index continue to work unchanged.
 //
+// The broadcaster parameter is the Phase 4 WebSocket hub port. Pass nil
+// and Service substitutes nopBroadcaster so existing callers compile and
+// pass without wiring the hub. Plan 04-04's composition root always
+// passes a real *wshub.Hub.
+//
 // A nil log is replaced with slog.Default() so callers don't have to
 // thread a logger through every test.
-func NewService(files FileStore, index Index, log *slog.Logger) *Service {
+func NewService(files FileStore, index Index, broadcaster Broadcaster, log *slog.Logger) *Service {
 	if log == nil {
 		log = slog.Default()
 	}
 	if index == nil {
 		index = nopIndex{}
 	}
+	if broadcaster == nil {
+		broadcaster = nopBroadcaster{}
+	}
 	return &Service{
-		files:    files,
-		index:    index,
-		registry: NewRegistry(),
-		log:      log,
+		files:       files,
+		index:       index,
+		broadcaster: broadcaster,
+		registry:    NewRegistry(),
+		log:         log,
 	}
 }
+
+// nopBroadcaster mirrors nopIndex. Used when callers pass nil — Phase
+// 1/2/3 tests don't wire the hub and continue to compile + pass.
+type nopBroadcaster struct{}
+
+func (nopBroadcaster) Broadcast(_ string, _ any, _ string) {}
 
 // Registry returns the in-memory UUID → relPath registry. Exposed
 // ONLY for the composition root in Plan 03-04: lifecycle.Run calls
@@ -103,12 +119,16 @@ func (s *Service) Get(_ context.Context, id uuid.UUID) (Note, error) {
 }
 
 // Update writes new content for the given UUID. Filesystem write FIRST
-// per ARCHITECTURE.md §11.1; Index.Upsert SECOND; broadcast (Phase 4)
-// THIRD. Returns the updated Note (or ErrNotFound if the UUID is
-// unknown).
+// per ARCHITECTURE.md §11.1; Index.Upsert SECOND; Broadcast THIRD.
+// Returns the updated Note (or ErrNotFound if the UUID is unknown).
 //
 // Empty content is allowed (Phase 1 has a textarea — empty markdown is
 // a legal state).
+//
+// If-Match validation (SYNC-06): when ifMatch is non-empty, the file's
+// current mtime is compared to the client-supplied value (formatted as
+// RFC3339Nano UTC). On mismatch the method returns ErrStaleWrite without
+// touching the file. Empty ifMatch is permissive (curl/automation friendly).
 //
 // Index ordering and error semantics:
 //
@@ -125,11 +145,27 @@ func (s *Service) Get(_ context.Context, id uuid.UUID) (Note, error) {
 //     (DATA-01); the index is recoverable via Reconcile. We do NOT
 //     return the error to the caller — a transient SQLite error must
 //     not surface as a 500 when the user's content is safely on disk.
-func (s *Service) Update(ctx context.Context, id uuid.UUID, content string) (Note, error) {
+//   - Broadcast fires ONLY when Upsert succeeded (not on transient
+//     index errors). Pitfall 2: broadcast after index, never before.
+func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMatch string) (Note, error) {
 	relPath, ok := s.registry.Lookup(id)
 	if !ok {
 		return Note{}, fmt.Errorf("notes.Update(%s): %w", id, ErrNotFound)
 	}
+
+	// SYNC-06 If-Match validation. Empty == permissive (curl/automation).
+	if ifMatch != "" {
+		currentMTime, statErr := s.files.Stat(relPath)
+		if statErr != nil {
+			return Note{}, fmt.Errorf("notes.Update(%s): stat for if-match: %w", id, statErr)
+		}
+		currentTag := currentMTime.UTC().Format(time.RFC3339Nano)
+		if ifMatch != currentTag {
+			return Note{}, fmt.Errorf("notes.Update(%s): %w (current=%s, if-match=%s)",
+				id, ErrStaleWrite, currentTag, ifMatch)
+		}
+	}
+
 	// File FIRST per ARCHITECTURE §11.1.
 	if err := s.files.WriteAtomic(relPath, []byte(content)); err != nil {
 		return Note{}, fmt.Errorf("notes.Update(%s): write: %w", id, err)
@@ -160,6 +196,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string) (Not
 		Checksum:      "", // Phase 7 only
 		UpdatedAtUnix: modTime.UTC().Unix(),
 	}
+	indexSucceeded := false
 	if err := s.index.Upsert(ctx, rec); err != nil {
 		if errors.Is(err, ErrCaseCollision) {
 			// DATA-12: API layer maps to 409. The file is on disk
@@ -174,7 +211,22 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string) (Not
 			"path", relPath,
 			"err", err,
 		)
+	} else {
+		indexSucceeded = true
 	}
+
+	// BROADCAST — THIRD step per ARCHITECTURE.md §11.1. Only after
+	// Index.Upsert succeeded. Pitfall 2: if Index.Upsert returned a
+	// transient error (logged-and-swallowed above), do NOT broadcast.
+	// T-04-04: payload contains ONLY metadata — no content field.
+	if indexSucceeded {
+		s.broadcaster.Broadcast(EventNoteUpdated, map[string]any{
+			"id":         id.String(),
+			"path":       relPath,
+			"updated_at": modTime.UTC().Format(time.RFC3339Nano),
+		}, SessionIDFromContext(ctx))
+	}
+
 	return Note{
 		ID:        id,
 		Path:      relPath,
@@ -233,6 +285,15 @@ func (s *Service) Create(ctx context.Context, parentPath, title string) (NoteSum
 		return NoteSummary{}, fmt.Errorf("notes.Create(%s): index upsert: %w", relPath, err)
 	}
 	s.registry.Add(id, rec.Path)
+
+	// BROADCAST — THIRD step. Only after successful Upsert. T-04-04: no content.
+	s.broadcaster.Broadcast(EventNoteCreated, map[string]any{
+		"id":         id.String(),
+		"path":       rec.Path,
+		"title":      rec.Title,
+		"updated_at": now.UTC().Format(time.RFC3339Nano),
+	}, SessionIDFromContext(ctx))
+
 	return NoteSummary{
 		ID:        id,
 		Path:      rec.Path,
@@ -280,6 +341,14 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("notes.Delete(%s): %w", id, err)
 	}
 	s.registry.Remove(id)
+
+	// BROADCAST — THIRD step. After successful FS-delete + registry remove.
+	// Path captured BEFORE deletion (relPath snapshot). T-04-04: no content.
+	s.broadcaster.Broadcast(EventNoteDeleted, map[string]any{
+		"id":   id.String(),
+		"path": relPath,
+	}, SessionIDFromContext(ctx))
+
 	return nil
 }
 
@@ -355,11 +424,22 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 		return NoteSummary{}, fmt.Errorf("notes.Move(%s): index upsert: %w", id, err)
 	}
 	s.registry.Rename(id, canonNew)
+
+	// BROADCAST — THIRD step. After successful index upsert + registry rename.
+	// T-04-04: no content.
+	updatedAt := time.Unix(rec.MTimeUnix, 0).UTC()
+	s.broadcaster.Broadcast(EventNoteMoved, map[string]any{
+		"id":         id.String(),
+		"old_path":   oldRelPath,
+		"new_path":   canonNew,
+		"updated_at": updatedAt.Format(time.RFC3339Nano),
+	}, SessionIDFromContext(ctx))
+
 	return NoteSummary{
 		ID:        id,
 		Path:      canonNew,
 		Title:     rec.Title,
-		UpdatedAt: time.Unix(rec.MTimeUnix, 0).UTC(),
+		UpdatedAt: updatedAt,
 	}, nil
 }
 
@@ -367,7 +447,7 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 // Folders have no SQLite identity — the index is over .md files only —
 // so this is pure FS work. Returns the canonical relpath of the new
 // folder.
-func (s *Service) CreateFolder(_ context.Context, parentPath, name string) (string, error) {
+func (s *Service) CreateFolder(ctx context.Context, parentPath, name string) (string, error) {
 	if err := validateFolderName(name); err != nil {
 		return "", fmt.Errorf("notes.CreateFolder: %w", err)
 	}
@@ -375,7 +455,17 @@ func (s *Service) CreateFolder(_ context.Context, parentPath, name string) (stri
 	if err := s.files.CreateDir(relPath); err != nil {
 		return "", fmt.Errorf("notes.CreateFolder(%s): %w", relPath, err)
 	}
-	return canonicalRelPath(relPath), nil
+	canon := canonicalRelPath(relPath)
+
+	// BROADCAST — after successful FS create. Folders have no index row so
+	// "THIRD" here means "after the only operation (FS create)".
+	// T-04-04: no content.
+	s.broadcaster.Broadcast(EventFolderCreated, map[string]any{
+		"path": canon,
+		"name": name,
+	}, SessionIDFromContext(ctx))
+
+	return canon, nil
 }
 
 // DeleteFolder removes a folder. With recursive=false: rmdir if empty,
@@ -394,6 +484,13 @@ func (s *Service) DeleteFolder(ctx context.Context, folderPath string, recursive
 		if err := s.files.DeleteDir(folderPath, false); err != nil {
 			return fmt.Errorf("notes.DeleteFolder(%s): %w", canon, err)
 		}
+
+		// BROADCAST — after successful empty-dir delete.
+		s.broadcaster.Broadcast(EventFolderDeleted, map[string]any{
+			"path":      canon,
+			"recursive": false,
+		}, SessionIDFromContext(ctx))
+
 		return nil
 	}
 
@@ -415,6 +512,13 @@ func (s *Service) DeleteFolder(ctx context.Context, folderPath string, recursive
 	for _, id := range doomedIDs {
 		s.registry.Remove(id)
 	}
+
+	// BROADCAST — after successful recursive delete + index cleanup.
+	s.broadcaster.Broadcast(EventFolderDeleted, map[string]any{
+		"path":      canon,
+		"recursive": true,
+	}, SessionIDFromContext(ctx))
+
 	return nil
 }
 
@@ -444,6 +548,14 @@ func (s *Service) MoveFolder(ctx context.Context, oldPath, newPath string) (stri
 
 	// Walk the registry and re-prefix every entry under oldPath/.
 	s.registry.renamePrefix(canonOld+"/", canonNew+"/")
+
+	// BROADCAST — THIRD step. After successful index batch update + registry rename.
+	// T-04-04: no content.
+	s.broadcaster.Broadcast(EventFolderMoved, map[string]any{
+		"old_path": canonOld,
+		"new_path": canonNew,
+	}, SessionIDFromContext(ctx))
+
 	return canonNew, nil
 }
 

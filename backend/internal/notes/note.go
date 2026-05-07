@@ -43,4 +43,11 @@ var (
 	// UNIQUE constraint on notes.path is the enforcement point — see
 	// 001_initial.sql.
 	ErrCaseCollision = errors.New("notes: case-insensitive path collision with existing note")
+
+	// ErrStaleWrite is returned by Service.Update when the supplied
+	// If-Match value does not match the current file's mtime (SYNC-06).
+	// The API layer maps this to HTTP 409 with `code: stale_write` and
+	// `current_updated_at` in the body so the client can show the
+	// Save-anyway / Discard banner per SYNC-05.
+	ErrStaleWrite = errors.New("notes: stale write — If-Match mismatch")
 )

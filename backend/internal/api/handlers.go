@@ -43,12 +43,19 @@ func (nilStatusProvider) Status(_ context.Context) migrate.Status {
 // runner / index are nil (Phase 1 NewServer compatibility):
 //   - GetNotes with nil index → returns an empty list (NOT 503).
 //   - PostAdminReindex with nil runner → 503 with code "no_runner".
+//
+// broadcaster is the Phase 4 WebSocket broadcaster port (Plan 04-04).
+// In production this is *wshub.Hub; in tests it is nil (graceful
+// degradation — no reindex events emitted). We use the interface
+// (not *wshub.Hub) to avoid an import cycle: wshub imports api
+// (via envelope.go's Amendment 2 bridge), so api MUST NOT import wshub.
 type Server struct {
-	notes  *notes.Service
-	status migrate.StatusProvider
-	runner *migrate.Runner
-	index  notes.Index
-	log    *slog.Logger
+	notes       *notes.Service
+	status      migrate.StatusProvider
+	runner      *migrate.Runner
+	index       notes.Index
+	broadcaster notes.Broadcaster
+	log         *slog.Logger
 
 	// reindexBusy serializes /admin/reindex calls per-Server.
 	// admin_reindex_handler.go uses TryLock to return 409
@@ -58,27 +65,33 @@ type Server struct {
 
 // NewServer keeps Phase 1's 2-arg signature so existing call sites and
 // tests continue to compile unchanged. Internally delegates to
-// NewServerWithIndex with nil status/runner/index so the
+// NewServerWithIndex with nil status/runner/index/broadcaster so the
 // nilStatusProvider fallback applies and GetNotes / PostAdminReindex
 // degrade gracefully.
 func NewServer(notesSvc *notes.Service, log *slog.Logger) *Server {
-	return NewServerWithIndex(notesSvc, nil, nil, nil, log)
+	return NewServerWithIndex(notesSvc, nil, nil, nil, nil, log)
 }
 
-// NewServerWithIndex is the 5-arg constructor introduced in Plan
-// 02-04b — supersedes Plan 02-03's NewServerWithStatus (3-arg, REMOVED
-// at the same time per locked decision B-2).
+// NewServerWithIndex is the 6-arg constructor. Extends the Plan 02-04b
+// 5-arg form with a notes.Broadcaster for Phase 4 reindex broadcast
+// events (UX-04). Nil broadcaster → no reindex events (graceful
+// degradation for tests).
 //
-// Argument order: notesSvc, status, runner, index, log.
+// Argument order: notesSvc, status, runner, index, broadcaster, log.
 //
 // Plan 02-06's composition root passes a *migrate.Runner for both
 // status (it implements StatusProvider) and runner (the same value),
 // and a *index.Indexer for index (which implements notes.Index).
+//
+// We accept notes.Broadcaster (not *wshub.Hub) to avoid an import
+// cycle: wshub/envelope.go imports api for the WSEnvelope Amendment 2
+// sentinel; api importing wshub would create a cycle.
 func NewServerWithIndex(
 	notesSvc *notes.Service,
 	status migrate.StatusProvider,
 	runner *migrate.Runner,
 	index notes.Index,
+	broadcaster notes.Broadcaster,
 	log *slog.Logger,
 ) *Server {
 	if log == nil {
@@ -88,11 +101,12 @@ func NewServerWithIndex(
 		status = nilStatusProvider{}
 	}
 	return &Server{
-		notes:  notesSvc,
-		status: status,
-		runner: runner,
-		index:  index,
-		log:    log,
+		notes:       notesSvc,
+		status:      status,
+		runner:      runner,
+		index:       index,
+		broadcaster: broadcaster,
+		log:         log,
 	}
 }
 
@@ -149,10 +163,35 @@ func (s *Server) PutNoteById(
 	if request.Body == nil {
 		return PutNoteById400JSONResponse(newError("invalid_request", "request body required")), nil
 	}
-	note, err := s.notes.Update(ctx, uuid.UUID(request.Id), request.Body.Content)
+
+	// SYNC-06: extract If-Match header (oapi-codegen emits *string).
+	ifMatch := ""
+	if request.Params.IfMatch != nil {
+		ifMatch = *request.Params.IfMatch
+	}
+
+	note, err := s.notes.Update(ctx, uuid.UUID(request.Id), request.Body.Content, ifMatch)
 	if err != nil {
 		if errors.Is(err, notes.ErrNotFound) {
 			return PutNoteById404JSONResponse(newError("not_found", err.Error())), nil
+		}
+		// SYNC-06: stale-write 409 with current_updated_at so the
+		// client can surface the SYNC-05 conflict banner.
+		if errors.Is(err, notes.ErrStaleWrite) {
+			s.log.Error("PutNoteById: stale write detected",
+				"id", uuid.UUID(request.Id).String(),
+				"err", err,
+			)
+			// Get the current note to populate current_updated_at.
+			cur, getErr := s.notes.Get(ctx, uuid.UUID(request.Id))
+			if getErr != nil {
+				return nil, errors.New("stale write: could not load current note state for conflict response")
+			}
+			return PutNoteById409JSONResponse(StaleWriteError{
+				Code:             StaleWrite,
+				Message:          "note was updated in another session; check current_updated_at and retry",
+				CurrentUpdatedAt: cur.UpdatedAt,
+			}), nil
 		}
 		// Any other error from the domain layer (Canonicalize escape,
 		// AtomicWrite IO, Stat, etc.) maps to a 500 with code

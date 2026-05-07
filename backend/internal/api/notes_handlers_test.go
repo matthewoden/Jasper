@@ -51,8 +51,8 @@ func setupGetNotesServer(t *testing.T, idx notes.Index) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
-	svc := notes.NewService(files, nil, logger)
-	srv := NewServerWithIndex(svc, nil, nil, idx, logger)
+	svc := notes.NewService(files, nil, nil, logger)
+	srv := NewServerWithIndex(svc, nil, nil, idx, nil, logger)
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
@@ -144,7 +144,7 @@ func TestGetNotes_NilIndex_FallsBackToEmpty(t *testing.T) {
 	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
-	svc := notes.NewService(files, nil, logger)
+	svc := notes.NewService(files, nil, nil, logger)
 	srv := NewServer(svc, logger) // 2-arg form — no index passed
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
@@ -340,8 +340,8 @@ func setupRealFSServer(t *testing.T) (*httptest.Server, *notes.Service, string, 
 	store := fsstore.NewStore(root)
 	idx := newRealIndex()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := notes.NewService(store, idx, logger)
-	srv := NewServerWithIndex(svc, nil, nil, idx, logger)
+	svc := notes.NewService(store, idx, nil, logger)
+	srv := NewServerWithIndex(svc, nil, nil, idx, nil, logger)
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
@@ -749,8 +749,8 @@ func TestPostNotes_DoesNotLeakInternalErrors(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &leakyFileStore{createErr: errors.New("internal sqlite trouble: /abs/path/to/db")}
 	idx := newRealIndex()
-	svc := notes.NewService(files, idx, logger)
-	srv := NewServerWithIndex(svc, nil, nil, idx, logger)
+	svc := notes.NewService(files, idx, nil, logger)
+	srv := NewServerWithIndex(svc, nil, nil, idx, nil, logger)
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {

@@ -32,8 +32,8 @@ func adminReindexFixture(t *testing.T, runner *migrate.Runner, idx notes.Index) 
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
-	svc := notes.NewService(files, nil, logger)
-	srv := NewServerWithIndex(svc, runner, runner, idx, logger)
+	svc := notes.NewService(files, nil, nil, logger)
+	srv := NewServerWithIndex(svc, runner, runner, idx, nil, logger)
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
@@ -253,8 +253,8 @@ func TestPostAdminReindex_InvalidMode_Returns409(t *testing.T) {
 	// through the HTTP layer.
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
-	svc := notes.NewService(files, nil, logger)
-	srv := NewServerWithIndex(svc, r, r, nil, logger)
+	svc := notes.NewService(files, nil, nil, logger)
+	srv := NewServerWithIndex(svc, r, r, nil, nil, logger)
 	bogus := ReindexRequestMode("bogus")
 	out, err := srv.PostAdminReindex(context.Background(),
 		PostAdminReindexRequestObject{Body: &PostAdminReindexJSONRequestBody{Mode: &bogus}})
@@ -341,8 +341,8 @@ func adminReindexHydrateFixture(t *testing.T) (*httptest.Server, *notes.Service,
 		return idx.Reconcile(ctx, index.ModeFull)
 	}
 	store := fsstore.NewStore(notesDir)
-	svc := notes.NewService(store, idx, logger)
-	srv := NewServerWithIndex(svc, r, r, idx, logger)
+	svc := notes.NewService(store, idx, nil, logger)
+	srv := NewServerWithIndex(svc, r, r, idx, nil, logger)
 	si := NewStrictHandler(srv, nil)
 	mux := chi.NewRouter()
 	mux.Route("/api/v1", func(rt chi.Router) {
@@ -491,14 +491,14 @@ func TestPostAdminReindex_DoesNotHydrateWhenRebuildFails(t *testing.T) {
 	// r.Path2Rebuild left nil → RebuildAndReindex fires Path 3
 	// (ErrUnrecoverable). Handler maps to 503 "unrecoverable".
 	store := fsstore.NewStore(notesDir)
-	failSvc := notes.NewService(store, idx, logger)
+	failSvc := notes.NewService(store, idx, nil, logger)
 
 	// Seed a known stale entry into the Registry so we can detect any
 	// accidental Hydrate-on-failure (which would replace the map).
 	stale := uuid.New()
 	failSvc.Registry().Add(stale, "stale-marker.md")
 
-	srv := NewServerWithIndex(failSvc, r, r, idx, logger)
+	srv := NewServerWithIndex(failSvc, r, r, idx, nil, logger)
 	si := NewStrictHandler(srv, nil)
 	mux := chi.NewRouter()
 	mux.Route("/api/v1", func(rt chi.Router) {
