@@ -684,21 +684,39 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
                 if (result.error) {
                   const staleErr = result.error as {
                     code?: string;
+                    message?: string;
                     current_updated_at?: string;
                   };
                   if (
                     staleErr.code === "stale_write" &&
                     staleErr.current_updated_at
                   ) {
-                    // Re-show with the newer comparator.
+                    // Re-show with the newer comparator. Clear any prior
+                    // inline error from a previous non-stale failure so
+                    // the user sees a clean banner this time.
+                    setH1RenameError(null);
                     setConflictBanner({
                       visible: true,
                       currentUpdatedAt: staleErr.current_updated_at,
                     });
+                    return;
                   }
+                  // BL-03: every OTHER error (write_failed 500, network,
+                  // 404, etc.) used to silently no-op — banner stayed
+                  // open, save state machine never heard about the
+                  // failure, SaveIndicator stuck on green-Saved. Surface
+                  // both an inline error AND a saveFailed dispatch so
+                  // the user has a clear path forward.
+                  const msg = staleErr.message ?? "save failed";
+                  setH1RenameError(`Couldn't save: ${msg}`);
+                  dispatch({ type: "saveFailed", error: msg });
+                  // Leave the banner open — the user can retry, dismiss
+                  // via ×, or Discard. The inline error sits above the
+                  // banner so the failure is visible.
                   return;
                 }
-                // Success — clear banner and reset edited flag.
+                // Success — clear banner, inline error, and edited flag.
+                setH1RenameError(null);
                 setConflictBanner(null);
                 userHasEdited.current = false;
               })();
@@ -711,15 +729,37 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
             onClick={() => {
               // Discard: re-fetch and replace content; clear banner;
               // mark not-edited so silent reloads work again.
+              //
+              // BL-04: previously the error field of the openapi-fetch
+              // tuple was destructured-ignored; on getNote failure
+              // (404 concurrent delete, 500, network) the textarea was
+              // NOT refreshed but the banner cleared anyway, leaving
+              // the user with stale content and no warning indicator.
+              // The handler also did not check note id at resolve
+              // time, so a mid-fetch note switch could clobber the
+              // newly-active note's content with the old one.
               void (async () => {
                 const id = noteIdRef.current;
                 if (!id) return;
-                const { data } = await getNote(id);
-                if (data) {
-                  setContent(data.content);
-                  latestContentRef.current = data.content;
-                  userHasEdited.current = false;
+                const { data, error } = await getNote(id);
+                // User switched notes mid-fetch — drop result entirely;
+                // do NOT clear banner (it belongs to the now-inactive
+                // note's state, but the new note's load effect owns
+                // its own banner).
+                if (id !== noteIdRef.current) return;
+                if (error || !data) {
+                  // Surface a load-error inline; do NOT silently clear
+                  // the conflict banner — content is still stale.
+                  const msg =
+                    (error as { message?: string } | undefined)?.message ??
+                    "couldn't load latest version";
+                  setH1RenameError(`Discard failed: ${msg}. Try again.`);
+                  return;
                 }
+                setH1RenameError(null);
+                setContent(data.content);
+                latestContentRef.current = data.content;
+                userHasEdited.current = false;
                 setConflictBanner(null);
               })();
             }}
