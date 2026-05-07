@@ -196,6 +196,28 @@ func TestHub_DisconnectCleanup(t *testing.T) {
 	t.Errorf("expected 0 clients after disconnect, got %d", hub.ClientCount())
 }
 
+// TestHub_BroadcastMarshalFailureBumpsCounter (WR-05) verifies that a
+// payload that fails json.Marshal increments MarshalFailureCount.
+// Disciplined callers should never produce this — the counter exists
+// so silent drops are observable in tests + ops.
+func TestHub_BroadcastMarshalFailureBumpsCounter(t *testing.T) {
+	hub := newTestHub(t)
+	if got := hub.MarshalFailureCount(); got != 0 {
+		t.Fatalf("initial counter: got %d, want 0", got)
+	}
+	// channels are not JSON-marshalable — guaranteed Marshal error.
+	bad := make(chan int)
+	hub.Broadcast("test:event", bad, "")
+	if got := hub.MarshalFailureCount(); got != 1 {
+		t.Errorf("after one bad broadcast: got %d, want 1", got)
+	}
+	// A second failure increments again — counter is cumulative.
+	hub.Broadcast("test:event", bad, "")
+	if got := hub.MarshalFailureCount(); got != 2 {
+		t.Errorf("after two bad broadcasts: got %d, want 2", got)
+	}
+}
+
 // TestHub_RejectsEmptyOrigin (WR-01 defense-in-depth) verifies that
 // a request with no Origin header is rejected with 403, even though
 // coder/websocket's authenticateOrigin would otherwise return nil for

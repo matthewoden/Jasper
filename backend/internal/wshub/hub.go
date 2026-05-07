@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -27,10 +28,18 @@ var _ notes.Broadcaster = (*Hub)(nil)
 //
 // ClientCount is a small convenience getter exposed for tests
 // (TestHub_DisconnectCleanup). It is cheap enough to leave in production.
+//
+// WR-05: marshalFailures (atomic) counts broadcast attempts that
+// dropped silently because json.Marshal returned an error on the
+// payload (e.g. a chan accidentally embedded, cyclic struct). The
+// log line is only-discoverable; this counter gives ops + tests a
+// numeric handle. MarshalFailureCount() exposes the value for
+// monitoring / regression tests.
 type Hub struct {
-	log     *slog.Logger
-	mu      sync.RWMutex
-	clients map[*client]struct{}
+	log             *slog.Logger
+	mu              sync.RWMutex
+	clients         map[*client]struct{}
+	marshalFailures uint64 // bumped via atomic.AddUint64
 }
 
 // New constructs an empty Hub. Logger fallback mirrors notes.NewService
@@ -59,6 +68,10 @@ func New(log *slog.Logger) *Hub {
 func (h *Hub) Broadcast(eventType string, payload any, originSessionID string) {
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
+		// WR-05: bump the failure counter so silent drops are
+		// observable via MarshalFailureCount(). The log line on its
+		// own is easy to lose in production.
+		atomic.AddUint64(&h.marshalFailures, 1)
 		h.log.Error("hub.Broadcast: marshal payload", "event", eventType, "err", err)
 		return
 	}
@@ -68,6 +81,7 @@ func (h *Hub) Broadcast(eventType string, payload any, originSessionID string) {
 		Payload:         payloadBytes,
 	})
 	if err != nil {
+		atomic.AddUint64(&h.marshalFailures, 1)
 		h.log.Error("hub.Broadcast: marshal envelope", "event", eventType, "err", err)
 		return
 	}
@@ -118,4 +132,15 @@ func (h *Hub) ClientCount() int {
 	n := len(h.clients)
 	h.mu.RUnlock()
 	return n
+}
+
+// MarshalFailureCount returns the cumulative number of Broadcast
+// calls dropped because json.Marshal returned an error on the
+// payload or envelope (WR-05). Atomic read; safe for concurrent
+// callers. Used by tests to assert that disciplined callers do
+// not produce marshal failures, and exposed publicly so an admin
+// /admin/status surface can later report it without changing the
+// Hub's internals.
+func (h *Hub) MarshalFailureCount() uint64 {
+	return atomic.LoadUint64(&h.marshalFailures)
 }
