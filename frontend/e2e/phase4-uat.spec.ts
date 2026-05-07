@@ -417,12 +417,17 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       // Assert: all 5 tabs reconnected.
       expect(reconnectAt).toHaveLength(N);
 
-      // Assert spread ≥ 200ms (jitter disperses reconnects).
+      // Assert spread proves jitter dispersion — NOT a tautology.
+      // WR-09: the prior `expect(span).toBeGreaterThanOrEqual(0)` was a
+      // tautology (Math.max - Math.min over a non-empty array is always
+      // ≥ 0), so the test passed even if nextDelay's `* jitter` factor
+      // was removed entirely. The deterministic property — every
+      // independent draw produces an integer in [500, 1499] — is now
+      // tested in backoff.test.ts. Here we keep the integration check
+      // narrow: 5 tabs reconnecting through real wall-clock + JS event
+      // loop will not all land on the exact same millisecond unless
+      // jitter is broken.
       const span = Math.max(...reconnectAt) - Math.min(...reconnectAt);
-      // If span === 0 all tabs reconnected at the exact same millisecond —
-      // statistically near-impossible but not technically broken. Accept it
-      // with a warning comment rather than hard-failing on a theoretically
-      // valid (but vanishingly rare) outcome.
       if (span < 200) {
         console.warn(
           `Reconnect spread was only ${span}ms (< 200ms). ` +
@@ -431,10 +436,11 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
             "If this fails repeatedly, review nextDelay() parameters.",
         );
       }
-      // Soft assertion: spread should exceed 0ms (i.e. not all same instant).
-      // We accept any non-zero spread because the point of this scenario is
-      // proving that reconnects are STAGGERED, not guaranteed by ≥200ms.
-      expect(span).toBeGreaterThanOrEqual(0);
+      // Hard floor: the spread MUST be > 0ms. If 5 independent jitter
+      // draws all produce the same delay (and thus all 5 tabs reconnect
+      // in the same Date.now() tick), nextDelay's jitter factor is
+      // broken — that's the regression this assertion guards against.
+      expect(span).toBeGreaterThan(0);
     } finally {
       for (const { ctx } of tabs) {
         await ctx.close();
