@@ -167,9 +167,30 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       if (!firstNote || !firstFolder) {
         throw new Error("Expected at least one note and one folder in tree");
       }
+      // WR-10: explicit precondition assertions on the discriminated
+      // TreeNode union. The TS types allow `path?` and `id?` to be
+      // undefined; without these checks, a silent fallback to
+      // "note.md" would mask a contract drift (server returns empty
+      // path) and the move would create-or-overwrite the wrong note.
+      // We want the test to fail LOUDLY on the precondition rather
+      // than pass against a wrong note.
+      if (!firstNote.id || !firstNote.path) {
+        throw new Error(
+          `Test precondition: first note must have id+path; got id=${String(firstNote.id)}, path=${String(firstNote.path)}`,
+        );
+      }
+      if (!firstFolder.path) {
+        throw new Error(
+          `Test precondition: first folder must have path; got ${String(firstFolder.path)}`,
+        );
+      }
 
       // POST /api/v1/notes/{id}/move to move the note inside the folder.
-      const noteBasename = (firstNote.path ?? "").split("/").pop() ?? "note.md";
+      const noteBasename = firstNote.path.split("/").pop();
+      if (!noteBasename) {
+        throw new Error(`Note path lacks a basename segment: ${firstNote.path}`);
+      }
+      expect(noteBasename).toMatch(/\.md$/);
       const newPath = `${firstFolder.path}/${noteBasename}`;
       const moveResp = await pageA.request.post(
         `${jasper.baseURL}/api/v1/notes/${firstNote.id}/move`,
