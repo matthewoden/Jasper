@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 // requestLogger logs each HTTP request via slog at INFO level. Wraps
@@ -29,6 +31,47 @@ func requestLogger(log *slog.Logger) func(http.Handler) http.Handler {
 			)
 		})
 	}
+}
+
+// maxSessionIDHeaderLen is the maximum allowed length for the
+// X-Session-ID header. Values longer than this are silently coerced
+// to "" (server-originated semantics) — T-04-03 mitigation.
+const maxSessionIDHeaderLen = 128
+
+// sessionIDMiddleware extracts the X-Session-ID header and propagates
+// it via context.Value (key defined in notes/context.go). The
+// frontend's generateOrLoadSessionId() helper is the source of truth.
+// Both the WS handshake (?session_id=) and this header carry the SAME
+// value, so origin filtering works (Pitfall 1 in RESEARCH.md).
+//
+// SECURITY (T-04-03):
+//   - Length cap: 128 chars. Anything longer is silently coerced to ""
+//     so the broadcaster sees "server-originated" and the bad value is
+//     never echoed in any broadcast envelope.
+//   - Control characters (rune < 0x20 or rune == 0x7F) are rejected
+//     for the same reason.
+//   - Empty value is allowed (curl, automation, server-originated
+//     paths) — see Pitfall 5 in RESEARCH.md.
+//   - Pitfall 5 (origin spoofing): a malicious client could send any
+//     X-Session-ID; server uses the value only for origin filtering.
+//     Worst case: a tab's own broadcasts are suppressed. v1 single-user
+//     self-host posture — not a credible threat.
+func sessionIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sid := r.Header.Get("X-Session-ID")
+		if len(sid) > maxSessionIDHeaderLen {
+			sid = ""
+		} else {
+			for _, ch := range sid {
+				if ch < 0x20 || ch == 0x7F {
+					sid = ""
+					break
+				}
+			}
+		}
+		ctx := notes.WithSessionID(r.Context(), sid)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 // maxRequestBodyBytes caps every API request body at 10 MiB. The

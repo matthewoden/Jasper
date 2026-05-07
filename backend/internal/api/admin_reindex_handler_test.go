@@ -33,7 +33,7 @@ func adminReindexFixture(t *testing.T, runner *migrate.Runner, idx notes.Index) 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
 	svc := notes.NewService(files, nil, nil, logger)
-	srv := NewServerWithIndex(svc, runner, runner, idx, logger)
+	srv := NewServerWithIndex(svc, runner, runner, idx, nil, logger)
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
@@ -254,7 +254,7 @@ func TestPostAdminReindex_InvalidMode_Returns409(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
 	svc := notes.NewService(files, nil, nil, logger)
-	srv := NewServerWithIndex(svc, r, r, nil, logger)
+	srv := NewServerWithIndex(svc, r, r, nil, nil, logger)
 	bogus := ReindexRequestMode("bogus")
 	out, err := srv.PostAdminReindex(context.Background(),
 		PostAdminReindexRequestObject{Body: &PostAdminReindexJSONRequestBody{Mode: &bogus}})
@@ -342,7 +342,7 @@ func adminReindexHydrateFixture(t *testing.T) (*httptest.Server, *notes.Service,
 	}
 	store := fsstore.NewStore(notesDir)
 	svc := notes.NewService(store, idx, nil, logger)
-	srv := NewServerWithIndex(svc, r, r, idx, logger)
+	srv := NewServerWithIndex(svc, r, r, idx, nil, logger)
 	si := NewStrictHandler(srv, nil)
 	mux := chi.NewRouter()
 	mux.Route("/api/v1", func(rt chi.Router) {
@@ -498,7 +498,7 @@ func TestPostAdminReindex_DoesNotHydrateWhenRebuildFails(t *testing.T) {
 	stale := uuid.New()
 	failSvc.Registry().Add(stale, "stale-marker.md")
 
-	srv := NewServerWithIndex(failSvc, r, r, idx, logger)
+	srv := NewServerWithIndex(failSvc, r, r, idx, nil, logger)
 	si := NewStrictHandler(srv, nil)
 	mux := chi.NewRouter()
 	mux.Route("/api/v1", func(rt chi.Router) {

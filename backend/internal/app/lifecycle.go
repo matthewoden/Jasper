@@ -21,6 +21,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/internal/static"
+	"github.com/matthewoden/jasper/backend/internal/wshub"
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
@@ -230,8 +231,19 @@ func (a *App) Run(ctx context.Context) error {
 	// 8. Phase 2 NEW — rebuild api.Server with full wiring.
 	// The handler installed by New() pointed at a nil-everything Server;
 	// replace with the real one now that pair / indexer / runner exist.
+
+	// Phase 4: construct WS hub so it can be injected into notes.Service
+	// as the third port. Lives inside step 8 so it is wired BEFORE step
+	// 9's serveListener — the listener gate (SYNC-09) naturally extends
+	// to the WS hub because the hub does not accept connections until the
+	// listener opens (chi route mounted on the same http.Server).
+	hub := wshub.New(a.cfg.Logger)
+	a.mu.Lock()
+	a.hub = hub
+	a.mu.Unlock()
+
 	files := fsstore.NewStore(notesDir)
-	notesSvc := notes.NewService(files, a.indexer, nil, a.cfg.Logger)
+	notesSvc := notes.NewService(files, a.indexer, hub, a.cfg.Logger)
 
 	// 8a. Phase 3 Plan 03-04 NEW — hydrate the in-memory registry from
 	// indexed summaries so any UUID returned by GET /notes / GET /tree
@@ -263,7 +275,7 @@ func (a *App) Run(ctx context.Context) error {
 	// a.runner implements migrate.StatusProvider, so it's passed twice:
 	// once as the status reader for /admin/status and once as the
 	// runner for /admin/reindex.
-	apiServer := api.NewServerWithIndex(notesSvc, a.runner, a.runner, a.indexer, a.cfg.Logger)
+	apiServer := api.NewServerWithIndex(notesSvc, a.runner, a.runner, a.indexer, hub, a.cfg.Logger)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -272,7 +284,15 @@ func (a *App) Run(ctx context.Context) error {
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBodyBytes(maxRequestBodyBytes))
+		r.Use(sessionIDMiddleware) // Phase 4 — SYNC-02 X-Session-ID extraction
 		api.HandlerFromMux(si, r)
+		// Mount /ws AFTER HandlerFromMux — chi uses last-registration-wins,
+		// so this overrides the oapi-codegen GetApiV1Ws stub (which returns
+		// 400). wshub.Hub.ServeHTTP handles all WS upgrades. (Pitfall 8:
+		// the comment "BEFORE" referred to logical precedence; the correct
+		// implementation is AFTER so the hub's registration wins — confirmed
+		// by chi routing tests.)
+		r.Get("/ws", hub.ServeHTTP)
 	})
 	r.Mount("/", static.Handler())
 	a.handler = r

@@ -804,3 +804,77 @@ func TestRun_HydrateRegistry(t *testing.T) {
 		t.Errorf("Run returned error after cancel: %v", err)
 	}
 }
+
+// TestApp_ListenerGated verifies SYNC-09: the WebSocket hub is wired BEFORE
+// the listener accepts connections. When a client can reach the TCP port, the
+// /ws endpoint must already be mounted and respond with a valid WS upgrade
+// (101 Switching Protocols). A 404 or connection-refused here means the hub
+// was constructed after the listener started — a race.
+//
+// We use a raw HTTP request rather than a WebSocket library so we can assert
+// on the upgrade response without pulling in a WS client dependency in tests.
+func TestApp_ListenerGated(t *testing.T) {
+	dir := t.TempDir()
+	addr := pickFreePort(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a, err := New(Config{
+		DataDir:    dir,
+		ListenAddr: addr,
+		Logger:     logger,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runErr := make(chan error, 1)
+	go func() { runErr <- a.Run(ctx) }()
+
+	// Wait for the listener to come up.
+	probe := func() error {
+		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err != nil {
+			return err
+		}
+		_ = c.Close()
+		return nil
+	}
+	if err := waitFor(t, 5*time.Second, probe); err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("listener did not come up: %v", err)
+	}
+
+	// Issue a WS upgrade request. The server must respond 101. If the hub
+	// is not wired yet (SYNC-09 violation) we'd get 404.
+	// Route is /api/v1/ws (mounted inside r.Route("/api/v1", ...)).
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+"/api/v1/ws", nil)
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+	req.Header.Set("Sec-WebSocket-Version", "13")
+	// Origin required by wshub handler's OriginPatterns (T-04-01).
+	req.Header.Set("Origin", "http://"+addr)
+
+	// Use a transport that does NOT follow redirects so we see the raw 101.
+	tr := &http.Transport{}
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("WS upgrade request failed: %v", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		cancel()
+		<-runErr
+		t.Fatalf("expected 101 Switching Protocols from /api/v1/ws, got %d (SYNC-09: hub not wired before listener)", resp.StatusCode)
+	}
+
+	cancel()
+	if err := <-runErr; err != nil {
+		t.Errorf("Run returned error after cancel: %v", err)
+	}
+}

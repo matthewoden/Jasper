@@ -35,6 +35,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/internal/static"
+	"github.com/matthewoden/jasper/backend/internal/wshub"
 )
 
 // Config is the resolved runtime configuration for `jasper serve`.
@@ -101,6 +102,11 @@ type App struct {
 	// explicitly.
 	mu       sync.RWMutex
 	notesSvc *notes.Service
+
+	// hub is the WebSocket broadcast hub. Populated by lifecycle.Run
+	// step 8 (Phase 4 Plan 04-04). Nil between New and Run. Guarded
+	// by mu (same mutex as notesSvc for simplicity).
+	hub *wshub.Hub
 
 	// diskFullHandler is the static error page handler installed
 	// when migrate.Run returns ErrDiskFull or ErrUnrecoverable.
