@@ -83,6 +83,15 @@ export function useSessionSync(
       // Pitfall 9: attach all listeners SYNCHRONOUSLY before any await.
       ws.onopen = async () => {
         if (cancelled) return;
+        // WR-11: reset attempt BEFORE awaiting refreshTree so that a
+        // refreshTree throw does not leave the counter at >0. Previously
+        // attempt was reset only AFTER the await — if refreshTree threw,
+        // the `attempt = 0` line was never reached, the next ws.onclose
+        // saw attempt=N, and setStatus("reconnecting") fired even though
+        // the connection had been live. The status flicker
+        // (connecting → reconnecting → connected after a successful
+        // refresh) is suppressed by doing the reset up-front.
+        attempt = 0;
         // D-05 step (b)
         try {
           await refreshTree();
@@ -93,7 +102,6 @@ export function useSessionSync(
         if (cancelled) return;
         // D-05 step (e)
         setStatus("connected");
-        attempt = 0;
       };
 
       ws.onmessage = (e) => {
