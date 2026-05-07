@@ -193,6 +193,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ws": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * WebSocket endpoint (HTTP/1.1 Upgrade)
+         * @description Server-broadcast WebSocket. Client opens with
+         *     `?session_id=<uuid>` query parameter (Pitfall 1: client-as-
+         *     authoritative session_id). Server responds with a
+         *     `session:assigned` envelope confirming the id, then streams
+         *     events until disconnect.
+         *
+         *     oapi-codegen generates a stub handler for this route which is
+         *     unreachable: lifecycle.go (Plan 04-04) mounts `/ws` via
+         *     wshub.Hub.ServeHTTP BEFORE api.HandlerFromMux. The path exists
+         *     in the spec to satisfy API-01 ("every HTTP route in the spec").
+         *
+         *     Origin enforcement: the Accept call in wshub.Hub.ServeHTTP
+         *     (Plan 04-02) sets OriginPatterns: ["localhost:*", "127.0.0.1:*"].
+         *     The OpenAPI spec does NOT and CANNOT enforce origin — that is a
+         *     runtime control on the upgrade handshake (T-04-01).
+         */
+        get: operations["getApiV1Ws"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/reindex": {
         parameters: {
             query?: never;
@@ -418,6 +452,84 @@ export interface components {
             /** @example no note with id 00000000-0000-4000-a000-000000000001 */
             message: string;
         };
+        /**
+         * @description WebSocket event envelope (DESIGN.md §5.2). The `event` enum is
+         *     locked verbatim and mirrors the Go const block in
+         *     backend/internal/wshub/envelope.go and the TS dispatch table
+         *     in frontend/src/lib/useSessionSync.ts.
+         */
+        WSEnvelope: {
+            /** @enum {string} */
+            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "tags:updated" | "reindex:started" | "reindex:complete" | "migration:status";
+            /**
+             * @description UUID of the session that originated the mutation. Empty
+             *     string for server-originated events (reindex:*,
+             *     migration:status). Clients ignore events whose
+             *     origin_session_id matches their own (SYNC-03 origin
+             *     filter).
+             */
+            origin_session_id: string;
+            /** @description Event-specific payload; shape determined by `event`. */
+            payload: unknown;
+        };
+        WSNoteCreatedPayload: {
+            /** Format: uuid */
+            id: string;
+            path: string;
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        WSNoteUpdatedPayload: {
+            /** Format: uuid */
+            id: string;
+            path: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        WSNoteDeletedPayload: {
+            /** Format: uuid */
+            id: string;
+            path: string;
+        };
+        WSNoteMovedPayload: {
+            /** Format: uuid */
+            id: string;
+            old_path: string;
+            new_path: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        WSFolderCreatedPayload: {
+            path: string;
+            name: string;
+        };
+        WSFolderDeletedPayload: {
+            path: string;
+            recursive: boolean;
+        };
+        WSFolderMovedPayload: {
+            old_path: string;
+            new_path: string;
+        };
+        /** @description Empty payload — server-originated. */
+        WSReindexStartedPayload: Record<string, never>;
+        WSReindexCompletePayload: {
+            notes_indexed: number;
+        };
+        /**
+         * @description Returned by PUT /notes/{id} when If-Match does not match the
+         *     current file's updated_at (SYNC-06). The client surfaces
+         *     SYNC-05's Save-anyway / Discard banner using
+         *     current_updated_at as the new comparator.
+         */
+        StaleWriteError: {
+            /** @enum {string} */
+            code: "stale_write";
+            message: string;
+            /** Format: date-time */
+            current_updated_at: string;
+        };
     };
     responses: never;
     parameters: {
@@ -527,7 +639,19 @@ export interface operations {
     putNoteById: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Optimistic concurrency comparator (SYNC-06). When present,
+                 *     the server compares this value against the file's current
+                 *     updated_at (RFC3339Nano UTC). On mismatch the server
+                 *     returns 409 with `code: stale_write` and
+                 *     `current_updated_at` in the body — the client surfaces
+                 *     SYNC-05's Save-anyway / Discard banner. Permissive when
+                 *     absent (curl / automation friendly). Server treats the
+                 *     value as an opaque string round-trip; max length 256 chars.
+                 */
+                "If-Match"?: string;
+            };
             path: {
                 /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
                 id: components["parameters"]["NoteId"];
@@ -565,6 +689,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Stale write (SYNC-06) — If-Match mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaleWriteError"];
                 };
             };
             /** @description Write failure on disk (atomic-rename or fsync error) */
@@ -892,6 +1025,40 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MigrationStatus"];
                 };
+            };
+        };
+    };
+    getApiV1Ws: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Per-tab UUID generated by the client (sessionStorage).
+                 *     Server adopts this as the connection's session_id; the
+                 *     handshake message echoes it for confirmation. Treated as
+                 *     opaque; max length 128 chars enforced in middleware
+                 *     (T-04-03).
+                 */
+                session_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching protocols (WebSocket upgrade) */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a WebSocket request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
