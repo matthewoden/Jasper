@@ -1,11 +1,28 @@
 /**
  * Spawn ./bin/jasper serve against an ephemeral data dir + free port.
  * Polls GET /api/v1/admin/status until 200 (mirrors smoke_test.go's
- * readiness pattern). Returns { proc, port, dataDir, baseURL, kill }.
+ * readiness pattern). Returns { proc, port, dataDir, baseURL, kill, restart }.
  *
  * The caller MUST invoke kill() in afterEach/afterAll — leaked processes
  * exhaust the OS's launchctl/systemd handle table and cause spurious
  * test flakes on the next run.
+ *
+ * Phase 4 (Plan 04-06): JasperHandle now also exposes `restart()` for the
+ * reconnect scenario. restart() kills the running binary and spawns a new
+ * one against the SAME data directory on the SAME port. This allows browser
+ * tabs to reconnect autonomously via their WS onclose → reconnect timer
+ * (useSessionSync connects to window.location.host, so the port must match).
+ *
+ * Same-port restart rationale vs. new-port: useSessionSync builds the WS URL
+ * from window.location.host at mount time. A new port would require navigating
+ * all tabs to the new baseURL, which defeats the purpose of testing autonomous
+ * reconnection. We therefore reuse the same port.
+ *
+ * TIME_WAIT risk: on macOS and Linux, the OS holds a port in TIME_WAIT for
+ * ~4× MSL (up to 60s on some systems) after graceful close. In practice the
+ * binary binds SO_REUSEADDR so immediate rebind works. If flakiness is
+ * observed, add a retry loop in the spawn path — see the `waitForReady` loop
+ * which already has a 15s window.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -20,6 +37,16 @@ export interface JasperHandle {
   dataDir: string;
   baseURL: string;
   kill: () => Promise<void>;
+  /**
+   * Phase 4: kill the running binary and spawn a fresh one against
+   * the SAME data directory on the SAME port so reconnect tests can
+   * prove that tabs re-establish the WS without needing to navigate.
+   *
+   * Returns a NEW JasperHandle (with the same port and dataDir).
+   * The old handle's kill() must NOT be called after restart() —
+   * the new handle's kill() owns cleanup including dataDir removal.
+   */
+  restart: () => Promise<JasperHandle>;
 }
 
 async function findFreePort(): Promise<number> {
@@ -53,15 +80,35 @@ async function waitForReady(baseURL: string, deadlineMs: number): Promise<void> 
   throw new Error(`jasper did not become ready at ${baseURL} within ${deadlineMs}ms`);
 }
 
+async function killProcess(proc: ChildProcess): Promise<void> {
+  proc.kill("SIGTERM");
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      proc.kill("SIGKILL");
+      resolve();
+    }, 3_000);
+    proc.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
 // Resolve repo root from this file: frontend/e2e/helpers/binary.ts -> ../../..
 // __dirname is not defined in ES module scope, so derive it from import.meta.url.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 
-export async function spawnJasper(): Promise<JasperHandle> {
-  const dataDir = await mkdtemp(path.join(tmpdir(), "jasper-e2e-"));
-  const port = await findFreePort();
+/**
+ * Spawn a Jasper binary against the given dataDir and port.
+ * If dataDir is not provided, an ephemeral tmpdir is created.
+ * If port is not provided, a free port is allocated.
+ */
+async function spawnJasperInternal(opts: { dataDir?: string; port?: number; ownsDataDir: boolean }): Promise<JasperHandle> {
+  const dataDir = opts.dataDir ?? await mkdtemp(path.join(tmpdir(), "jasper-e2e-"));
+  const port = opts.port ?? await findFreePort();
+  const ownsDataDir = opts.ownsDataDir;
   const binPath = path.join(repoRoot, "bin", "jasper");
   const proc = spawn(
     binPath,
@@ -87,22 +134,34 @@ export async function spawnJasper(): Promise<JasperHandle> {
     await waitForReady(baseURL, 15_000);
   } catch (e) {
     proc.kill("SIGTERM");
-    await rm(dataDir, { recursive: true, force: true });
+    if (ownsDataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+    }
     throw e;
   }
+
   const kill = async () => {
-    proc.kill("SIGTERM");
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        proc.kill("SIGKILL");
-        resolve();
-      }, 3_000);
-      proc.once("exit", () => {
-        clearTimeout(timer);
-        resolve();
-      });
-    });
-    await rm(dataDir, { recursive: true, force: true });
+    await killProcess(proc);
+    if (ownsDataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+    }
   };
-  return { proc, port, dataDir, baseURL, kill };
+
+  const restart = async (): Promise<JasperHandle> => {
+    // Kill the current process (but do NOT clean up dataDir — we reuse it).
+    await killProcess(proc);
+    // Brief pause to let the OS release the port (SO_REUSEADDR is set,
+    // but a small sleep avoids a potential EADDRINUSE on heavily-loaded
+    // CI machines).
+    await new Promise((r) => setTimeout(r, 200));
+    // Spawn a new instance against the same dataDir + same port.
+    // The new handle owns the dataDir cleanup (ownsDataDir: true → same as original).
+    return spawnJasperInternal({ dataDir, port, ownsDataDir });
+  };
+
+  return { proc, port, dataDir, baseURL, kill, restart };
+}
+
+export async function spawnJasper(): Promise<JasperHandle> {
+  return spawnJasperInternal({ ownsDataDir: true });
 }
