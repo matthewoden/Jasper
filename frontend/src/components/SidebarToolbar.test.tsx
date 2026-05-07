@@ -290,4 +290,18 @@ describe("<SidebarToolbar />", () => {
     expect(screen.getByRole("button", { name: "New note" })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: "New folder" })).not.toBeDisabled();
   });
+
+  // ── Phase 4 — TREE-12: ConnectionStatusDot appended after Refresh button ────
+  it("TestToolbar_RendersConnectionStatusDot", () => {
+    // ConnectionStatusDot reads useTreeStore.connectionStatus (real store
+    // defaults to "connecting"). The test simply asserts the dot is present.
+    render(
+      <SidebarToolbar
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+        onRefresh={() => Promise.resolve()}
+      />,
+    );
+    expect(screen.getByTestId("connection-status-dot")).toBeInTheDocument();
+  });
 });
