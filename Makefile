@@ -29,5 +29,5 @@ lint:
 
 dev:
 	cd frontend && npx concurrently --kill-others --names BACKEND,FRONTEND --prefix-colors blue,magenta \
-	  "cd ../backend && air" \
+	  "cd ../backend && go tool air" \
 	  "npm run dev"
