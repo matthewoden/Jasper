@@ -547,3 +547,98 @@ func mustGetReindex(t *testing.T, ts *httptest.Server, path string) (*http.Respo
 	}
 	return resp, respBody
 }
+
+// reindexEventSpy is a minimal Broadcaster used by the WR-07 regression
+// test. Captures (event, payload) tuples in append order.
+type reindexEventSpy struct {
+	mu     sync.Mutex
+	events []string
+}
+
+func (s *reindexEventSpy) Broadcast(event string, _ any, _ string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, event)
+}
+
+func (s *reindexEventSpy) snapshot() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, len(s.events))
+	copy(out, s.events)
+	return out
+}
+
+// adminReindexFixtureWithBroadcaster is a variant of adminReindexFixture
+// that wires a broadcaster spy so callers can assert reindex:started /
+// reindex:complete event ordering.
+func adminReindexFixtureWithBroadcaster(t *testing.T, runner *migrate.Runner, idx notes.Index, bc notes.Broadcaster) *httptest.Server {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	files := &fakeFileStore{}
+	svc := notes.NewService(files, nil, nil, logger)
+	srv := NewServerWithIndex(svc, runner, runner, idx, bc, logger)
+	si := NewStrictHandler(srv, nil)
+	r := chi.NewRouter()
+	r.Route("/api/v1", func(r chi.Router) {
+		HandlerFromMux(si, r)
+	})
+	return httptest.NewServer(r)
+}
+
+// TestPostAdminReindex_WR07_EmitsCompleteOnRebuildError verifies that
+// when the rebuild path fires reindex:started, the handler ALWAYS emits
+// reindex:complete afterwards — even on error. Prior to the WR-07 fix
+// the error path returned 503 without a completion event, which left
+// connected tabs' ReindexProgress overlay stuck on "running" forever
+// and locked the editor pane behind it.
+func TestPostAdminReindex_WR07_EmitsCompleteOnRebuildError(t *testing.T) {
+	t.Parallel()
+	r, _, _ := newRealRunner(t)
+	// Path2Rebuild left nil → Path 3 fires → ErrUnrecoverable from runner.
+	bc := &reindexEventSpy{}
+	ts := adminReindexFixtureWithBroadcaster(t, r, nil, bc)
+	defer ts.Close()
+	resp, _ := mustReindexPost(t, ts, `{"mode":"full"}`)
+	if resp.StatusCode != 503 {
+		t.Fatalf("status: got %d, want 503", resp.StatusCode)
+	}
+	got := bc.snapshot()
+	// Expect reindex:started, then reindex:complete (the deferred
+	// completion event regardless of rebuild outcome).
+	want := []string{"reindex:started", "reindex:complete"}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("event sequence: got %v, want %v", got, want)
+	}
+}
+
+// TestPostAdminReindex_WR07_InvalidModeNoStartedEvent verifies that
+// invalid_mode short-circuits BEFORE reindex:started fires, so the
+// completion-defer pairing stays intact (no orphan "started" emitted
+// to listening tabs that the server is about to reject).
+func TestPostAdminReindex_WR07_InvalidModeNoStartedEvent(t *testing.T) {
+	t.Parallel()
+	r, _, _ := newRealRunner(t)
+	bc := &reindexEventSpy{}
+	ts := adminReindexFixtureWithBroadcaster(t, r, nil, bc)
+	defer ts.Close()
+	// "bogus" is not in the enum {full,incremental} — handler returns
+	// 409 invalid_mode without emitting any reindex event.
+	bogus := ReindexRequestMode("bogus")
+	srv := NewServerWithIndex(
+		notes.NewService(&fakeFileStore{}, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil))),
+		r, r, nil, bc,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	out, err := srv.PostAdminReindex(context.Background(),
+		PostAdminReindexRequestObject{Body: &PostAdminReindexJSONRequestBody{Mode: &bogus}})
+	if err != nil {
+		t.Fatalf("PostAdminReindex returned error: %v", err)
+	}
+	if _, ok := out.(PostAdminReindex409JSONResponse); !ok {
+		t.Fatalf("got %T, want PostAdminReindex409JSONResponse", out)
+	}
+	if got := bc.snapshot(); len(got) != 0 {
+		t.Errorf("invalid_mode should emit no events; got %v", got)
+	}
+}

@@ -111,11 +111,39 @@ func (s *Server) PostAdminReindex(
 		mode = string(*req.Body.Mode)
 	}
 
+	// "invalid_mode" is detected BEFORE we emit reindex:started so the
+	// completion-defer below stays paired with a real start event.
+	// Without this short-circuit we would broadcast started for a mode
+	// the server is about to reject — confusing to listening tabs.
+	if mode != "full" && mode != "incremental" {
+		return PostAdminReindex409JSONResponse(
+			newError("invalid_mode", "mode must be 'full' or 'incremental'")), nil
+	}
+
 	// UX-04: emit reindex:started so connected tabs can show a spinner.
 	// originSessionID="" — server-originated, reaches all clients.
 	if s.broadcaster != nil {
 		s.broadcaster.Broadcast(notes.EventReindexStarted, map[string]any{"mode": mode}, "")
 	}
+
+	// WR-07: ALWAYS emit reindex:complete after reindex:started, even
+	// on the error paths (rebuild failure, ErrUnrecoverable, incremental
+	// reconcile failure). The frontend's useSessionSync.onReindexStarted
+	// flips the ReindexProgress overlay to "running"; without a matching
+	// completion event the overlay stays mounted forever and locks the
+	// editor pane behind it. notes_indexed is the success count (set
+	// inside the success branches before this defer fires); on error
+	// paths it stays 0 — which is fine, the listening tabs only need
+	// the event itself to dismiss the overlay.
+	notesIndexed := 0
+	defer func() {
+		if s.broadcaster != nil {
+			s.broadcaster.Broadcast(notes.EventReindexComplete, map[string]any{
+				"mode":          mode,
+				"notes_indexed": notesIndexed,
+			}, "")
+		}
+	}()
 
 	switch mode {
 	case "full":
@@ -136,14 +164,8 @@ func (s *Server) PostAdminReindex(
 		// before the 202 response goes out. Mirrors the canonical
 		// pattern at lifecycle.go:249-257.
 		s.hydrateRegistryFromIndex(ctx)
-		// UX-04: emit reindex:complete after successful rebuild.
-		n := status.NotesIndexed
-		if s.broadcaster != nil {
-			s.broadcaster.Broadcast(notes.EventReindexComplete, map[string]any{
-				"mode":          mode,
-				"notes_indexed": n,
-			}, "")
-		}
+		notesIndexed = status.NotesIndexed
+		n := notesIndexed
 		return PostAdminReindex202JSONResponse{
 			StartedAt:    started,
 			NotesIndexed: &n,
@@ -169,19 +191,15 @@ func (s *Server) PostAdminReindex(
 		// in-memory Registry so any new UUID is reachable via
 		// Service.Get before the 202 response goes out.
 		s.hydrateRegistryFromIndex(ctx)
-		// UX-04: emit reindex:complete after successful incremental reconcile.
-		if s.broadcaster != nil {
-			s.broadcaster.Broadcast(notes.EventReindexComplete, map[string]any{
-				"mode":          mode,
-				"notes_indexed": n,
-			}, "")
-		}
+		notesIndexed = n
 		return PostAdminReindex202JSONResponse{
 			StartedAt:    started,
 			NotesIndexed: &n,
 		}, nil
 
 	default:
+		// Unreachable — invalid_mode is short-circuited above so the
+		// completion-defer stays paired. Kept as a defensive fallback.
 		return PostAdminReindex409JSONResponse(
 			newError("invalid_mode", "mode must be 'full' or 'incremental'")), nil
 	}
