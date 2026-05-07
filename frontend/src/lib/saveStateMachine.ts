@@ -13,20 +13,25 @@
  *   saving    --saveFailed-------->  error
  *   saved     --savedTimerExpired->  idle
  *   <any>     --edit--------------> <unchanged>  (debounce lives in component)
+ *   <any>     --connectionLost----> paused
+ *   paused    --connectionRestored-> idle
  */
 
 export type SaveState =
   | { status: "idle" }
   | { status: "saving"; startedAt: Date }
   | { status: "saved"; savedAt: Date }
-  | { status: "error"; error: string };
+  | { status: "error"; error: string }
+  | { status: "paused" };
 
 export type SaveEvent =
   | { type: "edit" }
   | { type: "requestSave" }
   | { type: "saveSucceeded"; updatedAt: Date }
   | { type: "saveFailed"; error: string }
-  | { type: "savedTimerExpired" };
+  | { type: "savedTimerExpired" }
+  | { type: "connectionLost" }
+  | { type: "connectionRestored" };
 
 export const initialSaveState: SaveState = { status: "idle" };
 
@@ -50,6 +55,15 @@ export function saveStateReducer(
       // we've already moved on (e.g. user typed during the sticky window and
       // we're already saving again).
       return state.status === "saved" ? { status: "idle" } : state;
+    case "connectionLost":
+      // D-06: any state → paused on connection loss. Saves are blocked
+      // until the connection is restored. Idempotent (paused → paused is fine).
+      return { status: "paused" };
+    case "connectionRestored":
+      // D-06: paused → idle on reconnect. If not paused (e.g. already idle
+      // or saving), no-op — the connection was restored but we were not
+      // blocked.
+      return state.status === "paused" ? { status: "idle" } : state;
     default:
       // Exhaustiveness — TypeScript narrows `event` to `never` here. We do
       // NOT bind it to a local (`noUnusedLocals` would flag that); the
