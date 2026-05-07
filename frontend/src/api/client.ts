@@ -1,5 +1,6 @@
-import createClient from "openapi-fetch";
+import createClient, { type Middleware } from "openapi-fetch";
 import type { paths } from "./schema";
+import { generateOrLoadSessionId } from "../lib/sessionId";
 
 /**
  * The single typed API client for the entire frontend.
@@ -13,5 +14,26 @@ import type { paths } from "./schema";
  *   - In dev, Vite proxies /api → http://127.0.0.1:3001 (backend).
  *   - In prod, the Go binary serves both SPA + API on the same origin
  *     and registers handlers under r.Route("/api/v1", ...).
+ *
+ * SYNC-02 — sessionMiddleware attaches X-Session-ID to every request
+ * via the openapi-fetch v0.17 middleware API. Every typed wrapper
+ * (notesApi, treeApi, adminApi, foldersApi) inherits this automatically
+ * because they all share `client`.
+ *
+ * Pitfall 1: the same generateOrLoadSessionId() helper is read by
+ * useSessionSync's WS upgrade — guarantees the X-Session-ID header
+ * value MATCHES the WS connection's session_id, which is required for
+ * server-side origin filtering to work.
+ *
+ * SECURITY (T-04-03): session_id is an opaque UUID — never rendered
+ * to the DOM, never logged, just threaded through headers.
  */
+const sessionMiddleware: Middleware = {
+  async onRequest({ request }) {
+    request.headers.set("X-Session-ID", generateOrLoadSessionId());
+    return request;
+  },
+};
+
 export const client = createClient<paths>({ baseUrl: "/api/v1" });
+client.use(sessionMiddleware);

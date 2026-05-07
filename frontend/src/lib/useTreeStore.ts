@@ -32,6 +32,12 @@
 import { create } from "zustand";
 
 export const LS_KEY_EXPANDED = "jasper.tree.expanded";
+
+/**
+ * Phase 4 addition (UI-SPEC §Forward-compat assert #2 — ADDS, never modifies).
+ * Transient — NOT persisted via localStorage. Reconnects on every page load.
+ */
+export type ConnectionStatus = "connecting" | "connected" | "reconnecting";
 export const LS_KEY_ACTIVE_NOTE = "jasper.tree.activeNoteId";
 
 export type RenameKind = "note" | "folder";
@@ -57,6 +63,11 @@ export interface TreeStore {
   // draftCreate precedent).
   selectedRow: SelectedRow | null;
 
+  // Phase 4 addition (UI-SPEC §Forward-compat assert #2 — ADDS, never modifies).
+  // Transient — NOT persisted. Reset to "connecting" on every page load.
+  // TREE-12: consumed by ConnectionStatusDot and EditorPane (Plan 04-05).
+  connectionStatus: ConnectionStatus;
+
   // Mutators:
   toggleExpanded: (path: string) => void;
   setActiveNote: (id: string | null) => void;
@@ -65,6 +76,9 @@ export interface TreeStore {
   startDraftCreate: (kind: RenameKind, parent: string) => void;
   endDraftCreate: () => void;
   setSelectedRow: (sr: SelectedRow | null) => void;
+
+  // Phase 4 setter for connectionStatus.
+  setConnectionStatus: (s: ConnectionStatus) => void;
 }
 
 export const useTreeStore = create<TreeStore>((set) => ({
@@ -73,6 +87,7 @@ export const useTreeStore = create<TreeStore>((set) => ({
   pendingRename: null,
   draftCreate: null,
   selectedRow: null,
+  connectionStatus: "connecting",
   toggleExpanded: (path) =>
     set((s) => {
       const next = new Set(s.expanded);
@@ -86,6 +101,7 @@ export const useTreeStore = create<TreeStore>((set) => ({
   startDraftCreate: (kind, parent) => set({ draftCreate: { kind, parent } }),
   endDraftCreate: () => set({ draftCreate: null }),
   setSelectedRow: (sr) => set({ selectedRow: sr }),
+  setConnectionStatus: (s) => set({ connectionStatus: s }),
 }));
 
 /**

@@ -83,4 +83,31 @@ describe("saveStateReducer", () => {
   it("initialSaveState is idle", () => {
     expect(initialSaveState).toEqual({ status: "idle" });
   });
+
+  it("R8: connectionLost from saving → paused", () => {
+    const next = saveStateReducer(
+      { status: "saving", startedAt: new Date() },
+      { type: "connectionLost" },
+    );
+    expect(next).toEqual({ status: "paused" });
+  });
+
+  it("R9: connectionRestored from paused → idle", () => {
+    const next = saveStateReducer(
+      { status: "paused" },
+      { type: "connectionRestored" },
+    );
+    expect(next).toEqual({ status: "idle" });
+  });
+
+  it("R10: connectionLost from idle → paused (idempotent across source states)", () => {
+    const next = saveStateReducer({ status: "idle" }, { type: "connectionLost" });
+    expect(next).toEqual({ status: "paused" });
+  });
+
+  it("R11: connectionRestored from non-paused state is a no-op", () => {
+    const idle: SaveState = { status: "idle" };
+    const next = saveStateReducer(idle, { type: "connectionRestored" });
+    expect(next).toEqual(idle);
+  });
 });

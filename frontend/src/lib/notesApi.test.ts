@@ -81,4 +81,23 @@ describe("notesApi", () => {
     expect(result.error).toEqual(fakeError);
     expect(result.data).toBeUndefined();
   });
+
+  it("N4: updateNote attaches If-Match header when supplied", async () => {
+    putMock.mockResolvedValue({ data: undefined, error: undefined });
+    await updateNote(ScratchpadUUID, "x", "2026-05-06T12:00:00Z");
+    expect(putMock).toHaveBeenCalledWith("/notes/{id}", {
+      params: { path: { id: ScratchpadUUID } },
+      body: { content: "x" },
+      headers: { "If-Match": "2026-05-06T12:00:00Z" },
+    });
+  });
+
+  it("N5: updateNote omits If-Match header when not supplied", async () => {
+    putMock.mockResolvedValue({ data: undefined, error: undefined });
+    await updateNote(ScratchpadUUID, "x");
+    expect(putMock).toHaveBeenCalledWith("/notes/{id}", {
+      params: { path: { id: ScratchpadUUID } },
+      body: { content: "x" },
+    });
+  });
 });
