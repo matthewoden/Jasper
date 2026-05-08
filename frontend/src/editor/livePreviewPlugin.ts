@@ -1,24 +1,39 @@
 /**
- * livePreviewPlugin — Phase 5 spike (D-05). Walks the lezer-markdown
- * syntax tree on every relevant transaction, computes the cursor-
- * line set (multi-line selection per D-06), and emits Decoration.line
- * for headings + Decoration.mark/replace for EmphasisMark.
+ * livePreviewPlugin — Phase 5 production decoration plugin (D-01..D-09).
+ * Walks the lezer-markdown syntax tree on every relevant transaction,
+ * computes the cursor-line set (multi-line selection per D-06), and
+ * emits per-node decorations:
  *
- * SPIKE SCOPE — heading + EmphasisMark + IME gate + code-fence guard.
- * Plan 05-07 extends to: list bullets (D-04), blockquote (EDIT-05),
- * inline code (EDIT-06), HR (EDIT-07).
+ *   - Decoration.line for headings (cm-heading-1..6 — EDIT-02),
+ *     blockquote (cm-blockquote — EDIT-05), and code blocks
+ *     (cm-codeblock — D-02 visual).
+ *   - Decoration.mark for StrongEmphasis (cm-strong — EDIT-03),
+ *     Emphasis (cm-emphasis — EDIT-03), InlineCode (cm-inline-code
+ *     — EDIT-06).
+ *   - Decoration.replace for HIDEABLE marker nodes when their line
+ *     is OFF-cursor (HeaderMark, EmphasisMark, QuoteMark, ListMark,
+ *     LinkMark, URL, HardBreak, CodeMark — D-01) AND for HorizontalRule
+ *     via a small <hr> widget (EDIT-07).
+ *   - Decoration.mark with class cm-marker for the SAME hideable
+ *     nodes when their line IS on-cursor (markers visible-but-muted).
  *
- * D-09: HIDEABLE markers inside FencedCode or InlineCode never hide.
- * D-07/D-31: rebuild is skipped when view.composing; existing
- * decorations are mapped through u.changes to keep positions valid.
+ * Edge cases:
+ *   - D-06 Multi-line selection: every line touched by a selection
+ *     range stays in the cursor-line set; markers visible there.
+ *   - D-07/D-31 IME gate: u.view.composing → skip rebuild; map
+ *     existing decorations through u.changes instead.
+ *   - D-09 Code-fence guard: any HIDEABLE node nested inside
+ *     FencedCode is skipped (markers stay literal). InlineCode's
+ *     backticks ARE allowed to hide off-line per UI-SPEC line 323
+ *     ("Inline code backticks: Hidden when off-line") — the styled
+ *     monospace background carries the affordance.
  *
- * Decisions:
- * - Headings use Decoration.line (NOT Decoration.mark on text spans)
- *   per Pitfall 3 / EDIT-02 — line decoration on the wrapper, font-size
- *   on .cm-heading-N in CSS — prevents cursor jumps when crossing line.
- * - HeaderMark + EmphasisMark hide via Decoration.replace({}) (zero-
- *   width) when off-line, render via Decoration.mark({class: "cm-marker"})
- *   when on-line.
+ * Note for code-fence content: the language-specific grammars (Plan
+ * 05-07) are injected via markdown({codeLanguages: [...]}). The
+ * plugin's syntax-tree iteration receives FencedCode → CodeText
+ * children with whatever the inner language emitted; isInsideCode
+ * still trips on the FencedCode parent so emphasis-style markers
+ * inside `**not bold**` blocks are NOT hidden.
  *
  * Node names verified by spike (Plan 05-01 findings):
  * - Frontmatter (lowercase m) — NOT "FrontMatter"
@@ -26,6 +41,9 @@
  * - HeaderMark — `#` markers
  * - StrongEmphasis, Emphasis, EmphasisMark
  * - FencedCode, InlineCode
+ * - Blockquote, QuoteMark
+ * - ListMark, HorizontalRule
+ * - LinkMark, URL
  */
 import {
   Decoration,
@@ -33,6 +51,7 @@ import {
   EditorView,
   ViewPlugin,
   type ViewUpdate,
+  WidgetType,
 } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 import { RangeSetBuilder } from "@codemirror/state";
@@ -52,16 +71,57 @@ export const HEADING_LINE_CLASSES: Record<string, string> = {
   SetextHeading2: "cm-heading-2",
 };
 
-// SPIKE SCOPE: HeaderMark + EmphasisMark only.
-// Plan 05-07 extends with additional block/inline markers (see 05-SPIKE-FINDINGS.md).
+// Production scope (Plan 05-06): extend spike's heading + emphasis
+// marks with the SPIKE-FINDINGS recommendation list.
 export const HIDEABLE_MARKER_NODES = new Set<string>([
-  "HeaderMark",
-  "EmphasisMark",
+  "HeaderMark",   // # ## ###
+  "EmphasisMark", // * _ ** __
+  "QuoteMark",    // >
+  "ListMark",     // - + 1.
+  "LinkMark",     // [ ]
+  "URL",          // (href)
+  "HardBreak",    // trailing 2-space line break
+  "CodeMark",     // ` `` ``` (inline-code backticks; FencedCode guard
+                  //   prevents these hiding when nested in FencedCode)
 ]);
 
 export const STRONG_MARK_CLASS = "cm-strong";
 export const EM_MARK_CLASS = "cm-emphasis";
 export const VISIBLE_MARKER_CLASS = "cm-marker";
+
+// Block-level line decorations (production extends spike).
+export const BLOCKQUOTE_LINE_CLASS = "cm-blockquote";
+export const CODEBLOCK_LINE_CLASS = "cm-codeblock";
+export const INLINE_CODE_MARK_CLASS = "cm-inline-code";
+
+const blockquoteLineDeco = Decoration.line({ class: BLOCKQUOTE_LINE_CLASS });
+const codeblockLineDeco  = Decoration.line({ class: CODEBLOCK_LINE_CLASS });
+const inlineCodeMarkDeco = Decoration.mark({ class: INLINE_CODE_MARK_CLASS });
+
+// Block-node → line decoration map. Used by the line-decoration pass
+// to emit ONE Decoration.line per line that sits inside a Blockquote
+// or FencedCode block. Walk the line range; for each line whose
+// resolveInner block parent matches a key in this map, emit the deco.
+const BLOCK_LINE_DECOS: Record<string, Decoration> = {
+  Blockquote: blockquoteLineDeco,
+  FencedCode: codeblockLineDeco,
+};
+
+// EDIT-07 — HorizontalRule rendering. Decoration.replace with a tiny
+// widget that renders an <hr class="cm-hr">. The themeBridge styles
+// .cm-hr (border-color: var(--color-border), vertical margin 16px
+// per UI-SPEC §Spacing).
+class HRWidget extends WidgetType {
+  toDOM() {
+    const hr = document.createElement("hr");
+    hr.className = "cm-hr";
+    hr.setAttribute("aria-hidden", "true");
+    return hr;
+  }
+  eq() { return true; }
+  ignoreEvent() { return true; }
+}
+const hrDeco = Decoration.replace({ widget: new HRWidget() });
 
 /**
  * Compute the set of line numbers that contain the current selection.
@@ -79,13 +139,15 @@ export function computeCursorLines(view: EditorView): Set<number> {
 }
 
 /**
- * Walk the parent chain of a syntax node to detect code-block context.
- * D-09: if any ancestor is FencedCode or InlineCode, the marker must NOT be hidden.
+ * Walk the parent chain of a syntax node to detect fenced code context.
+ * D-09 amendment: ONLY FencedCode is the no-hide container.
+ * Inline code's backticks ARE allowed to hide off-line per UI-SPEC
+ * line 323 — the styled monospace background carries the affordance.
  */
 function isInsideCode(node: SyntaxNodeRef): boolean {
   let p = node.node.parent;
   while (p) {
-    if (p.name === "FencedCode" || p.name === "InlineCode") return true;
+    if (p.name === "FencedCode") return true;
     p = p.parent;
   }
   return false;
@@ -109,12 +171,12 @@ export function buildDecorations(view: EditorView): DecorationSet {
 
   // Collect decorations in two separate arrays to avoid RangeSetBuilder
   // ordering conflicts between zero-width line decorations and inline marks:
-  //   lineDecs  — Decoration.line entries (zero-width, from===to)
-  //   markDecs  — Decoration.mark / Decoration.replace (inline spans)
+  //   lineDecos  — Decoration.line entries (zero-width, from===to)
+  //   markDecos  — Decoration.mark / Decoration.replace (inline spans)
   //
   // RangeSetBuilder requires strictly sorted input by (from, startSide).
   // Line decorations at position P must be added BEFORE inline marks at P.
-  // We guarantee this by sorting lineDecs and markDecs independently and
+  // We guarantee this by sorting lineDecos and markDecos independently and
   // interleaving them with line-before-mark priority.
   const lineDecos: { from: number; deco: Decoration }[] = [];
   const markDecos: Entry[] = [];
@@ -124,7 +186,7 @@ export function buildDecorations(view: EditorView): DecorationSet {
       from,
       to,
       enter(node) {
-        // --- Heading line decoration (D-EDIT-02) ---
+        // --- Heading line decoration (EDIT-02) ---
         // Decoration.line on the cm-line wrapper. CSS targets .cm-line.cm-heading-N.
         const headingClass = HEADING_LINE_CLASSES[node.name];
         if (headingClass !== undefined) {
@@ -137,7 +199,33 @@ export function buildDecorations(view: EditorView): DecorationSet {
           return;
         }
 
-        // --- Emphasis span decorations (StrongEmphasis, Emphasis) ---
+        // --- Block-node line decorations (NEW: Blockquote, FencedCode) ---
+        // Apply line-deco to every line in the block's range.
+        if (BLOCK_LINE_DECOS[node.name]) {
+          const deco = BLOCK_LINE_DECOS[node.name];
+          let pos = node.from;
+          while (pos < node.to) {
+            const line = view.state.doc.lineAt(pos);
+            lineDecos.push({ from: line.from, deco });
+            if (line.to >= node.to) break;
+            pos = line.to + 1;
+          }
+          // Return false to continue iteration into children (QuoteMark etc.)
+          return;
+        }
+
+        // --- HorizontalRule (EDIT-07) ---
+        if (node.name === "HorizontalRule") {
+          markDecos.push({
+            from: node.from,
+            to: node.to,
+            deco: hrDeco,
+            sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
+          });
+          return;
+        }
+
+        // --- Emphasis span decorations (StrongEmphasis, Emphasis — EDIT-03) ---
         // Mark the full ** ... ** / * ... * span so CSS can style it.
         // inclusive: true sets the mark's startSide to -1, which satisfies
         // RangeSetBuilder's requirement that parent marks (startSide=-1) sort
@@ -162,12 +250,28 @@ export function buildDecorations(view: EditorView): DecorationSet {
           return;
         }
 
-        // --- Hideable marker decoration (HeaderMark, EmphasisMark) ---
+        // --- InlineCode (EDIT-06) ---
+        // Mark the full `...` span with cm-inline-code.
+        // D-09 amendment: InlineCode is NOT a no-hide container for its
+        // own CodeMark children — they hide off-line per UI-SPEC line 323.
+        // isInsideCode only guards against FencedCode.
+        if (node.name === "InlineCode") {
+          markDecos.push({
+            from: node.from,
+            to: node.to,
+            deco: inlineCodeMarkDeco,
+            sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
+          });
+          // Continue into children (CodeMark nodes) for marker hiding.
+          return;
+        }
+
+        // --- Hideable marker decoration (extended set — D-01) ---
         // Off-line → Decoration.replace({}) hides the marker character(s).
         // On-line  → Decoration.mark({class:"cm-marker"}) shows them styled.
-        // D-09: markers inside FencedCode or InlineCode are NEVER hidden.
+        // D-09: markers inside FencedCode are NEVER hidden (isInsideCode).
         if (HIDEABLE_MARKER_NODES.has(node.name)) {
-          if (isInsideCode(node)) return; // D-09
+          if (isInsideCode(node)) return; // D-09 FencedCode guard
           const lineNum = view.state.doc.lineAt(node.from).number;
           const onCursorLine = cursorLines.has(lineNum);
           markDecos.push({

@@ -1,13 +1,17 @@
 /**
  * frontmatterPlugin — emits Decoration.line with class "cm-frontmatter"
- * over the FrontMatter node produced by yamlFrontmatter({content: markdown()}).
+ * over the Frontmatter node produced by yamlFrontmatter({content: markdown()}).
  *
  * Phase 5 D-18, D-20 (CONTEXT.md). The class is styled by the
- * jasperTheme bridge (Plan 05-07) — this plugin only emits the class.
+ * jasperTheme bridge (Plan 05-04) — this plugin only emits the class.
  *
  * IME-safe: same composing-gate pattern as livePreviewPlugin (D-07/D-31).
  * When view.composing is true, existing decorations are mapped through
  * u.changes instead of rebuilding to avoid decoration churn during IME input.
+ *
+ * Assumption A2 verified (Plan 05-01 spike): the actual lezer node name is
+ * "Frontmatter" (lowercase 'm'), NOT "FrontMatter" as RESEARCH.md assumed.
+ * This is enforced by the FRONTMATTER_NODE_NAME constant below.
  */
 import {
   Decoration,
