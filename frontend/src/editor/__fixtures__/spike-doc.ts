@@ -37,3 +37,50 @@ body
 ## Heading B
 body
 ### Heading C`;
+
+// Production-scope fixtures added by Plan 05-06.
+
+export const LIST_DOC = `Some text.
+
+- Bullet one
+- Bullet two
+- Bullet three
+
+1. Numbered one
+2. Numbered two`;
+
+export const BLOCKQUOTE_DOC = `Plain paragraph.
+
+> A quoted line
+> Another quoted line
+
+After the quote.`;
+
+export const HR_DOC = `Above the rule.
+
+---
+
+Below the rule.`;
+
+export const INLINE_CODE_PROD_DOC = `Run \`npm install\` to start.`;
+
+export const ALL_FEATURES_DOC = `---
+title: Mixed
+---
+# Heading
+
+A paragraph with **bold** and *italic* and \`inline code\`.
+
+> Quote.
+
+- list item one
+- list item two
+
+---
+
+After.
+
+\`\`\`typescript
+const x = 1;
+\`\`\``;
+
