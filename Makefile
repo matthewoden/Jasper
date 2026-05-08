@@ -17,6 +17,11 @@ build:
 	rm -rf backend/internal/static/dist
 	mkdir -p backend/internal/static/dist
 	cp -R frontend/dist/. backend/internal/static/dist/
+	# Recreate .keep so a subsequent fresh checkout (or `git clean -dxf`
+	# followed by reset) keeps //go:embed all:dist compiling without
+	# requiring a build first. The .gitignore allowlist `!backend/internal/static/dist/.keep`
+	# protects this file from being treated as a build artifact.
+	touch backend/internal/static/dist/.keep
 	cd backend && go build -o ../bin/jasper ./cmd/jasper
 
 test:
