@@ -18,6 +18,7 @@ tags:
   - { name: admin, description: "Operational endpoints — migration status, full re-index" }
   - { name: tree, description: "File-tree projection over notes/ (TREE-01)" }
   - { name: folders, description: "Folder-only operations (TREE-04, TREE-05, TREE-06, TREE-07)" }
+  - { name: config, description: "User configuration (DESIGN.md §11) — theme, daily notes, editor preferences" }
 paths:
   /notes:
     get:
@@ -402,6 +403,52 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MigrationStatus"
+  /config:
+    get:
+      tags: [config]
+      operationId: getConfig
+      summary: Read user configuration
+      description: |
+        Returns the current config.json contents (DESIGN.md §11).
+        Phase 5 wires only the `theme` field to UI; other fields
+        ship with sensible defaults but are not yet surfaced
+        (UX-V2-01 will surface them in v2).
+      responses:
+        "200":
+          description: Current config
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Config" }
+    put:
+      tags: [config]
+      operationId: putConfig
+      summary: Replace user configuration (whole-document)
+      description: |
+        Writes config.json atomically via fsstore.AtomicWrite
+        (DATA-13: temp + fsync + rename + fsync(parent)).
+        Strict (D-40): unknown fields → 400 invalid_request.
+        The whole document is replaced — there is no PATCH semantic.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Config" }
+      responses:
+        "200":
+          description: Config saved; echoes the persisted document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Config" }
+        "400":
+          description: Invalid request (malformed body, unknown field, out-of-range numeric)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Save failed (filesystem error)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
   /ws:
     get:
       tags: [ws]
@@ -715,6 +762,52 @@ components:
             ROOT itself is implicit; folders nest via children[].
           items:
             $ref: "#/components/schemas/TreeNode"
+    Config:
+      type: object
+      required: [appName, dailyNotes, editor, theme]
+      additionalProperties: false   # D-40 strict — unknown keys → 400
+      properties:
+        appName:
+          type: string
+          minLength: 1
+          maxLength: 64
+          default: "Jasper"
+        theme:
+          type: string
+          enum: [dark, light]
+          default: dark
+        dailyNotes:
+          type: object
+          required: [folder, template]
+          additionalProperties: false
+          properties:
+            folder:
+              type: string
+              minLength: 1
+              maxLength: 64
+              default: "daily"
+            template:
+              type: string
+              maxLength: 1024
+              default: ""
+        editor:
+          type: object
+          required: [fontSize, lineHeight, vimMode]
+          additionalProperties: false
+          properties:
+            fontSize:
+              type: integer
+              minimum: 8
+              maximum: 32
+              default: 15
+            lineHeight:
+              type: number
+              minimum: 1
+              maximum: 3
+              default: 1.6
+            vimMode:
+              type: boolean
+              default: false
     Error:
       type: object
       required: [code, message]

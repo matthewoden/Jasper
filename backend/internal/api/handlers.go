@@ -57,6 +57,17 @@ type Server struct {
 	broadcaster notes.Broadcaster
 	log         *slog.Logger
 
+	// dataDir is the absolute path under which <dataDir>/storage/config.json
+	// lives (Plan 05-02 / 05-03). Phase 5 introduces this field so the new
+	// GetConfig + PutConfig handlers can reach the config package without
+	// a new constructor variant.
+	//
+	// Zero-value-safe: if NewServer (the legacy 2-arg form) is used, dataDir
+	// is "" and the GetConfig/PutConfig handlers return defaults rather than
+	// touching the filesystem. Only NewServerWithIndex (the 7-arg form below)
+	// wires a real path.
+	dataDir string
+
 	// reindexBusy serializes /admin/reindex calls per-Server.
 	// admin_reindex_handler.go uses TryLock to return 409
 	// "reindex_in_progress" when busy.
@@ -65,19 +76,17 @@ type Server struct {
 
 // NewServer keeps Phase 1's 2-arg signature so existing call sites and
 // tests continue to compile unchanged. Internally delegates to
-// NewServerWithIndex with nil status/runner/index/broadcaster so the
-// nilStatusProvider fallback applies and GetNotes / PostAdminReindex
-// degrade gracefully.
+// NewServerWithIndex with nil status/runner/index/broadcaster and an
+// empty dataDir so the nilStatusProvider fallback applies and
+// GetNotes / PostAdminReindex / GetConfig / PutConfig degrade gracefully.
 func NewServer(notesSvc *notes.Service, log *slog.Logger) *Server {
-	return NewServerWithIndex(notesSvc, nil, nil, nil, nil, log)
+	return NewServerWithIndex(notesSvc, nil, nil, nil, nil, log, "")
 }
 
-// NewServerWithIndex is the 6-arg constructor. Extends the Plan 02-04b
-// 5-arg form with a notes.Broadcaster for Phase 4 reindex broadcast
-// events (UX-04). Nil broadcaster → no reindex events (graceful
-// degradation for tests).
+// NewServerWithIndex is the 7-arg constructor. Extends the Phase 4 6-arg
+// form with a dataDir for Plan 05-03's GetConfig + PutConfig handlers.
 //
-// Argument order: notesSvc, status, runner, index, broadcaster, log.
+// Argument order: notesSvc, status, runner, index, broadcaster, log, dataDir.
 //
 // Plan 02-06's composition root passes a *migrate.Runner for both
 // status (it implements StatusProvider) and runner (the same value),
@@ -93,6 +102,7 @@ func NewServerWithIndex(
 	index notes.Index,
 	broadcaster notes.Broadcaster,
 	log *slog.Logger,
+	dataDir string,
 ) *Server {
 	if log == nil {
 		log = slog.Default()
@@ -107,6 +117,7 @@ func NewServerWithIndex(
 		index:       index,
 		broadcaster: broadcaster,
 		log:         log,
+		dataDir:     dataDir,
 	}
 }
 

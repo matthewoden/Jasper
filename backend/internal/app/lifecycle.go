@@ -275,7 +275,7 @@ func (a *App) Run(ctx context.Context) error {
 	// a.runner implements migrate.StatusProvider, so it's passed twice:
 	// once as the status reader for /admin/status and once as the
 	// runner for /admin/reindex.
-	apiServer := api.NewServerWithIndex(notesSvc, a.runner, a.runner, a.indexer, hub, a.cfg.Logger)
+	apiServer := api.NewServerWithIndex(notesSvc, a.runner, a.runner, a.indexer, hub, a.cfg.Logger, a.cfg.DataDir)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -285,7 +285,8 @@ func (a *App) Run(ctx context.Context) error {
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBodyBytes(maxRequestBodyBytes))
-		r.Use(sessionIDMiddleware) // Phase 4 — SYNC-02 X-Session-ID extraction
+		r.Use(sessionIDMiddleware)            // Phase 4 — SYNC-02 X-Session-ID extraction
+		r.Use(api.ConfigStrictBodyMiddleware) // D-40: strict JSON for PUT /config
 		api.HandlerFromMux(si, r)
 		// Mount /ws AFTER HandlerFromMux — chi uses last-registration-wins,
 		// so this overrides the oapi-codegen GetApiV1Ws stub (which returns

@@ -148,7 +148,7 @@ func New(cfg Config) (*App, error) {
 	// lifecycle.Run rebuilds the Service with a real *index.Indexer
 	// after sqlite.Open + migrate.Run succeed.
 	notesSvc := notes.NewService(files, nil, nil, cfg.Logger)
-	apiServer := api.NewServer(notesSvc, cfg.Logger)
+	apiServer := api.NewServerWithIndex(notesSvc, nil, nil, nil, nil, cfg.Logger, cfg.DataDir)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -160,6 +160,7 @@ func New(cfg Config) (*App, error) {
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBodyBytes(maxRequestBodyBytes))
+		r.Use(api.ConfigStrictBodyMiddleware) // D-40: strict JSON for PUT /config
 		api.HandlerFromMux(si, r)
 	})
 

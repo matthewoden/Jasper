@@ -193,6 +193,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read user configuration
+         * @description Returns the current config.json contents (DESIGN.md §11).
+         *     Phase 5 wires only the `theme` field to UI; other fields
+         *     ship with sensible defaults but are not yet surfaced
+         *     (UX-V2-01 will surface them in v2).
+         */
+        get: operations["getConfig"];
+        /**
+         * Replace user configuration (whole-document)
+         * @description Writes config.json atomically via fsstore.AtomicWrite
+         *     (DATA-13: temp + fsync + rename + fsync(parent)).
+         *     Strict (D-40): unknown fields → 400 invalid_request.
+         *     The whole document is replaced — there is no PATCH semantic.
+         */
+        put: operations["putConfig"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ws": {
         parameters: {
             query?: never;
@@ -445,6 +475,29 @@ export interface components {
              *     ROOT itself is implicit; folders nest via children[].
              */
             root: components["schemas"]["TreeNode"][];
+        };
+        Config: {
+            /** @default Jasper */
+            appName: string;
+            /**
+             * @default dark
+             * @enum {string}
+             */
+            theme: "dark" | "light";
+            dailyNotes: {
+                /** @default daily */
+                folder: string;
+                /** @default  */
+                template: string;
+            };
+            editor: {
+                /** @default 15 */
+                fontSize: number;
+                /** @default 1.6 */
+                lineHeight: number;
+                /** @default false */
+                vimMode: boolean;
+            };
         };
         Error: {
             /** @example not_found */
@@ -1025,6 +1078,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MigrationStatus"];
+                };
+            };
+        };
+    };
+    getConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current config */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Config"];
+                };
+            };
+        };
+    };
+    putConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Config"];
+            };
+        };
+        responses: {
+            /** @description Config saved; echoes the persisted document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Config"];
+                };
+            };
+            /** @description Invalid request (malformed body, unknown field, out-of-range numeric) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Save failed (filesystem error) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
