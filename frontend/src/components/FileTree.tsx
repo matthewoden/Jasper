@@ -293,6 +293,18 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   // next interaction. See resetTreeListLayout helper above.
   const treeRef = useRef<TreeApi<ArboristNode> | null>(null);
 
+  // Bug A + B native DnD fix: track the currently dragged nodes in a ref
+  // so our window-level drop handler can access them even after react-dnd
+  // has cleared its internal drag state via endDrag().
+  //
+  // Populated by our window-level 'dragstart' listener (fires after
+  // react-dnd's handleTopDragStart + arborist's dnd.dragStart dispatch).
+  // Cleared on 'drop' (consumed) and 'dragend' (cleanup).
+  const nativeDragInfoRef = useRef<{
+    dragIds: string[];
+    dragNodes: NodeApi<ArboristNode>[];
+  } | null>(null);
+
   const data = useMemo(() => (tree ? adaptTree(tree) : []), [tree]);
 
   // Gap R2-3 — when the wire shape changes (a new node was added by
@@ -595,6 +607,121 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     [muts, refresh, surfaceError],
   );
 
+  // ──────────────────────────────────────────────────────────────────
+  // Bug A + B native DnD bypass — window-level listeners registered
+  // AFTER react-dnd's DndProvider mounts (useEffect fires post-commit).
+  //
+  // Root cause: react-dnd's HTML5Backend registers handleTopDragOver on
+  // window. When canDrop() returns false (broken arborist state during
+  // folder-to-folder drags, or non-react-dnd targets like the trailing
+  // dropzone), it sets dataTransfer.dropEffect='none'. Chrome never
+  // fires the native drop event in that case, so no onMove fires.
+  //
+  // Fix: register our own dragover + drop listeners on window AFTER
+  // react-dnd's (ordering guaranteed because useEffect runs after
+  // DndProvider's synchronous mount). Our dragover overrides dropEffect
+  // back to 'move' for our custom targets; our drop calls handleMove
+  // directly for folder-to-folder drags (bypassing broken react-dnd).
+  // ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    // dragstart: capture arborist drag state right after react-dnd's
+    // handleTopDragStart fires (it calls item() in useDrag which
+    // dispatches dnd.dragStart to arborist's Redux store). Our listener
+    // is at window bubble phase, registered later than react-dnd's, so
+    // it fires after handleTopDragStart has set dragIds.
+    const handleNativeDragStart = () => {
+      const api = treeRef.current;
+      if (!api) {
+        nativeDragInfoRef.current = null;
+        return;
+      }
+      const nodes = api.dragNodes;
+      if (!nodes.length) {
+        nativeDragInfoRef.current = null;
+        return;
+      }
+      nativeDragInfoRef.current = {
+        dragIds: api.state.dnd.dragIds.slice(),
+        dragNodes: nodes,
+      };
+    };
+
+    // dragover: fires AFTER react-dnd's handleTopDragOver (same window
+    // bubble phase, registered later). For folder rows and the trailing
+    // dropzone, override dropEffect back to 'move' so Chrome will fire
+    // the drop event.
+    const handleNativeDragOver = (e: DragEvent) => {
+      if (!nativeDragInfoRef.current) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const folderRow = target.closest('[data-tree-row-kind="folder"]');
+      const trailingZone = target.closest(
+        '[data-testid="tree-trailing-dropzone"]',
+      );
+      if (!folderRow && !trailingZone) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    };
+
+    // drop: fires AFTER react-dnd's handleTopDrop (same window bubble
+    // phase, registered later). By then react-dnd has called endDrag()
+    // which clears its own monitor state. Arborist's dnd.dragEnd()
+    // fires on the following dragend event, but React root's synthetic
+    // onDrop (which handles the trailing dropzone) has already fired
+    // before this point. We only intercept folder-to-folder drops here.
+    //
+    // We use nativeDragInfoRef (captured at dragstart) because
+    // api.dragNodes may be empty after endDrag().
+    const handleNativeDrop = (e: DragEvent) => {
+      const info = nativeDragInfoRef.current;
+      nativeDragInfoRef.current = null;
+      if (!info) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      // Folder row drop (Bug B) — only handle folder-source drags.
+      // Note drags use arborist's own drop path (not broken for notes).
+      const folderRow = target.closest('[data-tree-row-kind="folder"]');
+      if (folderRow) {
+        const sourceNode = info.dragNodes[0];
+        if (!sourceNode || sourceNode.data.data.kind !== "folder") return;
+        e.preventDefault();
+        const folderPath = folderRow.getAttribute("data-tree-row");
+        if (!folderPath) return;
+        const api = treeRef.current;
+        if (!api) return;
+        const parentId = "folder:" + folderPath;
+        const parentNode = api.get(parentId);
+        void handleMove({
+          dragIds: info.dragIds,
+          dragNodes: info.dragNodes,
+          parentId,
+          parentNode,
+          index: 0,
+        });
+        return;
+      }
+      // Trailing dropzone (Bug A) — handled by the React onDrop on the
+      // div which fires before this window-level handler. No action
+      // needed here; just let nativeDragInfoRef stay cleared (done above).
+    };
+
+    const handleNativeDragEnd = () => {
+      nativeDragInfoRef.current = null;
+    };
+
+    window.addEventListener("dragstart", handleNativeDragStart);
+    window.addEventListener("dragover", handleNativeDragOver);
+    window.addEventListener("drop", handleNativeDrop);
+    window.addEventListener("dragend", handleNativeDragEnd);
+    return () => {
+      window.removeEventListener("dragstart", handleNativeDragStart);
+      window.removeEventListener("dragover", handleNativeDragOver);
+      window.removeEventListener("drop", handleNativeDrop);
+      window.removeEventListener("dragend", handleNativeDragEnd);
+    };
+  }, [handleMove]);
+
   // disableDrop returns TRUE to BLOCK the drop — that's the
   // react-arborist contract. Cycle prevention: dragging a folder onto
   // itself or any of its descendants (T-03-07-04 mitigation).
@@ -709,15 +836,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         // the actual rendered height while internal scroll handles
         // virtualization (PERF-02 — 1,000 nodes).
         height={9999}
-        // Bug A fix: paddingBottom extends the last row's drop zone into the
-        // empty trailing area of the sidebar. react-arborist's outer-drop-hook
-        // fires hover events over the empty space but has no `drop` handler,
-        // so releases over the raw empty space are silently discarded. With
-        // paddingBottom the bottom 200 px of the scroll list are covered by
-        // the LAST ROW's drop hook, which does fire onMove. Value chosen to
-        // cover a typical sidebar height without inflating the virtual
-        // scroll content excessively.
-        paddingBottom={200}
       >
         {(props) => (
           <TreeRow
@@ -752,6 +870,39 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           />
         )}
       </Tree>
+      {/* Bug A fix: native HTML5 drop zone covering the empty trailing area
+          below the last tree row. react-arborist's useOuterDrop has no drop
+          handler (only hover), so mouse-up over empty space is silently
+          discarded. This div fills the remaining sidebar space and calls
+          handleMove directly when a drag is released here, moving the node
+          to the root level. */}
+      <div
+        data-testid="tree-trailing-dropzone"
+        style={{ minHeight: 150, flexGrow: 1 }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(e) => {
+          // Bug A: fires at React root delegation level — BEFORE react-dnd's
+          // window-level handleTopDrop calls endDrag(). So api.dragNodes is
+          // still populated. nativeDragInfoRef is belt-and-suspenders.
+          e.preventDefault();
+          const api = treeRef.current;
+          const nodes =
+            (api?.dragNodes?.length ? api.dragNodes : null) ??
+            nativeDragInfoRef.current?.dragNodes ??
+            null;
+          if (!nodes || nodes.length === 0) return;
+          void handleMove({
+            dragIds: nodes.map((n) => n.id),
+            dragNodes: nodes,
+            parentId: null,
+            parentNode: null,
+            index: 0,
+          });
+        }}
+      />
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         onOpenChange={(o) => {
