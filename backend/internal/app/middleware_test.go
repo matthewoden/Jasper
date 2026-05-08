@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5/middleware"
+
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -108,5 +110,109 @@ func TestSessionIDMiddleware_RejectsC1Controls(t *testing.T) {
 				t.Errorf("C1 control %q should coerce to empty; got %q", tc.sid, captured)
 			}
 		})
+	}
+}
+
+// Tests for securityHeadersMiddleware (Plan 05-04 — SECURITY-01, SECURITY-04, D-33..D-35).
+
+// TestSecurityHeadersMiddleware_SetsHeadersOnEveryResponse — happy
+// path: every response carries CSP + Referrer-Policy + the defensive
+// trio. Verbatim header value match for CSP (D-33 LOCKED).
+func TestSecurityHeadersMiddleware_SetsHeadersOnEveryResponse(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+	h := securityHeadersMiddleware(inner)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notes", nil)
+	h.ServeHTTP(rec, req)
+
+	if got, want := rec.Header().Get("Content-Security-Policy"), cspHeaderValue; got != want {
+		t.Errorf("CSP:\n got  %q\n want %q", got, want)
+	}
+	if got, want := rec.Header().Get("Referrer-Policy"), "no-referrer"; got != want {
+		t.Errorf("Referrer-Policy: got %q, want %q", got, want)
+	}
+	if got, want := rec.Header().Get("X-Content-Type-Options"), "nosniff"; got != want {
+		t.Errorf("X-Content-Type-Options: got %q, want %q", got, want)
+	}
+	if got, want := rec.Header().Get("X-Frame-Options"), "DENY"; got != want {
+		t.Errorf("X-Frame-Options: got %q, want %q", got, want)
+	}
+}
+
+// TestSecurityHeadersMiddleware_HeadersPresentOn500 — Recoverer
+// returns 500 when the inner handler panics. Headers MUST be set
+// before the panic (we set them first, THEN call next.ServeHTTP),
+// so the 500 response carries them too. D-35 verbatim.
+func TestSecurityHeadersMiddleware_HeadersPresentOn500(t *testing.T) {
+	inner := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		panic("boom")
+	})
+	// Stack: securityHeaders → middleware.Recoverer → inner-that-panics.
+	// Recoverer wraps the panic and emits a 500. The response must still
+	// have the security headers since we set them BEFORE next.ServeHTTP.
+	recovered := middleware.Recoverer(inner)
+	h := securityHeadersMiddleware(recovered)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notes", nil)
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != 500 {
+		t.Fatalf("status: got %d, want 500", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Security-Policy"); got != cspHeaderValue {
+		t.Errorf("CSP missing on 500 panic response: got %q", got)
+	}
+	if got := rec.Header().Get("Referrer-Policy"); got != "no-referrer" {
+		t.Errorf("Referrer-Policy missing on 500 panic response: got %q", got)
+	}
+}
+
+// TestSecurityHeadersMiddleware_CSPDirectives — assert each named
+// directive is present in the CSP header value. Catches drift where
+// someone reorders or accidentally drops one.
+func TestSecurityHeadersMiddleware_CSPDirectives(t *testing.T) {
+	wantDirectives := []string{
+		"default-src 'self'",
+		"img-src 'self' data: blob:",
+		"script-src 'self'",
+		"connect-src 'self' ws: wss:",
+		"font-src 'self' data:",
+		"style-src 'self' 'unsafe-inline'",
+	}
+	for _, d := range wantDirectives {
+		if !strings.Contains(cspHeaderValue, d) {
+			t.Errorf("cspHeaderValue missing directive %q\n got %q", d, cspHeaderValue)
+		}
+	}
+	// Negative: no 'unsafe-eval' anywhere.
+	if strings.Contains(cspHeaderValue, "'unsafe-eval'") {
+		t.Errorf("cspHeaderValue must NOT contain 'unsafe-eval'")
+	}
+}
+
+// TestSecurityHeadersMiddleware_UsesSetNotAdd — defense-in-depth:
+// if a downstream handler re-Sets the same header, the value is
+// replaced, not duplicated. Pitfall: Header().Add accumulates.
+func TestSecurityHeadersMiddleware_UsesSetNotAdd(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Downstream handler attempts to set Referrer-Policy again.
+		w.Header().Set("Referrer-Policy", "strict-origin")
+		w.WriteHeader(200)
+	})
+	h := securityHeadersMiddleware(inner)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	h.ServeHTTP(rec, req)
+
+	// Downstream Set wins (last writer); but there should be NO
+	// duplicate values for the same header — Header().Values length 1.
+	if got := rec.Header().Values("Referrer-Policy"); len(got) != 1 {
+		t.Errorf("Referrer-Policy values: got %d, want 1; values=%v", len(got), got)
 	}
 }

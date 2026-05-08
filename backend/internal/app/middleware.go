@@ -103,3 +103,57 @@ func maxBodyBytes(limit int64) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// cspHeaderValue is the strict Content-Security-Policy applied to every
+// response (D-33 / SECURITY-01 verbatim).
+//
+//	default-src 'self'               — no third-party origins for any
+//	                                   resource type by default
+//	img-src 'self' data: blob:       — internal images + inline data:
+//	                                   + the external-image widget's
+//	                                   blob URLs (Plan 05-08)
+//	script-src 'self'                — NO inline scripts, NO eval; the
+//	                                   theme bootstrap (Plan 05-10)
+//	                                   ships as /theme-bootstrap.js,
+//	                                   NOT as <script>...</script>
+//	connect-src 'self' ws: wss:      — fetch + WebSocket to same-origin
+//	                                   only (Phase 4 /ws is same-origin)
+//	font-src 'self' data:            — system + base64 fonts only
+//	style-src 'self' 'unsafe-inline' — Tailwind v4 + Radix emit inline
+//	                                   styles at runtime; v1 accepts
+//	                                   'unsafe-inline'. Phase 8+
+//	                                   revisits with nonce-based CSP
+//	                                   per CONTEXT.md Deferred Ideas.
+const cspHeaderValue = "default-src 'self'; " +
+	"img-src 'self' data: blob:; " +
+	"script-src 'self'; " +
+	"connect-src 'self' ws: wss:; " +
+	"font-src 'self' data:; " +
+	"style-src 'self' 'unsafe-inline'"
+
+// securityHeadersMiddleware emits CSP (SECURITY-01) and
+// Referrer-Policy: no-referrer (SECURITY-04) on EVERY response —
+// HTML, API JSON, attachments, the /ws upgrade response, and the
+// boot-error static pages from disk_full_handler.go.
+//
+// Mount order (D-35): mount AFTER middleware.RequestID + Recoverer
+// and BEFORE requestLogger so even Recoverer-wrapped 500 panic
+// responses carry the headers, and the request log line is emitted
+// for a request that already had its security headers set.
+//
+// Idempotency: uses w.Header().Set (NOT Add) so a downstream handler
+// that re-sets the same header overwrites cleanly without duplicates
+// (Pitfall: Add accumulates; Set replaces).
+//
+// The companion defensive-trio headers (X-Content-Type-Options,
+// X-Frame-Options) cost nothing and complement the strict CSP.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", cspHeaderValue)
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		next.ServeHTTP(w, r)
+	})
+}
