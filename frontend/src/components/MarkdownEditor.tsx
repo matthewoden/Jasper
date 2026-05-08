@@ -45,6 +45,7 @@ import { jasperEditorTheme, jasperSyntaxHighlighting } from "../editor/themeBrid
 import { livePreviewPlugin } from "../editor/livePreviewPlugin";
 import { frontmatterPlugin } from "../editor/frontmatterPlugin";
 import { codeLanguages } from "../editor/codeLanguages";
+import { externalImagePlugin } from "../editor/externalImagePlugin";
 
 /**
  * MarkdownEditorRef — the ref API EditorPane consumes (D-26 LOCKED).
@@ -117,6 +118,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             jasperSyntaxHighlighting,
             frontmatterPlugin,
             livePreviewPlugin,
+            externalImagePlugin, // Plan 05-08 — SECURITY-03 external image gate
             keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
             EditorView.updateListener.of((u) => {
               if (!u.docChanged) return;
