@@ -427,6 +427,16 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
             return i === -1 ? "" : d.path.slice(0, i);
           })();
           const newPath = composeNewPath(parent, newValue + ".md");
+          // Bug 5 fix (same-path guard): if the computed new path is identical to
+          // the current path, the file is already correctly named. This happens when
+          // the user accepts the placeholder name for a newly created note (isNew=true
+          // path in RenameInput). Skip the API call and close cleanly — the backend
+          // would otherwise reject the same-path move with ErrCaseCollision (409)
+          // because MoveFile's target-exists check fires before it detects old==new.
+          if (newPath === d.path) {
+            useTreeStore.getState().endRename();
+            return;
+          }
           await muts.moveNote(d.id, newPath);
 
           // Plan 03-22 (Gap R2-6) — Direction B: bidirectional binding
@@ -493,6 +503,14 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
             return i === -1 ? "" : d.path.slice(0, i);
           })();
           const newPath = composeNewPath(parent, newValue);
+          // Bug 5 fix (same-path guard): same as note branch above — if the computed
+          // new path is identical to the current path, close the rename cleanly without
+          // an API call. The backend rejects a same-path folder move with ErrCycle (400)
+          // via isPathInside(same, same) → true.
+          if (newPath === d.path) {
+            useTreeStore.getState().endRename();
+            return;
+          }
           await muts.moveFolder(d.path, newPath);
         }
         // Plan 03-09 (Gap 1): the mutator already refreshed the tree

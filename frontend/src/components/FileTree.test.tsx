@@ -1177,15 +1177,20 @@ describe('Bug F — file/folder duplicate-name validation', () => {
     // value 'untitled' while a sibling note 'untitled.md' exists.
     expect(screen.queryByText('Already exists.')).not.toBeInTheDocument();
 
-    // The user accepts the placeholder name by pressing Enter — the move
-    // should fire (isNew path: same-name is a commit, not a cancel).
+    // The user accepts the placeholder name by pressing Enter.
+    // Bug 5 fix: same-path guard in handleCommitRename skips the API call
+    // entirely when newPath === d.path (the folder is already correctly named).
+    // moveFolder must NOT be called — the rename input should close cleanly.
     const input = document.querySelector(
       "input[type='text']",
     ) as HTMLInputElement;
     fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => {
-      expect(muts.moveFolder).toHaveBeenCalledWith('untitled', 'untitled');
+      // endRename() should have fired, closing the input.
+      expect(document.querySelector("input[type='text']")).toBeNull();
     });
+    // moveFolder must NOT have been called — same-path is a no-op.
+    expect(muts.moveFolder).not.toHaveBeenCalled();
   });
 });
 
