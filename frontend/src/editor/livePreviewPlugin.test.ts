@@ -1,9 +1,12 @@
 /**
- * livePreviewPlugin.test.ts — vitest spike suite for the Live Preview
- * decoration plugin. Covers: heading line decoration, emphasis marks,
- * multi-line selection (D-06), code-fence guard (D-09), IME gate (D-07/D-31).
+ * livePreviewPlugin.test.ts — vitest suite for the Live Preview decoration
+ * plugin. Covers: heading line decoration, emphasis marks, multi-line
+ * selection (D-06), code-fence guard (D-09), IME gate (D-07/D-31), and
+ * production-scope additions from Plan 05-06: list bullets (EDIT-04),
+ * blockquote (EDIT-05), inline code (EDIT-06), HR (EDIT-07).
  *
- * Phase 5 Plan 05-01 (spike). Per TDD gate sequence:
+ * Phase 5 Plan 05-01 (spike) → extended by Plan 05-06 (production scope).
+ * Per TDD gate sequence:
  *   RED  → this file (failing; livePreviewPlugin.ts not yet written)
  *   GREEN → implement livePreviewPlugin.ts
  *   REFACTOR → (if needed)
@@ -25,6 +28,11 @@ import {
   CODE_FENCE_DOC,
   INLINE_CODE_DOC,
   MULTI_LINE_SELECTION_DOC,
+  LIST_DOC,
+  BLOCKQUOTE_DOC,
+  HR_DOC,
+  ALL_FEATURES_DOC,
+  INLINE_CODE_PROD_DOC,
 } from "./__fixtures__/spike-doc";
 
 // ---------------------------------------------------------------------------
@@ -258,18 +266,27 @@ describe("livePreviewPlugin / code-fence-guard (D-09)", () => {
     expect(replaceAtFence.length).toBe(0);
   });
 
-  it("does NOT hide EmphasisMark inside an inline code span", () => {
-    // INLINE_CODE_DOC: Some `**not bold inside code**` here.
-    // Cursor at position 0 (start of line).
-    const view = makeView(INLINE_CODE_DOC, 0);
+  it("InlineCode is rendered as cm-inline-code mark; backticks hide off-line per UI-SPEC §Live Preview", () => {
+    // INLINE_CODE_PROD_DOC: "Run `npm install` to start."
+    // Cursor at position 0 (start of line, which IS the inline code line).
+    // Verify InlineCode emits a cm-inline-code mark decoration.
+    const view = makeView(INLINE_CODE_PROD_DOC, 0);
     views.push(view);
 
     const decos = collectDecorations(view);
+    // InlineCode mark decoration should be present
+    const inlineCodeDecos = decos.filter((d) => d.class === "cm-inline-code");
+    expect(inlineCodeDecos.length).toBeGreaterThan(0);
+
+    // Also verify spike regression: INLINE_CODE_DOC (emphasis inside backticks)
+    // — lezer does not produce EmphasisMark nodes inside InlineCode verbatim
+    // content, so there are no replace decorations at that position regardless.
+    const spikeView = makeView(INLINE_CODE_DOC, 0);
+    views.push(spikeView);
+    const spikeDecos = collectDecorations(spikeView);
     const inlineCodePos = INLINE_CODE_DOC.indexOf("**not bold");
     expect(inlineCodePos).toBeGreaterThan(-1);
-
-    // No Decoration.replace should cover that position
-    const replaceAtInlineCode = decos.filter(
+    const replaceAtInlineCode = spikeDecos.filter(
       (d) => d.isReplace && d.from <= inlineCodePos && d.to >= inlineCodePos
     );
     expect(replaceAtInlineCode.length).toBe(0);
@@ -361,5 +378,171 @@ describe("computeCursorLines", () => {
     expect(lines.has(5)).toBe(true);
 
     view.destroy();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Production scope tests (Plan 05-06): list bullets, blockquote,
+// inline code, HR — EDIT-04..EDIT-07.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("livePreviewPlugin / list-bullets (EDIT-04 / D-04)", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  it("ListMark hides via Decoration.replace when cursor is off the list line", () => {
+    // LIST_DOC line 1: "Some text." — put cursor here, list starts line 3
+    const view = makeView(LIST_DOC, 0);
+    views.push(view);
+
+    const decos = collectDecorations(view);
+    // Look for a Decoration.replace covering a ListMark range.
+    // In lezer-markdown: unordered ListMark text = "-" (just the dash),
+    // ordered ListMark text = "1." (digit + dot, no trailing space).
+    const found = decos.find((d) => {
+      if (!d.isReplace) return false;
+      const text = view.state.doc.sliceString(d.from, d.to);
+      return text === "-" || /^\d+\.$/.test(text);
+    });
+    expect(found).toBeDefined();
+  });
+
+  it("ListMark shows as cm-marker when cursor IS on the list line", () => {
+    // Place cursor inside "- Bullet one" — the ListMark should be cm-marker
+    const listLineStart = LIST_DOC.indexOf("- Bullet one");
+    expect(listLineStart).toBeGreaterThan(-1);
+    const view = makeView(LIST_DOC, listLineStart + 2); // inside the bullet text
+    views.push(view);
+
+    const decos = collectDecorations(view);
+    const markerDecos = decos.filter((d) => d.class === "cm-marker");
+    expect(markerDecos.length).toBeGreaterThan(0);
+  });
+});
+
+describe("livePreviewPlugin / blockquote (EDIT-05)", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  it("Blockquote node lines emit cm-blockquote line decoration", () => {
+    const view = makeView(BLOCKQUOTE_DOC, 0);
+    views.push(view);
+
+    const decos = collectDecorations(view);
+    const blockquoteDecos = decos.filter((d) => d.class === "cm-blockquote");
+    expect(blockquoteDecos.length).toBeGreaterThan(0);
+  });
+
+  it("both quoted lines receive cm-blockquote decoration", () => {
+    // BLOCKQUOTE_DOC has two "> " lines — both should get cm-blockquote
+    const view = makeView(BLOCKQUOTE_DOC, 0);
+    views.push(view);
+
+    const decos = collectDecorations(view);
+    const blockquoteDecos = decos.filter((d) => d.class === "cm-blockquote");
+    // Two quoted lines: "> A quoted line" and "> Another quoted line"
+    expect(blockquoteDecos.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("livePreviewPlugin / horizontal-rule (EDIT-07)", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  it("HorizontalRule node emits Decoration.replace with HRWidget rendering <hr class='cm-hr'>", () => {
+    const view = makeView(HR_DOC, 0);
+    views.push(view);
+
+    const plugin = view.plugin(livePreviewPlugin);
+    expect(plugin).not.toBeNull();
+
+    let foundHRWidget = false;
+    const cursor = plugin!.decorations.iter();
+    while (cursor.value !== null) {
+      const spec = (cursor.value as unknown as { spec: Record<string, unknown> }).spec;
+      const widget = spec?.widget as { toDOM?: () => Element } | undefined;
+      if (widget && typeof widget.toDOM === "function") {
+        const dom = widget.toDOM();
+        if (dom.tagName === "HR" && dom.classList.contains("cm-hr")) {
+          foundHRWidget = true;
+          break;
+        }
+      }
+      cursor.next();
+    }
+    expect(foundHRWidget).toBe(true);
+  });
+
+  it("HRWidget has aria-hidden attribute for screen-reader hygiene", () => {
+    const view = makeView(HR_DOC, 0);
+    views.push(view);
+
+    const plugin = view.plugin(livePreviewPlugin);
+    expect(plugin).not.toBeNull();
+
+    let ariaHidden = false;
+    const cursor = plugin!.decorations.iter();
+    while (cursor.value !== null) {
+      const spec = (cursor.value as unknown as { spec: Record<string, unknown> }).spec;
+      const widget = spec?.widget as { toDOM?: () => Element } | undefined;
+      if (widget && typeof widget.toDOM === "function") {
+        const dom = widget.toDOM();
+        if (dom.tagName === "HR" && dom.getAttribute("aria-hidden") === "true") {
+          ariaHidden = true;
+          break;
+        }
+      }
+      cursor.next();
+    }
+    expect(ariaHidden).toBe(true);
+  });
+});
+
+describe("livePreviewPlugin / all-features mixed doc", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  it("ALL_FEATURES_DOC produces decorations for each feature category without throwing", () => {
+    const view = makeView(ALL_FEATURES_DOC, 0);
+    views.push(view);
+
+    const decos = collectDecorations(view);
+    const classes = new Set<string>(
+      decos.map((d) => d.class).filter((c): c is string => !!c)
+    );
+
+    // We expect at LEAST one decoration with each of these classes:
+    //   cm-heading-1, cm-strong, cm-emphasis, cm-blockquote, cm-codeblock
+    // (cm-frontmatter is owned by frontmatterPlugin — not checked here)
+    expect(classes.has("cm-heading-1")).toBe(true);
+    expect(classes.has("cm-strong")).toBe(true);
+    expect(classes.has("cm-emphasis")).toBe(true);
+    expect(classes.has("cm-blockquote")).toBe(true);
+    expect(classes.has("cm-codeblock")).toBe(true);
+  });
+
+  it("ALL_FEATURES_DOC includes cm-inline-code mark", () => {
+    const view = makeView(ALL_FEATURES_DOC, 0);
+    views.push(view);
+
+    const decos = collectDecorations(view);
+    const inlineCodeDecos = decos.filter((d) => d.class === "cm-inline-code");
+    expect(inlineCodeDecos.length).toBeGreaterThan(0);
   });
 });

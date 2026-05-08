@@ -96,7 +96,10 @@ export const INLINE_CODE_MARK_CLASS = "cm-inline-code";
 
 const blockquoteLineDeco = Decoration.line({ class: BLOCKQUOTE_LINE_CLASS });
 const codeblockLineDeco  = Decoration.line({ class: CODEBLOCK_LINE_CLASS });
-const inlineCodeMarkDeco = Decoration.mark({ class: INLINE_CODE_MARK_CLASS });
+// inclusive: true → startSide=-1, same as parent span marks (StrongEmphasis,
+// Emphasis). Required so InlineCode sorts before its CodeMark children at the
+// same `from` position (RangeSetBuilder startSide ordering constraint).
+const inlineCodeMarkDeco = Decoration.mark({ class: INLINE_CODE_MARK_CLASS, inclusive: true });
 
 // Block-node → line decoration map. Used by the line-decoration pass
 // to emit ONE Decoration.line per line that sits inside a Blockquote
