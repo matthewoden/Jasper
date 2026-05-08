@@ -27,6 +27,16 @@
  * even though it's a no-op (research §3.4). Symmetric to Plan 03-11's
  * computeMoveTarget same-parent guard for the drag path.
  *
+ * Bug D / isNew exception to Gap R2-5:
+ * When isNew=true (the node was just created and has an auto-generated
+ * placeholder name), pressing Enter/Tab/blur without changing the
+ * placeholder must COMMIT (keep the file with the placeholder name)
+ * rather than cancel. The Gap R2-5 short-circuit only routes to
+ * onCancel for established-file renames (isNew falsy). For isNew nodes
+ * Escape still cancels (and TreeRow.handleCancelRename then deletes the
+ * ephemeral node), but Enter/Tab/blur-without-change now correctly
+ * commits the placeholder so the file is kept.
+ *
  * The .md extension is stripped by the caller; we only render the
  * basename. Folder names render in full.
  */
@@ -75,6 +85,19 @@ export interface RenameInputProps {
   siblingNames: string[];
   onCommit: (newValue: string) => Promise<void>;
   onCancel: () => void;
+  /**
+   * Bug D fix — true when this rename was triggered by a create action
+   * (the node was just created and the placeholder name was never confirmed
+   * by the user). Affects the Gap R2-5 same-name short-circuit in commit():
+   *   - isNew=false (default): Enter/Tab/blur without change → onCancel
+   *     (the server would 409 on a same-path move anyway; this is a no-op
+   *     dismiss, not a delete).
+   *   - isNew=true: Enter/Tab/blur without change → onCommit(initialValue)
+   *     (the user accepted the auto-generated placeholder name; keep the
+   *     file). Escape still routes to onCancel (TreeRow.handleCancelRename
+   *     then deletes the ephemeral node when isNew is set).
+   */
+  isNew?: boolean;
 }
 
 const inputBaseStyle: React.CSSProperties = {
@@ -110,6 +133,7 @@ export function RenameInput({
   siblingNames,
   onCommit,
   onCancel,
+  isNew = false,
 }: RenameInputProps) {
   void _isFolder;
   const [value, setValue] = useState(initialValue);
@@ -138,23 +162,33 @@ export function RenameInput({
 
   const commit = useCallback(async () => {
     if (committedOrCancelled.current) return;
-    // Gap R2-5: same-name rename is a no-op. If the user pressed Enter
-    // (or Tab, or clicked outside) without changing the value — or
-    // typed a new value and erased back to the original — close the
-    // input cleanly. The server would otherwise 409 on a
-    // case-collision against the row's own current path because
+    // Gap R2-5: same-name rename is a no-op for established files. If
+    // the user pressed Enter (or Tab, or clicked outside) without
+    // changing the value — or typed a new value and erased back to the
+    // original — close the input cleanly. The server would otherwise
+    // 409 on a case-collision against the row's own current path because
     // Service.Move does not short-circuit oldRelPath == canonNew
     // (research §3.4). Symmetric to Plan 03-11's drag-drop same-parent
     // guard in computeMoveTarget.
+    //
+    // Bug D exception (isNew=true): when the node was just created and
+    // the user presses Enter/Tab/blurs without changing the placeholder
+    // name, they are accepting the auto-generated name — commit it so
+    // the file is kept. Do NOT route to onCancel, which would trigger
+    // TreeRow.handleCancelRename to delete the ephemeral node.
     //
     // The `value !== ""` guard prevents this short-circuit from
     // masking the "Name cannot be empty." validation for the
     // degenerate empty-initialValue case (which the caller never
     // produces in normal use, but we will not regress on).
     if (value === initialValue && value !== "") {
-      committedOrCancelled.current = true;
-      onCancel();
-      return;
+      if (!isNew) {
+        committedOrCancelled.current = true;
+        onCancel();
+        return;
+      }
+      // isNew=true: fall through to onCommit(value) below so the
+      // placeholder name is accepted and the file is kept.
     }
     const r = validateRename(value, siblingNames);
     if (!r.valid) {
@@ -174,7 +208,7 @@ export function RenameInput({
         setError("Server error.");
       }
     }
-  }, [value, initialValue, siblingNames, onCommit, onCancel]);
+  }, [value, initialValue, siblingNames, onCommit, onCancel, isNew]);
 
   const cancel = useCallback(() => {
     if (committedOrCancelled.current) return;

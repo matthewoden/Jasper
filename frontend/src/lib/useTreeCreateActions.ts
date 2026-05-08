@@ -22,6 +22,10 @@
  *      name selected. This runs AFTER muts.createNote / muts.createFolder
  *      resolves — by then the auto-refresh has landed and the new row
  *      exists in the freshly-fetched tree.
+ *      Bug D fix: startRename is called with isNew=true so that if the
+ *      user presses Escape (or blurs without changing the placeholder
+ *      name), TreeRow's cancel handler deletes the ephemeral node
+ *      instead of leaving the auto-generated "untitled" file on disk.
  *   4. On TreeMutationError or any other failure, surface a destructive
  *      toast with the matching locked tuple per UI-SPEC §Surface 5. The
  *      auto-increment runs entirely client-side BEFORE the POST, so
@@ -183,7 +187,9 @@ export function useTreeCreateActions(): UseTreeCreateActions {
         const siblings = siblingNamesForCreate(tree, parentPath, "note");
         const title = nextUntitledName(siblings, "untitled");
         const s = await muts.createNote(parentPath, title);
-        useTreeStore.getState().startRename("note", s.id);
+        // Bug D fix: pass isNew=true so that Escape / same-name-blur
+        // deletes this ephemeral node instead of leaving "untitled" on disk.
+        useTreeStore.getState().startRename("note", s.id, true);
       } catch (e) {
         handleErr(e);
       } finally {
@@ -204,7 +210,9 @@ export function useTreeCreateActions(): UseTreeCreateActions {
         const siblings = siblingNamesForCreate(tree, parentPath, "folder");
         const name = nextUntitledName(siblings, "untitled");
         const f = await muts.createFolder(parentPath, name);
-        useTreeStore.getState().startRename("folder", f.path);
+        // Bug D fix: pass isNew=true so that Escape / same-name-blur
+        // deletes this ephemeral node instead of leaving "untitled" on disk.
+        useTreeStore.getState().startRename("folder", f.path, true);
       } catch (e) {
         handleErr(e);
       } finally {

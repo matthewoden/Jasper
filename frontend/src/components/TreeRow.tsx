@@ -41,7 +41,7 @@
  * forbidden token is split across the test source so this comment can
  * mention the family of escape hatches without tripping the gate.
  */
-import { useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useCallback, useState, type CSSProperties, type KeyboardEvent } from "react";
 import type { NodeApi } from "react-arborist";
 import {
   ChevronDown,
@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 
 import { useTreeStore } from "../lib/useTreeStore";
+import { useTreeMutations } from "../lib/useTreeMutations";
 import { RenameInput } from "./RenameInput";
 import {
   TreeRowContextMenu,
@@ -120,6 +121,7 @@ export function TreeRow({
 }: TreeRowProps) {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const pendingRename = useTreeStore((s) => s.pendingRename);
+  const muts = useTreeMutations();
   const data = node.data;
   const isFolder = data.kind === "folder";
   const isActive = !isFolder && activeNoteId === data.id;
@@ -133,6 +135,33 @@ export function TreeRow({
     pendingRename != null &&
     pendingRename.kind === data.kind &&
     pendingRename.target === (data.kind === "folder" ? data.path : data.id);
+
+  // Bug D fix — handleCancelRename: when pendingRename.isNew is true the
+  // node was just created (never confirmed) and the user pressed Escape or
+  // blurred without changing the placeholder name. In that case we delete
+  // the ephemeral node and then close the rename input. For ordinary
+  // F2/double-click renames (isNew is falsy) we just close the input.
+  const handleCancelRename = useCallback(async () => {
+    const pr = useTreeStore.getState().pendingRename;
+    if (pr?.isNew) {
+      // Ephemeral node: delete it (best-effort — if the delete fails we
+      // still close the input so the user isn't stuck).
+      try {
+        if (data.kind === "note") {
+          await muts.deleteNote(data.id);
+        } else {
+          await muts.deleteFolder(data.path, true);
+        }
+      } catch (err) {
+        // Log and fall through to endRename so the input always closes.
+        console.warn(
+          "TreeRow: failed to delete ephemeral node on cancel; tree may show stale row until next refresh",
+          err,
+        );
+      }
+    }
+    useTreeStore.getState().endRename();
+  }, [data, muts]);
 
   const handleClick = () => {
     if (isRenamingThis) return; // guarded — clicks inside the input are handled by RenameInput
@@ -210,6 +239,7 @@ export function TreeRow({
       initialValue={renameInitial}
       isFolder={isFolder}
       siblingNames={siblingNames}
+      isNew={pendingRename?.isNew}
       onCommit={async (v) => {
         if (!commitRename) {
           useTreeStore.getState().endRename();
@@ -217,7 +247,7 @@ export function TreeRow({
         }
         await commitRename(data, v);
       }}
-      onCancel={() => useTreeStore.getState().endRename()}
+      onCancel={() => { void handleCancelRename(); }}
     />
   ) : (
     <span

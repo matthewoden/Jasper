@@ -5,7 +5,7 @@
  *   {
  *     expanded:      Set<string>           // canonical folder paths that are expanded
  *     activeNoteId:  string | null         // currently active note's UUID
- *     pendingRename: { kind, target } | null
+ *     pendingRename: { kind, target, isNew? } | null
  *     draftCreate:   { kind, parent } | null
  *     selectedRow:   { kind, target } | null  // ← Plan 03-20 (Gap R2-4)
  *   }
@@ -42,7 +42,22 @@ export const LS_KEY_ACTIVE_NOTE = "jasper.tree.activeNoteId";
 
 export type RenameKind = "note" | "folder";
 
-export type PendingRename = { kind: RenameKind; target: string };
+export type PendingRename = {
+  kind: RenameKind;
+  target: string;
+  /**
+   * Bug D fix — true when the rename was triggered by a create action
+   * (the file/folder was just created and the name was never confirmed by
+   * the user). Escape or same-name blur should DELETE the node instead of
+   * simply closing the input, because leaving it behind with the
+   * auto-generated placeholder name ("untitled") is surprising and
+   * pollutes the tree.
+   *
+   * Set to true by useTreeCreateActions after a successful POST.
+   * Not set (undefined / falsy) for regular F2 / double-click renames.
+   */
+  isNew?: boolean;
+};
 export type DraftCreate = { kind: RenameKind; parent: string };
 export type SelectedRow = { kind: RenameKind; target: string };
 
@@ -71,7 +86,15 @@ export interface TreeStore {
   // Mutators:
   toggleExpanded: (path: string) => void;
   setActiveNote: (id: string | null) => void;
-  startRename: (kind: RenameKind, target: string) => void;
+  /**
+   * startRename — enter inline-rename mode for the node identified by
+   * `kind` + `target` (note uuid or folder path).
+   *
+   * Pass `isNew: true` when the rename is the first-time naming of a
+   * just-created node (see PendingRename.isNew for semantics). Omit or
+   * pass false for ordinary F2 / double-click renames.
+   */
+  startRename: (kind: RenameKind, target: string, isNew?: boolean) => void;
   endRename: () => void;
   startDraftCreate: (kind: RenameKind, parent: string) => void;
   endDraftCreate: () => void;
@@ -96,7 +119,8 @@ export const useTreeStore = create<TreeStore>((set) => ({
       return { expanded: next };
     }),
   setActiveNote: (id) => set({ activeNoteId: id }),
-  startRename: (kind, target) => set({ pendingRename: { kind, target } }),
+  startRename: (kind, target, isNew) =>
+    set({ pendingRename: { kind, target, ...(isNew ? { isNew: true } : {}) } }),
   endRename: () => set({ pendingRename: null }),
   startDraftCreate: (kind, parent) => set({ draftCreate: { kind, parent } }),
   endDraftCreate: () => set({ draftCreate: null }),

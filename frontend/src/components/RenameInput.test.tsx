@@ -540,3 +540,143 @@ describe("same-name no-op short-circuit (Gap R2-5)", () => {
     expect(screen.getByText("Already exists.")).toBeInTheDocument();
   });
 });
+
+// ──────────────────────────────────────────────────────────────────
+// Bug D fix — isNew=true changes the same-name short-circuit in
+// commit() so that Enter/Tab/blur without changing the placeholder
+// name commits (keeps the file) rather than cancelling (which would
+// delete the ephemeral node via TreeRow.handleCancelRename).
+//
+// Escape must still cancel unconditionally regardless of isNew, since
+// the user explicitly pressed the cancel key — TreeRow.handleCancelRename
+// handles the deletion of the ephemeral node in that path.
+// ──────────────────────────────────────────────────────────────────
+
+describe("isNew — ephemeral-node commit semantics (Bug D)", () => {
+  it("Enter on unchanged placeholder name COMMITS when isNew=true", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <RenameInput
+        initialValue="untitled"
+        isFolder={false}
+        siblingNames={[]}
+        onCommit={onCommit}
+        onCancel={onCancel}
+        isNew={true}
+      />,
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => {
+      expect(onCommit).toHaveBeenCalledWith("untitled");
+    });
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("Tab on unchanged placeholder name COMMITS when isNew=true", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <RenameInput
+        initialValue="untitled"
+        isFolder={false}
+        siblingNames={[]}
+        onCommit={onCommit}
+        onCancel={onCancel}
+        isNew={true}
+      />,
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    fireEvent.keyDown(input, { key: "Tab" });
+    await waitFor(() => {
+      expect(onCommit).toHaveBeenCalledWith("untitled");
+    });
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("blur without change COMMITS when isNew=true", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <div>
+        <RenameInput
+          initialValue="untitled"
+          isFolder={false}
+          siblingNames={[]}
+          onCommit={onCommit}
+          onCancel={onCancel}
+          isNew={true}
+        />
+        <button data-testid="outside">outside</button>
+      </div>,
+    );
+    fireEvent.mouseDown(screen.getByTestId("outside"));
+    await waitFor(() => {
+      expect(onCommit).toHaveBeenCalledWith("untitled");
+    });
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("Escape CANCELS even when isNew=true (TreeRow.handleCancelRename deletes the ephemeral node)", () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <RenameInput
+        initialValue="untitled"
+        isFolder={false}
+        siblingNames={[]}
+        onCommit={onCommit}
+        onCancel={onCancel}
+        isNew={true}
+      />,
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("typing a new value and pressing Enter still commits the new value when isNew=true", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <RenameInput
+        initialValue="untitled"
+        isFolder={false}
+        siblingNames={[]}
+        onCommit={onCommit}
+        onCancel={onCancel}
+        isNew={true}
+      />,
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "my-new-note" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => {
+      expect(onCommit).toHaveBeenCalledWith("my-new-note");
+    });
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("isNew omitted (default false) — Enter on unchanged value still routes to onCancel (Gap R2-5 not regressed)", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(
+      <RenameInput
+        initialValue="existing-note"
+        isFolder={false}
+        siblingNames={[]}
+        onCommit={onCommit}
+        onCancel={onCancel}
+      />,
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => {
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+});
+
