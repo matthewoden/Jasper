@@ -1120,3 +1120,72 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
     ).not.toBeInTheDocument();
   });
 });
+
+describe('Bug F — file/folder duplicate-name validation', () => {
+  it('TestFileTree_BugF_FolderRenameInput_DoesNotCollideWithSameNameNote — a folder named untitled does not show Already exists when a note untitled.md is a sibling', async () => {
+    // Bug F: siblingNamesFor was building a mixed list (folders + notes
+    // with .md stripped), so the folder rename input for 'untitled'
+    // showed 'Already exists.'  because note 'untitled.md'
+    // contributed 'untitled' to the sibling set. The fix filters to
+    // same-kind only before mapping names.
+    useTreeStore.setState({
+      pendingRename: { kind: 'folder', target: 'untitled', isNew: true },
+    });
+    const tree: Tree = {
+      root: [
+        {
+          kind: 'note',
+          id: 'note-uuid-1',
+          path: 'untitled.md',
+          title: 'untitled',
+          updated_at: new Date().toISOString(),
+        },
+        {
+          kind: 'folder',
+          path: 'untitled',
+          name: 'untitled',
+          children: [],
+        },
+      ],
+    };
+    const muts = defaultMutsResult();
+    muts.moveFolder.mockResolvedValue({
+      kind: 'folder',
+      path: 'untitled',
+      name: 'untitled',
+      children: [],
+    });
+    mockedUseFileTree.mockReturnValue({
+      tree,
+      loading: false,
+      error: null,
+      refresh: vi.fn().mockResolvedValue(undefined),
+      mutate: noopMutate,
+    });
+    mockedUseTreeMutations.mockReturnValue(muts);
+
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    await waitFor(() => {
+      const input = document.querySelector(
+        "input[type='text']",
+      ) as HTMLInputElement;
+      expect(input).not.toBeNull();
+    });
+
+    // The input should show no inline validation error — 'Already exists.'
+    // must NOT be in the document when the folder rename input opens with
+    // value 'untitled' while a sibling note 'untitled.md' exists.
+    expect(screen.queryByText('Already exists.')).not.toBeInTheDocument();
+
+    // The user accepts the placeholder name by pressing Enter — the move
+    // should fire (isNew path: same-name is a commit, not a cancel).
+    const input = document.querySelector(
+      "input[type='text']",
+    ) as HTMLInputElement;
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => {
+      expect(muts.moveFolder).toHaveBeenCalledWith('untitled', 'untitled');
+    });
+  });
+});
+

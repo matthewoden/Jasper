@@ -635,11 +635,22 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   // siblingNamesFor — for the inline-rename collision check. The
   // current row is excluded so renaming "foo" to "foo" doesn't trip
   // the same-name-as-myself collision.
+  //
+  // Bug F fix: only compare against same-kind siblings. A note named
+  // "untitled.md" (display label "untitled") must NOT block renaming a
+  // folder to "untitled" — they are distinct filesystem entries
+  // (untitled.md vs untitled/). Filtering to nodeKind before mapping
+  // ensures the RenameInput validation is kind-scoped, matching the
+  // server's collision check which is also kind-scoped (mkdir checks
+  // for a directory, not for any inode named the same as the basename
+  // without extension).
   const siblingNamesFor = (node: NodeApi<ArboristNode>): string[] => {
     const parent = node.parent;
     const siblings = parent?.children ?? [];
+    const nodeKind = node.data.data.kind;
     return siblings
       .filter((s: NodeApi<ArboristNode>) => s.id !== node.id)
+      .filter((s: NodeApi<ArboristNode>) => s.data.data.kind === nodeKind)
       .map((s: NodeApi<ArboristNode>) => {
         const sd = s.data.data;
         if (sd.kind === "folder") return sd.name;
