@@ -44,6 +44,7 @@ import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { jasperEditorTheme, jasperSyntaxHighlighting } from "../editor/themeBridge";
 import { livePreviewPlugin } from "../editor/livePreviewPlugin";
 import { frontmatterPlugin } from "../editor/frontmatterPlugin";
+import { codeLanguages } from "../editor/codeLanguages";
 
 /**
  * MarkdownEditorRef — the ref API EditorPane consumes (D-26 LOCKED).
@@ -111,7 +112,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           extensions: [
             history(),
             search({ top: true }), // EDIT-11 panel — Plan 05-11 binds Cmd+F
-            yamlFrontmatter({ content: markdown() }),
+            yamlFrontmatter({ content: markdown({ codeLanguages }) }),
             jasperEditorTheme,
             jasperSyntaxHighlighting,
             frontmatterPlugin,
