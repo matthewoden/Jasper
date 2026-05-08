@@ -42,7 +42,7 @@ describe("frontmatterPlugin", () => {
     views.length = 0;
   });
 
-  it("yamlFrontmatter produces a FrontMatter node — Assumption A2 verified", () => {
+  it('yamlFrontmatter produces a "Frontmatter" node — Assumption A2 verified (actual name: lowercase m)', () => {
     const view = makeView(FRONTMATTER_DOC);
     views.push(view);
 
