@@ -805,6 +805,34 @@ func TestRun_HydrateRegistry(t *testing.T) {
 	}
 }
 
+// TestApp_SecurityHeaders_OnAPIResponse — end-to-end through the chi chain:
+// a real GET /api/v1/notes carries Content-Security-Policy + Referrer-Policy
+// after securityHeadersMiddleware is mounted (Plan 05-04 / SECURITY-01, SECURITY-04).
+func TestApp_SecurityHeaders_OnAPIResponse(t *testing.T) {
+	a, _ := newTestApp(t)
+	ts := httptest.NewServer(a.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/v1/notes")
+	if err != nil {
+		t.Fatalf("GET /api/v1/notes: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if got := resp.Header.Get("Content-Security-Policy"); got != cspHeaderValue {
+		t.Errorf("CSP on /api/v1/notes:\n got  %q\n want %q", got, cspHeaderValue)
+	}
+	if got := resp.Header.Get("Referrer-Policy"); got != "no-referrer" {
+		t.Errorf("Referrer-Policy on /api/v1/notes: got %q, want %q", got, "no-referrer")
+	}
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options on /api/v1/notes: got %q, want nosniff", got)
+	}
+	if got := resp.Header.Get("X-Frame-Options"); got != "DENY" {
+		t.Errorf("X-Frame-Options on /api/v1/notes: got %q, want DENY", got)
+	}
+}
+
 // TestApp_ListenerGated verifies SYNC-09: the WebSocket hub is wired BEFORE
 // the listener accepts connections. When a client can reach the TCP port, the
 // /ws endpoint must already be mounted and respond with a valid WS upgrade

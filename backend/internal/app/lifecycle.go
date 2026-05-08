@@ -280,6 +280,7 @@ func (a *App) Run(ctx context.Context) error {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
+	r.Use(securityHeadersMiddleware) // Plan 05-04 — SECURITY-01, SECURITY-04, D-35
 	r.Use(requestLogger(a.cfg.Logger))
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {

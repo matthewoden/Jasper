@@ -153,6 +153,7 @@ func New(cfg Config) (*App, error) {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
+	r.Use(securityHeadersMiddleware) // Plan 05-04 — SECURITY-01, SECURITY-04, D-35: BEFORE requestLogger so 500-via-Recoverer responses carry the headers.
 	r.Use(requestLogger(cfg.Logger))
 
 	// ORDER MATTERS — Pitfall 13.
