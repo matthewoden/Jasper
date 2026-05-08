@@ -611,8 +611,13 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         const sourcePath = dn.data.data.path;
         // Walk up from parentNode; if we ever land on the source
         // folder itself, the drop would create a cycle — block it.
+        // Guard: react-arborist's virtual root node has data: { id: ROOT_ID }
+        // (not an ArboristNode), so cur.data.data is undefined on the root.
+        // Stop the walk before we reach the virtual root to avoid a TypeError.
+        // (Bug B / Bug C fix — the crash caused canDrop() to return false for
+        // ALL folder moves, silently blocking every folder DnD.)
         let cur: NodeApi<ArboristNode> | null = parentNode;
-        while (cur) {
+        while (cur && cur.data?.data != null) {
           if (
             cur.data.data.kind === "folder" &&
             cur.data.data.path === sourcePath
@@ -693,6 +698,15 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         // the actual rendered height while internal scroll handles
         // virtualization (PERF-02 — 1,000 nodes).
         height={9999}
+        // Bug A fix: paddingBottom extends the last row's drop zone into the
+        // empty trailing area of the sidebar. react-arborist's outer-drop-hook
+        // fires hover events over the empty space but has no `drop` handler,
+        // so releases over the raw empty space are silently discarded. With
+        // paddingBottom the bottom 200 px of the scroll list are covered by
+        // the LAST ROW's drop hook, which does fire onMove. Value chosen to
+        // cover a typical sidebar height without inflating the virtual
+        // scroll content excessively.
+        paddingBottom={200}
       >
         {(props) => (
           <TreeRow
