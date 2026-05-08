@@ -2,6 +2,12 @@
 /tmp/
 /node_modules/
 frontend/node_modules/
+
+# Stray tmp/ subdirs — air now writes to project_root/tmp/ (already covered by /tmp/
+# above), but earlier configs put it under backend/tmp/ and frontend/tmp/ can
+# appear when dev tooling spawns from frontend/. Keep these ignored defensively.
+backend/tmp/
+frontend/tmp/
 *.test
 coverage.out
 .DS_Store
