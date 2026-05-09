@@ -21,7 +21,12 @@ export type DeleteTarget =
       name: string;
       noteCount: number;
       subfolderCount: number;
-    };
+    }
+  // UX-13 (Phase 5.5 Plan 07): batch delete variant — single confirmation
+  // for N selected items. Copy is "Delete N items?" per the must-have
+  // truth in the plan frontmatter. The body lists no per-row detail; the
+  // batch is opaque from the dialog's perspective.
+  | { kind: "multi"; count: number };
 
 export interface DeleteConfirmDialogProps {
   open: boolean;
@@ -158,9 +163,28 @@ export function DeleteConfirmDialog({
   target,
   onConfirm,
 }: DeleteConfirmDialogProps) {
-  const isNote = target.kind === "note";
-  const title = isNote ? "Delete this note?" : "Delete this folder?";
-  const confirmLabel = isNote ? "Delete note" : "Delete folder";
+  // UX-13 (Plan 07): multi variant uses dedicated copy "Delete N items?"
+  // and a destructive "This cannot be undone." second line. Note + folder
+  // copy are preserved verbatim.
+  let title: string;
+  let confirmLabel: string;
+  if (target.kind === "note") {
+    title = "Delete this note?";
+    confirmLabel = "Delete note";
+  } else if (target.kind === "folder") {
+    title = "Delete this folder?";
+    confirmLabel = "Delete folder";
+  } else if (target.kind === "multi") {
+    // Branch for { kind: "multi"; count: number } — UX-13 batch delete.
+    title = `Delete ${target.count} items?`;
+    confirmLabel = `Delete ${target.count} items`;
+  } else {
+    // Exhaustiveness guard — should be unreachable for the discriminated
+    // union; if a future variant is added, the type checker steers the
+    // implementer to handle it explicitly here.
+    title = "Delete?";
+    confirmLabel = "Delete";
+  }
 
   let line1 = "";
   let line2 = "";
@@ -170,7 +194,7 @@ export function DeleteConfirmDialog({
     line2 =
       "Your other notes are not touched — only this file is affected.";
     line2IsDestructive = false;
-  } else {
+  } else if (target.kind === "folder") {
     const body = buildFolderBody(
       target.name,
       target.noteCount,
@@ -179,6 +203,10 @@ export function DeleteConfirmDialog({
     line1 = body.line1;
     line2 = body.line2;
     line2IsDestructive = body.line2IsDestructive;
+  } else if (target.kind === "multi") {
+    line1 = `This will permanently delete the selected ${target.count} items from disk and from the index.`;
+    line2 = "This cannot be undone.";
+    line2IsDestructive = true;
   }
 
   const handleConfirm = async (e: React.MouseEvent) => {

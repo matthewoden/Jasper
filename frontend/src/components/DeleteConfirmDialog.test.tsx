@@ -204,6 +204,46 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("UX-13: multi variant renders 'Delete N items?' title with the correct count", () => {
+    render(
+      <DeleteConfirmDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        target={{ kind: "multi", count: 5 }}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    // Title copy locked by the plan must-have truth: "Delete N items?".
+    expect(screen.getByText("Delete 5 items?")).toBeInTheDocument();
+    // Body line 1 references the count again so the dialog is unambiguous
+    // even when scanned without the title.
+    expect(
+      screen.getByText(
+        /This will permanently delete the selected 5 items from disk and from the index\./,
+      ),
+    ).toBeInTheDocument();
+    // Destructive second line — matches the folder-with-contents posture.
+    const line2 = screen.getByText("This cannot be undone.");
+    expect(line2).toBeInTheDocument();
+    expect(line2.style.color).toContain("destructive");
+  });
+
+  it("UX-13: multi variant onConfirm callback fires when Delete clicked", async () => {
+    const onConfirm = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DeleteConfirmDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        target={{ kind: "multi", count: 3 }}
+        onConfirm={onConfirm}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete 3 items" }));
+    await waitFor(() => {
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("TestDialog_OnConfirmAsync_KeepsDialogOpenUntilResolves", async () => {
     let resolveConfirm: () => void = () => {};
     const onConfirm = vi.fn(
