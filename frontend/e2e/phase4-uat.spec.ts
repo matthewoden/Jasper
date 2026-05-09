@@ -107,9 +107,42 @@ async function dismissAnyOpenRenameInput(page: Page, timeoutMs = 2_000): Promise
 async function openFirstNote(page: Page): Promise<void> {
   const firstNote = page.locator('[data-tree-row-kind="note"]').first();
   await firstNote.click();
-  // Wait for the editor textarea to become enabled.
-  const ta = page.getByRole("textbox", { name: /note content/i });
-  await expect(ta).toBeEnabled({ timeout: 5_000 });
+  // Wait for the CM6 content surface to appear. Phase 5 swapped the
+  // textarea for a CodeMirror 6 contenteditable div; the canonical
+  // visibility check is the .cm-content selector.
+  await page.waitForSelector(".cm-content", { timeout: 5_000 });
+}
+
+/**
+ * CM6 typing recipe (Phase 5.5 plan 09 Task 1).
+ *
+ * Replaces textarea.fill() patterns from the pre-CM6 era. The
+ * .cm-content surface is contenteditable, not a real <textarea>, so
+ * .fill() is a no-op and .toHaveValue() returns "".
+ *
+ * Recipe: click .cm-content to focus → select-all → delete → type.
+ */
+async function typeIntoEditor(page: Page, text: string): Promise<void> {
+  const cm = page.locator(".cm-content");
+  await cm.click();
+  const selectAllKey =
+    process.platform === "darwin" ? "Meta+a" : "Control+a";
+  await page.keyboard.press(selectAllKey);
+  await page.keyboard.press("Delete");
+  await page.keyboard.type(text);
+}
+
+/**
+ * Read the visible plain text out of the CM6 editor surface.
+ *
+ * Replaces the pre-CM6 `expect(textarea).toHaveValue(...)` pattern.
+ * .cm-content's textContent gives the doc's plain text; line breaks
+ * inserted by the user are flattened to spaces in textContent, but
+ * for the Phase 4 assertions (single-line "Tab A content v2"-style
+ * strings) that's lossless.
+ */
+async function readEditorText(page: Page): Promise<string> {
+  return (await page.locator(".cm-content").textContent()) ?? "";
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -244,18 +277,16 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       await openFirstNote(pageA);
       await openFirstNote(pageB);
 
-      const taA = pageA.getByRole("textbox", { name: /note content/i });
-      const taB = pageB.getByRole("textbox", { name: /note content/i });
-
       // ── Sub-test A: Save-anyway ──────────────────────────────────
 
       // B types first (sets userHasEdited = true in Tab B's EditorPane).
-      await taB.click();
-      await taB.fill("Tab B work — do not overwrite");
+      // CM6 refactor (Phase 5.5 plan 09 Task 1): typeIntoEditor drives
+      // the contenteditable surface via keyboard input — .fill() against
+      // .cm-content is a silent no-op.
+      await typeIntoEditor(pageB, "Tab B work — do not overwrite");
 
       // A types and saves immediately with Ctrl+S.
-      await taA.click();
-      await taA.fill("Tab A content v1");
+      await typeIntoEditor(pageA, "Tab A content v1");
       await pageA.keyboard.press("Control+s");
 
       // Tab B should receive the WS note:updated event and show the conflict
@@ -272,11 +303,11 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       // ── Sub-test B: Discard ──────────────────────────────────────
 
       // A saves again with new content.
-      await taA.fill("Tab A content v2");
+      await typeIntoEditor(pageA, "Tab A content v2");
       await pageA.keyboard.press("Control+s");
 
       // Trigger B's unsaved-edit flag again so a second conflict banner can appear.
-      await taB.fill("Tab B work v2");
+      await typeIntoEditor(pageB, "Tab B work v2");
 
       // B should get another conflict banner.
       await expect(conflictBannerB).toBeVisible({ timeout: 8_000 });
@@ -285,8 +316,12 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       await pageB.getByRole("button", { name: /discard/i }).click();
       await expect(conflictBannerB).toBeHidden({ timeout: 5_000 });
 
-      // After Discard, Tab B's textarea should reflect Tab A's content.
-      await expect(taB).toHaveValue("Tab A content v2", { timeout: 5_000 });
+      // After Discard, Tab B's editor should reflect Tab A's content.
+      // CM6 refactor: replace toHaveValue() (which always returns "" for
+      // contenteditable) with a poll on .cm-content's textContent.
+      await expect
+        .poll(() => readEditorText(pageB), { timeout: 5_000 })
+        .toContain("Tab A content v2");
     } finally {
       await ctxA.close();
       await ctxB.close();
@@ -317,9 +352,10 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       await openFirstNote(pageA);
       await openFirstNote(pageB);
 
-      const taB = pageB.getByRole("textbox", { name: /note content/i });
       const userWork = "This is work the user does NOT want to lose";
-      await taB.fill(userWork);
+      // CM6 refactor (Phase 5.5 plan 09 Task 1): drive the editor via
+      // keyboard input. .fill() against .cm-content silently no-ops.
+      await typeIntoEditor(pageB, userWork);
 
       // Discover the note's ID from the tree API.
       const treeResp = await pageA.request.get(`${jasper.baseURL}/api/v1/tree`);
@@ -344,15 +380,21 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       await expect(deletedBannerB).toBeVisible({ timeout: 8_000 });
       await expect(pageB.getByText("This note was deleted in another session")).toBeVisible();
 
-      // CRITICAL: Tab B's textarea content is still intact.
-      await expect(taB).toHaveValue(userWork);
+      // CRITICAL: Tab B's editor content is still intact.
+      // CM6 refactor: read .cm-content's textContent rather than the
+      // textarea's `value` property (CM6's surface has none).
+      await expect
+        .poll(() => readEditorText(pageB), { timeout: 5_000 })
+        .toContain(userWork);
 
       // Dismiss the banner (× button).
       await deletedBannerB.getByRole("button", { name: /dismiss/i }).click();
       await expect(deletedBannerB).toBeHidden({ timeout: 3_000 });
 
       // Content still intact after dismiss.
-      await expect(taB).toHaveValue(userWork);
+      await expect
+        .poll(() => readEditorText(pageB), { timeout: 5_000 })
+        .toContain(userWork);
     } finally {
       await ctxA.close();
       await ctxB.close();
