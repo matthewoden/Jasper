@@ -70,15 +70,17 @@ export function useConfig(): {
   }, []);
 
   const saveConfig = useCallback(async (next: Config) => {
+    const prev = config; // capture before optimistic write
     setConfig(next); // optimistic
     const { data, error: err } = await putConfig(next);
     if (err) {
+      setConfig(prev); // rollback to pre-optimistic state
       setError(err);
       return { error: err };
     }
     if (data) setConfig(data); // server may have echoed back exactly next
     return {};
-  }, []);
+  }, [config]);
 
   return { config, error, saveConfig };
 }
