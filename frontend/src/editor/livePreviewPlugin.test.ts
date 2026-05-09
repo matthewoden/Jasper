@@ -456,7 +456,12 @@ describe("livePreviewPlugin / list-bullets (EDIT-04 / D-04)", () => {
     views.push(view);
 
     const decos = collectDecorations(view);
-    const markerDecos = decos.filter((d) => d.class === "cm-marker");
+    // Phase 5.5 UX-16: on-cursor ListMark mark now carries a compound class
+    // string `cm-marker cm-list-marker` so themeBridge can reserve a fixed
+    // width column matching BulletWidget. Match by token, not strict equality.
+    const markerDecos = decos.filter(
+      (d) => d.class !== undefined && d.class.split(/\s+/).includes("cm-marker")
+    );
     expect(markerDecos.length).toBeGreaterThan(0);
   });
 });
@@ -544,6 +549,110 @@ describe("livePreviewPlugin / horizontal-rule (EDIT-07)", () => {
       cursor.next();
     }
     expect(ariaHidden).toBe(true);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 5.5 Plan 02 — UX-15 (heading left-alignment) + UX-16 (bullet column).
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("livePreviewPlugin / UX-15 heading trailing-space swallow", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  it("UX-15: off-cursor HeaderMark range covers trailing space", () => {
+    // Doc: "# heading\nbody". Place cursor on line 2 (so line 1 is OFF-cursor).
+    // For an ATX heading, lezer-markdown's HeaderMark covers exactly the
+    // `#` at [0,1). The UX-15 fix extends the off-cursor `Decoration.replace`
+    // range to `node.to + 1 = 2` so the trailing space at index 1..2 is
+    // swallowed alongside the `#` — the heading text starts at index 2,
+    // sharing its left edge with body paragraphs.
+    const doc = "# heading\nbody";
+    // Line 2 starts at index 10 (after "# heading\n"); place cursor there.
+    const view = makeView(doc, 10);
+    views.push(view);
+
+    const decos = collectDecorations(view);
+    // Find the off-cursor replace decoration that starts at the HeaderMark
+    // position (index 0). Per the fix it should extend to index 2.
+    const replaceAtZero = decos.find(
+      (d) => d.isReplace && d.from === 0
+    );
+    expect(replaceAtZero).toBeDefined();
+    expect(replaceAtZero!.to).toBe(2);
+  });
+
+  it("UX-15: off-cursor HeaderMark falls back to node.to when next char is not a space", () => {
+    // The defensive `nextChar === " "` check means: if lezer's A2 invariant
+    // (HeaderMark always followed by exactly one space) is ever wrong, the
+    // range degrades safely to `node.to` — no residual whitespace, no
+    // accidentally swallowing a non-space character.
+    //
+    // Construct a doc where HeaderMark's node.to lands on a non-space char.
+    // The cleanest way: a setext-style heading where there is no trailing
+    // space after the marker, OR an ATX heading where the doc ends right
+    // after the `#`. The string "#" alone yields HeaderMark at [0,1) with
+    // no following char (sliceString returns "").
+    //
+    // Place cursor on line 2 of a doc whose line 1 is bare "#" so the
+    // HeaderMark's trailing char is "" (or more accurately, off the doc
+    // end). The defensive guard should keep `to = node.to = 1`.
+    //
+    // Doc: "#\nbody" — line 1 is just "#", line 2 is "body".
+    const doc = "#\nbody";
+    // Cursor on line 2 (offset 2, after "#\n").
+    const view = makeView(doc, 2);
+    views.push(view);
+
+    const decos = collectDecorations(view);
+    // Find the replace decoration covering the HeaderMark on line 1.
+    // Without the trailing-space extension, `to` should equal `node.to = 1`.
+    // (Note: lezer may not even emit a HeaderMark for a bare `#`; in that
+    // case there will be no replace decoration at index 0 — also acceptable
+    // because the assertion is "no overshoot beyond node.to".)
+    const replaceAtZero = decos.find(
+      (d) => d.isReplace && d.from === 0
+    );
+    if (replaceAtZero) {
+      // If a HeaderMark replace IS emitted, it must NOT overshoot — the
+      // defensive check leaves `to` at `node.to` (here 1) when the next
+      // char is not a literal space.
+      expect(replaceAtZero.to).toBe(1);
+    }
+    // If no replace was emitted, the test still asserts the property of
+    // interest: no decoration extends past the HeaderMark's actual end.
+  });
+});
+
+describe("livePreviewPlugin / UX-16 cm-list-marker class", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  it("UX-16: on-cursor ListMark mark decoration carries cm-list-marker class", () => {
+    // Doc: "- item". Cursor on line 1 — the ListMark `-` should be a
+    // visible marker AND carry cm-list-marker so themeBridge can reserve a
+    // fixed-width column matching BulletWidget's off-cursor 1.5ch slot.
+    const doc = "- item";
+    // Cursor at offset 3 (inside "item", on line 1).
+    const view = makeView(doc, 3);
+    views.push(view);
+
+    const decos = collectDecorations(view);
+    // The on-cursor ListMark mark uses class "cm-marker cm-list-marker".
+    const listMarker = decos.find(
+      (d) => d.class !== undefined && d.class.includes("cm-list-marker")
+    );
+    expect(listMarker).toBeDefined();
+    // Sanity: the existing cm-marker class is still present alongside it.
+    expect(listMarker!.class).toContain("cm-marker");
   });
 });
 

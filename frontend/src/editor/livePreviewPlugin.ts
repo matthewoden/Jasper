@@ -298,6 +298,9 @@ export function buildDecorations(view: EditorView): DecorationSet {
         // Ordered  (`1.`, `2.`): leave visible — the digit IS the
         //   desired numeric rendering.
         // On-cursor: show the raw markdown character styled via cm-marker.
+        //   UX-16: on-cursor mark also carries cm-list-marker so themeBridge
+        //   can reserve the same fixed-width column as BulletWidget — keeps
+        //   the bullet column stable across cursor crossings.
         // D-09 FencedCode guard still applies.
         if (node.name === "ListMark") {
           if (isInsideCode(node)) return;
@@ -310,7 +313,10 @@ export function buildDecorations(view: EditorView): DecorationSet {
             from: node.from,
             to: node.to,
             deco: onCursorLine
-              ? Decoration.mark({ class: VISIBLE_MARKER_CLASS })
+              // UX-16: cm-list-marker class lets the theme bridge reserve a
+              // fixed-width slot identical to BulletWidget's so the bullet
+              // column does not jiggle on cursor cross.
+              ? Decoration.mark({ class: `${VISIBLE_MARKER_CLASS} cm-list-marker` })
               : bulletDeco,
             sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
           });
@@ -325,12 +331,32 @@ export function buildDecorations(view: EditorView): DecorationSet {
           if (isInsideCode(node)) return; // D-09 FencedCode guard
           const lineNum = view.state.doc.lineAt(node.from).number;
           const onCursorLine = cursorLines.has(lineNum);
+          if (onCursorLine) {
+            markDecos.push({
+              from: node.from,
+              to: node.to,
+              deco: Decoration.mark({ class: VISIBLE_MARKER_CLASS }),
+              // Narrower child markers sort after their wider parents at same pos.
+              sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
+            });
+            return;
+          }
+
+          // Off-cursor — hide the marker. UX-15: for HeaderMark, also swallow
+          // the single trailing space after the `#` so the heading text shares
+          // its left edge with body paragraphs. lezer-markdown's ATXHeading
+          // grammar guarantees exactly one space (RESEARCH §A2); the
+          // `nextChar === " "` check is defense-in-depth — if A2 is ever wrong
+          // (tab, multiple spaces) the range degrades safely to `node.to`.
+          let to = node.to;
+          if (node.name === "HeaderMark") {
+            const nextChar = view.state.doc.sliceString(node.to, node.to + 1);
+            if (nextChar === " ") to = node.to + 1;
+          }
           markDecos.push({
             from: node.from,
-            to: node.to,
-            deco: onCursorLine
-              ? Decoration.mark({ class: VISIBLE_MARKER_CLASS })
-              : Decoration.replace({}),
+            to,
+            deco: Decoration.replace({}),
             // Narrower child markers sort after their wider parents at same pos.
             sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
           });
