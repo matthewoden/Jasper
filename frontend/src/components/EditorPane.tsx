@@ -370,21 +370,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     reindexingRef.current = reindexing;
   }, [reindexing]);
 
-  // Phase 4 (D-06) — observe connectionStatus transitions and dispatch
-  // saveStateMachine events accordingly.
+  // Phase 4 (D-06) — connectionStatus transition tracker. The effect that
+  // dispatches saveStateMachine events lives BELOW performSave because it
+  // also calls performSave on connectionRestored (WR-02 gap-closure Plan
+  // 12) — referencing performSave in a useEffect dep array before its
+  // useCallback declaration would be a TDZ violation.
   const prevConnectionStatusRef = useRef(connectionStatus);
-  useEffect(() => {
-    const prev = prevConnectionStatusRef.current;
-    if (prev !== connectionStatus) {
-      if (connectionStatus !== "connected") {
-        dispatch({ type: "connectionLost" });
-      } else if (prev !== "connected") {
-        // Transition into connected (from connecting OR reconnecting).
-        dispatch({ type: "connectionRestored" });
-      }
-      prevConnectionStatusRef.current = connectionStatus;
-    }
-  }, [connectionStatus]);
 
   // 2. Save the latest content. Implements coalescing per UI-SPEC.
   const performSave = useCallback(async (latestContent: string) => {
@@ -526,6 +517,41 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
       }
     }
   }, [refreshTree]);
+
+  // Phase 4 (D-06) — observe connectionStatus transitions and dispatch
+  // saveStateMachine events accordingly.
+  //
+  // WR-02 (Phase 5.5 gap-closure Plan 12) — flush buffered edits made
+  // while the WS was paused. performSave skips when not connected, so
+  // edits typed during the disconnect never land until the user types
+  // again post-reconnect; if the user closes the tab in between, those
+  // bytes are lost. The connectionRestored event is the canonical moment
+  // to retry the save.
+  //
+  // performSave's useCallback has [refreshTree] as its dep array, and
+  // refreshTree is stable across re-renders (its useCallback has []
+  // deps in useFileTree.ts). performSave's identity is therefore stable,
+  // so the simple form (performSave in dep array) is correct: the effect
+  // re-runs only on connectionStatus transitions.
+  useEffect(() => {
+    const prev = prevConnectionStatusRef.current;
+    if (prev !== connectionStatus) {
+      if (connectionStatus !== "connected") {
+        dispatch({ type: "connectionLost" });
+      } else if (prev !== "connected") {
+        // Transition into connected (from connecting OR reconnecting).
+        dispatch({ type: "connectionRestored" });
+        // WR-02: flush the buffered edits the user typed while paused.
+        // Gated on userHasEdited (so we don't issue a spurious round-trip
+        // on a clean reconnect) AND on noteIdRef (so a reconnect with no
+        // active note can't slip through).
+        if (userHasEdited.current && noteIdRef.current !== null) {
+          void performSave(latestContentRef.current);
+        }
+      }
+      prevConnectionStatusRef.current = connectionStatus;
+    }
+  }, [connectionStatus, performSave]);
 
   // 3. Debounced autosave on edit — Plan 05-11 D-27/D-32: same logic as the
   // old textarea onChange but now receives the new doc string directly from
