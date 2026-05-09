@@ -136,11 +136,33 @@ function MenuItems({
         </Item>
       )}
       {rowKind === "note" && <Sep style={separatorStyle} />}
-      <Item style={itemStyle} onSelect={() => onNewNote()}>
+      <Item
+        style={itemStyle}
+        onSelect={(event: Event) => {
+          // UX-12 / Pitfall 7 (RESEARCH §A6): right-clicking "New note"
+          // inside an expanded folder must NOT collapse that folder.
+          // Radix's onSelect fires BEFORE the menu closes and is handed
+          // the original click event; halting propagation here prevents
+          // the synthesized click from bubbling to the row's onClick
+          // handler (TreeRow.handleClick), which would otherwise toggle
+          // the folder open/closed state.
+          event.stopPropagation();
+          onNewNote();
+        }}
+      >
         <span>New note</span>
       </Item>
       {rowKind !== "note" && (
-        <Item style={itemStyle} onSelect={() => onNewFolder?.()}>
+        <Item
+          style={itemStyle}
+          onSelect={(event: Event) => {
+            // UX-12 / Pitfall 7 — same reasoning as the New note Item
+            // above. Folder rows hosting "New folder" otherwise collapse
+            // when the menu dismisses.
+            event.stopPropagation();
+            onNewFolder?.();
+          }}
+        >
           <span>New folder</span>
         </Item>
       )}
