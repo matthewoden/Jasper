@@ -84,6 +84,11 @@ beforeEach(() => {
   // the default and isn't polluted by a sibling test that pre-set a
   // larger width.
   useTreeStore.setState({ sidebarWidth: SIDEBAR_WIDTH_DEFAULT });
+  // UX-12: reset selectedRow so the create-target derivation tests below
+  // start from a known "no selection" baseline. selectedRow is transient
+  // (never persisted), but it is module-level state that survives between
+  // tests within a single Vitest worker.
+  useTreeStore.setState({ selectedRow: null });
 });
 
 afterEach(() => {
@@ -346,6 +351,181 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     fireEvent.click(screen.getByRole("button", { name: "New folder" }));
     await waitFor(() => {
       expect(muts.createFolder).toHaveBeenCalledWith("", "untitled");
+    });
+  });
+
+  // UX-12 — toolbar create paths target the parent of the currently-
+  // selected row (or inside the selected folder), not always the root.
+  // selectedRow is populated by every TreeRow click (TreeRow.tsx ~line
+  // 199); the toolbar's handleNewNote / handleNewFolder read it via
+  // useTreeStore.getState() at click time and resolve to the right
+  // parent. createNoteAt / createFolderAt forward that parent through
+  // useTreeMutations.createNote / .createFolder unchanged.
+  describe("UX-12 — create-at-current-level (toolbar path)", () => {
+    it("UX-12: toolbar New note with no selection creates at root", async () => {
+      const muts = defaultMutsResult();
+      muts.createNote.mockResolvedValue({
+        id: "n-new",
+        path: "untitled.md",
+        title: "untitled",
+        updated_at: new Date().toISOString(),
+      });
+      mockedUseTreeMutations.mockReturnValue(muts);
+      mockedUseFileTree.mockReturnValue({
+        tree: { root: [] },
+        loading: false,
+        error: null,
+        refresh: () => Promise.resolve(),
+        mutate: noopMutate,
+      });
+      // Default beforeEach already cleared selectedRow; assert it's null
+      // so the test's intent is self-documenting.
+      expect(useTreeStore.getState().selectedRow).toBeNull();
+
+      renderWithProvider(<Sidebar />);
+      fireEvent.click(screen.getByRole("button", { name: "New note" }));
+      await waitFor(() => {
+        expect(muts.createNote).toHaveBeenCalledWith("", "untitled");
+      });
+    });
+
+    it("UX-12: toolbar New note with folder selection creates inside that folder", async () => {
+      const muts = defaultMutsResult();
+      muts.createNote.mockResolvedValue({
+        id: "n-new",
+        path: "scratch/2026/untitled.md",
+        title: "untitled",
+        updated_at: new Date().toISOString(),
+      });
+      mockedUseTreeMutations.mockReturnValue(muts);
+      mockedUseFileTree.mockReturnValue({
+        tree: {
+          root: [
+            {
+              kind: "folder",
+              path: "scratch",
+              name: "scratch",
+              children: [
+                {
+                  kind: "folder",
+                  path: "scratch/2026",
+                  name: "2026",
+                  children: [],
+                },
+              ],
+            },
+          ],
+        },
+        loading: false,
+        error: null,
+        refresh: () => Promise.resolve(),
+        mutate: noopMutate,
+      });
+      useTreeStore.setState({
+        selectedRow: { kind: "folder", target: "scratch/2026" },
+      });
+
+      renderWithProvider(<Sidebar />);
+      fireEvent.click(screen.getByRole("button", { name: "New note" }));
+      await waitFor(() => {
+        expect(muts.createNote).toHaveBeenCalledWith("scratch/2026", "untitled");
+      });
+    });
+
+    it("UX-12: toolbar New note with note selection creates in the note's parent folder", async () => {
+      const muts = defaultMutsResult();
+      muts.createNote.mockResolvedValue({
+        id: "n-new",
+        path: "scratch/2026/05/untitled.md",
+        title: "untitled",
+        updated_at: new Date().toISOString(),
+      });
+      mockedUseTreeMutations.mockReturnValue(muts);
+      mockedUseFileTree.mockReturnValue({
+        tree: {
+          root: [
+            {
+              kind: "folder",
+              path: "scratch",
+              name: "scratch",
+              children: [
+                {
+                  kind: "folder",
+                  path: "scratch/2026",
+                  name: "2026",
+                  children: [
+                    {
+                      kind: "folder",
+                      path: "scratch/2026/05",
+                      name: "05",
+                      children: [
+                        {
+                          kind: "note",
+                          id: "n-1",
+                          path: "scratch/2026/05/idea.md",
+                          title: "idea",
+                          updated_at: new Date().toISOString(),
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        loading: false,
+        error: null,
+        refresh: () => Promise.resolve(),
+        mutate: noopMutate,
+      });
+      useTreeStore.setState({
+        selectedRow: { kind: "note", target: "n-1" },
+      });
+
+      renderWithProvider(<Sidebar />);
+      fireEvent.click(screen.getByRole("button", { name: "New note" }));
+      await waitFor(() => {
+        expect(muts.createNote).toHaveBeenCalledWith(
+          "scratch/2026/05",
+          "untitled",
+        );
+      });
+    });
+
+    it("UX-12: toolbar New folder follows the same selection-aware rule", async () => {
+      const muts = defaultMutsResult();
+      muts.createFolder.mockResolvedValue({
+        kind: "folder",
+        path: "scratch/untitled",
+        name: "untitled",
+      });
+      mockedUseTreeMutations.mockReturnValue(muts);
+      mockedUseFileTree.mockReturnValue({
+        tree: {
+          root: [
+            {
+              kind: "folder",
+              path: "scratch",
+              name: "scratch",
+              children: [],
+            },
+          ],
+        },
+        loading: false,
+        error: null,
+        refresh: () => Promise.resolve(),
+        mutate: noopMutate,
+      });
+      useTreeStore.setState({
+        selectedRow: { kind: "folder", target: "scratch" },
+      });
+
+      renderWithProvider(<Sidebar />);
+      fireEvent.click(screen.getByRole("button", { name: "New folder" }));
+      await waitFor(() => {
+        expect(muts.createFolder).toHaveBeenCalledWith("scratch", "untitled");
+      });
     });
   });
 });
