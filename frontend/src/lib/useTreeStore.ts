@@ -40,6 +40,13 @@ export const LS_KEY_EXPANDED = "jasper.tree.expanded";
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting";
 export const LS_KEY_ACTIVE_NOTE = "jasper.tree.activeNoteId";
 
+// Phase 5.5 — Plan 05 (UX-09) sidebar width persistence key + default.
+// Slice schema lands here so the TreeStore type stays single-source-of-truth;
+// Plan 05 owns the LS hydration block and the SidebarHandle component that
+// drives `setSidebarWidth`.
+export const LS_KEY_SIDEBAR_WIDTH = "jasper.sidebar.width";
+export const SIDEBAR_WIDTH_DEFAULT = 260; // also acts as MIN clamp
+
 export type RenameKind = "note" | "folder";
 
 export type PendingRename = {
@@ -83,6 +90,20 @@ export interface TreeStore {
   // TREE-12: consumed by ConnectionStatusDot and EditorPane (Plan 04-05).
   connectionStatus: ConnectionStatus;
 
+  // Phase 5.5 — UX-08: live H1 → tree label override (transient).
+  // Keyed by note id; cleared on note switch with unsaved edits and on
+  // successful save (Plan 04 wires the switch path; saved-transition cleanup
+  // is best-effort via pruneStaleTreeState when the post-rename tree refresh
+  // drops the old id, OR explicit clear in EditorPane savedTimer scheduling).
+  // NEVER persisted — same precedent as pendingRename / draftCreate / selectedRow.
+  liveLabels: Record<string, string>;
+  setLiveLabel: (id: string, label: string) => void;
+  clearLiveLabel: (id: string) => void;
+
+  // Phase 5.5 — UX-09 (slice declared here; LS hydration + setter wired by Plan 05).
+  sidebarWidth: number;
+  setSidebarWidth: (w: number) => void;
+
   // Mutators:
   toggleExpanded: (path: string) => void;
   setActiveNote: (id: string | null) => void;
@@ -111,6 +132,10 @@ export const useTreeStore = create<TreeStore>((set) => ({
   draftCreate: null,
   selectedRow: null,
   connectionStatus: "connecting",
+  // Plan 04 (UX-08): transient live H1 → tree label overrides.
+  liveLabels: {},
+  // Plan 05 (UX-09): default sidebar width — also enforced as MIN by setSidebarWidth.
+  sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
   toggleExpanded: (path) =>
     set((s) => {
       const next = new Set(s.expanded);
@@ -126,6 +151,21 @@ export const useTreeStore = create<TreeStore>((set) => ({
   endDraftCreate: () => set({ draftCreate: null }),
   setSelectedRow: (sr) => set({ selectedRow: sr }),
   setConnectionStatus: (s) => set({ connectionStatus: s }),
+  // Plan 04 (UX-08) — liveLabels mutators.
+  setLiveLabel: (id, label) =>
+    set((s) => ({ liveLabels: { ...s.liveLabels, [id]: label } })),
+  clearLiveLabel: (id) =>
+    set((s) => {
+      if (!(id in s.liveLabels)) return s; // no-op preserves object identity
+      const rest: Record<string, string> = {};
+      for (const k of Object.keys(s.liveLabels)) {
+        if (k !== id) rest[k] = s.liveLabels[k];
+      }
+      return { liveLabels: rest };
+    }),
+  // Plan 05 (UX-09) — clamp to SIDEBAR_WIDTH_DEFAULT (MIN).
+  setSidebarWidth: (w) =>
+    set({ sidebarWidth: Math.max(SIDEBAR_WIDTH_DEFAULT, w) }),
 }));
 
 /**
@@ -144,12 +184,30 @@ export function pruneStaleTreeState(
   );
   const cleanActive =
     s.activeNoteId && allNoteIds.has(s.activeNoteId) ? s.activeNoteId : null;
+
+  // Plan 04 (UX-08) — drop liveLabels for note ids that no longer exist in
+  // the freshly-fetched tree. Lazily clones the map only on first removal so
+  // a no-op pass preserves reference identity (matches the expanded/active
+  // identity-preservation pattern above).
+  let cleanLabels = s.liveLabels;
+  let labelsChanged = false;
+  for (const id of Object.keys(s.liveLabels)) {
+    if (!allNoteIds.has(id)) {
+      if (!labelsChanged) {
+        cleanLabels = { ...s.liveLabels };
+        labelsChanged = true;
+      }
+      delete (cleanLabels as Record<string, string>)[id];
+    }
+  }
+
   const expandedChanged = cleanExpanded.size !== s.expanded.size;
   const activeChanged = cleanActive !== s.activeNoteId;
-  if (expandedChanged || activeChanged) {
+  if (expandedChanged || activeChanged || labelsChanged) {
     useTreeStore.setState({
       ...(expandedChanged ? { expanded: cleanExpanded } : {}),
       ...(activeChanged ? { activeNoteId: cleanActive } : {}),
+      ...(labelsChanged ? { liveLabels: cleanLabels } : {}),
     });
   }
 }

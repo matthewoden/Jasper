@@ -55,13 +55,16 @@ function makeNoteNode(overrides: {
 }
 
 beforeEach(() => {
-  // Reset store between tests so activeNoteId / selectedRow don't leak.
+  // Reset store between tests so activeNoteId / selectedRow / liveLabels don't leak.
   useTreeStore.setState({
     expanded: new Set(),
     activeNoteId: null,
     pendingRename: null,
     draftCreate: null,
     selectedRow: null,
+    // Plan 04 (UX-08) — reset live H1 label overrides so the
+    // "fall back to data.title" case is not contaminated by prior tests.
+    liveLabels: {},
   });
 });
 
@@ -714,6 +717,83 @@ describe("<TreeRow />", () => {
         kind: "note",
         target: "uuid-pre-existing",
       });
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Phase 5.5 / Plan 04 (UX-08) — live H1 label override for note rows.
+  //
+  // Note rows render `liveLabels[id] ?? data.title`. Folder rows are
+  // unaffected (they always render `data.name`). The selector returns
+  // undefined for folder rows by construction, but we add a defensive
+  // test to prove it.
+  // ──────────────────────────────────────────────────────────────────
+  describe("UX-08 live H1 label override", () => {
+    it("UX-08: note row renders liveLabels[id] when present", () => {
+      useTreeStore.setState({
+        liveLabels: { "n-1": "Live Title" },
+      });
+      const node = makeNoteNode({ id: "n-1", title: "Disk Title" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const label = container.querySelector(
+        "[data-tree-row-label]",
+      ) as HTMLElement;
+      expect(label.textContent).toBe("Live Title");
+      // The title attribute must mirror the displayed label so the
+      // hover-tooltip matches what the user sees.
+      expect(label.getAttribute("title")).toBe("Live Title");
+    });
+
+    it("UX-08: note row falls back to data.title when liveLabel is absent", () => {
+      // Reset liveLabels explicitly so prior tests cannot leak in.
+      useTreeStore.setState({ liveLabels: {} });
+      const node = makeNoteNode({ id: "n-1", title: "Disk Title" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const label = container.querySelector(
+        "[data-tree-row-label]",
+      ) as HTMLElement;
+      expect(label.textContent).toBe("Disk Title");
+      expect(label.getAttribute("title")).toBe("Disk Title");
+    });
+
+    it("UX-08: folder row ignores liveLabels (uses data.name) — defense-in-depth", () => {
+      // setLiveLabel is keyed by note id only, so this case should never
+      // happen at runtime — but the selector is defensive: it returns
+      // undefined for folder rows regardless of the slice contents.
+      useTreeStore.setState({
+        liveLabels: { "projects/jasper": "Should NOT show" },
+      });
+      const node = makeFolderNode({
+        path: "projects/jasper",
+        name: "jasper",
+      });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const label = container.querySelector(
+        "[data-tree-row-label]",
+      ) as HTMLElement;
+      expect(label.textContent).toBe("jasper");
+      expect(label.getAttribute("title")).toBe("jasper");
     });
   });
 });

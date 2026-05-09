@@ -1394,3 +1394,106 @@ describe("<EditorPane /> — UX-10 click-anywhere-to-type host (Plan 05.5-01)", 
         void container;
     });
 });
+
+// ────────────────────────────────────────────────────────────────────
+// Phase 5.5 / Plan 04 (UX-08) — live H1 → sidebar label sync.
+// handleEditorH1Change writes through to useTreeStore.liveLabels[noteId]
+// so TreeRow can render the in-flight title pre-save. Cleared on null
+// /empty H1 and on note switch with unsaved edits (Pitfall 6).
+//
+// The MarkdownEditor mock fires onH1Change automatically when the
+// textarea's value matches /^# (.+)$/m; tests drive H1 changes by
+// firing change events with `# title` content.
+// ────────────────────────────────────────────────────────────────────
+describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", () => {
+    beforeEach(() => {
+        // Reset liveLabels between cases — the slice is global state.
+        useTreeStore.setState({ liveLabels: {} });
+    });
+
+    it("UX-08: handleEditorH1Change sets liveLabels[noteId] when H1 string non-empty", async () => {
+        getNoteMock.mockResolvedValue(okGet("body only"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("body only"));
+
+        // Type an H1; the mock auto-fires onH1Change("My Title").
+        fireEvent.change(editor, {
+            target: { value: "# My Title\n\nbody only" },
+        });
+        await flushMicrotasks();
+
+        expect(useTreeStore.getState().liveLabels[ScratchpadUUID]).toBe(
+            "My Title",
+        );
+    });
+
+    it("UX-08: handleEditorH1Change clears liveLabel when H1 is null/empty", async () => {
+        getNoteMock.mockResolvedValue(okGet("# Original\n\nbody"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        // Pre-seed the label so we can prove clear actually removes it.
+        useTreeStore.setState({
+            liveLabels: { [ScratchpadUUID]: "Original" },
+        });
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("# Original\n\nbody"));
+
+        // Erase the H1 entirely → mock fires onH1Change(null).
+        fireEvent.change(editor, { target: { value: "body" } });
+        await flushMicrotasks();
+
+        expect(
+            useTreeStore.getState().liveLabels[ScratchpadUUID],
+        ).toBeUndefined();
+    });
+
+    it("UX-08: switching to a new note clears the previous note's liveLabel when userHasEdited is true (Pitfall 6)", async () => {
+        // First note: load, type to set userHasEdited + a live label.
+        getNoteMock.mockImplementation((id: string) =>
+            Promise.resolve(okGet(`# Title for ${id}\n\nbody`)),
+        );
+        updateNoteMock.mockResolvedValue(okPut());
+
+        const { rerender } = render(<EditorPane noteId="note-a" />);
+        await flushMicrotasks();
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() =>
+            expect(editor.value).toBe("# Title for note-a\n\nbody"),
+        );
+
+        // Type a new H1 → setLiveLabel("note-a", "Edited A") AND
+        // userHasEdited.current becomes true (handleEditorChange path).
+        fireEvent.change(editor, {
+            target: { value: "# Edited A\n\nbody" },
+        });
+        await flushMicrotasks();
+        expect(useTreeStore.getState().liveLabels["note-a"]).toBe("Edited A");
+
+        // Switch notes WITHOUT waiting for the debounced save — the
+        // previous live label must be cleared because userHasEdited=true
+        // means no canonical save has flushed the title to the wire tree.
+        rerender(<EditorPane noteId="note-b" />);
+        await flushMicrotasks();
+
+        expect(
+            useTreeStore.getState().liveLabels["note-a"],
+        ).toBeUndefined();
+    });
+
+    afterEach(() => {
+        useTreeStore.setState({ liveLabels: {} });
+    });
+});

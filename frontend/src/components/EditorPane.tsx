@@ -262,8 +262,29 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     }
   }, [tree, noteId]);
 
+  // Plan 04 (UX-08) / RESEARCH §Pitfall 6 — track the PREVIOUS noteId so
+  // the load effect can detect a switch and clear the stale live label.
+  // Cannot read it from `noteIdRef` because the noteIdRef-update effect
+  // (declared above) runs FIRST on a noteId change and overwrites the
+  // previous value before this effect sees it. This dedicated ref is
+  // updated at the END of the load effect, after the prev-id read.
+  const prevNoteIdRef = useRef<string | null>(noteId);
+
   // 1. Load on mount AND whenever noteId changes (Phase 3).
   useEffect(() => {
+    // Plan 04 (UX-08) / RESEARCH §Pitfall 6: clear stale live label for
+    // the PREVIOUS note if the user switched away with unsaved edits
+    // (no successful save flushed the canonical title to the wire tree).
+    // Read prevNoteIdRef (NOT noteIdRef) because noteIdRef has already
+    // been updated to the new noteId by the dedicated effect above.
+    {
+      const prevId = prevNoteIdRef.current;
+      if (prevId !== null && prevId !== noteId && userHasEdited.current) {
+        useTreeStore.getState().clearLiveLabel(prevId);
+      }
+      // Record the new "previous" for the NEXT switch.
+      prevNoteIdRef.current = noteId;
+    }
     if (noteId === null) {
       // No note selected — leave the component in a non-loading,
       // non-error state. The placeholder branch below renders before
@@ -521,18 +542,26 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     [performSave],
   );
 
-  // 3b. H1-change callback — Plan 05-11 D-27: MarkdownEditor fires onH1Change
-  // on every user-typed change with the current H1 or null. EditorPane's H1
-  // pipeline (Plan 03-22 Phase 3 R2) is wired in performSave; this callback
-  // is a no-op here (the H1 extraction happens from latestContentRef in
-  // performSave) but provided so MarkdownEditor's onH1Change prop is satisfied.
-  // Future: if we want immediate H1 feedback (e.g., banner without waiting for
-  // debounce), this is the place to wire it.
+  // 3b. H1-change callback — Plan 05-11 D-27 wired by Plan 04 (UX-08).
+  // MarkdownEditor fires onH1Change on every user-typed change with the
+  // current H1 or null. The persistence pipeline (Plan 03-22 H1↔filename
+  // rename) still runs inside performSave on the debounced timer; this
+  // callback is the live UI feedback path:
+  //   - non-empty H1 → setLiveLabel(noteId, trimmed) so TreeRow renders
+  //     the in-flight title in the sidebar pre-save (UX-08).
+  //   - null / empty H1 → clearLiveLabel(noteId) so the row falls back to
+  //     the canonical wire-tree title.
+  // Cleared on note-switch with unsaved edits via the noteId-change load
+  // effect above (Pitfall 6 mitigation).
   const handleEditorH1Change = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    (_h1: string | null) => {
-      // H1 pipeline runs inside performSave via extractH1FromContent.
-      // No additional action needed here for Phase 5 (D-32 / EDIT-09).
+    (h1: string | null) => {
+      const id = noteIdRef.current;
+      if (id === null) return;
+      if (h1 === null || h1.trim() === "") {
+        useTreeStore.getState().clearLiveLabel(id);
+      } else {
+        useTreeStore.getState().setLiveLabel(id, h1.trim());
+      }
     },
     [],
   );

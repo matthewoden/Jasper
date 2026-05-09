@@ -121,6 +121,12 @@ export function TreeRow({
 }: TreeRowProps) {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const pendingRename = useTreeStore((s) => s.pendingRename);
+  // Plan 04 (UX-08): live H1 label override for note rows. Falls back to
+  // the canonical title from the wire tree when no override is present.
+  // Folder rows are unaffected (folders use `data.name`).
+  const liveLabel = useTreeStore((s) =>
+    node.data.kind === "note" ? s.liveLabels[node.data.id] : undefined,
+  );
   const muts = useTreeMutations();
   const data = node.data;
   const isFolder = data.kind === "folder";
@@ -234,6 +240,10 @@ export function TreeRow({
         ? data.title.slice(0, -3)
         : data.title;
 
+  // Plan 04 (UX-08): note rows prefer the live H1 label (from useTreeStore.liveLabels)
+  // over the canonical wire-tree title; folders always render their name.
+  const displayLabel = isFolder ? data.name : (liveLabel ?? data.title);
+
   const labelOrInput = isRenamingThis ? (
     <RenameInput
       initialValue={renameInitial}
@@ -260,10 +270,10 @@ export function TreeRow({
         fontWeight: 400,
         color: "var(--color-fg)",
       }}
-      title={isFolder ? data.name : data.title}
+      title={displayLabel}
       data-tree-row-label
     >
-      {isFolder ? data.name : data.title}
+      {displayLabel}
     </span>
   );
 
