@@ -231,6 +231,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     connectionStatusRef.current = connectionStatus;
   }, [connectionStatus]);
 
+  // BL-04 (Phase 5.5 gap-closure Plan 12) — one-shot guard so the keepalive
+  // PUT fires AT MOST ONCE per tab-close lifecycle. Both visibilitychange→hidden
+  // AND beforeunload can fire on tab close (in that order); we want the first
+  // one to land the bytes via keepalive, and the second to no-op rather than
+  // double-PUT. Reset on visible→hidden→visible so a subsequent hide can
+  // fire keepalive again.
+  const keepaliveSentRef = useRef(false);
+
   // Plan 03-22 (Gap R2-6) — H1-driven rename pipeline state.
   //   lastH1Sent       tracks the most-recently-persisted H1 so we
   //                    know when the H1 has changed since the last
@@ -603,34 +611,67 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     };
   }, []);
 
-  // 5b. UX-07: page-exit save. Two paths:
-  //  (1) visibilitychange→hidden — async fetch via performSave; tab is
-  //      still alive at this point, so the normal save path completes.
-  //  (2) beforeunload — fetch keepalive: true; cannot await async work
-  //      inside beforeunload, so this path is fire-and-forget. Skips
-  //      when paused / inFlight / trailingPending / no note loaded.
+  // 5b. UX-07 / BL-04: page-exit save (Phase 5.5 gap-closure Plan 12).
   //
-  // Pitfall 2 (RESEARCH §Pitfall 2): both events can fire on tab close;
-  // performSave's existing inFlight + trailingPending guards dedupe the
-  // visibilitychange path, and the beforeunload handler explicitly checks
-  // inFlight/trailingPending before issuing its keepalive PUT.
+  //   Updated precedence (post-Plan-12):
+  //
+  //  (1) visibilitychange→hidden — fire a `keepalive: true` raw fetch PUT.
+  //      The previous `performSave(latestContentRef.current)` issued a
+  //      non-keepalive PUT via the typed openapi-fetch wrapper; on real
+  //      tab close the browser aborted it and the bytes never reached
+  //      the server (BL-04). Keepalive survives unload.
+  //  (2) beforeunload — secondary fallback. If visibilitychange already
+  //      fired the keepalive PUT for this tab-close lifecycle, the
+  //      one-shot keepaliveSentRef short-circuits this branch. Some
+  //      browsers fire beforeunload without a prior visibilitychange
+  //      (synchronous window.close from within the page); this branch
+  //      covers them.
+  //
+  //  Pitfall 2 (RESEARCH §Pitfall 2): both events can fire on tab close
+  //  (visibilitychange first, beforeunload second). The keepaliveSentRef
+  //  one-shot dedups them so we issue exactly ONE keepalive PUT per
+  //  tab-close lifecycle. visible→hidden→visible re-arms the ref so a
+  //  subsequent hide can fire keepalive again.
   useEffect(() => {
     const onVisibilityChange = () => {
-      if (document.visibilityState !== "hidden") return;
+      // Reset the one-shot guard if the user re-shows the tab (visibilityState
+      // flipped from hidden→visible). A subsequent hide should be allowed to
+      // fire keepalive again.
+      if (document.visibilityState !== "hidden") {
+        keepaliveSentRef.current = false;
+        return;
+      }
       if (debounceTimer.current !== null) {
         window.clearTimeout(debounceTimer.current);
         debounceTimer.current = null;
       }
-      void performSave(latestContentRef.current);
-    };
-    const onBeforeUnload = () => {
       const id = noteIdRef.current;
       if (id === null) return;
       // Phase 4 paused gate — same condition performSave uses.
       if (connectionStatusRef.current !== "connected") return;
-      // Dedup: if a save is already in flight or queued, the existing
-      // pipeline will finish it; do NOT also issue a keepalive PUT.
-      if (inFlight.current || trailingPending.current) return;
+      if (keepaliveSentRef.current) return;
+      keepaliveSentRef.current = true;
+      // BL-04: keepalive: true survives tab close. The previous
+      // performSave(latestContentRef.current) issued a non-keepalive PUT
+      // via the typed openapi-fetch wrapper; on real tab close the browser
+      // aborted it and the bytes never reached the server.
+      void fetch(`/api/v1/notes/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: latestContentRef.current }),
+        keepalive: true,
+      });
+    };
+    const onBeforeUnload = () => {
+      // Secondary fallback. If visibilitychange already fired the keepalive
+      // PUT for this tab-close lifecycle, do nothing. Some browsers fire
+      // beforeunload without a prior visibilitychange (e.g., synchronous
+      // window.close from within the page); this branch covers them.
+      if (keepaliveSentRef.current) return;
+      const id = noteIdRef.current;
+      if (id === null) return;
+      if (connectionStatusRef.current !== "connected") return;
+      keepaliveSentRef.current = true;
       void fetch(`/api/v1/notes/${encodeURIComponent(id)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -644,7 +685,9 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [performSave]);
+    // refs only — performSave is no longer called from inside the handlers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Phase 4 (Plan 04-05) — WS event handlers.
 
