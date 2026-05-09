@@ -63,6 +63,8 @@ export function useTheme(): {
     async (t: "dark" | "light") => {
       // Mark user toggle so the config effect no longer overwrites data-theme.
       userToggledRef.current = true;
+      // Capture current theme before optimistic apply so we can roll back.
+      const prevTheme = getCurrentTheme();
       // Optimistic: flip data-theme + LS bootstrap immediately so the
       // user sees the change without round-trip latency.
       applyTheme(t);
@@ -75,8 +77,10 @@ export function useTheme(): {
       const next: Config = { ...config, theme: t };
       const { error } = await saveConfig(next);
       if (error) {
-        // Rollback the LS cache (so next reload doesn't think this
-        // was persisted) but keep the in-memory theme applied.
+        // Full rollback: revert DOM and LS cache so the UI matches
+        // persisted state (avoids confusing mismatch between visual
+        // theme and Settings menu check-mark on PUT failure).
+        applyTheme(prevTheme);
         try {
           localStorage.removeItem(THEME_BOOTSTRAP_KEY);
         } catch {
