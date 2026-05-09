@@ -1555,50 +1555,69 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
     });
 
-    it("UX-07: visibilitychange→hidden triggers performSave", async () => {
+    it("UX-07 / BL-04: visibilitychange→hidden fires a keepalive fetch (Plan 05.5-12)", async () => {
+        // BL-04 (Phase 5.5 gap-closure Plan 12): the visibilitychange→hidden
+        // path used to call performSave (a non-keepalive openapi-fetch PUT)
+        // which the browser aborts on real tab close. Plan 12 flips the
+        // default to a `keepalive: true` raw fetch so the bytes survive
+        // tab close even when the page is being torn down.
         getNoteMock.mockResolvedValue(okGet("hi"));
         updateNoteMock.mockResolvedValue(okPut());
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
-        await flushMicrotasks();
-        const editor = screen.getByLabelText(
-            "Note content",
-        ) as HTMLTextAreaElement;
-        await waitFor(() => expect(editor.value).toBe("hi"));
-
-        fireEvent.change(editor, { target: { value: "tab-switch save" } });
-
-        // Monkey-patch document.visibilityState to "hidden" then dispatch
-        // the visibilitychange event. The handler must collapse debounce
-        // and call performSave (which calls updateNote).
-        const originalDescriptor = Object.getOwnPropertyDescriptor(
-            Document.prototype,
-            "visibilityState",
-        );
-        Object.defineProperty(document, "visibilityState", {
-            value: "hidden",
-            configurable: true,
-            writable: true,
-        });
         try {
-            await act(async () => {
-                document.dispatchEvent(new Event("visibilitychange"));
-                await Promise.resolve();
-            });
-            expect(updateNoteMock).toHaveBeenCalledTimes(1);
-            expect(updateNoteMock).toHaveBeenCalledWith(
-                ScratchpadUUID,
-                "tab-switch save",
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("hi"));
+
+            fireEvent.change(editor, { target: { value: "tab-switch save" } });
+
+            // Monkey-patch document.visibilityState to "hidden" then dispatch
+            // the visibilitychange event. The handler must collapse debounce
+            // and fire a keepalive PUT (NOT performSave / updateNote).
+            const originalDescriptor = Object.getOwnPropertyDescriptor(
+                Document.prototype,
+                "visibilityState",
             );
-        } finally {
-            // Restore visibilityState so other tests aren't polluted.
-            if (originalDescriptor) {
-                Object.defineProperty(
-                    document,
-                    "visibilityState",
-                    originalDescriptor,
+            Object.defineProperty(document, "visibilityState", {
+                value: "hidden",
+                configurable: true,
+                writable: true,
+            });
+            try {
+                await act(async () => {
+                    document.dispatchEvent(new Event("visibilitychange"));
+                    await Promise.resolve();
+                });
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+                expect(fetchMock).toHaveBeenCalledWith(
+                    `/api/v1/notes/${encodeURIComponent(ScratchpadUUID)}`,
+                    expect.objectContaining({
+                        method: "PUT",
+                        keepalive: true,
+                        body: JSON.stringify({ content: "tab-switch save" }),
+                    }),
                 );
+                // The keepalive path must NOT also dispatch the typed
+                // openapi-fetch performSave wrapper; otherwise the browser
+                // races two PUTs with one being aborted on unload.
+                expect(updateNoteMock).not.toHaveBeenCalled();
+            } finally {
+                if (originalDescriptor) {
+                    Object.defineProperty(
+                        document,
+                        "visibilityState",
+                        originalDescriptor,
+                    );
+                }
             }
+        } finally {
+            global.fetch = originalFetch;
         }
     });
 
@@ -1672,6 +1691,290 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
             global.fetch = originalFetch;
             // Restore default connection status so subsequent tests don't fail.
             useTreeStore.setState({ connectionStatus: "connected" });
+        }
+    });
+
+    afterEach(() => {
+        useTreeStore.setState({ connectionStatus: "connected" });
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Phase 5.5 / Plan 12 — gap-closure for the BL-04 / WR-02 / WR-04 /
+// WR-05 / WR-06 review findings. All five edits live in EditorPane.tsx.
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * Helper: monkey-patch document.visibilityState. Returns a restore fn the
+ * caller MUST invoke in a finally block so subsequent tests aren't polluted.
+ */
+function setVisibilityState(value: "hidden" | "visible"): () => void {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+        Document.prototype,
+        "visibilityState",
+    );
+    Object.defineProperty(document, "visibilityState", {
+        value,
+        configurable: true,
+        writable: true,
+    });
+    return () => {
+        if (originalDescriptor) {
+            Object.defineProperty(
+                document,
+                "visibilityState",
+                originalDescriptor,
+            );
+        }
+    };
+}
+
+describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
+    it("BL-04: visibilitychange→hidden while connected fires keepalive PUT", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("hello"));
+
+            fireEvent.change(editor, { target: { value: "edit before close" } });
+
+            const restore = setVisibilityState("hidden");
+            try {
+                await act(async () => {
+                    document.dispatchEvent(new Event("visibilitychange"));
+                    await Promise.resolve();
+                });
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+                const [url, init] = fetchMock.mock.calls[0] as [
+                    string,
+                    RequestInit,
+                ];
+                expect(url).toBe(
+                    `/api/v1/notes/${encodeURIComponent(ScratchpadUUID)}`,
+                );
+                expect(init.method).toBe("PUT");
+                expect(init.keepalive).toBe(true);
+                expect(init.body).toBe(
+                    JSON.stringify({ content: "edit before close" }),
+                );
+            } finally {
+                restore();
+            }
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    it("BL-04: visibilitychange→hidden while reconnecting does NOT fire fetch (paused gate)", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+        useTreeStore.setState({ connectionStatus: "reconnecting" });
+
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("hello"));
+
+            const restore = setVisibilityState("hidden");
+            try {
+                await act(async () => {
+                    document.dispatchEvent(new Event("visibilitychange"));
+                    await Promise.resolve();
+                });
+                // Paused — no keepalive fetch. (No updateNote either.)
+                expect(fetchMock).not.toHaveBeenCalled();
+                expect(updateNoteMock).not.toHaveBeenCalled();
+            } finally {
+                restore();
+            }
+        } finally {
+            global.fetch = originalFetch;
+            useTreeStore.setState({ connectionStatus: "connected" });
+        }
+    });
+
+    it("BL-04: visibilitychange→hidden then beforeunload only fires fetch ONCE (deduped)", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("hello"));
+
+            fireEvent.change(editor, { target: { value: "the bytes" } });
+
+            const restore = setVisibilityState("hidden");
+            try {
+                await act(async () => {
+                    document.dispatchEvent(new Event("visibilitychange"));
+                    await Promise.resolve();
+                });
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+
+                // beforeunload after visibilitychange already issued the
+                // keepalive PUT — must be a no-op (the one-shot ref dedups).
+                act(() => {
+                    window.dispatchEvent(new Event("beforeunload"));
+                });
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            } finally {
+                restore();
+            }
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    it("BL-04: visibilitychange→hidden clears any pending debounceTimer", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("hello"));
+
+            // Edit kicks off the 2s debounce timer.
+            fireEvent.change(editor, { target: { value: "buffered edit" } });
+
+            const restore = setVisibilityState("hidden");
+            try {
+                await act(async () => {
+                    document.dispatchEvent(new Event("visibilitychange"));
+                    await Promise.resolve();
+                });
+                // keepalive PUT fired exactly once.
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+
+                // Advancing the clock past the debounce window must NOT
+                // produce a second updateNote call (debounce was cleared).
+                await act(async () => {
+                    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
+                });
+                expect(updateNoteMock).not.toHaveBeenCalled();
+            } finally {
+                restore();
+            }
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    it("BL-04: beforeunload still fires keepalive when visibilitychange did NOT fire first", async () => {
+        // Some browsers (synchronous window.close from within the page)
+        // skip visibilitychange and only fire beforeunload. The fallback
+        // path must still issue the keepalive PUT.
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("hello"));
+
+            fireEvent.change(editor, { target: { value: "fallback path" } });
+
+            // No visibilitychange — go straight to beforeunload.
+            act(() => {
+                window.dispatchEvent(new Event("beforeunload"));
+            });
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+            expect(init.keepalive).toBe(true);
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    it("BL-04: visible→hidden→visible→hidden re-arms the dedup ref so the second hide can fire keepalive", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("hello"));
+
+            fireEvent.change(editor, { target: { value: "first hide" } });
+
+            // First hide → fires keepalive once.
+            const restoreHidden1 = setVisibilityState("hidden");
+            try {
+                await act(async () => {
+                    document.dispatchEvent(new Event("visibilitychange"));
+                    await Promise.resolve();
+                });
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            } finally {
+                restoreHidden1();
+            }
+
+            // Re-show the tab — the one-shot dedup ref should reset.
+            const restoreVisible = setVisibilityState("visible");
+            try {
+                await act(async () => {
+                    document.dispatchEvent(new Event("visibilitychange"));
+                    await Promise.resolve();
+                });
+            } finally {
+                restoreVisible();
+            }
+
+            // Second hide → must fire keepalive again (count goes to 2).
+            fireEvent.change(editor, { target: { value: "second hide" } });
+            const restoreHidden2 = setVisibilityState("hidden");
+            try {
+                await act(async () => {
+                    document.dispatchEvent(new Event("visibilitychange"));
+                    await Promise.resolve();
+                });
+                expect(fetchMock).toHaveBeenCalledTimes(2);
+            } finally {
+                restoreHidden2();
+            }
+        } finally {
+            global.fetch = originalFetch;
         }
     });
 
