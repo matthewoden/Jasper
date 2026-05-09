@@ -47,6 +47,17 @@ export const LS_KEY_ACTIVE_NOTE = "jasper.tree.activeNoteId";
 export const LS_KEY_SIDEBAR_WIDTH = "jasper.sidebar.width";
 export const SIDEBAR_WIDTH_DEFAULT = 260; // also acts as MIN clamp
 
+// BL-03 (Phase 5.5 gap-closure Plan 11) — editor pane floor. On viewports
+// narrower than `SIDEBAR_WIDTH_DEFAULT + EDITOR_MIN = 580px` the sidebar
+// is permitted to shrink below MIN so the editor pane keeps at least
+// EDITOR_MIN px of space (or 0 on degenerate sub-EDITOR_MIN viewports).
+// Mirrored as the same numeric value in SidebarResizeHandle.tsx — the
+// duplicated constant is intentional (Plan 11 §output rationale): keeping
+// the handle and the store independent avoids an extra import surface for
+// a one-line pure number, and the constant is already plan-cited in two
+// places (here and the handle) so any future change has to land in both.
+const EDITOR_MIN = 320;
+
 export type RenameKind = "note" | "folder";
 
 export type PendingRename = {
@@ -164,8 +175,26 @@ export const useTreeStore = create<TreeStore>((set) => ({
       return { liveLabels: rest };
     }),
   // Plan 05 (UX-09) — clamp to SIDEBAR_WIDTH_DEFAULT (MIN).
-  setSidebarWidth: (w) =>
-    set({ sidebarWidth: Math.max(SIDEBAR_WIDTH_DEFAULT, w) }),
+  //
+  // BL-03 (Phase 5.5 gap-closure Plan 11): on a narrow viewport where the
+  // sidebar MIN (260) and the editor floor (320) can't both fit, the
+  // sidebar must be allowed to shrink below MIN — otherwise the
+  // SidebarResizeHandle's pointermove clamp (which dispatches a sub-MIN
+  // width on narrow viewports) gets silently undone here, restoring the
+  // exact bug BL-03 closes. The store therefore also clamps against the
+  // live viewport's editor headroom: `min(MIN-clamped, innerWidth - 320)`.
+  // On normal-width viewports this is a no-op (innerWidth - 320 >= MIN).
+  setSidebarWidth: (w) => {
+    const minClamped = Math.max(SIDEBAR_WIDTH_DEFAULT, w);
+    if (typeof window === "undefined") {
+      // SSR / test edge case — no viewport to clamp against; preserve the
+      // pre-existing MIN-only behavior.
+      set({ sidebarWidth: minClamped });
+      return;
+    }
+    const liveMax = Math.max(0, window.innerWidth - EDITOR_MIN);
+    set({ sidebarWidth: Math.min(minClamped, liveMax) });
+  },
 }));
 
 /**
