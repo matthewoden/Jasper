@@ -394,21 +394,58 @@ describe("livePreviewPlugin / list-bullets (EDIT-04 / D-04)", () => {
     views.length = 0;
   });
 
-  it("ListMark hides via Decoration.replace when cursor is off the list line", () => {
+  it("Unordered ListMark renders BulletWidget '•' when cursor is off the list line", () => {
     // LIST_DOC line 1: "Some text." — put cursor here, list starts line 3
     const view = makeView(LIST_DOC, 0);
     views.push(view);
 
+    const plugin = view.plugin(livePreviewPlugin);
+    expect(plugin).not.toBeNull();
+
+    // Walk the DecorationSet looking for a widget-bearing Decoration.replace
+    // whose toDOM() emits a span.cm-list-bullet containing '•'.
+    let foundBullet = false;
+    const cursor = plugin!.decorations.iter();
+    while (cursor.value !== null) {
+      const spec = (cursor.value as unknown as { spec: Record<string, unknown> }).spec;
+      const widget = spec?.widget as { toDOM?: () => Element } | undefined;
+      if (widget && typeof widget.toDOM === "function") {
+        const dom = widget.toDOM();
+        if (
+          dom.tagName === "SPAN" &&
+          dom.classList.contains("cm-list-bullet") &&
+          dom.textContent === "•"
+        ) {
+          // EDIT-04: the unordered `- ` text is replaced by a real bullet.
+          // Verify the replaced range covers the ListMark `-` character.
+          const replacedText = view.state.doc.sliceString(cursor.from, cursor.to);
+          expect(replacedText).toBe("-");
+          foundBullet = true;
+          break;
+        }
+      }
+      cursor.next();
+    }
+    expect(foundBullet).toBe(true);
+  });
+
+  it("Ordered ListMark stays visible (no decoration) — '1.' IS the bullet (EDIT-04)", () => {
+    // LIST_DOC has an ordered list at "1. First". Cursor far away so we'd
+    // expect any "hide" pass to fire if it were going to. After the fix,
+    // ordered ListMark is left visible — no Decoration.replace covers it.
+    const view = makeView(LIST_DOC, 0);
+    views.push(view);
+
     const decos = collectDecorations(view);
-    // Look for a Decoration.replace covering a ListMark range.
-    // In lezer-markdown: unordered ListMark text = "-" (just the dash),
-    // ordered ListMark text = "1." (digit + dot, no trailing space).
-    const found = decos.find((d) => {
+    const orderedMarkPos = LIST_DOC.indexOf("1.");
+    expect(orderedMarkPos).toBeGreaterThan(-1);
+
+    // No replace decoration should cover the "1." range.
+    const replaceCovering = decos.find((d) => {
       if (!d.isReplace) return false;
-      const text = view.state.doc.sliceString(d.from, d.to);
-      return text === "-" || /^\d+\.$/.test(text);
+      return d.from <= orderedMarkPos && d.to >= orderedMarkPos + 2;
     });
-    expect(found).toBeDefined();
+    expect(replaceCovering).toBeUndefined();
   });
 
   it("ListMark shows as cm-marker when cursor IS on the list line", () => {

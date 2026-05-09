@@ -80,6 +80,19 @@ export const jasperEditorTheme = EditorView.theme(
       borderRadius: "3px",
     },
     ".cm-marker": { color: "var(--color-muted)" },
+    // Bullet glyph for unordered list items (EDIT-04).
+    // Rendered by BulletWidget in livePreviewPlugin when ListMark is
+    // off-cursor; uses --color-muted so it reads as a UI affordance, not
+    // body text. The trailing space preserves visual separation between
+    // the bullet and the list-item text.
+    ".cm-list-bullet": {
+      color: "var(--color-muted)",
+      // Use ::after via inline style is not available in @codemirror/view
+      // theme spec; instead the widget injects the bullet character
+      // directly into textContent and we render a single space after it
+      // via padding-right so the text never abuts the glyph.
+      paddingRight: "0.4em",
+    },
     // Find/Replace panel (D-30 — let CM6 default panel theme through).
     ".cm-panels": {
       backgroundColor: "var(--color-surface)",

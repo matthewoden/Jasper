@@ -77,7 +77,12 @@ export const HIDEABLE_MARKER_NODES = new Set<string>([
   "HeaderMark",   // # ## ###
   "EmphasisMark", // * _ ** __
   "QuoteMark",    // >
-  "ListMark",     // - + 1.
+  // ListMark (`-` / `*` / `+` / `1.`) is NOT in this set because EDIT-04
+  // requires "actual bullets/numbers, not visible `- ` or `1. ` text" —
+  // a zero-width replace would leave the line bullet-less. ListMark is
+  // handled by a dedicated branch in buildDecorations() that swaps a
+  // BulletWidget (`•`) for unordered marks when off-cursor and leaves
+  // ordered marks (`1.`) visible (the digit IS the desired bullet).
   "LinkMark",     // [ ]
   "URL",          // (href)
   "HardBreak",    // trailing 2-space line break
@@ -125,6 +130,24 @@ class HRWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 const hrDeco = Decoration.replace({ widget: new HRWidget() });
+
+// EDIT-04 — bullet rendering for unordered list items. ListMark for
+// `- foo` / `* foo` / `+ foo` gets replaced (off-cursor) with a span
+// containing `•` so the list line shows an actual bullet instead of
+// the raw `- ` text. Ordered marks (`1.`) are left visible because the
+// digit itself is the desired bullet rendering.
+class BulletWidget extends WidgetType {
+  toDOM() {
+    const span = document.createElement("span");
+    span.className = "cm-list-bullet";
+    span.setAttribute("aria-hidden", "true");
+    span.textContent = "•"; // U+2022 BULLET
+    return span;
+  }
+  eq() { return true; }
+  ignoreEvent() { return true; }
+}
+const bulletDeco = Decoration.replace({ widget: new BulletWidget() });
 
 /**
  * Compute the set of line numbers that contain the current selection.
@@ -266,6 +289,31 @@ export function buildDecorations(view: EditorView): DecorationSet {
             sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
           });
           // Continue into children (CodeMark nodes) for marker hiding.
+          return;
+        }
+
+        // --- ListMark (EDIT-04 / D-04) ---
+        // Unordered (`-`, `*`, `+`): off-cursor → BulletWidget rendering `•`
+        //   (so the list line shows an actual bullet, not raw `- `).
+        // Ordered  (`1.`, `2.`): leave visible — the digit IS the
+        //   desired numeric rendering.
+        // On-cursor: show the raw markdown character styled via cm-marker.
+        // D-09 FencedCode guard still applies.
+        if (node.name === "ListMark") {
+          if (isInsideCode(node)) return;
+          const text = view.state.doc.sliceString(node.from, node.to).trim();
+          const isUnordered = /^[-*+]$/.test(text);
+          if (!isUnordered) return; // ordered: leave visible
+          const lineNum = view.state.doc.lineAt(node.from).number;
+          const onCursorLine = cursorLines.has(lineNum);
+          markDecos.push({
+            from: node.from,
+            to: node.to,
+            deco: onCursorLine
+              ? Decoration.mark({ class: VISIBLE_MARKER_CLASS })
+              : bulletDeco,
+            sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
+          });
           return;
         }
 
