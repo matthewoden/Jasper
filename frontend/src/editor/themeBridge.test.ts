@@ -62,4 +62,57 @@ describe("themeBridge", () => {
   it("jasperSyntaxHighlighting is truthy (Extension factory returned a value)", () => {
     expect(jasperSyntaxHighlighting).toBeTruthy();
   });
+
+  it("UX-10: theme strips focus outline on .cm-editor.cm-focused", () => {
+    // Mount the editor and inspect the CM6-injected <style> for the
+    // focus-ring kill rule. Asserting via the rendered stylesheet (not
+    // the theme spec object) proves CM6 actually emitted the CSS.
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: "hello",
+        extensions: [jasperEditorTheme],
+      }),
+    });
+
+    const styleContent = Array.from(document.querySelectorAll("style"))
+      .map((s) => s.textContent ?? "")
+      .join("\n");
+
+    // CM6 transforms `&.cm-focused` into `.ͼ<scopeId>.cm-focused` —
+    // the `&` resolves to the theme's auto-generated root class. Match
+    // both the focused-with-outline-none pair AND the fact that some
+    // selector ending in `.cm-focused` carries `outline: none !important`.
+    expect(styleContent).toMatch(/\.cm-focused\s*\{[^}]*outline:\s*none\s*!important/);
+
+    view.destroy();
+    parent.remove();
+  });
+
+  it("UX-11: theme applies max-width 72ch on .cm-content", () => {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: "hello",
+        extensions: [jasperEditorTheme],
+      }),
+    });
+
+    const styleContent = Array.from(document.querySelectorAll("style"))
+      .map((s) => s.textContent ?? "")
+      .join("\n");
+
+    // The .cm-content rule MUST carry max-width: 72ch. Pitfall 3:
+    // max-width must NOT appear on .cm-scroller or .cm-line — assert
+    // 72ch presence; the grep-style scope check lives in the plan's
+    // acceptance criteria (max-width only on .cm-content).
+    expect(styleContent).toMatch(/\.cm-content[\s\S]*?max-width:\s*72ch/);
+
+    view.destroy();
+    parent.remove();
+  });
 });
