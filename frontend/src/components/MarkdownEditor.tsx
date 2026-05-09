@@ -46,6 +46,7 @@ import { livePreviewPlugin } from "../editor/livePreviewPlugin";
 import { frontmatterPlugin } from "../editor/frontmatterPlugin";
 import { codeLanguages } from "../editor/codeLanguages";
 import { externalImagePlugin } from "../editor/externalImagePlugin";
+import { saveKeymap } from "../editor/jasperKeymap"; // Plan 05-11 / EDIT-10
 
 /**
  * MarkdownEditorRef — the ref API EditorPane consumes (D-26 LOCKED).
@@ -119,6 +120,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             frontmatterPlugin,
             livePreviewPlugin,
             externalImagePlugin, // Plan 05-08 — SECURITY-03 external image gate
+            saveKeymap(() => cbRef.current.onSaveRequested?.()), // Plan 05-11 / EDIT-10 — BEFORE defaultKeymap so Cmd+S takes precedence
             keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
             EditorView.updateListener.of((u) => {
               if (!u.docChanged) return;
