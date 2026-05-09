@@ -1982,3 +1982,151 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
         useTreeStore.setState({ connectionStatus: "connected" });
     });
 });
+
+describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure Plan 12)", () => {
+    it("WR-02: reconnecting → connected with buffered edits triggers performSave (reconnect-flush)", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        // Start connected so the load + initial state settle cleanly.
+        useTreeStore.setState({ connectionStatus: "connected" });
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("hello"));
+
+        // Drop into reconnecting — autosave is paused.
+        act(() => {
+            useTreeStore.setState({ connectionStatus: "reconnecting" });
+        });
+
+        // Type during the disconnect — sets userHasEdited.current = true and
+        // updates latestContentRef. updateNote MUST NOT be called yet.
+        fireEvent.change(editor, {
+            target: { value: "edits during disconnect" },
+        });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 50);
+        });
+        await flushMicrotasks();
+        expect(updateNoteMock).not.toHaveBeenCalled();
+
+        // Flip back to connected — the connectionRestored branch must
+        // dispatch performSave(latestContentRef.current).
+        await act(async () => {
+            useTreeStore.setState({ connectionStatus: "connected" });
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        await waitFor(() => expect(updateNoteMock).toHaveBeenCalled());
+        expect(updateNoteMock).toHaveBeenCalledWith(
+            ScratchpadUUID,
+            "edits during disconnect",
+        );
+    });
+
+    it("WR-02: reconnecting → connected with NO buffered edits does NOT call updateNote (no spurious save)", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        // Render while reconnecting — userHasEdited.current is false (no typing).
+        useTreeStore.setState({ connectionStatus: "reconnecting" });
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("hello"));
+
+        // No typing happens — flip to connected.
+        await act(async () => {
+            useTreeStore.setState({ connectionStatus: "connected" });
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        await flushMicrotasks();
+        // No buffered edits → no spurious save round-trip on reconnect.
+        expect(updateNoteMock).not.toHaveBeenCalled();
+    });
+
+    it("WR-02: reconnecting → connected with noteId === null does NOT call updateNote (null-id guard)", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        // Render with noteId=null — placeholder branch, no editor.
+        useTreeStore.setState({ connectionStatus: "reconnecting" });
+
+        const { rerender } = render(<EditorPane noteId={null} />);
+        await flushMicrotasks();
+
+        // Without an editor we can't simulate userHasEdited, but the guard
+        // requires noteId !== null. Even if userHasEdited were latched
+        // (it isn't, no typing happened), the noteIdRef.current === null
+        // branch must short-circuit. Verify by transitioning to connected
+        // and confirming no updateNote call.
+        await act(async () => {
+            useTreeStore.setState({ connectionStatus: "connected" });
+            await Promise.resolve();
+        });
+        await flushMicrotasks();
+        expect(updateNoteMock).not.toHaveBeenCalled();
+
+        // Sanity: re-rendering with a real noteId in connected state should
+        // load it normally without firing an extra save.
+        rerender(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        expect(updateNoteMock).not.toHaveBeenCalled();
+    });
+
+    it("WR-02: connected → reconnecting → connected reconnect-flush flushes the disconnect-buffered edit", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        // Start connected.
+        useTreeStore.setState({ connectionStatus: "connected" });
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("hello"));
+
+        // Drop to reconnecting BEFORE any typing — connectionLost dispatched.
+        act(() => {
+            useTreeStore.setState({ connectionStatus: "reconnecting" });
+        });
+
+        // Type during the disconnect — autosave gated.
+        fireEvent.change(editor, {
+            target: { value: "buffered while reconnecting" },
+        });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 50);
+        });
+        expect(updateNoteMock).not.toHaveBeenCalled();
+
+        // Reconnect — the connectionRestored flush dispatches performSave.
+        await act(async () => {
+            useTreeStore.setState({ connectionStatus: "connected" });
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        await waitFor(() => expect(updateNoteMock).toHaveBeenCalled());
+        expect(updateNoteMock).toHaveBeenCalledWith(
+            ScratchpadUUID,
+            "buffered while reconnecting",
+        );
+    });
+
+    afterEach(() => {
+        useTreeStore.setState({ connectionStatus: "connected" });
+    });
+});
