@@ -611,3 +611,67 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
     }
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// WR-07 (Phase 5.5 gap-closure Plan 13) — pruneStaleTreeState liveLabels rebuild.
+//
+// The original implementation cloned `liveLabels` lazily and then `delete`d
+// keys via a `Record<string, string>` cast — the cast defeats TypeScript
+// narrowing on the liveLabels shape. The rebuild pattern replaces the
+// cloned-and-deleted object with `Object.fromEntries(...)` over the kept
+// entries, which is non-mutating and keeps the derived type aligned with
+// the source `liveLabels` type.
+//
+// Behavior contract (does NOT change):
+//   - Stale id removal still drops the bad keys.
+//   - No-op pass (every id is still present) preserves liveLabels reference
+//     identity so memoized consumers don't re-render.
+// ──────────────────────────────────────────────────────────────────────────
+describe("WR-07 pruneStaleTreeState liveLabels rebuild (Phase 5.5 gap-closure Plan 13)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useTreeStore.setState(FULL_DEFAULT_STATE);
+  });
+
+  it("WR-07 / Test 1: stale id removed, kept ids preserved, identity changes", () => {
+    useTreeStore.setState({
+      liveLabels: { a: "A", b: "B", c: "C" },
+    });
+    const before = useTreeStore.getState().liveLabels;
+    pruneStaleTreeState(new Set<string>(), new Set(["a", "c"]));
+    const after = useTreeStore.getState().liveLabels;
+    expect(after).toEqual({ a: "A", c: "C" });
+    expect(after).not.toBe(before);
+    expect(Object.keys(after)).toEqual(["a", "c"]);
+    expect("b" in after).toBe(false);
+  });
+
+  it("WR-07 / Test 2: no-op pass preserves liveLabels reference identity", () => {
+    useTreeStore.setState({
+      liveLabels: { a: "A" },
+    });
+    const before = useTreeStore.getState().liveLabels;
+    pruneStaleTreeState(new Set<string>(), new Set(["a"]));
+    const after = useTreeStore.getState().liveLabels;
+    expect(after).toBe(before);
+  });
+
+  it("WR-07 / Test 3: empty liveLabels + empty allNoteIds is a no-op (identity preserved)", () => {
+    useTreeStore.setState({ liveLabels: {} });
+    const before = useTreeStore.getState().liveLabels;
+    pruneStaleTreeState(new Set<string>(), new Set<string>());
+    const after = useTreeStore.getState().liveLabels;
+    expect(after).toBe(before);
+  });
+
+  it("WR-07 / Test 4: every id stale → liveLabels becomes {} and identity changes", () => {
+    useTreeStore.setState({
+      liveLabels: { a: "A", b: "B" },
+    });
+    const before = useTreeStore.getState().liveLabels;
+    pruneStaleTreeState(new Set<string>(), new Set<string>());
+    const after = useTreeStore.getState().liveLabels;
+    expect(after).toEqual({});
+    expect(after).not.toBe(before);
+  });
+});
