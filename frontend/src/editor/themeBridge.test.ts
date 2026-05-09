@@ -115,4 +115,76 @@ describe("themeBridge", () => {
     view.destroy();
     parent.remove();
   });
+
+  it(".cm-list-bullet uses fixed-width inline-block (UX-16)", () => {
+    // UX-16: replace prior `padding-right: 0.4em` with a fixed-width
+    // inline-block box (1.5ch, left-aligned) so the bullet column
+    // matches the on-cursor `.cm-marker.cm-list-marker` slot.
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: "hello",
+        extensions: [jasperEditorTheme],
+      }),
+    });
+
+    const styleContent = Array.from(document.querySelectorAll("style"))
+      .map((s) => s.textContent ?? "")
+      .join("\n");
+
+    // The .cm-list-bullet rule must carry display: inline-block, width: 1.5ch,
+    // and text-align: left.
+    expect(styleContent).toMatch(/\.cm-list-bullet[\s\S]*?display:\s*inline-block/);
+    expect(styleContent).toMatch(/\.cm-list-bullet[\s\S]*?width:\s*1\.5ch/);
+    expect(styleContent).toMatch(/\.cm-list-bullet[\s\S]*?text-align:\s*left/);
+
+    // The padding-right: 0.4em anti-pattern must be removed from the
+    // .cm-list-bullet rule. We assert the property is not present in the
+    // cm-list-bullet block specifically by carving the rule out and
+    // checking it independently.
+    const bulletRuleMatch = styleContent.match(
+      /\.cm-list-bullet\s*\{[^}]*\}/
+    );
+    expect(bulletRuleMatch).not.toBeNull();
+    expect(bulletRuleMatch![0]).not.toMatch(/padding-right/);
+
+    view.destroy();
+    parent.remove();
+  });
+
+  it(".cm-marker.cm-list-marker exists with same fixed-width as .cm-list-bullet (UX-16)", () => {
+    // UX-16: NEW rule — on-cursor `- ` raw marker gets the same 1.5ch
+    // fixed-width slot as the off-cursor BulletWidget so the column does
+    // not visually shift on cursor cross.
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: "hello",
+        extensions: [jasperEditorTheme],
+      }),
+    });
+
+    const styleContent = Array.from(document.querySelectorAll("style"))
+      .map((s) => s.textContent ?? "")
+      .join("\n");
+
+    // The compound `.cm-marker.cm-list-marker` rule must exist with the
+    // same three properties as `.cm-list-bullet`.
+    expect(styleContent).toMatch(
+      /\.cm-marker\.cm-list-marker[\s\S]*?display:\s*inline-block/
+    );
+    expect(styleContent).toMatch(
+      /\.cm-marker\.cm-list-marker[\s\S]*?width:\s*1\.5ch/
+    );
+    expect(styleContent).toMatch(
+      /\.cm-marker\.cm-list-marker[\s\S]*?text-align:\s*left/
+    );
+
+    view.destroy();
+    parent.remove();
+  });
 });

@@ -87,18 +87,30 @@ export const jasperEditorTheme = EditorView.theme(
       borderRadius: "3px",
     },
     ".cm-marker": { color: "var(--color-muted)" },
-    // Bullet glyph for unordered list items (EDIT-04).
+    // Bullet glyph for unordered list items (EDIT-04 / UX-16).
     // Rendered by BulletWidget in livePreviewPlugin when ListMark is
     // off-cursor; uses --color-muted so it reads as a UI affordance, not
-    // body text. The trailing space preserves visual separation between
-    // the bullet and the list-item text.
+    // body text. UX-16: fixed-width inline-block 1.5ch box so the column
+    // width matches the on-cursor `.cm-marker.cm-list-marker` slot below
+    // — the bullet column does not jiggle on cursor cross. The previous
+    // padding-based separation was removed because padding contributes to
+    // flow-box differently than inline-block fixed-width and would not
+    // match the on-cursor raw `- ` rendering (RESEARCH §Pattern 8
+    // anti-pattern).
     ".cm-list-bullet": {
       color: "var(--color-muted)",
-      // Use ::after via inline style is not available in @codemirror/view
-      // theme spec; instead the widget injects the bullet character
-      // directly into textContent and we render a single space after it
-      // via padding-right so the text never abuts the glyph.
-      paddingRight: "0.4em",
+      display: "inline-block",
+      width: "1.5ch",
+      textAlign: "left",
+    },
+    // UX-16: on-cursor `- ` marker gets the SAME fixed-width slot via the
+    // cm-list-marker class added in livePreviewPlugin's ListMark branch.
+    // Both off-cursor BulletWidget and on-cursor raw `- ` occupy 1.5ch —
+    // bullet column stays stable across cursor crossings.
+    ".cm-marker.cm-list-marker": {
+      display: "inline-block",
+      width: "1.5ch",
+      textAlign: "left",
     },
     // Find/Replace panel (D-30 — let CM6 default panel theme through).
     ".cm-panels": {
