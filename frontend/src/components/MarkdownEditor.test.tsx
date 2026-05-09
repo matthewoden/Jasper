@@ -19,6 +19,7 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { render, act } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
+import { EditorView } from "@codemirror/view";
 
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
 
@@ -167,5 +168,50 @@ describe("<MarkdownEditor />", () => {
       probeRef.current?.ed()?.setContent("plain text only");
     });
     expect(onH1Change).toHaveBeenLastCalledWith(null);
+  });
+
+  it("focusEnd ref method moves caret to end-of-doc and focuses contentDOM", () => {
+    // Phase 5.5 / UX-10: focusEnd() must (a) move the selection to
+    // doc.length AND (b) leave document.activeElement on the CM6
+    // contentDOM so subsequent typing lands at the very end of the doc.
+    const probeRef = { current: null as ProbeRef | null };
+    const { container } = render(
+      <Probe ref={probeRef} initialDoc="hello world" onChange={vi.fn()} />,
+    );
+    // Reach into the rendered editor to introspect the EditorView state
+    // and the focused contentDOM. The contentDOM is the .cm-content node.
+    const contentDOM = container.querySelector(".cm-content") as HTMLElement;
+    expect(contentDOM).not.toBeNull();
+
+    act(() => {
+      probeRef.current?.ed()?.focusEnd();
+    });
+
+    // EditorView.findFromDOM(contentDOM) returns the same view; reading
+    // its state.selection.main.from confirms the caret moved to end-of-doc.
+    const view = EditorView.findFromDOM(contentDOM);
+    expect(view).not.toBeNull();
+    const docLen = view!.state.doc.length;
+    expect(view!.state.selection.main.from).toBe(docLen);
+    expect(view!.state.selection.main.to).toBe(docLen);
+    expect(document.activeElement).toBe(view!.contentDOM);
+  });
+
+  it("extensions array includes EditorView.lineWrapping (white-space: pre-wrap on .cm-content)", () => {
+    // Phase 5.5 / UX-11: EditorView.lineWrapping toggles white-space to
+    // pre-wrap on .cm-content. Reading the computed style from the
+    // rendered DOM is the runtime-checkable proof that the extension is
+    // wired into the array (vs. just imported / unused).
+    const { container } = render(
+      <Probe initialDoc="just enough text" onChange={vi.fn()} />,
+    );
+    const contentDOM = container.querySelector(".cm-content") as HTMLElement;
+    expect(contentDOM).not.toBeNull();
+    const ws = window.getComputedStyle(contentDOM).whiteSpace;
+    // CM6 sets white-space: break-spaces (or pre-wrap on older versions)
+    // when EditorView.lineWrapping is in the extensions array. Without
+    // the extension, the default is `pre`. Accept either pre-wrap or
+    // break-spaces — both are wrapping modes.
+    expect(["pre-wrap", "break-spaces"]).toContain(ws);
   });
 });

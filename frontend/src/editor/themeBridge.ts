@@ -31,9 +31,16 @@ export const jasperEditorTheme = EditorView.theme(
       fontSize: "15px",
       lineHeight: "1.6",
     },
+    // UX-10: remove default focus ring on .cm-editor.cm-focused so the editor
+    // surface looks like part of the pane, not a discrete widget.
+    "&.cm-focused": { outline: "none !important" },
     ".cm-content": {
       padding: "16px",
       caretColor: "var(--color-fg)",
+      // UX-11: reading-width line wrap. Pitfall 3: max-width on .cm-content
+      // ONLY, never on .cm-scroller (clips selection drawing) or .cm-line
+      // (breaks long-line wrapping mid-word). See RESEARCH.md §Pitfall 3.
+      maxWidth: "72ch", // scope: .cm-content
     },
     ".cm-cursor, .cm-dropCursor": {
       borderLeftColor: "var(--color-fg)",

@@ -812,14 +812,30 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
           MarkdownEditor is uncontrolled — initialDoc is captured ONCE on mount.
           Updates flow through the ref API (editorRef). Phase 4 wiring is intact:
           banners, conflictBanner, deletedBanner, autosave, saveStateMachine, h1Extract,
-          editorHandlersRef, userHasEdited, lastNotePath all remain in EditorPane. */}
-      <MarkdownEditor
-        ref={editorRef}
-        initialDoc={loadStatus === "loaded" && !reindexing ? (content ?? "") : ""}
-        onChange={handleEditorChange}
-        onH1Change={handleEditorH1Change}
-        onSaveRequested={handleSaveRequested}
-      />
+          editorHandlersRef, userHasEdited, lastNotePath all remain in EditorPane.
+
+          Phase 5.5 / UX-10: click-anywhere-to-type host. Clicks that did NOT
+          land inside .cm-content (i.e. clicks below the last line / on
+          surrounding empty area) call focusEnd() to focus the editor with the
+          caret at end-of-doc. Padding stays on .cm-content (themeBridge) — host
+          has zero padding so empty-area clicks reach this onClick reliably. */}
+      <div
+        className="cm-host-shell"
+        style={{ flex: 1, display: "flex", flexDirection: "column" }}
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest(".cm-content")) return;
+          editorRef.current?.focusEnd();
+        }}
+        data-testid="cm-host-shell"
+      >
+        <MarkdownEditor
+          ref={editorRef}
+          initialDoc={loadStatus === "loaded" && !reindexing ? (content ?? "") : ""}
+          onChange={handleEditorChange}
+          onH1Change={handleEditorH1Change}
+          onSaveRequested={handleSaveRequested}
+        />
+      </div>
     </section>
   );
 }
