@@ -1,8 +1,13 @@
 /**
- * EditorPane — the editor pane: controlled <textarea> + load on mount /
+ * EditorPane — the editor pane: MarkdownEditor (CM6) + load on mount /
  * noteId-change + 2s debounced autosave + Cmd+S immediate save +
  * in-flight save coalescing, all driving the locked SaveIndicator
  * state machine (Phase 1 Task 1).
+ *
+ * Plan 05-11 D-27: the old controlled textarea is replaced by a MarkdownEditor
+ * (uncontrolled CM6 view) via the ref API. Every Phase 4 wiring remains intact:
+ * banners, conflict prompts, deletion banner, autosave + saveStateMachine,
+ * h1Extract, editorHandlersRef, userHasEdited, lastNotePath.
  *
  * Phase 3 (Plan 03-07) refactor: the prior single-note model (Phase 1's
  * hardcoded note UUID) is replaced by a `noteId: string | null` prop
@@ -11,11 +16,6 @@
  * API calls. When noteId changes, the load effect re-runs against the
  * new id, the userHasEdited latch resets, and the existing save-state
  * machine is re-initialized for the new note.
- *
- * Per 01-UI-SPEC.md §"Forward-looking constraint": Phase 5's
- * CodeMirror swap replaces ONLY the <textarea> element. The autosave
- * debounce, Cmd+S handler, coalescing logic, and SaveIndicator remain
- * unchanged.
  *
  * Plan 03-22 (Gap R2-6 — filename↔H1 bidirectional binding) — DIRECTION A:
  *   When the H1 in the editor changes (e.g. user types "# new title"),
@@ -45,8 +45,6 @@
  */
 
 import {
-  type ChangeEvent,
-  type KeyboardEvent,
   type MutableRefObject,
   useCallback,
   useEffect,
@@ -66,6 +64,7 @@ import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
 import { SaveIndicator } from "./SaveIndicator";
 import type { components } from "../api/schema";
+import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor"; // Plan 05-11 D-26..D-27
 
 type LoadStatus = "loading" | "loaded" | "error";
 
@@ -92,12 +91,12 @@ export const SAVED_STICKY_MS = 2000;
 const LOAD_ERROR_COPY =
   "Could not load note. Check that the server is running, then refresh the page.";
 
-// Phase 2 (UI-SPEC §Surface 3 + §Layout Contract): when reindexing=true the
-// textarea disables and shows this placeholder. App.tsx mounts the
-// <ReindexProgress /> overlay in the editor pane's place during a real
-// reindex; this prop is the in-component guard so save attempts that race
-// the unmount cannot leak through.
-const REINDEXING_PLACEHOLDER = "Index is rebuilding…";
+// Phase 2 (UI-SPEC §Surface 3 + §Layout Contract): when reindexing=true,
+// App.tsx mounts the <ReindexProgress /> overlay in the editor pane's place
+// during a real reindex; the reindexing prop is the in-component guard so save
+// attempts that race the unmount cannot leak through (reindexingRef). Plan 05-11:
+// the textarea's "Index is rebuilding…" placeholder is gone (no textarea);
+// reindexing prevention is via reindexingRef.current check in performSave.
 
 // Phase 3 (Plan 03-07 §Surface): null noteId placeholder copy.
 const NULL_NOTE_PLACEHOLDER_COPY = "Select a note to start editing.";
@@ -196,7 +195,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     deletedPath: string;
   } | null>(null);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Plan 05-11 D-26: editorRef exposes the MarkdownEditor ref API:
+  //   getContent()           reads the CM6 document (was textarea.value)
+  //   setContent(s)          replaces doc + triggers onChange (user-driven)
+  //   applyServerUpdate(s)   replaces doc WITHOUT onChange (server-driven, D-10)
+  //   focus()                focuses the CM6 caret (was textarea.focus())
+  const editorRef = useRef<MarkdownEditorRef>(null);
   // Latest content the component has seen — read by the trailing-save closure
   // when an in-flight PUT resolves. Using a ref avoids stale closures and
   // means the trailing save uses the freshest value.
@@ -296,12 +300,16 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
         setLoadStatus("error");
         return;
       }
-      // Only seed the textarea + latest-content ref if the user hasn't
+      // Only seed the editor + latest-content ref if the user hasn't
       // started typing. Without this guard a slow / double-mount GET
       // can overwrite typed bytes (CR-04).
       if (!userHasEdited.current) {
         setContent(data.content);
         latestContentRef.current = data.content;
+        // Plan 05-11 D-26: MarkdownEditor is uncontrolled — feed the loaded
+        // content via applyServerUpdate so the updateListener's onChange
+        // is NOT triggered (preserves userHasEdited=false, CR-04).
+        editorRef.current?.applyServerUpdate(data.content);
       }
       // Plan 03-22 — seed the H1-binding refs from the loaded content
       // and the canonical path returned by the server. The path may
@@ -316,12 +324,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     };
   }, [noteId]);
 
-  // 1b. Focus the textarea after the enabled state commits. Running this from
+  // 1b. Focus the editor after the loaded state commits. Running this from
   // the load-effect's promise chain races the disabled→enabled re-render —
   // a dedicated effect keyed on loadStatus runs AFTER React commits.
   useEffect(() => {
     if (loadStatus === "loaded" && noteId !== null) {
-      textareaRef.current?.focus();
+      editorRef.current?.focus(); // Plan 05-11 D-26
     }
   }, [loadStatus, noteId]);
 
@@ -490,10 +498,11 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     }
   }, [refreshTree]);
 
-  // 3. Debounced autosave on edit.
-  const onChange = useCallback(
-    (e: ChangeEvent<HTMLTextAreaElement>) => {
-      const next = e.target.value;
+  // 3. Debounced autosave on edit — Plan 05-11 D-27/D-32: same logic as the
+  // old textarea onChange but now receives the new doc string directly from
+  // MarkdownEditor's onChange prop (no ChangeEvent.target.value extraction).
+  const handleEditorChange = useCallback(
+    (next: string) => {
       // CR-04: latch the edited flag so a late-arriving GET cannot
       // overwrite the typed text. Set BEFORE the state writes so a
       // concurrent load-effect resolution observes it.
@@ -512,22 +521,34 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     [performSave],
   );
 
-  // 4. Cmd+S / Ctrl+S immediate save (UI-SPEC §Save-trigger timing).
-  const onKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      const isSaveShortcut =
-        (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s";
-      if (!isSaveShortcut) return;
-      e.preventDefault();
-      // Collapse any pending debounce.
-      if (debounceTimer.current !== null) {
-        window.clearTimeout(debounceTimer.current);
-        debounceTimer.current = null;
-      }
-      void performSave(latestContentRef.current);
+  // 3b. H1-change callback — Plan 05-11 D-27: MarkdownEditor fires onH1Change
+  // on every user-typed change with the current H1 or null. EditorPane's H1
+  // pipeline (Plan 03-22 Phase 3 R2) is wired in performSave; this callback
+  // is a no-op here (the H1 extraction happens from latestContentRef in
+  // performSave) but provided so MarkdownEditor's onH1Change prop is satisfied.
+  // Future: if we want immediate H1 feedback (e.g., banner without waiting for
+  // debounce), this is the place to wire it.
+  const handleEditorH1Change = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    (_h1: string | null) => {
+      // H1 pipeline runs inside performSave via extractH1FromContent.
+      // No additional action needed here for Phase 5 (D-32 / EDIT-09).
     },
-    [performSave],
+    [],
   );
+
+  // 4. Cmd+S immediate save — Plan 05-11 EDIT-10: Cmd+S is now handled by
+  // saveKeymap inside MarkdownEditor (jasperKeymap.ts). MarkdownEditor calls
+  // the onSaveRequested prop, which resolves here. The old onKeyDown on the
+  // textarea is DELETED — this callback replaces it.
+  const handleSaveRequested = useCallback(() => {
+    // Collapse any pending debounce.
+    if (debounceTimer.current !== null) {
+      window.clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+    void performSave(latestContentRef.current);
+  }, [performSave]);
 
   // 5. Cleanup timers on unmount.
   useEffect(() => {
@@ -556,22 +577,18 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
       const debouncePending = debounceTimer.current !== null;
       const inFlightSave = inFlight.current;
       if (!userHasEdited.current && !debouncePending && !inFlightSave) {
-        // D-10: silent reload.
+        // D-10: silent reload — Plan 05-11 D-27: applyServerUpdate dispatches
+        // through MarkdownEditor's ServerUpdateAnnotation so the editor's
+        // updateListener skips onChange (no autosave loop). Cursor is preserved
+        // by CM6 (EditorView keeps its selection unless the doc change forces
+        // an adjustment). No requestAnimationFrame cursor-restore needed.
         void (async () => {
           try {
             const { data } = await getNote(p.id);
             if (!data) return;
-            const ta = textareaRef.current;
-            const prevStart = ta?.selectionStart ?? 0;
-            const prevEnd = ta?.selectionEnd ?? 0;
             setContent(data.content);
             latestContentRef.current = data.content;
-            // Restore cursor after React commits, clamped to new length.
-            requestAnimationFrame(() => {
-              if (!ta) return;
-              ta.selectionStart = Math.min(prevStart, data.content.length);
-              ta.selectionEnd = Math.min(prevEnd, data.content.length);
-            });
+            editorRef.current?.applyServerUpdate(data.content);
           } catch {
             // Silent reload failed — surface conflict banner as fallback so
             // the user knows state is unclear.
@@ -760,6 +777,9 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
                 setContent(data.content);
                 latestContentRef.current = data.content;
                 userHasEdited.current = false;
+                // Plan 05-11 D-26: use applyServerUpdate for Discard so the
+                // editor's onChange is NOT triggered (avoids autosave loop).
+                editorRef.current?.applyServerUpdate(data.content);
                 setConflictBanner(null);
               })();
             }}
@@ -788,26 +808,17 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
           </button>
         </div>
       )}
-      <textarea
-        ref={textareaRef}
-        className="flex-1 bg-bg text-fg font-mono p-4 outline-none resize-none border-0"
-        style={{ fontSize: "15px", lineHeight: 1.6 }}
-        value={loadStatus === "loaded" && !reindexing ? content : ""}
-        placeholder={
-          reindexing
-            ? REINDEXING_PLACEHOLDER
-            : loadStatus === "loading"
-              ? "Loading…"
-              : ""
-        }
-        onChange={onChange}
-        onKeyDown={onKeyDown}
-        disabled={loadStatus !== "loaded" || reindexing}
-        spellCheck={false}
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        aria-label="Note content"
+      {/* Plan 05-11 D-26..D-27: editor element (MarkdownEditor).
+          MarkdownEditor is uncontrolled — initialDoc is captured ONCE on mount.
+          Updates flow through the ref API (editorRef). Phase 4 wiring is intact:
+          banners, conflictBanner, deletedBanner, autosave, saveStateMachine, h1Extract,
+          editorHandlersRef, userHasEdited, lastNotePath all remain in EditorPane. */}
+      <MarkdownEditor
+        ref={editorRef}
+        initialDoc={loadStatus === "loaded" && !reindexing ? (content ?? "") : ""}
+        onChange={handleEditorChange}
+        onH1Change={handleEditorH1Change}
+        onSaveRequested={handleSaveRequested}
       />
     </section>
   );
