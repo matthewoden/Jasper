@@ -239,7 +239,7 @@ export class ExternalImageWidget extends WidgetType {
 export function buildImageDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const tree = syntaxTree(view.state);
-  const IMAGE_RE = /^!\[(.*?)\]\((.+?)\)$/;
+  const IMAGE_RE = /^!\[(.*?)\]\((.+)\)$/;
   for (const { from, to } of view.visibleRanges) {
     tree.iterate({
       from,
