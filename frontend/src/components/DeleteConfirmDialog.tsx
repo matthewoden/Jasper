@@ -14,11 +14,18 @@
  */
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 
+// WR-09 (Phase 5.5 gap-closure Plan 13) — note + folder variants now carry
+// the canonical identifier (id for notes, path for folders) so
+// FileTree.handleConfirmDelete can dispatch deletion without re-deriving the
+// identifier from the display name (which is ambiguous when two siblings
+// share a basename / display name across different subtrees, e.g. two
+// `Foo.md` notes at root and `projects/Foo.md`).
 export type DeleteTarget =
-  | { kind: "note"; name: string }
+  | { kind: "note"; name: string; id: string }
   | {
       kind: "folder";
       name: string;
+      path: string;
       noteCount: number;
       subfolderCount: number;
     }
