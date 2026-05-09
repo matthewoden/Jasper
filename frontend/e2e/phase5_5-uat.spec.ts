@@ -300,9 +300,12 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       return h?.closest("nav")?.getBoundingClientRect().width ?? -1;
     });
 
-    // Plan 05 specifies a minimum width of 260px. Allow a small
-    // tolerance for subpixel rounding / scrollbar width.
-    expect(navWidth).toBeGreaterThanOrEqual(252);
+    // WR-10 (Phase 5.5 gap-closure Plan 11) — tighten from 252 to 260. The
+    // store clamps strictly to SIDEBAR_WIDTH_DEFAULT = 260; the only real
+    // source of slop is browser pixel rounding on `width: "260px"`, which
+    // is ≤1px on every modern engine. The previous 8px slack would have
+    // silently passed a real clamp regression.
+    expect(navWidth).toBeGreaterThanOrEqual(260);
   });
 
   // ───────────────────────────────────────────────────────────────────
