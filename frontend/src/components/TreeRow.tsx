@@ -182,7 +182,19 @@ export function TreeRow({
     // node.handleClick(e). Do NOT also fire onSelectNote / setActiveNote /
     // setSelectedRow — that would switch the loaded note despite the user
     // only intending to multi-select.
-    const isModifierClick = e.metaKey || e.ctrlKey || e.shiftKey;
+    //
+    // WR-01 (Phase 5.5 gap-closure Plan 10) — gate ctrlKey on non-Mac
+    // platforms. On macOS, Ctrl-click is the OS-level secondary-click
+    // gesture that opens the right-click context menu; intercepting it
+    // for multi-select breaks platform conventions. Mac users get
+    // multi-select via Cmd-click (metaKey) and contextmenu via
+    // Ctrl-click; other platforms keep both Ctrl and Cmd as multi-select
+    // modifiers. Convention: read navigator.platform (matches
+    // editor/jasperKeymap's existing platform-detection convention).
+    const isMac =
+      typeof navigator !== "undefined" &&
+      navigator.platform.toLowerCase().includes("mac");
+    const isModifierClick = e.metaKey || (!isMac && e.ctrlKey) || e.shiftKey;
     if (isModifierClick) {
       node.handleClick(e);
       return;

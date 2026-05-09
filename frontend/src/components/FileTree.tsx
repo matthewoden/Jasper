@@ -332,6 +332,35 @@ export function countDescendants(
 }
 
 /**
+ * BL-02 (Phase 5.5 gap-closure Plan 10) — cycle-prevention check for the
+ * native-DnD bypass in handleNativeDragOver / handleNativeDrop. Mirrors
+ * handleDisableDrop's contract: a folder cannot be dropped onto itself or
+ * any of its own descendants.
+ *
+ * The native-DnD path bypasses arborist's onMove pipeline (which is what
+ * runs handleDisableDrop), so we replicate the rule here.
+ *
+ * Note-kind dragNodes are ignored — only folder-kind ancestry creates a
+ * cycle. The string-prefix check uses `+ "/"` as the separator so unrelated
+ * sibling folders that happen to share a name prefix ("proj" vs "projects")
+ * do not register as descendants.
+ *
+ * Exported for direct unit testing.
+ */
+export function isCycleDrop(
+  dragNodes: NodeApi<ArboristNode>[],
+  destFolderPath: string,
+): boolean {
+  for (const dn of dragNodes) {
+    if (dn.data.data.kind !== "folder") continue;
+    const src = dn.data.data.path;
+    if (destFolderPath === src) return true;
+    if (destFolderPath.startsWith(src + "/")) return true;
+  }
+  return false;
+}
+
+/**
  * resetTreeListLayout — Gap R2-3 closure (Plan 03-18).
  *
  * react-arborist v3.5 wraps rows in react-window's FixedSizeList,
@@ -830,8 +859,13 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         nativeDragInfoRef.current = null;
         return;
       }
+      // WR-08 (Phase 5.5 gap-closure Plan 10): derive dragIds from the
+      // documented `api.dragNodes` surface. The previous private-API read
+      // (removed: api .state .dnd .dragIds .slice) reached into arborist
+      // internals (that shape is not part of arborist's documented public
+      // API) and would silently break on a version bump.
       nativeDragInfoRef.current = {
-        dragIds: api.state.dnd.dragIds.slice(),
+        dragIds: nodes.map((n) => n.id),
         dragNodes: nodes,
       };
     };
@@ -841,7 +875,8 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     // dropzone, override dropEffect back to 'move' so Chrome will fire
     // the drop event.
     const handleNativeDragOver = (e: DragEvent) => {
-      if (!nativeDragInfoRef.current) return;
+      const info = nativeDragInfoRef.current;
+      if (!info) return;
       const target = e.target as HTMLElement | null;
       if (!target) return;
       const folderRow = target.closest('[data-tree-row-kind="folder"]');
@@ -849,6 +884,17 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         '[data-testid="tree-trailing-dropzone"]',
       );
       if (!folderRow && !trailingZone) return;
+      // BL-02 (Phase 5.5 gap-closure Plan 10): cycle prevention. If the
+      // hovered folder is a dragged folder (or one of its descendants),
+      // do NOT preventDefault — let the browser show its native no-drop
+      // cursor. Mirrors handleDisableDrop because the native-DnD path
+      // bypasses arborist's onMove pipeline.
+      if (folderRow) {
+        const folderPath = folderRow.getAttribute("data-tree-row");
+        if (folderPath !== null && isCycleDrop(info.dragNodes, folderPath)) {
+          return;
+        }
+      }
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     };
@@ -873,18 +919,30 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       // Note drags use arborist's own drop path (not broken for notes).
       const folderRow = target.closest('[data-tree-row-kind="folder"]');
       if (folderRow) {
-        const sourceNode = info.dragNodes[0];
-        if (!sourceNode || sourceNode.data.data.kind !== "folder") return;
-        e.preventDefault();
+        // BL-01 (Phase 5.5 gap-closure Plan 10) — filter dragNodes to
+        // folders; mixed-kind selections must not silently drop, and
+        // per-source dispatch happens inside handleMove. (The previous
+        // `dragNodes[0].kind === "folder"` gate aborted the entire drop
+        // when the first node happened to be a note.)
+        const folderSources = info.dragNodes.filter(
+          (n) => n.data.data.kind === "folder",
+        );
+        if (folderSources.length === 0) return;
         const folderPath = folderRow.getAttribute("data-tree-row");
-        if (!folderPath) return;
+        if (folderPath === null) return;
+        // BL-02 (Phase 5.5 gap-closure Plan 10): cycle prevention — must
+        // mirror handleDisableDrop because the native-DnD path bypasses
+        // arborist's onMove pipeline. We re-check on the FILTERED sources
+        // (note paths must not influence the cycle check).
+        if (isCycleDrop(folderSources, folderPath)) return;
+        e.preventDefault();
         const api = treeRef.current;
         if (!api) return;
         const parentId = "folder:" + folderPath;
         const parentNode = api.get(parentId);
         void handleMove({
-          dragIds: info.dragIds,
-          dragNodes: info.dragNodes,
+          dragIds: folderSources.map((n) => n.id),
+          dragNodes: folderSources,
           parentId,
           parentNode,
           index: 0,
