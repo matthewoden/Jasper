@@ -169,8 +169,26 @@ export function TreeRow({
     useTreeStore.getState().endRename();
   }, [data, muts]);
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
     if (isRenamingThis) return; // guarded — clicks inside the input are handled by RenameInput
+
+    // UX-13 / Pattern 4 (Phase 5.5 Plan 07): delegate Cmd / Ctrl / Shift
+    // to react-arborist's built-in multi-select. node.handleClick reads
+    // e.metaKey + e.shiftKey and calls selectMulti / selectContiguous /
+    // activate as appropriate. RESEARCH §A4: Cmd on Mac, Ctrl on Win/Linux —
+    // accept either for cross-platform correctness.
+    //
+    // Pitfall 5: when modifier is present, RETURN immediately after
+    // node.handleClick(e). Do NOT also fire onSelectNote / setActiveNote /
+    // setSelectedRow — that would switch the loaded note despite the user
+    // only intending to multi-select.
+    const isModifierClick = e.metaKey || e.ctrlKey || e.shiftKey;
+    if (isModifierClick) {
+      node.handleClick(e);
+      return;
+    }
+
+    // No modifier — existing single-click semantics (Plan 03-20 selectedRow + activate).
     // Gap R2-4 (Plan 03-20): track this row as the F2 routing target.
     // App.tsx's document-level keydown listener reads
     // useTreeStore.selectedRow at fire time to dispatch rename to the

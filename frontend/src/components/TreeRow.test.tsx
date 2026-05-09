@@ -24,6 +24,7 @@ function makeFolderNode(overrides: {
   name?: string;
   level?: number;
   isOpen?: boolean;
+  handleClick?: (e: unknown) => void;
 } = {}) {
   const path = overrides.path ?? "projects";
   const name = overrides.name ?? path.split("/").slice(-1)[0];
@@ -32,6 +33,10 @@ function makeFolderNode(overrides: {
     level: overrides.level ?? 0,
     isOpen: overrides.isOpen ?? false,
     toggle: vi.fn(),
+    // UX-13 (Plan 07) — react-arborist's NodeApi.handleClick is what
+    // dispatches Cmd/Ctrl/Shift multi-select. Stub it here so tests can
+    // assert delegation occurred.
+    handleClick: overrides.handleClick ?? vi.fn(),
   };
 }
 
@@ -40,6 +45,7 @@ function makeNoteNode(overrides: {
   path?: string;
   title?: string;
   level?: number;
+  handleClick?: (e: unknown) => void;
 } = {}) {
   return {
     data: {
@@ -51,6 +57,8 @@ function makeNoteNode(overrides: {
     level: overrides.level ?? 0,
     isOpen: false,
     toggle: vi.fn(),
+    // UX-13 (Plan 07) — see makeFolderNode comment above.
+    handleClick: overrides.handleClick ?? vi.fn(),
   };
 }
 
@@ -794,6 +802,126 @@ describe("<TreeRow />", () => {
       ) as HTMLElement;
       expect(label.textContent).toBe("jasper");
       expect(label.getAttribute("title")).toBe("jasper");
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Phase 5.5 / Plan 07 (UX-13) — modifier-aware click delegation.
+  //
+  // Per RESEARCH §Pattern 4 + Pitfall 5 + §A4:
+  //   - Cmd+click (Mac) / Ctrl+click (Win/Linux) / Shift+click MUST
+  //     delegate to react-arborist's `node.handleClick(e)` and SKIP the
+  //     existing single-select pipeline. Doing both would unintentionally
+  //     switch the active note while the user is only multi-selecting.
+  //   - Plain click (no modifier) preserves the existing pipeline:
+  //     setSelectedRow → toggle (folder) or onSelectNote + setActiveNote (note).
+  // ──────────────────────────────────────────────────────────────────
+  describe("UX-13 modifier-aware multi-select click delegation (Plan 07)", () => {
+    it("UX-13: Cmd+click delegates to node.handleClick and does NOT call onSelectNote", () => {
+      const handleClick = vi.fn();
+      const onSelectNote = vi.fn();
+      const node = makeNoteNode({ id: "uuid-cmd", handleClick });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={onSelectNote}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row, { metaKey: true });
+      // Delegated to arborist's multi-select dispatch.
+      expect(handleClick).toHaveBeenCalledTimes(1);
+      // Must NOT switch the active note — Pitfall 5.
+      expect(onSelectNote).not.toHaveBeenCalled();
+      expect(useTreeStore.getState().activeNoteId).toBeNull();
+    });
+
+    it("UX-13: Ctrl+click delegates to node.handleClick (cross-platform)", () => {
+      // RESEARCH §A4: Cmd on Mac, Ctrl on Win/Linux. We accept either.
+      const handleClick = vi.fn();
+      const onSelectNote = vi.fn();
+      const node = makeNoteNode({ id: "uuid-ctrl", handleClick });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={onSelectNote}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row, { ctrlKey: true });
+      expect(handleClick).toHaveBeenCalledTimes(1);
+      expect(onSelectNote).not.toHaveBeenCalled();
+      expect(useTreeStore.getState().activeNoteId).toBeNull();
+    });
+
+    it("UX-13: Shift+click delegates to node.handleClick", () => {
+      const handleClick = vi.fn();
+      const onSelectNote = vi.fn();
+      const node = makeNoteNode({ id: "uuid-shift", handleClick });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={onSelectNote}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row, { shiftKey: true });
+      expect(handleClick).toHaveBeenCalledTimes(1);
+      expect(onSelectNote).not.toHaveBeenCalled();
+      expect(useTreeStore.getState().activeNoteId).toBeNull();
+    });
+
+    it("UX-13: plain click (no modifier) preserves existing single-select pipeline", () => {
+      const handleClick = vi.fn();
+      const onSelectNote = vi.fn();
+      const node = makeNoteNode({ id: "uuid-plain", handleClick });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={onSelectNote}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row);
+      // Arborist's multi-select dispatch must NOT have been called.
+      expect(handleClick).not.toHaveBeenCalled();
+      // The pre-existing single-select pipeline still runs.
+      expect(onSelectNote).toHaveBeenCalledWith("uuid-plain");
+      expect(useTreeStore.getState().activeNoteId).toBe("uuid-plain");
+      expect(useTreeStore.getState().selectedRow).toEqual({
+        kind: "note",
+        target: "uuid-plain",
+      });
+    });
+
+    it("UX-13: plain click on folder still toggles open (regression guard)", () => {
+      const handleClick = vi.fn();
+      const node = makeFolderNode({
+        path: "projects",
+        name: "projects",
+        handleClick,
+      });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row);
+      // No-modifier branch: toggle fires, arborist multi-select does NOT.
+      expect(node.toggle).toHaveBeenCalledTimes(1);
+      expect(handleClick).not.toHaveBeenCalled();
     });
   });
 });
