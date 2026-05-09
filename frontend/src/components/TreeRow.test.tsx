@@ -9,7 +9,7 @@
  * gate (XSS hardening per the threat model).
  */
 import { fireEvent, render } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 
 import { useTreeStore } from "../lib/useTreeStore";
 import { TreeRow } from "./TreeRow";
@@ -922,6 +922,152 @@ describe("<TreeRow />", () => {
       // No-modifier branch: toggle fires, arborist multi-select does NOT.
       expect(node.toggle).toHaveBeenCalledTimes(1);
       expect(handleClick).not.toHaveBeenCalled();
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Phase 5.5 gap-closure Plan 10 — Mac Ctrl-click context-menu gate (WR-01)
+  //
+  // On macOS, Ctrl-click is the OS-level secondary-click gesture that
+  // opens the right-click context menu. The previous
+  // `isModifierClick = e.metaKey || e.ctrlKey || e.shiftKey;` treated
+  // Ctrl-click as multi-select on every platform, hijacking the OS
+  // context-menu gesture for Mac users on a single-button trackpad.
+  //
+  // Fix: gate ctrlKey on `!isMac`. Mac users keep multi-select via
+  // Cmd-click (metaKey); Ctrl-click on Mac falls through to the
+  // no-modifier branch (which lets the contextmenu event fire normally).
+  // Other platforms keep both Ctrl and Cmd as multi-select modifiers.
+  //
+  // Platform detection convention: `navigator.platform` (matches the
+  // existing convention in editor/jasperKeymap which references the
+  // same property — both stub-able from tests).
+  // ──────────────────────────────────────────────────────────────────
+  describe("Phase 5.5 gap-closure Plan 10 — Mac Ctrl-click context-menu gate (WR-01)", () => {
+    const originalNavigator = window.navigator;
+
+    function setNavigatorPlatform(platform: string) {
+      // jsdom's navigator.platform is read-only by default. Re-define
+      // it on window.navigator so the production handler reads our
+      // stub at click-time.
+      Object.defineProperty(window, "navigator", {
+        value: { ...originalNavigator, platform },
+        configurable: true,
+        writable: true,
+      });
+    }
+
+    afterEach(() => {
+      Object.defineProperty(window, "navigator", {
+        value: originalNavigator,
+        configurable: true,
+        writable: true,
+      });
+    });
+
+    it("WR-01: Mac Ctrl-click does NOT delegate to node.handleClick (falls through to single-click branch)", () => {
+      setNavigatorPlatform("MacIntel");
+      const handleClick = vi.fn();
+      const onSelectNote = vi.fn();
+      const node = makeNoteNode({ id: "uuid-mac-ctrl", handleClick });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={onSelectNote}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row, { ctrlKey: true });
+      // On Mac, Ctrl-click must NOT delegate to arborist's multi-select —
+      // the OS treats it as a secondary-click gesture (contextmenu).
+      expect(handleClick).not.toHaveBeenCalled();
+      // The no-modifier single-click branch runs instead, so onSelectNote
+      // and setActiveNote do fire (Pitfall 5 doesn't apply here — the
+      // gate decided this is not a multi-select).
+      expect(onSelectNote).toHaveBeenCalledWith("uuid-mac-ctrl");
+      expect(useTreeStore.getState().activeNoteId).toBe("uuid-mac-ctrl");
+    });
+
+    it("WR-01: Mac Cmd-click STILL delegates to node.handleClick (multi-select preserved)", () => {
+      setNavigatorPlatform("MacIntel");
+      const handleClick = vi.fn();
+      const onSelectNote = vi.fn();
+      const node = makeNoteNode({ id: "uuid-mac-cmd", handleClick });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={onSelectNote}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row, { metaKey: true });
+      expect(handleClick).toHaveBeenCalledTimes(1);
+      // Pitfall 5 — multi-select must NOT also switch the active note.
+      expect(onSelectNote).not.toHaveBeenCalled();
+      expect(useTreeStore.getState().activeNoteId).toBeNull();
+    });
+
+    it("WR-01: non-Mac Ctrl-click STILL delegates to node.handleClick (cross-platform multi-select)", () => {
+      setNavigatorPlatform("Linux x86_64");
+      const handleClick = vi.fn();
+      const onSelectNote = vi.fn();
+      const node = makeNoteNode({ id: "uuid-linux-ctrl", handleClick });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={onSelectNote}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row, { ctrlKey: true });
+      expect(handleClick).toHaveBeenCalledTimes(1);
+      expect(onSelectNote).not.toHaveBeenCalled();
+      expect(useTreeStore.getState().activeNoteId).toBeNull();
+    });
+
+    it("WR-01: non-Mac Ctrl-click on Win32 platform also delegates", () => {
+      // Defense-in-depth: the gate keys off `isMac`, not specific
+      // non-Mac strings. Verify Win32 hits the same delegated path.
+      setNavigatorPlatform("Win32");
+      const handleClick = vi.fn();
+      const node = makeNoteNode({ id: "uuid-win-ctrl", handleClick });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row, { ctrlKey: true });
+      expect(handleClick).toHaveBeenCalledTimes(1);
+    });
+
+    it("WR-01: Shift-click delegates on every platform (range-select preserved)", () => {
+      // Shift-click is range-select on every OS — the WR-01 gate must
+      // not affect shiftKey behavior. Test on MacIntel to prove the
+      // Mac-specific gate scoped to ctrlKey only.
+      setNavigatorPlatform("MacIntel");
+      const handleClick = vi.fn();
+      const node = makeNoteNode({ id: "uuid-mac-shift", handleClick });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      fireEvent.click(row, { shiftKey: true });
+      expect(handleClick).toHaveBeenCalledTimes(1);
     });
   });
 });
