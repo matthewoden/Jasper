@@ -25,11 +25,13 @@
 import { useCallback } from "react";
 
 import { FileTree } from "./FileTree";
+import { SidebarResizeHandle } from "./SidebarResizeHandle";
 import { SidebarToolbar } from "./SidebarToolbar";
 import { useToast } from "./Toast";
 import { postAdminReindex } from "../lib/adminApi";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeCreateActions } from "../lib/useTreeCreateActions";
+import { useTreeStore } from "../lib/useTreeStore";
 
 export interface SidebarProps {
   onSelectNote?: (id: string) => void;
@@ -39,6 +41,10 @@ export function Sidebar({ onSelectNote = () => {} }: SidebarProps) {
   const { refresh } = useFileTree();
   const { createNoteAt, createFolderAt, isCreating } = useTreeCreateActions();
   const { toast } = useToast();
+  // Phase 5.5 — Plan 05 (UX-09): width comes from the store; resize handle
+  // mounts as the last child of <nav> so it overlays the FileTree's
+  // overflow:auto container.
+  const sidebarWidth = useTreeStore((s) => s.sidebarWidth);
 
   const handleRefresh = useCallback(async () => {
     const { error } = await postAdminReindex("incremental");
@@ -70,7 +76,7 @@ export function Sidebar({ onSelectNote = () => {} }: SidebarProps) {
   return (
     <nav
       className="bg-surface border-r border-border h-full flex flex-col"
-      style={{ width: 260 }}
+      style={{ width: sidebarWidth, position: "relative" }}
       aria-label="Notes navigation"
     >
       <header
@@ -102,6 +108,10 @@ export function Sidebar({ onSelectNote = () => {} }: SidebarProps) {
       <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
         <FileTree onSelectNote={onSelectNote} />
       </div>
+      {/* Phase 5.5 — Plan 05 (UX-09): MUST be the last child so the
+          absolute-positioned handle overlays the FileTree scroll
+          container. The parent <nav> sets position: "relative" above. */}
+      <SidebarResizeHandle />
     </nav>
   );
 }
