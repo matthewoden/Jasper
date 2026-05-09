@@ -35,6 +35,17 @@ vi.mock("../lib/useTreeMutations", async () => {
     useTreeMutations: vi.fn(),
   };
 });
+// Phase 5 — SidebarToolbar now renders SettingsMenu, which uses
+// useTheme → useConfig → real openapi-fetch GET. jsdom + undici can't
+// parse the relative URL, so we stub the hook to keep these tests
+// focused on tree/sidebar concerns rather than config-fetch plumbing.
+vi.mock("../lib/useTheme", () => ({
+  useTheme: () => ({
+    theme: "dark",
+    setTheme: vi.fn().mockResolvedValue({}),
+  }),
+  THEME_BOOTSTRAP_KEY: "jasper:theme-bootstrap",
+}));
 
 import { useFileTree } from "../lib/useFileTree";
 import { postAdminReindex } from "../lib/adminApi";

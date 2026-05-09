@@ -62,6 +62,19 @@ vi.mock("./lib/useSessionSync", () => ({
   },
 }));
 
+// Phase 5 — mock useTheme so the SettingsMenu (rendered by SidebarToolbar)
+// does NOT trigger a real GET /api/v1/config fetch when App tests render.
+// undici (Node fetch) cannot parse the relative URL "/api/v1/config" even
+// with the jsdom URL set, so the un-mocked path produces "Failed to parse
+// URL" unhandled rejections that pollute the test report.
+vi.mock("./lib/useTheme", () => ({
+  useTheme: () => ({
+    theme: "dark",
+    setTheme: vi.fn().mockResolvedValue({}),
+  }),
+  THEME_BOOTSTRAP_KEY: "jasper:theme-bootstrap",
+}));
+
 import App, { handleAppF2KeyDown } from "./App";
 import { useTreeStore } from "./lib/useTreeStore";
 

@@ -5,6 +5,13 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
+    // Default jsdom URL is "about:blank" which has no origin, so any
+    // relative-URL fetch (e.g. openapi-fetch with baseUrl: "/api/v1")
+    // throws "Invalid URL" inside whatwg-url. Set an explicit origin so
+    // relative URLs resolve as they do in a real browser.
+    environmentOptions: {
+      jsdom: { url: "http://localhost/" },
+    },
     globals: true,
     setupFiles: ["./src/test-setup.ts"],
     // Vitest's default include matches `**/*.{test,spec}.?(c|m)[jt]s?(x)`,

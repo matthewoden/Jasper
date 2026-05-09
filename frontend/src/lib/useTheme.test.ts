@@ -50,7 +50,15 @@ describe("useTheme", () => {
       response: { status: 200 },
     });
     const { result } = renderHook(() => useTheme());
-    await waitFor(() => expect(result.current.theme).toBeDefined());
+    // result.current.theme reads the DOM via getCurrentTheme, so it is
+    // ALWAYS defined immediately. We need to wait until the GET-driven
+    // config-arrives effect has actually run (the one that flips
+    // data-theme + writes the LS bootstrap cache) — otherwise setTheme
+    // takes the "config is null" early-return and never calls PUT.
+    await waitFor(() => expect(mockClient.GET).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(document.documentElement.getAttribute("data-theme")).toBe("dark"),
+    );
     await act(async () => {
       await result.current.setTheme("light");
     });

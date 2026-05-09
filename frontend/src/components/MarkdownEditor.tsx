@@ -187,6 +187,18 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       []
     );
 
-    return <div ref={hostRef} className="cm-host" data-testid="markdown-editor" />;
+    // aria-label preserves the "Note content" semantic the textarea era
+    // shipped with — App.test.tsx + a11y users keep working without
+    // re-querying the editor surface.
+    return (
+      <div
+        ref={hostRef}
+        className="cm-host"
+        data-testid="markdown-editor"
+        role="textbox"
+        aria-label="Note content"
+        aria-multiline="true"
+      />
+    );
   }
 );
