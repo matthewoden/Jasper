@@ -33,6 +33,9 @@ declare global {
         // Plan 05.5-01 / UX-10: focusEnd spy exposed by the MarkdownEditor mock
         // so tests can assert the click-host wrapper invoked the ref method.
         __jasperMockEditorFocusEnd?: ReturnType<typeof vi.fn>;
+        // Plan 05.5-03 / UX-07: blur trigger exposed by the MarkdownEditor mock
+        // so tests can fire the onBlur prop without a real CM6 view.
+        __jasperMockEditorBlur?: () => void;
     }
 }
 
@@ -67,6 +70,7 @@ vi.mock("./MarkdownEditor", async () => {
             onChange?: (s: string) => void;
             onH1Change?: (h: string | null) => void;
             onSaveRequested?: () => void;
+            onBlur?: () => void;
         }
     >(function MockMarkdownEditor(props, ref) {
         const [value, setValue] = React.useState(props.initialDoc ?? "");
@@ -107,8 +111,15 @@ vi.mock("./MarkdownEditor", async () => {
             window.__jasperMockEditorSave = () => {
                 propsRef.current.onSaveRequested?.();
             };
+            // Plan 05.5-03 / UX-07: tests trigger the onBlur prop via this hook.
+            // The real MarkdownEditor wires onBlur through CM6's
+            // domEventHandlers({ blur }); the mock exposes a direct callable.
+            window.__jasperMockEditorBlur = () => {
+                propsRef.current.onBlur?.();
+            };
             return () => {
                 delete window.__jasperMockEditorSave;
+                delete window.__jasperMockEditorBlur;
             };
         }, []);
 
@@ -1495,5 +1506,176 @@ describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", ()
 
     afterEach(() => {
         useTreeStore.setState({ liveLabels: {} });
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Phase 5.5 / Plan 03 (UX-07) — save-on-blur lifecycle.
+// Three new save triggers wired through the existing pipelines:
+//   (1) editor blur (handleEditorBlur)            → performSave
+//   (2) document.visibilitychange → "hidden"      → performSave
+//   (3) window.beforeunload                       → fetch keepalive PUT
+// All three honor the Phase 4 paused gate (connectionStatus !== "connected")
+// and the existing inFlight + trailingPending dedup refs. The MarkdownEditor
+// mock exposes window.__jasperMockEditorBlur to invoke the onBlur prop.
+// ────────────────────────────────────────────────────────────────────
+describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () => {
+    it("UX-07: handleEditorBlur clears pending debounce and calls performSave", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("hello"));
+
+        // Edit → starts the 2s debounce timer; updateNote NOT yet called.
+        fireEvent.change(editor, { target: { value: "edited content" } });
+        expect(updateNoteMock).not.toHaveBeenCalled();
+
+        // Fire blur via the mock hook → must collapse debounce + save NOW.
+        await act(async () => {
+            window.__jasperMockEditorBlur?.();
+            await Promise.resolve();
+        });
+
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+        expect(updateNoteMock).toHaveBeenCalledWith(
+            ScratchpadUUID,
+            "edited content",
+        );
+
+        // The debounced save was canceled — advancing the timer must NOT
+        // produce a second PUT.
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
+        });
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("UX-07: visibilitychange→hidden triggers performSave", async () => {
+        getNoteMock.mockResolvedValue(okGet("hi"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("hi"));
+
+        fireEvent.change(editor, { target: { value: "tab-switch save" } });
+
+        // Monkey-patch document.visibilityState to "hidden" then dispatch
+        // the visibilitychange event. The handler must collapse debounce
+        // and call performSave (which calls updateNote).
+        const originalDescriptor = Object.getOwnPropertyDescriptor(
+            Document.prototype,
+            "visibilityState",
+        );
+        Object.defineProperty(document, "visibilityState", {
+            value: "hidden",
+            configurable: true,
+            writable: true,
+        });
+        try {
+            await act(async () => {
+                document.dispatchEvent(new Event("visibilitychange"));
+                await Promise.resolve();
+            });
+            expect(updateNoteMock).toHaveBeenCalledTimes(1);
+            expect(updateNoteMock).toHaveBeenCalledWith(
+                ScratchpadUUID,
+                "tab-switch save",
+            );
+        } finally {
+            // Restore visibilityState so other tests aren't polluted.
+            if (originalDescriptor) {
+                Object.defineProperty(
+                    document,
+                    "visibilityState",
+                    originalDescriptor,
+                );
+            }
+        }
+    });
+
+    it("UX-07: beforeunload fires keepalive PUT when conditions met", async () => {
+        getNoteMock.mockResolvedValue(okGet("baseline"));
+        updateNoteMock.mockResolvedValue(okPut());
+        // Mock global.fetch — beforeunload uses raw fetch (not the typed
+        // openapi-fetch wrapper) to issue the keepalive PUT.
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("baseline"));
+
+            fireEvent.change(editor, { target: { value: "exit save" } });
+
+            // connectionStatus is "connected" by default; inFlight is false;
+            // trailingPending is false. Fire beforeunload → keepalive PUT.
+            act(() => {
+                window.dispatchEvent(new Event("beforeunload"));
+            });
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            const [url, init] = fetchMock.mock.calls[0] as [
+                string,
+                RequestInit,
+            ];
+            expect(url).toBe(
+                `/api/v1/notes/${encodeURIComponent(ScratchpadUUID)}`,
+            );
+            expect(init.method).toBe("PUT");
+            expect(init.keepalive).toBe(true);
+            expect(init.body).toBe(
+                JSON.stringify({ content: "exit save" }),
+            );
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    it("UX-07: beforeunload skips when paused (connectionStatus !== connected)", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+        // Set connection to reconnecting BEFORE render so the ref captures it.
+        useTreeStore.setState({ connectionStatus: "reconnecting" });
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("hello"));
+
+            // beforeunload while paused → MUST NOT issue the keepalive PUT.
+            act(() => {
+                window.dispatchEvent(new Event("beforeunload"));
+            });
+
+            expect(fetchMock).not.toHaveBeenCalled();
+        } finally {
+            global.fetch = originalFetch;
+            // Restore default connection status so subsequent tests don't fail.
+            useTreeStore.setState({ connectionStatus: "connected" });
+        }
+    });
+
+    afterEach(() => {
+        useTreeStore.setState({ connectionStatus: "connected" });
     });
 });

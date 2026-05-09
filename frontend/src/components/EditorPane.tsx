@@ -579,6 +579,18 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     void performSave(latestContentRef.current);
   }, [performSave]);
 
+  // 4b. UX-07: editor blur (focus moved to sidebar / browser chrome / etc.).
+  // handleEditorBlur collapses pending debounce + dispatches requestSave NOW.
+  // Routes through performSave so paused / connectionStatus / inFlight /
+  // trailingPending gating all flow through unchanged.
+  const handleEditorBlur = useCallback(() => {
+    if (debounceTimer.current !== null) {
+      window.clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+    void performSave(latestContentRef.current);
+  }, [performSave]);
+
   // 5. Cleanup timers on unmount.
   useEffect(() => {
     return () => {
@@ -590,6 +602,49 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
       }
     };
   }, []);
+
+  // 5b. UX-07: page-exit save. Two paths:
+  //  (1) visibilitychange→hidden — async fetch via performSave; tab is
+  //      still alive at this point, so the normal save path completes.
+  //  (2) beforeunload — fetch keepalive: true; cannot await async work
+  //      inside beforeunload, so this path is fire-and-forget. Skips
+  //      when paused / inFlight / trailingPending / no note loaded.
+  //
+  // Pitfall 2 (RESEARCH §Pitfall 2): both events can fire on tab close;
+  // performSave's existing inFlight + trailingPending guards dedupe the
+  // visibilitychange path, and the beforeunload handler explicitly checks
+  // inFlight/trailingPending before issuing its keepalive PUT.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "hidden") return;
+      if (debounceTimer.current !== null) {
+        window.clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+      }
+      void performSave(latestContentRef.current);
+    };
+    const onBeforeUnload = () => {
+      const id = noteIdRef.current;
+      if (id === null) return;
+      // Phase 4 paused gate — same condition performSave uses.
+      if (connectionStatusRef.current !== "connected") return;
+      // Dedup: if a save is already in flight or queued, the existing
+      // pipeline will finish it; do NOT also issue a keepalive PUT.
+      if (inFlight.current || trailingPending.current) return;
+      void fetch(`/api/v1/notes/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: latestContentRef.current }),
+        keepalive: true,
+      });
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [performSave]);
 
   // Phase 4 (Plan 04-05) — WS event handlers.
 
@@ -863,6 +918,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
           onChange={handleEditorChange}
           onH1Change={handleEditorH1Change}
           onSaveRequested={handleSaveRequested}
+          onBlur={handleEditorBlur}
         />
       </div>
     </section>

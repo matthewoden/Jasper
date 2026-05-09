@@ -35,9 +35,10 @@ const Probe = forwardRef<
     onChange: (s: string) => void;
     onH1Change?: (h: string | null) => void;
     onSaveRequested?: () => void;
+    onBlur?: () => void;
   }
 >(function Probe(
-  { initialDoc = "", onChange, onH1Change, onSaveRequested },
+  { initialDoc = "", onChange, onH1Change, onSaveRequested, onBlur },
   probeRef
 ) {
   const [, setRerenderKey] = useState(0);
@@ -54,6 +55,7 @@ const Probe = forwardRef<
         onChange={onChange}
         onH1Change={onH1Change}
         onSaveRequested={onSaveRequested}
+        onBlur={onBlur}
       />
     </>
   );
@@ -195,6 +197,38 @@ describe("<MarkdownEditor />", () => {
     expect(view!.state.selection.main.from).toBe(docLen);
     expect(view!.state.selection.main.to).toBe(docLen);
     expect(document.activeElement).toBe(view!.contentDOM);
+  });
+
+  it("onBlur fires when CM6 contentDOM blurs (UX-07)", () => {
+    // Phase 5.5 / UX-07: EditorView.domEventHandlers({ blur(...) }) wires a
+    // CM6-scoped blur listener. Dispatching a `blur` FocusEvent on the
+    // contentDOM (the .cm-content node) MUST invoke the onBlur prop.
+    const onBlur = vi.fn();
+    const { container } = render(
+      <Probe initialDoc="hello" onChange={vi.fn()} onBlur={onBlur} />,
+    );
+    const contentDOM = container.querySelector(".cm-content") as HTMLElement;
+    expect(contentDOM).not.toBeNull();
+    act(() => {
+      contentDOM.dispatchEvent(new FocusEvent("blur"));
+    });
+    expect(onBlur).toHaveBeenCalledTimes(1);
+  });
+
+  it("onBlur is undefined-safe (UX-07)", () => {
+    // Phase 5.5 / UX-07: omitting the onBlur prop must NOT throw when CM6
+    // dispatches its blur event. The optional-chain on cbRef.current.onBlur?.()
+    // is the contract — verify by rendering without onBlur and dispatching.
+    const { container } = render(
+      <Probe initialDoc="hello" onChange={vi.fn()} />,
+    );
+    const contentDOM = container.querySelector(".cm-content") as HTMLElement;
+    expect(contentDOM).not.toBeNull();
+    expect(() => {
+      act(() => {
+        contentDOM.dispatchEvent(new FocusEvent("blur"));
+      });
+    }).not.toThrow();
   });
 
   it("extensions array includes EditorView.lineWrapping (white-space: pre-wrap on .cm-content)", () => {
