@@ -8,6 +8,7 @@
   /* Concrete hex values from UI-SPEC §Color palette table */
   --color-bg:          #18181b; /* zinc-900 — dominant 60% */
   --color-surface:     #27272a; /* zinc-800 — secondary 30% */
+  --color-surface-subtle: #1f1f22; /* Phase 5 NEW — frontmatter-only (D-18, D-41) */
   --color-fg:          #e4e4e7; /* zinc-200 — foreground primary */
   --color-muted:       #a1a1aa; /* zinc-400 — foreground muted */
   --color-border:      #3f3f46; /* zinc-700 — 1px dividers */
@@ -37,6 +38,7 @@
 @theme {
   --color-bg:               var(--color-bg);
   --color-surface:          var(--color-surface);
+  --color-surface-subtle:   var(--color-surface-subtle);
   --color-fg:               var(--color-fg);
   --color-muted:            var(--color-muted);
   --color-border:           var(--color-border);
@@ -65,4 +67,22 @@ body {
   font-family:      var(--font-sans);
   font-size:        14px;   /* UI-SPEC Typography: Body 14px / 1.5 */
   line-height:      1.5;
+}
+
+/* Phase 5 — light theme palette (UI-SPEC §Light theme palette).
+   Same token names as :root; CSS variable retargeting flips the
+   app + CodeMirror editor in one DOM mutation when the bootstrap
+   (or useTheme hook) sets <html data-theme="light"> (D-16). */
+[data-theme='light'] {
+  --color-bg:              #fafafa; /* zinc-50 */
+  --color-surface:         #f4f4f5; /* zinc-100 */
+  --color-surface-subtle:  #ececef; /* zinc-100/200 — frontmatter only */
+  --color-fg:              #18181b; /* zinc-900 */
+  --color-muted:           #71717a; /* zinc-500 */
+  --color-border:          #d4d4d8; /* zinc-300 */
+  --color-accent:          #2563eb; /* blue-600 — deeper than dark for contrast */
+  --color-success:         #16a34a; /* green-600 */
+  --color-destructive:     #dc2626; /* red-600 */
+  --color-warning:         #b45309; /* amber-700 — banner only */
+  --color-warning-surface: #fef3c7; /* amber-50/100 — banner only */
 }
