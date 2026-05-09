@@ -492,6 +492,84 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
     expect(mod.useTreeStore.getState().sidebarWidth).toBe(260);
   });
 
+  // ────────────────────────────────────────────────────────────────────
+  // BL-03 (Phase 5.5 gap-closure Plan 11) — hydration must clamp persisted
+  // width against the LIVE viewport's editor-floor headroom. A wide-monitor
+  // session that saved 1200px must NOT load at 1200px on a narrow laptop
+  // window; it should be clamped to `innerWidth - EDITOR_MIN`.
+  //
+  // The pattern mirrors the existing hydration tests above: stub
+  // localStorage + window.innerWidth, then `vi.resetModules()` + dynamic
+  // import to force the module-load `if (typeof window !== "undefined")`
+  // hydration block to re-run against the freshly-seeded environment.
+  // ────────────────────────────────────────────────────────────────────
+  it("BL-03: hydration clamps wide-monitor 1200px persisted width against narrow 900px viewport", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 900,
+    });
+    localStorage.setItem(LS_KEY_SIDEBAR_WIDTH, JSON.stringify(1200));
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    // Live max = 900 - 320 = 580. The persisted 1200 is clamped down to
+    // 580 because the editor pane can't go below 320 on a 900px window.
+    expect(mod.useTreeStore.getState().sidebarWidth).toBe(580);
+  });
+
+  it("BL-03: hydration leaves persisted 1200px width alone on a wide 1600px viewport", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 1600,
+    });
+    localStorage.setItem(LS_KEY_SIDEBAR_WIDTH, JSON.stringify(1200));
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    // Live max = 1600 - 320 = 1280. 1200 fits — load at 1200.
+    expect(mod.useTreeStore.getState().sidebarWidth).toBe(1200);
+  });
+
+  it("BL-03: hydration with a degenerate sub-EDITOR_MIN viewport (400px) clamps to (innerWidth - EDITOR_MIN) = 80", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 400,
+    });
+    localStorage.setItem(LS_KEY_SIDEBAR_WIDTH, JSON.stringify(1200));
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    // Live max = max(0, 400 - 320) = 80. Sidebar shrinks below MIN to
+    // preserve the editor floor; matches SidebarResizeHandle.computeMaxWidth.
+    expect(mod.useTreeStore.getState().sidebarWidth).toBe(80);
+  });
+
+  it("BL-03: hydration of a below-MIN persisted width still clamps UP to MIN (existing rule preserved)", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 1024,
+    });
+    localStorage.setItem(LS_KEY_SIDEBAR_WIDTH, JSON.stringify(200));
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    // 200 < SIDEBAR_WIDTH_DEFAULT (260); first clamp UP to 260, then
+    // min(260, 1024 - 320 = 704) = 260. Existing UX-09 A8 rule preserved.
+    expect(mod.useTreeStore.getState().sidebarWidth).toBe(260);
+  });
+
+  it("BL-03: no localStorage entry → store stays at SIDEBAR_WIDTH_DEFAULT (no hydration ran)", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 1024,
+    });
+    // No setItem.
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().sidebarWidth).toBe(SIDEBAR_WIDTH_DEFAULT);
+  });
+
   it("UX-09: setSidebarWidth triggers debounced LS write", () => {
     localStorage.clear();
     vi.useFakeTimers();
