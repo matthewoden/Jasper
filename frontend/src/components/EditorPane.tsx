@@ -139,16 +139,29 @@ function composeNewPath(parent: string, name: string): string {
 function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
   if (tree === null) return null;
   const visit = (node: TreeNode): string | null => {
-    if (node.kind === "note") {
-      return node.id === noteId ? node.path : null;
-    }
-    if (node.children) {
-      for (const child of node.children) {
-        const hit = visit(child);
-        if (hit !== null) return hit;
+    switch (node.kind) {
+      case "note":
+        return node.id === noteId ? node.path : null;
+      case "folder":
+        // children is optional on FolderNode (openapi.yaml: "ONLY populated
+        // when this FolderNode appears inside a Tree response"). Guard
+        // before recursion.
+        if (node.children) {
+          for (const child of node.children) {
+            const hit = visit(child);
+            if (hit !== null) return hit;
+          }
+        }
+        return null;
+      default: {
+        // WR-04 (Phase 5.5 gap-closure Plan 12) — exhaustiveness guard.
+        // A future TreeNode discriminant addition will fail this assignment
+        // at compile time, surfacing the call site rather than silently
+        // returning null.
+        const _exhaust: never = node;
+        return _exhaust;
       }
     }
-    return null;
   };
   for (const node of tree.root) {
     const hit = visit(node);
@@ -846,8 +859,17 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
               // The server may still reject (a third writer raced) — in that
               // case we re-show the banner with the newer comparator.
               void (async () => {
+                // WR-05 (Phase 5.5 gap-closure Plan 12) — local id capture
+                // replaces the previous noteIdRef.current! non-null
+                // assertion. The banner only mounts when noteId !== null,
+                // but the gap between the banner-mounted snapshot and the
+                // user clicking Save-anyway is async; null-guarding here
+                // avoids future regressions if the banner mount becomes
+                // decoupled from the noteId guard.
+                const id = noteIdRef.current;
+                if (id === null) return;
                 const result = await updateNote(
-                  noteIdRef.current!,
+                  id,
                   latestContentRef.current,
                   conflictBanner.currentUpdatedAt,
                 );
@@ -877,12 +899,36 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
                   // failure, SaveIndicator stuck on green-Saved. Surface
                   // both an inline error AND a saveFailed dispatch so
                   // the user has a clear path forward.
+                  //
+                  // WR-06 (Phase 5.5 gap-closure Plan 12) — non-stale
+                  // error recovery. Previously the branch left the banner
+                  // mounted with the ORIGINAL currentUpdatedAt, so a
+                  // subsequent "Save anyway" click was guaranteed to be
+                  // stale-rejected. Refresh the comparator from the
+                  // server before surfacing the inline error so the user
+                  // has a real path to retry.
                   const msg = staleErr.message ?? "save failed";
-                  setH1RenameError(`Couldn't save: ${msg}`);
+                  let recoveryHint =
+                    "Save failed — try Discard or close the banner and retry on next sync.";
+                  try {
+                    const fresh = await getNote(id);
+                    if (fresh.data) {
+                      setConflictBanner({
+                        visible: true,
+                        currentUpdatedAt: fresh.data.updated_at,
+                      });
+                      recoveryHint =
+                        "Save failed — the latest version was loaded; click Save anyway again to retry, or Discard to drop your edits.";
+                    }
+                  } catch {
+                    // Network down for the recovery fetch too — keep the
+                    // banner with its original comparator; the message
+                    // tells the user to wait for next sync.
+                  }
+                  setH1RenameError(`Couldn't save: ${msg}. ${recoveryHint}`);
                   dispatch({ type: "saveFailed", error: msg });
-                  // Leave the banner open — the user can retry, dismiss
-                  // via ×, or Discard. The inline error sits above the
-                  // banner so the failure is visible.
+                  // Leave the banner open — the user can retry (now with
+                  // the refreshed comparator), dismiss via ×, or Discard.
                   return;
                 }
                 // Success — clear banner, inline error, and edited flag.
