@@ -193,6 +193,111 @@ export function computeMoveTarget(args: {
 }
 
 /**
+ * UX-13 (Plan 07): decide which DeleteConfirmDialog variant to open.
+ *
+ * Pure function so the multi-vs-single branch is unit-testable without
+ * driving react-arborist's selection through jsdom (which is fragile —
+ * Cmd+click in jsdom triggers react-dnd's hover invariants and selection
+ * doesn't always propagate through the Redux store synchronously).
+ *
+ * Contract:
+ *   - If 2+ selected nodes AND the requested row is one of them →
+ *     return { kind: "multi", count: N } (batch delete prompt).
+ *   - Otherwise the caller routes to the existing single-target branches
+ *     (note vs. folder copy from countDescendants).
+ *
+ * Exported for direct unit testing.
+ */
+export function buildMultiDeleteTarget(
+  d: TreeRowData,
+  selectedNodes: ReadonlyArray<NodeApi<ArboristNode>>,
+): { kind: "multi"; count: number } | null {
+  const isMulti =
+    selectedNodes.length > 1 &&
+    selectedNodes.some((n) => n.data.data === d);
+  if (isMulti) {
+    return { kind: "multi", count: selectedNodes.length };
+  }
+  return null;
+}
+
+/**
+ * UX-13 (Plan 07): execute a batch delete over the captured snapshot of
+ * arborist's selectedNodes. Sequential per-item iteration; partial
+ * completion is graceful — accumulate failures and surface a "deleted N
+ * of M items" toast through the caller's surfaceError.
+ *
+ * Returns { succeeded, total } so the caller can decide whether to
+ * surface the partial-completion toast.
+ *
+ * Exported for direct unit testing.
+ */
+export async function executeBatchDelete(
+  selectedSnapshot: ReadonlyArray<NodeApi<ArboristNode>>,
+  muts: {
+    deleteNote: (id: string) => Promise<unknown>;
+    deleteFolder: (path: string, recursive: boolean) => Promise<unknown>;
+  },
+): Promise<{ succeeded: number; total: number }> {
+  let succeeded = 0;
+  const total = selectedSnapshot.length;
+  for (const node of selectedSnapshot) {
+    const data = node.data.data;
+    try {
+      if (data.kind === "note") {
+        await muts.deleteNote(data.id);
+      } else {
+        await muts.deleteFolder(data.path, true);
+      }
+      succeeded += 1;
+    } catch (err) {
+      // Accumulate, continue iteration. Partial completion is the
+      // graceful degradation path: some entries delete, some fail
+      // (e.g. server returns 409 / 500 for one).
+      console.warn(
+        "executeBatchDelete: per-item delete failed; continuing",
+        err,
+      );
+    }
+  }
+  return { succeeded, total };
+}
+
+/**
+ * UX-13 (Plan 07): the descendant-deselect cascade. When a folder enters
+ * multi-selection, every descendant id is collected and passed to
+ * `deselect`. Operations apply to the directory whole, not its contents.
+ *
+ * Pure factory so the cascade is unit-testable without driving
+ * react-arborist's selection through jsdom.
+ *
+ * Exported for direct unit testing.
+ */
+export function deselectDescendantsOfFolders(
+  nodes: ReadonlyArray<NodeApi<ArboristNode>>,
+  deselect: (id: string) => void,
+): void {
+  const selectedFolders = nodes.filter(
+    (n) => n.data.data.kind === "folder",
+  );
+  if (selectedFolders.length === 0) return;
+  const collectIds = (n: NodeApi<ArboristNode>): string[] => {
+    const out: string[] = [];
+    if (!n.children) return out;
+    for (const child of n.children) {
+      out.push(child.id);
+      out.push(...collectIds(child));
+    }
+    return out;
+  };
+  for (const folder of selectedFolders) {
+    for (const id of collectIds(folder)) {
+      deselect(id);
+    }
+  }
+}
+
+/**
  * Walk the wire tree starting at the matching folder path; returns the
  * counts of immediate notes + immediate subfolders for the delete
  * dialog body.
@@ -526,8 +631,43 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     [muts, surfaceError, toast, refresh],
   );
 
+  // ──────────────────────────────────────────────────────────────────
+  // UX-13 (Plan 07) — handleSelect: descendant-deselect wrapper.
+  //
+  // When a folder enters multi-selection, deselect every descendant of
+  // that folder (operations apply to the directory whole, not its
+  // contents). Mirrors RESEARCH §Pattern 4 descendant-deselect.
+  //
+  // Wired into the <Tree onSelect={handleSelect} ...> prop below. arborist
+  // calls onSelect on every selection change, so the deselect cascade
+  // re-runs each time the user toggles selection — keeps the invariant
+  // even after partial deselects.
+  // ──────────────────────────────────────────────────────────────────
+  const handleSelect = useCallback(
+    (nodes: NodeApi<ArboristNode>[]) => {
+      // Delegates to the pure helper so the cascade is unit-testable.
+      deselectDescendantsOfFolders(nodes, (id) =>
+        treeRef.current?.deselect(id),
+      );
+    },
+    [],
+  );
+
   const handleRequestDelete = useCallback(
     (d: TreeRowData) => {
+      // UX-13 (Plan 07) — if this row is part of a multi-selection,
+      // route to the batch-delete branch so the user sees ONE prompt
+      // ("Delete N items?") instead of N sequential prompts.
+      //
+      // Multi-selection contract: read tree.selectedNodes (length and
+      // identity match) via the imperative arborist handle.
+      const selected = treeRef.current?.selectedNodes ?? [];
+      const multi = buildMultiDeleteTarget(d, selected);
+      if (multi !== null) {
+        setDeleteTarget(multi);
+        return;
+      }
+      // Existing single-target branches (preserved verbatim).
       if (d.kind === "note") {
         setDeleteTarget({ kind: "note", name: basename(d.path) });
       } else {
@@ -546,7 +686,24 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     try {
-      if (deleteTarget.kind === "note") {
+      if (deleteTarget.kind === "multi") {
+        // UX-13 (Plan 07): batch delete iterates the current arborist
+        // selection. Capture the snapshot of tree.selectedNodes once so
+        // the loop is stable even if a per-call refresh repopulates
+        // arborist's internal selection mid-iteration.
+        if (!treeRef.current) return;
+        const selectedSnapshot = treeRef.current.selectedNodes.slice();
+        const { succeeded, total } = await executeBatchDelete(
+          selectedSnapshot,
+          muts,
+        );
+        if (succeeded < total) {
+          surfaceError(
+            new Error(`Deleted ${succeeded} of ${total} items.`),
+            "delete",
+          );
+        }
+      } else if (deleteTarget.kind === "note") {
         // We need the note's id; recover it from the wire tree by
         // matching the basename within the active tree. To keep the
         // implementation simple, we stash the id alongside the dialog
@@ -588,31 +745,46 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       parentNode: NodeApi<ArboristNode> | null;
       index: number;
     }) => {
-      const dragNode = args.dragNodes[0];
-      if (!dragNode) return;
-      const sourceData = dragNode.data.data;
-      const target = computeMoveTarget({
-        sourcePath: sourceData.path,
-        parentNode: args.parentNode,
-      });
-      if (target.isNoOp) {
-        // Same-parent drop — react-arborist's reordering within the
-        // same parent is a UI concern only; we don't track ordering
-        // server-side (notes order alphabetically per UI-SPEC §Surface
-        // 1). No API call needed. Logged at debug for triage.
-        console.debug("FileTree: same-parent drop ignored", {
-          sourcePath: sourceData.path,
-        });
-        return;
-      }
+      if (args.dragNodes.length === 0) return;
+
+      // UX-13 (Plan 07) — multi-drag iteration. Capture all source
+      // identities upfront BEFORE iteration begins (RESEARCH §Pitfall 9).
+      // Note moves are id-based (refresh-stable) so capturing the id is
+      // enough. Folder moves are path-based; capture the pre-iteration
+      // path so a mid-loop refresh cannot swap one folder's path under
+      // a sibling iteration.
+      const sources = args.dragNodes.map((dn) => ({
+        kind: dn.data.data.kind,
+        id: dn.data.data.kind === "note" ? dn.data.data.id : null,
+        path: dn.data.data.path,
+      }));
+
       try {
-        if (sourceData.kind === "folder") {
-          await muts.moveFolder(sourceData.path, target.newPath);
-        } else {
-          await muts.moveNote(sourceData.id, target.newPath);
+        for (const src of sources) {
+          const target = computeMoveTarget({
+            sourcePath: src.path,
+            parentNode: args.parentNode,
+          });
+          if (target.isNoOp) {
+            // Same-parent drop — react-arborist's reordering within the
+            // same parent is a UI concern only; we don't track ordering
+            // server-side (notes order alphabetically per UI-SPEC §Surface
+            // 1). No API call needed. Logged at debug for triage.
+            console.debug("FileTree: same-parent drop ignored", {
+              sourcePath: src.path,
+            });
+            continue;
+          }
+          if (src.kind === "folder") {
+            await muts.moveFolder(src.path, target.newPath);
+          } else if (src.id !== null) {
+            await muts.moveNote(src.id, target.newPath);
+          }
         }
-        // Plan 03-09 (Gap 1): the mutator already refreshed the tree
-        // on success — no need to refresh again here.
+        // Plan 03-09 (Gap 1) + Plan 08 single-flight: the mutator
+        // already refreshed the tree on success per call; Plan 08's
+        // useFileTree single-flight collapses the per-call refresh
+        // fanout to one in-flight network round across the loop.
       } catch (e) {
         surfaceError(e, "move");
         // Server is the truth — refresh to revert the optimistic
@@ -847,6 +1019,11 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         initialOpenState={initialOpenState}
         onToggle={handleToggle}
         onMove={handleMove}
+        // UX-13 (Plan 07): every selection change runs the
+        // descendant-deselect cascade — when a folder enters the
+        // selection, its descendants exit. Operations apply to the
+        // directory whole, not its contents.
+        onSelect={handleSelect}
         disableDrop={handleDisableDrop}
         rowHeight={32}
         width="100%"
