@@ -93,11 +93,16 @@ interface Props {
   /** Cmd+S handler. Plan 05-10 wires the keymap; Plan 05-05 reserves
    *  the prop so EditorPane's performSave call site is unchanged. */
   onSaveRequested?: () => void;
+  /** Phase 5.5 / UX-07: fires when CM6's contenteditable surface loses
+   *  focus to ANY element outside the editor. Distinct from React's
+   *  onBlur (which fires for focus moves WITHIN the editor too). Wired
+   *  via EditorView.domEventHandlers({ blur }) in the extensions array. */
+  onBlur?: () => void;
 }
 
 export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
   function MarkdownEditor(
-    { initialDoc, onChange, onH1Change, onSaveRequested },
+    { initialDoc, onChange, onH1Change, onSaveRequested, onBlur },
     ref
   ) {
     const hostRef = useRef<HTMLDivElement | null>(null);
@@ -107,8 +112,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     // EditorView's updateListener captures its closure ONCE on mount;
     // refreshing the cbRef on every render keeps callbacks current
     // without rebuilding the editor.
-    const cbRef = useRef({ onChange, onH1Change, onSaveRequested });
-    cbRef.current = { onChange, onH1Change, onSaveRequested };
+    // Phase 5.5 / UX-07: onBlur added to the captured set so the new
+    // domEventHandlers({ blur }) extension reads the freshest callback.
+    const cbRef = useRef({ onChange, onH1Change, onSaveRequested, onBlur });
+    cbRef.current = { onChange, onH1Change, onSaveRequested, onBlur };
 
     useEffect(() => {
       if (!hostRef.current) return;
@@ -132,6 +139,18 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             // so long lines wrap at the reading-width clamp set by themeBridge
             // instead of scrolling horizontally forever.
             EditorView.lineWrapping,
+            // Phase 5.5 / UX-07: editor blur — fires when CM6's contenteditable
+            // surface loses focus to an element outside the editor (e.g. user
+            // clicks the sidebar / browser chrome). EditorView.domEventHandlers
+            // is editor-scoped (NOT React's onBlur which would also fire for
+            // intra-editor focus moves like opening the search panel). The
+            // optional-chain on cbRef.current.onBlur keeps the no-prop case safe
+            // (RESEARCH §Pitfall A1).
+            EditorView.domEventHandlers({
+              blur() {
+                cbRef.current.onBlur?.();
+              },
+            }),
             EditorView.updateListener.of((u) => {
               if (!u.docChanged) return;
               if (u.view.composing) return; // D-07/D-31 IME gate
