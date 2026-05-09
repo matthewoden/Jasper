@@ -30,6 +30,9 @@ import type { components } from "../api/schema";
 declare global {
     interface Window {
         __jasperMockEditorSave?: () => void;
+        // Plan 05.5-01 / UX-10: focusEnd spy exposed by the MarkdownEditor mock
+        // so tests can assert the click-host wrapper invoked the ref method.
+        __jasperMockEditorFocusEnd?: ReturnType<typeof vi.fn>;
     }
 }
 
@@ -57,6 +60,7 @@ vi.mock("./MarkdownEditor", async () => {
             getContent(): string;
             applyServerUpdate(s: string): void;
             focus(): void;
+            focusEnd(): void;
         },
         {
             initialDoc?: string;
@@ -89,6 +93,11 @@ vi.mock("./MarkdownEditor", async () => {
             },
             focus() {
                 // no-op in test
+            },
+            focusEnd() {
+                // Plan 05.5-01 / UX-10: tests can assert this via the
+                // window.__jasperMockEditorFocusEnd spy installed below.
+                window.__jasperMockEditorFocusEnd?.();
             },
         }), [value]);
 
@@ -1313,5 +1322,75 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
     afterEach(() => {
         // Reset connection status to connected (default for most tests).
         useTreeStore.setState({ connectionStatus: "connected" });
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Phase 5.5 / Plan 01 (UX-10) — click-anywhere-to-type host wrapper.
+// EditorPane wraps <MarkdownEditor> in a `cm-host-shell` div whose
+// onClick forwards empty-area clicks (target NOT inside .cm-content)
+// to editorRef.current.focusEnd(). Clicks inside .cm-content are no-ops
+// (CM6 owns focus + caret placement on text-region clicks).
+// ────────────────────────────────────────────────────────────────────
+
+describe("<EditorPane /> — UX-10 click-anywhere-to-type host (Plan 05.5-01)", () => {
+    it("clicking the host shell outside .cm-content focuses the editor and moves caret to end (UX-10)", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        const focusEndSpy = vi.fn();
+        window.__jasperMockEditorFocusEnd = focusEndSpy;
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        await waitFor(() =>
+            expect(
+                (screen.getByRole("textbox") as HTMLTextAreaElement).value,
+            ).toBe("hello"),
+        );
+
+        const host = screen.getByTestId("cm-host-shell");
+        // Click directly on the host element — `e.target` is the host itself,
+        // which has no `.cm-content` ancestor (the mock editor renders a
+        // <textarea>, not a `.cm-content` node), so the onClick MUST forward
+        // to editorRef.current.focusEnd().
+        fireEvent.click(host, { bubbles: true });
+
+        expect(focusEndSpy).toHaveBeenCalledTimes(1);
+        delete window.__jasperMockEditorFocusEnd;
+    });
+
+    it("clicking inside .cm-content does NOT trigger focusEnd (UX-10)", async () => {
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        const focusEndSpy = vi.fn();
+        window.__jasperMockEditorFocusEnd = focusEndSpy;
+
+        const { container } = render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        await waitFor(() =>
+            expect(
+                (screen.getByRole("textbox") as HTMLTextAreaElement).value,
+            ).toBe("hello"),
+        );
+
+        // Build a synthetic target that has a `.cm-content` ancestor and
+        // dispatch a click whose `target` property points at it. The host's
+        // onClick uses `e.target.closest(".cm-content")` to short-circuit;
+        // appending the synthetic content node to the host shell makes it
+        // a real DOM descendant so closest() walks the tree correctly.
+        const host = screen.getByTestId("cm-host-shell");
+        const fakeContent = document.createElement("div");
+        fakeContent.className = "cm-content";
+        const child = document.createElement("span");
+        fakeContent.appendChild(child);
+        host.appendChild(fakeContent);
+
+        fireEvent.click(child, { bubbles: true });
+
+        expect(focusEndSpy).not.toHaveBeenCalled();
+
+        host.removeChild(fakeContent);
+        delete window.__jasperMockEditorFocusEnd;
+        // Silence unused-var warning for `container` while keeping the
+        // render() destructure consistent with the rest of the suite.
+        void container;
     });
 });
