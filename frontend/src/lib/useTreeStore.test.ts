@@ -22,6 +22,7 @@ import {
 import {
   LS_KEY_ACTIVE_NOTE,
   LS_KEY_EXPANDED,
+  LS_KEY_SIDEBAR_WIDTH,
   pruneStaleTreeState,
   SIDEBAR_WIDTH_DEFAULT,
   useTreeStore,
@@ -432,6 +433,10 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
     expect(useTreeStore.getState().sidebarWidth).toBe(400);
   });
 
+  it("UX-09: LS_KEY_SIDEBAR_WIDTH is the LITERAL string expected by Plan 05", () => {
+    expect(LS_KEY_SIDEBAR_WIDTH).toBe("jasper.sidebar.width");
+  });
+
   it("TestPruneStaleTreeState_DoesNotTouchSelectedRow", () => {
     useTreeStore.setState({
       expanded: new Set(["a"]),
@@ -456,5 +461,75 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
       target: "projects",
     });
     expect(useTreeStore.getState().activeNoteId).toBeNull();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 5.5 — Plan 05 (UX-09) — sidebarWidth LS hydration + debounced write.
+//
+// Hydration tests use `vi.resetModules()` + dynamic import so the module-load
+// `if (typeof window !== "undefined")` block runs against a freshly-seeded
+// localStorage (matching the existing pattern for `expanded` and
+// `activeNoteId` hydration). Debounced-write tests use `vi.useFakeTimers()`.
+// ──────────────────────────────────────────────────────────────────────────
+describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () => {
+  afterEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+  });
+
+  it("UX-09: hydrates sidebarWidth from localStorage on module load", async () => {
+    localStorage.setItem(LS_KEY_SIDEBAR_WIDTH, JSON.stringify(420));
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().sidebarWidth).toBe(420);
+  });
+
+  it("UX-09: clamps hydrated width below MIN up to MIN (A8)", async () => {
+    localStorage.setItem(LS_KEY_SIDEBAR_WIDTH, JSON.stringify(100));
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().sidebarWidth).toBe(260);
+  });
+
+  it("UX-09: setSidebarWidth triggers debounced LS write", () => {
+    localStorage.clear();
+    vi.useFakeTimers();
+    try {
+      // Reset width on the live store so the subscriber's `lastWidth`
+      // tracker sees the change deterministically.
+      act(() => {
+        useTreeStore.setState({ sidebarWidth: SIDEBAR_WIDTH_DEFAULT });
+      });
+      // Drain the post-reset 250ms persistence tick so the spy below only
+      // sees the write produced by the explicit setSidebarWidth(380) call.
+      act(() => {
+        vi.advanceTimersByTime(260);
+      });
+
+      const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+      try {
+        act(() => {
+          useTreeStore.getState().setSidebarWidth(380);
+        });
+        // Inside the debounce window — no write yet for this key.
+        const writesBeforeFlush = setItemSpy.mock.calls.filter(
+          (c) => c[0] === LS_KEY_SIDEBAR_WIDTH,
+        ).length;
+        expect(writesBeforeFlush).toBe(0);
+        // Flush the debounce.
+        act(() => {
+          vi.advanceTimersByTime(260);
+        });
+        const lastWriteForKey = setItemSpy.mock.calls
+          .filter((c) => c[0] === LS_KEY_SIDEBAR_WIDTH)
+          .pop();
+        expect(lastWriteForKey?.[1]).toBe(JSON.stringify(380));
+      } finally {
+        setItemSpy.mockRestore();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

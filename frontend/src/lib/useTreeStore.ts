@@ -246,13 +246,32 @@ if (typeof window !== "undefined") {
     // Corrupted storage — fall back to default null; do NOT throw.
   }
 
-  // 3) Debounced persistence — subscribe to slice changes and flush each
+  // 3) Hydrate `sidebarWidth` from localStorage. Clamp to MIN on read so a
+  // window-resize-narrower from a previous session doesn't leave the editor
+  // pane <320px wide (RESEARCH §A8 — UX-09).
+  try {
+    const raw = window.localStorage.getItem(LS_KEY_SIDEBAR_WIDTH);
+    if (raw !== null) {
+      const n = JSON.parse(raw);
+      if (typeof n === "number" && Number.isFinite(n)) {
+        useTreeStore.setState({
+          sidebarWidth: Math.max(SIDEBAR_WIDTH_DEFAULT, n),
+        });
+      }
+    }
+  } catch {
+    // Corrupted storage — fall through to default; do NOT throw.
+  }
+
+  // 4) Debounced persistence — subscribe to slice changes and flush each
   //    persisted slot on its own 250ms timer. The 250ms debounce avoids
   //    storage thrash during rapid expand/collapse (UI-SPEC §State persistence).
   let expandedTimer: ReturnType<typeof setTimeout> | undefined;
   let activeTimer: ReturnType<typeof setTimeout> | undefined;
+  let widthTimer: ReturnType<typeof setTimeout> | undefined;
   let lastExpandedJSON = JSON.stringify([...useTreeStore.getState().expanded]);
   let lastActive: string | null = useTreeStore.getState().activeNoteId;
+  let lastWidth = useTreeStore.getState().sidebarWidth;
 
   useTreeStore.subscribe((state) => {
     const j = JSON.stringify([...state.expanded]);
@@ -278,6 +297,21 @@ if (typeof window !== "undefined") {
           );
         } catch {
           // Ignore quota / private-mode failures.
+        }
+      }, 250);
+    }
+    // Plan 05 (UX-09) — persist sidebarWidth on the same 250ms debounce.
+    if (state.sidebarWidth !== lastWidth) {
+      lastWidth = state.sidebarWidth;
+      if (widthTimer !== undefined) clearTimeout(widthTimer);
+      widthTimer = setTimeout(() => {
+        try {
+          window.localStorage.setItem(
+            LS_KEY_SIDEBAR_WIDTH,
+            JSON.stringify(state.sidebarWidth),
+          );
+        } catch {
+          // Quota / private mode — best-effort persistence.
         }
       }, 250);
     }
