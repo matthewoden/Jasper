@@ -139,16 +139,29 @@ function composeNewPath(parent: string, name: string): string {
 function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
   if (tree === null) return null;
   const visit = (node: TreeNode): string | null => {
-    if (node.kind === "note") {
-      return node.id === noteId ? node.path : null;
-    }
-    if (node.children) {
-      for (const child of node.children) {
-        const hit = visit(child);
-        if (hit !== null) return hit;
+    switch (node.kind) {
+      case "note":
+        return node.id === noteId ? node.path : null;
+      case "folder":
+        // children is optional on FolderNode (openapi.yaml: "ONLY populated
+        // when this FolderNode appears inside a Tree response"). Guard
+        // before recursion.
+        if (node.children) {
+          for (const child of node.children) {
+            const hit = visit(child);
+            if (hit !== null) return hit;
+          }
+        }
+        return null;
+      default: {
+        // WR-04 (Phase 5.5 gap-closure Plan 12) — exhaustiveness guard.
+        // A future TreeNode discriminant addition will fail this assignment
+        // at compile time, surfacing the call site rather than silently
+        // returning null.
+        const _exhaust: never = node;
+        return _exhaust;
       }
     }
-    return null;
   };
   for (const node of tree.root) {
     const hit = visit(node);
@@ -230,6 +243,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
   useEffect(() => {
     connectionStatusRef.current = connectionStatus;
   }, [connectionStatus]);
+
+  // BL-04 (Phase 5.5 gap-closure Plan 12) — one-shot guard so the keepalive
+  // PUT fires AT MOST ONCE per tab-close lifecycle. Both visibilitychange→hidden
+  // AND beforeunload can fire on tab close (in that order); we want the first
+  // one to land the bytes via keepalive, and the second to no-op rather than
+  // double-PUT. Reset on visible→hidden→visible so a subsequent hide can
+  // fire keepalive again.
+  const keepaliveSentRef = useRef(false);
 
   // Plan 03-22 (Gap R2-6) — H1-driven rename pipeline state.
   //   lastH1Sent       tracks the most-recently-persisted H1 so we
@@ -362,21 +383,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     reindexingRef.current = reindexing;
   }, [reindexing]);
 
-  // Phase 4 (D-06) — observe connectionStatus transitions and dispatch
-  // saveStateMachine events accordingly.
+  // Phase 4 (D-06) — connectionStatus transition tracker. The effect that
+  // dispatches saveStateMachine events lives BELOW performSave because it
+  // also calls performSave on connectionRestored (WR-02 gap-closure Plan
+  // 12) — referencing performSave in a useEffect dep array before its
+  // useCallback declaration would be a TDZ violation.
   const prevConnectionStatusRef = useRef(connectionStatus);
-  useEffect(() => {
-    const prev = prevConnectionStatusRef.current;
-    if (prev !== connectionStatus) {
-      if (connectionStatus !== "connected") {
-        dispatch({ type: "connectionLost" });
-      } else if (prev !== "connected") {
-        // Transition into connected (from connecting OR reconnecting).
-        dispatch({ type: "connectionRestored" });
-      }
-      prevConnectionStatusRef.current = connectionStatus;
-    }
-  }, [connectionStatus]);
 
   // 2. Save the latest content. Implements coalescing per UI-SPEC.
   const performSave = useCallback(async (latestContent: string) => {
@@ -519,6 +531,41 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     }
   }, [refreshTree]);
 
+  // Phase 4 (D-06) — observe connectionStatus transitions and dispatch
+  // saveStateMachine events accordingly.
+  //
+  // WR-02 (Phase 5.5 gap-closure Plan 12) — flush buffered edits made
+  // while the WS was paused. performSave skips when not connected, so
+  // edits typed during the disconnect never land until the user types
+  // again post-reconnect; if the user closes the tab in between, those
+  // bytes are lost. The connectionRestored event is the canonical moment
+  // to retry the save.
+  //
+  // performSave's useCallback has [refreshTree] as its dep array, and
+  // refreshTree is stable across re-renders (its useCallback has []
+  // deps in useFileTree.ts). performSave's identity is therefore stable,
+  // so the simple form (performSave in dep array) is correct: the effect
+  // re-runs only on connectionStatus transitions.
+  useEffect(() => {
+    const prev = prevConnectionStatusRef.current;
+    if (prev !== connectionStatus) {
+      if (connectionStatus !== "connected") {
+        dispatch({ type: "connectionLost" });
+      } else if (prev !== "connected") {
+        // Transition into connected (from connecting OR reconnecting).
+        dispatch({ type: "connectionRestored" });
+        // WR-02: flush the buffered edits the user typed while paused.
+        // Gated on userHasEdited (so we don't issue a spurious round-trip
+        // on a clean reconnect) AND on noteIdRef (so a reconnect with no
+        // active note can't slip through).
+        if (userHasEdited.current && noteIdRef.current !== null) {
+          void performSave(latestContentRef.current);
+        }
+      }
+      prevConnectionStatusRef.current = connectionStatus;
+    }
+  }, [connectionStatus, performSave]);
+
   // 3. Debounced autosave on edit — Plan 05-11 D-27/D-32: same logic as the
   // old textarea onChange but now receives the new doc string directly from
   // MarkdownEditor's onChange prop (no ChangeEvent.target.value extraction).
@@ -603,34 +650,67 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
     };
   }, []);
 
-  // 5b. UX-07: page-exit save. Two paths:
-  //  (1) visibilitychange→hidden — async fetch via performSave; tab is
-  //      still alive at this point, so the normal save path completes.
-  //  (2) beforeunload — fetch keepalive: true; cannot await async work
-  //      inside beforeunload, so this path is fire-and-forget. Skips
-  //      when paused / inFlight / trailingPending / no note loaded.
+  // 5b. UX-07 / BL-04: page-exit save (Phase 5.5 gap-closure Plan 12).
   //
-  // Pitfall 2 (RESEARCH §Pitfall 2): both events can fire on tab close;
-  // performSave's existing inFlight + trailingPending guards dedupe the
-  // visibilitychange path, and the beforeunload handler explicitly checks
-  // inFlight/trailingPending before issuing its keepalive PUT.
+  //   Updated precedence (post-Plan-12):
+  //
+  //  (1) visibilitychange→hidden — fire a `keepalive: true` raw fetch PUT.
+  //      The previous `performSave(latestContentRef.current)` issued a
+  //      non-keepalive PUT via the typed openapi-fetch wrapper; on real
+  //      tab close the browser aborted it and the bytes never reached
+  //      the server (BL-04). Keepalive survives unload.
+  //  (2) beforeunload — secondary fallback. If visibilitychange already
+  //      fired the keepalive PUT for this tab-close lifecycle, the
+  //      one-shot keepaliveSentRef short-circuits this branch. Some
+  //      browsers fire beforeunload without a prior visibilitychange
+  //      (synchronous window.close from within the page); this branch
+  //      covers them.
+  //
+  //  Pitfall 2 (RESEARCH §Pitfall 2): both events can fire on tab close
+  //  (visibilitychange first, beforeunload second). The keepaliveSentRef
+  //  one-shot dedups them so we issue exactly ONE keepalive PUT per
+  //  tab-close lifecycle. visible→hidden→visible re-arms the ref so a
+  //  subsequent hide can fire keepalive again.
   useEffect(() => {
     const onVisibilityChange = () => {
-      if (document.visibilityState !== "hidden") return;
+      // Reset the one-shot guard if the user re-shows the tab (visibilityState
+      // flipped from hidden→visible). A subsequent hide should be allowed to
+      // fire keepalive again.
+      if (document.visibilityState !== "hidden") {
+        keepaliveSentRef.current = false;
+        return;
+      }
       if (debounceTimer.current !== null) {
         window.clearTimeout(debounceTimer.current);
         debounceTimer.current = null;
       }
-      void performSave(latestContentRef.current);
-    };
-    const onBeforeUnload = () => {
       const id = noteIdRef.current;
       if (id === null) return;
       // Phase 4 paused gate — same condition performSave uses.
       if (connectionStatusRef.current !== "connected") return;
-      // Dedup: if a save is already in flight or queued, the existing
-      // pipeline will finish it; do NOT also issue a keepalive PUT.
-      if (inFlight.current || trailingPending.current) return;
+      if (keepaliveSentRef.current) return;
+      keepaliveSentRef.current = true;
+      // BL-04: keepalive: true survives tab close. The previous
+      // performSave(latestContentRef.current) issued a non-keepalive PUT
+      // via the typed openapi-fetch wrapper; on real tab close the browser
+      // aborted it and the bytes never reached the server.
+      void fetch(`/api/v1/notes/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: latestContentRef.current }),
+        keepalive: true,
+      });
+    };
+    const onBeforeUnload = () => {
+      // Secondary fallback. If visibilitychange already fired the keepalive
+      // PUT for this tab-close lifecycle, do nothing. Some browsers fire
+      // beforeunload without a prior visibilitychange (e.g., synchronous
+      // window.close from within the page); this branch covers them.
+      if (keepaliveSentRef.current) return;
+      const id = noteIdRef.current;
+      if (id === null) return;
+      if (connectionStatusRef.current !== "connected") return;
+      keepaliveSentRef.current = true;
       void fetch(`/api/v1/notes/${encodeURIComponent(id)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -644,7 +724,9 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [performSave]);
+    // refs only — performSave is no longer called from inside the handlers,
+    // so the dep array is intentionally empty.
+  }, []);
 
   // Phase 4 (Plan 04-05) — WS event handlers.
 
@@ -777,8 +859,17 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
               // The server may still reject (a third writer raced) — in that
               // case we re-show the banner with the newer comparator.
               void (async () => {
+                // WR-05 (Phase 5.5 gap-closure Plan 12) — local id capture
+                // replaces the previous noteIdRef.current! non-null
+                // assertion. The banner only mounts when noteId !== null,
+                // but the gap between the banner-mounted snapshot and the
+                // user clicking Save-anyway is async; null-guarding here
+                // avoids future regressions if the banner mount becomes
+                // decoupled from the noteId guard.
+                const id = noteIdRef.current;
+                if (id === null) return;
                 const result = await updateNote(
-                  noteIdRef.current!,
+                  id,
                   latestContentRef.current,
                   conflictBanner.currentUpdatedAt,
                 );
@@ -808,12 +899,36 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
                   // failure, SaveIndicator stuck on green-Saved. Surface
                   // both an inline error AND a saveFailed dispatch so
                   // the user has a clear path forward.
+                  //
+                  // WR-06 (Phase 5.5 gap-closure Plan 12) — non-stale
+                  // error recovery. Previously the branch left the banner
+                  // mounted with the ORIGINAL currentUpdatedAt, so a
+                  // subsequent "Save anyway" click was guaranteed to be
+                  // stale-rejected. Refresh the comparator from the
+                  // server before surfacing the inline error so the user
+                  // has a real path to retry.
                   const msg = staleErr.message ?? "save failed";
-                  setH1RenameError(`Couldn't save: ${msg}`);
+                  let recoveryHint =
+                    "Save failed — try Discard or close the banner and retry on next sync.";
+                  try {
+                    const fresh = await getNote(id);
+                    if (fresh.data) {
+                      setConflictBanner({
+                        visible: true,
+                        currentUpdatedAt: fresh.data.updated_at,
+                      });
+                      recoveryHint =
+                        "Save failed — the latest version was loaded; click Save anyway again to retry, or Discard to drop your edits.";
+                    }
+                  } catch {
+                    // Network down for the recovery fetch too — keep the
+                    // banner with its original comparator; the message
+                    // tells the user to wait for next sync.
+                  }
+                  setH1RenameError(`Couldn't save: ${msg}. ${recoveryHint}`);
                   dispatch({ type: "saveFailed", error: msg });
-                  // Leave the banner open — the user can retry, dismiss
-                  // via ×, or Discard. The inline error sits above the
-                  // banner so the failure is visible.
+                  // Leave the banner open — the user can retry (now with
+                  // the refreshed comparator), dismiss via ×, or Discard.
                   return;
                 }
                 // Success — clear banner, inline error, and edited flag.
