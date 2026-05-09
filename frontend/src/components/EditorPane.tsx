@@ -685,8 +685,8 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-    // refs only — performSave is no longer called from inside the handlers.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // refs only — performSave is no longer called from inside the handlers,
+    // so the dep array is intentionally empty.
   }, []);
 
   // Phase 4 (Plan 04-05) — WS event handlers.
