@@ -192,7 +192,14 @@ test.describe("Phase 3 UAT regression suite", () => {
     ).toHaveCount(0);
 
     // The textarea should contain the file's content.
-    const textareaValue = await textarea.inputValue();
+    // CM6 refactor (Phase 5.5 plan 09 Task 1): the editor is now a
+    // CodeMirror 6 contenteditable div, not a real <textarea>. The
+    // role="textbox" locator above still resolves (CM6 sets role on
+    // .cm-content), but inputValue() returns "" because the underlying
+    // node has no `value` property. Read .cm-content's textContent
+    // instead — that is the editor's plain text.
+    const textareaValue =
+      (await page.locator(".cm-content").textContent()) ?? "";
     expect(textareaValue).toContain("# External");
   });
 
@@ -357,7 +364,11 @@ test.describe("Phase 3 UAT regression suite", () => {
     await scratchpadRow.click();
     const textarea = page.getByRole("textbox", { name: /note content/i });
     await expect(textarea).toBeEnabled({ timeout: 5_000 });
-    await textarea.fill("# Old Title\n\nbody");
+    // CM6 refactor (Phase 5.5 plan 09 Task 1): replace textarea.fill()
+    // with the canonical CM6 typing recipe — click to focus, select-all,
+    // delete, then keyboard-type. textarea.fill() is a no-op against a
+    // contenteditable surface and silently leaves the editor empty.
+    await typeIntoEditor(page, "# Old Title\n\nbody");
     // Cmd+S to flush immediately (avoid waiting on autosave).
     await page.keyboard.press("Meta+s");
     await page.waitForTimeout(500); // let save settle
@@ -425,6 +436,34 @@ async function waitForTreeRowCount(
 ): Promise<void> {
   const rows = page.locator(`[data-tree-row-kind="${kind}"]`);
   await expect(rows).toHaveCount(expected, { timeout: 10_000 });
+}
+
+/**
+ * CM6 typing recipe (Phase 5.5 plan 09 Task 1).
+ *
+ * Replaces textarea.fill() / textarea.inputValue() patterns from the
+ * pre-CM6 era. After Phase 5 swapped the textarea for a CodeMirror 6
+ * contenteditable surface, .fill() is a silent no-op (the underlying
+ * node has no `value` property) and .inputValue() returns "".
+ *
+ * The recipe: click to focus the .cm-content surface, select-all to
+ * clear any existing text, delete the selection, then dispatch the
+ * keystrokes via page.keyboard.type so CM6's input handlers fire and
+ * the editor state actually changes.
+ *
+ * NOTE: Cross-platform select-all key — process.platform on the
+ * Playwright runner host (Mac=darwin → Meta+a; Linux/Windows CI →
+ * Control+a). The CM6 keymap accepts both via @codemirror/commands
+ * defaults.
+ */
+async function typeIntoEditor(page: Page, text: string): Promise<void> {
+  const cm = page.locator(".cm-content");
+  await cm.click();
+  const selectAllKey =
+    process.platform === "darwin" ? "Meta+a" : "Control+a";
+  await page.keyboard.press(selectAllKey);
+  await page.keyboard.press("Delete");
+  await page.keyboard.type(text);
 }
 
 /**
