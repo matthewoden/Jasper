@@ -26,15 +26,23 @@ function asApiError(error: unknown, status: number): ApiError {
 }
 
 export async function getConfig(): Promise<{ data?: Config; error?: ApiError }> {
-  const { data, error, response } = await client.GET("/config");
-  if (error) return { error: asApiError(error, response.status) };
-  return { data };
+  const res = await client.GET("/config");
+  // openapi-typescript types /config as having no error responses, so
+  // `res.error` is typed as `never` — use a runtime guard instead.
+  if (!res.data) {
+    const status = (res.response as { status?: number } | undefined)?.status ?? 0;
+    return { error: asApiError(res.error, status) };
+  }
+  return { data: res.data };
 }
 
 export async function putConfig(c: Config): Promise<{ data?: Config; error?: ApiError }> {
-  const { data, error, response } = await client.PUT("/config", { body: c });
-  if (error) return { error: asApiError(error, response.status) };
-  return { data };
+  const res = await client.PUT("/config", { body: c });
+  if (!res.data) {
+    const status = (res.response as { status?: number } | undefined)?.status ?? 0;
+    return { error: asApiError(res.error, status) };
+  }
+  return { data: res.data };
 }
 
 /**

@@ -37,7 +37,7 @@ import { Annotation } from "@codemirror/state";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
-import { search, searchKeymap } from "@codemirror/search";
+import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
 import { markdown } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 
@@ -141,9 +141,18 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       });
       viewRef.current = view;
 
+      // E2E test hook — Plan 05-12 / EDIT-11: expose openSearchPanel for
+      // Playwright so tests can trigger the panel without fighting macOS
+      // browser-chrome interception of Meta+F. Does NOT affect runtime
+      // behavior; the window property is used only in Playwright specs.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__jasperOpenSearchPanel = () => openSearchPanel(view);
+
       return () => {
         view.destroy();
         viewRef.current = null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (window as any).__jasperOpenSearchPanel;
       };
       // initialDoc captured ONCE — Phase 5 D-26 / EDIT-01 cursor
       // stability. Subsequent updates flow through the ref API.

@@ -73,7 +73,7 @@ export function useSessionSync(
     let cancelled = false;
     let ws: WebSocket | null = null;
     let attempt = 0;
-    let reconnectTimer: ReturnType<typeof window.setTimeout> | null = null;
+    let reconnectTimer: number | null = null;
 
     const connect = () => {
       if (cancelled) return;
