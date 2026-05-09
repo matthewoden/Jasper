@@ -50,6 +50,7 @@ vi.mock("../lib/useTheme", () => ({
 import { useFileTree } from "../lib/useFileTree";
 import { postAdminReindex } from "../lib/adminApi";
 import { useTreeMutations } from "../lib/useTreeMutations";
+import { useTreeStore, SIDEBAR_WIDTH_DEFAULT } from "../lib/useTreeStore";
 import { Sidebar } from "./Sidebar";
 import { ToastProvider } from "./Toast";
 
@@ -79,6 +80,10 @@ beforeEach(() => {
   mockedPostAdminReindex.mockReset();
   mockedUseTreeMutations.mockReset();
   mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
+  // UX-09: reset persistent sidebar width slice so each test starts at
+  // the default and isn't polluted by a sibling test that pre-set a
+  // larger width.
+  useTreeStore.setState({ sidebarWidth: SIDEBAR_WIDTH_DEFAULT });
 });
 
 afterEach(() => {
@@ -132,7 +137,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     ).toBeInTheDocument();
   });
 
-  it("TestSidebar_FixedWidth260", () => {
+  it("TestSidebar_DefaultWidth260 — reads SIDEBAR_WIDTH_DEFAULT from useTreeStore", () => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -143,6 +148,39 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     renderWithProvider(<Sidebar />);
     const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
     expect(nav.style.width).toBe("260px");
+  });
+
+  it("UX-09: width comes from useTreeStore.sidebarWidth (not a literal)", () => {
+    mockedUseFileTree.mockReturnValue({
+      tree: { root: [] },
+      loading: false,
+      error: null,
+      refresh: () => Promise.resolve(),
+      mutate: noopMutate,
+    });
+    // Pre-set the store to a non-default width before render so we can
+    // distinguish "store-driven" from "literal 260".
+    useTreeStore.setState({ sidebarWidth: 380 });
+    renderWithProvider(<Sidebar />);
+    const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
+    expect(nav.style.width).toBe("380px");
+    // The parent must also be position:relative so the absolute-
+    // positioned resize handle anchors to the right edge.
+    expect(nav.style.position).toBe("relative");
+  });
+
+  it("UX-09: SidebarResizeHandle is mounted as a child of the nav", () => {
+    mockedUseFileTree.mockReturnValue({
+      tree: { root: [] },
+      loading: false,
+      error: null,
+      refresh: () => Promise.resolve(),
+      mutate: noopMutate,
+    });
+    renderWithProvider(<Sidebar />);
+    const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
+    const handle = screen.getByTestId("sidebar-resize-handle");
+    expect(nav.contains(handle)).toBe(true);
   });
 
   it("TestSidebar_NoStaticScratchpadRow — Phase 1 hardcoded row is gone", () => {
