@@ -4,6 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Jasper</title>
+    <!-- Plan 05-10: synchronous theme bootstrap before React mounts.
+         Sets <html data-theme> from localStorage or prefers-color-scheme
+         (D-15 / RESEARCH §Pitfall 8). Static asset (NOT inline) so CSP
+         `script-src 'self'` permits it. -->
+    <script src="/theme-bootstrap.js"></script>
   </head>
   <body>
     <div id="root"></div>
