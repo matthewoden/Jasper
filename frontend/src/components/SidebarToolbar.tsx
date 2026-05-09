@@ -28,6 +28,7 @@
 import { useCallback, useState } from "react";
 import { FilePlus, FolderPlus, RefreshCw } from "lucide-react";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
+import { SettingsMenu } from "./SettingsMenu";
 
 export interface SidebarToolbarProps {
   onNewNote: () => void;
@@ -131,6 +132,8 @@ export function SidebarToolbar({
       </button>
       {/* Phase 4 — TREE-12: connection status dot appended after Refresh button */}
       <ConnectionStatusDot />
+      {/* Plan 05-10 — D-14: Settings popover with theme toggle */}
+      <SettingsMenu />
     </div>
   );
 }

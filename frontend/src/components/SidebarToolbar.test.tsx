@@ -8,9 +8,31 @@
  *
  * Refresh button shows animate-spin + disabled while in-flight; PreventsConcurrentClicks.
  * Native title= attribute (Phase 1 deferral pattern; Phase 4 swaps to Radix Tooltip).
+ *
+ * Plan 05-10: SettingsMenu is appended after ConnectionStatusDot. The SettingsMenu
+ * loads useTheme → useConfig → client.GET, so we mock the openapi-fetch client
+ * at module level here too.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../api/client", () => ({
+  client: {
+    GET: vi.fn().mockResolvedValue({
+      data: {
+        appName: "Jasper",
+        theme: "dark",
+        dailyNotes: { folder: "daily", template: "" },
+        editor: { fontSize: 15, lineHeight: 1.6, vimMode: false },
+      },
+      response: { status: 200 },
+    }),
+    PUT: vi.fn().mockResolvedValue({
+      data: {},
+      response: { status: 200 },
+    }),
+  },
+}));
 
 import { SidebarToolbar } from "./SidebarToolbar";
 
@@ -303,5 +325,17 @@ describe("<SidebarToolbar />", () => {
       />,
     );
     expect(screen.getByTestId("connection-status-dot")).toBeInTheDocument();
+  });
+
+  // ── Plan 05-10 — D-14: SettingsMenu appended after ConnectionStatusDot ───
+  it("TestToolbar_RendersSettingsMenuTrigger (D-14)", () => {
+    render(
+      <SidebarToolbar
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+        onRefresh={() => Promise.resolve()}
+      />,
+    );
+    expect(screen.getByTestId("settings-menu-trigger")).toBeInTheDocument();
   });
 });
