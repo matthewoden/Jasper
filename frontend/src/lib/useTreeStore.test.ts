@@ -23,6 +23,7 @@ import {
   LS_KEY_ACTIVE_NOTE,
   LS_KEY_EXPANDED,
   pruneStaleTreeState,
+  SIDEBAR_WIDTH_DEFAULT,
   useTreeStore,
 } from "./useTreeStore";
 
@@ -32,6 +33,9 @@ const FULL_DEFAULT_STATE = {
   pendingRename: null,
   draftCreate: null,
   selectedRow: null,
+  // Phase 5.5 — Plan 04 (UX-08) / Plan 05 (UX-09) added slices.
+  liveLabels: {} as Record<string, string>,
+  sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
 };
 
 describe("useTreeStore — default + mutators", () => {
@@ -373,6 +377,59 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
     expect(s.pendingRename).toEqual({ kind: "note", target: "uuid-bar" });
     expect(s.draftCreate).toEqual({ kind: "folder", parent: "ideas" });
     expect(s.selectedRow).toEqual({ kind: "note", target: "uuid-zzz" });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Phase 5.5 — Plan 04 (UX-08): live H1 → tree label slice.
+  // Phase 5.5 — Plan 05 (UX-09): sidebar width slice (schema lands here;
+  // LS hydration + setter wiring is owned by Plan 05).
+  // ──────────────────────────────────────────────────────────────────
+
+  it("UX-08: setLiveLabel adds an entry keyed by note id", () => {
+    useTreeStore.getState().setLiveLabel("note-a", "Hello");
+    expect(useTreeStore.getState().liveLabels["note-a"]).toBe("Hello");
+  });
+
+  it("UX-08: clearLiveLabel removes the entry; absent id is a no-op preserving object identity", () => {
+    // Set then clear → entry gone.
+    useTreeStore.getState().setLiveLabel("note-a", "Hello");
+    expect(useTreeStore.getState().liveLabels["note-a"]).toBe("Hello");
+    useTreeStore.getState().clearLiveLabel("note-a");
+    expect(useTreeStore.getState().liveLabels["note-a"]).toBeUndefined();
+
+    // Absent id → no-op; the liveLabels reference must NOT change so
+    // memoized selectors don't re-render. Capture the full state object
+    // before and assert reference identity afterwards.
+    const stateBefore = useTreeStore.getState();
+    const labelsBefore = stateBefore.liveLabels;
+    useTreeStore.getState().clearLiveLabel("definitely-not-here");
+    const stateAfter = useTreeStore.getState();
+    expect(stateAfter.liveLabels).toBe(labelsBefore);
+    // The whole state object identity is also preserved — no setState
+    // fired (the mutator returns `s` unchanged).
+    expect(stateAfter).toBe(stateBefore);
+  });
+
+  it("UX-08: pruneStaleTreeState drops labels whose ids no longer exist in the tree", () => {
+    useTreeStore.setState({
+      liveLabels: { a: "A", b: "B", c: "C" },
+    });
+    pruneStaleTreeState(new Set(), new Set(["a"]));
+    const labels = useTreeStore.getState().liveLabels;
+    expect(labels.a).toBe("A");
+    expect(labels.b).toBeUndefined();
+    expect(labels.c).toBeUndefined();
+    expect(Object.keys(labels)).toEqual(["a"]);
+  });
+
+  it("UX-09: setSidebarWidth clamps to SIDEBAR_WIDTH_DEFAULT (MIN)", async () => {
+    const { setSidebarWidth } = useTreeStore.getState();
+    // Below MIN clamps up to default.
+    setSidebarWidth(100);
+    expect(useTreeStore.getState().sidebarWidth).toBe(260);
+    // Above MIN passes through unchanged.
+    setSidebarWidth(400);
+    expect(useTreeStore.getState().sidebarWidth).toBe(400);
   });
 
   it("TestPruneStaleTreeState_DoesNotTouchSelectedRow", () => {
