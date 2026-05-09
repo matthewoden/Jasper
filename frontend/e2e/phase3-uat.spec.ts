@@ -84,16 +84,20 @@ test.describe("Phase 3 UAT regression suite", () => {
     // Note count goes from 1 (scratchpad) → 2 (scratchpad + new untitled).
     await waitForTreeRowCount(page, "note", 2);
     // The new note enters inline-rename mode immediately (Plan 03-07 +
-    // 03-13 contract). Wait for the input to actually mount (race-safe),
-    // then press Escape via the input itself.
-    await dismissAnyOpenRenameInput(page);
+    // 03-13 contract). Post-Bug-D (2026-05-07) we MUST commit the
+    // rename — pressing Escape on a brand-new row deletes the
+    // underlying file and would silently regress the count assertion
+    // below to 2 instead of 3 (see 05.5-14-INVESTIGATION.md). Use
+    // commitRenameWith to type a unique name and persist the row.
+    await commitRenameWith(page, "scenario-a-note-1");
 
     // A.2: click `+` again. Plan 03-13's nextUntitledName produces
-    // `untitled 1` (or whatever the next free slot is) — the server
-    // must NOT 409. Note count → 3.
+    // `untitled` (the slot freed by A.1's commit; A.1 took the
+    // `scenario-a-note-1` name) — the server must NOT 409. Note
+    // count → 3.
     await page.getByRole("button", { name: /new note/i }).click();
     await waitForTreeRowCount(page, "note", 3);
-    await dismissAnyOpenRenameInput(page);
+    await commitRenameWith(page, "scenario-a-note-2");
 
     // A.3: GET /api/v1/tree directly to verify the server agrees with
     // the UI count (no UI optimism deceiving us).
@@ -107,8 +111,14 @@ test.describe("Phase 3 UAT regression suite", () => {
     // path tested in A.2): a fresh folder named "untitled" must be
     // auto-allocated, and the create must re-render the tree without
     // reload (Plan 03-09 broadcast-refresh).
+    //
+    // Bug D's ephemeral-delete contract applies to folders too — see
+    // useTreeCreateActions.ts:215 (`startRename("folder", f.path, true)`)
+    // and TreeRow.tsx:158-160 (handleCancelRename calls
+    // muts.deleteFolder when pendingRename.isNew). We commit the
+    // folder rename to keep the row.
     await page.getByRole("button", { name: /new folder/i }).click();
-    await dismissAnyOpenRenameInput(page);
+    await commitRenameWith(page, "scenario-a-folder-1");
     await waitForTreeRowCount(page, "folder", 1);
 
     // The server agrees on the folder count without us issuing a
@@ -210,17 +220,20 @@ test.describe("Phase 3 UAT regression suite", () => {
 
     // To test F2 + key trap on a note, create one (the seeded
     // scratchpad's name is fine for renaming, but using a freshly-
-    // created `untitled` note avoids depending on the seed name).
+    // created note avoids depending on the seed name).
     await page.getByRole("button", { name: /new note/i }).click();
-    // The new note enters rename immediately; cancel that initial rename
-    // so we can drive the F2 path explicitly.
-    await dismissAnyOpenRenameInput(page);
+    // The new note enters rename immediately. Post-Bug-D
+    // (2026-05-07) we MUST commit (not Escape) — pressing Escape on
+    // a brand-new row deletes the underlying file. Commit with a
+    // distinctive name so we can locate the row by label below; the
+    // F2 path is exercised explicitly afterward.
+    await commitRenameWith(page, "scenario-f-setup");
 
-    // Locate the freshly-created untitled row.
+    // Locate the freshly-created row by its committed name.
     await waitForTreeRowCount(page, "note", 2);
-    const untitledRow = await findTreeRowLocatorByLabel(page, /untitled/i, "note");
+    const untitledRow = await findTreeRowLocatorByLabel(page, /scenario-f-setup/i, "note");
     if (!untitledRow) {
-      throw new Error("untitled row not present after toolbar create");
+      throw new Error("scenario-f-setup row not present after toolbar create + commit");
     }
 
     // F.1: focus the row + press F2. Plan 03-12 ensures F2 reaches the
@@ -303,14 +316,17 @@ test.describe("Phase 3 UAT regression suite", () => {
     await page.goto(jasper.baseURL);
     await waitForTreeRowCount(page, "note", 1);
 
-    // Create a fresh untitled note via the toolbar.
+    // Create a fresh note via the toolbar. Post-Bug-D (2026-05-07)
+    // we commit the rename rather than dismissing — Escape on a
+    // brand-new row now deletes the underlying file.
     await page.getByRole("button", { name: /new note/i }).click();
-    await dismissAnyOpenRenameInput(page);
+    await commitRenameWith(page, "scenario-g-setup");
     await waitForTreeRowCount(page, "note", 2);
 
-    // Click the new untitled row to open it in the editor.
-    const untitledRow = await findTreeRowLocatorByLabel(page, /untitled/i, "note");
-    if (!untitledRow) throw new Error("untitled row not found after create");
+    // Click the new row (committed as `scenario-g-setup`) to open it
+    // in the editor.
+    const untitledRow = await findTreeRowLocatorByLabel(page, /scenario-g-setup/i, "note");
+    if (!untitledRow) throw new Error("scenario-g-setup row not found after create + commit");
     await untitledRow.click();
 
     // Wait for the editor to load (textarea enabled).
@@ -346,9 +362,12 @@ test.describe("Phase 3 UAT regression suite", () => {
     const myPlanNote = findNoteByTitleInsensitive(j, /my plan/i);
     expect(myPlanNote).toBeTruthy();
 
-    // The original "untitled.md" should no longer be in the tree
-    // (it was renamed away by Direction A).
-    expect(treeContainsNoteAtPath(j, "untitled.md")).toBe(false);
+    // The original "scenario-g-setup.md" should no longer be in the
+    // tree (it was renamed away by Direction A — H1 edit drives the
+    // filename rename). Pre-Bug-D this assertion was on
+    // "untitled.md"; after the commit-the-rename refactor the seed
+    // filename is "scenario-g-setup.md".
+    expect(treeContainsNoteAtPath(j, "scenario-g-setup.md")).toBe(false);
   });
 
   test("Scenario G.2: tree rename rewrites first H1 in content (Direction B)", async ({
@@ -467,28 +486,52 @@ async function typeIntoEditor(page: Page, text: string): Promise<void> {
 }
 
 /**
- * Wait for any inline-rename input in the tree to mount, then dismiss it
- * via Escape *on the input itself*. After a toolbar `+` create the new
- * row enters rename mode (Plan 03-13 + 03-07 contract); a bare
- * `page.keyboard.press("Escape")` before the input mounts goes nowhere
- * useful and leaves the row stuck in rename. Race-safe: if no input is
- * mounted within `timeoutMs`, returns silently (caller's subsequent
- * assertion will surface any real bug).
+ * Commit an open rename input with a specific name.
+ *
+ * Background — Bug D (resolved 2026-05-07,
+ * `.planning/debug/resolved/rename-input-lifecycle.md`): pressing
+ * Escape on a brand-new (just-created, never-confirmed) row now
+ * fires DELETE /api/v1/notes/{id} (note kind) or the folder
+ * analogue, per the locked UAT product contract. The pre-Bug-D
+ * `dismissAnyOpenRenameInput` helper (Escape on the input) silently
+ * deleted the row, which invalidated downstream count assertions in
+ * Phase 3 Scenarios A / F / G and Phase 4 Scenario 1 — see
+ * `.planning/phases/05.5-sidebar-editor-shell-polish/05.5-14-INVESTIGATION.md`.
+ *
+ * `commitRenameWith` is the post-Bug-D replacement for post-create
+ * scenarios that need the row to PERSIST. It waits for the rename
+ * input to mount, fills it (overwriting the auto-filled placeholder
+ * from Plan 03-13's nextUntitledName), presses Enter, then waits for
+ * the input to detach.
+ *
+ * Selector mirrors the legacy helper:
+ * `[data-tree-row] input[type="text"]`. RenameInput.tsx renders a
+ * bare <input type="text"> with no aria-label — the row scope is
+ * the only stable hook.
+ *
+ * @param page Playwright page handle
+ * @param name Unique name to commit. Must not collide with an existing
+ *   sibling — the server returns 409 on collision and the test will
+ *   surface that as a hang. Folder vs. note kind is decided by the
+ *   row that was created; the rename input is the same component
+ *   either way.
  */
-async function dismissAnyOpenRenameInput(
+async function commitRenameWith(
   page: Page,
+  name: string,
   timeoutMs = 2_000,
 ): Promise<void> {
   const renameInput = page
     .locator('[data-tree-row] input[type="text"]')
     .first();
-  try {
-    await renameInput.waitFor({ state: "visible", timeout: timeoutMs });
-  } catch {
-    return; // no rename input is open — nothing to dismiss
-  }
-  await renameInput.press("Escape");
-  await expect(renameInput).toHaveCount(0, { timeout: 2_000 });
+  await renameInput.waitFor({ state: "visible", timeout: timeoutMs });
+  // Clear the auto-filled placeholder ("untitled" / "untitled 1") —
+  // fill() replaces the value, it does not append.
+  await renameInput.fill(name);
+  await renameInput.press("Enter");
+  // After Enter the rename input unmounts (RenameInput's
+  // handleCommitRename success path calls useTreeStore.endRename()).
+  await expect(renameInput).toHaveCount(0, { timeout: timeoutMs });
 }
 
 async function findTreeRowLocatorByLabel(
