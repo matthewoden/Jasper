@@ -64,6 +64,12 @@ export interface MarkdownEditorRef {
   applyServerUpdate(s: string): void;
   /** Focus the editor caret. */
   focus(): void;
+  /**
+   * Phase 5.5 / UX-10: focusEnd — focus the editor AND move caret to
+   * end-of-doc in a single dispatch. Used by EditorPane's
+   * click-anywhere-to-type host wrapper.
+   */
+  focusEnd(): void;
 }
 
 /**
@@ -122,6 +128,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             externalImagePlugin, // Plan 05-08 — SECURITY-03 external image gate
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // Plan 05-11 / EDIT-10 — BEFORE defaultKeymap so Cmd+S takes precedence
             keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+            // Phase 5.5 / UX-11: enable soft line-wrapping inside .cm-content
+            // so long lines wrap at the reading-width clamp set by themeBridge
+            // instead of scrolling horizontally forever.
+            EditorView.lineWrapping,
             EditorView.updateListener.of((u) => {
               if (!u.docChanged) return;
               if (u.view.composing) return; // D-07/D-31 IME gate
@@ -182,6 +192,13 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
         },
         focus() {
           viewRef.current?.focus();
+        },
+        focusEnd() {
+          const v = viewRef.current;
+          if (!v) return;
+          v.focus();
+          const docLen = v.state.doc.length;
+          v.dispatch({ selection: { anchor: docLen, head: docLen } });
         },
       }),
       []
