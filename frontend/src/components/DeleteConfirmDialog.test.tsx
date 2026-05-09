@@ -16,7 +16,7 @@ describe("<DeleteConfirmDialog /> — note variant", () => {
       <DeleteConfirmDialog
         open={true}
         onOpenChange={vi.fn()}
-        target={{ kind: "note", name: "foo.md" }}
+        target={{ kind: "note", name: "foo.md", id: "uuid-foo" }}
         onConfirm={vi.fn().mockResolvedValue(undefined)}
       />,
     );
@@ -28,7 +28,7 @@ describe("<DeleteConfirmDialog /> — note variant", () => {
       <DeleteConfirmDialog
         open={true}
         onOpenChange={vi.fn()}
-        target={{ kind: "note", name: "foo.md" }}
+        target={{ kind: "note", name: "foo.md", id: "uuid-foo" }}
         onConfirm={vi.fn().mockResolvedValue(undefined)}
       />,
     );
@@ -49,7 +49,7 @@ describe("<DeleteConfirmDialog /> — note variant", () => {
       <DeleteConfirmDialog
         open={true}
         onOpenChange={vi.fn()}
-        target={{ kind: "note", name: "foo.md" }}
+        target={{ kind: "note", name: "foo.md", id: "uuid-foo" }}
         onConfirm={vi.fn().mockResolvedValue(undefined)}
       />,
     );
@@ -68,6 +68,7 @@ describe("<DeleteConfirmDialog /> — folder variant", () => {
         target={{
           kind: "folder",
           name: "x",
+          path: "x",
           noteCount: 0,
           subfolderCount: 0,
         }}
@@ -100,6 +101,7 @@ describe("<DeleteConfirmDialog /> — folder variant", () => {
         target={{
           kind: "folder",
           name: "x",
+          path: "x",
           noteCount: 1,
           subfolderCount: 0,
         }}
@@ -123,6 +125,7 @@ describe("<DeleteConfirmDialog /> — folder variant", () => {
         target={{
           kind: "folder",
           name: "x",
+          path: "x",
           noteCount: 5,
           subfolderCount: 2,
         }}
@@ -148,6 +151,7 @@ describe("<DeleteConfirmDialog /> — folder variant", () => {
         target={{
           kind: "folder",
           name: "x",
+          path: "x",
           noteCount: 0,
           subfolderCount: 0,
         }}
@@ -166,7 +170,7 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
       <DeleteConfirmDialog
         open={true}
         onOpenChange={vi.fn()}
-        target={{ kind: "note", name: "foo.md" }}
+        target={{ kind: "note", name: "foo.md", id: "uuid-foo" }}
         onConfirm={vi.fn().mockResolvedValue(undefined)}
       />,
     );
@@ -180,7 +184,7 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
       <DeleteConfirmDialog
         open={true}
         onOpenChange={vi.fn()}
-        target={{ kind: "note", name: "foo.md" }}
+        target={{ kind: "note", name: "foo.md", id: "uuid-foo" }}
         onConfirm={onConfirm}
       />,
     );
@@ -196,7 +200,7 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
       <DeleteConfirmDialog
         open={true}
         onOpenChange={onOpenChange}
-        target={{ kind: "note", name: "foo.md" }}
+        target={{ kind: "note", name: "foo.md", id: "uuid-foo" }}
         onConfirm={vi.fn().mockResolvedValue(undefined)}
       />,
     );
@@ -256,7 +260,7 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
       <DeleteConfirmDialog
         open={true}
         onOpenChange={vi.fn()}
-        target={{ kind: "note", name: "foo.md" }}
+        target={{ kind: "note", name: "foo.md", id: "uuid-foo" }}
         onConfirm={onConfirm}
       />,
     );
@@ -267,5 +271,115 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
     await waitFor(() => {
       expect(onConfirm).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// WR-09 (Phase 5.5 gap-closure Plan 13) — DeleteTarget type contract.
+//
+// The DeleteTarget union now carries the canonical identifier directly:
+//   - { kind: "note"; name: string; id: string }
+//   - { kind: "folder"; name: string; path: string; noteCount, subfolderCount }
+//   - { kind: "multi"; count: number }    // unchanged
+//
+// FileTree.handleConfirmDelete reads `target.id` / `target.path` directly
+// instead of re-deriving from the display name (the previous lookup was
+// ambiguous when two notes shared a basename across subtrees).
+//
+// We use `// @ts-expect-error` to assert that omitting the new required
+// fields is a TypeScript error — the directive itself becomes an error if
+// the line type-checks, so `tsc --noEmit` enforces the contract.
+// ──────────────────────────────────────────────────────────────────────────
+describe("WR-09 — DeleteTarget carries canonical id/path", () => {
+  it("WR-09 / Test 1: note variant requires `id: string`", () => {
+    const validNote: import("./DeleteConfirmDialog").DeleteTarget = {
+      kind: "note",
+      name: "foo.md",
+      id: "uuid-foo",
+    };
+    expect(validNote.kind).toBe("note");
+
+    // @ts-expect-error — note variant without `id` must be a type error.
+    const missingId: import("./DeleteConfirmDialog").DeleteTarget = {
+      kind: "note",
+      name: "foo.md",
+    };
+    // Reference the value so it isn't tree-shaken — we only care that the
+    // assignment above is a type error, not that the runtime branch differs.
+    expect(missingId.kind).toBe("note");
+  });
+
+  it("WR-09 / Test 2: folder variant requires `path: string`", () => {
+    const validFolder: import("./DeleteConfirmDialog").DeleteTarget = {
+      kind: "folder",
+      name: "projects",
+      path: "projects",
+      noteCount: 0,
+      subfolderCount: 0,
+    };
+    expect(validFolder.kind).toBe("folder");
+
+    // @ts-expect-error — folder variant without `path` must be a type error.
+    const missingPath: import("./DeleteConfirmDialog").DeleteTarget = {
+      kind: "folder",
+      name: "projects",
+      noteCount: 0,
+      subfolderCount: 0,
+    };
+    expect(missingPath.kind).toBe("folder");
+  });
+
+  it("WR-09 / Test 3: multi variant is unchanged ({ kind, count } only)", () => {
+    const validMulti: import("./DeleteConfirmDialog").DeleteTarget = {
+      kind: "multi",
+      count: 5,
+    };
+    expect(validMulti.kind).toBe("multi");
+    if (validMulti.kind === "multi") {
+      expect(validMulti.count).toBe(5);
+    }
+  });
+
+  it("WR-09: note variant `id` field is rendered transparently (dialog still shows the name)", () => {
+    // The dialog body must not leak the id into the user-visible copy —
+    // the id is purely for the caller's bookkeeping. The dialog continues
+    // to display the human-readable `name` only.
+    render(
+      <DeleteConfirmDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        target={{ kind: "note", name: "subdir/Foo.md", id: "uuid-deep" }}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "subdir/Foo.md will be permanently removed from disk and from the index.",
+      ),
+    ).toBeInTheDocument();
+    // The id should NOT appear anywhere in the dialog DOM.
+    expect(screen.queryByText(/uuid-deep/)).toBeNull();
+  });
+
+  it("WR-09: folder variant `path` field is rendered transparently (dialog still shows the name)", () => {
+    render(
+      <DeleteConfirmDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        target={{
+          kind: "folder",
+          name: "projects/sub",
+          path: "projects/sub",
+          noteCount: 0,
+          subfolderCount: 0,
+        }}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "projects/sub will be permanently removed from disk and from the index.",
+      ),
+    ).toBeInTheDocument();
   });
 });

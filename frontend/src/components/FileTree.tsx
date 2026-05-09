@@ -696,14 +696,24 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         setDeleteTarget(multi);
         return;
       }
-      // Existing single-target branches (preserved verbatim).
+      // Existing single-target branches.
+      // WR-09 (Phase 5.5 gap-closure Plan 13): stash the canonical id (note)
+      // and path (folder) on the dialog target so handleConfirmDelete can
+      // dispatch deletion directly without re-deriving the identifier from
+      // the display name (the previous lookup was ambiguous when two
+      // siblings shared a basename across subtrees).
       if (d.kind === "note") {
-        setDeleteTarget({ kind: "note", name: basename(d.path) });
+        setDeleteTarget({
+          kind: "note",
+          name: basename(d.path),
+          id: d.id,
+        });
       } else {
         const counts = countDescendants(tree, d.path);
         setDeleteTarget({
           kind: "folder",
           name: d.name,
+          path: d.path,
           noteCount: counts.notes,
           subfolderCount: counts.folders,
         });
@@ -733,22 +743,20 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           );
         }
       } else if (deleteTarget.kind === "note") {
-        // We need the note's id; recover it from the wire tree by
-        // matching the basename within the active tree. To keep the
-        // implementation simple, we stash the id alongside the dialog
-        // target using a parallel ref in handleRequestDelete.
-        // For correctness we look it up here from the wire tree.
-        const noteId = findNoteIdByName(tree, deleteTarget.name);
-        if (!noteId) {
-          throw new Error("Could not locate note id for delete.");
-        }
-        await muts.deleteNote(noteId);
+        // WR-09 (Phase 5.5 gap-closure Plan 13): use target.id directly.
+        // The previous name-based lookup (now removed — see comment at the
+        // bottom of this file) was ambiguous when two notes shared a
+        // basename across subtrees — it returned the FIRST match, which
+        // could delete the wrong note after a tree refresh shuffled the
+        // order. handleRequestDelete now stashes the canonical id on the
+        // dialog target at click time.
+        await muts.deleteNote(deleteTarget.id);
       } else {
-        const folderPath = findFolderPathByName(tree, deleteTarget.name);
-        if (!folderPath) {
-          throw new Error("Could not locate folder path for delete.");
-        }
-        await muts.deleteFolder(folderPath, true);
+        // WR-09: use target.path directly (same rationale — the previous
+        // name-based folder lookup matched on display `name`, which is
+        // ambiguous when two folders share the same display name across
+        // subtrees).
+        await muts.deleteFolder(deleteTarget.path, true);
       }
       // Plan 03-09 (Gap 1): the mutator already refreshed the tree
       // on success — no need to refresh again here.
@@ -756,7 +764,10 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     } catch (e) {
       surfaceError(e, "delete");
     }
-  }, [deleteTarget, muts, surfaceError, tree]);
+    // WR-09 (Plan 13): `tree` no longer appears in the dependency list —
+    // handleConfirmDelete now reads canonical id/path off the dialog
+    // target instead of walking the wire tree to recover them.
+  }, [deleteTarget, muts, surfaceError]);
 
   // ──────────────────────────────────────────────────────────────────
   // Drag-drop wiring. react-arborist's onMove hands us a resolved
@@ -1161,49 +1172,18 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         onOpenChange={(o) => {
           if (!o) setDeleteTarget(null);
         }}
-        target={deleteTarget ?? { kind: "note", name: "" }}
+        target={deleteTarget ?? { kind: "note", name: "", id: "" }}
         onConfirm={handleConfirmDelete}
       />
     </>
   );
 }
 
-// ────────────────────────────────────────────────────────────────────
-// Internal lookup helpers (used by handleConfirmDelete to recover the
-// id / canonical path from the dialog's name reference).
-// ────────────────────────────────────────────────────────────────────
-function findNoteIdByName(
-  tree: WireTree | null,
-  name: string,
-): string | null {
-  if (!tree) return null;
-  const visit = (nodes: readonly WireTreeNode[]): string | null => {
-    for (const n of nodes) {
-      if (n.kind === "note" && basename(n.path) === name) return n.id;
-      if (n.kind === "folder" && n.children) {
-        const found = visit(n.children);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
-  return visit(tree.root);
-}
-
-function findFolderPathByName(
-  tree: WireTree | null,
-  name: string,
-): string | null {
-  if (!tree) return null;
-  const visit = (nodes: readonly WireTreeNode[]): string | null => {
-    for (const n of nodes) {
-      if (n.kind === "folder" && n.name === name) return n.path;
-      if (n.kind === "folder" && n.children) {
-        const found = visit(n.children);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
-  return visit(tree.root);
-}
+// WR-09 (Phase 5.5 gap-closure Plan 13) — REMOVED.
+// Two private helpers (one for notes, one for folders) previously walked
+// the wire tree to recover canonical identifiers from the dialog's display
+// name. That post-hoc lookup was ambiguous when two notes shared a
+// basename across subtrees (returned the FIRST match, potentially the
+// wrong one). `DeleteTarget` now carries `id` (note) / `path` (folder)
+// directly, so the helpers are no longer needed. See `handleConfirmDelete`
+// above.

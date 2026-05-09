@@ -1864,3 +1864,196 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
     });
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 5.5 gap-closure Plan 13 — WR-09: DeleteTarget carries canonical
+// id (note) / path (folder); handleConfirmDelete uses them directly so
+// basename collisions across subtrees no longer cause the wrong row to be
+// deleted.
+//
+// The load-bearing test here is the basename-collision regression: two
+// notes both named `Foo.md` (one at root, one in a subfolder). The
+// previous implementation walked the wire tree and matched on basename,
+// returning the FIRST hit — which could delete the root `Foo.md` when
+// the user requested deletion of the subfolder one. The new
+// id-on-DeleteTarget contract makes this deterministic.
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTarget", () => {
+  it("WR-09 / Test 4: handleRequestDelete (note branch) routes the canonical id to deleteNote", async () => {
+    // The setDeleteTarget call site now stashes `target.id`. We assert this
+    // end-to-end through handleConfirmDelete: pressing Backspace on a note
+    // row + clicking Delete must call deleteNote with that note's id.
+    const tree: Tree = {
+      root: [
+        {
+          kind: "note",
+          id: "note-canonical-id",
+          path: "alpha.md",
+          title: "Alpha",
+          updated_at: new Date().toISOString(),
+        },
+      ],
+    };
+    const muts = defaultMutsResult();
+    muts.deleteNote.mockResolvedValue(undefined);
+    mockedUseFileTree.mockReturnValue({
+      tree,
+      loading: false,
+      error: null,
+      refresh: vi.fn().mockResolvedValue(undefined),
+      mutate: noopMutate,
+    });
+    mockedUseTreeMutations.mockReturnValue(muts);
+
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("Alpha")).toBeInTheDocument();
+    });
+    const row = document.querySelector(
+      '[data-tree-row="note-canonical-id"]',
+    ) as HTMLElement;
+    fireEvent.keyDown(row, { key: "Backspace" });
+    await waitFor(() => {
+      expect(screen.getByText("Delete this note?")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Delete note" }));
+    await waitFor(() => {
+      expect(muts.deleteNote).toHaveBeenCalledWith("note-canonical-id");
+    });
+  });
+
+  it("WR-09 / Test 5: handleRequestDelete (folder branch) routes the canonical path to deleteFolder", async () => {
+    const tree: Tree = {
+      root: [
+        {
+          kind: "folder",
+          path: "deeply/nested/folder",
+          name: "folder",
+          children: [
+            {
+              kind: "note",
+              id: "n-inner",
+              path: "deeply/nested/folder/x.md",
+              title: "X",
+              updated_at: new Date().toISOString(),
+            },
+          ],
+        },
+      ],
+    };
+    const muts = defaultMutsResult();
+    muts.deleteFolder.mockResolvedValue(undefined);
+    mockedUseFileTree.mockReturnValue({
+      tree,
+      loading: false,
+      error: null,
+      refresh: vi.fn().mockResolvedValue(undefined),
+      mutate: noopMutate,
+    });
+    mockedUseTreeMutations.mockReturnValue(muts);
+
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    await waitFor(() => {
+      // Folder rows render `data.name` (the leaf segment), not the path.
+      expect(screen.getByText("folder")).toBeInTheDocument();
+    });
+    const row = document.querySelector(
+      '[data-tree-row="deeply/nested/folder"]',
+    ) as HTMLElement;
+    fireEvent.keyDown(row, { key: "Backspace" });
+    await waitFor(() => {
+      expect(screen.getByText("Delete this folder?")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Delete folder" }));
+    await waitFor(() => {
+      // Canonical FULL path, not just the display name "folder".
+      expect(muts.deleteFolder).toHaveBeenCalledWith(
+        "deeply/nested/folder",
+        true,
+      );
+    });
+  });
+
+  it("WR-09 / Tests 6-7: handleConfirmDelete uses target.id / target.path directly (no name-based lookup helpers)", () => {
+    // Static guard — assert the FileTree.tsx source no longer references
+    // the removed lookup helpers anywhere. If a future refactor re-adds
+    // them, this test fails fast.
+    const fileTreeSrc = String(FileTree.toString());
+    expect(fileTreeSrc).not.toMatch(/findNoteIdByName/);
+    expect(fileTreeSrc).not.toMatch(/findFolderPathByName/);
+  });
+
+  it("WR-09 / Test 8: basename collision regression — two notes named Foo.md, deleting the SUBFOLDER one removes only the subfolder note", async () => {
+    // The load-bearing regression test: two notes share basename `Foo.md`
+    // — one at root, one in `subdir/`. With the previous name-based
+    // lookup, deleting the SUBFOLDER one could delete the ROOT one
+    // (whichever comes first in the tree walk). The new id-on-DeleteTarget
+    // contract makes this deterministic.
+    const tree: Tree = {
+      root: [
+        {
+          kind: "note",
+          id: "root-foo-id",
+          path: "Foo.md",
+          title: "Foo",
+          updated_at: new Date().toISOString(),
+        },
+        {
+          kind: "folder",
+          path: "subdir",
+          name: "subdir",
+          children: [
+            {
+              kind: "note",
+              id: "subdir-foo-id",
+              path: "subdir/Foo.md",
+              title: "Foo",
+              updated_at: new Date().toISOString(),
+            },
+          ],
+        },
+      ],
+    };
+    // Pre-expand the subdir so the inner row renders.
+    useTreeStore.setState({
+      expanded: new Set(["subdir"]),
+    });
+    const muts = defaultMutsResult();
+    muts.deleteNote.mockResolvedValue(undefined);
+    mockedUseFileTree.mockReturnValue({
+      tree,
+      loading: false,
+      error: null,
+      refresh: vi.fn().mockResolvedValue(undefined),
+      mutate: noopMutate,
+    });
+    mockedUseTreeMutations.mockReturnValue(muts);
+
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    await waitFor(() => {
+      // Both Foo rows render — pre-condition for the regression test.
+      expect(
+        document.querySelector('[data-tree-row="root-foo-id"]'),
+      ).not.toBeNull();
+      expect(
+        document.querySelector('[data-tree-row="subdir-foo-id"]'),
+      ).not.toBeNull();
+    });
+
+    // Trigger delete on the SUBFOLDER one (specifically, NOT the root one).
+    const subdirRow = document.querySelector(
+      '[data-tree-row="subdir-foo-id"]',
+    ) as HTMLElement;
+    fireEvent.keyDown(subdirRow, { key: "Backspace" });
+    await waitFor(() => {
+      expect(screen.getByText("Delete this note?")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Delete note" }));
+    await waitFor(() => {
+      expect(muts.deleteNote).toHaveBeenCalledWith("subdir-foo-id");
+    });
+    // And specifically NOT called with the root id — proves the lookup is
+    // deterministic and not "first basename match".
+    expect(muts.deleteNote).not.toHaveBeenCalledWith("root-foo-id");
+  });
+});

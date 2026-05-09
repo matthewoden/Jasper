@@ -214,20 +214,21 @@ export function pruneStaleTreeState(
   const cleanActive =
     s.activeNoteId && allNoteIds.has(s.activeNoteId) ? s.activeNoteId : null;
 
-  // Plan 04 (UX-08) — drop liveLabels for note ids that no longer exist in
-  // the freshly-fetched tree. Lazily clones the map only on first removal so
-  // a no-op pass preserves reference identity (matches the expanded/active
-  // identity-preservation pattern above).
+  // Plan 04 (UX-08) + WR-07 (Phase 5.5 gap-closure Plan 13) — drop liveLabels
+  // for note ids that no longer exist in the freshly-fetched tree. Build the
+  // kept entries up via Object.fromEntries rather than `delete`-mutating a
+  // cloned object, so type narrowing on the liveLabels shape survives a
+  // future shape change. Identity is still preserved on a no-op pass: we
+  // only rebuild when at least one entry would be dropped.
   let cleanLabels = s.liveLabels;
   let labelsChanged = false;
-  for (const id of Object.keys(s.liveLabels)) {
-    if (!allNoteIds.has(id)) {
-      if (!labelsChanged) {
-        cleanLabels = { ...s.liveLabels };
-        labelsChanged = true;
-      }
-      delete (cleanLabels as Record<string, string>)[id];
-    }
+  const labelEntries = Object.entries(s.liveLabels);
+  const stale = labelEntries.some(([id]) => !allNoteIds.has(id));
+  if (stale) {
+    cleanLabels = Object.fromEntries(
+      labelEntries.filter(([id]) => allNoteIds.has(id)),
+    );
+    labelsChanged = true;
   }
 
   const expandedChanged = cleanExpanded.size !== s.expanded.size;
