@@ -13,8 +13,9 @@
  *   4. 5-tab disconnect/reconnect spread (SYNC-07, success #3)
  *
  * The Phase 3 phase3-uat.spec.ts file is the structural template — same
- * spawnJasper helper, same dismissAnyOpenRenameInput helper, same wait
- * patterns. The new layer is dual-BrowserContext.
+ * spawnJasper helper, same commitRenameWith helper (post-Bug-D
+ * replacement for the legacy dismissAnyOpenRenameInput; see Plan
+ * 05.5-16), same wait patterns. The new layer is dual-BrowserContext.
  *
  * Tree row selectors: tree rows use `data-tree-row-kind="note"` (not
  * `data-testid="tree-row"`). This matches the actual DOM from TreeRow.tsx.
@@ -89,18 +90,38 @@ async function waitForFolderRowCount(page: Page, expected: number, timeoutMs = 5
 }
 
 /**
- * Wait for any inline-rename input in the tree to mount, then dismiss it
- * via Escape on the input itself. Mirrors Phase 3's pattern.
+ * Commit an open rename input with a specific name. Replaces the
+ * pre-Bug-D `dismissAnyOpenRenameInput` helper for post-create
+ * scenarios.
+ *
+ * Background — Bug D (resolved 2026-05-07,
+ * `.planning/debug/resolved/rename-input-lifecycle.md`): pressing
+ * Escape on a brand-new (just-created, never-confirmed) row now
+ * fires DELETE /api/v1/notes/{id} (or the folder analogue), per the
+ * locked UAT product contract. Phase 4 Scenario 1's post-create
+ * dismiss-then-assert-N+1 flow regressed silently after Bug D
+ * landed; commit-the-rename restores the row's persistence. See
+ * `.planning/phases/05.5-sidebar-editor-shell-polish/05.5-14-INVESTIGATION.md`.
+ *
+ * Duplicated from phase3-uat.spec.ts to match the existing project
+ * convention (the legacy dismissAnyOpenRenameInput was duplicated
+ * across both spec files; we follow the same pattern rather than
+ * factoring into a shared helper module).
+ *
+ * @param page Playwright page handle
+ * @param name Unique name to commit. Must not collide with an
+ *   existing sibling — the server returns 409 on collision.
  */
-async function dismissAnyOpenRenameInput(page: Page, timeoutMs = 2_000): Promise<void> {
+async function commitRenameWith(
+  page: Page,
+  name: string,
+  timeoutMs = 2_000,
+): Promise<void> {
   const renameInput = page.locator('[data-tree-row] input[type="text"]').first();
-  try {
-    await renameInput.waitFor({ state: "visible", timeout: timeoutMs });
-  } catch {
-    return; // no rename input is open — nothing to dismiss
-  }
-  await renameInput.press("Escape");
-  await expect(renameInput).toHaveCount(0, { timeout: 2_000 });
+  await renameInput.waitFor({ state: "visible", timeout: timeoutMs });
+  await renameInput.fill(name);
+  await renameInput.press("Enter");
+  await expect(renameInput).toHaveCount(0, { timeout: timeoutMs });
 }
 
 /** Click the first note row in the tree to open it in the editor. */
@@ -167,15 +188,23 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       await waitForNoteRowCount(pageB, 1);
 
       // (1a) Create a note in A; B sees it appear within ~1s (WS-driven).
+      // Post-Bug-D (2026-05-07) we MUST commit (not Escape) — pressing
+      // Escape on a brand-new row deletes the underlying file via
+      // DELETE /api/v1/notes/{id}, which silently regresses the
+      // count assertion below to 1 instead of 2. See
+      // 05.5-14-INVESTIGATION.md.
       await pageA.getByRole("button", { name: /new note/i }).click();
-      await dismissAnyOpenRenameInput(pageA);
+      await commitRenameWith(pageA, "scenario-1-note-1");
       // Note count goes 1 → 2 in both tabs.
       await waitForNoteRowCount(pageA, 2, 5_000);
       await waitForNoteRowCount(pageB, 2, 5_000);
 
-      // (1b) Create a folder in A; B sees it appear.
+      // (1b) Create a folder in A; B sees it appear. Bug D's
+      // ephemeral-delete contract applies to folders too —
+      // useTreeCreateActions.ts:215 sets isNew=true on the folder
+      // create, and TreeRow.tsx:158-160 deletes the folder on cancel.
       await pageA.getByRole("button", { name: /new folder/i }).click();
-      await dismissAnyOpenRenameInput(pageA);
+      await commitRenameWith(pageA, "scenario-1-folder-1");
       // Folder count goes 0 → 1 in both tabs.
       await waitForFolderRowCount(pageA, 1, 5_000);
       await waitForFolderRowCount(pageB, 1, 5_000);
