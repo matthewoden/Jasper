@@ -70,6 +70,41 @@ func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// Range and length checks that enforce OpenAPI schema constraints
+		// (minLength / maxLength / minimum / maximum) which oapi-codegen's
+		// strict-server does NOT automatically validate (no openapi3filter
+		// request-validation call in this deployment).
+		if len(tmp.AppName) < 1 || len(tmp.AppName) > 64 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"appName must be 1–64 chars"}`))
+			return
+		}
+		if len(tmp.DailyNotes.Folder) < 1 || len(tmp.DailyNotes.Folder) > 64 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"dailyNotes.folder must be 1–64 chars"}`))
+			return
+		}
+		if len(tmp.DailyNotes.Template) > 1024 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"dailyNotes.template must be at most 1024 chars"}`))
+			return
+		}
+		if tmp.Editor.FontSize < 8 || tmp.Editor.FontSize > 32 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"editor.fontSize must be 8–32"}`))
+			return
+		}
+		if tmp.Editor.LineHeight < 1.0 || tmp.Editor.LineHeight > 3.0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"editor.lineHeight must be 1.0–3.0"}`))
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }

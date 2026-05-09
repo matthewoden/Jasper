@@ -32,10 +32,12 @@ func (s *Server) GetConfig(
 // atomically (fsstore.AtomicWrite via config.Save).
 //
 // Validation is layered:
-//   - oapi-codegen / openapi3-filter validates the body against the
-//     Config schema BEFORE this handler runs (additionalProperties:
-//     false / minLength / enum / etc.); a violation returns 400 from
-//     the strict-server middleware automatically.
+//   - ConfigStrictBodyMiddleware (config_validate.go) validates the body
+//     BEFORE this handler runs: unknown fields → 400, theme enum → 400,
+//     string length constraints → 400, numeric range constraints → 400.
+//     NOTE: oapi-codegen's strict-server does NOT automatically invoke
+//     openapi3filter request validation in this deployment, so explicit
+//     range/length checks in ConfigStrictBodyMiddleware are required.
 //   - Inside this handler we still nil-check req.Body for safety
 //     (mirrors PostFolders pattern).
 //
