@@ -104,6 +104,7 @@ export function isExternalUrl(url: string): boolean {
  */
 export class ExternalImageWidget extends WidgetType {
   private blobUrl: string | null = null;
+  private destroyed = false;
 
   constructor(
     readonly url: string,
@@ -173,8 +174,10 @@ export class ExternalImageWidget extends WidgetType {
     const host = this.safeHost();
     try {
       const resp = await fetch(this.url, { mode: "cors" });
+      if (this.destroyed) return; // widget was destroyed during fetch — bail out
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const blob = await resp.blob();
+      if (this.destroyed) return; // widget was destroyed during blob conversion — bail out
       this.blobUrl = URL.createObjectURL(blob);
       const img = document.createElement("img");
       img.src = this.blobUrl;
@@ -192,6 +195,7 @@ export class ExternalImageWidget extends WidgetType {
   }
 
   destroy(): void {
+    this.destroyed = true; // signal to in-flight renderLoaded
     if (this.blobUrl) {
       URL.revokeObjectURL(this.blobUrl);
       this.blobUrl = null;
