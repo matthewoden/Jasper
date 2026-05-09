@@ -275,17 +275,36 @@ if (typeof window !== "undefined") {
     // Corrupted storage — fall back to default null; do NOT throw.
   }
 
-  // 3) Hydrate `sidebarWidth` from localStorage. Clamp to MIN on read so a
-  // window-resize-narrower from a previous session doesn't leave the editor
-  // pane <320px wide (RESEARCH §A8 — UX-09).
+  // 3) Hydrate `sidebarWidth` from localStorage.
+  //
+  // BL-03 (Phase 5.5 gap-closure Plan 11) — clamp the persisted width
+  // against the LIVE viewport's editor-floor headroom on read. A
+  // wide-monitor session that saved 1200px must not load at 1200px on a
+  // narrow laptop; it should be clamped to `innerWidth - EDITOR_MIN` (or
+  // floored at 0 on degenerate sub-EDITOR_MIN viewports). This matches
+  // the SidebarResizeHandle.computeMaxWidth narrow-viewport rule so the
+  // UI is consistent at module load and after every drag.
+  //
+  // NOTE: the previous comment claimed the MIN clamp prevented the
+  // wide → narrow case ("so a window-resize-narrower from a previous
+  // session doesn't leave the editor pane <320px wide"). It did NOT —
+  // `Math.max(MIN, n)` only floors UP, never DOWN. The replacement below
+  // adds the actual clamp the comment promised.
   try {
     const raw = window.localStorage.getItem(LS_KEY_SIDEBAR_WIDTH);
     if (raw !== null) {
       const n = JSON.parse(raw);
       if (typeof n === "number" && Number.isFinite(n)) {
-        useTreeStore.setState({
-          sidebarWidth: Math.max(SIDEBAR_WIDTH_DEFAULT, n),
-        });
+        const liveMax = Math.max(0, window.innerWidth - EDITOR_MIN);
+        // First clamp to MIN (pre-existing rule), then to the live max.
+        // On a narrow viewport where liveMax < SIDEBAR_WIDTH_DEFAULT, the
+        // min wins and the sidebar may load below its preferred MIN —
+        // matches the SidebarResizeHandle's reduced-room degradation.
+        const clamped = Math.min(
+          Math.max(SIDEBAR_WIDTH_DEFAULT, n),
+          liveMax,
+        );
+        useTreeStore.setState({ sidebarWidth: clamped });
       }
     }
   } catch {
