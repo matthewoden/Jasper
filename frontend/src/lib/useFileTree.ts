@@ -39,8 +39,27 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getTree, type Tree, type TreeNode } from "./treeApi";
+import { getTree, type ApiError, type Tree, type TreeNode } from "./treeApi";
 import { pruneStaleTreeState } from "./useTreeStore";
+
+// UX-14: single-flight promise for getTree(). When multiple consumers
+// concurrently call refresh() (e.g. several useTreeMutations
+// auto-refreshes from rapid CRUD + WS push), they all share the SAME
+// in-flight fetch. The .finally() resets the slot whether the call
+// succeeded or rejected (Pitfall 8 — RESEARCH §Pitfall 8). Without the
+// reset on rejection, a single network failure would poison the slot
+// forever and every subsequent refresh would re-serve the rejected
+// promise.
+let inFlightTreePromise: Promise<{ data?: Tree; error?: ApiError }> | null =
+  null;
+
+async function coalescedGetTree(): Promise<{ data?: Tree; error?: ApiError }> {
+  if (inFlightTreePromise !== null) return inFlightTreePromise;
+  inFlightTreePromise = getTree().finally(() => {
+    inFlightTreePromise = null;
+  });
+  return inFlightTreePromise;
+}
 
 // Module-level subscriber registry — one entry per mounted useFileTree
 // instance. refresh() (from any instance) iterates the Set and calls
@@ -101,7 +120,7 @@ export function useFileTree(): UseFileTreeResult {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: respErr } = await getTree();
+      const { data, error: respErr } = await coalescedGetTree();
       if (cancelled.current) return;
       if (respErr) {
         setError(new Error(respErr.message));
@@ -154,3 +173,9 @@ export function useFileTree(): UseFileTreeResult {
 
   return { tree, loading, error, refresh, mutate };
 }
+
+// UX-14: exported for tests only. The single-flight wrapper around
+// getTree() — see the module-level inFlightTreePromise comment above.
+// Not part of the public surface; consumers should use refresh() from
+// the useFileTree hook instead.
+export const __testing__ = { coalescedGetTree };

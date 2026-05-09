@@ -14,7 +14,9 @@ vi.mock("./treeApi", () => ({
 }));
 
 import { useTreeStore } from "./useTreeStore";
-import { useFileTree } from "./useFileTree";
+import { __testing__, useFileTree } from "./useFileTree";
+
+const { coalescedGetTree } = __testing__;
 
 type Tree = {
   root: Array<
@@ -192,5 +194,67 @@ describe("useFileTree", () => {
     expect(second.result.current.tree).toEqual(tinyTree);
     // resolveCount may be 1 or 2 depending on timing — what matters is no error escapes.
     expect(resolveCount).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("UX-14 single-flight", () => {
+  beforeEach(() => {
+    getTreeMock.mockReset();
+  });
+
+  it("coalesces concurrent fetchTree calls into one network request", async () => {
+    // Mock getTree to return a delayed promise so we can fire concurrent
+    // calls into the still-in-flight slot.
+    let resolveDelayed!: (v: { data: Tree }) => void;
+    const delayed = new Promise<{ data: Tree }>((resolve) => {
+      resolveDelayed = resolve;
+    });
+    getTreeMock.mockImplementation(() => delayed);
+
+    // Three concurrent invocations — single-flight should collapse all
+    // three into a single underlying getTree() call.
+    const calls = [coalescedGetTree(), coalescedGetTree(), coalescedGetTree()];
+    expect(getTreeMock).toHaveBeenCalledTimes(1);
+
+    resolveDelayed({ data: tinyTree as unknown as Tree });
+    const results = await Promise.all(calls);
+    expect(results).toHaveLength(3);
+    expect(results.every((r) => r.data?.root)).toBe(true);
+  });
+
+  it("clears the in-flight slot on rejection so subsequent calls retry", async () => {
+    getTreeMock
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce({ data: tinyTree });
+
+    await expect(coalescedGetTree()).rejects.toThrow("network");
+    // Slot cleared in .finally — second call goes through, getTree
+    // is invoked a second time rather than re-serving the rejection.
+    const second = await coalescedGetTree();
+    expect(second.data?.root).toEqual(tinyTree.root);
+    expect(getTreeMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("a fresh call AFTER the in-flight resolves issues a new fetch", async () => {
+    const v2: Tree = {
+      root: [
+        {
+          kind: "note",
+          id: "uuid-only",
+          path: "only.md",
+          title: "only",
+          updated_at: "2026-01-02T00:00:00Z",
+        },
+      ],
+    } as unknown as Tree;
+    getTreeMock
+      .mockResolvedValueOnce({ data: tinyTree })
+      .mockResolvedValueOnce({ data: v2 });
+
+    const first = await coalescedGetTree();
+    expect(first.data?.root).toEqual(tinyTree.root);
+    const second = await coalescedGetTree();
+    expect(second.data?.root).toEqual(v2.root);
+    expect(getTreeMock).toHaveBeenCalledTimes(2);
   });
 });
