@@ -225,11 +225,12 @@ export class ExternalImageWidget extends WidgetType {
  * external URL, emits Decoration.replace with the widget. Internal
  * URLs are SKIPPED so CM6 renders them via normal flow.
  *
- * Note: Decoration.replace with `block: true` reserves a full block
- * line for the widget. Image nodes spanning a single line work cleanly;
- * inline images (rare in note-taking — usually images are block) are
- * also handled — block: true is fine for both because lezer's Image
- * node usually starts at a block boundary.
+ * Note: CM6 ViewPlugin decorations MUST NOT use `block: true` —
+ * "Block decorations may not be specified via plugins" (CM6 constraint).
+ * We use a standard inline Decoration.replace widget here; the widget's
+ * container div uses CSS `display:block` to visually occupy its own line.
+ * This is the correct approach for inline-positioned widgets that expand
+ * to fill the line width (UI-SPEC §External-image widget).
  */
 export function buildImageDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
@@ -251,7 +252,9 @@ export function buildImageDecorations(view: EditorView): DecorationSet {
           node.to,
           Decoration.replace({
             widget: new ExternalImageWidget(url, alt),
-            block: true,
+            // block: true — PROHIBITED in ViewPlugin decorations (CM6
+            // constraint). Visual block appearance is handled via CSS
+            // `.cm-external-image { display: block; }`.
           })
         );
       },
