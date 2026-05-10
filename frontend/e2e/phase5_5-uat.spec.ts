@@ -745,6 +745,11 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
 
   // ───────────────────────────────────────────────────────────────────
   // UX-13: Cmd+click toggles multi-selection without switching active note
+  //
+  // react-arborist marks selection on the OUTER row wrapper (the parent of
+  // our `[data-tree-row-kind="note"]` div), not the inner div itself —
+  // confirmed in 05.5-17c-INVESTIGATION.md and the Bug C scenario above.
+  // We assert against `parentElement.getAttribute("aria-selected")`.
   // ───────────────────────────────────────────────────────────────────
   test("UX-13: Cmd+click toggles multi-selection without switching active note", async ({
     page,
@@ -774,6 +779,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     const noteB = noteRows.nth(1);
     const multiKey = process.platform === "darwin" ? "Meta" : "Control";
     await noteB.click({ modifiers: [multiKey] });
+    await page.waitForTimeout(150);
 
     // The active note in the editor must STILL be note A — its
     // .cm-content textContent must match what we captured before.
@@ -781,25 +787,102 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       (await page.locator(".cm-content").textContent()) ?? "";
     expect(contentAfter).toEqual(contentBefore);
 
-    // Both rows are part of the multi-selection. react-arborist marks
-    // selected rows with `aria-selected="true"`; assert at least one
-    // of A or B carries the selected attribute (the precise marker
-    // may shift between react-arborist versions, so we accept either
-    // aria-selected="true" or a `data-selected="true"` fallback).
-    const aSel = await noteA.getAttribute("aria-selected");
-    const bSel = await noteB.getAttribute("aria-selected");
-    const aSelData = await noteA.getAttribute("data-selected");
-    const bSelData = await noteB.getAttribute("data-selected");
-    expect(
-      aSel === "true" ||
-        bSel === "true" ||
-        aSelData === "true" ||
-        bSelData === "true",
-    ).toBe(true);
+    // Both rows are part of the multi-selection. Selection state lives on
+    // arborist's OUTER RowContainer wrapper (parent of our inner div), so
+    // we read aria-selected from parentElement of each inner row.
+    const selectedDataRows = await page.evaluate(() => {
+      const inners = Array.from(
+        document.querySelectorAll('[data-tree-row-kind="note"]'),
+      );
+      const out: string[] = [];
+      for (const inner of inners) {
+        if (inner.parentElement?.getAttribute("aria-selected") === "true") {
+          out.push(inner.getAttribute("data-tree-row") ?? "?");
+        }
+      }
+      return out;
+    });
+    expect(selectedDataRows.length).toBe(2);
+
+    // Visual assertion — selection MUST produce a visible row tint, not
+    // just an aria attribute. Without this, the user perceives Cmd+click
+    // as broken even though the underlying state is correct (regression
+    // closed 2026-05-09: aria-selected was set but no CSS read it, so
+    // the tree showed zero feedback for a multi-select). The selected-
+    // but-not-active tint reads as `... 0.04)` in the inline style; the
+    // active-and-selected anchor reads as `... 0.08)`. Either is fine
+    // here — the assertion is "non-transparent" — but we explicitly
+    // exclude the default transparent value to lock the contract.
+    const bgs = await page.evaluate(() => {
+      const inners = Array.from(
+        document.querySelectorAll('[data-tree-row-kind="note"]'),
+      );
+      const out: string[] = [];
+      for (const inner of inners) {
+        if (inner.parentElement?.getAttribute("aria-selected") === "true") {
+          out.push(getComputedStyle(inner as Element).backgroundColor);
+        }
+      }
+      return out;
+    });
+    expect(bgs.length).toBe(2);
+    for (const bg of bgs) {
+      // Reject transparent / zero-alpha. Both color-mix output and
+      // legacy rgba() variants must carry a non-zero alpha component.
+      expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+      expect(bg).not.toBe("transparent");
+    }
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // UX-13: Shift+click selects a contiguous range
+  //
+  // react-arborist's handleClick → selectContiguous() when e.shiftKey is
+  // set; TreeRow.handleClick treats Shift as a modifier-click and delegates
+  // to node.handleClick (with stopPropagation per Bug C.1 fix).
+  // ───────────────────────────────────────────────────────────────────
+  test("UX-13: Shift+click selects a contiguous range", async ({ page }) => {
+    await openApp(page);
+
+    // Seed 3 extra notes (4 total: scratchpad + 3 untitled).
+    for (let i = 0; i < 3; i++) {
+      await page.getByRole("button", { name: /new note/i }).click();
+      const r = page.locator('[data-tree-row] input[type="text"]').first();
+      if ((await r.count()) > 0) {
+        await r.press("Escape").catch(() => {});
+      }
+      await page.waitForTimeout(150);
+    }
+    const noteRows = page.locator('[data-tree-row-kind="note"]');
+    await expect(noteRows).toHaveCount(4, { timeout: 5_000 });
+
+    // Click row 0 to set the selection anchor.
+    await noteRows.nth(0).click();
+    await page.waitForTimeout(150);
+
+    // Shift+click row 2 → arborist selectContiguous from anchor → rows 0,1,2.
+    await noteRows.nth(2).click({ modifiers: ["Shift"] });
+    await page.waitForTimeout(200);
+
+    const selectedCount = await page.evaluate(() => {
+      const inners = Array.from(
+        document.querySelectorAll('[data-tree-row-kind="note"]'),
+      );
+      return inners.filter(
+        (inner) =>
+          inner.parentElement?.getAttribute("aria-selected") === "true",
+      ).length;
+    });
+    expect(selectedCount).toBe(3);
   });
 
   // ───────────────────────────────────────────────────────────────────
   // UX-13: batch delete prompts once and removes all selected
+  //
+  // The multi variant of DeleteConfirmDialog renders the confirm button
+  // with the label "Delete N items" (DeleteConfirmDialog.tsx:187), so we
+  // match the full label text — the previous `/^delete$/i` only matched
+  // the single-target button label.
   // ───────────────────────────────────────────────────────────────────
   test("UX-13: batch delete prompts once and removes all selected items", async ({
     page,
@@ -827,14 +910,15 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     // Press Delete to trigger the batch-delete dialog.
     await page.keyboard.press("Delete");
 
-    // The dialog title should reference 2 items (Plan 06's
-    // confirmDeleteSelection: "Delete 2 items?").
+    // The dialog title should reference 2 items.
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible({ timeout: 3_000 });
     await expect(dialog).toContainText(/delete 2 items/i);
 
-    // Confirm. Plan 06 wires the primary action to a Delete button.
-    await dialog.getByRole("button", { name: /^delete$/i }).click();
+    // Confirm — multi variant button label is "Delete 2 items".
+    await dialog
+      .getByRole("button", { name: /^delete\s+2\s+items?$/i })
+      .click();
 
     // After confirm: only the seeded scratchpad remains.
     await expect(noteRows).toHaveCount(1, { timeout: 5_000 });

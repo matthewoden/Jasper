@@ -131,6 +131,17 @@ export function TreeRow({
   const data = node.data;
   const isFolder = data.kind === "folder";
   const isActive = !isFolder && activeNoteId === data.id;
+  // UX-13 (gap-closure 2026-05-09) — render multi-select state.
+  // node.isSelected reads from react-arborist's Redux selection store.
+  // Without this surface, Cmd+click and Shift+click set aria-selected on
+  // the outer arborist wrapper but produce ZERO visible change in the
+  // tree, leading users to report multi-select as "broken" even though
+  // the underlying selection state is correct (the Bug C Playwright
+  // scenario passes precisely because it queries aria-selected, not
+  // pixels). Active styling outranks selected styling — a row that's
+  // both active AND selected uses the strong accent treatment so the
+  // active anchor is never visually demoted by joining a multi-select.
+  const isSelected = node.isSelected === true;
   // 16px indent step (UI-SPEC §Layout). 16px base padding-left + 16px per
   // depth level. Verified by TestRow_IndentScalesWithLevel.
   const indent = 16 + 16 * node.level;
@@ -259,6 +270,14 @@ export function TreeRow({
   const activeBackground = isActive
     ? "color-mix(in srgb, var(--color-accent) 8%, transparent)"
     : undefined;
+  // UX-13 selected-but-not-active styling. Half the accent intensity of
+  // the active treatment so the active anchor still reads as primary
+  // when both states co-occur (single-click activates AND selects).
+  const selectedBackground =
+    isSelected && !isActive
+      ? "color-mix(in srgb, var(--color-accent) 4%, transparent)"
+      : undefined;
+  const rowBackground = activeBackground ?? selectedBackground;
 
   const dataTreeRowValue = isFolder ? data.path : data.id;
 
@@ -333,7 +352,7 @@ export function TreeRow({
         paddingLeft: indent,
         paddingRight: 16,
         cursor: "pointer",
-        background: activeBackground,
+        background: rowBackground,
       }}
       className="hover:bg-[rgba(255,255,255,0.04)] group"
       data-tree-row={dataTreeRowValue}
