@@ -174,6 +174,7 @@ vi.mock("../lib/treeApi", () => ({
 
 import { ScratchpadUUID, getNote, updateNote } from "../lib/notesApi";
 import { getTree, postNoteMove } from "../lib/treeApi";
+import { __testing__ as fileTreeTesting } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
 import type { EditorPaneHandlers } from "./EditorPane";
 import {
@@ -259,6 +260,11 @@ beforeEach(() => {
     updateNoteMock.mockReset();
     postNoteMoveMock.mockReset();
     getTreeMock.mockReset();
+    // Reset the useFileTree coalescer's module-level state so
+    // lastResolvedAt / pending-trailing slot from a prior test don't
+    // route this test's first fetch through the trailing-debounce
+    // branch (which never flushes under fake timers, leaving tree=null).
+    fileTreeTesting.__resetCoalescer();
     // Default tree mirrors the default getNote path so EditorPane's
     // CR-02 effect sees a live path matching its load-effect seed.
     getTreeMock.mockResolvedValue(okTree("scratchpad.md"));

@@ -42,23 +42,83 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getTree, type ApiError, type Tree, type TreeNode } from "./treeApi";
 import { pruneStaleTreeState } from "./useTreeStore";
 
-// UX-14: single-flight promise for getTree(). When multiple consumers
-// concurrently call refresh() (e.g. several useTreeMutations
-// auto-refreshes from rapid CRUD + WS push), they all share the SAME
-// in-flight fetch. The .finally() resets the slot whether the call
-// succeeded or rejected (Pitfall 8 — RESEARCH §Pitfall 8). Without the
-// reset on rejection, a single network failure would poison the slot
-// forever and every subsequent refresh would re-serve the rejected
-// promise.
+// UX-14: leading-edge fire + trailing-window coalescer for GET /tree.
+//
+// Layered behavior:
+//   1. Concurrent calls share the same in-flight promise (single-flight).
+//   2. The FIRST call after a quiet period fires immediately.
+//   3. Any call arriving within COALESCE_TAIL_MS of the last fetch's
+//      resolution folds into a single trailing fetch scheduled at the
+//      end of the window — instead of firing back-to-back getTree
+//      requests as broadcasts arrive in close succession (e.g., the
+//      mutation's awaited refresh + the server's WS broadcast for the
+//      same op landing ~10ms later).
+//
+// Pitfall 8 (RESEARCH §Pitfall 8): the .finally() resets the slot
+// whether the call succeeded or rejected. Without that, a single
+// network failure would poison the slot forever and every subsequent
+// refresh would re-serve the rejected promise. Rejections must
+// propagate to ALL awaiters (in-flight, in-trailing, future).
+const COALESCE_TAIL_MS = 100;
 let inFlightTreePromise: Promise<{ data?: Tree; error?: ApiError }> | null =
   null;
+let lastResolvedAt = 0;
+let pendingTrailingPromise: Promise<{ data?: Tree; error?: ApiError }> | null =
+  null;
+let pendingTrailingResolve:
+  | ((v: { data?: Tree; error?: ApiError }) => void)
+  | null = null;
+let pendingTrailingReject: ((e: unknown) => void) | null = null;
+let pendingTrailingTimer: ReturnType<typeof setTimeout> | null = null;
 
-async function coalescedGetTree(): Promise<{ data?: Tree; error?: ApiError }> {
-  if (inFlightTreePromise !== null) return inFlightTreePromise;
+function startInFlight(): Promise<{ data?: Tree; error?: ApiError }> {
   inFlightTreePromise = getTree().finally(() => {
     inFlightTreePromise = null;
+    lastResolvedAt = Date.now();
   });
   return inFlightTreePromise;
+}
+
+async function coalescedGetTree(): Promise<{ data?: Tree; error?: ApiError }> {
+  // 1. Concurrent fan-in: share the same in-flight promise.
+  if (inFlightTreePromise !== null) return inFlightTreePromise;
+
+  // 2. Trailing-window: if another fetch JUST resolved, defer this
+  //    one to the end of the window so any further calls can fold in.
+  const elapsed = Date.now() - lastResolvedAt;
+  if (lastResolvedAt > 0 && elapsed < COALESCE_TAIL_MS) {
+    if (pendingTrailingPromise === null) {
+      pendingTrailingPromise = new Promise((resolve, reject) => {
+        pendingTrailingResolve = resolve;
+        pendingTrailingReject = reject;
+      });
+    }
+    if (pendingTrailingTimer !== null) clearTimeout(pendingTrailingTimer);
+    pendingTrailingTimer = setTimeout(
+      flushTrailing,
+      COALESCE_TAIL_MS - elapsed,
+    );
+    return pendingTrailingPromise;
+  }
+
+  // 3. Cold start: fire immediately. lastResolvedAt updates inside
+  //    startInFlight's .finally so the next call's window calculation
+  //    sees the freshest timestamp.
+  return startInFlight();
+}
+
+function flushTrailing(): void {
+  if (pendingTrailingTimer !== null) {
+    clearTimeout(pendingTrailingTimer);
+    pendingTrailingTimer = null;
+  }
+  const resolve = pendingTrailingResolve;
+  const reject = pendingTrailingReject;
+  pendingTrailingResolve = null;
+  pendingTrailingReject = null;
+  pendingTrailingPromise = null;
+  if (resolve === null || reject === null) return;
+  startInFlight().then(resolve, reject);
 }
 
 // Module-level subscriber registry — one entry per mounted useFileTree
@@ -69,7 +129,19 @@ async function coalescedGetTree(): Promise<{ data?: Tree; error?: ApiError }> {
 // the same.
 const treeFetchSubscribers = new Set<() => Promise<void>>();
 
-async function broadcastRefresh(): Promise<void> {
+/**
+ * Trigger every mounted useFileTree instance to re-fetch. Exported so
+ * non-display callers (mutations, WS event handlers) can refresh the
+ * tree WITHOUT instantiating their own useFileTree subscriber. Adding
+ * a subscriber per non-display caller used to inflate the broadcast Set
+ * by N (one per TreeRow's useTreeMutations) which collapsed the
+ * single-flight coalescer to nothing as soon as React re-mounted any
+ * one of those rows on a parent re-render — see the sidebar-resize
+ * regression fixed 2026-05-09. Display surfaces (Sidebar, FileTree,
+ * EditorPane) still call useFileTree() because they need to render the
+ * tree state.
+ */
+export async function broadcastRefresh(): Promise<void> {
   // Snapshot first — a subscriber whose effect cleanup runs during
   // refresh might unregister itself mid-iteration. Iterating a
   // snapshot avoids missing or double-firing.
@@ -174,8 +246,22 @@ export function useFileTree(): UseFileTreeResult {
   return { tree, loading, error, refresh, mutate };
 }
 
-// UX-14: exported for tests only. The single-flight wrapper around
+// UX-14: exported for tests only. The coalescer wrapper around
 // getTree() — see the module-level inFlightTreePromise comment above.
+// `__resetCoalescer` clears the trailing-window state so unit tests
+// can assert leading-edge behavior without coupling to ordering of
+// other tests in the same module.
 // Not part of the public surface; consumers should use refresh() from
 // the useFileTree hook instead.
-export const __testing__ = { coalescedGetTree };
+function __resetCoalescer(): void {
+  if (pendingTrailingTimer !== null) {
+    clearTimeout(pendingTrailingTimer);
+    pendingTrailingTimer = null;
+  }
+  inFlightTreePromise = null;
+  lastResolvedAt = 0;
+  pendingTrailingPromise = null;
+  pendingTrailingResolve = null;
+  pendingTrailingReject = null;
+}
+export const __testing__ = { coalescedGetTree, __resetCoalescer };

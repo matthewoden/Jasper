@@ -16,7 +16,7 @@ vi.mock("./treeApi", () => ({
 import { useTreeStore } from "./useTreeStore";
 import { __testing__, useFileTree } from "./useFileTree";
 
-const { coalescedGetTree } = __testing__;
+const { coalescedGetTree, __resetCoalescer } = __testing__;
 
 type Tree = {
   root: Array<
@@ -200,6 +200,11 @@ describe("useFileTree", () => {
 describe("UX-14 single-flight", () => {
   beforeEach(() => {
     getTreeMock.mockReset();
+    // Clear module-level coalescer state so each test starts cold —
+    // the trailing-window state from a prior test in the file would
+    // otherwise route the first concurrent call into the
+    // trailing-debounce branch instead of firing immediately.
+    __resetCoalescer();
   });
 
   it("coalesces concurrent fetchTree calls into one network request", async () => {

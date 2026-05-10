@@ -31,6 +31,7 @@ vi.mock("./treeApi", () => ({
 }));
 
 import { TreeMutationError, useTreeMutations } from "./useTreeMutations";
+import { useFileTree } from "./useFileTree";
 
 describe("useTreeMutations", () => {
   beforeEach(() => {
@@ -226,7 +227,14 @@ describe("auto-refresh contract (Gap 1)", () => {
   });
 
   function harness() {
+    // After the 2026-05-09 decoupling refactor, useTreeMutations no
+    // longer subscribes to useFileTree internally — it calls
+    // broadcastRefresh() directly. To exercise the auto-refresh
+    // contract we must mount a real useFileTree in the harness so the
+    // module-level subscriber Set has a target for the broadcast (in
+    // production, Sidebar / FileTree / EditorPane fill that role).
     return renderHook(() => ({
+      tree: useFileTree(),
       muts: useTreeMutations(),
     }));
   }

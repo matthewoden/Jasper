@@ -31,7 +31,7 @@
 import { useCallback } from "react";
 
 import * as treeApi from "./treeApi";
-import { useFileTree } from "./useFileTree";
+import { broadcastRefresh } from "./useFileTree";
 
 export class TreeMutationError extends Error {
   code: string;
@@ -69,8 +69,6 @@ export interface UseTreeMutationsResult {
 }
 
 export function useTreeMutations(): UseTreeMutationsResult {
-  const { refresh } = useFileTree();
-
   const createNote = useCallback(
     async (parentPath: string, title: string): Promise<treeApi.NoteSummary> => {
       const r = throwOnError(
@@ -79,27 +77,27 @@ export function useTreeMutations(): UseTreeMutationsResult {
       // r.data is non-undefined on the success branch (throwOnError ensures
       // we throw before reaching here on error). The non-null assertion is
       // safe and gives the caller a non-optional type.
-      await refresh();
+      await broadcastRefresh();
       return r.data as treeApi.NoteSummary;
     },
-    [refresh],
+    [],
   );
 
   const deleteNote = useCallback(
     async (id: string): Promise<void> => {
       throwOnError(await treeApi.deleteNoteById(id));
-      await refresh();
+      await broadcastRefresh();
     },
-    [refresh],
+    [],
   );
 
   const moveNote = useCallback(
     async (id: string, newPath: string): Promise<treeApi.NoteSummary> => {
       const r = throwOnError(await treeApi.postNoteMove(id, newPath));
-      await refresh();
+      await broadcastRefresh();
       return r.data as treeApi.NoteSummary;
     },
-    [refresh],
+    [],
   );
 
   const createFolder = useCallback(
@@ -107,18 +105,18 @@ export function useTreeMutations(): UseTreeMutationsResult {
       const r = throwOnError(
         await treeApi.postFolders({ parent_path: parentPath, name }),
       );
-      await refresh();
+      await broadcastRefresh();
       return r.data as treeApi.FolderNode;
     },
-    [refresh],
+    [],
   );
 
   const deleteFolder = useCallback(
     async (path: string, recursive: boolean): Promise<void> => {
       throwOnError(await treeApi.deleteFolder(path, recursive));
-      await refresh();
+      await broadcastRefresh();
     },
-    [refresh],
+    [],
   );
 
   const moveFolder = useCallback(
@@ -127,10 +125,10 @@ export function useTreeMutations(): UseTreeMutationsResult {
       newPath: string,
     ): Promise<treeApi.FolderNode> => {
       const r = throwOnError(await treeApi.postFolderMove(oldPath, newPath));
-      await refresh();
+      await broadcastRefresh();
       return r.data as treeApi.FolderNode;
     },
-    [refresh],
+    [],
   );
 
   return {
