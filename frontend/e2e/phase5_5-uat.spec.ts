@@ -1641,9 +1641,11 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     await page.waitForTimeout(100);
 
     const lines = await readLines();
-    // 4 lines: opening fence, empty middle, closing fence, empty
-    // trailing.
-    expect(lines.length).toBeGreaterThanOrEqual(4);
+    // 3 lines: opening fence, empty middle (cursor lands here),
+    // closing fence. No trailing newline — the user gets a clean
+    // closing fence; pressing Enter on the closing line breaks out
+    // (covered by the regression assertion below).
+    expect(lines.length).toBeGreaterThanOrEqual(3);
     expect(lines[0]).toMatch(/^```$/);
     expect(lines[1]).toBe("");
     expect(lines[2]).toMatch(/^```$/);
@@ -1651,11 +1653,33 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     // Cursor lands on the empty middle line. Type something — it
     // appears between the fences.
     await page.keyboard.type("inside");
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(200);
     const lines2 = await readLines();
     expect(lines2[0]).toMatch(/^```$/);
     expect(lines2[1]).toBe("inside");
     expect(lines2[2]).toMatch(/^```$/);
+
+    // Move cursor down to the CLOSING fence line and press Enter.
+    // That Enter must NOT trigger another auto-expansion — the
+    // closing fence is already balanced with the opening, so default
+    // Enter should just insert a normal newline below it.
+    await page.keyboard.press("ArrowDown"); // from "inside" → closing "```"
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    const lines3 = await readLines();
+    // Expected after Enter on the closing fence:
+    //   line 0: opening ```
+    //   line 1: inside
+    //   line 2: closing ```
+    //   line 3: empty (from default Enter)
+    expect(lines3[0]).toMatch(/^```$/);
+    expect(lines3[1]).toBe("inside");
+    expect(lines3[2]).toMatch(/^```$/);
+    // No FOURTH fence appears (regression guard — pre-fix this Enter
+    // would have inserted a new pair below the existing close).
+    const fenceCount = lines3.filter((l) => /^```$/.test(l)).length;
+    expect(fenceCount).toBe(2);
   });
 
   // ⑧ — SaveIndicator stays out of layout flow when idle (no blank

@@ -440,24 +440,30 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   } | null>(null);
 
   // Dynamic Tree height — react-arborist requires a numeric height
-  // and uses react-window's FixedSizeList internally. The previous
-  // height={9999} produced a 9999px virtual scroll area regardless of
-  // visible content, which (after the App-shell viewport-clamp fix in
-  // 25440a8) showed up as a useless oversized scrollbar in the
-  // sidebar. ResizeObserver tracks the live size of the bounded
-  // parent (Sidebar's tree-area shell, height = `minmax(0, 1fr)` of
-  // viewport) and feeds it back so the Tree fills exactly the
-  // available area; long lists then scroll inside the Tree's own
-  // scroller instead of inflating the parent.
+  // and uses react-window's FixedSizeList internally. ResizeObserver
+  // tracks the live size of the bounded parent (Sidebar's tree-area
+  // shell, height = `minmax(0, 1fr)` of viewport) and feeds it back
+  // so the Tree fills exactly the available area; long lists then
+  // scroll inside the Tree's own scroller instead of inflating the
+  // parent.
   //
-  // MUST be declared with the other hooks at the TOP of the component
-  // (before any early returns at error / loading / empty / null tree
-  // branches) — Rules of Hooks: hooks must run in the same order on
-  // every render.
+  // Callback ref pattern (NOT useRef + useEffect): FileTree has
+  // several early-return branches above the main JSX (loading /
+  // empty / error). On the very first render those return BEFORE
+  // the ref-bearing wrap exists, so a useEffect-based observer
+  // would install with `current === null` and never re-attach when
+  // the ref later populated — leaving the Tree stuck at the default
+  // height. The callback ref fires on every attach/detach, which
+  // covers the loading→loaded transition uniformly.
+  const observerRef = useRef<ResizeObserver | null>(null);
   const treeAreaRef = useRef<HTMLDivElement | null>(null);
   const [treeHeight, setTreeHeight] = useState(400);
-  useEffect(() => {
-    const el = treeAreaRef.current;
+  const setTreeAreaEl = useCallback((el: HTMLDivElement | null) => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+    treeAreaRef.current = el;
     if (!el) return;
     const measure = () => {
       const h = el.getBoundingClientRect().height;
@@ -466,7 +472,15 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    observerRef.current = ro;
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
+    };
   }, []);
 
   const data = useMemo(() => (tree ? adaptTree(tree) : []), [tree]);
@@ -1228,7 +1242,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         recipe.
       */}
       <div
-        ref={treeAreaRef}
+        ref={setTreeAreaEl}
         style={{
           flex: 1,
           minHeight: 0,
