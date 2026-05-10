@@ -654,6 +654,96 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
   });
 
   // ───────────────────────────────────────────────────────────────────
+  // Plan 17 Bug C — Cmd-click multi-select + multi-delete (UX-13)
+  //
+  // Stacked root causes (see 05.5-17c-INVESTIGATION.md):
+  //   C.1: TreeRow's Cmd-click delegated node.handleClick(e), then
+  //        bubble fired arborist's outer DefaultRow onClick which called
+  //        node.handleClick AGAIN — selectMulti then immediate deselect.
+  //   C.2: tree.props.onDelete not wired ⇒ Backspace dead on multi-select
+  //        because focus lives on arborist's outer wrapper after
+  //        Cmd-click, NOT on TreeRow's inner role=treeitem div.
+  //   C.3: arborist's keymap only handles Backspace, not the macOS
+  //        Forward Delete key — the original UX-13 spec uses Delete.
+  //
+  // This scenario walks the user-facing flow: 3 notes, multi-select via
+  // Cmd-click, Backspace to confirm-delete, all 3 removed. Asserts on
+  // the OUTER arborist wrapper's aria-selected (the inner div doesn't
+  // carry that attribute — see investigation note about the existing
+  // UX-13 spec's authoring bug).
+  // ───────────────────────────────────────────────────────────────────
+  test("Bug C — Cmd-click multi-select + multi-delete (UX-13)", async ({
+    page,
+  }) => {
+    await openApp(page);
+
+    // Seed 2 extra notes (3 total: scratchpad + 2 untitled).
+    for (let i = 0; i < 2; i++) {
+      await page.getByRole("button", { name: /new note/i }).click();
+      const r = page.locator('[data-tree-row] input[type="text"]').first();
+      if ((await r.count()) > 0) {
+        await r.press("Escape").catch(() => {});
+      }
+      await page.waitForTimeout(150);
+    }
+    const noteRows = page.locator('[data-tree-row-kind="note"]');
+    await expect(noteRows).toHaveCount(3, { timeout: 5_000 });
+
+    // Walk the seeded notes 2 and 3 (the two new untitled notes).
+    // Leave the seeded scratchpad (note 0) untouched as the post-delete
+    // anchor. The test asserts that exactly note 2 and note 3 get
+    // selected and removed, scratchpad survives.
+    const multiKey = process.platform === "darwin" ? "Meta" : "Control";
+
+    // Click note 2 (no modifier) — establishes the selection anchor.
+    await noteRows.nth(1).click();
+    await page.waitForTimeout(150);
+
+    // Cmd-click note 3 — ADD to selection. Bug C.1 would manifest as
+    // the second click silently toggling note 3 right back off (the
+    // double-fire of node.handleClick from arborist's outer DefaultRow
+    // wrapper), leaving only note 2 selected.
+    await noteRows.nth(2).click({ modifiers: [multiKey] });
+    await page.waitForTimeout(200);
+
+    // Read aria-selected on the OUTER arborist wrapper (the parent of
+    // each [data-tree-row-kind="note"] div has role="treeitem" + the
+    // selected attribute set by react-arborist's row-container).
+    const selectedNotes = await page.evaluate(() => {
+      const inners = Array.from(
+        document.querySelectorAll('[data-tree-row-kind="note"]'),
+      );
+      const out: string[] = [];
+      for (const inner of inners) {
+        const outer = inner.parentElement;
+        if (outer?.getAttribute("aria-selected") === "true") {
+          out.push(inner.getAttribute("data-tree-row") ?? "?");
+        }
+      }
+      return out;
+    });
+    // Notes 2 and 3 should be selected; note 1 (scratchpad) should NOT be.
+    expect(selectedNotes.length).toBe(2);
+
+    // Press Backspace to trigger the multi-delete dialog. arborist's
+    // tree-level keymap fires onDelete only when we wire the prop — the
+    // Bug C.2 fix. Without it, Backspace was inert here.
+    await page.keyboard.press("Backspace");
+
+    // Multi-target dialog opens with "Delete 2 items?".
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toBeVisible({ timeout: 3_000 });
+    await expect(dialog).toContainText(/delete 2 items/i);
+
+    // Confirm — Plan 06's multi-target dialog labels its primary action
+    // "Delete N items" (not just "Delete"), so we match by partial text.
+    await dialog.getByRole("button", { name: /^delete 2 items/i }).click();
+
+    // After confirm: only the seeded scratchpad remains (note 1).
+    await expect(noteRows).toHaveCount(1, { timeout: 5_000 });
+  });
+
+  // ───────────────────────────────────────────────────────────────────
   // UX-13: Cmd+click toggles multi-selection without switching active note
   // ───────────────────────────────────────────────────────────────────
   test("UX-13: Cmd+click toggles multi-selection without switching active note", async ({

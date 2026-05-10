@@ -197,6 +197,15 @@ export function TreeRow({
     const isModifierClick = e.metaKey || (!isMac && e.ctrlKey) || e.shiftKey;
     if (isModifierClick) {
       node.handleClick(e);
+      // Plan 17 Bug C (UX-13): react-arborist's DefaultRow component
+      // (the outer wrapper around our TreeRow's <div role="treeitem">)
+      // also has `onClick={node.handleClick}`. Without stopPropagation,
+      // the click bubbles to the outer wrapper which fires
+      // node.handleClick AGAIN — toggling Cmd-click's selectMulti right
+      // back to deselect. Net effect: Cmd-click was inert, multi-select
+      // never reached the DOM, multi-delete consequently inert too.
+      // See 05.5-17c-INVESTIGATION.md for the full trace.
+      e.stopPropagation();
       return;
     }
 
