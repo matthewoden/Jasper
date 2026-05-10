@@ -1381,4 +1381,211 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     // fix for UX-16 makes this property hold.
     expect(Math.abs((xCursorOn as number) - (xCursorOff as number))).toBeLessThanOrEqual(1);
   });
+
+  // ───────────────────────────────────────────────────────────────────
+  // 05.5-18 — editor + sidebar polish
+  //   ① Fenced code blocks render as ONE continuous rectangle
+  //   ② Markdown link gets visible style
+  //   ③ External-link cmd-click opens in a new tab; ↗ icon appears
+  //   ④ Escape clears tree multi-selection
+  // ───────────────────────────────────────────────────────────────────
+
+  // ① ────────────────────────────────────────────────────────────────
+  test("05.5-18: fenced code block renders as a continuous block (first + last classes)", async ({
+    page,
+  }) => {
+    await openApp(page);
+    // Type a 3-line fence so the middle line is neither first nor last.
+    await typeIntoEditor(
+      page,
+      "```\nfirst line\nmiddle line\nlast line\n```\n",
+    );
+    // Move cursor off the code block so live preview hides markers.
+    await page.keyboard.press(
+      process.platform === "darwin" ? "Meta+End" : "Control+End",
+    );
+    await page.waitForTimeout(100);
+
+    const classes = await page.evaluate(() => {
+      const lines = Array.from(
+        document.querySelectorAll(".cm-content .cm-line"),
+      );
+      return lines.map((l) => l.className);
+    });
+    const cbLines = classes.filter((c) => /\bcm-codeblock\b/.test(c));
+    // 5 cm-codeblock lines: opening fence, 3 content lines, closing fence
+    expect(cbLines.length).toBeGreaterThanOrEqual(5);
+    // At least one cm-codeblock-first AND one cm-codeblock-last
+    expect(cbLines.some((c) => /\bcm-codeblock-first\b/.test(c))).toBe(true);
+    expect(cbLines.some((c) => /\bcm-codeblock-last\b/.test(c))).toBe(true);
+    // The first cm-codeblock line carries -first; the last carries -last.
+    const firstIdx = cbLines.findIndex((c) => /\bcm-codeblock-first\b/.test(c));
+    const lastIdx = cbLines.length - 1 -
+      [...cbLines].reverse().findIndex((c) => /\bcm-codeblock-last\b/.test(c));
+    expect(firstIdx).toBe(0);
+    expect(lastIdx).toBe(cbLines.length - 1);
+  });
+
+  // ② + ③ ─────────────────────────────────────────────────────────────
+  test("05.5-18: markdown link gets cm-link class; external link gets ↗ icon and opens in new tab on cmd-click", async ({
+    page,
+  }) => {
+    await openApp(page);
+    await typeIntoEditor(page, "[example](https://example.com)\n");
+    // Move cursor off the link line.
+    await page.keyboard.press(
+      process.platform === "darwin" ? "Meta+End" : "Control+End",
+    );
+    await page.waitForTimeout(100);
+
+    // Visual: the link span carries cm-link + cm-link-external; the
+    // external icon widget is mounted in the same line.
+    const visual = await page.evaluate(() => {
+      const linkSpan = document.querySelector(
+        ".cm-content .cm-link",
+      ) as HTMLElement | null;
+      const externalSpan = document.querySelector(
+        ".cm-content .cm-link.cm-link-external",
+      ) as HTMLElement | null;
+      const icon = document.querySelector(
+        ".cm-content .cm-external-link-icon",
+      ) as HTMLElement | null;
+      return {
+        linkPresent: !!linkSpan,
+        externalPresent: !!externalSpan,
+        iconPresent: !!icon,
+        iconText: icon?.textContent ?? null,
+        linkColor: linkSpan ? getComputedStyle(linkSpan).color : null,
+      };
+    });
+    expect(visual.linkPresent).toBe(true);
+    expect(visual.externalPresent).toBe(true);
+    expect(visual.iconPresent).toBe(true);
+    // The widget renders the ↗ glyph (U+2197).
+    expect(visual.iconText).toContain("↗");
+    // The link color is non-default (we apply --color-accent).
+    expect(visual.linkColor).not.toBe("rgb(228, 228, 231)");
+    expect(visual.linkColor).not.toBe(""); // sanity
+
+    // Cmd-click on the link → window.open called with _blank,
+    // noopener,noreferrer. Stub window.open to capture the call.
+    await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__openCalls = [];
+      const origOpen = window.open;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).open = (url?: string, target?: string, features?: string) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).__openCalls.push({ url, target, features });
+        // Don't actually open a tab during the test; return null so any
+        // caller-side consumer of the WindowProxy won't crash.
+        return null;
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__origOpen = origOpen;
+    });
+
+    // Click the link span with the platform modifier.
+    const modifier = process.platform === "darwin" ? "Meta" : "Control";
+    await page.locator(".cm-content .cm-link").first().click({
+      modifiers: [modifier],
+    });
+    await page.waitForTimeout(100);
+
+    const calls = await page.evaluate(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      () => (window as any).__openCalls,
+    );
+    expect(calls.length).toBe(1);
+    expect(calls[0].url).toBe("https://example.com");
+    expect(calls[0].target).toBe("_blank");
+    expect(calls[0].features).toContain("noopener");
+    expect(calls[0].features).toContain("noreferrer");
+  });
+
+  test("05.5-18: plain click on a link does NOT open it (modifier required)", async ({
+    page,
+  }) => {
+    await openApp(page);
+    await typeIntoEditor(page, "[example](https://example.com)\n");
+    await page.keyboard.press(
+      process.platform === "darwin" ? "Meta+End" : "Control+End",
+    );
+    await page.waitForTimeout(100);
+
+    await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__openCalls = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).open = (url?: string) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).__openCalls.push({ url });
+        return null;
+      };
+    });
+
+    // Plain click — no modifier. CM6 places the caret; no link opens.
+    await page.locator(".cm-content .cm-link").first().click();
+    await page.waitForTimeout(100);
+
+    const calls = await page.evaluate(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      () => (window as any).__openCalls,
+    );
+    expect(calls.length).toBe(0);
+  });
+
+  // ④ ────────────────────────────────────────────────────────────────
+  test("05.5-18: Escape clears tree multi-selection", async ({ page }) => {
+    await openApp(page);
+    // Seed 2 extra notes so we have 3 total to multi-select.
+    for (let i = 0; i < 2; i++) {
+      await page.getByRole("button", { name: /new note/i }).click();
+      const r = page.locator('[data-tree-row] input[type="text"]').first();
+      if ((await r.count()) > 0) {
+        await r.press("Escape").catch(() => {});
+      }
+      await page.waitForTimeout(100);
+    }
+    const noteRows = page.locator('[data-tree-row-kind="note"]');
+    await expect(noteRows).toHaveCount(3, { timeout: 5_000 });
+
+    const multiKey = process.platform === "darwin" ? "Meta" : "Control";
+
+    // Build a multi-selection: click row 1, Cmd-click row 2 + 3.
+    await noteRows.nth(0).click();
+    await noteRows.nth(1).click({ modifiers: [multiKey] });
+    await noteRows.nth(2).click({ modifiers: [multiKey] });
+    await page.waitForTimeout(150);
+
+    // Confirm we have 3 selected via the OUTER arborist wrapper.
+    const selectedBefore = await page.evaluate(() => {
+      const inners = Array.from(
+        document.querySelectorAll('[data-tree-row-kind="note"]'),
+      );
+      return inners.filter(
+        (i) => i.parentElement?.getAttribute("aria-selected") === "true",
+      ).length;
+    });
+    expect(selectedBefore).toBe(3);
+
+    // Escape — clears the multi-selection.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+
+    const selectedAfter = await page.evaluate(() => {
+      const inners = Array.from(
+        document.querySelectorAll('[data-tree-row-kind="note"]'),
+      );
+      return inners.filter(
+        (i) => i.parentElement?.getAttribute("aria-selected") === "true",
+      ).length;
+    });
+    expect(selectedAfter).toBe(0);
+
+    // The notes themselves still exist — Escape clears selection only,
+    // does not delete (Bug D's delete-on-cancel only fires for
+    // pendingRename.isNew=true; this Escape is on the tree container).
+    await expect(noteRows).toHaveCount(3);
+  });
 });

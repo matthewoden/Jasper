@@ -43,6 +43,7 @@ import { yamlFrontmatter } from "@codemirror/lang-yaml";
 
 import { jasperEditorTheme, jasperSyntaxHighlighting } from "../editor/themeBridge";
 import { livePreviewPlugin } from "../editor/livePreviewPlugin";
+import { linkClickHandler } from "../editor/linkClickHandler";
 import { frontmatterPlugin } from "../editor/frontmatterPlugin";
 import { codeLanguages } from "../editor/codeLanguages";
 import { externalImagePlugin } from "../editor/externalImagePlugin";
@@ -132,6 +133,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             jasperSyntaxHighlighting,
             frontmatterPlugin,
             livePreviewPlugin,
+            linkClickHandler, // 05.5-18 — Cmd/Ctrl-click opens external links in a new tab
             externalImagePlugin, // Plan 05-08 — SECURITY-03 external image gate
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // Plan 05-11 / EDIT-10 — BEFORE defaultKeymap so Cmd+S takes precedence
             keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),

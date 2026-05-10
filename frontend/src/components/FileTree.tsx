@@ -790,26 +790,41 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   );
 
   useEffect(() => {
+    const isInsideEditableSurface = (el: HTMLElement): boolean =>
+      el.matches(
+        "input, textarea, [contenteditable=true], .cm-content, .cm-content *",
+      );
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Delete") return;
-      // Only fire when the keystroke originates inside the tree (focus
-      // on a row wrapper or the tree container). Don't hijack Delete
-      // from the editor textarea or from any input/contenteditable.
       const target = e.target as HTMLElement | null;
       if (!target) return;
-      if (
-        target.matches(
-          "input, textarea, [contenteditable=true], .cm-content, .cm-content *",
-        )
-      ) {
-        return;
-      }
+      if (isInsideEditableSurface(target)) return;
       const insideTree = target.closest('[role="tree"]');
       if (!insideTree) return;
-      // Mirror arborist's Backspace handler: read selectedIds, dispatch
-      // to onDelete via tree.delete().
       const api = treeRef.current;
       if (!api) return;
+
+      // 05.5-18: Escape clears multi-selection. When the user has
+      // built up a multi-selection via Cmd+click / Shift+click, Escape
+      // is the conventional "abandon this batch" affordance (matches
+      // VS Code Explorer + macOS Finder). We only fire when the
+      // selection has 2+ entries — single-row Escape stays a no-op so
+      // it doesn't fight first-letter-jump or future single-row
+      // shortcuts that arborist's keymap may want.
+      if (e.key === "Escape") {
+        if (api.selectedIds.size <= 1) return;
+        e.preventDefault();
+        // Iterate selectedIds and deselect each — react-arborist's
+        // public TreeApi exposes deselect(idOrNode) but no clear-all
+        // primitive in the v3.5 surface.
+        for (const id of Array.from(api.selectedIds)) {
+          api.deselect(id);
+        }
+        return;
+      }
+
+      if (e.key !== "Delete") return;
+      // Mirror arborist's Backspace handler: read selectedIds, dispatch
+      // to onDelete via tree.delete().
       const ids = Array.from(api.selectedIds);
       if (ids.length === 0) {
         // Nothing selected — fall back to focused node (single-target).
@@ -820,7 +835,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         return;
       }
       e.preventDefault();
-      api.delete(Array.from(ids));
+      api.delete(ids);
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => {

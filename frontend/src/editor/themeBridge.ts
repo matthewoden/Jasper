@@ -68,12 +68,71 @@ export const jasperEditorTheme = EditorView.theme(
       paddingLeft: "16px",
       color: "var(--color-muted)",
     },
-    // Code block surface (Plan 05-07 extends livePreviewPlugin with cm-codeblock).
+    // Code block surface — 05.5-18 multi-line block fix. A fenced
+    // codeblock spans N lines; we paint each line with cm-codeblock
+    // (background + side borders) and decorate the boundary lines
+    // with cm-codeblock-first / cm-codeblock-last so the visual is
+    // ONE continuous rounded rectangle, not a stack of per-line
+    // boxes. Single-line fences carry both first AND last classes.
+    //
+    // Padding is left/right only on the body lines; vertical padding
+    // is applied only to the first/last lines to avoid double-stack.
     ".cm-codeblock": {
       backgroundColor: "var(--color-surface)",
-      border: "1px solid var(--color-border)",
-      borderRadius: "6px",
-      padding: "12px",
+      borderLeft: "1px solid var(--color-border)",
+      borderRight: "1px solid var(--color-border)",
+      paddingLeft: "12px",
+      paddingRight: "12px",
+    },
+    ".cm-codeblock-first": {
+      borderTop: "1px solid var(--color-border)",
+      borderTopLeftRadius: "6px",
+      borderTopRightRadius: "6px",
+      paddingTop: "8px",
+    },
+    ".cm-codeblock-last": {
+      borderBottom: "1px solid var(--color-border)",
+      borderBottomLeftRadius: "6px",
+      borderBottomRightRadius: "6px",
+      paddingBottom: "8px",
+    },
+    // Markdown link (05.5-18) — [text](url). Color + underline so the
+    // user can SEE links exist; cursor changes to pointer ONLY when a
+    // modifier key is held so plain clicks remain caret-placement.
+    // Implementation: the cmd/ctrl-key state lives in JS, but we can
+    // hint visual interactivity at all times via the underline +
+    // accent color. The actual gating happens in linkClickHandler.
+    ".cm-link": {
+      color: "var(--color-accent)",
+      textDecoration: "underline",
+      textDecorationColor:
+        "color-mix(in srgb, var(--color-accent) 50%, transparent)",
+      textUnderlineOffset: "2px",
+      cursor: "text",
+    },
+    // External-link variant: deeper accent so external destinations
+    // read distinctly from internal/relative ones (Phase 6 will add
+    // styling for wiki-links).
+    ".cm-link-external": {
+      color: "var(--color-accent)",
+    },
+    // Modifier-pressed visual cue: when the user holds Cmd/Ctrl, hover
+    // shows the pointer cursor on links so the click affordance is
+    // discoverable. Toggled via a body-level data attribute set by
+    // linkClickHandler's keydown/keyup; for now the underline alone is
+    // the affordance — pointer cursor follows in a later polish pass.
+    ".cm-link:hover": {
+      textDecorationColor: "var(--color-accent)",
+    },
+    // External-link trailing icon glyph (rendered by ExternalLinkIcon
+    // Widget). Tiny inline glyph; muted vs accent so it reads as a
+    // hint not a primary affordance.
+    ".cm-external-link-icon": {
+      color: "var(--color-muted)",
+      fontSize: "0.85em",
+      marginLeft: "2px",
+      verticalAlign: "0.05em",
+      pointerEvents: "none",
     },
     // Blockquote decoration (Plan 05-07 adds cm-blockquote).
     ".cm-blockquote": {

@@ -93,6 +93,36 @@ export const HIDEABLE_MARKER_NODES = new Set<string>([
 export const STRONG_MARK_CLASS = "cm-strong";
 export const EM_MARK_CLASS = "cm-emphasis";
 export const VISIBLE_MARKER_CLASS = "cm-marker";
+export const LINK_MARK_CLASS = "cm-link";
+export const EXTERNAL_LINK_MARK_CLASS = "cm-link cm-link-external";
+
+// 05.5-18: external-link icon glyph rendered after the visible link
+// text via Decoration.widget. The widget is `aria-hidden` so screen
+// readers don't double-announce; it's a pure visual cue. Keep the
+// markup tiny — ignoreEvent so clicks pass through to the editor's
+// dom event handlers (the link click handler below intercepts cmd /
+// ctrl click).
+class ExternalLinkIconWidget extends WidgetType {
+  toDOM() {
+    const span = document.createElement("span");
+    span.className = "cm-external-link-icon";
+    span.setAttribute("aria-hidden", "true");
+    // U+2197 NORTH EAST ARROW — universal "external" glyph; matches
+    // the shape Obsidian uses inline after external links.
+    span.textContent = "↗";
+    return span;
+  }
+  eq() {
+    return true;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
+const externalLinkIconDeco = Decoration.widget({
+  widget: new ExternalLinkIconWidget(),
+  side: 1,
+});
 
 // Block-level line decorations (production extends spike).
 export const BLOCKQUOTE_LINE_CLASS = "cm-blockquote";
@@ -110,10 +140,35 @@ const inlineCodeMarkDeco = Decoration.mark({ class: INLINE_CODE_MARK_CLASS, incl
 // to emit ONE Decoration.line per line that sits inside a Blockquote
 // or FencedCode block. Walk the line range; for each line whose
 // resolveInner block parent matches a key in this map, emit the deco.
+//
+// FencedCode is NOT in this map — the codeblock visual is built up
+// from position-aware classes (cm-codeblock + cm-codeblock-first /
+// cm-codeblock-last) so a multi-line fenced range renders as ONE
+// continuous rounded rectangle rather than a stack of per-line
+// boxes (the per-line approach used to apply border + radius to
+// every line, producing a separator gap between rows). Handled in a
+// dedicated branch in buildDecorations().
 const BLOCK_LINE_DECOS: Record<string, Decoration> = {
   Blockquote: blockquoteLineDeco,
-  FencedCode: codeblockLineDeco,
 };
+
+// 05.5-18 codeblock visual fix — position-aware line classes.
+// Pre-built so each line in a fenced range can pick the right slot
+// without allocating fresh decorations per render.
+export const CODEBLOCK_FIRST_LINE_CLASS = "cm-codeblock cm-codeblock-first";
+export const CODEBLOCK_LAST_LINE_CLASS = "cm-codeblock cm-codeblock-last";
+export const CODEBLOCK_BOTH_LINE_CLASS =
+  "cm-codeblock cm-codeblock-first cm-codeblock-last";
+const codeblockMidLineDeco = codeblockLineDeco;
+const codeblockFirstLineDeco = Decoration.line({
+  class: CODEBLOCK_FIRST_LINE_CLASS,
+});
+const codeblockLastLineDeco = Decoration.line({
+  class: CODEBLOCK_LAST_LINE_CLASS,
+});
+const codeblockBothLineDeco = Decoration.line({
+  class: CODEBLOCK_BOTH_LINE_CLASS,
+});
 
 // EDIT-07 — HorizontalRule rendering. Decoration.replace with a tiny
 // widget that renders an <hr class="cm-hr">. The themeBridge styles
@@ -225,7 +280,7 @@ export function buildDecorations(view: EditorView): DecorationSet {
           return;
         }
 
-        // --- Block-node line decorations (NEW: Blockquote, FencedCode) ---
+        // --- Block-node line decorations (Blockquote) ---
         // Apply line-deco to every line in the block's range.
         if (BLOCK_LINE_DECOS[node.name]) {
           const deco = BLOCK_LINE_DECOS[node.name];
@@ -237,6 +292,41 @@ export function buildDecorations(view: EditorView): DecorationSet {
             pos = line.to + 1;
           }
           // Return false to continue iteration into children (QuoteMark etc.)
+          return;
+        }
+
+        // --- FencedCode (05.5-18) ---
+        // Position-aware classes so a multi-line fenced range renders
+        // as ONE continuous rounded rectangle. The first line gets
+        // top border + top-radius; the last line gets bottom border +
+        // bottom-radius; middle lines get only side borders +
+        // background. Single-line fences get both first AND last in
+        // one combined class. Walk the lines once collecting their
+        // start positions, then emit position-aware decos.
+        if (node.name === "FencedCode") {
+          const lineStarts: number[] = [];
+          let pos = node.from;
+          while (pos < node.to) {
+            const line = view.state.doc.lineAt(pos);
+            lineStarts.push(line.from);
+            if (line.to >= node.to) break;
+            pos = line.to + 1;
+          }
+          for (let i = 0; i < lineStarts.length; i++) {
+            const isFirst = i === 0;
+            const isLast = i === lineStarts.length - 1;
+            const deco =
+              isFirst && isLast
+                ? codeblockBothLineDeco
+                : isFirst
+                  ? codeblockFirstLineDeco
+                  : isLast
+                    ? codeblockLastLineDeco
+                    : codeblockMidLineDeco;
+            lineDecos.push({ from: lineStarts[i], deco });
+          }
+          // Continue iteration into children (CodeMark, CodeText) so
+          // marker hiding etc. still work inside the fence.
           return;
         }
 
@@ -273,6 +363,62 @@ export function buildDecorations(view: EditorView): DecorationSet {
             deco: Decoration.mark({ class: EM_MARK_CLASS, inclusive: true }),
             sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
           });
+          return;
+        }
+
+        // --- Link (05.5-18) ---
+        // [text](url) markdown link. Mark the whole Link span with
+        // cm-link (the URL portion is hidden off-cursor by the
+        // HIDEABLE_MARKER_NODES branch below, so visually only [text]
+        // gets styled). External links (http(s)://) additionally get
+        // cm-link-external + a trailing ↗ icon widget.
+        if (node.name === "Link") {
+          // Walk this Link's children to extract the URL text and the
+          // closing-bracket position. lezer-markdown emits the link
+          // structure as: [ LinkMark text LinkMark ( URL ) ]
+          // where the second LinkMark is the closing `]`.
+          let urlText = "";
+          let closeBracketTo = -1;
+          let linkMarkCount = 0;
+          // Use a ChildCursor — node.cursor() walks the WHOLE subtree,
+          // we only need direct + grandchild structure.
+          const c = node.node.cursor();
+          if (c.firstChild()) {
+            do {
+              if (c.name === "LinkMark") {
+                linkMarkCount++;
+                if (linkMarkCount === 2) closeBracketTo = c.to;
+              } else if (c.name === "URL") {
+                urlText = view.state.doc.sliceString(c.from, c.to);
+              }
+            } while (c.nextSibling());
+          }
+          const isExternal = /^https?:\/\//i.test(urlText.trim());
+          markDecos.push({
+            from: node.from,
+            to: node.to,
+            deco: Decoration.mark({
+              class: isExternal ? EXTERNAL_LINK_MARK_CLASS : LINK_MARK_CLASS,
+              inclusive: true,
+            }),
+            sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
+          });
+          if (isExternal && closeBracketTo > 0) {
+            // Widget at the closing-bracket boundary (zero-width
+            // mark; side: 1 places it AFTER the bracket so it sits
+            // immediately after the visible link text when the URL +
+            // surrounding marks are hidden off-cursor).
+            markDecos.push({
+              from: closeBracketTo,
+              to: closeBracketTo,
+              deco: externalLinkIconDeco,
+              // Sort with a small +1 nudge so the widget lands AFTER
+              // any zero-width Decoration.replace at the same position.
+              sortKey: closeBracketTo * 1e9 + 1,
+            });
+          }
+          // Continue iteration into children so LinkMark / URL hide
+          // off-cursor via the existing HIDEABLE_MARKER_NODES branch.
           return;
         }
 
