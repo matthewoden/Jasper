@@ -1535,6 +1535,175 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(calls.length).toBe(0);
   });
 
+  // ⑤ — bare-domain link (no protocol) is treated as external and
+  //     opens with an https:// prefix.
+  test("05.5-18: bare-domain link (no protocol) opens with https:// on cmd-click", async ({
+    page,
+  }) => {
+    await openApp(page);
+    await typeIntoEditor(page, "[bare](example.com)\n");
+    await page.keyboard.press(
+      process.platform === "darwin" ? "Meta+End" : "Control+End",
+    );
+    await page.waitForTimeout(100);
+
+    // Visual: link span carries cm-link AND cm-link-external; ↗ icon
+    // appears even though the URL has no protocol.
+    const visual = await page.evaluate(() => ({
+      linkPresent: !!document.querySelector(".cm-content .cm-link"),
+      externalPresent: !!document.querySelector(
+        ".cm-content .cm-link.cm-link-external",
+      ),
+      iconPresent: !!document.querySelector(
+        ".cm-content .cm-external-link-icon",
+      ),
+    }));
+    expect(visual.linkPresent).toBe(true);
+    expect(visual.externalPresent).toBe(true);
+    expect(visual.iconPresent).toBe(true);
+
+    // Cmd-click → window.open with https:// prepended.
+    await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__opens = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).open = (url?: string, target?: string, features?: string) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).__opens.push({ url, target, features });
+        return null;
+      };
+    });
+    const modifier = process.platform === "darwin" ? "Meta" : "Control";
+    await page
+      .locator(".cm-content .cm-link")
+      .first()
+      .click({ modifiers: [modifier] });
+    await page.waitForTimeout(100);
+    const opens = await page.evaluate(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      () => (window as any).__opens,
+    );
+    expect(opens.length).toBe(1);
+    expect(opens[0].url).toBe("https://example.com");
+    expect(opens[0].target).toBe("_blank");
+  });
+
+  // ⑥ — relative .md link is NOT treated as external (vault-internal).
+  test("05.5-18: relative .md link is NOT styled or opened as external", async ({
+    page,
+  }) => {
+    await openApp(page);
+    await typeIntoEditor(page, "[neighbor](other.md)\n");
+    await page.keyboard.press(
+      process.platform === "darwin" ? "Meta+End" : "Control+End",
+    );
+    await page.waitForTimeout(100);
+
+    const visual = await page.evaluate(() => ({
+      linkPresent: !!document.querySelector(".cm-content .cm-link"),
+      externalPresent: !!document.querySelector(
+        ".cm-content .cm-link.cm-link-external",
+      ),
+      iconPresent: !!document.querySelector(
+        ".cm-content .cm-external-link-icon",
+      ),
+    }));
+    // .md is a known relative-file extension — link gets the base
+    // cm-link style (so the user sees it's a link) but NOT the
+    // external classification or ↗ icon.
+    expect(visual.linkPresent).toBe(true);
+    expect(visual.externalPresent).toBe(false);
+    expect(visual.iconPresent).toBe(false);
+  });
+
+  // ⑦ — Enter on a ``` line expands to a bounded fenced block.
+  test("05.5-18: Enter on a ``` line expands to a fenced block with cursor inside", async ({
+    page,
+  }) => {
+    await openApp(page);
+    // Read line count + text via .cm-line elements (CM6 renders one
+    // <div class="cm-line"> per logical line; textContent on the
+    // parent collapses newlines).
+    const readLines = async () =>
+      await page.evaluate(() => {
+        // CM6 zero-width markers (U+200B / U+FEFF) can show up in
+        // cm-line textContent for empty lines; strip them before
+        // assertion. Use Unicode escapes so the source file stays
+        // ASCII-clean (no irregular-whitespace lint errors).
+        const ZW = new RegExp("[\\u200B\\uFEFF]", "g");
+        return Array.from(
+          document.querySelectorAll(".cm-content .cm-line"),
+        ).map((l) => (l.textContent ?? "").replace(ZW, ""));
+      });
+    await typeIntoEditor(page, "```");
+    // Press Enter — auto-expansion fires.
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(100);
+
+    const lines = await readLines();
+    // 4 lines: opening fence, empty middle, closing fence, empty
+    // trailing.
+    expect(lines.length).toBeGreaterThanOrEqual(4);
+    expect(lines[0]).toMatch(/^```$/);
+    expect(lines[1]).toBe("");
+    expect(lines[2]).toMatch(/^```$/);
+
+    // Cursor lands on the empty middle line. Type something — it
+    // appears between the fences.
+    await page.keyboard.type("inside");
+    await page.waitForTimeout(100);
+    const lines2 = await readLines();
+    expect(lines2[0]).toMatch(/^```$/);
+    expect(lines2[1]).toBe("inside");
+    expect(lines2[2]).toMatch(/^```$/);
+  });
+
+  // ⑧ — SaveIndicator stays out of layout flow when idle (no blank
+  //     gap above the first content line). Probe at initial load
+  //     before any typing, so the indicator is in idle state.
+  test("05.5-18: editor first line sits at the top of the editor pane (no save-indicator gap)", async ({
+    page,
+  }) => {
+    await openApp(page);
+    // Don't type — typing flips the indicator into saving/saved which
+    // would render the overlay. Initial load = idle.
+    await page.waitForTimeout(200);
+
+    const probe = await page.evaluate(() => {
+      const host = document.querySelector(
+        '[data-testid="cm-host-shell"]',
+      ) as HTMLElement | null;
+      const firstLine = document.querySelector(
+        ".cm-content .cm-line",
+      ) as HTMLElement | null;
+      // Scope the SaveIndicator query to the EditorPane section so the
+      // sidebar's connection-status-dot (role="status") doesn't false-
+      // positive. SaveIndicator's pill carries titles "Saving your
+      // note" / "Saved at HH:MM:SS" / "Save failed — …", so we filter
+      // by title content.
+      const saveStatus = Array.from(
+        document.querySelectorAll('[role="status"]'),
+      ).find((el) =>
+        /Saving|Saved at|Save failed/.test(el.getAttribute("title") ?? ""),
+      );
+      if (!host || !firstLine) return null;
+      const hRect = host.getBoundingClientRect();
+      const fRect = firstLine.getBoundingClientRect();
+      return {
+        hostTop: Math.round(hRect.top),
+        firstLineTop: Math.round(fRect.top),
+        gapTopPx: Math.round(fRect.top - hRect.top),
+        idleSaveIndicatorPresent: saveStatus !== undefined,
+      };
+    });
+    expect(probe).not.toBeNull();
+    expect(probe!.idleSaveIndicatorPresent).toBe(false);
+    // Pre-fix: SaveIndicator reserved a 24px row → gap >= 40 (24 +
+    // 16 cm-content padding). Post-fix: cm-content padding only →
+    // gap should be ~16. Slack budget at 20 to absorb subpixel.
+    expect(probe!.gapTopPx).toBeLessThanOrEqual(20);
+  });
+
   // ④ ────────────────────────────────────────────────────────────────
   test("05.5-18: Escape clears tree multi-selection", async ({ page }) => {
     await openApp(page);

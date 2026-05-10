@@ -57,6 +57,8 @@ import { syntaxTree } from "@codemirror/language";
 import { RangeSetBuilder } from "@codemirror/state";
 import type { SyntaxNodeRef } from "@lezer/common";
 
+import { isExternalLikeUrl } from "./linkUrl";
+
 // Map from lezer node name → CSS class for heading line decorations.
 // Decoration.line is used (not Decoration.mark on the text) to avoid
 // cursor-jump artifacts when the heading font-size changes (Pitfall 3).
@@ -393,7 +395,7 @@ export function buildDecorations(view: EditorView): DecorationSet {
               }
             } while (c.nextSibling());
           }
-          const isExternal = /^https?:\/\//i.test(urlText.trim());
+          const isExternal = isExternalLikeUrl(urlText);
           markDecos.push({
             from: node.from,
             to: node.to,

@@ -44,6 +44,7 @@ import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { jasperEditorTheme, jasperSyntaxHighlighting } from "../editor/themeBridge";
 import { livePreviewPlugin } from "../editor/livePreviewPlugin";
 import { linkClickHandler } from "../editor/linkClickHandler";
+import { codeblockExpand } from "../editor/codeblockExpand";
 import { frontmatterPlugin } from "../editor/frontmatterPlugin";
 import { codeLanguages } from "../editor/codeLanguages";
 import { externalImagePlugin } from "../editor/externalImagePlugin";
@@ -136,6 +137,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             linkClickHandler, // 05.5-18 — Cmd/Ctrl-click opens external links in a new tab
             externalImagePlugin, // Plan 05-08 — SECURITY-03 external image gate
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // Plan 05-11 / EDIT-10 — BEFORE defaultKeymap so Cmd+S takes precedence
+            // 05.5-18: ```-Enter expands to a bounded fenced block.
+            // BEFORE defaultKeymap so it can short-circuit Enter
+            // before the default newline handler runs.
+            codeblockExpand,
             keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
             // Phase 5.5 / UX-11: enable soft line-wrapping inside .cm-content
             // so long lines wrap at the reading-width clamp set by themeBridge

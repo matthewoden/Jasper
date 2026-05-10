@@ -827,7 +827,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
   return (
     <section
       className="flex flex-col h-full bg-bg"
-      style={{ minHeight: 0, overflow: "hidden" }}
+      style={{ minHeight: 0, overflow: "hidden", position: "relative" }}
     >
       <SaveIndicator state={saveState} />
       {loadStatus === "error" && (

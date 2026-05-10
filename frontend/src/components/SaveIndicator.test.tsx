@@ -10,18 +10,15 @@ import type { SaveState } from "../lib/saveStateMachine";
 import { SaveIndicator } from "./SaveIndicator";
 
 describe("<SaveIndicator />", () => {
-  it("C1: idle renders an empty 24px-tall status row (no icon, no text)", () => {
+  it("C1: idle renders nothing (no layout space, no icon, no text)", () => {
+    // 2026-05-10 — SaveIndicator switched from a fixed 24px row to an
+    // absolute-positioned overlay. Idle now returns null so the editor
+    // pane content can flow from y=0 (closing the visible blank gap
+    // above the first content line that the user couldn't scroll past).
+    // The other states still render role="status" with aria-live=polite
+    // — covered by C2/C3/C4 + C5 below.
     const { container } = render(<SaveIndicator state={{ status: "idle" }} />);
-
-    const row = container.querySelector('[role="status"]');
-    expect(row).not.toBeNull();
-    // The 24px height comes from the h-6 utility — assert by class name so
-    // we don't rely on jsdom computing layout.
-    expect(row?.className).toContain("h-6");
-    // ARIA live region present for screen readers.
-    expect(row).toHaveAttribute("aria-live", "polite");
-    // No label, no icon — the row is visually empty in idle.
-    expect(row?.textContent ?? "").toBe("");
+    expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.querySelector("svg")).toBeNull();
   });
 
@@ -71,9 +68,10 @@ describe("<SaveIndicator />", () => {
     expect(icon?.getAttribute("class") ?? "").toMatch(/text-destructive/);
   });
 
-  it("C5: every state exposes role=status and aria-live=polite", () => {
+  it("C5: every NON-IDLE state exposes role=status and aria-live=polite", () => {
+    // Idle is the no-render case (covered by C1) — only the active
+    // states (saving / saved / error) render the live region.
     const states: SaveState[] = [
-      { status: "idle" },
       { status: "saving", startedAt: new Date() },
       { status: "saved", savedAt: new Date() },
       { status: "error", error: "x" },

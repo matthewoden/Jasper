@@ -406,11 +406,6 @@ export function resetTreeListLayout(
   // against react-arborist v3.5 + react-window 1.x.
 }
 
-// Height of the trailing root-drop strip beneath the Tree. Subtracted
-// from the measured tree-area height so the Tree fills the remaining
-// space exactly without inflating the wrap.
-const TRAILING_DROPZONE_HEIGHT = 60;
-
 export interface FileTreeProps {
   onSelectNote: (id: string) => void;
 }
@@ -1003,19 +998,21 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     };
 
     // dragover: fires AFTER react-dnd's handleTopDragOver (same window
-    // bubble phase, registered later). For folder rows and the trailing
-    // dropzone, override dropEffect back to 'move' so Chrome will fire
-    // the drop event.
+    // bubble phase, registered later). For folder rows AND any other
+    // location inside the tree (empty area below rows → root-drop
+    // target), override dropEffect back to 'move' so Chrome will fire
+    // the drop event. The trailing-dropzone strip was removed
+    // 2026-05-10 because its 60px reserved space cropped the sidebar
+    // visually; root-drop targeting is now uniform across the entire
+    // tree area.
     const handleNativeDragOver = (e: DragEvent) => {
       const info = nativeDragInfoRef.current;
       if (!info) return;
       const target = e.target as HTMLElement | null;
       if (!target) return;
       const folderRow = target.closest('[data-tree-row-kind="folder"]');
-      const trailingZone = target.closest(
-        '[data-testid="tree-trailing-dropzone"]',
-      );
-      if (!folderRow && !trailingZone) return;
+      const insideTree = target.closest('[role="tree"]');
+      if (!folderRow && !insideTree) return;
       // BL-02 (Phase 5.5 gap-closure Plan 10): cycle prevention. If the
       // hovered folder is a dragged folder (or one of its descendants),
       // do NOT preventDefault — let the browser show its native no-drop
@@ -1047,9 +1044,34 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       const target = e.target as HTMLElement | null;
       if (!target) return;
 
+      const folderRow = target.closest('[data-tree-row-kind="folder"]');
+      const noteRow = target.closest('[data-tree-row-kind="note"]');
+      const insideTree = target.closest('[role="tree"]');
+
+      // Drop inside the tree area but NOT on any row → root-drop.
+      // (2026-05-10) Replaces the dedicated trailing-dropzone strip
+      // — root-drop targeting is now uniform across the empty area
+      // below the rows.
+      if (insideTree && !folderRow && !noteRow) {
+        e.preventDefault();
+        const api = treeRef.current;
+        const nodes =
+          (api?.dragNodes?.length ? api.dragNodes : null) ??
+          info.dragNodes ??
+          null;
+        if (!nodes || nodes.length === 0) return;
+        void handleMove({
+          dragIds: nodes.map((n) => n.id),
+          dragNodes: nodes,
+          parentId: null,
+          parentNode: null,
+          index: 0,
+        });
+        return;
+      }
+
       // Folder row drop (Bug B) — only handle folder-source drags.
       // Note drags use arborist's own drop path (not broken for notes).
-      const folderRow = target.closest('[data-tree-row-kind="folder"]');
       if (folderRow) {
         // BL-01 (Phase 5.5 gap-closure Plan 10) — filter dragNodes to
         // folders; mixed-kind selections must not silently drop, and
@@ -1081,9 +1103,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         });
         return;
       }
-      // Trailing dropzone (Bug A) — handled by the React onDrop on the
-      // div which fires before this window-level handler. No action
-      // needed here; just let nativeDragInfoRef stay cleared (done above).
     };
 
     const handleNativeDragEnd = () => {
@@ -1239,12 +1258,12 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         disableDrop={handleDisableDrop}
         rowHeight={32}
         width="100%"
-        // Subtract trailing-dropzone strip (TRAILING_DROPZONE_HEIGHT
-        // below) so Tree + dropzone together fill the wrap exactly,
-        // never causing the wrap itself to scroll. The Tree's own
-        // react-window scroller handles overflow when the row count
-        // exceeds the visible area.
-        height={Math.max(0, treeHeight - TRAILING_DROPZONE_HEIGHT)}
+        // Tree fills the entire treeAreaRef height. Root-drop is now
+        // handled by the window-level handleNativeDrop checking for
+        // drops inside [role="tree"] but NOT on a folder/note row —
+        // there's no separate dropzone strip eating sidebar space
+        // (the previous 60px reserved area read as cropped-short).
+        height={treeHeight}
       >
         {(props) => (
           <TreeRow
@@ -1279,41 +1298,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           />
         )}
       </Tree>
-      {/* Bug A: native HTML5 drop zone for "drop in empty area below
-          the last tree row → move to root". After the dynamic-height
-          refactor (2026-05-09), this is a fixed-height strip below the
-          Tree (sibling under the tree-area flex column) so it always
-          has a drop target without inflating the sidebar height. */}
-      <div
-        data-testid="tree-trailing-dropzone"
-        style={{
-          height: TRAILING_DROPZONE_HEIGHT,
-          flexShrink: 0,
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-        }}
-        onDrop={(e) => {
-          // Bug A: fires at React root delegation level — BEFORE react-dnd's
-          // window-level handleTopDrop calls endDrag(). So api.dragNodes is
-          // still populated. nativeDragInfoRef is belt-and-suspenders.
-          e.preventDefault();
-          const api = treeRef.current;
-          const nodes =
-            (api?.dragNodes?.length ? api.dragNodes : null) ??
-            nativeDragInfoRef.current?.dragNodes ??
-            null;
-          if (!nodes || nodes.length === 0) return;
-          void handleMove({
-            dragIds: nodes.map((n) => n.id),
-            dragNodes: nodes,
-            parentId: null,
-            parentNode: null,
-            index: 0,
-          });
-        }}
-      />
       </div>
       <DeleteConfirmDialog
         open={deleteTarget !== null}

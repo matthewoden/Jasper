@@ -353,8 +353,11 @@ describe("<EditorPane />", () => {
 
         fireEvent.change(editor, { target: { value: "hello world" } });
 
-        // Idle for the first 2s (debounce window).
-        expect(screen.getByRole("status")).not.toHaveAttribute("title");
+        // Idle for the first 2s (debounce window). 2026-05-10:
+        // SaveIndicator now returns null in the idle state (it became
+        // an absolute-positioned overlay) — assert the role="status"
+        // element is absent rather than empty.
+        expect(screen.queryByRole("status")).toBeNull();
 
         // Advance the debounce timer; saving fires.
         await act(async () => {
@@ -372,11 +375,11 @@ describe("<EditorPane />", () => {
             expect.stringMatching(/^Saved at \d{2}:\d{2}:\d{2}$/),
         );
 
-        // Saved-sticky window expires → idle.
+        // Saved-sticky window expires → idle (no status element).
         await act(async () => {
             await vi.advanceTimersByTimeAsync(SAVED_STICKY_MS + 10);
         });
-        expect(screen.getByRole("status")).not.toHaveAttribute("title");
+        expect(screen.queryByRole("status")).toBeNull();
     });
 
     it("E4: Cmd+S immediately saves (collapses pending debounce)", async () => {
@@ -1061,7 +1064,9 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
             target: { value: "# Title\n\nhello world" },
         });
 
-        expect(screen.getByRole("status")).not.toHaveAttribute("title");
+        // 2026-05-10 — SaveIndicator returns null when idle (overlay
+        // refactor); assert role="status" is absent rather than empty.
+        expect(screen.queryByRole("status")).toBeNull();
 
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
@@ -1081,7 +1086,7 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         await act(async () => {
             await vi.advanceTimersByTimeAsync(SAVED_STICKY_MS + 10);
         });
-        expect(screen.getByRole("status")).not.toHaveAttribute("title");
+        expect(screen.queryByRole("status")).toBeNull();
     });
 });
 
