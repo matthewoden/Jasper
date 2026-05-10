@@ -502,6 +502,102 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
   });
 
   // ───────────────────────────────────────────────────────────────────
+  // Plan 17 Bug B — toolbar create targets selected folder (UX-12)
+  //
+  // Per 05.5-17b-INVESTIGATION.md: HUMAN-UAT reported "+ New note
+  // doesn't target the selected folder," but live-binary reproduction
+  // across four variations could NOT reproduce the failure — the code
+  // path traces cleanly. This scenario is the regression-proof codifying
+  // the working behavior so any future regression of the user-reported
+  // shape gets caught.
+  //
+  // Differs from "UX-12: toolbar New note creates inside the selected
+  // folder" above by ALSO loading a note in the editor first, then
+  // selecting the folder, then clicking + New note — exercising the
+  // editor-focus interference path the investigation walked.
+  // ───────────────────────────────────────────────────────────────────
+  test("Bug B — toolbar create targets selected folder (UX-12)", async ({
+    page,
+  }) => {
+    await openApp(page);
+
+    // Editor is loaded (openApp clicks the seeded scratchpad). Type so
+    // the editor has focus + content — exercises the focus interference
+    // angle the investigation walked.
+    await typeIntoEditor(page, "editor-focus content");
+
+    // Create a folder.
+    await page.getByRole("button", { name: /new folder/i }).click();
+    const folderRename = page
+      .locator('[data-tree-row] input[type="text"]')
+      .first();
+    await folderRename.waitFor({ state: "visible", timeout: 3_000 });
+    await folderRename.fill("bug-b-folder");
+    await folderRename.press("Enter");
+
+    // Click the folder row.
+    const folderRow = page
+      .locator('[data-tree-row-kind="folder"]')
+      .filter({ hasText: /bug-b-folder/i })
+      .first();
+    await expect(folderRow).toBeVisible({ timeout: 3_000 });
+    await folderRow.click();
+
+    // Click toolbar "+ New note" and wait for the POST /notes to land —
+    // without this wait, page.request.get(/tree) below can race the POST
+    // and read a tree that doesn't yet contain the new note.
+    const notePostP = page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/api/v1/notes") &&
+        resp.request().method() === "POST",
+      { timeout: 5_000 },
+    );
+    await page.getByRole("button", { name: /new note/i }).click();
+    await notePostP;
+
+    // Dismiss any rename input.
+    const noteRename = page
+      .locator('[data-tree-row] input[type="text"]')
+      .first();
+    if ((await noteRename.count()) > 0) {
+      await noteRename.press("Escape").catch(() => {});
+    }
+
+    // Assert the new note is a child of bug-b-folder, not a sibling.
+    const treeResp = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
+    expect(treeResp.status()).toBe(200);
+    const tree = (await treeResp.json()) as {
+      root: Array<{
+        kind: string;
+        path?: string;
+        children?: Array<{ kind: string; path?: string }>;
+      }>;
+    };
+    const bugBFolder = tree.root.find(
+      (n) =>
+        n.kind === "folder" &&
+        typeof n.path === "string" &&
+        /bug-b-folder/i.test(n.path),
+    );
+    expect(bugBFolder).toBeTruthy();
+    const childNotes = (bugBFolder?.children ?? []).filter(
+      (c) => c.kind === "note",
+    );
+    expect(childNotes.length).toBeGreaterThanOrEqual(1);
+
+    // Anti-assertion: the new note is NOT at root level (would be the
+    // user-reported failure shape).
+    const rootNotesAfter = tree.root.filter(
+      (n) =>
+        n.kind === "note" &&
+        typeof n.path === "string" &&
+        !n.path.includes("/"),
+    );
+    // Only the seeded scratchpad should remain at root.
+    expect(rootNotesAfter.length).toBe(1);
+  });
+
+  // ───────────────────────────────────────────────────────────────────
   // UX-12: right-click "New note" inside expanded folder does NOT collapse it
   // ───────────────────────────────────────────────────────────────────
   test("UX-12: right-click 'New note' inside expanded folder does NOT collapse the folder", async ({
