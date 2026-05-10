@@ -309,6 +309,69 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
   });
 
   // ───────────────────────────────────────────────────────────────────
+  // Plan 17 Bug A — editor pane left edge tracks sidebar resize (UX-09)
+  //
+  // Surfaced by Plan 15's HUMAN-UAT walk on a fresh make build: the
+  // sidebar <nav>'s width updated when the user dragged the resize
+  // handle, BUT the editor pane stayed at x=260 because App.tsx hard-
+  // coded gridTemplateColumns: "260px 1fr 0". See 05.5-17a-INVESTIGATION.md.
+  //
+  // Asserts the editor pane's left edge shifts ≥80px to the right after
+  // a +100px drag of the sidebar handle. The previous UX-09 test only
+  // observed the <nav> width — it did NOT catch the App-level grid
+  // mismatch, which is exactly the integration boundary this Bug A
+  // scenario exists to cover.
+  // ───────────────────────────────────────────────────────────────────
+  test("Bug A — editor pane left edge tracks sidebar resize (UX-09)", async ({
+    page,
+  }) => {
+    await openApp(page);
+
+    // The editor pane's left edge is best read off the .cm-content
+    // wrapper — that's the inner editor surface inside <EditorPane>.
+    // Its `getBoundingClientRect().left` reflects the actual layout
+    // position, which is what the user perceives as "the editor pane's
+    // left edge."
+    const cmContent = page.locator(".cm-content");
+    await expect(cmContent).toBeVisible({ timeout: 5_000 });
+
+    const editorLeftBefore = await cmContent.evaluate(
+      (el) => (el as HTMLElement).getBoundingClientRect().left,
+    );
+    expect(editorLeftBefore).toBeGreaterThan(0);
+
+    const handle = page.locator('[data-testid="sidebar-resize-handle"]');
+    await expect(handle).toBeVisible({ timeout: 5_000 });
+    const handleBox = await handle.boundingBox();
+    if (!handleBox) throw new Error("resize handle has no bounding box");
+    // The sidebar handle is `position: absolute; top: 0; bottom: 0` on a
+    // <nav> whose intrinsic height grows to fit the FileTree's internal
+    // `height={9999}`, so boundingBox().height runs well past the
+    // viewport. Pick a Y inside the viewport so CDP actually dispatches
+    // pointer events at this coordinate.
+    const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
+    const handleX = handleBox.x + handleBox.width / 2;
+    const handleY = Math.min(handleBox.y + 80, viewport.height - 50);
+
+    // Drag the handle 100px to the right.
+    await page.mouse.move(handleX, handleY);
+    await page.mouse.down();
+    await page.mouse.move(handleX + 100, handleY, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+
+    const editorLeftAfter = await cmContent.evaluate(
+      (el) => (el as HTMLElement).getBoundingClientRect().left,
+    );
+
+    // The editor's left edge must have shifted right by close to 100px
+    // (subpixel rounding + interior padding can subtract ~10px). Tolerate
+    // a 20px slack: the bug we're guarding against keeps the editor at
+    // its original left, which would fail by 80–100px.
+    expect(editorLeftAfter - editorLeftBefore).toBeGreaterThanOrEqual(80);
+  });
+
+  // ───────────────────────────────────────────────────────────────────
   // UX-10: full-bleed editor + click-anywhere-to-type
   // ───────────────────────────────────────────────────────────────────
   test("UX-10: editor has no focus ring and clicking below last line places caret in editor", async ({
@@ -439,6 +502,102 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
   });
 
   // ───────────────────────────────────────────────────────────────────
+  // Plan 17 Bug B — toolbar create targets selected folder (UX-12)
+  //
+  // Per 05.5-17b-INVESTIGATION.md: HUMAN-UAT reported "+ New note
+  // doesn't target the selected folder," but live-binary reproduction
+  // across four variations could NOT reproduce the failure — the code
+  // path traces cleanly. This scenario is the regression-proof codifying
+  // the working behavior so any future regression of the user-reported
+  // shape gets caught.
+  //
+  // Differs from "UX-12: toolbar New note creates inside the selected
+  // folder" above by ALSO loading a note in the editor first, then
+  // selecting the folder, then clicking + New note — exercising the
+  // editor-focus interference path the investigation walked.
+  // ───────────────────────────────────────────────────────────────────
+  test("Bug B — toolbar create targets selected folder (UX-12)", async ({
+    page,
+  }) => {
+    await openApp(page);
+
+    // Editor is loaded (openApp clicks the seeded scratchpad). Type so
+    // the editor has focus + content — exercises the focus interference
+    // angle the investigation walked.
+    await typeIntoEditor(page, "editor-focus content");
+
+    // Create a folder.
+    await page.getByRole("button", { name: /new folder/i }).click();
+    const folderRename = page
+      .locator('[data-tree-row] input[type="text"]')
+      .first();
+    await folderRename.waitFor({ state: "visible", timeout: 3_000 });
+    await folderRename.fill("bug-b-folder");
+    await folderRename.press("Enter");
+
+    // Click the folder row.
+    const folderRow = page
+      .locator('[data-tree-row-kind="folder"]')
+      .filter({ hasText: /bug-b-folder/i })
+      .first();
+    await expect(folderRow).toBeVisible({ timeout: 3_000 });
+    await folderRow.click();
+
+    // Click toolbar "+ New note" and wait for the POST /notes to land —
+    // without this wait, page.request.get(/tree) below can race the POST
+    // and read a tree that doesn't yet contain the new note.
+    const notePostP = page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/api/v1/notes") &&
+        resp.request().method() === "POST",
+      { timeout: 5_000 },
+    );
+    await page.getByRole("button", { name: /new note/i }).click();
+    await notePostP;
+
+    // Dismiss any rename input.
+    const noteRename = page
+      .locator('[data-tree-row] input[type="text"]')
+      .first();
+    if ((await noteRename.count()) > 0) {
+      await noteRename.press("Escape").catch(() => {});
+    }
+
+    // Assert the new note is a child of bug-b-folder, not a sibling.
+    const treeResp = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
+    expect(treeResp.status()).toBe(200);
+    const tree = (await treeResp.json()) as {
+      root: Array<{
+        kind: string;
+        path?: string;
+        children?: Array<{ kind: string; path?: string }>;
+      }>;
+    };
+    const bugBFolder = tree.root.find(
+      (n) =>
+        n.kind === "folder" &&
+        typeof n.path === "string" &&
+        /bug-b-folder/i.test(n.path),
+    );
+    expect(bugBFolder).toBeTruthy();
+    const childNotes = (bugBFolder?.children ?? []).filter(
+      (c) => c.kind === "note",
+    );
+    expect(childNotes.length).toBeGreaterThanOrEqual(1);
+
+    // Anti-assertion: the new note is NOT at root level (would be the
+    // user-reported failure shape).
+    const rootNotesAfter = tree.root.filter(
+      (n) =>
+        n.kind === "note" &&
+        typeof n.path === "string" &&
+        !n.path.includes("/"),
+    );
+    // Only the seeded scratchpad should remain at root.
+    expect(rootNotesAfter.length).toBe(1);
+  });
+
+  // ───────────────────────────────────────────────────────────────────
   // UX-12: right-click "New note" inside expanded folder does NOT collapse it
   // ───────────────────────────────────────────────────────────────────
   test("UX-12: right-click 'New note' inside expanded folder does NOT collapse the folder", async ({
@@ -492,6 +651,96 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       .count();
     // Initial seed = 1 (scratchpad); the new child note increments to 2.
     expect(childNoteCount).toBeGreaterThanOrEqual(2);
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // Plan 17 Bug C — Cmd-click multi-select + multi-delete (UX-13)
+  //
+  // Stacked root causes (see 05.5-17c-INVESTIGATION.md):
+  //   C.1: TreeRow's Cmd-click delegated node.handleClick(e), then
+  //        bubble fired arborist's outer DefaultRow onClick which called
+  //        node.handleClick AGAIN — selectMulti then immediate deselect.
+  //   C.2: tree.props.onDelete not wired ⇒ Backspace dead on multi-select
+  //        because focus lives on arborist's outer wrapper after
+  //        Cmd-click, NOT on TreeRow's inner role=treeitem div.
+  //   C.3: arborist's keymap only handles Backspace, not the macOS
+  //        Forward Delete key — the original UX-13 spec uses Delete.
+  //
+  // This scenario walks the user-facing flow: 3 notes, multi-select via
+  // Cmd-click, Backspace to confirm-delete, all 3 removed. Asserts on
+  // the OUTER arborist wrapper's aria-selected (the inner div doesn't
+  // carry that attribute — see investigation note about the existing
+  // UX-13 spec's authoring bug).
+  // ───────────────────────────────────────────────────────────────────
+  test("Bug C — Cmd-click multi-select + multi-delete (UX-13)", async ({
+    page,
+  }) => {
+    await openApp(page);
+
+    // Seed 2 extra notes (3 total: scratchpad + 2 untitled).
+    for (let i = 0; i < 2; i++) {
+      await page.getByRole("button", { name: /new note/i }).click();
+      const r = page.locator('[data-tree-row] input[type="text"]').first();
+      if ((await r.count()) > 0) {
+        await r.press("Escape").catch(() => {});
+      }
+      await page.waitForTimeout(150);
+    }
+    const noteRows = page.locator('[data-tree-row-kind="note"]');
+    await expect(noteRows).toHaveCount(3, { timeout: 5_000 });
+
+    // Walk the seeded notes 2 and 3 (the two new untitled notes).
+    // Leave the seeded scratchpad (note 0) untouched as the post-delete
+    // anchor. The test asserts that exactly note 2 and note 3 get
+    // selected and removed, scratchpad survives.
+    const multiKey = process.platform === "darwin" ? "Meta" : "Control";
+
+    // Click note 2 (no modifier) — establishes the selection anchor.
+    await noteRows.nth(1).click();
+    await page.waitForTimeout(150);
+
+    // Cmd-click note 3 — ADD to selection. Bug C.1 would manifest as
+    // the second click silently toggling note 3 right back off (the
+    // double-fire of node.handleClick from arborist's outer DefaultRow
+    // wrapper), leaving only note 2 selected.
+    await noteRows.nth(2).click({ modifiers: [multiKey] });
+    await page.waitForTimeout(200);
+
+    // Read aria-selected on the OUTER arborist wrapper (the parent of
+    // each [data-tree-row-kind="note"] div has role="treeitem" + the
+    // selected attribute set by react-arborist's row-container).
+    const selectedNotes = await page.evaluate(() => {
+      const inners = Array.from(
+        document.querySelectorAll('[data-tree-row-kind="note"]'),
+      );
+      const out: string[] = [];
+      for (const inner of inners) {
+        const outer = inner.parentElement;
+        if (outer?.getAttribute("aria-selected") === "true") {
+          out.push(inner.getAttribute("data-tree-row") ?? "?");
+        }
+      }
+      return out;
+    });
+    // Notes 2 and 3 should be selected; note 1 (scratchpad) should NOT be.
+    expect(selectedNotes.length).toBe(2);
+
+    // Press Backspace to trigger the multi-delete dialog. arborist's
+    // tree-level keymap fires onDelete only when we wire the prop — the
+    // Bug C.2 fix. Without it, Backspace was inert here.
+    await page.keyboard.press("Backspace");
+
+    // Multi-target dialog opens with "Delete 2 items?".
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toBeVisible({ timeout: 3_000 });
+    await expect(dialog).toContainText(/delete 2 items/i);
+
+    // Confirm — Plan 06's multi-target dialog labels its primary action
+    // "Delete N items" (not just "Delete"), so we match by partial text.
+    await dialog.getByRole("button", { name: /^delete 2 items/i }).click();
+
+    // After confirm: only the seeded scratchpad remains (note 1).
+    await expect(noteRows).toHaveCount(1, { timeout: 5_000 });
   });
 
   // ───────────────────────────────────────────────────────────────────

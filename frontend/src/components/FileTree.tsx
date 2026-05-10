@@ -722,6 +722,77 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     [tree],
   );
 
+  // Plan 17 Bug C (UX-13) — multi-delete via Backspace/Delete keystroke.
+  //
+  // After a Cmd-click, focus lives on arborist's outer RowContainer
+  // wrapper (NOT our inner <div role="treeitem">), so TreeRow's
+  // `onKeyDown` doesn't fire. Two paths needed:
+  //
+  // 1) Backspace: react-arborist's default-container.js keymap handles
+  //    it IF we pass `onDelete` to <Tree>. handleArboristDelete is the
+  //    bridge to our existing handleRequestDelete pipeline. arborist
+  //    passes us `{ nodes, ids }` of the selection; handleRequestDelete
+  //    itself reads `treeRef.current.selectedNodes`, so the multi-vs-
+  //    single branch is decided correctly regardless of which row we
+  //    name.
+  //
+  // 2) Delete (Forward Delete): arborist's keymap only listens for
+  //    Backspace, NOT Delete. The HUMAN-UAT walkthrough used Delete
+  //    (the existing UX-13 batch-delete spec also uses Delete). Wire a
+  //    tree-level keydown listener to catch Delete and route it to the
+  //    same arborist API path. Scope the listener to events whose
+  //    target lives inside the tree's <div role="tree">, so the editor
+  //    textarea's Delete keystrokes are not hijacked.
+  //
+  // See 05.5-17c-INVESTIGATION.md for the full trace.
+  const handleArboristDelete = useCallback(
+    (args: { nodes: NodeApi<ArboristNode>[]; ids: string[] }) => {
+      if (args.nodes.length === 0) return;
+      const first = args.nodes[0];
+      handleRequestDelete(first.data.data);
+    },
+    [handleRequestDelete],
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Delete") return;
+      // Only fire when the keystroke originates inside the tree (focus
+      // on a row wrapper or the tree container). Don't hijack Delete
+      // from the editor textarea or from any input/contenteditable.
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (
+        target.matches(
+          "input, textarea, [contenteditable=true], .cm-content, .cm-content *",
+        )
+      ) {
+        return;
+      }
+      const insideTree = target.closest('[role="tree"]');
+      if (!insideTree) return;
+      // Mirror arborist's Backspace handler: read selectedIds, dispatch
+      // to onDelete via tree.delete().
+      const api = treeRef.current;
+      if (!api) return;
+      const ids = Array.from(api.selectedIds);
+      if (ids.length === 0) {
+        // Nothing selected — fall back to focused node (single-target).
+        const fn = api.focusedNode;
+        if (!fn) return;
+        e.preventDefault();
+        api.delete(fn);
+        return;
+      }
+      e.preventDefault();
+      api.delete(Array.from(ids));
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     try {
@@ -1093,6 +1164,12 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         // selection, its descendants exit. Operations apply to the
         // directory whole, not its contents.
         onSelect={handleSelect}
+        // Plan 17 Bug C (UX-13): wire onDelete so arborist's tree-level
+        // Backspace/Delete keymap routes into our handleRequestDelete
+        // pipeline. Without this prop, default-container.js short-
+        // circuits on Backspace, and multi-delete via keyboard is dead.
+        // See 05.5-17c-INVESTIGATION.md.
+        onDelete={handleArboristDelete}
         disableDrop={handleDisableDrop}
         rowHeight={32}
         width="100%"

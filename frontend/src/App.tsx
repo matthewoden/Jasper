@@ -111,6 +111,14 @@ function AppInner() {
   // Phase 3 (Plan 03-07): the tree's selected-note id drives the
   // editor pane. setActiveNote is exposed via Sidebar.onSelectNote.
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
+  // Phase 5.5 — Plan 17 Bug A (UX-09): the App-level grid template's
+  // first column must track the live sidebar width so the editor pane's
+  // 1fr track reflows when the user drags the resize handle. The sidebar's
+  // own <nav> already reads sidebarWidth (Sidebar.tsx:105) — App was
+  // ignoring it, leaving the grid track hard-pinned at 260px. Subscribing
+  // here mirrors that pattern. Selector is a primitive-number read, so a
+  // re-render only fires when the persisted width actually changes.
+  const sidebarWidth = useTreeStore((s) => s.sidebarWidth);
 
   // Phase 4 (Plan 04-05) — EditorPane handler ref (D-09: no new event bus).
   // App passes this ref to EditorPane; EditorPane writes its handlers on mount.
@@ -223,7 +231,10 @@ function AppInner() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "260px 1fr 0",
+          // Plan 17 Bug A (UX-09): track sidebarWidth in the grid template
+          // so the editor pane (1fr) reflows when the resize handle drags.
+          // Previously hard-coded to "260px 1fr 0" — see 05.5-17a-INVESTIGATION.md.
+          gridTemplateColumns: `${sidebarWidth}px 1fr 0`,
           flex: 1,
         }}
       >
