@@ -216,7 +216,14 @@ function AppInner() {
       style={{
         display: "flex",
         flexDirection: "column",
-        minHeight: "100vh",
+        // Lock to viewport height (was minHeight, which let children
+        // expand the document past the viewport — observed: editor
+        // pane growing past 10kpx forced a document scrollbar with
+        // mostly-empty space below the active note). Sidebar tree
+        // and editor each handle their own internal scroll inside
+        // this fixed-height shell.
+        height: "100vh",
+        overflow: "hidden",
       }}
     >
       <MigrationBanner
@@ -235,7 +242,14 @@ function AppInner() {
           // so the editor pane (1fr) reflows when the resize handle drags.
           // Previously hard-coded to "260px 1fr 0" — see 05.5-17a-INVESTIGATION.md.
           gridTemplateColumns: `${sidebarWidth}px 1fr 0`,
+          // Single row that fills the available flex track. `1fr`
+          // alone is `minmax(auto, 1fr)` which still grows to content
+          // intrinsic height — `minmax(0, 1fr)` is the canonical clamp
+          // that lets children scroll internally.
+          gridTemplateRows: "minmax(0, 1fr)",
           flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
         }}
       >
         <Sidebar

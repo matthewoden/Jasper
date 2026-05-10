@@ -234,6 +234,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
         role="textbox"
         aria-label="Note content"
         aria-multiline="true"
+        style={{
+          // Flex-fill within the cm-host-shell so CM6's .cm-editor /
+          // .cm-scroller can reach height: 100% and scroll long
+          // documents internally instead of expanding the page.
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+        }}
       />
     );
   }

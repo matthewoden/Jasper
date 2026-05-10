@@ -825,7 +825,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
   }
 
   return (
-    <section className="flex flex-col h-full bg-bg">
+    <section
+      className="flex flex-col h-full bg-bg"
+      style={{ minHeight: 0, overflow: "hidden" }}
+    >
       <SaveIndicator state={saveState} />
       {loadStatus === "error" && (
         <div className="px-4 text-destructive" role="alert">
@@ -1020,7 +1023,18 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
           has zero padding so empty-area clicks reach this onClick reliably. */}
       <div
         className="cm-host-shell"
-        style={{ flex: 1, display: "flex", flexDirection: "column" }}
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          // minHeight: 0 + overflow: hidden lets this column track its
+          // parent's bounded height. Without minHeight: 0 a flex column's
+          // children expand it to their intrinsic size; with that, the
+          // CM6 .cm-scroller can take over and scroll long documents
+          // internally instead of inflating the page.
+          minHeight: 0,
+          overflow: "hidden",
+        }}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest(".cm-content")) return;
           editorRef.current?.focusEnd();

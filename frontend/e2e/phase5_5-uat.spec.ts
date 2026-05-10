@@ -1192,6 +1192,62 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
   });
 
   // ───────────────────────────────────────────────────────────────────
+  // UX-14c — page (document) MUST NOT scroll; sidebar + editor each
+  // scroll independently inside their own bounded shells.
+  //
+  // Pre-fix observation: the App container used `minHeight: 100vh`
+  // and the editor pane chain (section → cm-host-shell → MarkdownEditor)
+  // never set min-height: 0 on its flex columns, so CM6's content
+  // expanded the page to its intrinsic doc height (10kpx+ observed)
+  // and the user got a giant document scrollbar with mostly empty
+  // space below the editor. Lock-in: documentElement.scrollHeight
+  // <= clientHeight + 1 (subpixel slack) after typing a long doc.
+  // ───────────────────────────────────────────────────────────────────
+  test("UX-14c: page does not scroll; long content scrolls inside the editor", async ({
+    page,
+  }) => {
+    await openApp(page);
+
+    // Type a long document — many lines so CM6's content surface
+    // would, without our height clamp, push the page past viewport.
+    await page.locator(".cm-content").click();
+    await page.keyboard.press(
+      process.platform === "darwin" ? "Meta+a" : "Control+a",
+    );
+    await page.keyboard.press("Delete");
+    const longDoc = Array.from(
+      { length: 80 },
+      (_, i) => `line ${i + 1} of a long document`,
+    ).join("\n");
+    await page.keyboard.type(longDoc.slice(0, 800));
+    await page.waitForTimeout(150);
+
+    const sizes = await page.evaluate(() => {
+      const html = document.documentElement;
+      const body = document.body;
+      const scroller = document.querySelector(
+        ".cm-scroller",
+      ) as HTMLElement | null;
+      return {
+        htmlScrollH: html.scrollHeight,
+        htmlClientH: html.clientHeight,
+        bodyScrollH: body.scrollHeight,
+        bodyClientH: body.clientHeight,
+        scrollerScrollH: scroller?.scrollHeight ?? 0,
+        scrollerClientH: scroller?.clientHeight ?? 0,
+      };
+    });
+
+    // The page itself must not scroll.
+    expect(sizes.htmlScrollH).toBeLessThanOrEqual(sizes.htmlClientH + 1);
+    expect(sizes.bodyScrollH).toBeLessThanOrEqual(sizes.bodyClientH + 1);
+    // The CM6 internal scroller is bounded to viewport — it can't
+    // exceed the height of the cm-host-shell that contains it.
+    expect(sizes.scrollerClientH).toBeGreaterThan(0);
+    expect(sizes.scrollerClientH).toBeLessThanOrEqual(sizes.htmlClientH);
+  });
+
+  // ───────────────────────────────────────────────────────────────────
   // UX-15: H1, H2, body share the same left x-coordinate off-cursor
   // ───────────────────────────────────────────────────────────────────
   test("UX-15: H1, H2, and body paragraph share the same left x-coordinate when off-cursor", async ({

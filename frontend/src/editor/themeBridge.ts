@@ -30,10 +30,22 @@ export const jasperEditorTheme = EditorView.theme(
       fontFamily: "var(--font-mono)",
       fontSize: "15px",
       lineHeight: "1.6",
+      // Fill the cm-host parent so CM6's internal .cm-scroller takes
+      // over scroll for long documents instead of expanding the page.
+      // Without this, .cm-editor sizes to its content's intrinsic
+      // height and bypasses the host shell's overflow boundary.
+      height: "100%",
+      width: "100%",
     },
     // UX-10: remove default focus ring on .cm-editor.cm-focused so the editor
     // surface looks like part of the pane, not a discrete widget.
     "&.cm-focused": { outline: "none !important" },
+    ".cm-scroller": {
+      // CM6 default is overflow: auto only when .cm-editor has a fixed
+      // height — make that explicit so the scroller takes over for
+      // long documents and the page itself never scrolls.
+      overflow: "auto",
+    },
     ".cm-content": {
       padding: "16px",
       caretColor: "var(--color-fg)",

@@ -111,7 +111,12 @@ describe("<App /> — Phase 2 shell composition", () => {
     expect(root).not.toBeNull();
     expect(root.style.display).toBe("flex");
     expect(root.style.flexDirection).toBe("column");
-    expect(root.style.minHeight).toBe("100vh");
+    // 2026-05-09: locked-height shell — was minHeight: 100vh which let
+    // children expand the document past viewport (UX-14c regression).
+    // The shell now hard-pins height so sidebar + editor each scroll
+    // independently inside their bounded containers.
+    expect(root.style.height).toBe("100vh");
+    expect(root.style.overflow).toBe("hidden");
 
     // The three-column grid is now an inner div under the flex column
     // (the banner is a sibling but renders nothing when state=ok).
