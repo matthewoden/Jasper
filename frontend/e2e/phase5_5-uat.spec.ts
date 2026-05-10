@@ -309,6 +309,69 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
   });
 
   // ───────────────────────────────────────────────────────────────────
+  // Plan 17 Bug A — editor pane left edge tracks sidebar resize (UX-09)
+  //
+  // Surfaced by Plan 15's HUMAN-UAT walk on a fresh make build: the
+  // sidebar <nav>'s width updated when the user dragged the resize
+  // handle, BUT the editor pane stayed at x=260 because App.tsx hard-
+  // coded gridTemplateColumns: "260px 1fr 0". See 05.5-17a-INVESTIGATION.md.
+  //
+  // Asserts the editor pane's left edge shifts ≥80px to the right after
+  // a +100px drag of the sidebar handle. The previous UX-09 test only
+  // observed the <nav> width — it did NOT catch the App-level grid
+  // mismatch, which is exactly the integration boundary this Bug A
+  // scenario exists to cover.
+  // ───────────────────────────────────────────────────────────────────
+  test("Bug A — editor pane left edge tracks sidebar resize (UX-09)", async ({
+    page,
+  }) => {
+    await openApp(page);
+
+    // The editor pane's left edge is best read off the .cm-content
+    // wrapper — that's the inner editor surface inside <EditorPane>.
+    // Its `getBoundingClientRect().left` reflects the actual layout
+    // position, which is what the user perceives as "the editor pane's
+    // left edge."
+    const cmContent = page.locator(".cm-content");
+    await expect(cmContent).toBeVisible({ timeout: 5_000 });
+
+    const editorLeftBefore = await cmContent.evaluate(
+      (el) => (el as HTMLElement).getBoundingClientRect().left,
+    );
+    expect(editorLeftBefore).toBeGreaterThan(0);
+
+    const handle = page.locator('[data-testid="sidebar-resize-handle"]');
+    await expect(handle).toBeVisible({ timeout: 5_000 });
+    const handleBox = await handle.boundingBox();
+    if (!handleBox) throw new Error("resize handle has no bounding box");
+    // The sidebar handle is `position: absolute; top: 0; bottom: 0` on a
+    // <nav> whose intrinsic height grows to fit the FileTree's internal
+    // `height={9999}`, so boundingBox().height runs well past the
+    // viewport. Pick a Y inside the viewport so CDP actually dispatches
+    // pointer events at this coordinate.
+    const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
+    const handleX = handleBox.x + handleBox.width / 2;
+    const handleY = Math.min(handleBox.y + 80, viewport.height - 50);
+
+    // Drag the handle 100px to the right.
+    await page.mouse.move(handleX, handleY);
+    await page.mouse.down();
+    await page.mouse.move(handleX + 100, handleY, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+
+    const editorLeftAfter = await cmContent.evaluate(
+      (el) => (el as HTMLElement).getBoundingClientRect().left,
+    );
+
+    // The editor's left edge must have shifted right by close to 100px
+    // (subpixel rounding + interior padding can subtract ~10px). Tolerate
+    // a 20px slack: the bug we're guarding against keeps the editor at
+    // its original left, which would fail by 80–100px.
+    expect(editorLeftAfter - editorLeftBefore).toBeGreaterThanOrEqual(80);
+  });
+
+  // ───────────────────────────────────────────────────────────────────
   // UX-10: full-bleed editor + click-anywhere-to-type
   // ───────────────────────────────────────────────────────────────────
   test("UX-10: editor has no focus ring and clicking below last line places caret in editor", async ({
