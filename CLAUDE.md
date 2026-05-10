@@ -207,7 +207,21 @@ If everything else about Jasper fails, this must work: open the browser, write n
 <!-- GSD:conventions-start source:CONVENTIONS.md -->
 ## Conventions
 
-Conventions not yet established. Will populate as patterns emerge during development.
+### Build & embed pipeline
+
+- **Always use `make build` for any binary that will be tested or shipped.** The Makefile's `build` target performs `cp -R frontend/dist/. backend/internal/static/dist/` between `npm run build` and `go build`. Skipping that copy step bakes the previous frontend bundle into the binary via `//go:embed all:dist`, producing a stale UI in production. Plan 05.5-15 hit this and lost a full UAT walkthrough — see `.planning/phases/05.5-sidebar-editor-shell-polish/05.5-15-SUMMARY.md` "What Got Caught Mid-Walk".
+- For any plan or task instruction that says `npm run build && go build`, treat it as a defect — replace with `make build`.
+
+### Verification policy: E2E before human UAT
+
+- **Every gap-closure plan that fixes a user-facing bug MUST include a Playwright E2E scenario that exercises the fix against `bin/jasper`** (live binary), not just a vitest unit test. The unit tests are not load-bearing for production-only regressions — Phase 5.5 had multiple bugs that passed 593 unit tests but failed in real browsers (UX-09 reflow, UX-12 create-at-level, UX-13 Cmd-click).
+- Land the E2E test BEFORE asking the user for human UAT on the affected scenario. The user's time is the most expensive thing in the loop; don't burn it on stale binaries or already-broken features.
+- E2E scenarios live in `frontend/e2e/phase{N}-uat.spec.ts` (or `phase{N}_{M}-uat.spec.ts` for sub-phases like 5.5).
+- Smoke run E2E against `make build`, not `npm run build && go build`.
+
+### Halt-if-inconclusive gate (gap-closure pattern)
+
+- Gap-closure plans that pair `investigate → fix` tasks should set `autonomous: true` with an explicit **HALT-IF-INCONCLUSIVE GATE** in the fix task's `<action>`: re-read the investigation file's `## Recommended Fix` section; if it does not name a single file:line + concrete change, STOP and surface for human triage rather than speculatively patching. Pattern shipped in Plan 05.5-14 (toolbar regression — caught a contract drift) and Plan 05.5-17 (Bugs A/B/C).
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
