@@ -406,6 +406,11 @@ export function resetTreeListLayout(
   // against react-arborist v3.5 + react-window 1.x.
 }
 
+// Height of the trailing root-drop strip beneath the Tree. Subtracted
+// from the measured tree-area height so the Tree fills the remaining
+// space exactly without inflating the wrap.
+const TRAILING_DROPZONE_HEIGHT = 60;
+
 export interface FileTreeProps {
   onSelectNote: (id: string) => void;
 }
@@ -438,6 +443,36 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     dragIds: string[];
     dragNodes: NodeApi<ArboristNode>[];
   } | null>(null);
+
+  // Dynamic Tree height — react-arborist requires a numeric height
+  // and uses react-window's FixedSizeList internally. The previous
+  // height={9999} produced a 9999px virtual scroll area regardless of
+  // visible content, which (after the App-shell viewport-clamp fix in
+  // 25440a8) showed up as a useless oversized scrollbar in the
+  // sidebar. ResizeObserver tracks the live size of the bounded
+  // parent (Sidebar's tree-area shell, height = `minmax(0, 1fr)` of
+  // viewport) and feeds it back so the Tree fills exactly the
+  // available area; long lists then scroll inside the Tree's own
+  // scroller instead of inflating the parent.
+  //
+  // MUST be declared with the other hooks at the TOP of the component
+  // (before any early returns at error / loading / empty / null tree
+  // branches) — Rules of Hooks: hooks must run in the same order on
+  // every render.
+  const treeAreaRef = useRef<HTMLDivElement | null>(null);
+  const [treeHeight, setTreeHeight] = useState(400);
+  useEffect(() => {
+    const el = treeAreaRef.current;
+    if (!el) return;
+    const measure = () => {
+      const h = el.getBoundingClientRect().height;
+      if (h > 0) setTreeHeight(Math.floor(h));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const data = useMemo(() => (tree ? adaptTree(tree) : []), [tree]);
 
@@ -1151,6 +1186,22 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
 
   return (
     <>
+      {/*
+        Tree-area wrap — fills the Sidebar's flex column. The Tree
+        sits inside it at (measured height - dropzone height); long
+        lists scroll INSIDE the Tree's own scroller. flexShrink:1 +
+        minHeight:0 is the standard "this column may shrink to fit"
+        recipe.
+      */}
+      <div
+        ref={treeAreaRef}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
       <Tree<ArboristNode>
         ref={treeRef}
         data={data}
@@ -1173,10 +1224,12 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         disableDrop={handleDisableDrop}
         rowHeight={32}
         width="100%"
-        // arborist requires a numeric height; the flex parent constrains
-        // the actual rendered height while internal scroll handles
-        // virtualization (PERF-02 — 1,000 nodes).
-        height={9999}
+        // Subtract trailing-dropzone strip (TRAILING_DROPZONE_HEIGHT
+        // below) so Tree + dropzone together fill the wrap exactly,
+        // never causing the wrap itself to scroll. The Tree's own
+        // react-window scroller handles overflow when the row count
+        // exceeds the visible area.
+        height={Math.max(0, treeHeight - TRAILING_DROPZONE_HEIGHT)}
       >
         {(props) => (
           <TreeRow
@@ -1211,15 +1264,17 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           />
         )}
       </Tree>
-      {/* Bug A fix: native HTML5 drop zone covering the empty trailing area
-          below the last tree row. react-arborist's useOuterDrop has no drop
-          handler (only hover), so mouse-up over empty space is silently
-          discarded. This div fills the remaining sidebar space and calls
-          handleMove directly when a drag is released here, moving the node
-          to the root level. */}
+      {/* Bug A: native HTML5 drop zone for "drop in empty area below
+          the last tree row → move to root". After the dynamic-height
+          refactor (2026-05-09), this is a fixed-height strip below the
+          Tree (sibling under the tree-area flex column) so it always
+          has a drop target without inflating the sidebar height. */}
       <div
         data-testid="tree-trailing-dropzone"
-        style={{ minHeight: 150, flexGrow: 1 }}
+        style={{
+          height: TRAILING_DROPZONE_HEIGHT,
+          flexShrink: 0,
+        }}
         onDragOver={(e) => {
           e.preventDefault();
           if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
@@ -1244,6 +1299,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           });
         }}
       />
+      </div>
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         onOpenChange={(o) => {

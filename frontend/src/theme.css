@@ -86,3 +86,49 @@ body {
   --color-warning:         #b45309; /* amber-700 — banner only */
   --color-warning-surface: #fef3c7; /* amber-50/100 — banner only */
 }
+
+/* ────────────────────────────────────────────────────────────────────
+   Scrollbar styling — applied to every scrollable surface in the app
+   (sidebar tree, editor scroller, etc). The browser-default scrollbar
+   is a thick gutter that competes visually with the chrome; we match
+   the surface palette and use thin overlays so the scrollbar reads
+   as a UI affordance, not a chrome border.
+
+   - Firefox: scrollbar-width + scrollbar-color (newer property names).
+   - WebKit / Blink (Chrome / Safari / Edge / Electron): the
+     ::-webkit-scrollbar* pseudo-elements. CSS variables auto-flip
+     under [data-theme='light'].
+   ──────────────────────────────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-muted) 30%, transparent)
+                   transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-muted) 25%, transparent);
+  border-radius: 6px;
+  /* Inset the thumb visually so it reads as a thin pill rather than
+     filling the gutter — 2px transparent border on a content-box clip. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-muted) 50%, transparent);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}

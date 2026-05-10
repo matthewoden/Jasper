@@ -173,7 +173,24 @@ export function Sidebar({ onSelectNote = () => {} }: SidebarProps) {
           creating={isCreating}
         />
       </header>
-      <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+      {/*
+        Tree-area shell — bounded by viewport (parent grid row is
+        minmax(0, 1fr)). overflow:hidden because react-arborist's
+        internal react-window FixedSizeList owns the scroll surface;
+        delegating overflow here used to let the sidebar render a
+        9999px scrollable area (Tree height={9999} hack), which pushed
+        a giant useless scrollbar past the actual content.
+      */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          position: "relative",
+        }}
+      >
         <FileTree onSelectNote={onSelectNote} />
       </div>
       {/* Phase 5.5 — Plan 05 (UX-09): MUST be the last child so the
