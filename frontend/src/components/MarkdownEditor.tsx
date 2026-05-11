@@ -43,12 +43,23 @@ import { yamlFrontmatter } from "@codemirror/lang-yaml";
 
 import { jasperEditorTheme, jasperSyntaxHighlighting } from "../editor/themeBridge";
 import { livePreviewPlugin } from "../editor/livePreviewPlugin";
-import { linkClickHandler } from "../editor/linkClickHandler";
+import {
+  linkClickHandler,
+  setWikilinkHandlerCallbacks,
+} from "../editor/linkClickHandler";
 import { codeblockExpand } from "../editor/codeblockExpand";
 import { frontmatterPlugin } from "../editor/frontmatterPlugin";
+import { wikilinkPlugin } from "../editor/wikilinkPlugin";
 import { codeLanguages } from "../editor/codeLanguages";
 import { externalImagePlugin } from "../editor/externalImagePlugin";
 import { saveKeymap } from "../editor/jasperKeymap"; // Plan 05-11 / EDIT-10
+import {
+  useResolvedTitleSet,
+  setResolvedTitlesSnapshot,
+} from "../editor/wikilinkResolver";
+import { useTreeStore } from "../lib/useTreeStore";
+import { useFileTree } from "../lib/useFileTree";
+import type { TreeNode } from "../lib/treeApi";
 
 /**
  * MarkdownEditorRef — the ref API EditorPane consumes (D-26 LOCKED).
@@ -102,6 +113,38 @@ interface Props {
   onBlur?: () => void;
 }
 
+/**
+ * Walk the tree to find the folder path of a given note id.
+ * Returns the parent folder path (the directory part of note.path),
+ * or "" (vault root) if the note is at the top level or not found.
+ */
+function getNoteFolder(noteId: string | null, root: TreeNode[]): string {
+  if (!noteId) return "";
+  const visit = (node: TreeNode): string | null => {
+    if (node.kind === "note") {
+      if (node.id === noteId) {
+        // note.path = "folder/sub/Note.md"; folder = "folder/sub"
+        const parts = node.path.split("/");
+        parts.pop(); // remove filename
+        return parts.join("/"); // "" for root-level notes
+      }
+      return null;
+    }
+    if (node.kind === "folder" && node.children) {
+      for (const child of node.children) {
+        const hit = visit(child);
+        if (hit !== null) return hit;
+      }
+    }
+    return null;
+  };
+  for (const node of root) {
+    const hit = visit(node);
+    if (hit !== null) return hit;
+  }
+  return "";
+}
+
 export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
   function MarkdownEditor(
     { initialDoc, onChange, onH1Change, onSaveRequested, onBlur },
@@ -119,6 +162,73 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     const cbRef = useRef({ onChange, onH1Change, onSaveRequested, onBlur });
     cbRef.current = { onChange, onH1Change, onSaveRequested, onBlur };
 
+    // Phase 6 / Plan 06-09: wiki-link decoration + resolution wiring.
+    // useResolvedTitleSet reads from useFileTree and returns a memoized
+    // { titleSet, idMap } whenever the tree changes. The module-level
+    // snapshot is updated in a useEffect so the CM6 plugin can read it
+    // synchronously during decoration build.
+    const { titleSet, idMap } = useResolvedTitleSet();
+    useEffect(() => {
+      setResolvedTitlesSnapshot(titleSet, idMap);
+      // After updating the snapshot, force a view update so any new
+      // resolved/pending state is reflected on the next CM6 tick.
+      // MatchDecorator.updateDeco requires a doc/viewport change to
+      // rebuild; dispatching a no-op selection update is sufficient.
+      const v = viewRef.current;
+      if (v) {
+        // Dispatch a trivial transaction to trigger an update cycle
+        // that causes wikilinkPlugin.update() to call updateDeco().
+        v.dispatch({});
+      }
+    }, [titleSet, idMap]);
+
+    // Wire the click-handler callbacks (setActiveNoteId + getCurrentSourceFolder).
+    // These must be kept fresh (not stale from mount-time closure) via refs.
+    const activeNoteId = useTreeStore((s) => s.activeNoteId);
+    const setActiveNote = useTreeStore((s) => s.setActiveNote);
+    const { tree } = useFileTree();
+
+    // Use a ref to keep the callbacks fresh without re-registering effects.
+    const wikilinkCbRef = useRef({ activeNoteId, setActiveNote, tree });
+    wikilinkCbRef.current = { activeNoteId, setActiveNote, tree };
+
+    useEffect(() => {
+      setWikilinkHandlerCallbacks({
+        setActiveNoteId: (id: string) => {
+          wikilinkCbRef.current.setActiveNote(id);
+        },
+        getCurrentSourceFolder: () => {
+          const { activeNoteId: noteId, tree: t } = wikilinkCbRef.current;
+          return getNoteFolder(noteId, t?.root ?? []);
+        },
+      });
+      // Called once — the callbacks read fresh state from wikilinkCbRef.current.
+    }, []);
+
+    // D-16 Cmd-held affordance (T-06-09-04: cleanup in useEffect return).
+    // Adds/removes data-cmd-held on the .cm-editor root when Cmd/Ctrl is held,
+    // so CSS can change the cursor to pointer over wiki-link widgets.
+    // Choice: React useEffect (simpler than a CM6 EditorView.domEventHandlers
+    // extension since it doesn't need CM6 state and survives plugin teardown).
+    useEffect(() => {
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (e.metaKey || e.ctrlKey) {
+          viewRef.current?.dom.setAttribute("data-cmd-held", "true");
+        }
+      };
+      const onKeyUp = (e: KeyboardEvent) => {
+        if (!e.metaKey && !e.ctrlKey) {
+          viewRef.current?.dom.removeAttribute("data-cmd-held");
+        }
+      };
+      document.addEventListener("keydown", onKeyDown);
+      document.addEventListener("keyup", onKeyUp);
+      return () => {
+        document.removeEventListener("keydown", onKeyDown);
+        document.removeEventListener("keyup", onKeyUp);
+      };
+    }, []);
+
     useEffect(() => {
       if (!hostRef.current) return;
 
@@ -134,6 +244,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             jasperSyntaxHighlighting,
             frontmatterPlugin,
             livePreviewPlugin,
+            wikilinkPlugin, // Phase 6 / Plan 06-09 — [[Title]] decoration
             linkClickHandler, // 05.5-18 — Cmd/Ctrl-click opens external links in a new tab
             externalImagePlugin, // Plan 05-08 — SECURITY-03 external image gate
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // Plan 05-11 / EDIT-10 — BEFORE defaultKeymap so Cmd+S takes precedence
