@@ -38,3 +38,35 @@ export function updateNote(id: string, content: string, ifMatch?: string) {
     ...(ifMatch ? { headers: { "If-Match": ifMatch } } : {}),
   });
 }
+
+/**
+ * NoteSearchResult — shape returned by GET /api/v1/notes/search-titles.
+ * Matches the NoteSearchResult component schema in api/openapi.yaml (Plan 06-02).
+ */
+export interface NoteSearchResult {
+  id: string;
+  title: string;
+  folder?: string | null;
+  recency_score: number;
+  proximity_score?: number | null;
+}
+
+/**
+ * Search note titles for wiki-link autocomplete (LINKS-06 / D-13).
+ * Empty q returns most-recently-edited notes up to limit.
+ * Server ranks by recency (60%) + proximity (40%) per D-13.
+ *
+ * Throws on HTTP error so the caller can catch and degrade gracefully.
+ */
+export async function searchTitles(
+  q: string,
+  limit = 10,
+): Promise<NoteSearchResult[]> {
+  const { data, error } = await client.GET("/notes/search-titles", {
+    params: { query: { q, limit } },
+  });
+  if (error) {
+    throw new Error("searchTitles: " + JSON.stringify(error));
+  }
+  return data.results as NoteSearchResult[];
+}

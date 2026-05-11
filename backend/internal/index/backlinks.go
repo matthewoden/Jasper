@@ -25,19 +25,15 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// BacklinkRow is the projection returned by GetBacklinks.
-// Matches the BacklinkRow component schema in api/openapi.yaml (Plan 06-02).
+// BacklinkRow is an alias for notes.BacklinkRow used within the index package.
+// Plan 06-11 moved the canonical type to notes/ports.go so the notes.Index
+// interface can reference it without an import cycle. Index-internal code
+// may use either name; the port-facing method signature uses notes.BacklinkRow.
 //
-// Count is the number of occurrences of this link in the source body.
-// In this v1 implementation, count is always 1 (see D-claude-04 decision
-// documented in SUMMARY.md — multi-occurrence badge deferred).
-type BacklinkRow struct {
-	SourceID    uuid.UUID
-	SourceTitle string
-	SourcePath  string
-	Excerpt     string // server-built sanitized-friendly HTML
-	Count       int    // v1: always 1; multi-occurrence badge is a follow-on
-}
+// Count is always 1 in v1 (D-claude-04: multi-occurrence badge deferred).
+//
+// Deprecated: use notes.BacklinkRow directly.
+type BacklinkRow = notes.BacklinkRow
 
 // ---------------------------------------------------------------------------
 // SyncBacklinks

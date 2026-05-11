@@ -105,6 +105,15 @@ func (f *tagFakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string
 	return nil
 }
 
+// Plan 06-11: backlinks retrieval + title search stubs for tagFakeIndex.
+func (f *tagFakeIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]notes.BacklinkRow, error) {
+	return []notes.BacklinkRow{}, nil
+}
+
+func (f *tagFakeIndex) SearchTitles(_ context.Context, _ string, _ int) ([]notes.SearchResult, error) {
+	return []notes.SearchResult{}, nil
+}
+
 func (f *tagFakeIndex) ListTags(_ context.Context) ([]notes.TagWithCount, error) {
 	if f.listTagsErr != nil {
 		return nil, f.listTagsErr

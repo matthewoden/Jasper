@@ -278,6 +278,57 @@ func (x *Indexer) DeleteByPathPrefix(ctx context.Context, prefix string) (int, e
 	return int(affected), nil
 }
 
+// SearchTitles returns up to limit notes whose title contains q
+// (case-insensitive LIKE match) ordered by mtime_unix DESC (recency).
+// When q is empty, returns the most-recent notes up to limit.
+// limit is clamped to [1, 50] by the caller; the SQL LIMIT is applied here.
+//
+// Returns []notes.SearchResult — a lightweight projection (id, title, path,
+// mtime_unix) used by GetNotesSearchTitles (LINKS-06 / D-13).
+func (x *Indexer) SearchTitles(ctx context.Context, q string, limit int) ([]notes.SearchResult, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if q == "" {
+		rows, err = x.Pair.Reader.QueryContext(ctx,
+			`SELECT id, title, path, mtime_unix FROM notes ORDER BY mtime_unix DESC LIMIT ?`,
+			limit)
+	} else {
+		pattern := "%" + escapeLike(strings.ToLower(q)) + "%"
+		rows, err = x.Pair.Reader.QueryContext(ctx,
+			`SELECT id, title, path, mtime_unix FROM notes WHERE LOWER(title) LIKE ? ESCAPE '\' ORDER BY mtime_unix DESC LIMIT ?`,
+			pattern, limit)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("searchtitles query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := []notes.SearchResult{}
+	for rows.Next() {
+		var idStr, title, path string
+		var mtime int64
+		if err := rows.Scan(&idStr, &title, &path, &mtime); err != nil {
+			return nil, fmt.Errorf("searchtitles scan: %w", err)
+		}
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("searchtitles parse uuid %q: %w", idStr, err)
+		}
+		out = append(out, notes.SearchResult{
+			ID:        id,
+			Title:     title,
+			Path:      path,
+			MtimeUnix: mtime,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("searchtitles rows: %w", err)
+	}
+	return out, nil
+}
+
 // escapeLike escapes the SQLite LIKE wildcards `%` and `_` (and the
 // escape character itself, `\`) so the supplied prefix binds as a
 // literal substring under `LIKE ? ESCAPE '\'`. Without this, an

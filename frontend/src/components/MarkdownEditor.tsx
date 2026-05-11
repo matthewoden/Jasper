@@ -37,6 +37,7 @@ import { Annotation } from "@codemirror/state";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+import { autocompletion } from "@codemirror/autocomplete";
 import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
 import { markdown } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
@@ -57,6 +58,10 @@ import {
   useResolvedTitleSet,
   setResolvedTitlesSnapshot,
 } from "../editor/wikilinkResolver";
+import {
+  wikilinkCompletionSource,
+  setWikilinkAutocompleteCallbacks,
+} from "../editor/wikilinkAutocomplete";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useFileTree } from "../lib/useFileTree";
 import type { TreeNode } from "../lib/treeApi";
@@ -205,6 +210,31 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       // Called once — the callbacks read fresh state from wikilinkCbRef.current.
     }, []);
 
+    // Phase 6 / Plan 06-10: wire autocomplete callbacks for [[ completion source.
+    // createNoteAndNavigate: creates a note via linkClickHandler's create path,
+    // then navigates to it. Reads fresh state from wikilinkCbRef each call.
+    useEffect(() => {
+      setWikilinkAutocompleteCallbacks({
+        createNoteAndNavigate: async (rawTitle: string, sourceFolder: string) => {
+          const { data, error } = await import("../lib/treeApi").then((m) =>
+            m.postNotes({ parent_path: sourceFolder, title: rawTitle }),
+          );
+          if (error || !data) {
+            throw new Error(
+              (error as { message?: string } | undefined)?.message ??
+                "createNoteAndNavigate: unknown error",
+            );
+          }
+          wikilinkCbRef.current.setActiveNote(data.id);
+        },
+        getCurrentSourceFolder: () => {
+          const { activeNoteId: noteId, tree: t } = wikilinkCbRef.current;
+          return getNoteFolder(noteId, t?.root ?? []);
+        },
+      });
+      // Called once — callbacks read fresh state from wikilinkCbRef.current.
+    }, []);
+
     // D-16 Cmd-held affordance (T-06-09-04: cleanup in useEffect return).
     // Adds/removes data-cmd-held on the .cm-editor root when Cmd/Ctrl is held,
     // so CSS can change the cursor to pointer over wiki-link widgets.
@@ -247,6 +277,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             wikilinkPlugin, // Phase 6 / Plan 06-09 — [[Title]] decoration
             linkClickHandler, // 05.5-18 — Cmd/Ctrl-click opens external links in a new tab
             externalImagePlugin, // Plan 05-08 — SECURITY-03 external image gate
+            // Phase 6 / Plan 06-10 — autocomplete: [[ wiki-links + tag names.
+            // override: [] disables lang-markdown's emoji shortcodes (acceptable for
+            // v1 — documented tradeoff in wikilinkAutocomplete.ts). tagCompletionSource
+            // is added in the same array (Task 3 of this plan).
+            autocompletion({ override: [wikilinkCompletionSource] }),
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // Plan 05-11 / EDIT-10 — BEFORE defaultKeymap so Cmd+S takes precedence
             // 05.5-18: ```-Enter expands to a bounded fenced block.
             // BEFORE defaultKeymap so it can short-circuit Enter
