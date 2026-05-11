@@ -134,6 +134,7 @@ const (
 	WSEnvelopeEventFolderCreated   WSEnvelopeEvent = "folder:created"
 	WSEnvelopeEventFolderDeleted   WSEnvelopeEvent = "folder:deleted"
 	WSEnvelopeEventFolderMoved     WSEnvelopeEvent = "folder:moved"
+	WSEnvelopeEventLinksRewritten  WSEnvelopeEvent = "links:rewritten"
 	WSEnvelopeEventMigrationStatus WSEnvelopeEvent = "migration:status"
 	WSEnvelopeEventNoteCreated     WSEnvelopeEvent = "note:created"
 	WSEnvelopeEventNoteDeleted     WSEnvelopeEvent = "note:deleted"
@@ -142,6 +143,7 @@ const (
 	WSEnvelopeEventReindexComplete WSEnvelopeEvent = "reindex:complete"
 	WSEnvelopeEventReindexStarted  WSEnvelopeEvent = "reindex:started"
 	WSEnvelopeEventSessionAssigned WSEnvelopeEvent = "session:assigned"
+	WSEnvelopeEventTagsRewritten   WSEnvelopeEvent = "tags:rewritten"
 	WSEnvelopeEventTagsUpdated     WSEnvelopeEvent = "tags:updated"
 )
 
@@ -153,6 +155,8 @@ func (e WSEnvelopeEvent) Valid() bool {
 	case WSEnvelopeEventFolderDeleted:
 		return true
 	case WSEnvelopeEventFolderMoved:
+		return true
+	case WSEnvelopeEventLinksRewritten:
 		return true
 	case WSEnvelopeEventMigrationStatus:
 		return true
@@ -170,11 +174,46 @@ func (e WSEnvelopeEvent) Valid() bool {
 		return true
 	case WSEnvelopeEventSessionAssigned:
 		return true
+	case WSEnvelopeEventTagsRewritten:
+		return true
 	case WSEnvelopeEventTagsUpdated:
 		return true
 	default:
 		return false
 	}
+}
+
+// BacklinkRow A single backlink entry: a note that contains a `[[...]]` reference
+// resolving to the target note. One row per source note — multiple
+// references from the same source note collapse into one row with a
+// `count` badge (D-29).
+type BacklinkRow struct {
+	// Count Number of distinct `[[...]]` references in this source note that
+	// resolve to the target. Used for the count badge (D-29).
+	Count int `json:"count"`
+
+	// Excerpt Server-built HTML excerpt showing the line containing the first
+	// `[[...]]` reference. Safe for the DOMPurify allowlist:
+	// `<span>...<mark class="backlink-ref">[[Title]]</mark>...</span>`.
+	// Max 200 characters of visible text. Client MUST sanitize via
+	// sanitize.ts before setting dangerouslySetInnerHTML (T-06-02-04).
+	Excerpt string `json:"excerpt"`
+
+	// SourceId UUID of the note containing the `[[...]]` reference.
+	SourceId openapi_types.UUID `json:"source_id"`
+
+	// SourcePath Canonical relative path of the source note under notes/.
+	SourcePath string `json:"source_path"`
+
+	// SourceTitle Title of the source note (first H1 or filename without .md).
+	SourceTitle string `json:"source_title"`
+}
+
+// BacklinksResponse defines model for BacklinksResponse.
+type BacklinksResponse struct {
+	// Backlinks Resolved backlinks sorted by source note updated_at descending
+	// (most-recently-edited source first, per D-28).
+	Backlinks []BacklinkRow `json:"backlinks"`
 }
 
 // Config defines model for Config.
@@ -323,6 +362,34 @@ type NoteNode struct {
 // NoteNodeKind Discriminator value identifying this node as a note.
 type NoteNodeKind string
 
+// NoteSearchResponse defines model for NoteSearchResponse.
+type NoteSearchResponse struct {
+	// Results Ranked note title search results, best match first.
+	Results []NoteSearchResult `json:"results"`
+}
+
+// NoteSearchResult A single note-title search result for wiki-link autocomplete.
+type NoteSearchResult struct {
+	// Folder Containing folder path (relative under notes/, without trailing slash),
+	// or null for vault-root notes. Shown in autocomplete dropdown to
+	// disambiguate notes with the same title.
+	Folder *string `json:"folder,omitempty"`
+
+	// Id UUID of the matching note.
+	Id openapi_types.UUID `json:"id"`
+
+	// ProximityScore 0.0–1.0 proximity component (same-folder boost) or null when no
+	// source folder context is provided. 40% weight in the combined score.
+	ProximityScore *float32 `json:"proximity_score,omitempty"`
+
+	// RecencyScore 0.0–1.0 recency component of the ranking score (higher = more recent).
+	// 60% weight in the combined score per D-13.
+	RecencyScore float32 `json:"recency_score"`
+
+	// Title Title of the matching note (first H1 or filename without .md).
+	Title string `json:"title"`
+}
+
 // NoteSummary defines model for NoteSummary.
 type NoteSummary struct {
 	Id openapi_types.UUID `json:"id"`
@@ -369,6 +436,50 @@ type StaleWriteError struct {
 
 // StaleWriteErrorCode defines model for StaleWriteError.Code.
 type StaleWriteErrorCode string
+
+// TagDeleteResponse defines model for TagDeleteResponse.
+type TagDeleteResponse struct {
+	// OldName The tag name that was deleted.
+	OldName string `json:"old_name"`
+
+	// TouchedNoteIds UUIDs of notes whose frontmatter was rewritten (tag removed).
+	TouchedNoteIds []openapi_types.UUID `json:"touched_note_ids"`
+}
+
+// TagList defines model for TagList.
+type TagList struct {
+	// Tags All tags in the vault, sorted alphabetically by name.
+	Tags []TagWithCount `json:"tags"`
+}
+
+// TagRenameRequest defines model for TagRenameRequest.
+type TagRenameRequest struct {
+	// NewName New tag name. Must match D-22 charset (lowercase letters, digits,
+	// hyphens, underscores only). Server re-validates server-side (T-06-02-01
+	// defense-in-depth).
+	NewName string `json:"new_name"`
+}
+
+// TagRenameResponse defines model for TagRenameResponse.
+type TagRenameResponse struct {
+	// NewName The tag name after the rename.
+	NewName string `json:"new_name"`
+
+	// OldName The tag name before the rename.
+	OldName string `json:"old_name"`
+
+	// TouchedNoteIds UUIDs of notes whose frontmatter was rewritten.
+	TouchedNoteIds []openapi_types.UUID `json:"touched_note_ids"`
+}
+
+// TagWithCount A single tag entry with the number of notes carrying it.
+type TagWithCount struct {
+	// Count Number of notes in the vault that carry this tag
+	Count int `json:"count"`
+
+	// Name Normalized tag name (D-22 charset; lowercase [a-z0-9_-]+)
+	Name string `json:"name"`
+}
 
 // Tree defines model for Tree.
 type Tree struct {
@@ -434,6 +545,20 @@ type WSFolderMovedPayload struct {
 	OldPath string `json:"old_path"`
 }
 
+// WSLinksRewrittenPayload Broadcast payload for `links:rewritten` events. Emitted when a note is
+// renamed and its wiki-link references are rewritten vault-wide (LINKS-07 /
+// D-33). Source tab suppresses its own broadcast via origin_session_id (D-35).
+type WSLinksRewrittenPayload struct {
+	// NewTitle The note title after the rename.
+	NewTitle string `json:"new_title"`
+
+	// OldTitle The note title before the rename.
+	OldTitle string `json:"old_title"`
+
+	// TouchedNoteIds UUIDs of notes whose content was rewritten.
+	TouchedNoteIds []openapi_types.UUID `json:"touched_note_ids"`
+}
+
 // WSNoteCreatedPayload defines model for WSNoteCreatedPayload.
 type WSNoteCreatedPayload struct {
 	Id        openapi_types.UUID `json:"id"`
@@ -472,8 +597,26 @@ type WSReindexCompletePayload struct {
 // WSReindexStartedPayload Empty payload — server-originated.
 type WSReindexStartedPayload = map[string]interface{}
 
+// WSTagsRewrittenPayload Broadcast payload for `tags:rewritten` events. Emitted when a tag is
+// renamed (D-23 / TAGS-06) or deleted (D-24 / TAGS-07). When new_name is
+// null, the tag was deleted (D-34). Source tab suppresses its own broadcast
+// via the origin_session_id filter (D-35).
+type WSTagsRewrittenPayload struct {
+	// NewName The new tag name, or null when the tag was deleted.
+	NewName *string `json:"new_name,omitempty"`
+
+	// OldName The tag name before the rename/delete.
+	OldName string `json:"old_name"`
+
+	// TouchedNoteIds UUIDs of notes whose frontmatter was rewritten.
+	TouchedNoteIds []openapi_types.UUID `json:"touched_note_ids"`
+}
+
 // NoteId defines model for NoteId.
 type NoteId = openapi_types.UUID
+
+// TagName defines model for TagName.
+type TagName = string
 
 // DeleteFolderParams defines parameters for DeleteFolder.
 type DeleteFolderParams struct {
@@ -485,6 +628,16 @@ type DeleteFolderParams struct {
 	// §Surface 4) always sets recursive=true after the user confirms the
 	// content-count copy.
 	Recursive *bool `form:"recursive,omitempty" json:"recursive,omitempty"`
+}
+
+// GetNotesSearchTitlesParams defines parameters for GetNotesSearchTitles.
+type GetNotesSearchTitlesParams struct {
+	// Q Prefix search string. Empty string (default) returns the most-recent
+	// notes by last-edit time. Case-insensitive, NFC-normalized.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Maximum number of results to return (default 10, max 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // PutNoteByIdParams defines parameters for PutNoteById.
@@ -530,6 +683,9 @@ type PutNoteByIdJSONRequestBody = UpdateNoteRequest
 
 // PostNoteMoveJSONRequestBody defines body for PostNoteMove for application/json ContentType.
 type PostNoteMoveJSONRequestBody = MoveNoteRequest
+
+// PutTagJSONRequestBody defines body for PutTag for application/json ContentType.
+type PutTagJSONRequestBody = TagRenameRequest
 
 // AsFolderNode returns the union data inside the TreeNode as a FolderNode
 func (t TreeNode) AsFolderNode() (FolderNode, error) {
@@ -649,6 +805,9 @@ type ServerInterface interface {
 	// Create a new note (TREE-03)
 	// (POST /notes)
 	PostNotes(w http.ResponseWriter, r *http.Request)
+	// Search note titles for wiki-link autocomplete (LINKS-06 / D-13)
+	// (GET /notes/search-titles)
+	GetNotesSearchTitles(w http.ResponseWriter, r *http.Request, params GetNotesSearchTitlesParams)
 	// Delete a note by UUID (TREE-06)
 	// (DELETE /notes/{id})
 	DeleteNoteById(w http.ResponseWriter, r *http.Request, id NoteId)
@@ -658,9 +817,24 @@ type ServerInterface interface {
 	// Replace the content of a note by UUID
 	// (PUT /notes/{id})
 	PutNoteById(w http.ResponseWriter, r *http.Request, id NoteId, params PutNoteByIdParams)
+	// List notes that link to this note (LINKS-08 / D-27)
+	// (GET /notes/{id}/backlinks)
+	GetNoteBacklinks(w http.ResponseWriter, r *http.Request, id NoteId)
 	// Rename or move a note (TREE-05, TREE-07)
 	// (POST /notes/{id}/move)
 	PostNoteMove(w http.ResponseWriter, r *http.Request, id NoteId)
+	// List all tags with note counts (TAGS-03)
+	// (GET /tags)
+	GetTags(w http.ResponseWriter, r *http.Request)
+	// Remove a tag from all notes (TAGS-07 / D-24)
+	// (DELETE /tags/{name})
+	DeleteTag(w http.ResponseWriter, r *http.Request, name TagName)
+	// Rename a tag across all notes (TAGS-06 / D-23)
+	// (PUT /tags/{name})
+	PutTag(w http.ResponseWriter, r *http.Request, name TagName)
+	// List notes carrying a specific tag (TAGS-04 / D-02)
+	// (GET /tags/{name}/notes)
+	GetTagNotes(w http.ResponseWriter, r *http.Request, name TagName)
 	// Return the full folder/file hierarchy under notes/ (TREE-01)
 	// (GET /tree)
 	GetTree(w http.ResponseWriter, r *http.Request)
@@ -727,6 +901,12 @@ func (_ Unimplemented) PostNotes(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Search note titles for wiki-link autocomplete (LINKS-06 / D-13)
+// (GET /notes/search-titles)
+func (_ Unimplemented) GetNotesSearchTitles(w http.ResponseWriter, r *http.Request, params GetNotesSearchTitlesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Delete a note by UUID (TREE-06)
 // (DELETE /notes/{id})
 func (_ Unimplemented) DeleteNoteById(w http.ResponseWriter, r *http.Request, id NoteId) {
@@ -745,9 +925,39 @@ func (_ Unimplemented) PutNoteById(w http.ResponseWriter, r *http.Request, id No
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// List notes that link to this note (LINKS-08 / D-27)
+// (GET /notes/{id}/backlinks)
+func (_ Unimplemented) GetNoteBacklinks(w http.ResponseWriter, r *http.Request, id NoteId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Rename or move a note (TREE-05, TREE-07)
 // (POST /notes/{id}/move)
 func (_ Unimplemented) PostNoteMove(w http.ResponseWriter, r *http.Request, id NoteId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List all tags with note counts (TAGS-03)
+// (GET /tags)
+func (_ Unimplemented) GetTags(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Remove a tag from all notes (TAGS-07 / D-24)
+// (DELETE /tags/{name})
+func (_ Unimplemented) DeleteTag(w http.ResponseWriter, r *http.Request, name TagName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Rename a tag across all notes (TAGS-06 / D-23)
+// (PUT /tags/{name})
+func (_ Unimplemented) PutTag(w http.ResponseWriter, r *http.Request, name TagName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List notes carrying a specific tag (TAGS-04 / D-02)
+// (GET /tags/{name}/notes)
+func (_ Unimplemented) GetTagNotes(w http.ResponseWriter, r *http.Request, name TagName) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -930,6 +1140,52 @@ func (siw *ServerInterfaceWrapper) PostNotes(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetNotesSearchTitles operation middleware
+func (siw *ServerInterfaceWrapper) GetNotesSearchTitles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetNotesSearchTitlesParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNotesSearchTitles(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteNoteById operation middleware
 func (siw *ServerInterfaceWrapper) DeleteNoteById(w http.ResponseWriter, r *http.Request) {
 
@@ -1032,6 +1288,32 @@ func (siw *ServerInterfaceWrapper) PutNoteById(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetNoteBacklinks operation middleware
+func (siw *ServerInterfaceWrapper) GetNoteBacklinks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id NoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNoteBacklinks(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostNoteMove operation middleware
 func (siw *ServerInterfaceWrapper) PostNoteMove(w http.ResponseWriter, r *http.Request) {
 
@@ -1049,6 +1331,98 @@ func (siw *ServerInterfaceWrapper) PostNoteMove(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostNoteMove(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTags operation middleware
+func (siw *ServerInterfaceWrapper) GetTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTag operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name TagName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", chi.URLParam(r, "name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTag(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutTag operation middleware
+func (siw *ServerInterfaceWrapper) PutTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name TagName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", chi.URLParam(r, "name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutTag(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTagNotes operation middleware
+func (siw *ServerInterfaceWrapper) GetTagNotes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name TagName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", chi.URLParam(r, "name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTagNotes(w, r, name)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1246,6 +1620,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/notes", wrapper.PostNotes)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/notes/search-titles", wrapper.GetNotesSearchTitles)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/notes/{id}", wrapper.DeleteNoteById)
 	})
 	r.Group(func(r chi.Router) {
@@ -1255,7 +1632,22 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/notes/{id}", wrapper.PutNoteById)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/notes/{id}/backlinks", wrapper.GetNoteBacklinks)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/notes/{id}/move", wrapper.PostNoteMove)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tags", wrapper.GetTags)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/tags/{name}", wrapper.DeleteTag)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/tags/{name}", wrapper.PutTag)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tags/{name}/notes", wrapper.GetTagNotes)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/tree", wrapper.GetTree)
@@ -1680,6 +2072,28 @@ func (response PostNotes409JSONResponse) VisitPostNotesResponse(w http.ResponseW
 	return err
 }
 
+type GetNotesSearchTitlesRequestObject struct {
+	Params GetNotesSearchTitlesParams
+}
+
+type GetNotesSearchTitlesResponseObject interface {
+	VisitGetNotesSearchTitlesResponse(w http.ResponseWriter) error
+}
+
+type GetNotesSearchTitles200JSONResponse NoteSearchResponse
+
+func (response GetNotesSearchTitles200JSONResponse) VisitGetNotesSearchTitlesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteNoteByIdRequestObject struct {
 	Id NoteId `json:"id"`
 }
@@ -1840,6 +2254,42 @@ func (response PutNoteById500JSONResponse) VisitPutNoteByIdResponse(w http.Respo
 	return err
 }
 
+type GetNoteBacklinksRequestObject struct {
+	Id NoteId `json:"id"`
+}
+
+type GetNoteBacklinksResponseObject interface {
+	VisitGetNoteBacklinksResponse(w http.ResponseWriter) error
+}
+
+type GetNoteBacklinks200JSONResponse BacklinksResponse
+
+func (response GetNoteBacklinks200JSONResponse) VisitGetNoteBacklinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNoteBacklinks404JSONResponse Error
+
+func (response GetNoteBacklinks404JSONResponse) VisitGetNoteBacklinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostNoteMoveRequestObject struct {
 	Id   NoteId `json:"id"`
 	Body *PostNoteMoveJSONRequestBody
@@ -1915,6 +2365,192 @@ func (response PostNoteMove500JSONResponse) VisitPostNoteMoveResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTagsRequestObject struct {
+}
+
+type GetTagsResponseObject interface {
+	VisitGetTagsResponse(w http.ResponseWriter) error
+}
+
+type GetTags200JSONResponse TagList
+
+func (response GetTags200JSONResponse) VisitGetTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTagRequestObject struct {
+	Name TagName `json:"name"`
+}
+
+type DeleteTagResponseObject interface {
+	VisitDeleteTagResponse(w http.ResponseWriter) error
+}
+
+type DeleteTag200JSONResponse TagDeleteResponse
+
+func (response DeleteTag200JSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTag404JSONResponse Error
+
+func (response DeleteTag404JSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTag500JSONResponse Error
+
+func (response DeleteTag500JSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutTagRequestObject struct {
+	Name TagName `json:"name"`
+	Body *PutTagJSONRequestBody
+}
+
+type PutTagResponseObject interface {
+	VisitPutTagResponse(w http.ResponseWriter) error
+}
+
+type PutTag200JSONResponse TagRenameResponse
+
+func (response PutTag200JSONResponse) VisitPutTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutTag400JSONResponse Error
+
+func (response PutTag400JSONResponse) VisitPutTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutTag404JSONResponse Error
+
+func (response PutTag404JSONResponse) VisitPutTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutTag409JSONResponse Error
+
+func (response PutTag409JSONResponse) VisitPutTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutTag500JSONResponse Error
+
+func (response PutTag500JSONResponse) VisitPutTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTagNotesRequestObject struct {
+	Name TagName `json:"name"`
+}
+
+type GetTagNotesResponseObject interface {
+	VisitGetTagNotesResponse(w http.ResponseWriter) error
+}
+
+type GetTagNotes200JSONResponse NoteList
+
+func (response GetTagNotes200JSONResponse) VisitGetTagNotesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTagNotes404JSONResponse Error
+
+func (response GetTagNotes404JSONResponse) VisitGetTagNotesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2007,6 +2643,9 @@ type StrictServerInterface interface {
 	// Create a new note (TREE-03)
 	// (POST /notes)
 	PostNotes(ctx context.Context, request PostNotesRequestObject) (PostNotesResponseObject, error)
+	// Search note titles for wiki-link autocomplete (LINKS-06 / D-13)
+	// (GET /notes/search-titles)
+	GetNotesSearchTitles(ctx context.Context, request GetNotesSearchTitlesRequestObject) (GetNotesSearchTitlesResponseObject, error)
 	// Delete a note by UUID (TREE-06)
 	// (DELETE /notes/{id})
 	DeleteNoteById(ctx context.Context, request DeleteNoteByIdRequestObject) (DeleteNoteByIdResponseObject, error)
@@ -2016,9 +2655,24 @@ type StrictServerInterface interface {
 	// Replace the content of a note by UUID
 	// (PUT /notes/{id})
 	PutNoteById(ctx context.Context, request PutNoteByIdRequestObject) (PutNoteByIdResponseObject, error)
+	// List notes that link to this note (LINKS-08 / D-27)
+	// (GET /notes/{id}/backlinks)
+	GetNoteBacklinks(ctx context.Context, request GetNoteBacklinksRequestObject) (GetNoteBacklinksResponseObject, error)
 	// Rename or move a note (TREE-05, TREE-07)
 	// (POST /notes/{id}/move)
 	PostNoteMove(ctx context.Context, request PostNoteMoveRequestObject) (PostNoteMoveResponseObject, error)
+	// List all tags with note counts (TAGS-03)
+	// (GET /tags)
+	GetTags(ctx context.Context, request GetTagsRequestObject) (GetTagsResponseObject, error)
+	// Remove a tag from all notes (TAGS-07 / D-24)
+	// (DELETE /tags/{name})
+	DeleteTag(ctx context.Context, request DeleteTagRequestObject) (DeleteTagResponseObject, error)
+	// Rename a tag across all notes (TAGS-06 / D-23)
+	// (PUT /tags/{name})
+	PutTag(ctx context.Context, request PutTagRequestObject) (PutTagResponseObject, error)
+	// List notes carrying a specific tag (TAGS-04 / D-02)
+	// (GET /tags/{name}/notes)
+	GetTagNotes(ctx context.Context, request GetTagNotesRequestObject) (GetTagNotesResponseObject, error)
 	// Return the full folder/file hierarchy under notes/ (TREE-01)
 	// (GET /tree)
 	GetTree(ctx context.Context, request GetTreeRequestObject) (GetTreeResponseObject, error)
@@ -2312,6 +2966,32 @@ func (sh *strictHandler) PostNotes(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetNotesSearchTitles operation middleware
+func (sh *strictHandler) GetNotesSearchTitles(w http.ResponseWriter, r *http.Request, params GetNotesSearchTitlesParams) {
+	var request GetNotesSearchTitlesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNotesSearchTitles(ctx, request.(GetNotesSearchTitlesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNotesSearchTitles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetNotesSearchTitlesResponseObject); ok {
+		if err := validResponse.VisitGetNotesSearchTitlesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // DeleteNoteById operation middleware
 func (sh *strictHandler) DeleteNoteById(w http.ResponseWriter, r *http.Request, id NoteId) {
 	var request DeleteNoteByIdRequestObject
@@ -2398,6 +3078,32 @@ func (sh *strictHandler) PutNoteById(w http.ResponseWriter, r *http.Request, id 
 	}
 }
 
+// GetNoteBacklinks operation middleware
+func (sh *strictHandler) GetNoteBacklinks(w http.ResponseWriter, r *http.Request, id NoteId) {
+	var request GetNoteBacklinksRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNoteBacklinks(ctx, request.(GetNoteBacklinksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNoteBacklinks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetNoteBacklinksResponseObject); ok {
+		if err := validResponse.VisitGetNoteBacklinksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostNoteMove operation middleware
 func (sh *strictHandler) PostNoteMove(w http.ResponseWriter, r *http.Request, id NoteId) {
 	var request PostNoteMoveRequestObject
@@ -2424,6 +3130,115 @@ func (sh *strictHandler) PostNoteMove(w http.ResponseWriter, r *http.Request, id
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostNoteMoveResponseObject); ok {
 		if err := validResponse.VisitPostNoteMoveResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTags operation middleware
+func (sh *strictHandler) GetTags(w http.ResponseWriter, r *http.Request) {
+	var request GetTagsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTags(ctx, request.(GetTagsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTags")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTagsResponseObject); ok {
+		if err := validResponse.VisitGetTagsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteTag operation middleware
+func (sh *strictHandler) DeleteTag(w http.ResponseWriter, r *http.Request, name TagName) {
+	var request DeleteTagRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteTag(ctx, request.(DeleteTagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteTag")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteTagResponseObject); ok {
+		if err := validResponse.VisitDeleteTagResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutTag operation middleware
+func (sh *strictHandler) PutTag(w http.ResponseWriter, r *http.Request, name TagName) {
+	var request PutTagRequestObject
+
+	request.Name = name
+
+	var body PutTagJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutTag(ctx, request.(PutTagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutTag")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutTagResponseObject); ok {
+		if err := validResponse.VisitPutTagResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTagNotes operation middleware
+func (sh *strictHandler) GetTagNotes(w http.ResponseWriter, r *http.Request, name TagName) {
+	var request GetTagNotesRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTagNotes(ctx, request.(GetTagNotesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTagNotes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTagNotesResponseObject); ok {
+		if err := validResponse.VisitGetTagNotesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2486,119 +3301,164 @@ func (sh *strictHandler) GetApiV1Ws(w http.ResponseWriter, r *http.Request, para
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"whrTi96g97f/FwAA//8=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

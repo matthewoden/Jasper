@@ -1,11 +1,13 @@
 openapi: 3.1.0
 info:
   title: Jasper API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Jasper HTTP API. Phase 1 surface: a single hard-coded note keyed by UUID.
     Phase 2 adds the canonical notes-list endpoint and two admin endpoints
     (migration status, full re-index) backing UX-03 and DATA-10.
+    Phase 6 adds tags, backlinks, and wiki-link search-titles endpoints
+    (TAGS-03, TAGS-04, TAGS-06, TAGS-07, LINKS-06, LINKS-08).
 
     Source of truth: every route Jasper exposes lives in this file (API-01).
     Adding a route here without a Go handler causes a compile error
@@ -19,6 +21,8 @@ tags:
   - { name: tree, description: "File-tree projection over notes/ (TREE-01)" }
   - { name: folders, description: "Folder-only operations (TREE-04, TREE-05, TREE-06, TREE-07)" }
   - { name: config, description: "User configuration (DESIGN.md §11) — theme, daily notes, editor preferences" }
+  - { name: tags, description: "Tag browser, rename, delete (TAGS-03, TAGS-04, TAGS-06, TAGS-07)" }
+  - { name: backlinks, description: "Backlinks panel and wiki-link autocomplete (LINKS-06, LINKS-08)" }
 paths:
   /notes:
     get:
@@ -386,6 +390,194 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /tags:
+    get:
+      tags: [tags]
+      operationId: getTags
+      summary: List all tags with note counts (TAGS-03)
+      description: |
+        Returns all tags present in the vault, sorted alphabetically by name.
+        Each entry includes the normalized tag name (D-22: lowercase [a-z0-9_-]+)
+        and the count of notes carrying that tag. Feeds the sidebar tag browser
+        (D-01..D-03) and the tag autocomplete source (D-07).
+        Empty array on empty vault or when no notes have tags.
+      responses:
+        "200":
+          description: Alphabetical list of tags with note counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagList"
+  /tags/{name}:
+    parameters:
+      - $ref: "#/components/parameters/TagName"
+    put:
+      tags: [tags]
+      operationId: putTag
+      summary: Rename a tag across all notes (TAGS-06 / D-23)
+      description: |
+        Rename an existing tag in a single backend transaction. Rewrites the
+        `tags:` frontmatter array in every note carrying the tag. Returns the
+        list of affected note IDs so the client can refresh stale UI rows.
+        Emits a `tags:rewritten` WebSocket batch event.
+        Returns 400 if new_name fails charset validation (D-22);
+        404 if the old tag does not exist;
+        409 if new_name collides with an existing tag.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagRenameRequest"
+      responses:
+        "200":
+          description: Tag renamed; frontmatter rewritten across all carrying notes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagRenameResponse"
+        "400":
+          description: "new_name fails charset validation (D-22: ^[a-z0-9_-]+$)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Tag not found (old name does not exist)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: new_name collides with an existing tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Rewrite failed (disk or transaction error)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [tags]
+      operationId: deleteTag
+      summary: Remove a tag from all notes (TAGS-07 / D-24)
+      description: |
+        Remove an existing tag from the `tags:` frontmatter array in every note
+        carrying it, in a single transaction. The tag row is deleted after all
+        frontmatter rewrites commit. Returns the list of affected note IDs so
+        the client can refresh stale UI rows. Emits a `tags:rewritten` WebSocket
+        batch event with new_name=null to indicate deletion (D-34).
+        Returns 404 if the tag does not exist.
+      responses:
+        "200":
+          description: Tag removed; frontmatter rewritten across all carrying notes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagDeleteResponse"
+        "404":
+          description: Tag not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Rewrite failed (disk or transaction error)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /tags/{name}/notes:
+    parameters:
+      - $ref: "#/components/parameters/TagName"
+    get:
+      tags: [tags]
+      operationId: getTagNotes
+      summary: List notes carrying a specific tag (TAGS-04 / D-02)
+      description: |
+        Returns a flat list of notes that carry the given normalized tag name.
+        Results are sorted by note updated_at descending (most-recent first)
+        consistent with the tree sidebar's default sort.
+        Returns 404 if the tag does not exist in the vault.
+      responses:
+        "200":
+          description: Flat list of notes carrying this tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteList"
+        "404":
+          description: Tag not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /notes/{id}/backlinks:
+    parameters:
+      - $ref: "#/components/parameters/NoteId"
+    get:
+      tags: [backlinks]
+      operationId: getNoteBacklinks
+      summary: List notes that link to this note (LINKS-08 / D-27)
+      description: |
+        Returns resolved backlinks — notes containing `[[Title]]` references
+        that resolve to the note identified by `id`. Pending (unresolved) links
+        are not included (D-32). Rows are sorted by source note updated_at
+        descending (most-recently-edited source first, per D-28).
+        The `excerpt` field is server-built HTML safe for the DOMPurify
+        allowlist: `<span>...<mark class="backlink-ref">[[Title]]</mark>...</span>`.
+      responses:
+        "200":
+          description: List of resolved backlinks for this note
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacklinksResponse"
+        "404":
+          description: Note not found (unknown UUID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /notes/search-titles:
+    get:
+      tags: [backlinks]
+      operationId: getNotesSearchTitles
+      summary: Search note titles for wiki-link autocomplete (LINKS-06 / D-13)
+      description: |
+        Full-text prefix search over note titles for the `[[` autocomplete popup
+        (D-13). Empty `q` returns the most-recently-edited notes up to `limit`.
+        Results are ranked by recency (60%) + proximity (40%) per D-13.
+        `limit` is capped at 50 (T-06-02-05 DoS mitigation).
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            default: ""
+          description: |
+            Prefix search string. Empty string (default) returns the most-recent
+            notes by last-edit time. Case-insensitive, NFC-normalized.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 50
+          description: Maximum number of results to return (default 10, max 50).
+      responses:
+        "200":
+          description: Ranked list of matching note titles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteSearchResponse"
   /admin/status:
     get:
       tags: [admin]
@@ -535,6 +727,18 @@ components:
       schema:
         type: string
         format: uuid
+    TagName:
+      name: name
+      in: path
+      required: true
+      description: |
+        Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+        pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
+      schema:
+        type: string
+        pattern: "^[a-z0-9_-]+$"
+        minLength: 1
+        maxLength: 64
   schemas:
     Note:
       type: object
@@ -818,6 +1022,197 @@ components:
         message:
           type: string
           example: "no note with id 00000000-0000-4000-a000-000000000001"
+    TagWithCount:
+      type: object
+      required: [name, count]
+      description: A single tag entry with the number of notes carrying it.
+      properties:
+        name:
+          type: string
+          description: Normalized tag name (D-22 charset; lowercase [a-z0-9_-]+)
+          example: "project"
+        count:
+          type: integer
+          minimum: 0
+          description: Number of notes in the vault that carry this tag
+          example: 12
+    TagList:
+      type: object
+      required: [tags]
+      properties:
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/TagWithCount"
+          description: All tags in the vault, sorted alphabetically by name.
+    TagRenameRequest:
+      type: object
+      required: [new_name]
+      properties:
+        new_name:
+          type: string
+          pattern: "^[a-z0-9_-]+$"
+          minLength: 1
+          maxLength: 64
+          description: |
+            New tag name. Must match D-22 charset (lowercase letters, digits,
+            hyphens, underscores only). Server re-validates server-side (T-06-02-01
+            defense-in-depth).
+          example: "work"
+    TagRenameResponse:
+      type: object
+      required: [old_name, new_name, touched_note_ids]
+      properties:
+        old_name:
+          type: string
+          description: The tag name before the rename.
+        new_name:
+          type: string
+          description: The tag name after the rename.
+        touched_note_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: UUIDs of notes whose frontmatter was rewritten.
+    TagDeleteResponse:
+      type: object
+      required: [old_name, touched_note_ids]
+      properties:
+        old_name:
+          type: string
+          description: The tag name that was deleted.
+        touched_note_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: UUIDs of notes whose frontmatter was rewritten (tag removed).
+    BacklinkRow:
+      type: object
+      required: [source_id, source_title, source_path, excerpt, count]
+      description: |
+        A single backlink entry: a note that contains a `[[...]]` reference
+        resolving to the target note. One row per source note — multiple
+        references from the same source note collapse into one row with a
+        `count` badge (D-29).
+      properties:
+        source_id:
+          type: string
+          format: uuid
+          description: UUID of the note containing the `[[...]]` reference.
+        source_title:
+          type: string
+          description: Title of the source note (first H1 or filename without .md).
+        source_path:
+          type: string
+          description: Canonical relative path of the source note under notes/.
+        excerpt:
+          type: string
+          description: |
+            Server-built HTML excerpt showing the line containing the first
+            `[[...]]` reference. Safe for the DOMPurify allowlist:
+            `<span>...<mark class="backlink-ref">[[Title]]</mark>...</span>`.
+            Max 200 characters of visible text. Client MUST sanitize via
+            sanitize.ts before setting dangerouslySetInnerHTML (T-06-02-04).
+        count:
+          type: integer
+          minimum: 1
+          description: |
+            Number of distinct `[[...]]` references in this source note that
+            resolve to the target. Used for the count badge (D-29).
+    BacklinksResponse:
+      type: object
+      required: [backlinks]
+      properties:
+        backlinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacklinkRow"
+          description: |
+            Resolved backlinks sorted by source note updated_at descending
+            (most-recently-edited source first, per D-28).
+    NoteSearchResult:
+      type: object
+      required: [id, title, recency_score]
+      description: A single note-title search result for wiki-link autocomplete.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the matching note.
+        title:
+          type: string
+          description: Title of the matching note (first H1 or filename without .md).
+        folder:
+          type: string
+          nullable: true
+          description: |
+            Containing folder path (relative under notes/, without trailing slash),
+            or null for vault-root notes. Shown in autocomplete dropdown to
+            disambiguate notes with the same title.
+        recency_score:
+          type: number
+          description: |
+            0.0–1.0 recency component of the ranking score (higher = more recent).
+            60% weight in the combined score per D-13.
+        proximity_score:
+          type: number
+          nullable: true
+          description: |
+            0.0–1.0 proximity component (same-folder boost) or null when no
+            source folder context is provided. 40% weight in the combined score.
+    NoteSearchResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteSearchResult"
+          description: Ranked note title search results, best match first.
+    WSTagsRewrittenPayload:
+      type: object
+      required: [old_name, touched_note_ids]
+      description: |
+        Broadcast payload for `tags:rewritten` events. Emitted when a tag is
+        renamed (D-23 / TAGS-06) or deleted (D-24 / TAGS-07). When new_name is
+        null, the tag was deleted (D-34). Source tab suppresses its own broadcast
+        via the origin_session_id filter (D-35).
+      properties:
+        old_name:
+          type: string
+          description: The tag name before the rename/delete.
+        new_name:
+          type: string
+          nullable: true
+          description: The new tag name, or null when the tag was deleted.
+        touched_note_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: UUIDs of notes whose frontmatter was rewritten.
+    WSLinksRewrittenPayload:
+      type: object
+      required: [old_title, new_title, touched_note_ids]
+      description: |
+        Broadcast payload for `links:rewritten` events. Emitted when a note is
+        renamed and its wiki-link references are rewritten vault-wide (LINKS-07 /
+        D-33). Source tab suppresses its own broadcast via origin_session_id (D-35).
+      properties:
+        old_title:
+          type: string
+          description: The note title before the rename.
+        new_title:
+          type: string
+          description: The note title after the rename.
+        touched_note_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: UUIDs of notes whose content was rewritten.
     WSEnvelope:
       type: object
       description: |
@@ -839,6 +1234,8 @@ components:
             - "folder:deleted"
             - "folder:moved"
             - "tags:updated"
+            - "tags:rewritten"
+            - "links:rewritten"
             - "reindex:started"
             - "reindex:complete"
             - "migration:status"

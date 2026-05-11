@@ -170,6 +170,151 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all tags with note counts (TAGS-03)
+         * @description Returns all tags present in the vault, sorted alphabetically by name.
+         *     Each entry includes the normalized tag name (D-22: lowercase [a-z0-9_-]+)
+         *     and the count of notes carrying that tag. Feeds the sidebar tag browser
+         *     (D-01..D-03) and the tag autocomplete source (D-07).
+         *     Empty array on empty vault or when no notes have tags.
+         */
+        get: operations["getTags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+                 *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
+                 */
+                name: components["parameters"]["TagName"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename a tag across all notes (TAGS-06 / D-23)
+         * @description Rename an existing tag in a single backend transaction. Rewrites the
+         *     `tags:` frontmatter array in every note carrying the tag. Returns the
+         *     list of affected note IDs so the client can refresh stale UI rows.
+         *     Emits a `tags:rewritten` WebSocket batch event.
+         *     Returns 400 if new_name fails charset validation (D-22);
+         *     404 if the old tag does not exist;
+         *     409 if new_name collides with an existing tag.
+         */
+        put: operations["putTag"];
+        post?: never;
+        /**
+         * Remove a tag from all notes (TAGS-07 / D-24)
+         * @description Remove an existing tag from the `tags:` frontmatter array in every note
+         *     carrying it, in a single transaction. The tag row is deleted after all
+         *     frontmatter rewrites commit. Returns the list of affected note IDs so
+         *     the client can refresh stale UI rows. Emits a `tags:rewritten` WebSocket
+         *     batch event with new_name=null to indicate deletion (D-34).
+         *     Returns 404 if the tag does not exist.
+         */
+        delete: operations["deleteTag"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{name}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+                 *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
+                 */
+                name: components["parameters"]["TagName"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List notes carrying a specific tag (TAGS-04 / D-02)
+         * @description Returns a flat list of notes that carry the given normalized tag name.
+         *     Results are sorted by note updated_at descending (most-recent first)
+         *     consistent with the tree sidebar's default sort.
+         *     Returns 404 if the tag does not exist in the vault.
+         */
+        get: operations["getTagNotes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notes/{id}/backlinks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                id: components["parameters"]["NoteId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List notes that link to this note (LINKS-08 / D-27)
+         * @description Returns resolved backlinks — notes containing `[[Title]]` references
+         *     that resolve to the note identified by `id`. Pending (unresolved) links
+         *     are not included (D-32). Rows are sorted by source note updated_at
+         *     descending (most-recently-edited source first, per D-28).
+         *     The `excerpt` field is server-built HTML safe for the DOMPurify
+         *     allowlist: `<span>...<mark class="backlink-ref">[[Title]]</mark>...</span>`.
+         */
+        get: operations["getNoteBacklinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notes/search-titles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search note titles for wiki-link autocomplete (LINKS-06 / D-13)
+         * @description Full-text prefix search over note titles for the `[[` autocomplete popup
+         *     (D-13). Empty `q` returns the most-recently-edited notes up to `limit`.
+         *     Results are ranked by recency (60%) + proximity (40%) per D-13.
+         *     `limit` is capped at 50 (T-06-02-05 DoS mitigation).
+         */
+        get: operations["getNotesSearchTitles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/status": {
         parameters: {
             query?: never;
@@ -505,6 +650,140 @@ export interface components {
             /** @example no note with id 00000000-0000-4000-a000-000000000001 */
             message: string;
         };
+        /** @description A single tag entry with the number of notes carrying it. */
+        TagWithCount: {
+            /**
+             * @description Normalized tag name (D-22 charset; lowercase [a-z0-9_-]+)
+             * @example project
+             */
+            name: string;
+            /**
+             * @description Number of notes in the vault that carry this tag
+             * @example 12
+             */
+            count: number;
+        };
+        TagList: {
+            /** @description All tags in the vault, sorted alphabetically by name. */
+            tags: components["schemas"]["TagWithCount"][];
+        };
+        TagRenameRequest: {
+            /**
+             * @description New tag name. Must match D-22 charset (lowercase letters, digits,
+             *     hyphens, underscores only). Server re-validates server-side (T-06-02-01
+             *     defense-in-depth).
+             * @example work
+             */
+            new_name: string;
+        };
+        TagRenameResponse: {
+            /** @description The tag name before the rename. */
+            old_name: string;
+            /** @description The tag name after the rename. */
+            new_name: string;
+            /** @description UUIDs of notes whose frontmatter was rewritten. */
+            touched_note_ids: string[];
+        };
+        TagDeleteResponse: {
+            /** @description The tag name that was deleted. */
+            old_name: string;
+            /** @description UUIDs of notes whose frontmatter was rewritten (tag removed). */
+            touched_note_ids: string[];
+        };
+        /**
+         * @description A single backlink entry: a note that contains a `[[...]]` reference
+         *     resolving to the target note. One row per source note — multiple
+         *     references from the same source note collapse into one row with a
+         *     `count` badge (D-29).
+         */
+        BacklinkRow: {
+            /**
+             * Format: uuid
+             * @description UUID of the note containing the `[[...]]` reference.
+             */
+            source_id: string;
+            /** @description Title of the source note (first H1 or filename without .md). */
+            source_title: string;
+            /** @description Canonical relative path of the source note under notes/. */
+            source_path: string;
+            /**
+             * @description Server-built HTML excerpt showing the line containing the first
+             *     `[[...]]` reference. Safe for the DOMPurify allowlist:
+             *     `<span>...<mark class="backlink-ref">[[Title]]</mark>...</span>`.
+             *     Max 200 characters of visible text. Client MUST sanitize via
+             *     sanitize.ts before setting dangerouslySetInnerHTML (T-06-02-04).
+             */
+            excerpt: string;
+            /**
+             * @description Number of distinct `[[...]]` references in this source note that
+             *     resolve to the target. Used for the count badge (D-29).
+             */
+            count: number;
+        };
+        BacklinksResponse: {
+            /**
+             * @description Resolved backlinks sorted by source note updated_at descending
+             *     (most-recently-edited source first, per D-28).
+             */
+            backlinks: components["schemas"]["BacklinkRow"][];
+        };
+        /** @description A single note-title search result for wiki-link autocomplete. */
+        NoteSearchResult: {
+            /**
+             * Format: uuid
+             * @description UUID of the matching note.
+             */
+            id: string;
+            /** @description Title of the matching note (first H1 or filename without .md). */
+            title: string;
+            /**
+             * @description Containing folder path (relative under notes/, without trailing slash),
+             *     or null for vault-root notes. Shown in autocomplete dropdown to
+             *     disambiguate notes with the same title.
+             */
+            folder?: string | null;
+            /**
+             * @description 0.0–1.0 recency component of the ranking score (higher = more recent).
+             *     60% weight in the combined score per D-13.
+             */
+            recency_score: number;
+            /**
+             * @description 0.0–1.0 proximity component (same-folder boost) or null when no
+             *     source folder context is provided. 40% weight in the combined score.
+             */
+            proximity_score?: number | null;
+        };
+        NoteSearchResponse: {
+            /** @description Ranked note title search results, best match first. */
+            results: components["schemas"]["NoteSearchResult"][];
+        };
+        /**
+         * @description Broadcast payload for `tags:rewritten` events. Emitted when a tag is
+         *     renamed (D-23 / TAGS-06) or deleted (D-24 / TAGS-07). When new_name is
+         *     null, the tag was deleted (D-34). Source tab suppresses its own broadcast
+         *     via the origin_session_id filter (D-35).
+         */
+        WSTagsRewrittenPayload: {
+            /** @description The tag name before the rename/delete. */
+            old_name: string;
+            /** @description The new tag name, or null when the tag was deleted. */
+            new_name?: string | null;
+            /** @description UUIDs of notes whose frontmatter was rewritten. */
+            touched_note_ids: string[];
+        };
+        /**
+         * @description Broadcast payload for `links:rewritten` events. Emitted when a note is
+         *     renamed and its wiki-link references are rewritten vault-wide (LINKS-07 /
+         *     D-33). Source tab suppresses its own broadcast via origin_session_id (D-35).
+         */
+        WSLinksRewrittenPayload: {
+            /** @description The note title before the rename. */
+            old_title: string;
+            /** @description The note title after the rename. */
+            new_title: string;
+            /** @description UUIDs of notes whose content was rewritten. */
+            touched_note_ids: string[];
+        };
         /**
          * @description WebSocket event envelope (DESIGN.md §5.2). The `event` enum is
          *     locked verbatim and mirrors the Go const block in
@@ -513,7 +792,7 @@ export interface components {
          */
         WSEnvelope: {
             /** @enum {string} */
-            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "tags:updated" | "reindex:started" | "reindex:complete" | "migration:status";
+            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status";
             /**
              * @description UUID of the session that originated the mutation. Empty
              *     string for server-originated events (reindex:*,
@@ -589,6 +868,11 @@ export interface components {
     parameters: {
         /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
         NoteId: string;
+        /**
+         * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+         *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
+         */
+        TagName: string;
     };
     requestBodies: never;
     headers: never;
@@ -1058,6 +1342,231 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Alphabetical list of tags with note counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagList"];
+                };
+            };
+        };
+    };
+    putTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+                 *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
+                 */
+                name: components["parameters"]["TagName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagRenameRequest"];
+            };
+        };
+        responses: {
+            /** @description Tag renamed; frontmatter rewritten across all carrying notes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagRenameResponse"];
+                };
+            };
+            /** @description new_name fails charset validation (D-22: ^[a-z0-9_-]+$) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Tag not found (old name does not exist) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description new_name collides with an existing tag */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rewrite failed (disk or transaction error) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+                 *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
+                 */
+                name: components["parameters"]["TagName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tag removed; frontmatter rewritten across all carrying notes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagDeleteResponse"];
+                };
+            };
+            /** @description Tag not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rewrite failed (disk or transaction error) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTagNotes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+                 *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
+                 */
+                name: components["parameters"]["TagName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Flat list of notes carrying this tag */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteList"];
+                };
+            };
+            /** @description Tag not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getNoteBacklinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                id: components["parameters"]["NoteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of resolved backlinks for this note */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacklinksResponse"];
+                };
+            };
+            /** @description Note not found (unknown UUID) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getNotesSearchTitles: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Prefix search string. Empty string (default) returns the most-recent
+                 *     notes by last-edit time. Case-insensitive, NFC-normalized.
+                 */
+                q?: string;
+                /** @description Maximum number of results to return (default 10, max 50). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ranked list of matching note titles */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteSearchResponse"];
                 };
             };
         };
