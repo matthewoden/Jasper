@@ -4,18 +4,27 @@ import { nextDelay } from "./backoff";
 import { useTreeStore } from "./useTreeStore";
 import { useFileTree } from "./useFileTree";
 import { dispatchTagEvent } from "./useTagBrowser";
+import { dispatchLinksEvent } from "./useBacklinks";
 import type { components } from "../api/schema";
 
 type WSEnvelope = components["schemas"]["WSEnvelope"];
 type WSNoteUpdatedPayload = components["schemas"]["WSNoteUpdatedPayload"];
 type WSNoteDeletedPayload = components["schemas"]["WSNoteDeletedPayload"];
 type WSReindexCompletePayload = components["schemas"]["WSReindexCompletePayload"];
+type WSLinksRewrittenPayload = components["schemas"]["WSLinksRewrittenPayload"];
 
 export interface SessionSyncHandlers {
   onNoteUpdated: (p: WSNoteUpdatedPayload) => void;
   onNoteDeleted: (p: WSNoteDeletedPayload) => void;
   onReindexStarted: () => void;
   onReindexComplete: (p: WSReindexCompletePayload) => void;
+  /**
+   * Plan 06-11 (D-33/D-35): called when a note rename's wiki-link rewrite
+   * completes. Cross-tab only — source tab is suppressed by the
+   * origin_session_id filter (D-35). Optional; App.tsx may use this to
+   * surface a RenameRewriteErrorBanner on partial failure.
+   */
+  onLinksRewritten?: (p: WSLinksRewrittenPayload) => void;
 }
 
 /**
@@ -125,6 +134,10 @@ export function useSessionSync(
             handlersRef.current.onNoteUpdated(
               env.payload as WSNoteUpdatedPayload,
             );
+            // Plan 06-11 (D-31): fan-out to useBacklinks subscribers so the
+            // backlinks panel refreshes when any note is updated (a save
+            // anywhere could have added/removed a [[...]] reference).
+            dispatchLinksEvent("note:updated");
             break;
           case "note:deleted":
             handlersRef.current.onNoteDeleted(
@@ -132,6 +145,11 @@ export function useSessionSync(
             );
             break;
           case "note:created":
+            // Plan 06-11 (D-31): new note might link to the currently open one.
+            dispatchLinksEvent("note:created");
+            // Fall through to tree refresh.
+            void refreshTree();
+            break;
           case "note:moved":
           case "folder:created":
           case "folder:deleted":
@@ -154,6 +172,17 @@ export function useSessionSync(
             // dispatchTagEvent uses the module-level Set pattern (mirrors
             // treeFetchSubscribers in useFileTree) — no signature change needed.
             dispatchTagEvent(env.event);
+            break;
+          case "links:rewritten":
+            // Plan 06-11 (D-33/D-35): fan-out to useBacklinks subscribers so the
+            // backlinks panel refreshes when a rename rewrites wiki-link text.
+            // Also refresh the file tree so sidebar labels update.
+            // Source tab is already suppressed by the top-level origin_session_id
+            // filter above (D-35 — origin_session_id !== "" && matches sessionId).
+            dispatchLinksEvent("links:rewritten");
+            void refreshTree();
+            // Notify optional App.tsx handler (e.g. to show error banner on partial failure).
+            handlersRef.current.onLinksRewritten?.(env.payload as WSLinksRewrittenPayload);
             break;
           // migration:status: deferred to Phase 2 retro;
           // unknown future events ignored without warning so they don't crash.

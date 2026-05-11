@@ -21,6 +21,7 @@ import { RightRail } from "./components/RightRail";
 import { BacklinksRail } from "./components/BacklinksRail";
 import { EditorPane, type EditorPaneHandlers } from "./components/EditorPane";
 import { MigrationBanner } from "./components/MigrationBanner";
+import { RenameRewriteErrorBanner, type RewriteError } from "./components/RenameRewriteErrorBanner";
 import { ReindexProgress } from "./components/ReindexProgress";
 import { ResetAndRebuildDialog } from "./components/ResetAndRebuildDialog";
 import { Sidebar } from "./components/Sidebar";
@@ -108,6 +109,10 @@ function AppInner() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reindexPhase, setReindexPhase] = useState<ReindexPhase>("idle");
   const [reindexError, setReindexError] = useState<string | undefined>();
+  // Plan 06-11 (D-36/D-37): rewrite error banner state. Populated by the
+  // onLinksRewritten handler when the server signals a partial rollback, or
+  // by API wrappers when tag rename/delete returns an error. Cleared on dismiss.
+  const [rewriteError, setRewriteError] = useState<RewriteError | null>(null);
   const status = useMigrationStatus();
   // Phase 3 (Plan 03-07): the tree's selected-note id drives the
   // editor pane. setActiveNote is exposed via Sidebar.onSelectNote.
@@ -150,6 +155,19 @@ function AppInner() {
       onReindexComplete: () => {
         // UX-04: reindex:complete → hide the overlay.
         setReindexPhase("idle");
+      },
+      // Plan 06-11 (D-33/D-35): links:rewritten from a cross-tab rename.
+      // The payload's touched_note_ids indicates which notes were rewritten;
+      // for v1 we do not check for partial failure here (the backend rolls
+      // back atomically, so a links:rewritten event means success).
+      // A future plan can add `success: false` to the payload shape and
+      // show the error banner. For now this handler is a no-op placeholder
+      // so the App.tsx wiring is in place and tests can verify the shape.
+      onLinksRewritten: (_p) => {
+        // Partial-failure detection deferred (D-37 full implementation).
+        // When the backend adds `success: false` to WSLinksRewrittenPayload,
+        // set rewriteError here: setRewriteError({ kind: "rename", missedCount: ... }).
+        void _p;
       },
     }),
     [],
@@ -235,6 +253,12 @@ function AppInner() {
       <MigrationBanner
         onResetConfirm={() => setDialogOpen(true)}
         status={status}
+      />
+      {/* Plan 06-11 (D-36/D-37): rename/tag-rewrite rollback error banner.
+          Stacks below MigrationBanner when both are visible simultaneously. */}
+      <RenameRewriteErrorBanner
+        state={rewriteError}
+        onDismiss={() => setRewriteError(null)}
       />
       <ResetAndRebuildDialog
         open={dialogOpen}
