@@ -80,6 +80,15 @@ func (f *fakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _
 	return nil
 }
 
+// Plan 06-11: backlinks retrieval + title search stubs for fakeIndex.
+func (f *fakeIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]notes.BacklinkRow, error) {
+	return []notes.BacklinkRow{}, nil
+}
+
+func (f *fakeIndex) SearchTitles(_ context.Context, _ string, _ int) ([]notes.SearchResult, error) {
+	return []notes.SearchResult{}, nil
+}
+
 // setupGetNotesServer builds a Server wired with the given index and
 // mounts the strict-server bridge under /api/v1.
 func setupGetNotesServer(t *testing.T, idx notes.Index) *httptest.Server {
@@ -396,6 +405,15 @@ func (r *realIndex) SourcesByBacklinkTitle(_ context.Context, title string) ([]n
 
 func (r *realIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
 	return nil
+}
+
+// Plan 06-11: realIndex stubs for GetBacklinks + SearchTitles.
+func (r *realIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]notes.BacklinkRow, error) {
+	return []notes.BacklinkRow{}, nil
+}
+
+func (r *realIndex) SearchTitles(_ context.Context, _ string, _ int) ([]notes.SearchResult, error) {
+	return []notes.SearchResult{}, nil
 }
 
 func (r *realIndex) DeleteByPathPrefix(_ context.Context, prefix string) (int, error) {

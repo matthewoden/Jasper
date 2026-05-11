@@ -1077,3 +1077,13 @@ func (nopIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]NoteSumma
 func (nopIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
 	return nil
 }
+
+// Plan 06-11: nopIndex no-ops for GetBacklinks + SearchTitles.
+// Real implementations live in internal/index/store.go.
+func (nopIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, error) {
+	return []BacklinkRow{}, nil
+}
+
+func (nopIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchResult, error) {
+	return []SearchResult{}, nil
+}

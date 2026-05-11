@@ -234,6 +234,16 @@ export const jasperEditorTheme = EditorView.theme(
     // removed on keyup (T-06-09-04: cleanup in useEffect return).
     "&[data-cmd-held] .cm-wiki-link": { cursor: "pointer" },
     "&[data-cmd-held] .cm-wiki-link-pending": { cursor: "pointer" },
+    // Tag clickable decoration (Plan 06-10 / D-08).
+    // Plain click (no Cmd) on a tag value in frontmatter filters the sidebar.
+    // Dotted underline distinguishes tags from solid-underline wiki-links.
+    ".cm-tag-clickable": {
+      color: "var(--color-accent)",
+      cursor: "pointer",
+      textDecoration: "underline",
+      textDecorationStyle: "dotted",
+      textUnderlineOffset: "2px",
+    },
   },
   { dark: false }
 );

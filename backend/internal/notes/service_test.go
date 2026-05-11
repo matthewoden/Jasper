@@ -146,6 +146,15 @@ func (f *fakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _
 	return nil
 }
 
+// Plan 06-11: fakeIndex stubs for GetBacklinks + SearchTitles.
+func (f *fakeIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, error) {
+	return []BacklinkRow{}, nil
+}
+
+func (f *fakeIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchResult, error) {
+	return []SearchResult{}, nil
+}
+
 // --------------------------------------------------------------------------
 // Plan 04-04 Task 1: fakeBroadcaster + 5 new If-Match / broadcast tests
 // --------------------------------------------------------------------------
@@ -663,6 +672,15 @@ func (s *stubIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]NoteS
 
 func (s *stubIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
 	return nil
+}
+
+// Plan 06-11: stubIndex stubs for GetBacklinks + SearchTitles.
+func (s *stubIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, error) {
+	return []BacklinkRow{}, nil
+}
+
+func (s *stubIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchResult, error) {
+	return []SearchResult{}, nil
 }
 
 // recByID returns the in-memory record for assertions. Test-only.
@@ -1804,6 +1822,15 @@ func (t *tagStubIndex) UpdateBacklinksTargetTitle(_ context.Context, oldTitle, n
 		delete(t.backlinks, oldTitle)
 	}
 	return nil
+}
+
+// Plan 06-11: GetBacklinks + SearchTitles stubs for tagStubIndex.
+func (t *tagStubIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, error) {
+	return []BacklinkRow{}, nil
+}
+
+func (t *tagStubIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchResult, error) {
+	return []SearchResult{}, nil
 }
 
 // newCrossVaultSvc constructs a Service backed by a real fsstore.Store

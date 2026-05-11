@@ -189,6 +189,40 @@ type Index interface {
 	// Called by RenameRewriteWikilinks after the FS pass succeeds. Non-fatal
 	// on error — filesystem is truth; next Reconcile heals.
 	UpdateBacklinksTargetTitle(ctx context.Context, oldTitle, newTitle string, newTargetID *uuid.UUID) error
+
+	// Plan 06-11: backlinks retrieval + title search for the API handlers.
+
+	// GetBacklinks returns the resolved backlinks for targetID sorted by
+	// source note recency (mtime_unix DESC) per D-28. Pending rows are
+	// excluded per D-32. Returns a non-nil empty slice when there are none.
+	GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]BacklinkRow, error)
+
+	// SearchTitles returns up to limit notes whose titles contain q
+	// (case-insensitive LIKE match), ordered by mtime DESC. When q is
+	// empty, returns the most-recent notes up to limit. Max limit = 50.
+	SearchTitles(ctx context.Context, q string, limit int) ([]SearchResult, error)
+}
+
+// BacklinkRow is the projection returned by Index.GetBacklinks.
+// Matches the BacklinkRow component schema in api/openapi.yaml (Plan 06-02).
+//
+// Count is always 1 in this v1 implementation (D-claude-04 decision —
+// multi-occurrence badge deferred to a follow-on phase).
+type BacklinkRow struct {
+	SourceID    uuid.UUID
+	SourceTitle string
+	SourcePath  string
+	Excerpt     string // server-built HTML per UI-SPEC §Surface 2
+	Count       int    // v1: always 1
+}
+
+// SearchResult is the projection returned by Index.SearchTitles.
+// Used by GetNotesSearchTitles (LINKS-06 / D-13 wiki-link autocomplete).
+type SearchResult struct {
+	ID        uuid.UUID
+	Title     string
+	Path      string
+	MtimeUnix int64
 }
 
 // TagWithCount is the projection returned by Index.ListTags.
