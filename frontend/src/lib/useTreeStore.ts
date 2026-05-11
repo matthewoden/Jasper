@@ -47,6 +47,17 @@ export const LS_KEY_ACTIVE_NOTE = "jasper.tree.activeNoteId";
 export const LS_KEY_SIDEBAR_WIDTH = "jasper.sidebar.width";
 export const SIDEBAR_WIDTH_DEFAULT = 260; // also acts as MIN clamp
 
+// Phase 6 — Plan 06-07: right-rail state persistence keys + width constants.
+// See 06-UI-SPEC.md §Surface 2 and 06-CONTEXT.md §D-25/D-26.
+// activeTagFilter is NOT persisted (transient slot — clears on reload).
+export const LS_KEY_TAG_BROWSER = "jasper.tag.browser.expanded";
+export const LS_KEY_BACKLINKS_RAIL_EXPANDED = "jasper.backlinks.rail.expanded";
+export const LS_KEY_BACKLINKS_RAIL_WIDTH = "jasper.backlinks.rail.width";
+export const RAIL_DEFAULT_WIDTH = 280;
+export const RAIL_MIN_WIDTH = 220;
+export const RAIL_MAX_WIDTH = 480;
+export const RAIL_COLLAPSED_WIDTH = 32;
+
 // BL-03 (Phase 5.5 gap-closure Plan 11) — editor pane floor. On viewports
 // narrower than `SIDEBAR_WIDTH_DEFAULT + EDITOR_MIN = 580px` the sidebar
 // is permitted to shrink below MIN so the editor pane keeps at least
@@ -134,6 +145,19 @@ export interface TreeStore {
 
   // Phase 4 setter for connectionStatus.
   setConnectionStatus: (s: ConnectionStatus) => void;
+
+  // Phase 6 ADD-only extension (see 06-UI-SPEC.md §State Management Additions).
+  // tagBrowserExpanded and backlinksRailExpanded persist to localStorage.
+  // backlinksRailWidth persists to localStorage with min/max clamping.
+  // activeTagFilter is NOT persisted — transient, clears on reload.
+  tagBrowserExpanded: boolean;
+  setTagBrowserExpanded: (v: boolean) => void;
+  activeTagFilter: string | null;
+  setActiveTagFilter: (t: string | null) => void;
+  backlinksRailExpanded: boolean;
+  setBacklinksRailExpanded: (v: boolean) => void;
+  backlinksRailWidth: number;
+  setBacklinksRailWidth: (w: number) => void;
 }
 
 export const useTreeStore = create<TreeStore>((set) => ({
@@ -195,6 +219,19 @@ export const useTreeStore = create<TreeStore>((set) => ({
     const liveMax = Math.max(0, window.innerWidth - EDITOR_MIN);
     set({ sidebarWidth: Math.min(minClamped, liveMax) });
   },
+
+  // Phase 6 slices (ADD-only — no existing slice modified).
+  tagBrowserExpanded: false,
+  setTagBrowserExpanded: (v) => set({ tagBrowserExpanded: v }),
+  // activeTagFilter is NOT persisted — transient slot (same precedent as pendingRename).
+  activeTagFilter: null,
+  setActiveTagFilter: (t) => set({ activeTagFilter: t }),
+  backlinksRailExpanded: false,
+  setBacklinksRailExpanded: (v) => set({ backlinksRailExpanded: v }),
+  backlinksRailWidth: RAIL_DEFAULT_WIDTH,
+  // Clamping happens at setter time so the store value is always in [MIN, MAX].
+  setBacklinksRailWidth: (w) =>
+    set({ backlinksRailWidth: Math.min(RAIL_MAX_WIDTH, Math.max(RAIL_MIN_WIDTH, w)) }),
 }));
 
 /**
@@ -312,6 +349,33 @@ if (typeof window !== "undefined") {
     // Corrupted storage — fall through to default; do NOT throw.
   }
 
+  // 4a) Hydrate Phase 6 slices from localStorage (mirrors the sidebarWidth pattern above).
+  //     activeTagFilter is NOT hydrated — it is a transient slot (not persisted).
+  try {
+    const raw = window.localStorage.getItem(LS_KEY_TAG_BROWSER);
+    if (raw === "true") useTreeStore.setState({ tagBrowserExpanded: true });
+  } catch {
+    // Corrupted storage — fall through to default; do NOT throw.
+  }
+  try {
+    const raw = window.localStorage.getItem(LS_KEY_BACKLINKS_RAIL_EXPANDED);
+    if (raw === "true") useTreeStore.setState({ backlinksRailExpanded: true });
+  } catch {
+    // Corrupted storage — fall through to default; do NOT throw.
+  }
+  try {
+    const raw = window.localStorage.getItem(LS_KEY_BACKLINKS_RAIL_WIDTH);
+    if (raw !== null) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= RAIL_MIN_WIDTH && n <= RAIL_MAX_WIDTH) {
+        useTreeStore.setState({ backlinksRailWidth: n });
+      }
+      // Out-of-range or non-finite → silently fall through to RAIL_DEFAULT_WIDTH.
+    }
+  } catch {
+    // Corrupted storage — fall through to default; do NOT throw.
+  }
+
   // 4) Debounced persistence — subscribe to slice changes and flush each
   //    persisted slot on its own 250ms timer. The 250ms debounce avoids
   //    storage thrash during rapid expand/collapse (UI-SPEC §State persistence).
@@ -321,6 +385,12 @@ if (typeof window !== "undefined") {
   let lastExpandedJSON = JSON.stringify([...useTreeStore.getState().expanded]);
   let lastActive: string | null = useTreeStore.getState().activeNoteId;
   let lastWidth = useTreeStore.getState().sidebarWidth;
+
+  // Phase 6 persistence tracking variables (appended; no existing variable modified).
+  let lastTagBrowserExpanded = useTreeStore.getState().tagBrowserExpanded;
+  let lastBacklinksRailExpanded = useTreeStore.getState().backlinksRailExpanded;
+  let lastRailWidth = useTreeStore.getState().backlinksRailWidth;
+  let railWidthTimer: ReturnType<typeof setTimeout> | undefined;
 
   useTreeStore.subscribe((state) => {
     const j = JSON.stringify([...state.expanded]);
@@ -364,5 +434,37 @@ if (typeof window !== "undefined") {
         }
       }, 250);
     }
+
+    // Phase 6 persistence subscribers (ADD-only; no existing branch modified).
+    // Boolean keys are debounced at the same 250ms window as other slices.
+    if (state.tagBrowserExpanded !== lastTagBrowserExpanded) {
+      lastTagBrowserExpanded = state.tagBrowserExpanded;
+      try {
+        window.localStorage.setItem(LS_KEY_TAG_BROWSER, String(state.tagBrowserExpanded));
+      } catch {
+        // Quota / private mode — best-effort.
+      }
+    }
+    if (state.backlinksRailExpanded !== lastBacklinksRailExpanded) {
+      lastBacklinksRailExpanded = state.backlinksRailExpanded;
+      try {
+        window.localStorage.setItem(LS_KEY_BACKLINKS_RAIL_EXPANDED, String(state.backlinksRailExpanded));
+      } catch {
+        // Quota / private mode — best-effort.
+      }
+    }
+    // backlinksRailWidth is debounced to avoid storage thrash during drag.
+    if (state.backlinksRailWidth !== lastRailWidth) {
+      lastRailWidth = state.backlinksRailWidth;
+      if (railWidthTimer !== undefined) clearTimeout(railWidthTimer);
+      railWidthTimer = setTimeout(() => {
+        try {
+          window.localStorage.setItem(LS_KEY_BACKLINKS_RAIL_WIDTH, String(state.backlinksRailWidth));
+        } catch {
+          // Quota / private mode — best-effort.
+        }
+      }, 250);
+    }
+    // activeTagFilter is intentionally NOT persisted (transient slot).
   });
 }
