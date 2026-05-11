@@ -50,8 +50,28 @@ import {
   type ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
+import { StateEffect } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { getResolvedTitlesSnapshot } from "./wikilinkResolver";
+
+// ---------------------------------------------------------------------------
+// StateEffect — resolved-titles refresh signal
+// ---------------------------------------------------------------------------
+
+/**
+ * Dispatching this effect tells the wikilinkPlugin to do a full
+ * createDeco() rebuild on the next update cycle. MarkdownEditor fires it
+ * from the useEffect that updates the module-level snapshot whenever
+ * useResolvedTitleSet() returns a new Set.
+ *
+ * Why an effect instead of relying on selectionSet / docChanged:
+ *   MatchDecorator.updateDeco() only rebuilds when the doc or viewport
+ *   changed — a pure selection dispatch is silently ignored by updateDeco.
+ *   Detecting the effect in the plugin's update() and calling createDeco()
+ *   directly (full rebuild) is the correct CM6 pattern for external state
+ *   changes that affect decorations.
+ */
+export const resolvedTitlesChanged = StateEffect.define<void>();
 
 // ---------------------------------------------------------------------------
 // Regex
@@ -241,6 +261,16 @@ export const wikilinkPlugin = ViewPlugin.fromClass(
         // IME gate — D-07/D-31 pattern: map existing decorations through
         // document changes to keep positions valid without a full rebuild.
         this.decorations = this.decorations.map(u.changes);
+        return;
+      }
+      // Full rebuild when the resolved-titles snapshot changed (external
+      // state — MatchDecorator.updateDeco won't catch it on selection-only
+      // dispatches). createDeco rebuilds all visible decorations from scratch.
+      const titlesRefreshed = u.transactions.some((tr) =>
+        tr.effects.some((e) => e.is(resolvedTitlesChanged)),
+      );
+      if (titlesRefreshed) {
+        this.decorations = wikilinkMatcher.createDeco(u.view);
         return;
       }
       if (

@@ -50,7 +50,7 @@ import {
 } from "../editor/linkClickHandler";
 import { codeblockExpand } from "../editor/codeblockExpand";
 import { frontmatterPlugin } from "../editor/frontmatterPlugin";
-import { wikilinkPlugin } from "../editor/wikilinkPlugin";
+import { wikilinkPlugin, resolvedTitlesChanged } from "../editor/wikilinkPlugin";
 import { codeLanguages } from "../editor/codeLanguages";
 import { externalImagePlugin } from "../editor/externalImagePlugin";
 import { saveKeymap } from "../editor/jasperKeymap"; // Plan 05-11 / EDIT-10
@@ -185,15 +185,15 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     const { titleSet, idMap } = useResolvedTitleSet();
     useEffect(() => {
       setResolvedTitlesSnapshot(titleSet, idMap);
-      // After updating the snapshot, force a view update so any new
-      // resolved/pending state is reflected on the next CM6 tick.
-      // MatchDecorator.updateDeco requires a doc/viewport change to
-      // rebuild; dispatching a no-op selection update is sufficient.
+      // After updating the snapshot, dispatch the resolvedTitlesChanged
+      // StateEffect so wikilinkPlugin.update() triggers a full createDeco()
+      // rebuild. MatchDecorator.updateDeco() only rebuilds on doc/viewport
+      // changes; a selection-only dispatch is silently ignored internally.
+      // The StateEffect approach is the CM6-idiomatic way to signal that
+      // external state changed (rather than hacking the doc or selection).
       const v = viewRef.current;
       if (v) {
-        // Dispatch a trivial transaction to trigger an update cycle
-        // that causes wikilinkPlugin.update() to call updateDeco().
-        v.dispatch({});
+        v.dispatch({ effects: resolvedTitlesChanged.of(undefined) });
       }
     }, [titleSet, idMap]);
 
