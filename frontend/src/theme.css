@@ -132,3 +132,19 @@ body {
 *::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* ── Plan 06-11: Backlinks Rail ──────────────────────────────────────────── */
+
+/* Hover background for each backlinks row (D-28 UI-SPEC Surface 2). */
+.backlinks-row:hover {
+  background: color-mix(in srgb, var(--color-muted) 8%, transparent);
+}
+
+/* Highlight for [[...]] backlink references in server-built excerpts.
+   The server wraps the reference in <mark class="backlink-ref">.
+   T-06-11-01: content must be sanitized via sanitize.ts before render. */
+.backlinks-excerpt .backlink-ref {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  border-radius: 2px;
+  padding: 0 2px;
+}

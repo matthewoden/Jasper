@@ -1,14 +1,20 @@
 /**
- * Phase 6 — Plan 06-07 (D-45/D-46): BacklinksRail — backlinks panel chrome.
+ * Phase 6 — Plan 06-11 (LINKS-08 / D-27..D-32): BacklinksRail — backlinks
+ * panel with real data wiring.
  *
- * Replaces the Phase 1 BacklinksColumn placeholder. Owns:
- *   - The "Linked from" header (12px/600/muted, letter-spacing 0.05em).
- *   - The scrollable body area.
- *   - The Hide button (ChevronRight) that collapses the rail.
- *   - The empty state when no backlinks exist ("No notes link here yet.").
+ * Replaces the Plan 06-07 chrome-only placeholder.
  *
- * Data wiring (useBacklinks hook + row rendering) is Plan 06-11.
- * This plan ships chrome-only with the empty-state placeholder body.
+ * Data source: useBacklinks(noteId) fetches GET /api/v1/notes/{id}/backlinks
+ * and refetches on note:updated, note:created, links:rewritten WS events.
+ *
+ * Security: excerpt HTML from the server is passed through sanitize.ts before
+ * dangerouslySetInnerHTML (T-06-11-01 / Phase 5 D-36 SAFE_CONFIG).
+ *
+ * Row rendering (D-27 / UI-SPEC Surface 2):
+ *   - Title button navigates to source note (setActiveNoteId).
+ *   - Count badge "·N" appears when N > 1 (D-29).
+ *   - Excerpt below title as sanitized HTML.
+ *   - Empty state when 0 backlinks (D-30).
  *
  * Aria contract (06-UI-SPEC.md §Accessibility Contract):
  *   - role="region" aria-label="Notes that link to this note"
@@ -16,17 +22,19 @@
  */
 import { ChevronRight } from "lucide-react";
 
+import { sanitizeHtml } from "../lib/sanitize";
+import { useBacklinks } from "../lib/useBacklinks";
 import { useTreeStore } from "../lib/useTreeStore";
 
 interface Props {
-  /** UUID of the currently open note. Plan 06-11 uses this to fetch backlinks. */
+  /** UUID of the currently open note. Null when no note is open. */
   noteId: string | null;
 }
 
-export function BacklinksRail(props: Props) {
-  // noteId is unused in this plan; Plan 06-11 wires useBacklinks(props.noteId).
-  void props.noteId;
+export function BacklinksRail({ noteId }: Props) {
   const setExpanded = useTreeStore((s) => s.setBacklinksRailExpanded);
+  const setActiveNoteId = useTreeStore((s) => s.setActiveNote);
+  const { backlinks, loading, error } = useBacklinks(noteId);
 
   return (
     <div
@@ -77,20 +85,112 @@ export function BacklinksRail(props: Props) {
           <ChevronRight size={16} />
         </button>
       </header>
-      <div
-        style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}
-      >
-        {/* Plan 06-11 replaces this placeholder with useBacklinks(noteId) row list. */}
-        <div
-          style={{
-            padding: "24px 16px",
-            textAlign: "center",
-            fontSize: 12,
-            color: "var(--color-muted)",
-          }}
-        >
-          No notes link here yet.
-        </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+        {noteId === null ? (
+          // D-30: no note open — show empty state.
+          <div
+            style={{
+              padding: "24px 16px",
+              textAlign: "center",
+              fontSize: 12,
+              color: "var(--color-muted)",
+            }}
+          >
+            No notes link here yet.
+          </div>
+        ) : loading ? (
+          <div
+            style={{
+              padding: "16px",
+              fontSize: 12,
+              color: "var(--color-muted)",
+            }}
+          >
+            Loading&hellip;
+          </div>
+        ) : error ? (
+          <div
+            style={{
+              padding: "16px",
+              fontSize: 12,
+              color: "var(--color-destructive, #c0392b)",
+            }}
+          >
+            {error.message}
+          </div>
+        ) : backlinks && backlinks.length === 0 ? (
+          // D-30: note is open but has no inbound links.
+          <div
+            style={{
+              padding: "24px 16px",
+              textAlign: "center",
+              fontSize: 12,
+              color: "var(--color-muted)",
+            }}
+          >
+            No notes link here yet.
+          </div>
+        ) : (
+          <ul
+            role="list"
+            style={{ listStyle: "none", padding: 0, margin: 0 }}
+          >
+            {backlinks?.map((row) => (
+              <li
+                key={row.sourceId}
+                className="backlinks-row"
+                style={{
+                  padding: "8px 16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                }}
+              >
+                {/* D-27: source title is a button that opens the source note. */}
+                <button
+                  type="button"
+                  aria-label={`Open note: ${row.sourceTitle}`}
+                  onClick={() => setActiveNoteId(row.sourceId)}
+                  style={{
+                    background: "transparent",
+                    border: 0,
+                    padding: 0,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "var(--color-fg)",
+                  }}
+                >
+                  {row.sourceTitle}
+                  {/* D-29: count badge when N > 1. */}
+                  {row.count > 1 && (
+                    <span
+                      style={{
+                        color: "var(--color-muted)",
+                        fontWeight: 400,
+                        marginLeft: 4,
+                      }}
+                    >
+                      &middot;{row.count}
+                    </span>
+                  )}
+                </button>
+                {/* D-27: sanitized excerpt with <mark class="backlink-ref"> highlighted. */}
+                <div
+                  className="backlinks-excerpt"
+                  style={{
+                    fontSize: 13,
+                    color: "var(--color-muted)",
+                    lineHeight: 1.5,
+                  }}
+                  // T-06-11-01: server-built HTML MUST go through sanitize.ts.
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(row.excerpt) }}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
