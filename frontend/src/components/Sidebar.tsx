@@ -32,6 +32,7 @@ import { useCallback } from "react";
 import { FileTree } from "./FileTree";
 import { SidebarResizeHandle } from "./SidebarResizeHandle";
 import { SidebarToolbar } from "./SidebarToolbar";
+import { TagBrowserSection } from "./TagBrowserSection";
 import { useToast } from "./Toast";
 import { postAdminReindex } from "../lib/adminApi";
 import type { Tree, TreeNode } from "../lib/treeApi";
@@ -193,6 +194,14 @@ export function Sidebar({ onSelectNote = () => {} }: SidebarProps) {
       >
         <FileTree onSelectNote={onSelectNote} />
       </div>
+      {/*
+        Phase 6 — Plan 06-08 (TAGS-03/04/06/07): Tag browser section.
+        Slotted between the FileTree div and SidebarResizeHandle so the
+        tag section appears below the file tree. The section handles
+        its own max-height-240 + overflow-y-auto internally, preserving
+        the FileTree's usable height.
+      */}
+      <TagBrowserSection />
       {/* Phase 5.5 — Plan 05 (UX-09): MUST be the last child so the
           absolute-positioned handle overlays the FileTree scroll
           container. The parent <nav> sets position: "relative" above. */}

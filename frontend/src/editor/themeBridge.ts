@@ -210,6 +210,30 @@ export const jasperEditorTheme = EditorView.theme(
     ".cm-searchMatch.cm-searchMatch-selected": {
       backgroundColor: "color-mix(in srgb, var(--color-accent) 40%, transparent)",
     },
+    // Wiki-link decorations (Plan 06-09 — wikilinkPlugin).
+    // Resolved link: accent color + underline (same visual weight as external links).
+    ".cm-wiki-link": {
+      color: "var(--color-accent)",
+      textDecoration: "underline",
+      textUnderlineOffset: "2px",
+      cursor: "text",
+    },
+    // Pending link: dashed underline + dimmed text (D-18 / LINKS-04).
+    // color-mix dims the fg to 60% opacity over a transparent base.
+    ".cm-wiki-link-pending": {
+      color: "color-mix(in srgb, var(--color-fg) 60%, transparent)",
+      textDecoration: "underline",
+      textDecorationStyle: "dashed",
+      textUnderlineOffset: "4px",
+      textDecorationColor: "var(--color-muted)",
+      cursor: "text",
+    },
+    // D-16 hover affordance: while Cmd/Ctrl is held over the editor,
+    // MarkdownEditor sets data-cmd-held on the .cm-editor root so
+    // wiki-link widgets change to a pointer cursor. The attribute is
+    // removed on keyup (T-06-09-04: cleanup in useEffect return).
+    "&[data-cmd-held] .cm-wiki-link": { cursor: "pointer" },
+    "&[data-cmd-held] .cm-wiki-link-pending": { cursor: "pointer" },
   },
   { dark: false }
 );
