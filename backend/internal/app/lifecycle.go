@@ -213,14 +213,34 @@ func (a *App) Run(ctx context.Context) error {
 		"state", status.State,
 		"failed_migration", status.FailedMigration)
 
+	// 6b. Phase 6 D-11 / TAGS-EXT-03 — one-time frontmatter scaffold
+	// injection. Idempotent: after the first successful run the marker row
+	// in schema_migrations short-circuits the walk on every subsequent
+	// boot. Runs INSIDE the listener gate (DESIGN.md §6.1) so the HTTP
+	// server only starts accepting connections once every .md file under
+	// notesDir has frontmatter. Skipped when state == Unrecoverable.
+	if status.State != migrate.StateUnrecoverable {
+		if err := InjectFrontmatterScaffoldMigration(ctx, pair.Writer, notesDir, a.cfg.Logger); err != nil {
+			return fmt.Errorf("lifecycle: frontmatter scaffold migration: %w", err)
+		}
+	}
+
 	// 7. Phase 2 NEW — incremental reindex (DATA-09).
 	// Skip ONLY when state == Unrecoverable (which would have been
 	// caught above as ErrUnrecoverable; this is defense in depth).
 	// A rolled_back state means the failed migration could be a
 	// future column-add (e.g. 002_tags.sql) which the notes table
 	// does not need; reconciling against the prior schema still works.
+	//
+	// Phase 6 Plan 06-06: switched from Reconcile to ReconcileWithRegistry.
+	// The registry pointer is nil here because notesSvc (and its embedded
+	// Registry) is built in step 8 — after the startup reconcile. Nil
+	// registry is safe: ReconcileWithRegistry only uses it for D-20
+	// ambiguity resolution in SyncBacklinks, which is a no-op when nil.
+	// Step 8a Hydrate() populates the registry from indexed summaries
+	// before the listener opens so all subsequent operations resolve UUIDs.
 	if status.State != migrate.StateUnrecoverable {
-		n, err := a.indexer.Reconcile(ctx, index.ModeIncremental)
+		n, err := a.indexer.ReconcileWithRegistry(ctx, index.ModeIncremental, nil)
 		if err != nil {
 			a.cfg.Logger.Warn("startup incremental reindex failed (non-fatal)", "err", err)
 		} else {

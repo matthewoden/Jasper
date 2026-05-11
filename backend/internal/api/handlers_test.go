@@ -187,8 +187,11 @@ func TestPutNoteById_OK(t *testing.T) {
 	ts := setupTestServer(t, files)
 	defer ts.Close()
 
-	resp, respBody := mustPut(t, ts, "/api/v1/notes/"+notes.ScratchpadUUID.String(),
-		[]byte(`{"content": "# changed"}`))
+	// Content includes frontmatter so D-10 auto-restore (Phase 6) does not
+	// trigger; the written bytes are verbatim what the client sent.
+	const content = "---\ntags: []\n---\n\n# changed"
+	body, _ := json.Marshal(map[string]string{"content": content})
+	resp, respBody := mustPut(t, ts, "/api/v1/notes/"+notes.ScratchpadUUID.String(), body)
 	if resp.StatusCode != 200 {
 		t.Fatalf("status: got %d, want 200; body=%s", resp.StatusCode, respBody)
 	}
@@ -209,8 +212,8 @@ func TestPutNoteById_OK(t *testing.T) {
 	if files.writeCalls != 1 {
 		t.Errorf("WriteAtomic was called %d times, want 1", files.writeCalls)
 	}
-	if string(files.lastWriteData) != "# changed" {
-		t.Errorf("lastWriteData: got %q, want %q", files.lastWriteData, "# changed")
+	if string(files.lastWriteData) != content {
+		t.Errorf("lastWriteData: got %q, want %q", files.lastWriteData, content)
 	}
 	if files.lastWritePath != notes.ScratchpadRelPath {
 		t.Errorf("lastWritePath: got %q, want %q", files.lastWritePath, notes.ScratchpadRelPath)
