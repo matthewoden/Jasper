@@ -906,3 +906,159 @@ func TestApp_ListenerGated(t *testing.T) {
 		t.Errorf("Run returned error after cancel: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Phase 6 Plan 06-06 tests — lifecycle wiring of D-11 frontmatter migration
+// ---------------------------------------------------------------------------
+
+// TestRun_FrontmatterMigrationRuns_BeforeReconcile — D-11 / TAGS-EXT-03:
+// a vault with a .md file that lacks frontmatter boots cleanly and
+// the file has frontmatter after Run completes. The listener must open
+// (proving the migration ran and succeeded before the gate opened).
+//
+// This covers plan Test L2: vault note lacking frontmatter receives
+// scaffold + backlinks path (implicit — Reconcile ran after migration).
+func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
+	dir := t.TempDir()
+	if err := EnsureDataDir(dir); err != nil {
+		t.Fatalf("EnsureDataDir: %v", err)
+	}
+	notesDir := notesDirFor(dir)
+	// Write a .md file WITHOUT frontmatter.
+	noFMPath := filepath.Join(notesDir, "needs-fm.md")
+	if err := os.WriteFile(noFMPath, []byte("# Needs FM\n\nBody here.\n"), 0o644); err != nil {
+		t.Fatalf("write no-FM file: %v", err)
+	}
+
+	addr := pickFreePort(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runErr := make(chan error, 1)
+	go func() { runErr <- a.Run(ctx) }()
+
+	probe := func() error {
+		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err != nil {
+			return err
+		}
+		_ = c.Close()
+		return nil
+	}
+	if err := waitFor(t, 5*time.Second, probe); err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("listener did not come up: %v", err)
+	}
+
+	// File must now have frontmatter.
+	got, err := os.ReadFile(noFMPath)
+	if err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("readFile after Run: %v", err)
+	}
+	if !strings.HasPrefix(string(got), "---\ntags: []\n---\n\n") {
+		cancel()
+		<-runErr
+		t.Fatalf("file did not get frontmatter after Run: %q", got)
+	}
+
+	cancel()
+	if err := <-runErr; err != nil {
+		t.Errorf("Run returned error after cancel: %v", err)
+	}
+}
+
+// TestRun_FrontmatterMigrationIdempotent — Test L3: Run twice on same vault;
+// second start must not modify files (marker row prevents re-walk).
+func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	if err := EnsureDataDir(dir); err != nil {
+		t.Fatalf("EnsureDataDir: %v", err)
+	}
+	notesDir := notesDirFor(dir)
+	noFMPath := filepath.Join(notesDir, "alpha.md")
+	if err := os.WriteFile(noFMPath, []byte("# Alpha\nBody.\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// --- First boot ---
+	{
+		addr := pickFreePort(t)
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger})
+		if err != nil {
+			t.Fatalf("New (first): %v", err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		runErr := make(chan error, 1)
+		go func() { runErr <- a.Run(ctx) }()
+		probe := func() error {
+			c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+			if err != nil {
+				return err
+			}
+			_ = c.Close()
+			return nil
+		}
+		if err := waitFor(t, 5*time.Second, probe); err != nil {
+			cancel()
+			<-runErr
+			t.Fatalf("first boot: listener did not come up: %v", err)
+		}
+		cancel()
+		<-runErr
+	}
+
+	// Read file content after first boot.
+	afterFirst, err := os.ReadFile(noFMPath)
+	if err != nil {
+		t.Fatalf("readFile after first boot: %v", err)
+	}
+	if !strings.HasPrefix(string(afterFirst), "---\ntags: []\n---\n\n") {
+		t.Fatalf("file did not get frontmatter on first boot: %q", afterFirst)
+	}
+
+	// --- Second boot ---
+	{
+		addr := pickFreePort(t)
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger})
+		if err != nil {
+			t.Fatalf("New (second): %v", err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		runErr := make(chan error, 1)
+		go func() { runErr <- a.Run(ctx) }()
+		probe := func() error {
+			c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+			if err != nil {
+				return err
+			}
+			_ = c.Close()
+			return nil
+		}
+		if err := waitFor(t, 5*time.Second, probe); err != nil {
+			cancel()
+			<-runErr
+			t.Fatalf("second boot: listener did not come up: %v", err)
+		}
+		cancel()
+		<-runErr
+	}
+
+	// File content must be byte-identical after second boot.
+	afterSecond, err := os.ReadFile(noFMPath)
+	if err != nil {
+		t.Fatalf("readFile after second boot: %v", err)
+	}
+	if string(afterFirst) != string(afterSecond) {
+		t.Errorf("file changed on second boot:\nbefore: %q\nafter:  %q", afterFirst, afterSecond)
+	}
+}
