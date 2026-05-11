@@ -613,6 +613,192 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// Phase 6 — Plan 06-07: useTreeStore ADD-only extension.
+//
+// Tests for the four new slices: tagBrowserExpanded, activeTagFilter,
+// backlinksRailExpanded, backlinksRailWidth. Uses the same module-reset
+// pattern as the existing hydration tests above.
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 6 — useTreeStore ADD-only slices", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: null,
+      pendingRename: null,
+      draftCreate: null,
+    });
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    localStorage.clear();
+    vi.resetModules();
+  });
+
+  // S1: Defaults
+  it("S1: fresh store returns tagBrowserExpanded=false, activeTagFilter=null, backlinksRailExpanded=false, backlinksRailWidth=280", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    const s = mod.useTreeStore.getState();
+    expect(s.tagBrowserExpanded).toBe(false);
+    expect(s.activeTagFilter).toBeNull();
+    expect(s.backlinksRailExpanded).toBe(false);
+    expect(s.backlinksRailWidth).toBe(280);
+  });
+
+  // S2: Setters
+  it("S2: setTagBrowserExpanded(true) updates the store", () => {
+    useTreeStore.getState().setTagBrowserExpanded(true);
+    expect(useTreeStore.getState().tagBrowserExpanded).toBe(true);
+    useTreeStore.getState().setTagBrowserExpanded(false);
+    expect(useTreeStore.getState().tagBrowserExpanded).toBe(false);
+  });
+
+  it("S2: setBacklinksRailWidth(350) stores 350 (within min/max bounds)", () => {
+    useTreeStore.getState().setBacklinksRailWidth(350);
+    expect(useTreeStore.getState().backlinksRailWidth).toBe(350);
+  });
+
+  // S3: Clamp
+  it("S3: setBacklinksRailWidth(100) clamps up to RAIL_MIN_WIDTH (220)", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    mod.useTreeStore.getState().setBacklinksRailWidth(100);
+    expect(mod.useTreeStore.getState().backlinksRailWidth).toBe(mod.RAIL_MIN_WIDTH);
+  });
+
+  it("S3: setBacklinksRailWidth(900) clamps down to RAIL_MAX_WIDTH (480)", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    mod.useTreeStore.getState().setBacklinksRailWidth(900);
+    expect(mod.useTreeStore.getState().backlinksRailWidth).toBe(mod.RAIL_MAX_WIDTH);
+  });
+
+  // S4: LS hydration on load — width
+  it("S4: pre-seeded backlinksRailWidth in LS hydrates on module load", async () => {
+    localStorage.setItem("jasper.backlinks.rail.width", "350");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().backlinksRailWidth).toBe(350);
+  });
+
+  // S5: LS hydration on load — boolean
+  it("S5: pre-seeded tagBrowserExpanded=true in LS hydrates on module load", async () => {
+    localStorage.setItem("jasper.tag.browser.expanded", "true");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().tagBrowserExpanded).toBe(true);
+  });
+
+  // S6: LS hydration — invalid value falls back to default
+  it("S6: pre-seeded backlinksRailWidth='garbage' falls back to RAIL_DEFAULT_WIDTH (280)", async () => {
+    localStorage.setItem("jasper.backlinks.rail.width", "garbage");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().backlinksRailWidth).toBe(280);
+  });
+
+  // S6 also: out-of-range value falls back to default
+  it("S6: pre-seeded backlinksRailWidth out of range falls back to RAIL_DEFAULT_WIDTH (280)", async () => {
+    localStorage.setItem("jasper.backlinks.rail.width", "50");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().backlinksRailWidth).toBe(280);
+  });
+
+  // S7: LS persistence — boolean
+  it("S7: setTagBrowserExpanded(true) persists to LS after debounce", () => {
+    vi.useFakeTimers();
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      act(() => {
+        useTreeStore.getState().setTagBrowserExpanded(true);
+      });
+      act(() => { vi.advanceTimersByTime(260); });
+      const writes = setItemSpy.mock.calls.filter(c => c[0] === "jasper.tag.browser.expanded");
+      expect(writes.length).toBeGreaterThan(0);
+      expect(writes[writes.length - 1][1]).toBe("true");
+    } finally {
+      setItemSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  // S8: LS persistence — width
+  it("S8: setBacklinksRailWidth(300) persists to LS after debounce", () => {
+    vi.useFakeTimers();
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      act(() => {
+        useTreeStore.getState().setBacklinksRailWidth(300);
+      });
+      act(() => { vi.advanceTimersByTime(260); });
+      const writes = setItemSpy.mock.calls.filter(c => c[0] === "jasper.backlinks.rail.width");
+      expect(writes.length).toBeGreaterThan(0);
+      expect(writes[writes.length - 1][1]).toBe("300");
+    } finally {
+      setItemSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  // S9: activeTagFilter is NOT persisted
+  it("S9: setActiveTagFilter does NOT write to localStorage", () => {
+    vi.useFakeTimers();
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      act(() => {
+        useTreeStore.getState().setActiveTagFilter("foo");
+      });
+      act(() => { vi.advanceTimersByTime(500); });
+      // No LS key should contain "filter" or "tag.filter"
+      const allWrites = setItemSpy.mock.calls.map(c => c[0] as string);
+      expect(allWrites.some(k => k.includes("filter"))).toBe(false);
+    } finally {
+      setItemSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("S9: activeTagFilter stays null on fresh module load (not persisted)", async () => {
+    // Even if something wrote a filter key, it should not hydrate.
+    localStorage.setItem("jasper.tag.filter", "somefilter");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().activeTagFilter).toBeNull();
+  });
+
+  // S10: Existing slices unchanged
+  it("S10: existing slices still work correctly after Phase 6 additions (regression guard)", () => {
+    const { result } = renderHook(() => useTreeStore());
+    act(() => {
+      result.current.toggleExpanded("projects");
+      result.current.setActiveNote("uuid-foo");
+      result.current.startRename("note", "uuid-bar");
+      result.current.setSelectedRow({ kind: "note", target: "uuid-zzz" });
+      // Also set Phase 6 slices to ensure coexistence
+      result.current.setTagBrowserExpanded(true);
+      result.current.setActiveTagFilter("my-tag");
+      result.current.setBacklinksRailExpanded(true);
+      result.current.setBacklinksRailWidth(320);
+    });
+    const s = result.current;
+    // Existing slices
+    expect(s.expanded.has("projects")).toBe(true);
+    expect(s.activeNoteId).toBe("uuid-foo");
+    expect(s.pendingRename).toEqual({ kind: "note", target: "uuid-bar" });
+    expect(s.selectedRow).toEqual({ kind: "note", target: "uuid-zzz" });
+    // Phase 6 slices
+    expect(s.tagBrowserExpanded).toBe(true);
+    expect(s.activeTagFilter).toBe("my-tag");
+    expect(s.backlinksRailExpanded).toBe(true);
+    expect(s.backlinksRailWidth).toBe(320);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // WR-07 (Phase 5.5 gap-closure Plan 13) — pruneStaleTreeState liveLabels rebuild.
 //
 // The original implementation cloned `liveLabels` lazily and then `delete`d
