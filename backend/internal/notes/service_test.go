@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
+	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
 
 // fakeFileStore is the in-test impl of FileStore. Only the fields a given
@@ -112,6 +113,15 @@ func (f *fakeIndex) LookupByPath(_ context.Context, _ string) (NoteRecord, error
 func (f *fakeIndex) MovePathPrefix(_ context.Context, _, _ string) (int, error) { return 0, nil }
 func (f *fakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) {
 	return 0, nil
+}
+
+// Phase 6 Plan 06-05 — nopIndex no-ops for fakeIndex.
+func (f *fakeIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
+
+func (f *fakeIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
+	_ []markdown.WikiLinkRef, _ *Registry, _ []byte,
+) error {
+	return nil
 }
 
 // --------------------------------------------------------------------------
@@ -216,13 +226,15 @@ func TestService_Get_MissingFile(t *testing.T) {
 }
 
 // Test 3: known UUID writes via WriteAtomic exactly once with the right
-// path + bytes.
+// path + bytes. Content that already has a frontmatter block is written
+// verbatim (D-10 auto-restore only triggers when frontmatter is absent).
 func TestService_Update_Known(t *testing.T) {
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	files := &fakeFileStore{statTime: now}
 	svc := newSvc(t, files)
 
-	note, err := svc.Update(context.Background(), ScratchpadUUID, "new content", "")
+	const content = "---\ntags: []\n---\n\nnew content"
+	note, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -232,8 +244,8 @@ func TestService_Update_Known(t *testing.T) {
 	if files.lastWritePath != ScratchpadRelPath {
 		t.Errorf("lastWritePath: got %q, want %q", files.lastWritePath, ScratchpadRelPath)
 	}
-	if string(files.lastWriteData) != "new content" {
-		t.Errorf("lastWriteData: got %q, want %q", files.lastWriteData, "new content")
+	if string(files.lastWriteData) != content {
+		t.Errorf("lastWriteData: got %q, want %q", files.lastWriteData, content)
 	}
 	if !note.UpdatedAt.Equal(now) {
 		t.Errorf("UpdatedAt: got %v, want %v", note.UpdatedAt, now)
@@ -343,7 +355,9 @@ func TestService_Update_CallsIndexUpsertAfterWrite(t *testing.T) {
 	idx := &fakeIndex{observedSeq: &seq}
 	svc := newSvcWithIndex(t, files, idx)
 
-	const content = "new content"
+	// Content with frontmatter so D-10 auto-restore does not trigger and
+	// the written bytes are exactly what we supply (no prefix injection).
+	const content = "---\ntags: []\n---\n\nnew content"
 	note, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -596,6 +610,15 @@ func (s *stubIndex) DeleteByPathPrefix(_ context.Context, prefix string) (int, e
 		delete(s.byID, rec.ID)
 	}
 	return len(matched), nil
+}
+
+// Phase 6 Plan 06-05 — stubIndex no-ops for tag + backlink sync.
+func (s *stubIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
+
+func (s *stubIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
+	_ []markdown.WikiLinkRef, _ *Registry, _ []byte,
+) error {
+	return nil
 }
 
 // recByID returns the in-memory record for assertions. Test-only.
@@ -1434,9 +1457,9 @@ func TestService_Update_IfMatch_Match_ProceedsAsNormal(t *testing.T) {
 	if note.UpdatedAt.IsZero() {
 		t.Errorf("UpdatedAt is zero")
 	}
-	// Successful match → broadcast must fire.
-	if len(bc.calls) != 1 {
-		t.Errorf("expected 1 broadcast; got %d", len(bc.calls))
+	// Successful match → both EventNoteUpdated and EventTagsUpdated fire (Phase 6).
+	if len(bc.calls) != 2 {
+		t.Errorf("expected 2 broadcasts (EventNoteUpdated + EventTagsUpdated); got %d", len(bc.calls))
 	}
 }
 
@@ -1456,15 +1479,16 @@ func TestService_Update_BroadcastsAfterIndexUpsert(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Ordering: write → upsert → broadcast (Pitfall 2).
-	want := []string{"write", "upsert", "broadcast"}
-	if len(seq) != 3 || seq[0] != want[0] || seq[1] != want[1] || seq[2] != want[2] {
+	// Ordering: write → upsert → broadcast → broadcast (Phase 6: EventNoteUpdated + EventTagsUpdated).
+	want := []string{"write", "upsert", "broadcast", "broadcast"}
+	if len(seq) != 4 || seq[0] != want[0] || seq[1] != want[1] || seq[2] != want[2] || seq[3] != want[3] {
 		t.Fatalf("ordering: got %v, want %v", seq, want)
 	}
 
 	// T-04-04: payload must not include note content.
-	if len(bc.calls) != 1 {
-		t.Fatalf("expected 1 broadcast call; got %d", len(bc.calls))
+	// Check the first broadcast (EventNoteUpdated) has required metadata.
+	if len(bc.calls) != 2 {
+		t.Fatalf("expected 2 broadcast calls (EventNoteUpdated + EventTagsUpdated); got %d", len(bc.calls))
 	}
 	payload, ok := bc.calls[0].payload.(map[string]any)
 	if !ok {
@@ -1473,7 +1497,7 @@ func TestService_Update_BroadcastsAfterIndexUpsert(t *testing.T) {
 	if _, hasContent := payload["content"]; hasContent {
 		t.Fatal("T-04-04 violation: broadcast payload must not include note content")
 	}
-	// Verify metadata fields present.
+	// Verify metadata fields present in EventNoteUpdated payload.
 	for _, key := range []string{"id", "path", "updated_at"} {
 		if _, ok := payload[key]; !ok {
 			t.Errorf("broadcast payload missing key %q", key)
@@ -1499,5 +1523,112 @@ func TestService_Update_NoBroadcastOnTransientIndexError(t *testing.T) {
 	}
 	if len(bc.calls) != 0 {
 		t.Errorf("no broadcast expected on transient index error; got %v", bc.calls)
+	}
+}
+
+// --------------------------------------------------------------------------
+// Phase 6 Plan 06-05 Task 1: Service.Update Phase 6 extensions
+// --------------------------------------------------------------------------
+
+// TestService_Update_AutoRestoresMissingFrontmatter (D-10 / TAGS-EXT-02):
+// when content has no frontmatter block, Update should inject the scaffold
+// before writing to disk.
+func TestService_Update_AutoRestoresMissingFrontmatter(t *testing.T) {
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	files := &fakeFileStore{statTime: now}
+	bc := &fakeBroadcaster{}
+	svc := newSvcWithBroadcaster(t, files, nil, bc)
+
+	content := "# Just a Heading\nno frontmatter"
+	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Written bytes must start with frontmatter scaffold.
+	written := string(files.lastWriteData)
+	if !strings.HasPrefix(written, "---\ntags: []\n---\n") {
+		t.Errorf("D-10: file written without frontmatter scaffold; got: %q", written[:min(80, len(written))])
+	}
+	// Original content must still be present.
+	if !strings.Contains(written, "# Just a Heading") {
+		t.Errorf("original heading not preserved in written content")
+	}
+}
+
+// TestService_Update_PreservesExistingFrontmatter (Test 5): when content
+// already has frontmatter, no double-injection should occur.
+func TestService_Update_PreservesExistingFrontmatter(t *testing.T) {
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	files := &fakeFileStore{statTime: now}
+	svc := newSvc(t, files)
+
+	content := "---\ntags: [foo]\n---\n\n# Heading\nbody"
+	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	written := string(files.lastWriteData)
+	if written != content {
+		t.Errorf("content with existing frontmatter should be written verbatim; got %q", written)
+	}
+}
+
+// TestService_Update_BroadcastsEventTagsUpdated (Test 6): on successful
+// save + successful index upsert, both EventNoteUpdated AND EventTagsUpdated
+// should be broadcast.
+func TestService_Update_BroadcastsEventTagsUpdated(t *testing.T) {
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	files := &fakeFileStore{statTime: now}
+	idx := &fakeIndex{}
+	bc := &fakeBroadcaster{}
+	svc := newSvcWithBroadcaster(t, files, idx, bc)
+
+	content := "---\ntags: [foo]\n---\n\n# Note"
+	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify EventTagsUpdated was broadcast.
+	found := false
+	for _, c := range bc.calls {
+		if c.event == EventTagsUpdated {
+			found = true
+			// Payload must contain note_id.
+			payload, ok := c.payload.(map[string]any)
+			if !ok {
+				t.Fatalf("EventTagsUpdated payload is not map[string]any: %T", c.payload)
+			}
+			if _, hasID := payload["note_id"]; !hasID {
+				t.Errorf("EventTagsUpdated payload missing note_id key")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("EventTagsUpdated was not broadcast; got calls: %+v", bc.calls)
+	}
+}
+
+// TestService_Create_UsesNewNoteContentScaffold (Test 7 / D-09 / TAGS-EXT-01):
+// Service.Create must write the standard scaffold content.
+func TestService_Create_UsesNewNoteContentScaffold(t *testing.T) {
+	t.Parallel()
+	svc, root, _ := newRealFSSvc(t)
+
+	summary, err := svc.Create(context.Background(), "", "MyNote")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// Read the written file.
+	data, err := os.ReadFile(filepath.Join(root, summary.Path))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	written := string(data)
+	if !strings.HasPrefix(written, "---\ntags: []\n---\n") {
+		t.Errorf("D-09: created file missing frontmatter scaffold; got: %q", written[:min(80, len(written))])
+	}
+	if !strings.Contains(written, "# MyNote") {
+		t.Errorf("D-09: created file missing H1; got: %q", written)
 	}
 }

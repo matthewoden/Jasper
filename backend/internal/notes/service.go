@@ -172,6 +172,18 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 		}
 	}
 
+	// D-10 (TAGS-EXT-02): auto-restore frontmatter scaffold when missing.
+	// This is the only system-side mutation of user content during normal
+	// operation (D-11 one-time migration is a separate startup step).
+	// Per D-10: prepend ONLY the YAML block ("---\ntags: []\n---\n\n"),
+	// NOT the H1 — the user's body content (which may already have an H1)
+	// is left intact. InjectFrontmatterScaffold includes the H1, which is
+	// for new notes (D-09). Here we want the minimal YAML fence only.
+	// Empty content gets no injection (empty markdown is a legal state).
+	if content != "" && !markdown.HasFrontmatter([]byte(content)) {
+		content = "---\ntags: []\n---\n\n" + content
+	}
+
 	// File FIRST per ARCHITECTURE §11.1.
 	if err := s.files.WriteAtomic(relPath, []byte(content)); err != nil {
 		return Note{}, fmt.Errorf("notes.Update(%s): write: %w", id, err)
@@ -221,6 +233,24 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 		indexSucceeded = true
 	}
 
+	// Phase 6 Step A: parse frontmatter tags (non-fatal per D-12).
+	// File-FIRST: even if tag sync fails, the user's content is on disk.
+	tags := markdown.ExtractTags([]byte(content))
+
+	// Phase 6 Step B: sync tags in a single transaction. Non-fatal — file is
+	// truth. If the index is a nopIndex this is also a no-op.
+	if err := s.index.SyncTags(ctx, id, tags); err != nil {
+		s.log.Error("notes.Update: tags sync failed (file safe; index heals on reconcile)",
+			"id", id.String(), "err", err)
+	}
+
+	// Phase 6 Step C: parse wiki-links and sync backlinks in a single TX.
+	refs := markdown.ExtractWikilinks([]byte(content))
+	if err := s.index.SyncBacklinks(ctx, id, relPath, refs, s.registry, []byte(content)); err != nil {
+		s.log.Error("notes.Update: backlinks sync failed (file safe; index heals on reconcile)",
+			"id", id.String(), "err", err)
+	}
+
 	// BROADCAST — THIRD step per ARCHITECTURE.md §11.1. Only after
 	// Index.Upsert succeeded. Pitfall 2: if Index.Upsert returned a
 	// transient error (logged-and-swallowed above), do NOT broadcast.
@@ -230,6 +260,11 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 			"id":         id.String(),
 			"path":       relPath,
 			"updated_at": modTime.UTC().Format(time.RFC3339Nano),
+		}, SessionIDFromContext(ctx))
+		// Phase 6 Step D: also broadcast EventTagsUpdated so the tag browser
+		// can refresh reactively (D-34). Fired alongside EventNoteUpdated.
+		s.broadcaster.Broadcast(EventTagsUpdated, map[string]any{
+			"note_id": id.String(),
 		}, SessionIDFromContext(ctx))
 	}
 
@@ -271,14 +306,30 @@ func (s *Service) Create(ctx context.Context, parentPath, title string) (NoteSum
 		return NoteSummary{}, fmt.Errorf("notes.Create(%s): %w", relPath, err)
 	}
 
+	// D-09 (TAGS-EXT-01): write the canonical frontmatter scaffold so the
+	// new note ships with `---\ntags: []\n---\n\n# {Title}\n`. Every create
+	// path MUST call this so the scaffold is uniform vault-wide. The title
+	// is derived from the filename (without .md) per Phase 3 R2.
+	displayTitle := deriveTitleFromFilename(title)
+	scaffoldContent := markdown.NewNoteContent(displayTitle)
+	canonPath := canonicalRelPath(relPath)
+	if err := s.files.WriteAtomic(canonPath, scaffoldContent); err != nil {
+		// Best-effort rollback on scaffold write failure.
+		if delErr := s.files.DeleteFile(relPath); delErr != nil {
+			s.log.Warn("notes.Create: rollback DeleteFile failed after scaffold write error (reconciler will heal)",
+				"path", relPath, "err", delErr)
+		}
+		return NoteSummary{}, fmt.Errorf("notes.Create(%s): scaffold write: %w", relPath, err)
+	}
+
 	id := uuid.New()
 	now := time.Now().UTC()
 	rec := NoteRecord{
 		ID:            id,
-		Path:          canonicalRelPath(relPath),
-		Title:         deriveTitleFromFilename(title),
+		Path:          canonPath,
+		Title:         displayTitle,
 		MTimeUnix:     now.Unix(),
-		SizeBytes:     0,
+		SizeBytes:     int64(len(scaffoldContent)),
 		Checksum:      "",
 		UpdatedAtUnix: now.Unix(),
 	}
@@ -689,6 +740,32 @@ func deriveTitleFromFilename(title string) string {
 	return title
 }
 
+// LookupTitle is the public form of lookupTitle for use by API handlers.
+// Returns "" when the id is unknown so the caller can short-circuit.
+func (s *Service) LookupTitle(id uuid.UUID) string {
+	relPath, ok := s.registry.Lookup(id)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSuffix(path.Base(relPath), ".md")
+}
+
+// LookupSummary returns a lightweight NoteSummary for id populated from the
+// registry (for use by the PostNoteMove handler to capture the pre-move
+// state and post-rollback state without a DB round-trip).
+// Returns a zero NoteSummary and false if the id is not in the registry.
+func (s *Service) LookupSummary(id uuid.UUID) (NoteSummary, bool) {
+	relPath, ok := s.registry.Lookup(id)
+	if !ok {
+		return NoteSummary{}, false
+	}
+	return NoteSummary{
+		ID:    id,
+		Path:  relPath,
+		Title: strings.TrimSuffix(path.Base(relPath), ".md"),
+	}, true
+}
+
 // nopIndex is the no-op fallback used when callers pass nil to
 // NewService. Lives in service.go (next to the only constructor that
 // substitutes it) so the fallback wiring is co-located with its
@@ -713,3 +790,14 @@ func (nopIndex) LookupByPath(_ context.Context, _ string) (NoteRecord, error) {
 }
 func (nopIndex) MovePathPrefix(_ context.Context, _, _ string) (int, error)  { return 0, nil }
 func (nopIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) { return 0, nil }
+
+// Phase 6 Plan 06-05 additions — nopIndex no-ops for tag + backlink sync.
+// Plan 06-05 wires the real implementations; these are the fallbacks used
+// by nil-index callers (Phase 1 tests, httptest-based unit tests, etc.).
+func (nopIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
+
+func (nopIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
+	_ []markdown.WikiLinkRef, _ *Registry, _ []byte,
+) error {
+	return nil
+}

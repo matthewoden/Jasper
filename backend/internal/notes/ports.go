@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
 
 // FileStore is the port over the filesystem adapter (internal/fsstore).
@@ -140,6 +142,19 @@ type Index interface {
 	// by Path 2 (RebuildAndReindex) drop-and-rebuild. Returns the count
 	// of deleted rows. Phase 3 Plan 03-03 addition.
 	DeleteByPathPrefix(ctx context.Context, prefix string) (int, error)
+
+	// Phase 6 Plan 06-05: tag + backlink sync methods.
+	// These are called by Service.Update after WriteAtomic + Upsert succeed.
+	// Non-fatal: callers log errors and continue (file-FIRST contract).
+
+	// SyncTags replaces all tags for noteID atomically (D-05 orphan cleanup).
+	// Passing nil or empty slice removes all tags for the note.
+	SyncTags(ctx context.Context, noteID uuid.UUID, tags []string) error
+
+	// SyncBacklinks resolves [[Title]] refs, deduplicates per D-29, and
+	// rewrites all backlinks rows for sourceID atomically.
+	SyncBacklinks(ctx context.Context, sourceID uuid.UUID, sourcePath string,
+		refs []markdown.WikiLinkRef, registry *Registry, content []byte) error
 }
 
 // NoteRecord is the canonical projection of a .md file into the index.

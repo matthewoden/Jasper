@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
+	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -43,6 +44,15 @@ func (f *fakeIndex) LookupByPath(_ context.Context, _ string) (notes.NoteRecord,
 func (f *fakeIndex) MovePathPrefix(_ context.Context, _, _ string) (int, error) { return 0, nil }
 func (f *fakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) {
 	return 0, nil
+}
+
+// Phase 6 Plan 06-05 additions — fakeIndex no-ops for tag + backlink sync.
+func (f *fakeIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
+
+func (f *fakeIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
+	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
+) error {
+	return nil
 }
 
 // setupGetNotesServer builds a Server wired with the given index and
@@ -316,6 +326,13 @@ func (r *realIndex) MovePathPrefix(_ context.Context, oldPrefix, newPrefix strin
 		r.byID[rec.ID] = rec
 	}
 	return len(moves), nil
+}
+
+func (r *realIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
+func (r *realIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
+	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
+) error {
+	return nil
 }
 
 func (r *realIndex) DeleteByPathPrefix(_ context.Context, prefix string) (int, error) {
