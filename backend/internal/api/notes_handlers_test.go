@@ -47,6 +47,9 @@ func (f *fakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error)
 }
 
 // Phase 6 Plan 06-05 additions — fakeIndex no-ops for tag + backlink sync.
+func (f *fakeIndex) ListTags(_ context.Context) ([]notes.TagWithCount, error) {
+	return []notes.TagWithCount{}, nil
+}
 func (f *fakeIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
 
 func (f *fakeIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
@@ -349,6 +352,9 @@ func (r *realIndex) MovePathPrefix(_ context.Context, oldPrefix, newPrefix strin
 	return len(moves), nil
 }
 
+func (r *realIndex) ListTags(_ context.Context) ([]notes.TagWithCount, error) {
+	return []notes.TagWithCount{}, nil
+}
 func (r *realIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
 func (r *realIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
 	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,

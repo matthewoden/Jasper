@@ -147,6 +147,11 @@ type Index interface {
 	// These are called by Service.Update after WriteAtomic + Upsert succeed.
 	// Non-fatal: callers log errors and continue (file-FIRST contract).
 
+	// ListTags returns all tags that have at least one carrier note, sorted
+	// alphabetically by name (D-03). Returns a non-nil empty slice when no
+	// tags exist.
+	ListTags(ctx context.Context) ([]TagWithCount, error)
+
 	// SyncTags replaces all tags for noteID atomically (D-05 orphan cleanup).
 	// Passing nil or empty slice removes all tags for the note.
 	SyncTags(ctx context.Context, noteID uuid.UUID, tags []string) error
@@ -184,6 +189,13 @@ type Index interface {
 	// Called by RenameRewriteWikilinks after the FS pass succeeds. Non-fatal
 	// on error — filesystem is truth; next Reconcile heals.
 	UpdateBacklinksTargetTitle(ctx context.Context, oldTitle, newTitle string, newTargetID *uuid.UUID) error
+}
+
+// TagWithCount is the projection returned by Index.ListTags.
+// Matches the TagWithCount component schema in api/openapi.yaml (Plan 06-02).
+type TagWithCount struct {
+	Name  string
+	Count int
 }
 
 // NoteRecord is the canonical projection of a .md file into the index.

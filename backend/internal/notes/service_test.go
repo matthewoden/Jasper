@@ -116,6 +116,7 @@ func (f *fakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error)
 }
 
 // Phase 6 Plan 06-05 — nopIndex no-ops for fakeIndex.
+func (f *fakeIndex) ListTags(_ context.Context) ([]TagWithCount, error)        { return []TagWithCount{}, nil }
 func (f *fakeIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
 
 func (f *fakeIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
@@ -634,6 +635,7 @@ func (s *stubIndex) DeleteByPathPrefix(_ context.Context, prefix string) (int, e
 }
 
 // Phase 6 Plan 06-05 — stubIndex no-ops for tag + backlink sync.
+func (s *stubIndex) ListTags(_ context.Context) ([]TagWithCount, error)        { return []TagWithCount{}, nil }
 func (s *stubIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
 
 func (s *stubIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,

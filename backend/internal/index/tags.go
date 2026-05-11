@@ -24,12 +24,9 @@ import (
 // Wire-shape types
 // ---------------------------------------------------------------------------
 
-// TagWithCount is the projection returned by ListTags.
-// Matches the TagWithCount component schema in api/openapi.yaml (Plan 06-02).
-type TagWithCount struct {
-	Name  string
-	Count int
-}
+// TagWithCount is an alias of notes.TagWithCount. Kept here for backward
+// compatibility; callers can use either index.TagWithCount or notes.TagWithCount.
+type TagWithCount = notes.TagWithCount
 
 // ---------------------------------------------------------------------------
 // Sentinel errors
@@ -130,7 +127,7 @@ func (x *Indexer) SyncTags(ctx context.Context, noteID uuid.UUID, tags []string)
 // each tag at the time of the query.
 //
 // Returns a non-nil empty slice (not nil) when no tags exist.
-func (x *Indexer) ListTags(ctx context.Context) ([]TagWithCount, error) {
+func (x *Indexer) ListTags(ctx context.Context) ([]notes.TagWithCount, error) {
 	rows, err := x.Pair.Reader.QueryContext(ctx,
 		`SELECT t.name, COUNT(nt.note_id) AS cnt
 		 FROM tags t
@@ -142,9 +139,9 @@ func (x *Indexer) ListTags(ctx context.Context) ([]TagWithCount, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := []TagWithCount{} // non-nil empty slice per contract
+	out := []notes.TagWithCount{} // non-nil empty slice per contract
 	for rows.Next() {
-		var tw TagWithCount
+		var tw notes.TagWithCount
 		if err := rows.Scan(&tw.Name, &tw.Count); err != nil {
 			return nil, fmt.Errorf("listtags scan: %w", err)
 		}

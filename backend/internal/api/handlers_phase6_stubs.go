@@ -6,48 +6,15 @@
 // Once every method below has a real implementation elsewhere, this file
 // is deleted in the same commit (Phase 2 + Phase 3 precedent — see
 // handlers_stubs.go and handlers_phase3_stubs.go in git history).
+//
+// Plan 06-05 Task 4 removed: GetTags, GetTagNotes, PutTag, DeleteTag.
+// Remaining stubs: GetNoteBacklinks, GetNotesSearchTitles.
 package api
 
 import (
 	"context"
 	"errors"
 )
-
-// GetTags implements GET /api/v1/tags (TAGS-03).
-// stub: replaced by Plan 06-05 (tag CRUD handlers).
-func (s *Server) GetTags(
-	_ context.Context,
-	_ GetTagsRequestObject,
-) (GetTagsResponseObject, error) {
-	return nil, errors.New("phase 6: not implemented yet") //nolint:staticcheck
-}
-
-// GetTagNotes implements GET /api/v1/tags/{name}/notes (TAGS-04).
-// stub: replaced by Plan 06-05 (tag CRUD handlers).
-func (s *Server) GetTagNotes(
-	_ context.Context,
-	_ GetTagNotesRequestObject,
-) (GetTagNotesResponseObject, error) {
-	return nil, errors.New("phase 6: not implemented yet") //nolint:staticcheck
-}
-
-// PutTag implements PUT /api/v1/tags/{name} (TAGS-06 / D-23 rename).
-// stub: replaced by Plan 06-05 (tag CRUD handlers).
-func (s *Server) PutTag(
-	_ context.Context,
-	_ PutTagRequestObject,
-) (PutTagResponseObject, error) {
-	return nil, errors.New("phase 6: not implemented yet") //nolint:staticcheck
-}
-
-// DeleteTag implements DELETE /api/v1/tags/{name} (TAGS-07 / D-24 bulk-remove).
-// stub: replaced by Plan 06-05 (tag CRUD handlers).
-func (s *Server) DeleteTag(
-	_ context.Context,
-	_ DeleteTagRequestObject,
-) (DeleteTagResponseObject, error) {
-	return nil, errors.New("phase 6: not implemented yet") //nolint:staticcheck
-}
 
 // GetNoteBacklinks implements GET /api/v1/notes/{id}/backlinks (LINKS-08 / D-27).
 // stub: replaced by Plan 06-11 (backlinks + search-titles handlers).

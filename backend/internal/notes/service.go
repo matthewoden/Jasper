@@ -1055,6 +1055,7 @@ func (nopIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) { r
 // Phase 6 Plan 06-05 additions — nopIndex no-ops for tag + backlink sync.
 // Plan 06-05 wires the real implementations; these are the fallbacks used
 // by nil-index callers (Phase 1 tests, httptest-based unit tests, etc.).
+func (nopIndex) ListTags(_ context.Context) ([]TagWithCount, error)        { return []TagWithCount{}, nil }
 func (nopIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
 
 func (nopIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
