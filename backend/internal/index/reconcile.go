@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -17,30 +18,46 @@ import (
 //
 // Returns the count of indexed notes after the reconciliation completes
 // (post-deletes for incremental; total upserted for full).
+//
+// Reconcile is a thin wrapper over ReconcileWithRegistry that passes nil
+// for the registry — all wiki-link targets are treated as pending in that
+// case. Plan 06-06's composition root calls ReconcileWithRegistry directly.
 func (x *Indexer) Reconcile(ctx context.Context, mode Mode) (int, error) {
+	return x.ReconcileWithRegistry(ctx, mode, nil)
+}
+
+// ReconcileWithRegistry extends the base Reconcile with Phase 6 derived-data
+// sync: per-file tag extraction (SyncTags) and wiki-link extraction
+// (SyncBacklinks) are called after each successful Upsert. Both operations
+// are non-fatal per the file-first contract — errors are logged and the
+// per-file walk continues.
+//
+// registry is the title→note registry used for D-20 ambiguity resolution in
+// SyncBacklinks. Pass nil to treat every wiki-link target as pending (safe —
+// pending rows are updated when the registry is available).
+//
+// Plan 06-06 wires the real registry at the composition root.
+func (x *Indexer) ReconcileWithRegistry(ctx context.Context, mode Mode, registry *notes.Registry) (int, error) {
 	switch mode {
 	case ModeFull:
-		return x.reconcileFull(ctx)
+		return x.reconcileFullWithRegistry(ctx, registry)
 	case ModeIncremental:
-		return x.reconcileIncremental(ctx)
+		return x.reconcileIncrementalWithRegistry(ctx, registry)
 	default:
 		return 0, fmt.Errorf("indexer: unknown mode %q", mode)
 	}
 }
 
-// reconcileIncremental scans the filesystem, compares each file's mtime
-// against the index, and upserts only those that have moved forward
-// (DATA-09 mtime-first, partial). Files missing from disk that exist
-// in the index are deleted.
+// reconcileIncrementalWithRegistry scans the filesystem, compares each
+// file's mtime against the index, and upserts only those that have moved
+// forward (DATA-09 mtime-first, partial). Files missing from disk that
+// exist in the index are deleted.
 //
-// mtime-first is fast but can miss content-only changes that don't
-// bump mtime (rare on macOS APFS / WSL ext4 — mtime resolution is 1
-// second so concurrent writes within the same second can race).
+// Phase 6 extension: after each successful Upsert, SyncTags and
+// SyncBacklinks are called (non-fatal per file-first contract).
 //
 // CHECKSUM FALLBACK IS DEFERRED TO PHASE 7. Phase 2 ships mtime-only.
-// See "Deferred from this phase" section in 02-04b-PLAN.md and
-// REQUIREMENTS.md DATA-09 row.
-func (x *Indexer) reconcileIncremental(ctx context.Context) (int, error) {
+func (x *Indexer) reconcileIncrementalWithRegistry(ctx context.Context, registry *notes.Registry) (int, error) {
 	existing, err := x.existing(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("reconcile incremental: load existing: %w", err)
@@ -52,23 +69,16 @@ func (x *Indexer) reconcileIncremental(ctx context.Context) (int, error) {
 		cur, ok := existing[fm.CanonicalRelPath]
 
 		// Skip if mtime unchanged AND a row already exists for that path.
-		// This is the cheap fast-path that makes startup re-index O(N)
-		// stat calls only — no file reads, no SQL writes.
 		if ok && cur.MTime == fm.MTimeUnix {
 			return nil
 		}
 
-		// Decide ID: reuse existing if present, scratchpad-special, else
-		// mint v4. T-02-04b-07: chooseID guards the special-case.
 		existingID := uuid.Nil
 		if ok {
 			existingID = cur.ID
 		}
 		id := chooseID(existingID, fm.CanonicalRelPath)
 
-		// Read content for title extraction. The indexer is best-effort:
-		// a transient read failure is logged and skipped (the file may
-		// have been deleted between Walk and ReadFile).
 		content, err := os.ReadFile(fm.AbsPath)
 		if err != nil {
 			x.Log.Warn("indexer: read failed; skipping",
@@ -87,14 +97,15 @@ func (x *Indexer) reconcileIncremental(ctx context.Context) (int, error) {
 		}
 		if err := x.Upsert(ctx, rec); err != nil {
 			if errors.Is(err, notes.ErrCaseCollision) {
-				// DATA-12: log + skip. The first writer's row stays
-				// authoritative; the second is rejected as a collision.
 				x.Log.Warn("indexer: case collision; skipping",
 					"path", fm.CanonicalRelPath, "err", err)
 				return nil
 			}
 			return fmt.Errorf("upsert %s: %w", fm.CanonicalRelPath, err)
 		}
+
+		// Phase 6: derived-data sync (non-fatal per file-first contract).
+		x.syncDerivedData(ctx, rec.ID, rec.Path, content, registry)
 		return nil
 	})
 	if walkErr != nil {
@@ -111,7 +122,6 @@ func (x *Indexer) reconcileIncremental(ctx context.Context) (int, error) {
 		}
 	}
 
-	// Final count = current row count (post-deletes).
 	var n int
 	if err := x.Pair.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM notes`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("reconcile incremental: count: %w", err)
@@ -119,12 +129,9 @@ func (x *Indexer) reconcileIncremental(ctx context.Context) (int, error) {
 	return n, nil
 }
 
-// reconcileFull walks the entire vault and upserts every file. It does
-// NOT delete absent rows because Path 2 (RebuildAndReindex) is expected
-// to drop the table before calling reconcileFull, so there are no
-// stale rows. If reconcileFull is called WITHOUT a prior drop, leftover
-// rows persist (the caller is responsible).
-func (x *Indexer) reconcileFull(ctx context.Context) (int, error) {
+// reconcileFullWithRegistry walks the entire vault and upserts every file.
+// Phase 6: also syncs tags + backlinks per file after Upsert.
+func (x *Indexer) reconcileFullWithRegistry(ctx context.Context, registry *notes.Registry) (int, error) {
 	upserts := 0
 	walkErr := WalkVault(ctx, x.NotesDir, func(fm FileMeta) error {
 		content, err := os.ReadFile(fm.AbsPath)
@@ -133,10 +140,6 @@ func (x *Indexer) reconcileFull(ctx context.Context) (int, error) {
 				"path", fm.CanonicalRelPath, "err", err)
 			return nil
 		}
-		// Full reindex uses chooseID with no existing row — only the
-		// scratchpad special-case fires; everything else mints a fresh
-		// v4 UUID. (Path 2 dropped the table, so there are no existing
-		// ids to reuse.)
 		id := chooseID(uuid.Nil, fm.CanonicalRelPath)
 		rec := notes.NoteRecord{
 			ID:            id,
@@ -156,10 +159,30 @@ func (x *Indexer) reconcileFull(ctx context.Context) (int, error) {
 			return fmt.Errorf("upsert %s: %w", fm.CanonicalRelPath, err)
 		}
 		upserts++
+
+		// Phase 6: derived-data sync (non-fatal per file-first contract).
+		x.syncDerivedData(ctx, rec.ID, rec.Path, content, registry)
 		return nil
 	})
 	if walkErr != nil {
 		return upserts, fmt.Errorf("reconcile full: walk: %w", walkErr)
 	}
 	return upserts, nil
+}
+
+// syncDerivedData calls SyncTags + SyncBacklinks after a successful Upsert.
+// Both operations are non-fatal: errors are logged and the walk continues.
+// This is the Phase 6 hook point documented in PATTERNS.md §reconcile.go.
+func (x *Indexer) syncDerivedData(ctx context.Context, id uuid.UUID, path string, content []byte, registry *notes.Registry) {
+	// Extract + sync tags (TAGS-05).
+	tags := markdown.ExtractTags(content)
+	if err := x.SyncTags(ctx, id, tags); err != nil {
+		x.Log.Warn("reconcile: tag sync failed", "id", id, "err", err)
+	}
+
+	// Extract + sync backlinks (LINKS-01 implicit).
+	refs := markdown.ExtractWikilinks(content)
+	if err := x.SyncBacklinks(ctx, id, path, refs, registry, content); err != nil {
+		x.Log.Warn("reconcile: backlink sync failed", "id", id, "err", err)
+	}
 }
