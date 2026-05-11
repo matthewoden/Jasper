@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -278,13 +279,24 @@ type realIndex struct {
 	byPath    map[string]notes.NoteRecord
 	byID      map[uuid.UUID]notes.NoteRecord
 	upsertErr error
+
+	// backlinks: target title → list of source summaries. Set via setBacklink()
+	// for tests that need SourcesByBacklinkTitle to return real results.
+	backlinks map[string][]notes.NoteSummary
 }
 
 func newRealIndex() *realIndex {
 	return &realIndex{
-		byPath: make(map[string]notes.NoteRecord),
-		byID:   make(map[uuid.UUID]notes.NoteRecord),
+		byPath:    make(map[string]notes.NoteRecord),
+		byID:      make(map[uuid.UUID]notes.NoteRecord),
+		backlinks: make(map[string][]notes.NoteSummary),
 	}
+}
+
+// setBacklink seeds the index with a source note that refers to targetTitle.
+// Used by Task 5 tests to simulate a backlink without real SQL.
+func (r *realIndex) setBacklink(targetTitle string, source notes.NoteSummary) {
+	r.backlinks[targetTitle] = append(r.backlinks[targetTitle], source)
 }
 
 func (r *realIndex) Upsert(_ context.Context, rec notes.NoteRecord) error {
@@ -375,7 +387,10 @@ func (r *realIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) 
 	return nil, nil
 }
 
-func (r *realIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]notes.NoteSummary, error) {
+func (r *realIndex) SourcesByBacklinkTitle(_ context.Context, title string) ([]notes.NoteSummary, error) {
+	if srcs, ok := r.backlinks[title]; ok {
+		return srcs, nil
+	}
 	return []notes.NoteSummary{}, nil
 }
 
@@ -850,3 +865,294 @@ func (l *leakyFileStore) MoveFile(_, _ string) error           { return nil }
 func (l *leakyFileStore) CreateDir(_ string) error             { return nil }
 func (l *leakyFileStore) DeleteDir(_ string, _ bool) error     { return nil }
 func (l *leakyFileStore) MoveDir(_, _ string) error            { return nil }
+
+// ---------------------------------------------------------------------------
+// Task 5: PostNoteMove wikilink-rewrite tests (M1-M5)
+// ---------------------------------------------------------------------------
+
+// apiBroadcaster is a test broadcaster spy for the api-package move handler
+// tests. Records all Broadcast calls for assertion.
+type apiBroadcaster struct {
+	mu     sync.Mutex
+	events []apiEvent
+}
+
+type apiEvent struct {
+	eventType string
+	payload   any
+	sessionID string
+}
+
+func (b *apiBroadcaster) Broadcast(eventType string, payload any, sessionID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.events = append(b.events, apiEvent{eventType: eventType, payload: payload, sessionID: sessionID})
+}
+
+func (b *apiBroadcaster) countByType(eventType string) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	n := 0
+	for _, e := range b.events {
+		if e.eventType == eventType {
+			n++
+		}
+	}
+	return n
+}
+
+func (b *apiBroadcaster) firstByType(eventType string) (apiEvent, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, e := range b.events {
+		if e.eventType == eventType {
+			return e, true
+		}
+	}
+	return apiEvent{}, false
+}
+
+// setupRealFSServerWithBroadcaster is like setupRealFSServer but wires a
+// real apiBroadcaster into notes.Service and Server so WS events can be
+// asserted in tests.
+func setupRealFSServerWithBroadcaster(t *testing.T) (*httptest.Server, *notes.Service, string, *realIndex, *apiBroadcaster) {
+	t.Helper()
+	root := t.TempDir()
+	store := fsstore.NewStore(root)
+	idx := newRealIndex()
+	bc := &apiBroadcaster{}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := notes.NewService(store, idx, bc, logger)
+	srv := NewServerWithIndex(svc, nil, nil, idx, bc, logger, "")
+	si := NewStrictHandler(srv, nil)
+	r := chi.NewRouter()
+	r.Route("/api/v1", func(r chi.Router) {
+		HandlerFromMux(si, r)
+	})
+	return httptest.NewServer(r), svc, root, idx, bc
+}
+
+// TestPostNoteMove_M1_TitleChangeTriggerRewrite — happy path: title changes,
+// referrer B's on-disk body gets [[OldTitle]] rewritten to [[NewTitle]];
+// broadcaster receives EventLinksRewritten with B's UUID.
+//
+// To force a title change on move, note A is written WITHOUT an H1 heading
+// so ExtractTitle falls back to the filename. Moving from foo.md → bar.md
+// causes oldTitle "foo" ≠ newTitle "bar" and triggers the rewrite.
+func TestPostNoteMove_M1_TitleChangeTriggerRewrite(t *testing.T) {
+	t.Parallel()
+	ts, _, root, idx, bc := setupRealFSServerWithBroadcaster(t)
+	defer ts.Close()
+
+	// Create note A via API (gets scaffold with # foo heading).
+	resp, body := mustPostJSON(t, ts, "/api/v1/notes", `{"parent_path":"","title":"foo"}`)
+	if resp.StatusCode != 201 {
+		t.Fatalf("create A: %d; body=%s", resp.StatusCode, body)
+	}
+	var aSummary NoteSummary
+	if err := json.Unmarshal(body, &aSummary); err != nil {
+		t.Fatalf("unmarshal A: %v; body=%s", err, body)
+	}
+	aID := uuid.UUID(aSummary.Id)
+
+	// Overwrite A's file with content that has NO H1 heading so that
+	// ExtractTitle falls back to the filename for the title. This means:
+	//   - Before move: title = "foo" (from foo.md filename)
+	//   - After move to bar.md: title = "bar" (from bar.md filename)
+	aPath := filepath.Join(root, "foo.md")
+	if err := os.WriteFile(aPath, []byte("---\ntags: []\n---\n\nno heading here\n"), 0o600); err != nil {
+		t.Fatalf("write A: %v", err)
+	}
+
+	// Create note B at b.md with body containing [[foo]].
+	resp, body = mustPostJSON(t, ts, "/api/v1/notes", `{"parent_path":"","title":"b"}`)
+	if resp.StatusCode != 201 {
+		t.Fatalf("create B: %d; body=%s", resp.StatusCode, body)
+	}
+	var bSummary NoteSummary
+	if err := json.Unmarshal(body, &bSummary); err != nil {
+		t.Fatalf("unmarshal B: %v; body=%s", err, body)
+	}
+	bID := uuid.UUID(bSummary.Id)
+	bPath := filepath.Join(root, "b.md")
+	// Write [[foo]] reference into B's file.
+	if err := os.WriteFile(bPath, []byte("---\ntags: []\n---\n\nsee [[foo]]\n"), 0o600); err != nil {
+		t.Fatalf("write B: %v", err)
+	}
+
+	// Wire the backlink: B refers to title "foo".
+	bRec := idx.byID[bID]
+	idx.setBacklink("foo", notes.NoteSummary{ID: bID, Path: bRec.Path, Title: "b"})
+
+	// Move A from foo.md to bar.md. oldTitle="foo" (filename) → newTitle="bar" (filename fallback).
+	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+aID.String()+"/move",
+		`{"new_path":"bar.md"}`)
+	if resp.StatusCode != 200 {
+		t.Fatalf("move: %d; body=%s", resp.StatusCode, body)
+	}
+
+	// Assert B's on-disk content was rewritten.
+	bContent, err := os.ReadFile(bPath)
+	if err != nil {
+		t.Fatalf("read B: %v", err)
+	}
+	if !strings.Contains(string(bContent), "[[bar]]") {
+		t.Errorf("B not rewritten: body=%s", bContent)
+	}
+	if strings.Contains(string(bContent), "[[foo]]") {
+		t.Errorf("B still has [[foo]]: body=%s", bContent)
+	}
+
+	// Assert EventLinksRewritten broadcast was emitted.
+	if n := bc.countByType(notes.EventLinksRewritten); n != 1 {
+		t.Errorf("EventLinksRewritten count: got %d, want 1", n)
+	}
+	ev, ok := bc.firstByType(notes.EventLinksRewritten)
+	if !ok {
+		t.Fatal("no EventLinksRewritten event")
+	}
+	payload, _ := ev.payload.(map[string]any)
+	if payload["old_title"] != "foo" {
+		t.Errorf("old_title: got %v, want foo", payload["old_title"])
+	}
+	if payload["new_title"] != "bar" {
+		t.Errorf("new_title: got %v, want bar", payload["new_title"])
+	}
+	touchedIDs, _ := payload["touched_note_ids"].([]string)
+	if len(touchedIDs) != 1 || touchedIDs[0] != bID.String() {
+		t.Errorf("touched_note_ids: got %v, want [%s]", touchedIDs, bID.String())
+	}
+}
+
+// TestPostNoteMove_M2_NoRewrite_WhenTitleUnchanged — moving a note to a
+// new path without changing the filename stem (title unchanged) does NOT
+// invoke RenameRewriteWikilinks and emits zero EventLinksRewritten events.
+func TestPostNoteMove_M2_NoRewrite_WhenTitleUnchanged(t *testing.T) {
+	t.Parallel()
+	ts, _, root, idx, bc := setupRealFSServerWithBroadcaster(t)
+	defer ts.Close()
+
+	// Create sub-folder so we can move foo.md → sub/foo.md.
+	if err := os.MkdirAll(filepath.Join(root, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+
+	resp, body := mustPostJSON(t, ts, "/api/v1/notes", `{"parent_path":"","title":"foo"}`)
+	if resp.StatusCode != 201 {
+		t.Fatalf("create foo: %d; body=%s", resp.StatusCode, body)
+	}
+	var aSummary NoteSummary
+	if err := json.Unmarshal(body, &aSummary); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	aID := uuid.UUID(aSummary.Id)
+
+	// Seed a backlink so if rewrite ran it would touch something.
+	otherID := uuid.New()
+	idx.setBacklink("foo", notes.NoteSummary{ID: otherID, Path: "b.md", Title: "b"})
+
+	// Move foo.md → sub/foo.md (title stem "foo" unchanged).
+	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+aID.String()+"/move",
+		`{"new_path":"sub/foo.md"}`)
+	if resp.StatusCode != 200 {
+		t.Fatalf("move: %d; body=%s", resp.StatusCode, body)
+	}
+
+	// EventLinksRewritten must NOT be emitted.
+	if n := bc.countByType(notes.EventLinksRewritten); n != 0 {
+		t.Errorf("EventLinksRewritten count: got %d, want 0", n)
+	}
+}
+
+// TestPostNoteMove_M4_NoBroadcast_WhenNoReferrers — title changes (no-H1 note)
+// but there are zero referrers; EventLinksRewritten is NOT broadcast (per
+// RW2: empty touched slice → no broadcast).
+func TestPostNoteMove_M4_NoBroadcast_WhenNoReferrers(t *testing.T) {
+	t.Parallel()
+	ts, _, root, _, bc := setupRealFSServerWithBroadcaster(t)
+	defer ts.Close()
+
+	resp, body := mustPostJSON(t, ts, "/api/v1/notes", `{"parent_path":"","title":"solo"}`)
+	if resp.StatusCode != 201 {
+		t.Fatalf("create: %d; body=%s", resp.StatusCode, body)
+	}
+	var created NoteSummary
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	aID := uuid.UUID(created.Id)
+
+	// Remove H1 from solo.md so title = filename (forces title change on move).
+	soloPath := filepath.Join(root, "solo.md")
+	_ = os.WriteFile(soloPath, []byte("---\ntags: []\n---\n\nno heading\n"), 0o600)
+
+	// Move with title change; idx.SourcesByBacklinkTitle("solo") returns [].
+	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+aID.String()+"/move",
+		`{"new_path":"renamed.md"}`)
+	if resp.StatusCode != 200 {
+		t.Fatalf("move: %d; body=%s", resp.StatusCode, body)
+	}
+
+	// No referrers → no EventLinksRewritten (per RW2: empty touched → no broadcast).
+	if n := bc.countByType(notes.EventLinksRewritten); n != 0 {
+		t.Errorf("EventLinksRewritten count: got %d, want 0", n)
+	}
+}
+
+// TestPostNoteMove_M5_OldTitleCapturedBeforeMove — verifies that the old
+// title is captured BEFORE Move() is called. If captured after, the registry
+// would already have the new path and the old title would be lost.
+//
+// Uses no-H1 content so title = filename; this makes oldTitle and newTitle
+// differ just from the path change.
+func TestPostNoteMove_M5_OldTitleCapturedBeforeMove(t *testing.T) {
+	t.Parallel()
+	ts, _, root, idx, bc := setupRealFSServerWithBroadcaster(t)
+	defer ts.Close()
+
+	resp, body := mustPostJSON(t, ts, "/api/v1/notes", `{"parent_path":"","title":"alpha"}`)
+	if resp.StatusCode != 201 {
+		t.Fatalf("create alpha: %d; body=%s", resp.StatusCode, body)
+	}
+	var created NoteSummary
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	aID := uuid.UUID(created.Id)
+
+	// Remove H1 from alpha.md so title = filename.
+	aPath := filepath.Join(root, "alpha.md")
+	_ = os.WriteFile(aPath, []byte("---\ntags: []\n---\n\nno heading\n"), 0o600)
+
+	// Create referrer B and wire backlink.
+	resp, body = mustPostJSON(t, ts, "/api/v1/notes", `{"parent_path":"","title":"b"}`)
+	if resp.StatusCode != 201 {
+		t.Fatalf("create B: %d; body=%s", resp.StatusCode, body)
+	}
+	var bSummary NoteSummary
+	_ = json.Unmarshal(body, &bSummary)
+	bID := uuid.UUID(bSummary.Id)
+	bPath := filepath.Join(root, "b.md")
+	_ = os.WriteFile(bPath, []byte("---\ntags: []\n---\n\nsee [[alpha]]\n"), 0o600)
+	idx.setBacklink("alpha", notes.NoteSummary{ID: bID, Path: "b.md", Title: "b"})
+
+	// Move alpha.md → beta.md.
+	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+aID.String()+"/move",
+		`{"new_path":"beta.md"}`)
+	if resp.StatusCode != 200 {
+		t.Fatalf("move: %d; body=%s", resp.StatusCode, body)
+	}
+
+	// Assert: old_title in EventLinksRewritten = "alpha" (pre-move), new_title = "beta".
+	ev, ok := bc.firstByType(notes.EventLinksRewritten)
+	if !ok {
+		t.Fatal("no EventLinksRewritten event emitted")
+	}
+	payload, _ := ev.payload.(map[string]any)
+	if payload["old_title"] != "alpha" {
+		t.Errorf("old_title: got %v, want alpha", payload["old_title"])
+	}
+	if payload["new_title"] != "beta" {
+		t.Errorf("new_title: got %v, want beta", payload["new_title"])
+	}
+}
