@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"log/slog"
 	"path"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -766,6 +768,265 @@ func (s *Service) LookupSummary(id uuid.UUID) (NoteSummary, bool) {
 	}, true
 }
 
+// ---------------------------------------------------------------------------
+// Phase 6 Plan 06-05 Task 3: cross-vault rewrite methods
+// ---------------------------------------------------------------------------
+
+// validTagRE defines the D-22 charset for tag names: lowercase letters,
+// digits, hyphens, underscores only.
+var validTagRE = regexp.MustCompile(`^[a-z0-9_-]+$`)
+
+// isValidTagName reports whether s satisfies the D-22 charset rule.
+func isValidTagName(s string) bool { return validTagRE.MatchString(s) }
+
+// uuidsToStrings converts a UUID slice to a string slice for WS payloads.
+func uuidsToStrings(ids []uuid.UUID) []string {
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = id.String()
+	}
+	return out
+}
+
+// RenameTagAcrossVault renames a tag from oldName to newName in every carrier
+// note's YAML frontmatter. Two-phase D-37 atomicity: FS pass first, SQL pass
+// second (non-fatal), broadcast third.
+//
+// Returns the UUIDs of all affected notes, or:
+//   - ErrTagNotFound if oldName has no carriers (empty index result).
+//   - ErrInvalidTagName if newName violates D-22 charset.
+//   - ErrTagCollision if newName collides with an existing tag (propagated
+//     from index.RenameTag).
+//
+// Rollback on FS failure (D-37): if any WriteAtomic call fails, every
+// already-written file is restored to its pre-state via a best-effort
+// WriteAtomic pass.
+func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName string) ([]uuid.UUID, error) {
+	if !isValidTagName(newName) {
+		return nil, fmt.Errorf("notes.RenameTagAcrossVault: %w", ErrInvalidTagName)
+	}
+
+	// 1. Find carrier notes via the index.
+	carriers, err := s.index.NotesByTag(ctx, oldName)
+	if err != nil {
+		return nil, fmt.Errorf("notes.RenameTagAcrossVault: NotesByTag: %w", err)
+	}
+	if len(carriers) == 0 {
+		return nil, fmt.Errorf("notes.RenameTagAcrossVault: %w", ErrTagNotFound)
+	}
+
+	// 2. Capture pre-state for all carrier notes.
+	type fileState struct {
+		path    string
+		before  []byte
+		rewrite []byte
+	}
+	states := make([]fileState, 0, len(carriers))
+	for _, c := range carriers {
+		before, readErr := s.files.Read(c.Path)
+		if readErr != nil {
+			return nil, fmt.Errorf("notes.RenameTagAcrossVault: read %s: %w", c.Path, readErr)
+		}
+		rewrite := rewriteTagsArray(before, oldName, newName)
+		states = append(states, fileState{path: c.Path, before: before, rewrite: rewrite})
+	}
+
+	// 3. FS pass — write each rewritten file atomically. On any failure,
+	// restore all already-written files (D-37 rollback).
+	written := make([]int, 0, len(states))
+	for i, st := range states {
+		if err := s.files.WriteAtomic(st.path, st.rewrite); err != nil {
+			// Rollback: restore all files written so far.
+			for _, wi := range written {
+				if rbErr := s.files.WriteAtomic(states[wi].path, states[wi].before); rbErr != nil {
+					s.log.Error("RenameTagAcrossVault: rollback WriteAtomic failed (reconciler will heal)",
+						"path", states[wi].path, "err", rbErr)
+				}
+			}
+			return nil, fmt.Errorf("notes.RenameTagAcrossVault: write %s: %w", st.path, err)
+		}
+		written = append(written, i)
+	}
+
+	// 4. SQL pass — single-transaction rename. Non-fatal: FS is truth.
+	if _, sqlErr := s.index.RenameTag(ctx, oldName, newName); sqlErr != nil {
+		// Check for semantic errors that the caller cares about.
+		if errors.Is(sqlErr, ErrTagCollision) || errors.Is(sqlErr, ErrTagNotFound) {
+			return nil, fmt.Errorf("notes.RenameTagAcrossVault: index rename: %w", sqlErr)
+		}
+		s.log.Error("RenameTagAcrossVault: SQL pass failed (FS is truth; reconcile heals)",
+			"old", oldName, "new", newName, "err", sqlErr)
+	}
+
+	// 5. Build the touched IDs slice (deterministic order for broadcast).
+	touchedIDs := make([]uuid.UUID, len(carriers))
+	for i, c := range carriers {
+		touchedIDs[i] = c.ID
+	}
+	sort.Slice(touchedIDs, func(i, j int) bool {
+		return touchedIDs[i].String() < touchedIDs[j].String()
+	})
+
+	// 6. Broadcast (D-34): EventTagsRewritten with origin session ID.
+	s.broadcaster.Broadcast(EventTagsRewritten, map[string]any{
+		"old_name":         oldName,
+		"new_name":         newName,
+		"touched_note_ids": uuidsToStrings(touchedIDs),
+	}, SessionIDFromContext(ctx))
+
+	return touchedIDs, nil
+}
+
+// DeleteTagAcrossVault removes a tag from every carrier note's YAML frontmatter.
+// Structurally identical to RenameTagAcrossVault except step 3 deletes the tag
+// (rewriteTagsArray with newName="") and step 4 calls index.DeleteTag.
+// The broadcast payload uses new_name=nil (D-34 delete semantics).
+func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid.UUID, error) {
+	// 1. Find carrier notes.
+	carriers, err := s.index.NotesByTag(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("notes.DeleteTagAcrossVault: NotesByTag: %w", err)
+	}
+	if len(carriers) == 0 {
+		return nil, fmt.Errorf("notes.DeleteTagAcrossVault: %w", ErrTagNotFound)
+	}
+
+	// 2. Capture pre-state and build rewrites (newName="" = delete).
+	type fileState struct {
+		path    string
+		before  []byte
+		rewrite []byte
+	}
+	states := make([]fileState, 0, len(carriers))
+	for _, c := range carriers {
+		before, readErr := s.files.Read(c.Path)
+		if readErr != nil {
+			return nil, fmt.Errorf("notes.DeleteTagAcrossVault: read %s: %w", c.Path, readErr)
+		}
+		rewrite := rewriteTagsArray(before, name, "")
+		states = append(states, fileState{path: c.Path, before: before, rewrite: rewrite})
+	}
+
+	// 3. FS pass with D-37 rollback on failure.
+	written := make([]int, 0, len(states))
+	for i, st := range states {
+		if err := s.files.WriteAtomic(st.path, st.rewrite); err != nil {
+			for _, wi := range written {
+				if rbErr := s.files.WriteAtomic(states[wi].path, states[wi].before); rbErr != nil {
+					s.log.Error("DeleteTagAcrossVault: rollback WriteAtomic failed",
+						"path", states[wi].path, "err", rbErr)
+				}
+			}
+			return nil, fmt.Errorf("notes.DeleteTagAcrossVault: write %s: %w", st.path, err)
+		}
+		written = append(written, i)
+	}
+
+	// 4. SQL pass — non-fatal. ErrTagNotFound is a race (already deleted); treat as success.
+	if _, sqlErr := s.index.DeleteTag(ctx, name); sqlErr != nil && !errors.Is(sqlErr, ErrTagNotFound) {
+		s.log.Error("DeleteTagAcrossVault: SQL pass failed (FS is truth; reconcile heals)",
+			"name", name, "err", sqlErr)
+	}
+
+	// 5. Touched IDs (deterministic order).
+	touchedIDs := make([]uuid.UUID, len(carriers))
+	for i, c := range carriers {
+		touchedIDs[i] = c.ID
+	}
+	sort.Slice(touchedIDs, func(i, j int) bool {
+		return touchedIDs[i].String() < touchedIDs[j].String()
+	})
+
+	// 6. Broadcast — new_name is nil for delete semantics (D-34).
+	s.broadcaster.Broadcast(EventTagsRewritten, map[string]any{
+		"old_name":         name,
+		"new_name":         nil,
+		"touched_note_ids": uuidsToStrings(touchedIDs),
+	}, SessionIDFromContext(ctx))
+
+	return touchedIDs, nil
+}
+
+// RenameRewriteWikilinks rewrites every [[OldTitle]] and [[OldTitle|alias]]
+// reference to [[NewTitle]] / [[NewTitle|alias]] across the vault. Two-phase
+// D-36 atomicity: FS pass first, SQL pass second (non-fatal), broadcast third.
+//
+// Only INBOUND references are rewritten — the renamed note's own [[...]] links
+// are not touched here (they are updated on next Save via SyncBacklinks).
+//
+// Returns the UUIDs of all touched referrer notes, or an empty slice when
+// there are no referrers (no broadcast fired in that case — Test RW2).
+//
+// Rollback on FS failure (D-36): every already-written file is restored.
+func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle string) ([]uuid.UUID, error) {
+	// 1. Find referrer notes that contain [[OldTitle]].
+	referrers, err := s.index.SourcesByBacklinkTitle(ctx, oldTitle)
+	if err != nil {
+		return nil, fmt.Errorf("notes.RenameRewriteWikilinks: SourcesByBacklinkTitle: %w", err)
+	}
+	if len(referrers) == 0 {
+		return []uuid.UUID{}, nil // nothing to do; no broadcast
+	}
+
+	// 2. Capture pre-state and build rewrites via the AST-based rewriter.
+	type fileState struct {
+		id      uuid.UUID
+		path    string
+		before  []byte
+		rewrite []byte
+	}
+	states := make([]fileState, 0, len(referrers))
+	for _, r := range referrers {
+		before, readErr := s.files.Read(r.Path)
+		if readErr != nil {
+			return nil, fmt.Errorf("notes.RenameRewriteWikilinks: read %s: %w", r.Path, readErr)
+		}
+		rewrite := RewriteWikilinksAST(before, oldTitle, newTitle)
+		states = append(states, fileState{id: r.ID, path: r.Path, before: before, rewrite: rewrite})
+	}
+
+	// 3. FS pass with D-36 rollback on failure.
+	written := make([]int, 0, len(states))
+	for i, st := range states {
+		if err := s.files.WriteAtomic(st.path, st.rewrite); err != nil {
+			for _, wi := range written {
+				if rbErr := s.files.WriteAtomic(states[wi].path, states[wi].before); rbErr != nil {
+					s.log.Error("RenameRewriteWikilinks: rollback WriteAtomic failed",
+						"path", states[wi].path, "err", rbErr)
+				}
+			}
+			return nil, fmt.Errorf("notes.RenameRewriteWikilinks: write %s: %w", st.path, err)
+		}
+		written = append(written, i)
+	}
+
+	// 4. SQL pass — update backlinks table. Non-fatal: FS is truth.
+	// Direct UPDATE is simpler and atomic; the next save of any referrer
+	// re-syncs backlinks fully via SyncBacklinks.
+	if sqlErr := s.index.UpdateBacklinksTargetTitle(ctx, oldTitle, newTitle, nil); sqlErr != nil {
+		s.log.Error("RenameRewriteWikilinks: SQL backlinks update failed (FS is truth; reconcile heals)",
+			"old", oldTitle, "new", newTitle, "err", sqlErr)
+	}
+
+	// 5. Collect touched IDs (deterministic order).
+	touchedIDs := make([]uuid.UUID, len(states))
+	for i, st := range states {
+		touchedIDs[i] = st.id
+	}
+	sort.Slice(touchedIDs, func(i, j int) bool {
+		return touchedIDs[i].String() < touchedIDs[j].String()
+	})
+
+	// 6. Broadcast EventLinksRewritten (D-33) — only when touched is non-empty.
+	s.broadcaster.Broadcast(EventLinksRewritten, map[string]any{
+		"old_title":        oldTitle,
+		"new_title":        newTitle,
+		"touched_note_ids": uuidsToStrings(touchedIDs),
+	}, SessionIDFromContext(ctx))
+
+	return touchedIDs, nil
+}
+
 // nopIndex is the no-op fallback used when callers pass nil to
 // NewService. Lives in service.go (next to the only constructor that
 // substitutes it) so the fallback wiring is co-located with its
@@ -799,5 +1060,19 @@ func (nopIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { ret
 func (nopIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
 	_ []markdown.WikiLinkRef, _ *Registry, _ []byte,
 ) error {
+	return nil
+}
+
+// Phase 6 Plan 06-05 Task 3 additions — cross-vault rewrite nopIndex stubs.
+func (nopIndex) NotesByTag(_ context.Context, _ string) ([]NoteSummary, error) {
+	return []NoteSummary{}, nil
+}
+func (nopIndex) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) { return nil, nil }
+func (nopIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error)    { return nil, nil }
+func (nopIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]NoteSummary, error) {
+	return []NoteSummary{}, nil
+}
+
+func (nopIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
 	return nil
 }

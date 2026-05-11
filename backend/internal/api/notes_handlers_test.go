@@ -55,6 +55,27 @@ func (f *fakeIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
 	return nil
 }
 
+// Phase 6 Plan 06-05 Task 3 — cross-vault rewrite stubs for fakeIndex.
+func (f *fakeIndex) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary, error) {
+	return []notes.NoteSummary{}, nil
+}
+
+func (f *fakeIndex) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (f *fakeIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (f *fakeIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]notes.NoteSummary, error) {
+	return []notes.NoteSummary{}, nil
+}
+
+func (f *fakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
+	return nil
+}
+
 // setupGetNotesServer builds a Server wired with the given index and
 // mounts the strict-server bridge under /api/v1.
 func setupGetNotesServer(t *testing.T, idx notes.Index) *httptest.Server {
@@ -332,6 +353,27 @@ func (r *realIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error {
 func (r *realIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
 	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
 ) error {
+	return nil
+}
+
+// Phase 6 Plan 06-05 Task 3 — cross-vault rewrite stubs for realIndex.
+func (r *realIndex) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary, error) {
+	return []notes.NoteSummary{}, nil
+}
+
+func (r *realIndex) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (r *realIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (r *realIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]notes.NoteSummary, error) {
+	return []notes.NoteSummary{}, nil
+}
+
+func (r *realIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
 	return nil
 }
 

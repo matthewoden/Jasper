@@ -34,19 +34,22 @@ type TagWithCount struct {
 // ---------------------------------------------------------------------------
 // Sentinel errors
 // ---------------------------------------------------------------------------
+//
+// These are re-exported aliases of the canonical notes.Err* sentinels so that
+// callers can use either `errors.Is(err, notes.ErrTagNotFound)` or
+// `errors.Is(err, index.ErrTagNotFound)` interchangeably. Defined here for
+// backward compatibility and for import convenience in the API handler layer
+// (which can import index but not notes → api cycle).
 
 var (
-	// ErrTagNotFound is returned by RenameTag and DeleteTag when the named
-	// tag does not exist. Handlers map this to HTTP 404.
-	ErrTagNotFound = errors.New("tag not found")
+	// ErrTagNotFound is an alias for notes.ErrTagNotFound.
+	ErrTagNotFound = notes.ErrTagNotFound
 
-	// ErrTagCollision is returned by RenameTag when newName already exists.
-	// Handlers map this to HTTP 409 Conflict.
-	ErrTagCollision = errors.New("tag already exists")
+	// ErrTagCollision is an alias for notes.ErrTagCollision.
+	ErrTagCollision = notes.ErrTagCollision
 
-	// ErrInvalidTagName is returned by RenameTag when the supplied newName
-	// contains characters not allowed by D-22 ([a-z0-9_-]+).
-	ErrInvalidTagName = errors.New("invalid tag name")
+	// ErrInvalidTagName is an alias for notes.ErrInvalidTagName.
+	ErrInvalidTagName = notes.ErrInvalidTagName
 )
 
 // validTagRE matches the D-22 charset: lowercase letters, digits, hyphens,

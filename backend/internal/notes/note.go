@@ -56,6 +56,23 @@ var (
 	// against a third writer between the failed Update's Stat and the
 	// follow-up Get's Stat).
 	ErrStaleWrite = errors.New("notes: stale write — If-Match mismatch")
+
+	// Phase 6 Plan 06-05 Task 3: tag operation sentinels.
+	// Defined in the notes domain so the Index port and the service can
+	// use them without a circular import (index imports notes, notes does
+	// NOT import index).
+
+	// ErrTagNotFound is returned by Index.RenameTag and Index.DeleteTag when
+	// the named tag does not exist in the index (D-22 / TAGS-03).
+	ErrTagNotFound = errors.New("notes: tag not found")
+
+	// ErrTagCollision is returned by Index.RenameTag when newName already
+	// exists as a tag name (D-22 / TAGS-04).
+	ErrTagCollision = errors.New("notes: tag already exists")
+
+	// ErrInvalidTagName is returned when a tag name violates the D-22 charset
+	// rule ([a-z0-9_-]+). Both the service layer and the API handler check this.
+	ErrInvalidTagName = errors.New("notes: invalid tag name (allowed: [a-z0-9_-]+)")
 )
 
 // StaleWriteInfo carries the current file mtime alongside ErrStaleWrite

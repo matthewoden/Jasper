@@ -16,6 +16,7 @@ import (
 	"html"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -180,6 +181,91 @@ func (x *Indexer) GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]Backl
 		return nil, fmt.Errorf("getbacklinks rows: %w", err)
 	}
 	return out, nil
+}
+
+// ---------------------------------------------------------------------------
+// SourcesByBacklinkTitle
+// ---------------------------------------------------------------------------
+
+// SourcesByBacklinkTitle returns a NoteSummary for every source note that
+// contains a backlink row where target_title = title (case-sensitive, as
+// stored by SyncBacklinks). Used by RenameRewriteWikilinks to find all
+// referrer notes without a full-vault FS scan.
+//
+// Returns a non-nil empty slice when no referrers exist.
+func (x *Indexer) SourcesByBacklinkTitle(ctx context.Context, title string) ([]notes.NoteSummary, error) {
+	rows, err := x.Pair.Reader.QueryContext(ctx,
+		`SELECT n.id, n.path, n.title, n.mtime_unix
+		 FROM backlinks b
+		 INNER JOIN notes n ON n.id = b.source_id
+		 WHERE b.target_title = ?
+		 ORDER BY n.mtime_unix DESC`,
+		title)
+	if err != nil {
+		return nil, fmt.Errorf("sourcesbybltitle query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := []notes.NoteSummary{}
+	for rows.Next() {
+		var idStr, p, t string
+		var mtime int64
+		if err := rows.Scan(&idStr, &p, &t, &mtime); err != nil {
+			return nil, fmt.Errorf("sourcesbybltitle scan: %w", err)
+		}
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("sourcesbybltitle parse uuid %q: %w", idStr, err)
+		}
+		out = append(out, notes.NoteSummary{
+			ID:        id,
+			Path:      p,
+			Title:     t,
+			UpdatedAt: time.Unix(mtime, 0).UTC(),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("sourcesbybltitle rows: %w", err)
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------------------
+// UpdateBacklinksTargetTitle
+// ---------------------------------------------------------------------------
+
+// UpdateBacklinksTargetTitle atomically updates the target_title (and
+// optionally target_id) for every backlinks row that currently has
+// target_title = oldTitle. Used by RenameRewriteWikilinks after the FS pass
+// to keep the derived index in sync without requiring a full SyncBacklinks
+// for each affected referrer.
+//
+// newTargetID is optional: pass nil to leave target_id unchanged (or to clear
+// it to NULL if you pass a pointer to uuid.Nil). In practice, after a note
+// rename the new UUID is the same UUID — only the title changes. Pass a
+// non-nil pointer when the ID changes (rare: simultaneous rename + merge).
+func (x *Indexer) UpdateBacklinksTargetTitle(
+	ctx context.Context, oldTitle, newTitle string, newTargetID *uuid.UUID,
+) error {
+	tx, err := x.Pair.BeginImmediate(ctx)
+	if err != nil {
+		return fmt.Errorf("updatebltitle begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if newTargetID != nil {
+		_, err = tx.ExecContext(ctx,
+			`UPDATE backlinks SET target_title = ?, target_id = ? WHERE target_title = ?`,
+			newTitle, newTargetID.String(), oldTitle)
+	} else {
+		_, err = tx.ExecContext(ctx,
+			`UPDATE backlinks SET target_title = ? WHERE target_title = ?`,
+			newTitle, oldTitle)
+	}
+	if err != nil {
+		return fmt.Errorf("updatebltitle update: %w", err)
+	}
+	return tx.Commit()
 }
 
 // ---------------------------------------------------------------------------

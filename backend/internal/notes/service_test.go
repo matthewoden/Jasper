@@ -124,6 +124,27 @@ func (f *fakeIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
 	return nil
 }
 
+// Phase 6 Plan 06-05 Task 3 — cross-vault rewrite stubs for fakeIndex.
+func (f *fakeIndex) NotesByTag(_ context.Context, _ string) ([]NoteSummary, error) {
+	return []NoteSummary{}, nil
+}
+
+func (f *fakeIndex) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (f *fakeIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (f *fakeIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]NoteSummary, error) {
+	return []NoteSummary{}, nil
+}
+
+func (f *fakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
+	return nil
+}
+
 // --------------------------------------------------------------------------
 // Plan 04-04 Task 1: fakeBroadcaster + 5 new If-Match / broadcast tests
 // --------------------------------------------------------------------------
@@ -618,6 +639,27 @@ func (s *stubIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error {
 func (s *stubIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
 	_ []markdown.WikiLinkRef, _ *Registry, _ []byte,
 ) error {
+	return nil
+}
+
+// Phase 6 Plan 06-05 Task 3 — cross-vault rewrite stubs for stubIndex.
+func (s *stubIndex) NotesByTag(_ context.Context, _ string) ([]NoteSummary, error) {
+	return []NoteSummary{}, nil
+}
+
+func (s *stubIndex) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (s *stubIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (s *stubIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]NoteSummary, error) {
+	return []NoteSummary{}, nil
+}
+
+func (s *stubIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
 	return nil
 }
 
@@ -1607,6 +1649,626 @@ func TestService_Update_BroadcastsEventTagsUpdated(t *testing.T) {
 	if !found {
 		t.Errorf("EventTagsUpdated was not broadcast; got calls: %+v", bc.calls)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Task 3: cross-vault index double — tagStubIndex
+//
+// tagStubIndex embeds stubIndex and adds in-memory tag + backlink tracking
+// so Task 3 tests can assert on NotesByTag / RenameTag / DeleteTag /
+// SourcesByBacklinkTitle / UpdateBacklinksTargetTitle without importing the
+// index package (which imports notes, creating a test-time cycle).
+// ---------------------------------------------------------------------------
+
+// tagStubIndex is a richer Index spy that supports tag + backlink operations
+// in memory. Embeds stubIndex for the base Upsert / Delete / List / etc.
+// methods. Tag and backlink state is managed separately.
+type tagStubIndex struct {
+	*stubIndex // base Upsert/Delete/List/LookupByPath/etc.
+
+	mu sync.RWMutex
+
+	// tags: tag name → set of note IDs carrying it.
+	tags map[string]map[uuid.UUID]bool
+
+	// backlinks: target title → set of source note IDs.
+	backlinks map[string]map[uuid.UUID]bool
+
+	// byID index for NoteSummary lookups.
+	// Populated by overriding Upsert.
+	summaries map[uuid.UUID]NoteSummary
+
+	// Failure injection for RenameTag / DeleteTag.
+	renameTagErr error
+	deleteTagErr error
+
+	// renameTagCalled / deleteTagCalled record the call arguments.
+	renameTagCalled []string // [old, new]
+	deleteTagCalled []string // [name]
+
+	// updateBacklinksCalled records calls.
+	updateBacklinksCalled bool
+}
+
+func newTagStubIndex() *tagStubIndex {
+	return &tagStubIndex{
+		stubIndex: newStubIndex(),
+		tags:      make(map[string]map[uuid.UUID]bool),
+		backlinks: make(map[string]map[uuid.UUID]bool),
+		summaries: make(map[uuid.UUID]NoteSummary),
+	}
+}
+
+// Upsert overrides stubIndex.Upsert to also populate summaries.
+func (t *tagStubIndex) Upsert(ctx context.Context, rec NoteRecord) error {
+	if err := t.stubIndex.Upsert(ctx, rec); err != nil {
+		return err
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.summaries[rec.ID] = NoteSummary{ID: rec.ID, Path: rec.Path, Title: rec.Title}
+	return nil
+}
+
+// setTag adds noteID as a carrier of tagName.
+func (t *tagStubIndex) setTag(tagName string, noteID uuid.UUID) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.tags[tagName] == nil {
+		t.tags[tagName] = make(map[uuid.UUID]bool)
+	}
+	t.tags[tagName][noteID] = true
+}
+
+// setBacklink records that sourceID contains [[targetTitle]].
+func (t *tagStubIndex) setBacklink(targetTitle string, sourceID uuid.UUID) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.backlinks[targetTitle] == nil {
+		t.backlinks[targetTitle] = make(map[uuid.UUID]bool)
+	}
+	t.backlinks[targetTitle][sourceID] = true
+}
+
+func (t *tagStubIndex) NotesByTag(_ context.Context, name string) ([]NoteSummary, error) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	carriers := t.tags[name]
+	out := make([]NoteSummary, 0, len(carriers))
+	for id := range carriers {
+		if s, ok := t.summaries[id]; ok {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+func (t *tagStubIndex) RenameTag(_ context.Context, oldName, newName string) ([]uuid.UUID, error) {
+	if t.renameTagErr != nil {
+		return nil, t.renameTagErr
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.renameTagCalled = []string{oldName, newName}
+	carriers := t.tags[oldName]
+	if len(carriers) == 0 {
+		return nil, nil
+	}
+	// Move the tag set to the new name.
+	t.tags[newName] = carriers
+	delete(t.tags, oldName)
+	ids := make([]uuid.UUID, 0, len(carriers))
+	for id := range carriers {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (t *tagStubIndex) DeleteTag(_ context.Context, name string) ([]uuid.UUID, error) {
+	if t.deleteTagErr != nil {
+		return nil, t.deleteTagErr
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.deleteTagCalled = append(t.deleteTagCalled, name)
+	carriers := t.tags[name]
+	ids := make([]uuid.UUID, 0, len(carriers))
+	for id := range carriers {
+		ids = append(ids, id)
+	}
+	delete(t.tags, name)
+	return ids, nil
+}
+
+func (t *tagStubIndex) SourcesByBacklinkTitle(_ context.Context, title string) ([]NoteSummary, error) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	sources := t.backlinks[title]
+	out := make([]NoteSummary, 0, len(sources))
+	for id := range sources {
+		if s, ok := t.summaries[id]; ok {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+func (t *tagStubIndex) UpdateBacklinksTargetTitle(_ context.Context, oldTitle, newTitle string, _ *uuid.UUID) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.updateBacklinksCalled = true
+	if sources, ok := t.backlinks[oldTitle]; ok {
+		t.backlinks[newTitle] = sources
+		delete(t.backlinks, oldTitle)
+	}
+	return nil
+}
+
+// newCrossVaultSvc constructs a Service backed by a real fsstore.Store
+// rooted at a freshly-allocated tempdir + a tagStubIndex for cross-vault
+// rewrite tests. Returns the service, the store root, the tag index spy,
+// and a fakeBroadcaster.
+func newCrossVaultSvc(t *testing.T) (*Service, string, *tagStubIndex, *fakeBroadcaster) {
+	t.Helper()
+	root := t.TempDir()
+	store := fsstore.NewStore(root)
+	idx := newTagStubIndex()
+	bc := &fakeBroadcaster{}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := NewService(store, idx, bc, logger)
+	return svc, root, idx, bc
+}
+
+// createTestNote writes a note file and registers it in the service registry.
+// Returns the note's UUID.
+func createTestNote(t *testing.T, svc *Service, root, relPath, content string) uuid.UUID {
+	t.Helper()
+	fullPath := filepath.Join(root, relPath)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile %s: %v", relPath, err)
+	}
+	id := uuid.New()
+	svc.registry.Add(id, relPath)
+	return id
+}
+
+// ---------------------------------------------------------------------------
+// Task 3 RED tests: RenameTagAcrossVault
+// ---------------------------------------------------------------------------
+
+// PT1: 3 notes carry "foo"; rename to "feature"; returns 3 ids; on-disk tags
+// arrays now contain "feature".
+func TestService_RenameTagAcrossVault_PT1_BasicRename(t *testing.T) {
+	t.Parallel()
+	svc, root, idx, bc := newCrossVaultSvc(t)
+	ctx := context.Background()
+
+	const oldTag = "foo"
+	const newTag = "feature"
+
+	// Set up 3 carrier notes with the tag in their frontmatter.
+	idA := createTestNote(t, svc, root, "a.md", "---\ntags: [foo, bar]\n---\n\nbody A")
+	idB := createTestNote(t, svc, root, "b.md", "---\ntags: [foo]\n---\n\nbody B")
+	idC := createTestNote(t, svc, root, "c.md", "---\ntags: [foo, baz]\n---\n\nbody C")
+
+	// Register NoteRecords in the tag stub so NotesByTag returns them.
+	_ = idx.Upsert(ctx, NoteRecord{ID: idA, Path: "a.md", Title: "a"})
+	_ = idx.Upsert(ctx, NoteRecord{ID: idB, Path: "b.md", Title: "b"})
+	_ = idx.Upsert(ctx, NoteRecord{ID: idC, Path: "c.md", Title: "c"})
+	idx.setTag(oldTag, idA)
+	idx.setTag(oldTag, idB)
+	idx.setTag(oldTag, idC)
+
+	touched, err := svc.RenameTagAcrossVault(ctx, oldTag, newTag)
+	if err != nil {
+		t.Fatalf("RenameTagAcrossVault: %v", err)
+	}
+	if len(touched) != 3 {
+		t.Errorf("touched: got %d, want 3", len(touched))
+	}
+
+	// On-disk tags arrays should now contain "feature".
+	for _, relPath := range []string{"a.md", "b.md", "c.md"} {
+		data, err := os.ReadFile(filepath.Join(root, relPath))
+		if err != nil {
+			t.Fatalf("ReadFile %s: %v", relPath, err)
+		}
+		s := string(data)
+		if !strings.Contains(s, newTag) {
+			t.Errorf("%s: on-disk content missing %q; got: %q", relPath, newTag, s)
+		}
+		if strings.Contains(s, oldTag) {
+			t.Errorf("%s: on-disk content still contains %q; got: %q", relPath, oldTag, s)
+		}
+	}
+
+	// SQL rename called.
+	if idx.renameTagCalled == nil || idx.renameTagCalled[0] != oldTag || idx.renameTagCalled[1] != newTag {
+		t.Errorf("RenameTag not called with correct args; got %v", idx.renameTagCalled)
+	}
+
+	// Broadcast fires once with EventTagsRewritten.
+	var found bool
+	for _, c := range bc.calls {
+		if c.event == EventTagsRewritten {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("EventTagsRewritten not broadcast; calls: %+v", bc.calls)
+	}
+}
+
+// PT2: oldName not found → ErrTagNotFound.
+func TestService_RenameTagAcrossVault_PT2_NotFound(t *testing.T) {
+	t.Parallel()
+	svc, _, _, _ := newCrossVaultSvc(t)
+
+	_, err := svc.RenameTagAcrossVault(context.Background(), "nonexistent", "other")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	// The error should indicate not found (either ErrTagNotFound or a wrapped version).
+	if !strings.Contains(err.Error(), "not found") && !strings.Contains(err.Error(), "tag") {
+		t.Errorf("expected tag-not-found error; got: %v", err)
+	}
+}
+
+// PT3: invalid newName charset → error.
+func TestService_RenameTagAcrossVault_PT3_InvalidNewName(t *testing.T) {
+	t.Parallel()
+	svc, _, _, _ := newCrossVaultSvc(t)
+
+	_, err := svc.RenameTagAcrossVault(context.Background(), "foo", "INVALID_UPPERCASE")
+	if err == nil {
+		t.Fatal("expected error for invalid newName, got nil")
+	}
+}
+
+// PT5 (D-37 rollback): AtomicWrite failure on the second file restores the
+// first file to its pre-state; no broadcast.
+func TestService_RenameTagAcrossVault_PT5_Rollback(t *testing.T) {
+	t.Parallel()
+	// Use a wrapping FileStore that fails on the Nth WriteAtomic call.
+	root := t.TempDir()
+
+	callCount := 0
+	inner := fsstore.NewStore(root)
+	ws := &countingFileStore{inner: inner, failAt: 2, count: &callCount}
+
+	idx := newTagStubIndex()
+	bc := &fakeBroadcaster{}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := NewService(ws, idx, bc, logger)
+
+	ctx := context.Background()
+	const oldTag = "foo"
+	const newTag = "new-name"
+
+	idA := createTestNote(t, svc, root, "a.md", "---\ntags: [foo]\n---\n\nbody A")
+	idB := createTestNote(t, svc, root, "b.md", "---\ntags: [foo]\n---\n\nbody B")
+	idx.setTag(oldTag, idA)
+	idx.setTag(oldTag, idB)
+	_ = idx.Upsert(ctx, NoteRecord{ID: idA, Path: "a.md", Title: "a"})
+	_ = idx.Upsert(ctx, NoteRecord{ID: idB, Path: "b.md", Title: "b"})
+
+	_, err := svc.RenameTagAcrossVault(ctx, oldTag, newTag)
+	if err == nil {
+		t.Fatal("expected error from failed write, got nil")
+	}
+
+	// The first file must be restored to pre-state.
+	data, readErr := os.ReadFile(filepath.Join(root, "a.md"))
+	if readErr != nil {
+		t.Fatalf("ReadFile a.md: %v", readErr)
+	}
+	if strings.Contains(string(data), newTag) {
+		t.Errorf("a.md was NOT rolled back; still contains %q", newTag)
+	}
+	if !strings.Contains(string(data), oldTag) {
+		t.Errorf("a.md was NOT rolled back; missing %q", oldTag)
+	}
+
+	// No broadcast on failure.
+	for _, c := range bc.calls {
+		if c.event == EventTagsRewritten {
+			t.Errorf("EventTagsRewritten broadcast despite rollback")
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Task 3 RED tests: DeleteTagAcrossVault
+// ---------------------------------------------------------------------------
+
+// DT1: 3 carriers → returns 3 ids; on-disk tags arrays no longer contain tag.
+func TestService_DeleteTagAcrossVault_DT1_BasicDelete(t *testing.T) {
+	t.Parallel()
+	svc, root, idx, bc := newCrossVaultSvc(t)
+	ctx := context.Background()
+
+	const tag = "foo"
+
+	idA := createTestNote(t, svc, root, "a.md", "---\ntags: [foo, bar]\n---\n\nbody")
+	idB := createTestNote(t, svc, root, "b.md", "---\ntags: [foo]\n---\n\nbody")
+	idC := createTestNote(t, svc, root, "c.md", "---\ntags: [baz, foo]\n---\n\nbody")
+	idx.setTag(tag, idA)
+	idx.setTag(tag, idB)
+	idx.setTag(tag, idC)
+	_ = idx.Upsert(ctx, NoteRecord{ID: idA, Path: "a.md", Title: "a"})
+	_ = idx.Upsert(ctx, NoteRecord{ID: idB, Path: "b.md", Title: "b"})
+	_ = idx.Upsert(ctx, NoteRecord{ID: idC, Path: "c.md", Title: "c"})
+
+	touched, err := svc.DeleteTagAcrossVault(ctx, tag)
+	if err != nil {
+		t.Fatalf("DeleteTagAcrossVault: %v", err)
+	}
+	if len(touched) != 3 {
+		t.Errorf("touched: got %d, want 3", len(touched))
+	}
+
+	for _, relPath := range []string{"a.md", "b.md", "c.md"} {
+		data, err := os.ReadFile(filepath.Join(root, relPath))
+		if err != nil {
+			t.Fatalf("ReadFile %s: %v", relPath, err)
+		}
+		if strings.Contains(string(data), tag) {
+			t.Errorf("%s: on-disk content still contains %q", relPath, tag)
+		}
+	}
+
+	// Broadcast fires with new_name=null.
+	var found bool
+	for _, c := range bc.calls {
+		if c.event == EventTagsRewritten {
+			found = true
+			payload, _ := c.payload.(map[string]any)
+			if payload["new_name"] != nil {
+				t.Errorf("DeleteTag broadcast: new_name should be nil, got %v", payload["new_name"])
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("EventTagsRewritten not broadcast; calls: %+v", bc.calls)
+	}
+}
+
+// DT2: tag not found → error.
+func TestService_DeleteTagAcrossVault_DT2_NotFound(t *testing.T) {
+	t.Parallel()
+	svc, _, _, _ := newCrossVaultSvc(t)
+
+	_, err := svc.DeleteTagAcrossVault(context.Background(), "nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent tag, got nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Task 3 RED tests: RenameRewriteWikilinks
+// ---------------------------------------------------------------------------
+
+// RW1: 3 referrers contain [[Foo]]; rename to "Bar"; on-disk files contain [[Bar]].
+func TestService_RenameRewriteWikilinks_RW1_BasicRename(t *testing.T) {
+	t.Parallel()
+	svc, root, idx, bc := newCrossVaultSvc(t)
+	ctx := context.Background()
+
+	idA := createTestNote(t, svc, root, "a.md", "see [[Foo]] and [[Foo|alias]]")
+	idB := createTestNote(t, svc, root, "b.md", "also [[Foo]] here")
+	idC := createTestNote(t, svc, root, "c.md", "no wikilinks here")
+	idx.setBacklink("Foo", idA)
+	idx.setBacklink("Foo", idB)
+	idx.summaries[idA] = NoteSummary{ID: idA, Path: "a.md", Title: "a"}
+	idx.summaries[idB] = NoteSummary{ID: idB, Path: "b.md", Title: "b"}
+	idx.summaries[idC] = NoteSummary{ID: idC, Path: "c.md", Title: "c"}
+
+	touched, err := svc.RenameRewriteWikilinks(ctx, "Foo", "Bar")
+	if err != nil {
+		t.Fatalf("RenameRewriteWikilinks: %v", err)
+	}
+	if len(touched) != 2 {
+		t.Errorf("touched: got %d, want 2", len(touched))
+	}
+
+	// a.md: [[Foo]] → [[Bar]], [[Foo|alias]] → [[Bar|alias]]
+	dataA, err := os.ReadFile(filepath.Join(root, "a.md"))
+	if err != nil {
+		t.Fatalf("ReadFile a.md: %v", err)
+	}
+	sA := string(dataA)
+	if !strings.Contains(sA, "[[Bar]]") {
+		t.Errorf("a.md: expected [[Bar]]; got: %q", sA)
+	}
+	if !strings.Contains(sA, "[[Bar|alias]]") {
+		t.Errorf("a.md: expected [[Bar|alias]] (D-21); got: %q", sA)
+	}
+	if strings.Contains(sA, "[[Foo]]") {
+		t.Errorf("a.md: still contains [[Foo]]; got: %q", sA)
+	}
+
+	// b.md: [[Foo]] → [[Bar]]
+	dataB, err := os.ReadFile(filepath.Join(root, "b.md"))
+	if err != nil {
+		t.Fatalf("ReadFile b.md: %v", err)
+	}
+	if !strings.Contains(string(dataB), "[[Bar]]") {
+		t.Errorf("b.md: expected [[Bar]]; got: %q", string(dataB))
+	}
+
+	// c.md: unchanged
+	dataC, err := os.ReadFile(filepath.Join(root, "c.md"))
+	if err != nil {
+		t.Fatalf("ReadFile c.md: %v", err)
+	}
+	if string(dataC) != "no wikilinks here" {
+		t.Errorf("c.md should be unchanged; got: %q", string(dataC))
+	}
+
+	// Broadcast fires.
+	var found bool
+	for _, c := range bc.calls {
+		if c.event == EventLinksRewritten {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("EventLinksRewritten not broadcast; calls: %+v", bc.calls)
+	}
+}
+
+// RW2: zero referrers → returns empty slice; no broadcast.
+func TestService_RenameRewriteWikilinks_RW2_NoReferrers(t *testing.T) {
+	t.Parallel()
+	svc, _, _, bc := newCrossVaultSvc(t)
+
+	touched, err := svc.RenameRewriteWikilinks(context.Background(), "Nobody", "Renamed")
+	if err != nil {
+		t.Fatalf("RenameRewriteWikilinks: %v", err)
+	}
+	if len(touched) != 0 {
+		t.Errorf("touched: got %d, want 0", len(touched))
+	}
+	for _, c := range bc.calls {
+		if c.event == EventLinksRewritten {
+			t.Errorf("EventLinksRewritten broadcast for zero referrers")
+		}
+	}
+}
+
+// RW3: D-36 rollback — AtomicWrite fails on second file; first file restored.
+func TestService_RenameRewriteWikilinks_RW3_Rollback(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	callCount := 0
+	inner := fsstore.NewStore(root)
+	ws := &countingFileStore{inner: inner, failAt: 2, count: &callCount}
+
+	idx := newTagStubIndex()
+	bc := &fakeBroadcaster{}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := NewService(ws, idx, bc, logger)
+	ctx := context.Background()
+
+	idA := createTestNote(t, svc, root, "a.md", "see [[Foo]]")
+	idB := createTestNote(t, svc, root, "b.md", "also [[Foo]]")
+	idx.setBacklink("Foo", idA)
+	idx.setBacklink("Foo", idB)
+	idx.summaries[idA] = NoteSummary{ID: idA, Path: "a.md", Title: "a"}
+	idx.summaries[idB] = NoteSummary{ID: idB, Path: "b.md", Title: "b"}
+
+	_, err := svc.RenameRewriteWikilinks(ctx, "Foo", "Bar")
+	if err == nil {
+		t.Fatal("expected error from failed write, got nil")
+	}
+
+	// First file must be restored.
+	data, readErr := os.ReadFile(filepath.Join(root, "a.md"))
+	if readErr != nil {
+		t.Fatalf("ReadFile a.md: %v", readErr)
+	}
+	if strings.Contains(string(data), "[[Bar]]") {
+		t.Errorf("a.md not rolled back; still contains [[Bar]]")
+	}
+	if !strings.Contains(string(data), "[[Foo]]") {
+		t.Errorf("a.md not rolled back; missing [[Foo]]")
+	}
+
+	// No broadcast on failure.
+	for _, c := range bc.calls {
+		if c.event == EventLinksRewritten {
+			t.Errorf("EventLinksRewritten broadcast despite rollback")
+		}
+	}
+}
+
+// RW5: backlinks table updated after FS pass — UpdateBacklinksTargetTitle called.
+func TestService_RenameRewriteWikilinks_RW5_IndexUpdated(t *testing.T) {
+	t.Parallel()
+	svc, root, idx, _ := newCrossVaultSvc(t)
+	ctx := context.Background()
+
+	idA := createTestNote(t, svc, root, "a.md", "see [[Foo]]")
+	idx.setBacklink("Foo", idA)
+	idx.summaries[idA] = NoteSummary{ID: idA, Path: "a.md", Title: "a"}
+
+	_, err := svc.RenameRewriteWikilinks(ctx, "Foo", "Bar")
+	if err != nil {
+		t.Fatalf("RenameRewriteWikilinks: %v", err)
+	}
+
+	if !idx.updateBacklinksCalled {
+		t.Errorf("UpdateBacklinksTargetTitle was not called after FS pass")
+	}
+}
+
+// RW6: broadcast fires once for non-empty touched set.
+func TestService_RenameRewriteWikilinks_RW6_BroadcastOnce(t *testing.T) {
+	t.Parallel()
+	svc, root, idx, bc := newCrossVaultSvc(t)
+	ctx := context.Background()
+
+	idA := createTestNote(t, svc, root, "a.md", "[[Alpha]] [[Alpha]] [[Alpha]]")
+	idx.setBacklink("Alpha", idA)
+	idx.summaries[idA] = NoteSummary{ID: idA, Path: "a.md", Title: "a"}
+
+	_, err := svc.RenameRewriteWikilinks(ctx, "Alpha", "Beta")
+	if err != nil {
+		t.Fatalf("RenameRewriteWikilinks: %v", err)
+	}
+
+	count := 0
+	for _, c := range bc.calls {
+		if c.event == EventLinksRewritten {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("EventLinksRewritten count: got %d, want 1", count)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// countingFileStore — wraps a FileStore; fails WriteAtomic on the Nth call.
+// Used for D-36/D-37 rollback tests.
+// ---------------------------------------------------------------------------
+
+type countingFileStore struct {
+	inner  FileStore
+	failAt int
+	count  *int
+}
+
+func (c *countingFileStore) Read(relPath string) ([]byte, error) { return c.inner.Read(relPath) }
+func (c *countingFileStore) Stat(relPath string) (time.Time, error) {
+	return c.inner.Stat(relPath)
+}
+func (c *countingFileStore) CreateFile(relPath string) error { return c.inner.CreateFile(relPath) }
+func (c *countingFileStore) DeleteFile(relPath string) error { return c.inner.DeleteFile(relPath) }
+func (c *countingFileStore) MoveFile(oldPath, newPath string) error {
+	return c.inner.MoveFile(oldPath, newPath)
+}
+func (c *countingFileStore) CreateDir(relPath string) error { return c.inner.CreateDir(relPath) }
+func (c *countingFileStore) DeleteDir(relPath string, recursive bool) error {
+	return c.inner.DeleteDir(relPath, recursive)
+}
+
+func (c *countingFileStore) MoveDir(oldPath, newPath string) error {
+	return c.inner.MoveDir(oldPath, newPath)
+}
+
+func (c *countingFileStore) WriteAtomic(relPath string, data []byte) error {
+	*c.count++
+	if *c.count == c.failAt {
+		return fmt.Errorf("injected write failure at call %d", *c.count)
+	}
+	return c.inner.WriteAtomic(relPath, data)
 }
 
 // TestService_Create_UsesNewNoteContentScaffold (Test 7 / D-09 / TAGS-EXT-01):

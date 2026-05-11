@@ -155,6 +155,35 @@ type Index interface {
 	// rewrites all backlinks rows for sourceID atomically.
 	SyncBacklinks(ctx context.Context, sourceID uuid.UUID, sourcePath string,
 		refs []markdown.WikiLinkRef, registry *Registry, content []byte) error
+
+	// Phase 6 Plan 06-05 Task 3: cross-vault tag + backlink rewrite methods.
+	// Used by Service.RenameTagAcrossVault, Service.DeleteTagAcrossVault, and
+	// Service.RenameRewriteWikilinks.
+
+	// NotesByTag returns one NoteSummary per note carrying the named tag,
+	// sorted by mtime descending (D-28). Returns a non-nil empty slice when
+	// no notes carry the tag.
+	NotesByTag(ctx context.Context, name string) ([]NoteSummary, error)
+
+	// RenameTag atomically renames oldName to newName in the SQL store and
+	// returns the UUIDs of all carrier notes. Returns ErrTagNotFound,
+	// ErrTagCollision, ErrInvalidTagName on the respective error conditions.
+	RenameTag(ctx context.Context, oldName, newName string) ([]uuid.UUID, error)
+
+	// DeleteTag atomically removes the tag and its note_tags rows and returns
+	// the UUIDs of the notes that carried it. Returns ErrTagNotFound.
+	DeleteTag(ctx context.Context, name string) ([]uuid.UUID, error)
+
+	// SourcesByBacklinkTitle returns one NoteSummary per source note that has
+	// a backlinks row where target_title = title. Used by
+	// RenameRewriteWikilinks to locate referrers without a full-vault FS scan.
+	SourcesByBacklinkTitle(ctx context.Context, title string) ([]NoteSummary, error)
+
+	// UpdateBacklinksTargetTitle bulk-updates every backlinks row with
+	// target_title = oldTitle to use newTitle (and optionally newTargetID).
+	// Called by RenameRewriteWikilinks after the FS pass succeeds. Non-fatal
+	// on error — filesystem is truth; next Reconcile heals.
+	UpdateBacklinksTargetTitle(ctx context.Context, oldTitle, newTitle string, newTargetID *uuid.UUID) error
 }
 
 // NoteRecord is the canonical projection of a .md file into the index.
