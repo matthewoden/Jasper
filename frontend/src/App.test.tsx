@@ -124,15 +124,19 @@ describe("<App /> — Phase 2 shell composition", () => {
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
     expect(grid).not.toBeNull();
-    expect(grid!.style.gridTemplateColumns).toBe("260px 1fr 0");
+    // Phase 6 — Plan 06-07: right rail is now always present at RAIL_COLLAPSED_WIDTH (32px)
+    // when collapsed (default). Grid template third column is 32px, not 0.
+    expect(grid!.style.gridTemplateColumns).toBe("260px 1fr 32px");
 
-    // Sidebar + BacklinksColumn anchors still mount.
+    // Sidebar + RightRail anchors still mount.
     expect(screen.getByText("NOTES")).toBeInTheDocument();
     // Phase 3: the static Phase 1 "scratchpad" hardcoded sidebar row is
     // gone. With the mocked-empty tree we expect the FileTree empty
     // state to render in its place.
     expect(screen.getByTestId("tree-empty-state")).toBeInTheDocument();
-    const aside = document.querySelector("aside[aria-hidden]");
+    // Phase 6: BacklinksColumn (aria-hidden) is replaced by RightRail (no aria-hidden).
+    // The collapsed RightRail renders an aside without aria-hidden.
+    const aside = document.querySelector("aside");
     expect(aside).not.toBeNull();
   });
 

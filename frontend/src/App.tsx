@@ -17,7 +17,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { BacklinksColumn } from "./components/BacklinksColumn";
+import { RightRail } from "./components/RightRail";
+import { BacklinksRail } from "./components/BacklinksRail";
 import { EditorPane, type EditorPaneHandlers } from "./components/EditorPane";
 import { MigrationBanner } from "./components/MigrationBanner";
 import { ReindexProgress } from "./components/ReindexProgress";
@@ -27,7 +28,7 @@ import { ToastProvider } from "./components/Toast";
 import { postAdminReindex } from "./lib/adminApi";
 import { useMigrationStatus } from "./lib/useMigrationStatus";
 import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
-import { useTreeStore } from "./lib/useTreeStore";
+import { useTreeStore, RAIL_COLLAPSED_WIDTH } from "./lib/useTreeStore";
 
 // W-4 LOCKED: the parent owns the phase enum; ReindexProgress is purely
 // presentational. 'starting' is driven by WS reindex:started events (Plan
@@ -119,6 +120,11 @@ function AppInner() {
   // here mirrors that pattern. Selector is a primitive-number read, so a
   // re-render only fires when the persisted width actually changes.
   const sidebarWidth = useTreeStore((s) => s.sidebarWidth);
+  // Phase 6 — Plan 06-07: right-rail state drives the third grid column.
+  // When collapsed, the rail occupies RAIL_COLLAPSED_WIDTH (32px) — just enough
+  // for the toggle strip. When expanded, it occupies backlinksRailWidth.
+  const backlinksRailExpanded = useTreeStore((s) => s.backlinksRailExpanded);
+  const backlinksRailWidth = useTreeStore((s) => s.backlinksRailWidth);
 
   // Phase 4 (Plan 04-05) — EditorPane handler ref (D-09: no new event bus).
   // App passes this ref to EditorPane; EditorPane writes its handlers on mount.
@@ -241,7 +247,8 @@ function AppInner() {
           // Plan 17 Bug A (UX-09): track sidebarWidth in the grid template
           // so the editor pane (1fr) reflows when the resize handle drags.
           // Previously hard-coded to "260px 1fr 0" — see 05.5-17a-INVESTIGATION.md.
-          gridTemplateColumns: `${sidebarWidth}px 1fr 0`,
+          // Phase 6 — Plan 06-07: third column expands/collapses with the right rail.
+          gridTemplateColumns: `${sidebarWidth}px 1fr ${backlinksRailExpanded ? backlinksRailWidth : RAIL_COLLAPSED_WIDTH}px`,
           // Single row that fills the available flex track. `1fr`
           // alone is `minmax(auto, 1fr)` which still grows to content
           // intrinsic height — `minmax(0, 1fr)` is the canonical clamp
@@ -269,7 +276,10 @@ function AppInner() {
             editorHandlersRef={editorHandlersRef}
           />
         )}
-        <BacklinksColumn />
+        {/* Phase 6 — Plan 06-07: RightRail replaces BacklinksColumn placeholder (D-45/D-46). */}
+        <RightRail>
+          <BacklinksRail noteId={activeNoteId} />
+        </RightRail>
       </div>
     </div>
   );

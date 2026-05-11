@@ -97,12 +97,16 @@ describe("RightRail — expanded state", () => {
     // Mock window.innerWidth
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
 
-    // Simulate drag: pointerdown, pointermove, pointerup
+    // Simulate drag: pointerdown, pointermove.
+    // jsdom does NOT expose PointerEvent constructor; dispatching a MouseEvent
+    // with type "pointermove" reaches addEventListener("pointermove", ...)
+    // and provides .clientX — same pattern as SidebarResizeHandle.test.tsx.
     fireEvent.pointerDown(handle, { clientX: 0 });
     // clientX = 1200 → width = 1440 - 1200 = 240 (clamped to [220, 480])
-    const moveEvent = new PointerEvent("pointermove", { clientX: 1200, bubbles: true });
-    document.dispatchEvent(moveEvent);
+    document.dispatchEvent(new MouseEvent("pointermove", { clientX: 1200, bubbles: true }));
     expect(mockSetWidth).toHaveBeenCalledWith(240);
+    // Cleanup
+    document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
   });
 
   it("R5: expanded toggle shows aria-label for hiding", () => {
