@@ -276,7 +276,7 @@ function AppInner() {
             editorHandlersRef={editorHandlersRef}
           />
         )}
-        {/* Phase 6 — Plan 06-07: RightRail replaces BacklinksColumn placeholder (D-45/D-46). */}
+        {/* Phase 6 — Plan 06-07: right rail replaces Phase 1 placeholder (D-45/D-46). */}
         <RightRail>
           <BacklinksRail noteId={activeNoteId} />
         </RightRail>
