@@ -3,17 +3,22 @@ module github.com/matthewoden/jasper
 go 1.25.0
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/getkin/kin-openapi v0.135.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.7.0
 	github.com/oapi-codegen/runtime v1.4.0
+	github.com/yuin/goldmark v1.8.2
+	go.abhg.dev/goldmark/frontmatter v0.3.0
+	go.abhg.dev/goldmark/wikilink v0.6.0
 	golang.org/x/text v0.34.0
 	modernc.org/sqlite v1.50.0
 )
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
+	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/air-verse/air v1.62.0 // indirect
 	github.com/alessio/shellescape v1.4.1 // indirect
@@ -27,7 +32,6 @@ require (
 	github.com/charmbracelet/x/ansi v0.8.0 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
