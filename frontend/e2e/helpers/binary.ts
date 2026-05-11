@@ -162,6 +162,39 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; owns
   return { proc, port, dataDir, baseURL, kill, restart };
 }
 
-export async function spawnJasper(): Promise<JasperHandle> {
+export interface SpawnOpts {
+  /**
+   * Provide an existing data directory to reuse (e.g., for migration tests
+   * that need to stop the binary, mutate disk files, and restart against the
+   * same vault). When provided, the caller owns the dataDir lifecycle — it
+   * will NOT be deleted on kill(). Use kill() on the new handle only.
+   */
+  dataDir?: string;
+}
+
+/**
+ * Spawn a Jasper binary against an optional existing data directory.
+ *
+ * CLAUDE.md §Build & embed pipeline enforcement: this function fails fast with
+ * a clear error if `bin/jasper` is missing — the caller must run `make build`
+ * first. This prevents mysterious 404s from a stale binary or a missing binary
+ * masking as a test failure.
+ */
+export async function spawnJasper(opts: SpawnOpts = {}): Promise<JasperHandle> {
+  // Fail-fast guard: bin/jasper must exist. CLAUDE.md §Build & embed pipeline.
+  const { existsSync } = await import("node:fs");
+  const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
+  if (!existsSync(JASPER_BIN)) {
+    throw new Error(
+      `bin/jasper missing — run \`make build\` first (CLAUDE.md §Build & embed pipeline). ` +
+        `Expected at: ${JASPER_BIN}`,
+    );
+  }
+
+  if (opts.dataDir !== undefined) {
+    // Caller-provided dataDir: caller owns cleanup (ownsDataDir=false so kill()
+    // does NOT delete it — the caller manages the directory lifecycle).
+    return spawnJasperInternal({ dataDir: opts.dataDir, ownsDataDir: false });
+  }
   return spawnJasperInternal({ ownsDataDir: true });
 }
