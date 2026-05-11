@@ -23,8 +23,9 @@ interface Props {
   noteId: string | null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function BacklinksRail({ noteId }: Props) {
+export function BacklinksRail(props: Props) {
+  // noteId is unused in this plan; Plan 06-11 wires useBacklinks(props.noteId).
+  void props.noteId;
   const setExpanded = useTreeStore((s) => s.setBacklinksRailExpanded);
 
   return (
