@@ -825,7 +825,10 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 	}
 	id := summary.ID
 
-	// 2. GET /notes/{id} — content === "" (empty file just created).
+	// 2. GET /notes/{id} — content is the TAGS-EXT-01 frontmatter scaffold
+	// (Phase 6 requirement: new notes ship with "---\ntags: []\n---\n\n# {Title}\n").
+	// Phase 3 smoke test originally expected "" (empty) but that was written
+	// before TAGS-EXT-01 landed; the correct expectation is the scaffold.
 	status, body = httpGet(t, base+"/notes/"+id)
 	if status != 200 {
 		t.Fatalf("GET /notes/{id} status: got %d, want 200; body=%s", status, body)
@@ -838,8 +841,12 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 	if err := json.Unmarshal(body, &note); err != nil {
 		t.Fatalf("unmarshal note: %v; body=%s", err, body)
 	}
-	if note.Content != "" {
-		t.Errorf("new note content: got %q, want empty", note.Content)
+	// Phase 6 TAGS-EXT-01: new notes are created with the frontmatter scaffold.
+	// The scaffold format is "---\ntags: []\n---\n\n# {Title}\n\n" where {Title}
+	// is deriveTitleFromFilename(title) (verbatim title arg from POST /notes).
+	wantScaffoldPrefix := "---\ntags: []\n---"
+	if !strings.HasPrefix(note.Content, wantScaffoldPrefix) {
+		t.Errorf("new note content: got %q, want prefix %q (TAGS-EXT-01 scaffold)", note.Content, wantScaffoldPrefix)
 	}
 
 	// 3. GET /tree — contains the new note id.

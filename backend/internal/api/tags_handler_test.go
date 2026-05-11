@@ -197,11 +197,18 @@ func (f *tagFakeIndex) DeleteTag(_ context.Context, name string) ([]uuid.UUID, e
 
 // setupTagServer builds a Server wired with a tagFakeIndex + a tagFakeFileStore
 // so the notes.Service reads/writes files.
+//
+// Rule 1 fix (tags_handler.go PutTag/DeleteTag): the handler now calls
+// s.notes.RenameTagAcrossVault / DeleteTagAcrossVault (FS + SQL), so the
+// same index must be wired into BOTH notes.NewService AND NewServerWithIndex —
+// mirroring the real composition root in lifecycle.go line 266+298.
 func setupTagServer(t *testing.T, idx *tagFakeIndex) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &tagFakeFileStore{}
-	svc := notes.NewService(files, nil, nil, logger)
+	// Wire idx into the Service so RenameTagAcrossVault / DeleteTagAcrossVault
+	// use the same in-memory store as the handler's s.index.
+	svc := notes.NewService(files, idx, nil, logger)
 	srv := NewServerWithIndex(svc, nil, nil, idx, nil, logger, "")
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
@@ -211,9 +218,11 @@ func setupTagServer(t *testing.T, idx *tagFakeIndex) *httptest.Server {
 	return httptest.NewServer(r)
 }
 
-// tagFakeFileStore is a minimal FileStore for tag handler tests. Tag handler
-// tests don't need FS operations (the real file rewrites are done by
-// Service.RenameTagAcrossVault, which is not called by these tests directly).
+// tagFakeFileStore is a minimal FileStore for tag handler tests. File rewrites
+// in RenameTagAcrossVault / DeleteTagAcrossVault call Read then WriteAtomic;
+// both operations are no-ops here (nil bytes → rewriteTagsArray returns nil →
+// WriteAtomic is called with nil, which succeeds). The tags SQL update is
+// exercised via tagFakeIndex.
 type tagFakeFileStore struct{}
 
 func (f *tagFakeFileStore) Read(_ string) ([]byte, error)        { return nil, nil }

@@ -190,11 +190,18 @@ func (x *Indexer) GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]Backl
 //
 // Returns a non-nil empty slice when no referrers exist.
 func (x *Indexer) SourcesByBacklinkTitle(ctx context.Context, title string) ([]notes.NoteSummary, error) {
+	// Case-insensitive match (COLLATE NOCASE) so that wiki-links written as
+	// [[OldTitle]] are found when SourcesByBacklinkTitle is called with
+	// "oldtitle" (the lower-cased registry path). This is required because
+	// LookupTitle returns the lowercase filename-derived title, but the
+	// backlinks table stores target_title verbatim from the [[...]] text.
+	// Rule 1 fix: the original case-sensitive = caused rewrite misses when
+	// the link text casing differed from the registry path casing.
 	rows, err := x.Pair.Reader.QueryContext(ctx,
 		`SELECT n.id, n.path, n.title, n.mtime_unix
 		 FROM backlinks b
 		 INNER JOIN notes n ON n.id = b.source_id
-		 WHERE b.target_title = ?
+		 WHERE b.target_title = ? COLLATE NOCASE
 		 ORDER BY n.mtime_unix DESC`,
 		title)
 	if err != nil {

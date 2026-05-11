@@ -470,10 +470,13 @@ func (r *Runner) RebuildAndReindex(ctx context.Context) (Status, error) {
 		return out, fmt.Errorf("%w: rebuild begin: %v", ErrUnrecoverable, err)
 	}
 	dropStatements := []string{
+		// Phase 6 derived tables (002_tags_backlinks.sql). Must be dropped
+		// before notes because note_tags/backlinks FK-reference notes(id).
+		`DROP TABLE IF EXISTS backlinks`,
+		`DROP TABLE IF EXISTS note_tags`,
+		`DROP TABLE IF EXISTS tags`,
+		// Phase 1 notes table (001_initial.sql).
 		`DROP TABLE IF EXISTS notes`,
-		// Future drops live here: tags, note_tags, backlinks, daily_notes
-		// (Phase 6), notes_fts (Phase 7). Each new derived table adds a
-		// line.
 		// schema_migrations is dropped (NOT just truncated via
 		// `DELETE FROM schema_migrations`) because the 001_initial.sql
 		// migration body itself creates the table — if we kept the

@@ -85,9 +85,9 @@ func (s *Server) GetTagNotes(
 // PutTag implements PUT /api/v1/tags/{name} (TAGS-06 / D-23 rename).
 //
 // Validates D-22 charset for both old and new names, then calls
-// s.index.RenameTag() for the SQL-level rename and broadcasts the
-// tags:rewritten WS event (D-34) with origin_session_id for self-suppression
-// (D-35).
+// s.notes.RenameTagAcrossVault() which rewrites disk files AND performs
+// the SQL-level rename, then broadcasts the tags:rewritten WS event (D-34)
+// with origin_session_id for self-suppression (D-35).
 //
 // Error mapping:
 //   - notes.ErrTagNotFound    → 404 not_found
@@ -111,11 +111,13 @@ func (s *Server) PutTag(
 		return PutTag400JSONResponse(newError("invalid_request", "new_name contains invalid characters (allowed: [a-z0-9_-]+)")), nil
 	}
 
-	if s.index == nil {
+	if s.notes == nil || s.index == nil {
 		return PutTag404JSONResponse(newError("not_found", "tag not found")), nil
 	}
 
-	touchedIDs, err := s.index.RenameTag(ctx, oldName, newName)
+	// Call the Service method which rewrites disk files first, then updates SQL.
+	// (Rule 1 fix: the index-only path only updated SQL, leaving disk files stale.)
+	touchedIDs, err := s.notes.RenameTagAcrossVault(ctx, oldName, newName)
 	if err != nil {
 		switch {
 		case errors.Is(err, notes.ErrTagNotFound):
@@ -158,8 +160,9 @@ func (s *Server) PutTag(
 
 // DeleteTag implements DELETE /api/v1/tags/{name} (TAGS-07 / D-24 bulk-remove).
 //
-// Calls s.index.DeleteTag() for the SQL-level delete and broadcasts the
-// tags:rewritten WS event (D-34) with new_name=null.
+// Calls s.notes.DeleteTagAcrossVault() which rewrites disk files AND performs
+// the SQL-level delete, then broadcasts the tags:rewritten WS event (D-34)
+// with new_name=null.
 //
 // Error mapping:
 //   - notes.ErrTagNotFound → 404 not_found
@@ -169,11 +172,13 @@ func (s *Server) DeleteTag(
 ) (DeleteTagResponseObject, error) {
 	name := string(req.Name)
 
-	if s.index == nil {
+	if s.notes == nil || s.index == nil {
 		return DeleteTag404JSONResponse(newError("not_found", "tag not found")), nil
 	}
 
-	touchedIDs, err := s.index.DeleteTag(ctx, name)
+	// Call the Service method which rewrites disk files first, then updates SQL.
+	// (Rule 1 fix: the index-only path only updated SQL, leaving disk files stale.)
+	touchedIDs, err := s.notes.DeleteTagAcrossVault(ctx, name)
 	if err != nil {
 		switch {
 		case errors.Is(err, notes.ErrTagNotFound):

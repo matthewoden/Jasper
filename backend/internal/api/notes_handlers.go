@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -149,9 +150,26 @@ func (s *Server) PostNoteMove(
 
 	// LINKS-07 / D-36: capture pre-move title and path BEFORE Move() so we
 	// can detect a title change and roll back if the rewrite fails.
-	oldTitle := s.notes.LookupTitle(id)
+	//
+	// Rule 1 fix: LookupTitle derives the title from the lowercase canonical
+	// path (e.g. "oldtitle" for "OldTitle.md"). The post-move summary.Title
+	// comes from markdown.ExtractTitle which returns the verbatim H1 (e.g.
+	// "OldTitle"). EqualFold("oldtitle", "OldTitle") = true even when the
+	// filename changed from oldtitle.md → newtitle.md, suppressing the
+	// wiki-link rewrite.
+	//
+	// Fix: read the note content before the move and extract the verbatim
+	// H1 title so both oldTitle and newTitle are sourced from the same
+	// extraction logic (markdown.ExtractTitle). If the Get fails, fall back
+	// to the registry-derived lowercase title.
+	var oldTitle string
 	oldSummary, _ := s.notes.LookupSummary(id)
 	oldPath := oldSummary.Path
+	if preNote, getErr := s.notes.Get(ctx, id); getErr == nil {
+		oldTitle = markdown.ExtractTitle([]byte(preNote.Content), preNote.Path)
+	} else {
+		oldTitle = s.notes.LookupTitle(id)
+	}
 
 	summary, err := s.notes.Move(ctx, id, req.Body.NewPath)
 	if err != nil {

@@ -343,7 +343,14 @@ func (s *Service) Create(ctx context.Context, parentPath, title string) (NoteSum
 		}
 		return NoteSummary{}, fmt.Errorf("notes.Create(%s): index upsert: %w", relPath, err)
 	}
-	s.registry.Add(id, rec.Path)
+	// AddRecord populates both byID and byTitle so LookupTitle returns the
+	// human-readable title immediately after Create (not just the lowercase
+	// filename fallback). titleKey(rec.Title) produces the NFC+lowercase key
+	// expected by AddRecord. Rule 1 fix: Add() only populated byID, causing
+	// LookupTitle to return a lowercase path-derived value; wiki-link rewrites
+	// triggered by PostNoteMove used this lowercase value in
+	// SourcesByBacklinkTitle, which would miss links written as [[OldTitle]].
+	s.registry.AddRecord(id, rec.Path, strings.ToLower(rec.Title))
 
 	// BROADCAST — THIRD step. Only after successful Upsert. T-04-04: no content.
 	s.broadcaster.Broadcast(EventNoteCreated, map[string]any{
