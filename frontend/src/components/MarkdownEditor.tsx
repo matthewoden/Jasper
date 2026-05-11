@@ -55,6 +55,10 @@ import { codeLanguages } from "../editor/codeLanguages";
 import { externalImagePlugin } from "../editor/externalImagePlugin";
 import { saveKeymap } from "../editor/jasperKeymap"; // Plan 05-11 / EDIT-10
 import {
+  tagClickPlugin,
+  setTagClickHandler,
+} from "../editor/tagClickPlugin";
+import {
   useResolvedTitleSet,
   setResolvedTitlesSnapshot,
 } from "../editor/wikilinkResolver";
@@ -62,8 +66,14 @@ import {
   wikilinkCompletionSource,
   setWikilinkAutocompleteCallbacks,
 } from "../editor/wikilinkAutocomplete";
+import {
+  tagCompletionSource,
+  setTagSnapshot,
+} from "../editor/tagAutocomplete";
+import { useTagBrowser } from "../lib/useTagBrowser";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useFileTree } from "../lib/useFileTree";
+import { postNotes } from "../lib/treeApi";
 import type { TreeNode } from "../lib/treeApi";
 
 /**
@@ -191,7 +201,13 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     // These must be kept fresh (not stale from mount-time closure) via refs.
     const activeNoteId = useTreeStore((s) => s.activeNoteId);
     const setActiveNote = useTreeStore((s) => s.setActiveNote);
+    const setActiveTagFilter = useTreeStore((s) => s.setActiveTagFilter);
+    const setTagBrowserExpanded = useTreeStore((s) => s.setTagBrowserExpanded);
     const { tree } = useFileTree();
+
+    // Phase 6 / Plan 06-10: tag autocomplete snapshot — feeds tagCompletionSource.
+    // useTagBrowser fetches from GET /api/v1/tags and reacts to WS events.
+    const { tags: allTags } = useTagBrowser();
 
     // Use a ref to keep the callbacks fresh without re-registering effects.
     const wikilinkCbRef = useRef({ activeNoteId, setActiveNote, tree });
@@ -216,9 +232,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     useEffect(() => {
       setWikilinkAutocompleteCallbacks({
         createNoteAndNavigate: async (rawTitle: string, sourceFolder: string) => {
-          const { data, error } = await import("../lib/treeApi").then((m) =>
-            m.postNotes({ parent_path: sourceFolder, title: rawTitle }),
-          );
+          const { data, error } = await postNotes({
+            parent_path: sourceFolder,
+            title: rawTitle,
+          });
           if (error || !data) {
             throw new Error(
               (error as { message?: string } | undefined)?.message ??
@@ -234,6 +251,25 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       });
       // Called once — callbacks read fresh state from wikilinkCbRef.current.
     }, []);
+
+    // Phase 6 / Plan 06-10: tag autocomplete snapshot sync.
+    // Whenever useTagBrowser returns new data, push it to the module-level
+    // snapshot so tagCompletionSource can read it synchronously.
+    useEffect(() => {
+      setTagSnapshot(allTags ?? []);
+    }, [allTags]);
+
+    // Phase 6 / Plan 06-10: tag click handler wiring (D-08).
+    // Plain click on a cm-tag-clickable span calls setActiveTagFilter
+    // and expands the tag browser section so it's visible.
+    useEffect(() => {
+      setTagClickHandler((tag: string) => {
+        setActiveTagFilter(tag);
+        setTagBrowserExpanded(true);
+      });
+      // Called once — setActiveTagFilter and setTagBrowserExpanded are stable
+      // Zustand setters (reference-stable between renders).
+    }, [setActiveTagFilter, setTagBrowserExpanded]);
 
     // D-16 Cmd-held affordance (T-06-09-04: cleanup in useEffect return).
     // Adds/removes data-cmd-held on the .cm-editor root when Cmd/Ctrl is held,
@@ -275,13 +311,13 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             frontmatterPlugin,
             livePreviewPlugin,
             wikilinkPlugin, // Phase 6 / Plan 06-09 — [[Title]] decoration
+            tagClickPlugin, // Phase 6 / Plan 06-10 — clickable tag values in frontmatter (D-08)
             linkClickHandler, // 05.5-18 — Cmd/Ctrl-click opens external links in a new tab
             externalImagePlugin, // Plan 05-08 — SECURITY-03 external image gate
             // Phase 6 / Plan 06-10 — autocomplete: [[ wiki-links + tag names.
             // override: [] disables lang-markdown's emoji shortcodes (acceptable for
-            // v1 — documented tradeoff in wikilinkAutocomplete.ts). tagCompletionSource
-            // is added in the same array (Task 3 of this plan).
-            autocompletion({ override: [wikilinkCompletionSource] }),
+            // v1 — documented tradeoff in wikilinkAutocomplete.ts).
+            autocompletion({ override: [wikilinkCompletionSource, tagCompletionSource] }),
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // Plan 05-11 / EDIT-10 — BEFORE defaultKeymap so Cmd+S takes precedence
             // 05.5-18: ```-Enter expands to a bounded fenced block.
             // BEFORE defaultKeymap so it can short-circuit Enter
