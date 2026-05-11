@@ -58,6 +58,7 @@ import type {
   Tree as WireTree,
   TreeNode as WireTreeNode,
 } from "../lib/treeApi";
+import { listTagNotes, type NoteSummary } from "../lib/tagsApi";
 import { TreeRow, type TreeRowData } from "./TreeRow";
 import { TreeEmptyState } from "./TreeEmptyState";
 import { TreeErrorState } from "./TreeErrorState";
@@ -65,6 +66,7 @@ import {
   DeleteConfirmDialog,
   type DeleteTarget,
 } from "./DeleteConfirmDialog";
+import { ActiveTagFilterChip } from "./ActiveTagFilterChip";
 import { useToast } from "./Toast";
 
 /**
@@ -482,6 +484,42 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       }
     };
   }, []);
+
+  // Phase 6 — Plan 06-08: flat-list mode when activeTagFilter is active.
+  // When a tag is selected in TagBrowserSection, useTreeStore's activeTagFilter
+  // becomes non-null. FileTree fetches tag notes via listTagNotes and renders
+  // a flat list (no arborist tree). ActiveTagFilterChip is pinned above the list.
+  // activeNoteIdForFlatList is subscribed here (before early returns) to satisfy
+  // the Rules of Hooks — hooks must be called unconditionally.
+  const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
+  const activeNoteIdForFlatList = useTreeStore((s) => s.activeNoteId);
+  const [flatNotes, setFlatNotes] = useState<NoteSummary[] | null>(null);
+  const [flatLoading, setFlatLoading] = useState(false);
+
+  useEffect(() => {
+    if (!activeTagFilter) {
+      setFlatNotes(null);
+      return;
+    }
+    let cancelled = false;
+    setFlatLoading(true);
+    void listTagNotes(activeTagFilter)
+      .then((notes) => {
+        if (!cancelled) {
+          setFlatNotes(notes);
+          setFlatLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFlatNotes([]);
+          setFlatLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTagFilter]);
 
   const data = useMemo(() => (tree ? adaptTree(tree) : []), [tree]);
 
@@ -1224,6 +1262,85 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
             animation: "jasper-progress-stripe 1.5s linear infinite",
           }}
         />
+      </div>
+    );
+  }
+
+  // Phase 6 — Plan 06-08: flat-list branch. When activeTagFilter is set,
+  // render ActiveTagFilterChip + a flat list of notes tagged with that tag.
+  // This branch supersedes the arborist tree render entirely while the filter
+  // is active. The chip's × button clears the filter and returns to the normal tree.
+  if (activeTagFilter !== null) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          overflow: "hidden",
+        }}
+      >
+        <ActiveTagFilterChip />
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            overflowX: "hidden",
+          }}
+        >
+          {flatLoading && (
+            <div
+              aria-hidden="true"
+              style={{
+                height: 1,
+                background: "var(--color-accent)",
+                animation: "jasper-progress-stripe 1.5s linear infinite",
+              }}
+            />
+          )}
+          {!flatLoading && flatNotes !== null && flatNotes.length === 0 && (
+            <div
+              style={{
+                padding: "16px",
+                fontSize: 12,
+                color: "var(--color-text-muted)",
+              }}
+            >
+              No notes tagged &ldquo;{activeTagFilter}&rdquo;.
+            </div>
+          )}
+          {flatNotes !== null &&
+            flatNotes.map((note) => {
+              const isActive = activeNoteIdForFlatList === note.id;
+              return (
+                <div
+                  key={note.id}
+                  data-active-note={isActive ? "true" : undefined}
+                  onClick={() => {
+                    useTreeStore.getState().setActiveNote(note.id);
+                    onSelectNote(note.id);
+                  }}
+                  style={{
+                    height: 32,
+                    padding: "0 16px",
+                    display: "flex",
+                    alignItems: "center",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    color: isActive
+                      ? "var(--color-accent)"
+                      : "var(--color-text)",
+                    background: isActive
+                      ? "color-mix(in srgb, var(--color-accent) 8%, transparent)"
+                      : "transparent",
+                    userSelect: "none",
+                  }}
+                >
+                  {note.title}
+                </div>
+              );
+            })}
+        </div>
       </div>
     );
   }

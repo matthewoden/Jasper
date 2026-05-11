@@ -29,7 +29,7 @@ export type NoteSummary = components["schemas"]["NoteSummary"];
  * Feeds the sidebar tag browser (D-01..D-03) and tag autocomplete (D-07).
  */
 export async function listTags(): Promise<TagWithCount[]> {
-  const { data, error } = await client.GET("/api/v1/tags");
+  const { data, error } = await client.GET("/tags");
   if (error) {
     const msg =
       error && typeof error === "object" && "message" in error
@@ -45,7 +45,7 @@ export async function listTags(): Promise<TagWithCount[]> {
  * Returns 404 if the tag does not exist.
  */
 export async function listTagNotes(name: string): Promise<NoteSummary[]> {
-  const { data, error } = await client.GET("/api/v1/tags/{name}/notes", {
+  const { data, error } = await client.GET("/tags/{name}/notes", {
     params: { path: { name } },
   });
   if (error) {
@@ -67,7 +67,7 @@ export async function renameTag(
   oldName: string,
   newName: string,
 ): Promise<TagRenameResponse> {
-  const { data, error } = await client.PUT("/api/v1/tags/{name}", {
+  const { data, error } = await client.PUT("/tags/{name}", {
     params: { path: { name: oldName } },
     body: { new_name: newName },
   });
@@ -87,7 +87,7 @@ export async function renameTag(
  * Returns the list of touched note IDs so the caller can decide whether to toast.
  */
 export async function deleteTag(name: string): Promise<TagDeleteResponse> {
-  const { data, error } = await client.DELETE("/api/v1/tags/{name}", {
+  const { data, error } = await client.DELETE("/tags/{name}", {
     params: { path: { name } },
   });
   if (error) {

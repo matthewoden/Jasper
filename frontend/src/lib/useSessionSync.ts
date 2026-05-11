@@ -3,6 +3,7 @@ import { generateOrLoadSessionId } from "./sessionId";
 import { nextDelay } from "./backoff";
 import { useTreeStore } from "./useTreeStore";
 import { useFileTree } from "./useFileTree";
+import { dispatchTagEvent } from "./useTagBrowser";
 import type { components } from "../api/schema";
 
 type WSEnvelope = components["schemas"]["WSEnvelope"];
@@ -146,8 +147,16 @@ export function useSessionSync(
               env.payload as WSReindexCompletePayload,
             );
             break;
-          // tags:updated and migration:status: deferred to Phase 6 / Phase 2 retro;
-          // ignored here without warning so unknown future events don't crash.
+          case "tags:updated":
+          case "tags:rewritten":
+            // Phase 6 — Plan 06-08: fan-out to useTagBrowser subscribers so the
+            // sidebar tag list refreshes when another session modifies tags.
+            // dispatchTagEvent uses the module-level Set pattern (mirrors
+            // treeFetchSubscribers in useFileTree) — no signature change needed.
+            dispatchTagEvent(env.event);
+            break;
+          // migration:status: deferred to Phase 2 retro;
+          // unknown future events ignored without warning so they don't crash.
           default:
             break;
         }

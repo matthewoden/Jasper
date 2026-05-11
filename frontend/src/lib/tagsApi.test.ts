@@ -1,10 +1,13 @@
 /**
  * Tests for tagsApi typed wrappers. Validates that:
- *   - listTags routes through client.GET("/api/v1/tags") correctly
- *   - listTagNotes routes through client.GET("/api/v1/tags/{name}/notes") correctly
- *   - renameTag routes through client.PUT("/api/v1/tags/{name}") correctly
- *   - deleteTag routes through client.DELETE("/api/v1/tags/{name}") correctly
+ *   - listTags routes through client.GET("/tags") correctly
+ *   - listTagNotes routes through client.GET("/tags/{name}/notes") correctly
+ *   - renameTag routes through client.PUT("/tags/{name}") correctly
+ *   - deleteTag routes through client.DELETE("/tags/{name}") correctly
  *   - Non-2xx errors throw an Error with the server's error message
+ *
+ * Note: paths do NOT include the /api/v1 prefix because the openapi-fetch client
+ * is created with baseUrl="/api/v1" — the typed paths are the post-servers segments.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,7 +33,7 @@ describe("tagsApi", () => {
   });
 
   describe("listTags", () => {
-    it("T1: routes through client.GET /api/v1/tags and returns tags array", async () => {
+    it("T1: routes through client.GET /tags and returns tags array", async () => {
       const fakeTags = [
         { name: "project", count: 5 },
         { name: "work", count: 3 },
@@ -40,7 +43,7 @@ describe("tagsApi", () => {
       const result = await listTags();
 
       expect(getMock).toHaveBeenCalledTimes(1);
-      expect(getMock).toHaveBeenCalledWith("/api/v1/tags");
+      expect(getMock).toHaveBeenCalledWith("/tags");
       expect(result).toEqual(fakeTags);
     });
 
@@ -55,7 +58,7 @@ describe("tagsApi", () => {
   });
 
   describe("listTagNotes", () => {
-    it("T3: routes through client.GET /api/v1/tags/{name}/notes with path param", async () => {
+    it("T3: routes through client.GET /tags/{name}/notes with path param", async () => {
       const fakeNotes = [
         { id: "uuid-1", path: "note1.md", title: "Note One", updated_at: "2026-01-01T00:00:00Z" },
       ];
@@ -64,7 +67,7 @@ describe("tagsApi", () => {
       const result = await listTagNotes("project");
 
       expect(getMock).toHaveBeenCalledTimes(1);
-      expect(getMock).toHaveBeenCalledWith("/api/v1/tags/{name}/notes", {
+      expect(getMock).toHaveBeenCalledWith("/tags/{name}/notes", {
         params: { path: { name: "project" } },
       });
       expect(result).toEqual(fakeNotes);
@@ -81,7 +84,7 @@ describe("tagsApi", () => {
   });
 
   describe("renameTag", () => {
-    it("T5: routes through client.PUT /api/v1/tags/{name} with old name in path and new_name in body", async () => {
+    it("T5: routes through client.PUT /tags/{name} with old name in path and new_name in body", async () => {
       const fakeResponse = {
         old_name: "project",
         new_name: "work",
@@ -92,7 +95,7 @@ describe("tagsApi", () => {
       const result = await renameTag("project", "work");
 
       expect(putMock).toHaveBeenCalledTimes(1);
-      expect(putMock).toHaveBeenCalledWith("/api/v1/tags/{name}", {
+      expect(putMock).toHaveBeenCalledWith("/tags/{name}", {
         params: { path: { name: "project" } },
         body: { new_name: "work" },
       });
@@ -110,7 +113,7 @@ describe("tagsApi", () => {
   });
 
   describe("deleteTag", () => {
-    it("T7: routes through client.DELETE /api/v1/tags/{name} with correct path param", async () => {
+    it("T7: routes through client.DELETE /tags/{name} with correct path param", async () => {
       const fakeResponse = {
         old_name: "project",
         touched_note_ids: ["uuid-1"],
@@ -120,7 +123,7 @@ describe("tagsApi", () => {
       const result = await deleteTag("project");
 
       expect(deleteMock).toHaveBeenCalledTimes(1);
-      expect(deleteMock).toHaveBeenCalledWith("/api/v1/tags/{name}", {
+      expect(deleteMock).toHaveBeenCalledWith("/tags/{name}", {
         params: { path: { name: "project" } },
       });
       expect(result).toEqual(fakeResponse);
