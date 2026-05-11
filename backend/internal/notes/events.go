@@ -21,4 +21,6 @@ const (
 	EventReindexStarted  = "reindex:started"
 	EventReindexComplete = "reindex:complete"
 	EventMigrationStatus = "migration:status"
+	EventTagsRewritten   = "tags:rewritten"  // Phase 6: D-34 cross-vault tag rename/delete batch event
+	EventLinksRewritten  = "links:rewritten" // Phase 6: D-33 LINKS-07 cross-vault wiki-link rename batch event
 )
