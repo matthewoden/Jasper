@@ -14,6 +14,7 @@ import { EditorState } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { syntaxTree } from "@codemirror/language";
+import type { SyntaxNode } from "@lezer/common";
 import {
   frontmatterPlugin,
   FRONTMATTER_NODE_NAME,
@@ -292,7 +293,7 @@ title: Example
           if (text === "alpha" || text === "beta-tag") {
             // Build the ancestor chain by walking up via node.node.parent
             const chain: string[] = [];
-            let cur: ReturnType<typeof node.node.parent> = node.node;
+            let cur: SyntaxNode | null = node.node;
             while (cur) {
               chain.unshift(cur.name);
               cur = cur.parent;
