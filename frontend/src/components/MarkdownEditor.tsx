@@ -49,7 +49,12 @@ import {
   setWikilinkHandlerCallbacks,
 } from "../editor/linkClickHandler";
 import { codeblockExpand } from "../editor/codeblockExpand";
-import { frontmatterPlugin } from "../editor/frontmatterPlugin";
+// Phase 6.5 / Plan 06.5-06 / UX-T-04: replaced frontmatterPlugin with frontmatterHidePlugin.
+// frontmatterPlugin.ts stays on disk (ADD-only invariant) but is no longer in extensions.
+import {
+  frontmatterHideExtension,
+  frontmatterToggleKeymap,
+} from "../editor/frontmatterHidePlugin";
 import { wikilinkPlugin, resolvedTitlesChanged } from "../editor/wikilinkPlugin";
 import { codeLanguages } from "../editor/codeLanguages";
 import { externalImagePlugin } from "../editor/externalImagePlugin";
@@ -316,7 +321,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             yamlFrontmatter({ content: markdown({ codeLanguages }) }),
             jasperEditorTheme,
             jasperSyntaxHighlighting,
-            frontmatterPlugin,
+            frontmatterHideExtension, // Phase 6.5 / Plan 06.5-06 / UX-T-04 — hide frontmatter by default
             livePreviewPlugin,
             wikilinkPlugin, // Phase 6 / Plan 06-09 — [[Title]] decoration
             tagClickPlugin, // Phase 6 / Plan 06-10 — clickable tag values in frontmatter (D-08)
@@ -329,6 +334,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             // v1 — documented tradeoff in wikilinkAutocomplete.ts).
             autocompletion({ override: [wikilinkCompletionSource, tagCompletionSource, inlineTagCompletionSource] }),
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // Plan 05-11 / EDIT-10 — BEFORE defaultKeymap so Cmd+S takes precedence
+            frontmatterToggleKeymap, // Phase 6.5 / Plan 06.5-06 / UX-T-04 — Cmd-Shift-Y toggles raw frontmatter view
             // 05.5-18: ```-Enter expands to a bounded fenced block.
             // BEFORE defaultKeymap so it can short-circuit Enter
             // before the default newline handler runs.
