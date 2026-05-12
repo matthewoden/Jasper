@@ -374,12 +374,11 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     });
   });
 
-  // Phase 6 — Plan 06-08: Tag browser section integration tests (SI1..SI3).
-  // These verify the layout contract: TagBrowserSection mounts in the correct
-  // slot between the FileTree div and SidebarResizeHandle. The component's
-  // own behaviors (TB1..TB13) are covered in TagBrowserSection.test.tsx.
-  describe("Phase 6 — TagBrowserSection integration (SI1..SI3)", () => {
-    it("SI1: TagBrowserSection is present inside the nav", () => {
+  // Phase 6.5 — Plan 06.5-04: TagBrowserSection REMOVED from Sidebar.
+  // Left sidebar is file-tree-only. Tag browser relocated to right-rail
+  // RightRailTagsPanel. These tests lock in the ABSENCE of the tag section.
+  describe("Phase 6.5 — TagBrowserSection removed from sidebar (D-04)", () => {
+    it("SI-REMOVED: TagBrowserSection is NOT present inside the nav (removed in Phase 6.5)", () => {
       mockedUseFileTree.mockReturnValue({
         tree: { root: [] },
         loading: false,
@@ -388,11 +387,24 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         mutate: noopMutate,
       });
       renderWithProvider(<Sidebar />);
-      // TagBrowserSection always renders the header showing TAGS (N)
-      expect(screen.getByText(/TAGS \(\d+\)/)).toBeInTheDocument();
+      // The Phase 6 uppercase "TAGS (N)" header must be absent
+      expect(screen.queryByText(/^TAGS \(/)).toBeNull();
     });
 
-    it("SI2: TagBrowserSection sits between the FileTree div and SidebarResizeHandle", () => {
+    it("SI-REMOVED: sidebar does not render 'TAGS' header in any case", () => {
+      mockedUseFileTree.mockReturnValue({
+        tree: { root: [] },
+        loading: false,
+        error: null,
+        refresh: () => Promise.resolve(),
+        mutate: noopMutate,
+      });
+      renderWithProvider(<Sidebar />);
+      // No uppercase TAGS section in the left sidebar
+      expect(screen.queryByText(/TAGS \(\d+\)/)).toBeNull();
+    });
+
+    it("SI-PRESENT: SidebarResizeHandle is still the last structural element", () => {
       mockedUseFileTree.mockReturnValue({
         tree: { root: [] },
         loading: false,
@@ -402,37 +414,9 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       });
       renderWithProvider(<Sidebar />);
       const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
-      const tagHeader = screen.getByText(/TAGS \(\d+\)/);
       const resizeHandle = screen.getByTestId("sidebar-resize-handle");
-      // Verify both are inside the nav
-      expect(nav.contains(tagHeader)).toBe(true);
+      // Resize handle is still inside the nav
       expect(nav.contains(resizeHandle)).toBe(true);
-      // Verify TagBrowserSection precedes the resize handle in DOM order
-      const position = nav.compareDocumentPosition(tagHeader);
-      const handlePosition = nav.compareDocumentPosition(resizeHandle);
-      // Both are contained inside nav (CONTAINS flag set)
-      expect(position & Node.DOCUMENT_POSITION_CONTAINED_BY).toBeTruthy();
-      expect(handlePosition & Node.DOCUMENT_POSITION_CONTAINED_BY).toBeTruthy();
-    });
-
-    it("SI3: FileTree retains usable height — TagBrowserSection has bounded max-height", () => {
-      mockedUseFileTree.mockReturnValue({
-        tree: { root: [] },
-        loading: false,
-        error: null,
-        refresh: () => Promise.resolve(),
-        mutate: noopMutate,
-      });
-      // Expand the tag browser to see the body
-      useTreeStore.setState({ tagBrowserExpanded: true });
-      renderWithProvider(<Sidebar />);
-      // The tag list container has max-height 240px (bounded so FileTree isn't crushed)
-      const tagList = document.querySelector('[role="list"]');
-      if (tagList) {
-        // max-height is set via inline style; jsdom exposes it through getComputedStyle.
-        // We assert the list element exists and the section is rendered.
-        expect(tagList).toBeInTheDocument();
-      }
     });
   });
 

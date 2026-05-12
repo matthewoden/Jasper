@@ -18,7 +18,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RightRail } from "./components/RightRail";
-import { BacklinksRail } from "./components/BacklinksRail";
 import { EditorPane, type EditorPaneHandlers } from "./components/EditorPane";
 import { MigrationBanner } from "./components/MigrationBanner";
 import { RenameRewriteErrorBanner, type RewriteError } from "./components/RenameRewriteErrorBanner";
@@ -300,10 +299,10 @@ function AppInner() {
             editorHandlersRef={editorHandlersRef}
           />
         )}
-        {/* Phase 6 — Plan 06-07: right rail replaces Phase 1 placeholder (D-45/D-46). */}
-        <RightRail>
-          <BacklinksRail noteId={activeNoteId} />
-        </RightRail>
+        {/* Phase 6.5 — Plan 06.5-04: right rail two-panel layout (D-01/D-03).
+            RightRail now composes its own children (tags panel + divider +
+            linked-from panel) and receives activeNoteId prop. */}
+        <RightRail activeNoteId={activeNoteId} />
       </div>
     </div>
   );
