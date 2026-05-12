@@ -148,3 +148,57 @@ body {
   border-radius: 2px;
   padding: 0 2px;
 }
+
+/* ─── Phase 6.5 — autocomplete + inline-tag polish ──────────────────
+   UI-SPEC §Surface 4-NEW + §Surface 6-NEW.
+   - Autocomplete popup: rounded, surface bg, FG (not muted) text,
+     accent-12% selected/hover row.
+   - Inline #tag decoration emitted by inlineTagPlugin: accent text,
+     hover tint, pointer cursor.
+   Both blocks rely on existing --color-* tokens; no new tokens.
+─────────────────────────────────────────────────────────────────── */
+
+/* Autocomplete popup container — applies to all three CodeMirror
+   autocomplete trigger surfaces: [[ wiki-link, tags: [...]
+   frontmatter, and # inline body tag. */
+.cm-tooltip.cm-tooltip-autocomplete {
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.10) !important;
+  overflow: hidden; /* clip rows to rounded corners */
+}
+
+/* Row layout — UI-SPEC D-17: 4px outer / 8px inner padding,
+   --color-fg for primary label (NOT muted — fixes the WCAG complaint). */
+.cm-tooltip.cm-tooltip-autocomplete > ul {
+  padding: 4px 0 !important;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul > li {
+  color: var(--color-fg) !important;
+  padding: 4px 8px !important;
+  line-height: 1.4;
+}
+
+/* Selected and hover rows — accent-12% tint per D-17. */
+.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected="true"],
+.cm-tooltip.cm-tooltip-autocomplete > ul > li:hover {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent) !important;
+}
+
+/* Detail / count badge text within rows (e.g., "(N)" for tag counts) */
+.cm-tooltip.cm-tooltip-autocomplete .cm-completionDetail,
+.cm-tooltip.cm-tooltip-autocomplete .cm-completionLabel {
+  color: var(--color-fg) !important;
+}
+
+/* Inline #tag decoration emitted by inlineTagPlugin. */
+.cm-inline-tag {
+  color: var(--color-accent);
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 4px;
+}
+.cm-inline-tag:hover {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}

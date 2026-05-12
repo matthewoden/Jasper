@@ -799,6 +799,175 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// Phase 6.5 — Plan 06.5-02: useTreeStore ADD-only extension (UX-T-01).
+//
+// Tests for the two new slices: tagsPanelHeightRatio, rightRailTagsPanelExpanded.
+// Uses the same module-reset pattern as the existing hydration tests above.
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: null,
+      pendingRename: null,
+      draftCreate: null,
+    });
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    localStorage.clear();
+    vi.resetModules();
+  });
+
+  // T1: Defaults
+  it("T1: fresh store returns tagsPanelHeightRatio=0.5, rightRailTagsPanelExpanded=true", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    const s = mod.useTreeStore.getState();
+    expect(s.tagsPanelHeightRatio).toBe(0.5);
+    expect(s.rightRailTagsPanelExpanded).toBe(true);
+  });
+
+  // T2: Setters
+  it("T2: setTagsPanelHeightRatio(0.65) stores 0.65 (within bounds)", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    mod.useTreeStore.getState().setTagsPanelHeightRatio(0.65);
+    expect(mod.useTreeStore.getState().tagsPanelHeightRatio).toBe(0.65);
+  });
+
+  it("T2: setRightRailTagsPanelExpanded(false) flips to false", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    mod.useTreeStore.getState().setRightRailTagsPanelExpanded(false);
+    expect(mod.useTreeStore.getState().rightRailTagsPanelExpanded).toBe(false);
+  });
+
+  // T3: Clamp
+  it("T3: setTagsPanelHeightRatio(0.1) clamps up to TAGS_PANEL_RATIO_MIN (0.2)", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    mod.useTreeStore.getState().setTagsPanelHeightRatio(0.1);
+    expect(mod.useTreeStore.getState().tagsPanelHeightRatio).toBe(mod.TAGS_PANEL_RATIO_MIN);
+    expect(mod.useTreeStore.getState().tagsPanelHeightRatio).toBe(0.2);
+  });
+
+  it("T3: setTagsPanelHeightRatio(0.95) clamps down to TAGS_PANEL_RATIO_MAX (0.8)", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    mod.useTreeStore.getState().setTagsPanelHeightRatio(0.95);
+    expect(mod.useTreeStore.getState().tagsPanelHeightRatio).toBe(mod.TAGS_PANEL_RATIO_MAX);
+    expect(mod.useTreeStore.getState().tagsPanelHeightRatio).toBe(0.8);
+  });
+
+  // T4: LS hydration — ratio
+  it("T4: pre-seeded tagsPanelHeightRatio=0.7 in LS hydrates on module load", async () => {
+    localStorage.setItem("jasper.rail.tags.height.ratio", "0.7");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().tagsPanelHeightRatio).toBe(0.7);
+  });
+
+  it("T4: pre-seeded tagsPanelHeightRatio=1.5 (out of range) falls back to default 0.5", async () => {
+    localStorage.setItem("jasper.rail.tags.height.ratio", "1.5");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().tagsPanelHeightRatio).toBe(0.5);
+  });
+
+  it("T4: pre-seeded tagsPanelHeightRatio='not-a-number' falls back to default 0.5", async () => {
+    localStorage.setItem("jasper.rail.tags.height.ratio", "not-a-number");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().tagsPanelHeightRatio).toBe(0.5);
+  });
+
+  // T5: LS hydration — boolean
+  it("T5: pre-seeded rightRailTagsPanelExpanded=false in LS hydrates on module load", async () => {
+    localStorage.setItem("jasper.rail.tags.expanded", "false");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().rightRailTagsPanelExpanded).toBe(false);
+  });
+
+  it("T5: absent LS key → rightRailTagsPanelExpanded stays true (default)", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().rightRailTagsPanelExpanded).toBe(true);
+  });
+
+  // T6: LS persistence — ratio (debounced 250ms)
+  it("T6: setTagsPanelHeightRatio(0.7) persists to LS after 250ms debounce", () => {
+    vi.useFakeTimers();
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      act(() => {
+        useTreeStore.getState().setTagsPanelHeightRatio(0.7);
+      });
+      // Inside debounce window — no write yet
+      const writesBeforeFlush = setItemSpy.mock.calls.filter(
+        (c) => c[0] === "jasper.rail.tags.height.ratio",
+      ).length;
+      expect(writesBeforeFlush).toBe(0);
+      act(() => { vi.advanceTimersByTime(300); });
+      const writes = setItemSpy.mock.calls.filter(
+        (c) => c[0] === "jasper.rail.tags.height.ratio",
+      );
+      expect(writes.length).toBeGreaterThan(0);
+      expect(writes[writes.length - 1][1]).toBe("0.7");
+    } finally {
+      setItemSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  // T7: LS persistence — boolean (immediate)
+  it("T7: setRightRailTagsPanelExpanded(false) immediately writes to LS (no debounce)", () => {
+    vi.useFakeTimers();
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      act(() => {
+        useTreeStore.getState().setRightRailTagsPanelExpanded(false);
+      });
+      const writes = setItemSpy.mock.calls.filter(
+        (c) => c[0] === "jasper.rail.tags.expanded",
+      );
+      expect(writes.length).toBeGreaterThan(0);
+      expect(writes[writes.length - 1][1]).toBe("false");
+    } finally {
+      setItemSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  // T8: LS key constants
+  it("T8: LS key constants have expected literal string values", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.LS_KEY_TAGS_PANEL_HEIGHT_RATIO).toBe("jasper.rail.tags.height.ratio");
+    expect(mod.LS_KEY_TAGS_PANEL_EXPANDED).toBe("jasper.rail.tags.expanded");
+  });
+
+  // T9: Existing Phase 6 slices unchanged
+  it("T9: existing Phase 6 slices work alongside Phase 6.5 additions (regression guard)", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    const s = mod.useTreeStore.getState();
+    // Phase 6 defaults still correct
+    expect(s.tagBrowserExpanded).toBe(false);
+    expect(s.activeTagFilter).toBeNull();
+    expect(s.backlinksRailExpanded).toBe(false);
+    expect(s.backlinksRailWidth).toBe(280);
+    // Phase 6.5 defaults also correct
+    expect(s.tagsPanelHeightRatio).toBe(0.5);
+    expect(s.rightRailTagsPanelExpanded).toBe(true);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // WR-07 (Phase 5.5 gap-closure Plan 13) — pruneStaleTreeState liveLabels rebuild.
 //
 // The original implementation cloned `liveLabels` lazily and then `delete`d
