@@ -31,7 +31,7 @@ const buttonBase: CSSProperties = {
   borderRadius: 4,
 };
 
-export function StatusBar(): JSX.Element {
+export function StatusBar() {
   const [refreshing, setRefreshing] = useState(false);
   const [hovering, setHovering] = useState(false);
 

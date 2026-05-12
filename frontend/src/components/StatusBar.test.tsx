@@ -94,7 +94,8 @@ describe("<StatusBar />", () => {
 
   it("Test5_WhileInFlight_IconIsLoader2AndButtonIsDisabled", async () => {
     const d = deferred();
-    vi.mocked(postAdminReindex).mockImplementationOnce(() => d.promise as ReturnType<typeof postAdminReindex>);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(postAdminReindex).mockImplementationOnce(() => d.promise as any);
 
     render(<StatusBar />);
     const btn = screen.getByRole("button", { name: "Reindex notes" });
@@ -118,7 +119,8 @@ describe("<StatusBar />", () => {
 
   it("Test6_AfterRefreshResolves_IconReturnsAndButtonIsEnabled", async () => {
     const d = deferred();
-    vi.mocked(postAdminReindex).mockImplementationOnce(() => d.promise as ReturnType<typeof postAdminReindex>);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(postAdminReindex).mockImplementationOnce(() => d.promise as any);
 
     render(<StatusBar />);
     const btn = screen.getByRole("button", { name: "Reindex notes" });

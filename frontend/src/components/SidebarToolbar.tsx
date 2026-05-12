@@ -1,44 +1,35 @@
 /**
- * SidebarToolbar — UI-SPEC §Surface 6.
+ * SidebarToolbar — Phase 6.6 update (D-08).
  *
- * Three icon buttons in this exact order: New note, New folder, Refresh.
- * Each button: 24×24 hit target, padding 4px, transparent bg,
- * text-muted icon (lucide 16px). Native title= attribute carries the
- * tooltip text (Phase 1 deferral pattern; Phase 4 swaps to Radix Tooltip).
+ * Note-navigation controls ONLY (per D-08 enforcement):
+ *   1. New note (FilePlus)
+ *   2. New folder (FolderPlus)
  *
- * Refresh in-flight visuals (UI-SPEC §Surface 6 §"Disabled state"):
- *   - icon receives `animate-spin` so the user understands "something is
- *     happening" — Tailwind's built-in keyframes
- *   - button is disabled (opacity 0.5, cursor wait) so concurrent clicks
- *     can't fire while a reindex is in flight
- *   - on error: spin stops, button re-enables. NO toast surfaced from this
- *     component — that's Plan 03-07's wiring; the parent's `onRefresh` is
- *     re-thrown so the parent can decide.
+ * Global controls (connectivity dot, refresh button, settings menu) have been
+ * relocated to StatusBar.tsx per Phase 6.6 D-08.
+ *
+ * `onRefresh` prop is kept with a deprecation comment for backward compat
+ * with existing Sidebar.tsx call site — Plan 11 will clean up Sidebar.tsx.
  *
  * Create in-flight visuals (Gap R2-2):
  *   - `creating` prop (defaults to false) drives the New Note + New Folder
- *     buttons' disabled-state visuals identically to the Refresh button's
- *     spin-disabled treatment (opacity 0.5, cursor "wait", disabled
- *     attribute). The flag itself is owned by the parent (Sidebar reads it
- *     from `useTreeCreateActions().isCreating`) so the toolbar stays a
- *     pure presentational component for the create path. The Refresh and
- *     Create pipelines are independent — both can be disabled
- *     simultaneously without interference.
+ *     buttons' disabled-state visuals (opacity 0.5, cursor "wait", disabled
+ *     attribute). Owned by the parent (Sidebar reads from
+ *     useTreeCreateActions().isCreating).
  */
-import { useCallback, useState } from "react";
-import { FilePlus, FolderPlus, RefreshCw } from "lucide-react";
-import { ConnectionStatusDot } from "./ConnectionStatusDot";
-import { SettingsMenu } from "./SettingsMenu";
+import { FilePlus, FolderPlus } from "lucide-react";
 
 export interface SidebarToolbarProps {
   onNewNote: () => void;
   onNewFolder: () => void;
-  onRefresh: () => Promise<void>;
+  /**
+   * @deprecated Phase 6.6 — Refresh moved to StatusBar. Kept for backward
+   * compat with existing Sidebar.tsx call site. Plan 11 removes this prop.
+   */
+  onRefresh?: () => Promise<void>;
   /**
    * Gap R2-2 — when true, disables the New Note + New Folder buttons
-   * (visually + functionally) while a create is in flight. Mirrors the
-   * existing in-component `refreshing` state on the Refresh button.
-   * Owned by the parent (Sidebar reads from useTreeCreateActions().isCreating).
+   * (visually + functionally) while a create is in flight.
    */
   creating?: boolean;
 }
@@ -60,25 +51,8 @@ const buttonBase: React.CSSProperties = {
 export function SidebarToolbar({
   onNewNote,
   onNewFolder,
-  onRefresh,
   creating = false,
 }: SidebarToolbarProps) {
-  const [refreshing, setRefreshing] = useState(false);
-
-  const handleRefresh = useCallback(async () => {
-    if (refreshing) return;
-    setRefreshing(true);
-    try {
-      await onRefresh();
-    } catch {
-      // Parent decides whether to surface a toast (Plan 03-07 wires the
-      // destructive toast for refresh failures). The toolbar's job is just
-      // to clear the spin-disabled treatment so the user can retry.
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refreshing, onRefresh]);
-
   return (
     <div
       style={{ display: "flex", alignItems: "center", gap: 8 }}
@@ -112,28 +86,6 @@ export function SidebarToolbar({
       >
         <FolderPlus size={16} aria-hidden="true" />
       </button>
-      <button
-        type="button"
-        title="Refresh — pick up external file changes"
-        aria-label="Refresh"
-        onClick={handleRefresh}
-        disabled={refreshing}
-        style={{
-          ...buttonBase,
-          opacity: refreshing ? 0.5 : 1,
-          cursor: refreshing ? "wait" : "pointer",
-        }}
-      >
-        <RefreshCw
-          size={16}
-          aria-hidden="true"
-          className={refreshing ? "animate-spin" : undefined}
-        />
-      </button>
-      {/* Phase 4 — TREE-12: connection status dot appended after Refresh button */}
-      <ConnectionStatusDot />
-      {/* Plan 05-10 — D-14: Settings popover with theme toggle */}
-      <SettingsMenu />
     </div>
   );
 }
