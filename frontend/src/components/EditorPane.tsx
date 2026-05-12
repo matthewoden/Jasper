@@ -55,6 +55,7 @@ import {
 
 import { extractH1FromContent, sanitizeH1ForFilename } from "../lib/h1Extract";
 import { getNote, updateNote } from "../lib/notesApi";
+import { dispatchTagEvent } from "../lib/useTagBrowser";
 import {
   initialSaveState,
   saveStateReducer,
@@ -507,6 +508,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
         type: "saveSucceeded",
         updatedAt: new Date(data.updated_at),
       });
+      // BUG-01 fix (Phase 6.5 Plan 08): the WS EventTagsUpdated broadcast uses
+      // origin_session_id = this session, so the SYNC-03 filter in useSessionSync
+      // suppresses it for the saving tab. Dispatch directly so the local
+      // useTagBrowser subscriber refetches and the right-rail tag count updates
+      // within one render cycle without waiting for a WS round-trip.
+      dispatchTagEvent("tags:updated");
       // Schedule the savedTimer → idle transition (sticky ~2s).
       if (savedTimer.current !== null) {
         window.clearTimeout(savedTimer.current);
@@ -631,6 +638,16 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
   // Routes through performSave so paused / connectionStatus / inFlight /
   // trailingPending gating all flow through unchanged.
   const handleEditorBlur = useCallback(() => {
+    // BUG-03 fix (Phase 6.5 Plan 08): suppress blur-triggered save when the
+    // user has not typed anything since the note was opened. handleEditorBlur
+    // fires when the editor's contenteditable loses focus — including on a
+    // tree-row click that switches notes. Without this guard, every note
+    // switch triggers a no-op save round-trip that dispatches saveSucceeded
+    // and shows the "Saved" indicator falsely (RESEARCH §BUG-03; PATTERNS
+    // §handleEditorBlur surface).
+    // userHasEdited.current is reset to false on every note load (lines 316, 331)
+    // and set to true only on the first keystroke (handleEditorChange line 577).
+    if (!userHasEdited.current) return;
     if (debounceTimer.current !== null) {
       window.clearTimeout(debounceTimer.current);
       debounceTimer.current = null;
