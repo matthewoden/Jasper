@@ -142,12 +142,6 @@ const tagNameActiveStyle: CSSProperties = {
   color: "var(--color-accent)",
 };
 
-const countBadgeStyle: CSSProperties = {
-  fontSize: 12,
-  fontWeight: 400,
-  color: "var(--color-muted)",
-  flexShrink: 0,
-};
 
 const emptyStateStyle: CSSProperties = {
   padding: "12px 16px",
@@ -205,6 +199,8 @@ export function RightRailTagsPanel() {
     name: string;
     count: number;
   } | null>(null);
+  // D-22: soft-select state — set on right-click, cleared when context menu closes
+  const [softSelected, setSoftSelected] = useState<string | null>(null);
   const listId = useId();
   const { toast } = useToast();
 
@@ -401,9 +397,16 @@ export function RightRailTagsPanel() {
                   const isActive = activeTagFilter === tag.name;
                   const isRenaming = renaming === tag.name;
 
+                  const isSoftSelected = softSelected === tag.name;
+
                   return (
                     <li key={tag.name} role="listitem">
-                      <ContextMenu.Root>
+                      {/* D-22: onOpenChange clears soft-select when context menu closes */}
+                      <ContextMenu.Root
+                        onOpenChange={(open) => {
+                          if (!open) setSoftSelected(null);
+                        }}
+                      >
                         <ContextMenu.Trigger asChild>
                           <button
                             type="button"
@@ -411,17 +414,19 @@ export function RightRailTagsPanel() {
                             data-active={isActive ? "true" : "false"}
                             style={{
                               ...rowBaseStyle,
-                              background: isActive
-                                ? "color-mix(in srgb, var(--color-accent) 8%, transparent)"
-                                : undefined,
+                              background:
+                                isActive || isSoftSelected
+                                  ? "color-mix(in srgb, var(--color-accent) 8%, transparent)"
+                                  : undefined,
                             }}
                             onClick={() => {
                               if (!isRenaming) {
                                 setActiveTagFilter(tag.name);
                               }
                             }}
+                            onContextMenu={() => setSoftSelected(tag.name)}
                             onMouseEnter={(e) => {
-                              if (!isActive) {
+                              if (!isActive && !isSoftSelected) {
                                 (
                                   e.currentTarget as HTMLButtonElement
                                 ).style.background =
@@ -429,7 +434,7 @@ export function RightRailTagsPanel() {
                               }
                             }}
                             onMouseLeave={(e) => {
-                              if (!isActive) {
+                              if (!isActive && !isSoftSelected) {
                                 (
                                   e.currentTarget as HTMLButtonElement
                                 ).style.background = "transparent";
@@ -451,14 +456,27 @@ export function RightRailTagsPanel() {
                               />
                             ) : (
                               <>
+                                {/* D-20/D-21: #tagname in accent, (count) in muted — inline */}
                                 <span
-                                  style={
-                                    isActive ? tagNameActiveStyle : tagNameStyle
-                                  }
+                                  style={{
+                                    ...(isActive
+                                      ? tagNameActiveStyle
+                                      : tagNameStyle),
+                                    color: "var(--color-accent)",
+                                  }}
                                 >
-                                  {tag.name}
+                                  #{tag.name}
                                 </span>
-                                <span style={countBadgeStyle}>{tag.count}</span>
+                                <span
+                                  style={{
+                                    marginLeft: 4,
+                                    color: "var(--color-muted)",
+                                    fontSize: 14,
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  ({tag.count})
+                                </span>
                               </>
                             )}
                           </button>
