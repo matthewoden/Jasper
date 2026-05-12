@@ -65,7 +65,7 @@ describe("<SidebarResizeHandle /> — UX-09 pointer-events recipe", () => {
     expect(handle.getAttribute("aria-orientation")).toBe("vertical");
     expect(handle.getAttribute("aria-label")).toBe("Resize sidebar");
     expect(handle.style.cursor).toBe("col-resize");
-    expect(handle.style.width).toBe("4px");
+    expect(handle.style.width).toBe("8px"); // Phase 6.6 D-12: 8px hit area
   });
 
   it("UX-09: pointermove updates sidebarWidth when dragging", () => {

@@ -74,6 +74,10 @@ const computeMaxWidth = (): number => {
  */
 export const __testing__ = { computeMaxWidth, EDITOR_MIN };
 
+// Phase 6.6 D-12/D-14: cursor-only affordance — no visible band.
+// Pitfall 5: absolute clientX math (Math.min/max + computeMaxWidth) preserved here
+// to prevent delta accumulation drift at clamp boundaries.
+// NOT delegating to ResizeHandle.tsx; keep own onPointerMove with absolute clientX.
 export function SidebarResizeHandle() {
   const setSidebarWidth = useTreeStore((s) => s.setSidebarWidth);
   const draggingRef = useRef(false);
@@ -124,7 +128,7 @@ export function SidebarResizeHandle() {
         top: 0,
         right: 0,
         bottom: 0,
-        width: 4,
+        width: 8, // D-12: 8px hit area (was 4px); transparent, cursor-only affordance
         cursor: "col-resize",
         userSelect: "none",
       }}
