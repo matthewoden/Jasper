@@ -62,6 +62,14 @@ export const RAIL_COLLAPSED_WIDTH = 32;
 // See 06.5-UI-SPEC.md §Surface 1-NEW and 06.5-CONTEXT.md §D-02.
 export const LS_KEY_TAGS_PANEL_HEIGHT_RATIO = "jasper.rail.tags.height.ratio";
 export const LS_KEY_TAGS_PANEL_EXPANDED = "jasper.rail.tags.expanded";
+
+// Phase 6.6 — UX-CHROME-01/02: chrome-level visibility persistence keys.
+// See 06.6-CONTEXT.md §D-29 (ADD-only invariant).
+// notesSidebarVisible: whether the left notes sidebar is shown (default true)
+// panelSelector: which right-rail panels are visible (default both true)
+export const LS_KEY_SIDEBAR_VISIBLE = "jasper.chrome.sidebar.visible";
+export const LS_KEY_PANEL_TAGS = "jasper.chrome.panel.selector.tags";
+export const LS_KEY_PANEL_BACKLINKS = "jasper.chrome.panel.selector.backlinks";
 export const TAGS_PANEL_RATIO_DEFAULT = 0.5;
 export const TAGS_PANEL_RATIO_MIN = 0.2;
 export const TAGS_PANEL_RATIO_MAX = 0.8;
@@ -174,6 +182,17 @@ export interface TreeStore {
   setTagsPanelHeightRatio: (r: number) => void;
   rightRailTagsPanelExpanded: boolean;
   setRightRailTagsPanelExpanded: (v: boolean) => void;
+
+  // Phase 6.6 ADD-ONLY (UX-CHROME-01, UX-CHROME-02). See 06.6-CONTEXT.md §D-29.
+  // Chrome-level visibility state — does NOT modify existing panel expand/collapse slices.
+  // notesSidebarVisible: whether the left notes sidebar panel is visible as a whole.
+  // panelSelector: which right-rail panels are visible (both default true).
+  // These coexist with rightRailTagsPanelExpanded / backlinksRailExpanded (two-level model:
+  //   panelSelector = visible/hidden at rail level; existing slices = collapsed-within-card).
+  notesSidebarVisible: boolean;
+  setNotesSidebarVisible: (v: boolean) => void;
+  panelSelector: { tags: boolean; backlinks: boolean };
+  setPanelSelector: (update: Partial<{ tags: boolean; backlinks: boolean }>) => void;
 }
 
 export const useTreeStore = create<TreeStore>((set) => ({
@@ -260,6 +279,13 @@ export const useTreeStore = create<TreeStore>((set) => ({
     }),
   rightRailTagsPanelExpanded: true,
   setRightRailTagsPanelExpanded: (v) => set({ rightRailTagsPanelExpanded: v }),
+
+  // Phase 6.6 slices (ADD-only — no existing slice modified). UX-CHROME-01/02.
+  notesSidebarVisible: true,
+  setNotesSidebarVisible: (v) => set({ notesSidebarVisible: v }),
+  panelSelector: { tags: true, backlinks: true },
+  setPanelSelector: (update) =>
+    set((s) => ({ panelSelector: { ...s.panelSelector, ...update } })),
 }));
 
 /**
@@ -429,6 +455,31 @@ if (typeof window !== "undefined") {
     /* localStorage unavailable */
   }
 
+  // 4c) Hydrate Phase 6.6 slices from localStorage (mirrors Phase 6.5 boolean pattern above).
+  //     All three keys default to true when absent from localStorage.
+  try {
+    const raw = window.localStorage.getItem(LS_KEY_SIDEBAR_VISIBLE);
+    if (raw === "false") useTreeStore.setState({ notesSidebarVisible: false });
+    // any other value (including missing) keeps the default `true`
+  } catch {
+    /* localStorage unavailable */
+  }
+  try {
+    const rawTags = window.localStorage.getItem(LS_KEY_PANEL_TAGS);
+    const rawBacklinks = window.localStorage.getItem(LS_KEY_PANEL_BACKLINKS);
+    const panelUpdate: Partial<{ tags: boolean; backlinks: boolean }> = {};
+    if (rawTags === "false") panelUpdate.tags = false;
+    if (rawBacklinks === "false") panelUpdate.backlinks = false;
+    if (Object.keys(panelUpdate).length > 0) {
+      useTreeStore.setState((s) => ({
+        panelSelector: { ...s.panelSelector, ...panelUpdate },
+      }));
+    }
+    // any other value (including missing) keeps the default `true`
+  } catch {
+    /* localStorage unavailable */
+  }
+
   // 4) Debounced persistence — subscribe to slice changes and flush each
   //    persisted slot on its own 250ms timer. The 250ms debounce avoids
   //    storage thrash during rapid expand/collapse (UI-SPEC §State persistence).
@@ -449,6 +500,11 @@ if (typeof window !== "undefined") {
   let lastTagsPanelHeightRatio = useTreeStore.getState().tagsPanelHeightRatio;
   let lastRightRailTagsPanelExpanded = useTreeStore.getState().rightRailTagsPanelExpanded;
   let tagsPanelHeightRatioTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Phase 6.6 persistence tracking variables (appended; no existing variable modified).
+  let lastNotesSidebarVisible = useTreeStore.getState().notesSidebarVisible;
+  let lastPanelTags = useTreeStore.getState().panelSelector.tags;
+  let lastPanelBacklinks = useTreeStore.getState().panelSelector.backlinks;
 
   useTreeStore.subscribe((state) => {
     const j = JSON.stringify([...state.expanded]);
@@ -549,6 +605,33 @@ if (typeof window !== "undefined") {
           LS_KEY_TAGS_PANEL_EXPANDED,
           String(state.rightRailTagsPanelExpanded),
         );
+      } catch {
+        // Quota / private mode — best-effort.
+      }
+    }
+
+    // Phase 6.6 persistence subscribers (ADD-only; no existing branch modified).
+    // All three chrome boolean slices are immediate (no debounce — mirrors Phase 6.5 booleans).
+    if (state.notesSidebarVisible !== lastNotesSidebarVisible) {
+      lastNotesSidebarVisible = state.notesSidebarVisible;
+      try {
+        window.localStorage.setItem(LS_KEY_SIDEBAR_VISIBLE, String(state.notesSidebarVisible));
+      } catch {
+        // Quota / private mode — best-effort.
+      }
+    }
+    if (state.panelSelector.tags !== lastPanelTags) {
+      lastPanelTags = state.panelSelector.tags;
+      try {
+        window.localStorage.setItem(LS_KEY_PANEL_TAGS, String(state.panelSelector.tags));
+      } catch {
+        // Quota / private mode — best-effort.
+      }
+    }
+    if (state.panelSelector.backlinks !== lastPanelBacklinks) {
+      lastPanelBacklinks = state.panelSelector.backlinks;
+      try {
+        window.localStorage.setItem(LS_KEY_PANEL_BACKLINKS, String(state.panelSelector.backlinks));
       } catch {
         // Quota / private mode — best-effort.
       }

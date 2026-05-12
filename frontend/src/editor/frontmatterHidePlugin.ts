@@ -1,14 +1,16 @@
 /**
  * frontmatterHidePlugin — CM6 extension that hides the YAML frontmatter block
- * by default, replacing it with a thin clickable affordance widget:
- *   `▸ frontmatter (N tags)` or `▸ frontmatter (empty)`
+ * by default, replacing it with an invisible empty widget (zero visible UI).
  *
- * Phase 6.5 / UX-T-04 / Plan 06.5-06
+ * Phase 6.6 / UX-CHROME-05 / Plan 06.6-03
+ * Reverses Phase 6.5 D-12 ("thin affordance preferred") per Phase 6.6 D-16/D-18.
+ * UAT confirmed the affordance added clutter now that inline #tagname rendering
+ * is the user's mental model.
  *
- * Design decisions (D-12, D-13 from CONTEXT.md):
- *   - D-12: Frontmatter is hidden from editor view by default (every note open).
- *   - D-13: Cmd-Shift-Y toggles raw YAML view. State NOT persisted — resets
- *     to hidden on every new EditorView mount.
+ * Design decisions:
+ *   - D-16: Frontmatter block renders ZERO visible UI when hidden.
+ *   - D-17: Cmd-Shift-Y (D-13 escape hatch) is the only way to view raw YAML.
+ *   - D-18: Empty widget uses aria-hidden="true" + display:none.
  *
  * Architecture — StateField for block decorations:
  *   CM6 enforces "Block decorations may not be specified via plugins"
@@ -21,11 +23,8 @@
  *   to CM6's rendering pipeline.
  *
  *   The ViewPlugin is a thin shim that:
- *     1. Resets the StateField to `hidden=true` on first mount (D-13 reset).
+ *     1. Resets the StateField to `hidden=true` on first mount (D-17 reset).
  *     2. Exposes `decorations` for test introspection via `view.plugin()`.
- *
- * Security (T-06.5-17): Uses `textContent` not `innerHTML`. Tag count is a
- * Number from regex matches — never user-controlled string injection.
  *
  * Cursor safety (Pitfall 1): When `hidden=false` (raw view), NO
  * Decoration.replace is applied — only line decorations. This prevents
@@ -102,79 +101,34 @@ export function countTagsInFrontmatter(text: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// WidgetType — affordance button
+// WidgetType — empty invisible widget (D-16/D-18)
 // ---------------------------------------------------------------------------
 
 /**
- * FrontmatterAffordanceWidget renders the `▸ frontmatter (N tags)` button.
+ * FrontmatterEmptyWidget renders an invisible <span> that takes zero visual
+ * space. The frontmatter YAML block is fully hidden from the editor by default.
  *
- * The `view` parameter in `toDOM(view)` is used to dispatch the toggle effect
- * on click — the CM6-idiomatic way to dispatch from a widget without a ref.
+ * D-16: Zero visible UI — no button, no label, no chevron.
+ * D-18: aria-hidden="true" + display:none for accessibility and layout.
  *
- * Accessibility:
- *   - `<button type="button">` — keyboard accessible
- *   - `aria-expanded="false"` — signals the frontmatter is collapsed
- *   - `aria-label` — screen-reader description
+ * Note: The `.cm-frontmatter-affordance` CSS selector in theme.css becomes
+ * dead code after this change. Flag for Wave 5 cleanup (or leave in place
+ * as harmless — no DOM elements will ever match it).
  */
-class FrontmatterAffordanceWidget extends WidgetType {
-  constructor(private readonly tagCount: number) {
-    super();
-  }
-
-  toDOM(view: EditorView): HTMLElement {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "cm-frontmatter-affordance";
-
-    // Display text per UI-SPEC Surface 5-NEW
-    btn.textContent =
-      this.tagCount > 0
-        ? `▸ frontmatter (${this.tagCount} tags)`
-        : "▸ frontmatter (empty)";
-
-    // Accessibility
-    btn.setAttribute(
-      "aria-label",
-      `Frontmatter hidden. ${this.tagCount} tags. Click or press Enter to expand.`,
-    );
-    btn.setAttribute("aria-expanded", "false");
-
-    // Inline styles — plan-self-contained. Plan 07 may extract to theme.css.
-    btn.style.height = "24px";
-    btn.style.padding = "0 8px";
-    btn.style.background = "var(--color-surface-subtle)";
-    btn.style.color = "var(--color-muted)";
-    btn.style.fontSize = "12px";
-    btn.style.fontWeight = "400";
-    btn.style.borderRadius = "4px";
-    btn.style.cursor = "pointer";
-    btn.style.border = "none";
-    btn.style.marginBottom = "4px";
-    btn.style.display = "block";
-    btn.style.width = "100%";
-    btn.style.textAlign = "left";
-    btn.style.boxSizing = "border-box";
-
-    // Click handler — dispatch toggle effect
-    btn.addEventListener("click", () => {
-      view.dispatch({ effects: toggleFrontmatterVisibility.of(undefined) });
-    });
-
-    return btn;
+class FrontmatterEmptyWidget extends WidgetType {
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.setAttribute("aria-hidden", "true");
+    span.style.display = "none";
+    return span;
   }
 
   eq(other: WidgetType): boolean {
-    return (
-      other instanceof FrontmatterAffordanceWidget &&
-      other.tagCount === this.tagCount
-    );
+    return other instanceof FrontmatterEmptyWidget;
   }
 
-  /**
-   * Pitfall 1: return false so click events bubble to our onclick.
-   */
   ignoreEvent(): boolean {
-    return false;
+    return true;
   }
 }
 
@@ -204,15 +158,12 @@ function buildDecorations(state: EditorState, hidden: boolean): DecorationSet {
       if (node.name !== FRONTMATTER_NODE_NAME) return;
 
       if (hidden) {
-        const blockText = state.doc.sliceString(node.from, node.to);
-        const tagCount = countTagsInFrontmatter(blockText);
-
         // block: true is permitted in StateField decorations (not in ViewPlugin)
         builder.add(
           node.from,
           node.to,
           Decoration.replace({
-            widget: new FrontmatterAffordanceWidget(tagCount),
+            widget: new FrontmatterEmptyWidget(),
             block: true,
           }),
         );
