@@ -2379,3 +2379,135 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         useTreeStore.setState({ connectionStatus: "connected" });
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUG-01 regression suite — saving tab dispatches tags:updated locally
+// despite WS origin-session suppression (Phase 6.5 Plan 08).
+// ─────────────────────────────────────────────────────────────────────────────
+
+vi.mock("../lib/useTagBrowser", () => ({
+    dispatchTagEvent: vi.fn(),
+    useTagBrowser: vi.fn(() => ({
+        tags: [],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+    })),
+    __testing__: {
+        simulateEvent: vi.fn(),
+        getSubscriberCount: vi.fn(() => 0),
+    },
+}));
+
+import { dispatchTagEvent } from "../lib/useTagBrowser";
+const dispatchTagEventMock = vi.mocked(dispatchTagEvent);
+
+describe("<EditorPane /> — BUG-01: saving tab dispatches tags:updated locally", () => {
+    beforeEach(() => {
+        dispatchTagEventMock.mockClear();
+    });
+
+    it("BUG-01: dispatchTagEvent('tags:updated') is called after a successful save", async () => {
+        // BUG-01 regression-proof: the WS EventTagsUpdated broadcast uses
+        // origin_session_id = this session, so SYNC-03 in useSessionSync
+        // suppresses it for the saving tab. EditorPane must dispatch locally
+        // so useTagBrowser refreshes immediately after every save.
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("hello"));
+
+        // Type to set userHasEdited, then debounce → save
+        fireEvent.change(editor, { target: { value: "updated content" } });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+        });
+        await flushMicrotasks();
+
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+        // BUG-01 fix: dispatchTagEvent must have been called with "tags:updated"
+        expect(dispatchTagEventMock).toHaveBeenCalledWith("tags:updated");
+    });
+
+    it("BUG-01: dispatchTagEvent is NOT called when save fails", async () => {
+        // Defensive: only dispatch on success, not on error.
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(errPut("disk full"));
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("hello"));
+
+        fireEvent.change(editor, { target: { value: "bad save" } });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+        });
+        await flushMicrotasks();
+
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+        expect(dispatchTagEventMock).not.toHaveBeenCalled();
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUG-03 regression suite — handleEditorBlur must not save when user
+// has not typed anything (Phase 6.5 Plan 08).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("<EditorPane /> — BUG-03: handleEditorBlur no-op when userHasEdited is false", () => {
+    it("BUG-03: handleEditorBlur is a no-op when userHasEdited is false (no typing since note open)", async () => {
+        // BUG-03 regression-proof: opening a note and clicking elsewhere (focus
+        // leaves editor) must NOT trigger a save round-trip or show "Saved" toast.
+        getNoteMock.mockResolvedValue(okGet("original content"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("original content"));
+
+        // Do NOT type anything — userHasEdited.current stays false.
+        // Trigger blur directly via the mock hook.
+        await act(async () => {
+            window.__jasperMockEditorBlur?.();
+            await Promise.resolve();
+        });
+
+        // Must not have issued a PUT.
+        expect(updateNoteMock).not.toHaveBeenCalled();
+        // Must not show "Saved" indicator.
+        expect(screen.queryByRole("status")).toBeNull();
+    });
+
+    it("BUG-03 (positive case): handleEditorBlur DOES save when userHasEdited is true", async () => {
+        // UX-07 preservation: if the user HAS typed, blur-triggered save must fire.
+        getNoteMock.mockResolvedValue(okGet("original content"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("original content"));
+
+        // Type to set userHasEdited.current = true.
+        fireEvent.change(editor, { target: { value: "edited content" } });
+        expect(updateNoteMock).not.toHaveBeenCalled();
+
+        // Trigger blur — must collapse debounce + save.
+        await act(async () => {
+            window.__jasperMockEditorBlur?.();
+            await Promise.resolve();
+        });
+
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited content");
+    });
+});
