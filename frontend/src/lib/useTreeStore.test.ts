@@ -968,6 +968,142 @@ describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () =
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// Phase 6.6 — Plan 06.6-02: useTreeStore ADD-only chrome slices (D-29).
+//
+// Tests for three new slices: notesSidebarVisible, panelSelector.tags,
+// panelSelector.backlinks. Uses the same module-reset hydration pattern
+// as existing hydration tests.
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 6.6 chrome slices", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: null,
+      pendingRename: null,
+      draftCreate: null,
+    });
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    localStorage.clear();
+    vi.resetModules();
+  });
+
+  // C1: Initial state — all three default to true when LS empty
+  it("C1: fresh store returns notesSidebarVisible=true, panelSelector={tags:true, backlinks:true}", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    const s = mod.useTreeStore.getState();
+    expect(s.notesSidebarVisible).toBe(true);
+    expect(s.panelSelector.tags).toBe(true);
+    expect(s.panelSelector.backlinks).toBe(true);
+  });
+
+  // C2: setNotesSidebarVisible flips the slice
+  it("C2: setNotesSidebarVisible(false) flips the slice; setNotesSidebarVisible(true) restores it", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    mod.useTreeStore.getState().setNotesSidebarVisible(false);
+    expect(mod.useTreeStore.getState().notesSidebarVisible).toBe(false);
+    mod.useTreeStore.getState().setNotesSidebarVisible(true);
+    expect(mod.useTreeStore.getState().notesSidebarVisible).toBe(true);
+  });
+
+  // C3: Partial setter — setPanelSelector({tags:false}) leaves backlinks unchanged
+  it("C3: setPanelSelector({tags:false}) sets tags=false, leaves backlinks=true", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    mod.useTreeStore.getState().setPanelSelector({ tags: false });
+    const s = mod.useTreeStore.getState();
+    expect(s.panelSelector.tags).toBe(false);
+    expect(s.panelSelector.backlinks).toBe(true);
+  });
+
+  // C3 also: updating both keys at once
+  it("C3: setPanelSelector({tags:false, backlinks:false}) updates both keys", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    mod.useTreeStore.getState().setPanelSelector({ tags: false, backlinks: false });
+    const s = mod.useTreeStore.getState();
+    expect(s.panelSelector.tags).toBe(false);
+    expect(s.panelSelector.backlinks).toBe(false);
+  });
+
+  // C4: LS persistence — after setNotesSidebarVisible(false), LS key = "false"
+  it("C4: setNotesSidebarVisible(false) immediately writes 'false' to LS_KEY_SIDEBAR_VISIBLE", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    vi.useRealTimers(); // no debounce — persistence is immediate for chrome slices
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      act(() => {
+        mod.useTreeStore.getState().setNotesSidebarVisible(false);
+      });
+      const writes = setItemSpy.mock.calls.filter(
+        (c) => c[0] === mod.LS_KEY_SIDEBAR_VISIBLE,
+      );
+      expect(writes.length).toBeGreaterThan(0);
+      expect(writes[writes.length - 1][1]).toBe("false");
+    } finally {
+      setItemSpy.mockRestore();
+    }
+  });
+
+  // C5: LS hydration — pre-setting "false" before module load yields notesSidebarVisible=false
+  it("C5: pre-seeded LS_KEY_SIDEBAR_VISIBLE='false' yields notesSidebarVisible=false on load", async () => {
+    // Seed BEFORE module import (vi.resetModules was called in afterEach)
+    localStorage.setItem("jasper.chrome.sidebar.visible", "false");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().notesSidebarVisible).toBe(false);
+  });
+
+  it("C5: absent LS key → notesSidebarVisible defaults to true", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().notesSidebarVisible).toBe(true);
+  });
+
+  it("C5: pre-seeded LS_KEY_PANEL_TAGS='false' yields panelSelector.tags=false on load", async () => {
+    localStorage.setItem("jasper.chrome.panel.selector.tags", "false");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().panelSelector.tags).toBe(false);
+    expect(mod.useTreeStore.getState().panelSelector.backlinks).toBe(true);
+  });
+
+  it("C5: pre-seeded LS_KEY_PANEL_BACKLINKS='false' yields panelSelector.backlinks=false on load", async () => {
+    localStorage.setItem("jasper.chrome.panel.selector.backlinks", "false");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().panelSelector.backlinks).toBe(false);
+    expect(mod.useTreeStore.getState().panelSelector.tags).toBe(true);
+  });
+
+  // C6: ADD-ONLY invariant — Phase 6.5 slices still exist with their defaults
+  it("C6: ADD-ONLY — Phase 6.5 slices (tagsPanelHeightRatio, rightRailTagsPanelExpanded, backlinksRailExpanded) unchanged", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    const s = mod.useTreeStore.getState();
+    expect(s.tagsPanelHeightRatio).toBe(0.5);
+    expect(s.rightRailTagsPanelExpanded).toBe(true);
+    expect(s.backlinksRailExpanded).toBe(false);
+  });
+
+  // LS key constants
+  it("C7: LS key constants have expected literal string values", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.LS_KEY_SIDEBAR_VISIBLE).toBe("jasper.chrome.sidebar.visible");
+    expect(mod.LS_KEY_PANEL_TAGS).toBe("jasper.chrome.panel.selector.tags");
+    expect(mod.LS_KEY_PANEL_BACKLINKS).toBe("jasper.chrome.panel.selector.backlinks");
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // WR-07 (Phase 5.5 gap-closure Plan 13) — pruneStaleTreeState liveLabels rebuild.
 //
 // The original implementation cloned `liveLabels` lazily and then `delete`d

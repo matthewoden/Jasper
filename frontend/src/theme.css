@@ -33,6 +33,9 @@
                "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
                "Liberation Mono", monospace;
+
+  /* Phase 6.6 — TopBar drop shadow (D-31, UX-CHROME-01) */
+  --shadow-elevation-1: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 @theme {
@@ -174,7 +177,9 @@ body {
 .cm-tooltip.cm-tooltip-autocomplete > ul {
   padding: 4px 0 !important;
 }
+/* Phase 6.6 D-27: drop from 14px to 12px (label-size in 4-size budget). */
 .cm-tooltip.cm-tooltip-autocomplete > ul > li {
+  font-size: 12px !important;
   color: var(--color-fg) !important;
   padding: 4px 8px !important;
   line-height: 1.4;

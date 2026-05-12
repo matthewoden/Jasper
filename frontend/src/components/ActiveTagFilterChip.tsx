@@ -1,69 +1,94 @@
 /**
- * ActiveTagFilterChip — UI-SPEC §Surface 1 > Active Tag Filter Chip.
+ * ActiveTagFilterChip — UI-SPEC §Surface 7 (Phase 6.6).
  *
- * Renders only when activeTagFilter is non-null (C1). When active, shows
- * the tag name and a × button to clear the filter (C2, C3).
+ * Renders only when activeTagFilter is non-null. When active, shows a
+ * full-width chip with "Filtered by: #tagname ×" structure:
+ *   - "Filtered by:" prefix in --color-muted
+ *   - "#tagname" in --color-accent, fontWeight 600, truncated with ellipsis
+ *   - × dismiss button at right edge, --color-fg normal / --color-accent hover
  *
- * Placement: pinned to the top of the file tree scroll area (inside
- * FileTree's scroll container, above the first tree row or flat list).
+ * Placement: pinned to the top of the notes-panel content area (above the
+ * file tree or flat list). Width 100% fills the content area.
  *
- * Styles (verbatim from UI-SPEC Surface 1):
- *   height: 24px, margin: 8px 16px
- *   background: color-mix(in srgb, var(--color-accent) 12%, transparent)
- *   border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)
- *   border-radius: 4px
- *   tag name: 12px / weight 600 / --color-accent
- *   × icon: Lucide X at 12px, --color-accent
+ * Implements D-23, D-24, D-25, D-26.
  */
-import { X } from "lucide-react";
+import { useState } from "react";
 import type { CSSProperties } from "react";
+import { X } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 
 const chipStyle: CSSProperties = {
-  margin: "8px 16px",
+  width: "100%",
   height: 24,
   padding: "0 8px",
+  margin: "8px 0",
   background: "color-mix(in srgb, var(--color-accent) 12%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)",
   borderRadius: 4,
   display: "flex",
   alignItems: "center",
-  gap: 4,
+  flexShrink: 0,
+  boxSizing: "border-box",
+  overflow: "hidden",
+};
+
+const prefixStyle: CSSProperties = {
+  color: "var(--color-muted)",
+  fontSize: 14,
+  fontWeight: 400,
+  flexShrink: 0,
+  marginRight: 4,
+};
+
+const tagStyle: CSSProperties = {
+  color: "var(--color-accent)",
+  fontSize: 14,
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  minWidth: 0,
+};
+
+const dismissBase: CSSProperties = {
+  marginLeft: "auto",
+  padding: 0,
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
   flexShrink: 0,
 };
 
-const tagNameStyle: CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: "var(--color-accent)",
-};
+export function ActiveTagFilterChip(): JSX.Element | null {
+  const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
+  const setActiveTagFilter = useTreeStore((s) => s.setActiveTagFilter);
+  const [hovering, setHovering] = useState(false);
 
-const closeBtnStyle: CSSProperties = {
-  background: "transparent",
-  border: 0,
-  color: "var(--color-accent)",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  padding: 0,
-};
-
-export function ActiveTagFilterChip() {
-  const tag = useTreeStore((s) => s.activeTagFilter);
-  const setFilter = useTreeStore((s) => s.setActiveTagFilter);
-
-  if (!tag) return null;
+  if (!activeTagFilter) return null;
 
   return (
-    <div style={chipStyle}>
-      <span style={tagNameStyle}>{tag}</span>
+    <div
+      style={chipStyle}
+      role="status"
+      aria-label={`Active filter: #${activeTagFilter}`}
+    >
+      <span style={prefixStyle}>Filtered by:</span>
+      <span style={tagStyle}>#{activeTagFilter}</span>
       <button
         type="button"
-        onClick={() => setFilter(null)}
-        aria-label={`Remove tag filter: ${tag}`}
-        style={closeBtnStyle}
+        aria-label={`Remove tag filter: #${activeTagFilter}`}
+        onClick={() => setActiveTagFilter(null)}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        style={{
+          ...dismissBase,
+          color: hovering ? "var(--color-accent)" : "var(--color-fg)",
+        }}
       >
-        <X size={12} />
+        <X size={12} aria-hidden="true" />
       </button>
     </div>
   );

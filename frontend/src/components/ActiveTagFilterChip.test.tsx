@@ -1,12 +1,11 @@
 /**
  * Tests for ActiveTagFilterChip component.
- * Validates C1..C5 behaviors from Plan 06-08 Task 3.
+ * Validates behaviors from Plan 06.6-05 Task 1 (D-23..D-26).
  */
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, beforeEach } from "vitest";
 import { useTreeStore } from "../lib/useTreeStore";
 
-// We import the component after setting up the store
 import { ActiveTagFilterChip } from "./ActiveTagFilterChip";
 
 beforeEach(() => {
@@ -14,48 +13,81 @@ beforeEach(() => {
 });
 
 describe("ActiveTagFilterChip", () => {
-  it("C1: when activeTagFilter is null, renders nothing", () => {
+  it("Test 1: when activeTagFilter is null, renders nothing", () => {
     useTreeStore.setState({ activeTagFilter: null });
     const { container } = render(<ActiveTagFilterChip />);
     expect(container.firstChild).toBeNull();
   });
 
-  it("C2: when activeTagFilter='foo', renders chip with 'foo ×' content and correct styles", () => {
-    useTreeStore.setState({ activeTagFilter: "foo" });
+  it("Test 2: when activeTagFilter='project', renders 'Filtered by:' and '#project' text", () => {
+    useTreeStore.setState({ activeTagFilter: "project" });
     render(<ActiveTagFilterChip />);
 
-    // Should show the tag name
-    expect(screen.getByText("foo")).toBeInTheDocument();
-    // Should show the × button
-    const closeBtn = screen.getByRole("button", { name: "Remove tag filter: foo" });
-    expect(closeBtn).toBeInTheDocument();
+    expect(screen.getByText("Filtered by:")).toBeInTheDocument();
+    expect(screen.getByText("#project")).toBeInTheDocument();
   });
 
-  it("C3: clicking the × button calls setActiveTagFilter(null)", () => {
-    useTreeStore.setState({ activeTagFilter: "myTag" });
+  it("Test 3: prefix span has --color-muted; tag span has --color-accent and fontWeight 600", () => {
+    useTreeStore.setState({ activeTagFilter: "project" });
     render(<ActiveTagFilterChip />);
 
-    const closeBtn = screen.getByRole("button", { name: "Remove tag filter: myTag" });
-    fireEvent.click(closeBtn);
+    const prefixEl = screen.getByText("Filtered by:");
+    const tagEl = screen.getByText("#project");
+
+    expect(prefixEl).toHaveStyle({ color: "var(--color-muted)" });
+    expect(tagEl).toHaveStyle({ color: "var(--color-accent)", fontWeight: "600" });
+  });
+
+  it("Test 4: × button has correct aria-label, cursor pointer, and contains an X icon", () => {
+    useTreeStore.setState({ activeTagFilter: "project" });
+    render(<ActiveTagFilterChip />);
+
+    const dismissBtn = screen.getByRole("button", {
+      name: "Remove tag filter: #project",
+    });
+    expect(dismissBtn).toBeInTheDocument();
+    expect(dismissBtn).toHaveStyle({ cursor: "pointer" });
+    // X icon is rendered as an SVG child
+    expect(dismissBtn.querySelector("svg")).not.toBeNull();
+  });
+
+  it("Test 5: × button color is --color-fg normally and --color-accent on hover", () => {
+    useTreeStore.setState({ activeTagFilter: "project" });
+    render(<ActiveTagFilterChip />);
+
+    const dismissBtn = screen.getByRole("button", {
+      name: "Remove tag filter: #project",
+    });
+
+    // Initial color
+    expect(dismissBtn).toHaveStyle({ color: "var(--color-fg)" });
+
+    // After hover
+    fireEvent.mouseEnter(dismissBtn);
+    expect(dismissBtn).toHaveStyle({ color: "var(--color-accent)" });
+
+    // After unhover
+    fireEvent.mouseLeave(dismissBtn);
+    expect(dismissBtn).toHaveStyle({ color: "var(--color-fg)" });
+  });
+
+  it("Test 6: clicking × button calls setActiveTagFilter(null)", () => {
+    useTreeStore.setState({ activeTagFilter: "project" });
+    render(<ActiveTagFilterChip />);
+
+    const dismissBtn = screen.getByRole("button", {
+      name: "Remove tag filter: #project",
+    });
+    fireEvent.click(dismissBtn);
 
     expect(useTreeStore.getState().activeTagFilter).toBeNull();
   });
 
-  it("C4: the × button is focusable (is a button element)", () => {
-    useTreeStore.setState({ activeTagFilter: "test" });
-    render(<ActiveTagFilterChip />);
-
-    const closeBtn = screen.getByRole("button", { name: "Remove tag filter: test" });
-    // Buttons are focusable by default
-    expect(closeBtn.tagName).toBe("BUTTON");
-    expect(closeBtn).not.toHaveAttribute("disabled");
-  });
-
-  it("C5: the × button has aria-label='Remove tag filter: {tagname}'", () => {
+  it("Test 7: the chip outer element has width: 100%", () => {
     useTreeStore.setState({ activeTagFilter: "project" });
-    render(<ActiveTagFilterChip />);
+    const { container } = render(<ActiveTagFilterChip />);
 
-    const closeBtn = screen.getByRole("button");
-    expect(closeBtn).toHaveAttribute("aria-label", "Remove tag filter: project");
+    const chip = container.firstChild as HTMLElement;
+    expect(chip).toHaveStyle({ width: "100%" });
   });
 });
