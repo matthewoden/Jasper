@@ -146,7 +146,7 @@ const titleSpanStyle: CSSProperties = {
 // Component
 // ──────────────────────────────────────────────────────────────────────
 
-export function Breadcrumbs(): JSX.Element | null {
+export function Breadcrumbs(): React.ReactElement | null {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const liveTitle = useTreeStore((s) =>
     activeNoteId ? (s.liveLabels?.[activeNoteId] ?? "") : "",

@@ -13,12 +13,14 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mockSetExpanded = vi.fn();
 const mockSetActiveNote = vi.fn();
+const mockSetPanelSelector = vi.fn();
 
 vi.mock("../lib/useTreeStore", () => ({
   useTreeStore: (selector: (s: Record<string, unknown>) => unknown) => {
     const state: Record<string, unknown> = {
       setBacklinksRailExpanded: mockSetExpanded,
       setActiveNote: mockSetActiveNote,
+      setPanelSelector: mockSetPanelSelector,
     };
     return selector(state);
   },
@@ -63,6 +65,7 @@ beforeEach(() => {
     error: null,
     refresh: vi.fn(),
   });
+  mockSetPanelSelector.mockReset();
 });
 
 // ─── BR1: noteId=null shows empty state ──────────────────────────────────────
@@ -243,5 +246,31 @@ describe("Header chrome (from Plan 06-07)", () => {
     const hideBtn = screen.getByRole("button", { name: /hide backlinks panel/i });
     fireEvent.click(hideBtn);
     expect(mockSetExpanded).toHaveBeenCalledWith(false);
+  });
+});
+
+// ─── Phase 6.6 (Plan 06.6-11) — Per-panel × close button (D-04) ─────────────
+
+describe("Phase 6.6: BacklinksRail × close button (D-04)", () => {
+  it("BR-6.6-1: header contains a button with aria-label='Close Backlinks panel'", () => {
+    render(<BacklinksRail noteId={null} />);
+    const closeBtn = screen.getByRole("button", { name: /close backlinks panel/i });
+    expect(closeBtn).toBeInTheDocument();
+  });
+
+  it("BR-6.6-2: clicking × calls setPanelSelector({ backlinks: false })", () => {
+    render(<BacklinksRail noteId={null} />);
+    const closeBtn = screen.getByRole("button", { name: /close backlinks panel/i });
+    fireEvent.click(closeBtn);
+    expect(mockSetPanelSelector).toHaveBeenCalledWith({ backlinks: false });
+  });
+
+  it("BR-6.6-3: × button has Lucide X icon (aria-hidden svg child)", () => {
+    render(<BacklinksRail noteId={null} />);
+    const closeBtn = screen.getByRole("button", { name: /close backlinks panel/i });
+    // The X Lucide icon is an SVG inside the button
+    const svg = closeBtn.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(svg).toHaveAttribute("aria-hidden", "true");
   });
 });

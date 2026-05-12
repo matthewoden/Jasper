@@ -1,17 +1,13 @@
 /**
- * RightRail tests — Phase 6.5 Plan 04 (restructured two-panel layout).
+ * RightRail tests — Phase 6.6 Plan 06.6-11 (Task 3).
  *
- * Replaces Phase 6 Plan 06-07 tests. The rail now composes its own children
- * (RightRailTagsPanel + InterPanelDivider + BacklinksRail) instead of
- * rendering a {children} prop.
- *
- * Key changes from Phase 6 tests:
- *   - RightRail now takes `activeNoteId` prop (not `children`)
- *   - Rail background is `--color-bg` (was `--color-surface`) for floating effect
- *   - Both panels + InterPanelDivider are rendered in expanded state
- *   - Collapsed state is unchanged (32px strip, toggle button)
+ * Changes from Phase 6.5:
+ *   - Collapsed-aside branch DELETED (D-36). When expanded=false → null.
+ *   - Panels gated on panelSelector.tags / panelSelector.backlinks
+ *   - Auto-collapse useEffect when both panelSelector booleans are false
+ *   - style prop accepted for grid placement
  */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 // Mock useTreeStore so tests control state directly.
@@ -21,6 +17,7 @@ const mockSetWidth = vi.fn();
 let mockExpanded = false;
 let mockWidth = 280;
 let mockHeightRatio = 0.5;
+let mockPanelSelector = { tags: true, backlinks: true };
 
 vi.mock("../lib/useTreeStore", () => ({
   useTreeStore: (selector: (s: Record<string, unknown>) => unknown) => {
@@ -30,6 +27,7 @@ vi.mock("../lib/useTreeStore", () => ({
       setBacklinksRailExpanded: mockSetExpanded,
       setBacklinksRailWidth: mockSetWidth,
       tagsPanelHeightRatio: mockHeightRatio,
+      panelSelector: mockPanelSelector,
     };
     return selector(state);
   },
@@ -63,49 +61,80 @@ vi.mock("./InterPanelDivider", () => ({
 // Import after mock setup.
 import { RightRail } from "./RightRail";
 
-describe("RightRail — collapsed state", () => {
+describe("RightRail — Phase 6.6: collapsed returns null (D-36)", () => {
   beforeEach(() => {
     mockExpanded = false;
     mockWidth = 280;
+    mockPanelSelector = { tags: true, backlinks: true };
     mockSetExpanded.mockReset();
     mockSetWidth.mockReset();
   });
 
-  it("R1: renders 32px-wide collapsed strip with toggle button", () => {
+  it("RR-1: when backlinksRailExpanded=false, RightRail renders null (no aside)", () => {
     const { container } = render(<RightRail activeNoteId={null} />);
-    const aside = container.querySelector("aside");
-    expect(aside).toBeTruthy();
-    // Toggle button should be present
-    const btn = screen.getByRole("button", { name: /show backlinks panel/i });
-    expect(btn).toBeInTheDocument();
+    // Should render nothing — no aside, no toggle button
+    expect(container.firstChild).toBeNull();
   });
 
-  it("R1: collapsed toggle button has aria-expanded=false", () => {
+  it("RR-6: no 'Show panels' button inside RightRail anymore (rail-level toggle gone, D-36)", () => {
     render(<RightRail activeNoteId={null} />);
-    const btn = screen.getByRole("button", { name: /show backlinks panel/i });
-    expect(btn).toHaveAttribute("aria-expanded", "false");
-  });
-
-  it("R3: clicking the toggle in collapsed state calls setBacklinksRailExpanded(true)", () => {
-    render(<RightRail activeNoteId={null} />);
-    const btn = screen.getByRole("button", { name: /show backlinks panel/i });
-    fireEvent.click(btn);
-    expect(mockSetExpanded).toHaveBeenCalledWith(true);
+    expect(screen.queryByRole("button", { name: /show panels/i })).toBeNull();
+    // Also no old 'Show backlinks panel' toggle
+    expect(screen.queryByRole("button", { name: /show backlinks panel/i })).toBeNull();
   });
 });
 
-describe("RightRail — expanded state", () => {
+describe("RightRail — Phase 6.6: expanded state + panelSelector gating", () => {
   beforeEach(() => {
     mockExpanded = true;
     mockWidth = 280;
     mockHeightRatio = 0.5;
+    mockPanelSelector = { tags: true, backlinks: true };
     mockSetExpanded.mockReset();
     mockSetWidth.mockReset();
   });
 
-  it("R2: renders vertical resize handle with role=separator in expanded state", () => {
+  it("RR-2: both panelSelector true — both panels + InterPanelDivider render", () => {
+    mockPanelSelector = { tags: true, backlinks: true };
     render(<RightRail activeNoteId={null} />);
-    // Multiple separators now: vertical resize handle + inter-panel divider
+    expect(screen.getByTestId("mock-tags-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("mock-backlinks-rail")).toBeInTheDocument();
+    expect(screen.getByTestId("inter-panel-divider")).toBeInTheDocument();
+  });
+
+  it("RR-3: panelSelector.tags=false → RightRailTagsPanel NOT rendered", () => {
+    mockPanelSelector = { tags: false, backlinks: true };
+    render(<RightRail activeNoteId={null} />);
+    expect(screen.queryByTestId("mock-tags-panel")).toBeNull();
+    // BacklinksRail still renders
+    expect(screen.getByTestId("mock-backlinks-rail")).toBeInTheDocument();
+  });
+
+  it("RR-4: panelSelector.backlinks=false → BacklinksRail NOT rendered", () => {
+    mockPanelSelector = { tags: true, backlinks: false };
+    render(<RightRail activeNoteId={null} />);
+    expect(screen.queryByTestId("mock-backlinks-rail")).toBeNull();
+    // TagsPanel still renders
+    expect(screen.getByTestId("mock-tags-panel")).toBeInTheDocument();
+  });
+
+  it("RR-4b: InterPanelDivider NOT rendered when only one panel is visible", () => {
+    mockPanelSelector = { tags: true, backlinks: false };
+    render(<RightRail activeNoteId={null} />);
+    expect(screen.queryByTestId("inter-panel-divider")).toBeNull();
+  });
+
+  it("RR-5: both panelSelector false + expanded=true → auto-collapse fires (setBacklinksRailExpanded(false))", () => {
+    mockPanelSelector = { tags: false, backlinks: false };
+    mockExpanded = true;
+    act(() => {
+      render(<RightRail activeNoteId={null} />);
+    });
+    expect(mockSetExpanded).toHaveBeenCalledWith(false);
+  });
+
+  it("RR-2b: expanded rail still has vertical resize handle", () => {
+    render(<RightRail activeNoteId={null} />);
     const separators = screen.getAllByRole("separator");
     const verticalHandle = separators.find(
       (s) => s.getAttribute("aria-orientation") === "vertical",
@@ -114,50 +143,21 @@ describe("RightRail — expanded state", () => {
     expect(verticalHandle).toHaveAttribute("aria-label", "Resize backlinks panel");
   });
 
-  it("R-NEW: InterPanelDivider is rendered in expanded state", () => {
-    render(<RightRail activeNoteId={null} />);
-    const divider = screen.getByTestId("inter-panel-divider");
-    expect(divider).toBeInTheDocument();
-    expect(divider).toHaveAttribute("aria-orientation", "horizontal");
-    expect(divider).toHaveAttribute("aria-label", "Resize panels");
+  it("RR: expanded rail background is --color-bg (floating panel aesthetic)", () => {
+    const { container } = render(<RightRail activeNoteId={null} />);
+    const aside = container.querySelector("aside");
+    expect(aside).toBeTruthy();
+    const styleAttr = aside?.getAttribute("style") ?? "";
+    expect(styleAttr).toContain("var(--color-bg)");
   });
 
-  it("R-NEW: RightRailTagsPanel is rendered in expanded state", () => {
-    render(<RightRail activeNoteId={null} />);
-    expect(screen.getByTestId("mock-tags-panel")).toBeInTheDocument();
-  });
-
-  it("R-NEW: BacklinksRail is rendered in expanded state", () => {
-    render(<RightRail activeNoteId={null} />);
-    expect(screen.getByTestId("mock-backlinks-rail")).toBeInTheDocument();
-  });
-
-  it("R-NEW: BacklinksRail receives activeNoteId prop", () => {
+  it("RR: BacklinksRail receives activeNoteId prop", () => {
     render(<RightRail activeNoteId="abc-123" />);
     const backlinksRail = screen.getByTestId("mock-backlinks-rail");
     expect(backlinksRail).toHaveAttribute("data-noteid", "abc-123");
   });
 
-  it("R-NEW: expanded rail background is --color-bg (not --color-surface)", () => {
-    const { container } = render(<RightRail activeNoteId={null} />);
-    const aside = container.querySelector("aside");
-    const styleAttr = aside?.getAttribute("style") ?? "";
-    // Background should be --color-bg for floating panel effect
-    expect(styleAttr).toContain("var(--color-bg)");
-    // Should NOT use --color-surface as the rail background
-    expect(styleAttr).not.toContain("background: var(--color-surface)");
-  });
-
-  it("R-NEW: rail reads tagsPanelHeightRatio from store", () => {
-    // When ratio=0.5, panels split 50/50; we just verify the render doesn't crash
-    // and the panels are present (visual flex math is integration-tested visually)
-    mockHeightRatio = 0.6;
-    render(<RightRail activeNoteId={null} />);
-    expect(screen.getByTestId("mock-tags-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("mock-backlinks-rail")).toBeInTheDocument();
-  });
-
-  it("R4: pointerdown on vertical resize handle + pointermove updates width via store setter", () => {
+  it("RR: pointerdown on vertical resize handle + pointermove updates width via store setter", () => {
     render(<RightRail activeNoteId={null} />);
     const separators = screen.getAllByRole("separator");
     const handle = separators.find(
@@ -179,18 +179,13 @@ describe("RightRail — expanded state", () => {
     document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
   });
 
-  it("R5: expanded state does NOT render the collapsed 'Show backlinks panel' button", () => {
-    render(<RightRail activeNoteId={null} />);
-    const showBtn = screen.queryByRole("button", { name: /show backlinks panel/i });
-    expect(showBtn).toBeNull();
-  });
-
-  it("R-LEGACY: no longer accepts children prop (children are composed internally)", () => {
-    // RightRail now composes panels internally; passing children doesn't break but
-    // the children are no longer rendered (the interface changed to activeNoteId prop)
-    render(<RightRail activeNoteId="test-id" />);
-    // Both panels render from internal composition
-    expect(screen.getByTestId("mock-tags-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("mock-backlinks-rail")).toBeInTheDocument();
+  it("RR: style prop is merged onto the expanded aside for grid placement", () => {
+    const { container } = render(
+      <RightRail activeNoteId={null} style={{ gridRow: "1 / 3", gridColumn: "3" }} />,
+    );
+    const aside = container.querySelector("aside");
+    expect(aside).toBeTruthy();
+    expect(aside!.style.gridRow).toBe("1 / 3");
+    expect(aside!.style.gridColumn).toBe("3");
   });
 });

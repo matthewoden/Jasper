@@ -62,7 +62,7 @@ const dismissBase: CSSProperties = {
   flexShrink: 0,
 };
 
-export function ActiveTagFilterChip(): JSX.Element | null {
+export function ActiveTagFilterChip() {
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
   const setActiveTagFilter = useTreeStore((s) => s.setActiveTagFilter);
   const [hovering, setHovering] = useState(false);

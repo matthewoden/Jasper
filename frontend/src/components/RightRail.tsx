@@ -26,15 +26,13 @@
  *   - InterPanelDivider: role="separator" aria-orientation="horizontal"
  *     aria-label="Resize panels" (provided by InterPanelDivider itself)
  */
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type React from "react";
-import { ChevronLeft, Link as LinkIcon } from "lucide-react";
 
 import {
   useTreeStore,
   RAIL_MAX_WIDTH,
   RAIL_MIN_WIDTH,
-  RAIL_COLLAPSED_WIDTH,
 } from "../lib/useTreeStore";
 import { RightRailTagsPanel } from "./RightRailTagsPanel";
 import { InterPanelDivider } from "./InterPanelDivider";
@@ -56,6 +54,9 @@ export function RightRail({ activeNoteId, style }: Props) {
   const setExpanded = useTreeStore((s) => s.setBacklinksRailExpanded);
   const setWidth = useTreeStore((s) => s.setBacklinksRailWidth);
   const heightRatio = useTreeStore((s) => s.tagsPanelHeightRatio);
+  // Phase 6.6 — Plan 06.6-11 (D-36): panelSelector gates per-panel rendering.
+  // The panelSelector slice is separate from expanded/collapsed-within-card state.
+  const panelSelector = useTreeStore((s) => s.panelSelector);
   const draggingRef = useRef(false);
   // railRef passed to InterPanelDivider for getBoundingClientRect ratio computation
   const railRef = useRef<HTMLElement>(null);
@@ -90,47 +91,18 @@ export function RightRail({ activeNoteId, style }: Props) {
     [onPointerMove, onPointerUp],
   );
 
-  if (!expanded) {
-    return (
-      <aside
-        style={{
-          width: RAIL_COLLAPSED_WIDTH,
-          height: "100%",
-          background: "var(--color-surface)",
-          borderLeft: "1px solid var(--color-border)",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          paddingTop: 8,
-          flexShrink: 0,
-          ...style,
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          aria-label="Show backlinks panel"
-          aria-expanded={false}
-          title="Show backlinks panel"
-          style={{
-            width: 24,
-            height: 24,
-            background: "transparent",
-            border: 0,
-            color: "var(--color-muted)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 0,
-          }}
-        >
-          <LinkIcon size={14} />
-          <ChevronLeft size={11} />
-        </button>
-      </aside>
-    );
-  }
+  // Phase 6.6 — Plan 06.6-11 (D-36): auto-collapse when both panels are hidden.
+  // Must be declared before any early return (Rules of Hooks).
+  useEffect(() => {
+    if (expanded && !panelSelector.tags && !panelSelector.backlinks) {
+      setExpanded(false);
+    }
+  }, [expanded, panelSelector.tags, panelSelector.backlinks, setExpanded]);
+
+  // D-36: collapsed rail returns null — TopBar panel dropdown is the re-open path.
+  if (!expanded) return null;
+
+  const bothPanelsVisible = panelSelector.tags && panelSelector.backlinks;
 
   return (
     <aside
@@ -170,31 +142,36 @@ export function RightRail({ activeNoteId, style }: Props) {
         }}
       />
 
-      {/* Tags panel — height determined by tagsPanelHeightRatio */}
-      {/* The -10px accounts for the divider footprint (4px visible + 4px padding each side = ~12px) */}
-      <div
-        style={{
-          flex: `0 0 calc(${heightRatio * 100}% - 10px)`,
-          minHeight: 0,
-          overflow: "hidden",
-        }}
-      >
-        <RightRailTagsPanel />
-      </div>
+      {/* Tags panel — height determined by tagsPanelHeightRatio (gated on panelSelector) */}
+      {panelSelector.tags && (
+        <div
+          style={{
+            flex: bothPanelsVisible ? `0 0 calc(${heightRatio * 100}% - 10px)` : 1,
+            minHeight: 0,
+            overflow: "hidden",
+          }}
+        >
+          <RightRailTagsPanel />
+        </div>
+      )}
 
-      {/* Inter-panel divider — horizontal drag handle from Plan 02 */}
-      <InterPanelDivider railRef={railRef as React.RefObject<HTMLElement>} />
+      {/* Inter-panel divider — only rendered when both panels are visible */}
+      {bothPanelsVisible && (
+        <InterPanelDivider railRef={railRef as React.RefObject<HTMLElement>} />
+      )}
 
-      {/* Backlinks panel — remaining height after tags panel + divider */}
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflow: "hidden",
-        }}
-      >
-        <BacklinksRail noteId={activeNoteId} />
-      </div>
+      {/* Backlinks panel — remaining height after tags panel + divider (gated on panelSelector) */}
+      {panelSelector.backlinks && (
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: "hidden",
+          }}
+        >
+          <BacklinksRail noteId={activeNoteId} />
+        </div>
+      )}
     </aside>
   );
 }
