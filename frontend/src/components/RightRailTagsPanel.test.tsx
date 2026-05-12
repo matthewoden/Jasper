@@ -107,10 +107,10 @@ describe("RightRailTagsPanel — header and collapsed state", () => {
     // Header shows count
     expect(screen.getByText(/^Tags \(5\)$/)).toBeInTheDocument();
 
-    // Tag rows visible
-    expect(screen.getByText("alpha")).toBeInTheDocument();
-    expect(screen.getByText("beta")).toBeInTheDocument();
-    expect(screen.getByText("project")).toBeInTheDocument();
+    // Tag rows visible with #-prefix format (D-20)
+    expect(screen.getByTestId("tag-row-alpha")).toBeInTheDocument();
+    expect(screen.getByTestId("tag-row-beta")).toBeInTheDocument();
+    expect(screen.getByTestId("tag-row-project")).toBeInTheDocument();
 
     // Search input visible when expanded
     expect(screen.getByPlaceholderText("Filter tags…")).toBeInTheDocument();
@@ -162,18 +162,20 @@ describe("RightRailTagsPanel — tag list behaviors (adapted from Phase 6)", () 
 
     const tagItems = screen.getAllByRole("listitem");
     // Tags are alpha, beta, process, project, prototype alphabetically
+    // toHaveTextContent does substring match so "#alpha (5)" still satisfies "alpha"
     expect(tagItems[0]).toHaveTextContent("alpha");
     expect(tagItems[1]).toHaveTextContent("beta");
-    // Counts visible
-    expect(screen.getByText("5")).toBeInTheDocument(); // alpha
-    expect(screen.getByText("2")).toBeInTheDocument(); // beta
+    // Counts visible as "(5)" / "(2)" inline — check via testid rows
+    expect(screen.getByTestId("tag-row-alpha")).toHaveTextContent("(5)");
+    expect(screen.getByTestId("tag-row-beta")).toHaveTextContent("(2)");
   });
 
-  it("TB5-adapted: clicking a tag row calls setActiveTagFilter", () => {
+  it("TB5-adapted: clicking a tag row calls setActiveTagFilter with the BARE name (no # prefix)", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: true });
     renderPanel();
 
-    fireEvent.click(screen.getByText("alpha"));
+    // Click on the row button (not the # span — ensure bare name is stored)
+    fireEvent.click(screen.getByTestId("tag-row-alpha"));
     expect(useTreeStore.getState().activeTagFilter).toBe("alpha");
   });
 
@@ -269,13 +271,13 @@ describe("RightRailTagsPanel — search input (SR1..SR6)", () => {
     fireEvent.change(input, { target: { value: "pro" } });
 
     // "project", "prototype", "process" all contain "pro"
-    expect(screen.getByText("project")).toBeInTheDocument();
-    expect(screen.getByText("prototype")).toBeInTheDocument();
-    expect(screen.getByText("process")).toBeInTheDocument();
+    expect(screen.getByTestId("tag-row-project")).toBeInTheDocument();
+    expect(screen.getByTestId("tag-row-prototype")).toBeInTheDocument();
+    expect(screen.getByTestId("tag-row-process")).toBeInTheDocument();
 
     // "alpha", "beta" do NOT contain "pro"
-    expect(screen.queryByText("alpha")).toBeNull();
-    expect(screen.queryByText("beta")).toBeNull();
+    expect(screen.queryByTestId("tag-row-alpha")).toBeNull();
+    expect(screen.queryByTestId("tag-row-beta")).toBeNull();
   });
 
   it("SR3b: filter is case-insensitive — 'PRO' matches same tags as 'pro'", () => {
@@ -285,10 +287,10 @@ describe("RightRailTagsPanel — search input (SR1..SR6)", () => {
     const input = screen.getByPlaceholderText("Filter tags…");
     fireEvent.change(input, { target: { value: "PRO" } });
 
-    expect(screen.getByText("project")).toBeInTheDocument();
-    expect(screen.getByText("prototype")).toBeInTheDocument();
-    expect(screen.getByText("process")).toBeInTheDocument();
-    expect(screen.queryByText("alpha")).toBeNull();
+    expect(screen.getByTestId("tag-row-project")).toBeInTheDocument();
+    expect(screen.getByTestId("tag-row-prototype")).toBeInTheDocument();
+    expect(screen.getByTestId("tag-row-process")).toBeInTheDocument();
+    expect(screen.queryByTestId("tag-row-alpha")).toBeNull();
   });
 
   it("SR4: pressing Esc clears the search input", () => {
@@ -332,6 +334,62 @@ describe("RightRailTagsPanel — search input (SR1..SR6)", () => {
     await waitFor(() => {
       expect((input as HTMLInputElement).value).toBe("");
     });
+  });
+});
+
+// ── Phase 6.6 Plan 04: Task 2 — row format + soft-select ────────────────────
+
+describe("RightRailTagsPanel — Phase 6.6 row format (D-20/D-21/D-22)", () => {
+  it("tag row renders '#tagname (count)' text content", () => {
+    useTreeStore.setState({ rightRailTagsPanelExpanded: true });
+    renderPanel();
+
+    // The row for {name: "project", count: 12} must contain "#project" and "(12)"
+    const row = screen.getByTestId("tag-row-project");
+    expect(row).toHaveTextContent("#project");
+    expect(row).toHaveTextContent("(12)");
+  });
+
+  it("the '#tagname' span has color var(--color-accent)", () => {
+    useTreeStore.setState({ rightRailTagsPanelExpanded: true });
+    renderPanel();
+
+    // The # + name span should have --color-accent; find it by text content
+    const hashSpan = screen.getByText("#project");
+    expect(hashSpan).toHaveStyle({ color: "var(--color-accent)" });
+  });
+
+  it("the '(count)' span has color var(--color-muted)", () => {
+    useTreeStore.setState({ rightRailTagsPanelExpanded: true });
+    renderPanel();
+
+    // The (12) span (count for "project") should be muted
+    const countSpan = screen.getByText("(12)");
+    expect(countSpan).toHaveStyle({ color: "var(--color-muted)" });
+  });
+
+  it("setActiveTagFilter receives the BARE tagname (not '#project')", () => {
+    useTreeStore.setState({ rightRailTagsPanelExpanded: true });
+    renderPanel();
+
+    // Click the row button — onClick calls setActiveTagFilter(tag.name) with bare name
+    fireEvent.click(screen.getByTestId("tag-row-project"));
+    expect(useTreeStore.getState().activeTagFilter).toBe("project");
+    expect(useTreeStore.getState().activeTagFilter).not.toBe("#project");
+  });
+
+  it("right-clicking a row applies soft-select background tint", () => {
+    useTreeStore.setState({ rightRailTagsPanelExpanded: true });
+    renderPanel();
+
+    const row = screen.getByTestId("tag-row-alpha");
+    fireEvent.contextMenu(row);
+
+    // After contextMenu, the row should have the soft-select tint
+    // (color-mix or data-soft-selected attribute)
+    const style = (row as HTMLElement).style.background;
+    expect(style).toContain("color-mix");
+    expect(style).toContain("8%");
   });
 });
 
@@ -394,8 +452,8 @@ describe("RightRailTagsPanel — slice isolation (ADD-only invariant)", () => {
     });
     renderPanel();
 
-    // Tags visible — the new slice controls expansion
-    expect(screen.getByText("alpha")).toBeInTheDocument();
+    // Tags visible — the new slice controls expansion (row has data-testid)
+    expect(screen.getByTestId("tag-row-alpha")).toBeInTheDocument();
   });
 
   it("tagBrowserExpanded=true does NOT affect RightRailTagsPanel expansion", () => {
@@ -408,6 +466,6 @@ describe("RightRailTagsPanel — slice isolation (ADD-only invariant)", () => {
     renderPanel();
 
     // Tags NOT visible — new panel uses its own slice
-    expect(screen.queryByText("alpha")).toBeNull();
+    expect(screen.queryByTestId("tag-row-alpha")).toBeNull();
   });
 });
