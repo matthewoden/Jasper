@@ -334,6 +334,55 @@ describe("RightRailTagsPanel — search input (SR1..SR6)", () => {
   });
 });
 
+// ── Phase 6.6 Plan 04: Header refresh tests ─────────────────────────────────
+
+describe("RightRailTagsPanel — Phase 6.6 header refresh (D-19, D-04)", () => {
+  it("header renders text 'Tags (N)' with NO icon component before the label", () => {
+    useTreeStore.setState({ rightRailTagsPanelExpanded: false });
+    renderPanel();
+    // The label must exist
+    expect(screen.getByText(/^Tags \(5\)$/)).toBeInTheDocument();
+    // No Key icon (aria-label or title) — lucide Key has no accessible name by default
+    // but verify no data-testid or role=img with Key label
+    expect(screen.queryByRole("img", { name: /key/i })).toBeNull();
+  });
+
+  it("header contains a Close Tags panel button with X icon", () => {
+    useTreeStore.setState({ rightRailTagsPanelExpanded: false });
+    renderPanel();
+    expect(
+      screen.getByRole("button", { name: /close tags panel/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("clicking × button calls setPanelSelector({ tags: false })", () => {
+    useTreeStore.setState({ rightRailTagsPanelExpanded: false });
+    // Seed panelSelector.tags = true
+    useTreeStore.setState({ panelSelector: { tags: true, backlinks: true } });
+    renderPanel();
+
+    const closeBtn = screen.getByRole("button", { name: /close tags panel/i });
+    fireEvent.click(closeBtn);
+
+    expect(useTreeStore.getState().panelSelector.tags).toBe(false);
+  });
+
+  it("clicking × button does NOT toggle the panel expand/collapse state", () => {
+    useTreeStore.setState({
+      rightRailTagsPanelExpanded: false,
+      panelSelector: { tags: true, backlinks: true },
+    });
+    renderPanel();
+
+    const expandedBefore = useTreeStore.getState().rightRailTagsPanelExpanded;
+    const closeBtn = screen.getByRole("button", { name: /close tags panel/i });
+    fireEvent.click(closeBtn);
+
+    // Expand state must remain unchanged
+    expect(useTreeStore.getState().rightRailTagsPanelExpanded).toBe(expandedBefore);
+  });
+});
+
 describe("RightRailTagsPanel — slice isolation (ADD-only invariant)", () => {
   it("uses rightRailTagsPanelExpanded slice — not tagBrowserExpanded", () => {
     // Set rightRailTagsPanelExpanded=true but tagBrowserExpanded=false
