@@ -29,6 +29,8 @@ export interface ResizeHandleProps {
   onDrag: (delta: number) => void;
   "aria-label": string;
   style?: React.CSSProperties;
+  /** Optional override for data-testid. Defaults to "resize-handle". */
+  "data-testid"?: string;
 }
 
 export function ResizeHandle({
@@ -36,6 +38,7 @@ export function ResizeHandle({
   onDrag,
   "aria-label": ariaLabel,
   style,
+  "data-testid": testId = "resize-handle",
 }: ResizeHandleProps) {
   const draggingRef = useRef(false);
   const lastPosRef = useRef(0);
@@ -86,7 +89,7 @@ export function ResizeHandle({
       role="separator"
       aria-orientation={orientation === "vertical" ? "vertical" : "horizontal"}
       aria-label={ariaLabel}
-      data-testid="resize-handle"
+      data-testid={testId}
       onPointerDown={onPointerDown}
       style={{
         cursor: orientation === "vertical" ? "col-resize" : "row-resize",

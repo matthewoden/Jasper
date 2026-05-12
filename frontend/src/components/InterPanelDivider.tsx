@@ -46,6 +46,7 @@ export function InterPanelDivider({ railRef }: Props) {
     <ResizeHandle
       orientation="horizontal"
       aria-label="Resize panels"
+      data-testid="inter-panel-divider"
       onDrag={handleDrag}
       style={{ height: 12, flexShrink: 0 }}
     />
