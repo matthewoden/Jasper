@@ -33,8 +33,6 @@ import type React from "react";
 import { FileTree } from "./FileTree";
 import { SidebarResizeHandle } from "./SidebarResizeHandle";
 import { SidebarToolbar } from "./SidebarToolbar";
-import { useToast } from "./Toast";
-import { postAdminReindex } from "../lib/adminApi";
 import type { Tree, TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeCreateActions } from "../lib/useTreeCreateActions";
@@ -102,32 +100,19 @@ function findNotePathById(tree: Tree | null, id: string): string | null {
 }
 
 export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
-  const { tree, refresh } = useFileTree();
+  const { tree } = useFileTree();
   const { createNoteAt, createFolderAt, isCreating } = useTreeCreateActions();
-  const { toast } = useToast();
   // Phase 5.5 — Plan 05 (UX-09): width comes from the store; resize handle
   // mounts as the last child of <nav> so it overlays the FileTree's
   // overflow:auto container.
   const sidebarWidth = useTreeStore((s) => s.sidebarWidth);
+  // Phase 6.6 — Plan 06.6-11 (D-10, UX-CHROME-03): visibility gating.
+  // When notesSidebarVisible is false, the sidebar column in App.tsx grid
+  // collapses to 0px and the Sidebar returns null to avoid invisible DOM.
+  const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
 
-  const handleRefresh = useCallback(async () => {
-    const { error } = await postAdminReindex("incremental");
-    if (error) {
-      const message =
-        typeof error === "string"
-          ? error
-          : ((error as { message?: string }).message ?? "Try again.");
-      toast({
-        title: "Couldn't refresh the index.",
-        description: message,
-        variant: "error",
-      });
-      // Re-throw so the toolbar's catch clears the spin-disabled
-      // treatment and the user can immediately try again.
-      throw new Error(message);
-    }
-    await refresh();
-  }, [refresh, toast]);
+  // Phase 6.6 — handleRefresh removed from Sidebar (D-08).
+  // Refresh moved to StatusBar. SidebarToolbar no longer receives onRefresh.
 
   // UX-12: toolbar New note / New folder target the parent of the currently
   // selected row (or inside the selected folder). Falls back to root only
@@ -147,67 +132,95 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
     void createFolderAt(parent);
   }, [createFolderAt, tree]);
 
+  // All hooks must be called before any conditional return (Rules of Hooks).
+  if (!notesSidebarVisible) return null;
+
   return (
+    // Phase 6.6 — Plan 06.6-11 (D-10, UX-CHROME-03): floating-panel card aesthetic.
+    // Outer nav uses --color-bg so the 8px inset exposes the app background through
+    // the gap between the card and the app edges — matching the right-rail aesthetic.
+    // Inner card carries the visible border/radius/surface color.
+    // SidebarResizeHandle stays on the outer nav's right edge (not inside the card)
+    // so the user grabs the column boundary, not the card boundary.
     <nav
-      className="bg-surface border-r border-border h-full flex flex-col"
-      style={{ width: sidebarWidth, position: "relative", ...style }}
+      style={{
+        width: sidebarWidth,
+        height: "100%",
+        background: "var(--color-bg)",
+        position: "relative",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        ...style,
+      }}
       aria-label="Notes navigation"
     >
-      <header
-        className="flex items-center justify-between"
-        style={{
-          height: 32,
-          paddingLeft: 16,
-          paddingRight: 16,
-          borderBottom: "1px solid var(--color-border)",
-        }}
-      >
-        <span
-          className="text-muted uppercase font-semibold"
-          style={{
-            fontSize: 12,
-            letterSpacing: "0.05em",
-            lineHeight: 1.4,
-          }}
-        >
-          NOTES
-        </span>
-        <SidebarToolbar
-          onNewNote={handleNewNote}
-          onNewFolder={handleNewFolder}
-          onRefresh={handleRefresh}
-          creating={isCreating}
-        />
-      </header>
-      {/*
-        Tree-area shell — bounded by viewport (parent grid row is
-        minmax(0, 1fr)). overflow:hidden because react-arborist's
-        internal react-window FixedSizeList owns the scroll surface;
-        delegating overflow here used to let the sidebar render a
-        9999px scrollable area (Tree height={9999} hack), which pushed
-        a giant useless scrollbar past the actual content.
-      */}
+      {/* Floating card — 8px inset on all sides, matching right-rail panel cards */}
       <div
         style={{
           flex: 1,
-          minHeight: 0,
+          margin: "8px",
+          background: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "8px",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          position: "relative",
+          minHeight: 0,
         }}
       >
-        <FileTree onSelectNote={onSelectNote} />
+        <header
+          className="flex items-center justify-between"
+          style={{
+            height: 32,
+            paddingLeft: 16,
+            paddingRight: 16,
+            borderBottom: "1px solid var(--color-border)",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            className="text-muted uppercase font-semibold"
+            style={{
+              fontSize: 12,
+              letterSpacing: "0.05em",
+              lineHeight: 1.4,
+            }}
+          >
+            NOTES
+          </span>
+          <SidebarToolbar
+            onNewNote={handleNewNote}
+            onNewFolder={handleNewFolder}
+            creating={isCreating}
+          />
+        </header>
+        {/*
+          Tree-area shell — bounded by viewport (parent grid row is
+          minmax(0, 1fr)). overflow:hidden because react-arborist's
+          internal react-window FixedSizeList owns the scroll surface.
+        */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            position: "relative",
+          }}
+        >
+          <FileTree onSelectNote={onSelectNote} />
+        </div>
+        {/*
+          Phase 6.5 — Plan 06.5-04 (D-04): the tag browser panel was relocated
+          to the right-rail (RightRailTagsPanel). Left sidebar is file-tree-only.
+          The legacy left-sidebar tag browser file is preserved as dead code (ADD-only).
+        */}
       </div>
-      {/*
-        Phase 6.5 — Plan 06.5-04 (D-04): the tag browser panel was relocated
-        to the right-rail (RightRailTagsPanel). Left sidebar is file-tree-only
-        again. The legacy left-sidebar tag browser file is preserved as dead
-        code (ADD-only invariant).
-      */}
-      {/* Phase 5.5 — Plan 05 (UX-09): MUST be the last child so the
-          absolute-positioned handle overlays the FileTree scroll
-          container. The parent <nav> sets position: "relative" above. */}
+      {/* Phase 5.5 — Plan 05 (UX-09): MUST be outside the card so the
+          absolute-positioned handle overlays the right edge of the outer nav
+          (the column boundary, not the card boundary). */}
       <SidebarResizeHandle />
     </nav>
   );

@@ -142,7 +142,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     expect(screen.getByText("NOTES")).toBeInTheDocument();
   });
 
-  it("TestSidebar_RendersToolbar — three buttons with the locked aria-labels", () => {
+  it("TestSidebar_RendersToolbar — New note + New folder buttons (Phase 6.6: Refresh moved to StatusBar)", () => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -157,9 +157,10 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     expect(
       screen.getByRole("button", { name: "New folder" }),
     ).toBeInTheDocument();
+    // Phase 6.6 (D-08): Refresh moved to StatusBar; no longer in SidebarToolbar
     expect(
-      screen.getByRole("button", { name: "Refresh" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Refresh" }),
+    ).toBeNull();
   });
 
   it("TestSidebar_DefaultWidth260 — reads SIDEBAR_WIDTH_DEFAULT from useTreeStore", () => {
@@ -220,7 +221,9 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     expect(screen.queryByText("scratchpad")).toBeNull();
   });
 
-  it("TestSidebar_RefreshTriggersIncrementalReindex", async () => {
+  it("TestSidebar_RefreshNotInSidebar — Phase 6.6: Refresh moved to StatusBar (D-08)", () => {
+    // Refresh was moved out of Sidebar to StatusBar in Phase 6.6.
+    // Sidebar no longer renders a Refresh button or calls postAdminReindex.
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -228,89 +231,11 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       refresh: () => Promise.resolve(),
       mutate: noopMutate,
     });
-    mockedPostAdminReindex.mockResolvedValue({
-      data: { started_at: "2026-01-01T00:00:00Z", notes_indexed: 0 },
-      error: undefined,
-      response: new Response(),
-    });
     renderWithProvider(<Sidebar />);
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-    await waitFor(() => {
-      expect(mockedPostAdminReindex).toHaveBeenCalledWith("incremental");
-    });
-  });
-
-  it("TestSidebar_RefreshAlsoTriggersUseFileTreeRefresh — order: postAdminReindex then refresh", async () => {
-    const order: string[] = [];
-    const refresh = vi.fn(async () => {
-      order.push("refresh");
-    });
-    mockedUseFileTree.mockReturnValue({
-      tree: { root: [] },
-      loading: false,
-      error: null,
-      refresh,
-      mutate: noopMutate,
-    });
-    mockedPostAdminReindex.mockImplementation(async () => {
-      order.push("postAdminReindex");
-      return {
-        data: { started_at: "2026-01-01T00:00:00Z", notes_indexed: 0 },
-        error: undefined,
-        response: new Response(),
-      };
-    });
-    renderWithProvider(<Sidebar />);
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-    await waitFor(() => {
-      expect(refresh).toHaveBeenCalled();
-    });
-    expect(order).toEqual(["postAdminReindex", "refresh"]);
-  });
-
-  it("TestSidebar_RefreshError_StopsSpinAndDoesNotCallRefresh", async () => {
-    const refresh = vi.fn(async () => {});
-    mockedUseFileTree.mockReturnValue({
-      tree: { root: [] },
-      loading: false,
-      error: null,
-      refresh,
-      mutate: noopMutate,
-    });
-    mockedPostAdminReindex.mockResolvedValue({
-      data: undefined,
-      error: { code: "internal", message: "boom" },
-      response: new Response(),
-    });
-    renderWithProvider(<Sidebar />);
-    const btn = screen.getByRole("button", { name: "Refresh" });
-    fireEvent.click(btn);
-    await waitFor(() => {
-      expect(btn).not.toBeDisabled();
-    });
-    expect(refresh).not.toHaveBeenCalled();
-  });
-
-  it("TestSidebar_RefreshError_SurfacesToast — Plan 03-07 locked tuple", async () => {
-    mockedUseFileTree.mockReturnValue({
-      tree: { root: [] },
-      loading: false,
-      error: null,
-      refresh: () => Promise.resolve(),
-      mutate: noopMutate,
-    });
-    mockedPostAdminReindex.mockResolvedValue({
-      data: undefined,
-      error: { code: "internal", message: "db locked" },
-      response: new Response(),
-    });
-    renderWithProvider(<Sidebar />);
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-    await waitFor(() => {
-      expect(
-        screen.getByText("Couldn't refresh the index."),
-      ).toBeInTheDocument();
-    });
+    // No Refresh button in the sidebar anymore
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    // postAdminReindex should never be called from Sidebar
+    expect(mockedPostAdminReindex).not.toHaveBeenCalled();
   });
 
   it("TestSidebar_RendersFileTreeRoot — populated tree shows note titles", async () => {
@@ -593,5 +518,75 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         expect(muts.createFolder).toHaveBeenCalledWith("scratch", "untitled");
       });
     });
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 6.6 (Plan 06.6-11) — Floating-panel card aesthetic + visibility gating
+// ──────────────────────────────────────────────────────────────────────
+describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.6-11)", () => {
+  beforeEach(() => {
+    mockedUseFileTree.mockReturnValue({
+      tree: { root: [] },
+      loading: false,
+      error: null,
+      refresh: () => Promise.resolve(),
+      mutate: noopMutate,
+    });
+    useTreeStore.setState({ notesSidebarVisible: true });
+  });
+
+  it("6.6-S1: outer nav background is var(--color-bg)", () => {
+    renderWithProvider(<Sidebar />);
+    const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
+    expect(nav.style.background).toBe("var(--color-bg)");
+  });
+
+  it("6.6-S2: outer nav does NOT have borderRight", () => {
+    renderWithProvider(<Sidebar />);
+    const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
+    // The outer nav should not have a borderRight (the inner card carries the boundary)
+    expect(nav.style.borderRight).toBeFalsy();
+  });
+
+  it("6.6-S3: inner card div has margin 8px, --color-surface bg, 1px border, borderRadius 8px", () => {
+    renderWithProvider(<Sidebar />);
+    const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
+    // Look for the inner card element (direct child of nav that has margin)
+    const card = nav.querySelector('div[style*="margin"]') as HTMLElement | null;
+    expect(card).not.toBeNull();
+    expect(card!.style.margin).toBe("8px");
+    expect(card!.style.background).toBe("var(--color-surface)");
+    expect(card!.style.border).toBe("1px solid var(--color-border)");
+    expect(card!.style.borderRadius).toBe("8px");
+    expect(card!.style.overflow).toBe("hidden");
+  });
+
+  it("6.6-S4: when notesSidebarVisible=false, Sidebar returns null", () => {
+    useTreeStore.setState({ notesSidebarVisible: false });
+    renderWithProvider(<Sidebar />);
+    // The nav should not be in the document
+    expect(screen.queryByLabelText("Notes navigation")).toBeNull();
+  });
+
+  it("6.6-S5: SidebarResizeHandle is still mounted on the outer nav (NOT inside the card)", () => {
+    renderWithProvider(<Sidebar />);
+    const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
+    const handle = screen.getByTestId("sidebar-resize-handle");
+    // Handle is inside nav
+    expect(nav.contains(handle)).toBe(true);
+    // Handle should be a direct child of nav (not inside the inner card)
+    const card = nav.querySelector('div[style*="margin"]') as HTMLElement | null;
+    if (card) {
+      // Handle should NOT be inside the card
+      expect(card.contains(handle)).toBe(false);
+    }
+  });
+
+  it("6.6-S6: Sidebar accepts optional style prop (merges into outer nav)", () => {
+    renderWithProvider(<Sidebar style={{ gridRow: "1 / 3", gridColumn: "1" }} />);
+    const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
+    expect(nav.style.gridRow).toBe("1 / 3");
+    expect(nav.style.gridColumn).toBe("1");
   });
 });
