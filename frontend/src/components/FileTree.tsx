@@ -408,6 +408,48 @@ export function resetTreeListLayout(
   // against react-arborist v3.5 + react-window 1.x.
 }
 
+// ────────────────────────────────────────────────────────────────────
+// Module-level ref shim for cross-component callers (e.g., Breadcrumbs
+// in TopBar). Set inside the FileTree component's useEffect when
+// treeRef.current becomes available; cleared on unmount.
+//
+// Mirrors the broadcastRefresh pattern in useFileTree.ts — module-level
+// state rather than a context/prop so Breadcrumbs can import this
+// directly without a circular-dependency or prop-drilling problem.
+// ────────────────────────────────────────────────────────────────────
+let currentTreeRef: TreeApi<ArboristNode> | null = null;
+
+/**
+ * Expand and scroll the file tree to `folderPath`. Called by
+ * Breadcrumbs when the user clicks a folder segment.
+ *
+ * Three-step contract:
+ *   1. Persist the expanded state in useTreeStore (so a reload preserves
+ *      the open folder; toggleExpanded is idempotent-open: only calls
+ *      if not already in the expanded set).
+ *   2. Open + scroll in react-arborist (if mounted).
+ *   3. Ensure the notes sidebar is visible so the user sees the result.
+ */
+export function expandAndScrollToFolder(folderPath: string): void {
+  if (!folderPath) return;
+  const state = useTreeStore.getState();
+  // Only call toggleExpanded when the folder is NOT already expanded —
+  // toggleExpanded is a true toggle (open→close if called twice).
+  if (!state.expanded.has(folderPath)) {
+    state.toggleExpanded(folderPath);
+  }
+  const id = "folder:" + folderPath;
+  try {
+    currentTreeRef?.open(id);
+    currentTreeRef?.scrollTo(id, "auto");
+  } catch {
+    // FileTree may be unmounted or arborist API mismatch — persistence
+    // step above is sufficient; ignore.
+  }
+  // Always ensure the sidebar is visible after a breadcrumb folder click.
+  state.setNotesSidebarVisible(true);
+}
+
 export interface FileTreeProps {
   onSelectNote: (id: string) => void;
 }
@@ -428,6 +470,17 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   // broadcast-refresh layouts the new row at a stale Y-offset until the
   // next interaction. See resetTreeListLayout helper above.
   const treeRef = useRef<TreeApi<ArboristNode> | null>(null);
+
+  // Plan 06.6-07 — sync the module-level currentTreeRef so that
+  // expandAndScrollToFolder (called by Breadcrumbs) can reach into the
+  // arborist TreeApi from outside this component. Cleared on unmount so
+  // callers gracefully no-op when the sidebar is hidden.
+  useEffect(() => {
+    currentTreeRef = treeRef.current;
+    return () => {
+      currentTreeRef = null;
+    };
+  }, []);
 
   // Bug A + B native DnD fix: track the currently dragged nodes in a ref
   // so our window-level drop handler can access them even after react-dnd
