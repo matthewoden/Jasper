@@ -120,7 +120,8 @@ describe("RightRailTagsPanel — header and collapsed state", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     renderPanel();
 
-    const header = screen.getByRole("button", { name: /tags panel/i });
+    // Use the expand-toggle button (aria-label "Tags panel, collapsed/expanded ...")
+    const header = screen.getByRole("button", { name: /^tags panel,/i });
     fireEvent.click(header);
 
     expect(useTreeStore.getState().rightRailTagsPanelExpanded).toBe(true);
@@ -133,7 +134,7 @@ describe("RightRailTagsPanel — header and collapsed state", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     renderPanel();
 
-    const header = screen.getByRole("button", { name: /tags panel/i });
+    const header = screen.getByRole("button", { name: /^tags panel,/i });
     expect(header).toHaveAttribute("aria-expanded", "false");
 
     fireEvent.click(header);

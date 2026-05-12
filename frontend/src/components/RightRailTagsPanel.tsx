@@ -26,7 +26,7 @@
  * invariant per CONTEXT D-32). This file is the active implementation.
  */
 import { useState, useEffect, useId, type CSSProperties } from "react";
-import { ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronRight, ChevronDown, X } from "lucide-react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 
 import { useTreeStore } from "../lib/useTreeStore";
@@ -51,20 +51,46 @@ const panelCardStyle: CSSProperties = {
   height: "100%",
 };
 
+/** Panel header container — flex row; houses expand-toggle + × close button */
 const headerStyle: CSSProperties = {
   height: 32,
-  padding: "0 12px",
+  padding: "0 4px 0 12px",
   background: "var(--color-surface)",
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+  borderBottom: "1px solid var(--color-border)",
+  flexShrink: 0,
+};
+
+/** Expand/collapse toggle button (left portion of header) */
+const expandButtonStyle: CSSProperties = {
+  flex: 1,
+  height: 32,
+  padding: 0,
+  background: "none",
+  border: "none",
   display: "flex",
   alignItems: "center",
   gap: 6,
   cursor: "pointer",
-  border: "none",
-  borderBottom: "1px solid var(--color-border)",
-  width: "100%",
   textAlign: "left",
   outline: "none",
   userSelect: "none",
+  minWidth: 0,
+};
+
+/** × close button (right portion of header) */
+const closeButtonStyle: CSSProperties = {
+  padding: 4,
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  color: "var(--color-muted)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 3,
   flexShrink: 0,
 };
 
@@ -288,23 +314,36 @@ export function RightRailTagsPanel() {
   return (
     <>
       <div style={panelCardStyle}>
-        {/* Panel header — title-case "Tags (N)", not uppercase "TAGS (N)" */}
-        <button
-          type="button"
-          style={headerStyle}
-          aria-expanded={expanded}
-          aria-controls={listId}
-          aria-label={ariaLabel}
-          onClick={() => setExpanded(!expanded)}
-        >
-          {expanded ? (
-            <ChevronDown size={14} color="var(--color-muted)" />
-          ) : (
-            <ChevronRight size={14} color="var(--color-muted)" />
-          )}
-          {/* UI-SPEC: title-case, 12px, weight 600, --color-muted */}
-          <span style={headerLabelStyle}>Tags ({tags.length})</span>
-        </button>
+        {/* Panel header — flex row: expand-toggle (left) + × close button (right) */}
+        {/* D-19: no icon before the label; D-04: per-panel × close button */}
+        <header style={headerStyle}>
+          <button
+            type="button"
+            style={expandButtonStyle}
+            aria-expanded={expanded}
+            aria-controls={listId}
+            aria-label={ariaLabel}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? (
+              <ChevronDown size={14} color="var(--color-muted)" aria-hidden="true" />
+            ) : (
+              <ChevronRight size={14} color="var(--color-muted)" aria-hidden="true" />
+            )}
+            {/* UI-SPEC: title-case, 12px, weight 600, --color-muted */}
+            <span style={headerLabelStyle}>Tags ({tags.length})</span>
+          </button>
+          <button
+            type="button"
+            aria-label="Close Tags panel"
+            style={closeButtonStyle}
+            onClick={() => {
+              useTreeStore.getState().setPanelSelector({ tags: false });
+            }}
+          >
+            <X size={12} aria-hidden="true" />
+          </button>
+        </header>
 
         {/* Tag search input + list (shown only when expanded) */}
         {expanded && (
