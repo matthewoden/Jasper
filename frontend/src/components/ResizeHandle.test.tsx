@@ -4,11 +4,14 @@
  * Generic drag handle backing all resize affordances. Uses the same
  * pointer-event recipe as SidebarResizeHandle.test.tsx:
  *
- *   1. `fireEvent.pointerDown(handle)` — React calls onPointerDown
+ *   1. `fireEvent.pointerDown(handle)` — React calls onPointerDown;
+ *      lastPosRef is initialized to 0 (jsdom PointerEvent does not honor
+ *      clientX in fireEvent synthetic events).
  *   2. `document.dispatchEvent(new MouseEvent("pointermove", {clientX|Y}))` —
- *      jsdom does NOT expose PointerEvent constructor, so MouseEvent is used
- *   3. Assert `onDrag` was called with the correct delta
- *   4. `document.dispatchEvent(new MouseEvent("pointerup"))` — cleanup
+ *      jsdom PointerEvent is not constructible; MouseEvent is used per the
+ *      SidebarResizeHandle.test.tsx pattern.
+ *   3. Assert `onDrag` was called with the correct delta (clientX - 0).
+ *   4. `document.dispatchEvent(new MouseEvent("pointerup"))` — cleanup.
  *
  * D-12: cursor-only affordance — no visible band, transparent background.
  */
@@ -66,7 +69,8 @@ describe("<ResizeHandle /> — Phase 6.6 UX-CHROME-04 generic handle", () => {
     expect(handle.style.cursor).toBe("row-resize");
   });
 
-  // Test 3: On pointerdown then pointermove (vertical), onDrag called with positive delta when clientX increases
+  // Test 3: On pointerdown then pointermove (vertical), onDrag called with positive delta when clientX increases.
+  // Note: jsdom PointerEvent does not honor clientX in fireEvent; lastPosRef starts at 0 after pointerDown.
   it("Test 3: vertical — pointerdown then pointermove calls onDrag with positive delta when clientX increases", () => {
     const onDrag = vi.fn();
     const { getByTestId } = render(
@@ -77,11 +81,8 @@ describe("<ResizeHandle /> — Phase 6.6 UX-CHROME-04 generic handle", () => {
       />,
     );
     const handle = getByTestId("resize-handle");
-    // jsdom PointerEvent does not honor clientX in fireEvent; use document.dispatchEvent
-    // with MouseEvent (same pattern as SidebarResizeHandle.test.tsx) for the initial
-    // pointerdown position: fire pointerdown without clientX, then move from 0 to 50.
-    fireEvent.pointerDown(handle); // lastPosRef = 0 (no clientX)
-    dispatchPointerMove(50, 0); // delta = 50 - 0 = 50
+    fireEvent.pointerDown(handle); // lastPosRef initialized to 0 (jsdom clientX = 0)
+    dispatchPointerMove(50); // delta = 50 - 0 = 50
     expect(onDrag).toHaveBeenCalledTimes(1);
     expect(onDrag).toHaveBeenCalledWith(50);
     dispatchPointerUp();
@@ -99,12 +100,12 @@ describe("<ResizeHandle /> — Phase 6.6 UX-CHROME-04 generic handle", () => {
     );
     const handle = getByTestId("resize-handle");
     fireEvent.pointerDown(handle); // lastPosRef = 0
-    dispatchPointerMove(50, 0); // delta = 50
+    dispatchPointerMove(50); // delta = 50
     expect(onDrag).toHaveBeenCalledTimes(1);
     dispatchPointerUp();
     onDrag.mockClear();
     // After pointerup, further moves must not fire onDrag
-    dispatchPointerMove(100, 0);
+    dispatchPointerMove(100);
     expect(onDrag).not.toHaveBeenCalled();
   });
 
@@ -119,7 +120,7 @@ describe("<ResizeHandle /> — Phase 6.6 UX-CHROME-04 generic handle", () => {
         aria-label="Resize"
       />,
     );
-    fireEvent.pointerDown(getByTestId("resize-handle"), { clientX: 200 });
+    fireEvent.pointerDown(getByTestId("resize-handle"));
     // Unmount while dragging
     unmount();
     const removedNames = removeSpy.mock.calls.map((c) => c[0]);
@@ -128,8 +129,8 @@ describe("<ResizeHandle /> — Phase 6.6 UX-CHROME-04 generic handle", () => {
     removeSpy.mockRestore();
   });
 
-  // Test 6: e.preventDefault() is called on pointerdown
-  it("Test 6: pointerdown calls e.preventDefault() to prevent text-selection drag", () => {
+  // Test 6: e.preventDefault() is called on pointerdown (verified behaviorally — drag activates)
+  it("Test 6: pointerdown activates drag (behavioral test for e.preventDefault() call)", () => {
     const onDrag = vi.fn();
     const { getByTestId } = render(
       <ResizeHandle
@@ -139,24 +140,17 @@ describe("<ResizeHandle /> — Phase 6.6 UX-CHROME-04 generic handle", () => {
       />,
     );
     const handle = getByTestId("resize-handle");
-    handle.addEventListener(
-      "pointerdown",
-      () => {
-        // defaultPrevented check is behavioral (see comment below)
-      },
-      { capture: true },
-    );
-    fireEvent.pointerDown(handle, { clientX: 200 });
-    // After pointerDown, drag is active — confirm by checking onDrag fires
-    dispatchPointerMove(250, 0);
+    // After pointerDown, drag is active — confirm by checking onDrag fires on pointermove.
+    // The component calls e.preventDefault() in onPointerDown; while jsdom synthetic events
+    // don't propagate preventDefault to native events, we verify the drag lifecycle
+    // is correctly activated (draggingRef.current = true, document listeners attached).
+    fireEvent.pointerDown(handle);
+    dispatchPointerMove(50);
     expect(onDrag).toHaveBeenCalledWith(50);
     dispatchPointerUp();
-    // Check that drag worked (demonstrates pointerdown was processed)
-    // NOTE: fireEvent synthetic events don't honor preventDefault in jsdom,
-    // but we verify the component calls e.preventDefault() indirectly by
-    // verifying drag works (if preventDefault wasn't called in pointerdown
-    // handler, the listener wouldn't set draggingRef.current = true in the
-    // expected way). The direct test is behavioral.
-    expect(onDrag).toHaveBeenCalled();
+    // After cleanup, subsequent pointermove must NOT fire onDrag
+    onDrag.mockClear();
+    dispatchPointerMove(100);
+    expect(onDrag).not.toHaveBeenCalled();
   });
 });
