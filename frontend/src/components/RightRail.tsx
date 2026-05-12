@@ -43,9 +43,14 @@ import { BacklinksRail } from "./BacklinksRail";
 interface Props {
   /** UUID of the currently open note. Null when no note is open. */
   activeNoteId: string | null;
+  /**
+   * Phase 6.6 — Plan 06.6-11: optional style for grid placement.
+   * App.tsx passes gridRow/gridColumn here; merged onto the root aside.
+   */
+  style?: React.CSSProperties;
 }
 
-export function RightRail({ activeNoteId }: Props) {
+export function RightRail({ activeNoteId, style }: Props) {
   const expanded = useTreeStore((s) => s.backlinksRailExpanded);
   const width = useTreeStore((s) => s.backlinksRailWidth);
   const setExpanded = useTreeStore((s) => s.setBacklinksRailExpanded);
@@ -98,6 +103,7 @@ export function RightRail({ activeNoteId }: Props) {
           alignItems: "center",
           paddingTop: 8,
           flexShrink: 0,
+          ...style,
         }}
       >
         <button
@@ -143,6 +149,7 @@ export function RightRail({ activeNoteId }: Props) {
         padding: 8,
         boxSizing: "border-box",
         gap: 0,
+        ...style,
       }}
     >
       {/* Vertical resize handle — left edge, 4px hit area, cursor: col-resize */}

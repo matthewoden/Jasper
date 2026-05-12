@@ -111,6 +111,11 @@ interface EditorPaneProps {
    * No new event-bus abstraction — a plain ref per Plan 04-05.
    */
   editorHandlersRef?: MutableRefObject<EditorPaneHandlers | null>;
+  /**
+   * Phase 6.6 — Plan 06.6-11: optional style for grid placement.
+   * App.tsx passes gridRow/gridColumn here; merged onto the root section.
+   */
+  style?: React.CSSProperties;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -171,7 +176,7 @@ function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
   return null;
 }
 
-export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: EditorPaneProps) {
+export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style }: EditorPaneProps) {
   const [content, setContent] = useState("");
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const [saveState, dispatch] = useReducer(
@@ -821,6 +826,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
       <section
         className="flex flex-col h-full bg-bg"
         data-testid="editor-pane-placeholder"
+        style={style}
       >
         <SaveIndicator state={saveState} />
         <div
@@ -844,7 +850,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef }: Ed
   return (
     <section
       className="flex flex-col h-full bg-bg"
-      style={{ minHeight: 0, overflow: "hidden", position: "relative" }}
+      style={{ minHeight: 0, overflow: "hidden", position: "relative", ...style }}
     >
       <SaveIndicator state={saveState} />
       {loadStatus === "error" && (

@@ -28,6 +28,7 @@
  *     through to `<SidebarToolbar creating=... />`.
  */
 import { useCallback } from "react";
+import type React from "react";
 
 import { FileTree } from "./FileTree";
 import { SidebarResizeHandle } from "./SidebarResizeHandle";
@@ -41,6 +42,11 @@ import { useTreeStore, type SelectedRow } from "../lib/useTreeStore";
 
 export interface SidebarProps {
   onSelectNote?: (id: string) => void;
+  /**
+   * Phase 6.6 — Plan 06.6-11: optional style for grid placement.
+   * App.tsx passes gridRow/gridColumn here; merged onto the outer nav.
+   */
+  style?: React.CSSProperties;
 }
 
 /**
@@ -95,7 +101,7 @@ function findNotePathById(tree: Tree | null, id: string): string | null {
   return null;
 }
 
-export function Sidebar({ onSelectNote = () => {} }: SidebarProps) {
+export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
   const { tree, refresh } = useFileTree();
   const { createNoteAt, createFolderAt, isCreating } = useTreeCreateActions();
   const { toast } = useToast();
@@ -144,7 +150,7 @@ export function Sidebar({ onSelectNote = () => {} }: SidebarProps) {
   return (
     <nav
       className="bg-surface border-r border-border h-full flex flex-col"
-      style={{ width: sidebarWidth, position: "relative" }}
+      style={{ width: sidebarWidth, position: "relative", ...style }}
       aria-label="Notes navigation"
     >
       <header

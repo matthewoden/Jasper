@@ -30,6 +30,11 @@ export interface ReindexProgressProps {
   errorMessage?: string;
   onRetry?: () => void;
   onClose?: () => void;
+  /**
+   * Phase 6.6 — Plan 06.6-11: optional style for grid placement.
+   * App.tsx passes gridRow/gridColumn here; merged onto the root div.
+   */
+  style?: React.CSSProperties;
 }
 
 const SUCCESS_TRANSIENT_MS = 1500;
@@ -39,6 +44,7 @@ export function ReindexProgress({
   errorMessage,
   onRetry,
   onClose,
+  style,
 }: ReindexProgressProps) {
   // Auto-dismiss after the success transient. The component still owns
   // ZERO state; this effect is a side-effect timer that calls back into
@@ -89,7 +95,7 @@ export function ReindexProgress({
   };
 
   return (
-    <div style={containerStyle}>
+    <div style={{ ...containerStyle, ...style }}>
       <div style={baseCardStyle} role="status" aria-live="polite">
         {(phase === "starting" || phase === "running") && (
           <>

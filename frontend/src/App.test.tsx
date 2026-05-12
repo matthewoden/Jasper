@@ -100,7 +100,7 @@ describe("<App /> — Phase 2 shell composition", () => {
     vi.useRealTimers();
   });
 
-  it("A1: when status=ok, the locked three-column grid still renders inside the flex column", async () => {
+  it("A1: when status=ok, the grid renders inside the flex column with two-row grid", async () => {
     getAdminStatusMock.mockResolvedValue({
       data: { state: "ok", notes_indexed: 0 },
       error: undefined,
@@ -124,9 +124,10 @@ describe("<App /> — Phase 2 shell composition", () => {
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
     expect(grid).not.toBeNull();
-    // Phase 6 — Plan 06-07: right rail is now always present at RAIL_COLLAPSED_WIDTH (32px)
-    // when collapsed (default). Grid template third column is 32px, not 0.
-    expect(grid!.style.gridTemplateColumns).toBe("260px 1fr 32px");
+    // Phase 6.6 — Plan 06.6-11: two-row grid. Third column is 0px when
+    // backlinksRailExpanded is false (default). The RAIL_COLLAPSED_WIDTH strip
+    // is removed (D-36); the column collapses to 0.
+    expect(grid!.style.gridTemplateColumns).toBe("260px 1fr 0px");
 
     // Sidebar + RightRail anchors still mount.
     expect(screen.getByText("NOTES")).toBeInTheDocument();
@@ -134,10 +135,6 @@ describe("<App /> — Phase 2 shell composition", () => {
     // gone. With the mocked-empty tree we expect the FileTree empty
     // state to render in its place.
     expect(screen.getByTestId("tree-empty-state")).toBeInTheDocument();
-    // Phase 6: BacklinksColumn (aria-hidden) is replaced by RightRail (no aria-hidden).
-    // The collapsed RightRail renders an aside without aria-hidden.
-    const aside = document.querySelector("aside");
-    expect(aside).not.toBeNull();
   });
 
   it("A2: status=ok renders no banner and the editor textarea is enabled", async () => {
@@ -597,5 +594,95 @@ describe("<App /> — Phase 4 session sync (Plan 04-05)", () => {
     await waitFor(() => {
       expect(screen.queryByText(/Rebuilding/i)).not.toBeInTheDocument();
     });
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 6.6 (Plan 06.6-11) — Two-row grid restructure + TopBar + StatusBar
+// ──────────────────────────────────────────────────────────────────────────
+describe("<App /> — Phase 6.6 two-row grid + chrome mounts (Plan 06.6-11)", () => {
+  beforeEach(() => {
+    getAdminStatusMock.mockReset();
+    postAdminReindexMock.mockReset();
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: SCRATCHPAD,
+      pendingRename: null,
+      draftCreate: null,
+      notesSidebarVisible: true,
+      panelSelector: { tags: true, backlinks: true },
+      backlinksRailExpanded: false,
+    });
+    getAdminStatusMock.mockResolvedValue({
+      data: { state: "ok" },
+      error: undefined,
+    });
+  });
+
+  it("A6.6-1: App renders a TopBar (data-testid='top-bar')", async () => {
+    render(<App />);
+    expect(screen.getByTestId("top-bar")).toBeInTheDocument();
+  });
+
+  it("A6.6-2: App renders a StatusBar (data-testid='status-bar')", async () => {
+    render(<App />);
+    expect(screen.getByTestId("status-bar")).toBeInTheDocument();
+  });
+
+  it("A6.6-3: two-row grid — gridTemplateRows is 'auto minmax(0, 1fr)'", async () => {
+    render(<App />);
+    const grid = document.querySelector(
+      'div[style*="grid-template-columns"]',
+    ) as HTMLElement | null;
+    expect(grid).not.toBeNull();
+    expect(grid!.style.gridTemplateRows).toBe("auto minmax(0, 1fr)");
+  });
+
+  it("A6.6-4: when notesSidebarVisible=true, sidebar column is sidebarWidth px (260px default)", async () => {
+    useTreeStore.setState({ notesSidebarVisible: true, sidebarWidth: 260 });
+    render(<App />);
+    const grid = document.querySelector(
+      'div[style*="grid-template-columns"]',
+    ) as HTMLElement | null;
+    expect(grid).not.toBeNull();
+    expect(grid!.style.gridTemplateColumns).toMatch(/^260px/);
+  });
+
+  it("A6.6-5: when notesSidebarVisible=false, sidebar column is 0px", async () => {
+    useTreeStore.setState({ notesSidebarVisible: false });
+    render(<App />);
+    const grid = document.querySelector(
+      'div[style*="grid-template-columns"]',
+    ) as HTMLElement | null;
+    expect(grid).not.toBeNull();
+    expect(grid!.style.gridTemplateColumns).toMatch(/^0px/);
+  });
+
+  it("A6.6-6: when backlinksRailExpanded=false, rail column is 0px", async () => {
+    useTreeStore.setState({ backlinksRailExpanded: false });
+    render(<App />);
+    const grid = document.querySelector(
+      'div[style*="grid-template-columns"]',
+    ) as HTMLElement | null;
+    expect(grid).not.toBeNull();
+    expect(grid!.style.gridTemplateColumns).toMatch(/0px$/);
+  });
+
+  it("A6.6-7: StatusBar is a sibling AFTER the grid div (not a grid child)", async () => {
+    render(<App />);
+    const grid = document.querySelector(
+      'div[style*="grid-template-columns"]',
+    ) as HTMLElement | null;
+    const statusBar = screen.getByTestId("status-bar");
+    expect(grid).not.toBeNull();
+    // StatusBar must be a sibling coming after the grid
+    expect(grid!.nextElementSibling).toBe(statusBar);
+  });
+
+  it("A6.6-8: TopBar has gridRow=1 gridColumn=2 style (set by App.tsx)", async () => {
+    render(<App />);
+    const topBar = screen.getByTestId("top-bar");
+    expect(topBar.style.gridRow).toBe("1");
+    expect(topBar.style.gridColumn).toBe("2");
   });
 });

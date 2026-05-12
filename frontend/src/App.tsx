@@ -24,11 +24,13 @@ import { RenameRewriteErrorBanner, type RewriteError } from "./components/Rename
 import { ReindexProgress } from "./components/ReindexProgress";
 import { ResetAndRebuildDialog } from "./components/ResetAndRebuildDialog";
 import { Sidebar } from "./components/Sidebar";
+import { StatusBar } from "./components/StatusBar";
+import { TopBar } from "./components/TopBar";
 import { ToastProvider } from "./components/Toast";
 import { postAdminReindex } from "./lib/adminApi";
 import { useMigrationStatus } from "./lib/useMigrationStatus";
 import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
-import { useTreeStore, RAIL_COLLAPSED_WIDTH } from "./lib/useTreeStore";
+import { useTreeStore } from "./lib/useTreeStore";
 
 // W-4 LOCKED: the parent owns the phase enum; ReindexProgress is purely
 // presentational. 'starting' is driven by WS reindex:started events (Plan
@@ -125,10 +127,14 @@ function AppInner() {
   // re-render only fires when the persisted width actually changes.
   const sidebarWidth = useTreeStore((s) => s.sidebarWidth);
   // Phase 6 — Plan 06-07: right-rail state drives the third grid column.
-  // When collapsed, the rail occupies RAIL_COLLAPSED_WIDTH (32px) — just enough
-  // for the toggle strip. When expanded, it occupies backlinksRailWidth.
+  // Phase 6.6 — Plan 06.6-11 (D-36): when collapsed, rail column is 0px
+  // (no more RAIL_COLLAPSED_WIDTH strip — that toggle is removed). TopBar
+  // toggle re-opens the rail.
   const backlinksRailExpanded = useTreeStore((s) => s.backlinksRailExpanded);
   const backlinksRailWidth = useTreeStore((s) => s.backlinksRailWidth);
+  // Phase 6.6 — Plan 06.6-11 (UX-CHROME-01): notes sidebar visibility.
+  // When false, the sidebar column collapses to 0px.
+  const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
 
   // Phase 4 (Plan 04-05) — EditorPane handler ref (D-09: no new event bus).
   // App passes this ref to EditorPane; EditorPane writes its handlers on mount.
@@ -264,29 +270,41 @@ function AppInner() {
         onOpenChange={setDialogOpen}
         onConfirm={onConfirm}
       />
+      {/* Phase 6.6 — Plan 06.6-11 (UX-CHROME-01/02): two-row grid.
+          Row 1: TopBar (gridColumn:2 only). Row 2: EditorPane (gridColumn:2).
+          Sidebar and RightRail span both rows (gridRow: "1 / 3").
+          StatusBar sits below the grid as a direct flex child — full app width.
+          RESEARCH §Option A: two-row grid avoids position:sticky inside
+          overflow:hidden (Pitfall 1). */}
       <div
         style={{
           display: "grid",
           // Plan 17 Bug A (UX-09): track sidebarWidth in the grid template
           // so the editor pane (1fr) reflows when the resize handle drags.
-          // Previously hard-coded to "260px 1fr 0" — see 05.5-17a-INVESTIGATION.md.
-          // Phase 6 — Plan 06-07: third column expands/collapses with the right rail.
-          gridTemplateColumns: `${sidebarWidth}px 1fr ${backlinksRailExpanded ? backlinksRailWidth : RAIL_COLLAPSED_WIDTH}px`,
-          // Single row that fills the available flex track. `1fr`
-          // alone is `minmax(auto, 1fr)` which still grows to content
-          // intrinsic height — `minmax(0, 1fr)` is the canonical clamp
-          // that lets children scroll internally.
-          gridTemplateRows: "minmax(0, 1fr)",
+          // Phase 6.6 (D-36): when rail is collapsed, column is 0px (no toggle strip).
+          // Phase 6.6: when sidebar is hidden, column is 0px.
+          gridTemplateColumns: `${notesSidebarVisible ? sidebarWidth : 0}px 1fr ${backlinksRailExpanded ? backlinksRailWidth : 0}px`,
+          // Phase 6.6 — two-row grid: row 1 for TopBar (auto height),
+          // row 2 for EditorPane (fills remaining space).
+          gridTemplateRows: "auto minmax(0, 1fr)",
           flex: 1,
           minHeight: 0,
           overflow: "hidden",
         }}
       >
+        {/* TopBar: row 1, column 2 — editor pane width only (D-01) */}
+        <TopBar style={{ gridRow: "1", gridColumn: "2" }} />
+
+        {/* Sidebar: spans both rows (gridRow 1/3) — column 1 */}
         <Sidebar
+          style={{ gridRow: "1 / 3", gridColumn: "1" }}
           onSelectNote={(id) => useTreeStore.getState().setActiveNote(id)}
         />
+
+        {/* Editor/reindex: row 2, column 2 */}
         {reindexing ? (
           <ReindexProgress
+            style={{ gridRow: "2", gridColumn: "2" }}
             phase={reindexPhase}
             errorMessage={reindexError}
             onRetry={fireReindex}
@@ -294,16 +312,22 @@ function AppInner() {
           />
         ) : (
           <EditorPane
+            style={{ gridRow: "2", gridColumn: "2" }}
             noteId={activeNoteId}
             reindexing={false}
             editorHandlersRef={editorHandlersRef}
           />
         )}
+
         {/* Phase 6.5 — Plan 06.5-04: right rail two-panel layout (D-01/D-03).
-            RightRail now composes its own children (tags panel + divider +
-            linked-from panel) and receives activeNoteId prop. */}
-        <RightRail activeNoteId={activeNoteId} />
+            Phase 6.6 — spans both rows (gridRow 1/3) — column 3 */}
+        <RightRail
+          style={{ gridRow: "1 / 3", gridColumn: "3" }}
+          activeNoteId={activeNoteId}
+        />
       </div>
+      {/* Phase 6.6 — StatusBar: below the grid, full app width (D-06) */}
+      <StatusBar />
     </div>
   );
 }
