@@ -145,12 +145,12 @@ describe("RightRailTagsPanel — panel card shell spec", () => {
   it("panel card has borderRadius: 8 style", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     const { container } = renderPanel();
-    // The outer panel card element should have borderRadius 8px
-    const panel = container.firstChild?.firstChild as HTMLElement | null;
+    // The outer panel card element is container.firstChild (the <div style={panelCardStyle}>)
+    const panel = container.firstChild as HTMLElement | null;
     expect(panel).toBeTruthy();
-    // Check the inline style — borderRadius 8px is locked per plan
-    const style = (panel as HTMLElement)?.style;
-    expect(style?.borderRadius).toBe("8px");
+    // Verify via style attribute string — borderRadius: 8 renders as "8px"
+    const styleAttr = (panel as HTMLElement)?.getAttribute("style") ?? "";
+    expect(styleAttr).toContain("border-radius: 8px");
   });
 });
 
@@ -309,7 +309,10 @@ describe("RightRailTagsPanel — search input (SR1..SR6)", () => {
     const input = screen.getByPlaceholderText("Filter tags…");
     fireEvent.change(input, { target: { value: "zzz" } });
 
-    expect(screen.getByText(/No tags match "zzz"\./)).toBeInTheDocument();
+    // Use function matcher to handle Unicode quotes (“ / ”) from &ldquo;/&rdquo;
+    expect(
+      screen.getByText((text) => text.includes("No tags match") && text.includes("zzz")),
+    ).toBeInTheDocument();
     // Must NOT show the "no tags" message (there ARE tags, just none matching)
     expect(screen.queryByText(/No tags yet\./)).toBeNull();
   });
