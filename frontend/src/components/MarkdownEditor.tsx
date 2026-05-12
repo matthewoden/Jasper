@@ -70,6 +70,11 @@ import {
   tagCompletionSource,
   setTagSnapshot,
 } from "../editor/tagAutocomplete";
+import { inlineTagPlugin } from "../editor/inlineTagPlugin";
+import {
+  inlineTagCompletionSource,
+  setInlineTagSnapshot,
+} from "../editor/inlineTagAutocomplete";
 import { useTagBrowser } from "../lib/useTagBrowser";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useFileTree } from "../lib/useFileTree";
@@ -255,8 +260,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     // Phase 6 / Plan 06-10: tag autocomplete snapshot sync.
     // Whenever useTagBrowser returns new data, push it to the module-level
     // snapshot so tagCompletionSource can read it synchronously.
+    // Phase 6.5 / Plan 06.5-05: also push to inlineTagAutocomplete's snapshot
+    // for the # body trigger (same data source, separate snapshot per D-14).
     useEffect(() => {
       setTagSnapshot(allTags ?? []);
+      setInlineTagSnapshot(allTags ?? []);
     }, [allTags]);
 
     // Phase 6 / Plan 06-10: tag click handler wiring (D-08).
@@ -312,12 +320,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             livePreviewPlugin,
             wikilinkPlugin, // Phase 6 / Plan 06-09 — [[Title]] decoration
             tagClickPlugin, // Phase 6 / Plan 06-10 — clickable tag values in frontmatter (D-08)
+            inlineTagPlugin, // Phase 6.5 / Plan 06.5-05 / UX-T-02 — body inline #tagname decoration
             linkClickHandler, // 05.5-18 — Cmd/Ctrl-click opens external links in a new tab
             externalImagePlugin, // Plan 05-08 — SECURITY-03 external image gate
             // Phase 6 / Plan 06-10 — autocomplete: [[ wiki-links + tag names.
+            // Phase 6.5 / Plan 06.5-05 — added inlineTagCompletionSource for # trigger in body.
             // override: [] disables lang-markdown's emoji shortcodes (acceptable for
             // v1 — documented tradeoff in wikilinkAutocomplete.ts).
-            autocompletion({ override: [wikilinkCompletionSource, tagCompletionSource] }),
+            autocompletion({ override: [wikilinkCompletionSource, tagCompletionSource, inlineTagCompletionSource] }),
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // Plan 05-11 / EDIT-10 — BEFORE defaultKeymap so Cmd+S takes precedence
             // 05.5-18: ```-Enter expands to a bounded fenced block.
             // BEFORE defaultKeymap so it can short-circuit Enter
