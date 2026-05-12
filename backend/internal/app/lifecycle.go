@@ -282,6 +282,16 @@ func (a *App) Run(ctx context.Context) error {
 		if summaries, err := a.indexer.List(ctx); err == nil {
 			notesSvc.Registry().Hydrate(summaries)
 			a.cfg.Logger.Info("registry hydrated", "count", len(summaries))
+			// BUG-02 fix (Phase 6.5 Plan 08): startup ReconcileWithRegistry runs
+			// with nil registry (notes service not yet built), leaving all backlinks
+			// with target_id = NULL (pending). After registry hydration, run a
+			// targeted second-pass to resolve pending rows by title lookup.
+			// Non-fatal: partial failures leave rows pending (resolved on next save).
+			if rErr := a.indexer.ResolvePendingBacklinks(ctx, notesSvc.Registry()); rErr != nil {
+				a.cfg.Logger.Warn("startup: pending backlinks resolution failed (non-fatal)", "err", rErr)
+			} else {
+				a.cfg.Logger.Info("startup: pending backlinks resolved")
+			}
 		} else {
 			a.cfg.Logger.Warn("registry hydrate: List failed (proceeding with empty registry)",
 				"err", err)

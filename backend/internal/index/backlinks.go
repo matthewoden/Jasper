@@ -272,6 +272,70 @@ func (x *Indexer) UpdateBacklinksTargetTitle(
 }
 
 // ---------------------------------------------------------------------------
+// ResolvePendingBacklinks
+// ---------------------------------------------------------------------------
+
+// ResolvePendingBacklinks updates all backlinks rows where target_id IS NULL
+// by attempting to resolve target_title via the registry. Called after
+// registry hydration at startup to fix the nil-registry reconcile window
+// (BUG-02 root cause: ReconcileWithRegistry at startup runs before the
+// registry is populated, leaving all startup-synced backlinks as pending).
+//
+// This is a one-pass scan: SELECT DISTINCT target_title FROM backlinks WHERE
+// target_id IS NULL, then for each title, call registry.FindByTitle and
+// UPDATE backlinks SET target_id = ? WHERE target_id IS NULL AND target_title = ?
+//
+// Non-fatal: errors are logged; partial updates leave remaining rows pending
+// to be resolved on the next save of the source note.
+func (x *Indexer) ResolvePendingBacklinks(ctx context.Context, registry *notes.Registry) error {
+	if registry == nil {
+		return nil
+	}
+
+	// Step 1: collect all distinct (target_title, source_path) pairs for pending rows.
+	rows, err := x.Pair.Reader.QueryContext(ctx,
+		`SELECT DISTINCT b.target_title, n.path
+		 FROM backlinks b
+		 INNER JOIN notes n ON n.id = b.source_id
+		 WHERE b.target_id IS NULL`)
+	if err != nil {
+		return fmt.Errorf("resolve pending: query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	type pending struct{ targetTitle, sourcePath string }
+	var pendings []pending
+	for rows.Next() {
+		var tt, sp string
+		if err := rows.Scan(&tt, &sp); err != nil {
+			return fmt.Errorf("resolve pending: scan: %w", err)
+		}
+		pendings = append(pendings, pending{tt, sp})
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("resolve pending: rows: %w", err)
+	}
+
+	// Step 2: for each pending title, attempt registry resolution and update.
+	for _, p := range pendings {
+		key := strings.ToLower(p.targetTitle)
+		sourceFolder := filepath.Dir(p.sourcePath)
+		candidates := registry.FindByTitle(key, sourceFolder)
+		if len(candidates) == 0 {
+			continue // still unresolvable — leave as pending
+		}
+		tid := candidates[0].ID
+		if _, err := x.Pair.Writer.ExecContext(ctx,
+			`UPDATE backlinks SET target_id = ?
+			 WHERE target_id IS NULL AND target_title = ?`,
+			tid.String(), p.targetTitle); err != nil {
+			x.Log.Warn("resolve pending: update failed", "title", p.targetTitle, "err", err)
+		}
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
 // buildExcerpt
 // ---------------------------------------------------------------------------
 

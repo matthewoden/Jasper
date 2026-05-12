@@ -588,3 +588,140 @@ func TestBuildExcerpt_CaseInsensitive(t *testing.T) {
 		t.Errorf("case-insensitive match failed: %q", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ResolvePendingBacklinks (BUG-02 regression tests)
+// ---------------------------------------------------------------------------
+
+// TestResolvePendingBacklinks_Basic — BUG-02 regression: after startup reconcile
+// with nil registry leaves backlinks as pending (target_id = NULL),
+// ResolvePendingBacklinks resolves them using the now-populated registry.
+func TestResolvePendingBacklinks_Basic(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTagTestIndexer(t)
+	ctx := context.Background()
+
+	// Insert source note (A) and target note (B) directly.
+	sourceID := newNoteID(t, idx, "notes/a.md", 1700000001)
+	targetID := newNoteID(t, idx, "notes/b.md", 1700000002)
+
+	// Simulate what startup reconcile does with nil registry:
+	// SyncBacklinks writes a pending row (target_id = NULL).
+	refs := []markdown.WikiLinkRef{{Target: "Note B"}}
+	content := []byte("# Note A\nThis note links to [[Note B]].\n")
+	if err := idx.SyncBacklinks(ctx, sourceID, "notes/a.md", refs, nil, content); err != nil {
+		t.Fatalf("SyncBacklinks with nil registry: %v", err)
+	}
+
+	// Verify row is pending (target_id = NULL).
+	var isNull bool
+	if err := idx.Pair.Reader.QueryRowContext(ctx,
+		`SELECT target_id IS NULL FROM backlinks WHERE source_id = ?`,
+		sourceID.String(),
+	).Scan(&isNull); err != nil {
+		t.Fatalf("query pending row: %v", err)
+	}
+	if !isNull {
+		t.Fatal("pre-condition failed: expected target_id IS NULL after nil-registry SyncBacklinks")
+	}
+
+	// Hydrate the registry with the target note.
+	reg := &notes.Registry{}
+	reg.HydrateRecords([]notes.NoteRecord{
+		{ID: targetID, Path: "notes/b.md", Title: "Note B"},
+	})
+
+	// Run ResolvePendingBacklinks — should update target_id = targetID.
+	if err := idx.ResolvePendingBacklinks(ctx, reg); err != nil {
+		t.Fatalf("ResolvePendingBacklinks: %v", err)
+	}
+
+	// Verify target_id is now set.
+	var gotTargetID string
+	if err := idx.Pair.Reader.QueryRowContext(ctx,
+		`SELECT COALESCE(target_id, '') FROM backlinks WHERE source_id = ?`,
+		sourceID.String(),
+	).Scan(&gotTargetID); err != nil {
+		t.Fatalf("query resolved row: %v", err)
+	}
+	if gotTargetID != targetID.String() {
+		t.Errorf("target_id: got %q, want %q", gotTargetID, targetID.String())
+	}
+
+	// Verify GetBacklinks now returns the row.
+	rows, err := idx.GetBacklinks(ctx, targetID)
+	if err != nil {
+		t.Fatalf("GetBacklinks: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("GetBacklinks: got %d rows, want 1", len(rows))
+	}
+}
+
+// TestResolvePendingBacklinks_NilRegistry — no-op when registry is nil.
+func TestResolvePendingBacklinks_NilRegistry(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTagTestIndexer(t)
+	ctx := context.Background()
+
+	sourceID := newNoteID(t, idx, "notes/a.md", 1700000001)
+	refs := []markdown.WikiLinkRef{{Target: "Ghost"}}
+	content := []byte("Link to [[Ghost]].\n")
+	if err := idx.SyncBacklinks(ctx, sourceID, "notes/a.md", refs, nil, content); err != nil {
+		t.Fatalf("SyncBacklinks: %v", err)
+	}
+
+	// nil registry is a documented no-op.
+	if err := idx.ResolvePendingBacklinks(ctx, nil); err != nil {
+		t.Fatalf("ResolvePendingBacklinks(nil): %v", err)
+	}
+
+	// Row must still be pending.
+	var isNull bool
+	if err := idx.Pair.Reader.QueryRowContext(ctx,
+		`SELECT target_id IS NULL FROM backlinks WHERE source_id = ?`,
+		sourceID.String(),
+	).Scan(&isNull); err != nil {
+		t.Fatal(err)
+	}
+	if !isNull {
+		t.Error("nil registry should leave row as pending")
+	}
+}
+
+// TestResolvePendingBacklinks_UnresolvableStaysPending — when registry has
+// no match for a pending title, the row stays pending (not an error).
+func TestResolvePendingBacklinks_UnresolvableStaysPending(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTagTestIndexer(t)
+	ctx := context.Background()
+
+	sourceID := newNoteID(t, idx, "notes/a.md", 1700000001)
+	refs := []markdown.WikiLinkRef{{Target: "Nonexistent Note"}}
+	content := []byte("Link to [[Nonexistent Note]].\n")
+	if err := idx.SyncBacklinks(ctx, sourceID, "notes/a.md", refs, nil, content); err != nil {
+		t.Fatalf("SyncBacklinks: %v", err)
+	}
+
+	// Registry has no match for "Nonexistent Note".
+	reg := &notes.Registry{}
+	reg.HydrateRecords([]notes.NoteRecord{
+		{ID: uuid.New(), Path: "notes/other.md", Title: "Other Note"},
+	})
+
+	if err := idx.ResolvePendingBacklinks(ctx, reg); err != nil {
+		t.Fatalf("ResolvePendingBacklinks: %v", err)
+	}
+
+	// Row must still be pending (no match).
+	var isNull bool
+	if err := idx.Pair.Reader.QueryRowContext(ctx,
+		`SELECT target_id IS NULL FROM backlinks WHERE source_id = ?`,
+		sourceID.String(),
+	).Scan(&isNull); err != nil {
+		t.Fatal(err)
+	}
+	if !isNull {
+		t.Error("unresolvable title should remain pending")
+	}
+}
