@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -239,9 +240,46 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 	// File-FIRST: even if tag sync fails, the user's content is on disk.
 	tags := markdown.ExtractTags([]byte(content))
 
-	// Phase 6 Step B: sync tags in a single transaction. Non-fatal — file is
-	// truth. If the index is a nopIndex this is also a no-op.
-	if err := s.index.SyncTags(ctx, id, tags); err != nil {
+	// Phase 6.5 Step A2: extract body inline #tags and compute canonical union.
+	// D-10 LOCKED choice (a): canonical = sort(dedupe(frontmatterTags ∪ bodyTags)).
+	// Conservative model: tags only in frontmatter survive (manually-pinned via
+	// raw-view); tags only in body are added; tags removed from body but still
+	// in frontmatter STAY until the user also removes them from frontmatter.
+	// If this union semantics proves insufficient, D-11 halt-if-inconclusive gate
+	// escalates to a body-authoritative model in a follow-up plan.
+	bodyTags := markdown.ExtractBodyTags([]byte(content))
+	canonical := unionTags(tags, bodyTags)
+
+	// Phase 6.5 Step A3: rewrite frontmatter tags: array if canonical differs.
+	// PITFALL 6 GUARD: only call WriteAtomic a second time when the canonical
+	// set actually differs from the frontmatter set. Uses slices.Equal on the
+	// sorted canonical vs. the sorted frontmatter tags returned by ExtractTags
+	// (which preserves first-occurrence order, not sorted — but unionTags always
+	// returns a sorted result, so we must sort tags for the comparison too).
+	sortedTags := append([]string(nil), tags...)
+	sort.Strings(sortedTags)
+	if !slices.Equal(canonical, sortedTags) {
+		rewritten, rwErr := markdown.RewriteFrontmatterTags([]byte(content), canonical)
+		if rwErr != nil {
+			// D-26: log + continue; index uses canonical, file keeps original content.
+			s.log.Warn("notes.Update: frontmatter rewriteback parse error (index uses canonical; file unchanged)",
+				"id", id.String(), "err", rwErr)
+		} else if wErr := s.files.WriteAtomic(relPath, rewritten); wErr != nil {
+			s.log.Warn("notes.Update: frontmatter rewriteback write failed (index uses canonical; file may be stale, reconcile heals)",
+				"id", id.String(), "err", wErr)
+		} else {
+			// Rewrite succeeded — update content and re-stat for updated modTime.
+			content = string(rewritten)
+			if newMTime, statErr := s.files.Stat(relPath); statErr == nil {
+				modTime = newMTime
+			}
+		}
+	}
+
+	// Phase 6 Step B: sync canonical tag set in a single transaction. Non-fatal
+	// — file is truth. Uses canonical (union) instead of raw frontmatter tags.
+	// If the index is a nopIndex this is also a no-op.
+	if err := s.index.SyncTags(ctx, id, canonical); err != nil {
 		s.log.Error("notes.Update: tags sync failed (file safe; index heals on reconcile)",
 			"id", id.String(), "err", err)
 	}
@@ -351,6 +389,34 @@ func (s *Service) Create(ctx context.Context, parentPath, title string) (NoteSum
 	// triggered by PostNoteMove used this lowercase value in
 	// SourcesByBacklinkTitle, which would miss links written as [[OldTitle]].
 	s.registry.AddRecord(id, rec.Path, strings.ToLower(rec.Title))
+
+	// Phase 6.5 Step A: sync canonical tags for the new note. For a fresh
+	// scaffold (tags: [], empty body), bodyTags is nil and canonical == tags
+	// (both empty), so the rewriteback guard slices.Equal skips WriteAtomic
+	// — making this a no-op on Create. Wired here to mirror Service.Update's
+	// canonical sync so the index is consistent from the first save.
+	scaffoldTags := markdown.ExtractTags(scaffoldContent)
+	scaffoldBodyTags := markdown.ExtractBodyTags(scaffoldContent)
+	createCanonical := unionTags(scaffoldTags, scaffoldBodyTags)
+
+	// Pitfall 6 guard: only rewrite if canonical differs from frontmatter tags.
+	sortedScaffoldTags := append([]string(nil), scaffoldTags...)
+	sort.Strings(sortedScaffoldTags)
+	if !slices.Equal(createCanonical, sortedScaffoldTags) {
+		if rewritten, rwErr := markdown.RewriteFrontmatterTags(scaffoldContent, createCanonical); rwErr == nil {
+			if wErr := s.files.WriteAtomic(canonPath, rewritten); wErr != nil {
+				s.log.Warn("notes.Create: frontmatter rewriteback write failed (index uses canonical; file may be stale, reconcile heals)",
+					"path", canonPath, "err", wErr)
+			}
+		} else {
+			s.log.Warn("notes.Create: frontmatter rewriteback parse error (index uses canonical; file unchanged)",
+				"path", canonPath, "err", rwErr)
+		}
+	}
+	if err := s.index.SyncTags(ctx, id, createCanonical); err != nil {
+		s.log.Error("notes.Create: tags sync failed (file safe; index heals on reconcile)",
+			"path", canonPath, "err", err)
+	}
 
 	// BROADCAST — THIRD step. Only after successful Upsert. T-04-04: no content.
 	s.broadcaster.Broadcast(EventNoteCreated, map[string]any{
@@ -1093,4 +1159,23 @@ func (nopIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, err
 
 func (nopIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchResult, error) {
 	return []SearchResult{}, nil
+}
+
+// unionTags returns the deduplicated, sorted union of tag slices a and b.
+// Both inputs are expected to already be normalized per D-22 (lowercase,
+// [a-z0-9_-] charset). Sorting guarantees deterministic order so that
+// slices.Equal comparisons with the prior frontmatter set are stable.
+//
+// Phase 6.5 D-10: canonical = sort(dedupe(frontmatterTags ∪ bodyTags)).
+func unionTags(a, b []string) []string {
+	seen := make(map[string]struct{}, len(a)+len(b))
+	out := make([]string, 0, len(a)+len(b))
+	for _, t := range append(a, b...) {
+		if _, ok := seen[t]; !ok {
+			seen[t] = struct{}{}
+			out = append(out, t)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

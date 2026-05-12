@@ -2323,3 +2323,126 @@ func TestService_Create_UsesNewNoteContentScaffold(t *testing.T) {
 		t.Errorf("D-09: created file missing H1; got: %q", written)
 	}
 }
+
+// --- Phase 6.5 D-10 body-tag + frontmatter rewriteback tests ---
+
+// TestService_Update_BodyTagsAddedToFrontmatter verifies that when a note body
+// contains "#newtag" and the frontmatter only has "tags: [oldtag]", the save
+// produces a file whose frontmatter contains both tags (D-10 union).
+func TestService_Update_BodyTagsAddedToFrontmatter(t *testing.T) {
+	now := time.Now()
+	// lastWriteData tracks the LAST write call (the rewrite call if it happens).
+	files := &fakeFileStore{statTime: now}
+	svc := newSvc(t, files)
+
+	content := "---\ntags: [oldtag]\n---\n\n#newtag is cool"
+	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	// Should have called WriteAtomic twice: once for the user content, once
+	// for the frontmatter rewriteback.
+	if files.writeCalls != 2 {
+		t.Errorf("writeCalls: got %d, want 2 (original write + frontmatter rewriteback)", files.writeCalls)
+	}
+	// The last write should contain both tags in the frontmatter.
+	last := string(files.lastWriteData)
+	if !strings.Contains(last, "newtag") {
+		t.Errorf("rewritten file missing newtag; got: %q", last[:min(200, len(last))])
+	}
+	if !strings.Contains(last, "oldtag") {
+		t.Errorf("rewritten file missing oldtag; got: %q", last[:min(200, len(last))])
+	}
+	// Both tags should be in the frontmatter tags array.
+	gotTags := markdown.ExtractTags(files.lastWriteData)
+	wantTags := []string{"newtag", "oldtag"} // sorted alphabetically
+	if len(gotTags) != len(wantTags) {
+		t.Errorf("tags len: got %v (%d), want %v (%d)", gotTags, len(gotTags), wantTags, len(wantTags))
+	} else {
+		for i := range wantTags {
+			if gotTags[i] != wantTags[i] {
+				t.Errorf("tag[%d]: got %q, want %q", i, gotTags[i], wantTags[i])
+			}
+		}
+	}
+}
+
+// TestService_Update_BodyTagsNoChange verifies that when a note body contains
+// "#existing" and the frontmatter already has "tags: [existing]", the save
+// does NOT issue a second WriteAtomic (Pitfall 6 guard).
+func TestService_Update_BodyTagsNoChange(t *testing.T) {
+	now := time.Now()
+	files := &fakeFileStore{statTime: now}
+	svc := newSvc(t, files)
+
+	// Frontmatter already has "existing"; body also has #existing.
+	content := "---\ntags: [existing]\n---\n\nThis note is about #existing concepts."
+	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	// canonical == frontmatterTags (both ["existing"]) → no second write.
+	if files.writeCalls != 1 {
+		t.Errorf("writeCalls: got %d, want 1 (Pitfall 6: no second WriteAtomic when canonical == frontmatter tags)",
+			files.writeCalls)
+	}
+	// File content should be unchanged.
+	if string(files.lastWriteData) != content {
+		t.Errorf("file content was changed unexpectedly:\n  want: %q\n   got: %q",
+			content, string(files.lastWriteData))
+	}
+}
+
+// TestService_Update_BodyTagInsideCodeFenceNotExtracted verifies that #tags
+// inside fenced code blocks are NOT extracted as body tags (D-08).
+func TestService_Update_BodyTagInsideCodeFenceNotExtracted(t *testing.T) {
+	now := time.Now()
+	files := &fakeFileStore{statTime: now}
+	svc := newSvc(t, files)
+
+	// #shouldskip is inside a fenced code block — must NOT become a tag.
+	content := "---\ntags: []\n---\n\n```\n#shouldskip\n```\n"
+	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	// canonical == frontmatterTags (both empty) → no second write.
+	if files.writeCalls != 1 {
+		t.Errorf("writeCalls: got %d, want 1 (no rewrite — fenced code tag must not be extracted)",
+			files.writeCalls)
+	}
+	// Verify no "shouldskip" in the tags.
+	gotTags := markdown.ExtractTags(files.lastWriteData)
+	for _, tag := range gotTags {
+		if tag == "shouldskip" {
+			t.Errorf("shouldskip extracted as a tag from fenced code block")
+		}
+	}
+}
+
+// TestService_Create_ScaffoldEmptyBodyTagsAreNoOp verifies that Create's scaffold
+// produces tags: [] and no body tags → canonical == frontmatterTags == empty
+// → no second WriteAtomic issued (Pitfall 6 guard applies to Create too).
+func TestService_Create_ScaffoldEmptyBodyTagsAreNoOp(t *testing.T) {
+	t.Parallel()
+	svc, root, _ := newRealFSSvc(t)
+
+	summary, err := svc.Create(context.Background(), "", "mytest")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// Read the created file; it should still have tags: [] (no rewrite needed).
+	data, readErr := os.ReadFile(filepath.Join(root, summary.Path))
+	if readErr != nil {
+		t.Fatalf("ReadFile: %v", readErr)
+	}
+	gotTags := markdown.ExtractTags(data)
+	if len(gotTags) != 0 {
+		t.Errorf("scaffold should have empty tags, got %v", gotTags)
+	}
+	// Body tags from scaffold should be nil (no inline tags in the scaffold body).
+	bodyTags := markdown.ExtractBodyTags(data)
+	if len(bodyTags) != 0 {
+		t.Errorf("scaffold body should have no inline tags, got %v", bodyTags)
+	}
+}
