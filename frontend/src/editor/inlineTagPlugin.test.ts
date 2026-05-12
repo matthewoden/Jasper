@@ -251,7 +251,7 @@ describe("inlineTagPlugin", () => {
     });
 
     // Manually trigger the eventHandler
-    const plugin = view.plugin(inlineTagPlugin) as unknown as object | null;
+    const plugin = view.plugin(inlineTagPlugin) as unknown as Record<string, unknown> | null;
     expect(plugin).not.toBeNull();
 
     // Dispatch the click via the view's DOM event handlers
