@@ -58,6 +58,14 @@ export const RAIL_MIN_WIDTH = 220;
 export const RAIL_MAX_WIDTH = 480;
 export const RAIL_COLLAPSED_WIDTH = 32;
 
+// Phase 6.5 — UX-T-01: right-rail two-panel layout persistence keys + constants.
+// See 06.5-UI-SPEC.md §Surface 1-NEW and 06.5-CONTEXT.md §D-02.
+export const LS_KEY_TAGS_PANEL_HEIGHT_RATIO = "jasper.rail.tags.height.ratio";
+export const LS_KEY_TAGS_PANEL_EXPANDED = "jasper.rail.tags.expanded";
+export const TAGS_PANEL_RATIO_DEFAULT = 0.5;
+export const TAGS_PANEL_RATIO_MIN = 0.2;
+export const TAGS_PANEL_RATIO_MAX = 0.8;
+
 // BL-03 (Phase 5.5 gap-closure Plan 11) — editor pane floor. On viewports
 // narrower than `SIDEBAR_WIDTH_DEFAULT + EDITOR_MIN = 580px` the sidebar
 // is permitted to shrink below MIN so the editor pane keeps at least
@@ -158,6 +166,14 @@ export interface TreeStore {
   setBacklinksRailExpanded: (v: boolean) => void;
   backlinksRailWidth: number;
   setBacklinksRailWidth: (w: number) => void;
+
+  // Phase 6.5 ADD-ONLY (UX-T-01). See 06.5-UI-SPEC §Surface 1-NEW state.
+  // tagBrowserExpanded left untouched (the left-sidebar mount is removed
+  // in Plan 04 but the slice is preserved for Phase 4 forward-compat).
+  tagsPanelHeightRatio: number;
+  setTagsPanelHeightRatio: (r: number) => void;
+  rightRailTagsPanelExpanded: boolean;
+  setRightRailTagsPanelExpanded: (v: boolean) => void;
 }
 
 export const useTreeStore = create<TreeStore>((set) => ({
@@ -232,6 +248,18 @@ export const useTreeStore = create<TreeStore>((set) => ({
   // Clamping happens at setter time so the store value is always in [MIN, MAX].
   setBacklinksRailWidth: (w) =>
     set({ backlinksRailWidth: Math.min(RAIL_MAX_WIDTH, Math.max(RAIL_MIN_WIDTH, w)) }),
+
+  // Phase 6.5 slices (ADD-only — no existing slice modified).
+  tagsPanelHeightRatio: TAGS_PANEL_RATIO_DEFAULT,
+  setTagsPanelHeightRatio: (r) =>
+    set({
+      tagsPanelHeightRatio: Math.min(
+        TAGS_PANEL_RATIO_MAX,
+        Math.max(TAGS_PANEL_RATIO_MIN, r),
+      ),
+    }),
+  rightRailTagsPanelExpanded: true,
+  setRightRailTagsPanelExpanded: (v) => set({ rightRailTagsPanelExpanded: v }),
 }));
 
 /**
@@ -376,6 +404,31 @@ if (typeof window !== "undefined") {
     // Corrupted storage — fall through to default; do NOT throw.
   }
 
+  // 4b) Hydrate Phase 6.5 slices from localStorage.
+  try {
+    const raw = window.localStorage.getItem(LS_KEY_TAGS_PANEL_HEIGHT_RATIO);
+    if (raw !== null) {
+      const n = Number.parseFloat(raw);
+      if (
+        Number.isFinite(n) &&
+        n >= TAGS_PANEL_RATIO_MIN &&
+        n <= TAGS_PANEL_RATIO_MAX
+      ) {
+        useTreeStore.setState({ tagsPanelHeightRatio: n });
+      }
+      // Out-of-range or non-finite → silently fall through to TAGS_PANEL_RATIO_DEFAULT.
+    }
+  } catch {
+    /* localStorage unavailable — keep default */
+  }
+  try {
+    const raw = window.localStorage.getItem(LS_KEY_TAGS_PANEL_EXPANDED);
+    if (raw === "false") useTreeStore.setState({ rightRailTagsPanelExpanded: false });
+    // any other value (including missing) keeps the default `true`
+  } catch {
+    /* localStorage unavailable */
+  }
+
   // 4) Debounced persistence — subscribe to slice changes and flush each
   //    persisted slot on its own 250ms timer. The 250ms debounce avoids
   //    storage thrash during rapid expand/collapse (UI-SPEC §State persistence).
@@ -391,6 +444,11 @@ if (typeof window !== "undefined") {
   let lastBacklinksRailExpanded = useTreeStore.getState().backlinksRailExpanded;
   let lastRailWidth = useTreeStore.getState().backlinksRailWidth;
   let railWidthTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Phase 6.5 persistence tracking variables (appended; no existing variable modified).
+  let lastTagsPanelHeightRatio = useTreeStore.getState().tagsPanelHeightRatio;
+  let lastRightRailTagsPanelExpanded = useTreeStore.getState().rightRailTagsPanelExpanded;
+  let tagsPanelHeightRatioTimer: ReturnType<typeof setTimeout> | undefined;
 
   useTreeStore.subscribe((state) => {
     const j = JSON.stringify([...state.expanded]);
@@ -466,5 +524,34 @@ if (typeof window !== "undefined") {
       }, 250);
     }
     // activeTagFilter is intentionally NOT persisted (transient slot).
+
+    // Phase 6.5 persistence subscribers (ADD-only; no existing branch modified).
+    // tagsPanelHeightRatio is debounced (mirrors backlinksRailWidth).
+    // rightRailTagsPanelExpanded is immediate (mirrors tagBrowserExpanded).
+    if (state.tagsPanelHeightRatio !== lastTagsPanelHeightRatio) {
+      lastTagsPanelHeightRatio = state.tagsPanelHeightRatio;
+      if (tagsPanelHeightRatioTimer !== undefined) clearTimeout(tagsPanelHeightRatioTimer);
+      tagsPanelHeightRatioTimer = setTimeout(() => {
+        try {
+          window.localStorage.setItem(
+            LS_KEY_TAGS_PANEL_HEIGHT_RATIO,
+            String(state.tagsPanelHeightRatio),
+          );
+        } catch {
+          // Quota / private mode — best-effort.
+        }
+      }, 250);
+    }
+    if (state.rightRailTagsPanelExpanded !== lastRightRailTagsPanelExpanded) {
+      lastRightRailTagsPanelExpanded = state.rightRailTagsPanelExpanded;
+      try {
+        window.localStorage.setItem(
+          LS_KEY_TAGS_PANEL_EXPANDED,
+          String(state.rightRailTagsPanelExpanded),
+        );
+      } catch {
+        // Quota / private mode — best-effort.
+      }
+    }
   });
 }
