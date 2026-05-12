@@ -1,21 +1,30 @@
 /**
- * Phase 6 — Plan 06-07 (D-46): RightRail — right-side layout shell.
+ * Phase 6.5 — Plan 06.5-04: RightRail — restructured two-panel layout shell.
  *
- * Owns:
- *   - The collapsed (32px strip) / expanded toggle affordance.
- *   - The resize handle positioned at the left edge of the expanded rail.
- *   - Grid column width management via useTreeStore (backlinksRailWidth,
- *     backlinksRailExpanded).
- *   - Its `children` prop renders <BacklinksRail> in Phase 6 and can render
- *     future panels (e.g. <OutlineTOC>) without structural rework.
+ * Phase 6 D-46 anticipated multi-panel slots; Phase 6.5 exercises that capability.
  *
- * Resize handle pattern mirrors SidebarResizeHandle.tsx with inverted drag
- * direction: drag LEFT to expand → width = window.innerWidth − e.clientX.
- * See 06-PATTERNS.md §RightRail.tsx and 06-UI-SPEC.md §Surface 2.
+ * Structure (UI-SPEC §Surface 1-NEW):
+ *   <aside bg=--color-bg>           ← floating-panel container
+ *     <ResizeHandle left-edge />    ← existing left-edge width resize
+ *     <div flex-column>             ← tags panel (ratio-driven height)
+ *       <RightRailTagsPanel />
+ *     </div>
+ *     <InterPanelDivider railRef /> ← horizontal drag handle (Plan 02)
+ *     <div flex-1>                  ← backlinks panel (remaining height)
+ *       <BacklinksRail noteId />
+ *     </div>
+ *   </aside>
  *
- * Aria contract (06-UI-SPEC.md §Accessibility Contract):
+ * The rail background is `var(--color-bg)` (not `--color-surface`) so the
+ * 8px inset padding exposes background color between the two panel cards,
+ * creating the "floating cards" aesthetic per D-03.
+ *
+ * Aria contract (updated from Phase 6):
  *   - Collapsed toggle: aria-label="Show backlinks panel" aria-expanded={false}
- *   - Resize handle: role="separator" aria-orientation="vertical" aria-label="Resize backlinks panel"
+ *   - Vertical resize handle: role="separator" aria-orientation="vertical"
+ *     aria-label="Resize backlinks panel"
+ *   - InterPanelDivider: role="separator" aria-orientation="horizontal"
+ *     aria-label="Resize panels" (provided by InterPanelDivider itself)
  */
 import { useCallback, useRef } from "react";
 import type React from "react";
@@ -27,17 +36,24 @@ import {
   RAIL_MIN_WIDTH,
   RAIL_COLLAPSED_WIDTH,
 } from "../lib/useTreeStore";
+import { RightRailTagsPanel } from "./RightRailTagsPanel";
+import { InterPanelDivider } from "./InterPanelDivider";
+import { BacklinksRail } from "./BacklinksRail";
 
 interface Props {
-  children?: React.ReactNode;
+  /** UUID of the currently open note. Null when no note is open. */
+  activeNoteId: string | null;
 }
 
-export function RightRail({ children }: Props) {
+export function RightRail({ activeNoteId }: Props) {
   const expanded = useTreeStore((s) => s.backlinksRailExpanded);
   const width = useTreeStore((s) => s.backlinksRailWidth);
   const setExpanded = useTreeStore((s) => s.setBacklinksRailExpanded);
   const setWidth = useTreeStore((s) => s.setBacklinksRailWidth);
+  const heightRatio = useTreeStore((s) => s.tagsPanelHeightRatio);
   const draggingRef = useRef(false);
+  // railRef passed to InterPanelDivider for getBoundingClientRect ratio computation
+  const railRef = useRef<HTMLElement>(null);
 
   const onPointerMove = useCallback(
     (e: PointerEvent) => {
@@ -112,18 +128,24 @@ export function RightRail({ children }: Props) {
 
   return (
     <aside
+      ref={railRef as React.RefObject<HTMLDivElement>}
       style={{
         width,
         height: "100%",
-        background: "var(--color-surface)",
+        // UI-SPEC §Rail Container: --color-bg exposes the gap between panel cards
+        // for the "floating panel" aesthetic (D-03). Changed from Phase 6 --color-surface.
+        background: "var(--color-bg)",
         borderLeft: "1px solid var(--color-border)",
         position: "relative",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
+        padding: 8,
+        boxSizing: "border-box",
+        gap: 0,
       }}
     >
-      {/* Resize handle — left edge, 4px hit area, cursor: col-resize */}
+      {/* Vertical resize handle — left edge, 4px hit area, cursor: col-resize */}
       <div
         role="separator"
         aria-orientation="vertical"
@@ -140,7 +162,32 @@ export function RightRail({ children }: Props) {
           zIndex: 1,
         }}
       />
-      {children}
+
+      {/* Tags panel — height determined by tagsPanelHeightRatio */}
+      {/* The -10px accounts for the divider footprint (4px visible + 4px padding each side = ~12px) */}
+      <div
+        style={{
+          flex: `0 0 calc(${heightRatio * 100}% - 10px)`,
+          minHeight: 0,
+          overflow: "hidden",
+        }}
+      >
+        <RightRailTagsPanel />
+      </div>
+
+      {/* Inter-panel divider — horizontal drag handle from Plan 02 */}
+      <InterPanelDivider railRef={railRef as React.RefObject<HTMLElement>} />
+
+      {/* Backlinks panel — remaining height after tags panel + divider */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
+        }}
+      >
+        <BacklinksRail noteId={activeNoteId} />
+      </div>
     </aside>
   );
 }
