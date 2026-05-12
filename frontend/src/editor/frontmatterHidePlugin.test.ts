@@ -14,6 +14,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import {
   frontmatterHidePlugin,
+  frontmatterHideExtension,
   toggleFrontmatterVisibility,
   frontmatterToggleKeymap,
 } from "./frontmatterHidePlugin";
@@ -31,24 +32,7 @@ function makeView(doc: string): EditorView {
       doc,
       extensions: [
         yamlFrontmatter({ content: markdown() }),
-        frontmatterHidePlugin,
-      ],
-    }),
-  });
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function _makeViewWithKeymap(doc: string): EditorView {
-  const parent = document.createElement("div");
-  document.body.append(parent);
-  return new EditorView({
-    parent,
-    state: EditorState.create({
-      doc,
-      extensions: [
-        yamlFrontmatter({ content: markdown() }),
-        frontmatterHidePlugin,
-        frontmatterToggleKeymap,
+        frontmatterHideExtension,
       ],
     }),
   });
@@ -332,7 +316,7 @@ describe("frontmatterHidePlugin — keymap", () => {
         doc: DOC_WITH_TWO_TAGS,
         extensions: [
           yamlFrontmatter({ content: markdown() }),
-          frontmatterHidePlugin,
+          frontmatterHideExtension,
           keymapExt,
         ],
       }),
@@ -355,7 +339,7 @@ describe("frontmatterHidePlugin — keymap", () => {
         doc: DOC_WITH_TWO_TAGS,
         extensions: [
           yamlFrontmatter({ content: markdown() }),
-          frontmatterHidePlugin,
+          frontmatterHideExtension,
           frontmatterToggleKeymap,
         ],
       }),
@@ -383,7 +367,7 @@ describe("frontmatterHidePlugin — note-switch reset", () => {
       parent: parent1,
       state: EditorState.create({
         doc: DOC_WITH_TWO_TAGS,
-        extensions: [yamlFrontmatter({ content: markdown() }), frontmatterHidePlugin],
+        extensions: [yamlFrontmatter({ content: markdown() }), frontmatterHideExtension],
       }),
     });
 
@@ -400,7 +384,7 @@ describe("frontmatterHidePlugin — note-switch reset", () => {
       parent: parent2,
       state: EditorState.create({
         doc: DOC_WITH_TWO_TAGS,
-        extensions: [yamlFrontmatter({ content: markdown() }), frontmatterHidePlugin],
+        extensions: [yamlFrontmatter({ content: markdown() }), frontmatterHideExtension],
       }),
     });
 
@@ -419,7 +403,7 @@ describe("frontmatterHidePlugin — IME composition gate", () => {
       parent,
       state: EditorState.create({
         doc: DOC_WITH_TWO_TAGS,
-        extensions: [yamlFrontmatter({ content: markdown() }), frontmatterHidePlugin],
+        extensions: [yamlFrontmatter({ content: markdown() }), frontmatterHideExtension],
       }),
     });
 
