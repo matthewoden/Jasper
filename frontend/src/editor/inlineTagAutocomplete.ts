@@ -127,10 +127,11 @@ export async function inlineTagCompletionSource(
   // UAT follow-up 2026-05-12: custom `type: "tag"` styled as a blue `#` icon
   // in theme.css. No `displayLabel` — second UAT pass flagged a double-hashtag
   // (icon column + label prefix); the icon column alone reads as the
-  // indicator.
+  // indicator. `detail` is the bare count — theme.css styles the
+  // completion-detail span on tag rows as a pill badge.
   const options: Completion[] = matches.map((t) => ({
     label: t.name,
-    detail: `(${t.count})`,
+    detail: String(t.count),
     type: "tag",
     apply: t.name,
   }));

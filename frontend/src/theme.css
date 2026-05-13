@@ -226,6 +226,33 @@ body {
   font-weight: 600;
 }
 
+/* UAT follow-up 2026-05-12 (third pass) — tag autocomplete count badge.
+   Mirrors the right-rail tag panel pill treatment for visual consistency.
+   Scoped via :has() so wikilink completions (which use `detail` for folder
+   path text) keep their plain inline-text rendering. The right-pinned
+   placement (margin-left: auto) is fine even when the row is `display: flex`
+   (CM's default) because the label takes its natural width and the badge
+   absorbs the remaining track.
+
+   Browser support: :has() ships in all modern browsers as of late 2023; the
+   project does not target IE/legacy. */
+.cm-tooltip.cm-tooltip-autocomplete li:has(.cm-completionIcon-tag) .cm-completionDetail {
+  margin-left: auto;
+  padding: 0 6px;
+  height: 16px;
+  min-width: 16px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-fg) 10%, transparent);
+  color: var(--color-muted) !important;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 /* Inline #tag decoration emitted by inlineTagPlugin. */
 .cm-inline-tag {
   color: var(--color-accent);

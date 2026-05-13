@@ -168,11 +168,12 @@ export async function tagCompletionSource(
 
   // UAT follow-up 2026-05-12: custom `type: "tag"` so theme.css styles the
   // completion icon column as a blue `#` instead of the keyword key glyph.
-  // No `displayLabel` `#` prefix — that produced a double-hashtag (icon + label)
-  // per the second UAT pass; the icon column alone is the visual indicator.
+  // `detail` carries the bare count (no parens) — theme.css styles the
+  // completion-detail span on tag rows specifically as a pill badge,
+  // matching the right-rail tag panel treatment.
   const options: Completion[] = matches.map((t) => ({
     label: t.name,
-    detail: `(${t.count})`, // UI-SPEC Surface 4: count badge
+    detail: String(t.count),
     type: "tag",
     // apply is the tag name string — CM6 replaces the trigger range with this.
     apply: t.name,
