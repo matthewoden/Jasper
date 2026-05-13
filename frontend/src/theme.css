@@ -215,15 +215,11 @@ body {
 /* UAT follow-up 2026-05-12 — tag autocomplete icon.
    CodeMirror renders `.cm-completionIcon` with `::after` content driven by
    `type`. The default `keyword` icon shows a small `K` glyph (often read as a
-   "key" icon by users). Our tag completions now use `type: "tag"`, and this
-   rule replaces the icon glyph with a `#` in accent color so tag rows read
-   unambiguously as tags. The `displayLabel` field carries a leading `#` too
-   (see tagAutocomplete.ts / inlineTagAutocomplete.ts) for redundancy when the
-   icon column is hidden by CM themes.
-
-   Specificity match: CM applies `cm-completionIcon` plus `cm-completionIcon-<type>`
-   on the same element, and renders its default glyph via `::after { content }`.
-   We override that ::after content so the icon column displays `#` instead. */
+   "key" icon by users). Our tag completions use `type: "tag"`, and this rule
+   replaces the icon glyph with a `#` in accent color so tag rows read
+   unambiguously as tags. The label itself stays bare (just the tag name) so
+   the row reads as `#  tagname  (count)` — second UAT pass flagged a
+   double-hashtag when the label also carried a `#` prefix. */
 .cm-tooltip.cm-tooltip-autocomplete .cm-completionIcon-tag::after {
   content: "#";
   color: var(--color-accent);

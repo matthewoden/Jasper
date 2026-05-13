@@ -167,12 +167,11 @@ export async function tagCompletionSource(
   if (matches.length === 0) return null;
 
   // UAT follow-up 2026-05-12: custom `type: "tag"` so theme.css styles the
-  // completion icon as a `#` instead of the keyword key glyph. `displayLabel`
-  // adds the visible `#` prefix without affecting filtering (which uses
-  // `label`) or insertion (which uses `apply`).
+  // completion icon column as a blue `#` instead of the keyword key glyph.
+  // No `displayLabel` `#` prefix — that produced a double-hashtag (icon + label)
+  // per the second UAT pass; the icon column alone is the visual indicator.
   const options: Completion[] = matches.map((t) => ({
     label: t.name,
-    displayLabel: `#${t.name}`,
     detail: `(${t.count})`, // UI-SPEC Surface 4: count badge
     type: "tag",
     // apply is the tag name string — CM6 replaces the trigger range with this.

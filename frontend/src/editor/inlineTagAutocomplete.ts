@@ -124,13 +124,12 @@ export async function inlineTagCompletionSource(
   // D-14: no Create row — if no matches, return null to close the popup.
   if (matches.length === 0) return null;
 
-  // UAT follow-up 2026-05-12: custom `type: "tag"` styled as `#` icon in
-  // theme.css. `displayLabel` adds the visible `#` prefix without affecting
-  // filtering (label) or insertion (apply — note the `#` is already in the
-  // editor at `match.from`, so apply replaces only the part after).
+  // UAT follow-up 2026-05-12: custom `type: "tag"` styled as a blue `#` icon
+  // in theme.css. No `displayLabel` — second UAT pass flagged a double-hashtag
+  // (icon column + label prefix); the icon column alone reads as the
+  // indicator.
   const options: Completion[] = matches.map((t) => ({
     label: t.name,
-    displayLabel: `#${t.name}`,
     detail: `(${t.count})`,
     type: "tag",
     apply: t.name,
