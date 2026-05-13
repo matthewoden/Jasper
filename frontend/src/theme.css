@@ -237,7 +237,11 @@ body {
    Browser support: :has() ships in all modern browsers as of late 2023; the
    project does not target IE/legacy. */
 .cm-tooltip.cm-tooltip-autocomplete li:has(.cm-completionIcon-tag) .cm-completionDetail {
-  margin-left: auto;
+  /* `margin-left: auto` would only push the badge right inside a flex row,
+     and CM6 renders the autocomplete <li> as a block with inline children.
+     A fixed 12px gap keeps the badge legibly separated from the label
+     regardless of label length (UAT 2026-05-12 third-pass nit). */
+  margin-left: 12px;
   padding: 0 6px;
   height: 16px;
   min-width: 16px;
