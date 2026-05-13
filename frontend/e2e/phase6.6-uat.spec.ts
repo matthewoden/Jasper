@@ -171,7 +171,11 @@ async function ensureRailExpanded(page: Page): Promise<void> {
 
 /**
  * Ensure the Tags panel is expanded and visible.
- * Also ensures panelSelector.tags = true (reset via TopBar dropdown if needed).
+ *
+ * UAT 2026-05-12: panel dropdown is now an action menu — clicking an item
+ * unconditionally opens its panel. The previous aria-checked-driven "toggle
+ * to true" logic is replaced with a plain click; we then verify the header
+ * is present, and expand if collapsed-within-card.
  */
 async function ensureTagsPanelVisible(page: Page): Promise<void> {
   await ensureRailExpanded(page);
@@ -179,18 +183,17 @@ async function ensureTagsPanelVisible(page: Page): Promise<void> {
   // Check if tags panel expand button is visible (look for header expand toggle)
   const tagsPanelHeader = page.locator(TAGS_PANEL_EXPAND_BTN);
   if ((await tagsPanelHeader.count()) === 0) {
-    // Tags panel hidden via panelSelector — re-enable it
+    // Tags panel hidden via panelSelector — re-enable it through the dropdown.
     const panelSelectorTrigger = page.getByRole("button", {
-      name: "Select panels",
+      name: "Open panel",
     });
     await expect(panelSelectorTrigger).toBeVisible({ timeout: 5_000 });
     await panelSelectorTrigger.click();
-    // Wait for dropdown content
     await page.waitForTimeout(300);
     const tagsItem = page.getByTestId("panel-selector-tags");
     if ((await tagsItem.count()) > 0) {
       await tagsItem.click();
-      await page.keyboard.press("Escape");
+      // No need to press Escape — Radix closes the menu on item select.
     }
   }
 
@@ -232,7 +235,7 @@ test("S1 @UX-CHROME-01: TopBar renders; sidebar toggle hides/shows notes sidebar
   await expect(sidebarToggle).toBeVisible({ timeout: 5_000 });
 
   // TopBar has PanelSelectorDropdown trigger
-  const panelTrigger = page.getByRole("button", { name: "Select panels" });
+  const panelTrigger = page.getByRole("button", { name: "Open panel" });
   await expect(panelTrigger).toBeVisible({ timeout: 5_000 });
 
   // TopBar has right-rail toggle
@@ -272,56 +275,51 @@ test("S1 @UX-CHROME-01: TopBar renders; sidebar toggle hides/shows notes sidebar
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S2 — @panel-selector: Open dropdown; uncheck Tags → panel hides; re-check → returns
+// S2 — @panel-selector: dropdown is an action menu — clicking an item opens
+//                       its panel; closing happens via the per-panel × button;
+//                       rail auto-collapses when no panel remains.
+//                       UAT 2026-05-12 contract change (was checkbox toggle).
 // ─────────────────────────────────────────────────────────────────────────────
 
-test("S2 @panel-selector: panel dropdown toggles Tags and Backlinks independently", async ({ page }) => {
+test("S2 @panel-selector: dropdown opens panels; × closes panels; rail auto-collapses", async ({ page }) => {
   await openApp(page, false);
   await ensureRailExpanded(page);
-
-  // First ensure Tags panel is visible
   await ensureTagsPanelVisible(page);
 
-  // Tags panel expand button should be visible
-  const tagsHeader = page.locator(TAGS_PANEL_EXPAND_BTN);
-  await expect(tagsHeader).toBeVisible({ timeout: 5_000 });
+  // Close Tags panel via its × button.
+  const closeTagsBtn = page.getByRole("button", { name: "Close Tags panel" });
+  await expect(closeTagsBtn).toBeVisible({ timeout: 5_000 });
+  await closeTagsBtn.click();
+  await expect(page.locator(TAGS_PANEL_EXPAND_BTN)).toHaveCount(0, {
+    timeout: 3_000,
+  });
 
-  // Open the PanelSelectorDropdown
-  const panelTrigger = page.getByRole("button", { name: "Select panels" });
+  // Open Tags panel back via the dropdown (action menu — single click opens).
+  const panelTrigger = page.getByRole("button", { name: "Open panel" });
   await panelTrigger.click();
   await page.waitForTimeout(300);
-
-  // Find the Tags checkbox item — when checked, clicking unchecks it
   const tagsItem = page.getByTestId("panel-selector-tags");
   await expect(tagsItem).toBeVisible({ timeout: 3_000 });
-
-  // Uncheck Tags
+  // No aria-checked attribute — pure menuitem (UAT 2026-05-12).
+  expect(await tagsItem.getAttribute("aria-checked")).toBeNull();
   await tagsItem.click();
-  await page.waitForTimeout(300);
+  // Radix closes the menu on item select; panel reappears.
+  await expect(page.locator(TAGS_PANEL_EXPAND_BTN)).toBeVisible({
+    timeout: 5_000,
+  });
 
-  // Close dropdown
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(300);
-
-  // Tags panel expand button should now be gone (panelSelector.tags = false)
+  // Now close BOTH panels via × buttons → rail must auto-collapse.
+  const closeBacklinksBtn = page.getByRole("button", {
+    name: "Close Backlinks panel",
+  });
+  if ((await closeBacklinksBtn.count()) > 0) {
+    await closeBacklinksBtn.click();
+  }
+  await page.getByRole("button", { name: "Close Tags panel" }).click();
+  // Rail expanded toggle button flips back to "Show panels" — TopBar's right
+  // chevron — when rail collapses.
   await expect(
-    page.locator(TAGS_PANEL_EXPAND_BTN),
-  ).toHaveCount(0, { timeout: 3_000 });
-
-  // Re-open dropdown and re-check Tags
-  await panelTrigger.click();
-  await page.waitForTimeout(300);
-
-  const tagsItemAgain = page.getByTestId("panel-selector-tags");
-  await expect(tagsItemAgain).toBeVisible({ timeout: 3_000 });
-  await tagsItemAgain.click();
-  await page.waitForTimeout(300);
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(300);
-
-  // Tags panel expand button returns
-  await expect(
-    page.locator(TAGS_PANEL_EXPAND_BTN),
+    page.getByRole("button", { name: "Show panels" }),
   ).toBeVisible({ timeout: 5_000 });
 });
 
@@ -473,27 +471,24 @@ test("S6 @UX-CHROME-04: inter-panel divider has row-resize cursor; no visible ba
     await page.waitForTimeout(400);
   }
 
-  // Ensure both panel selector items are checked (both default to true on fresh LS)
-  // The divider only renders when panelSelector.tags && panelSelector.backlinks
-  // If either was persisted as false from a prior run, re-enable them via the dropdown
-  const panelTrigger = page.getByRole("button", { name: "Select panels" });
+  // UAT 2026-05-12: dropdown is now an action menu (no aria-checked). Always
+  // click both items — clicking opens that panel idempotently (the store
+  // setter sets to true; re-setting true is a no-op). The divider only renders
+  // when panelSelector.tags && panelSelector.backlinks.
+  const panelTrigger = page.getByRole("button", { name: "Open panel" });
   if ((await panelTrigger.count()) > 0) {
+    // Open Tags
     await panelTrigger.click();
-    await page.waitForTimeout(300);
-    // Check both items and ensure they are checked
+    await page.waitForTimeout(200);
     const tagsItem = page.getByTestId("panel-selector-tags");
+    if ((await tagsItem.count()) > 0) await tagsItem.click();
+    await page.waitForTimeout(200);
+    // Open Backlinks (dropdown closed on previous select; re-open).
+    await panelTrigger.click();
+    await page.waitForTimeout(200);
     const backlinksItem = page.getByTestId("panel-selector-backlinks");
-    if ((await tagsItem.count()) > 0) {
-      // Click to toggle if currently unchecked — Radix CheckboxItem aria-checked
-      const tagsChecked = await tagsItem.getAttribute("aria-checked");
-      if (tagsChecked === "false") await tagsItem.click();
-    }
-    if ((await backlinksItem.count()) > 0) {
-      const backlinksChecked = await backlinksItem.getAttribute("aria-checked");
-      if (backlinksChecked === "false") await backlinksItem.click();
-    }
-    await page.keyboard.press("Escape");
-    await page.waitForTimeout(300);
+    if ((await backlinksItem.count()) > 0) await backlinksItem.click();
+    await page.waitForTimeout(200);
   }
 
   // Ensure the inter-panel divider is rendered (visible only when both panels shown).
@@ -626,7 +621,7 @@ test("S7 @UX-CHROME-05: open note with frontmatter → no affordance widget visi
 // S8 — @UX-CHROME-06: Tag rows show "#tagname (count)" format; no Key icon
 // ─────────────────────────────────────────────────────────────────────────────
 
-test("S8 @UX-CHROME-06: tag rows render '#tagname (count)' format; no Key icon in panel header", async ({ page }) => {
+test("S8 @UX-CHROME-06: tag rows render '#tagname' + badge count; no Key icon in panel header", async ({ page }) => {
   // Create a note with a known tag
   await apiCreateNote(
     page,
@@ -652,8 +647,11 @@ test("S8 @UX-CHROME-06: tag rows render '#tagname (count)' format; no Key icon i
   const tagRowText = await tagRow.textContent();
   expect(tagRowText).toContain("#tagformat");
 
-  // Tag row should also contain a count in parentheses
-  expect(tagRowText).toMatch(/\(\d+\)/);
+  // UAT 2026-05-12: count rendered as a pill badge with aria-label, NOT
+  // inline "(N)" text. Look for the badge element on the row.
+  expect(tagRowText).not.toMatch(/\(\d+\)/);
+  const badge = tagRow.locator('[aria-label$="notes"]');
+  await expect(badge).toBeVisible({ timeout: 3_000 });
 
   // The "#tagformat" span should have accent color (check computed color is not default fg)
   const hashSpan = tagRow.locator("span").first();
@@ -812,11 +810,12 @@ test("S10 @breadcrumbs: note in nested folder shows breadcrumb path; folder segm
     const breadcrumbsNav = page.getByRole("navigation", { name: "Note path" });
     await expect(breadcrumbsNav).toBeVisible({ timeout: 5_000 });
 
-    // Should contain "notes" root segment
+    // UAT 2026-05-12: the leading "notes" root segment was removed (the vault
+    // is the implicit app root, not a real section). The folder + title remain.
     const breadcrumbText = await breadcrumbsNav.textContent();
-    expect(breadcrumbText).toContain("notes");
+    expect(breadcrumbText).not.toMatch(/^notes/);
 
-    // Should contain the note title
+    expect(breadcrumbText).toContain("breadcrumb-folder");
     expect(breadcrumbText).toContain("NestedNote");
 
     // Folder segment should be a button (clickable)
@@ -826,8 +825,13 @@ test("S10 @breadcrumbs: note in nested folder shows breadcrumb path; folder segm
     await expect(folderBtn).toBeVisible({ timeout: 3_000 });
 
     // Click folder button — sidebar should remain visible (expand+scroll behavior)
+    // and the matching tree row pulses briefly (jasper-pulse-target class).
     await folderBtn.click();
-    await page.waitForTimeout(300);
+    // Pulse should attach within a frame and clear ~900ms later.
+    const pulsedRow = page.locator(
+      `[data-tree-row="breadcrumb-folder"].jasper-pulse-target`,
+    );
+    await expect(pulsedRow).toBeVisible({ timeout: 1_000 });
 
     // Sidebar should still be visible after folder navigation click
     const sidebarNav = page.getByRole("navigation", {
