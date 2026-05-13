@@ -113,7 +113,6 @@ export function RightRail({ activeNoteId, style }: Props) {
         // UI-SPEC §Rail Container: --color-bg exposes the gap between panel cards
         // for the "floating panel" aesthetic (D-03). Changed from Phase 6 --color-surface.
         background: "var(--color-bg)",
-        borderLeft: "1px solid var(--color-border)",
         position: "relative",
         display: "flex",
         flexDirection: "column",

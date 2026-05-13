@@ -1,12 +1,14 @@
 /**
- * Breadcrumbs tests — Phase 06.6-07.
+ * Breadcrumbs tests — Phase 06.6-07. UAT-updated 2026-05-12: the leading
+ * "notes" root segment was dropped, so the segment-count + separator-count
+ * expectations decrement by one.
  *
  * Covers:
  *   T1: no active note → renders nothing
- *   T2: root-level note → renders "notes / note-title"
- *   T3: nested note → renders "notes / folder / subfolder / note-title"
+ *   T2: root-level note → renders just "note-title" (no separators, no buttons)
+ *   T3: nested note → renders "folder / subfolder / note-title"
  *   T4: folder segments are <button> with aria-label
- *   T5: clicking folder segment calls expandAndScrollToFolder
+ *   T5: clicking folder segment calls expandAndScrollToFolder + sets pulseTarget
  *   T6: final note-title segment is <span>, not <button>
  *   T7: live title from liveLabels overrides static title
  *   T8: nav has aria-label="Note path"
@@ -69,6 +71,7 @@ beforeEach(() => {
   useTreeStore.setState({
     activeNoteId: null,
     liveLabels: {},
+    pulseTarget: null,
   });
   mockExpandAndScrollToFolder.mockReset();
   mockUseFileTree.mockReturnValue({
@@ -87,26 +90,20 @@ describe("Breadcrumbs", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("T2: root-level note renders 'notes / note-title' with no folder buttons between", () => {
+  it("T2: root-level note renders just the title — no separators, no folder buttons", () => {
     useTreeStore.setState({ activeNoteId: "note-root-uuid", liveLabels: {} });
     render(<Breadcrumbs />);
-    // "notes" root segment
-    expect(screen.getByText("notes")).toBeInTheDocument();
-    // separator
-    expect(screen.getAllByText("/").length).toBeGreaterThanOrEqual(1);
-    // final title segment
+    // UAT 2026-05-12: "notes" root segment removed; root note is title-only.
+    expect(screen.queryByText("notes")).toBeNull();
+    expect(screen.queryAllByText("/").length).toBe(0);
     expect(screen.getByText("My Note")).toBeInTheDocument();
-    // No folder buttons between root and note
-    const buttons = screen.queryAllByRole("button");
-    // buttons should NOT include a folder segment between notes and the note title
-    // (for a root-level note, there are no folder segments at all)
-    expect(buttons.length).toBe(0);
+    expect(screen.queryAllByRole("button").length).toBe(0);
   });
 
-  it("T3: nested note renders 'notes / projects / jasper / Deep Note'", () => {
+  it("T3: nested note renders 'projects / jasper / Deep Note' (no 'notes' prefix)", () => {
     useTreeStore.setState({ activeNoteId: "note-deep-uuid", liveLabels: {} });
     render(<Breadcrumbs />);
-    expect(screen.getByText("notes")).toBeInTheDocument();
+    expect(screen.queryByText("notes")).toBeNull();
     expect(screen.getByRole("button", { name: "Navigate to folder: projects" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Navigate to folder: jasper" })).toBeInTheDocument();
     expect(screen.getByText("Deep Note")).toBeInTheDocument();
@@ -125,7 +122,7 @@ describe("Breadcrumbs", () => {
     expect(jasperBtn).toBeInTheDocument();
   });
 
-  it("T5: clicking a folder segment calls expandAndScrollToFolder with the folder path", () => {
+  it("T5: clicking a folder segment calls expandAndScrollToFolder AND sets pulseTarget", () => {
     useTreeStore.setState({ activeNoteId: "note-deep-uuid", liveLabels: {} });
     render(<Breadcrumbs />);
     const projectsBtn = screen.getByRole("button", {
@@ -133,12 +130,21 @@ describe("Breadcrumbs", () => {
     });
     fireEvent.click(projectsBtn);
     expect(mockExpandAndScrollToFolder).toHaveBeenCalledWith("projects");
+    // UAT 2026-05-12: click also pulses the tree row briefly.
+    expect(useTreeStore.getState().pulseTarget).toEqual({
+      kind: "folder",
+      target: "projects",
+    });
 
     const jasperBtn = screen.getByRole("button", {
       name: "Navigate to folder: jasper",
     });
     fireEvent.click(jasperBtn);
     expect(mockExpandAndScrollToFolder).toHaveBeenCalledWith("projects/jasper");
+    expect(useTreeStore.getState().pulseTarget).toEqual({
+      kind: "folder",
+      target: "projects/jasper",
+    });
   });
 
   it("T6: final segment is a <span>, not a <button>", () => {
@@ -170,8 +176,8 @@ describe("Breadcrumbs", () => {
   it("T9: segments are separated by '/' separators", () => {
     useTreeStore.setState({ activeNoteId: "note-deep-uuid", liveLabels: {} });
     render(<Breadcrumbs />);
-    // For "notes / projects / jasper / Deep Note" there should be 3 separators
+    // UAT 2026-05-12: "projects / jasper / Deep Note" → 2 separators (was 3).
     const separators = screen.getAllByText("/");
-    expect(separators.length).toBe(3);
+    expect(separators.length).toBe(2);
   });
 });

@@ -98,6 +98,42 @@ export function handleAppF2KeyDown(e: KeyboardEvent): void {
   state.startRename(sr.kind, sr.target);
 }
 
+/**
+ * UAT follow-up 2026-05-12 — global panel-toggle shortcuts.
+ *
+ * Cmd+Alt+T (Mac) / Ctrl+Alt+T (Win/Linux) — toggle Tags panel.
+ * Cmd+Alt+B (Mac) / Ctrl+Alt+B (Win/Linux) — toggle Backlinks panel.
+ *
+ * Modifier choice — Cmd+Alt prefix avoids the heavily-used Cmd-only namespace
+ * (Cmd+T new tab, Cmd+W close tab, Cmd+Shift+T restore tab, Cmd+S save,
+ * Cmd+F find, Cmd+K command palette) so this never collides with anything
+ * the user already has muscle memory for. Letters: T(ags), B(acklinks) —
+ * trivially memorable.
+ *
+ * Behavior: toggles the panelSelector slice. If opening a panel while the
+ * rail is collapsed, also expands the rail. If closing the last visible
+ * panel, the rail auto-collapses via RightRail's useEffect.
+ *
+ * Exported for unit tests, mirroring handleAppF2KeyDown.
+ */
+export function handleAppPanelShortcuts(e: KeyboardEvent): void {
+  if (!e.altKey || !(e.metaKey || e.ctrlKey)) return;
+  const k = e.key.toLowerCase();
+  if (k !== "t" && k !== "b") return;
+  e.preventDefault();
+  e.stopPropagation();
+  const s = useTreeStore.getState();
+  if (k === "t") {
+    const next = !s.panelSelector.tags;
+    s.setPanelSelector({ tags: next });
+    if (next && !s.backlinksRailExpanded) s.setBacklinksRailExpanded(true);
+  } else {
+    const next = !s.panelSelector.backlinks;
+    s.setPanelSelector({ backlinks: next });
+    if (next && !s.backlinksRailExpanded) s.setBacklinksRailExpanded(true);
+  }
+}
+
 export default function App() {
   return (
     <ToastProvider>
@@ -187,8 +223,10 @@ function AppInner() {
   // useTreeStore.getState() at fire time — no stale-closure risk.
   useEffect(() => {
     document.addEventListener("keydown", handleAppF2KeyDown);
+    document.addEventListener("keydown", handleAppPanelShortcuts);
     return () => {
       document.removeEventListener("keydown", handleAppF2KeyDown);
+      document.removeEventListener("keydown", handleAppPanelShortcuts);
     };
   }, []);
 

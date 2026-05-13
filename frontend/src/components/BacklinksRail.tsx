@@ -25,7 +25,7 @@
  *   - Hide button: aria-label="Hide backlinks panel" aria-expanded={true}
  *   - Outer panel: aria-label updated per UI-SPEC §Surface 3-NEW
  */
-import { ChevronRight, X } from "lucide-react";
+import { X } from "lucide-react";
 
 import { sanitizeHtml } from "../lib/sanitize";
 import { useBacklinks } from "../lib/useBacklinks";
@@ -37,9 +37,10 @@ interface Props {
 }
 
 export function BacklinksRail({ noteId }: Props) {
-  const setExpanded = useTreeStore((s) => s.setBacklinksRailExpanded);
   const setActiveNoteId = useTreeStore((s) => s.setActiveNote);
-  // Phase 6.6 — Plan 06.6-11 (D-04): × close button hides panel via panelSelector.
+  // UAT 2026-05-12 (Phase 6.6 follow-up): × close button hides panel via panelSelector.
+  // The rail-level collapse button was removed — the rail auto-collapses when all panels
+  // are deselected (handled by RightRail's useEffect).
   const setPanelSelector = useTreeStore((s) => s.setPanelSelector);
   const { backlinks, loading, error } = useBacklinks(noteId);
 
@@ -87,50 +88,29 @@ export function BacklinksRail({ noteId }: Props) {
             {/* D-34: show count for symmetry with Tags panel */}
             Linked from {backlinksCount > 0 ? `(${backlinksCount})` : ""}
           </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            {/* Phase 6.6 (D-04): × close button — removes panel from rail via panelSelector */}
-            <button
-              type="button"
-              aria-label="Close Backlinks panel"
-              title="Close Backlinks panel"
-              onClick={() => setPanelSelector({ backlinks: false })}
-              style={{
-                width: 24,
-                height: 24,
-                background: "transparent",
-                border: 0,
-                color: "var(--color-muted)",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 0,
-              }}
-            >
-              <X size={14} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              aria-label="Hide backlinks panel"
-              aria-expanded={true}
-              title="Hide backlinks panel"
-              onClick={() => setExpanded(false)}
-              style={{
-                width: 24,
-                height: 24,
-                background: "transparent",
-                border: 0,
-                color: "var(--color-muted)",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 0,
-              }}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
+          {/* Phase 6.6 (D-04): × close button — removes panel from rail via panelSelector.
+              UAT follow-up 2026-05-12: rail-level collapse button removed; rail auto-collapses
+              when all panels are deselected (RightRail useEffect). */}
+          <button
+            type="button"
+            aria-label="Close Backlinks panel"
+            title="Close Backlinks panel"
+            onClick={() => setPanelSelector({ backlinks: false })}
+            style={{
+              width: 24,
+              height: 24,
+              background: "transparent",
+              border: 0,
+              color: "var(--color-muted)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+            }}
+          >
+            <X size={14} aria-hidden="true" />
+          </button>
         </header>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
           {noteId === null ? (

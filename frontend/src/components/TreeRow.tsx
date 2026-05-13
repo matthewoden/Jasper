@@ -121,6 +121,8 @@ export function TreeRow({
 }: TreeRowProps) {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const pendingRename = useTreeStore((s) => s.pendingRename);
+  // UAT follow-up 2026-05-12 — pulse highlight when navigated to via breadcrumb.
+  const pulseTarget = useTreeStore((s) => s.pulseTarget);
   // Plan 04 (UX-08): live H1 label override for note rows. Falls back to
   // the canonical title from the wire tree when no override is present.
   // Folder rows are unaffected (folders use `data.name`).
@@ -281,6 +283,12 @@ export function TreeRow({
 
   const dataTreeRowValue = isFolder ? data.path : data.id;
 
+  // UAT follow-up 2026-05-12 — does the pulse target match this row?
+  const isPulseTarget =
+    pulseTarget !== null &&
+    pulseTarget.kind === data.kind &&
+    pulseTarget.target === (data.kind === "folder" ? data.path : data.id);
+
   // Compute the parent path used for "New note" / "New folder" from this row's
   // context menu or kebab. Folder rows create children inside themselves;
   // note rows create siblings (same parent folder).
@@ -354,7 +362,10 @@ export function TreeRow({
         cursor: "pointer",
         background: rowBackground,
       }}
-      className="hover:bg-[rgba(255,255,255,0.04)] group"
+      className={
+        "hover:bg-[rgba(255,255,255,0.04)] group" +
+        (isPulseTarget ? " jasper-pulse-target" : "")
+      }
       data-tree-row={dataTreeRowValue}
       data-tree-row-kind={data.kind}
       onClick={handleClick}

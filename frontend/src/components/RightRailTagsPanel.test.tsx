@@ -156,18 +156,23 @@ describe("RightRailTagsPanel — panel card shell spec", () => {
 });
 
 describe("RightRailTagsPanel — tag list behaviors (adapted from Phase 6)", () => {
-  it("TB4-adapted: rows sorted alphabetically with name + count", () => {
+  it("TB4-adapted: rows sorted alphabetically with name + count badge", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: true });
     renderPanel();
 
     const tagItems = screen.getAllByRole("listitem");
-    // Tags are alpha, beta, process, project, prototype alphabetically
-    // toHaveTextContent does substring match so "#alpha (5)" still satisfies "alpha"
     expect(tagItems[0]).toHaveTextContent("alpha");
     expect(tagItems[1]).toHaveTextContent("beta");
-    // Counts visible as "(5)" / "(2)" inline — check via testid rows
-    expect(screen.getByTestId("tag-row-alpha")).toHaveTextContent("(5)");
-    expect(screen.getByTestId("tag-row-beta")).toHaveTextContent("(2)");
+    // UAT 2026-05-12: counts now render as a pill badge (bare number, no
+    // parentheses) with aria-label="<N> notes" for assistive tech.
+    const alphaRow = screen.getByTestId("tag-row-alpha");
+    const betaRow = screen.getByTestId("tag-row-beta");
+    expect(alphaRow).toHaveTextContent("5");
+    expect(betaRow).toHaveTextContent("2");
+    expect(alphaRow.querySelector('[aria-label="5 notes"]')).not.toBeNull();
+    expect(betaRow.querySelector('[aria-label="2 notes"]')).not.toBeNull();
+    // No parentheses anywhere in the row (badge replaces the "(N)" format).
+    expect(alphaRow.textContent ?? "").not.toMatch(/\(\d/);
   });
 
   it("TB5-adapted: clicking a tag row calls setActiveTagFilter with the BARE name (no # prefix)", () => {
@@ -340,14 +345,18 @@ describe("RightRailTagsPanel — search input (SR1..SR6)", () => {
 // ── Phase 6.6 Plan 04: Task 2 — row format + soft-select ────────────────────
 
 describe("RightRailTagsPanel — Phase 6.6 row format (D-20/D-21/D-22)", () => {
-  it("tag row renders '#tagname (count)' text content", () => {
+  it("tag row renders '#tagname' + count badge (UAT 2026-05-12)", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: true });
     renderPanel();
 
-    // The row for {name: "project", count: 12} must contain "#project" and "(12)"
+    // The row for {name: "project", count: 12} must contain "#project" and the
+    // bare count "12" (rendered inside a badge, no parentheses).
     const row = screen.getByTestId("tag-row-project");
     expect(row).toHaveTextContent("#project");
-    expect(row).toHaveTextContent("(12)");
+    expect(row).toHaveTextContent("12");
+    expect(row).not.toHaveTextContent("(12)");
+    // The count lives in a badge with an aria-label for assistive tech.
+    expect(row.querySelector('[aria-label="12 notes"]')).not.toBeNull();
   });
 
   it("the '#tagname' span has color var(--color-accent)", () => {
@@ -359,13 +368,15 @@ describe("RightRailTagsPanel — Phase 6.6 row format (D-20/D-21/D-22)", () => {
     expect(hashSpan).toHaveStyle({ color: "var(--color-accent)" });
   });
 
-  it("the '(count)' span has color var(--color-muted)", () => {
+  it("the count badge has muted text color and aria-label='<N> notes'", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: true });
     renderPanel();
 
-    // The (12) span (count for "project") should be muted
-    const countSpan = screen.getByText("(12)");
-    expect(countSpan).toHaveStyle({ color: "var(--color-muted)" });
+    // UAT 2026-05-12: count is a pill badge addressed by aria-label, not "(N)" text.
+    const row = screen.getByTestId("tag-row-project");
+    const badge = row.querySelector('[aria-label="12 notes"]') as HTMLElement | null;
+    expect(badge).not.toBeNull();
+    expect(badge!).toHaveStyle({ color: "var(--color-muted)" });
   });
 
   it("setActiveTagFilter receives the BARE tagname (not '#project')", () => {

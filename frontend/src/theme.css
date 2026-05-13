@@ -63,6 +63,21 @@
   to   { transform: translateX(400%); }
 }
 
+/* UAT follow-up 2026-05-12 — breadcrumb-jump pulse highlight.
+   Applied to the tree row whose path matches `useTreeStore.pulseTarget`
+   when a breadcrumb folder link is clicked. Two-cycle accent flash, then
+   the store auto-clears pulseTarget so the class detaches on the next
+   render. Reuses --color-accent for visual consistency with the inline
+   tag treatment. */
+@keyframes jasper-pulse-highlight {
+  0%   { background: color-mix(in srgb, var(--color-accent) 28%, transparent); }
+  50%  { background: color-mix(in srgb, var(--color-accent) 14%, transparent); }
+  100% { background: transparent; }
+}
+.jasper-pulse-target {
+  animation: jasper-pulse-highlight 800ms ease-out 1;
+}
+
 html, body, #root { height: 100%; margin: 0; }
 body {
   background-color: var(--color-bg);
@@ -195,6 +210,24 @@ body {
 .cm-tooltip.cm-tooltip-autocomplete .cm-completionDetail,
 .cm-tooltip.cm-tooltip-autocomplete .cm-completionLabel {
   color: var(--color-fg) !important;
+}
+
+/* UAT follow-up 2026-05-12 — tag autocomplete icon.
+   CodeMirror renders `.cm-completionIcon` with `::after` content driven by
+   `type`. The default `keyword` icon shows a small `K` glyph (often read as a
+   "key" icon by users). Our tag completions now use `type: "tag"`, and this
+   rule replaces the icon glyph with a `#` in accent color so tag rows read
+   unambiguously as tags. The `displayLabel` field carries a leading `#` too
+   (see tagAutocomplete.ts / inlineTagAutocomplete.ts) for redundancy when the
+   icon column is hidden by CM themes.
+
+   Specificity match: CM applies `cm-completionIcon` plus `cm-completionIcon-<type>`
+   on the same element, and renders its default glyph via `::after { content }`.
+   We override that ::after content so the icon column displays `#` instead. */
+.cm-tooltip.cm-tooltip-autocomplete .cm-completionIcon-tag::after {
+  content: "#";
+  color: var(--color-accent);
+  font-weight: 600;
 }
 
 /* Inline #tag decoration emitted by inlineTagPlugin. */

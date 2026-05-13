@@ -193,6 +193,13 @@ export interface TreeStore {
   setNotesSidebarVisible: (v: boolean) => void;
   panelSelector: { tags: boolean; backlinks: boolean };
   setPanelSelector: (update: Partial<{ tags: boolean; backlinks: boolean }>) => void;
+
+  // UAT follow-up 2026-05-12: transient pulse-highlight target for breadcrumb
+  // jumps. Set when a breadcrumb folder is clicked; FileTree reads this to
+  // apply a brief animation class to the matching row, then auto-clears
+  // ~600ms later via setTimeout in pulseTarget setter. NEVER persisted.
+  pulseTarget: { kind: "folder" | "note"; target: string } | null;
+  setPulseTarget: (t: { kind: "folder" | "note"; target: string } | null) => void;
 }
 
 export const useTreeStore = create<TreeStore>((set) => ({
@@ -286,6 +293,9 @@ export const useTreeStore = create<TreeStore>((set) => ({
   panelSelector: { tags: true, backlinks: true },
   setPanelSelector: (update) =>
     set((s) => ({ panelSelector: { ...s.panelSelector, ...update } })),
+
+  pulseTarget: null,
+  setPulseTarget: (t) => set({ pulseTarget: t }),
 }));
 
 /**

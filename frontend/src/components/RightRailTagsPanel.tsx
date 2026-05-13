@@ -456,7 +456,8 @@ export function RightRailTagsPanel() {
                               />
                             ) : (
                               <>
-                                {/* D-20/D-21: #tagname in accent, (count) in muted — inline */}
+                                {/* D-20/D-21: #tagname in accent. UAT 2026-05-12:
+                                    count rendered as a pill badge (was inline "(N)"). */}
                                 <span
                                   style={{
                                     ...(isActive
@@ -468,14 +469,26 @@ export function RightRailTagsPanel() {
                                   #{tag.name}
                                 </span>
                                 <span
+                                  aria-label={`${tag.count} notes`}
                                   style={{
-                                    marginLeft: 4,
+                                    marginLeft: 8,
+                                    padding: "0 6px",
+                                    height: 18,
+                                    minWidth: 18,
+                                    borderRadius: 9,
+                                    background:
+                                      "color-mix(in srgb, var(--color-fg) 10%, transparent)",
                                     color: "var(--color-muted)",
-                                    fontSize: 14,
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    lineHeight: "18px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
                                     flexShrink: 0,
                                   }}
                                 >
-                                  ({tag.count})
+                                  {tag.count}
                                 </span>
                               </>
                             )}

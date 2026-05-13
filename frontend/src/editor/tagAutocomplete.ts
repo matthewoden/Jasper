@@ -166,10 +166,15 @@ export async function tagCompletionSource(
   // D-44: no Create row — if no matches, return null to close the popup.
   if (matches.length === 0) return null;
 
+  // UAT follow-up 2026-05-12: custom `type: "tag"` so theme.css styles the
+  // completion icon as a `#` instead of the keyword key glyph. `displayLabel`
+  // adds the visible `#` prefix without affecting filtering (which uses
+  // `label`) or insertion (which uses `apply`).
   const options: Completion[] = matches.map((t) => ({
     label: t.name,
+    displayLabel: `#${t.name}`,
     detail: `(${t.count})`, // UI-SPEC Surface 4: count badge
-    type: "keyword",
+    type: "tag",
     // apply is the tag name string — CM6 replaces the trigger range with this.
     apply: t.name,
   }));

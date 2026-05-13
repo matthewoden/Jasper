@@ -93,7 +93,7 @@ describe("<InterPanelDivider /> — Phase 6.5 UX-T-01 / Phase 6.6 UX-CHROME-04 d
   it("T1: renders with role=separator, aria-orientation=horizontal, aria-label='Resize panels'", () => {
     const { getByTestId } = renderDivider({ top: 0, height: 400 });
     // Phase 6.6: delegates to ResizeHandle, which uses data-testid="resize-handle"
-    const handle = getByTestId("resize-handle");
+    const handle = getByTestId("inter-panel-divider");
     expect(handle.getAttribute("role")).toBe("separator");
     expect(handle.getAttribute("aria-orientation")).toBe("horizontal");
     expect(handle.getAttribute("aria-label")).toBe("Resize panels");
@@ -103,7 +103,7 @@ describe("<InterPanelDivider /> — Phase 6.5 UX-T-01 / Phase 6.6 UX-CHROME-04 d
   it("T2: pointerdown attaches document pointermove + pointerup listeners", () => {
     const addSpy = vi.spyOn(document, "addEventListener");
     const { getByTestId } = renderDivider({ top: 0, height: 400 });
-    const handle = getByTestId("resize-handle");
+    const handle = getByTestId("inter-panel-divider");
     fireEvent.pointerDown(handle);
     const eventNames = addSpy.mock.calls.map((c) => c[0]);
     expect(eventNames).toContain("pointermove");
@@ -115,7 +115,7 @@ describe("<InterPanelDivider /> — Phase 6.5 UX-T-01 / Phase 6.6 UX-CHROME-04 d
   // T3: drag activates on pointerdown (behavioral test for drag lifecycle)
   it("T3: pointerdown activates drag — pointermove updates ratio", () => {
     const { getByTestId } = renderDivider({ top: 0, height: 400 });
-    const handle = getByTestId("resize-handle");
+    const handle = getByTestId("inter-panel-divider");
     fireEvent.pointerDown(handle);
     // Delta = 100 (clientY 100 - lastPosRef 0); ratio change = 100/400 = 0.25
     // New ratio = 0.5 + 0.25 = 0.75, clamped to MAX 0.8
@@ -135,7 +135,7 @@ describe("<InterPanelDivider /> — Phase 6.5 UX-T-01 / Phase 6.6 UX-CHROME-04 d
   // T5: delta-based ratio update — positive delta increases ratio
   it("T5: pointerdown then pointermove clientY=50 over {height:400} → ratio increases by 50/400=0.125", () => {
     const { getByTestId } = renderDivider({ top: 0, height: 400 });
-    fireEvent.pointerDown(getByTestId("resize-handle"));
+    fireEvent.pointerDown(getByTestId("inter-panel-divider"));
     // Delta = 50 (clientY 50 - lastPosRef 0); ratio change = 50/400 = 0.125
     // New ratio = 0.5 + 0.125 = 0.625
     dispatchPointerMove(50);
@@ -147,7 +147,7 @@ describe("<InterPanelDivider /> — Phase 6.5 UX-T-01 / Phase 6.6 UX-CHROME-04 d
   it("T6: large negative delta → ratio clamped to TAGS_PANEL_RATIO_MIN (0.2) by store setter", () => {
     useTreeStore.setState({ tagsPanelHeightRatio: 0.25 }); // near min
     const { getByTestId } = renderDivider({ top: 0, height: 400 });
-    fireEvent.pointerDown(getByTestId("resize-handle"));
+    fireEvent.pointerDown(getByTestId("inter-panel-divider"));
     // Negative delta: lastPosRef=0, move to clientY that would push below min
     // Actually, dispatch a negative-Y move. Since lastPosRef=0, a clientY=-100
     // gives delta=-100, ratio=0.25+(-100/400)=0.25-0.25=0.0 → clamped to 0.2
@@ -162,7 +162,7 @@ describe("<InterPanelDivider /> — Phase 6.5 UX-T-01 / Phase 6.6 UX-CHROME-04 d
   it("T7: large positive delta → ratio clamped to TAGS_PANEL_RATIO_MAX (0.8) by store setter", () => {
     useTreeStore.setState({ tagsPanelHeightRatio: 0.75 }); // near max
     const { getByTestId } = renderDivider({ top: 0, height: 400 });
-    fireEvent.pointerDown(getByTestId("resize-handle"));
+    fireEvent.pointerDown(getByTestId("inter-panel-divider"));
     // Delta=100, ratio=0.75+0.25=1.0 → clamped to 0.8
     dispatchPointerMove(100);
     expect(useTreeStore.getState().tagsPanelHeightRatio).toBe(TAGS_PANEL_RATIO_MAX);
@@ -172,7 +172,7 @@ describe("<InterPanelDivider /> — Phase 6.5 UX-T-01 / Phase 6.6 UX-CHROME-04 d
   // T8: pointerup stops drag
   it("T8: pointerup stops dragging — subsequent pointermove no longer updates store", () => {
     const { getByTestId } = renderDivider({ top: 0, height: 400 });
-    fireEvent.pointerDown(getByTestId("resize-handle"));
+    fireEvent.pointerDown(getByTestId("inter-panel-divider"));
     dispatchPointerMove(40); // ratio = 0.5 + 40/400 = 0.6
     const ratioAfterDrag = useTreeStore.getState().tagsPanelHeightRatio;
     dispatchPointerUp();
@@ -185,7 +185,7 @@ describe("<InterPanelDivider /> — Phase 6.5 UX-T-01 / Phase 6.6 UX-CHROME-04 d
   it("T9: unmount mid-drag removes document pointermove + pointerup listeners", () => {
     const removeSpy = vi.spyOn(document, "removeEventListener");
     const { getByTestId, unmount } = renderDivider({ top: 0, height: 400 });
-    fireEvent.pointerDown(getByTestId("resize-handle"));
+    fireEvent.pointerDown(getByTestId("inter-panel-divider"));
     // Now unmount while dragging
     unmount();
     const removedEventNames = removeSpy.mock.calls.map((c) => c[0]);
@@ -197,14 +197,37 @@ describe("<InterPanelDivider /> — Phase 6.5 UX-T-01 / Phase 6.6 UX-CHROME-04 d
   // T10: transparent background (D-12/D-14 — no visible band)
   it("T10: rendered handle has transparent background (D-12: cursor-only, no 4px band)", () => {
     const { getByTestId } = renderDivider({ top: 0, height: 400 });
-    const handle = getByTestId("resize-handle");
+    const handle = getByTestId("inter-panel-divider");
     expect(handle.style.background).toBe("transparent");
   });
 
   // T11: no pointermove/pointerdown handlers directly on InterPanelDivider (all delegated)
   it("T11: renders cursor row-resize (horizontal orientation delegated to ResizeHandle)", () => {
     const { getByTestId } = renderDivider({ top: 0, height: 400 });
-    const handle = getByTestId("resize-handle");
+    const handle = getByTestId("inter-panel-divider");
     expect(handle.style.cursor).toBe("row-resize");
+  });
+
+  // T12 (UAT 2026-05-12 regression guard): the previous handleDrag closure
+  // captured `ratio` at mount, so cumulative deltas during a single drag
+  // applied against the STALE ratio every time — visible symptom was the
+  // panels snapping back to ~original after each move. The fix reads
+  // ratio via useTreeStore.getState() every move; this test exercises
+  // that by dispatching three pointermove events within one drag and
+  // verifying the ratio walks forward by the cumulative sum of deltas.
+  it("T12: cumulative pointermove deltas within one drag accumulate against fresh ratio", () => {
+    const { getByTestId } = renderDivider({ top: 0, height: 400 });
+    fireEvent.pointerDown(getByTestId("inter-panel-divider"));
+    // ratio starts at 0.5; lastPosRef starts at 0 (jsdom).
+    // Move 1: clientY=20 (delta=20) → 0.5 + 20/400 = 0.55
+    dispatchPointerMove(20);
+    expect(useTreeStore.getState().tagsPanelHeightRatio).toBeCloseTo(0.55);
+    // Move 2: clientY=40 (delta=20) → 0.55 + 20/400 = 0.6 (was: 0.55 in bug)
+    dispatchPointerMove(40);
+    expect(useTreeStore.getState().tagsPanelHeightRatio).toBeCloseTo(0.6);
+    // Move 3: clientY=60 (delta=20) → 0.6 + 20/400 = 0.65
+    dispatchPointerMove(60);
+    expect(useTreeStore.getState().tagsPanelHeightRatio).toBeCloseTo(0.65);
+    dispatchPointerUp();
   });
 });

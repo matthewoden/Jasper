@@ -241,11 +241,12 @@ describe("Header chrome (from Plan 06-07)", () => {
     expect(region).toBeInTheDocument();
   });
 
-  it("clicking Hide button calls setBacklinksRailExpanded(false)", () => {
+  it("UAT 2026-05-12: rail-level 'Hide backlinks panel' chevron button is removed", () => {
+    // The rail collapses automatically when all panels are deselected
+    // (RightRail useEffect). Clicking × on the only visible panel collapses
+    // the rail; there is no longer a dedicated rail-collapse chevron.
     render(<BacklinksRail noteId={null} />);
-    const hideBtn = screen.getByRole("button", { name: /hide backlinks panel/i });
-    fireEvent.click(hideBtn);
-    expect(mockSetExpanded).toHaveBeenCalledWith(false);
+    expect(screen.queryByRole("button", { name: /hide backlinks panel/i })).toBeNull();
   });
 });
 

@@ -28,7 +28,7 @@ import type { TreeNode } from "../lib/treeApi";
 interface Segment {
   /** Display label for this segment. */
   label: string;
-  /** Folder path used to call expandAndScrollToFolder; null for root + title. */
+  /** Folder path used to call expandAndScrollToFolder; null for the title segment. */
   path: string | null;
   /** True only for the final note-title segment. */
   isTitle?: boolean;
@@ -66,15 +66,18 @@ function findNoteById(
  * Build the ordered segment array from a note's filesystem path.
  *
  * Example: "projects/jasper/my-note.md" → [
- *   { label: "notes", path: null },
  *   { label: "projects", path: "projects" },
  *   { label: "jasper",   path: "projects/jasper" },
  *   { label: "my-note",  path: null, isTitle: true },  // uses displayTitle
  * ]
+ *
+ * UAT follow-up 2026-05-12: dropped the leading "notes" root segment — the
+ * notes vault is the implicit root of the entire app, not a real section to
+ * navigate to.
  */
 function buildSegments(notePath: string, displayTitle: string): Segment[] {
   const parts = notePath.split("/").filter(Boolean);
-  const segments: Segment[] = [{ label: "notes", path: null }];
+  const segments: Segment[] = [];
 
   // Folder segments — every part except the last (the filename).
   for (let i = 0; i < parts.length - 1; i++) {
@@ -109,14 +112,6 @@ const separatorStyle: CSSProperties = {
   color: "var(--color-muted)",
   fontSize: 14,
   margin: "0 2px",
-  flexShrink: 0,
-};
-
-const rootSpanStyle: CSSProperties = {
-  fontSize: 14,
-  fontWeight: 400,
-  color: "var(--color-muted)",
-  whiteSpace: "nowrap",
   flexShrink: 0,
 };
 
@@ -177,11 +172,23 @@ export function Breadcrumbs(): React.ReactElement | null {
           )}
           {seg.isTitle ? (
             <span style={titleSpanStyle}>{seg.label}</span>
-          ) : seg.path ? (
+          ) : (
             <button
               type="button"
               aria-label={`Navigate to folder: ${seg.label}`}
-              onClick={() => expandAndScrollToFolder(seg.path!)}
+              onClick={() => {
+                expandAndScrollToFolder(seg.path!);
+                // UAT follow-up 2026-05-12: brief pulse on the target row.
+                useTreeStore
+                  .getState()
+                  .setPulseTarget({ kind: "folder", target: seg.path! });
+                window.setTimeout(() => {
+                  const cur = useTreeStore.getState().pulseTarget;
+                  if (cur && cur.kind === "folder" && cur.target === seg.path) {
+                    useTreeStore.getState().setPulseTarget(null);
+                  }
+                }, 900);
+              }}
               style={folderButtonStyle}
               onMouseEnter={(e) =>
                 (e.currentTarget.style.color = "var(--color-accent)")
@@ -192,8 +199,6 @@ export function Breadcrumbs(): React.ReactElement | null {
             >
               {seg.label}
             </button>
-          ) : (
-            <span style={rootSpanStyle}>{seg.label}</span>
           )}
         </React.Fragment>
       ))}

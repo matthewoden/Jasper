@@ -15,6 +15,15 @@
  * store setter side (single source of truth). This component passes the
  * unclamped updated ratio to setRatio and relies on the store to clamp.
  *
+ * UAT 2026-05-12 fix: read the CURRENT ratio via useTreeStore.getState()
+ * inside handleDrag instead of subscribing — the previous closure captured
+ * the ratio at mount and stayed stale across pointermove events within a
+ * single drag. Symptom: dragging only ever shifted the ratio by one
+ * `delta`'s worth from the starting value, so the divider visibly snapped
+ * back to ~its origin on every move. The ResizeHandle pointermove handler
+ * is attached once on pointerdown, so React's re-render-on-state-change
+ * never had a chance to refresh the closure.
+ *
  * Accessibility: role="separator" + aria-orientation="horizontal" +
  * aria-label="Resize panels" delegated to ResizeHandle output.
  */
@@ -29,17 +38,17 @@ interface Props {
 }
 
 export function InterPanelDivider({ railRef }: Props) {
-  const ratio = useTreeStore((s) => s.tagsPanelHeightRatio);
-  const setRatio = useTreeStore((s) => s.setTagsPanelHeightRatio);
-
   const handleDrag = useCallback(
     (delta: number) => {
       const railHeight =
         railRef.current?.getBoundingClientRect().height ?? 1;
       if (railHeight <= 0) return;
-      setRatio(ratio + delta / railHeight);
+      // Read fresh ratio every move so the drag accumulates correctly.
+      const { tagsPanelHeightRatio, setTagsPanelHeightRatio } =
+        useTreeStore.getState();
+      setTagsPanelHeightRatio(tagsPanelHeightRatio + delta / railHeight);
     },
-    [railRef, ratio, setRatio],
+    [railRef],
   );
 
   return (
