@@ -117,10 +117,15 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     if (item.kind === "note") {
       setActiveNote(item.id);
       recordOpenedNote(item.id);
-    } else {
-      cmd.execute(item.id);
+      onOpenChange(false);
+      return;
     }
-    onOpenChange(false);
+    // UAT #5 fix: respect per-command closeOnExecute. switch-note keeps the
+    // palette open so the mode flip (commands → notes) re-renders the list.
+    const shouldClose = cmd.execute(item.id);
+    if (shouldClose) {
+      onOpenChange(false);
+    }
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
