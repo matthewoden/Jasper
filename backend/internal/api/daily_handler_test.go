@@ -373,5 +373,92 @@ func newDailyHTTPServer(t *testing.T, dailyNotesTemplate string) (*Server, *http
 	return srv, ts, dir
 }
 
+// TestDailyNotesHandler_RegistryHydration verifies UAT #1 + #6 fixes:
+// GetDailyNote must register the note's UUID into notes.Service.Registry()
+// so that subsequent Service.Get(id) calls (e.g. from EditorPane.getNote)
+// resolve immediately without a 404.
+func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
+	t.Run("create branch registers UUID in notes.Service.Registry", func(t *testing.T) {
+		t.Parallel()
+		srv, _ := newDailyTestServer(t, "")
+
+		resp, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-13"})
+		if err != nil {
+			t.Fatalf("GetDailyNote error: %v", err)
+		}
+		got201, ok := resp.(GetDailyNote201JSONResponse)
+		if !ok {
+			t.Fatalf("expected GetDailyNote201JSONResponse, got %T", resp)
+		}
+
+		// Convert openapi_types.UUID → uuid.UUID for registry lookup.
+		id := uuid.UUID(got201.Id)
+
+		// UAT #1 fix: the registry MUST know about this UUID immediately after
+		// GetDailyNote returns 201. Without the fix, Lookup returns ok=false and
+		// Service.Get returns ErrNotFound → EditorPane shows "Could not load note".
+		relPath, ok := srv.notes.Registry().Lookup(id)
+		if !ok {
+			t.Errorf("Registry().Lookup(%s) returned ok=false; want relPath=%q, ok=true\n"+
+				"(UAT #1 root cause: daily.go create branch does not call Registry().Add after Upsert)",
+				id, "daily/2026-05-13.md")
+		}
+		if ok && relPath != "daily/2026-05-13.md" {
+			t.Errorf("Registry().Lookup(%s) relPath=%q, want %q", id, relPath, "daily/2026-05-13.md")
+		}
+	})
+
+	t.Run("get-existing branch registers UUID in notes.Service.Registry", func(t *testing.T) {
+		t.Parallel()
+		srv, _ := newDailyTestServer(t, "")
+
+		// First call: creates the note (201), seeds index + registry normally.
+		resp1, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-22"})
+		if err != nil {
+			t.Fatalf("first GetDailyNote error: %v", err)
+		}
+		got201, ok := resp1.(GetDailyNote201JSONResponse)
+		if !ok {
+			t.Fatalf("first call: expected 201, got %T", resp1)
+		}
+		id := uuid.UUID(got201.Id)
+
+		// Simulate post-restart stale registry: delete the id→relPath mapping.
+		// This mirrors the UAT #6 scenario where admin/reindex was run but the
+		// daily note was added AFTER the last full reconcile, so the registry
+		// is empty for this UUID until the server is rebuilt.
+		srv.notes.Registry().Remove(id)
+
+		// Confirm the entry is gone (precondition for the test to be meaningful).
+		if _, stillOk := srv.notes.Registry().Lookup(id); stillOk {
+			t.Fatal("test setup: Registry.Remove did not remove the entry — precondition failed")
+		}
+
+		// Second call: the note already exists in the index (fakeIndexForDaily
+		// stored it from the first call), so GetDailyNote takes the 200 branch.
+		resp2, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-22"})
+		if err != nil {
+			t.Fatalf("second GetDailyNote error: %v", err)
+		}
+		if _, ok := resp2.(GetDailyNote200JSONResponse); !ok {
+			t.Fatalf("second call: expected 200, got %T", resp2)
+		}
+
+		// UAT #6 fix: registry MUST be re-populated by the 200 branch.
+		// Without this, the "rebuild" path leaves the registry empty until a
+		// full hydrateRegistryFromIndex runs — so the first Today click after
+		// rebuild shows "Could not load note".
+		relPath, ok := srv.notes.Registry().Lookup(id)
+		if !ok {
+			t.Errorf("Registry().Lookup(%s) returned ok=false after 200 response; want relPath=%q, ok=true\n"+
+				"(UAT #6 root cause: daily.go 200 branch does not call Registry().Add)",
+				id, "daily/2026-05-22.md")
+		}
+		if ok && relPath != "daily/2026-05-22.md" {
+			t.Errorf("Registry().Lookup(%s) relPath=%q, want %q", id, relPath, "daily/2026-05-22.md")
+		}
+	})
+}
+
 // ensure fakeIndexForDaily satisfies notes.Index at compile time.
 var _ notes.Index = (*fakeIndexForDaily)(nil)
