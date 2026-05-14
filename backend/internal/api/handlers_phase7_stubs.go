@@ -22,11 +22,6 @@ func (s *Server) SearchNotes(_ context.Context, _ SearchNotesRequestObject) (Sea
 }
 
 //nolint:revive // generated interface name
-func (s *Server) GetDailyNote(_ context.Context, _ GetDailyNoteRequestObject) (GetDailyNoteResponseObject, error) {
-	return nil, errPhase7NotImplemented
-}
-
-//nolint:revive // generated interface name
 func (s *Server) CreateAttachment(_ context.Context, _ CreateAttachmentRequestObject) (CreateAttachmentResponseObject, error) {
 	return nil, errPhase7NotImplemented
 }
