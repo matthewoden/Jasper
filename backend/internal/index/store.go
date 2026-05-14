@@ -354,7 +354,13 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 	}
 
 	// Positional bind parameters required here because ?2 appears twice in
-	// the WHERE clause (gate: ?2 IS NULL OR t.id IS NOT NULL).
+	// the WHERE subquery (gate: ?2 IS NULL OR EXISTS tag-match).
+	//
+	// bm25() and snippet() are FTS5 auxiliary functions that require a
+	// simple FTS5 query context (MATCH in the WHERE clause of the same
+	// SELECT). GROUP BY breaks the FTS5 context, so the tag filter uses
+	// an EXISTS subquery instead — this avoids GROUP BY while still
+	// AND-combining the text search with the tag filter.
 	const sqlText = `
 		SELECT
 			n.id,
@@ -365,11 +371,15 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 			bm25(notes_fts) AS rank
 		FROM notes_fts
 		JOIN notes n ON notes_fts.rowid = n.rowid
-		LEFT JOIN note_tags nt ON nt.note_id = n.id
-		LEFT JOIN tags t ON t.id = nt.tag_id AND t.name = ?2
 		WHERE notes_fts MATCH ?1
-		  AND (?2 IS NULL OR t.id IS NOT NULL)
-		GROUP BY n.id
+		  AND (
+		    ?2 IS NULL
+		    OR EXISTS (
+		        SELECT 1 FROM note_tags nt
+		        JOIN tags t ON t.id = nt.tag_id
+		        WHERE nt.note_id = n.id AND t.name = ?2
+		    )
+		  )
 		ORDER BY
 			bm25(notes_fts) + (julianday('now') - julianday(datetime(n.updated_at,'unixepoch'))) * 0.002
 		LIMIT ?3
