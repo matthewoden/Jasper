@@ -1,13 +1,15 @@
 /**
- * SidebarToolbar tests — Phase 6.6 Plan 10 update.
+ * SidebarToolbar tests — Phase 6.6 Plan 10 update + Phase 7 Today button (D-16).
  *
  * Global controls (ConnectionStatusDot, Refresh, SettingsMenu) have been
- * stripped per D-08. Only note-navigation controls remain:
+ * stripped per D-08. Note-navigation controls:
  *   1. New note (FilePlus)
  *   2. New folder (FolderPlus)
+ *   3. Today (CalendarDays) — Phase 7 D-16
  *
- * The refresh in-flight tests moved to StatusBar.test.tsx.
- * Tests now additionally verify that the removed controls are NOT present.
+ * useDailyNote is mocked so the tests don't need a ToastProvider or
+ * a real network connection. The hook's openToday + isLoading are
+ * controlled per test.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -30,9 +32,22 @@ vi.mock("../api/client", () => ({
   },
 }));
 
+// Mock useDailyNote so SidebarToolbar can render without ToastProvider.
+// Default: openToday is a spy, isLoading is false.
+const mockOpenToday = vi.fn();
+vi.mock("../lib/useDailyNote", () => ({
+  useDailyNote: vi.fn(() => ({
+    openToday: mockOpenToday,
+    isLoading: false,
+  })),
+}));
+
+import { useDailyNote } from "../lib/useDailyNote";
+const mockedUseDailyNote = vi.mocked(useDailyNote);
+
 import { SidebarToolbar } from "./SidebarToolbar";
 
-describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6)", () => {
+describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phase 7)", () => {
   it("TestToolbar_RendersNewNoteButton", () => {
     render(
       <SidebarToolbar
@@ -184,5 +199,85 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6)", () 
       />,
     );
     expect(screen.queryByTestId("settings-menu-trigger")).toBeNull();
+  });
+
+  // ── Phase 7 D-16: Today button (CalendarDays) ──────────────────────
+  it("TestToolbar_RendersTodayButton", () => {
+    render(
+      <SidebarToolbar
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+      />,
+    );
+    const todayBtn = screen.getByRole("button", { name: "Open today's daily note" });
+    expect(todayBtn).toBeInTheDocument();
+  });
+
+  it("TestToolbar_TodayButton_HasCorrectTitle", () => {
+    render(
+      <SidebarToolbar
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+      />,
+    );
+    const todayBtn = screen.getByRole("button", { name: "Open today's daily note" });
+    expect(todayBtn.getAttribute("title")).toBe("Today (⌘⇧D)");
+  });
+
+  it("TestToolbar_TodayButton_CallsOpenToday_OnClick", () => {
+    const openTodaySpy = vi.fn();
+    mockedUseDailyNote.mockReturnValueOnce({ openToday: openTodaySpy, isLoading: false });
+
+    render(
+      <SidebarToolbar
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open today's daily note" }));
+    expect(openTodaySpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("TestToolbar_TodayButton_ShowsWaitCursor_WhenLoading", () => {
+    mockedUseDailyNote.mockReturnValueOnce({ openToday: vi.fn(), isLoading: true });
+
+    render(
+      <SidebarToolbar
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+      />,
+    );
+    const todayBtn = screen.getByRole("button", { name: "Open today's daily note" });
+    expect(todayBtn).toBeDisabled();
+    expect(todayBtn.style.cursor).toBe("wait");
+    expect(todayBtn.style.opacity).toBe("0.5");
+  });
+
+  it("TestToolbar_TodayButton_IsEnabledByDefault_WhenNotLoading", () => {
+    render(
+      <SidebarToolbar
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+      />,
+    );
+    const todayBtn = screen.getByRole("button", { name: "Open today's daily note" });
+    expect(todayBtn).not.toBeDisabled();
+    expect(todayBtn.style.cursor).toBe("pointer");
+    expect(todayBtn.style.opacity).toBe("1");
+  });
+
+  it("TestToolbar_TodayButton_IsAfterFolderPlus — third button in cluster", () => {
+    render(
+      <SidebarToolbar
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+      />,
+    );
+    const buttons = screen.getAllByRole("button");
+    // Expect: [New note, New folder, Today]
+    expect(buttons).toHaveLength(3);
+    expect(buttons[0].getAttribute("aria-label")).toBe("New note");
+    expect(buttons[1].getAttribute("aria-label")).toBe("New folder");
+    expect(buttons[2].getAttribute("aria-label")).toBe("Open today's daily note");
   });
 });

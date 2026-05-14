@@ -1070,4 +1070,109 @@ describe("<TreeRow />", () => {
       expect(handleClick).toHaveBeenCalledTimes(1);
     });
   });
+
+  // ── Phase 7 D-18: root-level daily/ folder CalendarDays icon ──────────
+  describe("Phase 7 D-18: daily/ folder icon", () => {
+    it("TestRow_DailyFolder_RooLevel_ShowsCalendarDaysIcon", () => {
+      const node = makeFolderNode({ path: "daily", name: "daily" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      // CalendarDays SVG carries the class "lucide-calendar-days"
+      const svgs = container.querySelectorAll("svg");
+      const classes = Array.from(svgs).map((s) => s.getAttribute("class") ?? "");
+      expect(classes.some((c) => c.includes("lucide-calendar-days"))).toBe(true);
+    });
+
+    it("TestRow_DailyFolder_RootLevel_IconColorIsAccent", () => {
+      const node = makeFolderNode({ path: "daily", name: "daily" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const svgs = container.querySelectorAll("svg");
+      const calendarSvg = Array.from(svgs).find(
+        (s) => s.getAttribute("class")?.includes("lucide-calendar-days"),
+      );
+      expect(calendarSvg).toBeTruthy();
+      // Icon color is applied via inline style on the SVG
+      expect(calendarSvg!.getAttribute("style")).toContain("var(--color-accent)");
+    });
+
+    it("TestRow_DailyFolder_RootLevel_HasDailyNotesTooltip", () => {
+      const node = makeFolderNode({ path: "daily", name: "daily" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const row = container.querySelector('[title="Daily notes"]');
+      expect(row).toBeTruthy();
+    });
+
+    it("TestRow_SubFolder_Named_daily_KeepsDefaultFolderIcon", () => {
+      // "archive/daily" — sub-path; should NOT get CalendarDays.
+      const node = makeFolderNode({ path: "archive/daily", name: "daily" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const svgs = container.querySelectorAll("svg");
+      const classes = Array.from(svgs).map((s) => s.getAttribute("class") ?? "");
+      // Must NOT have CalendarDays; must have regular Folder icon
+      expect(classes.some((c) => c.includes("lucide-calendar-days"))).toBe(false);
+      expect(
+        classes.some(
+          (c) => c.includes("lucide-folder") && !c.includes("folder-open"),
+        ),
+      ).toBe(true);
+    });
+
+    it("TestRow_SubFolder_Named_daily_HasNoTooltip", () => {
+      const node = makeFolderNode({ path: "archive/daily", name: "daily" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      // The row div should NOT have title="Daily notes"
+      const row = container.querySelector('[title="Daily notes"]');
+      expect(row).toBeNull();
+    });
+
+    it("TestRow_OtherRootFolder_KeepsDefaultFolderIcon", () => {
+      // "projects" — different root folder; must not get CalendarDays.
+      const node = makeFolderNode({ path: "projects", name: "projects" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const svgs = container.querySelectorAll("svg");
+      const classes = Array.from(svgs).map((s) => s.getAttribute("class") ?? "");
+      expect(classes.some((c) => c.includes("lucide-calendar-days"))).toBe(false);
+    });
+  });
 });

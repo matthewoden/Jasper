@@ -44,6 +44,7 @@
 import { useCallback, useState, type CSSProperties, type KeyboardEvent } from "react";
 import type { NodeApi } from "react-arborist";
 import {
+  CalendarDays,
   ChevronDown,
   ChevronRight,
   Folder,
@@ -144,6 +145,12 @@ export function TreeRow({
   // both active AND selected uses the strong accent treatment so the
   // active anchor is never visually demoted by joining a multi-select.
   const isSelected = node.isSelected === true;
+  // Phase 7 D-18: root-level daily/ folder gets the CalendarDays icon in accent color.
+  // Exact match on data.path === "daily" — sub-paths like "archive/daily" keep the
+  // default Folder/FolderOpen icon. Level-0 guard is implicit: react-arborist only
+  // gives path === "daily" to root-level folders (sub-paths always have a prefix slash
+  // separator, e.g. "projects/daily"). Exact string match is sufficient.
+  const isDailyFolder = isFolder && (data as FolderNodeData).path === "daily";
   // 16px indent step (UI-SPEC §Layout). 16px base padding-left + 16px per
   // depth level. Verified by TestRow_IndentScalesWithLevel.
   const indent = 16 + 16 * node.level;
@@ -375,6 +382,7 @@ export function TreeRow({
       aria-expanded={isFolder ? node.isOpen : undefined}
       aria-current={isActive ? "page" : undefined}
       tabIndex={0}
+      title={isDailyFolder ? "Daily notes" : undefined}
     >
       {isActive && (
         <span
@@ -402,10 +410,17 @@ export function TreeRow({
       )}
       {/* xs (4px) gap between chevron/spacer and icon/label */}
       <span aria-hidden="true" style={{ width: 4, flexShrink: 0 }} />
-      {/* Folder icon — folders only; notes render label only per UI-SPEC */}
+      {/* Folder icon — folders only; notes render label only per UI-SPEC.
+          Phase 7 D-18: root-level daily/ folder renders CalendarDays in accent color. */}
       {isFolder && (
         <>
-          {node.isOpen ? (
+          {isDailyFolder ? (
+            <CalendarDays
+              size={16}
+              style={{ color: "var(--color-accent)", flexShrink: 0 }}
+              aria-hidden="true"
+            />
+          ) : node.isOpen ? (
             <FolderOpen size={16} style={muted} aria-hidden="true" />
           ) : (
             <Folder size={16} style={muted} aria-hidden="true" />
