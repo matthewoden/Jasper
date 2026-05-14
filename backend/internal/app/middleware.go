@@ -80,13 +80,24 @@ func sessionIDMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// maxRequestBodyBytes caps every API request body at 10 MiB. The
-// strict-server middleware deserializes JSON bodies into Go strings
-// before the handler runs, so without a cap a single PUT with a giant
-// Content-Length forces the server to allocate the whole payload into
-// memory before failing. 10 MiB is two orders of magnitude above any
-// plausible markdown note.
-const maxRequestBodyBytes = 10 << 20 // 10 MiB
+// maxAttachmentBodyBytes is the body cap applied to the /api/v1 route group.
+// It is larger than maxRequestBodyBytes to accommodate attachment uploads (up to
+// 100 MiB per D-29 / ATTACH-01). The attachment handler enforces its own
+// io.LimitReader(100 MiB+1) cap and returns HTTP 413 for oversized files;
+// the middleware limit must be ABOVE the handler cap so MaxBytesReader does not
+// fire before the handler can inspect the body and return 413 cleanly.
+//
+// Plan 07-13 (Rule 1 bug fix): the original 10 MiB middleware limit caused the
+// server to return HTTP 500 (MaxBytesError from MaxBytesReader) instead of
+// HTTP 413 (from the handler's own limit check) for attachment uploads > 10 MiB.
+// Raising this limit to 200 MiB ensures that bodies up to 100 MiB + multipart
+// framing overhead reach the handler intact, while the handler's LimitReader
+// enforces the actual 100 MiB cap and returns 413 to the client.
+//
+// Trade-off: the worst-case memory DoS for non-attachment routes is 200 MiB
+// (down from ∞ without this cap). Jasper binds to localhost only and targets
+// single-user self-host — acceptable for v1.
+const maxAttachmentBodyBytes = 200 << 20 // 200 MiB — above handler's 100 MiB LimitReader cap
 
 // maxBodyBytes wraps each request body in http.MaxBytesReader. When
 // the body exceeds the cap, subsequent reads fail with a typed

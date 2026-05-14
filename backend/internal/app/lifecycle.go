@@ -314,7 +314,12 @@ func (a *App) Run(ctx context.Context) error {
 	r.Use(requestLogger(a.cfg.Logger))
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(maxBodyBytes(maxRequestBodyBytes))
+		// Use the attachment-aware body cap (200 MiB) so large uploads reach the
+		// handler's own io.LimitReader(100 MiB+1) cap which returns HTTP 413.
+		// The 10 MiB limit (maxRequestBodyBytes) caused HTTP 500 for files > 10 MiB
+		// because MaxBytesReader fired before the attachment handler could respond
+		// with 413. Plan 07-13 (Rule 1 bug fix).
+		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
 		r.Use(sessionIDMiddleware)            // Phase 4 — SYNC-02 X-Session-ID extraction
 		r.Use(api.ConfigStrictBodyMiddleware) // D-40: strict JSON for PUT /config
 		api.HandlerFromMux(si, r)
