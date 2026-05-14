@@ -61,9 +61,17 @@ CREATE INDEX idx_notes_mtime_unix ON notes(mtime_unix);
 -- (now available because 001's table storage optimization has been removed).
 -- tokenize uses unicode61 with tokenchars so underscore and hyphen are treated
 -- as word characters, matching identifiers like "my-tag" or "some_key" (D-38).
+--
+-- IMPORTANT: FTS5 external-content column names MUST match the content table's
+-- column names exactly. FTS5 generates "SELECT body_fts, tag_names_fts FROM
+-- notes WHERE rowid=?" for content retrieval (rebuild, snippet, highlight). If
+-- the FTS column names differed from the notes column names, all content-table
+-- lookups would fail with "no such column". The plan spec's D-35..D-38 logical
+-- names (body/tag_names) are realized here as body_fts/tag_names_fts to match
+-- the actual notes schema.
 CREATE VIRTUAL TABLE notes_fts USING fts5(
-    body,
-    tag_names,
+    body_fts,
+    tag_names_fts,
     content       = 'notes',
     content_rowid = 'rowid',
     tokenize      = "unicode61 tokenchars '_-'"
@@ -73,19 +81,19 @@ CREATE VIRTUAL TABLE notes_fts USING fts5(
 -- The indexer's Upsert path writes body_fts/tag_names_fts into notes; the
 -- INSERT/UPDATE triggers fire automatically and propagate into notes_fts.
 CREATE TRIGGER notes_fts_ai AFTER INSERT ON notes BEGIN
-    INSERT INTO notes_fts(rowid, body, tag_names)
+    INSERT INTO notes_fts(rowid, body_fts, tag_names_fts)
     VALUES (new.rowid, new.body_fts, new.tag_names_fts);
 END;
 
 CREATE TRIGGER notes_fts_ad AFTER DELETE ON notes BEGIN
-    INSERT INTO notes_fts(notes_fts, rowid, body, tag_names)
+    INSERT INTO notes_fts(notes_fts, rowid, body_fts, tag_names_fts)
     VALUES ('delete', old.rowid, old.body_fts, old.tag_names_fts);
 END;
 
 CREATE TRIGGER notes_fts_au AFTER UPDATE ON notes BEGIN
-    INSERT INTO notes_fts(notes_fts, rowid, body, tag_names)
+    INSERT INTO notes_fts(notes_fts, rowid, body_fts, tag_names_fts)
     VALUES ('delete', old.rowid, old.body_fts, old.tag_names_fts);
-    INSERT INTO notes_fts(rowid, body, tag_names)
+    INSERT INTO notes_fts(rowid, body_fts, tag_names_fts)
     VALUES (new.rowid, new.body_fts, new.tag_names_fts);
 END;
 
