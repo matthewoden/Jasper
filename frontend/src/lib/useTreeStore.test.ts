@@ -1166,3 +1166,69 @@ describe("WR-07 pruneStaleTreeState liveLabels rebuild (Phase 5.5 gap-closure Pl
     expect(after).not.toBe(before);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 7 ADD-only slices (D-41 / UI-SPEC §Forward-Compat Assert #7).
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 7 ADD-only slices", () => {
+  beforeEach(() => {
+    // Reset all Phase 7 slices to defaults
+    useTreeStore.setState({
+      searchQuery: "",
+      searchResults: [],
+      searchActive: false,
+      paletteOpen: false,
+      paletteMode: "notes",
+      recentlyOpenedNoteIds: [],
+      dailyNoteLoading: false,
+      cheatSheetOpen: false,
+    });
+    try {
+      window.localStorage.removeItem("jasper:switcher:recency");
+    } catch {
+      // best-effort
+    }
+  });
+
+  it("setSearchQuery updates the slice", () => {
+    useTreeStore.getState().setSearchQuery("foo");
+    expect(useTreeStore.getState().searchQuery).toBe("foo");
+  });
+
+  it("setPaletteMode toggles between notes and commands", () => {
+    useTreeStore.getState().setPaletteMode("commands");
+    expect(useTreeStore.getState().paletteMode).toBe("commands");
+    useTreeStore.getState().setPaletteMode("notes");
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+  });
+
+  it("recordOpenedNote pushes new id to front", () => {
+    const { recordOpenedNote } = useTreeStore.getState();
+    recordOpenedNote("a");
+    recordOpenedNote("b");
+    recordOpenedNote("c");
+    expect(useTreeStore.getState().recentlyOpenedNoteIds).toEqual(["c", "b", "a"]);
+  });
+
+  it("recordOpenedNote dedupes existing id (move-to-front)", () => {
+    const { recordOpenedNote } = useTreeStore.getState();
+    recordOpenedNote("a");
+    recordOpenedNote("b");
+    recordOpenedNote("a");
+    expect(useTreeStore.getState().recentlyOpenedNoteIds).toEqual(["a", "b"]);
+  });
+
+  it("recordOpenedNote caps at 50", () => {
+    const { recordOpenedNote } = useTreeStore.getState();
+    for (let i = 0; i < 60; i++) recordOpenedNote(`id-${i}`);
+    expect(useTreeStore.getState().recentlyOpenedNoteIds.length).toBe(50);
+  });
+
+  it("recentlyOpenedNoteIds persists to localStorage", async () => {
+    useTreeStore.getState().recordOpenedNote("persisted-id");
+    // Subscriber may be async — wait a tick
+    await new Promise((r) => setTimeout(r, 0));
+    const stored = window.localStorage.getItem("jasper:switcher:recency");
+    expect(stored).toContain("persisted-id");
+  });
+});
