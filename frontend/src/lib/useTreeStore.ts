@@ -31,6 +31,10 @@
  */
 import { create } from "zustand";
 
+// Phase 7 ADD-ONLY: SearchResult type from OpenAPI schema (D-41).
+import type { components } from "../api/schema";
+type SearchResult = components["schemas"]["SearchResult"];
+
 export const LS_KEY_EXPANDED = "jasper.tree.expanded";
 
 /**
@@ -204,6 +208,25 @@ export interface TreeStore {
   // ~600ms later via setTimeout in pulseTarget setter. NEVER persisted.
   pulseTarget: { kind: "folder" | "note"; target: string } | null;
   setPulseTarget: (t: { kind: "folder" | "note"; target: string } | null) => void;
+
+  // Phase 7 ADD-ONLY (D-41 / UI-SPEC §Forward-Compatibility Assert #7).
+  // See .planning/phases/07-search-daily-notes-attachments-palette-switcher/07-CONTEXT.md.
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  searchResults: SearchResult[];
+  setSearchResults: (r: SearchResult[]) => void;
+  searchActive: boolean;
+  setSearchActive: (v: boolean) => void;
+  paletteOpen: boolean;
+  setPaletteOpen: (v: boolean) => void;
+  paletteMode: "notes" | "commands";
+  setPaletteMode: (m: "notes" | "commands") => void;
+  recentlyOpenedNoteIds: string[];
+  recordOpenedNote: (id: string) => void;
+  dailyNoteLoading: boolean;
+  setDailyNoteLoading: (v: boolean) => void;
+  cheatSheetOpen: boolean;
+  setCheatSheetOpen: (v: boolean) => void;
 }
 
 export const useTreeStore = create<TreeStore>((set) => ({
@@ -300,6 +323,31 @@ export const useTreeStore = create<TreeStore>((set) => ({
 
   pulseTarget: null,
   setPulseTarget: (t) => set({ pulseTarget: t }),
+
+  // Phase 7 ADD-ONLY initializers + setters (D-41).
+  searchQuery: "",
+  setSearchQuery: (q) => set({ searchQuery: q }),
+  searchResults: [],
+  setSearchResults: (r) => set({ searchResults: r }),
+  searchActive: false,
+  setSearchActive: (v) => set({ searchActive: v }),
+  paletteOpen: false,
+  setPaletteOpen: (v) => set({ paletteOpen: v }),
+  paletteMode: "notes",
+  setPaletteMode: (m) => set({ paletteMode: m }),
+  recentlyOpenedNoteIds: [],
+  recordOpenedNote: (id) =>
+    set((state) => {
+      const filtered = state.recentlyOpenedNoteIds.filter(
+        (existingId) => existingId !== id,
+      );
+      const next = [id, ...filtered].slice(0, 50);
+      return { recentlyOpenedNoteIds: next };
+    }),
+  dailyNoteLoading: false,
+  setDailyNoteLoading: (v) => set({ dailyNoteLoading: v }),
+  cheatSheetOpen: false,
+  setCheatSheetOpen: (v) => set({ cheatSheetOpen: v }),
 }));
 
 /**
@@ -494,6 +542,26 @@ if (typeof window !== "undefined") {
     /* localStorage unavailable */
   }
 
+  // 4d) Hydrate Phase 7 slice: recentlyOpenedNoteIds from localStorage.
+  //     Parses JSON array of strings; tolerates parse errors → default [].
+  //     All other Phase 7 slices are TRANSIENT (not persisted).
+  try {
+    const raw = window.localStorage.getItem(LS_KEY_SWITCHER_RECENCY);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const filtered = parsed
+          .filter((x): x is string => typeof x === "string")
+          .slice(0, 50);
+        if (filtered.length > 0) {
+          useTreeStore.setState({ recentlyOpenedNoteIds: filtered });
+        }
+      }
+    }
+  } catch {
+    /* localStorage unavailable or bad JSON — keep default [] */
+  }
+
   // 4) Debounced persistence — subscribe to slice changes and flush each
   //    persisted slot on its own 250ms timer. The 250ms debounce avoids
   //    storage thrash during rapid expand/collapse (UI-SPEC §State persistence).
@@ -519,6 +587,9 @@ if (typeof window !== "undefined") {
   let lastNotesSidebarVisible = useTreeStore.getState().notesSidebarVisible;
   let lastPanelTags = useTreeStore.getState().panelSelector.tags;
   let lastPanelBacklinks = useTreeStore.getState().panelSelector.backlinks;
+
+  // Phase 7 ADD-ONLY: persist recentlyOpenedNoteIds (only persistent Phase 7 slice).
+  let lastRecentlyOpenedNoteIds = useTreeStore.getState().recentlyOpenedNoteIds;
 
   useTreeStore.subscribe((state) => {
     const j = JSON.stringify([...state.expanded]);
@@ -648,6 +719,19 @@ if (typeof window !== "undefined") {
         window.localStorage.setItem(LS_KEY_PANEL_BACKLINKS, String(state.panelSelector.backlinks));
       } catch {
         // Quota / private mode — best-effort.
+      }
+    }
+
+    // Phase 7 ADD-ONLY: persist recentlyOpenedNoteIds (only persistent Phase 7 slice).
+    if (state.recentlyOpenedNoteIds !== lastRecentlyOpenedNoteIds) {
+      lastRecentlyOpenedNoteIds = state.recentlyOpenedNoteIds;
+      try {
+        window.localStorage.setItem(
+          LS_KEY_SWITCHER_RECENCY,
+          JSON.stringify(state.recentlyOpenedNoteIds),
+        );
+      } catch {
+        /* Quota / private mode — best-effort. */
       }
     }
   });
