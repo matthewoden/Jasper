@@ -18,7 +18,11 @@ const chipStyle: CSSProperties = {
   borderRadius: 4,
   border: "1px solid color-mix(in srgb, var(--color-muted) 30%, transparent)",
   background: "color-mix(in srgb, var(--color-muted) 8%, transparent)",
-  fontFamily: "var(--font-mono)",
+  // UAT #7 fix: lead with -apple-system + SF Pro so macOS browsers render
+  // ⌘ ⇧ ⌃ at parity with adjacent letter glyphs. var(--font-mono) stays in
+  // the stack as the cross-platform monospace fallback.
+  fontFamily:
+    '-apple-system, "SF Pro Display", BlinkMacSystemFont, var(--font-mono), "SF Mono", Menlo, monospace',
   fontSize: 12,
   fontWeight: 600,
   color: "var(--color-muted)",
