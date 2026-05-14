@@ -32,7 +32,7 @@
  *   editorRef.current.applyServerUpdate(s) ← Phase 4 silent reload
  *   editorRef.current.focus()         ← textareaRef.current.focus()
  */
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Annotation } from "@codemirror/state";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
@@ -58,6 +58,9 @@ import {
 import { wikilinkPlugin, resolvedTitlesChanged } from "../editor/wikilinkPlugin";
 import { codeLanguages } from "../editor/codeLanguages";
 import { externalImagePlugin } from "../editor/externalImagePlugin";
+import { imageAttachmentPlugin } from "../editor/imageAttachmentWidget"; // Phase 7 Plan 10 / ATTACH-05
+import { fileChipPlugin } from "../editor/fileChipWidget"; // Phase 7 Plan 10 / ATTACH-06
+import { useAttachmentUpload } from "../lib/useAttachmentUpload"; // Phase 7 Plan 10 / ATTACH-01..02
 import { saveKeymap } from "../editor/jasperKeymap"; // Plan 05-11 / EDIT-10
 import {
   tagClickPlugin,
@@ -219,6 +222,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     // useTagBrowser fetches from GET /api/v1/tags and reacts to WS events.
     const { tags: allTags } = useTagBrowser();
 
+    // Phase 7 Plan 10: mutable noteId ref for attachment plugins.
+    // The plugins are created ONCE (EDIT-01 stability) but read this ref
+    // at decoration-build time so they stay current across note navigation.
+    const noteIdRef = useRef<string | null>(activeNoteId);
+    noteIdRef.current = activeNoteId;
+
     // Use a ref to keep the callbacks fresh without re-registering effects.
     const wikilinkCbRef = useRef({ activeNoteId, setActiveNote, tree });
     wikilinkCbRef.current = { activeNoteId, setActiveNote, tree };
@@ -284,6 +293,19 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       // Zustand setters (reference-stable between renders).
     }, [setActiveTagFilter, setTagBrowserExpanded]);
 
+    // Phase 7 Plan 10 / ATTACH-01..02: attachment drag-drop + paste handlers.
+    // The noteId is passed to useAttachmentUpload; the drop-active state drives
+    // the cm-drop-target-active class on the editor wrapper div.
+    const [dropActive, setDropActive] = useState(false);
+    const { dragHandlers, pasteHandler, isDropTargetActive } = useAttachmentUpload(
+      activeNoteId
+    );
+    // Keep dropActive in sync with the hook's isDropTargetActive
+    // (the hook tracks depth internally via a ref; we sync to React state for rendering).
+    useEffect(() => {
+      setDropActive(isDropTargetActive);
+    }, [isDropTargetActive]);
+
     // D-16 Cmd-held affordance (T-06-09-04: cleanup in useEffect return).
     // Adds/removes data-cmd-held on the .cm-editor root when Cmd/Ctrl is held,
     // so CSS can change the cursor to pointer over wiki-link widgets.
@@ -328,6 +350,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             inlineTagPlugin, // Phase 6.5 / Plan 06.5-05 / UX-T-02 — body inline #tagname decoration
             linkClickHandler, // 05.5-18 — Cmd/Ctrl-click opens external links in a new tab
             externalImagePlugin, // Plan 05-08 — SECURITY-03 external image gate
+            // Phase 7 Plan 10 / ATTACH-05..06: attachment image + file-chip widgets.
+            // noteIdRef provides the current noteId at decoration-build time so note
+            // navigation doesn't require EditorView re-creation (EDIT-01 preserved).
+            imageAttachmentPlugin(noteIdRef), // renders ![alt](attachments/…) below line
+            fileChipPlugin(noteIdRef), // renders [name](attachments/…) chip below line
             // Phase 6 / Plan 06-10 — autocomplete: [[ wiki-links + tag names.
             // Phase 6.5 / Plan 06.5-05 — added inlineTagCompletionSource for # trigger in body.
             // override: [] disables lang-markdown's emoji shortcodes (acceptable for
@@ -431,23 +458,50 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     // aria-label preserves the "Note content" semantic the textarea era
     // shipped with — App.test.tsx + a11y users keep working without
     // re-querying the editor surface.
+    //
+    // Phase 7 Plan 10 / ATTACH-01..02: wrap the editor host in a div that
+    // handles drag-over and paste events. The outer wrapper gets the
+    // cm-drop-target-active class when a file is dragged over it, showing
+    // the inset ring + hint banner (UI-SPEC §Surface 7).
     return (
       <div
-        ref={hostRef}
-        className="cm-host"
-        data-testid="markdown-editor"
-        role="textbox"
-        aria-label="Note content"
-        aria-multiline="true"
-        style={{
-          // Flex-fill within the cm-host-shell so CM6's .cm-editor /
-          // .cm-scroller can reach height: 100% and scroll long
-          // documents internally instead of expanding the page.
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
+        style={{ flex: 1, minHeight: 0, display: "flex", position: "relative" }}
+        className={dropActive ? "cm-drop-target-active" : undefined}
+        data-testid="attachment-drop-zone"
+        onDragEnter={(e) => dragHandlers.onDragEnter(e.nativeEvent)}
+        onDragOver={(e) => dragHandlers.onDragOver(e.nativeEvent)}
+        onDragLeave={(e) => dragHandlers.onDragLeave(e.nativeEvent)}
+        onDrop={async (e) => {
+          const v = viewRef.current;
+          if (v) await dragHandlers.onDrop(e.nativeEvent, v);
         }}
-      />
+        onPaste={async (e) => {
+          const v = viewRef.current;
+          if (v) await pasteHandler(e.nativeEvent, v);
+        }}
+      >
+        {dropActive && (
+          <div className="cm-drop-target-hint" aria-hidden="true">
+            Drop to attach
+          </div>
+        )}
+        <div
+          ref={hostRef}
+          className="cm-host"
+          data-testid="markdown-editor"
+          role="textbox"
+          aria-label="Note content"
+          aria-multiline="true"
+          style={{
+            // Flex-fill within the cm-host-shell so CM6's .cm-editor /
+            // .cm-scroller can reach height: 100% and scroll long
+            // documents internally instead of expanding the page.
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+          }}
+        />
+      </div>
     );
   }
 );

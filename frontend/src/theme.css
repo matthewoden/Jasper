@@ -267,3 +267,25 @@ body {
 .cm-inline-tag:hover {
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
+
+/* Phase 7 Plan 10 — attachment drop zone (UI-SPEC §Surface 7) */
+.cm-drop-target-active {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 50%, transparent);
+  border-radius: 4px;
+  position: relative;
+}
+.cm-drop-target-hint {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-accent);
+  pointer-events: none;
+  z-index: 5;
+}

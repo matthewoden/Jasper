@@ -16,12 +16,13 @@
  * Test environment: jsdom (configured in vitest.config.ts;
  * RESEARCH §Open Question #4 recommends jsdom for CM6 over happy-dom).
  */
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState, type ReactElement } from "react";
 import { render, act } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
 
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
+import { ToastProvider } from "./Toast";
 
 // Probe component — exposes the inner ref and a "rerender me" button
 // so tests can drive both ref calls AND parent re-renders.
@@ -61,17 +62,23 @@ const Probe = forwardRef<
   );
 });
 
+// Phase 7 Plan 10: MarkdownEditor now uses useAttachmentUpload which calls
+// useToast(). All renders must be wrapped in <ToastProvider>.
+function renderWithToast(ui: ReactElement) {
+  return render(<ToastProvider>{ui}</ToastProvider>);
+}
+
 describe("<MarkdownEditor />", () => {
   it("getContent returns the initialDoc on mount", () => {
     const probeRef = { current: null as ProbeRef | null };
-    render(<Probe ref={probeRef} initialDoc="hello world" onChange={vi.fn()} />);
+    renderWithToast(<Probe ref={probeRef} initialDoc="hello world" onChange={vi.fn()} />);
     expect(probeRef.current?.ed()?.getContent()).toBe("hello world");
   });
 
   it("setContent updates the document and getContent reflects it", () => {
     const probeRef = { current: null as ProbeRef | null };
     const onChange = vi.fn();
-    render(<Probe ref={probeRef} initialDoc="" onChange={onChange} />);
+    renderWithToast(<Probe ref={probeRef} initialDoc="" onChange={onChange} />);
     act(() => {
       probeRef.current?.ed()?.setContent("new content");
     });
@@ -81,7 +88,7 @@ describe("<MarkdownEditor />", () => {
   it("setContent triggers onChange (user-typed semantics)", () => {
     const probeRef = { current: null as ProbeRef | null };
     const onChange = vi.fn();
-    render(<Probe ref={probeRef} initialDoc="" onChange={onChange} />);
+    renderWithToast(<Probe ref={probeRef} initialDoc="" onChange={onChange} />);
     act(() => {
       probeRef.current?.ed()?.setContent("typed");
     });
@@ -91,7 +98,7 @@ describe("<MarkdownEditor />", () => {
   it("applyServerUpdate updates the document but does NOT trigger onChange (D-10)", () => {
     const probeRef = { current: null as ProbeRef | null };
     const onChange = vi.fn();
-    render(<Probe ref={probeRef} initialDoc="" onChange={onChange} />);
+    renderWithToast(<Probe ref={probeRef} initialDoc="" onChange={onChange} />);
     act(() => {
       probeRef.current?.ed()?.applyServerUpdate("from-server");
     });
@@ -106,7 +113,7 @@ describe("<MarkdownEditor />", () => {
     // be wiped on rerender.
     const probeRef = { current: null as ProbeRef | null };
     const onChange = vi.fn();
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithToast(
       <Probe ref={probeRef} initialDoc="seed" onChange={onChange} />
     );
 
@@ -127,12 +134,12 @@ describe("<MarkdownEditor />", () => {
 
   it("focus() is callable without throwing", () => {
     const probeRef = { current: null as ProbeRef | null };
-    render(<Probe ref={probeRef} initialDoc="" onChange={vi.fn()} />);
+    renderWithToast(<Probe ref={probeRef} initialDoc="" onChange={vi.fn()} />);
     expect(() => probeRef.current?.ed()?.focus()).not.toThrow();
   });
 
   it("renders with data-testid='markdown-editor' for E2E selection (Plan 05-12)", () => {
-    const { container } = render(<Probe initialDoc="" onChange={vi.fn()} />);
+    const { container } = renderWithToast(<Probe initialDoc="" onChange={vi.fn()} />);
     expect(container.querySelector('[data-testid="markdown-editor"]')).not.toBeNull();
   });
 
@@ -140,7 +147,7 @@ describe("<MarkdownEditor />", () => {
     const probeRef = { current: null as ProbeRef | null };
     const onChange = vi.fn();
     const onH1Change = vi.fn();
-    render(
+    renderWithToast(
       <Probe
         ref={probeRef}
         initialDoc=""
@@ -158,7 +165,7 @@ describe("<MarkdownEditor />", () => {
     const probeRef = { current: null as ProbeRef | null };
     const onChange = vi.fn();
     const onH1Change = vi.fn();
-    render(
+    renderWithToast(
       <Probe
         ref={probeRef}
         initialDoc=""
@@ -177,7 +184,7 @@ describe("<MarkdownEditor />", () => {
     // doc.length AND (b) leave document.activeElement on the CM6
     // contentDOM so subsequent typing lands at the very end of the doc.
     const probeRef = { current: null as ProbeRef | null };
-    const { container } = render(
+    const { container } = renderWithToast(
       <Probe ref={probeRef} initialDoc="hello world" onChange={vi.fn()} />,
     );
     // Reach into the rendered editor to introspect the EditorView state
@@ -204,7 +211,7 @@ describe("<MarkdownEditor />", () => {
     // CM6-scoped blur listener. Dispatching a `blur` FocusEvent on the
     // contentDOM (the .cm-content node) MUST invoke the onBlur prop.
     const onBlur = vi.fn();
-    const { container } = render(
+    const { container } = renderWithToast(
       <Probe initialDoc="hello" onChange={vi.fn()} onBlur={onBlur} />,
     );
     const contentDOM = container.querySelector(".cm-content") as HTMLElement;
@@ -219,7 +226,7 @@ describe("<MarkdownEditor />", () => {
     // Phase 5.5 / UX-07: omitting the onBlur prop must NOT throw when CM6
     // dispatches its blur event. The optional-chain on cbRef.current.onBlur?.()
     // is the contract — verify by rendering without onBlur and dispatching.
-    const { container } = render(
+    const { container } = renderWithToast(
       <Probe initialDoc="hello" onChange={vi.fn()} />,
     );
     const contentDOM = container.querySelector(".cm-content") as HTMLElement;
@@ -236,7 +243,7 @@ describe("<MarkdownEditor />", () => {
     // pre-wrap on .cm-content. Reading the computed style from the
     // rendered DOM is the runtime-checkable proof that the extension is
     // wired into the array (vs. just imported / unused).
-    const { container } = render(
+    const { container } = renderWithToast(
       <Probe initialDoc="just enough text" onChange={vi.fn()} />,
     );
     const contentDOM = container.querySelector(".cm-content") as HTMLElement;
