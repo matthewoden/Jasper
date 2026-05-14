@@ -63,8 +63,18 @@ func JoinTagNamesForFTS(names []string) string {
 }
 
 // checkAndRepairFTSDivergence is called at startup AFTER the reconcile walk
-// completes. If notes_fts row count != notes row count, the FTS index is
-// rebuilt via the FTS5 'rebuild' command (D-36).
+// completes. It detects two forms of FTS5 index divergence (D-36):
+//
+//  1. Row-count mismatch: COUNT(notes_fts) != COUNT(notes). This can occur
+//     when FTS shadow tables are corrupted or partially reset while the notes
+//     content table remains intact.
+//
+//  2. Content staleness: all notes_fts rows have empty body_fts but notes
+//     exist (post-migration 003 state where existing rows were migrated with
+//     body_fts=” defaults). For an external-content FTS5 table, a 'rebuild'
+//     re-reads body_fts/tag_names_fts from the notes content table and
+//     re-indexes them, ensuring MATCH queries work after the indexer has
+//     populated those columns via Upsert.
 //
 // The rebuild is wrapped in a BEGIN IMMEDIATE transaction (T-7-07 mitigation).
 // On any error the failure is returned but the caller (ReconcileWithRegistry)
@@ -80,11 +90,36 @@ func (x *Indexer) checkAndRepairFTSDivergence(ctx context.Context) error {
 		`SELECT COUNT(*) FROM notes_fts`).Scan(&ftsCount); err != nil {
 		return fmt.Errorf("fts divergence check (fts count): %w", err)
 	}
-	if notesCount == ftsCount {
-		return nil // counts match — no divergence
+
+	// Check 1: row-count divergence.
+	rowsDiverge := notesCount != ftsCount
+
+	// Check 2: content staleness — any notes_fts rows with non-empty body_fts?
+	// If notes exist but ALL have empty body_fts, the FTS content was not yet
+	// populated (post-migration 003 or after a 'delete-all' reset).
+	contentStale := false
+	if notesCount > 0 {
+		var populated int
+		if err := x.Pair.Reader.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM notes WHERE body_fts != ''`).Scan(&populated); err != nil {
+			return fmt.Errorf("fts divergence check (populated count): %w", err)
+		}
+		// All notes have empty body_fts → FTS content is stale and needs rebuild.
+		contentStale = populated == 0
 	}
-	x.Log.Warn("FTS5 row-count divergence detected; rebuilding",
-		"notes", notesCount, "fts", ftsCount)
+
+	if !rowsDiverge && !contentStale {
+		return nil // index is healthy
+	}
+
+	if rowsDiverge {
+		x.Log.Warn("FTS5 row-count divergence detected; rebuilding",
+			"notes", notesCount, "fts", ftsCount)
+	} else {
+		x.Log.Warn("FTS5 content stale (all body_fts empty); rebuilding",
+			"notes", notesCount)
+	}
+
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {
 		return fmt.Errorf("fts rebuild begin: %w", err)
