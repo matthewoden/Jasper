@@ -89,6 +89,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/attachments/{noteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload an attachment to a note's attachments/ directory (ATTACH-01..04). */
+        post: operations["createAttachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/attachments/{noteId}/{filename}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stream an attachment file (ATTACH-05/06; path-traversal hardened). */
+        get: operations["getAttachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/daily-notes/{date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get-or-create today's daily note (DAILY-01..03). */
+        get: operations["getDailyNote"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** FTS5 full-text search over note bodies and tag values (SEARCH-01..04). */
+        get: operations["searchNotes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tree": {
         parameters: {
             query?: never;
@@ -478,6 +546,25 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * @description Full note detail including content, returned by get-or-create endpoints
+         *     such as GET /daily-notes/{date}.
+         */
+        NoteDetail: {
+            /** Format: uuid */
+            id: string;
+            /** @description Canonicalized relative path under notes/ (NFC + lowercase per DATA-11) */
+            path: string;
+            /** @description Raw markdown content of the note */
+            content: string;
+            /**
+             * Format: date-time
+             * @description Wall-clock UTC time of the last successful write
+             */
+            updated_at: string;
+            /** @description Normalized tag names extracted from YAML frontmatter. */
+            tags?: string[];
+        };
         NoteList: {
             notes: components["schemas"]["NoteSummary"][];
         };
@@ -690,6 +777,19 @@ export interface components {
             /** @description UUIDs of notes whose frontmatter was rewritten (tag removed). */
             touched_note_ids: string[];
         };
+        AttachmentUploadResult: {
+            /** @description Final stored filename (auto-renamed on collision per ATTACH-04). */
+            filename: string;
+            /** @description Path relative to the note's parent directory, e.g., 'attachments/image-1.png'. */
+            path: string;
+            /** @description MIME type from http.DetectContentType (D-27). */
+            content_type: string;
+            /** @enum {string} */
+            category: "image" | "pdf" | "video" | "audio" | "archive" | "other";
+            is_image: boolean;
+            /** Format: int64 */
+            size_bytes: number;
+        };
         /**
          * @description A single backlink entry: a note that contains a `[[...]]` reference
          *     resolving to the target note. One row per source note — multiple
@@ -849,6 +949,21 @@ export interface components {
         WSReindexStartedPayload: Record<string, never>;
         WSReindexCompletePayload: {
             notes_indexed: number;
+        };
+        SearchResult: {
+            id: string;
+            title: string;
+            path: string;
+            /** @description Server-sanitized HTML containing <mark> tags around matched terms (D-04). */
+            excerpt_html: string;
+            matching_tags: string[];
+            /** @description bm25 + recency score; lower is better (negative floats). */
+            rank: number;
+            /** Format: date-time */
+            modified_at: string;
+        };
+        SearchResults: {
+            results: components["schemas"]["SearchResult"][];
         };
         /**
          * @description Returned by PUT /notes/{id} when If-Match does not match the
@@ -1142,6 +1257,177 @@ export interface operations {
             };
             /** @description Move failed (FS / SQLite mismatch) */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Attachment stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentUploadResult"];
+                };
+            };
+            /** @description Note not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description File exceeds 100 MB cap (D-29). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                noteId: string;
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Binary stream with Content-Type header. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Invalid filename (path traversal attempt). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Symlink rejected. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Attachment not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getDailyNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daily note already existed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteDetail"];
+                };
+            };
+            /** @description Daily note created from template. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteDetail"];
+                };
+            };
+            /** @description Invalid date format. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    searchNotes: {
+        parameters: {
+            query: {
+                q: string;
+                /** @description AND-combine with a tag filter (D-05). */
+                tag?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result list (empty array when no matches). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResults"];
+                };
+            };
+            /** @description Invalid FTS5 query syntax. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

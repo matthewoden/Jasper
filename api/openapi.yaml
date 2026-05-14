@@ -226,6 +226,135 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /attachments/{noteId}:
+    post:
+      tags: [notes]
+      operationId: createAttachment
+      summary: Upload an attachment to a note's attachments/ directory (ATTACH-01..04).
+      parameters:
+        - name: noteId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Attachment stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AttachmentUploadResult" }
+        "404":
+          description: Note not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "413":
+          description: File exceeds 100 MB cap (D-29).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /attachments/{noteId}/{filename}:
+    get:
+      tags: [notes]
+      operationId: getAttachment
+      summary: Stream an attachment file (ATTACH-05/06; path-traversal hardened).
+      parameters:
+        - name: noteId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Binary stream with Content-Type header.
+          content:
+            application/octet-stream: {}
+        "400":
+          description: Invalid filename (path traversal attempt).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Symlink rejected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Attachment not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /daily-notes/{date}:
+    get:
+      tags: [notes]
+      operationId: getDailyNote
+      summary: Get-or-create today's daily note (DAILY-01..03).
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+      responses:
+        "200":
+          description: Daily note already existed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteDetail" }
+        "201":
+          description: Daily note created from template.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteDetail" }
+        "400":
+          description: Invalid date format.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /search:
+    get:
+      tags: [notes]
+      operationId: searchNotes
+      summary: FTS5 full-text search over note bodies and tag values (SEARCH-01..04).
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2 }
+        - name: tag
+          in: query
+          required: false
+          description: AND-combine with a tag filter (D-05).
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 50, minimum: 1, maximum: 100 }
+      responses:
+        "200":
+          description: Result list (empty array when no matches).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResults" }
+        "400":
+          description: Invalid FTS5 query syntax.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
   /tree:
     get:
       tags: [tree]
@@ -797,6 +926,31 @@ components:
           type: string
           format: date-time
           description: Wall-clock UTC of last filesystem mtime observed by the indexer
+    NoteDetail:
+      type: object
+      required: [id, path, content, updated_at]
+      description: |
+        Full note detail including content, returned by get-or-create endpoints
+        such as GET /daily-notes/{date}.
+      properties:
+        id:
+          type: string
+          format: uuid
+        path:
+          type: string
+          description: Canonicalized relative path under notes/ (NFC + lowercase per DATA-11)
+        content:
+          type: string
+          description: Raw markdown content of the note
+        updated_at:
+          type: string
+          format: date-time
+          description: Wall-clock UTC time of the last successful write
+        tags:
+          type: array
+          items:
+            type: string
+          description: Normalized tag names extracted from YAML frontmatter.
     NoteList:
       type: object
       required: [notes]
@@ -1088,6 +1242,16 @@ components:
             type: string
             format: uuid
           description: UUIDs of notes whose frontmatter was rewritten (tag removed).
+    AttachmentUploadResult:
+      type: object
+      required: [filename, path, content_type, category, is_image, size_bytes]
+      properties:
+        filename:     { type: string, description: "Final stored filename (auto-renamed on collision per ATTACH-04)." }
+        path:         { type: string, description: "Path relative to the note's parent directory, e.g., 'attachments/image-1.png'." }
+        content_type: { type: string, description: "MIME type from http.DetectContentType (D-27)." }
+        category:     { type: string, enum: [image, pdf, video, audio, archive, other] }
+        is_image:     { type: boolean }
+        size_bytes:   { type: integer, format: int64 }
     BacklinkRow:
       type: object
       required: [source_id, source_title, source_path, excerpt, count]
@@ -1312,6 +1476,24 @@ components:
       required: [notes_indexed]
       properties:
         notes_indexed: { type: integer }
+    SearchResult:
+      type: object
+      required: [id, title, path, excerpt_html, matching_tags, rank, modified_at]
+      properties:
+        id:            { type: string }
+        title:         { type: string }
+        path:          { type: string }
+        excerpt_html:  { type: string, description: "Server-sanitized HTML containing <mark> tags around matched terms (D-04)." }
+        matching_tags: { type: array, items: { type: string } }
+        rank:          { type: number, description: "bm25 + recency score; lower is better (negative floats)." }
+        modified_at:   { type: string, format: date-time }
+    SearchResults:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/SearchResult" }
     StaleWriteError:
       type: object
       description: |
