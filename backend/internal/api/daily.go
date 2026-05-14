@@ -59,6 +59,14 @@ func (s *Server) GetDailyNote(
 	if s.index != nil {
 		rec, err := s.index.LookupByPath(ctx, relPath)
 		if err == nil {
+			// UAT #6 fix: ensure the registry has a mapping for this id even when
+			// the note was created in a previous server run and the registry was
+			// rebuilt empty (or admin/reindex repopulated the index but the registry
+			// was missing this row). Idempotent per registry.go:78 — re-adding the
+			// same id replaces in place.
+			if s.notes != nil {
+				s.notes.Registry().Add(rec.ID, rec.Path)
+			}
 			// Found — read content from disk and return 200.
 			detail, derr := s.readDailyNoteDetail(ctx, rec, date)
 			if derr != nil {
@@ -129,6 +137,17 @@ func (s *Server) GetDailyNote(
 				s.log.Warn("GetDailyNote: SyncTags failed (non-fatal)", "err", sErr)
 			}
 		}
+	}
+	// UAT #1 fix: register the new UUID in notes.Service.Registry so that
+	// subsequent Service.Get(id) calls (e.g. from EditorPane.getNote) resolve
+	// immediately. The index knows the note via Upsert but Service.Get consults
+	// the in-memory registry, not the index. Without this call the frontend
+	// receives 404 → "Could not load note" toast.
+	// Placed outside the s.index block: even if Upsert failed, the file IS on
+	// disk and we should register it so the editor can open it right away.
+	// Idempotent per registry.go:78 (Add overwrites byID).
+	if s.notes != nil {
+		s.notes.Registry().Add(id, relPath)
 	}
 
 	// 3e. Return 201 with NoteDetail.
