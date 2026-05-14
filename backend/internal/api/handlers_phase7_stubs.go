@@ -7,6 +7,9 @@ package api
 // backend compiles. Each plan that lands a real handler removes the corresponding
 // stub method; the LAST plan to land deletes this file (idempotent — Phase 2 / Phase 3
 // / Phase 6 precedent).
+//
+// Plan 07-06 removed: CreateAttachment, GetAttachment stubs (real handlers in attachments.go).
+// Remaining: SearchNotes — removed by Plan 07-04 (Wave 4), which also deletes this file.
 
 import (
 	"context"
@@ -18,15 +21,5 @@ var errPhase7NotImplemented = errors.New("phase 7 handler not implemented yet")
 
 //nolint:revive // generated interface name
 func (s *Server) SearchNotes(_ context.Context, _ SearchNotesRequestObject) (SearchNotesResponseObject, error) {
-	return nil, errPhase7NotImplemented
-}
-
-//nolint:revive // generated interface name
-func (s *Server) CreateAttachment(_ context.Context, _ CreateAttachmentRequestObject) (CreateAttachmentResponseObject, error) {
-	return nil, errPhase7NotImplemented
-}
-
-//nolint:revive // generated interface name
-func (s *Server) GetAttachment(_ context.Context, _ GetAttachmentRequestObject) (GetAttachmentResponseObject, error) {
 	return nil, errPhase7NotImplemented
 }
