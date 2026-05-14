@@ -2,7 +2,7 @@
  * useQuickSwitcher — fuzzy match note titles + recency tiebreaker (D-12, D-13).
  *
  * Empty query → recency-ordered list (most recently opened first), then
- *               alphabetical for notes not in recency list. Capped at 50.
+ *               updated_at desc for notes not in recency list. Capped at 50.
  * Non-empty query → fuzzysort score order with recency tiebreaker on equal scores.
  *
  * Accepts query as an argument so the caller (CommandMenu) can maintain
@@ -19,6 +19,8 @@ export interface NoteHit {
   id: string;
   title: string;
   path: string;
+  /** ISO 8601 UTC string — used for updated_at desc fallback sort (C2 / UAT #10). */
+  updated_at: string;
   score?: number;
 }
 
@@ -32,7 +34,7 @@ function flattenTree(tree: Tree): NoteHit[] {
 
   function visit(node: TreeNode): void {
     if (node.kind === "note") {
-      notes.push({ id: node.id, title: node.title, path: node.path });
+      notes.push({ id: node.id, title: node.title, path: node.path, updated_at: node.updated_at });
     } else if (node.kind === "folder") {
       if (node.children) {
         for (const child of node.children) visit(child);
@@ -63,14 +65,18 @@ export function useQuickSwitcher(query: string): NoteHit[] {
     const all = flattenTree(tree);
 
     if (!query) {
-      // Empty query: recency-first order, then alphabetical for un-opened notes.
+      // Empty query: recency-first order, then updated_at desc for un-opened notes.
+      // C2 fix (UAT #10): ISO 8601 strings sort correctly via localeCompare;
+      // descending means b.updated_at before a.updated_at (most recent first).
       const recencyIndex = new Map(recentlyOpenedNoteIds.map((id, i) => [id, i]));
       const sorted = [...all].sort((a, b) => {
         const ai = recencyIndex.get(a.id) ?? Infinity;
         const bi = recencyIndex.get(b.id) ?? Infinity;
         if (ai !== bi) return ai - bi;
-        // Stable alphabetical fallback for notes not in recency list (or ties)
-        return a.title.localeCompare(b.title);
+        // C2 fix (UAT #10): fall back to updated_at desc so the switcher
+        // always has the most recent notes at the top when no recency
+        // history exists. ISO 8601 strings sort correctly via localeCompare.
+        return b.updated_at.localeCompare(a.updated_at);
       });
       return sorted.slice(0, 50);
     }

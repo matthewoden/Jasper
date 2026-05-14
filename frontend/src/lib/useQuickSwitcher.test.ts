@@ -61,18 +61,68 @@ describe("useQuickSwitcher — empty query (recency sort)", () => {
     expect(ids[2]).toBe("c");
   });
 
-  it("returns notes with no recency entry sorted by title alphabetically", () => {
-    const notes = [
-      { id: "z", title: "Zebra", path: "zebra.md" },
-      { id: "m", title: "Mango", path: "mango.md" },
-    ];
-    mockUseFileTree.mockReturnValue({ tree: makeTree(notes), loading: false, error: null });
+  it("returns notes with no recency entry sorted by updated_at desc (most recent first)", () => {
+    // C2 fix (UAT #10): empty-recency branch must fall back to updated_at desc,
+    // NOT alphabetical. ISO 8601 strings sort correctly via localeCompare.
+    const tree = {
+      root: [
+        {
+          kind: "note" as const,
+          id: "old",
+          title: "Zebra",
+          path: "zebra.md",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        {
+          kind: "note" as const,
+          id: "new",
+          title: "Mango",
+          path: "mango.md",
+          updated_at: "2024-06-15T12:00:00Z",
+        },
+        {
+          kind: "note" as const,
+          id: "mid",
+          title: "Apple",
+          path: "apple.md",
+          updated_at: "2024-03-10T00:00:00Z",
+        },
+      ],
+    };
+    mockUseFileTree.mockReturnValue({ tree, loading: false, error: null });
     mockUseTreeStore.mockReturnValue([]); // no recency
 
     const { result } = renderHook(() => useQuickSwitcher(""));
     const ids = result.current.map((h) => h.id);
-    expect(ids[0]).toBe("m"); // Mango < Zebra alphabetically
-    expect(ids[1]).toBe("z");
+    // Most recent (June) first, then March, then January
+    expect(ids[0]).toBe("new");
+    expect(ids[1]).toBe("mid");
+    expect(ids[2]).toBe("old");
+  });
+
+  it("NoteHit shape includes updated_at field", () => {
+    // C2 fix: NoteHit must expose updated_at so the sort comparator can use it.
+    const tree = {
+      root: [
+        {
+          kind: "note" as const,
+          id: "n1",
+          title: "My Note",
+          path: "my-note.md",
+          updated_at: "2024-05-01T10:00:00Z",
+        },
+      ],
+    };
+    mockUseFileTree.mockReturnValue({ tree, loading: false, error: null });
+    mockUseTreeStore.mockReturnValue([]);
+
+    const { result } = renderHook(() => useQuickSwitcher(""));
+    expect(result.current[0]).toMatchObject({
+      id: "n1",
+      title: "My Note",
+      path: "my-note.md",
+      updated_at: "2024-05-01T10:00:00Z",
+    });
   });
 
   it("returns at most 50 notes", () => {

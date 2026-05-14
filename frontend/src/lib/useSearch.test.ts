@@ -1,18 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useSearch } from "./useSearch";
-import { useTreeStore } from "./useTreeStore";
 import * as searchApi from "./searchApi";
 
-// Reset store state and timers before each test.
+const MOCK_RESULT = {
+  id: "1",
+  title: "Hello World",
+  path: "hello.md",
+  excerpt_html: "<mark>hello</mark> world",
+  matching_tags: [],
+  rank: 0,
+  modified_at: "2026-05-14T00:00:00Z",
+};
+
 beforeEach(() => {
   vi.useFakeTimers();
-  useTreeStore.setState({
-    searchQuery: "",
-    activeTagFilter: null,
-    searchResults: [],
-    searchActive: false,
-  });
   vi.spyOn(searchApi, "searchNotes").mockResolvedValue([]);
 });
 
@@ -21,103 +23,122 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("useSearch", () => {
-  it("clears results and sets searchActive=false when query < 2 chars", () => {
-    renderHook(() => useSearch());
-    act(() => {
-      useTreeStore.getState().setSearchQuery("a");
-    });
-    expect(useTreeStore.getState().searchActive).toBe(false);
-    expect(useTreeStore.getState().searchResults).toEqual([]);
-  });
-
-  it("sets searchActive=false for empty query", () => {
-    renderHook(() => useSearch());
-    act(() => {
-      useTreeStore.getState().setSearchQuery("");
-    });
-    expect(useTreeStore.getState().searchActive).toBe(false);
-  });
-
-  it("debounces 200ms before firing search for query >= 2 chars", async () => {
-    renderHook(() => useSearch());
-    act(() => {
-      useTreeStore.getState().setSearchQuery("hello");
-    });
-    // searchActive should be set immediately on >= 2 chars
-    expect(useTreeStore.getState().searchActive).toBe(true);
-    // but API should not have been called yet
+describe("useSearch (parameter-driven, Plan 07-18)", () => {
+  it("returns empty results and isSearching=false when query.length < 2", () => {
+    const { result } = renderHook(() => useSearch("a", null));
+    expect(result.current.results).toEqual([]);
+    expect(result.current.isSearching).toBe(false);
     expect(searchApi.searchNotes).not.toHaveBeenCalled();
-    // advance 199ms — still not called
+  });
+
+  it("returns empty results and isSearching=false for empty query", () => {
+    const { result } = renderHook(() => useSearch("", null));
+    expect(result.current.results).toEqual([]);
+    expect(result.current.isSearching).toBe(false);
+    expect(searchApi.searchNotes).not.toHaveBeenCalled();
+  });
+
+  it("sets isSearching=true immediately for query >= 2 chars, before debounce fires", () => {
+    const { result } = renderHook(() => useSearch("he", null));
+    expect(result.current.isSearching).toBe(true);
+    expect(searchApi.searchNotes).not.toHaveBeenCalled();
+  });
+
+  it("debounces 200ms then returns results from searchNotes", async () => {
+    vi.spyOn(searchApi, "searchNotes").mockResolvedValue([MOCK_RESULT]);
+    const { result } = renderHook(() => useSearch("hello", null));
+
+    expect(result.current.isSearching).toBe(true);
+    expect(searchApi.searchNotes).not.toHaveBeenCalled();
+
+    // advance less than debounce — not fired yet
     await act(async () => {
       vi.advanceTimersByTime(199);
     });
     expect(searchApi.searchNotes).not.toHaveBeenCalled();
-    // advance 2ms more — debounce fires
+
+    // advance past debounce
     await act(async () => {
       vi.advanceTimersByTime(2);
     });
-    expect(searchApi.searchNotes).toHaveBeenCalledWith(
-      "hello",
-      undefined,
-      50,
-    );
+    expect(searchApi.searchNotes).toHaveBeenCalledWith("hello", undefined, 50);
+    expect(result.current.results).toEqual([MOCK_RESULT]);
+    expect(result.current.isSearching).toBe(false);
   });
 
-  it("passes activeTagFilter to API as tag", async () => {
-    useTreeStore.setState({ activeTagFilter: "project" });
-    renderHook(() => useSearch());
-    act(() => {
-      useTreeStore.getState().setSearchQuery("hello");
-    });
+  it("passes activeTagFilter to searchNotes as tag", async () => {
+    vi.spyOn(searchApi, "searchNotes").mockResolvedValue([]);
+    renderHook(() => useSearch("hello", "project"));
     await act(async () => {
       vi.advanceTimersByTime(201);
     });
     expect(searchApi.searchNotes).toHaveBeenCalledWith("hello", "project", 50);
   });
 
-  it("cancels previous debounce when query changes rapidly", async () => {
-    renderHook(() => useSearch());
-    act(() => {
-      useTreeStore.getState().setSearchQuery("he");
-    });
+  it("cancels previous debounce when query changes rapidly (only final call fires)", async () => {
+    vi.spyOn(searchApi, "searchNotes").mockResolvedValue([]);
+    const { result, rerender } = renderHook(
+      ({ q }: { q: string }) => useSearch(q, null),
+      { initialProps: { q: "he" } },
+    );
+
+    // advance partway
     await act(async () => {
       vi.advanceTimersByTime(100);
     });
-    act(() => {
-      useTreeStore.getState().setSearchQuery("hello");
-    });
+
+    // change query — previous debounce should be cancelled
+    rerender({ q: "hello" });
     await act(async () => {
       vi.advanceTimersByTime(201);
     });
-    // should only fire once (for the final value)
+
+    // should only fire once (for final value)
     expect(searchApi.searchNotes).toHaveBeenCalledTimes(1);
     expect(searchApi.searchNotes).toHaveBeenCalledWith("hello", undefined, 50);
+    void result;
   });
 
-  it("clears searchActive when query drops below threshold after being active", async () => {
-    renderHook(() => useSearch());
-    act(() => {
-      useTreeStore.getState().setSearchQuery("hello");
+  it("returns empty results and isSearching=false when query drops below threshold", () => {
+    const { result, rerender } = renderHook(
+      ({ q }: { q: string }) => useSearch(q, null),
+      { initialProps: { q: "hello" } },
+    );
+    // Initially searching
+    expect(result.current.isSearching).toBe(true);
+
+    // Drop below threshold
+    rerender({ q: "h" });
+    expect(result.current.results).toEqual([]);
+    expect(result.current.isSearching).toBe(false);
+  });
+
+  it("re-runs when activeTagFilter changes", async () => {
+    vi.spyOn(searchApi, "searchNotes").mockResolvedValue([]);
+    const { rerender } = renderHook(
+      ({ tag }: { tag: string | null }) => useSearch("hello", tag),
+      { initialProps: { tag: null } },
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(201);
     });
-    expect(useTreeStore.getState().searchActive).toBe(true);
-    act(() => {
-      useTreeStore.getState().setSearchQuery("h");
+    expect(searchApi.searchNotes).toHaveBeenCalledWith("hello", undefined, 50);
+
+    rerender({ tag: "project" });
+    await act(async () => {
+      vi.advanceTimersByTime(201);
     });
-    expect(useTreeStore.getState().searchActive).toBe(false);
-    expect(useTreeStore.getState().searchResults).toEqual([]);
+    expect(searchApi.searchNotes).toHaveBeenLastCalledWith("hello", "project", 50);
+    expect(searchApi.searchNotes).toHaveBeenCalledTimes(2);
   });
 
   it("source file contains the D-08 INTENTIONAL DESIGN comment (WS-free contract)", async () => {
     // This test acts as a compile-time signal that the comment block is present.
-    // The real verification is the grep gate in the plan's acceptance criteria.
-    // We verify by importing the module and checking the hook exists and has the
-    // expected shape. The D-08 comment is grep-verified separately.
     const { useSearch: imported } = await import("./useSearch");
     expect(typeof imported).toBe("function");
-    renderHook(() => imported());
-    // Hook should return { isSearching: boolean }
-    const { result } = renderHook(() => imported());
+    const { result } = renderHook(() => imported("", null));
     expect(typeof result.current.isSearching).toBe("boolean");
+    expect(Array.isArray(result.current.results)).toBe(true);
   });
 });

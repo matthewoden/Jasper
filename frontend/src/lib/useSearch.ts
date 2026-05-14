@@ -1,6 +1,5 @@
-import { useEffect, useRef } from "react";
-import { useTreeStore } from "./useTreeStore";
-import { searchNotes } from "./searchApi";
+import { useEffect, useRef, useState } from "react";
+import { searchNotes, type SearchResult } from "./searchApi";
 
 // INTENTIONAL DESIGN: Search results are NOT refreshed on WS note:* events.
 // This is a deliberate divergence from the Phase 4 WS-as-cache-invalidation
@@ -13,20 +12,29 @@ import { searchNotes } from "./searchApi";
 const DEBOUNCE_MS = 200;
 const MIN_QUERY_LENGTH = 2;
 
+export interface PaletteSearchResult {
+  results: SearchResult[];
+  isSearching: boolean;
+}
+
 /**
  * useSearch — debounced text search with optional tag-AND combination.
- * Reads searchQuery + activeTagFilter from useTreeStore.
- * Writes searchResults + searchActive (Plan 07-07 slices).
- * Returns { isSearching: boolean } for UI feedback hooks (loading state UI per
- * UI-SPEC §States: NO spinner — old results stay visible).
+ * Now parameter-driven (post-Plan 07-18 / Bucket B1 pivot): caller supplies
+ * query + activeTagFilter; hook returns { results, isSearching }.
+ * No store writes. Mounted inside CommandMenu when mode === "notes".
+ *
+ * Below 2-character threshold: returns { results: [], isSearching: false }
+ * synchronously (no debounce, no store writes).
+ * Above threshold: debounces 200ms, fires searchNotes(query, activeTagFilter, 50),
+ * returns the results when they land.
  */
-export function useSearch(): { isSearching: boolean } {
-  const searchQuery = useTreeStore((s) => s.searchQuery);
-  const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
-  const setSearchResults = useTreeStore((s) => s.setSearchResults);
-  const setSearchActive = useTreeStore((s) => s.setSearchActive);
+export function useSearch(
+  query: string,
+  activeTagFilter: string | null,
+): PaletteSearchResult {
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const cancelled = useRef(false);
-  const isSearchingRef = useRef(false);
 
   useEffect(() => {
     cancelled.current = false;
@@ -36,37 +44,32 @@ export function useSearch(): { isSearching: boolean } {
   }, []);
 
   useEffect(() => {
-    // Below threshold: clear synchronously, no debounce.
-    if (searchQuery.length < MIN_QUERY_LENGTH) {
-      setSearchResults([]);
-      setSearchActive(false);
+    if (query.length < MIN_QUERY_LENGTH) {
+      setResults([]);
+      setIsSearching(false);
       return;
     }
-    setSearchActive(true);
-
+    setIsSearching(true);
     const handle = setTimeout(async () => {
-      isSearchingRef.current = true;
       try {
-        const results = await searchNotes(
-          searchQuery,
+        const r = await searchNotes(
+          query,
           activeTagFilter ?? undefined,
           50,
         );
         if (!cancelled.current) {
-          setSearchResults(results);
+          setResults(r);
         }
       } catch (e) {
         // Per UI-SPEC §States, errors trigger toast — but debounce-driven errors
-        // simply leave the OLD results visible. v1 lean: silent fail (UI-SPEC line
-        // "OLD results stay visible (no spinner)").
+        // simply leave the OLD results visible. v1 lean: silent fail.
         console.warn("useSearch: search failed", e);
       } finally {
-        isSearchingRef.current = false;
+        if (!cancelled.current) setIsSearching(false);
       }
     }, DEBOUNCE_MS);
-
     return () => clearTimeout(handle);
-  }, [searchQuery, activeTagFilter, setSearchResults, setSearchActive]);
+  }, [query, activeTagFilter]);
 
-  return { isSearching: isSearchingRef.current };
+  return { results, isSearching };
 }
