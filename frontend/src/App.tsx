@@ -226,6 +226,40 @@ export function handleAppCmdSlash(e: KeyboardEvent): void {
   useTreeStore.getState().setCheatSheetOpen(true);
 }
 
+/**
+ * Cmd+B — bold (CM6 owns this in its editor-level keymap).
+ *
+ * UAT #8 fix: Brave (and other Chromium browsers with extensions like
+ * Leo AI) intercept Cmd+B before CM6's editor-level capture-phase
+ * listener fires. We register a WINDOW-level capture-phase handler that
+ * preventDefault()s the browser/extension default. We do NOT call
+ * stopPropagation — capture-phase propagation continues from window
+ * down to cm-content, where CM6's bold keymap fires normally.
+ *
+ * Contract: the window handler ONLY blocks browser defaults. CM6 owns
+ * the actual bold-toggle behavior. Test pinned in App.test.tsx (KC-B-*).
+ */
+export function handleAppCmdB(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  if (e.key !== "b" && e.key !== "B") return;
+  e.preventDefault();
+  // No stopPropagation — CM6's cm-content listener must still fire.
+}
+
+/**
+ * Cmd+I — italic (CM6 owns). UAT #9 fix mirrors UAT #8.
+ *
+ * macOS's "Show font panel" gesture (or line-select in some browser
+ * builds) intercepts Cmd+I. Window-level capture preventDefault blocks
+ * it without stopping capture-phase propagation to cm-content.
+ */
+export function handleAppCmdI(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  if (e.key !== "i" && e.key !== "I") return;
+  e.preventDefault();
+  // No stopPropagation — CM6's cm-content listener must still fire.
+}
+
 export default function App() {
   return (
     <ToastProvider>
@@ -334,16 +368,25 @@ function AppInner() {
   // processes the event (RESEARCH §Pitfall 5). Without capture=true, CM6
   // consumes Cmd+P before the window handler sees it and the browser
   // print dialog would race with the palette.
+  //
+  // Plan 07-16 (UAT #8/#9) — handleAppCmdB and handleAppCmdI added here.
+  // They call preventDefault ONLY (no stopPropagation) so CM6's editor-level
+  // capture-phase listener on cm-content still fires and toggles bold/italic.
   useEffect(() => {
     window.addEventListener("keydown", handleAppCmdP, true);
     window.addEventListener("keydown", handleAppCmdO, true);
     window.addEventListener("keydown", handleAppCmdShiftD, true);
     window.addEventListener("keydown", handleAppCmdSlash, true);
+    // UAT #8/#9 fix: block browser/extension defaults for Cmd+B / Cmd+I.
+    window.addEventListener("keydown", handleAppCmdB, true);
+    window.addEventListener("keydown", handleAppCmdI, true);
     return () => {
       window.removeEventListener("keydown", handleAppCmdP, true);
       window.removeEventListener("keydown", handleAppCmdO, true);
       window.removeEventListener("keydown", handleAppCmdShiftD, true);
       window.removeEventListener("keydown", handleAppCmdSlash, true);
+      window.removeEventListener("keydown", handleAppCmdB, true);
+      window.removeEventListener("keydown", handleAppCmdI, true);
     };
   }, []);
 
