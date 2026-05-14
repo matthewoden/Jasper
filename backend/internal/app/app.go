@@ -159,7 +159,13 @@ func New(cfg Config) (*App, error) {
 	// ORDER MATTERS — Pitfall 13.
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(maxBodyBytes(maxRequestBodyBytes))
+		// Body cap: 200 MiB middleware limit (above the handler's 100 MiB LimitReader
+		// cap) so that large attachment uploads reach the handler intact and get a
+		// proper HTTP 413 response rather than HTTP 500 from MaxBytesReader.
+		// The handler (attachments.go) enforces the actual 100 MiB cap via
+		// io.LimitReader and returns CreateAttachment413JSONResponse.
+		// See maxAttachmentBodyBytes in middleware.go for the full rationale.
+		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
 		r.Use(api.ConfigStrictBodyMiddleware) // D-40: strict JSON for PUT /config
 		api.HandlerFromMux(si, r)
 	})
