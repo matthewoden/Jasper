@@ -114,6 +114,11 @@ func (f *tagFakeIndex) SearchTitles(_ context.Context, _ string, _ int) ([]notes
 	return []notes.SearchResult{}, nil
 }
 
+// Plan 07-04: SearchFTS no-op stub.
+func (f *tagFakeIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes.SearchHit, error) {
+	return []notes.SearchHit{}, nil
+}
+
 func (f *tagFakeIndex) ListTags(_ context.Context) ([]notes.TagWithCount, error) {
 	if f.listTagsErr != nil {
 		return nil, f.listTagsErr

@@ -90,6 +90,11 @@ func (f *fakeIndexForAttachments) SearchTitles(_ context.Context, _ string, _ in
 	return nil, nil
 }
 
+// Plan 07-04: SearchFTS no-op stub.
+func (f *fakeIndexForAttachments) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes.SearchHit, error) {
+	return nil, nil
+}
+
 // ─── Test server constructor ────────────────────────────────────────────────
 
 // newAttachmentTestServer creates a *Server with:

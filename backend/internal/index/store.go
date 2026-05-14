@@ -335,6 +335,117 @@ func (x *Indexer) SearchTitles(ctx context.Context, q string, limit int) ([]note
 	return out, nil
 }
 
+// SearchFTS runs an FTS5 MATCH query against the notes_fts virtual table with
+// an optional AND-combined tag filter. Results are ordered by the bm25 +
+// recency blend described in RESEARCH.md §bm25() × Recency SQL (D-03/D-46).
+//
+// Security: the MATCH clause always uses a positional bind parameter (?1) —
+// NEVER fmt.Sprintf or string concatenation (T-7-08 mitigation).
+//
+// FTS5 syntax errors (unbalanced parentheses, etc.) are caught by
+// strings.Contains on the error message and wrapped as notes.ErrFTSQuerySyntax
+// so the handler maps to HTTP 400 (T-7-10 mitigation, Pitfall 2).
+func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]notes.SearchHit, error) {
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Positional bind parameters required here because ?2 appears twice in
+	// the WHERE subquery (gate: ?2 IS NULL OR EXISTS tag-match).
+	//
+	// bm25() and snippet() are FTS5 auxiliary functions that require a
+	// simple FTS5 query context (MATCH in the WHERE clause of the same
+	// SELECT). GROUP BY breaks the FTS5 context, so the tag filter uses
+	// an EXISTS subquery instead — this avoids GROUP BY while still
+	// AND-combining the text search with the tag filter.
+	const sqlText = `
+		SELECT
+			n.id,
+			n.title,
+			n.path,
+			n.updated_at,
+			snippet(notes_fts, 0, '<mark>', '</mark>', '…', 24) AS excerpt_html,
+			bm25(notes_fts) AS rank
+		FROM notes_fts
+		JOIN notes n ON notes_fts.rowid = n.rowid
+		WHERE notes_fts MATCH ?1
+		  AND (
+		    ?2 IS NULL
+		    OR EXISTS (
+		        SELECT 1 FROM note_tags nt
+		        JOIN tags t ON t.id = nt.tag_id
+		        WHERE nt.note_id = n.id AND t.name = ?2
+		    )
+		  )
+		ORDER BY
+			bm25(notes_fts) + (julianday('now') - julianday(datetime(n.updated_at,'unixepoch'))) * 0.002
+		LIMIT ?3
+	`
+
+	var tagBind any
+	if tag != "" {
+		tagBind = tag
+	}
+
+	rows, err := x.Pair.Reader.QueryContext(ctx, sqlText, q, tagBind, limit+1)
+	if err != nil {
+		if strings.Contains(err.Error(), "fts5: syntax error") {
+			return nil, fmt.Errorf("%w: %v", notes.ErrFTSQuerySyntax, err)
+		}
+		return nil, fmt.Errorf("searchfts query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var hits []notes.SearchHit
+	for rows.Next() {
+		var h notes.SearchHit
+		var updatedAt int64
+		if err := rows.Scan(&h.ID, &h.Title, &h.Path, &updatedAt, &h.ExcerptHTML, &h.Rank); err != nil {
+			return nil, fmt.Errorf("searchfts scan: %w", err)
+		}
+		h.ModifiedAt = time.Unix(updatedAt, 0).UTC()
+		hits = append(hits, h)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("searchfts iter: %w", err)
+	}
+
+	// Populate MatchingTags via per-hit lookup. Cheap because limit ≤ 100.
+	for i := range hits {
+		tagNames, terr := x.tagNamesForNote(ctx, hits[i].ID)
+		if terr != nil {
+			x.Log.Error("searchfts: tagNamesForNote", "note_id", hits[i].ID, "err", terr)
+			continue
+		}
+		hits[i].MatchingTags = tagNames
+	}
+	return hits, nil
+}
+
+// tagNamesForNote returns the sorted tag names for noteID. Used by SearchFTS
+// to populate SearchHit.MatchingTags after the FTS query.
+func (x *Indexer) tagNamesForNote(ctx context.Context, noteID string) ([]string, error) {
+	rows, err := x.Pair.Reader.QueryContext(ctx,
+		`SELECT t.name FROM tags t JOIN note_tags nt ON t.id = nt.tag_id WHERE nt.note_id = ? ORDER BY t.name`,
+		noteID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var names []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		names = append(names, n)
+	}
+	return names, rows.Err()
+}
+
 // escapeLike escapes the SQLite LIKE wildcards `%` and `_` (and the
 // escape character itself, `\`) so the supplied prefix binds as a
 // literal substring under `LIKE ? ESCAPE '\'`. Without this, an

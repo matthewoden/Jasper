@@ -1161,6 +1161,12 @@ func (nopIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchResult
 	return []SearchResult{}, nil
 }
 
+// Plan 07-04: nopIndex no-op for SearchFTS. Real implementation in
+// internal/index/store.go (SearchFTS method on *Indexer).
+func (nopIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]SearchHit, error) {
+	return []SearchHit{}, nil
+}
+
 // unionTags returns the deduplicated, sorted union of tag slices a and b.
 // Both inputs are expected to already be normalized per D-22 (lowercase,
 // [a-z0-9_-] charset). Sorting guarantees deterministic order so that

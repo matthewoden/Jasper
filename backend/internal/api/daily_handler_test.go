@@ -320,6 +320,11 @@ func (f *fakeIndexForDaily) SearchTitles(_ context.Context, _ string, _ int) ([]
 	return nil, nil
 }
 
+// Plan 07-04: SearchFTS no-op stub.
+func (f *fakeIndexForDaily) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes.SearchHit, error) {
+	return nil, nil
+}
+
 // newDailyTestServer creates a Server with a real temp dataDir and a fake in-memory
 // index. The dailyNotesTemplate is written into config.json if non-empty; otherwise
 // config.json is absent (so DefaultConfig applies).

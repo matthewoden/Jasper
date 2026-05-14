@@ -89,6 +89,11 @@ func (f *fakeIndex) SearchTitles(_ context.Context, _ string, _ int) ([]notes.Se
 	return []notes.SearchResult{}, nil
 }
 
+// Plan 07-04: SearchFTS no-op stub.
+func (f *fakeIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes.SearchHit, error) {
+	return []notes.SearchHit{}, nil
+}
+
 // setupGetNotesServer builds a Server wired with the given index and
 // mounts the strict-server bridge under /api/v1.
 func setupGetNotesServer(t *testing.T, idx notes.Index) *httptest.Server {
@@ -414,6 +419,11 @@ func (r *realIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]notes.Backli
 
 func (r *realIndex) SearchTitles(_ context.Context, _ string, _ int) ([]notes.SearchResult, error) {
 	return []notes.SearchResult{}, nil
+}
+
+// Plan 07-04: SearchFTS no-op stub.
+func (r *realIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes.SearchHit, error) {
+	return []notes.SearchHit{}, nil
 }
 
 func (r *realIndex) DeleteByPathPrefix(_ context.Context, prefix string) (int, error) {
