@@ -247,15 +247,27 @@ export function buildFileChipDecorations(
 }
 
 /**
- * fileChipPlugin(noteId) — factory that returns a CM6 ViewPlugin for
+ * fileChipPlugin(noteIdOrRef) — factory that returns a CM6 ViewPlugin for
  * non-image attachment link chips. Mirrors imageAttachmentPlugin's shape.
+ *
+ * Accepts either a plain string or a mutable ref ({ current: string | null })
+ * so the plugin reads the current noteId at decoration-build time (same
+ * pattern as imageAttachmentPlugin — handles note navigation without
+ * re-creating the EditorView, preserving EDIT-01).
  */
-export function fileChipPlugin(noteId: string) {
+export function fileChipPlugin(
+  noteIdOrRef: string | { current: string | null }
+) {
+  const getNoteId = () =>
+    typeof noteIdOrRef === "string"
+      ? noteIdOrRef
+      : (noteIdOrRef.current ?? "");
+
   return ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
       constructor(view: EditorView) {
-        this.decorations = buildFileChipDecorations(view, noteId);
+        this.decorations = buildFileChipDecorations(view, getNoteId());
       }
       update(u: ViewUpdate) {
         if (u.view.composing) {
@@ -267,7 +279,7 @@ export function fileChipPlugin(noteId: string) {
           u.viewportChanged ||
           syntaxTree(u.startState) !== syntaxTree(u.state)
         ) {
-          this.decorations = buildFileChipDecorations(u.view, noteId);
+          this.decorations = buildFileChipDecorations(u.view, getNoteId());
         }
       }
     },

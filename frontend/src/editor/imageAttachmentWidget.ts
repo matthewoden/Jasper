@@ -182,19 +182,28 @@ export function buildImageAttachmentDecorations(
 }
 
 /**
- * imageAttachmentPlugin(noteId) — factory that returns a CM6 ViewPlugin.
+ * imageAttachmentPlugin(noteIdRef) — factory that returns a CM6 ViewPlugin.
  *
- * The noteId is captured in the plugin's closure so the widget knows which
- * attachment URL to construct. The factory is re-called when the active note
- * changes (MarkdownEditor adds it to the extensions array with the current
- * noteId from useTreeStore).
+ * The factory accepts a mutable ref object ({ current: string | null }) so
+ * the plugin reads the current noteId at each decoration-build time rather
+ * than capturing a stale value at plugin creation. This handles note
+ * navigation without re-creating the EditorView (EDIT-01 stability).
+ *
+ * Also accepts a plain string for backward compatibility and testability.
  */
-export function imageAttachmentPlugin(noteId: string) {
+export function imageAttachmentPlugin(
+  noteIdOrRef: string | { current: string | null }
+) {
+  const getNoteId = () =>
+    typeof noteIdOrRef === "string"
+      ? noteIdOrRef
+      : (noteIdOrRef.current ?? "");
+
   return ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
       constructor(view: EditorView) {
-        this.decorations = buildImageAttachmentDecorations(view, noteId);
+        this.decorations = buildImageAttachmentDecorations(view, getNoteId());
       }
       update(u: ViewUpdate) {
         // IME guard (RESEARCH §Pitfall — composing state)
@@ -207,7 +216,7 @@ export function imageAttachmentPlugin(noteId: string) {
           u.viewportChanged ||
           syntaxTree(u.startState) !== syntaxTree(u.state)
         ) {
-          this.decorations = buildImageAttachmentDecorations(u.view, noteId);
+          this.decorations = buildImageAttachmentDecorations(u.view, getNoteId());
         }
       }
     },
