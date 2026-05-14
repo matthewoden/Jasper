@@ -51,23 +51,25 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("imageAttachmentWidget / imageAttachmentPlugin", () => {
-  it("emits a block widget for ![alt](attachments/x.png)", () => {
+  it("emits a widget for ![alt](attachments/x.png)", () => {
+    // CM6 ViewPlugin constraint: block:true is NOT allowed in plugins.
+    // The widget uses side:1 at line.to for correct placement.
     const doc = "![my chart](attachments/chart.png)";
     const view = makeView(doc);
     views.push(view);
 
     const decos = buildImageAttachmentDecorations(view, "test-note-id");
-    let hasBlockWidget = false;
+    let hasWidget = false;
     const cursor = decos.iter();
     while (cursor.value !== null) {
-      const spec = (cursor.value as unknown as { spec: { widget?: unknown; block?: boolean; side?: number } }).spec;
-      if (spec?.widget && spec?.block === true && spec?.side === 1) {
-        hasBlockWidget = true;
+      const spec = (cursor.value as unknown as { spec: { widget?: unknown; side?: number } }).spec;
+      if (spec?.widget && spec?.side === 1) {
+        hasWidget = true;
         break;
       }
       cursor.next();
     }
-    expect(hasBlockWidget).toBe(true);
+    expect(hasWidget).toBe(true);
   });
 
   it("does NOT emit a widget for external images (https://...)", () => {
@@ -109,6 +111,8 @@ describe("imageAttachmentWidget / imageAttachmentPlugin", () => {
   });
 
   it("emits widget at the END of the markdown image line (side:1 = after)", () => {
+    // block:true is NOT used (CM6 ViewPlugin constraint forbids it).
+    // Widget is at line.to with side:1 — CSS display:block gives visual placement.
     const doc = "![photo](attachments/photo.jpg)";
     const view = makeView(doc);
     views.push(view);
@@ -116,13 +120,12 @@ describe("imageAttachmentWidget / imageAttachmentPlugin", () => {
     const decos = buildImageAttachmentDecorations(view, "test-note-id");
     const cursor = decos.iter();
     while (cursor.value !== null) {
-      const spec = (cursor.value as unknown as { spec: { widget?: unknown; block?: boolean; side?: number } }).spec;
+      const spec = (cursor.value as unknown as { spec: { widget?: unknown; side?: number } }).spec;
       if (spec?.widget) {
         // Widget must be at line.to (end of the line, after the source text)
         const lineEnd = view.state.doc.lineAt(0).to;
         expect(cursor.from).toBe(lineEnd);
         expect(cursor.to).toBe(lineEnd);
-        expect(spec.block).toBe(true);
         expect(spec.side).toBe(1);
         break;
       }

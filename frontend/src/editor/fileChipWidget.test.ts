@@ -49,23 +49,25 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("fileChipWidget / fileChipPlugin", () => {
-  it("emits a block widget for [doc](attachments/x.pdf)", () => {
+  it("emits a widget for [doc](attachments/x.pdf)", () => {
+    // CM6 ViewPlugin constraint: block:true is NOT allowed in plugins.
+    // The widget uses side:1 at line.to for correct placement.
     const doc = "[report](attachments/report.pdf)";
     const view = makeView(doc);
     views.push(view);
 
     const decos = buildFileChipDecorations(view, "test-note-id");
-    let hasBlockWidget = false;
+    let hasWidget = false;
     const cursor = decos.iter();
     while (cursor.value !== null) {
-      const spec = (cursor.value as unknown as { spec: { widget?: unknown; block?: boolean; side?: number } }).spec;
-      if (spec?.widget && spec?.block === true && spec?.side === 1) {
-        hasBlockWidget = true;
+      const spec = (cursor.value as unknown as { spec: { widget?: unknown; side?: number } }).spec;
+      if (spec?.widget && spec?.side === 1) {
+        hasWidget = true;
         break;
       }
       cursor.next();
     }
-    expect(hasBlockWidget).toBe(true);
+    expect(hasWidget).toBe(true);
   });
 
   it("does NOT emit a widget for image attachments (![...](...) — those go to imageAttachmentPlugin)", () => {
@@ -126,7 +128,7 @@ describe("fileChipWidget / fileChipPlugin", () => {
     expect(hasWidget).toBe(false);
   });
 
-  it("widget is placed at end of line with block:true and side:1", () => {
+  it("widget is placed at end of line with side:1 (block:true omitted per CM6 ViewPlugin constraint)", () => {
     const doc = "[report](attachments/report.pdf)";
     const view = makeView(doc);
     views.push(view);
@@ -134,12 +136,11 @@ describe("fileChipWidget / fileChipPlugin", () => {
     const decos = buildFileChipDecorations(view, "test-note-id");
     const cursor = decos.iter();
     while (cursor.value !== null) {
-      const spec = (cursor.value as unknown as { spec: { widget?: unknown; block?: boolean; side?: number } }).spec;
+      const spec = (cursor.value as unknown as { spec: { widget?: unknown; side?: number } }).spec;
       if (spec?.widget) {
         const lineEnd = view.state.doc.lineAt(0).to;
         expect(cursor.from).toBe(lineEnd);
         expect(cursor.to).toBe(lineEnd);
-        expect(spec.block).toBe(true);
         expect(spec.side).toBe(1);
         break;
       }
