@@ -38,14 +38,25 @@ func (x *Indexer) Reconcile(ctx context.Context, mode Mode) (int, error) {
 //
 // Plan 06-06 wires the real registry at the composition root.
 func (x *Indexer) ReconcileWithRegistry(ctx context.Context, mode Mode, registry *notes.Registry) (int, error) {
+	var (
+		n   int
+		err error
+	)
 	switch mode {
 	case ModeFull:
-		return x.reconcileFullWithRegistry(ctx, registry)
+		n, err = x.reconcileFullWithRegistry(ctx, registry)
 	case ModeIncremental:
-		return x.reconcileIncrementalWithRegistry(ctx, registry)
+		n, err = x.reconcileIncrementalWithRegistry(ctx, registry)
 	default:
 		return 0, fmt.Errorf("indexer: unknown mode %q", mode)
 	}
+	// Plan 07-03 D-36: after reconcile walk, verify notes_fts row count matches
+	// notes row count. If not, run the FTS5 'rebuild' command to restore the index.
+	// Non-fatal: divergence repair errors are logged but do not fail startup or reindex.
+	if repairErr := x.checkAndRepairFTSDivergence(ctx); repairErr != nil {
+		x.Log.Error("FTS5 divergence repair failed (non-fatal)", "err", repairErr)
+	}
+	return n, err
 }
 
 // reconcileIncrementalWithRegistry scans the filesystem, compares each
@@ -86,6 +97,9 @@ func (x *Indexer) reconcileIncrementalWithRegistry(ctx context.Context, registry
 			return nil
 		}
 
+		// Phase 6: extract tags for derived-data sync.
+		tags := markdown.ExtractTags(content)
+
 		rec := notes.NoteRecord{
 			ID:            id,
 			Path:          fm.CanonicalRelPath,
@@ -94,6 +108,10 @@ func (x *Indexer) reconcileIncrementalWithRegistry(ctx context.Context, registry
 			SizeBytes:     fm.Size,
 			Checksum:      "", // DATA-09 checksum fallback deferred to Phase 7
 			UpdatedAtUnix: x.nowUnix(),
+			// Plan 07-03: populate FTS columns so the trigger propagates them
+			// into notes_fts (D-37: body_fts is frontmatter-stripped).
+			BodyFTS:     ExtractBodyForFTS(content),
+			TagNamesFTS: JoinTagNamesForFTS(tags),
 		}
 		if err := x.Upsert(ctx, rec); err != nil {
 			if errors.Is(err, notes.ErrCaseCollision) {
@@ -105,7 +123,9 @@ func (x *Indexer) reconcileIncrementalWithRegistry(ctx context.Context, registry
 		}
 
 		// Phase 6: derived-data sync (non-fatal per file-first contract).
-		x.syncDerivedData(ctx, rec.ID, rec.Path, content, registry)
+		// Tags are already extracted above; pass them to SyncTags directly
+		// to avoid double-parsing the frontmatter.
+		x.syncDerivedDataWithTags(ctx, rec.ID, rec.Path, content, tags, registry)
 		return nil
 	})
 	if walkErr != nil {
@@ -140,6 +160,9 @@ func (x *Indexer) reconcileFullWithRegistry(ctx context.Context, registry *notes
 				"path", fm.CanonicalRelPath, "err", err)
 			return nil
 		}
+		// Phase 6: extract tags for derived-data sync.
+		tags := markdown.ExtractTags(content)
+
 		id := chooseID(uuid.Nil, fm.CanonicalRelPath)
 		rec := notes.NoteRecord{
 			ID:            id,
@@ -149,6 +172,10 @@ func (x *Indexer) reconcileFullWithRegistry(ctx context.Context, registry *notes
 			SizeBytes:     fm.Size,
 			Checksum:      "", // DATA-09 checksum fallback deferred to Phase 7
 			UpdatedAtUnix: x.nowUnix(),
+			// Plan 07-03: populate FTS columns so the trigger propagates them
+			// into notes_fts (D-37: body_fts is frontmatter-stripped).
+			BodyFTS:     ExtractBodyForFTS(content),
+			TagNamesFTS: JoinTagNamesForFTS(tags),
 		}
 		if err := x.Upsert(ctx, rec); err != nil {
 			if errors.Is(err, notes.ErrCaseCollision) {
@@ -161,7 +188,9 @@ func (x *Indexer) reconcileFullWithRegistry(ctx context.Context, registry *notes
 		upserts++
 
 		// Phase 6: derived-data sync (non-fatal per file-first contract).
-		x.syncDerivedData(ctx, rec.ID, rec.Path, content, registry)
+		// Tags are already extracted above; pass them to SyncTags directly
+		// to avoid double-parsing the frontmatter.
+		x.syncDerivedDataWithTags(ctx, rec.ID, rec.Path, content, tags, registry)
 		return nil
 	})
 	if walkErr != nil {
@@ -170,12 +199,14 @@ func (x *Indexer) reconcileFullWithRegistry(ctx context.Context, registry *notes
 	return upserts, nil
 }
 
-// syncDerivedData calls SyncTags + SyncBacklinks after a successful Upsert.
+// syncDerivedDataWithTags calls SyncTags + SyncBacklinks after a successful Upsert.
 // Both operations are non-fatal: errors are logged and the walk continues.
 // This is the Phase 6 hook point documented in PATTERNS.md §reconcile.go.
-func (x *Indexer) syncDerivedData(ctx context.Context, id uuid.UUID, path string, content []byte, registry *notes.Registry) {
-	// Extract + sync tags (TAGS-05).
-	tags := markdown.ExtractTags(content)
+//
+// Tags are accepted as a parameter (pre-extracted by the reconcile walk) so the
+// frontmatter is not parsed twice — once for FTS column population (BodyFTS/TagNamesFTS
+// in the NoteRecord) and again here.
+func (x *Indexer) syncDerivedDataWithTags(ctx context.Context, id uuid.UUID, path string, content []byte, tags []string, registry *notes.Registry) {
 	if err := x.SyncTags(ctx, id, tags); err != nil {
 		x.Log.Warn("reconcile: tag sync failed", "id", id, "err", err)
 	}

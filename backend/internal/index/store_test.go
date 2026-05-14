@@ -15,9 +15,14 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// newTestIndexer opens a real sqlite.Pair against a tempdir, applies
-// 001_initial.sql, and returns an *Indexer wired against a notesDir.
-// All cleanup is registered with t.Cleanup.
+// newTestIndexer opens a real sqlite.Pair against a tempdir, applies all
+// three schema migrations (001_initial, 002_tags_backlinks, 003_fts), and
+// returns an *Indexer wired against a notesDir. All cleanup is registered
+// with t.Cleanup.
+//
+// Migration 003_fts.sql (Plan 07-02/07-03) adds body_fts and tag_names_fts
+// columns to notes and creates the notes_fts FTS5 virtual table. The Upsert
+// SQL now includes these columns, so all three migrations are required.
 func newTestIndexer(t *testing.T) (*Indexer, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -30,14 +35,16 @@ func newTestIndexer(t *testing.T) (*Indexer, string) {
 	}
 	t.Cleanup(func() { _ = pair.Close() })
 
-	// Apply 001_initial.sql against the writer connection so the
-	// `notes` table exists.
-	sql, err := migrations.FS.ReadFile("001_initial.sql")
-	if err != nil {
-		t.Fatalf("read embedded migration: %v", err)
-	}
-	if _, err := pair.Writer.ExecContext(context.Background(), string(sql)); err != nil {
-		t.Fatalf("apply 001_initial: %v", err)
+	// Apply all migrations in order so the full schema (including body_fts
+	// and tag_names_fts from 003_fts.sql) is available.
+	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql"} {
+		data, err := migrations.FS.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read migration %s: %v", name, err)
+		}
+		if _, err := pair.Writer.ExecContext(context.Background(), string(data)); err != nil {
+			t.Fatalf("apply %s: %v", name, err)
+		}
 	}
 
 	idx := New(pair, notesDir, slog.Default())

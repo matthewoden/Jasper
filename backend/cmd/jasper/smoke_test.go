@@ -567,10 +567,14 @@ func isConnRefused(err error) bool {
 func TestSmoke_ResetAndRebuild_FullPath2Flow(t *testing.T) {
 	dataDir := t.TempDir()
 
-	// First spawn: only 001 in override dir → state=ok (so we have
-	// a prior schema for the failure to roll back to).
+	// First spawn: all three real migrations in override dir → state=ok
+	// (establishes the full schema as the "prior state" to roll back to).
+	// Plan 07-03: the indexer Upsert now writes body_fts/tag_names_fts,
+	// so the base state must include migrations 001+002+003.
 	overrideDir := t.TempDir()
 	copyFile(t, "../../migrations/001_initial.sql", filepath.Join(overrideDir, "001_initial.sql"))
+	copyFile(t, "../../migrations/002_tags_backlinks.sql", filepath.Join(overrideDir, "002_tags_backlinks.sql"))
+	copyFile(t, "../../migrations/003_fts.sql", filepath.Join(overrideDir, "003_fts.sql"))
 	addr := pickFreePort(t)
 	cmd, log := spawn(t, dataDir, addr, []string{"JASPER_TEST_MIGRATIONS_DIR=" + overrideDir})
 	if err := waitForListener(t, addr, 10*time.Second); err != nil {
@@ -579,10 +583,11 @@ func TestSmoke_ResetAndRebuild_FullPath2Flow(t *testing.T) {
 	}
 	killAndWait(t, cmd, log)
 
-	// Inject 002_break.sql and re-spawn → state=rolled_back.
-	if err := os.WriteFile(filepath.Join(overrideDir, "002_break.sql"),
+	// Inject 004_break.sql and re-spawn → state=rolled_back.
+	// (004_ prefix ensures it sorts after the 3 real migrations.)
+	if err := os.WriteFile(filepath.Join(overrideDir, "004_break.sql"),
 		[]byte("THIS IS NOT VALID SQL;"), 0o644); err != nil {
-		t.Fatalf("write 002_break.sql: %v", err)
+		t.Fatalf("write 004_break.sql: %v", err)
 	}
 	addr2 := pickFreePort(t)
 	cmd2, log2 := spawn(t, dataDir, addr2, []string{"JASPER_TEST_MIGRATIONS_DIR=" + overrideDir})
@@ -604,10 +609,10 @@ func TestSmoke_ResetAndRebuild_FullPath2Flow(t *testing.T) {
 		t.Fatalf("expected rolled_back before reset, got %q; body=%s", st.State, body)
 	}
 
-	// Remove 002_break.sql from the override dir — the runner re-reads
+	// Remove 004_break.sql from the override dir — the runner re-reads
 	// the FS on each RebuildAndReindex call.
-	if err := os.Remove(filepath.Join(overrideDir, "002_break.sql")); err != nil {
-		t.Fatalf("remove 002_break.sql: %v", err)
+	if err := os.Remove(filepath.Join(overrideDir, "004_break.sql")); err != nil {
+		t.Fatalf("remove 004_break.sql: %v", err)
 	}
 
 	// POST /admin/reindex (mode=full triggers Path 2).

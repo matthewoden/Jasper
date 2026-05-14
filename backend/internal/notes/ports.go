@@ -256,6 +256,16 @@ type NoteRecord struct {
 	SizeBytes     int64
 	Checksum      string // SHA-256 hex; ALWAYS empty in Phase 2 (deferred to Phase 7)
 	UpdatedAtUnix int64  // index-touch time (NOT file mtime)
+	// FTS5 columns added by migration 003_fts.sql (Plan 07-02/07-03).
+	// BodyFTS is the note body with the leading YAML frontmatter block stripped
+	// (D-37) so "tags: [foo]" in frontmatter does not pollute body FTS matches.
+	// TagNamesFTS is the space-joined list of normalized tag names for the note
+	// (so a tag-name search surfaces the note via FTS5 in addition to the
+	// note_tags join used by NotesByTag). Both are "" for callers that do not
+	// have content available (e.g. API move/create paths); the next reconcile
+	// pass will repopulate them correctly on the incremental re-index.
+	BodyFTS     string
+	TagNamesFTS string
 }
 
 // NoteSummary is the projection returned by Index.List for the
