@@ -99,6 +99,14 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: true,
     inCheatSheet: true,
   },
+  {
+    id: "command-palette",
+    label: "Open command palette",
+    group: "Navigation",
+    shortcut: `${mod}P`,
+    inPalette: false,
+    inCheatSheet: true,
+  },
   // View group
   {
     id: "toggle-theme",
