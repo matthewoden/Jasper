@@ -15,23 +15,17 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// newTagTestIndexer returns an Indexer with both 001 and 002 migrations applied.
-// Use this instead of newTestIndexer for tests that need the tags/backlinks tables.
+// newTagTestIndexer returns an Indexer with all three migrations applied
+// (001_initial, 002_tags_backlinks, 003_fts). As of Plan 07-03, newTestIndexer
+// applies all three migrations — this helper exists for backward compatibility
+// with tests that need the tags/backlinks tables.
 func newTagTestIndexer(t *testing.T) (*Indexer, string) {
 	t.Helper()
-	idx, notesDir := newTestIndexer(t)
-
-	sql002, err := migrations.FS.ReadFile("002_tags_backlinks.sql")
-	if err != nil {
-		t.Fatalf("read 002 migration: %v", err)
-	}
-	if _, err := idx.Pair.Writer.ExecContext(context.Background(), string(sql002)); err != nil {
-		t.Fatalf("apply 002_tags_backlinks: %v", err)
-	}
-	return idx, notesDir
+	// newTestIndexer now applies 001, 002, and 003 — no additional migration
+	// application needed here.
+	return newTestIndexer(t)
 }
 
 // insertNote is a lower-level helper that inserts a notes row directly via

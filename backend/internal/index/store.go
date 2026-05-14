@@ -57,18 +57,24 @@ func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
 	// the v4 UUID. The unique-path constraint covers different-id same-
 	// path collisions which surface as a UNIQUE constraint failure
 	// (caught below).
+	// body_fts and tag_names_fts are the FTS5 index columns added in
+	// migration 003_fts.sql (Plan 07-02). The notes_fts_ai/au triggers
+	// propagate these values into the notes_fts virtual table automatically.
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO notes(id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO notes(id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at, body_fts, tag_names_fts)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
              path = excluded.path,
              title = excluded.title,
              mtime_unix = excluded.mtime_unix,
              size_bytes = excluded.size_bytes,
              checksum_sha256 = excluded.checksum_sha256,
-             updated_at = excluded.updated_at`,
+             updated_at = excluded.updated_at,
+             body_fts = excluded.body_fts,
+             tag_names_fts = excluded.tag_names_fts`,
 		rec.ID.String(), rec.Path, rec.Title, rec.MTimeUnix,
-		rec.SizeBytes, rec.Checksum, rec.UpdatedAtUnix, rec.UpdatedAtUnix)
+		rec.SizeBytes, rec.Checksum, rec.UpdatedAtUnix, rec.UpdatedAtUnix,
+		rec.BodyFTS, rec.TagNamesFTS)
 	if err != nil {
 		// SQLite's UNIQUE-constraint message format is stable:
 		//   "UNIQUE constraint failed: notes.path"

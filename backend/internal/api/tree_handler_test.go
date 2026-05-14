@@ -73,16 +73,21 @@ func setupTreeServer(t *testing.T) (*httptest.Server, *index.Indexer, string, *n
 	return ts, idx, notesDir, svc
 }
 
-// applyTestMigrations applies the embedded migration SQL to the test
-// pair. We mirror index/store_test.go's pattern — read 001_initial.sql
-// from the embedded migrations FS and exec it against the writer.
+// applyTestMigrations applies all three embedded migration SQL files to the
+// test pair. Migration 003_fts.sql (Plan 07-02/07-03) adds body_fts and
+// tag_names_fts columns to notes and the notes_fts FTS5 virtual table.
+// All three must be applied because Upsert now writes body_fts/tag_names_fts.
 func applyTestMigrations(pair *sqlite.Pair) error {
-	sqlBytes, err := migrations.FS.ReadFile("001_initial.sql")
-	if err != nil {
-		return err
+	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql"} {
+		data, err := migrations.FS.ReadFile(name)
+		if err != nil {
+			return err
+		}
+		if _, err := pair.Writer.ExecContext(context.Background(), string(data)); err != nil {
+			return err
+		}
 	}
-	_, err = pair.Writer.ExecContext(context.Background(), string(sqlBytes))
-	return err
+	return nil
 }
 
 // TestGetTree_EmptyVault_200 — empty notes/ → 200 with Root: [] (NOT null).
