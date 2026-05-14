@@ -1,9 +1,10 @@
 /**
- * SidebarToolbar — Phase 6.6 update (D-08).
+ * SidebarToolbar — Phase 6.6 update (D-08) + Phase 7 Today button (D-16).
  *
  * Note-navigation controls ONLY (per D-08 enforcement):
  *   1. New note (FilePlus)
  *   2. New folder (FolderPlus)
+ *   3. Today (CalendarDays) — Phase 7 D-16: opens today's daily note
  *
  * Global controls (connectivity dot, refresh button, settings menu) have been
  * relocated to StatusBar.tsx per Phase 6.6 D-08.
@@ -16,8 +17,14 @@
  *     buttons' disabled-state visuals (opacity 0.5, cursor "wait", disabled
  *     attribute). Owned by the parent (Sidebar reads from
  *     useTreeCreateActions().isCreating).
+ *
+ * Today button in-flight visuals (Phase 7 D-16):
+ *   - `todayLoading` from useDailyNote().isLoading drives the Today button's
+ *     disabled-state visuals (opacity 0.5, cursor "wait", disabled attribute).
+ *     Re-entrancy guard is in useDailyNote — disabled attr is defense-in-depth.
  */
-import { FilePlus, FolderPlus } from "lucide-react";
+import { CalendarDays, FilePlus, FolderPlus } from "lucide-react";
+import { useDailyNote } from "../lib/useDailyNote";
 
 export interface SidebarToolbarProps {
   onNewNote: () => void;
@@ -53,6 +60,8 @@ export function SidebarToolbar({
   onNewFolder,
   creating = false,
 }: SidebarToolbarProps) {
+  const { openToday, isLoading: todayLoading } = useDailyNote();
+
   return (
     <div
       style={{ display: "flex", alignItems: "center", gap: 8 }}
@@ -85,6 +94,21 @@ export function SidebarToolbar({
         }}
       >
         <FolderPlus size={16} aria-hidden="true" />
+      </button>
+      {/* Phase 7 D-16: Today button — opens today's daily note (get-or-create). */}
+      <button
+        type="button"
+        title="Today (⌘⇧D)"
+        aria-label="Open today's daily note"
+        onClick={openToday}
+        disabled={todayLoading}
+        style={{
+          ...buttonBase,
+          opacity: todayLoading ? 0.5 : 1,
+          cursor: todayLoading ? "wait" : "pointer",
+        }}
+      >
+        <CalendarDays size={16} aria-hidden="true" />
       </button>
     </div>
   );
