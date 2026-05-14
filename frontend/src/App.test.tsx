@@ -90,6 +90,8 @@ import App, {
   handleAppCmdO,
   handleAppCmdShiftD,
   handleAppCmdSlash,
+  handleAppCmdB,
+  handleAppCmdI,
 } from "./App";
 import { useTreeStore } from "./lib/useTreeStore";
 
@@ -855,5 +857,154 @@ describe("Phase 7 global keymap handlers (Plan 07-12)", () => {
     handleAppCmdShiftD(e);
     handleAppCmdSlash(e);
     expect(e._preventDefaultCalls).toBe(0);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 7 (Plan 07-16) — UAT #8/#9 fix: handleAppCmdB / handleAppCmdI
+//
+// These window-level capture-phase handlers block browser/extension defaults
+// for Cmd+B (Brave Leo sidebar) and Cmd+I (OS font panel / line-select) so
+// CM6's editor-level keymap can fire. Contract: preventDefault ONLY; no
+// stopPropagation (capture-phase propagation continues to cm-content).
+//
+// Also verifies handleAppCmdP's store-mutation contract (UAT #2 investigation).
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 7 (Plan 07-16) — handleAppCmdB (UAT #8 fix)", () => {
+  function resetStore() {
+    useTreeStore.setState({ paletteMode: "notes", paletteOpen: false });
+  }
+
+  beforeEach(resetStore);
+
+  it("KC-B-1: preventDefault on meta+b; stopPropagation NOT called (so CM6 receives)", () => {
+    const e = new KeyboardEvent("keydown", { metaKey: true, key: "b", cancelable: true, bubbles: true });
+    const pdSpy = vi.spyOn(e, "preventDefault");
+    const spSpy = vi.spyOn(e, "stopPropagation");
+    handleAppCmdB(e);
+    expect(pdSpy).toHaveBeenCalledOnce();
+    expect(spSpy).not.toHaveBeenCalled();
+  });
+
+  it("KC-B-2: preventDefault on ctrl+b (cross-platform Linux/Windows path)", () => {
+    const e = new KeyboardEvent("keydown", { ctrlKey: true, key: "b", cancelable: true });
+    const pdSpy = vi.spyOn(e, "preventDefault");
+    handleAppCmdB(e);
+    expect(pdSpy).toHaveBeenCalledOnce();
+  });
+
+  it("KC-B-3: preventDefault on meta+B (uppercase key variant)", () => {
+    const e = new KeyboardEvent("keydown", { metaKey: true, key: "B", cancelable: true });
+    const pdSpy = vi.spyOn(e, "preventDefault");
+    handleAppCmdB(e);
+    expect(pdSpy).toHaveBeenCalledOnce();
+  });
+
+  it("KC-B-4: no-op on bare 'b' (no modifier) — does NOT preventDefault", () => {
+    const e = new KeyboardEvent("keydown", { key: "b", cancelable: true });
+    const pdSpy = vi.spyOn(e, "preventDefault");
+    handleAppCmdB(e);
+    expect(pdSpy).not.toHaveBeenCalled();
+  });
+
+  it("KC-B-5: no-op on meta+c (different key) — does NOT preventDefault", () => {
+    const e = new KeyboardEvent("keydown", { metaKey: true, key: "c", cancelable: true });
+    const pdSpy = vi.spyOn(e, "preventDefault");
+    handleAppCmdB(e);
+    expect(pdSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("Phase 7 (Plan 07-16) — handleAppCmdI (UAT #9 fix)", () => {
+  function resetStore() {
+    useTreeStore.setState({ paletteMode: "notes", paletteOpen: false });
+  }
+
+  beforeEach(resetStore);
+
+  it("KC-I-1: preventDefault on meta+i; stopPropagation NOT called (so CM6 receives)", () => {
+    const e = new KeyboardEvent("keydown", { metaKey: true, key: "i", cancelable: true, bubbles: true });
+    const pdSpy = vi.spyOn(e, "preventDefault");
+    const spSpy = vi.spyOn(e, "stopPropagation");
+    handleAppCmdI(e);
+    expect(pdSpy).toHaveBeenCalledOnce();
+    expect(spSpy).not.toHaveBeenCalled();
+  });
+
+  it("KC-I-2: preventDefault on ctrl+i (cross-platform path)", () => {
+    const e = new KeyboardEvent("keydown", { ctrlKey: true, key: "i", cancelable: true });
+    const pdSpy = vi.spyOn(e, "preventDefault");
+    handleAppCmdI(e);
+    expect(pdSpy).toHaveBeenCalledOnce();
+  });
+
+  it("KC-I-3: preventDefault on meta+I (uppercase key variant)", () => {
+    const e = new KeyboardEvent("keydown", { metaKey: true, key: "I", cancelable: true });
+    const pdSpy = vi.spyOn(e, "preventDefault");
+    handleAppCmdI(e);
+    expect(pdSpy).toHaveBeenCalledOnce();
+  });
+
+  it("KC-I-4: no-op on bare 'i' (no modifier) — does NOT preventDefault", () => {
+    const e = new KeyboardEvent("keydown", { key: "i", cancelable: true });
+    const pdSpy = vi.spyOn(e, "preventDefault");
+    handleAppCmdI(e);
+    expect(pdSpy).not.toHaveBeenCalled();
+  });
+
+  it("KC-I-5: no-op on meta+j (different key) — does NOT preventDefault", () => {
+    const e = new KeyboardEvent("keydown", { metaKey: true, key: "j", cancelable: true });
+    const pdSpy = vi.spyOn(e, "preventDefault");
+    handleAppCmdI(e);
+    expect(pdSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 7 (Plan 07-16) — UAT #2 investigation: handleAppCmdP store contract
+//
+// Per plan's halt-if-inconclusive gate: if these tests PASS, the handleAppCmdP
+// store mutations are correct and UAT #2's root cause is downstream in
+// CommandMenu.tsx. If they FAIL, the bug is in App.tsx's existing handler.
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 7 (Plan 07-16) — handleAppCmdP store mutation contract (UAT #2 investigation)", () => {
+  function resetStore() {
+    useTreeStore.setState({ paletteMode: "notes", paletteOpen: false });
+  }
+
+  beforeEach(resetStore);
+
+  it("KC-P-1: from default state (mode=notes, open=false), sets mode='commands' AND open=true", () => {
+    // Worst-case: initial store state with paletteMode="notes"
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+    expect(useTreeStore.getState().paletteOpen).toBe(false);
+
+    const e = new KeyboardEvent("keydown", { metaKey: true, key: "p", cancelable: true });
+    handleAppCmdP(e);
+
+    // Both mutations must land
+    expect(useTreeStore.getState().paletteMode).toBe("commands");
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
+  });
+
+  it("KC-P-2: from notes-mode open palette, flips mode to 'commands' (keeps open=true)", () => {
+    // Simulate Cmd+O having opened the switcher
+    useTreeStore.setState({ paletteMode: "notes", paletteOpen: true });
+
+    const e = new KeyboardEvent("keydown", { metaKey: true, key: "p", cancelable: true });
+    handleAppCmdP(e);
+
+    expect(useTreeStore.getState().paletteMode).toBe("commands");
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
+  });
+
+  it("KC-P-3: from commands-mode closed palette, opens in commands mode", () => {
+    useTreeStore.setState({ paletteMode: "commands", paletteOpen: false });
+
+    const e = new KeyboardEvent("keydown", { metaKey: true, key: "p", cancelable: true });
+    handleAppCmdP(e);
+
+    expect(useTreeStore.getState().paletteMode).toBe("commands");
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
   });
 });
