@@ -460,5 +460,63 @@ func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
 	})
 }
 
+// TestDailyNotesHandler_TagPassthrough verifies CR-03 fix:
+// GetDailyNote 200 path must return the actual frontmatter tags, not an
+// empty slice.  The test fails against the unfixed daily.go and passes after
+// the markdown.ExtractTags fix in readDailyNoteDetail.
+func TestDailyNotesHandler_TagPassthrough(t *testing.T) {
+	t.Run("get-existing branch returns frontmatter tags", func(t *testing.T) {
+		t.Parallel()
+		srv, dir := newDailyTestServer(t, "")
+
+		// Pre-create the daily note file on disk with tags in frontmatter.
+		notesDir := filepath.Join(dir, "notes", "daily")
+		if err := os.MkdirAll(notesDir, 0o755); err != nil {
+			t.Fatalf("mkdir daily: %v", err)
+		}
+		content := "---\ntags: [project, jasper]\n---\n\n# 2026-04-01\n\nbody\n"
+		if err := os.WriteFile(filepath.Join(notesDir, "2026-04-01.md"), []byte(content), 0o644); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+
+		// Pre-seed the fake index so LookupByPath returns a real record.
+		// The fakeIndexForDaily in this file supports direct byPath seeding.
+		recID := uuid.New()
+		fakeIdx := newFakeIndexForDaily()
+		fakeIdx.byPath["daily/2026-04-01.md"] = notes.NoteRecord{
+			ID:        recID,
+			Path:      "daily/2026-04-01.md",
+			Title:     "2026-04-01",
+			MTimeUnix: 1000000,
+			SizeBytes: int64(len(content)),
+		}
+		srv.index = fakeIdx
+
+		ctx := context.Background()
+		resp, err := srv.GetDailyNote(ctx, GetDailyNoteRequestObject{Date: "2026-04-01"})
+		if err != nil {
+			t.Fatalf("GetDailyNote error: %v", err)
+		}
+
+		got200, ok := resp.(GetDailyNote200JSONResponse)
+		if !ok {
+			t.Fatalf("expected GetDailyNote200JSONResponse, got %T", resp)
+		}
+		if got200.Tags == nil {
+			t.Fatal("expected non-nil Tags in 200 response")
+		}
+		got := *got200.Tags
+		want := []string{"jasper", "project"} // sorted lexically per ExtractTags contract
+		if len(got) != len(want) {
+			t.Fatalf("Tags: got %v (len=%d), want %v (len=%d)", got, len(got), want, len(want))
+		}
+		for i, w := range want {
+			if got[i] != w {
+				t.Errorf("Tags[%d]: got %q, want %q", i, got[i], w)
+			}
+		}
+	})
+}
+
 // ensure fakeIndexForDaily satisfies notes.Index at compile time.
 var _ notes.Index = (*fakeIndexForDaily)(nil)
