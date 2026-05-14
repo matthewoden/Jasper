@@ -4,7 +4,7 @@
  * the admin status hook so each test can drive the migration-banner branch
  * without spinning up real fetch.
  */
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import {
   afterEach,
   beforeEach,
@@ -84,6 +84,36 @@ vi.mock("./lib/useDailyNote", () => ({
   }),
 }));
 
+// Plan 07-17 — mock useTreeCreateActions so App tests can spy on createNoteAt.
+// The hook internally calls useTreeMutations (API) + useFileTree (mocked).
+// Mocking at module level keeps the App render from firing real POST /notes.
+const mockCreateNoteAt = vi.fn().mockResolvedValue(undefined);
+const mockCreateFolderAt = vi.fn().mockResolvedValue(undefined);
+vi.mock("./lib/useTreeCreateActions", () => ({
+  useTreeCreateActions: () => ({
+    createNoteAt: mockCreateNoteAt,
+    createFolderAt: mockCreateFolderAt,
+    isCreating: false,
+  }),
+}));
+
+// Plan 07-17 — mock @tanstack/react-virtual so CommandMenu's virtualized list
+// renders all items in jsdom (which has no layout, so estimateSize→0 items
+// without the mock). This is the same override used in CommandMenu.test.tsx.
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: vi.fn().mockImplementation(({ count }: { count: number }) => ({
+    getVirtualItems: () =>
+      Array.from({ length: count }, (_, i) => ({
+        index: i,
+        start: i * 36,
+        size: 36,
+        key: i,
+      })),
+    getTotalSize: () => count * 36,
+    scrollToIndex: vi.fn(),
+  })),
+}));
+
 import App, {
   handleAppF2KeyDown,
   handleAppCmdP,
@@ -94,6 +124,7 @@ import App, {
   handleAppCmdI,
 } from "./App";
 import { useTreeStore } from "./lib/useTreeStore";
+import { COMMAND_PALETTE_ENTRIES } from "./lib/shortcutsRegistry";
 
 const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
 
@@ -1005,6 +1036,91 @@ describe("Phase 7 (Plan 07-16) — handleAppCmdP store mutation contract (UAT #2
     handleAppCmdP(e);
 
     expect(useTreeStore.getState().paletteMode).toBe("commands");
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Plan 07-17 — UAT #2 / BLOCKER #2: cold Cmd+P shows all 9 commands
+// ──────────────────────────────────────────────────────────────────────────────
+describe("Plan 07-17 — cold Cmd+P shows all 9 commands (UAT #2 / BLOCKER #2)", () => {
+  beforeEach(() => {
+    getAdminStatusMock.mockResolvedValue({
+      data: { migration_status: "ok" as const, notes_indexed: 0 },
+      error: undefined,
+      response: new Response(),
+    });
+    // Cold state: palette closed, paletteMode at default ('notes')
+    useTreeStore.setState({ paletteOpen: false, paletteMode: "notes" });
+  });
+
+  it("cold Cmd+P shows all 9 commands (UAT #2 / BLOCKER #2)", async () => {
+    render(<App />);
+
+    // Fire the global Cmd+P handler at window (App attaches handleAppCmdP
+    // to window keydown in capture phase). Synthesize the same event.
+    act(() => {
+      fireEvent.keyDown(window, { key: "p", metaKey: true });
+    });
+
+    // After Cmd+P: palette open AND mode='commands' — CommandMenu renders
+    // in commands mode showing ALL 9 COMMAND_PALETTE_ENTRIES rows.
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    expect(palette).toBeInTheDocument();
+
+    const commandLabels = COMMAND_PALETTE_ENTRIES.map((e) => e.label);
+    // Sanity: there are 9 entries (lock the contract)
+    expect(commandLabels).toHaveLength(9);
+    for (const label of commandLabels) {
+      expect(within(palette).getByText(label)).toBeInTheDocument();
+    }
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Plan 07-17 — commandActions rewire: onNewNote, onFind, onSwitchNote
+// ──────────────────────────────────────────────────────────────────────────────
+describe("Plan 07-17 — commandActions rewire (UAT #3, #4, #5)", () => {
+  beforeEach(() => {
+    getAdminStatusMock.mockResolvedValue({
+      data: { migration_status: "ok" as const, notes_indexed: 0 },
+      error: undefined,
+      response: new Response(),
+    });
+    mockCreateNoteAt.mockClear();
+    useTreeStore.setState({ paletteMode: "commands", paletteOpen: true });
+  });
+
+  it("commandActions.onNewNote calls createNoteAt with '' (vault root) and closes palette", async () => {
+    render(<App />);
+
+    // Open palette in commands mode
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    expect(palette).toBeInTheDocument();
+
+    // Click "New note"
+    const newNoteRow = within(palette).getByText("New note");
+    fireEvent.click(newNoteRow);
+
+    // createNoteAt called with vault root
+    expect(mockCreateNoteAt).toHaveBeenCalledWith("");
+    // Palette closed
+    await waitFor(() => expect(useTreeStore.getState().paletteOpen).toBe(false));
+  });
+
+  it("commandActions.onSwitchNote sets paletteMode='notes' without closing palette", async () => {
+    render(<App />);
+
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+
+    // Click "Switch note…"
+    const switchRow = within(palette).getByText("Switch note…");
+    fireEvent.click(switchRow);
+
+    // Mode flipped to notes, palette still open
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+    // palette open state is managed by CommandMenu's activate via closeOnExecute=false
+    // The palette's open prop is still true (store not changed)
     expect(useTreeStore.getState().paletteOpen).toBe(true);
   });
 });

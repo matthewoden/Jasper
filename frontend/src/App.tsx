@@ -34,6 +34,7 @@ import { useDailyNote } from "./lib/useDailyNote";
 import { useMigrationStatus } from "./lib/useMigrationStatus";
 import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
 import { useTreeStore } from "./lib/useTreeStore";
+import { useTreeCreateActions } from "./lib/useTreeCreateActions";
 import type { CommandActions } from "./lib/useCommandPalette";
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -449,6 +450,10 @@ function AppInner() {
 
   const reindexing = reindexPhase !== "idle";
 
+  // Plan 07-17 (UAT #3 fix): the real create helper, same one SidebarToolbar uses.
+  // Must be called inside the component body (hook rule); captured in commandActions dep array.
+  const { createNoteAt } = useTreeCreateActions();
+
   // Phase 7 (Plan 07-12) — CommandActions for CommandMenu.
   // Each action is wired to an existing hook or store setter.
   // Stable reference via useMemo (actions only change if dependencies change).
@@ -465,11 +470,11 @@ function AppInner() {
       // Actually — the cleanest v1 behavior is to just close the palette
       // and let the user use the sidebar toolbar. Documented as intentional.
       onNewNote: () => {
+        // UAT #3 fix: invoke the real create helper (same one SidebarToolbar uses).
+        // v1 trade-off: palette commands always create at vault root for predictability.
+        // Selection-aware placement remains a sidebar feature (Sidebar.tsx handleNewNote).
+        void createNoteAt("");
         setPaletteOpen(false);
-        // Signal sidebar to start a root-level note create. The sidebar
-        // toolbar create flow is driven by useTreeCreateActions; we dispatch
-        // through the store's draftCreate slot which SidebarToolbar reads.
-        useTreeStore.getState().startDraftCreate("note", "");
       },
 
       // "Save" — CM6 editor dispatch: trigger a save via EditorPane's
@@ -489,16 +494,12 @@ function AppInner() {
         document.dispatchEvent(saveEvent);
       },
 
-      // "Find in note" — open CM6 search panel the same way.
+      // "Find in note" — open CM6 search panel via the imperative
+      // editorHandlersRef. Synthetic keydown at document level does NOT
+      // reach CM6's capture-phase listener on cm-content (UAT #4 fix).
       onFind: () => {
+        editorHandlersRef.current?.openFindPanel();
         setPaletteOpen(false);
-        const findEvent = new KeyboardEvent("keydown", {
-          key: "f",
-          metaKey: true,
-          bubbles: true,
-          cancelable: true,
-        });
-        document.dispatchEvent(findEvent);
       },
 
       // "Today" — same as Cmd+Shift+D.
@@ -507,10 +508,12 @@ function AppInner() {
         void openToday();
       },
 
-      // "Switch note…" — switch palette to notes mode (in-place, keeps palette open).
+      // "Switch note…" — flip palette mode to notes WITHOUT closing.
+      // UAT #5 fix: CommandMenu.activate honors closeOnExecute=false for
+      // switch-note (Plan 07-17 Task 2), so the palette stays open and
+      // re-renders the notes-mode list.
       onSwitchNote: () => {
         useTreeStore.getState().setPaletteMode("notes");
-        // Palette is already open; just switch mode.
       },
 
       // "Toggle theme" — getCurrentTheme + applyTheme directly, or dispatch
@@ -552,7 +555,7 @@ function AppInner() {
         setCheatSheetOpen(true);
       },
     }),
-    [openToday, setPaletteOpen, setCheatSheetOpen],
+    [openToday, setPaletteOpen, setCheatSheetOpen, createNoteAt],
   );
 
   return (
