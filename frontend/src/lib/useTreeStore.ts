@@ -70,6 +70,10 @@ export const LS_KEY_TAGS_PANEL_EXPANDED = "jasper.rail.tags.expanded";
 export const LS_KEY_SIDEBAR_VISIBLE = "jasper.chrome.sidebar.visible";
 export const LS_KEY_PANEL_TAGS = "jasper.chrome.panel.selector.tags";
 export const LS_KEY_PANEL_BACKLINKS = "jasper.chrome.panel.selector.backlinks";
+
+// Phase 7 — ADD-only: switcher recency persistence key.
+// See 07-CONTEXT.md §D-41 + 07-UI-SPEC §Forward-Compat Assert #7.
+export const LS_KEY_SWITCHER_RECENCY = "jasper:switcher:recency";
 export const TAGS_PANEL_RATIO_DEFAULT = 0.5;
 export const TAGS_PANEL_RATIO_MIN = 0.2;
 export const TAGS_PANEL_RATIO_MAX = 0.8;
