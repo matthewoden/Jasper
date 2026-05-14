@@ -79,7 +79,9 @@ function setupMocks() {
   mockUseQuickSwitcher.mockReturnValue([]);
   mockUseCommandPalette.mockReturnValue({
     filtered: vi.fn().mockReturnValue([]),
-    execute: vi.fn(),
+    // Default: execute returns true (close palette) — matches real useCommandPalette
+    // behavior for all commands except switch-note.
+    execute: vi.fn().mockReturnValue(true),
   });
 }
 
@@ -234,7 +236,8 @@ describe("CommandMenu — commands results + keyboard navigation", () => {
 
   it("Enter executes selected command + calls onOpenChange(false)", () => {
     const onOpenChange = vi.fn();
-    const mockExecute = vi.fn();
+    // execute returns true = "close palette" (the closeOnExecute contract for new-note)
+    const mockExecute = vi.fn().mockReturnValue(true);
     const cmds = [
       { id: "new-note", label: "New note", group: "File", inPalette: true, inCheatSheet: true },
     ];
@@ -271,7 +274,7 @@ describe("CommandMenu — XSS safety (threat model T-7-31)", () => {
 describe("CommandMenu — query resets on close", () => {
   it("clears query when open changes to false then true", () => {
     const mockFiltered = vi.fn().mockReturnValue([]);
-    mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: vi.fn() });
+    mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: vi.fn().mockReturnValue(true) });
 
     const { rerender } = render(<CommandMenu {...defaultCmdProps} />);
     const input = screen.getByRole("textbox");
@@ -284,5 +287,58 @@ describe("CommandMenu — query resets on close", () => {
     rerender(<CommandMenu {...defaultCmdProps} open={true} />);
     const newInput = screen.getByRole("textbox");
     expect((newInput as HTMLInputElement).value).toBe("");
+  });
+});
+
+describe("CommandMenu — activate closeOnExecute behavior (UAT #5)", () => {
+  it("Switch note command does NOT call onOpenChange(false) when execute returns false", () => {
+    const onOpenChange = vi.fn();
+    // switch-note returns false = "keep palette open"
+    const mockExecute = vi.fn().mockReturnValue(false);
+    const cmds = [
+      { id: "switch-note", label: "Switch note…", group: "Navigation", inPalette: true, inCheatSheet: true },
+    ];
+    const mockFiltered = vi.fn().mockReturnValue(cmds);
+    mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: mockExecute });
+
+    render(<CommandMenu {...defaultCmdProps} onOpenChange={onOpenChange} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // The action fired
+    expect(mockExecute).toHaveBeenCalledWith("switch-note");
+    // But the palette stayed open (onOpenChange NOT called with false)
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it("New note command DOES call onOpenChange(false) when execute returns true", () => {
+    const onOpenChange = vi.fn();
+    // new-note returns true = "close palette"
+    const mockExecute = vi.fn().mockReturnValue(true);
+    const cmds = [
+      { id: "new-note", label: "New note", group: "File", inPalette: true, inCheatSheet: true },
+    ];
+    const mockFiltered = vi.fn().mockReturnValue(cmds);
+    mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: mockExecute });
+
+    render(<CommandMenu {...defaultCmdProps} onOpenChange={onOpenChange} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(mockExecute).toHaveBeenCalledWith("new-note");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("Note selection always calls onOpenChange(false) regardless of closeOnExecute", () => {
+    const onOpenChange = vi.fn();
+    const notes = [{ id: "n1", title: "My Note", path: "my-note.md" }];
+    mockUseQuickSwitcher.mockReturnValue(notes);
+
+    render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(mockSetActiveNote).toHaveBeenCalledWith("n1");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

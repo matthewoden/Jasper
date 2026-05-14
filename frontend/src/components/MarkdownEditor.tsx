@@ -111,6 +111,14 @@ export interface MarkdownEditorRef {
    * click-anywhere-to-type host wrapper.
    */
   focusEnd(): void;
+  /**
+   * UAT #4 fix: open CM6's built-in search panel (same as Cmd+F when
+   * the editor is focused). Called from App.tsx commandActions.onFind
+   * via editorHandlersRef so the "Find in note" palette entry actually
+   * opens find instead of firing a synthetic keyboard event.
+   * No-op when the editor is not yet mounted.
+   */
+  openFindPanel(): void;
 }
 
 /**
@@ -450,6 +458,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           v.focus();
           const docLen = v.state.doc.length;
           v.dispatch({ selection: { anchor: docLen, head: docLen } });
+        },
+        openFindPanel() {
+          const v = viewRef.current;
+          if (v) openSearchPanel(v);
         },
       }),
       []
