@@ -169,12 +169,18 @@ func (s *Server) readDailyNoteDetail(_ context.Context, rec notes.NoteRecord, _ 
 	if err != nil {
 		return NoteDetail{}, fmt.Errorf("readDailyNoteDetail: read %q: %w", absPath, err)
 	}
-	tags := &[]string{}
+	// CR-03 fix: extract tags from the frontmatter (was hardcoded to empty
+	// slice; tags were silently discarded from the API response on the
+	// 200/existing-note path).
+	tagSlice := markdown.ExtractTags(data)
+	if tagSlice == nil {
+		tagSlice = []string{}
+	}
 	return NoteDetail{
 		Id:        openapi_types.UUID(rec.ID),
 		Path:      rec.Path,
 		Content:   string(data),
 		UpdatedAt: time.Unix(rec.MTimeUnix, 0).UTC(),
-		Tags:      tags,
+		Tags:      &tagSlice,
 	}, nil
 }
