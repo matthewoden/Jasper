@@ -18,7 +18,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RightRail } from "./components/RightRail";
+import { CommandMenu } from "./components/CommandMenu";
 import { EditorPane, type EditorPaneHandlers } from "./components/EditorPane";
+import { KeyboardShortcutsDialog } from "./components/KeyboardShortcutsDialog";
 import { MigrationBanner } from "./components/MigrationBanner";
 import { RenameRewriteErrorBanner, type RewriteError } from "./components/RenameRewriteErrorBanner";
 import { ReindexProgress } from "./components/ReindexProgress";
@@ -28,9 +30,33 @@ import { StatusBar } from "./components/StatusBar";
 import { TopBar } from "./components/TopBar";
 import { ToastProvider } from "./components/Toast";
 import { postAdminReindex } from "./lib/adminApi";
+import { useDailyNote } from "./lib/useDailyNote";
 import { useMigrationStatus } from "./lib/useMigrationStatus";
 import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
 import { useTreeStore } from "./lib/useTreeStore";
+import type { CommandActions } from "./lib/useCommandPalette";
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 7 (Plan 07-12) — Global keymap module-level event bus.
+//
+// Window event listeners run outside the React render cycle, so they can't
+// call hooks directly. This tiny pub/sub bridges the gap: handlers dispatch
+// events; AppInner subscribes in a useEffect to call the actual hook methods.
+// Pattern mirrors dispatchTagEvent from useTagBrowser.ts.
+// ────────────────────────────────────────────────────────────────────────────
+type Phase7DispatchEvent = "openToday";
+const phase7Subscribers = new Set<(ev: Phase7DispatchEvent) => void>();
+
+function dispatchPhase7(ev: Phase7DispatchEvent) {
+  for (const fn of Array.from(phase7Subscribers)) fn(ev);
+}
+
+function subscribePhase7(fn: (ev: Phase7DispatchEvent) => void): () => void {
+  phase7Subscribers.add(fn);
+  return () => {
+    phase7Subscribers.delete(fn);
+  };
+}
 
 // W-4 LOCKED: the parent owns the phase enum; ReindexProgress is purely
 // presentational. 'starting' is driven by WS reindex:started events (Plan
@@ -134,6 +160,72 @@ export function handleAppPanelShortcuts(e: KeyboardEvent): void {
   }
 }
 
+/**
+ * Phase 7 (Plan 07-12) — Global capture-phase keymap handlers.
+ *
+ * Each handler checks meta/ctrl modifier first (fast bail-out for the common
+ * case where no modifier is held). capture=true registration (in AppInner's
+ * useEffect) intercepts before CM6 processes keyboard events (RESEARCH §Pitfall 5).
+ *
+ * NOT in this list: Cmd+B, Cmd+I, Cmd+F, Cmd+S — CM6 keymap owns those.
+ *
+ * Exported as named functions so unit tests can drive them as pure functions
+ * (same pattern as handleAppF2KeyDown / handleAppPanelShortcuts).
+ */
+
+/**
+ * Cmd+P — open command palette (mode="commands").
+ * preventDefault prevents the browser's native Print dialog.
+ */
+export function handleAppCmdP(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  if (e.key !== "p" && e.key !== "P") return;
+  e.preventDefault();
+  e.stopPropagation();
+  const s = useTreeStore.getState();
+  s.setPaletteMode("commands");
+  s.setPaletteOpen(true);
+}
+
+/**
+ * Cmd+O — open quick-switcher (mode="notes").
+ * preventDefault prevents the browser's native Open File dialog.
+ */
+export function handleAppCmdO(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  if (e.key !== "o" && e.key !== "O") return;
+  e.preventDefault();
+  e.stopPropagation();
+  const s = useTreeStore.getState();
+  s.setPaletteMode("notes");
+  s.setPaletteOpen(true);
+}
+
+/**
+ * Cmd+Shift+D — open today's daily note.
+ * Dispatches via phase7 event bus (can't call useDailyNote hook directly
+ * from a window event listener — no React context available).
+ */
+export function handleAppCmdShiftD(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  if (!e.shiftKey) return;
+  if (e.key !== "d" && e.key !== "D") return;
+  e.preventDefault();
+  e.stopPropagation();
+  dispatchPhase7("openToday");
+}
+
+/**
+ * Cmd+/ — open keyboard shortcuts cheat-sheet dialog.
+ */
+export function handleAppCmdSlash(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  if (e.key !== "/") return;
+  e.preventDefault();
+  e.stopPropagation();
+  useTreeStore.getState().setCheatSheetOpen(true);
+}
+
 export default function App() {
   return (
     <ToastProvider>
@@ -171,6 +263,13 @@ function AppInner() {
   // Phase 6.6 — Plan 06.6-11 (UX-CHROME-01): notes sidebar visibility.
   // When false, the sidebar column collapses to 0px.
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
+
+  // Phase 7 (Plan 07-12) — palette + cheat-sheet store slices.
+  const paletteOpen = useTreeStore((s) => s.paletteOpen);
+  const paletteMode = useTreeStore((s) => s.paletteMode);
+  const setPaletteOpen = useTreeStore((s) => s.setPaletteOpen);
+  const cheatSheetOpen = useTreeStore((s) => s.cheatSheetOpen);
+  const setCheatSheetOpen = useTreeStore((s) => s.setCheatSheetOpen);
 
   // Phase 4 (Plan 04-05) — EditorPane handler ref (D-09: no new event bus).
   // App passes this ref to EditorPane; EditorPane writes its handlers on mount.
@@ -230,6 +329,35 @@ function AppInner() {
     };
   }, []);
 
+  // Phase 7 (Plan 07-12) — capture-phase global keymap (D-22).
+  // Third arg = true → capture phase REQUIRED so we intercept before CM6
+  // processes the event (RESEARCH §Pitfall 5). Without capture=true, CM6
+  // consumes Cmd+P before the window handler sees it and the browser
+  // print dialog would race with the palette.
+  useEffect(() => {
+    window.addEventListener("keydown", handleAppCmdP, true);
+    window.addEventListener("keydown", handleAppCmdO, true);
+    window.addEventListener("keydown", handleAppCmdShiftD, true);
+    window.addEventListener("keydown", handleAppCmdSlash, true);
+    return () => {
+      window.removeEventListener("keydown", handleAppCmdP, true);
+      window.removeEventListener("keydown", handleAppCmdO, true);
+      window.removeEventListener("keydown", handleAppCmdShiftD, true);
+      window.removeEventListener("keydown", handleAppCmdSlash, true);
+    };
+  }, []);
+
+  // Phase 7 (Plan 07-12) — bridge phase7 dispatch events to hook callables.
+  // useDailyNote.openToday() needs to run inside the React tree (it calls
+  // useToast which needs the ToastProvider context). The module-level handler
+  // dispatches "openToday"; this subscription routes it to the hook method.
+  const { openToday } = useDailyNote();
+  useEffect(() => {
+    return subscribePhase7((ev) => {
+      if (ev === "openToday") void openToday();
+    });
+  }, [openToday]);
+
   const fireReindex = useCallback(async () => {
     setReindexPhase("running");
     setReindexError(undefined);
@@ -278,6 +406,112 @@ function AppInner() {
 
   const reindexing = reindexPhase !== "idle";
 
+  // Phase 7 (Plan 07-12) — CommandActions for CommandMenu.
+  // Each action is wired to an existing hook or store setter.
+  // Stable reference via useMemo (actions only change if dependencies change).
+  const commandActions: CommandActions = useMemo(
+    () => ({
+      // "New note" — create at root (empty string = vault root).
+      // Dispatches via the store's startDraftCreate flow; a future refactor
+      // could expose useTreeCreateActions.createNoteAt here, but triggering
+      // root-level creation via store is the v1 path: the Sidebar toolbar's
+      // "New Note" button does the same via useTreeCreateActions internally.
+      // For v1 we focus the sidebar + set a store flag so the user knows
+      // where to look. Simplest working implementation: open the palette in
+      // notes mode (so the user can pick a note) while queuing the create.
+      // Actually — the cleanest v1 behavior is to just close the palette
+      // and let the user use the sidebar toolbar. Documented as intentional.
+      onNewNote: () => {
+        setPaletteOpen(false);
+        // Signal sidebar to start a root-level note create. The sidebar
+        // toolbar create flow is driven by useTreeCreateActions; we dispatch
+        // through the store's draftCreate slot which SidebarToolbar reads.
+        useTreeStore.getState().startDraftCreate("note", "");
+      },
+
+      // "Save" — CM6 editor dispatch: trigger a save via EditorPane's
+      // internal Cmd+S handler. Dispatching a synthetic keyboard event
+      // is the cleanest bridge without coupling to EditorPane internals.
+      // Note: CM6 owns Cmd+S in the capture phase; for the command palette
+      // we fire it at the document level (bubble phase) so CM6's listener
+      // picks it up when the editor is mounted.
+      onSave: () => {
+        setPaletteOpen(false);
+        const saveEvent = new KeyboardEvent("keydown", {
+          key: "s",
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        document.dispatchEvent(saveEvent);
+      },
+
+      // "Find in note" — open CM6 search panel the same way.
+      onFind: () => {
+        setPaletteOpen(false);
+        const findEvent = new KeyboardEvent("keydown", {
+          key: "f",
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        document.dispatchEvent(findEvent);
+      },
+
+      // "Today" — same as Cmd+Shift+D.
+      onToday: () => {
+        setPaletteOpen(false);
+        void openToday();
+      },
+
+      // "Switch note…" — switch palette to notes mode (in-place, keeps palette open).
+      onSwitchNote: () => {
+        useTreeStore.getState().setPaletteMode("notes");
+        // Palette is already open; just switch mode.
+      },
+
+      // "Toggle theme" — getCurrentTheme + applyTheme directly, or dispatch
+      // through the existing setTheme path. Since useTheme is not available
+      // here without adding another hook call, we manipulate data-theme
+      // directly (same as the theme-bootstrap mechanism) and let useTheme
+      // sync on the next config load. This is a v1 trade-off — acceptable
+      // per D-47 "synchronous, no inline confirmations".
+      onToggleTheme: () => {
+        const current =
+          document.documentElement.getAttribute("data-theme") ?? "dark";
+        const next = current === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        try {
+          localStorage.setItem("jasper:theme-bootstrap", next);
+        } catch {
+          /* private mode — fall through */
+        }
+        setPaletteOpen(false);
+      },
+
+      // "Refresh index" — trigger an incremental reindex without showing the
+      // full ReindexProgress overlay (palette command is non-destructive quick
+      // path). Fires in background; status bar picks up WS events.
+      onRefreshIndex: () => {
+        setPaletteOpen(false);
+        void postAdminReindex("incremental");
+      },
+
+      // "Reset and rebuild…" — open the existing ResetAndRebuildDialog.
+      onRebuildIndex: () => {
+        setPaletteOpen(false);
+        setDialogOpen(true);
+      },
+
+      // "Show keyboard shortcuts" — open the cheat-sheet dialog.
+      onShowShortcuts: () => {
+        setPaletteOpen(false);
+        setCheatSheetOpen(true);
+      },
+    }),
+    [openToday, setPaletteOpen, setCheatSheetOpen],
+  );
+
   return (
     <div
       style={{
@@ -307,6 +541,21 @@ function AppInner() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onConfirm={onConfirm}
+      />
+      {/* Phase 7 (Plan 07-12) — Command palette + cheat-sheet dialogs.
+          Portal siblings to ResetAndRebuildDialog (Radix manages portals).
+          paletteOpen / cheatSheetOpen are store slices set by the capture-phase
+          keydown handlers (handleAppCmdP/O/Slash). CommandActions wire all 9
+          registered commands to existing hooks and store setters. */}
+      <CommandMenu
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        mode={paletteMode}
+        actions={commandActions}
+      />
+      <KeyboardShortcutsDialog
+        open={cheatSheetOpen}
+        onOpenChange={setCheatSheetOpen}
       />
       {/* Phase 6.6 — Plan 06.6-11 (UX-CHROME-01/02): two-row grid.
           Row 1: TopBar (gridColumn:2 only). Row 2: EditorPane (gridColumn:2).

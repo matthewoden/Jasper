@@ -75,7 +75,22 @@ vi.mock("./lib/useTheme", () => ({
   THEME_BOOTSTRAP_KEY: "jasper:theme-bootstrap",
 }));
 
-import App, { handleAppF2KeyDown } from "./App";
+// Phase 7 — mock useDailyNote so the App does not trigger real fetch.
+const mockOpenToday = vi.fn().mockResolvedValue(undefined);
+vi.mock("./lib/useDailyNote", () => ({
+  useDailyNote: () => ({
+    openToday: mockOpenToday,
+    isLoading: false,
+  }),
+}));
+
+import App, {
+  handleAppF2KeyDown,
+  handleAppCmdP,
+  handleAppCmdO,
+  handleAppCmdShiftD,
+  handleAppCmdSlash,
+} from "./App";
 import { useTreeStore } from "./lib/useTreeStore";
 
 const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
@@ -684,5 +699,161 @@ describe("<App /> — Phase 6.6 two-row grid + chrome mounts (Plan 06.6-11)", ()
     const topBar = screen.getByTestId("top-bar");
     expect(topBar.style.gridRow).toBe("1");
     expect(topBar.style.gridColumn).toBe("2");
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 7 (Plan 07-12) — Global keymap handlers (Cmd+P/O/Shift+D/Slash)
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 7 global keymap handlers (Plan 07-12)", () => {
+  /**
+   * Helper to build a minimal KeyboardEvent-shaped object for handler testing.
+   * The exported handlers are pure functions that read e.key / e.metaKey /
+   * e.shiftKey and call e.preventDefault. No DOM needed.
+   */
+  function makeEvent(
+    key: string,
+    opts: { meta?: boolean; ctrl?: boolean; shift?: boolean } = {},
+  ): KeyboardEvent & { _preventDefaultCalls: number; _stopPropagationCalls: number } {
+    let preventDefaultCalls = 0;
+    let stopPropagationCalls = 0;
+    return {
+      key,
+      metaKey: opts.meta ?? false,
+      ctrlKey: opts.ctrl ?? false,
+      shiftKey: opts.shift ?? false,
+      preventDefault: () => { preventDefaultCalls++; },
+      stopPropagation: () => { stopPropagationCalls++; },
+      get _preventDefaultCalls() { return preventDefaultCalls; },
+      get _stopPropagationCalls() { return stopPropagationCalls; },
+    } as unknown as KeyboardEvent & { _preventDefaultCalls: number; _stopPropagationCalls: number };
+  }
+
+  beforeEach(() => {
+    useTreeStore.setState({
+      paletteOpen: false,
+      paletteMode: "notes",
+      cheatSheetOpen: false,
+    });
+  });
+
+  // ── Cmd+P ─────────────────────────────────────────────────────────────────
+  it("KC-1: handleAppCmdP opens palette with mode=commands and calls preventDefault", () => {
+    const e = makeEvent("p", { meta: true });
+    handleAppCmdP(e);
+    expect(e._preventDefaultCalls).toBe(1);
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
+    expect(useTreeStore.getState().paletteMode).toBe("commands");
+  });
+
+  it("KC-2: handleAppCmdP uppercase P also works", () => {
+    const e = makeEvent("P", { meta: true });
+    handleAppCmdP(e);
+    expect(e._preventDefaultCalls).toBe(1);
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
+    expect(useTreeStore.getState().paletteMode).toBe("commands");
+  });
+
+  it("KC-3: handleAppCmdP without meta/ctrl → no-op (does NOT open palette)", () => {
+    const e = makeEvent("p");
+    handleAppCmdP(e);
+    expect(e._preventDefaultCalls).toBe(0);
+    expect(useTreeStore.getState().paletteOpen).toBe(false);
+  });
+
+  // ── Cmd+O ─────────────────────────────────────────────────────────────────
+  it("KC-4: handleAppCmdO opens palette with mode=notes and calls preventDefault", () => {
+    const e = makeEvent("o", { meta: true });
+    handleAppCmdO(e);
+    expect(e._preventDefaultCalls).toBe(1);
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+  });
+
+  it("KC-5: handleAppCmdO uppercase O also works", () => {
+    const e = makeEvent("O", { meta: true });
+    handleAppCmdO(e);
+    expect(e._preventDefaultCalls).toBe(1);
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+  });
+
+  it("KC-6: handleAppCmdO without meta/ctrl → no-op", () => {
+    const e = makeEvent("o");
+    handleAppCmdO(e);
+    expect(e._preventDefaultCalls).toBe(0);
+    expect(useTreeStore.getState().paletteOpen).toBe(false);
+  });
+
+  // ── Cmd+Shift+D ──────────────────────────────────────────────────────────
+  it("KC-7: handleAppCmdShiftD with meta+shift calls preventDefault", () => {
+    const e = makeEvent("d", { meta: true, shift: true });
+    handleAppCmdShiftD(e);
+    expect(e._preventDefaultCalls).toBe(1);
+  });
+
+  it("KC-8: handleAppCmdShiftD without shift → no-op", () => {
+    const e = makeEvent("d", { meta: true });
+    handleAppCmdShiftD(e);
+    expect(e._preventDefaultCalls).toBe(0);
+  });
+
+  it("KC-9: handleAppCmdShiftD without meta/ctrl → no-op", () => {
+    const e = makeEvent("d", { shift: true });
+    handleAppCmdShiftD(e);
+    expect(e._preventDefaultCalls).toBe(0);
+  });
+
+  // ── Cmd+/ ─────────────────────────────────────────────────────────────────
+  it("KC-10: handleAppCmdSlash opens cheatSheetOpen and calls preventDefault", () => {
+    const e = makeEvent("/", { meta: true });
+    handleAppCmdSlash(e);
+    expect(e._preventDefaultCalls).toBe(1);
+    expect(useTreeStore.getState().cheatSheetOpen).toBe(true);
+  });
+
+  it("KC-11: handleAppCmdSlash without meta/ctrl → no-op", () => {
+    const e = makeEvent("/");
+    handleAppCmdSlash(e);
+    expect(e._preventDefaultCalls).toBe(0);
+    expect(useTreeStore.getState().cheatSheetOpen).toBe(false);
+  });
+
+  // ── CM6 shortcuts NOT intercepted ─────────────────────────────────────────
+  it("KC-12: Cmd+B is NOT preventDefault'd by any of the 4 new handlers", () => {
+    const e = makeEvent("b", { meta: true });
+    handleAppCmdP(e);
+    handleAppCmdO(e);
+    handleAppCmdShiftD(e);
+    handleAppCmdSlash(e);
+    // None of the handlers match "b", so preventDefault must NOT have been called.
+    expect(e._preventDefaultCalls).toBe(0);
+  });
+
+  it("KC-13: Cmd+I is NOT preventDefault'd by any of the 4 new handlers", () => {
+    const e = makeEvent("i", { meta: true });
+    handleAppCmdP(e);
+    handleAppCmdO(e);
+    handleAppCmdShiftD(e);
+    handleAppCmdSlash(e);
+    expect(e._preventDefaultCalls).toBe(0);
+  });
+
+  it("KC-14: Cmd+F is NOT preventDefault'd by any of the 4 new handlers", () => {
+    const e = makeEvent("f", { meta: true });
+    handleAppCmdP(e);
+    handleAppCmdO(e);
+    handleAppCmdShiftD(e);
+    handleAppCmdSlash(e);
+    expect(e._preventDefaultCalls).toBe(0);
+  });
+
+  it("KC-15: Cmd+S is NOT preventDefault'd by any of the 4 new handlers", () => {
+    const e = makeEvent("s", { meta: true });
+    handleAppCmdP(e);
+    handleAppCmdO(e);
+    handleAppCmdShiftD(e);
+    handleAppCmdSlash(e);
+    expect(e._preventDefaultCalls).toBe(0);
   });
 });
