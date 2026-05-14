@@ -20,6 +20,19 @@
 --
 -- Plan 07-03 wires the indexer to populate body_fts/tag_names_fts on Upsert and
 -- runs a startup row-count divergence check (D-36).
+--
+-- ── Step 0: Defer foreign-key checks for the duration of this migration. ──
+-- The production DSN runs with `foreign_keys=ON` (db/sqlite/open.go) and
+-- migration 002 created `note_tags.note_id REFERENCES notes(id)` and
+-- `links.source_id / target_id REFERENCES notes(id)`. Step 1 below DROPs the
+-- `notes` table and renames `notes_new → notes`; without `defer_foreign_keys`
+-- the DROP would fail the FK check immediately. defer_foreign_keys is a
+-- transaction-scope pragma that postpones FK checks until COMMIT, by which
+-- point the rename has restored every reference target. This is the standard
+-- SQLite pattern for the "12-step ALTER TABLE" recipe (sqlite.org/lang_altertable.html
+-- §7) — preferred over a connection-level `PRAGMA foreign_keys=OFF` because it
+-- keeps enforcement on for everything else.
+PRAGMA defer_foreign_keys = ON;
 
 -- ── Step 1: Recreate notes as a standard rowid table with two new columns. ──
 -- We CREATE notes_new with the same column set as 001's notes table plus

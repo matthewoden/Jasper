@@ -470,6 +470,14 @@ func (r *Runner) RebuildAndReindex(ctx context.Context) (Status, error) {
 		return out, fmt.Errorf("%w: rebuild begin: %v", ErrUnrecoverable, err)
 	}
 	dropStatements := []string{
+		// Phase 7 FTS5 virtual table (003_fts.sql). MUST be dropped before
+		// notes because notes_fts is declared with `content='notes'` —
+		// rebuilding the FTS table after notes is dropped would fail on the
+		// re-apply pass with "table notes_fts already exists". The triggers
+		// (notes_fts_ai/au/ad) are tied to the `notes` table and disappear
+		// automatically when notes is dropped, but the virtual table itself
+		// is independent.
+		`DROP TABLE IF EXISTS notes_fts`,
 		// Phase 6 derived tables (002_tags_backlinks.sql). Must be dropped
 		// before notes because note_tags/backlinks FK-reference notes(id).
 		`DROP TABLE IF EXISTS backlinks`,
