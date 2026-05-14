@@ -506,7 +506,11 @@ func TestDailyNotesHandler_TagPassthrough(t *testing.T) {
 			t.Fatal("expected non-nil Tags in 200 response")
 		}
 		got := *got200.Tags
-		want := []string{"jasper", "project"} // sorted lexically per ExtractTags contract
+		// ExtractTags preserves first-occurrence order (dedupeTags, not sort.Strings).
+		// The frontmatter is "tags: [project, jasper]" so the canonical order is
+		// [project, jasper].  Only ExtractBodyTags (inline #tag syntax) sorts;
+		// ExtractTags (frontmatter) does not.
+		want := []string{"project", "jasper"}
 		if len(got) != len(want) {
 			t.Fatalf("Tags: got %v (len=%d), want %v (len=%d)", got, len(got), want, len(want))
 		}
