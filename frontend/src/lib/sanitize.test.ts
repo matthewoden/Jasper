@@ -130,6 +130,15 @@ describe("sanitizeHtml — benign HTML preserved", () => {
     expect(out).toContain("<code>");
     expect(out).toContain("const x = 1;");
   });
+
+  it("preserves <mark> for FTS5 search highlights (Phase 7 SEARCH-04)", () => {
+    // Server-side FTS5 snippet() output wraps matched terms in <mark>...</mark>
+    // (Phase 7 D-04). The sanitize boundary MUST preserve <mark> end-to-end or
+    // every search highlight is silently stripped at render time.
+    // Locked contract — do NOT loosen this assertion without a follow-up plan.
+    const out = sanitizeHtml("<p>foo <mark>bar</mark></p>");
+    expect(out).toContain("<mark>bar</mark>");
+  });
 });
 
 describe("sanitizeHtml — edge cases", () => {

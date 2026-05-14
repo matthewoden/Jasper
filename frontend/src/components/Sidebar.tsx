@@ -31,10 +31,13 @@ import { useCallback } from "react";
 import type React from "react";
 
 import { FileTree } from "./FileTree";
+import { SearchInputBar } from "./SearchInputBar";
+import { SearchResultsList } from "./SearchResultsList";
 import { SidebarResizeHandle } from "./SidebarResizeHandle";
 import { SidebarToolbar } from "./SidebarToolbar";
 import type { Tree, TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
+import { useSearch } from "../lib/useSearch";
 import { useTreeCreateActions } from "../lib/useTreeCreateActions";
 import { useTreeStore, type SelectedRow } from "../lib/useTreeStore";
 
@@ -110,6 +113,12 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
   // When notesSidebarVisible is false, the sidebar column in App.tsx grid
   // collapses to 0px and the Sidebar returns null to avoid invisible DOM.
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
+  // Phase 7 — Plan 07-08 (SEARCH-01): mount the debounced search loop.
+  // useSearch reads searchQuery + activeTagFilter from the store, fires the
+  // debounced API call, and writes searchResults + searchActive.
+  useSearch();
+  // searchActive drives the conditional render: SearchResultsList vs FileTree.
+  const searchActive = useTreeStore((s) => s.searchActive);
 
   // Phase 6.6 — handleRefresh removed from Sidebar (D-08).
   // Refresh moved to StatusBar. SidebarToolbar no longer receives onRefresh.
@@ -195,6 +204,9 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
             creating={isCreating}
           />
         </header>
+        {/* Phase 7 — Plan 07-08 (SEARCH-01): Search input bar above tree.
+            Mounts unconditionally so the input is always reachable. */}
+        <SearchInputBar />
         {/*
           Tree-area shell — bounded by viewport (parent grid row is
           minmax(0, 1fr)). overflow:hidden because react-arborist's
@@ -210,7 +222,16 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
             position: "relative",
           }}
         >
-          <FileTree onSelectNote={onSelectNote} />
+          {/* Phase 7 — conditional render: SearchResultsList vs FileTree.
+              ActiveTagFilterChip is rendered inside FileTree (Phase 6.6) and
+              stays visible in both modes because FileTree renders it first.
+              When searchActive=true, SearchResultsList replaces FileTree;
+              SearchResultsList reads results from useTreeStore (SEARCH-04). */}
+          {searchActive ? (
+            <SearchResultsList />
+          ) : (
+            <FileTree onSelectNote={onSelectNote} />
+          )}
         </div>
         {/*
           Phase 6.5 — Plan 06.5-04 (D-04): the tag browser panel was relocated
