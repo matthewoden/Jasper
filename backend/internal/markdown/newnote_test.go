@@ -5,6 +5,71 @@ import (
 	"testing"
 )
 
+// TestNewDailyNoteContent verifies the canonical daily-note content helper (DAILY-02 / D-43).
+//
+// Assertions:
+//   - Default template produces frontmatter + "# {date}\n\n"
+//   - Custom template with {{date}} is substituted everywhere
+//   - No {{date}} literals survive in any case
+//   - Output is idempotent (two calls with same args → same bytes)
+func TestNewDailyNoteContent(t *testing.T) {
+	cases := []struct {
+		name     string
+		date     string
+		template string
+		wantSubs []string
+		wantNot  []string
+	}{
+		{
+			name:     "default template",
+			date:     "2026-05-13",
+			template: "",
+			wantSubs: []string{"---", "tags: []", "# 2026-05-13"},
+			wantNot:  []string{"{{date}}"},
+		},
+		{
+			name:     "custom template with {{date}}",
+			date:     "2026-05-13",
+			template: "# Daily {{date}}\n\n## Notes\n",
+			wantSubs: []string{"# Daily 2026-05-13", "## Notes"},
+			wantNot:  []string{"{{date}}"},
+		},
+		{
+			name:     "multiple {{date}} occurrences",
+			date:     "2026-05-13",
+			template: "# {{date}}\n\nCreated: {{date}}\n",
+			wantSubs: []string{"# 2026-05-13", "Created: 2026-05-13"},
+			wantNot:  []string{"{{date}}"},
+		},
+		{
+			name:     "frontmatter scaffold prepended",
+			date:     "2026-05-13",
+			template: "# {{date}}\n\n",
+			wantSubs: []string{"---\ntags: []", "---\n\n"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := string(NewDailyNoteContent(tc.date, tc.template))
+			for _, want := range tc.wantSubs {
+				if !strings.Contains(got, want) {
+					t.Errorf("missing %q in output; got: %q", want, got)
+				}
+			}
+			for _, dont := range tc.wantNot {
+				if strings.Contains(got, dont) {
+					t.Errorf("should not contain %q; got: %q", dont, got)
+				}
+			}
+			// Idempotency: two calls with same args must produce byte-identical output.
+			got2 := string(NewDailyNoteContent(tc.date, tc.template))
+			if got != got2 {
+				t.Errorf("not idempotent:\n  first:  %q\n  second: %q", got, got2)
+			}
+		})
+	}
+}
+
 // TestNewNoteContent verifies the canonical new-note scaffold (TAGS-EXT-01, D-09).
 //
 // Every note creation path (sidebar New Note, pending-wiki-link Cmd-click,
