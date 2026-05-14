@@ -24,11 +24,23 @@ export interface CommandActions {
   onShowShortcuts?: () => void;
 }
 
+/**
+ * Commands that should NOT close the palette when executed.
+ * UAT #5 fix: "Switch note…" flips palette mode in place; closing then
+ * trying to re-render the new mode loses the modal context.
+ */
+const COMMANDS_KEEP_OPEN: ReadonlySet<string> = new Set(["switch-note"]);
+
 export interface CommandPaletteResult {
   /** Returns all palette entries (empty query) or filtered by label substring. */
   filtered: (query: string) => Shortcut[];
-  /** Dispatches the action for the given command id. No-ops if id unknown or action not provided. */
-  execute: (id: string) => void;
+  /**
+   * Dispatches the action for the given command id. Returns true if the
+   * caller should close the palette after this command, false if it should
+   * stay open (e.g., switch-note re-renders in notes mode).
+   * No-ops (but still returns true) if id unknown or action not provided.
+   */
+  execute: (id: string) => boolean;
 }
 
 export function useCommandPalette(actions: CommandActions): CommandPaletteResult {
@@ -67,9 +79,11 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
   }, []);
 
   const execute = useCallback(
-    (id: string): void => {
+    (id: string): boolean => {
       const fn = idToAction[id];
       if (fn) fn();
+      // Return true (close palette) for all commands EXCEPT those in COMMANDS_KEEP_OPEN.
+      return !COMMANDS_KEEP_OPEN.has(id);
     },
     [idToAction],
   );

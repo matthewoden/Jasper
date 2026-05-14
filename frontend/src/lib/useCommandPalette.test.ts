@@ -145,6 +145,42 @@ describe("useCommandPalette — execute()", () => {
   });
 });
 
+describe("useCommandPalette — execute() closeOnExecute verdict (UAT #5)", () => {
+  it("switch-note returns false (keep palette open)", () => {
+    const onSwitchNote = vi.fn();
+    const { result } = renderHook(() => useCommandPalette({ onSwitchNote }));
+    let verdict: boolean = true;
+    act(() => { verdict = result.current.execute("switch-note"); });
+    expect(verdict).toBe(false);
+    expect(onSwitchNote).toHaveBeenCalledOnce();
+  });
+
+  it("new-note returns true (close palette)", () => {
+    const onNewNote = vi.fn();
+    const { result } = renderHook(() => useCommandPalette({ onNewNote }));
+    let verdict: boolean = false;
+    act(() => { verdict = result.current.execute("new-note"); });
+    expect(verdict).toBe(true);
+    expect(onNewNote).toHaveBeenCalledOnce();
+  });
+
+  it("save returns true (close palette)", () => {
+    const onSave = vi.fn();
+    const { result } = renderHook(() => useCommandPalette({ onSave }));
+    let verdict: boolean = false;
+    act(() => { verdict = result.current.execute("save"); });
+    expect(verdict).toBe(true);
+    expect(onSave).toHaveBeenCalledOnce();
+  });
+
+  it("unknown id returns true and dispatches no action", () => {
+    const { result } = renderHook(() => useCommandPalette({}));
+    let verdict: boolean = false;
+    act(() => { verdict = result.current.execute("does-not-exist"); });
+    expect(verdict).toBe(true);
+  });
+});
+
 describe("useCommandPalette — all 9 COMMAND_PALETTE_ENTRIES reachable", () => {
   it("all 9 palette entries are reachable via filtered('')", () => {
     const { result } = renderHook(() => useCommandPalette({}));
