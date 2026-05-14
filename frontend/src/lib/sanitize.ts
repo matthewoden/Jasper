@@ -22,6 +22,8 @@
  *   - ALLOWED_URI_REGEXP — http(s), blob:, data:, and relative URIs
  *     only (matches the editor's external-image widget allowance from
  *     Plan 05-08)
+ *   - ADD_TAGS — explicit allowlist additions on top of USE_PROFILES.html.
+ *     Phase 7 added 'mark' for FTS5 search-highlight rendering (SEARCH-04).
  *   - FORBID_TAGS / FORBID_ATTR — defense-in-depth on top of the
  *     profile allowlist
  */
@@ -39,6 +41,11 @@ const SAFE_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
   //                 external-image widget for cross-origin URLs)
   //   class       — for CSS hooks (cm-* classes etc.)
   ALLOWED_ATTR: ["href", "title", "alt", "src", "class"],
+  // Phase 7 SEARCH-04 — server emits <mark>...</mark> in FTS5 snippet()
+  // results; the html5 profile already includes mark, but ADD_TAGS makes
+  // the contract explicit + grep-auditable so a future tightening cannot
+  // silently strip search highlights. See sanitize.test.ts regression case.
+  ADD_TAGS: ["mark"],
   // Permit http(s), blob:, data:, relative URIs, fragments. Blocks
   // javascript:, vbscript:, file: schemes. Pattern from DOMPurify docs.
   ALLOWED_URI_REGEXP:
