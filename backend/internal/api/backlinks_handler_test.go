@@ -113,6 +113,11 @@ func (f *blIdx) SearchTitles(_ context.Context, _ string, _ int) ([]notes.Search
 	return f.searchResults, f.searchErr
 }
 
+// Plan 07-04: SearchFTS no-op stub.
+func (f *blIdx) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes.SearchHit, error) {
+	return []notes.SearchHit{}, nil
+}
+
 // ---------------------------------------------------------------------------
 // setupBLServer — httptest.Server for backlinks + search handler tests
 // ---------------------------------------------------------------------------

@@ -155,6 +155,11 @@ func (f *fakeIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchRe
 	return []SearchResult{}, nil
 }
 
+// Plan 07-04: nopIndex no-op for SearchFTS.
+func (f *fakeIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]SearchHit, error) {
+	return []SearchHit{}, nil
+}
+
 // --------------------------------------------------------------------------
 // Plan 04-04 Task 1: fakeBroadcaster + 5 new If-Match / broadcast tests
 // --------------------------------------------------------------------------
@@ -681,6 +686,11 @@ func (s *stubIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow,
 
 func (s *stubIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchResult, error) {
 	return []SearchResult{}, nil
+}
+
+// Plan 07-04: nopIndex no-op for SearchFTS.
+func (s *stubIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]SearchHit, error) {
+	return []SearchHit{}, nil
 }
 
 // recByID returns the in-memory record for assertions. Test-only.

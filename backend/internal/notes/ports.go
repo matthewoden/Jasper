@@ -2,12 +2,28 @@ package notes
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
+
+// ErrFTSQuerySyntax is returned by SearchFTS when the user's query violates
+// FTS5 MATCH syntax (Pitfall 2). Handlers map to HTTP 400 + code='invalid_query'.
+var ErrFTSQuerySyntax = errors.New("fts query syntax error")
+
+// SearchHit is one row of an FTS5 search result (D-31, Plan 07-04).
+type SearchHit struct {
+	ID           string
+	Title        string
+	Path         string
+	ExcerptHTML  string // contains <mark>...</mark> from FTS5 snippet()
+	MatchingTags []string
+	Rank         float64 // bm25 + recency blend; lower is better
+	ModifiedAt   time.Time
+}
 
 // FileStore is the port over the filesystem adapter (internal/fsstore).
 // Defined here per the hexagonal-lite layout: notes/ owns the interface,
@@ -201,6 +217,15 @@ type Index interface {
 	// (case-insensitive LIKE match), ordered by mtime DESC. When q is
 	// empty, returns the most-recent notes up to limit. Max limit = 50.
 	SearchTitles(ctx context.Context, q string, limit int) ([]SearchResult, error)
+
+	// Plan 07-04: full-text search via FTS5 MATCH + bm25 + recency blend.
+
+	// SearchFTS runs an FTS5 query against notes body+tag_names with an
+	// optional AND-combined tag filter (D-05). Sort = bm25 + recency blend
+	// (D-03/D-46 weight 0.002). Returns up to `limit` results (capped at
+	// 100). Returns ErrFTSQuerySyntax on FTS5 syntax errors so the handler
+	// can map to HTTP 400.
+	SearchFTS(ctx context.Context, q string, tag string, limit int) ([]SearchHit, error)
 }
 
 // BacklinkRow is the projection returned by Index.GetBacklinks.
