@@ -22,8 +22,8 @@ import { useQuickSwitcher } from "./useQuickSwitcher";
 import { useFileTree } from "./useFileTree";
 import { useTreeStore } from "./useTreeStore";
 
-const mockUseFileTree = useFileTree as ReturnType<typeof vi.fn>;
-const mockUseTreeStore = useTreeStore as ReturnType<typeof vi.fn>;
+const mockUseFileTree = useFileTree as unknown as ReturnType<typeof vi.fn>;
+const mockUseTreeStore = useTreeStore as unknown as ReturnType<typeof vi.fn>;
 
 // Helper to build a minimal Tree with NoteNodes
 function makeTree(notes: Array<{ id: string; title: string; path: string }>) {

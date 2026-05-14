@@ -54,10 +54,10 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette } from "../lib/useCommandPalette";
 
-const mockUseFileTree = useFileTree as ReturnType<typeof vi.fn>;
-const mockUseTreeStore = useTreeStore as ReturnType<typeof vi.fn>;
-const mockUseQuickSwitcher = useQuickSwitcher as ReturnType<typeof vi.fn>;
-const mockUseCommandPalette = useCommandPalette as ReturnType<typeof vi.fn>;
+const mockUseFileTree = useFileTree as unknown as ReturnType<typeof vi.fn>;
+const mockUseTreeStore = useTreeStore as unknown as ReturnType<typeof vi.fn>;
+const mockUseQuickSwitcher = useQuickSwitcher as unknown as ReturnType<typeof vi.fn>;
+const mockUseCommandPalette = useCommandPalette as unknown as ReturnType<typeof vi.fn>;
 
 // Default mocks
 const mockSetActiveNote = vi.fn();
