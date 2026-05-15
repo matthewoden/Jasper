@@ -60,6 +60,7 @@ import { codeLanguages } from "../editor/codeLanguages";
 import { externalImagePlugin } from "../editor/externalImagePlugin";
 import { imageAttachmentPlugin } from "../editor/imageAttachmentWidget"; // Phase 7 Plan 10 / ATTACH-05
 import { fileChipPlugin } from "../editor/fileChipWidget"; // Phase 7 Plan 10 / ATTACH-06
+import { dropPosField, dropIndicatorPlugin } from "../editor/dropIndicatorWidget"; // Phase 7 Plan 20 / C3 UAT #12
 import { useAttachmentUpload } from "../lib/useAttachmentUpload"; // Phase 7 Plan 10 / ATTACH-01..02
 import { saveKeymap } from "../editor/jasperKeymap"; // Plan 05-11 / EDIT-10
 import {
@@ -363,6 +364,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             // navigation doesn't require EditorView re-creation (EDIT-01 preserved).
             imageAttachmentPlugin(noteIdRef), // renders ![alt](attachments/…) below line
             fileChipPlugin(noteIdRef), // renders [name](attachments/…) chip below line
+            // Phase 7 Plan 20 / C3 (UAT #12): drop indicator — blinking caret at
+            // posAtCoords during file dragover. dropPosField MUST precede
+            // dropIndicatorPlugin so the plugin's first update() can read the field.
+            dropPosField,         // StateField: current drag position (null = hidden)
+            dropIndicatorPlugin,  // ViewPlugin: attaches dragover/dragleave/drop listeners
             // Phase 6 / Plan 06-10 — autocomplete: [[ wiki-links + tag names.
             // Phase 6.5 / Plan 06.5-05 — added inlineTagCompletionSource for # trigger in body.
             // override: [] disables lang-markdown's emoji shortcodes (acceptable for

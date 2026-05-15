@@ -117,7 +117,7 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
     vi.spyOn(searchApi, "searchNotes").mockResolvedValue([]);
     const { rerender } = renderHook(
       ({ tag }: { tag: string | null }) => useSearch("hello", tag),
-      { initialProps: { tag: null } },
+      { initialProps: { tag: null as string | null } },
     );
 
     await act(async () => {
