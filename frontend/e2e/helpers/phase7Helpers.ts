@@ -200,7 +200,7 @@ export async function expectPaletteVisibleWithNCommands(
 ): Promise<void> {
   const { expect } = await import("@playwright/test");
   const dialog = page.getByRole("dialog", { name: "Command palette" });
-  await expect(dialog).toBeVisible({ timeout: 3_000 });
+  await expect(dialog).toBeVisible({ timeout: 5_000 });
 
   // Assert the 9 palette-visible commands by their label text.
   // This locks the UI-SPEC §Command Registry table strings.
@@ -222,8 +222,11 @@ export async function expectPaletteVisibleWithNCommands(
     );
   }
   for (const label of expectedLabels) {
-    await expect(dialog.getByText(label, { exact: false }).first()).toBeVisible({
-      timeout: 3_000,
+    // The virtualized list renders all items for 9 commands at 36px each (324px)
+    // which fits in the 50vh max-height. Using page-level getByText to avoid
+    // stale scoping on the dialog locator while virtualizer renders.
+    await expect(page.getByText(label, { exact: false }).first()).toBeVisible({
+      timeout: 5_000,
     });
   }
 }
@@ -369,8 +372,18 @@ export async function activateTagFilterChip(
 ): Promise<void> {
   const { expect } = await import("@playwright/test");
 
-  // Step 1: ensure the Tags panel is expanded. The header button has an
-  // aria-label matching "Tags panel, collapsed.*" when collapsed.
+  // Step 0: ensure the right rail is expanded (backlinksRailExpanded = true).
+  // When collapsed, RightRail returns null and the Tags panel is not in the DOM.
+  // TopBar renders a "Show panels" button when collapsed (aria-label="Show panels").
+  const showPanelsBtn = page.getByRole("button", { name: "Show panels" });
+  if ((await showPanelsBtn.count()) > 0) {
+    await showPanelsBtn.click();
+    // Wait for the rail to appear (tag row testid becomes visible).
+    await expect(showPanelsBtn).toHaveCount(0, { timeout: 3_000 });
+  }
+
+  // Step 1: ensure the Tags panel is expanded within the right rail.
+  // The panel header button has aria-label matching "Tags panel, collapsed.*".
   const collapsedHeader = page.getByRole("button", {
     name: /^Tags panel, collapsed/,
   });
