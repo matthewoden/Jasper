@@ -129,10 +129,30 @@ function deriveParentNoteId(
 ): string | undefined {
   const idx = filePath.indexOf("/attachments/");
   if (idx < 0) return undefined; // not inside attachments/
-  // Everything before "/attachments/" is the owner note's dir-without-extension.
-  const ownerDir = filePath.slice(0, idx); // e.g. "parent"
-  const ownerNotePath = ownerDir + ".md"; // e.g. "parent.md"
-  return notePathMap.get(ownerNotePath);
+  // Everything before "/attachments/" is the directory that owns the attachments folder.
+  // e.g. "gallery/attachments/photo.png" → ownerDir = "gallery"
+  const ownerDir = filePath.slice(0, idx);
+
+  // Strategy 1: look for a note at "{ownerDir}.md" (root-sibling pattern).
+  // Example: notes/attachments/photo.png → ownerDir="" → ownerNotePath=".md" (invalid).
+  // Example: gallery/attachments/photo.png → ownerDir="gallery" → "gallery.md" (root-level note).
+  const siblingNote = ownerDir + ".md";
+  if (notePathMap.has(siblingNote)) {
+    return notePathMap.get(siblingNote);
+  }
+
+  // Strategy 2: look for any note INSIDE ownerDir (e.g., "gallery/note.md").
+  // The GetAttachment handler places attachments at {noteParentDir}/attachments/,
+  // so any note in ownerDir/ shares the same attachments folder.
+  // Return the first match (alphabetically first due to Map insertion order from sortChildren).
+  const prefix = ownerDir + "/";
+  for (const [notePath, noteId] of notePathMap) {
+    if (notePath.startsWith(prefix) && notePath.endsWith(".md")) {
+      return noteId;
+    }
+  }
+
+  return undefined;
 }
 
 export function adaptToArborist(
@@ -161,6 +181,7 @@ export function adaptToArborist(
       data: { kind: "file", path: node.path, name: node.name, parentNoteId },
     };
   }
+  // After handling "folder" and "file", TypeScript narrows node.kind to "note".
   return {
     id: "note:" + node.id,
     name: node.title,

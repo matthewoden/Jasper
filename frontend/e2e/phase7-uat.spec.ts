@@ -37,6 +37,7 @@ import {
   apiCreateNote,
   waitForConnected,
   openCommandMenuAndType,
+  expectPaletteVisibleWithNCommands,
   dispatchSyntheticDragOver,
   dispatchSyntheticDragLeave,
   activateTagFilterChip,
@@ -1393,6 +1394,133 @@ test.describe("Phase 7 — Drag-drop visual indicator (S16 / UAT #12)", () => {
 // renders Paperclip icon for folders named "attachments".
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// S19 — Cmd+P/Cmd+O cold-open + switch-note input clear (UAT-2 R1-2, R1-3)
+// Plan 07-23 gap closure:
+//   S19a: cold Cmd+P shows 9 commands immediately (no empty palette frame)
+//   S19b: cold Cmd+O shows notes immediately (no empty switcher due to null tree)
+//   S19c: switch-note via palette clears stale input query
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 / UAT-2 R1-2,R1-3)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("S19a — cold Cmd+P shows all 9 commands immediately on first open", async ({ page }) => {
+    // Navigate to a fresh page — no prior interaction (cold open).
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Press Cmd+P ONCE on a fresh page — the palette MUST show all 9 commands
+    // without the user typing a character. Fix A (eager boot fetch) + the atomic
+    // openPalette() store action ensure the commands are populated on first render.
+    await pressShortcut(page, "CmdP");
+    const dialog = page.getByRole("dialog", { name: "Command palette" });
+    await expect(dialog).toBeVisible({ timeout: 3_000 });
+
+    // Assert all 9 commands are visible.
+    // The virtualizer renders items after ResizeObserver measures the container.
+    // The failure mode (UAT-2 R1-2) was empty even after 3+ seconds WITH user
+    // input — the openPalette() atomic fix ensures paletteMode and paletteOpen
+    // are committed in one React render so the virtualizer starts with count=9.
+    // We use a 5-second timeout to give the virtualizer time to measure.
+    await expect(page.getByText("New note", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
+
+    // Use the helper from Plan 07-21 which asserts all 9 palette commands.
+    await expectPaletteVisibleWithNCommands(page, 9);
+
+    // Close
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
+  });
+
+  test("S19b — cold Cmd+O shows notes immediately (no empty list due to null tree)", async ({ page }) => {
+    // Pre-create 3 notes so the switcher has items to show.
+    await apiCreateNote(page, jasper.baseURL, "cold-note-1.md", "", "# Cold Note 1\n");
+    await apiCreateNote(page, jasper.baseURL, "cold-note-2.md", "", "# Cold Note 2\n");
+    await apiCreateNote(page, jasper.baseURL, "cold-note-3.md", "", "# Cold Note 3\n");
+
+    // Navigate to a fresh page — no prior interaction (cold open).
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Press Cmd+O ONCE on a fresh page — the quick-switcher MUST show at least
+    // one note immediately, without requiring a user input or waiting for tree fetch.
+    // Fix A (eager boot fetch) ensures GET /tree completes before the user can
+    // realistically press Cmd+O after page load.
+    await pressShortcut(page, "CmdO");
+    const dialog = page.getByRole("dialog", { name: "Quick switcher" });
+    await expect(dialog).toBeVisible({ timeout: 3_000 });
+
+    // Wait up to 500ms for the tree to be warm — the boot fetch fires on module
+    // import so by the time waitForConnected returns (WS connected), the fetch
+    // is already in-flight or complete. 500ms is generous.
+    await expect(
+      dialog.getByRole("option").first().or(dialog.getByText(/cold-note/i).first()),
+    ).toBeVisible({ timeout: 500 });
+
+    // Alternative assertion: at least one note row is rendered (not "Start typing").
+    // If the quick-switcher shows notes, there are rows with note data.
+    // Using a soft assertion to handle virtualizer layout differences.
+    const noteRows = dialog.locator('[style*="translateY"]');
+    const rowCount = await noteRows.count();
+    // The tree has at least 3 notes; at least 1 should be in the list.
+    expect(rowCount).toBeGreaterThan(0);
+
+    // Close
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
+  });
+
+  test("S19c — switch-note via palette clears stale query string from commands mode", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Step 1: open Cmd+P (commands mode) and type "fi" (matches "Find in note").
+    await pressShortcut(page, "CmdP");
+    const commandDialog = page.getByRole("dialog", { name: "Command palette" });
+    await expect(commandDialog).toBeVisible({ timeout: 3_000 });
+
+    const cmdInput = commandDialog.getByRole("textbox");
+    await cmdInput.fill("fi");
+    // Verify "fi" is in the input.
+    await expect(cmdInput).toHaveValue("fi");
+
+    // Step 2: click "Switch / search notes" — the palette stays open (closeOnExecute=false)
+    // and flips to notes mode. Fix B (mode dep in useEffect) must clear the input.
+    const switchCmd = page.getByText("Switch / search notes", { exact: true }).first();
+    await expect(switchCmd).toBeVisible({ timeout: 3_000 });
+    await switchCmd.click();
+
+    // Step 3: palette is now in notes mode — dialog aria-label flips.
+    const switcherDialog = page.getByRole("dialog", { name: "Quick switcher" });
+    await expect(switcherDialog).toBeVisible({ timeout: 3_000 });
+
+    // Step 4: input must be empty — Fix B clears the query on mode flip.
+    // Use waitForFunction for React 18 batching timing in headless browser.
+    const switcherInput = switcherDialog.getByRole("textbox");
+    await page.waitForFunction(
+      () => {
+        const input = document.querySelector('input[placeholder="Switch to note…"]') as HTMLInputElement | null;
+        return input !== null && input.value === "";
+      },
+      { timeout: 3_000 },
+    );
+    await expect(switcherInput).toHaveValue("");
+
+    // Close
+    await page.keyboard.press("Escape");
+    await expect(switcherDialog).not.toBeVisible({ timeout: 3_000 });
+  });
+});
+
 test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", () => {
   let jasper: JasperHandle;
 
@@ -1454,5 +1582,272 @@ test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", 
     // TreeRow sets data-tree-row to the folder path (relative to notes/).
     const rowAttr = await attachmentsRow.getAttribute("data-tree-row");
     expect(rowAttr).toBe("attachments");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S22 — All files visible in sidebar tree (UAT-2 R1-7 / Plan 07-26)
+//   S22a: non-markdown files appear as kind="file" rows with type-specific icons
+//   S22b: file rows are NOT draggable (disableDrag via react-arborist)
+//   S22c: clicking a file inside attachments/ opens /api/v1/attachments/{noteId}/{filename}
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT-2 R1-7)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  /**
+   * S22a: seed mixed files in notes/ dir, verify they appear as kind="file"
+   * rows with the correct lucide icons (Image for .png, FileText for .pdf,
+   * File for unknown extension).
+   */
+  test("S22a — non-markdown files appear in tree with type-specific icons", async ({ page }) => {
+    const notesDir = path.join(jasper.dataDir, "notes");
+    // Write three files directly to the notes root — img.png, doc.pdf, blob.bin.
+    fs.writeFileSync(path.join(notesDir, "img.png"), Buffer.from("\x89PNG\r\n\x1a\n"));
+    fs.writeFileSync(path.join(notesDir, "doc.pdf"), Buffer.from("%PDF-1.4"));
+    fs.writeFileSync(path.join(notesDir, "blob.bin"), Buffer.from("\x00\x01\x02"));
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Trigger a full reindex so the tree builder picks up the new files.
+    const reindexResp = await page.request.post(
+      `${jasper.baseURL}/api/v1/admin/reindex`,
+      { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
+    );
+    expect([200, 202]).toContain(reindexResp.status());
+    // Wait for reindex progress indicator to disappear (server done).
+    await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
+
+    // Reload to get the fresh tree from GET /api/v1/tree.
+    await page.reload();
+    await waitForConnected(page);
+
+    // img.png — expect an Image icon (lucide-image SVG class).
+    const imgRow = page.locator('[data-tree-row="img.png"][data-tree-row-kind="file"]');
+    await expect(imgRow).toBeVisible({ timeout: 8_000 });
+    const imgSvg = imgRow.locator("svg");
+    const imgClasses = await imgSvg.first().getAttribute("class");
+    expect(imgClasses ?? "").toContain("lucide-image");
+
+    // doc.pdf — expect a FileText icon (lucide-file-text SVG class).
+    const pdfRow = page.locator('[data-tree-row="doc.pdf"][data-tree-row-kind="file"]');
+    await expect(pdfRow).toBeVisible({ timeout: 8_000 });
+    const pdfSvg = pdfRow.locator("svg");
+    const pdfClasses = await pdfSvg.first().getAttribute("class");
+    expect(pdfClasses ?? "").toContain("lucide-file-text");
+
+    // blob.bin — expect the generic File icon (lucide-file, NOT lucide-file-text or lucide-image).
+    const binRow = page.locator('[data-tree-row="blob.bin"][data-tree-row-kind="file"]');
+    await expect(binRow).toBeVisible({ timeout: 8_000 });
+    const binSvg = binRow.locator("svg");
+    const binClasses = await binSvg.first().getAttribute("class");
+    expect(binClasses ?? "").toMatch(/lucide-file(?!-text)/);
+  });
+
+  /**
+   * S22b: verify that file rows have kind="file" and render a file icon.
+   * The disableDrag(node) callback prevents drag-to-move for file nodes at the
+   * react-arborist level (canDrag returns false). HTML-level draggable="true"
+   * is set by react-dnd regardless, but the drag lifecycle never fires.
+   * We test the observable behavioral gate: a dragstart on the file row
+   * should not trigger any tree mutation (no POST /notes/{id}/move).
+   * (The HTML attribute test is unreliable because react-dnd always sets
+   * draggable="true" even for disabled rows — disableDrag is a canDrag gate.)
+   * This test verifies the rendered row kind and the absence of a dragstart
+   * intercepted network call, which is the user-visible behavior contract.
+   */
+  test("S22b — file rows render with kind='file' and no drag move fires on drag attempt", async ({ page }) => {
+    const notesDir = path.join(jasper.dataDir, "notes");
+    // Ensure the file exists (may already be there from S22a in the same jasper instance).
+    if (!fs.existsSync(path.join(notesDir, "img.png"))) {
+      fs.writeFileSync(path.join(notesDir, "img.png"), Buffer.from("\x89PNG\r\n\x1a\n"));
+    }
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Trigger reindex if needed to ensure file is in the tree.
+    const reindexResp = await page.request.post(
+      `${jasper.baseURL}/api/v1/admin/reindex`,
+      { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
+    );
+    expect([200, 202]).toContain(reindexResp.status());
+    await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
+
+    await page.reload();
+    await waitForConnected(page);
+
+    const imgRow = page.locator('[data-tree-row="img.png"][data-tree-row-kind="file"]');
+    await expect(imgRow).toBeVisible({ timeout: 8_000 });
+
+    // Verify the row has kind="file" attribute (confirms disableDrag applies to file nodes).
+    const rowKind = await imgRow.getAttribute("data-tree-row-kind");
+    expect(rowKind).toBe("file");
+
+    // Listen for any POST to /notes/.../move — a drag-and-drop that bypasses
+    // disableDrag would trigger this. We attempt a drag and confirm no move fires.
+    let moveFired = false;
+    page.on("request", (req) => {
+      if (req.url().includes("/move") && req.method() === "POST") {
+        moveFired = true;
+      }
+    });
+
+    // Simulate a drag gesture via mouse events (down + move + up).
+    const rowBound = await imgRow.boundingBox();
+    if (rowBound) {
+      await page.mouse.move(rowBound.x + rowBound.width / 2, rowBound.y + rowBound.height / 2);
+      await page.mouse.down();
+      // Move enough pixels to trigger a drag (threshold is typically 4px).
+      await page.mouse.move(rowBound.x + rowBound.width / 2 + 50, rowBound.y + rowBound.height / 2);
+      await page.mouse.up();
+    }
+
+    // Give a brief moment for any async network request to fire.
+    await page.waitForTimeout(500);
+    expect(moveFired).toBe(false);
+  });
+
+  /**
+   * S22c: seed a note with an attachments/ subfolder containing photo.png.
+   * Click the photo.png file row and verify a new tab opens with the correct
+   * /api/v1/attachments/{noteId}/photo.png URL.
+   *
+   * Uses a dedicated jasper instance (separate from the shared one) so S22c
+   * starts with a clean vault and avoids file accumulation from S22a/S22b.
+   *
+   * Vault layout:
+   *   notes/
+   *     gallery.md           ← created via API (has a UUID)
+   *     gallery/             ← directory created on disk (sibling to gallery.md)
+   *       attachments/       ← attachments subfolder
+   *         photo.png        ← the file we want to click
+   *
+   * parentNoteId derivation in adaptToArborist:
+   *   "gallery/attachments/photo.png"
+   *   → ownerDir = "gallery"
+   *   → ownerNotePath = "gallery.md"
+   *   → look up notePathMap["gallery.md"] → gallery.md's UUID
+   */
+  test("S22c — clicking attachment file opens /api/v1/attachments/{noteId}/{filename} in new tab", async ({ page }) => {
+    // Spawn a dedicated jasper with a clean vault for this test.
+    const j22c = await spawnJasper();
+    try {
+      // Create the gallery/ folder on disk first (the backend folder API requires
+      // the parent to exist; writing to disk before reindex is simpler here).
+      // Then create gallery/note.md inside it via API so we have a UUID.
+      // GetAttachment resolves attachments relative to the note's parent dir:
+      //   note.Path = "gallery/note.md" → noteParentDir = notes/gallery/
+      //   → attachDir = notes/gallery/attachments/ ← where we write photo.png
+      const notesDir = path.join(j22c.dataDir, "notes");
+      const galleryDir = path.join(notesDir, "gallery");
+      fs.mkdirSync(galleryDir, { recursive: true });
+
+      const noteId = await apiCreateNote(page, j22c.baseURL, "note.md", "gallery", "# Gallery Note\n\nA note inside gallery/.\n");
+
+      // Write photo.png to the gallery/attachments/ dir on disk.
+      const attachDir = path.join(galleryDir, "attachments");
+      fs.mkdirSync(attachDir, { recursive: true });
+      fs.writeFileSync(path.join(attachDir, "photo.png"), Buffer.from("\x89PNG\r\n\x1a\n"));
+
+      await page.goto(j22c.baseURL);
+      await waitForConnected(page);
+
+      // Trigger full reindex so tree builder picks up the new directory + file.
+      const reindexResp = await page.request.post(
+        `${j22c.baseURL}/api/v1/admin/reindex`,
+        { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
+      );
+      expect([200, 202]).toContain(reindexResp.status());
+      await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
+
+      await page.reload();
+      await waitForConnected(page);
+
+      // After full reindex, the server may have re-assigned a new UUID to
+      // gallery/note.md (reindex drops + re-imports all notes).  Fetch the
+      // current UUID from the tree API so the attachment URL assertion uses
+      // the post-reindex ID rather than the stale apiCreateNote return value.
+      const treeResp = await page.request.get(`${j22c.baseURL}/api/v1/tree`);
+      // Tree schema: { root: TreeNode[] } — root is the top-level key (not "nodes").
+      const treeJson = await treeResp.json() as { root: Array<{ kind: string; path?: string; id?: string; children?: unknown[] }> };
+      type TNode = { kind: string; path?: string; id?: string; children?: unknown[] };
+      const findNoteId = (nodes: TNode[]): string | undefined => {
+        for (const n of nodes) {
+          if (n.kind === "note" && n.path === "gallery/note.md") return n.id;
+          if (n.kind === "folder" && Array.isArray(n.children)) {
+            const found = findNoteId(n.children as TNode[]);
+            if (found) return found;
+          }
+        }
+        return undefined;
+      };
+      const postReindexNoteId = findNoteId(treeJson.root ?? []) ?? noteId;
+
+      // The tree should contain:
+      //   - gallery/ folder (with attachments/ subfolder + photo.png)
+      //   - gallery.md note (Gallery)
+      //   - scratchpad.md note (default)
+      // All at root level; gallery/ is collapsed on first load.
+      const galleryFolder = page.locator('[data-tree-row="gallery"][data-tree-row-kind="folder"]');
+      await expect(galleryFolder).toBeVisible({ timeout: 8_000 });
+
+      // Focus and press ArrowRight to expand the gallery folder.
+      // ArrowRight is react-arborist's keyboard shortcut for expanding a collapsed folder.
+      await galleryFolder.focus();
+      await page.keyboard.press("ArrowRight");
+      await expect(galleryFolder).toHaveAttribute("aria-expanded", "true", { timeout: 5_000 });
+
+      // Expand the attachments/ subfolder to reveal photo.png.
+      const attachmentsFolder = page.locator('[data-tree-row="gallery/attachments"][data-tree-row-kind="folder"]');
+      await expect(attachmentsFolder).toBeVisible({ timeout: 5_000 });
+      await attachmentsFolder.focus();
+      await page.keyboard.press("ArrowRight");
+      await expect(attachmentsFolder).toHaveAttribute("aria-expanded", "true", { timeout: 3_000 });
+
+      // photo.png should now appear as a file row.
+      const photoRow = page.locator('[data-tree-row="gallery/attachments/photo.png"][data-tree-row-kind="file"]');
+      await expect(photoRow).toBeVisible({ timeout: 5_000 });
+
+      // Override window.open to capture the URL synchronously — avoids the
+      // "popup URL is ':'" issue in headless Chromium where window.open for
+      // relative URLs resolves differently before the popup fully navigates.
+      await page.evaluate(() => {
+        (window as Window & { __capturedOpenUrl?: string }).__capturedOpenUrl = undefined;
+        const orig = window.open.bind(window);
+        window.open = (...args) => {
+          (window as Window & { __capturedOpenUrl?: string }).__capturedOpenUrl = args[0] as string;
+          return orig(...args);
+        };
+      });
+
+      await photoRow.click();
+
+      // Poll window.__capturedOpenUrl until it's set with the expected URL.
+      // Use postReindexNoteId (fetched from tree after reindex) because a full
+      // reindex re-assigns UUIDs — the value from apiCreateNote is stale.
+      const expectedUrlPattern = new RegExp(
+        `/api/v1/attachments/${postReindexNoteId}/photo\\.png`,
+      );
+      await expect
+        .poll(
+          () => page.evaluate(
+            () => (window as Window & { __capturedOpenUrl?: string }).__capturedOpenUrl,
+          ),
+          { timeout: 5_000 },
+        )
+        .toMatch(expectedUrlPattern);
+    } finally {
+      await j22c.kill();
+    }
   });
 });
