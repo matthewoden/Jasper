@@ -2326,7 +2326,17 @@ test.describe("Phase 7 — SaveIndicator in StatusBar + Search icon + drop snap 
   });
 });
 
-test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13) (second group)", () => {
+// S17 duplicate block removed here (Plan 07-29 dedup pass).
+// Original S17 is at line 1529. This duplicate was introduced by
+// the merge recovery commit for 07-26 (chore: recover lost worktree merge).
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S25 — Folder persistence + invalid drop (UAT-2 N1, N2 / Plan 07-29)
+//
+// S25a: folders default CLOSED; open state persists across reload (C1)
+// S25b: OS file drag over sidebar shows no overlay (C2)
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe("Phase 7 — Folder persistence + invalid drop (S25 / UAT-2 N1, N2)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -2337,176 +2347,105 @@ test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13) (s
     if (jasper) await jasper.kill();
   });
 
-  test("pre-created notes/attachments/ folder appears in tree with Paperclip icon (second group)", async ({ page }) => {
-    // Pre-create the attachments folder and a placeholder file on disk
-    // BEFORE spawning Jasper (Jasper was already spawned in beforeAll, so
-    // we write to disk and trigger a reindex to get the tree updated).
-    const attachmentsDir = path.join(jasper.dataDir, "notes", "attachments");
-    fs.mkdirSync(attachmentsDir, { recursive: true });
-    // Write a placeholder PNG so the folder is non-empty on disk.
-    // (The backend walk skips files inside attachments/ but the folder itself
-    // will appear as a FolderNode since the SkipDir guard was removed in Plan 07-20.)
-    const fooPng = path.join(attachmentsDir, "foo.png");
-    fs.writeFileSync(fooPng, Buffer.from("placeholder"));
-
+  test("S25a — folders default CLOSED; open state persists across reload", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Trigger a reindex so the tree picks up the new folder.
-    const reindexResp = await page.request.post(
-      `${jasper.baseURL}/api/v1/admin/reindex`,
-      { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
-    );
-    expect([200, 202]).toContain(reindexResp.status());
-    await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
+    // Pre-create two folders and their notes so the tree has visible folder rows.
+    // The folders must exist before notes can be created inside them.
+    for (const folder of ["foo", "bar"]) {
+      const r = await page.request.post(`${jasper.baseURL}/api/v1/folders`, {
+        data: { parent_path: "", name: folder },
+      });
+      if (r.status() !== 201 && r.status() !== 409) {
+        const body = await r.text().catch(() => "(no body)");
+        throw new Error(`S25a: POST /folders/${folder} returned ${String(r.status())}: ${body}`);
+      }
+    }
+    // apiCreateNote(page, baseURL, filename, parentPath, content)
+    await apiCreateNote(page, jasper.baseURL, "alpha.md", "foo", "# Alpha\n");
+    await apiCreateNote(page, jasper.baseURL, "beta.md", "foo", "# Beta\n");
+    await apiCreateNote(page, jasper.baseURL, "gamma.md", "bar", "# Gamma\n");
 
-    // Reload to get the fresh tree response.
+    // Reload so the tree hydrates with fresh data + empty localStorage (fresh jasper instance).
     await page.reload();
     await waitForConnected(page);
 
-    // The "attachments" folder should appear in the tree.
-    // TreeRow renders data-tree-row="attachments" data-tree-row-kind="folder".
-    const attachmentsRow = page.locator(
-      '[data-tree-row="attachments"][data-tree-row-kind="folder"]',
-    );
-    await expect(attachmentsRow).toBeVisible({ timeout: 8_000 });
+    // Wait for both folder rows to appear.
+    await expect(page.getByText("foo").first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("bar").first()).toBeVisible({ timeout: 5_000 });
 
-    // The row should contain a Paperclip SVG (Plan 07-20 C4 / TreeRow.tsx).
-    // Lucide Paperclip renders as an SVG with class "lucide-paperclip" OR
-    // a data-lucide attribute. Look for svg within the attachments row.
-    const paperclipSvg = attachmentsRow.locator("svg");
-    await expect(paperclipSvg.first()).toBeVisible({ timeout: 3_000 });
+    // Step 1: Assert "foo" folder is CLOSED on cold load (openByDefault=false).
+    const fooRow = page.locator('[data-tree-row-kind="folder"][data-tree-row="foo"]');
+    await expect(fooRow).toBeVisible({ timeout: 3_000 });
+    await expect(fooRow).toHaveAttribute("aria-expanded", "false", { timeout: 3_000 });
 
-    // Confirm the Paperclip icon is specifically the lucide-paperclip variant
-    // by checking for its known path data (d attribute starts with "M21.44").
-    // This is more brittle than class-based check; we use a softer assertion:
-    const svgCount = await paperclipSvg.count();
-    expect(svgCount).toBeGreaterThan(0);
+    // The child notes should NOT be visible (foo is closed).
+    await expect(page.getByText("Alpha")).not.toBeVisible({ timeout: 2_000 });
+    await expect(page.getByText("Beta")).not.toBeVisible({ timeout: 2_000 });
 
-    // Additionally verify the folder has the correct "attachments" title or name.
-    // TreeRow sets data-tree-row to the folder path (relative to notes/).
-    const rowAttr = await attachmentsRow.getAttribute("data-tree-row");
-    expect(rowAttr).toBe("attachments");
-  });
-});
+    // Step 2: Click "foo" to expand it.
+    await fooRow.click();
+    await expect(fooRow).toHaveAttribute("aria-expanded", "true", { timeout: 3_000 });
+    // Child notes should now be visible.
+    await expect(page.getByText("Alpha")).toBeVisible({ timeout: 3_000 });
 
-// S19 — Cmd+P/Cmd+O cold-open + switch-note input clear (UAT-2 R1-2, R1-3)
-// Plan 07-23 gap closure (second group — focuses on input-clear flow):
-//   S19a: cold Cmd+P shows 8 commands immediately (Plan 07-27: Find removed; no empty palette)
-//   S19b: cold Cmd+O shows notes immediately (no empty switcher due to null tree)
-//   S19c: switch-note via palette clears stale input query from commands mode
-// Root cause: useFileTree null-on-first-render + mode-dep missing from reset effect.
-// Fixes: eager boot fetch (Fix A) + if(open) setQuery("") with [open, mode] (Fix B).
-// ─────────────────────────────────────────────────────────────────────────────
+    // Wait for the 250ms localStorage debounce to flush (useTreeStore persistence).
+    // Without this wait, a fast reload can happen before localStorage is written.
+    await page.waitForTimeout(400);
 
-test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 / UAT-2 R1-2,R1-3)", () => {
-  let jasper: JasperHandle;
+    // Step 3: Reload the page.
+    await page.reload();
+    await waitForConnected(page);
+    await expect(page.getByText("foo").first()).toBeVisible({ timeout: 5_000 });
 
-  test.beforeAll(async () => {
-    jasper = await spawnJasper();
+    // Step 4: "foo" MUST still be open after reload (localStorage persistence working).
+    const fooRowAfterReload = page.locator('[data-tree-row-kind="folder"][data-tree-row="foo"]');
+    await expect(fooRowAfterReload).toHaveAttribute("aria-expanded", "true", { timeout: 5_000 });
+    await expect(page.getByText("Alpha")).toBeVisible({ timeout: 3_000 });
+
+    // Step 5: "bar" MUST still be closed after reload.
+    const barRow = page.locator('[data-tree-row-kind="folder"][data-tree-row="bar"]');
+    await expect(barRow).toHaveAttribute("aria-expanded", "false", { timeout: 3_000 });
+    await expect(page.getByText("Gamma")).not.toBeVisible({ timeout: 2_000 });
   });
 
-  test.afterAll(async () => {
-    if (jasper) await jasper.kill();
-  });
+  test("S25b — OS file drag over sidebar tree does NOT render arborist drop overlay", async ({ page }) => {
+    // Seed at least one note so the tree renders.
+    await apiCreateNote(page, jasper.baseURL, "s25b-test.md", "", "# S25b Test\n");
 
-  test("S19a — cold Cmd+P shows 8 commands on first open, virtualizer canary (Plan 07-27: Find removed)", async ({ page }) => {
-    // Navigate to a fresh page — no prior interaction (cold open).
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
+    // The tree shows the note's H1 title "S25b Test" (or the filename basename "s25b-test").
+    // Use a broader locator to catch either rendering.
+    await expect(page.getByText(/S25b Test|s25b-test/i).first()).toBeVisible({ timeout: 5_000 });
 
-    // Press Cmd+P ONCE on a fresh page — the palette MUST show all 8 commands
-    // without the user typing a character. Fix A (eager boot fetch) ensures the
-    // tree is warm before the user can press Cmd+P. The commands palette doesn't
-    // depend on the tree, but it tests that the virtualizer renders items.
-    await pressShortcut(page, "CmdP");
-    const dialog = page.getByRole("dialog", { name: "Command palette" });
-    await expect(dialog).toBeVisible({ timeout: 3_000 });
+    // Dispatch a synthetic dragover with "Files" in dataTransfer.types on the tree.
+    // The handleSidebarDragOver capture-phase handler must call stopPropagation,
+    // preventing arborist from rendering the drop cursor/overlay.
+    await page.evaluate(() => {
+      const treeEl = document.querySelector('[role="tree"]');
+      if (!treeEl) throw new Error("S25b: could not find [role=tree]");
+      const dt = new DataTransfer();
+      const file = new File([""], "test.png", { type: "image/png" });
+      dt.items.add(file);
+      const ev = new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: dt,
+      });
+      treeEl.dispatchEvent(ev);
+    });
 
-    // Wait for the virtualizer to render items after ResizeObserver measures.
-    // Use the "New note" command label as a canary — it's always item 0.
-    // The 5s timeout covers the ResizeObserver measurement latency in headless.
-    await expect(page.getByText("New note", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
+    // Give the browser a moment to render any drop indicator if one would appear.
+    await page.waitForTimeout(200);
 
-    // Assert all 8 palette commands are visible using the Plan 07-21 helper (Plan 07-27: Find removed).
-    await expectPaletteVisibleWithNCommands(page, 8); // Plan 07-27: 8 commands (Find removed)
-
-    // Close
-    await page.keyboard.press("Escape");
-    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
-  });
-
-  test("S19b — cold Cmd+O shows notes using note-label match (no empty list, eager boot)", async ({ page }) => {
-    // Pre-create 3 notes so the switcher has items to show.
-    await apiCreateNote(page, jasper.baseURL, "cold-note-1.md", "", "# Cold Note 1\n");
-    await apiCreateNote(page, jasper.baseURL, "cold-note-2.md", "", "# Cold Note 2\n");
-    await apiCreateNote(page, jasper.baseURL, "cold-note-3.md", "", "# Cold Note 3\n");
-
-    // Navigate to a fresh page — no prior interaction (cold open).
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-
-    // Press Cmd+O ONCE — the quick-switcher MUST populate with notes immediately.
-    // Fix A (eager boot fetch) fires GET /tree on module import, so by the time
-    // waitForConnected() returns (WebSocket connected), the tree fetch is in-flight
-    // or already complete. 5s generous timeout for the notes to appear.
-    await pressShortcut(page, "CmdO");
-    const dialog = page.getByRole("dialog", { name: "Quick switcher" });
-    await expect(dialog).toBeVisible({ timeout: 3_000 });
-
-    // Wait for at least one note to appear in the switcher.
-    // The quick-switcher renders a sorted recency list; any created note should appear.
-    const noteVisible = page.getByText("Cold Note 1", { exact: false })
-      .or(page.getByText("Cold Note 2", { exact: false }))
-      .or(page.getByText("Cold Note 3", { exact: false }))
-      .first();
-    await expect(noteVisible).toBeVisible({ timeout: 5_000 });
-
-    // Close
-    await page.keyboard.press("Escape");
-    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
-  });
-
-  test("S19c — switch-note via palette clears stale query and asserting empty switcher input", async ({ page }) => {
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-
-    // Step 1: open Cmd+P (commands mode) and wait for commands to render.
-    await pressShortcut(page, "CmdP");
-    const commandDialog = page.getByRole("dialog", { name: "Command palette" });
-    await expect(commandDialog).toBeVisible({ timeout: 3_000 });
-
-    // Wait for virtualizer (same pattern as S19a).
-    await expect(page.getByText("New note", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
-
-    // Step 2: type "switch" to filter — only "Switch / search notes" should match.
-    // This seeds the input with a stale query that Fix B must clear on mode flip.
-    const cmdInput = commandDialog.getByRole("textbox");
-    await cmdInput.fill("switch");
-    await expect(cmdInput).toHaveValue("switch");
-
-    // Step 3: "Switch / search notes" should be the only visible command now.
-    const switchCmd = page.getByText("Switch / search notes", { exact: true }).first();
-    await expect(switchCmd).toBeVisible({ timeout: 3_000 });
-
-    // Step 4: click "Switch / search notes" — palette flips to notes mode.
-    // closeOnExecute=false means the palette stays open but mode changes.
-    await switchCmd.click();
-
-    // Step 5: palette is now in notes mode — dialog aria-label changes.
-    const switcherDialog = page.getByRole("dialog", { name: "Quick switcher" });
-    await expect(switcherDialog).toBeVisible({ timeout: 3_000 });
-
-    // Step 6: input MUST be empty — Fix B (mode dep in useEffect) clears the query.
-    // The stale "switch" query from commands mode must NOT appear in notes mode.
-    // The input shows placeholder text "Switch to note..." when empty — we assert
-    // the value is "" using Playwright's toHaveValue which checks .value (not text).
-    const switcherInput = switcherDialog.getByRole("textbox");
-    await expect(switcherInput).toHaveValue("", { timeout: 3_000 });
-
-    // Close
-    await page.keyboard.press("Escape");
-    await expect(switcherDialog).not.toBeVisible({ timeout: 3_000 });
+    // react-arborist injects a "cursor line" element as an absolute-positioned div
+    // inside the tree container when it processes a valid dragover.
+    // With our stopPropagation fix, arborist never processes the external dragover event,
+    // so no such cursor div appears.
+    const overlayCount = await page.locator('[role="tree"] > div[style*="position: absolute"]').count();
+    expect(overlayCount).toBe(0);
   });
 });
 

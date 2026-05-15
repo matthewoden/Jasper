@@ -2063,3 +2063,185 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
     expect(muts.deleteNote).not.toHaveBeenCalledWith("root-foo-id");
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// Plan 07-29 — FT-FD: Folders default CLOSED (UAT-2 N1)
+//
+// C1 fix: passing `openByDefault={false}` to react-arborist's <Tree> so
+// useTreeStore.expanded is the sole source of truth for which folders are
+// open at load time. Pre-fix, the library's default (openByDefault=true)
+// made every folder appear open regardless of the persisted expanded Set.
+// ──────────────────────────────────────────────────────────────────────────
+describe("FT-folder-default — folders default CLOSED (UAT-2 N1 / Plan 07-29)", () => {
+  // A tree with two folders, each with a child note, so arborist renders
+  // them as non-leaf nodes with aria-expanded attributes.
+  const twoFolderTree: Tree = {
+    root: [
+      {
+        kind: "folder",
+        path: "foo",
+        name: "foo",
+        children: [
+          {
+            kind: "note",
+            id: "uuid-foo-a",
+            path: "foo/a.md",
+            title: "A",
+            updated_at: new Date().toISOString(),
+          },
+        ],
+      },
+      {
+        kind: "folder",
+        path: "bar",
+        name: "bar",
+        children: [
+          {
+            kind: "note",
+            id: "uuid-bar-c",
+            path: "bar/c.md",
+            title: "C",
+            updated_at: new Date().toISOString(),
+          },
+        ],
+      },
+    ],
+  };
+
+  it("FT-FD-1: empty expanded set → all folders rendered CLOSED (aria-expanded=false)", async () => {
+    useTreeStore.setState({ expanded: new Set() });
+    mockedUseFileTree.mockReturnValue({
+      tree: twoFolderTree,
+      loading: false,
+      error: null,
+      refresh: noopRefresh,
+      mutate: noopMutate,
+    });
+    mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("foo")).toBeInTheDocument();
+      expect(screen.getByText("bar")).toBeInTheDocument();
+    });
+    // With openByDefault=false + empty expanded set, no folder is open.
+    // react-arborist sets aria-expanded={node.isOpen} on each treeitem row.
+    // TreeRow also sets aria-expanded on the folder element itself.
+    // Both sources must show false when the folder is closed.
+    const expandedItems = document.querySelectorAll("[aria-expanded='true']");
+    expect(expandedItems.length).toBe(0);
+    // Child notes are NOT visible because both folders are closed.
+    expect(screen.queryByText("A")).toBeNull();
+    expect(screen.queryByText("C")).toBeNull();
+  });
+
+  it("FT-FD-2: expanded contains 'foo' → only 'foo' folder is open, 'bar' stays closed", async () => {
+    useTreeStore.setState({ expanded: new Set(["foo"]) });
+    mockedUseFileTree.mockReturnValue({
+      tree: twoFolderTree,
+      loading: false,
+      error: null,
+      refresh: noopRefresh,
+      mutate: noopMutate,
+    });
+    mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    await waitFor(() => {
+      // Both folder rows render.
+      expect(screen.getByText("foo")).toBeInTheDocument();
+      expect(screen.getByText("bar")).toBeInTheDocument();
+    });
+    // "foo" is open: its child "A" should be visible.
+    await waitFor(() => {
+      expect(screen.getByText("A")).toBeInTheDocument();
+    });
+    // "bar" is closed: its child "C" should NOT be visible.
+    expect(screen.queryByText("C")).toBeNull();
+    // Arborist row container sets aria-expanded=true on the "foo" treeitem.
+    // "bar" treeitem must have aria-expanded=false (or no attribute if default-false).
+    const barFolderRow = document.querySelector(
+      '[data-tree-row-kind="folder"][data-tree-row="bar"]',
+    );
+    expect(barFolderRow).not.toBeNull();
+    // The bar row's aria-expanded must NOT be "true" — it is closed.
+    expect(barFolderRow!.getAttribute("aria-expanded")).not.toBe("true");
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Plan 07-29 — FT-NED: No external drop indicator (UAT-2 N2)
+//
+// C2 fix: the tree container's onDragOverCapture handler inspects
+// dataTransfer.types; if "Files" is present (OS file drag), it calls
+// stopPropagation() so arborist's drag layer never receives the event,
+// suppressing the drop overlay. Internal arborist drags don't include
+// "Files" in dataTransfer.types, so they pass through unchanged.
+// ──────────────────────────────────────────────────────────────────────────
+describe("FT-no-external-drop — sidebar shows not-allowed for OS file drag (UAT-2 N2 / Plan 07-29)", () => {
+  it("FT-NED-1: dragover with OS 'Files' type calls stopPropagation to prevent arborist overlay", async () => {
+    const tree: Tree = {
+      root: [
+        {
+          kind: "folder",
+          path: "foo",
+          name: "foo",
+          children: [],
+        },
+      ],
+    };
+    useTreeStore.setState({ expanded: new Set() });
+    mockedUseFileTree.mockReturnValue({
+      tree,
+      loading: false,
+      error: null,
+      refresh: noopRefresh,
+      mutate: noopMutate,
+    });
+    mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("foo")).toBeInTheDocument();
+    });
+
+    // Find the tree container — the div with the [role="tree"] child.
+    // The onDragOverCapture is on the outer wrapper div (setTreeAreaEl ref).
+    const treeEl = document.querySelector('[role="tree"]');
+    expect(treeEl).not.toBeNull();
+
+    // Dispatch a dragover event with "Files" in dataTransfer.types.
+    // Use fireEvent from testing-library because jsdom's DragEvent
+    // support is limited; we attach our mock dataTransfer after creation.
+    // The onDragOverCapture handler on the container div fires in the
+    // capture phase — it runs before arborist's react-dnd bubble listener.
+    //
+    // Strategy: spy on the React synthetic event's stopPropagation. We do
+    // this by tracking whether nativeDragInfoRef is null (no arborist drag
+    // in flight) AND dataTransfer.types includes "Files" causes the handler
+    // to call stopPropagation internally.
+    //
+    // Since jsdom doesn't support DragEvent well, we verify the behavior
+    // indirectly: fire a dragover on the tree element using fireEvent.dragOver
+    // (which dispatches the event without dataTransfer) and then fire a
+    // custom event with a mocked dataTransfer to exercise the isExternalDrag
+    // path. The key assertion is that the handler does NOT call
+    // e.preventDefault() for external drags — browser shows not-allowed cursor.
+    //
+    // Pragmatic approach: use a custom event with the mock dataTransfer.
+    const mockDataTransfer = {
+      types: ["Files"],
+      dropEffect: "move",
+    };
+    // Create a generic Event and inject dataTransfer — jsdom supports this pattern.
+    const customDragEvent = new Event("dragover", { bubbles: true, cancelable: true });
+    Object.defineProperty(customDragEvent, "dataTransfer", {
+      value: mockDataTransfer,
+      writable: false,
+    });
+    const stopPropSpy = vi.spyOn(customDragEvent, "stopPropagation");
+    const preventDefaultSpy = vi.spyOn(customDragEvent, "preventDefault");
+    treeEl!.dispatchEvent(customDragEvent);
+    // For OS file drag: stopPropagation must be called (block arborist from seeing it).
+    // preventDefault must NOT be called (let browser show not-allowed cursor).
+    expect(stopPropSpy).toHaveBeenCalled();
+    expect(preventDefaultSpy).not.toHaveBeenCalled();
+  });
+});
