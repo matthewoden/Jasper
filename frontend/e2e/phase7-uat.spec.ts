@@ -1132,6 +1132,11 @@ test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#5)", () => 
 // consuming Cmd+B/I before CM6. In Chromium (headless), CM6 should handle them.
 // Brave-specific behavior cannot be E2E-tested in headless Chromium; see
 // Plan 07-16 SUMMARY for manual cross-browser smoke note.
+//
+// S14 (Brave-specific Cmd+B Leo + Cmd+I OS font panel) remains test.skip.
+// Plan 07-24 / S20 verifies the CM6 wrap behavior in headless Chromium.
+// Manual UAT in real Brave is required to confirm the Plan 07-16
+// window-capture preventDefault still suppresses Leo / font panel.
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Cmd+B/I bold/italic in editor (S14 / UAT #8, #9)", () => {
@@ -1454,5 +1459,133 @@ test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", 
     // TreeRow sets data-tree-row to the folder path (relative to notes/).
     const rowAttr = await attachmentsRow.getAttribute("data-tree-row");
     expect(rowAttr).toBe("attachments");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S20 — Cmd+B / Cmd+I CM6 wrap toggle (UAT-2 R1-4 / Plan 07-24)
+// Fix: jasperKeymap.ts exports toggleBold + toggleItalic; wired into
+// MarkdownEditor.tsx's keymap.of([...]). This test verifies the CM6 wrap
+// behavior in headless Chromium (which Plan 07-24 made testable by adding
+// the actual keymap binding — unlike S14 which tested Brave-specific behavior).
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — Cmd+B/I CM6 wrap toggle (S20 / UAT-2 R1-4)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("S20a — Cmd+B wraps selected text in **bold**", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Create a note via API (gets frontmatter injected by server on first run)
+    const noteId = await apiCreateNote(page, jasper.baseURL, "bold-test-s20.md", "", "");
+    await page.reload();
+    await waitForConnected(page);
+
+    // Open the note via tree click
+    const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /bold-test-s20/i });
+    await expect(noteRow).toBeVisible({ timeout: 8_000 });
+    await noteRow.click();
+    await page.waitForSelector(".cm-content", { timeout: 8_000 });
+    await page.waitForTimeout(500);
+
+    // Click the editor to ensure focus
+    const editor = page.locator(".cm-content");
+    await editor.click();
+    await page.waitForTimeout(300);
+
+    // Type known text at the end of the editor (cursor at end after click)
+    // Using End key to ensure we're past any frontmatter
+    await page.keyboard.press("End");
+    await page.keyboard.press("End");
+    await page.keyboard.type("boldword");
+    await page.waitForTimeout(200);
+
+    // Now select the just-typed text using Shift+Home+End equivalent:
+    // Use Shift+ArrowLeft 8 times to select "boldword" (8 chars)
+    for (let i = 0; i < 8; i++) {
+      await page.keyboard.press("Shift+ArrowLeft");
+    }
+    await page.waitForTimeout(100);
+
+    // Cmd+B — jasperKeymap toggleBold wraps selection with **
+    // Note: Playwright headless Chromium presents navigator.platform="Win32",
+    // so CM6 maps "Mod-b" to Ctrl+b (not Meta+b). We use Control+b.
+    // App.tsx handleAppCmdB was fixed (Plan 07-24 Rule 1) to NOT call
+    // e.preventDefault() inside the CM6 editor — previously it broke CM6's
+    // eventBelongsToEditor() check which returns false on defaultPrevented.
+    await page.keyboard.press("Control+b");
+    await page.waitForTimeout(500);
+    // livePreviewPlugin uses "cm-strong" class for bold spans.
+    // The ** markers may be hidden by Decoration.replace (off-cursor lines),
+    // but the "cm-strong" class remains on the span.
+    const hasBold = await page.evaluate(() => {
+      const content = document.querySelector(".cm-content");
+      if (!content) return false;
+      const text = content.textContent ?? "";
+      return text.includes("**") || content.querySelector(".cm-strong") !== null;
+    });
+    expect(hasBold, "Cmd+B should wrap text with ** (bold markers or .cm-strong)").toBe(true);
+
+    // Suppress unused-variable warning for noteId (used to confirm note was created)
+    void noteId;
+  });
+
+  test("S20b — Cmd+I wraps selected text in *italic*", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Create a note via API
+    const noteId = await apiCreateNote(page, jasper.baseURL, "italic-test-s20.md", "", "");
+    await page.reload();
+    await waitForConnected(page);
+
+    // Open the note via tree click
+    const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /italic-test-s20/i });
+    await expect(noteRow).toBeVisible({ timeout: 8_000 });
+    await noteRow.click();
+    await page.waitForSelector(".cm-content", { timeout: 8_000 });
+    await page.waitForTimeout(500);
+
+    // Click the editor to ensure focus
+    const editor = page.locator(".cm-content");
+    await editor.click();
+    await page.waitForTimeout(300);
+
+    // Type known text at end of editor (past any frontmatter)
+    await page.keyboard.press("End");
+    await page.keyboard.press("End");
+    await page.keyboard.type("italicword");
+    await page.waitForTimeout(200);
+
+    // Select the just-typed text (10 chars: "italicword")
+    for (let i = 0; i < 10; i++) {
+      await page.keyboard.press("Shift+ArrowLeft");
+    }
+    await page.waitForTimeout(100);
+
+    // Cmd+I — jasperKeymap toggleItalic wraps selection with *
+    // Note: same Ctrl+i approach as S20a (Win32 platform in headless Chromium).
+    await page.keyboard.press("Control+i");
+    await page.waitForTimeout(500);
+    // livePreviewPlugin uses "cm-emphasis" class (EM_MARK_CLASS) for italic spans.
+    const hasItalic = await page.evaluate(() => {
+      const content = document.querySelector(".cm-content");
+      if (!content) return false;
+      const text = content.textContent ?? "";
+      return text.includes("*") || content.querySelector(".cm-emphasis") !== null;
+    });
+    expect(hasItalic, "Cmd+I should wrap text with * (italic markers or .cm-emphasis)").toBe(true);
+
+    // Suppress unused-variable warning for noteId (used to confirm note was created)
+    void noteId;
   });
 });

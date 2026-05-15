@@ -380,7 +380,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             // BEFORE defaultKeymap so it can short-circuit Enter
             // before the default newline handler runs.
             codeblockExpand,
-            keymap.of([...defaultKeymap, ...jasperKeymap, ...historyKeymap, ...searchKeymap]), // Plan 07-24: jasperKeymap adds Mod-b (toggleBold) + Mod-i (toggleItalic)
+            keymap.of([...jasperKeymap, ...defaultKeymap, ...historyKeymap, ...searchKeymap]), // Plan 07-24: jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap's cursorCharLeft/selectParentSyntax
             // Phase 5.5 / UX-11: enable soft line-wrapping inside .cm-content
             // so long lines wrap at the reading-width clamp set by themeBridge
             // instead of scrolling horizontally forever.
