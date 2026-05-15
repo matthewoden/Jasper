@@ -117,10 +117,22 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     setSelectedIdx(0);
   }, [query, items.length]);
 
-  // Reset query when modal closes
+  // UAT-2 R1-3 (Plan 07-23 Fix B): reset query on open AND on mode change.
+  //
+  // Previously: `if (!open) setQuery("")` — fires only when open goes false,
+  // so a mode flip while the palette stays open (Plan 07-17 closeOnExecute=false
+  // for switch-note) left the previous query string in the input.
+  //
+  // Fix: `if (open) setQuery("")` with `[open, mode]` deps — clears on every
+  // open transition AND on every mode flip while open. This means:
+  //   1. open=false → open=true: clears (same as before)
+  //   2. open=true, mode=commands → mode=notes: clears (new — UAT-2 R1-3)
+  // Tradeoff: if the user typed a query and the parent re-renders with the
+  // same open=true/mode=notes without changing either dep, the effect does
+  // NOT re-run, so the user's query is preserved mid-session (correct).
   useEffect(() => {
-    if (!open) setQuery("");
-  }, [open]);
+    if (open) setQuery("");
+  }, [open, mode]);
 
   // Virtualization
   const parentRef = useRef<HTMLDivElement>(null);
