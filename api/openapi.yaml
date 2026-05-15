@@ -1100,15 +1100,42 @@ components:
           type: string
           format: date-time
           description: Wall-clock UTC of last filesystem mtime observed by the indexer.
+    FileNode:
+      type: object
+      description: |
+        A non-markdown file inside notes/. Surfaced in the tree response so users
+        can browse attachments and other files directly from the sidebar.
+        Click handling is frontend-driven (window.open + appropriate stream URL).
+      required: [kind, path, name]
+      properties:
+        kind:
+          type: string
+          enum: [file]
+          description: "Discriminator — always 'file'."
+        path:
+          type: string
+          description: "Canonical relative path under notes/ (NFC + lowercased)."
+        name:
+          type: string
+          description: "Filename (basename of path)."
+        size_bytes:
+          type: integer
+          format: int64
+          description: "File size in bytes. Optional; may be omitted for performance."
+        content_type:
+          type: string
+          description: "MIME content type (sniffed by file-stream endpoint on demand). Optional."
     TreeNode:
       oneOf:
         - $ref: "#/components/schemas/FolderNode"
         - $ref: "#/components/schemas/NoteNode"
+        - $ref: "#/components/schemas/FileNode"
       discriminator:
         propertyName: kind
         mapping:
           folder: "#/components/schemas/FolderNode"
           note: "#/components/schemas/NoteNode"
+          file: "#/components/schemas/FileNode"
     Tree:
       type: object
       required: [root]

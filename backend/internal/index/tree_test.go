@@ -397,6 +397,104 @@ func TestBuildTree_LocksFolderName(t *testing.T) {
 	}
 }
 
+// TestBuildTree_FilesVisible — Non-markdown files inside notes/ appear as
+// TreeFile entries in the tree. Notes/folders continue to appear unchanged.
+// This test covers the UAT-2 R1-7 fix (Plan 07-26) — surfacing all files,
+// not just markdown notes, in the sidebar tree.
+func TestBuildTree_FilesVisible(t *testing.T) {
+	t.Parallel()
+	idx, notesDir := newTreeFixture(t)
+
+	// Seed: notes/foo.md (note), notes/img.png (file), notes/sub/doc.pdf (file),
+	// notes/sub/attachments/x.png (file inside attachments/).
+	writeFileForTree(t, notesDir, "foo.md", "# Foo\n")
+	writeFileForTree(t, notesDir, "img.png", "fake-png")
+	writeFileForTree(t, notesDir, "sub/doc.pdf", "fake-pdf")
+	writeFileForTree(t, notesDir, "sub/attachments/x.png", "fake-png")
+
+	if _, err := idx.Reconcile(context.Background(), ModeFull); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	tree, err := idx.BuildTree(context.Background())
+	if err != nil {
+		t.Fatalf("BuildTree: %v", err)
+	}
+
+	// Helper: find a TreeFile with the given path in a slice.
+	findFile := func(nodes []TreeNode, path string) *TreeFile {
+		for _, n := range nodes {
+			if n.File != nil && n.File.Path == path {
+				return n.File
+			}
+		}
+		return nil
+	}
+
+	// Root should contain: img.png (file), sub/ (folder), foo.md (note).
+	imgFile := findFile(tree.Root, "img.png")
+	if imgFile == nil {
+		t.Errorf("img.png NOT in root tree (expected as TreeFile)")
+	} else {
+		if imgFile.Name != "img.png" {
+			t.Errorf("img.png name: got %q, want %q", imgFile.Name, "img.png")
+		}
+	}
+
+	// foo.md still appears as a note.
+	var foundFooNote bool
+	for _, n := range tree.Root {
+		if n.Note != nil && n.Note.Path == "foo.md" {
+			foundFooNote = true
+		}
+	}
+	if !foundFooNote {
+		t.Errorf("foo.md note NOT in root tree")
+	}
+
+	// sub/ folder should exist in root.
+	var subFolder *TreeFolder
+	for _, n := range tree.Root {
+		if n.Folder != nil && n.Folder.Name == "sub" {
+			subFolder = n.Folder
+		}
+	}
+	if subFolder == nil {
+		t.Fatalf("sub/ folder NOT in root tree")
+	}
+
+	// sub/ should contain: doc.pdf (file), attachments/ (folder).
+	docFile := findFile(subFolder.Children, "sub/doc.pdf")
+	if docFile == nil {
+		t.Errorf("sub/doc.pdf NOT in sub/ folder (expected as TreeFile)")
+	} else {
+		if docFile.Name != "doc.pdf" {
+			t.Errorf("doc.pdf name: got %q, want %q", docFile.Name, "doc.pdf")
+		}
+	}
+
+	// sub/attachments/ folder.
+	var attachFolder *TreeFolder
+	for _, n := range subFolder.Children {
+		if n.Folder != nil && n.Folder.Name == "attachments" {
+			attachFolder = n.Folder
+		}
+	}
+	if attachFolder == nil {
+		t.Fatalf("sub/attachments/ folder NOT in sub/ folder")
+	}
+
+	// sub/attachments/ should contain: x.png (file).
+	xFile := findFile(attachFolder.Children, "sub/attachments/x.png")
+	if xFile == nil {
+		t.Errorf("sub/attachments/x.png NOT in attachments/ folder (expected as TreeFile)")
+	} else {
+		if xFile.Name != "x.png" {
+			t.Errorf("x.png name: got %q, want %q", xFile.Name, "x.png")
+		}
+	}
+}
+
 // TestBuildTree_NoteUpdatedAtFromIndex — The TreeNote.UpdatedAt is
 // derived from the index row's mtime (NOT a fresh file stat).
 func TestBuildTree_NoteUpdatedAtFromIndex(t *testing.T) {

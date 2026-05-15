@@ -71,7 +71,7 @@ func translateTreeToWire(t *index.Tree) Tree {
 
 // translateNodeToWire converts a single index.TreeNode tagged-union
 // into the wire's TreeNode discriminated union. Exactly one of
-// n.Folder / n.Note is non-nil per the *index.TreeNode contract.
+// n.Folder / n.Note / n.File is non-nil per the *index.TreeNode contract.
 func translateNodeToWire(n index.TreeNode) TreeNode {
 	if n.Folder != nil {
 		kids := make([]TreeNode, 0, len(n.Folder.Children))
@@ -98,6 +98,18 @@ func translateNodeToWire(n index.TreeNode) TreeNode {
 		}
 		var wire TreeNode
 		_ = wire.FromNoteNode(note)
+		return wire
+	}
+	if n.File != nil {
+		// Plan 07-26 / UAT-2 R1-7: translate TreeFile → wire-shape FileNode.
+		// SizeBytes and ContentType are deferred to v2 (0/"" in v1 for perf).
+		file := FileNode{
+			Kind: FileNodeKind("file"),
+			Path: n.File.Path,
+			Name: n.File.Name,
+		}
+		var wire TreeNode
+		_ = wire.FromFileNode(file)
 		return wire
 	}
 	return TreeNode{}

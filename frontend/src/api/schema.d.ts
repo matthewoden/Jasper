@@ -700,7 +700,30 @@ export interface components {
              */
             updated_at: string;
         };
-        TreeNode: components["schemas"]["FolderNode"] | components["schemas"]["NoteNode"];
+        /**
+         * @description A non-markdown file inside notes/. Surfaced in the tree response so users
+         *     can browse attachments and other files directly from the sidebar.
+         *     Click handling is frontend-driven (window.open + appropriate stream URL).
+         */
+        FileNode: {
+            /**
+             * @description Discriminator — always 'file'. (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            kind: "file";
+            /** @description Canonical relative path under notes/ (NFC + lowercased). */
+            path: string;
+            /** @description Filename (basename of path). */
+            name: string;
+            /**
+             * Format: int64
+             * @description File size in bytes. Optional; may be omitted for performance.
+             */
+            size_bytes?: number;
+            /** @description MIME content type (sniffed by file-stream endpoint on demand). Optional. */
+            content_type?: string;
+        };
+        TreeNode: components["schemas"]["FolderNode"] | components["schemas"]["NoteNode"] | components["schemas"]["FileNode"];
         Tree: {
             /**
              * @description Top-level (root) entries — children of the vault root (notes/). The
