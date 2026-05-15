@@ -62,7 +62,7 @@ import { imageAttachmentPlugin } from "../editor/imageAttachmentWidget"; // Phas
 import { fileChipPlugin } from "../editor/fileChipWidget"; // Phase 7 Plan 10 / ATTACH-06
 import { dropPosField, dropIndicatorPlugin } from "../editor/dropIndicatorWidget"; // Phase 7 Plan 20 / C3 UAT #12
 import { useAttachmentUpload } from "../lib/useAttachmentUpload"; // Phase 7 Plan 10 / ATTACH-01..02
-import { saveKeymap } from "../editor/jasperKeymap"; // Plan 05-11 / EDIT-10
+import { saveKeymap, jasperKeymap } from "../editor/jasperKeymap"; // Plan 05-11 / EDIT-10; Plan 07-24 adds jasperKeymap (toggleBold/toggleItalic)
 import {
   tagClickPlugin,
   setTagClickHandler,
@@ -380,7 +380,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             // BEFORE defaultKeymap so it can short-circuit Enter
             // before the default newline handler runs.
             codeblockExpand,
-            keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+            keymap.of([...defaultKeymap, ...jasperKeymap, ...historyKeymap, ...searchKeymap]), // Plan 07-24: jasperKeymap adds Mod-b (toggleBold) + Mod-i (toggleItalic)
             // Phase 5.5 / UX-11: enable soft line-wrapping inside .cm-content
             // so long lines wrap at the reading-width clamp set by themeBridge
             // instead of scrolling horizontally forever.
