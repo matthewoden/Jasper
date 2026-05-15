@@ -8,7 +8,7 @@
  * 03-07's context-menu hookup, and the no-dangerouslySetInnerHTML
  * gate (XSS hardening per the threat model).
  */
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 
 import { useTreeStore } from "../lib/useTreeStore";
@@ -37,6 +37,23 @@ function makeFolderNode(overrides: {
     // dispatches Cmd/Ctrl/Shift multi-select. Stub it here so tests can
     // assert delegation occurred.
     handleClick: overrides.handleClick ?? vi.fn(),
+  };
+}
+
+// Plan 07-26 — stub for kind="file" nodes (non-markdown files in the tree).
+function makeFileNode(path: string, parentNoteId?: string) {
+  const name = path.split("/").pop() ?? path;
+  return {
+    data: {
+      kind: "file" as const,
+      path,
+      name,
+      parentNoteId,
+    },
+    level: 1,
+    isOpen: false,
+    toggle: vi.fn(),
+    handleClick: vi.fn(),
   };
 }
 
@@ -1231,6 +1248,83 @@ describe("<TreeRow />", () => {
       const classes = Array.from(svgs).map((s) => s.getAttribute("class") ?? "");
       expect(classes.some((c) => c.includes("lucide-paperclip"))).toBe(false);
       expect(classes.some((c) => c.includes("lucide-folder"))).toBe(true);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Plan 07-26 (UAT-2 R1-7) — kind="file" rendering tests
+  // ─────────────────────────────────────────────────────────────────────
+  describe("TR-file — kind='file' rendering (UAT-2 R1-7)", () => {
+    it("TR-file-1: renders Image icon for .png file", () => {
+      const node = makeFileNode("img.png");
+      const { container } = render(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
+      );
+      const svgs = container.querySelectorAll("svg");
+      const classes = Array.from(svgs).map((s) => s.getAttribute("class") ?? "");
+      expect(classes.some((c) => c.includes("lucide-image"))).toBe(true);
+    });
+
+    it("TR-file-2: renders FileText icon for .pdf file", () => {
+      const node = makeFileNode("doc.pdf");
+      const { container } = render(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
+      );
+      const svgs = container.querySelectorAll("svg");
+      const classes = Array.from(svgs).map((s) => s.getAttribute("class") ?? "");
+      expect(classes.some((c) => c.includes("lucide-file-text"))).toBe(true);
+    });
+
+    it("TR-file-3: renders generic File icon for unknown extension", () => {
+      const node = makeFileNode("blob.bin");
+      const { container } = render(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
+      );
+      const svgs = container.querySelectorAll("svg");
+      const classes = Array.from(svgs).map((s) => s.getAttribute("class") ?? "");
+      // Should render generic file icon (lucide-file, not lucide-image or lucide-file-text)
+      expect(classes.some((c) => c.includes("lucide-file") && !c.includes("lucide-file-text"))).toBe(true);
+    });
+
+    it("TR-file-4: clicking attachment file calls window.open with /api/v1/attachments/ URL", () => {
+      const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+      // File inside attachments/ folder with a parent note id.
+      const node = makeFileNode("sub/attachments/x.png", "parent-note-uuid");
+      render(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
+      );
+      fireEvent.click(screen.getByRole("treeitem"));
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/api\/v1\/attachments\/parent-note-uuid\/x\.png/),
+        "_blank",
+      );
+      openSpy.mockRestore();
+    });
+
+    it("TR-file-5: clicking non-attachment file does NOT call window.open (deferred — toast or no-op)", () => {
+      const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+      // NOT inside attachments/
+      const node = makeFileNode("stray.pdf");
+      render(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
+      );
+      fireEvent.click(screen.getByRole("treeitem"));
+      expect(openSpy).not.toHaveBeenCalled();
+      openSpy.mockRestore();
+    });
+
+    it("TR-file-6: file row shows filename as label", () => {
+      const node = makeFileNode("some/path/report.pdf");
+      render(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
+      );
+      expect(screen.getByText("report.pdf")).toBeInTheDocument();
     });
   });
 });
