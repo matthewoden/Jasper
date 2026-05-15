@@ -197,6 +197,47 @@ describe("useFileTree", () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// UFT-eager-boot — tree fetch fires on module import (UAT-2 R1-2/R1-3)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("UFT-eager-boot — tree fetch fires on module import (UAT-2 R1-2/R1-3)", () => {
+  it("useFileTree fires boot fetch on app start", async () => {
+    // This test verifies that GET /tree is called at module import time
+    // (boot fetch), BEFORE any useFileTree hook instance mounts.
+    //
+    // Approach: use vi.resetModules() + vi.doMock() to freshly re-import
+    // useFileTree in a clean module scope. When the module loads, the
+    // boot-fetch trigger should fire getTree() automatically.
+    //
+    // The boot-fetch must fire exactly once (no duplicate calls) even when
+    // the module is imported multiple times within the same app lifecycle.
+    const getTreeForBoot = vi.fn().mockResolvedValue({ data: tinyTree });
+
+    vi.resetModules();
+    vi.doMock("./treeApi", () => ({
+      getTree: (...args: unknown[]) => getTreeForBoot(...args),
+    }));
+    vi.doMock("./useTreeStore", () => ({
+      pruneStaleTreeState: vi.fn(),
+      useTreeStore: vi.fn(),
+    }));
+
+    // Re-import the module — the boot fetch should fire synchronously during module init
+    await import("./useFileTree");
+
+    // Give the micro-task queue a tick so the async boot fetch can start
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Assert: getTree was called once at module import (boot fetch), before any hook mounts
+    expect(getTreeForBoot).toHaveBeenCalledTimes(1);
+
+    // Cleanup: restore real mocks for subsequent tests
+    vi.doUnmock("./treeApi");
+    vi.doUnmock("./useTreeStore");
+    vi.resetModules();
+  });
+});
+
 describe("UX-14 single-flight", () => {
   beforeEach(() => {
     getTreeMock.mockReset();
