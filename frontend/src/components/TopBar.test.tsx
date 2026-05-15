@@ -44,16 +44,16 @@ vi.mock("../lib/useTreeStore", () => ({
   },
 }));
 
-// Mock useTagBrowser and useBacklinks for C3 (N3) tests
+// Mock useTagsForNote (Plan 07-35: replaces global useTagBrowser with per-note semantics)
+// and useBacklinks for C3/N3 tests.
 let mockTagCount = 0;
 let mockBacklinkCount = 0;
 
-vi.mock("../lib/useTagBrowser", () => ({
-  useTagBrowser: () => ({
-    tags: Array.from({ length: mockTagCount }, (_, i) => ({ name: `tag${i}`, count: 1 })),
+vi.mock("../lib/useTagsForNote", () => ({
+  useTagsForNote: (_noteId: string | null) => ({
+    tags: Array.from({ length: mockTagCount }, (_, i) => `tag${i}`),
     loading: false,
     error: null,
-    refresh: vi.fn(),
   }),
 }));
 
@@ -208,5 +208,59 @@ describe("RR-toggle-hide — right-rail toggle hidden when no items (UAT-2 N3)",
     render(<TopBar />);
     // Toggle should appear when there are backlinks
     expect(screen.queryByRole("button", { name: /hide panels|show panels/i })).not.toBeNull();
+  });
+});
+
+// ── TBR-FIX: Plan 07-35 / UAT-3 N3 — per-note tag semantics ─────────────────
+//
+// These tests verify that the right-rail toggle uses per-note tags (useTagsForNote)
+// NOT global tags (useTagBrowser). After Plan 07-35 GREEN, useTagsForNote is wired
+// in TopBar.tsx; these tests pass with the per-note mock above.
+
+describe("TBR-FIX — per-note tag gate (UAT-3 N3 / Plan 07-35)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockNotesSidebarVisible = true;
+    mockBacklinksRailExpanded = true;
+    // Start with activeNoteId = "note-1" (set in useTreeStore mock)
+  });
+
+  it("TBR-FIX-1: active note with 0 per-note tags AND 0 backlinks → toggle hidden", () => {
+    mockTagCount = 0;
+    mockBacklinkCount = 0;
+    render(<TopBar />);
+    // Per-note semantics: toggle hidden when THIS note has no tags and no backlinks.
+    // This test was broken by Plan 07-30's global useTagBrowser (would show toggle
+    // if ANY note in the vault has a tag — wrong).
+    expect(screen.queryByRole("button", { name: /hide panels|show panels/i })).toBeNull();
+  });
+
+  it("TBR-FIX-2: active note with 1 per-note tag → toggle visible", () => {
+    mockTagCount = 1;
+    mockBacklinkCount = 0;
+    render(<TopBar />);
+    expect(screen.queryByRole("button", { name: /hide panels|show panels/i })).not.toBeNull();
+  });
+
+  it("TBR-FIX-3: active note with 0 per-note tags AND 0 backlinks → toggle always hidden regardless of other notes in vault", () => {
+    // The key per-note semantics test: even if the vault has tags (global),
+    // if THIS note has 0 per-note tags and 0 backlinks, toggle is hidden.
+    mockTagCount = 0;
+    mockBacklinkCount = 0;
+    render(<TopBar />);
+    expect(screen.queryByRole("button", { name: /hide panels|show panels/i })).toBeNull();
+  });
+
+  it("TBR-FIX-4: switching active note from tag-ful to empty → toggle goes from visible to hidden", () => {
+    // Simulate note A (has tags) then note B (no tags)
+    mockTagCount = 1;
+    mockBacklinkCount = 0;
+    const { rerender } = render(<TopBar />);
+    expect(screen.queryByRole("button", { name: /hide panels|show panels/i })).not.toBeNull();
+
+    // Switch to a note with no tags
+    mockTagCount = 0;
+    rerender(<TopBar />);
+    expect(screen.queryByRole("button", { name: /hide panels|show panels/i })).toBeNull();
   });
 });
