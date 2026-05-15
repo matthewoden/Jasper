@@ -32,6 +32,8 @@ function mockNoteResponse(content: string) {
       updated_at: "2026-01-01T00:00:00Z",
     },
     error: undefined,
+    // openapi-fetch FetchResponse requires `response: Response`
+    response: new Response(null, { status: 200 }),
   });
 }
 
@@ -107,7 +109,7 @@ describe("useTagsForNote", () => {
 
     const { result, rerender } = renderHook(
       ({ id }: { id: string | null }) => useTagsForNote(id),
-      { initialProps: { id: "note-a" } },
+      { initialProps: { id: "note-a" as string | null } },
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));

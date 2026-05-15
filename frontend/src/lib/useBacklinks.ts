@@ -29,7 +29,10 @@ import { getNoteBacklinks, type BacklinkRow } from "./backlinksApi";
 // Each mounted useBacklinks instance registers its fetchBacklinks callback.
 // dispatchLinksEvent() iterates the Set on the relevant WS events.
 // ────────────────────────────────────────────────────────────────────────────
-const linksEventSubscribers = new Set<() => void>();
+// Exported so useTagsForNote (Plan 07-35) can subscribe to the same WS events
+// without duplicating the subscriber-set infrastructure. Both hooks refetch on
+// note:updated / note:created / links:rewritten — sharing one Set is correct.
+export const linksEventSubscribers = new Set<() => void>();
 
 export type LinksEventType = "note:updated" | "note:created" | "links:rewritten";
 

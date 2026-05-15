@@ -24,7 +24,7 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
-import { useTagBrowser } from "../lib/useTagBrowser";
+import { useTagsForNote } from "../lib/useTagsForNote";
 import { useBacklinks } from "../lib/useBacklinks";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { PanelSelectorDropdown } from "./PanelSelectorDropdown";
@@ -114,11 +114,12 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
   // C3 (UAT-2 N3): read active note ID for backlinks count
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
 
-  // C3 (UAT-2 N3): right-rail toggle only shown when there is content to display.
-  // useTagBrowser() returns ALL global tags; the tags panel shows all tags regardless
-  // of which note is open. useBacklinks(activeNoteId) returns backlinks for the
-  // active note.
-  const { tags } = useTagBrowser();
+  // C3 (UAT-2 N3 → corrected UAT-3 N3): right-rail toggle only shown when the
+  // ACTIVE NOTE has content to display (per-note semantics, Plan 07-35).
+  // useTagsForNote(activeNoteId) returns tags for the active note only — NOT
+  // vault-wide (that was the Plan 07-30 bug: useTagBrowser returned all tags).
+  // useBacklinks(activeNoteId) is already per-note (correct since Plan 06-11).
+  const { tags } = useTagsForNote(activeNoteId);
   const { backlinks } = useBacklinks(activeNoteId);
   const hasContent = tags.length > 0 || (backlinks?.length ?? 0) > 0;
 
