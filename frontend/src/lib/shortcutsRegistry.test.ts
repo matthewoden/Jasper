@@ -13,7 +13,7 @@ describe("shortcutsRegistry", () => {
     expect(labels).toContain("Save");
     expect(labels).toContain("Find in note");
     expect(labels).toContain("Today");
-    expect(labels).toContain("Switch note…");
+    expect(labels).toContain("Switch / search notes");
     expect(labels).toContain("Toggle theme");
     expect(labels).toContain("Refresh index");
     expect(labels).toContain("Reset and rebuild…");

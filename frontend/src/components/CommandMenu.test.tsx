@@ -312,7 +312,7 @@ describe("CommandMenu — activate closeOnExecute behavior (UAT #5)", () => {
     // switch-note returns false = "keep palette open"
     const mockExecute = vi.fn().mockReturnValue(false);
     const cmds = [
-      { id: "switch-note", label: "Switch note…", group: "Navigation", inPalette: true, inCheatSheet: true },
+      { id: "switch-note", label: "Switch / search notes", group: "Navigation", inPalette: true, inCheatSheet: true },
     ];
     const mockFiltered = vi.fn().mockReturnValue(cmds);
     mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: mockExecute });

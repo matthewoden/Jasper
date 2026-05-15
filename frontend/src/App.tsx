@@ -508,7 +508,7 @@ function AppInner() {
         void openToday();
       },
 
-      // "Switch note…" — flip palette mode to notes WITHOUT closing.
+      // "Switch / search notes" — flip palette mode to notes WITHOUT closing.
       // UAT #5 fix: CommandMenu.activate honors closeOnExecute=false for
       // switch-note (Plan 07-17 Task 2), so the palette stays open and
       // re-renders the notes-mode list.

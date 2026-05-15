@@ -1113,8 +1113,8 @@ describe("Plan 07-17 — commandActions rewire (UAT #3, #4, #5)", () => {
 
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
 
-    // Click "Switch note…"
-    const switchRow = within(palette).getByText("Switch note…");
+    // Click "Switch / search notes"
+    const switchRow = within(palette).getByText("Switch / search notes");
     fireEvent.click(switchRow);
 
     // Mode flipped to notes, palette still open
