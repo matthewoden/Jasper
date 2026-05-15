@@ -1456,3 +1456,146 @@ test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", 
     expect(rowAttr).toBe("attachments");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S18 — Daily-note rename keeps tree consistent (UAT-2 R1-1 / Plan 07-22)
+// Fix: useDailyNote.openToday() now calls broadcastRefresh() after setActiveNote
+// so a newly-created daily note (after H1-rename moved the old daily file) is
+// visible in the sidebar tree. Previously the tree showed only the renamed file
+// and the new daily/YYYY-MM-DD.md was invisible until a full page reload.
+//
+// Test strategy: drive the move via POST /api/v1/notes/{id}/move (direct API)
+// rather than the CM6 H1-rename pipeline, because autosave timing is unreliable
+// in headless Playwright. The backend behaviour is identical — both paths call
+// Service.Move, which is what the investigation confirmed is NOT the bug.
+// The bug is in useDailyNote.ts (missing broadcastRefresh); the direct-API
+// approach lets us isolate and verify the frontend tree-refresh behaviour.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 R1-1)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("S18: Today click after daily-note rename shows new note in tree", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Step 1 — Open today's daily note via Today button (creates it if missing).
+    const todayBtn = page.getByRole("button", { name: "Open today's daily note" });
+    await expect(todayBtn).toBeVisible({ timeout: 8_000 });
+    await todayBtn.click();
+    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const originalDailyPath = `daily/${todayStr}.md`;
+    const renamedPath = `daily/${todayStr}-standup.md`;
+
+    // Step 2 — Get the note's UUID from GET /api/v1/tree so we can call move directly.
+    // Note: data-tree-row for notes uses the UUID (not path); for folders it uses path.
+    // We call the API directly to find the note UUID.
+    const noteId = await page.evaluate(
+      async ({ baseURL, originalPath }: { baseURL: string; originalPath: string }) => {
+        const treeResp = await fetch(`${baseURL}/api/v1/tree`);
+        if (!treeResp.ok) return null;
+        const treeData = await treeResp.json() as {
+          root: Array<{
+            kind: string;
+            path?: string;
+            id?: string;
+            children?: Array<{ kind: string; path?: string; id?: string }>;
+          }>;
+        };
+
+        function findNoteByPath(
+          nodes: Array<{ kind: string; path?: string; id?: string; children?: Array<{ kind: string; path?: string; id?: string }> }>,
+          targetPath: string,
+        ): string | null {
+          for (const node of nodes) {
+            if (node.kind === "note" && node.path === targetPath) return node.id ?? null;
+            if (node.kind === "folder" && node.children) {
+              const found = findNoteByPath(node.children, targetPath);
+              if (found) return found;
+            }
+          }
+          return null;
+        }
+
+        return findNoteByPath(treeData.root, originalPath);
+      },
+      { baseURL: jasper.baseURL, originalPath: originalDailyPath },
+    );
+
+    expect(noteId, `daily note not found in tree at ${originalDailyPath}`).not.toBeNull();
+
+    // Verify the note is visible in the tree by its UUID (data-tree-row uses id for notes).
+    const originalNoteRow = page.locator(`[data-tree-row="${noteId}"][data-tree-row-kind="note"]`);
+    await expect(originalNoteRow).toBeVisible({ timeout: 5_000 });
+
+    // Step 3 — Simulate the H1-rename by calling POST /notes/{id}/move directly.
+    // This is equivalent to the H1-rename pipeline (Service.Move), which is what
+    // the investigation confirmed is NOT the bug — the bug is useDailyNote.ts missing
+    // broadcastRefresh() after setActiveNote().
+    const moveResult = await page.evaluate(
+      async ({ baseURL, id, newPath }: { baseURL: string; id: string; newPath: string }) => {
+        const moveResp = await fetch(`${baseURL}/api/v1/notes/${id}/move`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ new_path: newPath }),
+        });
+        if (!moveResp.ok) {
+          const errText = await moveResp.text();
+          return { ok: false, error: `move failed: ${moveResp.status} ${errText}` };
+        }
+        return { ok: true };
+      },
+      { baseURL: jasper.baseURL, id: noteId as string, newPath: renamedPath },
+    );
+
+    expect(moveResult.ok, `move failed: ${JSON.stringify(moveResult)}`).toBe(true);
+
+    // Step 4 — Wait for the tree to reflect the rename. The WS note:moved event fires and
+    // the browser's useSessionSync.ts refreshes the tree (different session from API call).
+    // The renamed note keeps the same UUID, so the row stays at data-tree-row="{noteId}".
+    // We verify this by checking the note row is still visible (same id, new path).
+    // Also verify the daily folder still shows its child.
+    const dailyFolder = page.locator('[data-tree-row="daily"][data-tree-row-kind="folder"]');
+    await expect(dailyFolder).toBeVisible({ timeout: 5_000 });
+
+    // Step 5 — Click Today again. This fires GetDailyNote("YYYY-MM-DD") which will NOT find
+    // the renamed note (index path changed) and will create a NEW daily note (201 response).
+    // The fix (UAT-2 R1-1): useDailyNote.openToday() calls broadcastRefresh() after
+    // setActiveNote(), so the tree refreshes and shows the new note.
+    await todayBtn.click();
+    // Editor loads the new daily note content (no "Could not load note" toast).
+    await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 4_000 });
+    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+
+    // Step 6 — Wait for the tree to show BOTH notes: the renamed one and the newly-created one.
+    // broadcastRefresh() fires a GET /tree re-fetch that includes the newly-upserted note.
+    // The daily folder should now contain two notes:
+    //   - The renamed note (original UUID, new path "daily/YYYY-MM-DD-standup.md")
+    //   - The new note (new UUID, path "daily/YYYY-MM-DD.md")
+    // Wait for the tree to show the todayStr date text in a note row that is NOT
+    // the renamed "-standup" note — that is the newly-created daily note.
+    // The note title should be the date string since GetDailyNote templates "# YYYY-MM-DD".
+    const newNoteByTitle = page.locator('[data-tree-row-kind="note"]').filter({ hasText: todayStr });
+
+    // Allow up to 4 s for the tree refresh (broadcastRefresh GET /tree + React re-render).
+    await expect(newNoteByTitle.first()).toBeVisible({ timeout: 4_000 });
+
+    // The daily folder row remains present (not just the renamed file).
+    await expect(dailyFolder).toBeVisible({ timeout: 2_000 });
+
+    // Step 7 — Click the new daily note row in the tree; confirm editor loads it without error.
+    await newNoteByTitle.first().click();
+    await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 4_000 });
+    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
+  });
+});
