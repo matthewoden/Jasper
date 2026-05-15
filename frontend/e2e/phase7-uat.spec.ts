@@ -2119,3 +2119,147 @@ test.describe("Phase 7 — Cmd+B/I CM6 wrap toggle (S20 / UAT-2 R1-4)", () => {
     void noteId;
   });
 });
+
+// S21 — Single-session edit/save produces NO phantom conflict banner (UAT-2 N8)
+//
+// Root cause: raw fetch() sites (attachmentApi.ts, EditorPane keepalive)
+// bypassed the X-Session-ID header. Backend broadcast note:updated with
+// empty originSessionID; WS filter (Pitfall 5) did NOT suppress; originating
+// tab received its own event → conflict banner fired.
+//
+// Fix: Plan 07-25 added X-Session-ID to all three raw fetch() call sites.
+// These E2E tests confirm the banner does NOT appear after a single-session
+// autosave (S21a) and attachment upload (S21b).
+//
+// Conflict banner selector: data-testid="conflict-banner" + role="alert"
+// (EditorPane.tsx line ~906).
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — Single-session edit produces NO phantom conflict banner (S21 / UAT-2 N8)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("S21a — single-session edit + autosave → no conflict banner appears", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Seed a note with known content.
+    const noteId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "s21a-conflict-test.md",
+      "",
+      "# S21a Test\n\ninitial content\n",
+    );
+
+    await page.reload();
+    await waitForConnected(page);
+
+    // Open the note by clicking its tree row.
+    const noteRow = page
+      .locator('[data-tree-row-kind="note"]')
+      .filter({ hasText: /S21a Test/i });
+    await expect(noteRow).toBeVisible({ timeout: 8_000 });
+    await noteRow.click();
+    await page.waitForSelector(".cm-content", { timeout: 8_000 });
+    await page.waitForTimeout(400); // allow load effect to settle
+
+    // Type into the editor to trigger a pending autosave.
+    const editor = page.locator(".cm-content");
+    await editor.click();
+    await page.keyboard.type(" edited by single session");
+
+    // Wait for the 2s autosave debounce to fire + WS broadcast to arrive (~3.5s total).
+    // The autosave PUT now carries X-Session-ID → backend broadcasts with the
+    // correct originSessionID → WS filter suppresses the originator's own event →
+    // NO conflict banner should appear.
+    await page.waitForTimeout(3_500);
+
+    // Assert: conflict banner must NOT be visible.
+    const conflictBanner = page.getByTestId("conflict-banner");
+    await expect(conflictBanner).toHaveCount(0, { timeout: 1_000 });
+
+    // Defensive: type a second edit and wait for another autosave cycle.
+    await editor.click();
+    await page.keyboard.type(" second edit");
+    await page.waitForTimeout(3_500);
+    await expect(conflictBanner).toHaveCount(0, { timeout: 1_000 });
+
+    void noteId; // used above implicitly via tree row click
+  });
+
+  test("S21b — single-session attachment upload → no conflict banner appears", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Seed a note.
+    const noteId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "s21b-attach-test.md",
+      "",
+      "# S21b Attach Test\n\nDrop attachment here.\n",
+    );
+    void noteId;
+
+    await page.reload();
+    await waitForConnected(page);
+
+    // Open the note.
+    const noteRow = page
+      .locator('[data-tree-row-kind="note"]')
+      .filter({ hasText: /S21b Attach Test/i });
+    await expect(noteRow).toBeVisible({ timeout: 8_000 });
+    await noteRow.click();
+    await page.waitForSelector(".cm-content", { timeout: 8_000 });
+    await page.waitForTimeout(400);
+
+    const dropZone = page.getByTestId("attachment-drop-zone");
+    await expect(dropZone).toBeVisible({ timeout: 5_000 });
+
+    // Dispatch a synthetic drop with a minimal 1×1 PNG to trigger the
+    // attachment upload path (POST /attachments/{noteId} with X-Session-ID).
+    const uploadResult = await page.evaluate(async () => {
+      const pngHex =
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a4944415478016360000000020001e221bc330000000049454e44ae426082";
+      const bytes = new Uint8Array(pngHex.length / 2);
+      for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = parseInt(pngHex.substring(i * 2, i * 2 + 2), 16);
+      }
+      const blob = new Blob([bytes], { type: "image/png" });
+      const file = new File([blob], "s21b-test.png", { type: "image/png" });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+
+      const dropTarget = document.querySelector('[data-testid="attachment-drop-zone"]');
+      if (!dropTarget) return { dispatched: false, error: "no drop zone" };
+
+      const dragOverEvt = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt });
+      dropTarget.dispatchEvent(dragOverEvt);
+      await new Promise<void>((r) => setTimeout(r, 50));
+
+      const dropEvt = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt });
+      dropTarget.dispatchEvent(dropEvt);
+      return { dispatched: true };
+    });
+
+    expect(uploadResult.dispatched).toBe(true);
+
+    // Wait for the upload + any autosave cycle to complete and WS events to arrive
+    // (~4s: upload + 2s autosave debounce + WS round-trip).
+    // The upload now carries X-Session-ID → backend broadcasts with correct
+    // originSessionID → WS filter suppresses self → NO conflict banner.
+    await page.waitForTimeout(4_500);
+
+    // Assert: conflict banner must NOT be visible.
+    const conflictBanner = page.getByTestId("conflict-banner");
+    await expect(conflictBanner).toHaveCount(0, { timeout: 1_000 });
+  });
+});

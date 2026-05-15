@@ -55,6 +55,7 @@ import {
 
 import { extractH1FromContent, sanitizeH1ForFilename } from "../lib/h1Extract";
 import { getNote, updateNote } from "../lib/notesApi";
+import { generateOrLoadSessionId } from "../lib/sessionId";
 import { dispatchTagEvent } from "../lib/useTagBrowser";
 import {
   initialSaveState,
@@ -729,7 +730,15 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       // aborted it and the bytes never reached the server.
       void fetch(`/api/v1/notes/${encodeURIComponent(id)}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // UAT-2 N8 fix: X-Session-ID propagation — without this header the
+          // backend broadcasts note:updated with empty originSessionID, which
+          // the WS filter does NOT suppress (Pitfall 5), causing a phantom
+          // conflict banner in the originating tab. Same generateOrLoadSessionId
+          // source as api/client.ts sessionMiddleware.
+          "X-Session-ID": generateOrLoadSessionId(),
+        },
         body: JSON.stringify({ content: latestContentRef.current }),
         keepalive: true,
       });
@@ -746,7 +755,13 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       keepaliveSentRef.current = true;
       void fetch(`/api/v1/notes/${encodeURIComponent(id)}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // UAT-2 N8 fix: X-Session-ID propagation — same fix as visibilitychange
+          // path above. beforeunload fires on synchronous window.close without a
+          // prior visibilitychange on some browsers.
+          "X-Session-ID": generateOrLoadSessionId(),
+        },
         body: JSON.stringify({ content: latestContentRef.current }),
         keepalive: true,
       });

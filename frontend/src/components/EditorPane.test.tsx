@@ -2563,3 +2563,93 @@ describe("EditorPane — editorHandlersRef.openFindPanel delegates to MarkdownEd
         expect(window.__jasperMockEditorOpenFindPanel).toHaveBeenCalledOnce();
     });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// EP-keepalive-session — keepalive PUTs carry X-Session-ID (UAT-2 N8)
+//
+// The visibilitychange and beforeunload keepalive fetch calls use raw fetch()
+// (required for keepalive: true which openapi-fetch doesn't support). Without
+// explicitly setting X-Session-ID, the backend broadcasts note:updated with
+// empty originSessionID, which the WS filter (useSessionSync Pitfall 5) does
+// NOT suppress, causing the conflict banner to fire in the originating tab.
+// ──────────────────────────────────────────────────────────────────────────────
+describe("EP-keepalive-session — keepalive PUT carries X-Session-ID (UAT-2 N8)", () => {
+    it("visibilitychange keepalive PUT includes X-Session-ID header", async () => {
+        getNoteMock.mockResolvedValue(okGet("original content"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("original content"));
+
+            // Type content so latestContentRef is updated.
+            fireEvent.change(editor, { target: { value: "edited content" } });
+
+            // Monkey-patch visibilityState then fire the event.
+            const restoreHidden = setVisibilityState("hidden");
+            try {
+                await act(async () => {
+                    document.dispatchEvent(new Event("visibilitychange"));
+                    await Promise.resolve();
+                });
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+                const init = fetchMock.mock.calls[0][1] as RequestInit;
+                const headers = init.headers as Record<string, string> | Headers | undefined;
+                const sid =
+                    headers instanceof Headers
+                        ? headers.get("X-Session-ID")
+                        : (headers as Record<string, string> | undefined)?.["X-Session-ID"];
+                expect(sid).toBeTruthy();
+                expect(sid).toMatch(/^[0-9a-f-]{36}$/i); // UUID shape
+            } finally {
+                restoreHidden();
+            }
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    it("beforeunload keepalive PUT includes X-Session-ID header", async () => {
+        getNoteMock.mockResolvedValue(okGet("initial"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("initial"));
+
+            // Type content so latestContentRef is updated.
+            fireEvent.change(editor, { target: { value: "exit save content" } });
+
+            // Fire beforeunload (the secondary keepalive path).
+            act(() => {
+                window.dispatchEvent(new Event("beforeunload"));
+            });
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            const init = fetchMock.mock.calls[0][1] as RequestInit;
+            const headers = init.headers as Record<string, string> | Headers | undefined;
+            const sid =
+                headers instanceof Headers
+                    ? headers.get("X-Session-ID")
+                    : (headers as Record<string, string> | undefined)?.["X-Session-ID"];
+            expect(sid).toBeTruthy();
+            expect(sid).toMatch(/^[0-9a-f-]{36}$/i); // UUID shape
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+});

@@ -8,6 +8,7 @@
  * smoke test verifies the response shape matches AttachmentUploadResult.
  */
 import type { components } from "../api/schema";
+import { generateOrLoadSessionId } from "./sessionId";
 
 export type AttachmentUploadResult = components["schemas"]["AttachmentUploadResult"];
 
@@ -44,6 +45,16 @@ export async function uploadAttachment(
     `/api/v1/attachments/${encodeURIComponent(noteId)}`,
     {
       method: "POST",
+      headers: {
+        // UAT-2 N8 fix: X-Session-ID propagation matches the typed openapi-fetch
+        // client middleware (api/client.ts:31). Without this header the backend
+        // broadcasts EventNoteUpdated with empty originSessionID, which
+        // useSessionSync's WS filter (Pitfall 5) does NOT suppress — the
+        // originating session sees its own event and triggers the conflict banner.
+        // NOTE: do NOT set Content-Type here — fetch auto-generates the
+        // multipart/form-data boundary from the FormData body.
+        "X-Session-ID": generateOrLoadSessionId(),
+      },
       body: formData,
     }
   );

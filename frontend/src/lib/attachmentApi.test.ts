@@ -137,3 +137,33 @@ describe("attachmentApi / uploadAttachment", () => {
     expect(result.category).toBe("pdf");
   });
 });
+
+describe("UA-session-header — uploadAttachment includes X-Session-ID (UAT-2 N8)", () => {
+  it("attaches X-Session-ID header equal to generateOrLoadSessionId()", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          filename: "x.png",
+          path: "x.png",
+          size_bytes: 1,
+          content_type: "image/png",
+          category: "other",
+          is_image: true,
+        }),
+        { status: 200 }
+      )
+    );
+    const file = new File(["x"], "x.png", { type: "image/png" });
+    await uploadAttachment("note-1", file);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    const headers = init.headers as Record<string, string> | Headers | undefined;
+    const sid =
+      headers instanceof Headers
+        ? headers.get("X-Session-ID")
+        : (headers as Record<string, string> | undefined)?.["X-Session-ID"];
+    expect(sid).toBeTruthy();
+    expect(sid).toMatch(/^[0-9a-f-]{36}$/i); // UUID shape
+    fetchSpy.mockRestore();
+  });
+});
