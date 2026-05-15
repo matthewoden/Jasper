@@ -29,8 +29,23 @@ vi.mock("./dailyNoteApi", () => ({
   openTodayDailyNote: vi.fn(),
 }));
 
+// DN-HOOK-6 (UAT-2 R1-1 fix): mock broadcastRefresh so we can assert it was called.
+// The real broadcastRefresh triggers GET /tree on all mounted useFileTree instances;
+// without this call, a newly-created daily note is invisible in the sidebar tree
+// after an H1-rename moved the previous daily note to a new path.
+vi.mock("./useFileTree", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./useFileTree")>();
+  return {
+    ...actual,
+    broadcastRefresh: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 import { openTodayDailyNote } from "./dailyNoteApi";
+import { broadcastRefresh } from "./useFileTree";
 import { useDailyNote } from "./useDailyNote";
+
+const mockedBroadcastRefresh = vi.mocked(broadcastRefresh);
 
 const mockedOpenToday = vi.mocked(openTodayDailyNote);
 
@@ -47,6 +62,8 @@ const wrapper = ({ children }: { children: ReactNode }) =>
 describe("useDailyNote", () => {
   beforeEach(() => {
     mockedOpenToday.mockReset();
+    mockedBroadcastRefresh.mockReset();
+    mockedBroadcastRefresh.mockResolvedValue(undefined);
     // Reset store slices relevant to this hook
     useTreeStore.setState({
       dailyNoteLoading: false,
@@ -140,5 +157,37 @@ describe("useDailyNote", () => {
     // Verify the date argument matches YYYY-MM-DD format
     const dateArg = mockedOpenToday.mock.calls[0][0];
     expect(dateArg).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("DN-HOOK-6: happy path — broadcastRefresh is called after setActiveNote (UAT-2 R1-1)", async () => {
+    // This test verifies the fix for UAT-2 R1-1: when useDailyNote.openToday() succeeds
+    // (either 200 existing or 201 newly created), broadcastRefresh() must be called so the
+    // sidebar tree re-fetches GET /tree and shows the newly-created daily note. Without
+    // this call, a newly-created daily note (created after an H1-rename moved the previous
+    // daily note to a different path) is invisible in the sidebar tree.
+    mockedOpenToday.mockResolvedValueOnce(fakeNote);
+
+    const { result } = renderHook(() => useDailyNote(), { wrapper });
+
+    await act(async () => {
+      await result.current.openToday();
+    });
+
+    // broadcastRefresh MUST be called exactly once after a successful openToday()
+    expect(mockedBroadcastRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("DN-HOOK-7: error path — broadcastRefresh is NOT called on failure (UAT-2 R1-1)", async () => {
+    // On API failure, the tree was not mutated, so no refresh is needed.
+    mockedOpenToday.mockRejectedValueOnce(new Error("server down"));
+
+    const { result } = renderHook(() => useDailyNote(), { wrapper });
+
+    await act(async () => {
+      await result.current.openToday();
+    });
+
+    // broadcastRefresh must NOT be called on failure
+    expect(mockedBroadcastRefresh).toHaveBeenCalledTimes(0);
   });
 });
