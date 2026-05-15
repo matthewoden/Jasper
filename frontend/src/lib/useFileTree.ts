@@ -213,6 +213,7 @@ export function walkTreeCollect(tree: Tree): {
       // Plan 07-26: "file" kind has no id; skip (file nodes are not tracked in stale-state pruning).
       notes.add(node.id);
     }
+    // Plan 07-26: "file" kind nodes are not tracked (no note id).
   };
   for (const node of tree.root) visit(node);
   return { folders, notes };

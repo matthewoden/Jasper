@@ -2417,3 +2417,123 @@ test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", 
     expect(rowAttr).toBe("attachments");
   });
 });
+
+// S19 — Cmd+P/Cmd+O cold-open + switch-note input clear (UAT-2 R1-2, R1-3)
+// Plan 07-23 gap closure:
+//   S19a: cold Cmd+P shows 9 commands immediately (no empty palette on first open)
+//   S19b: cold Cmd+O shows notes immediately (no empty switcher due to null tree)
+//   S19c: switch-note via palette clears stale input query from commands mode
+// Root cause: useFileTree null-on-first-render + mode-dep missing from reset effect.
+// Fixes: eager boot fetch (Fix A) + if(open) setQuery("") with [open, mode] (Fix B).
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 / UAT-2 R1-2,R1-3)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("S19a — cold Cmd+P shows all 9 commands immediately on first open", async ({ page }) => {
+    // Navigate to a fresh page — no prior interaction (cold open).
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Press Cmd+P ONCE on a fresh page — the palette MUST show all 9 commands
+    // without the user typing a character. Fix A (eager boot fetch) ensures the
+    // tree is warm before the user can press Cmd+P. The commands palette doesn't
+    // depend on the tree, but it tests that the virtualizer renders items.
+    await pressShortcut(page, "CmdP");
+    const dialog = page.getByRole("dialog", { name: "Command palette" });
+    await expect(dialog).toBeVisible({ timeout: 3_000 });
+
+    // Wait for the virtualizer to render items after ResizeObserver measures.
+    // Use the "New note" command label as a canary — it's always item 0.
+    // The 5s timeout covers the ResizeObserver measurement latency in headless.
+    await expect(page.getByText("New note", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
+
+    // Assert all 9 palette commands are visible using the Plan 07-21 helper.
+    await expectPaletteVisibleWithNCommands(page, 9);
+
+    // Close
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
+  });
+
+  test("S19b — cold Cmd+O shows notes immediately (no empty list due to null tree)", async ({ page }) => {
+    // Pre-create 3 notes so the switcher has items to show.
+    await apiCreateNote(page, jasper.baseURL, "cold-note-1.md", "", "# Cold Note 1\n");
+    await apiCreateNote(page, jasper.baseURL, "cold-note-2.md", "", "# Cold Note 2\n");
+    await apiCreateNote(page, jasper.baseURL, "cold-note-3.md", "", "# Cold Note 3\n");
+
+    // Navigate to a fresh page — no prior interaction (cold open).
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Press Cmd+O ONCE — the quick-switcher MUST populate with notes immediately.
+    // Fix A (eager boot fetch) fires GET /tree on module import, so by the time
+    // waitForConnected() returns (WebSocket connected), the tree fetch is in-flight
+    // or already complete. 5s generous timeout for the notes to appear.
+    await pressShortcut(page, "CmdO");
+    const dialog = page.getByRole("dialog", { name: "Quick switcher" });
+    await expect(dialog).toBeVisible({ timeout: 3_000 });
+
+    // Wait for at least one note to appear in the switcher.
+    // The quick-switcher renders a sorted recency list; any created note should appear.
+    const noteVisible = page.getByText("Cold Note 1", { exact: false })
+      .or(page.getByText("Cold Note 2", { exact: false }))
+      .or(page.getByText("Cold Note 3", { exact: false }))
+      .first();
+    await expect(noteVisible).toBeVisible({ timeout: 5_000 });
+
+    // Close
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
+  });
+
+  test("S19c — switch-note via palette clears stale query string from commands mode", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Step 1: open Cmd+P (commands mode) and wait for commands to render.
+    await pressShortcut(page, "CmdP");
+    const commandDialog = page.getByRole("dialog", { name: "Command palette" });
+    await expect(commandDialog).toBeVisible({ timeout: 3_000 });
+
+    // Wait for virtualizer (same pattern as S19a).
+    await expect(page.getByText("New note", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
+
+    // Step 2: type "switch" to filter — only "Switch / search notes" should match.
+    // This seeds the input with a stale query that Fix B must clear on mode flip.
+    const cmdInput = commandDialog.getByRole("textbox");
+    await cmdInput.fill("switch");
+    await expect(cmdInput).toHaveValue("switch");
+
+    // Step 3: "Switch / search notes" should be the only visible command now.
+    const switchCmd = page.getByText("Switch / search notes", { exact: true }).first();
+    await expect(switchCmd).toBeVisible({ timeout: 3_000 });
+
+    // Step 4: click "Switch / search notes" — palette flips to notes mode.
+    // closeOnExecute=false means the palette stays open but mode changes.
+    await switchCmd.click();
+
+    // Step 5: palette is now in notes mode — dialog aria-label changes.
+    const switcherDialog = page.getByRole("dialog", { name: "Quick switcher" });
+    await expect(switcherDialog).toBeVisible({ timeout: 3_000 });
+
+    // Step 6: input MUST be empty — Fix B (mode dep in useEffect) clears the query.
+    // The stale "switch" query from commands mode must NOT appear in notes mode.
+    // The input shows placeholder text "Switch to note..." when empty — we assert
+    // the value is "" using Playwright's toHaveValue which checks .value (not text).
+    const switcherInput = switcherDialog.getByRole("textbox");
+    await expect(switcherInput).toHaveValue("", { timeout: 3_000 });
+
+    // Close
+    await page.keyboard.press("Escape");
+    await expect(switcherDialog).not.toBeVisible({ timeout: 3_000 });
+  });
+});

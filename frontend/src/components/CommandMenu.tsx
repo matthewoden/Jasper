@@ -134,6 +134,23 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     if (open) setQuery("");
   }, [open, mode]);
 
+  // UAT-2 R1-2 (Plan 07-23): Force virtualizer to re-subscribe to ResizeObserver
+  // after the dialog opens. @tanstack/react-virtual's _willUpdate() (useLayoutEffect
+  // with no deps) calls _initialize() → getScrollElement() on every render.
+  // On the FIRST render, parentRef.current is null — virtualizer subscribes to nothing.
+  // A forceRender counter increments in a setTimeout(0) microtask AFTER the DOM
+  // commits, causing a second render where parentRef.current IS set.
+  // Using a counter (not setSelectedIdx identity) guarantees React does not bail out.
+  const [, setVirtualizerMountKey] = useState(0); // mount key — only setter is used (triggers re-render)
+  useEffect(() => {
+    if (open) {
+      const id = setTimeout(() => {
+        setVirtualizerMountKey((k) => k + 1);
+      }, 0);
+      return () => clearTimeout(id);
+    }
+  }, [open]);
+
   // Virtualization
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
