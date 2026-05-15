@@ -45,6 +45,7 @@ vi.mock("../lib/useDailyNote", () => ({
 import { useDailyNote } from "../lib/useDailyNote";
 const mockedUseDailyNote = vi.mocked(useDailyNote);
 
+import { useTreeStore } from "../lib/useTreeStore";
 import { SidebarToolbar } from "./SidebarToolbar";
 
 describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phase 7)", () => {
@@ -274,10 +275,35 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
       />,
     );
     const buttons = screen.getAllByRole("button");
-    // Expect: [New note, New folder, Today]
-    expect(buttons).toHaveLength(3);
+    // Expect: [New note, New folder, Today, Search]
+    expect(buttons).toHaveLength(4);
     expect(buttons[0].getAttribute("aria-label")).toBe("New note");
     expect(buttons[1].getAttribute("aria-label")).toBe("New folder");
     expect(buttons[2].getAttribute("aria-label")).toBe("Open today's daily note");
+    expect(buttons[3].getAttribute("aria-label")).toBe("Search notes");
+  });
+
+  // ── Phase 7 Plan 07-28 (UAT-2 R1-5): Search icon button ──────────────
+  describe("ST-search — Search icon button (UAT-2 R1-5)", () => {
+    it("ST-S-1: renders a Search button with aria-label 'Search notes'", () => {
+      render(<SidebarToolbar onNewNote={vi.fn()} onNewFolder={vi.fn()} />);
+      const btn = screen.getByLabelText("Search notes");
+      expect(btn).toBeInTheDocument();
+    });
+
+    it("ST-S-2: clicking Search opens palette in notes mode", () => {
+      useTreeStore.setState({ paletteOpen: false, paletteMode: "commands" });
+      render(<SidebarToolbar onNewNote={vi.fn()} onNewFolder={vi.fn()} />);
+      fireEvent.click(screen.getByLabelText("Search notes"));
+      const state = useTreeStore.getState();
+      expect(state.paletteOpen).toBe(true);
+      expect(state.paletteMode).toBe("notes");
+    });
+
+    it("ST-S-3: Search button has title tooltip 'Search notes (⌘O)'", () => {
+      render(<SidebarToolbar onNewNote={vi.fn()} onNewFolder={vi.fn()} />);
+      const btn = screen.getByLabelText("Search notes");
+      expect(btn.getAttribute("title")).toBe("Search notes (⌘O)");
+    });
   });
 });

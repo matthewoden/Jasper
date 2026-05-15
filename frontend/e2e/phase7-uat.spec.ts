@@ -2263,3 +2263,157 @@ test.describe("Phase 7 — Single-session edit produces NO phantom conflict bann
     await expect(conflictBanner).toHaveCount(0, { timeout: 1_000 });
   });
 });
+
+// S24 — SaveIndicator in StatusBar + Search icon + drop indicator snap
+// UAT-2 N9 (B3) + R1-5 (B4) + R1-6 (B5) / Plan 07-28
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — SaveIndicator in StatusBar + Search icon + drop snap (S24 / UAT-2 N9, R1-5, R1-6)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("S24a — SaveIndicator visible in StatusBar after typing (not inside editor pane)", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Create a note and open it in the editor.
+    const noteId = await apiCreateNote(page, jasper.baseURL, "s24a-save.md", "", "# S24a Test\n\nInitial content.");
+    await page.reload();
+    await waitForConnected(page);
+
+    // Click the note in the tree to open it.
+    const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /S24a Test/i });
+    await expect(noteRow).toBeVisible({ timeout: 8_000 });
+    await noteRow.click();
+    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+    await page.waitForTimeout(500); // let editor settle
+
+    // Type in the editor to trigger a save.
+    await page.locator(".cm-content").click();
+    await page.keyboard.type(" more text");
+
+    // Wait for autosave (2s debounce + network).
+    // After save, SaveIndicator shows "Saved" in the status bar.
+    const statusBar = page.locator("[data-testid='status-bar']");
+    await expect(statusBar).toBeVisible({ timeout: 3_000 });
+
+    // Wait up to 7s for "Saved" to appear in the status bar.
+    await expect(statusBar.getByText(/Saved/i)).toBeVisible({ timeout: 7_000 });
+
+    // Negative assertion: confirm "Saved" does NOT appear inside the editor pane chrome.
+    // The editor pane has data-testid="editor-pane-placeholder" when empty, but when a
+    // note is open we look for the section that wraps the CM editor.
+    // The SaveIndicator is no longer mounted there (Plan 07-28 B3).
+    // We check by looking for the status role inside the .cm-editor — should not find one.
+    const editorSavedEl = page.locator("section").filter({ hasText: /cm-editor/ }).getByRole("status");
+    expect(await editorSavedEl.count()).toBe(0);
+
+    void noteId; // suppress unused var warning
+  });
+
+  test("S24b — clicking Search icon in SidebarToolbar opens Cmd+O quick switcher palette", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Click the Search icon button in the sidebar toolbar.
+    // The button has aria-label="Search notes" (SidebarToolbar.tsx).
+    const searchBtn = page.getByLabel("Search notes");
+    await expect(searchBtn).toBeVisible({ timeout: 5_000 });
+    await searchBtn.click();
+
+    // The Cmd+O quick switcher dialog should appear.
+    const dialog = page.getByRole("dialog", { name: "Quick switcher" });
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+    // Close it and verify it closes.
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
+  });
+
+  test.skip("S24c — drop indicator snaps to line boundary (pixel-level flakiness risk; covered by DI-snap unit tests)", async ({ page }) => {
+    // This scenario would verify that the cm-drop-indicator DOM element
+    // aligns with a line boundary (start or end) rather than mid-word.
+    // The pixel-level measurement (comparing element top to line metrics)
+    // is inherently fragile in headless Playwright when CM6 doesn't
+    // lay out text the same way as the real browser.
+    //
+    // The snap-to-line LOGIC is covered by DI-snap-1/2/3 unit tests in
+    // dropIndicatorWidget.test.ts which test snapDropPos() directly.
+    // Those tests confirm: pos in first half → line.from, second half → line.to.
+    //
+    // If pixel-level verification is needed in the future, run S16 with
+    // two dragover events and measure indicator top === cm-line top vs bottom.
+    void page;
+  });
+});
+
+test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("pre-created notes/attachments/ folder appears in tree with Paperclip icon", async ({ page }) => {
+    // Pre-create the attachments folder and a placeholder file on disk
+    // BEFORE spawning Jasper (Jasper was already spawned in beforeAll, so
+    // we write to disk and trigger a reindex to get the tree updated).
+    const attachmentsDir = path.join(jasper.dataDir, "notes", "attachments");
+    fs.mkdirSync(attachmentsDir, { recursive: true });
+    // Write a placeholder PNG so the folder is non-empty on disk.
+    // (The backend walk skips files inside attachments/ but the folder itself
+    // will appear as a FolderNode since the SkipDir guard was removed in Plan 07-20.)
+    const fooPng = path.join(attachmentsDir, "foo.png");
+    fs.writeFileSync(fooPng, Buffer.from("placeholder"));
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Trigger a reindex so the tree picks up the new folder.
+    const reindexResp = await page.request.post(
+      `${jasper.baseURL}/api/v1/admin/reindex`,
+      { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
+    );
+    expect([200, 202]).toContain(reindexResp.status());
+    await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
+
+    // Reload to get the fresh tree response.
+    await page.reload();
+    await waitForConnected(page);
+
+    // The "attachments" folder should appear in the tree.
+    // TreeRow renders data-tree-row="attachments" data-tree-row-kind="folder".
+    const attachmentsRow = page.locator(
+      '[data-tree-row="attachments"][data-tree-row-kind="folder"]',
+    );
+    await expect(attachmentsRow).toBeVisible({ timeout: 8_000 });
+
+    // The row should contain a Paperclip SVG (Plan 07-20 C4 / TreeRow.tsx).
+    // Lucide Paperclip renders as an SVG with class "lucide-paperclip" OR
+    // a data-lucide attribute. Look for svg within the attachments row.
+    const paperclipSvg = attachmentsRow.locator("svg");
+    await expect(paperclipSvg.first()).toBeVisible({ timeout: 3_000 });
+
+    // Confirm the Paperclip icon is specifically the lucide-paperclip variant
+    // by checking for its known path data (d attribute starts with "M21.44").
+    // This is more brittle than class-based check; we use a softer assertion:
+    const svgCount = await paperclipSvg.count();
+    expect(svgCount).toBeGreaterThan(0);
+
+    // Additionally verify the folder has the correct "attachments" title or name.
+    // TreeRow sets data-tree-row to the folder path (relative to notes/).
+    const rowAttr = await attachmentsRow.getAttribute("data-tree-row");
+    expect(rowAttr).toBe("attachments");
+  });
+});

@@ -2,8 +2,10 @@ import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
+import { SaveIndicator } from "./SaveIndicator";
 import { SettingsMenu } from "./SettingsMenu";
 import { postAdminReindex } from "../lib/adminApi";
+import { useTreeStore } from "../lib/useTreeStore";
 
 const statusBarStyle: CSSProperties = {
   background: "var(--color-surface)",
@@ -34,6 +36,10 @@ const buttonBase: CSSProperties = {
 export function StatusBar() {
   const [refreshing, setRefreshing] = useState(false);
   const [hovering, setHovering] = useState(false);
+  // Phase 7 Plan 07-28 (UAT-2 N9 / B3): Phase 06.6 D-07 reserved this
+  // metadata zone for save state. SaveIndicator is now in the status bar
+  // (hoisted from EditorPane via useTreeStore.saveState mirror).
+  const saveState = useTreeStore((s) => s.saveState);
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return;
@@ -75,6 +81,8 @@ export function StatusBar() {
         )}
       </button>
       <div style={{ flex: 1 }} data-testid="status-bar-spacer" />
+      {/* Phase 06.6 D-07 metadata zone: save state indicator */}
+      <SaveIndicator state={saveState} />
       <SettingsMenu />
     </footer>
   );

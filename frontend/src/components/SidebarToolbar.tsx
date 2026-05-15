@@ -23,8 +23,9 @@
  *     disabled-state visuals (opacity 0.5, cursor "wait", disabled attribute).
  *     Re-entrancy guard is in useDailyNote — disabled attr is defense-in-depth.
  */
-import { CalendarDays, FilePlus, FolderPlus } from "lucide-react";
+import { CalendarDays, FilePlus, FolderPlus, Search } from "lucide-react";
 import { useDailyNote } from "../lib/useDailyNote";
+import { useTreeStore } from "../lib/useTreeStore";
 
 export interface SidebarToolbarProps {
   onNewNote: () => void;
@@ -109,6 +110,22 @@ export function SidebarToolbar({
         }}
       >
         <CalendarDays size={16} aria-hidden="true" />
+      </button>
+      {/* Phase 7 Plan 07-28 (UAT-2 R1-5): Search button — opens Cmd+O palette
+          in notes mode. Reuses the existing setPaletteOpen + setPaletteMode
+          path from App.tsx handleAppCmdO handler (no new store slice). */}
+      <button
+        type="button"
+        title="Search notes (⌘O)"
+        aria-label="Search notes"
+        onClick={() => {
+          const store = useTreeStore.getState();
+          store.setPaletteOpen(true);
+          store.setPaletteMode("notes");
+        }}
+        style={buttonBase}
+      >
+        <Search size={16} aria-hidden="true" />
       </button>
     </div>
   );

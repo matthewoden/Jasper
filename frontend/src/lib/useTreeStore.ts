@@ -227,6 +227,14 @@ export interface TreeStore {
   setDailyNoteLoading: (v: boolean) => void;
   cheatSheetOpen: boolean;
   setCheatSheetOpen: (v: boolean) => void;
+
+  // Phase 7 Plan 07-28 ADD-ONLY (UAT-2 N9 / B3): hoisted saveState so
+  // StatusBar (Phase 06.6 D-07 metadata zone) can render the SaveIndicator.
+  // EditorPane mirrors its local saveState reducer into this slice via a
+  // useEffect. Reads the same SaveState union as SaveIndicator's props.
+  // ADD-only per D-41 invariant.
+  saveState: import("./saveStateMachine").SaveState;
+  setSaveState: (s: import("./saveStateMachine").SaveState) => void;
 }
 
 export const useTreeStore = create<TreeStore>((set) => ({
@@ -348,6 +356,10 @@ export const useTreeStore = create<TreeStore>((set) => ({
   setDailyNoteLoading: (v) => set({ dailyNoteLoading: v }),
   cheatSheetOpen: false,
   setCheatSheetOpen: (v) => set({ cheatSheetOpen: v }),
+
+  // Phase 7 Plan 07-28 ADD-ONLY (UAT-2 N9 / B3)
+  saveState: { status: "idle" },
+  setSaveState: (s) => set({ saveState: s }),
 }));
 
 /**

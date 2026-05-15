@@ -40,6 +40,7 @@ vi.mock("../api/client", () => ({
 }));
 
 import { postAdminReindex } from "../lib/adminApi";
+import { useTreeStore } from "../lib/useTreeStore";
 import { StatusBar } from "./StatusBar";
 
 function deferred<T = void>() {
@@ -168,5 +169,27 @@ describe("<StatusBar />", () => {
     const { container } = render(<StatusBar />);
     const footer = container.querySelector("footer");
     expect(footer?.style.zIndex).toBe("10");
+  });
+});
+
+describe("SB-save-indicator — SaveIndicator rendered in StatusBar (UAT-2 N9)", () => {
+  it("SB-SI-1: renders SaveIndicator with current store saveState=saving", async () => {
+    useTreeStore.setState({ saveState: { status: "saving", startedAt: new Date() } });
+    render(<StatusBar />);
+    expect(screen.getByText("Saving…")).toBeInTheDocument();
+  });
+
+  it("SB-SI-2: renders SaveIndicator with saveState=saved", async () => {
+    useTreeStore.setState({ saveState: { status: "saved", savedAt: new Date() } });
+    render(<StatusBar />);
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
+  it("SB-SI-3: renders nothing visible for saveState=idle", () => {
+    useTreeStore.setState({ saveState: { status: "idle" } });
+    render(<StatusBar />);
+    // SaveIndicator returns null for idle — no "Saving" or "Saved" text
+    expect(screen.queryByText("Saving…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Saved")).not.toBeInTheDocument();
   });
 });

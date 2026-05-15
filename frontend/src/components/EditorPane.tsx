@@ -64,7 +64,6 @@ import {
 import { postNoteMove, type Tree, type TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
-import { SaveIndicator } from "./SaveIndicator";
 import type { components } from "../api/schema";
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor"; // Plan 05-11 D-26..D-27
 
@@ -261,6 +260,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   useEffect(() => {
     connectionStatusRef.current = connectionStatus;
   }, [connectionStatus]);
+
+  // Phase 7 Plan 07-28 (UAT-2 N9 / B3): mirror saveState into the global
+  // store so StatusBar (Phase 06.6 D-07 metadata zone) can render the
+  // SaveIndicator without prop-drilling. The local useReducer remains the
+  // authoritative state; this effect is a one-way mirror (local → store).
+  useEffect(() => {
+    useTreeStore.getState().setSaveState(saveState);
+  }, [saveState]);
 
   // BL-04 (Phase 5.5 gap-closure Plan 12) — one-shot guard so the keepalive
   // PUT fires AT MOST ONCE per tab-close lifecycle. Both visibilitychange→hidden
@@ -850,11 +857,9 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     };
   }, [editorHandlersRef, onNoteUpdated, onNoteDeleted]);
 
-  // Phase 3: null noteId → render placeholder, NOT the textarea. We
-  // still mount the SaveIndicator so the surface chrome remains
-  // identical to a populated editor, and so a future "you typed but
-  // there's no active note" affordance can sit alongside it without
-  // remounting the parent.
+  // Phase 3: null noteId → render placeholder, NOT the textarea.
+  // Plan 07-28 (UAT-2 N9): SaveIndicator is now rendered in StatusBar
+  // (via useTreeStore.saveState), not inside EditorPane.
   if (noteId === null) {
     return (
       <section
@@ -862,7 +867,6 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
         data-testid="editor-pane-placeholder"
         style={style}
       >
-        <SaveIndicator state={saveState} />
         <div
           className="flex items-center justify-center"
           style={{ flex: 1 }}
@@ -886,7 +890,6 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       className="flex flex-col h-full bg-bg"
       style={{ minHeight: 0, overflow: "hidden", position: "relative", ...style }}
     >
-      <SaveIndicator state={saveState} />
       {loadStatus === "error" && (
         <div className="px-4 text-destructive" role="alert">
           {LOAD_ERROR_COPY}

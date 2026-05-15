@@ -90,6 +90,38 @@ class DropCaretWidget extends WidgetType {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// snapDropPos — pure helper that snaps a raw document position to the nearest
+// LINE BOUNDARY (start or end of the line) based on the pointer's horizontal
+// position within the line.
+//
+// Exported for unit testing (see dropIndicatorWidget.test.ts DI-snap tests).
+//
+// UAT-2 R1-6 (Plan 07-28): drops mid-paragraph showed a caret in the middle
+// of a sentence which felt "weird". Snapping to line boundaries gives the
+// user a clear "between lines" insertion preview rather than a mid-word one.
+//
+// Algorithm:
+//   colInLine = rawPos - line.from      ← offset within the line
+//   lineLen   = line.to - line.from     ← character count of the line
+//   if colInLine < lineLen / 2: snap to line.from (beginning of line)
+//   else:                        snap to line.to   (end of line)
+//
+// Edge cases:
+//   - Empty line (lineLen=0): colInLine=0, 0 < 0 → false, snaps to line.to
+//     but since from===to for empty lines this is the same position.
+//   - Single-char line: lineLen=1, colInLine=0 → from; colInLine=1 → to.
+// ─────────────────────────────────────────────────────────────────────────────
+export function snapDropPos(
+  rawPos: number,
+  state: import("@codemirror/state").EditorState,
+): number {
+  const line = state.doc.lineAt(rawPos);
+  const colInLine = rawPos - line.from;
+  const lineLen = line.to - line.from;
+  return colInLine < lineLen / 2 ? line.from : line.to;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // StateEffect — dispatched by the plugin to set or clear the drop position.
 // Exported so MarkdownEditor can include it in the extensions array check
 // (and for testing).
@@ -149,8 +181,15 @@ export const dropIndicatorPlugin = ViewPlugin.fromClass(
       // posAtCoords returns null when the pointer is outside the document
       // range (e.g. in the gutter, below the last line). In that case we
       // clear the indicator rather than rendering at a stale position.
-      const pos = this.view.posAtCoords({ x: e.clientX, y: e.clientY });
-      this.view.dispatch({ effects: setDropPos.of(pos) });
+      const rawPos = this.view.posAtCoords({ x: e.clientX, y: e.clientY });
+      if (rawPos === null) {
+        this.view.dispatch({ effects: setDropPos.of(null) });
+        return;
+      }
+      // UAT-2 R1-6 (Plan 07-28): snap to nearest line boundary so the indicator
+      // visually represents "between lines" rather than mid-word.
+      const snapped = snapDropPos(rawPos, this.view.state);
+      this.view.dispatch({ effects: setDropPos.of(snapped) });
     };
 
     private readonly onDragLeave = () => {

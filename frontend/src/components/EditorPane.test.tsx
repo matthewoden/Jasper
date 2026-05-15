@@ -383,16 +383,15 @@ describe("<EditorPane />", () => {
         );
 
         await flushMicrotasks();
-        expect(screen.getByRole("status")).toHaveAttribute(
-            "title",
-            expect.stringMatching(/^Saved at \d{2}:\d{2}:\d{2}$/),
-        );
+        // Plan 07-28 (UAT-2 N9): SaveIndicator now lives in StatusBar via
+        // useTreeStore.saveState — check the store instead of the DOM.
+        expect(useTreeStore.getState().saveState.status).toBe("saved");
 
         // Saved-sticky window expires → idle (no status element).
         await act(async () => {
             await vi.advanceTimersByTimeAsync(SAVED_STICKY_MS + 10);
         });
-        expect(screen.queryByRole("status")).toBeNull();
+        expect(useTreeStore.getState().saveState.status).toBe("idle");
     });
 
     it("E4: Cmd+S immediately saves (collapses pending debounce)", async () => {
@@ -469,10 +468,9 @@ describe("<EditorPane />", () => {
         });
         await flushMicrotasks();
 
-        expect(screen.getByRole("status")).toHaveAttribute(
-            "title",
-            "Save failed — your edit is still in the editor. Press ⌘S to retry.",
-        );
+        // Plan 07-28 (UAT-2 N9): SaveIndicator now lives in StatusBar via
+        // useTreeStore.saveState — check the store instead of the DOM.
+        expect(useTreeStore.getState().saveState.status).toBe("error");
 
         // Recovery: next edit + debounce → saving again.
         updateNoteMock.mockResolvedValue(okPut());
@@ -1091,15 +1089,14 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
             ScratchpadUUID,
             "# Title\n\nhello world",
         );
-        expect(screen.getByRole("status")).toHaveAttribute(
-            "title",
-            expect.stringMatching(/^Saved at \d{2}:\d{2}:\d{2}$/),
-        );
+        // Plan 07-28 (UAT-2 N9): SaveIndicator now lives in StatusBar via
+        // useTreeStore.saveState — check the store instead of the DOM.
+        expect(useTreeStore.getState().saveState.status).toBe("saved");
 
         await act(async () => {
             await vi.advanceTimersByTimeAsync(SAVED_STICKY_MS + 10);
         });
-        expect(screen.queryByRole("status")).toBeNull();
+        expect(useTreeStore.getState().saveState.status).toBe("idle");
     });
 });
 
@@ -2172,11 +2169,10 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
         await waitFor(() => expect(updateNoteMock).toHaveBeenCalledTimes(1));
 
         // BL-03: SaveIndicator must reflect the failure (saveFailed dispatched).
+        // Plan 07-28 (UAT-2 N9): SaveIndicator now lives in StatusBar via
+        // useTreeStore.saveState — check the store instead of the DOM.
         await waitFor(() =>
-            expect(screen.getByRole("status")).toHaveAttribute(
-                "title",
-                "Save failed — your edit is still in the editor. Press ⌘S to retry.",
-            ),
+            expect(useTreeStore.getState().saveState.status).toBe("error"),
         );
     });
 });
