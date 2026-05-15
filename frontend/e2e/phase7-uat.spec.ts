@@ -2511,3 +2511,100 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S28 / S28b — Switcher merges title-fuzzy + FTS5 (UAT-3 N10 + N11, Plan 07-33)
+//
+// S28:  Typing 2+ chars still shows title-substring matches (regression fix N10).
+// S28b: Title-only hit AND content-only hit BOTH visible in two sections (N11).
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — Switcher merges title-fuzzy + FTS5 (S28 / UAT-3 N10+N11)", () => {
+  let jasper: JasperHandle;
+  test.beforeAll(async () => { jasper = await spawnJasper(); });
+  test.afterAll(async () => { if (jasper) await jasper.kill(); });
+
+  test("S28: typing 'te' shows note 'test' (title-fuzzy hit) at query.length >= 2", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Pre-create a note titled "test" with body that does NOT contain "te" so the hit
+    // can ONLY come via title-fuzzy (proves the regression fix for N10).
+    await apiCreateNote(page, jasper.baseURL, "s28-test.md", "", "# test\n\nbody xyz only.\n");
+
+    // Open Cmd+O.
+    await pressShortcut(page, "CmdO");
+    const dialog = page.getByRole("dialog", { name: "Quick switcher" });
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+    const input = dialog.getByRole("textbox");
+    await input.fill("te");
+
+    // Wait for the merged results — title-fuzzy is synchronous, FTS5 has ~200ms debounce.
+    await page.waitForTimeout(400);
+
+    // The note "test" must be visible — this is the regression assertion for N10.
+    const testRow = dialog.getByText("test", { exact: false });
+    await expect(testRow.first()).toBeVisible({ timeout: 3_000 });
+
+    // Assert the "Switch to note" group eyebrow is present.
+    const switchEyebrow = dialog.locator('[data-row-kind="group"][data-group-id="group:notes"]');
+    await expect(switchEyebrow).toBeVisible({ timeout: 3_000 });
+    await expect(switchEyebrow).toContainText("Switch to note");
+
+    await page.keyboard.press("Escape");
+  });
+
+  test("S28b: title-only hit AND content-only hit BOTH visible in two sections", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Strategy: two notes where a single query produces hits in BOTH sections.
+    //
+    // Note "s28b-needle" — its TITLE contains "needle" (title-fuzzy hit).
+    // Body deliberately lacks any searchable content.
+    await apiCreateNote(page, jasper.baseURL, "s28b-needle.md", "", "# s28b-needle\n\nbody xyz.\n");
+    //
+    // Note "s28b-haystack" — its BODY contains "needle" as a full word (FTS5 hit).
+    // Title "s28b-haystack" does NOT contain "needle" — only the body does.
+    await apiCreateNote(
+      page, jasper.baseURL, "s28b-haystack.md", "",
+      "# s28b-haystack\n\nA needle in a haystack.\n",
+    );
+
+    // Trigger full reindex so FTS5 indexes the body content.
+    const reindexResp = await page.request.post(
+      `${jasper.baseURL}/api/v1/admin/reindex`,
+      { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
+    );
+    expect([200, 202]).toContain(reindexResp.status());
+    await page.waitForTimeout(800);
+
+    await pressShortcut(page, "CmdO");
+    const dialog = page.getByRole("dialog", { name: "Quick switcher" });
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+    const input = dialog.getByRole("textbox");
+    // Query "needle" (>= 2 chars):
+    //   title-fuzzy: s28b-needle has "needle" in title → "Switch to note" section
+    //   FTS5: s28b-haystack body has "needle" as a word → "Search results" section
+    //   Dedup: s28b-needle ID won't appear in FTS5 results (body has no "needle")
+    await input.fill("needle");
+    await page.waitForTimeout(500); // wait for title-fuzzy (sync) + FTS5 (200ms debounce)
+
+    // Both group eyebrows present — dual-section render (N11).
+    await expect(
+      dialog.locator('[data-row-kind="group"][data-group-id="group:notes"]'),
+    ).toBeVisible({ timeout: 3_000 });
+    await expect(
+      dialog.locator('[data-row-kind="group"][data-group-id="group:search"]'),
+    ).toBeVisible({ timeout: 3_000 });
+
+    // s28b-needle appears in title-fuzzy "Switch to note" section.
+    await expect(dialog.getByText(/s28b-needle/i).first()).toBeVisible({ timeout: 3_000 });
+    // s28b-haystack appears in FTS5 "Search results" section (only body contains "needle").
+    await expect(dialog.getByText(/s28b-haystack/i).first()).toBeVisible({ timeout: 3_000 });
+
+    await page.keyboard.press("Escape");
+  });
+});
