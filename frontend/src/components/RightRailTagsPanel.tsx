@@ -26,7 +26,8 @@
  * invariant per CONTEXT D-32). This file is the active implementation.
  */
 import { useState, useEffect, useId, type CSSProperties } from "react";
-import { ChevronRight, ChevronDown, X } from "lucide-react";
+// C4 (UAT-2 N4): removed ChevronRight + ChevronDown — expand/collapse chevron removed
+import { X } from "lucide-react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 
 import { useTreeStore } from "../lib/useTreeStore";
@@ -61,23 +62,6 @@ const headerStyle: CSSProperties = {
   gap: 4,
   borderBottom: "1px solid var(--color-border)",
   flexShrink: 0,
-};
-
-/** Expand/collapse toggle button (left portion of header) */
-const expandButtonStyle: CSSProperties = {
-  flex: 1,
-  height: 32,
-  padding: 0,
-  background: "none",
-  border: "none",
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  cursor: "pointer",
-  textAlign: "left",
-  outline: "none",
-  userSelect: "none",
-  minWidth: 0,
 };
 
 /** × close button (right portion of header) */
@@ -186,9 +170,11 @@ const destructiveItemStyle: CSSProperties = {
 const TAG_CHARSET_REGEX = /^[a-z0-9_-]+$/;
 
 export function RightRailTagsPanel() {
-  // Phase 6.5 slice (not the Phase 6 legacy left-sidebar slice)
-  const expanded = useTreeStore((s) => s.rightRailTagsPanelExpanded);
-  const setExpanded = useTreeStore((s) => s.setRightRailTagsPanelExpanded);
+  // C4 (UAT-2 N4): rightRailTagsPanelExpanded is now dead-read from this component.
+  // Phase 06.6 D-36 gates panel visibility at the parent level (panelSelector.tags).
+  // The slice remains in useTreeStore per ADD-only invariant (D-41); v2 cleanup can prune.
+  // We still READ it here for backward compat (other consumers may exist), but the
+  // chevron + expand/collapse behavior is removed. The content is always visible.
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
   const setActiveTagFilter = useTreeStore((s) => s.setActiveTagFilter);
   // T-06.5-11: reset searchQuery when note switches
@@ -302,33 +288,15 @@ export function RightRailTagsPanel() {
     }
   };
 
-  // UI-SPEC §Surface 2-NEW §Panel Header aria-label
-  const ariaLabel = expanded
-    ? `Tags panel, expanded. ${tags.length} tags. Click to collapse.`
-    : `Tags panel, collapsed. ${tags.length} tags. Click to expand.`;
-
   return (
     <>
       <div style={panelCardStyle}>
-        {/* Panel header — flex row: expand-toggle (left) + × close button (right) */}
-        {/* D-19: no icon before the label; D-04: per-panel × close button */}
+        {/* Panel header — flex row: label (left) + × close button (right) */}
+        {/* C4 (UAT-2 N4): removed expand/collapse chevron; only × close button remains.
+            D-19: no icon before the label; D-04: per-panel × close button */}
         <header style={headerStyle}>
-          <button
-            type="button"
-            style={expandButtonStyle}
-            aria-expanded={expanded}
-            aria-controls={listId}
-            aria-label={ariaLabel}
-            onClick={() => setExpanded(!expanded)}
-          >
-            {expanded ? (
-              <ChevronDown size={14} color="var(--color-muted)" aria-hidden="true" />
-            ) : (
-              <ChevronRight size={14} color="var(--color-muted)" aria-hidden="true" />
-            )}
-            {/* UI-SPEC: title-case, 12px, weight 600, --color-muted */}
-            <span style={headerLabelStyle}>Tags ({tags.length})</span>
-          </button>
+          {/* Static label — no expand/collapse button; panel visibility gated by parent */}
+          <span style={{ ...headerLabelStyle, flex: 1 }}>Tags ({tags.length})</span>
           <button
             type="button"
             aria-label="Close Tags panel"
@@ -341,10 +309,10 @@ export function RightRailTagsPanel() {
           </button>
         </header>
 
-        {/* Tag search input + list (shown only when expanded) */}
-        {expanded && (
-          <>
-            {/* D-19 tag search input — UI-SPEC §Tag Search Input */}
+        {/* Tag search input + list — always visible (no expand/collapse gating) */}
+        {/* C4 (UAT-2 N4): removed {expanded && ...} wrapper. */}
+        <>
+          {/* D-19 tag search input — UI-SPEC §Tag Search Input */}
             <div style={{ padding: "8px 12px", flexShrink: 0 }}>
               <input
                 type="search"
@@ -517,8 +485,7 @@ export function RightRailTagsPanel() {
                 })
               )}
             </ul>
-          </>
-        )}
+        </>
       </div>
 
       {/* Tag delete confirmation dialog (shown for N > 5) */}

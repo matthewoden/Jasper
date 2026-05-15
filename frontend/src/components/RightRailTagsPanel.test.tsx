@@ -116,29 +116,28 @@ describe("RightRailTagsPanel — header and collapsed state", () => {
     expect(screen.getByPlaceholderText("Filter tags…")).toBeInTheDocument();
   });
 
-  it("TB3-adapted: clicking header toggles rightRailTagsPanelExpanded", () => {
+  it("TB3-adapted: C4 (UAT-2 N4) — header has NO expand/collapse button (chevron removed)", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     renderPanel();
 
-    // Use the expand-toggle button (aria-label "Tags panel, collapsed/expanded ...")
-    const header = screen.getByRole("button", { name: /^tags panel,/i });
-    fireEvent.click(header);
-
-    expect(useTreeStore.getState().rightRailTagsPanelExpanded).toBe(true);
-
-    fireEvent.click(header);
-    expect(useTreeStore.getState().rightRailTagsPanelExpanded).toBe(false);
+    // C4: the expand-toggle button is REMOVED. There is no button with aria-label
+    // matching "tags panel, collapsed/expanded". Only the close (×) button remains.
+    expect(screen.queryByRole("button", { name: /^tags panel,/i })).toBeNull();
+    // The close button IS there
+    expect(screen.getByRole("button", { name: /close tags panel/i })).toBeInTheDocument();
   });
 
-  it("TB13-adapted: aria-expanded on the header button reflects rightRailTagsPanelExpanded", () => {
+  it("TB13-adapted: C4 (UAT-2 N4) — no aria-expanded button in header (expand removed)", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     renderPanel();
 
-    const header = screen.getByRole("button", { name: /^tags panel,/i });
-    expect(header).toHaveAttribute("aria-expanded", "false");
-
-    fireEvent.click(header);
-    expect(header).toHaveAttribute("aria-expanded", "true");
+    // C4: the expand-toggle button with aria-expanded is gone.
+    // There should be no button with aria-expanded attribute.
+    const buttons = screen.getAllByRole("button");
+    const expandButton = buttons.find(
+      (btn) => btn.hasAttribute("aria-expanded"),
+    );
+    expect(expandButton).toBeUndefined();
   });
 });
 
@@ -252,11 +251,14 @@ describe("RightRailTagsPanel — empty states", () => {
 // ── SR: Search input behaviors (NEW for Phase 6.5 UX-T-05) ──────────────────
 
 describe("RightRailTagsPanel — search input (SR1..SR6)", () => {
-  it("SR1: search input is hidden when panel is collapsed", () => {
+  it("SR1: C4 (UAT-2 N4) — search input is ALWAYS visible (expand/collapse removed)", () => {
+    // C4: the expand/collapse gating is removed. The search input is always visible
+    // when the panel is rendered (panel visibility is gated at parent level via panelSelector).
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     renderPanel();
 
-    expect(screen.queryByPlaceholderText("Filter tags…")).toBeNull();
+    // Search input is now always present — no collapse possible from within the panel
+    expect(screen.getByPlaceholderText("Filter tags…")).toBeInTheDocument();
   });
 
   it("SR2: search input visible when panel is expanded", () => {
@@ -453,6 +455,36 @@ describe("RightRailTagsPanel — Phase 6.6 header refresh (D-19, D-04)", () => {
   });
 });
 
+// ── RRTP-no-chevron: C4 (UAT-2 N4) — tags panel header has no chevron ────────
+
+describe("RRTP-no-chevron — tags panel header has no chevron (UAT-2 N4)", () => {
+  it("RRTP-NC-1: no .lucide-chevron-down or .lucide-chevron-right in the header", () => {
+    useTreeStore.setState({ rightRailTagsPanelExpanded: false });
+    const { container } = renderPanel();
+    const chevronDown = container.querySelector(".lucide-chevron-down");
+    const chevronRight = container.querySelector(".lucide-chevron-right");
+    expect(chevronDown).toBeNull();
+    expect(chevronRight).toBeNull();
+  });
+
+  it("RRTP-NC-1b: no chevron when expanded=true either", () => {
+    useTreeStore.setState({ rightRailTagsPanelExpanded: true });
+    const { container } = renderPanel();
+    const chevronDown = container.querySelector(".lucide-chevron-down");
+    const chevronRight = container.querySelector(".lucide-chevron-right");
+    expect(chevronDown).toBeNull();
+    expect(chevronRight).toBeNull();
+  });
+
+  it("RRTP-NC-2: close button (×) still present and calls setPanelSelector({ tags: false })", () => {
+    useTreeStore.setState({ panelSelector: { tags: true, backlinks: true } });
+    renderPanel();
+    const closeBtn = screen.getByLabelText(/close tags panel/i);
+    fireEvent.click(closeBtn);
+    expect(useTreeStore.getState().panelSelector.tags).toBe(false);
+  });
+});
+
 describe("RightRailTagsPanel — slice isolation (ADD-only invariant)", () => {
   it("uses rightRailTagsPanelExpanded slice — not tagBrowserExpanded", () => {
     // Set rightRailTagsPanelExpanded=true but tagBrowserExpanded=false
@@ -467,16 +499,17 @@ describe("RightRailTagsPanel — slice isolation (ADD-only invariant)", () => {
     expect(screen.getByTestId("tag-row-alpha")).toBeInTheDocument();
   });
 
-  it("tagBrowserExpanded=true does NOT affect RightRailTagsPanel expansion", () => {
-    // tagBrowserExpanded=true but rightRailTagsPanelExpanded=false
-    // Panel should remain collapsed
+  it("tagBrowserExpanded=true does NOT affect RightRailTagsPanel (C4: expand removed)", () => {
+    // C4: expand/collapse is removed from RightRailTagsPanel. Tags are always visible.
+    // tagBrowserExpanded has no effect on this component.
     useTreeStore.setState({
       rightRailTagsPanelExpanded: false,
       tagBrowserExpanded: true,
     });
     renderPanel();
 
-    // Tags NOT visible — new panel uses its own slice
-    expect(screen.queryByTestId("tag-row-alpha")).toBeNull();
+    // C4: tags ARE visible — expand/collapse gating removed from this component.
+    // Panel visibility is gated at parent level (panelSelector.tags).
+    expect(screen.getByTestId("tag-row-alpha")).toBeInTheDocument();
   });
 });

@@ -1081,6 +1081,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           // internally instead of inflating the page.
           minHeight: 0,
           overflow: "hidden",
+          // C5 (UAT-2 N5): align editor content with breadcrumb's content-start.
+          // TopBar left group: 8px padding + 24px toggle button + 4px gap = 36px
+          // from the grid column edge. Adding paddingLeft: 36px here shifts the
+          // cm-content element's left boundary to 36px, clearing the sidebar
+          // toggle's right edge (32px) and aligning editor text with breadcrumb
+          // text. Combined with cm-content paddingLeft: 0 in themeBridge.ts,
+          // text starts at exactly 36px from column left — matching breadcrumbs.
+          paddingLeft: "36px",
         }}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest(".cm-content")) return;

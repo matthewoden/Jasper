@@ -24,6 +24,8 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
+import { useTagBrowser } from "../lib/useTagBrowser";
+import { useBacklinks } from "../lib/useBacklinks";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { PanelSelectorDropdown } from "./PanelSelectorDropdown";
 
@@ -109,6 +111,16 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
   const setBacklinksRailExpanded = useTreeStore(
     (s) => s.setBacklinksRailExpanded,
   );
+  // C3 (UAT-2 N3): read active note ID for backlinks count
+  const activeNoteId = useTreeStore((s) => s.activeNoteId);
+
+  // C3 (UAT-2 N3): right-rail toggle only shown when there is content to display.
+  // useTagBrowser() returns ALL global tags; the tags panel shows all tags regardless
+  // of which note is open. useBacklinks(activeNoteId) returns backlinks for the
+  // active note.
+  const { tags } = useTagBrowser();
+  const { backlinks } = useBacklinks(activeNoteId);
+  const hasContent = tags.length > 0 || (backlinks?.length ?? 0) > 0;
 
   const sidebarLabel = notesSidebarVisible
     ? "Hide notes sidebar"
@@ -145,27 +157,30 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
       </div>
 
       {/* Right group: panel selector dropdown + right-rail toggle */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          flexShrink: 0,
-        }}
-      >
-        <PanelSelectorDropdown />
-        <ToggleButton
-          ariaLabel={railLabel}
-          onClick={() => setBacklinksRailExpanded(!backlinksRailExpanded)}
-          icon={
-            backlinksRailExpanded ? (
-              <ChevronRight size={16} aria-hidden="true" />
-            ) : (
-              <ChevronLeft size={16} aria-hidden="true" />
-            )
-          }
-        />
-      </div>
+      {/* C3 (UAT-2 N3): right-rail toggle hidden when no tags AND no backlinks */}
+      {hasContent && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            flexShrink: 0,
+          }}
+        >
+          <PanelSelectorDropdown />
+          <ToggleButton
+            ariaLabel={railLabel}
+            onClick={() => setBacklinksRailExpanded(!backlinksRailExpanded)}
+            icon={
+              backlinksRailExpanded ? (
+                <ChevronRight size={16} aria-hidden="true" />
+              ) : (
+                <ChevronLeft size={16} aria-hidden="true" />
+              )
+            }
+          />
+        </div>
+      )}
     </div>
   );
 }

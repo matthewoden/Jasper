@@ -38,9 +38,32 @@ vi.mock("../lib/useTreeStore", () => ({
       setNotesSidebarVisible: mockSetNotesSidebarVisible,
       backlinksRailExpanded: mockBacklinksRailExpanded,
       setBacklinksRailExpanded: mockSetBacklinksRailExpanded,
+      activeNoteId: "note-1",
     };
     return selector(state);
   },
+}));
+
+// Mock useTagBrowser and useBacklinks for C3 (N3) tests
+let mockTagCount = 0;
+let mockBacklinkCount = 0;
+
+vi.mock("../lib/useTagBrowser", () => ({
+  useTagBrowser: () => ({
+    tags: Array.from({ length: mockTagCount }, (_, i) => ({ name: `tag${i}`, count: 1 })),
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+  }),
+}));
+
+vi.mock("../lib/useBacklinks", () => ({
+  useBacklinks: () => ({
+    backlinks: Array.from({ length: mockBacklinkCount }, (_, i) => ({ id: `b${i}`, title: `Note ${i}`, path: `note${i}.md` })),
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+  }),
 }));
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -50,6 +73,8 @@ describe("TopBar", () => {
     vi.clearAllMocks();
     mockNotesSidebarVisible = true;
     mockBacklinksRailExpanded = true;
+    mockTagCount = 1;
+    mockBacklinkCount = 0;
   });
 
   // Test 1: Container style — background + boxShadow + height
@@ -149,5 +174,39 @@ describe("TopBar", () => {
     expect(container.style.gridColumn).toBe("2");
     // Original styles must still be present
     expect(container.style.background).toBe("var(--color-bg)");
+  });
+});
+
+// ── RR-toggle-hide: C3 (UAT-2 N3) — right-rail toggle hidden when no items ──
+
+describe("RR-toggle-hide — right-rail toggle hidden when no items (UAT-2 N3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockNotesSidebarVisible = true;
+    mockBacklinksRailExpanded = true;
+  });
+
+  it("RR-T-1: zero tags + zero backlinks → right-rail toggle button NOT rendered", () => {
+    mockTagCount = 0;
+    mockBacklinkCount = 0;
+    render(<TopBar />);
+    // The right-rail toggle (Hide/Show panels) should NOT be in the DOM
+    expect(screen.queryByRole("button", { name: /hide panels|show panels/i })).toBeNull();
+  });
+
+  it("RR-T-2: 1 tag + zero backlinks → right-rail toggle button IS rendered", () => {
+    mockTagCount = 1;
+    mockBacklinkCount = 0;
+    render(<TopBar />);
+    // Toggle should appear when there are tags
+    expect(screen.queryByRole("button", { name: /hide panels|show panels/i })).not.toBeNull();
+  });
+
+  it("RR-T-3: zero tags + 1 backlink → right-rail toggle button IS rendered", () => {
+    mockTagCount = 0;
+    mockBacklinkCount = 1;
+    render(<TopBar />);
+    // Toggle should appear when there are backlinks
+    expect(screen.queryByRole("button", { name: /hide panels|show panels/i })).not.toBeNull();
   });
 });

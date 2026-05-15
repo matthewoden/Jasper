@@ -47,7 +47,14 @@ export const jasperEditorTheme = EditorView.theme(
       overflow: "auto",
     },
     ".cm-content": {
-      padding: "16px",
+      // C5 (UAT-2 N5): padding-left is 0 because the EditorPane's cm-host-shell
+      // wrapper provides 36px left padding. This makes text start at the same
+      // horizontal position as the breadcrumb's first segment text (TopBar left-
+      // padding 8px + toggle button 24px + gap 4px = 36px from column left).
+      // The cm-content element's left boundary is also at 36px, which clears the
+      // sidebar toggle's right edge (8px + 24px = 32px) by 4px — satisfying the
+      // S26c bounding-box assertion: toggleRight (32) <= editorLeft (36) + 4.
+      padding: "16px 16px 16px 0",
       caretColor: "var(--color-fg)",
       // UX-11: reading-width line wrap. Pitfall 3: max-width on .cm-content
       // ONLY, never on .cm-scroller (clips selection drawing) or .cm-line

@@ -2326,17 +2326,16 @@ test.describe("Phase 7 — SaveIndicator in StatusBar + Search icon + drop snap 
   });
 });
 
-// S17 duplicate block removed here (Plan 07-29 dedup pass).
-// Original S17 is at line 1529. This duplicate was introduced by
-// the merge recovery commit for 07-26 (chore: recover lost worktree merge).
+// ─────────────────────────────────────────────────────────────────────────────
+// S26 — Right-rail polish + alignment (UAT-2 N3, N4, N5)
+// Plan 07-30 gap closure:
+//   S26a: right-rail toggle hidden when active note has no tags + no backlinks
+//   S26b: tags panel header has no chevron (.lucide-chevron-down/right absent)
+//   S26c: sidebar toggle does NOT overlap editor's .cm-content left edge
+//         (concrete Playwright bounding-box assertion: toggleRight <= editorLeft + 4)
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S25 — Folder persistence + invalid drop (UAT-2 N1, N2 / Plan 07-29)
-//
-// S25a: folders default CLOSED; open state persists across reload (C1)
-// S25b: OS file drag over sidebar shows no overlay (C2)
-// ─────────────────────────────────────────────────────────────────────────────
-test.describe("Phase 7 — Folder persistence + invalid drop (S25 / UAT-2 N1, N2)", () => {
+test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -2347,184 +2346,168 @@ test.describe("Phase 7 — Folder persistence + invalid drop (S25 / UAT-2 N1, N2
     if (jasper) await jasper.kill();
   });
 
-  test("S25a — folders default CLOSED; open state persists across reload", async ({ page }) => {
+  test("S26a — right-rail toggle hidden when note has no tags + no backlinks", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Pre-create two folders and their notes so the tree has visible folder rows.
-    // The folders must exist before notes can be created inside them.
-    for (const folder of ["foo", "bar"]) {
-      const r = await page.request.post(`${jasper.baseURL}/api/v1/folders`, {
-        data: { parent_path: "", name: folder },
-      });
-      if (r.status() !== 201 && r.status() !== 409) {
-        const body = await r.text().catch(() => "(no body)");
-        throw new Error(`S25a: POST /folders/${folder} returned ${String(r.status())}: ${body}`);
+    // Create a note with NO tags and NO wiki-links
+    const noteId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "s26a-no-tags.md",
+      "",
+      "# No Tags Note\n\nThis note has no tags and no backlinks.",
+    );
+
+    // Open the note by clicking its tree row
+    await page.reload();
+    await waitForConnected(page);
+    const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /s26a-no-tags|No Tags Note/i });
+    await expect(noteRow).toBeVisible({ timeout: 8_000 });
+    await noteRow.click();
+
+    // Wait for the editor to load the note
+    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
+
+    // Assert: the right-rail toggle (Hide panels / Show panels) is NOT visible.
+    // C3 (UAT-2 N3): when tags.length === 0 AND backlinks === 0, the toggle is hidden.
+    await expect(
+      page.getByRole("button", { name: /hide panels|show panels/i }),
+    ).toHaveCount(0, { timeout: 3_000 });
+
+    // Now add a tag by typing in the editor
+    await page.locator(".cm-content").click();
+    // Move to end of document and add a tag
+    await page.keyboard.press("End");
+    await page.keyboard.type("\n\n#testtag-s26a");
+
+    // Wait for autosave (2s debounce + server round-trip)
+    await page.waitForTimeout(3_500);
+
+    // The right-rail toggle should now appear (there's 1 global tag)
+    // useTagBrowser() fetches all global tags. The save triggers a tag refetch.
+    // Allow extra time for WS event + tag refetch cycle.
+    await expect(
+      page.getByRole("button", { name: /hide panels|show panels/i }),
+    ).toBeVisible({ timeout: 8_000 });
+
+    // Suppress unused variable warning
+    void noteId;
+  });
+
+  test("S26b — tags panel header has no chevron icon", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Create a note with a tag so the right-rail toggle is visible
+    await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "s26b-has-tag.md",
+      "",
+      "# Has Tag Note\n\nThis note has a #sometag-s26b tag.",
+    );
+    await page.reload();
+    await waitForConnected(page);
+
+    // Wait for note to appear in tree and click it
+    const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /s26b-has-tag|Has Tag/i });
+    await expect(noteRow).toBeVisible({ timeout: 8_000 });
+    await noteRow.click();
+    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
+
+    // Wait for right-rail toggle to appear (tags loaded via useTagBrowser)
+    const railToggle = page.getByRole("button", { name: /hide panels|show panels/i });
+    await expect(railToggle).toBeVisible({ timeout: 8_000 });
+
+    // Open the right rail if not already open
+    const toggleLabel = await railToggle.getAttribute("aria-label");
+    if (toggleLabel && /show panels/i.test(toggleLabel)) {
+      await railToggle.click();
+    }
+
+    // Wait for the tags panel to render
+    await page.waitForTimeout(500);
+
+    // S26b assertion: The tags panel's close button (×) is visible, confirming the panel
+    // is open. Then verify NO chevron button exists inside the tags panel header.
+    // C4 (UAT-2 N4): the expand/collapse chevron was removed from RightRailTagsPanel.
+    //
+    // Scope: look inside the tags panel header only — other parts of the UI
+    // (TopBar navigation ">", sidebar folder chevrons) legitimately use ChevronRight.
+    // The tags panel header is the <header> element that contains the close button.
+    const closeBtn = page.getByRole("button", { name: /close tags panel/i });
+    await expect(closeBtn).toBeVisible({ timeout: 3_000 });
+
+    // Scope to the tags panel header: the <header> element enclosing the close button.
+    // RightRailTagsPanel renders: <header style={headerStyle}><span>Tags (N)</span><button>×</button></header>
+    // The close button's parent is the <header>. Check no chevron inside that header.
+    const tagsPanelHeader = page.locator("header").filter({ has: closeBtn });
+    const chevronDownInHeader = tagsPanelHeader.locator(".lucide-chevron-down");
+    const chevronRightInHeader = tagsPanelHeader.locator(".lucide-chevron-right");
+    await expect(chevronDownInHeader).toHaveCount(0, { timeout: 3_000 });
+    await expect(chevronRightInHeader).toHaveCount(0, { timeout: 3_000 });
+  });
+
+  test("S26c — sidebar toggle does NOT overlap editor .cm-content left edge (bounding-box assertion)", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Create and open a note so the editor is visible
+    await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "s26c-alignment.md",
+      "",
+      "# Alignment Test\n\nChecking that the sidebar toggle does not overlap the editor.",
+    );
+    await page.reload();
+    await waitForConnected(page);
+
+    // Open the note
+    const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /s26c-alignment|Alignment Test/i });
+    await expect(noteRow).toBeVisible({ timeout: 8_000 });
+    await noteRow.click();
+
+    // Wait for the editor to fully load
+    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
+
+    // Sidebar toggle in TopBar: aria-label "Hide notes sidebar" (open) or "Show notes sidebar" (closed)
+    const toggleLocator = page.getByRole("button", { name: /hide notes sidebar|show notes sidebar/i });
+    await expect(toggleLocator).toBeVisible({ timeout: 3_000 });
+
+    const toggleBox = await toggleLocator.boundingBox();
+    const editorBox = await page.locator(".cm-content").boundingBox();
+
+    expect(toggleBox).not.toBeNull();
+    expect(editorBox).not.toBeNull();
+
+    // S26c bounding-box assertion (UAT-2 N5 C5 acceptance gate — NO test.skip):
+    // The sidebar toggle's right edge must NOT exceed .cm-content's left edge + 4px.
+    // C5 fix: cm-host-shell paddingLeft: 36px → editorLeft = columnLeft + 36px.
+    // Toggle right = columnLeft + 8px (topbar-pad) + 24px (button) = columnLeft + 32px.
+    // Assertion: 32 <= 36 + 4 = 40 ✓ (passes with 4px to spare before the tolerance boundary).
+    const toggleRight = toggleBox!.x + toggleBox!.width;
+    const editorLeft = editorBox!.x;
+    expect(toggleRight).toBeLessThanOrEqual(editorLeft + 4);
+
+    // Secondary check: sidebar closed state. Column collapses to 0px; both toggle
+    // and editor move to x=0 column. The assertion must still hold.
+    const openToggle = page.getByRole("button", { name: "Hide notes sidebar" });
+    if (await openToggle.isVisible()) {
+      await openToggle.click();
+      await page.waitForTimeout(300);
+
+      const closedToggle = page.getByRole("button", { name: "Show notes sidebar" });
+      const toggleBoxClosed = await closedToggle.boundingBox();
+      const editorBoxClosed = await page.locator(".cm-content").boundingBox();
+
+      if (toggleBoxClosed && editorBoxClosed) {
+        const toggleRightClosed = toggleBoxClosed.x + toggleBoxClosed.width;
+        const editorLeftClosed = editorBoxClosed.x;
+        // Same constraint in closed state: editor's left boundary clears toggle's right edge.
+        expect(toggleRightClosed).toBeLessThanOrEqual(editorLeftClosed + 4);
       }
     }
-    // apiCreateNote(page, baseURL, filename, parentPath, content)
-    await apiCreateNote(page, jasper.baseURL, "alpha.md", "foo", "# Alpha\n");
-    await apiCreateNote(page, jasper.baseURL, "beta.md", "foo", "# Beta\n");
-    await apiCreateNote(page, jasper.baseURL, "gamma.md", "bar", "# Gamma\n");
-
-    // Reload so the tree hydrates with fresh data + empty localStorage (fresh jasper instance).
-    await page.reload();
-    await waitForConnected(page);
-
-    // Wait for both folder rows to appear.
-    await expect(page.getByText("foo").first()).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("bar").first()).toBeVisible({ timeout: 5_000 });
-
-    // Step 1: Assert "foo" folder is CLOSED on cold load (openByDefault=false).
-    const fooRow = page.locator('[data-tree-row-kind="folder"][data-tree-row="foo"]');
-    await expect(fooRow).toBeVisible({ timeout: 3_000 });
-    await expect(fooRow).toHaveAttribute("aria-expanded", "false", { timeout: 3_000 });
-
-    // The child notes should NOT be visible (foo is closed).
-    await expect(page.getByText("Alpha")).not.toBeVisible({ timeout: 2_000 });
-    await expect(page.getByText("Beta")).not.toBeVisible({ timeout: 2_000 });
-
-    // Step 2: Click "foo" to expand it.
-    await fooRow.click();
-    await expect(fooRow).toHaveAttribute("aria-expanded", "true", { timeout: 3_000 });
-    // Child notes should now be visible.
-    await expect(page.getByText("Alpha")).toBeVisible({ timeout: 3_000 });
-
-    // Wait for the 250ms localStorage debounce to flush (useTreeStore persistence).
-    // Without this wait, a fast reload can happen before localStorage is written.
-    await page.waitForTimeout(400);
-
-    // Step 3: Reload the page.
-    await page.reload();
-    await waitForConnected(page);
-    await expect(page.getByText("foo").first()).toBeVisible({ timeout: 5_000 });
-
-    // Step 4: "foo" MUST still be open after reload (localStorage persistence working).
-    const fooRowAfterReload = page.locator('[data-tree-row-kind="folder"][data-tree-row="foo"]');
-    await expect(fooRowAfterReload).toHaveAttribute("aria-expanded", "true", { timeout: 5_000 });
-    await expect(page.getByText("Alpha")).toBeVisible({ timeout: 3_000 });
-
-    // Step 5: "bar" MUST still be closed after reload.
-    const barRow = page.locator('[data-tree-row-kind="folder"][data-tree-row="bar"]');
-    await expect(barRow).toHaveAttribute("aria-expanded", "false", { timeout: 3_000 });
-    await expect(page.getByText("Gamma")).not.toBeVisible({ timeout: 2_000 });
-  });
-
-  test("S25b — OS file drag over sidebar tree does NOT render arborist drop overlay", async ({ page }) => {
-    // Seed at least one note so the tree renders.
-    await apiCreateNote(page, jasper.baseURL, "s25b-test.md", "", "# S25b Test\n");
-
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-    // The tree shows the note's H1 title "S25b Test" (or the filename basename "s25b-test").
-    // Use a broader locator to catch either rendering.
-    await expect(page.getByText(/S25b Test|s25b-test/i).first()).toBeVisible({ timeout: 5_000 });
-
-    // Dispatch a synthetic dragover with "Files" in dataTransfer.types on the tree.
-    // The handleSidebarDragOver capture-phase handler must call stopPropagation,
-    // preventing arborist from rendering the drop cursor/overlay.
-    await page.evaluate(() => {
-      const treeEl = document.querySelector('[role="tree"]');
-      if (!treeEl) throw new Error("S25b: could not find [role=tree]");
-      const dt = new DataTransfer();
-      const file = new File([""], "test.png", { type: "image/png" });
-      dt.items.add(file);
-      const ev = new DragEvent("dragover", {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer: dt,
-      });
-      treeEl.dispatchEvent(ev);
-    });
-
-    // Give the browser a moment to render any drop indicator if one would appear.
-    await page.waitForTimeout(200);
-
-    // react-arborist injects a "cursor line" element as an absolute-positioned div
-    // inside the tree container when it processes a valid dragover.
-    // With our stopPropagation fix, arborist never processes the external dragover event,
-    // so no such cursor div appears.
-    const overlayCount = await page.locator('[role="tree"] > div[style*="position: absolute"]').count();
-    expect(overlayCount).toBe(0);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// S23 — Cmd+F native pass-through + Cmd+U underline (UAT-2 N6, N7 / Plan 07-27)
-// Plan 07-27 gap closure:
-//   S23a: Cmd+F does NOT open CM6 search panel (browser native Cmd+F fires)
-//   S23b: Cmd+U wraps selection with <u>...</u> tags
-// ─────────────────────────────────────────────────────────────────────────────
-
-test.describe("Phase 7 — Cmd+F native + Cmd+U underline (S23 / UAT-2 N6,N7)", () => {
-  let jasper: JasperHandle;
-
-  test.beforeAll(async () => {
-    jasper = await spawnJasper();
-  });
-
-  test.afterAll(async () => {
-    if (jasper) await jasper.kill();
-  });
-
-  test("S23a — Cmd+F does NOT open CM6 search panel after Plan 07-27", async ({ page }) => {
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-
-    // Create and open a note so the editor is active.
-    await apiCreateNote(page, jasper.baseURL, "find-test-s23a.md", "", "# Find Test\n\nhello world\n");
-    await page.reload();
-    await waitForConnected(page);
-
-    // Open the note by clicking it in the tree.
-    const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /Find Test/i });
-    await expect(noteRow).toBeVisible({ timeout: 8_000 });
-    await noteRow.click();
-    await page.waitForSelector(".cm-content", { timeout: 8_000 });
-    await page.waitForTimeout(300);
-
-    // Press Cmd+F.
-    await pressShortcut(page, "CmdF");
-    // Wait ~400ms for any CM6 search panel animation to fire (it would if still bound).
-    await page.waitForTimeout(400);
-
-    // Assert NO CM6 search panel is visible or attached to the DOM.
-    // (Cannot assert browser native find dialog — Playwright cannot inspect browser chrome.)
-    // Absence of .cm-search is the testable signal that searchKeymap was removed.
-    const cmSearchCount = await page.locator(".cm-search").count();
-    expect(cmSearchCount).toBe(0);
-  });
-
-  test("S23b — Cmd+U wraps selected text with <u>...</u> tags", async ({ page }) => {
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-
-    // Create and open a note with known content.
-    await apiCreateNote(page, jasper.baseURL, "underline-test-s23b.md", "", "hello world\n");
-    await page.reload();
-    await waitForConnected(page);
-
-    // Open the note.
-    const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /underline-test/i });
-    await expect(noteRow).toBeVisible({ timeout: 8_000 });
-    await noteRow.click();
-    await page.waitForSelector(".cm-content", { timeout: 8_000 });
-    await page.waitForTimeout(300);
-
-    // Focus the editor and select all (Cmd+A).
-    const cmContent = page.locator(".cm-content");
-    await cmContent.click();
-    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+a`);
-    await page.waitForTimeout(200);
-
-    // Press Cmd+U (Control+u in headless — CM6 Win32 Mod- maps to ctrlKey).
-    await pressShortcut(page, "CmdU");
-    await page.waitForTimeout(300);
-
-    // Assert the editor content now contains <u>hello world</u>.
-    // The first line of the document is "hello world" followed by a newline.
-    const editorText = await cmContent.evaluate((el) => el.textContent ?? "");
-    expect(editorText).toContain("<u>");
-    expect(editorText).toContain("</u>");
   });
 });
