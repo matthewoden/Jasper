@@ -675,8 +675,14 @@ describe("handleMove same-parent no-op (Gap 2)", () => {
       id:
         args.data.kind === "folder"
           ? "folder:" + args.data.path
-          : "note:" + args.data.id,
-      name: args.data.kind === "folder" ? args.data.name : args.data.title,
+          : args.data.kind === "note"
+            ? "note:" + args.data.id
+            : "file:" + args.data.path,
+      name: args.data.kind === "folder"
+        ? args.data.name
+        : args.data.kind === "note"
+          ? args.data.title
+          : args.data.name, // "file" nodes
       data: args.data,
     };
     const stub = {
@@ -1337,7 +1343,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     ): NodeApi<ArboristNode> => {
       const arborist: ArboristNode = {
         id: arboristId,
-        name: data.kind === "folder" ? data.name : data.title,
+        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : data.name,
         data,
       };
       return {
@@ -1410,7 +1416,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     ): NodeApi<ArboristNode> => {
       const arborist: ArboristNode = {
         id: arboristId,
-        name: data.kind === "folder" ? data.name : data.title,
+        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : data.name,
         data,
       };
       return {
@@ -1487,7 +1493,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     ): NodeApi<ArboristNode> => {
       const arborist: ArboristNode = {
         id: arboristId,
-        name: data.kind === "folder" ? data.name : data.title,
+        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : data.name,
         data,
       };
       return {
@@ -1568,7 +1574,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     ): NodeApi<ArboristNode> => {
       const arborist: ArboristNode = {
         id: arboristId,
-        name: data.kind === "folder" ? data.name : data.title,
+        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : data.name,
         data,
       };
       return {
@@ -1616,7 +1622,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     ): NodeApi<ArboristNode> => {
       const arborist: ArboristNode = {
         id: arboristId,
-        name: data.kind === "folder" ? data.name : data.title,
+        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : data.name,
         data,
       };
       return {

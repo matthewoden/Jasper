@@ -47,8 +47,11 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronRight,
+  File as FileIcon,
+  FileText,
   Folder,
   FolderOpen,
+  Image,
   MoreHorizontal,
   Paperclip,
 } from "lucide-react";
@@ -74,7 +77,17 @@ export type NoteNodeData = {
   title: string;
 };
 
-export type TreeRowData = FolderNodeData | NoteNodeData;
+// Plan 07-26 (UAT-2 R1-7): non-markdown files surfaced in the sidebar tree.
+// parentNoteId is set for files inside an attachments/ folder so the click
+// handler can route to /api/v1/attachments/{noteId}/{filename}.
+export type FileNodeData = {
+  kind: "file";
+  path: string;
+  name: string;
+  parentNoteId?: string;
+};
+
+export type TreeRowData = FolderNodeData | NoteNodeData | FileNodeData;
 
 export interface TreeRowProps {
   node: NodeApi<TreeRowData>;
@@ -109,6 +122,32 @@ function noop() {
   /* placeholder when callback not wired */
 }
 
+// Plan 07-26 (UAT-2 R1-7): pick a lucide icon component based on file extension.
+// Returns a React component (not an element) so the caller renders it with size/style.
+type IconComponent = React.FC<{ size?: number; style?: CSSProperties; "aria-hidden"?: boolean | "true" }>;
+function getFileIconComponent(filename: string): IconComponent {
+  const ext = filename.lastIndexOf(".") >= 0
+    ? filename.slice(filename.lastIndexOf(".") + 1).toLowerCase()
+    : "";
+  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "avif", "ico"].includes(ext)) return Image;
+  if (["pdf", "doc", "docx", "txt", "csv", "tsv"].includes(ext)) return FileText;
+  return FileIcon;
+}
+
+// Plan 07-26 (UAT-2 R1-7): click routing for non-markdown files.
+// Files inside attachments/ open in a new tab via the attachments REST endpoint.
+// Files outside attachments/ are deferred — console.warn, no navigation.
+function handleFileClick(filePath: string, parentNoteId?: string): void {
+  const idx = filePath.indexOf("/attachments/");
+  if (idx >= 0 && parentNoteId) {
+    const filename = filePath.substring(idx + "/attachments/".length);
+    const url = `/api/v1/attachments/${parentNoteId}/${encodeURIComponent(filename)}`;
+    window.open(url, "_blank");
+    return;
+  }
+  console.warn(`[TreeRow] file click deferred (not in attachments/ or no parentNoteId): ${filePath}`);
+}
+
 export function TreeRow({
   node,
   style,
@@ -134,7 +173,9 @@ export function TreeRow({
   const muts = useTreeMutations();
   const data = node.data;
   const isFolder = data.kind === "folder";
-  const isActive = !isFolder && activeNoteId === data.id;
+  const isFile = data.kind === "file";
+  // Plan 07-26: file nodes are never "active" (no note loading path).
+  const isActive = !isFolder && !isFile && data.kind === "note" && activeNoteId === data.id;
   // UX-13 (gap-closure 2026-05-09) — render multi-select state.
   // node.isSelected reads from react-arborist's Redux selection store.
   // Without this surface, Cmd+click and Shift+click set aria-selected on
@@ -164,10 +205,12 @@ export function TreeRow({
 
   const [kebabOpen, setKebabOpen] = useState(false);
 
+  // Plan 07-26: file nodes are never renamed (no rename flow for non-markdown files).
   const isRenamingThis =
+    !isFile &&
     pendingRename != null &&
     pendingRename.kind === data.kind &&
-    pendingRename.target === (data.kind === "folder" ? data.path : data.id);
+    pendingRename.target === (data.kind === "folder" ? data.path : data.kind === "note" ? data.id : "");
 
   // Bug D fix — handleCancelRename: when pendingRename.isNew is true the
   // node was just created (never confirmed) and the user pressed Escape or
@@ -236,6 +279,12 @@ export function TreeRow({
       return;
     }
 
+    // Plan 07-26: file nodes use a dedicated click handler (attachment open or deferred).
+    if (isFile) {
+      handleFileClick(data.path, (data as FileNodeData).parentNoteId);
+      return;
+    }
+
     // No modifier — existing single-click semantics (Plan 03-20 selectedRow + activate).
     // Gap R2-4 (Plan 03-20): track this row as the F2 routing target.
     // App.tsx's document-level keydown listener reads
@@ -247,18 +296,20 @@ export function TreeRow({
     useTreeStore.getState().setSelectedRow(
       data.kind === "folder"
         ? { kind: "folder", target: data.path }
-        : { kind: "note", target: data.id },
+        : { kind: "note", target: (data as NoteNodeData).id },
     );
     if (isFolder) {
       node.toggle();
     } else {
-      onSelectNote(data.id);
-      useTreeStore.getState().setActiveNote(data.id);
+      onSelectNote((data as NoteNodeData).id);
+      useTreeStore.getState().setActiveNote((data as NoteNodeData).id);
     }
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    // Plan 07-26: file nodes are read-only in the sidebar — no rename flow.
+    if (isFile) return;
     if (onRequestRename) onRequestRename(data);
   };
 
@@ -271,14 +322,16 @@ export function TreeRow({
       // the bubble and may swallow / re-route the key before our
       // onRequestRename callback fires.
       e.stopPropagation();
-      if (onRequestRename) onRequestRename(data);
+      // Plan 07-26: file nodes are read-only — skip rename trigger.
+      if (!isFile && onRequestRename) onRequestRename(data);
       return;
     }
     if (e.key === "Backspace" || e.key === "Delete") {
       e.preventDefault();
       // Gap 3 — same reason as F2 above.
       e.stopPropagation();
-      if (onRequestDelete) onRequestDelete(data);
+      // Plan 07-26: file nodes are read-only — skip delete trigger.
+      if (!isFile && onRequestDelete) onRequestDelete(data);
       return;
     }
   };
@@ -295,17 +348,25 @@ export function TreeRow({
       : undefined;
   const rowBackground = activeBackground ?? selectedBackground;
 
-  const dataTreeRowValue = isFolder ? data.path : data.id;
+  // Plan 07-26: file nodes use path as the row identifier (no note id).
+  const dataTreeRowValue = isFolder
+    ? data.path
+    : isFile
+      ? data.path
+      : (data as NoteNodeData).id;
 
   // UAT follow-up 2026-05-12 — does the pulse target match this row?
+  // Plan 07-26: file nodes never pulse (no pulse-target tracking for files).
   const isPulseTarget =
+    !isFile &&
     pulseTarget !== null &&
     pulseTarget.kind === data.kind &&
-    pulseTarget.target === (data.kind === "folder" ? data.path : data.id);
+    pulseTarget.target === (data.kind === "folder" ? data.path : (data as NoteNodeData).id);
 
   // Compute the parent path used for "New note" / "New folder" from this row's
   // context menu or kebab. Folder rows create children inside themselves;
   // note rows create siblings (same parent folder).
+  // Plan 07-26: file nodes use the file's parent directory.
   const parentPathForCreate = isFolder
     ? data.path
     : parentDirOf(data.path);
@@ -313,16 +374,25 @@ export function TreeRow({
   // For the rename input we strip ".md" from notes; folders keep the
   // full name. The caller (FileTree) reattaches ".md" before calling
   // moveNote.
+  // Plan 07-26: file nodes are never renamed, so renameInitial is unused.
   const renameInitial =
     data.kind === "folder"
       ? data.name
-      : data.title.endsWith(".md")
-        ? data.title.slice(0, -3)
-        : data.title;
+      : data.kind === "note"
+        ? data.title.endsWith(".md")
+          ? data.title.slice(0, -3)
+          : data.title
+        : data.name; // file — unreachable in practice (isFile guard in handleDoubleClick)
 
   // Plan 04 (UX-08): note rows prefer the live H1 label (from useTreeStore.liveLabels)
   // over the canonical wire-tree title; folders always render their name.
-  const displayLabel = isFolder ? data.name : (liveLabel ?? data.title);
+  // Plan 07-26: file rows render their filename (data.name).
+  const displayLabel =
+    isFolder
+      ? data.name
+      : isFile
+        ? data.name
+        : (liveLabel ?? (data as NoteNodeData).title);
 
   const labelOrInput = isRenamingThis ? (
     <RenameInput
@@ -442,6 +512,18 @@ export function TreeRow({
           <span aria-hidden="true" style={{ width: 4, flexShrink: 0 }} />
         </>
       )}
+      {/* Plan 07-26 (UAT-2 R1-7): file nodes render a type-based icon.
+          Image for images (.png/.jpg/etc), FileText for documents (.pdf/.doc/etc),
+          generic File for everything else. */}
+      {isFile && (() => {
+        const FileIco = getFileIconComponent(data.name);
+        return (
+          <>
+            <FileIco size={16} style={muted} aria-hidden={true} />
+            <span aria-hidden="true" style={{ width: 4, flexShrink: 0 }} />
+          </>
+        );
+      })()}
       {/* Label OR inline-rename input. React text-content escape is
           the XSS gate; no inner-HTML escape hatch anywhere. */}
       {labelOrInput}
@@ -451,10 +533,10 @@ export function TreeRow({
           behavior verbatim). */}
       <TreeRowDropdownMenu
         rowKind={isFolder ? "folder" : "note"}
-        noteId={!isFolder ? (data as NoteNodeData).id : undefined}
+        noteId={data.kind === "note" ? data.id : undefined}
         parentPath={parentPathForCreate}
         onOpen={
-          !isFolder
+          data.kind === "note"
             ? () => onSelectNote((data as NoteNodeData).id)
             : undefined
         }
@@ -470,10 +552,12 @@ export function TreeRow({
             : undefined
         }
         onRename={() =>
-          onRequestRename ? onRequestRename(data) : noop()
+          // Plan 07-26: file nodes are read-only — no rename.
+          !isFile && onRequestRename ? onRequestRename(data) : noop()
         }
         onDelete={() =>
-          onRequestDelete ? onRequestDelete(data) : noop()
+          // Plan 07-26: file nodes are read-only — no delete via tree.
+          !isFile && onRequestDelete ? onRequestDelete(data) : noop()
         }
         open={kebabOpen}
         onOpenChange={setKebabOpen}
@@ -513,10 +597,10 @@ export function TreeRow({
   return (
     <TreeRowContextMenu
       rowKind={isFolder ? "folder" : "note"}
-      noteId={!isFolder ? (data as NoteNodeData).id : undefined}
+      noteId={data.kind === "note" ? data.id : undefined}
       parentPath={parentPathForCreate}
       onOpen={
-        !isFolder
+        data.kind === "note"
           ? () => onSelectNote((data as NoteNodeData).id)
           : undefined
       }
@@ -531,8 +615,14 @@ export function TreeRow({
                 : noop()
           : undefined
       }
-      onRename={() => (onRequestRename ? onRequestRename(data) : noop())}
-      onDelete={() => (onRequestDelete ? onRequestDelete(data) : noop())}
+      onRename={() =>
+        // Plan 07-26: file nodes are read-only — no rename.
+        !isFile && onRequestRename ? onRequestRename(data) : noop()
+      }
+      onDelete={() =>
+        // Plan 07-26: file nodes are read-only — no delete via tree.
+        !isFile && onRequestDelete ? onRequestDelete(data) : noop()
+      }
     >
       {rowContent}
     </TreeRowContextMenu>

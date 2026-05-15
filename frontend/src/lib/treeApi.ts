@@ -23,6 +23,8 @@ export type Tree = components["schemas"]["Tree"];
 export type TreeNode = components["schemas"]["TreeNode"];
 export type FolderNode = components["schemas"]["FolderNode"];
 export type NoteNode = components["schemas"]["NoteNode"];
+// Plan 07-26 (UAT-2 R1-7): FileNode is a non-markdown file in the tree.
+export type FileNode = components["schemas"]["FileNode"];
 export type NoteSummary = components["schemas"]["NoteSummary"];
 
 export type ApiError = { code: string; message: string; status: number };

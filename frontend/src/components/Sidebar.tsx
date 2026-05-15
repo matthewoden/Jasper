@@ -84,6 +84,8 @@ function findNotePathById(tree: Tree | null, id: string): string | null {
     if (node.kind === "note") {
       return node.id === id ? node.path : null;
     }
+    // Plan 07-26: "file" kind has no id and no children; skip.
+    if (node.kind !== "folder") return null;
     if (node.children) {
       for (const child of node.children) {
         const hit = visit(child);

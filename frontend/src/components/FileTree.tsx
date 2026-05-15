@@ -90,13 +90,75 @@ export interface ArboristNode {
  * preserving the original wire shape under `.data` so TreeRow can read
  * `node.data.data` to branch on kind. Exported for direct unit-testing.
  */
-export function adaptToArborist(node: WireTreeNode): ArboristNode {
+/**
+ * Build a path → noteId lookup map by walking the wire tree.
+ * Used by adaptToArborist to resolve parentNoteId for attachment files.
+ * Only note nodes are indexed — folder and file nodes are skipped.
+ */
+function buildNotePathMap(nodes: readonly WireTreeNode[]): Map<string, string> {
+  const map = new Map<string, string>();
+  const visit = (n: WireTreeNode) => {
+    if (n.kind === "note") {
+      map.set(n.path, n.id);
+    } else if (n.kind === "folder" && n.children) {
+      for (const child of n.children) visit(child);
+    }
+  };
+  for (const n of nodes) visit(n);
+  return map;
+}
+
+/**
+ * Derive the parentNoteId for a file node at `filePath`.
+ *
+ * Plan 07-26 (UAT-2 R1-7) narrowed scope: only files inside an
+ * `attachments/` subfolder are click-routable in v1. The parent note is
+ * the .md file whose path, with the `.md` extension removed, equals the
+ * directory containing the `attachments/` folder.
+ *
+ * Example: "parent/attachments/photo.png"
+ *   → attachments parent dir: "parent"
+ *   → owner note path: "parent.md" → look up its UUID.
+ *
+ * Returns undefined if the file is not inside an attachments/ folder or
+ * if no matching note is found in the path map.
+ */
+function deriveParentNoteId(
+  filePath: string,
+  notePathMap: Map<string, string>,
+): string | undefined {
+  const idx = filePath.indexOf("/attachments/");
+  if (idx < 0) return undefined; // not inside attachments/
+  // Everything before "/attachments/" is the owner note's dir-without-extension.
+  const ownerDir = filePath.slice(0, idx); // e.g. "parent"
+  const ownerNotePath = ownerDir + ".md"; // e.g. "parent.md"
+  return notePathMap.get(ownerNotePath);
+}
+
+export function adaptToArborist(
+  node: WireTreeNode,
+  notePathMap?: Map<string, string>,
+): ArboristNode {
   if (node.kind === "folder") {
     return {
       id: "folder:" + node.path,
       name: node.name,
       data: { kind: "folder", path: node.path, name: node.name },
-      children: (node.children ?? []).map(adaptToArborist),
+      children: (node.children ?? []).map((c) => adaptToArborist(c, notePathMap)),
+    };
+  }
+  // Plan 07-26 (UAT-2 R1-7): render file nodes as interactive leaves.
+  // parentNoteId is resolved from the notePathMap (built from the wire tree)
+  // so that the attachment-file click handler can route to the correct
+  // /api/v1/attachments/{noteId}/{filename} endpoint.
+  if (node.kind === "file") {
+    const parentNoteId = notePathMap
+      ? deriveParentNoteId(node.path, notePathMap)
+      : undefined;
+    return {
+      id: "file:" + node.path,
+      name: node.name,
+      data: { kind: "file", path: node.path, name: node.name, parentNoteId },
     };
   }
   return {
@@ -112,7 +174,9 @@ export function adaptToArborist(node: WireTreeNode): ArboristNode {
 }
 
 function adaptTree(wireTree: WireTree): ArboristNode[] {
-  return wireTree.root.map(adaptToArborist);
+  // Build note path map once for parentNoteId resolution.
+  const notePathMap = buildNotePathMap(wireTree.root);
+  return wireTree.root.map((n) => adaptToArborist(n, notePathMap));
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -679,6 +743,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   );
 
   const handleRequestRename = useCallback((d: TreeRowData) => {
+    if (d.kind === "file") return; // Plan 07-26: file nodes are not renameable in v1
     useTreeStore
       .getState()
       .startRename(d.kind, d.kind === "folder" ? d.path : d.id);
@@ -1285,6 +1350,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       .map((s: NodeApi<ArboristNode>) => {
         const sd = s.data.data;
         if (sd.kind === "folder") return sd.name;
+        if (sd.kind === "file") return sd.name; // Plan 07-26: file nodes use name
         // For notes, compare against the basename WITHOUT .md so it
         // matches what the user is typing in the rename input.
         return sd.title.endsWith(".md")
@@ -1440,6 +1506,9 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         // See 05.5-17c-INVESTIGATION.md.
         onDelete={handleArboristDelete}
         disableDrop={handleDisableDrop}
+        // Plan 07-26 (UAT-2 R1-7): file nodes are read-only — prevent drag initiation.
+        // BoolFunc<ArboristNode> receives the plain data object (not NodeApi); data.data is TreeRowData.
+        disableDrag={(d: ArboristNode) => d.data.kind === "file"}
         rowHeight={32}
         width="100%"
         // Tree fills the entire treeAreaRef height. Root-drop is now

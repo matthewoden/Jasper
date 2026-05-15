@@ -167,6 +167,9 @@ function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
           }
         }
         return null;
+      case "file":
+        // Plan 07-26: non-markdown files have no noteId; skip path lookup.
+        return null;
       default: {
         // WR-04 (Phase 5.5 gap-closure Plan 12) — exhaustiveness guard.
         // A future TreeNode discriminant addition will fail this assignment
