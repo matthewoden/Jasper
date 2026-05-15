@@ -228,37 +228,55 @@ export function handleAppCmdSlash(e: KeyboardEvent): void {
 }
 
 /**
- * Cmd+B — bold (CM6 owns this in its editor-level keymap).
+ * Cmd+B — bold (CM6 owns this in its editor-level keymap via jasperKeymap.ts).
  *
  * UAT #8 fix: Brave (and other Chromium browsers with extensions like
- * Leo AI) intercept Cmd+B before CM6's editor-level capture-phase
- * listener fires. We register a WINDOW-level capture-phase handler that
- * preventDefault()s the browser/extension default. We do NOT call
- * stopPropagation — capture-phase propagation continues from window
- * down to cm-content, where CM6's bold keymap fires normally.
+ * Leo AI) intercept Cmd+B before it reaches CM6. We register a
+ * WINDOW-level capture-phase handler that blocks the browser/OS default
+ * for the font panel / Leo sidebar.
  *
- * Contract: the window handler ONLY blocks browser defaults. CM6 owns
- * the actual bold-toggle behavior. Test pinned in App.test.tsx (KC-B-*).
+ * Plan 07-24 bug fix (Rule 1): the original handler called e.preventDefault()
+ * unconditionally, which set event.defaultPrevented=true. CM6's internal
+ * eventBelongsToEditor() returns false when defaultPrevented is set — so
+ * CM6 was skipping the event entirely, preventing toggleBold from running.
+ *
+ * Fix: only call preventDefault when the event does NOT originate from
+ * inside the CM6 editor. When focus is in the editor, CM6's keymap handles
+ * Cmd+B via toggleBold (jasperKeymap.ts) — no preventDefault needed at
+ * the window level. When focus is outside the editor (sidebar, dialog, etc.),
+ * block the OS/browser default to prevent Brave Leo / font panel.
+ *
+ * Test pinned in App.test.tsx (KC-B-*).
  */
 export function handleAppCmdB(e: KeyboardEvent): void {
   if (!(e.metaKey || e.ctrlKey)) return;
   if (e.key !== "b" && e.key !== "B") return;
-  e.preventDefault();
-  // No stopPropagation — CM6's cm-content listener must still fire.
+  // Only block the browser default when outside the CM6 editor.
+  // Inside the editor, CM6's jasperKeymap handles Cmd+B via toggleBold.
+  // Unconditional preventDefault breaks CM6's eventBelongsToEditor check.
+  const isInsideEditor =
+    (e.target as HTMLElement | null)?.closest?.(".cm-editor") != null;
+  if (!isInsideEditor) {
+    e.preventDefault();
+  }
+  // No stopPropagation — CM6's event handlers must still fire.
 }
 
 /**
- * Cmd+I — italic (CM6 owns). UAT #9 fix mirrors UAT #8.
+ * Cmd+I — italic (CM6 owns via jasperKeymap.ts toggleItalic).
  *
- * macOS's "Show font panel" gesture (or line-select in some browser
- * builds) intercepts Cmd+I. Window-level capture preventDefault blocks
- * it without stopping capture-phase propagation to cm-content.
+ * Plan 07-24 bug fix: same fix as handleAppCmdB — only preventDefault
+ * when outside the CM6 editor to avoid breaking CM6's eventBelongsToEditor.
  */
 export function handleAppCmdI(e: KeyboardEvent): void {
   if (!(e.metaKey || e.ctrlKey)) return;
   if (e.key !== "i" && e.key !== "I") return;
-  e.preventDefault();
-  // No stopPropagation — CM6's cm-content listener must still fire.
+  const isInsideEditor =
+    (e.target as HTMLElement | null)?.closest?.(".cm-editor") != null;
+  if (!isInsideEditor) {
+    e.preventDefault();
+  }
+  // No stopPropagation — CM6's event handlers must still fire.
 }
 
 export default function App() {
