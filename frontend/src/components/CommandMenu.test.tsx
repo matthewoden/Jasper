@@ -360,6 +360,37 @@ describe("CommandMenu — activate closeOnExecute behavior (UAT #5)", () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
+// CMM-mode-reset — query clears on mode change while open (UAT-2 R1-3)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("CMM-mode-reset — query clears on mode change while open (UAT-2 R1-3)", () => {
+  it("resets local query to empty string when paletteMode flips while open", async () => {
+    // Arrange: render in commands mode with empty results
+    const mockFiltered = vi.fn().mockReturnValue([]);
+    mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: vi.fn() });
+
+    const { rerender } = render(
+      <CommandMenu open={true} onOpenChange={vi.fn()} mode="commands" actions={{}} />
+    );
+
+    // Type "fi" into the input — palette filters to commands matching "fi"
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "fi" } });
+    expect((input as HTMLInputElement).value).toBe("fi");
+
+    // Act: flip mode to "notes" while keeping open=true (switch-note command behavior
+    // from Plan 07-17 where closeOnExecute=false keeps the palette open).
+    rerender(
+      <CommandMenu open={true} onOpenChange={vi.fn()} mode="notes" actions={{}} />
+    );
+
+    // Assert: query should now be empty string — the mode change triggered the reset
+    const updatedInput = screen.getByRole("textbox");
+    expect((updatedInput as HTMLInputElement).value).toBe("");
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Bucket B1 (Plan 07-18) — FTS5 backend search at query.length >= 2
 // ──────────────────────────────────────────────────────────────────────────────
 
