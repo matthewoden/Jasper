@@ -300,10 +300,14 @@ func TestBuildTree_SkipsDotDirs(t *testing.T) {
 	}
 }
 
-// TestBuildTree_SkipsAttachments — mkdir
+// TestBuildTree_AttachmentsFolderVisible — mkdir
 // notes/projects/jasper/attachments/, add a non-.md file inside; tree
-// shows projects/jasper as a folder but NO attachments node.
-func TestBuildTree_SkipsAttachments(t *testing.T) {
+// shows projects/jasper as a folder AND includes the attachments folder node.
+//
+// Updated per Plan 07-20 (UAT #13): attachments folders are now VISIBLE
+// in the tree as browsable folder nodes. The indexer's note-walk (walk.go)
+// is UNCHANGED — attachments/ contents are NOT indexed as notes.
+func TestBuildTree_AttachmentsFolderVisible(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newTreeFixture(t)
 	writeFileForTree(t, notesDir, "projects/jasper/note.md", "")
@@ -317,7 +321,7 @@ func TestBuildTree_SkipsAttachments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTree: %v", err)
 	}
-	// Walk to projects/jasper and verify children: only note.md, not attachments.
+	// Walk to projects/jasper and verify children: note.md AND attachments folder.
 	if len(tree.Root) != 1 || tree.Root[0].Folder == nil {
 		t.Fatalf("expected projects folder at root")
 	}
@@ -326,10 +330,44 @@ func TestBuildTree_SkipsAttachments(t *testing.T) {
 		t.Fatalf("expected jasper folder under projects")
 	}
 	jasper := projects.Children[0].Folder
+	var foundAttachments bool
 	for _, c := range jasper.Children {
 		if c.Folder != nil && c.Folder.Name == "attachments" {
-			t.Errorf("attachments folder leaked into tree")
+			foundAttachments = true
 		}
+	}
+	if !foundAttachments {
+		t.Errorf("attachments folder NOT in tree (Plan 07-20 UAT #13: should be visible)")
+	}
+}
+
+// TestBuildTree_AttachmentsFolderVisibleAtRoot — mkdir notes/attachments/,
+// add a non-.md file inside; tree root includes the attachments folder node.
+//
+// This covers the root-level case (no parent folder nesting).
+func TestBuildTree_AttachmentsFolderVisibleAtRoot(t *testing.T) {
+	t.Parallel()
+	idx, notesDir := newTreeFixture(t)
+	writeFileForTree(t, notesDir, "attachments/photo.png", "binary")
+	writeFileForTree(t, notesDir, "regular.md", "# Regular Note\n")
+
+	if _, err := idx.Reconcile(context.Background(), ModeFull); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	tree, err := idx.BuildTree(context.Background())
+	if err != nil {
+		t.Fatalf("BuildTree: %v", err)
+	}
+	// Root should contain: attachments/ folder + regular.md note.
+	var foundAttachments bool
+	for _, n := range tree.Root {
+		if n.Folder != nil && n.Folder.Name == "attachments" {
+			foundAttachments = true
+		}
+	}
+	if !foundAttachments {
+		t.Errorf("root-level attachments folder NOT in tree (Plan 07-20 UAT #13: should be visible)")
 	}
 }
 

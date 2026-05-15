@@ -216,10 +216,16 @@ func childKey(n TreeNode) string {
 
 // listFolders walks notesDir collecting every directory path under it
 // (relative to notesDir, NFC + lowercased via Canonicalize), applying
-// the same skip rules as walk.go: dotdirs (`.git`, `.obsidian`, etc.),
-// the reserved `attachments/` subtree. Non-md files are not relevant
-// to folder discovery and skipped implicitly. Returns a slice of
-// canonical relative folder paths (NOT including notesDir itself).
+// the same skip rules as walk.go: dotdirs (`.git`, `.obsidian`, etc.).
+// Non-md files are not relevant to folder discovery and skipped implicitly.
+// Returns a slice of canonical relative folder paths (NOT including notesDir
+// itself).
+//
+// NOTE (Plan 07-20 / UAT #13 fix): attachments/ subfolders WERE skipped
+// here pre-Plan-07-20; they now appear in the tree as browsable folder nodes.
+// The indexer's note-walk (walk.go) still skips attachments/ contents —
+// files inside attachments/ are not indexed as notes; only the folder itself
+// appears as a TreeNode in the response.
 //
 // Errors during the walk are best-effort: a single bad path is skipped
 // rather than aborting the walk, mirroring WalkVault's posture.
@@ -246,9 +252,11 @@ func listFolders(ctx context.Context, notesDir string) ([]string, error) {
 		if strings.HasPrefix(name, ".") {
 			return filepath.SkipDir
 		}
-		if name == "attachments" {
-			return filepath.SkipDir
-		}
+		// NOTE: "attachments" folders are intentionally NOT skipped here
+		// (Plan 07-20 / UAT #13 fix). They appear as folder nodes in the
+		// tree so the user can browse them. The indexer's walk.go still
+		// skips their CONTENTS for note discovery — only the folder itself
+		// is surfaced.
 		rel, err := filepath.Rel(notesDir, path)
 		if err != nil {
 			return nil
