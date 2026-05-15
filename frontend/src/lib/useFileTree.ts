@@ -129,6 +129,41 @@ function flushTrailing(): void {
 // the same.
 const treeFetchSubscribers = new Set<() => Promise<void>>();
 
+// UAT-2 R1-2/R1-3 (Plan 07-23 Fix A): eager boot fetch.
+//
+// Rationale: `useFileTree` previously started its first GET /tree fetch only
+// when a consumer hook mounted inside the React tree. On a fresh page load,
+// the user can press Cmd+O (quick-switcher) or Cmd+P (command palette) before
+// any consuming component has mounted — or the first mount's fetch is still
+// in-flight — so `useQuickSwitcher` receives `tree === null` and renders an
+// empty list. This is the root cause of UAT-2 R1-2/R1-3.
+//
+// Fix: fire coalescedGetTree() at module-import time so the server response
+// is already in-flight (or cached) by the time the first consumer hook mounts.
+// coalescedGetTree single-flights concurrent calls, so this adds exactly one
+// extra GET /tree request at startup; subsequent hook mounts share the same
+// in-flight promise (or find lastResolvedAt > 0 and fold into the trailing
+// window). No double-fetch regression.
+//
+// SSR guard: if `window` is undefined (e.g., test environments that run in
+// Node without a DOM), skip the boot fetch so server-side code is unaffected.
+// In vitest (jsdom), `window` is defined but tests that re-import the module
+// via vi.resetModules() will see a fresh bootFetchStarted = false, which is
+// exactly what the UFT-eager-boot test exercises.
+let bootFetchStarted = false;
+function startBootFetch(): void {
+  if (bootFetchStarted) return;
+  if (typeof window === "undefined") return; // SSR / non-browser safety
+  bootFetchStarted = true;
+  // fire-and-forget; the promise result lands in the module-level coalescer
+  // cache and the first subscribing useFileTree instance will pick it up.
+  // Silently swallow any rejection — the hook's own useEffect will surface
+  // errors through the normal error state on its first render cycle.
+  coalescedGetTree().catch(() => undefined);
+}
+// Kick off the boot fetch immediately at module import.
+startBootFetch();
+
 /**
  * Trigger every mounted useFileTree instance to re-fetch. Exported so
  * non-display callers (mutations, WS event handlers) can refresh the
