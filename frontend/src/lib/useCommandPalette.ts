@@ -15,7 +15,6 @@ import { COMMAND_PALETTE_ENTRIES, type Shortcut } from "./shortcutsRegistry";
 export interface CommandActions {
   onNewNote?: () => void;
   onSave?: () => void;
-  onFind?: () => void;
   onToday?: () => void;
   onSwitchNote?: () => void;
   onToggleTheme?: () => void;
@@ -49,7 +48,6 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
     () => ({
       "new-note": actions.onNewNote,
       "save": actions.onSave,
-      "find": actions.onFind,
       "today": actions.onToday,
       "switch-note": actions.onSwitchNote,
       "toggle-theme": actions.onToggleTheme,
@@ -60,7 +58,6 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
     [
       actions.onNewNote,
       actions.onSave,
-      actions.onFind,
       actions.onToday,
       actions.onSwitchNote,
       actions.onToggleTheme,

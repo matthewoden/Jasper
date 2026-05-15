@@ -32,9 +32,10 @@ type Shortcut =
   | "CmdSlash"    // Cmd+/ — keyboard shortcuts cheat-sheet
   | "CmdN"        // Cmd+N — new note
   | "CmdS"        // Cmd+S — save
-  | "CmdF"        // Cmd+F — find in note
+  | "CmdF"        // Cmd+F — native browser find (NOT CM6 panel after Plan 07-27)
   | "CmdB"        // Cmd+B — bold
   | "CmdI"        // Cmd+I — italic
+  | "CmdU"        // Cmd+U — underline (Plan 07-27 / UAT-2 N7)
   | "EscKey";     // Escape
 
 const MOD = process.platform === "darwin" ? "Meta" : "Control";
@@ -49,6 +50,7 @@ const SHORTCUT_MAP: Record<Shortcut, string> = {
   CmdF: `${MOD}+f`,
   CmdB: `${MOD}+b`,
   CmdI: `${MOD}+i`,
+  CmdU: `Control+u`,  // Plan 07-27: CM6 maps Mod-u → ctrlKey in headless Win32
   EscKey: "Escape",
 };
 
@@ -184,12 +186,14 @@ export async function openCommandMenuAndType(
 }
 
 /**
- * expectPaletteVisibleWithNCommands — asserts all 9 expected commands are
+ * expectPaletteVisibleWithNCommands — asserts all 8 expected commands are
  * visible in the Command palette dialog (S13a / UAT #2).
  *
- * The 9 palette-visible commands (inPalette: true in shortcutsRegistry.ts):
- *   New note, Save, Find in note, Today, Switch / search notes,
+ * The 8 palette-visible commands (inPalette: true in shortcutsRegistry.ts):
+ *   New note, Save, Today, Switch / search notes,
  *   Toggle theme, Refresh index, Reset and rebuild…, Show keyboard shortcuts.
+ *
+ * Note: "Find in note" was removed in Plan 07-27 — browser native Cmd+F fires.
  *
  * @param page - Playwright Page
  * @param n    - Expected command count (used for diagnostic reporting)
@@ -202,12 +206,12 @@ export async function expectPaletteVisibleWithNCommands(
   const dialog = page.getByRole("dialog", { name: "Command palette" });
   await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-  // Assert the 9 palette-visible commands by their label text.
+  // Assert the 8 palette-visible commands by their label text (Plan 07-27: Find removed).
   // This locks the UI-SPEC §Command Registry table strings.
   const expectedLabels = [
     "New note",
     "Save",
-    "Find in note",
+    // "Find in note" removed in Plan 07-27
     "Today",
     "Switch / search notes",
     "Toggle theme",
@@ -222,7 +226,7 @@ export async function expectPaletteVisibleWithNCommands(
     );
   }
   for (const label of expectedLabels) {
-    // The virtualized list renders all items for 9 commands at 36px each (324px)
+    // The virtualized list renders all items for 8 commands at 36px each (288px)
     // which fits in the 50vh max-height. Using page-level getByText to avoid
     // stale scoping on the dialog locator while virtualizer renders.
     await expect(page.getByText(label, { exact: false }).first()).toBeVisible({

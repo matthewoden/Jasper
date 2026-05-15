@@ -980,12 +980,13 @@ test.describe("Phase 7 — Daily note registry hydration (S12 / UAT #1, #6)", ()
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S13 — Command palette commands (UAT #2, #3, #4, #5 / Plans 07-16, 07-17)
-// Fix: CommandMenu's mode prop and command action wiring corrected so all 9
+// S13 — Command palette commands (UAT #2, #3, #5 / Plans 07-16, 07-17, 07-27)
+// Fix: CommandMenu's mode prop and command action wiring corrected so all 8
 // palette commands render and execute correctly.
+// Note: S13c (Find in note) removed in Plan 07-27 — browser native Cmd+F fires.
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#5)", () => {
+test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#3,#5)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -996,20 +997,18 @@ test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#5)", () => 
     if (jasper) await jasper.kill();
   });
 
-  test("S13a — Cmd+P opens palette with all 9 commands visible (UAT #2)", async ({ page }) => {
+  test("S13a — Cmd+P opens palette with all 8 commands visible (UAT #2 / Plan 07-27: Find removed)", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
     // Strategy: type short filters to verify multiple commands are present.
-    // The virtualizer renders only visible items — we avoid asserting all 9
-    // simultaneously and instead filter to a subset to confirm wiring is correct.
+    // The virtualizer renders only visible items — we filter to subsets to confirm wiring.
     // Plan 07-17 fix: paletteMode="commands" propagates to CommandMenu.mode,
-    // cmd.filtered("") returns COMMAND_PALETTE_ENTRIES (9 items).
+    // cmd.filtered("") returns COMMAND_PALETTE_ENTRIES (8 items after Plan 07-27).
 
-    // Verify "note" filter produces at least 2 matches.
+    // Verify "note" filter produces "New note" (Find in note removed in Plan 07-27).
     await openCommandMenuAndType(page, "command", "note");
     await expect(page.getByText("New note", { exact: false }).first()).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("Find in note", { exact: false }).first()).toBeVisible({ timeout: 3_000 });
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
 
@@ -1065,36 +1064,9 @@ test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#5)", () => 
     await expect(page.locator('[data-tree-row-kind="note"]').first()).toBeVisible({ timeout: 5_000 });
   });
 
-  test("S13c — Cmd+P → Find in note → CM6 search panel visible (UAT #4)", async ({ page }) => {
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-
-    // Open a note first (search panel requires an active note)
-    await apiCreateNote(page, jasper.baseURL, "find-test-s13c.md", "", "# Find Test\n\nContent to find.\n");
-    await page.reload();
-    await waitForConnected(page);
-
-    // Open the note by clicking it in the tree
-    const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /Find Test/i });
-    await expect(noteRow).toBeVisible({ timeout: 8_000 });
-    await noteRow.click();
-    await page.waitForSelector(".cm-content", { timeout: 8_000 });
-    await page.waitForTimeout(300);
-
-    // Type "find" to filter to "Find in note" — ensures it renders in viewport.
-    await openCommandMenuAndType(page, "command", "find");
-    const dialog = page.getByRole("dialog", { name: "Command palette" });
-    await expect(dialog).toBeVisible({ timeout: 3_000 });
-
-    // Click "Find in note" via page-level locator (reliable with virtualized list).
-    const findCmd = page.getByText("Find in note", { exact: true }).first();
-    await expect(findCmd).toBeVisible({ timeout: 5_000 });
-    await findCmd.click();
-
-    // Dialog closes and CM6 search panel (.cm-search) appears in the editor
-    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
-    await expect(page.locator(".cm-search")).toBeVisible({ timeout: 5_000 });
-  });
+  // S13c — "Find in note" via Cmd+P — DELETED in Plan 07-27.
+  // "Find in note" command removed from palette; browser native Cmd+F fires instead.
+  // Replacement coverage: S23a (new in Plan 07-27) verifies Cmd+F does NOT open CM6 panel.
 
   test("S13d — Cmd+P → Switch / search notes → palette stays open, mode flips to notes (UAT #5)", async ({ page }) => {
     await page.goto(jasper.baseURL);
@@ -1402,7 +1374,7 @@ test.describe("Phase 7 — Drag-drop visual indicator (S16 / UAT #12)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // S19 — Cmd+P/Cmd+O cold-open + switch-note input clear (UAT-2 R1-2, R1-3)
 // Plan 07-23 gap closure:
-//   S19a: cold Cmd+P shows 9 commands immediately (no empty palette frame)
+//   S19a: cold Cmd+P shows 8 commands immediately (no empty palette frame; Plan 07-27: Find removed)
 //   S19b: cold Cmd+O shows notes immediately (no empty switcher due to null tree)
 //   S19c: switch-note via palette clears stale input query
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1418,28 +1390,28 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
     if (jasper) await jasper.kill();
   });
 
-  test("S19a — cold Cmd+P shows all 9 commands immediately on first open", async ({ page }) => {
+  test("S19a — cold Cmd+P shows all 8 commands immediately on first open (Plan 07-27: Find removed)", async ({ page }) => {
     // Navigate to a fresh page — no prior interaction (cold open).
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Press Cmd+P ONCE on a fresh page — the palette MUST show all 9 commands
+    // Press Cmd+P ONCE on a fresh page — the palette MUST show all 8 commands
     // without the user typing a character. Fix A (eager boot fetch) + the atomic
     // openPalette() store action ensure the commands are populated on first render.
     await pressShortcut(page, "CmdP");
     const dialog = page.getByRole("dialog", { name: "Command palette" });
     await expect(dialog).toBeVisible({ timeout: 3_000 });
 
-    // Assert all 9 commands are visible.
+    // Assert all 8 commands are visible (Plan 07-27: Find in note removed).
     // The virtualizer renders items after ResizeObserver measures the container.
     // The failure mode (UAT-2 R1-2) was empty even after 3+ seconds WITH user
     // input — the openPalette() atomic fix ensures paletteMode and paletteOpen
-    // are committed in one React render so the virtualizer starts with count=9.
+    // are committed in one React render so the virtualizer starts with count=8.
     // We use a 5-second timeout to give the virtualizer time to measure.
     await expect(page.getByText("New note", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
 
-    // Use the helper from Plan 07-21 which asserts all 9 palette commands.
-    await expectPaletteVisibleWithNCommands(page, 9);
+    // Use the helper from Plan 07-21 which asserts all 8 palette commands.
+    await expectPaletteVisibleWithNCommands(page, 8); // Plan 07-27: 8 commands (Find removed)
 
     // Close
     await page.keyboard.press("Escape");
@@ -1488,7 +1460,7 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Step 1: open Cmd+P (commands mode) and type "fi" (matches "Find in note").
+    // Step 1: open Cmd+P (commands mode) and type "fi" (matches "Filter" — no Find in note after Plan 07-27).
     await pressShortcut(page, "CmdP");
     const commandDialog = page.getByRole("dialog", { name: "Command palette" });
     await expect(commandDialog).toBeVisible({ timeout: 3_000 });
@@ -2354,7 +2326,7 @@ test.describe("Phase 7 — SaveIndicator in StatusBar + Search icon + drop snap 
   });
 });
 
-test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", () => {
+test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13) (second group)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -2365,7 +2337,7 @@ test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", 
     if (jasper) await jasper.kill();
   });
 
-  test("pre-created notes/attachments/ folder appears in tree with Paperclip icon", async ({ page }) => {
+  test("pre-created notes/attachments/ folder appears in tree with Paperclip icon (second group)", async ({ page }) => {
     // Pre-create the attachments folder and a placeholder file on disk
     // BEFORE spawning Jasper (Jasper was already spawned in beforeAll, so
     // we write to disk and trigger a reindex to get the tree updated).
@@ -2419,8 +2391,8 @@ test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", 
 });
 
 // S19 — Cmd+P/Cmd+O cold-open + switch-note input clear (UAT-2 R1-2, R1-3)
-// Plan 07-23 gap closure:
-//   S19a: cold Cmd+P shows 9 commands immediately (no empty palette on first open)
+// Plan 07-23 gap closure (second group — focuses on input-clear flow):
+//   S19a: cold Cmd+P shows 8 commands immediately (Plan 07-27: Find removed; no empty palette)
 //   S19b: cold Cmd+O shows notes immediately (no empty switcher due to null tree)
 //   S19c: switch-note via palette clears stale input query from commands mode
 // Root cause: useFileTree null-on-first-render + mode-dep missing from reset effect.
@@ -2438,12 +2410,12 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
     if (jasper) await jasper.kill();
   });
 
-  test("S19a — cold Cmd+P shows all 9 commands immediately on first open", async ({ page }) => {
+  test("S19a — cold Cmd+P shows 8 commands on first open, virtualizer canary (Plan 07-27: Find removed)", async ({ page }) => {
     // Navigate to a fresh page — no prior interaction (cold open).
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Press Cmd+P ONCE on a fresh page — the palette MUST show all 9 commands
+    // Press Cmd+P ONCE on a fresh page — the palette MUST show all 8 commands
     // without the user typing a character. Fix A (eager boot fetch) ensures the
     // tree is warm before the user can press Cmd+P. The commands palette doesn't
     // depend on the tree, but it tests that the virtualizer renders items.
@@ -2456,15 +2428,15 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
     // The 5s timeout covers the ResizeObserver measurement latency in headless.
     await expect(page.getByText("New note", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
 
-    // Assert all 9 palette commands are visible using the Plan 07-21 helper.
-    await expectPaletteVisibleWithNCommands(page, 9);
+    // Assert all 8 palette commands are visible using the Plan 07-21 helper (Plan 07-27: Find removed).
+    await expectPaletteVisibleWithNCommands(page, 8); // Plan 07-27: 8 commands (Find removed)
 
     // Close
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
   });
 
-  test("S19b — cold Cmd+O shows notes immediately (no empty list due to null tree)", async ({ page }) => {
+  test("S19b — cold Cmd+O shows notes using note-label match (no empty list, eager boot)", async ({ page }) => {
     // Pre-create 3 notes so the switcher has items to show.
     await apiCreateNote(page, jasper.baseURL, "cold-note-1.md", "", "# Cold Note 1\n");
     await apiCreateNote(page, jasper.baseURL, "cold-note-2.md", "", "# Cold Note 2\n");
@@ -2495,7 +2467,7 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
   });
 
-  test("S19c — switch-note via palette clears stale query string from commands mode", async ({ page }) => {
+  test("S19c — switch-note via palette clears stale query and asserting empty switcher input", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -2535,5 +2507,85 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
     // Close
     await page.keyboard.press("Escape");
     await expect(switcherDialog).not.toBeVisible({ timeout: 3_000 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S23 — Cmd+F native pass-through + Cmd+U underline (UAT-2 N6, N7 / Plan 07-27)
+// Plan 07-27 gap closure:
+//   S23a: Cmd+F does NOT open CM6 search panel (browser native Cmd+F fires)
+//   S23b: Cmd+U wraps selection with <u>...</u> tags
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — Cmd+F native + Cmd+U underline (S23 / UAT-2 N6,N7)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("S23a — Cmd+F does NOT open CM6 search panel after Plan 07-27", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Create and open a note so the editor is active.
+    await apiCreateNote(page, jasper.baseURL, "find-test-s23a.md", "", "# Find Test\n\nhello world\n");
+    await page.reload();
+    await waitForConnected(page);
+
+    // Open the note by clicking it in the tree.
+    const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /Find Test/i });
+    await expect(noteRow).toBeVisible({ timeout: 8_000 });
+    await noteRow.click();
+    await page.waitForSelector(".cm-content", { timeout: 8_000 });
+    await page.waitForTimeout(300);
+
+    // Press Cmd+F.
+    await pressShortcut(page, "CmdF");
+    // Wait ~400ms for any CM6 search panel animation to fire (it would if still bound).
+    await page.waitForTimeout(400);
+
+    // Assert NO CM6 search panel is visible or attached to the DOM.
+    // (Cannot assert browser native find dialog — Playwright cannot inspect browser chrome.)
+    // Absence of .cm-search is the testable signal that searchKeymap was removed.
+    const cmSearchCount = await page.locator(".cm-search").count();
+    expect(cmSearchCount).toBe(0);
+  });
+
+  test("S23b — Cmd+U wraps selected text with <u>...</u> tags", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Create and open a note with known content.
+    await apiCreateNote(page, jasper.baseURL, "underline-test-s23b.md", "", "hello world\n");
+    await page.reload();
+    await waitForConnected(page);
+
+    // Open the note.
+    const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /underline-test/i });
+    await expect(noteRow).toBeVisible({ timeout: 8_000 });
+    await noteRow.click();
+    await page.waitForSelector(".cm-content", { timeout: 8_000 });
+    await page.waitForTimeout(300);
+
+    // Focus the editor and select all (Cmd+A).
+    const cmContent = page.locator(".cm-content");
+    await cmContent.click();
+    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+a`);
+    await page.waitForTimeout(200);
+
+    // Press Cmd+U (Control+u in headless — CM6 Win32 Mod- maps to ctrlKey).
+    await pressShortcut(page, "CmdU");
+    await page.waitForTimeout(300);
+
+    // Assert the editor content now contains <u>hello world</u>.
+    // The first line of the document is "hello world" followed by a newline.
+    const editorText = await cmContent.evaluate((el) => el.textContent ?? "");
+    expect(editorText).toContain("<u>");
+    expect(editorText).toContain("</u>");
   });
 });

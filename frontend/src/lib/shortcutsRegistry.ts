@@ -50,14 +50,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inCheatSheet: true,
   },
   // Editor group
-  {
-    id: "find",
-    label: "Find in note",
-    group: "Editor",
-    shortcut: `${mod}F`,
-    inPalette: true,
-    inCheatSheet: true,
-  },
+  // Note: "Find in note" (Cmd+F) removed in Plan 07-27 — browser native Cmd+F fires instead.
   {
     id: "bold",
     label: "Bold",
@@ -73,6 +66,16 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}I`,
     inPalette: false,
     inCheatSheet: true,
+  },
+  {
+    id: "underline",
+    label: "Underline",
+    group: "Editor",
+    shortcut: `${mod}U`,
+    inPalette: false,
+    inCheatSheet: true,
+    // Note: markdown standard has no underline; v1 wraps selection with HTML <u>...</u> tags.
+    // Documented in 07-CONTEXT.md 2026-05-15 D-51 addendum.
   },
   {
     id: "frontmatter",

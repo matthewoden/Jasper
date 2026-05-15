@@ -38,7 +38,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { autocompletion } from "@codemirror/autocomplete";
-import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
+import { search } from "@codemirror/search";
 import { markdown } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 
@@ -112,14 +112,6 @@ export interface MarkdownEditorRef {
    * click-anywhere-to-type host wrapper.
    */
   focusEnd(): void;
-  /**
-   * UAT #4 fix: open CM6's built-in search panel (same as Cmd+F when
-   * the editor is focused). Called from App.tsx commandActions.onFind
-   * via editorHandlersRef so the "Find in note" palette entry actually
-   * opens find instead of firing a synthetic keyboard event.
-   * No-op when the editor is not yet mounted.
-   */
-  openFindPanel(): void;
 }
 
 /**
@@ -348,7 +340,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           doc: initialDoc,
           extensions: [
             history(),
-            search({ top: true }), // EDIT-11 panel — Plan 05-11 binds Cmd+F
+            search({ top: true }), // Plan 07-27: searchKeymap removed; browser native Cmd+F fires instead
             yamlFrontmatter({ content: markdown({ codeLanguages }) }),
             jasperEditorTheme,
             jasperSyntaxHighlighting,
@@ -380,7 +372,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             // BEFORE defaultKeymap so it can short-circuit Enter
             // before the default newline handler runs.
             codeblockExpand,
-            keymap.of([...jasperKeymap, ...defaultKeymap, ...historyKeymap, ...searchKeymap]), // Plan 07-24: jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap's cursorCharLeft/selectParentSyntax
+            keymap.of([...jasperKeymap, ...defaultKeymap, ...historyKeymap]), // Plan 07-24: jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap's cursorCharLeft/selectParentSyntax; Plan 07-27: searchKeymap removed (browser native Cmd+F)
             // Phase 5.5 / UX-11: enable soft line-wrapping inside .cm-content
             // so long lines wrap at the reading-width clamp set by themeBridge
             // instead of scrolling horizontally forever.
@@ -416,18 +408,9 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       });
       viewRef.current = view;
 
-      // E2E test hook — Plan 05-12 / EDIT-11: expose openSearchPanel for
-      // Playwright so tests can trigger the panel without fighting macOS
-      // browser-chrome interception of Meta+F. Does NOT affect runtime
-      // behavior; the window property is used only in Playwright specs.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).__jasperOpenSearchPanel = () => openSearchPanel(view);
-
       return () => {
         view.destroy();
         viewRef.current = null;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        delete (window as any).__jasperOpenSearchPanel;
       };
       // initialDoc captured ONCE — Phase 5 D-26 / EDIT-01 cursor
       // stability. Subsequent updates flow through the ref API.
@@ -464,10 +447,6 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           v.focus();
           const docLen = v.state.doc.length;
           v.dispatch({ selection: { anchor: docLen, head: docLen } });
-        },
-        openFindPanel() {
-          const v = viewRef.current;
-          if (v) openSearchPanel(v);
         },
       }),
       []

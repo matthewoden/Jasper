@@ -7,18 +7,19 @@ import {
 } from "./shortcutsRegistry";
 
 describe("shortcutsRegistry", () => {
-  it("registry has all 9 locked Cmd+P palette entries (D-14)", () => {
+  it("registry has all 8 locked Cmd+P palette entries (D-14; Plan 07-27 removed Find)", () => {
     const labels = COMMAND_PALETTE_ENTRIES.map((s) => s.label);
     expect(labels).toContain("New note");
     expect(labels).toContain("Save");
-    expect(labels).toContain("Find in note");
+    // "Find in note" removed in Plan 07-27 — browser native Cmd+F fires instead
+    expect(labels).not.toContain("Find in note");
     expect(labels).toContain("Today");
     expect(labels).toContain("Switch / search notes");
     expect(labels).toContain("Toggle theme");
     expect(labels).toContain("Refresh index");
     expect(labels).toContain("Reset and rebuild…");
     expect(labels).toContain("Show keyboard shortcuts");
-    expect(COMMAND_PALETTE_ENTRIES.length).toBe(9);
+    expect(COMMAND_PALETTE_ENTRIES.length).toBe(8);
   });
 
   it("cheat-sheet contains CM6 built-in editor entries", () => {
@@ -50,5 +51,28 @@ describe("shortcutsRegistry", () => {
   it("ids are unique", () => {
     const ids = SHORTCUTS_REGISTRY.map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+// Plan 07-27 / UAT-2 N6 RED: shortcutsRegistry does NOT include 'find' after Plan 07-27
+describe("Plan 07-27 — Cmd+F removal (UAT-2 N6)", () => {
+  it("SR-no-find — shortcutsRegistry does NOT include 'find' after Plan 07-27", () => {
+    const found = SHORTCUTS_REGISTRY.find((s) => s.id === "find");
+    expect(found).toBeUndefined();
+  });
+
+  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 8 entries (not 9) after Find removal", () => {
+    expect(COMMAND_PALETTE_ENTRIES.length).toBe(8);
+  });
+});
+
+// Plan 07-27 / UAT-2 N7: shortcutsRegistry includes 'underline' (Cmd+U) in cheat-sheet
+describe("Plan 07-27 — Cmd+U underline (UAT-2 N7)", () => {
+  it("SR-underline — shortcutsRegistry includes 'underline' entry with inCheatSheet: true", () => {
+    const entry = SHORTCUTS_REGISTRY.find((s) => s.id === "underline");
+    expect(entry).toBeDefined();
+    expect(entry?.inCheatSheet).toBe(true);
+    expect(entry?.inPalette).toBe(false);
+    expect(entry?.group).toBe("Editor");
   });
 });

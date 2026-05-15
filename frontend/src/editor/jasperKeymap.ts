@@ -134,18 +134,70 @@ export function toggleItalic(view: EditorView): boolean {
   return wrapWith(view, "*");
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Plan 07-27 — toggleUnderline (UAT-2 N7)
+//
+// Markdown standard has no underline. v1 ships an inline-HTML wrap with
+// <u>...</u> tags. The implementation uses a two-marker variant of wrapWith
+// (asymmetric open/close markers) — open="<u>", close="</u>".
+//
+// Toggle semantics (same as toggleBold/toggleItalic):
+//   (A) Selection IS the wrapped span (starts with open, ends with close) → strip
+//   (B) Selection is BETWEEN matching markers (flanked by open/close) → strip
+//   (C) Otherwise → wrap
+//
+// See 07-CONTEXT.md 2026-05-15 D-51 addendum for trade-off documentation.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function wrapWithPair(view: EditorView, open: string, close: string): boolean {
+  const ranges = view.state.selection.ranges;
+  const changes = ranges.map((r) => {
+    const before = view.state.sliceDoc(r.from - open.length, r.from);
+    const after = view.state.sliceDoc(r.to, r.to + close.length);
+    const sel = view.state.sliceDoc(r.from, r.to);
+    // (A) Toggle off: selection IS the wrapped span (e.g., "<u>foo</u>")
+    if (sel.startsWith(open) && sel.endsWith(close) && sel.length >= open.length + close.length) {
+      return { from: r.from, to: r.to, insert: sel.slice(open.length, sel.length - close.length) };
+    }
+    // (B) Toggle off: selection is BETWEEN matching markers
+    if (before === open && after === close) {
+      return { from: r.from - open.length, to: r.to + close.length, insert: sel };
+    }
+    // (C) Wrap: insert open/close around selection (or insert "<u></u>" for empty cursor)
+    return { from: r.from, to: r.to, insert: `${open}${sel}${close}` };
+  });
+  view.dispatch({ changes });
+  return true;
+}
+
+/**
+ * toggleUnderline — wraps the selection with HTML <u>...</u> tags.
+ * If already wrapped, strips the tags (toggle off).
+ * With no selection, inserts <u></u> with cursor between.
+ *
+ * Markdown has no underline; v1 uses inline-HTML as an escape hatch.
+ * Documented in 07-CONTEXT.md §D-51.
+ *
+ * Bound to Mod-u (Cmd+U on macOS, Ctrl+U elsewhere) via jasperKeymap.
+ */
+export function toggleUnderline(view: EditorView): boolean {
+  return wrapWithPair(view, "<u>", "</u>");
+}
+
 /**
  * jasperKeymap — CM6 KeyBinding array for project-specific shortcuts.
  *
  * Plan 07-24: Mod-b → toggleBold, Mod-i → toggleItalic.
+ * Plan 07-27: Mod-u → toggleUnderline (inline-HTML escape hatch).
  * Wire into MarkdownEditor.tsx via keymap.of([...jasperKeymap, ...]).
  *
  * "Mod-" expands to Cmd on macOS and Ctrl on other platforms (CM6 standard).
  * preventDefault: true ensures the browser default (OS font panel, etc.) is
- * suppressed even if the command returns false (defensive; both commands
+ * suppressed even if the command returns false (defensive; all commands
  * always return true when they handle the key).
  */
 export const jasperKeymap: KeyBinding[] = [
   { key: "Mod-b", run: toggleBold, preventDefault: true },
   { key: "Mod-i", run: toggleItalic, preventDefault: true },
+  { key: "Mod-u", run: toggleUnderline, preventDefault: true },
 ];

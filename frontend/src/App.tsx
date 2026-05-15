@@ -512,14 +512,6 @@ function AppInner() {
         document.dispatchEvent(saveEvent);
       },
 
-      // "Find in note" — open CM6 search panel via the imperative
-      // editorHandlersRef. Synthetic keydown at document level does NOT
-      // reach CM6's capture-phase listener on cm-content (UAT #4 fix).
-      onFind: () => {
-        editorHandlersRef.current?.openFindPanel();
-        setPaletteOpen(false);
-      },
-
       // "Today" — same as Cmd+Shift+D.
       onToday: () => {
         setPaletteOpen(false);

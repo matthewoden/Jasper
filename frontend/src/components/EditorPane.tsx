@@ -82,14 +82,6 @@ type WSNoteDeletedPayload = components["schemas"]["WSNoteDeletedPayload"];
 export interface EditorPaneHandlers {
   onNoteUpdated: (p: WSNoteUpdatedPayload) => void;
   onNoteDeleted: (p: WSNoteDeletedPayload) => void;
-  /**
-   * UAT #4 fix: imperative open of CM6's search panel (same as Cmd+F
-   * when the editor is focused). Called from App.tsx commandActions.onFind
-   * so the "Find in note" command palette entry actually opens the panel.
-   * Forwarded through MarkdownEditorRef.openFindPanel() via editorRef.
-   * No-op when no editor is mounted (noteId === null or editor not yet ready).
-   */
-  openFindPanel: () => void;
 }
 
 // Locked timing constants (UI-SPEC §Save-trigger timing). Exported as named
@@ -843,11 +835,6 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       editorHandlersRef.current = {
         onNoteUpdated,
         onNoteDeleted,
-        // UAT #4 fix: forward openFindPanel through MarkdownEditorRef so App's
-        // commandActions.onFind can open CM6's search panel imperatively.
-        openFindPanel: () => {
-          editorRef.current?.openFindPanel();
-        },
       };
     }
     return () => {

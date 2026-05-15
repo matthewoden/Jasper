@@ -81,12 +81,7 @@ describe("useCommandPalette — execute()", () => {
     expect(onSave).toHaveBeenCalledOnce();
   });
 
-  it("calls onFind when execute('find') is called", () => {
-    const onFind = vi.fn();
-    const { result } = renderHook(() => useCommandPalette({ onFind }));
-    act(() => { result.current.execute("find"); });
-    expect(onFind).toHaveBeenCalledOnce();
-  });
+  // "find" command removed in Plan 07-27 — browser native Cmd+F fires instead.
 
   it("calls onToday when execute('today') is called", () => {
     const onToday = vi.fn();
@@ -181,16 +176,16 @@ describe("useCommandPalette — execute() closeOnExecute verdict (UAT #5)", () =
   });
 });
 
-describe("useCommandPalette — all 9 COMMAND_PALETTE_ENTRIES reachable", () => {
-  it("all 9 palette entries are reachable via filtered('')", () => {
+describe("useCommandPalette — all 8 COMMAND_PALETTE_ENTRIES reachable (Plan 07-27: find removed)", () => {
+  it("all 8 palette entries are reachable via filtered('')", () => {
     const { result } = renderHook(() => useCommandPalette({}));
     const all = result.current.filtered("");
     const ids = all.map((e) => e.id);
-    // The 9 palette-eligible commands from shortcutsRegistry
+    // The 8 palette-eligible commands from shortcutsRegistry (Plan 07-27: "find" removed)
     const expectedIds = [
       "new-note",
       "save",
-      "find",
+      // "find" removed in Plan 07-27 — browser native Cmd+F fires instead
       "today",
       "switch-note",
       "toggle-theme",
@@ -201,5 +196,7 @@ describe("useCommandPalette — all 9 COMMAND_PALETTE_ENTRIES reachable", () => 
     for (const id of expectedIds) {
       expect(ids).toContain(id);
     }
+    // Verify "find" is NOT in the palette
+    expect(ids).not.toContain("find");
   });
 });

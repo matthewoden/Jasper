@@ -1054,7 +1054,7 @@ describe("Plan 07-17 — cold Cmd+P shows all 9 commands (UAT #2 / BLOCKER #2)",
     useTreeStore.setState({ paletteOpen: false, paletteMode: "notes" });
   });
 
-  it("cold Cmd+P shows all 9 commands (UAT #2 / BLOCKER #2)", async () => {
+  it("cold Cmd+P shows all 8 commands (UAT #2 / BLOCKER #2 / Plan 07-27: Find removed)", async () => {
     render(<App />);
 
     // Fire the global Cmd+P handler at window (App attaches handleAppCmdP
@@ -1064,13 +1064,13 @@ describe("Plan 07-17 — cold Cmd+P shows all 9 commands (UAT #2 / BLOCKER #2)",
     });
 
     // After Cmd+P: palette open AND mode='commands' — CommandMenu renders
-    // in commands mode showing ALL 9 COMMAND_PALETTE_ENTRIES rows.
+    // in commands mode showing ALL 8 COMMAND_PALETTE_ENTRIES rows (Plan 07-27: Find removed).
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     expect(palette).toBeInTheDocument();
 
     const commandLabels = COMMAND_PALETTE_ENTRIES.map((e) => e.label);
-    // Sanity: there are 9 entries (lock the contract)
-    expect(commandLabels).toHaveLength(9);
+    // Sanity: there are 8 entries (Plan 07-27: "Find in note" removed)
+    expect(commandLabels).toHaveLength(8);
     for (const label of commandLabels) {
       expect(within(palette).getByText(label)).toBeInTheDocument();
     }
@@ -1078,9 +1078,10 @@ describe("Plan 07-17 — cold Cmd+P shows all 9 commands (UAT #2 / BLOCKER #2)",
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Plan 07-17 — commandActions rewire: onNewNote, onFind, onSwitchNote
+// Plan 07-17 — commandActions rewire: onNewNote, onSwitchNote
+// Plan 07-27 — onFind removed (browser native Cmd+F fires instead)
 // ──────────────────────────────────────────────────────────────────────────────
-describe("Plan 07-17 — commandActions rewire (UAT #3, #4, #5)", () => {
+describe("Plan 07-17 — commandActions rewire (UAT #3, #5)", () => {
   beforeEach(() => {
     getAdminStatusMock.mockResolvedValue({
       data: { migration_status: "ok" as const, notes_indexed: 0 },

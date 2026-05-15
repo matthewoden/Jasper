@@ -36,9 +36,6 @@ declare global {
         // Plan 05.5-03 / UX-07: blur trigger exposed by the MarkdownEditor mock
         // so tests can fire the onBlur prop without a real CM6 view.
         __jasperMockEditorBlur?: () => void;
-        // Plan 07-17 / UAT #4: openFindPanel spy so tests can assert the handler
-        // was called via editorHandlersRef.current.openFindPanel().
-        __jasperMockEditorOpenFindPanel?: ReturnType<typeof vi.fn>;
     }
 }
 
@@ -67,7 +64,6 @@ vi.mock("./MarkdownEditor", async () => {
             applyServerUpdate(s: string): void;
             focus(): void;
             focusEnd(): void;
-            openFindPanel(): void;
         },
         {
             initialDoc?: string;
@@ -107,11 +103,6 @@ vi.mock("./MarkdownEditor", async () => {
                 // window.__jasperMockEditorFocusEnd spy installed below.
                 window.__jasperMockEditorFocusEnd?.();
             },
-            openFindPanel() {
-                // UAT #4 fix: tests can assert this was called via
-                // window.__jasperMockEditorOpenFindPanel spy installed below.
-                window.__jasperMockEditorOpenFindPanel?.();
-            },
         }), [value]);
 
         // Expose save shortcut for tests that previously fired keyDown Cmd+S
@@ -126,13 +117,9 @@ vi.mock("./MarkdownEditor", async () => {
             window.__jasperMockEditorBlur = () => {
                 propsRef.current.onBlur?.();
             };
-            // Plan 07-17 / UAT #4: openFindPanel spy so tests can assert the
-            // command palette handler actually invokes the imperative CM6 panel.
-            window.__jasperMockEditorOpenFindPanel = vi.fn();
             return () => {
                 delete window.__jasperMockEditorSave;
                 delete window.__jasperMockEditorBlur;
-                delete window.__jasperMockEditorOpenFindPanel;
             };
         }, []);
 
@@ -2521,44 +2508,9 @@ describe("<EditorPane /> — BUG-03: handleEditorBlur no-op when userHasEdited i
     });
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Plan 07-17 / UAT #4 — EditorPaneHandlers.openFindPanel delegation test
-// ──────────────────────────────────────────────────────────────────────────────
-describe("EditorPane — editorHandlersRef.openFindPanel delegates to MarkdownEditor (UAT #4)", () => {
-    beforeEach(() => {
-        getNoteMock.mockResolvedValue({
-            data: {
-                id: ScratchpadUUID,
-                path: "scratchpad.md",
-                content: "# Welcome",
-                updated_at: "2025-01-01T00:00:00Z",
-            },
-            error: undefined,
-            response: new Response(),
-        });
-        getTreeMock.mockResolvedValue(okTree("scratchpad.md"));
-    });
-
-    it("calling editorHandlersRef.current.openFindPanel() invokes the mock MarkdownEditor openFindPanel", async () => {
-        const handlersRef: { current: EditorPaneHandlers | null } = { current: null };
-
-        render(
-            <EditorPane
-                noteId={ScratchpadUUID}
-                editorHandlersRef={handlersRef}
-            />
-        );
-
-        // Wait for the editor to mount and the ref to be written.
-        await waitFor(() => expect(handlersRef.current?.openFindPanel).toBeDefined());
-
-        // Call openFindPanel via the handler ref.
-        handlersRef.current?.openFindPanel();
-
-        // The mock's openFindPanel calls window.__jasperMockEditorOpenFindPanel.
-        expect(window.__jasperMockEditorOpenFindPanel).toHaveBeenCalledOnce();
-    });
-});
+// Plan 07-27: EditorPane.openFindPanel delegation test REMOVED.
+// EditorPaneHandlers.openFindPanel was removed in Plan 07-27.
+// Browser native Cmd+F fires instead — no imperative panel open needed.
 
 // ──────────────────────────────────────────────────────────────────────────────
 // EP-keepalive-session — keepalive PUTs carry X-Session-ID (UAT-2 N8)
