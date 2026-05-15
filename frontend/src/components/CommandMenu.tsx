@@ -6,11 +6,13 @@
  * UI-SPEC §Surface 1 note). Wire-up to global keymap happens in Plan 07-12
  * (App.tsx + KeyboardShortcutsDialog).
  *
- * Bucket B1 (Plan 07-18): notes mode now merges the quick-switcher and the
- * FTS5 backend search into a single interaction:
- *   - empty / < 2 chars: useQuickSwitcher (fuzzysort over in-memory titles)
- *   - >= 2 chars: useSearch debounced FTS5 backend search; results rendered
- *     using SearchResultRow (mark-highlighted excerpt + breadcrumb path).
+ * UAT-3 N10 + N11 (Plan 07-33): notes mode now runs BOTH title-fuzzy AND FTS5
+ * simultaneously and merges results into two sections:
+ *   - "Switch to note": useQuickSwitcher (fuzzysort over in-memory titles)
+ *   - "Search results": useSearch (FTS5 backend) with snippet excerpts
+ * Group eyebrow rows (kind: "group") separate the two sections and are skipped
+ * during keyboard navigation. Dedup: FTS5 hits whose ID matches a title-fuzzy
+ * hit are dropped (title-fuzzy entry wins).
  *
  * Group eyebrows in commands mode: deferred v1 (see comment below).
  * Implementation uses inline styles throughout — no hex literals; all colors
@@ -55,13 +57,33 @@ interface SearchHitItem {
   result: SearchResult;
 }
 
-type Item = NoteItem | CmdItem | SearchHitItem;
+// UAT-3 N10 + N11 (Plan 07-33): group eyebrow separator — non-selectable, not keyboard-navigable.
+interface GroupItem {
+  kind: "group";
+  id: string;     // synthetic e.g. "group:notes" or "group:search"
+  label: string;
+}
+
+type Item = NoteItem | CmdItem | SearchHitItem | GroupItem;
 
 export interface CommandMenuProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   mode: "notes" | "commands";
   actions: CommandActions;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Helper: skip group-eyebrow rows during keyboard navigation
+// ──────────────────────────────────────────────────────────────────────────────
+
+function nextSelectable(items: Item[], from: number, direction: 1 | -1): number {
+  let i = from + direction;
+  while (i >= 0 && i < items.length) {
+    if (items[i].kind !== "group") return i;
+    i += direction;
+  }
+  return from; // clamp at original if no selectable in that direction
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -79,68 +101,74 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const cmd = useCommandPalette(actions);
   const cmdHits: Shortcut[] = mode === "commands" ? cmd.filtered(query) : [];
 
-  // Bucket B1 (Plan 07-18): when palette is in notes mode AND user has typed
-  // 2+ chars, fire the FTS5 backend search. Below threshold, the existing
-  // useQuickSwitcher path runs (fuzzysort over note titles).
+  // UAT-3 N10 + N11 (Plan 07-33): FTS5 backend search runs simultaneously with
+  // title-fuzzy at all query lengths. Results are merged into two sections.
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
   const { results: searchResults } = useSearch(
     mode === "notes" ? query : "",
     activeTagFilter,
   );
-  const showSearchResults = mode === "notes" && query.length >= 2;
 
-  // Unified item list for keyboard navigation and virtualization
-  const items: Item[] =
-    mode === "notes"
-      ? showSearchResults
-        ? searchResults.map((r) => ({
-            kind: "search-result" as const,
-            id: r.id,
-            result: r,
-          }))
-        : noteHits.map((h) => ({
-            kind: "note" as const,
-            id: h.id,
-            title: h.title,
-            path: h.path,
-          }))
-      : cmdHits.map((c) => ({
-          kind: "cmd" as const,
-          id: c.id,
-          label: c.label,
-          shortcut: c.shortcut,
-          group: c.group,
-        }));
+  // UAT-3 N10 + N11 (Plan 07-33): Build the unified item list with merge logic.
+  // At query.length >= 2: include both title-fuzzy section AND FTS5 section.
+  // At query.length < 2: include only title-fuzzy (same as before — FTS5 backend
+  // won't return results for short queries anyway, but we skip the section entirely).
+  const showFtsSection = mode === "notes" && query.length >= 2;
 
-  // Reset selection when query or result list changes
+  let items: Item[];
+  if (mode === "commands") {
+    items = cmdHits.map((c) => ({
+      kind: "cmd" as const,
+      id: c.id,
+      label: c.label,
+      shortcut: c.shortcut,
+      group: c.group,
+    }));
+  } else {
+    // mode === "notes": always include title-fuzzy hits.
+    const noteItems: NoteItem[] = noteHits.map((h) => ({
+      kind: "note" as const,
+      id: h.id,
+      title: h.title,
+      path: h.path,
+    }));
+    const noteIds = new Set(noteItems.map((n) => n.id));
+
+    // Dedup: drop FTS5 hits whose id appears in title-fuzzy hits (title-fuzzy wins).
+    const dedupedSearchHits: SearchHitItem[] = showFtsSection
+      ? searchResults
+          .filter((r) => !noteIds.has(r.id))
+          .map((r) => ({ kind: "search-result" as const, id: r.id, result: r }))
+      : [];
+
+    items = [];
+    if (noteItems.length > 0) {
+      items.push({ kind: "group" as const, id: "group:notes", label: "Switch to note" });
+      items.push(...noteItems);
+    }
+    if (dedupedSearchHits.length > 0) {
+      items.push({ kind: "group" as const, id: "group:search", label: "Search results" });
+      items.push(...dedupedSearchHits);
+    }
+  }
+
+  // UAT-3 N10 + N11 (Plan 07-33): Start selectedIdx at the FIRST SELECTABLE row
+  // (skip any leading group eyebrow). Previously `setSelectedIdx(0)` would land on
+  // the group eyebrow when notes mode prepends "Switch to note" — fix: find the
+  // first non-group index.
   useEffect(() => {
-    setSelectedIdx(0);
+    const first = items.findIndex((it) => it.kind !== "group");
+    setSelectedIdx(first >= 0 ? first : 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, items.length]);
 
-  // UAT-2 R1-3 (Plan 07-23 Fix B): reset query on open AND on mode change.
-  //
-  // Previously: `if (!open) setQuery("")` — fires only when open goes false,
-  // so a mode flip while the palette stays open (Plan 07-17 closeOnExecute=false
-  // for switch-note) left the previous query string in the input.
-  //
-  // Fix: `if (open) setQuery("")` with `[open, mode]` deps — clears on every
-  // open transition AND on every mode flip while open. This means:
-  //   1. open=false → open=true: clears (same as before)
-  //   2. open=true, mode=commands → mode=notes: clears (new — UAT-2 R1-3)
-  // Tradeoff: if the user typed a query and the parent re-renders with the
-  // same open=true/mode=notes without changing either dep, the effect does
-  // NOT re-run, so the user's query is preserved mid-session (correct).
+  // UAT-2 R1-2 (Plan 07-23 Fix B): reset query on open AND on mode change.
   useEffect(() => {
     if (open) setQuery("");
   }, [open, mode]);
 
   // UAT-2 R1-2 (Plan 07-23): Force virtualizer to re-subscribe to ResizeObserver
-  // after the dialog opens. @tanstack/react-virtual's _willUpdate() (useLayoutEffect
-  // with no deps) calls _initialize() → getScrollElement() on every render.
-  // On the FIRST render, parentRef.current is null — virtualizer subscribes to nothing.
-  // A forceRender counter increments in a setTimeout(0) microtask AFTER the DOM
-  // commits, causing a second render where parentRef.current IS set.
-  // Using a counter (not setSelectedIdx identity) guarantees React does not bail out.
+  // after the dialog opens.
   const [, setVirtualizerMountKey] = useState(0); // mount key — only setter is used (triggers re-render)
   useEffect(() => {
     if (open) {
@@ -156,7 +184,14 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => showSearchResults ? 88 : 36,
+    // UAT-3 N10 + N11 (Plan 07-33): three possible row heights in merged list.
+    estimateSize: (index) => {
+      const it = items[index];
+      if (!it) return 36;
+      if (it.kind === "group") return 24;
+      if (it.kind === "search-result") return 88;
+      return 36; // note and cmd rows
+    },
     overscan: 5,
   });
 
@@ -172,11 +207,12 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const setActiveNote = useTreeStore((s) => s.setActiveNote);
   const recordOpenedNote = useTreeStore((s) => s.recordOpenedNote);
 
-  // Bucket B1 (Plan 07-18): activate handles the new search-result kind.
-  // Both "note" and "search-result" kinds open a note and close the palette.
+  // UAT-3 N10 + N11 (Plan 07-33): activate handles all item kinds including
+  // the new "group" kind (defensive no-op — ArrowDown/Up should never park on groups).
   const activate = (i: number) => {
     const item = items[i];
     if (!item) return;
+    if (item.kind === "group") return; // defensive: groups are not activatable
     if (item.kind === "note" || item.kind === "search-result") {
       setActiveNote(item.id);
       recordOpenedNote(item.id);
@@ -191,14 +227,16 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     }
   };
 
+  // UAT-3 N10 + N11 (Plan 07-33): keyboard navigation skips group-eyebrow rows
+  // via nextSelectable() helper.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelectedIdx((i) => Math.min(items.length - 1, i + 1));
+      setSelectedIdx((i) => nextSelectable(items, i, 1));
     }
     if (e.key === "ArrowUp") {
       e.preventDefault();
-      setSelectedIdx((i) => Math.max(0, i - 1));
+      setSelectedIdx((i) => nextSelectable(items, i, -1));
     }
     if (e.key === "Enter") {
       e.preventDefault();
@@ -228,9 +266,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   }
 
   // NOTE: Group eyebrows in commands mode are deferred to v1 UAT feedback.
-  // Per plan: "for v1 simplicity, omit them (or render only the group label of
-  // the first row in each group)". The current implementation renders rows
-  // without group separators — this is intentional v1 scope reduction.
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -318,14 +353,46 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                   const item = items[vi.index];
                   const selected = vi.index === selectedIdx;
 
+                  // UAT-3 N10 + N11 (Plan 07-33): group eyebrow rows — non-selectable
+                  // separators with subdued uppercase label.
+                  if (item.kind === "group") {
+                    return (
+                      <div
+                        key={vi.key}
+                        data-row-kind="group"
+                        data-group-id={item.id}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          transform: `translateY(${vi.start}px)`,
+                          height: vi.size,
+                          padding: "4px 16px 2px",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          textTransform: "uppercase",
+                          color: "var(--color-muted)",
+                          letterSpacing: "0.05em",
+                          display: "flex",
+                          alignItems: "center",
+                          // Non-selectable: no hover, no click, no cursor pointer.
+                          cursor: "default",
+                          userSelect: "none",
+                        }}
+                      >
+                        {item.label}
+                      </div>
+                    );
+                  }
+
                   // Bucket B1 (Plan 07-18): FTS5 search result rows use
                   // SearchResultRow for mark-highlighted excerpts + breadcrumbs.
-                  // SearchResultRow's own onClick calls setActiveNote; the palette
-                  // wrapper's onClick (below) is not needed for this kind.
                   if (item.kind === "search-result") {
                     return (
                       <div
                         key={item.id}
+                        data-row-kind="search-result"
                         style={{
                           position: "absolute",
                           top: 0,
@@ -367,6 +434,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                   return (
                     <div
                       key={item.id}
+                      data-row-kind={item.kind}
                       style={rowStyle}
                       onMouseEnter={() => setSelectedIdx(vi.index)}
                       onClick={() => activate(vi.index)}
