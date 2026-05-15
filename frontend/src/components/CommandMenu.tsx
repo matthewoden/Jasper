@@ -6,6 +6,12 @@
  * UI-SPEC §Surface 1 note). Wire-up to global keymap happens in Plan 07-12
  * (App.tsx + KeyboardShortcutsDialog).
  *
+ * Bucket B1 (Plan 07-18): notes mode now merges the quick-switcher and the
+ * FTS5 backend search into a single interaction:
+ *   - empty / < 2 chars: useQuickSwitcher (fuzzysort over in-memory titles)
+ *   - >= 2 chars: useSearch debounced FTS5 backend search; results rendered
+ *     using SearchResultRow (mark-highlighted excerpt + breadcrumb path).
+ *
  * Group eyebrows in commands mode: deferred v1 (see comment below).
  * Implementation uses inline styles throughout — no hex literals; all colors
  * via var(--color-*) tokens.
@@ -16,9 +22,12 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, Command } from "lucide-react";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette, type CommandActions } from "../lib/useCommandPalette";
+import { useSearch } from "../lib/useSearch";
 import { useTreeStore } from "../lib/useTreeStore";
 import { KeyboardChip } from "./KeyboardChip";
+import { SearchResultRow } from "./SearchResultRow";
 import type { Shortcut } from "../lib/shortcutsRegistry";
+import type { SearchResult } from "../lib/searchApi";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Types
@@ -39,7 +48,14 @@ interface CmdItem {
   group: string;
 }
 
-type Item = NoteItem | CmdItem;
+// Bucket B1 (Plan 07-18): FTS5 search result item kind.
+interface SearchHitItem {
+  kind: "search-result";
+  id: string;
+  result: SearchResult;
+}
+
+type Item = NoteItem | CmdItem | SearchHitItem;
 
 export interface CommandMenuProps {
   open: boolean;
@@ -56,22 +72,38 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const [query, setQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
 
-  // Notes mode: fuzzysort over in-memory note list
+  // Notes mode: fuzzysort over in-memory note list (always run; cheap pure client compute)
   const noteHits = useQuickSwitcher(mode === "notes" ? query : "");
 
   // Commands mode: label substring filter over COMMAND_PALETTE_ENTRIES
   const cmd = useCommandPalette(actions);
   const cmdHits: Shortcut[] = mode === "commands" ? cmd.filtered(query) : [];
 
+  // Bucket B1 (Plan 07-18): when palette is in notes mode AND user has typed
+  // 2+ chars, fire the FTS5 backend search. Below threshold, the existing
+  // useQuickSwitcher path runs (fuzzysort over note titles).
+  const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
+  const { results: searchResults } = useSearch(
+    mode === "notes" ? query : "",
+    activeTagFilter,
+  );
+  const showSearchResults = mode === "notes" && query.length >= 2;
+
   // Unified item list for keyboard navigation and virtualization
   const items: Item[] =
     mode === "notes"
-      ? noteHits.map((h) => ({
-          kind: "note" as const,
-          id: h.id,
-          title: h.title,
-          path: h.path,
-        }))
+      ? showSearchResults
+        ? searchResults.map((r) => ({
+            kind: "search-result" as const,
+            id: r.id,
+            result: r,
+          }))
+        : noteHits.map((h) => ({
+            kind: "note" as const,
+            id: h.id,
+            title: h.title,
+            path: h.path,
+          }))
       : cmdHits.map((c) => ({
           kind: "cmd" as const,
           id: c.id,
@@ -95,7 +127,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 36,
+    estimateSize: () => showSearchResults ? 88 : 36,
     overscan: 5,
   });
 
@@ -111,10 +143,12 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const setActiveNote = useTreeStore((s) => s.setActiveNote);
   const recordOpenedNote = useTreeStore((s) => s.recordOpenedNote);
 
+  // Bucket B1 (Plan 07-18): activate handles the new search-result kind.
+  // Both "note" and "search-result" kinds open a note and close the palette.
   const activate = (i: number) => {
     const item = items[i];
     if (!item) return;
-    if (item.kind === "note") {
+    if (item.kind === "note" || item.kind === "search-result") {
       setActiveNote(item.id);
       recordOpenedNote(item.id);
       onOpenChange(false);
@@ -154,8 +188,10 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   if (showEmpty) {
     if (mode === "notes" && query === "") {
       emptyText = "Start typing to switch notes";
-    } else if (mode === "notes" && query !== "") {
+    } else if (mode === "notes" && query.length >= 2) {
       emptyText = `No notes match "${query}"`;
+    } else if (mode === "notes" && query !== "") {
+      emptyText = "Start typing to switch notes";
     } else if (mode === "commands" && query !== "") {
       emptyText = `No commands match "${query}"`;
     }
@@ -252,6 +288,32 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                 {virtualizer.getVirtualItems().map((vi) => {
                   const item = items[vi.index];
                   const selected = vi.index === selectedIdx;
+
+                  // Bucket B1 (Plan 07-18): FTS5 search result rows use
+                  // SearchResultRow for mark-highlighted excerpts + breadcrumbs.
+                  // SearchResultRow's own onClick calls setActiveNote; the palette
+                  // wrapper's onClick (below) is not needed for this kind.
+                  if (item.kind === "search-result") {
+                    return (
+                      <div
+                        key={item.id}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${vi.start}px)`,
+                          background: selected
+                            ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+                            : "transparent",
+                        }}
+                        onMouseEnter={() => setSelectedIdx(vi.index)}
+                        onClick={() => activate(vi.index)}
+                      >
+                        <SearchResultRow result={item.result} />
+                      </div>
+                    );
+                  }
 
                   const rowStyle: React.CSSProperties = {
                     position: "absolute",

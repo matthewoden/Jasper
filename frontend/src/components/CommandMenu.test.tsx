@@ -11,6 +11,7 @@
  * - Esc closes the dialog (Radix default)
  * - Input focus and query change
  * - Sanitized input doesn't break (XSS-safe)
+ * - Bucket B1 (Plan 07-18): FTS5 search triggered at query.length >= 2
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
@@ -30,6 +31,11 @@ vi.mock("../lib/useQuickSwitcher", () => ({
 
 vi.mock("../lib/useCommandPalette", () => ({
   useCommandPalette: vi.fn(),
+}));
+
+// Bucket B1 (Plan 07-18): mock useSearch for FTS5 integration tests.
+vi.mock("../lib/useSearch", () => ({
+  useSearch: vi.fn(),
 }));
 
 // Mock @tanstack/react-virtual — in jsdom there's no measured height, so
@@ -53,11 +59,13 @@ import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette } from "../lib/useCommandPalette";
+import { useSearch } from "../lib/useSearch";
 
 const mockUseFileTree = useFileTree as unknown as ReturnType<typeof vi.fn>;
 const mockUseTreeStore = useTreeStore as unknown as ReturnType<typeof vi.fn>;
 const mockUseQuickSwitcher = useQuickSwitcher as unknown as ReturnType<typeof vi.fn>;
 const mockUseCommandPalette = useCommandPalette as unknown as ReturnType<typeof vi.fn>;
+const mockUseSearch = useSearch as unknown as ReturnType<typeof vi.fn>;
 
 // Default mocks
 const mockSetActiveNote = vi.fn();
@@ -72,6 +80,12 @@ function setupMocks() {
       setActiveNote: mockSetActiveNote,
       recordOpenedNote: mockRecordOpenedNote,
       recentlyOpenedNoteIds: [],
+      activeTagFilter: null,
+      // SearchResultRow still calls these store actions (dead-code per Plan 07-18 HALT gate;
+      // they're no-ops in the new architecture but must be present in mock to avoid throws).
+      setSearchActive: vi.fn(),
+      setSearchQuery: vi.fn(),
+      setSearchResults: vi.fn(),
     };
     return selector(state);
   });
@@ -83,6 +97,8 @@ function setupMocks() {
     // behavior for all commands except switch-note.
     execute: vi.fn().mockReturnValue(true),
   });
+  // Bucket B1 default: no FTS5 search results.
+  mockUseSearch.mockReturnValue({ results: [], isSearching: false });
 }
 
 beforeEach(() => {
@@ -339,6 +355,112 @@ describe("CommandMenu — activate closeOnExecute behavior (UAT #5)", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(mockSetActiveNote).toHaveBeenCalledWith("n1");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Bucket B1 (Plan 07-18) — FTS5 backend search at query.length >= 2
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("CommandMenu — Bucket B1: FTS5 search in notes mode (Plan 07-18)", () => {
+  const MOCK_SEARCH_RESULT = {
+    id: "sr1",
+    title: "Hello World",
+    path: "hello.md",
+    excerpt_html: "<mark>Hello</mark> world",
+    matching_tags: [],
+    rank: 0,
+    modified_at: "2026-05-14T00:00:00Z",
+  };
+
+  it("useSearch is called with empty string when query.length < 2", () => {
+    // useQuickSwitcher handles the < 2 char case; useSearch receives empty query
+    render(<CommandMenu {...defaultNoteProps} />);
+    // useSearch should have been called with empty string (mode=notes, query="")
+    expect(mockUseSearch).toHaveBeenCalledWith("", null);
+  });
+
+  it("renders fuzzysort hits (quick switcher) when query.length < 2", () => {
+    const notes = [
+      { id: "n1", title: "Meeting Notes", path: "meeting.md" },
+    ];
+    mockUseQuickSwitcher.mockReturnValue(notes);
+    render(<CommandMenu {...defaultNoteProps} />);
+    expect(screen.getByText("Meeting Notes")).toBeTruthy();
+  });
+
+  it("renders SearchResultRow for each FTS5 hit when query.length >= 2", () => {
+    mockUseSearch.mockReturnValue({
+      results: [MOCK_SEARCH_RESULT],
+      isSearching: false,
+    });
+    render(<CommandMenu {...defaultNoteProps} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "he" } });
+    // The FTS5 result title should be in the DOM (rendered by SearchResultRow)
+    expect(screen.getByText("Hello World")).toBeTruthy();
+  });
+
+  it("does NOT render SearchResultRow when query.length is exactly 1 char", () => {
+    mockUseSearch.mockReturnValue({ results: [MOCK_SEARCH_RESULT], isSearching: false });
+    // Even if useSearch returned results, with query.length=1 we use quickswitcher
+    mockUseQuickSwitcher.mockReturnValue([]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "h" } });
+    // With no quickswitcher hits and 1-char query, empty state shown
+    expect(screen.getByText("Start typing to switch notes")).toBeTruthy();
+  });
+
+  it("fires search at query.length exactly 2", () => {
+    mockUseSearch.mockReturnValue({
+      results: [MOCK_SEARCH_RESULT],
+      isSearching: false,
+    });
+    render(<CommandMenu {...defaultNoteProps} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "ab" } });
+    // With 2-char query, switch to FTS5 path — useSearch was called with "ab"
+    expect(mockUseSearch).toHaveBeenCalledWith("ab", null);
+    // Result should appear in the DOM
+    expect(screen.getByText("Hello World")).toBeTruthy();
+  });
+
+  it("Enter on a search-result row calls setActiveNote + recordOpenedNote + closes palette", () => {
+    const onOpenChange = vi.fn();
+    mockUseSearch.mockReturnValue({
+      results: [MOCK_SEARCH_RESULT],
+      isSearching: false,
+    });
+    render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
+    const input = screen.getByRole("textbox");
+    // Type 2+ chars to enter FTS5 mode
+    fireEvent.change(input, { target: { value: "he" } });
+    // Press Enter on the first (selected) result
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(mockSetActiveNote).toHaveBeenCalledWith("sr1");
+    expect(mockRecordOpenedNote).toHaveBeenCalledWith("sr1");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("click on a search-result row calls setActiveNote + recordOpenedNote + closes palette", () => {
+    const onOpenChange = vi.fn();
+    mockUseSearch.mockReturnValue({
+      results: [MOCK_SEARCH_RESULT],
+      isSearching: false,
+    });
+    render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "he" } });
+
+    // Click on the result row wrapper (the div containing SearchResultRow)
+    const resultTitle = screen.getByText("Hello World");
+    // The outer wrapper click triggers activate()
+    resultTitle.click();
+
+    expect(mockSetActiveNote).toHaveBeenCalledWith("sr1");
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
