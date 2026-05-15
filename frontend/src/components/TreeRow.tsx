@@ -50,6 +50,7 @@ import {
   Folder,
   FolderOpen,
   MoreHorizontal,
+  Paperclip,
 } from "lucide-react";
 
 import { useTreeStore } from "../lib/useTreeStore";
@@ -151,6 +152,12 @@ export function TreeRow({
   // gives path === "daily" to root-level folders (sub-paths always have a prefix slash
   // separator, e.g. "projects/daily"). Exact string match is sufficient.
   const isDailyFolder = isFolder && (data as FolderNodeData).path === "daily";
+  // Plan 07-20 (UAT #13 C4): attachments/ folders get a Paperclip icon at any depth.
+  // Matched by folder NAME (not path) so root-level "attachments" and nested
+  // "projects/jasper/attachments" both receive the icon. Folder contents are still
+  // not indexed as notes (walk.go unchanged) — the folder appears empty when expanded.
+  // File visibility inside attachments/ is a v2 polish item.
+  const isAttachmentsFolder = isFolder && (data as FolderNodeData).name === "attachments";
   // 16px indent step (UI-SPEC §Layout). 16px base padding-left + 16px per
   // depth level. Verified by TestRow_IndentScalesWithLevel.
   const indent = 16 + 16 * node.level;
@@ -411,13 +418,20 @@ export function TreeRow({
       {/* xs (4px) gap between chevron/spacer and icon/label */}
       <span aria-hidden="true" style={{ width: 4, flexShrink: 0 }} />
       {/* Folder icon — folders only; notes render label only per UI-SPEC.
-          Phase 7 D-18: root-level daily/ folder renders CalendarDays in accent color. */}
+          Phase 7 D-18: root-level daily/ folder renders CalendarDays in accent color.
+          Phase 7 Plan 20 (UAT #13 C4): attachments/ folder renders Paperclip in muted color. */}
       {isFolder && (
         <>
           {isDailyFolder ? (
             <CalendarDays
               size={16}
               style={{ color: "var(--color-accent)", flexShrink: 0 }}
+              aria-hidden="true"
+            />
+          ) : isAttachmentsFolder ? (
+            <Paperclip
+              size={16}
+              style={muted}
               aria-hidden="true"
             />
           ) : node.isOpen ? (

@@ -1174,5 +1174,63 @@ describe("<TreeRow />", () => {
       const classes = Array.from(svgs).map((s) => s.getAttribute("class") ?? "");
       expect(classes.some((c) => c.includes("lucide-calendar-days"))).toBe(false);
     });
+
+    // Plan 07-20 (UAT #13 C4): attachments folders get the Paperclip icon.
+    it("TestRow_AttachmentsFolder_RendersPaperclipIcon", () => {
+      // Nested attachments folder — name is "attachments" but path has parent prefix.
+      const node = makeFolderNode({
+        path: "projects/jasper/attachments",
+        name: "attachments",
+      });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const svgs = container.querySelectorAll("svg");
+      const classes = Array.from(svgs).map((s) => s.getAttribute("class") ?? "");
+      // Lucide renders Paperclip as an SVG with class "lucide lucide-paperclip"
+      expect(classes.some((c) => c.includes("lucide-paperclip"))).toBe(true);
+      // Must NOT use the CalendarDays icon
+      expect(classes.some((c) => c.includes("lucide-calendar-days"))).toBe(false);
+      // Must NOT use the default Folder/FolderOpen icons
+      expect(classes.some((c) => c.includes("lucide-folder"))).toBe(false);
+    });
+
+    it("TestRow_RootAttachmentsFolder_RendersPaperclipIcon", () => {
+      // Root-level attachments folder — path === "attachments"
+      const node = makeFolderNode({ path: "attachments", name: "attachments" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const svgs = container.querySelectorAll("svg");
+      const classes = Array.from(svgs).map((s) => s.getAttribute("class") ?? "");
+      expect(classes.some((c) => c.includes("lucide-paperclip"))).toBe(true);
+    });
+
+    it("TestRow_NonAttachmentsFolder_DoesNotRenderPaperclip", () => {
+      // A folder named "assets" (not "attachments") must not get Paperclip
+      const node = makeFolderNode({ path: "assets", name: "assets" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const svgs = container.querySelectorAll("svg");
+      const classes = Array.from(svgs).map((s) => s.getAttribute("class") ?? "");
+      expect(classes.some((c) => c.includes("lucide-paperclip"))).toBe(false);
+      expect(classes.some((c) => c.includes("lucide-folder"))).toBe(true);
+    });
   });
 });
