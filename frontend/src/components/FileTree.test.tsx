@@ -1485,6 +1485,73 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     expect(muts.moveNote).toHaveBeenCalledWith("note-b", "b.md");
   });
 
+  // FT-FILE-DRAG — Plan 07-39 (UAT-5 N2-sub-B): internal file drag dispatches
+  // to muts.moveFile (not moveNote / moveFolder). Mirrors the production
+  // handleMove dispatch table: src.kind === "file" → muts.moveFile(src.path, dst).
+  it("FT-FILE-DRAG-1: file source triggers muts.moveFile(src.path, target.newPath)", async () => {
+    const muts = defaultMutsResult();
+    // Extend the result shape to include moveFile — defaultMutsResult is a test
+    // helper that only declares the historical six mutators; we widen it here
+    // so the type-narrow below picks up the new method without churning the
+    // helper for unrelated tests.
+    (muts as unknown as { moveFile: ReturnType<typeof vi.fn> }).moveFile =
+      vi.fn().mockResolvedValue(undefined);
+
+    const buildNodeApiStub = (
+      data: TreeRowData,
+      arboristId: string,
+    ): NodeApi<ArboristNode> => {
+      const arborist: ArboristNode = {
+        id: arboristId,
+        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : data.name,
+        data,
+      };
+      return {
+        id: arboristId,
+        data: arborist,
+      } as unknown as NodeApi<ArboristNode>;
+    };
+
+    // File "doc.pdf" lives at root; we drop it onto /folderA (real move).
+    const fileNode = buildNodeApiStub(
+      { kind: "file", path: "doc.pdf", name: "doc.pdf" },
+      "file:doc.pdf",
+    );
+    const parentNode = ({
+      data: { data: { kind: "folder", path: "folderA", name: "folderA" } },
+      parent: null,
+    } as unknown) as NodeApi<ArboristNode>;
+
+    // Mirror of the production handleMove loop body for a single file source.
+    const sources = [fileNode].map((dn) => ({
+      kind: dn.data.data.kind,
+      id: dn.data.data.kind === "note" ? dn.data.data.id : null,
+      path: dn.data.data.path,
+    }));
+    for (const src of sources) {
+      const target = computeMoveTarget({ sourcePath: src.path, parentNode });
+      if (target.isNoOp) continue;
+      if (src.kind === "folder") {
+        await muts.moveFolder(src.path, target.newPath);
+      } else if (src.kind === "note" && src.id !== null) {
+        await muts.moveNote(src.id, target.newPath);
+      } else if (src.kind === "file") {
+        await (muts as unknown as {
+          moveFile: (s: string, d: string) => Promise<void>;
+        }).moveFile(src.path, target.newPath);
+      }
+    }
+
+    // moveFile called once with src='doc.pdf' and dst='folderA/doc.pdf'.
+    const moveFileSpy = (muts as unknown as { moveFile: ReturnType<typeof vi.fn> })
+      .moveFile;
+    expect(moveFileSpy).toHaveBeenCalledTimes(1);
+    expect(moveFileSpy).toHaveBeenCalledWith("doc.pdf", "folderA/doc.pdf");
+    // moveNote and moveFolder must NOT have fired — file drag takes the new branch.
+    expect(muts.moveNote).not.toHaveBeenCalled();
+    expect(muts.moveFolder).not.toHaveBeenCalled();
+  });
+
   it("UX-13: handleRequestDelete with multi-selection sets multi target (buildMultiDeleteTarget)", () => {
     // Build three NodeApi-shaped stubs and a TreeRowData reference for
     // the requested row. The pure helper accepts any array of

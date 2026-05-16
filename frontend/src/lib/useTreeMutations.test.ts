@@ -19,6 +19,8 @@ const postFoldersMock = vi.fn();
 const deleteFolderMock = vi.fn();
 const postFolderMoveMock = vi.fn();
 const getTreeMock = vi.fn();
+// Plan 07-39 (UAT-5 N2-sub-B): filesApi.moveFile wrapped by useTreeMutations.moveFile.
+const filesApiMoveFileMock = vi.fn();
 
 vi.mock("./treeApi", () => ({
   getTree: (...args: unknown[]) => getTreeMock(...args),
@@ -28,6 +30,10 @@ vi.mock("./treeApi", () => ({
   postFolders: (...args: unknown[]) => postFoldersMock(...args),
   deleteFolder: (...args: unknown[]) => deleteFolderMock(...args),
   postFolderMove: (...args: unknown[]) => postFolderMoveMock(...args),
+}));
+
+vi.mock("./filesApi", () => ({
+  moveFile: (...args: unknown[]) => filesApiMoveFileMock(...args),
 }));
 
 import { TreeMutationError, useTreeMutations } from "./useTreeMutations";
@@ -42,6 +48,7 @@ describe("useTreeMutations", () => {
     deleteFolderMock.mockReset();
     postFolderMoveMock.mockReset();
     getTreeMock.mockReset();
+    filesApiMoveFileMock.mockReset();
     // Default: getTree resolves to an empty tree so the post-success
     // refresh() inside each mutator (Plan 03-09) doesn't blow up.
     getTreeMock.mockResolvedValue({ data: { root: [] } });
@@ -214,6 +221,9 @@ describe("auto-refresh contract (Gap 1)", () => {
     deleteFolderMock.mockReset();
     postFolderMoveMock.mockReset();
     getTreeMock.mockReset();
+    // Plan 07-39 (UAT-5 N2-sub-B): reset filesApi.moveFile mock between tests
+    // so UTM-MOVEFILE-* doesn't carry resolved values from sibling tests.
+    filesApiMoveFileMock.mockReset();
     // Default: getTree resolves to an empty tree so each mutator's
     // post-success refresh() (Plan 03-09 GREEN) doesn't blow up.
     getTreeMock.mockResolvedValue({ data: { root: [] } });
@@ -455,6 +465,63 @@ describe("auto-refresh contract (Gap 1)", () => {
         );
       }),
     ).rejects.toBeInstanceOf(TreeMutationError);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(getTreeMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ────────────────────────── moveFile (Plan 07-39) ──────────────────────────
+  // UTM-MOVEFILE — wraps filesApi.moveFile + tree refresh (mirrors moveNote /
+  // moveFolder). Adds internal drag-and-drop of non-markdown files (UAT-5
+  // N2-sub-B).
+  it("UTM-MOVEFILE-1: moveFile calls filesApi.moveFile with src and dst paths", async () => {
+    filesApiMoveFileMock.mockResolvedValue({
+      path: "folderA/upload.png",
+      name: "upload.png",
+    });
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.muts.moveFile("upload.png", "folderA/upload.png");
+    });
+
+    expect(filesApiMoveFileMock).toHaveBeenCalledWith(
+      "upload.png",
+      "folderA/upload.png",
+    );
+  });
+
+  it("UTM-MOVEFILE-2: moveFile refreshes useFileTree after success", async () => {
+    filesApiMoveFileMock.mockResolvedValue({
+      path: "folderA/upload.png",
+      name: "upload.png",
+    });
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.muts.moveFile("upload.png", "folderA/upload.png");
+    });
+
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("UTM-MOVEFILE-3: moveFile surfaces an error on 409 (no refresh)", async () => {
+    const err = new Error("moveFile failed: 409") as Error & { status?: number };
+    err.status = 409;
+    filesApiMoveFileMock.mockRejectedValue(err);
+
+    const { result } = harness();
+    await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
+
+    await expect(
+      act(async () => {
+        await result.current.muts.moveFile("upload.png", "folderA/upload.png");
+      }),
+    ).rejects.toThrow();
 
     await new Promise((r) => setTimeout(r, 10));
     expect(getTreeMock).toHaveBeenCalledTimes(1);
