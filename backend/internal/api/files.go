@@ -286,31 +286,267 @@ func (s *Server) CreateFile(
 	}, nil
 }
 
-// DeleteFile + PostFileMove + ServeFile implementations (Plan 07-38, UAT-4 R7b/R7a).
-// Stubs land in the RED commit so the strict-server interface compiles; the
-// GREEN commit replaces them with real bodies.
+// resolveFileUnderNotes runs the 5-rule path-traversal pipeline (mirrors
+// GetFile) and returns the resolved absolute path plus the os.FileInfo from
+// the Lstat. The boolean ok=false response signals "rejected — write the
+// matching JSON error to w and return"; the caller decides which typed
+// response wrapper to use, since DeleteFile/MoveFile/ServeFile each have a
+// different envelope.
+//
+// errCode / errMsg are returned for the caller to lift into their typed
+// response. status is the HTTP status code; for the manual ServeFile this
+// drives the json error write directly.
+type fileResolveResult struct {
+	abs      string
+	fi       os.FileInfo
+	ok       bool
+	status   int
+	errCode  string
+	errMsg   string
+	isMd     bool // helper flag so callers can decide whether 400 vs 404 for .md
+	notFound bool // distinguishes "lstat said no such file" from other errors
+}
 
+func (s *Server) resolveFileUnderNotes(rawPath string) fileResolveResult {
+	if strings.Contains(rawPath, "..") ||
+		strings.HasPrefix(rawPath, "/") ||
+		strings.HasPrefix(rawPath, `\`) {
+		return fileResolveResult{status: 400, errCode: "invalid_path", errMsg: "path must not contain '..' or be absolute"}
+	}
+	cleanRel := filepath.Clean(rawPath)
+	if cleanRel == "." || cleanRel == "/" || cleanRel == "" {
+		return fileResolveResult{status: 400, errCode: "invalid_path", errMsg: "invalid path after clean"}
+	}
+	if strings.HasSuffix(strings.ToLower(cleanRel), ".md") {
+		return fileResolveResult{status: 400, errCode: "invalid_path", errMsg: "markdown files are managed via /notes/{id}", isMd: true}
+	}
+
+	notesRoot := filepath.Join(s.dataDir, "notes")
+	finalPath := filepath.Join(notesRoot, cleanRel)
+	cleanFinal := filepath.Clean(finalPath)
+	cleanRoot := filepath.Clean(notesRoot) + string(os.PathSeparator)
+	if !strings.HasPrefix(cleanFinal, cleanRoot) {
+		return fileResolveResult{status: 400, errCode: "invalid_path", errMsg: "path escapes notes directory"}
+	}
+
+	fi, lstatErr := os.Lstat(cleanFinal)
+	if lstatErr != nil {
+		if os.IsNotExist(lstatErr) {
+			return fileResolveResult{status: 404, errCode: "not_found", errMsg: "file not found", notFound: true}
+		}
+		return fileResolveResult{status: 500, errCode: "io_error", errMsg: "could not read file"}
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fileResolveResult{status: 403, errCode: "symlink_rejected", errMsg: "symlinked files are not served"}
+	}
+	return fileResolveResult{abs: cleanFinal, fi: fi, ok: true}
+}
+
+// DeleteFile implements DELETE /api/v1/files?path=... (Plan 07-38 R7b).
+// Mirrors GetFile's pipeline; refuses .md (those are notes); refuses
+// directories (those are folders).
+//
 //nolint:revive // generated interface name
 func (s *Server) DeleteFile(
 	_ context.Context,
-	_ DeleteFileRequestObject,
+	req DeleteFileRequestObject,
 ) (DeleteFileResponseObject, error) {
-	return nil, errors.New("DeleteFile not implemented yet (Plan 07-38 RED)")
+	res := s.resolveFileUnderNotes(req.Params.Path)
+	if !res.ok {
+		switch res.status {
+		case 400:
+			return DeleteFile400JSONResponse(newError(res.errCode, res.errMsg)), nil
+		case 403:
+			return DeleteFile403JSONResponse(newError(res.errCode, res.errMsg)), nil
+		case 404:
+			return DeleteFile404JSONResponse(newError(res.errCode, res.errMsg)), nil
+		default:
+			s.log.Error("DeleteFile: resolve", "path", req.Params.Path, "code", res.errCode)
+			return nil, errors.New("could not delete file")
+		}
+	}
+	if res.fi.IsDir() {
+		return DeleteFile400JSONResponse(newError("invalid_path",
+			"path is a directory (use DELETE /folders)")), nil
+	}
+	if err := os.Remove(res.abs); err != nil {
+		s.log.Error("DeleteFile: os.Remove", "path", res.abs, "err", err)
+		return nil, errors.New("could not delete file")
+	}
+	return DeleteFile204Response{}, nil
 }
 
+// PostFileMove implements POST /api/v1/files/move (Plan 07-38 R7b).
+// Both src_path and dst_path go through the 5-rule pipeline. Refuses .md
+// (those go through POST /notes/{id}/move which has the SQLite-side
+// path-canon update). Refuses overwrite (409 if dst exists).
+//
 //nolint:revive // generated interface name
 func (s *Server) PostFileMove(
 	_ context.Context,
-	_ PostFileMoveRequestObject,
+	req PostFileMoveRequestObject,
 ) (PostFileMoveResponseObject, error) {
-	return nil, errors.New("PostFileMove not implemented yet (Plan 07-38 RED)")
+	if req.Body == nil {
+		return PostFileMove400JSONResponse(newError("invalid_request", "request body required")), nil
+	}
+	if req.Body.SrcPath == "" || req.Body.DstPath == "" {
+		return PostFileMove400JSONResponse(newError("invalid_request", "src_path and dst_path are required")), nil
+	}
+
+	srcRes := s.resolveFileUnderNotes(req.Body.SrcPath)
+	if !srcRes.ok {
+		switch srcRes.status {
+		case 400:
+			return PostFileMove400JSONResponse(newError(srcRes.errCode, srcRes.errMsg)), nil
+		case 403:
+			return PostFileMove403JSONResponse(newError(srcRes.errCode, srcRes.errMsg)), nil
+		case 404:
+			return PostFileMove404JSONResponse(newError(srcRes.errCode, srcRes.errMsg)), nil
+		default:
+			return nil, errors.New("could not stat src file")
+		}
+	}
+	if srcRes.fi.IsDir() {
+		return PostFileMove400JSONResponse(newError("invalid_path",
+			"src is a directory (use POST /folders/move)")), nil
+	}
+
+	// Dst: same 5-rule pipeline + .md refusal, BUT must NOT exist
+	// (overwrite-refusal). We can't reuse resolveFileUnderNotes verbatim
+	// because that requires existence — instead we run the validation half
+	// and then explicitly Lstat to confirm the dst is absent.
+	dstRaw := req.Body.DstPath
+	if strings.Contains(dstRaw, "..") ||
+		strings.HasPrefix(dstRaw, "/") ||
+		strings.HasPrefix(dstRaw, `\`) {
+		return PostFileMove400JSONResponse(newError("invalid_path",
+			"dst path must not contain '..' or be absolute")), nil
+	}
+	dstClean := filepath.Clean(dstRaw)
+	if dstClean == "." || dstClean == "/" || dstClean == "" {
+		return PostFileMove400JSONResponse(newError("invalid_path", "invalid dst path")), nil
+	}
+	if strings.HasSuffix(strings.ToLower(dstClean), ".md") {
+		return PostFileMove400JSONResponse(newError("invalid_path",
+			"markdown files are managed via /notes/{id}")), nil
+	}
+	notesRoot := filepath.Join(s.dataDir, "notes")
+	dstAbs := filepath.Clean(filepath.Join(notesRoot, dstClean))
+	cleanRoot := filepath.Clean(notesRoot) + string(os.PathSeparator)
+	if !strings.HasPrefix(dstAbs, cleanRoot) {
+		return PostFileMove400JSONResponse(newError("invalid_path",
+			"dst escapes notes directory")), nil
+	}
+
+	// Overwrite refusal (T-38-04): pre-Lstat dst; refuse if it exists.
+	if _, err := os.Lstat(dstAbs); err == nil {
+		return PostFileMove409JSONResponse(newError("already_exists",
+			"destination already exists")), nil
+	} else if !os.IsNotExist(err) {
+		s.log.Error("PostFileMove: Lstat dst", "path", dstAbs, "err", err)
+		return nil, errors.New("could not stat dst file")
+	}
+
+	// Ensure parent dir of dst exists. We do NOT auto-mkdir; the user
+	// creates folders via the tree UI before renaming/moving (same posture
+	// as CreateFile T-34-06).
+	parent := filepath.Dir(dstAbs)
+	if pi, perr := os.Lstat(parent); perr != nil {
+		if os.IsNotExist(perr) {
+			return PostFileMove400JSONResponse(newError("invalid_path",
+				"dst parent directory does not exist")), nil
+		}
+		s.log.Error("PostFileMove: Lstat parent", "path", parent, "err", perr)
+		return nil, errors.New("could not stat dst parent")
+	} else if !pi.IsDir() {
+		return PostFileMove400JSONResponse(newError("invalid_path",
+			"dst parent is not a directory")), nil
+	}
+
+	// Atomic on POSIX same-fs.
+	if err := os.Rename(srcRes.abs, dstAbs); err != nil {
+		s.log.Error("PostFileMove: os.Rename", "src", srcRes.abs, "dst", dstAbs, "err", err)
+		return nil, errors.New("could not move file")
+	}
+
+	finalName := filepath.Base(dstAbs)
+	finalPath := filepath.ToSlash(dstClean)
+	return PostFileMove200JSONResponse{
+		Path: finalPath,
+		Name: finalName,
+	}, nil
 }
 
-// ServeFile is a manual http.HandlerFunc that bypasses the generated GetFile
-// wrapper (which hard-codes Content-Type: application/octet-stream — wrong
-// for SVG). Wired in app/lifecycle.go AFTER HandlerFromMux so chi's
-// last-registration-wins promotes it over wrapper.GetFile. RED stub: returns
-// 501; GREEN replaces with the real implementation.
-func (s *Server) ServeFile(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "ServeFile not implemented yet (Plan 07-38 RED)", http.StatusNotImplemented)
+// ServeFile is a manual http.HandlerFunc that bypasses the generated
+// GetFile wrapper (which hard-codes Content-Type: application/octet-stream
+// — wrong for SVG, which browsers refuse to render in <img> without
+// image/svg+xml). Wired in app/lifecycle.go AFTER HandlerFromMux so chi's
+// last-registration-wins promotes it over wrapper.GetFile.
+//
+// Same 5-rule path-traversal pipeline as the strict GetFile handler. The
+// Content-Type is computed via http.DetectContentType(first512) with an
+// extension-based override for .svg (DetectContentType returns
+// "text/xml; charset=utf-8" for SVG, which browsers refuse for <img>).
+func (s *Server) ServeFile(w http.ResponseWriter, r *http.Request) {
+	rawPath := r.URL.Query().Get("path")
+
+	res := s.resolveFileUnderNotes(rawPath)
+	if !res.ok {
+		// Special-case: when isMd, the strict handler returns 404 (file
+		// hidden behind /notes/{id}), but resolveFileUnderNotes marks it
+		// 400 (a single helper for delete + move + serve has different
+		// preferred semantics — Delete/Move want 400 since "this isn't
+		// the right endpoint"; Get wants 404 since "this file isn't here").
+		status := res.status
+		code := res.errCode
+		msg := res.errMsg
+		if res.isMd {
+			status = 404
+			code = "not_found"
+			msg = "markdown files are served via /notes/{id}"
+		}
+		s.writeJSONError(w, status, code, msg)
+		return
+	}
+	if res.fi.IsDir() {
+		s.writeJSONError(w, 404, "not_found", "path is a directory")
+		return
+	}
+
+	data, readErr := os.ReadFile(res.abs)
+	if readErr != nil {
+		s.log.Error("ServeFile: ReadFile", "path", res.abs, "err", readErr)
+		s.writeJSONError(w, 500, "io_error", "could not read file")
+		return
+	}
+
+	// Dynamic Content-Type detection + .svg override (T-38-03 accepted:
+	// browsers do NOT execute SVG scripts in <img>; same-origin only).
+	sniffEnd := 512
+	if len(data) < sniffEnd {
+		sniffEnd = len(data)
+	}
+	ct := http.DetectContentType(data[:sniffEnd])
+	if strings.HasSuffix(strings.ToLower(res.abs), ".svg") {
+		ct = "image/svg+xml"
+	}
+
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Content-Length", fmt.Sprint(len(data)))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(data); err != nil {
+		s.log.Error("ServeFile: write", "path", res.abs, "err", err)
+	}
+}
+
+// writeJSONError mirrors the JSON envelope the generated wrappers emit so
+// the manual ServeFile route stays wire-compatible with the rest of the
+// API surface.
+func (s *Server) writeJSONError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	body := fmt.Sprintf(`{"code":%q,"message":%q}`, code, message)
+	if _, err := w.Write([]byte(body)); err != nil {
+		s.log.Error("writeJSONError: write", "err", err)
+	}
 }

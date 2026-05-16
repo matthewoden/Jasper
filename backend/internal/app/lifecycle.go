@@ -330,6 +330,13 @@ func (a *App) Run(ctx context.Context) error {
 		// implementation is AFTER so the hub's registration wins — confirmed
 		// by chi routing tests.)
 		r.Get("/ws", hub.ServeHTTP)
+		// Plan 07-38 (UAT-4 R7a): override GET /files with the manual
+		// ServeFile handler so Content-Type is computed dynamically
+		// (http.DetectContentType + .svg → image/svg+xml override).
+		// The generated wrapper hard-codes "application/octet-stream"
+		// which browsers refuse to render in <img> for SVG. Same
+		// last-registration-wins promotion as /ws above.
+		r.Get("/files", apiServer.ServeFile)
 	})
 	r.Mount("/", static.Handler())
 	a.handler = r

@@ -168,6 +168,10 @@ func New(cfg Config) (*App, error) {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
 		r.Use(api.ConfigStrictBodyMiddleware) // D-40: strict JSON for PUT /config
 		api.HandlerFromMux(si, r)
+		// Plan 07-38 (UAT-4 R7a): override GET /files with ServeFile so
+		// Content-Type is dynamic (image/svg+xml etc.). Same
+		// last-registration-wins pattern as /ws in lifecycle.go.
+		r.Get("/files", apiServer.ServeFile)
 	})
 
 	// SPA fallback LAST.
