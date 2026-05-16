@@ -36,6 +36,12 @@
 
   /* Phase 6.6 — TopBar drop shadow (D-31, UX-CHROME-01) */
   --shadow-elevation-1: 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  /* Plan 07-36 (UAT-3 N5): single source of truth for editor + breadcrumb
+     left padding. Both surfaces use this token so visual alignment is
+     tunable in one place. Per UAT-3 N5: 30px is the visually-correct value
+     (Plan 07-30 used 36px which was 6px too far right). */
+  --editor-content-x: 30px;
 }
 
 @theme {

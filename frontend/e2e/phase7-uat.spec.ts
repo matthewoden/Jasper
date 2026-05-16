@@ -2484,9 +2484,9 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
 
     // S26c bounding-box assertion (UAT-2 N5 C5 acceptance gate — NO test.skip):
     // The sidebar toggle's right edge must NOT exceed .cm-content's left edge + 4px.
-    // C5 fix: cm-host-shell paddingLeft: 36px → editorLeft = columnLeft + 36px.
-    // Toggle right = columnLeft + 8px (topbar-pad) + 24px (button) = columnLeft + 32px.
-    // Assertion: 32 <= 36 + 4 = 40 ✓ (passes with 4px to spare before the tolerance boundary).
+    // Plan 07-36 (UAT-3 N5) tune: editor uses --editor-content-x = 30px.
+    // Toggle right = columnLeft + 4px (topbar-pad) + 24px (button) = columnLeft + 28px.
+    // editorLeft = columnLeft + 30px → 28 <= 30 + 4 = 34 ✓ (passes with 6px to spare).
     const toggleRight = toggleBox!.x + toggleBox!.width;
     const editorLeft = editorBox!.x;
     expect(toggleRight).toBeLessThanOrEqual(editorLeft + 4);

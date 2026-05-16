@@ -50,7 +50,7 @@ let mockTagCount = 0;
 let mockBacklinkCount = 0;
 
 vi.mock("../lib/useTagsForNote", () => ({
-  useTagsForNote: (_noteId: string | null) => ({
+  useTagsForNote: () => ({
     tags: Array.from({ length: mockTagCount }, (_, i) => `tag${i}`),
     loading: false,
     error: null,

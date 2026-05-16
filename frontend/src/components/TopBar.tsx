@@ -33,12 +33,16 @@ import { PanelSelectorDropdown } from "./PanelSelectorDropdown";
 // Styles
 // ──────────────────────────────────────────────────────────────────────
 
+// Plan 07-36 (UAT-3 N5, Approach A): horizontal padding tuned from 8px to
+// 4px so the breadcrumb text-start aligns with --editor-content-x (30px) —
+// 4px outer pad + 24px toggle button + 2px inner-group gap = 30px from the
+// grid column edge, matching the editor's paddingLeft: var(--editor-content-x).
 const topBarStyle: CSSProperties = {
   background: "var(--color-bg)",
   boxShadow: "var(--shadow-elevation-1)",
   zIndex: 10,
   height: 40,
-  padding: "0 8px",
+  padding: "0 4px",
   display: "flex",
   alignItems: "center",
   gap: 4,
@@ -133,12 +137,15 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
       style={{ ...topBarStyle, ...style }}
       data-testid="top-bar"
     >
-      {/* Left group: sidebar toggle + breadcrumbs */}
+      {/* Left group: sidebar toggle + breadcrumbs.
+          Plan 07-36 (UAT-3 N5, Approach A): inner gap dropped from 4px to 2px
+          so the toggle (24px) + gap (2px) lands the breadcrumb text-start at
+          4px (outer pad) + 24px + 2px = 30px = --editor-content-x. */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 4,
+          gap: 2,
           flex: 1,
           minWidth: 0,
         }}
