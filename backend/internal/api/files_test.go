@@ -17,9 +17,13 @@ import (
 	"context"
 	"io"
 	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // callGetFile invokes the GetFile handler with the given relative path as the
@@ -421,5 +425,328 @@ func TestCreateFile_TargetIsFile(t *testing.T) {
 	}
 	if got400.Code != "invalid_path" {
 		t.Errorf("code: got %q, want %q", got400.Code, "invalid_path")
+	}
+}
+
+// ─── R7a: SVG / PNG Content-Type detection (Plan 07-38) ───────────────────────
+//
+// These tests exercise the HTTP layer (not the strict-handler method directly)
+// because the Content-Type header is the property under test, and the
+// generated wrapper hard-codes "application/octet-stream". The fix is a
+// manual chi route override registered in app/lifecycle.go that calls
+// s.ServeFile(w, r); these tests hit that route via httptest.
+
+// newFilesTestRouter wires a chi router with the manual ServeFile override
+// on GET /api/v1/files, mirroring the production lifecycle.go pattern.
+func newFilesTestRouter(t *testing.T, srv *Server) *chi.Mux {
+	t.Helper()
+	r := chi.NewRouter()
+	r.Route("/api/v1", func(r chi.Router) {
+		// Plan 07-38 R7a: same last-registration-wins pattern as /ws — manual
+		// handler overrides the generated wrapper so Content-Type is dynamic.
+		r.Get("/files", srv.ServeFile)
+	})
+	return r
+}
+
+func TestGetFile_SvgContentType(t *testing.T) {
+	t.Parallel()
+	srv, dataDir := newAttachmentTestServer(t, nil)
+
+	// A minimal valid SVG. http.DetectContentType on this returns
+	// "text/xml; charset=utf-8" — which browsers refuse for <img>. The
+	// fix is an extension-based override.
+	svg := []byte(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>`)
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "icon.svg"), svg, 0o644); err != nil {
+		t.Fatalf("write svg: %v", err)
+	}
+
+	r := newFilesTestRouter(t, srv)
+	ts := httptest.NewServer(r)
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/api/v1/files?path=icon.svg")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	if resp.StatusCode != 200 {
+		t.Fatalf("status: got %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "image/svg+xml" {
+		t.Errorf("Content-Type: got %q, want %q", ct, "image/svg+xml")
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !bytes.Equal(body, svg) {
+		t.Errorf("body mismatch")
+	}
+}
+
+func TestGetFile_PngContentType(t *testing.T) {
+	t.Parallel()
+	srv, dataDir := newAttachmentTestServer(t, nil)
+
+	// PNG magic bytes — http.DetectContentType returns "image/png" for these.
+	png := []byte("\x89PNG\r\n\x1a\nrest-of-the-png-bytes-which-do-not-matter")
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "photo.png"), png, 0o644); err != nil {
+		t.Fatalf("write png: %v", err)
+	}
+
+	r := newFilesTestRouter(t, srv)
+	ts := httptest.NewServer(r)
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/api/v1/files?path=photo.png")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	if resp.StatusCode != 200 {
+		t.Fatalf("status: got %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "image/png" {
+		t.Errorf("Content-Type: got %q, want %q", ct, "image/png")
+	}
+}
+
+func TestGetFile_HttpRoute_PathTraversal(t *testing.T) {
+	// HTTP-level smoke test: traversal still rejected through the manual
+	// route (defense-in-depth check that the manual handler runs the same
+	// 5-rule pipeline as the strict handler).
+	t.Parallel()
+	srv, _ := newAttachmentTestServer(t, nil)
+	r := newFilesTestRouter(t, srv)
+	ts := httptest.NewServer(r)
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/api/v1/files?path=../../etc/passwd")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	if resp.StatusCode != 400 {
+		t.Errorf("status: got %d, want 400", resp.StatusCode)
+	}
+}
+
+// ─── R7b: DELETE /api/v1/files + POST /api/v1/files/move ──────────────────────
+
+func callDeleteFile(t *testing.T, srv *Server, relPath string) DeleteFileResponseObject {
+	t.Helper()
+	resp, err := srv.DeleteFile(context.Background(), DeleteFileRequestObject{
+		Params: DeleteFileParams{Path: relPath},
+	})
+	if err != nil {
+		t.Fatalf("DeleteFile error: %v", err)
+	}
+	return resp
+}
+
+func TestDeleteFile_HappyPath(t *testing.T) {
+	t.Parallel()
+	srv, dataDir := newAttachmentTestServer(t, nil)
+
+	abs := filepath.Join(dataDir, "notes", "to-delete.png")
+	if err := os.WriteFile(abs, []byte("\x89PNGdata"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	resp := callDeleteFile(t, srv, "to-delete.png")
+	if _, ok := resp.(DeleteFile204Response); !ok {
+		t.Fatalf("expected DeleteFile204Response, got %T", resp)
+	}
+	if _, err := os.Stat(abs); !os.IsNotExist(err) {
+		t.Errorf("file still exists: err=%v", err)
+	}
+}
+
+func TestDeleteFile_RefusesMd(t *testing.T) {
+	t.Parallel()
+	srv, dataDir := newAttachmentTestServer(t, nil)
+
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "note.md"), []byte("# x"), 0o644); err != nil {
+		t.Fatalf("write md: %v", err)
+	}
+
+	for _, p := range []string{"note.md", "NOTE.MD"} {
+		resp := callDeleteFile(t, srv, p)
+		got400, ok := resp.(DeleteFile400JSONResponse)
+		if !ok {
+			t.Errorf("path=%q: expected DeleteFile400JSONResponse, got %T", p, resp)
+			continue
+		}
+		// Either "invalid_path" (for md refusal) is acceptable as long as
+		// it's a 400 — the contract just says "no md files".
+		if got400.Code == "" {
+			t.Errorf("path=%q: empty error code", p)
+		}
+	}
+}
+
+func TestDeleteFile_NotFound(t *testing.T) {
+	t.Parallel()
+	srv, _ := newAttachmentTestServer(t, nil)
+
+	resp := callDeleteFile(t, srv, "nonexistent.png")
+	got404, ok := resp.(DeleteFile404JSONResponse)
+	if !ok {
+		t.Fatalf("expected DeleteFile404JSONResponse, got %T", resp)
+	}
+	if got404.Code != "not_found" {
+		t.Errorf("code: got %q, want %q", got404.Code, "not_found")
+	}
+}
+
+func TestDeleteFile_RefusesDirectory(t *testing.T) {
+	t.Parallel()
+	srv, dataDir := newAttachmentTestServer(t, nil)
+
+	if err := os.MkdirAll(filepath.Join(dataDir, "notes", "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	resp := callDeleteFile(t, srv, "sub")
+	got400, ok := resp.(DeleteFile400JSONResponse)
+	if !ok {
+		t.Fatalf("expected DeleteFile400JSONResponse, got %T", resp)
+	}
+	if got400.Code != "invalid_path" {
+		t.Errorf("code: got %q, want %q", got400.Code, "invalid_path")
+	}
+}
+
+func TestDeleteFile_PathTraversal(t *testing.T) {
+	t.Parallel()
+	srv, _ := newAttachmentTestServer(t, nil)
+
+	resp := callDeleteFile(t, srv, "../../../etc/passwd")
+	got400, ok := resp.(DeleteFile400JSONResponse)
+	if !ok {
+		t.Fatalf("expected 400, got %T", resp)
+	}
+	if got400.Code != "invalid_path" {
+		t.Errorf("code: got %q, want %q", got400.Code, "invalid_path")
+	}
+}
+
+func callMoveFile(t *testing.T, srv *Server, src, dst string) PostFileMoveResponseObject {
+	t.Helper()
+	body := PostFileMoveJSONRequestBody{SrcPath: src, DstPath: dst}
+	resp, err := srv.PostFileMove(context.Background(), PostFileMoveRequestObject{
+		Body: &body,
+	})
+	if err != nil {
+		t.Fatalf("PostFileMove error: %v", err)
+	}
+	return resp
+}
+
+func TestMoveFile_HappyPath(t *testing.T) {
+	t.Parallel()
+	srv, dataDir := newAttachmentTestServer(t, nil)
+
+	srcAbs := filepath.Join(dataDir, "notes", "a.png")
+	if err := os.WriteFile(srcAbs, []byte("\x89PNGmoved"), 0o644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	resp := callMoveFile(t, srv, "a.png", "b.png")
+	got200, ok := resp.(PostFileMove200JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostFileMove200JSONResponse, got %T", resp)
+	}
+	if got200.Path != "b.png" {
+		t.Errorf("path: got %q, want %q", got200.Path, "b.png")
+	}
+	if got200.Name != "b.png" {
+		t.Errorf("name: got %q, want %q", got200.Name, "b.png")
+	}
+	if _, err := os.Stat(srcAbs); !os.IsNotExist(err) {
+		t.Errorf("src still exists: err=%v", err)
+	}
+	dstAbs := filepath.Join(dataDir, "notes", "b.png")
+	if _, err := os.Stat(dstAbs); err != nil {
+		t.Errorf("dst missing: %v", err)
+	}
+}
+
+func TestMoveFile_RefusesOverwrite(t *testing.T) {
+	t.Parallel()
+	srv, dataDir := newAttachmentTestServer(t, nil)
+
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "a.png"), []byte("a-bytes"), 0o644); err != nil {
+		t.Fatalf("write a: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "b.png"), []byte("b-bytes"), 0o644); err != nil {
+		t.Fatalf("write b: %v", err)
+	}
+
+	resp := callMoveFile(t, srv, "a.png", "b.png")
+	got409, ok := resp.(PostFileMove409JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostFileMove409JSONResponse, got %T", resp)
+	}
+	if got409.Code != "already_exists" {
+		t.Errorf("code: got %q, want %q", got409.Code, "already_exists")
+	}
+	// Both files intact.
+	if got, _ := os.ReadFile(filepath.Join(dataDir, "notes", "a.png")); string(got) != "a-bytes" {
+		t.Errorf("a.png mutated: %s", got)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dataDir, "notes", "b.png")); string(got) != "b-bytes" {
+		t.Errorf("b.png mutated: %s", got)
+	}
+}
+
+func TestMoveFile_RefusesMdSrc(t *testing.T) {
+	t.Parallel()
+	srv, dataDir := newAttachmentTestServer(t, nil)
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "note.md"), []byte("# x"), 0o644); err != nil {
+		t.Fatalf("write md: %v", err)
+	}
+	resp := callMoveFile(t, srv, "note.md", "renamed.md")
+	got400, ok := resp.(PostFileMove400JSONResponse)
+	if !ok {
+		t.Fatalf("expected 400, got %T", resp)
+	}
+	if got400.Code == "" {
+		t.Errorf("empty code")
+	}
+}
+
+func TestMoveFile_SrcNotFound(t *testing.T) {
+	t.Parallel()
+	srv, _ := newAttachmentTestServer(t, nil)
+	resp := callMoveFile(t, srv, "nonexistent.png", "b.png")
+	got404, ok := resp.(PostFileMove404JSONResponse)
+	if !ok {
+		t.Fatalf("expected 404, got %T", resp)
+	}
+	if got404.Code != "not_found" {
+		t.Errorf("code: got %q, want %q", got404.Code, "not_found")
+	}
+}
+
+func TestMoveFile_PathTraversal(t *testing.T) {
+	t.Parallel()
+	srv, dataDir := newAttachmentTestServer(t, nil)
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "ok.png"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	cases := [][2]string{
+		{"../../etc/passwd", "ok.png"},
+		{"ok.png", "../../etc/evil.png"},
+	}
+	for _, c := range cases {
+		resp := callMoveFile(t, srv, c[0], c[1])
+		got400, ok := resp.(PostFileMove400JSONResponse)
+		if !ok {
+			t.Errorf("src=%q dst=%q: expected 400, got %T", c[0], c[1], resp)
+			continue
+		}
+		if got400.Code != "invalid_path" {
+			t.Errorf("src=%q dst=%q: code: got %q, want %q", c[0], c[1], got400.Code, "invalid_path")
+		}
 	}
 }

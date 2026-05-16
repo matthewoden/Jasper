@@ -167,6 +167,36 @@ export interface paths {
          *     the existing tree UI before dropping).
          */
         post: operations["createFile"];
+        /**
+         * Delete a non-markdown file under notes/ (UAT-4 R7b / Plan 07-38).
+         * @description Mirrors GetFile's path-traversal pipeline. Refuses .md (those are notes —
+         *     use DELETE /notes/{id}). Refuses directories (use DELETE /folders). Single
+         *     os.Remove call once the path resolves under notes/.
+         */
+        delete: operations["deleteFile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/files/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename / move a non-markdown file under notes/ (UAT-4 R7b / Plan 07-38).
+         * @description Mirrors POST /folders/move for non-markdown files. Both src_path and
+         *     dst_path are relative under notes/; both run through the 5-rule
+         *     path-traversal pipeline. Refuses .md (those go through POST /notes/{id}/move).
+         *     Refuses overwrite (409 if dst already exists). Atomic os.Rename on POSIX
+         *     same-filesystem.
+         */
+        post: operations["postFileMove"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1552,6 +1582,122 @@ export interface operations {
             };
             /** @description File too large (>100 MB). */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteFile: {
+        parameters: {
+            query: {
+                /** @description Canonical relative path under notes/ (e.g. "attachments/photo.png"). */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid path / .md path refused / target is a directory. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Symlink rejected. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description File not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postFileMove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Existing relative path under notes/. */
+                    src_path: string;
+                    /** @description Target relative path under notes/. */
+                    dst_path: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Move committed; returns the new path. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        path: string;
+                        name: string;
+                    };
+                };
+            };
+            /** @description Invalid src/dst path / .md path refused. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Symlink rejected. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Source file not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Destination already exists (refuses overwrite). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

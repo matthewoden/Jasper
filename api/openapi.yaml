@@ -424,6 +424,97 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [notes]
+      operationId: deleteFile
+      summary: Delete a non-markdown file under notes/ (UAT-4 R7b / Plan 07-38).
+      description: |
+        Mirrors GetFile's path-traversal pipeline. Refuses .md (those are notes —
+        use DELETE /notes/{id}). Refuses directories (use DELETE /folders). Single
+        os.Remove call once the path resolves under notes/.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Canonical relative path under notes/ (e.g. "attachments/photo.png").
+      responses:
+        "204":
+          description: File deleted.
+        "400":
+          description: Invalid path / .md path refused / target is a directory.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Symlink rejected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: File not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /files/move:
+    post:
+      tags: [notes]
+      operationId: postFileMove
+      summary: Rename / move a non-markdown file under notes/ (UAT-4 R7b / Plan 07-38).
+      description: |
+        Mirrors POST /folders/move for non-markdown files. Both src_path and
+        dst_path are relative under notes/; both run through the 5-rule
+        path-traversal pipeline. Refuses .md (those go through POST /notes/{id}/move).
+        Refuses overwrite (409 if dst already exists). Atomic os.Rename on POSIX
+        same-filesystem.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [src_path, dst_path]
+              properties:
+                src_path:
+                  type: string
+                  description: Existing relative path under notes/.
+                dst_path:
+                  type: string
+                  description: Target relative path under notes/.
+      responses:
+        "200":
+          description: Move committed; returns the new path.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [path, name]
+                properties:
+                  path:
+                    type: string
+                  name:
+                    type: string
+        "400":
+          description: Invalid src/dst path / .md path refused.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Symlink rejected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Source file not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Destination already exists (refuses overwrite).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
   /daily-notes/{date}:
     get:
       tags: [notes]

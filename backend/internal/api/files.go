@@ -285,3 +285,32 @@ func (s *Server) CreateFile(
 		ContentType: &contentType,
 	}, nil
 }
+
+// DeleteFile + PostFileMove + ServeFile implementations (Plan 07-38, UAT-4 R7b/R7a).
+// Stubs land in the RED commit so the strict-server interface compiles; the
+// GREEN commit replaces them with real bodies.
+
+//nolint:revive // generated interface name
+func (s *Server) DeleteFile(
+	_ context.Context,
+	_ DeleteFileRequestObject,
+) (DeleteFileResponseObject, error) {
+	return nil, errors.New("DeleteFile not implemented yet (Plan 07-38 RED)")
+}
+
+//nolint:revive // generated interface name
+func (s *Server) PostFileMove(
+	_ context.Context,
+	_ PostFileMoveRequestObject,
+) (PostFileMoveResponseObject, error) {
+	return nil, errors.New("PostFileMove not implemented yet (Plan 07-38 RED)")
+}
+
+// ServeFile is a manual http.HandlerFunc that bypasses the generated GetFile
+// wrapper (which hard-codes Content-Type: application/octet-stream — wrong
+// for SVG). Wired in app/lifecycle.go AFTER HandlerFromMux so chi's
+// last-registration-wins promotes it over wrapper.GetFile. RED stub: returns
+// 501; GREEN replaces with the real implementation.
+func (s *Server) ServeFile(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "ServeFile not implemented yet (Plan 07-38 RED)", http.StatusNotImplemented)
+}
