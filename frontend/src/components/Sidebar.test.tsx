@@ -26,6 +26,12 @@ vi.mock("../lib/useFileTree", () => ({
 vi.mock("../lib/adminApi", () => ({
   postAdminReindex: vi.fn(),
 }));
+// Plan 07-39 (UAT-5 N11): Sidebar now consumes useSearch as the driver for the
+// Sidebar search UI (SearchInputBar + SearchResultsList). Mock it so tests
+// don't fire real backend GET /api/v1/search calls.
+vi.mock("../lib/useSearch", () => ({
+  useSearch: vi.fn(() => ({ results: [], isSearching: false })),
+}));
 vi.mock("../lib/useTreeMutations", async () => {
   const actual = await vi.importActual<
     typeof import("../lib/useTreeMutations")
@@ -73,6 +79,8 @@ import { useTreeMutations } from "../lib/useTreeMutations";
 import { useTreeStore, SIDEBAR_WIDTH_DEFAULT } from "../lib/useTreeStore";
 import { Sidebar } from "./Sidebar";
 import { ToastProvider } from "./Toast";
+import { useSearch } from "../lib/useSearch";
+const mockedUseSearch = vi.mocked(useSearch);
 
 const mockedUseFileTree = vi.mocked(useFileTree);
 const mockedPostAdminReindex = vi.mocked(postAdminReindex);
@@ -588,5 +596,78 @@ describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.
     const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
     expect(nav.style.gridRow).toBe("1 / 3");
     expect(nav.style.gridColumn).toBe("1");
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// SBR-N11-SPLIT — Plan 07-39 (UAT-5 N11): Sidebar mounts SearchInputBar
+// (always) + conditional SearchResultsList; runs the useSearch driver effect
+// that mirrors hook results → store searchResults slice.
+// ──────────────────────────────────────────────────────────────────────────
+describe("<Sidebar /> — Plan 07-39 Sidebar Search UI (UAT-5 N11)", () => {
+  beforeEach(() => {
+    mockedUseFileTree.mockReturnValue({
+      tree: { root: [] },
+      loading: false,
+      error: null,
+      refresh: () => Promise.resolve(),
+      mutate: noopMutate,
+    });
+    useTreeStore.setState({
+      notesSidebarVisible: true,
+      searchQuery: "",
+      searchActive: false,
+      searchResults: [],
+    });
+    mockedUseSearch.mockReturnValue({ results: [], isSearching: false });
+  });
+
+  it("SBR-N11-SPLIT-1: SearchInputBar is mounted unconditionally inside the sidebar", () => {
+    renderWithProvider(<Sidebar />);
+    // SearchInputBar renders an input with placeholder "Search notes…"
+    expect(screen.getByPlaceholderText("Search notes…")).toBeInTheDocument();
+  });
+
+  it("SBR-N11-SPLIT-2: when searchActive=false, FileTree renders + SearchResultsList does NOT", () => {
+    useTreeStore.setState({ searchActive: false, searchQuery: "" });
+    renderWithProvider(<Sidebar />);
+    // FileTree mounts a [role='tree'] container; SearchResultsList does not.
+    expect(document.querySelector('[role="tree"]')).not.toBeNull();
+  });
+
+  it("SBR-N11-SPLIT-3: when searchActive=true, SearchResultsList renders + FileTree does NOT", () => {
+    useTreeStore.setState({
+      searchActive: true,
+      searchQuery: "hello",
+      searchResults: [],
+    });
+    renderWithProvider(<Sidebar />);
+    // FileTree must NOT be in the DOM when search is active.
+    expect(document.querySelector('[role="tree"]')).toBeNull();
+    // Empty-state copy from SearchResultsList renders when query >= 2 + 0 results.
+    expect(screen.getByText('No matches for "hello"')).toBeInTheDocument();
+  });
+
+  it("SBR-N11-SPLIT-4: useSearch driver effect mirrors results → store.searchResults", async () => {
+    const HIT = {
+      id: "abc",
+      title: "Hello",
+      path: "hello.md",
+      excerpt_html: "h<mark>el</mark>lo",
+      matching_tags: [],
+      rank: 1,
+      modified_at: "2026-05-16T00:00:00Z",
+    };
+    // Pre-seed the driver: the Sidebar reads searchQuery from store; useSearch
+    // mock returns the hits regardless. The driver effect should write to store.
+    mockedUseSearch.mockReturnValue({ results: [HIT], isSearching: false });
+    useTreeStore.setState({ searchQuery: "he", searchActive: false, searchResults: [] });
+
+    renderWithProvider(<Sidebar />);
+    await waitFor(() => {
+      expect(useTreeStore.getState().searchResults).toEqual([HIT]);
+      // query.length >= 2 must flip searchActive on.
+      expect(useTreeStore.getState().searchActive).toBe(true);
+    });
   });
 });

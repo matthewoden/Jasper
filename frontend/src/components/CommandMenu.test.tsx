@@ -767,3 +767,81 @@ describe("CMM-INIT — selectedIdx starts at first selectable (Plan 07-33)", () 
     expect(mockSetActiveNote).toHaveBeenCalledWith("n1");
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// CMM-N11-SPLIT — Plan 07-39 (UAT-5 N11) — strip FTS5 from switcher
+//
+// Plan 07-39 REVERSES Plan 07-33's title-fuzzy + FTS5 merge and Plan 07-38's
+// dedupe-removal. The switcher is now title-fuzzy ONLY in notes mode. FTS5
+// search lives at the Sidebar surface, not in CommandMenu.
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("CMM-N11-SPLIT — switcher is title-fuzzy only (Plan 07-39 / UAT-5 N11)", () => {
+  const TITLE_HIT = { id: "n1", title: "alpha", path: "alpha.md" };
+  const FTS5_HIT = {
+    id: "n2",
+    title: "beta",
+    path: "beta.md",
+    excerpt_html: "body has <mark>al</mark>pha",
+    matching_tags: [],
+    rank: 1,
+    modified_at: "2026-05-16T00:00:00Z",
+  };
+
+  it("CMM-N11-SPLIT-1: notes mode never renders a 'Search results' group label", () => {
+    mockUseQuickSwitcher.mockReturnValue([TITLE_HIT]);
+    // Even if useSearch returns hits, the switcher should NOT render the Search section.
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
+
+    // No 'Search results' eyebrow.
+    const searchEyebrow = document.querySelector(
+      '[data-row-kind="group"][data-group-id="group:search"]',
+    );
+    expect(searchEyebrow).toBeNull();
+    // No 'Search results' text anywhere.
+    expect(screen.queryByText("Search results")).toBeNull();
+  });
+
+  it("CMM-N11-SPLIT-2: useSearch is NOT consumed in notes mode (call count is 0)", () => {
+    mockUseQuickSwitcher.mockReturnValue([TITLE_HIT]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
+    // useSearch must never be called — it lives at the Sidebar surface now.
+    expect(mockUseSearch).not.toHaveBeenCalled();
+  });
+
+  it("CMM-N11-SPLIT-3: a body-only match (no title fuzzy hit) shows nothing in switcher", () => {
+    // Title-fuzzy returns no hits (the query matches body, not title).
+    mockUseQuickSwitcher.mockReturnValue([]);
+    // Even though useSearch would have FTS5 hits, the switcher ignores them.
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
+
+    // No search-result rows.
+    const searchRow = document.querySelector('[data-row-kind="search-result"]');
+    expect(searchRow).toBeNull();
+    // Empty state should appear.
+    expect(screen.getByText(/No notes match "al"/)).toBeTruthy();
+  });
+
+  it("CMM-N11-SPLIT-4: a title-only match shows ONLY title rows; no second section", () => {
+    mockUseQuickSwitcher.mockReturnValue([TITLE_HIT]);
+    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
+
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
+
+    // Title row visible.
+    expect(screen.getByText("alpha")).toBeTruthy();
+    // No 'Search results' eyebrow / no search-result row anywhere.
+    expect(
+      document.querySelector('[data-row-kind="group"][data-group-id="group:search"]'),
+    ).toBeNull();
+    expect(document.querySelector('[data-row-kind="search-result"]')).toBeNull();
+  });
+});
