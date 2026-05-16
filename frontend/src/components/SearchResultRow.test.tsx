@@ -73,4 +73,41 @@ describe("SearchResultRow", () => {
     const rowDiv = container.querySelector('[role="button"]') as HTMLElement;
     expect(rowDiv.style.background).toContain("var(--color-accent)");
   });
+
+  // ────────────────────────────────────────────────────────────────────
+  // SRR-N11-LEGIB — Plan 07-39 (UAT-5 N11): muted base excerpt text,
+  // bright + bold <mark> highlight, no yellow background fill.
+  // ────────────────────────────────────────────────────────────────────
+  describe("SRR-N11-LEGIB — excerpt legibility (Plan 07-39 / UAT-5 N11)", () => {
+    it("SRR-N11-LEGIB-1: excerpt container scoped style sets color to var(--color-muted)", () => {
+      const { container } = render(<SearchResultRow result={mockResult} />);
+      // The scoped <style> block defines .search-result-excerpt color rule;
+      // verify by inspecting the injected stylesheet's textContent.
+      const styleEl = container.querySelector("style");
+      expect(styleEl).not.toBeNull();
+      const css = styleEl!.textContent ?? "";
+      // Base excerpt text must be muted (the un-matched body around the highlight).
+      expect(css).toMatch(/\.search-result-excerpt\s*{[^}]*color:\s*var\(--color-muted\)/);
+    });
+
+    it("SRR-N11-LEGIB-2: <mark> rule uses var(--color-fg) and font-weight 600", () => {
+      const { container } = render(<SearchResultRow result={mockResult} />);
+      const styleEl = container.querySelector("style");
+      const css = styleEl?.textContent ?? "";
+      // The <mark> rule must brighten the matched span to color-fg + 600 weight.
+      expect(css).toMatch(/\.search-result-excerpt\s+mark\s*{[^}]*color:\s*var\(--color-fg\)/);
+      expect(css).toMatch(/\.search-result-excerpt\s+mark\s*{[^}]*font-weight:\s*600/);
+    });
+
+    it("SRR-N11-LEGIB-3: <mark> rule has transparent background (no yellow fill)", () => {
+      const { container } = render(<SearchResultRow result={mockResult} />);
+      const styleEl = container.querySelector("style");
+      const css = styleEl?.textContent ?? "";
+      // Background must be transparent — the affordance comes from
+      // brightness + weight, not a colored box.
+      expect(css).toMatch(/\.search-result-excerpt\s+mark\s*{[^}]*background:\s*transparent/);
+      // And it must NOT use a color-mix accent fill (Plan 07-08 style is gone).
+      expect(css).not.toMatch(/\.search-result-excerpt\s+mark\s*{[^}]*background:\s*color-mix/);
+    });
+  });
 });
