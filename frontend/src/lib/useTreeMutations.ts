@@ -31,6 +31,7 @@
 import { useCallback } from "react";
 
 import * as treeApi from "./treeApi";
+import * as filesApi from "./filesApi";
 import { broadcastRefresh } from "./useFileTree";
 
 export class TreeMutationError extends Error {
@@ -66,6 +67,12 @@ export interface UseTreeMutationsResult {
   ) => Promise<treeApi.FolderNode>;
   deleteFolder: (path: string, recursive: boolean) => Promise<void>;
   moveFolder: (oldPath: string, newPath: string) => Promise<treeApi.FolderNode>;
+  // Plan 07-39 (UAT-5 N2-sub-B): internal file drag wraps filesApi.moveFile
+  // with the same single-flight + refresh pattern as moveNote / moveFolder.
+  // filesApi.moveFile throws on error (its own Error subclass with .status);
+  // we propagate the throw without wrapping in TreeMutationError because the
+  // /files endpoint has its own error envelope.
+  moveFile: (src: string, dst: string) => Promise<filesApi.MoveFileResult>;
 }
 
 export function useTreeMutations(): UseTreeMutationsResult {
@@ -131,6 +138,21 @@ export function useTreeMutations(): UseTreeMutationsResult {
     [],
   );
 
+  const moveFile = useCallback(
+    async (
+      src: string,
+      dst: string,
+    ): Promise<filesApi.MoveFileResult> => {
+      // filesApi.moveFile throws on non-2xx with .status + .body — let the
+      // error propagate to the caller (FileTree.handleMove → surfaceError).
+      // Mirror moveNote / moveFolder: refresh ONLY on the success path.
+      const data = await filesApi.moveFile(src, dst);
+      await broadcastRefresh();
+      return data;
+    },
+    [],
+  );
+
   return {
     createNote,
     deleteNote,
@@ -138,5 +160,6 @@ export function useTreeMutations(): UseTreeMutationsResult {
     createFolder,
     deleteFolder,
     moveFolder,
+    moveFile,
   };
 }

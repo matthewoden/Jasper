@@ -82,6 +82,8 @@ function defaultMuts() {
     createFolder: vi.fn(),
     deleteFolder: vi.fn(),
     moveFolder: vi.fn(),
+    // Plan 07-39 (UAT-5 N2-sub-B): internal file drag mutator.
+    moveFile: vi.fn(),
   };
 }
 

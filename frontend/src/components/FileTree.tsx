@@ -1185,8 +1185,14 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           }
           if (src.kind === "folder") {
             await muts.moveFolder(src.path, target.newPath);
-          } else if (src.id !== null) {
+          } else if (src.kind === "note" && src.id !== null) {
             await muts.moveNote(src.id, target.newPath);
+          } else if (src.kind === "file") {
+            // Plan 07-39 (UAT-5 N2-sub-B): internal file drag routes to
+            // muts.moveFile → filesApi.moveFile (POST /api/v1/files/move).
+            // Backend uses the same 5-rule path-traversal pipeline proven
+            // in Plan 07-38.
+            await muts.moveFile(src.path, target.newPath);
           }
         }
         // Plan 03-09 (Gap 1) + Plan 08 single-flight: the mutator
@@ -1805,9 +1811,15 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         // See 05.5-17c-INVESTIGATION.md.
         onDelete={handleArboristDelete}
         disableDrop={handleDisableDrop}
-        // Plan 07-26 (UAT-2 R1-7): file nodes are read-only — prevent drag initiation.
-        // BoolFunc<ArboristNode> receives the plain data object (not NodeApi); data.data is TreeRowData.
-        disableDrag={(d: ArboristNode) => d.data.kind === "file"}
+        // Plan 07-39 (UAT-5 N2-sub-B): file nodes are now draggable. Plan 07-38
+        // shipped POST /api/v1/files/move; Plan 07-39 wires handleMove's
+        // src.kind === "file" branch to muts.moveFile → filesApi.moveFile. The
+        // Plan 07-26 disableDrag={kind === "file"} predicate is therefore
+        // removed — files participate in DnD like notes and folders.
+        // (Empty BoolFunc returning false → drag never disabled per-row;
+        // react-arborist defaults to draggable when the prop is omitted, but
+        // we keep an explicit predicate slot for future per-row guards.)
+        disableDrag={() => false}
         rowHeight={32}
         width="100%"
         // Tree fills the entire treeAreaRef height. Root-drop is now
