@@ -134,19 +134,20 @@ function getFileIconComponent(filename: string): IconComponent {
   return FileIcon;
 }
 
-// Plan 07-26 (UAT-2 R1-7): click routing for non-markdown files.
-// Files inside attachments/ open in a new tab via the attachments REST endpoint.
-// Files outside attachments/ are deferred — console.warn, no navigation.
-function handleFileClick(filePath: string, parentNoteId?: string): void {
-  const idx = filePath.indexOf("/attachments/");
-  if (idx >= 0 && parentNoteId) {
-    const filename = filePath.substring(idx + "/attachments/".length);
-    const url = `/api/v1/attachments/${parentNoteId}/${encodeURIComponent(filename)}`;
-    window.open(url, "_blank");
-    return;
-  }
-  console.warn(`[TreeRow] file click deferred (not in attachments/ or no parentNoteId): ${filePath}`);
-}
+// Plan 07-32b (UAT-3 R7): clicking a non-markdown file sets
+// useTreeStore.activeFilePath; EditorPane subscribes and renders
+// FilePreviewView in the middle pane.
+//
+// SUPERSEDES Plan 07-26 — the previous routing called
+// `window.open(/api/v1/attachments/{parentNoteId}/{filename})` which
+// failed for vault-root files and files outside attachments/ because
+// `parentNoteId` derivation had two failure modes (see 07-31-INVESTIGATION.md
+// §"Root Cause"). The new path-based contract works uniformly for all
+// non-markdown files via the generic GET /api/v1/files?path=<encoded>
+// endpoint introduced in Plan 07-32a.
+//
+// FileNodeData.parentNoteId is preserved on the type (D-41 ADD-only) but
+// no longer passed or consumed here.
 
 export function TreeRow({
   node,
@@ -279,9 +280,12 @@ export function TreeRow({
       return;
     }
 
-    // Plan 07-26: file nodes use a dedicated click handler (attachment open or deferred).
+    // Plan 07-32b (UAT-3 R7): file nodes set activeFilePath; EditorPane
+    // subscribes and renders FilePreviewView in the middle pane (no popup,
+    // no fetch). The setter atomically clears activeNoteId so the previously
+    // active note's content stops being held in the editor.
     if (isFile) {
-      handleFileClick(data.path, (data as FileNodeData).parentNoteId);
+      useTreeStore.getState().setActiveFilePath(data.path);
       return;
     }
 
@@ -301,6 +305,11 @@ export function TreeRow({
     if (isFolder) {
       node.toggle();
     } else {
+      // Plan 07-32b (UAT-3 R7): explicitly clear activeFilePath BEFORE
+      // calling setActiveNote. setActiveNote is unchanged per D-41 ADD-only,
+      // so callers must do the reciprocal clearing — otherwise a previously
+      // file-preview-active state would persist into the note view.
+      useTreeStore.getState().setActiveFilePath(null);
       onSelectNote((data as NoteNodeData).id);
       useTreeStore.getState().setActiveNote((data as NoteNodeData).id);
     }

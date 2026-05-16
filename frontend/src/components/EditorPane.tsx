@@ -66,6 +66,8 @@ import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
 import type { components } from "../api/schema";
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor"; // Plan 05-11 D-26..D-27
+// Plan 07-32b (UAT-3 R7): middle-pane preview for non-markdown files.
+import { FilePreviewView } from "./FilePreviewView";
 
 type LoadStatus = "loading" | "loaded" | "error";
 
@@ -204,6 +206,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
 
   // Phase 4 (Plan 04-05) — connection status for autosave gate (D-06).
   const connectionStatus = useTreeStore((s) => s.connectionStatus);
+
+  // Plan 07-32b (UAT-3 R7) — when set (via TreeRow file-click), EditorPane
+  // renders FilePreviewView in the middle pane instead of the markdown editor
+  // or the null-noteId placeholder. The branch fires regardless of noteId
+  // because the new endpoint is path-based, not noteId-based.
+  const activeFilePath = useTreeStore((s) => s.activeFilePath);
 
   // Phase 4 (Plan 04-05) — conflict banner (SYNC-05, D-11).
   const [conflictBanner, setConflictBanner] = useState<{
@@ -843,6 +851,25 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       }
     };
   }, [editorHandlersRef, onNoteUpdated, onNoteDeleted]);
+
+  // Plan 07-32b (UAT-3 R7): when a non-markdown file is selected in the
+  // sidebar tree, render the FilePreviewView in the middle pane instead
+  // of the markdown editor or the placeholder. This branch sits BEFORE
+  // the `if (noteId === null)` check so it fires even when no note is
+  // active (the typical case: user has no note selected and clicks a
+  // non-markdown file). The FilePreviewView wrapper preserves the
+  // surrounding pane chrome (flex/h-full/bg-bg + caller-supplied style).
+  if (activeFilePath !== null) {
+    return (
+      <section
+        className="flex flex-col h-full bg-bg"
+        style={{ minHeight: 0, overflow: "hidden", ...style }}
+        data-testid="editor-pane-file-preview"
+      >
+        <FilePreviewView path={activeFilePath} />
+      </section>
+    );
+  }
 
   // Phase 3: null noteId → render placeholder, NOT the textarea.
   // Plan 07-28 (UAT-2 N9): SaveIndicator is now rendered in StatusBar

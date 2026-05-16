@@ -49,10 +49,19 @@ describe("<FilePreviewView />", () => {
     const section = screen.getByTestId("file-preview-view");
     expect(section.getAttribute("data-file-preview-kind")).toBe("metadata");
 
-    // Metadata: filename "spec.pdf", type "PDF" (uppercased), and the full path.
-    expect(screen.getByText(/spec\.pdf/)).toBeInTheDocument();
-    expect(screen.getByText(/PDF/)).toBeInTheDocument();
-    expect(screen.getByText(/docs\/spec\.pdf/)).toBeInTheDocument();
+    // Metadata: filename "spec.pdf" appears (in the Filename row), "PDF"
+    // appears (in the Type row), and the full path "docs/spec.pdf" appears
+    // (in the Location row). Use textContent to assert presence — the
+    // panel breaks each label/value across <strong>/text nodes so a
+    // narrow regex would match multiple rows (filename + location both
+    // contain "spec.pdf").
+    expect(section.textContent ?? "").toContain("spec.pdf");
+    expect(section.textContent ?? "").toContain("PDF");
+    expect(section.textContent ?? "").toContain("docs/spec.pdf");
+    // Filename / Type / Location label headers are present.
+    expect(screen.getByText(/Filename:/)).toBeInTheDocument();
+    expect(screen.getByText(/Type:/)).toBeInTheDocument();
+    expect(screen.getByText(/Location:/)).toBeInTheDocument();
 
     // No <img> in metadata mode.
     expect(section.querySelector("img")).toBeNull();
@@ -72,7 +81,9 @@ describe("<FilePreviewView />", () => {
     render(<FilePreviewView path="README" />);
     const section = screen.getByTestId("file-preview-view");
     expect(section.getAttribute("data-file-preview-kind")).toBe("metadata");
-    expect(screen.getByText(/README/)).toBeInTheDocument();
+    // README appears twice (filename + location). Assert via textContent
+    // since the regex would match multiple rows.
+    expect(section.textContent ?? "").toContain("README");
     // Type label falls back to FILE when extension is empty.
     expect(screen.getByText(/FILE/)).toBeInTheDocument();
   });

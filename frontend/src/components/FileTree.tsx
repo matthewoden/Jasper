@@ -123,6 +123,14 @@ function buildNotePathMap(nodes: readonly WireTreeNode[]): Map<string, string> {
  *
  * Returns undefined if the file is not inside an attachments/ folder or
  * if no matching note is found in the path map.
+ *
+ * @deprecated Plan 07-32b (UAT-3 R7) — TreeRow no longer reads
+ * FileNodeData.parentNoteId. The new file-click handler calls
+ * `useTreeStore.setActiveFilePath(data.path)`, which drives
+ * EditorPane → FilePreviewView with the generic GET /api/v1/files
+ * endpoint. This function is preserved as a dead-write to satisfy D-41
+ * ADD-only — the FileNodeData.parentNoteId field still exists on the
+ * type but has no readers.
  */
 function deriveParentNoteId(
   filePath: string,

@@ -119,6 +119,24 @@ export interface TreeStore {
   expanded: Set<string>;
   activeNoteId: string | null;
 
+  // Plan 07-32b (UAT-3 R7) — non-markdown file selected in the sidebar
+  // tree. When non-null, EditorPane renders FilePreviewView in the middle
+  // pane instead of the markdown editor.
+  //
+  // Mutual exclusion (D-41 ADD-only):
+  //  - setActiveFilePath(non-null) atomically clears activeNoteId inside
+  //    the action.
+  //  - setActiveNote is UNCHANGED (D-41 forbids modifying existing
+  //    actions). Callers (TreeRow.handleNoteClick) MUST invoke
+  //    setActiveFilePath(null) BEFORE setActiveNote(uuid) to clear the
+  //    reciprocal direction.
+  //
+  // Transient — NOT persisted (mirrors the precedent that "currently
+  // open thing" is not preserved across page loads for file-preview;
+  // activeNoteId IS persisted because note state survives reloads).
+  activeFilePath: string | null;
+  setActiveFilePath: (p: string | null) => void;
+
   // Transient slots (never persisted):
   pendingRename: PendingRename | null;
   draftCreate: DraftCreate | null;
@@ -240,6 +258,17 @@ export interface TreeStore {
 export const useTreeStore = create<TreeStore>((set) => ({
   expanded: new Set<string>(),
   activeNoteId: null,
+  // Plan 07-32b (UAT-3 R7) — see TreeStore.activeFilePath docs above.
+  activeFilePath: null,
+  setActiveFilePath: (p) =>
+    // Non-null: atomically clear activeNoteId (mutual exclusion — permitted
+    // under D-41 ADD-only because this is a NEW action; we're not modifying
+    // setActiveNote).
+    set(
+      p === null
+        ? { activeFilePath: null }
+        : { activeFilePath: p, activeNoteId: null },
+    ),
   pendingRename: null,
   draftCreate: null,
   selectedRow: null,
