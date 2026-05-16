@@ -1460,15 +1460,19 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Step 1: open Cmd+P (commands mode) and type "fi" (matches "Filter" — no Find in note after Plan 07-27).
+    // Step 1: open Cmd+P (commands mode) and type "sw" — matches "Switch / search notes"
+    // so the row stays visible. (Plan 07-36 fix: the original "fi" matched "Find in note"
+    // which Plan 07-27 removed; with no matches the Switch row was filtered out and the
+    // selector failed. "sw" preserves the test intent — non-empty stale query that
+    // must clear on mode flip — while keeping the click target in the DOM.)
     await pressShortcut(page, "CmdP");
     const commandDialog = page.getByRole("dialog", { name: "Command palette" });
     await expect(commandDialog).toBeVisible({ timeout: 3_000 });
 
     const cmdInput = commandDialog.getByRole("textbox");
-    await cmdInput.fill("fi");
-    // Verify "fi" is in the input.
-    await expect(cmdInput).toHaveValue("fi");
+    await cmdInput.fill("sw");
+    // Verify "sw" is in the input.
+    await expect(cmdInput).toHaveValue("sw");
 
     // Step 2: click "Switch / search notes" — the palette stays open (closeOnExecute=false)
     // and flips to notes mode. Fix B (mode dep in useEffect) must clear the input.
@@ -1899,8 +1903,19 @@ test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 
 
     expect(noteId, `daily note not found in tree at ${originalDailyPath}`).not.toBeNull();
 
-    // Verify the note is visible in the tree by its UUID (data-tree-row uses id for notes).
+    // Plan 07-36 fix: Plan 07-29 (D-52) made folders default-CLOSED, so the daily/
+    // folder must be explicitly expanded before its child notes render in react-arborist.
+    // Click the folder row to expand it (idempotent — if already open, this collapses
+    // then re-opens; for first-load it just opens). Wait for the folder row first.
+    const dailyFolderForOpen = page.locator('[data-tree-row="daily"][data-tree-row-kind="folder"]');
+    await expect(dailyFolderForOpen).toBeVisible({ timeout: 5_000 });
+    // Only click if the chevron indicates closed; safer: just verify note row by retry.
+    // Strategy: try to find the note row; if not visible within 1s, click the folder to open.
     const originalNoteRow = page.locator(`[data-tree-row="${noteId}"][data-tree-row-kind="note"]`);
+    const visibleQuick = await originalNoteRow.isVisible().catch(() => false);
+    if (!visibleQuick) {
+      await dailyFolderForOpen.click();
+    }
     await expect(originalNoteRow).toBeVisible({ timeout: 5_000 });
 
     // Step 3 — Simulate the H1-rename by calling POST /notes/{id}/move directly.
@@ -2484,9 +2499,9 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
 
     // S26c bounding-box assertion (UAT-2 N5 C5 acceptance gate — NO test.skip):
     // The sidebar toggle's right edge must NOT exceed .cm-content's left edge + 4px.
-    // Plan 07-36 (UAT-3 N5) tune: editor uses --editor-content-x = 30px.
-    // Toggle right = columnLeft + 4px (topbar-pad) + 24px (button) = columnLeft + 28px.
-    // editorLeft = columnLeft + 30px → 28 <= 30 + 4 = 34 ✓ (passes with 6px to spare).
+    // C5 fix: cm-host-shell paddingLeft: 36px → editorLeft = columnLeft + 36px.
+    // Toggle right = columnLeft + 8px (topbar-pad) + 24px (button) = columnLeft + 32px.
+    // Assertion: 32 <= 36 + 4 = 40 ✓ (passes with 4px to spare before the tolerance boundary).
     const toggleRight = toggleBox!.x + toggleBox!.width;
     const editorLeft = editorBox!.x;
     expect(toggleRight).toBeLessThanOrEqual(editorLeft + 4);
