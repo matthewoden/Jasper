@@ -67,16 +67,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: false,
     inCheatSheet: true,
   },
-  {
-    id: "underline",
-    label: "Underline",
-    group: "Editor",
-    shortcut: `${mod}U`,
-    inPalette: false,
-    inCheatSheet: true,
-    // Note: markdown standard has no underline; v1 wraps selection with HTML <u>...</u> tags.
-    // Documented in 07-CONTEXT.md 2026-05-15 D-51 addendum.
-  },
+  // Plan 07-36 (UAT-3 N7): underline removed — markdown editor cannot render HTML inline so <u> tags are invisible.
   {
     id: "frontmatter",
     label: "Toggle raw frontmatter view",

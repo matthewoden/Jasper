@@ -66,13 +66,10 @@ describe("Plan 07-27 — Cmd+F removal (UAT-2 N6)", () => {
   });
 });
 
-// Plan 07-27 / UAT-2 N7: shortcutsRegistry includes 'underline' (Cmd+U) in cheat-sheet
-describe("Plan 07-27 — Cmd+U underline (UAT-2 N7)", () => {
-  it("SR-underline — shortcutsRegistry includes 'underline' entry with inCheatSheet: true", () => {
+// Plan 07-36 (UAT-3 N7): underline REMOVED — assert no entry with id 'underline'.
+describe("Plan 07-36 — Cmd+U underline removed (UAT-3 N7)", () => {
+  it("SR-no-underline — shortcutsRegistry does NOT include 'underline' entry", () => {
     const entry = SHORTCUTS_REGISTRY.find((s) => s.id === "underline");
-    expect(entry).toBeDefined();
-    expect(entry?.inCheatSheet).toBe(true);
-    expect(entry?.inPalette).toBe(false);
-    expect(entry?.group).toBe("Editor");
+    expect(entry).toBeUndefined();
   });
 });

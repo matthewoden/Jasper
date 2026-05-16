@@ -35,7 +35,7 @@ type Shortcut =
   | "CmdF"        // Cmd+F — native browser find (NOT CM6 panel after Plan 07-27)
   | "CmdB"        // Cmd+B — bold
   | "CmdI"        // Cmd+I — italic
-  | "CmdU"        // Cmd+U — underline (Plan 07-27 / UAT-2 N7)
+  // Plan 07-36 (UAT-3 N7): CmdU removed — underline binding reverted.
   | "EscKey";     // Escape
 
 const MOD = process.platform === "darwin" ? "Meta" : "Control";
@@ -50,7 +50,7 @@ const SHORTCUT_MAP: Record<Shortcut, string> = {
   CmdF: `${MOD}+f`,
   CmdB: `${MOD}+b`,
   CmdI: `${MOD}+i`,
-  CmdU: `Control+u`,  // Plan 07-27: CM6 maps Mod-u → ctrlKey in headless Win32
+  // Plan 07-36 (UAT-3 N7): CmdU removed — underline binding reverted.
   EscKey: "Escape",
 };
 

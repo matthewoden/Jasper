@@ -21,7 +21,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { saveKeymap, toggleBold, toggleItalic, toggleUnderline } from "./jasperKeymap";
+import { saveKeymap, toggleBold, toggleItalic } from "./jasperKeymap";
 
 describe("jasperKeymap / saveKeymap", () => {
   it("Ctrl-s triggers the onSave callback and prevents default (Mod-s in happy-dom)", () => {
@@ -201,57 +201,7 @@ describe("JK-bold-italic — toggleBold / toggleItalic commands (UAT-2 R1-4)", (
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Plan 07-27 / UAT-2 N7 RED: toggleUnderline — wraps selection with <u>...</u>
+// Plan 07-36 (UAT-3 N7): JK-underline tests REMOVED. Cmd+U binding reverted —
+// CM6 markdown editor renders raw source so <u>...</u> tags are visible literal
+// characters, not an underline. See 07-CONTEXT.md D-51 REMOVED sub-section.
 // ─────────────────────────────────────────────────────────────────────────────
-
-describe("JK-underline — toggleUnderline command (UAT-2 N7)", () => {
-  function makeView(doc: string, selFrom: number, selTo: number): EditorView {
-    const parent = document.createElement("div");
-    document.body.appendChild(parent);
-    const state = EditorState.create({ doc, selection: { anchor: selFrom, head: selTo } });
-    return new EditorView({ state, parent });
-  }
-
-  it("JK-U-1: cursor only → inserts <u></u> with cursor between", () => {
-    const view = makeView("hello", 5, 5);
-    try {
-      const result = toggleUnderline(view);
-      expect(result).toBe(true);
-      expect(view.state.doc.toString()).toBe("hello<u></u>");
-    } finally {
-      view.destroy();
-    }
-  });
-
-  it("JK-U-2: selection 'foo' → wraps to '<u>foo</u>'", () => {
-    const view = makeView("foo bar", 0, 3);
-    try {
-      toggleUnderline(view);
-      expect(view.state.doc.toString()).toBe("<u>foo</u> bar");
-    } finally {
-      view.destroy();
-    }
-  });
-
-  it("JK-U-3: selection '<u>foo</u>' → strips to 'foo'", () => {
-    // <u>foo</u> = 10 chars (3+3+4). Range 0-10 selects the full span.
-    // Plan spec said 0-12 but that's a typo — <u>foo</u> is 10 chars, not 12.
-    const view = makeView("<u>foo</u> bar", 0, 10);
-    try {
-      toggleUnderline(view);
-      expect(view.state.doc.toString()).toBe("foo bar");
-    } finally {
-      view.destroy();
-    }
-  });
-
-  it("JK-U-4: selection 'foo' wrapped by <u>...</u> → strips wrapper", () => {
-    const view = makeView("<u>foo</u> bar", 3, 6);
-    try {
-      toggleUnderline(view);
-      expect(view.state.doc.toString()).toBe("foo bar");
-    } finally {
-      view.destroy();
-    }
-  });
-});
