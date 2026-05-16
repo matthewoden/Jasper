@@ -673,23 +673,20 @@ describe("CMM-N11 — no-dedupe snippet section (Plan 07-38 / UAT-4 N11)", () =>
     expect(searchEyebrow!.textContent).toContain("Search results");
   });
 
-  it("CMM-N11-3: selecting an FTS5-section row activates the same note as the title-section row would", () => {
-    // Both rows carry the same note id; selecting either should result
-    // in onActivate being called with the same id (this exercises the
-    // existing onActivate dispatch path, just verifying no duplicate
-    // handler quirk).
-    const onActivate = vi.fn();
+  it("CMM-N11-3: clicking the FTS5-section row activates the same note id as the title-section row", () => {
+    // Both rows carry the same note id (n1); selecting either should
+    // result in setActiveNote('n1') (the CommandMenu's activate() path).
     mockUseQuickSwitcher.mockReturnValue([TITLE_HIT]);
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
 
-    render(<CommandMenu {...defaultNoteProps} onActivate={onActivate} />);
+    render(<CommandMenu {...defaultNoteProps} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
 
     // Click the search-result row.
     const searchRow = document.querySelector('[data-row-kind="search-result"]');
     expect(searchRow).not.toBeNull();
     fireEvent.click(searchRow as HTMLElement);
-    expect(onActivate).toHaveBeenCalledWith("n1");
+    expect(mockSetActiveNote).toHaveBeenCalledWith("n1");
   });
 });
 
