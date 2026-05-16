@@ -123,6 +123,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream any file under the notes vault by relative path (UAT-3 R7 / Plan 07-32a).
+         * @description Generic file streamer. Returns ANY file located under <dataDir>/notes/<path>
+         *     without requiring a note context. Used by the sidebar tree's file-click
+         *     handler when the user selects a non-markdown file (image attachments,
+         *     PDFs, etc.). Path-traversal hardened with the same 5-rule pipeline as
+         *     GetAttachment. Returns 404 for .md files (use /notes/{id} instead).
+         *
+         *     path is passed as a query parameter (mirroring DELETE /folders) because
+         *     OpenAPI 3.1 has no native multi-segment path-wildcard syntax and
+         *     oapi-codegen does not emit chi `*` catch-all routes. The query-param
+         *     approach handles slash-containing relative paths cleanly while keeping
+         *     the route inside the generated StrictServerInterface.
+         */
+        get: operations["getFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/daily-notes/{date}": {
         parameters: {
             query?: never;
@@ -1376,6 +1406,60 @@ export interface operations {
                 };
             };
             /** @description Attachment not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getFile: {
+        parameters: {
+            query: {
+                /**
+                 * @description Canonical relative path under notes/ (e.g. "attachments/photo.png",
+                 *     "gallery/attachments/note.pdf"). Must not contain `..` segments or
+                 *     absolute path prefixes (validated server-side).
+                 */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Binary stream with Content-Type header. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Invalid path (path traversal attempt or absolute path). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Symlink rejected. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description File not found OR path is a .md file (use /notes/{id}). */
             404: {
                 headers: {
                     [name: string]: unknown;

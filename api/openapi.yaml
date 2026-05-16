@@ -297,6 +297,53 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+  /files:
+    get:
+      tags: [notes]
+      operationId: getFile
+      summary: Stream any file under the notes vault by relative path (UAT-3 R7 / Plan 07-32a).
+      description: |
+        Generic file streamer. Returns ANY file located under <dataDir>/notes/<path>
+        without requiring a note context. Used by the sidebar tree's file-click
+        handler when the user selects a non-markdown file (image attachments,
+        PDFs, etc.). Path-traversal hardened with the same 5-rule pipeline as
+        GetAttachment. Returns 404 for .md files (use /notes/{id} instead).
+
+        path is passed as a query parameter (mirroring DELETE /folders) because
+        OpenAPI 3.1 has no native multi-segment path-wildcard syntax and
+        oapi-codegen does not emit chi `*` catch-all routes. The query-param
+        approach handles slash-containing relative paths cleanly while keeping
+        the route inside the generated StrictServerInterface.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: |
+            Canonical relative path under notes/ (e.g. "attachments/photo.png",
+            "gallery/attachments/note.pdf"). Must not contain `..` segments or
+            absolute path prefixes (validated server-side).
+      responses:
+        "200":
+          description: Binary stream with Content-Type header.
+          content:
+            application/octet-stream: {}
+        "400":
+          description: Invalid path (path traversal attempt or absolute path).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Symlink rejected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: File not found OR path is a .md file (use /notes/{id}).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
   /daily-notes/{date}:
     get:
       tags: [notes]
