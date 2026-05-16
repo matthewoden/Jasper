@@ -5,7 +5,7 @@
  *
  * Reads/writes searchQuery from useTreeStore. On Esc, clears query.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 
@@ -16,6 +16,21 @@ export function SearchInputBar() {
   const setSearchResults = useTreeStore((s) => s.setSearchResults);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Plan 07-39 (UAT-5 N11) — Cmd+Shift+F focus bus. App.tsx's window-level
+  // capture-phase handler dispatches a 'jasper:focus-search' CustomEvent on
+  // the window. SearchInputBar subscribes here so the input takes focus
+  // from anywhere in the app (editor included).
+  useEffect(() => {
+    const onFocusSearch = () => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    };
+    window.addEventListener("jasper:focus-search", onFocusSearch);
+    return () => {
+      window.removeEventListener("jasper:focus-search", onFocusSearch);
+    };
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);

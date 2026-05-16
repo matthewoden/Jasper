@@ -630,9 +630,32 @@ describe("<Sidebar /> — Plan 07-39 Sidebar Search UI (UAT-5 N11)", () => {
 
   it("SBR-N11-SPLIT-2: when searchActive=false, FileTree renders + SearchResultsList does NOT", () => {
     useTreeStore.setState({ searchActive: false, searchQuery: "" });
+    // Populate the tree so FileTree mounts the [role='tree'] arborist surface
+    // (the empty-tree branch returns <TreeEmptyState/>, which is correct but
+    // not what this contract test wants to probe).
+    mockedUseFileTree.mockReturnValue({
+      tree: {
+        root: [
+          {
+            kind: "note",
+            id: "n1",
+            path: "first.md",
+            title: "First",
+            updated_at: new Date().toISOString(),
+          },
+        ],
+      },
+      loading: false,
+      error: null,
+      refresh: () => Promise.resolve(),
+      mutate: noopMutate,
+    });
     renderWithProvider(<Sidebar />);
     // FileTree mounts a [role='tree'] container; SearchResultsList does not.
     expect(document.querySelector('[role="tree"]')).not.toBeNull();
+    // SearchResultsList renders inside the tree-area container only when
+    // searchActive=true — its empty-state copy must NOT be present here.
+    expect(screen.queryByText(/No matches for/)).toBeNull();
   });
 
   it("SBR-N11-SPLIT-3: when searchActive=true, SearchResultsList renders + FileTree does NOT", () => {

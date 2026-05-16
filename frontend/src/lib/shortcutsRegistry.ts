@@ -3,7 +3,14 @@
 // dialog (Plan 07-12). Per UI-SPEC §Forward-Compat #2, NEVER re-implement shortcut
 // glyph rendering — import from this file.
 
-export type ShortcutGroup = "File" | "Editor" | "Navigation" | "View" | "Index" | "Help";
+export type ShortcutGroup =
+  | "File"
+  | "Editor"
+  | "Navigation"
+  | "Sidebar"
+  | "View"
+  | "Index"
+  | "Help";
 
 export interface Shortcut {
   /** Stable identifier; commands wire actions by id (Plan 07-11). */
@@ -101,6 +108,15 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: false,
     inCheatSheet: true,
   },
+  // Sidebar group (Plan 07-39 UAT-5 N11)
+  {
+    id: "focus-search",
+    label: "Focus search",
+    group: "Sidebar",
+    shortcut: `${mod}${shift}F`,
+    inPalette: false,
+    inCheatSheet: true,
+  },
   // View group
   {
     id: "toggle-theme",
@@ -143,6 +159,7 @@ export const GROUP_ORDER: ShortcutGroup[] = [
   "File",
   "Editor",
   "Navigation",
+  "Sidebar",
   "View",
   "Index",
   "Help",

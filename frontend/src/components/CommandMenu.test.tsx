@@ -391,378 +391,53 @@ describe("CMM-mode-reset — query clears on mode change while open (UAT-2 R1-3)
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Bucket B1 (Plan 07-18) — FTS5 backend search at query.length >= 2
-// ──────────────────────────────────────────────────────────────────────────────
-
-describe("CommandMenu — Bucket B1: FTS5 search in notes mode (Plan 07-18)", () => {
-  const MOCK_SEARCH_RESULT = {
-    id: "sr1",
-    title: "Hello World",
-    path: "hello.md",
-    excerpt_html: "<mark>Hello</mark> world",
-    matching_tags: [],
-    rank: 0,
-    modified_at: "2026-05-14T00:00:00Z",
-  };
-
-  it("useSearch is called with empty string when query.length < 2", () => {
-    // useQuickSwitcher handles the < 2 char case; useSearch receives empty query
-    render(<CommandMenu {...defaultNoteProps} />);
-    // useSearch should have been called with empty string (mode=notes, query="")
-    expect(mockUseSearch).toHaveBeenCalledWith("", null);
-  });
-
-  it("renders fuzzysort hits (quick switcher) when query.length < 2", () => {
-    const notes = [
-      { id: "n1", title: "Meeting Notes", path: "meeting.md" },
-    ];
-    mockUseQuickSwitcher.mockReturnValue(notes);
-    render(<CommandMenu {...defaultNoteProps} />);
-    expect(screen.getByText("Meeting Notes")).toBeTruthy();
-  });
-
-  it("renders SearchResultRow for each FTS5 hit when query.length >= 2", () => {
-    mockUseSearch.mockReturnValue({
-      results: [MOCK_SEARCH_RESULT],
-      isSearching: false,
-    });
-    render(<CommandMenu {...defaultNoteProps} />);
-    const input = screen.getByRole("textbox");
-    fireEvent.change(input, { target: { value: "he" } });
-    // The FTS5 result title should be in the DOM (rendered by SearchResultRow)
-    expect(screen.getByText("Hello World")).toBeTruthy();
-  });
-
-  it("does NOT render SearchResultRow when query.length is exactly 1 char", () => {
-    mockUseSearch.mockReturnValue({ results: [MOCK_SEARCH_RESULT], isSearching: false });
-    // Even if useSearch returned results, with query.length=1 we use quickswitcher
-    mockUseQuickSwitcher.mockReturnValue([]);
-    render(<CommandMenu {...defaultNoteProps} />);
-    const input = screen.getByRole("textbox");
-    fireEvent.change(input, { target: { value: "h" } });
-    // With no quickswitcher hits and 1-char query, empty state shown
-    expect(screen.getByText("Start typing to switch notes")).toBeTruthy();
-  });
-
-  it("fires search at query.length exactly 2", () => {
-    mockUseSearch.mockReturnValue({
-      results: [MOCK_SEARCH_RESULT],
-      isSearching: false,
-    });
-    render(<CommandMenu {...defaultNoteProps} />);
-    const input = screen.getByRole("textbox");
-    fireEvent.change(input, { target: { value: "ab" } });
-    // With 2-char query, switch to FTS5 path — useSearch was called with "ab"
-    expect(mockUseSearch).toHaveBeenCalledWith("ab", null);
-    // Result should appear in the DOM
-    expect(screen.getByText("Hello World")).toBeTruthy();
-  });
-
-  it("Enter on a search-result row calls setActiveNote + recordOpenedNote + closes palette", () => {
-    const onOpenChange = vi.fn();
-    mockUseSearch.mockReturnValue({
-      results: [MOCK_SEARCH_RESULT],
-      isSearching: false,
-    });
-    render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
-    const input = screen.getByRole("textbox");
-    // Type 2+ chars to enter FTS5 mode
-    fireEvent.change(input, { target: { value: "he" } });
-    // Press Enter on the first (selected) result
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(mockSetActiveNote).toHaveBeenCalledWith("sr1");
-    expect(mockRecordOpenedNote).toHaveBeenCalledWith("sr1");
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-  });
-
-  it("click on a search-result row calls setActiveNote + recordOpenedNote + closes palette", () => {
-    const onOpenChange = vi.fn();
-    mockUseSearch.mockReturnValue({
-      results: [MOCK_SEARCH_RESULT],
-      isSearching: false,
-    });
-    render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
-    const input = screen.getByRole("textbox");
-    fireEvent.change(input, { target: { value: "he" } });
-
-    // Click on the result row wrapper (the div containing SearchResultRow)
-    const resultTitle = screen.getByText("Hello World");
-    // The outer wrapper click triggers activate()
-    resultTitle.click();
-
-    expect(mockSetActiveNote).toHaveBeenCalledWith("sr1");
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-  });
-});
-
-// ──────────────────────────────────────────────────────────────────────────────
-// CMM-MERGE-* / CMM-NAV-* / CMM-INIT-* (Plan 07-33)
-// UAT-3 N10 + N11: dual-section merge, dedup, non-navigable group eyebrows
-// ──────────────────────────────────────────────────────────────────────────────
-
-describe("CMM-MERGE — dual-section title-fuzzy + FTS5 merge (Plan 07-33)", () => {
-  const MOCK_TITLE_HIT = { id: "n1", title: "test", path: "test.md" };
-  const MOCK_FTS5_HIT = {
-    id: "n2",
-    title: "alpha",
-    path: "alpha.md",
-    excerpt_html: "has te...",
-    matching_tags: [],
-    rank: 1,
-    modified_at: "2026-05-15T00:00:00Z",
-  };
-
-  it("CMM-MERGE-1: query 'te' with title-fuzzy hit 'test' present → 'test' visible at query.length >= 2", () => {
-    // Regression test for UAT-3 N10: title-fuzzy must STILL work at 2+ chars
-    mockUseQuickSwitcher.mockReturnValue([MOCK_TITLE_HIT]);
-    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
-
-    render(<CommandMenu {...defaultNoteProps} />);
-    const input = screen.getByRole("textbox");
-    fireEvent.change(input, { target: { value: "te" } });
-
-    // 'test' note must be in the DOM — title-fuzzy merged into items even at 2+ chars
-    expect(screen.getByText("test")).toBeTruthy();
-  });
-
-  it("CMM-MERGE-2: title hit 'test' + FTS5 hit 'alpha' → both visible with group eyebrows", () => {
-    mockUseQuickSwitcher.mockReturnValue([MOCK_TITLE_HIT]);
-    mockUseSearch.mockReturnValue({ results: [MOCK_FTS5_HIT], isSearching: false });
-
-    render(<CommandMenu {...defaultNoteProps} />);
-    const input = screen.getByRole("textbox");
-    fireEvent.change(input, { target: { value: "te" } });
-
-    // Note title row visible — use getAllByText since 'alpha' may appear in title + path of SearchResultRow
-    expect(screen.getByText("test")).toBeTruthy();
-    expect(screen.getAllByText(/alpha/i).length).toBeGreaterThan(0);
-
-    // Both group eyebrows visible
-    const switchEyebrow = document.querySelector('[data-row-kind="group"][data-group-id="group:notes"]');
-    const searchEyebrow = document.querySelector('[data-row-kind="group"][data-group-id="group:search"]');
-    expect(switchEyebrow).not.toBeNull();
-    expect(searchEyebrow).not.toBeNull();
-    expect(switchEyebrow!.textContent).toContain("Switch to note");
-    expect(searchEyebrow!.textContent).toContain("Search results");
-  });
-
-  it("CMM-N11-3 (supersedes CMM-MERGE-3): no dedup — 'alpha' in both title-fuzzy AND FTS5 → appears in BOTH sections", () => {
-    // Plan 07-38 N11: the prior CMM-MERGE-3 dedup behavior is REVERSED.
-    // The user expects to see the FTS5 snippet preview even when the same
-    // note is already listed in the title-fuzzy section — those two
-    // representations carry different information (title row = quick
-    // switch; FTS5 row = match snippet preview).
-    const dupFTS5Hit = { ...MOCK_FTS5_HIT, id: "n1", title: "alpha" };
-    const titleHitAlpha = { id: "n1", title: "alpha", path: "alpha.md" };
-    mockUseQuickSwitcher.mockReturnValue([titleHitAlpha]);
-    mockUseSearch.mockReturnValue({ results: [dupFTS5Hit], isSearching: false });
-
-    render(<CommandMenu {...defaultNoteProps} />);
-    const input = screen.getByRole("textbox");
-    fireEvent.change(input, { target: { value: "al" } });
-
-    // BOTH eyebrows visible — search section appears whenever FTS5 has hits.
-    const switchEyebrow = document.querySelector('[data-row-kind="group"][data-group-id="group:notes"]');
-    const searchEyebrow = document.querySelector('[data-row-kind="group"][data-group-id="group:search"]');
-    expect(switchEyebrow).not.toBeNull();
-    expect(searchEyebrow).not.toBeNull();
-    expect(searchEyebrow!.textContent).toContain("Search results");
-  });
-
-  it("CMM-MERGE-4: title-fuzzy empty + FTS5 non-empty → only 'Search results' eyebrow", () => {
-    mockUseQuickSwitcher.mockReturnValue([]);
-    mockUseSearch.mockReturnValue({ results: [MOCK_FTS5_HIT], isSearching: false });
-
-    render(<CommandMenu {...defaultNoteProps} />);
-    const input = screen.getByRole("textbox");
-    fireEvent.change(input, { target: { value: "al" } });
-
-    // Only search eyebrow
-    const switchEyebrow = document.querySelector('[data-row-kind="group"][data-group-id="group:notes"]');
-    const searchEyebrow = document.querySelector('[data-row-kind="group"][data-group-id="group:search"]');
-    expect(switchEyebrow).toBeNull();
-    expect(searchEyebrow).not.toBeNull();
-    expect(searchEyebrow!.textContent).toContain("Search results");
-  });
-
-  it("CMM-MERGE-5: title-fuzzy non-empty + FTS5 empty → only 'Switch to note' eyebrow", () => {
-    mockUseQuickSwitcher.mockReturnValue([MOCK_TITLE_HIT]);
-    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
-
-    render(<CommandMenu {...defaultNoteProps} />);
-    const input = screen.getByRole("textbox");
-    fireEvent.change(input, { target: { value: "te" } });
-
-    const switchEyebrow = document.querySelector('[data-row-kind="group"][data-group-id="group:notes"]');
-    const searchEyebrow = document.querySelector('[data-row-kind="group"][data-group-id="group:search"]');
-    expect(switchEyebrow).not.toBeNull();
-    expect(searchEyebrow).toBeNull();
-  });
-
-  it("CMM-MERGE-6: both empty + query.length >= 2 → empty state 'No notes match'", () => {
-    mockUseQuickSwitcher.mockReturnValue([]);
-    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
-
-    render(<CommandMenu {...defaultNoteProps} />);
-    const input = screen.getByRole("textbox");
-    fireEvent.change(input, { target: { value: "zz" } });
-
-    expect(screen.getByText(/No notes match "zz"/)).toBeTruthy();
-  });
-});
-
-// ── CMM-N11: Plan 07-38 (UAT-4 N11) — no dedupe between title-fuzzy + FTS5 ──
+// Bucket B1 / CMM-MERGE / CMM-N11 / CMM-NAV — REMOVED in Plan 07-39 (UAT-5 N11).
 //
-// User clarification (07-HUMAN-UAT-4.md): when a query matches both a
-// note's title and its body, the result should appear in BOTH the
-// "Switch to note" section (title-fuzzy) AND the "Search results"
-// section (FTS5). The two representations are NOT redundant — the
-// title row is the fast switch; the FTS5 row carries the snippet
-// preview.
+// The Plan 07-18 "FTS5 in Cmd+O palette" pivot, the Plan 07-33 dual-section
+// merge, and the Plan 07-38 no-dedupe extension are all REVERSED. CommandMenu
+// is now title-fuzzy only in notes mode. FTS5 search lives at the Sidebar
+// surface (SearchInputBar + SearchResultsList).
+//
+// The single-section behavior is now covered by CMM-N11-SPLIT-* above.
+// ──────────────────────────────────────────────────────────────────────────────
 
-describe("CMM-N11 — no-dedupe snippet section (Plan 07-38 / UAT-4 N11)", () => {
-  const TITLE_HIT = { id: "n1", title: "alpha", path: "alpha.md" };
-  const FTS5_HIT = {
-    id: "n1", // same note as title hit — would have been deduped previously
-    title: "alpha",
-    path: "alpha.md",
-    excerpt_html: "the word <mark>alpha</mark> appears here",
-    matching_tags: [],
-    rank: 1,
-    modified_at: "2026-05-16T00:00:00Z",
-  };
-
-  it("CMM-N11-1: same note matches title AND body → result appears in BOTH sections", () => {
-    mockUseQuickSwitcher.mockReturnValue([TITLE_HIT]);
-    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
-
-    render(<CommandMenu {...defaultNoteProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
-
-    // Both group eyebrows present.
-    expect(
-      document.querySelector('[data-row-kind="group"][data-group-id="group:notes"]'),
-    ).not.toBeNull();
-    expect(
-      document.querySelector('[data-row-kind="group"][data-group-id="group:search"]'),
-    ).not.toBeNull();
-
-    // There are TWO rows now (the title row + the search-result row),
-    // even though the note id is identical.
-    const noteRow = document.querySelector('[data-row-kind="note"]');
-    const searchRow = document.querySelector('[data-row-kind="search-result"]');
-    expect(noteRow).not.toBeNull();
-    expect(searchRow).not.toBeNull();
-  });
-
-  it("CMM-N11-2: 'Search results' section header rendered whenever FTS5 returns hits", () => {
-    // Even when every FTS5 hit overlaps the title-fuzzy set, the FTS5
-    // section header must render — that's the user-visible confirmation
-    // that the body-content search ran.
-    mockUseQuickSwitcher.mockReturnValue([TITLE_HIT]);
-    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
-
-    render(<CommandMenu {...defaultNoteProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
-
-    const searchEyebrow = document.querySelector(
-      '[data-row-kind="group"][data-group-id="group:search"]',
-    );
-    expect(searchEyebrow).not.toBeNull();
-    expect(searchEyebrow!.textContent).toContain("Search results");
-  });
-
-  it("CMM-N11-3: clicking the FTS5-section row activates the same note id as the title-section row", () => {
-    // Both rows carry the same note id (n1); selecting either should
-    // result in setActiveNote('n1') (the CommandMenu's activate() path).
-    mockUseQuickSwitcher.mockReturnValue([TITLE_HIT]);
-    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
-
-    render(<CommandMenu {...defaultNoteProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
-
-    // Click the search-result row.
-    const searchRow = document.querySelector('[data-row-kind="search-result"]');
-    expect(searchRow).not.toBeNull();
-    fireEvent.click(searchRow as HTMLElement);
-    expect(mockSetActiveNote).toHaveBeenCalledWith("n1");
-  });
-});
-
-describe("CMM-NAV — non-navigable group eyebrow rows (Plan 07-33)", () => {
+describe("CMM-NAV — single-section navigation (post Plan 07-39 split)", () => {
   const MOCK_TITLE_HIT = { id: "n1", title: "test", path: "test.md" };
-  const MOCK_FTS5_HIT = {
-    id: "n2",
-    title: "alpha",
-    path: "alpha.md",
-    excerpt_html: "has te...",
-    matching_tags: [],
-    rank: 1,
-    modified_at: "2026-05-15T00:00:00Z",
-  };
-
-  it("CMM-NAV-1: ArrowDown skips group eyebrows — pressing ArrowDown from initial position skips the 'Switch to note' group to land on the first note row", () => {
-    // items list: [group:notes, note:n1, group:search, search:n2]
-    mockUseQuickSwitcher.mockReturnValue([MOCK_TITLE_HIT]);
-    mockUseSearch.mockReturnValue({ results: [MOCK_FTS5_HIT], isSearching: false });
-
-    render(<CommandMenu {...defaultNoteProps} />);
-    const input = screen.getByRole("textbox");
-    fireEvent.change(input, { target: { value: "te" } });
-
-    // After query change, selectedIdx initializes to first selectable (n1, skipping group)
-    // Press ArrowDown from n1 → should land on n2 (skipping the group:search eyebrow)
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    // Press Enter → should activate n2 (the FTS5 result, skipping the group eyebrow)
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(mockSetActiveNote).toHaveBeenCalledWith("n2");
-  });
 
   it("CMM-NAV-2: ArrowUp at first selectable does not advance into a non-existent row above", () => {
     mockUseQuickSwitcher.mockReturnValue([MOCK_TITLE_HIT]);
-    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
 
     render(<CommandMenu {...defaultNoteProps} />);
     const input = screen.getByRole("textbox");
     fireEvent.change(input, { target: { value: "te" } });
 
-    // selectedIdx starts at n1 (first selectable, skipping leading group eyebrow)
-    fireEvent.keyDown(input, { key: "ArrowUp" }); // can't go up — already at first selectable
+    // Single-section list: selectedIdx starts at n1 (first selectable).
+    fireEvent.keyDown(input, { key: "ArrowUp" }); // can't go up — already at first
     fireEvent.keyDown(input, { key: "Enter" });
     expect(mockSetActiveNote).toHaveBeenCalledWith("n1"); // still n1, didn't go negative
   });
 
-  it("CMM-NAV-3: Enter when items is empty is a no-op (defensive — activate returns early on undefined item)", () => {
-    // With no notes returned from useQuickSwitcher and no FTS5 hits, items=[] and
-    // activate(0) returns early (item = items[0] = undefined → early return).
+  it("CMM-NAV-3: Enter when items is empty is a no-op (defensive)", () => {
     mockUseQuickSwitcher.mockReturnValue([]);
-    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
     const onOpenChange = vi.fn();
 
     render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
     const input = screen.getByRole("textbox");
-    // Empty query → items=[] → activate(0) does nothing
     fireEvent.keyDown(input, { key: "Enter" });
-    // onOpenChange must NOT be called with false (palette stays open)
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 });
 
-describe("CMM-INIT — selectedIdx starts at first selectable (Plan 07-33)", () => {
-  it("CMM-INIT-1: when items list rebuilds with leading group eyebrow, selectedIdx starts at first note row (not the group)", () => {
+describe("CMM-INIT — selectedIdx starts at first selectable (post Plan 07-39 split)", () => {
+  it("CMM-INIT-1: pressing Enter immediately without ArrowDown activates the first note row", () => {
     const MOCK_TITLE_HIT = { id: "n1", title: "test", path: "test.md" };
     mockUseQuickSwitcher.mockReturnValue([MOCK_TITLE_HIT]);
-    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
     const onOpenChange = vi.fn();
 
     render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
     const input = screen.getByRole("textbox");
-    // Type 2+ chars to trigger merge logic with group eyebrow prepended
     fireEvent.change(input, { target: { value: "te" } });
 
-    // Press Enter immediately without ArrowDown — should activate n1 (first selectable),
-    // NOT the group eyebrow (which would be a no-op).
     fireEvent.keyDown(input, { key: "Enter" });
     expect(mockSetActiveNote).toHaveBeenCalledWith("n1");
   });

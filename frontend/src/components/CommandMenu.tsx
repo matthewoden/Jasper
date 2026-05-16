@@ -6,13 +6,13 @@
  * UI-SPEC §Surface 1 note). Wire-up to global keymap happens in Plan 07-12
  * (App.tsx + KeyboardShortcutsDialog).
  *
- * UAT-3 N10 + N11 (Plan 07-33): notes mode now runs BOTH title-fuzzy AND FTS5
- * simultaneously and merges results into two sections:
- *   - "Switch to note": useQuickSwitcher (fuzzysort over in-memory titles)
- *   - "Search results": useSearch (FTS5 backend) with snippet excerpts
- * Group eyebrow rows (kind: "group") separate the two sections and are skipped
- * during keyboard navigation. Dedup: FTS5 hits whose ID matches a title-fuzzy
- * hit are dropped (title-fuzzy entry wins).
+ * Plan 07-39 (UAT-5 N11) REVERTED Plan 07-33's title-fuzzy + FTS5 merge.
+ * CommandMenu is now title-fuzzy ONLY in notes mode. FTS5 search lives at
+ * the Sidebar surface (SearchInputBar + SearchResultsList), not here. The
+ * user wants two distinct mental models / surfaces:
+ *   - Cmd+O (this component, notes mode): lightweight title-only switcher.
+ *   - Sidebar Search: FTS5 body search with snippet excerpts (the original
+ *     Plan 07-08 design, resurrected after Plan 07-18 orphaned its UI).
  *
  * Group eyebrows in commands mode: deferred v1 (see comment below).
  * Implementation uses inline styles throughout — no hex literals; all colors
@@ -24,12 +24,9 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, Command } from "lucide-react";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette, type CommandActions } from "../lib/useCommandPalette";
-import { useSearch } from "../lib/useSearch";
 import { useTreeStore } from "../lib/useTreeStore";
 import { KeyboardChip } from "./KeyboardChip";
-import { SearchResultRow } from "./SearchResultRow";
 import type { Shortcut } from "../lib/shortcutsRegistry";
-import type { SearchResult } from "../lib/searchApi";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Types
@@ -50,21 +47,19 @@ interface CmdItem {
   group: string;
 }
 
-// Bucket B1 (Plan 07-18): FTS5 search result item kind.
-interface SearchHitItem {
-  kind: "search-result";
-  id: string;
-  result: SearchResult;
-}
+// Plan 07-39 (UAT-5 N11): SearchHitItem REMOVED. The switcher no longer
+// renders FTS5 hits — those live on the Sidebar (SearchResultsList).
 
-// UAT-3 N10 + N11 (Plan 07-33): group eyebrow separator — non-selectable, not keyboard-navigable.
+// Plan 07-33 holdover: group eyebrow separator. Plan 07-39 keeps the type
+// because commands mode may still want it in a future iteration, but in
+// notes mode we no longer emit groups (single-section list).
 interface GroupItem {
   kind: "group";
   id: string;     // synthetic e.g. "group:notes" or "group:search"
   label: string;
 }
 
-type Item = NoteItem | CmdItem | SearchHitItem | GroupItem;
+type Item = NoteItem | CmdItem | GroupItem;
 
 export interface CommandMenuProps {
   open: boolean;
@@ -101,20 +96,9 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const cmd = useCommandPalette(actions);
   const cmdHits: Shortcut[] = mode === "commands" ? cmd.filtered(query) : [];
 
-  // UAT-3 N10 + N11 (Plan 07-33): FTS5 backend search runs simultaneously with
-  // title-fuzzy at all query lengths. Results are merged into two sections.
-  const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
-  const { results: searchResults } = useSearch(
-    mode === "notes" ? query : "",
-    activeTagFilter,
-  );
-
-  // UAT-3 N10 + N11 (Plan 07-33): Build the unified item list with merge logic.
-  // At query.length >= 2: include both title-fuzzy section AND FTS5 section.
-  // At query.length < 2: include only title-fuzzy (same as before — FTS5 backend
-  // won't return results for short queries anyway, but we skip the section entirely).
-  const showFtsSection = mode === "notes" && query.length >= 2;
-
+  // Plan 07-39 (UAT-5 N11): notes mode is title-fuzzy ONLY. No FTS5 backend
+  // call, no Search results section, no group eyebrows in notes mode. FTS5
+  // search lives at the Sidebar surface (SearchInputBar + SearchResultsList).
   let items: Item[];
   if (mode === "commands") {
     items = cmdHits.map((c) => ({
@@ -125,38 +109,13 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       group: c.group,
     }));
   } else {
-    // mode === "notes": always include title-fuzzy hits.
-    const noteItems: NoteItem[] = noteHits.map((h) => ({
+    // mode === "notes": single-section title-fuzzy list. No eyebrows.
+    items = noteHits.map((h) => ({
       kind: "note" as const,
       id: h.id,
       title: h.title,
       path: h.path,
     }));
-
-    // Plan 07-33 dedupe REVERSED per UAT-4 N11 — user expects the snippet
-    // preview ('Search results' section) to appear even when the matching
-    // note is already shown in the title-fuzzy 'Switch to note' section.
-    // The two rows carry different information (title row = quick switch;
-    // FTS5 row = match snippet with <mark>highlight</mark>); collapsing
-    // them hides the snippet, which was the entire point of running the
-    // body-content search in the first place.
-    const searchHits: SearchHitItem[] = showFtsSection
-      ? searchResults.map((r) => ({
-          kind: "search-result" as const,
-          id: r.id,
-          result: r,
-        }))
-      : [];
-
-    items = [];
-    if (noteItems.length > 0) {
-      items.push({ kind: "group" as const, id: "group:notes", label: "Switch to note" });
-      items.push(...noteItems);
-    }
-    if (searchHits.length > 0) {
-      items.push({ kind: "group" as const, id: "group:search", label: "Search results" });
-      items.push(...searchHits);
-    }
   }
 
   // UAT-3 N10 + N11 (Plan 07-33): Start selectedIdx at the FIRST SELECTABLE row
@@ -191,12 +150,13 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    // UAT-3 N10 + N11 (Plan 07-33): three possible row heights in merged list.
+    // Plan 07-39 (UAT-5 N11): two possible row heights — group eyebrow (24px,
+    // commands mode only) and standard note/cmd row (36px). FTS5 search-result
+    // row removed (FTS5 lives at the Sidebar surface).
     estimateSize: (index) => {
       const it = items[index];
       if (!it) return 36;
       if (it.kind === "group") return 24;
-      if (it.kind === "search-result") return 88;
       return 36; // note and cmd rows
     },
     overscan: 5,
@@ -214,13 +174,14 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const setActiveNote = useTreeStore((s) => s.setActiveNote);
   const recordOpenedNote = useTreeStore((s) => s.recordOpenedNote);
 
-  // UAT-3 N10 + N11 (Plan 07-33): activate handles all item kinds including
-  // the new "group" kind (defensive no-op — ArrowDown/Up should never park on groups).
+  // Plan 07-39 (UAT-5 N11): activate handles "note" + "cmd" + defensive
+  // "group" no-op. The "search-result" branch was removed when FTS5 left
+  // the switcher.
   const activate = (i: number) => {
     const item = items[i];
     if (!item) return;
     if (item.kind === "group") return; // defensive: groups are not activatable
-    if (item.kind === "note" || item.kind === "search-result") {
+    if (item.kind === "note") {
       setActiveNote(item.id);
       recordOpenedNote(item.id);
       onOpenChange(false);
@@ -393,35 +354,8 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                     );
                   }
 
-                  // Bucket B1 (Plan 07-18): FTS5 search result rows use
-                  // SearchResultRow for mark-highlighted excerpts + breadcrumbs.
-                  if (item.kind === "search-result") {
-                    return (
-                      <div
-                        // Plan 07-38 N11: prefix the key so a note id
-                        // that ALSO appears in the title-fuzzy section
-                        // doesn't collide with React's key dedupe (which
-                        // would silently drop one of the two rows the
-                        // user is meant to see).
-                        key={`search:${item.id}`}
-                        data-row-kind="search-result"
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          width: "100%",
-                          transform: `translateY(${vi.start}px)`,
-                          background: selected
-                            ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
-                            : "transparent",
-                        }}
-                        onMouseEnter={() => setSelectedIdx(vi.index)}
-                        onClick={() => activate(vi.index)}
-                      >
-                        <SearchResultRow result={item.result} />
-                      </div>
-                    );
-                  }
+                  // Plan 07-39 (UAT-5 N11): search-result branch REMOVED.
+                  // FTS5 hits live at the Sidebar surface (SearchResultsList).
 
                   const rowStyle: React.CSSProperties = {
                     position: "absolute",

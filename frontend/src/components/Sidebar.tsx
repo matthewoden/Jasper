@@ -27,14 +27,17 @@
  *     `useTreeCreateActions.isCreating`. The flag is threaded straight
  *     through to `<SidebarToolbar creating=... />`.
  */
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import type React from "react";
 
 import { FileTree } from "./FileTree";
+import { SearchInputBar } from "./SearchInputBar";
+import { SearchResultsList } from "./SearchResultsList";
 import { SidebarResizeHandle } from "./SidebarResizeHandle";
 import { SidebarToolbar } from "./SidebarToolbar";
 import type { Tree, TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
+import { useSearch } from "../lib/useSearch";
 import { useTreeCreateActions } from "../lib/useTreeCreateActions";
 import { useTreeStore, type SelectedRow } from "../lib/useTreeStore";
 
@@ -114,6 +117,26 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
   // Phase 6.6 — handleRefresh removed from Sidebar (D-08).
   // Refresh moved to StatusBar. SidebarToolbar no longer receives onRefresh.
+
+  // Plan 07-39 (UAT-5 N11) — Sidebar Search UI driver.
+  // The SearchInputBar reads/writes searchQuery; useSearch reads searchQuery
+  // and returns the debounced backend results. This driver effect mirrors:
+  //   results → store.searchResults  (so SearchResultsList can render them)
+  //   query.length >= 2 → store.searchActive  (so we swap FileTree → list)
+  // Mounted at Sidebar level (parent of both surfaces) so the swap is a
+  // simple conditional render in the JSX below.
+  const searchQuery = useTreeStore((s) => s.searchQuery);
+  const searchActive = useTreeStore((s) => s.searchActive);
+  const setSearchActive = useTreeStore((s) => s.setSearchActive);
+  const setSearchResults = useTreeStore((s) => s.setSearchResults);
+  const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
+  const { results: searchHookResults } = useSearch(searchQuery, activeTagFilter);
+  useEffect(() => {
+    setSearchResults(searchHookResults);
+  }, [searchHookResults, setSearchResults]);
+  useEffect(() => {
+    setSearchActive(searchQuery.length >= 2);
+  }, [searchQuery, setSearchActive]);
 
   // UX-12: toolbar New note / New folder target the parent of the currently
   // selected row (or inside the selected folder). Falls back to root only
@@ -196,6 +219,11 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
             creating={isCreating}
           />
         </header>
+        {/* Plan 07-39 (UAT-5 N11): SearchInputBar mounts unconditionally above
+            the tree-area. When the user types 2+ chars, the driver effect above
+            flips searchActive on and the swap below renders SearchResultsList
+            in place of FileTree. */}
+        <SearchInputBar />
         {/*
           Tree-area shell — bounded by viewport (parent grid row is
           minmax(0, 1fr)). overflow:hidden because react-arborist's
@@ -211,10 +239,15 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
             position: "relative",
           }}
         >
-          {/* Plan 07-18 (Bucket B1): file tree always renders here. Search was
-              relocated into the Cmd+O palette per the UAT-driven architectural
-              pivot. The activeTagFilter chip continues to live inside FileTree. */}
-          <FileTree onSelectNote={onSelectNote} />
+          {/* Plan 07-39 (UAT-5 N11): swap FileTree ↔ SearchResultsList based
+              on the searchActive store slice. The activeTagFilter chip lives
+              inside FileTree (so it's hidden while searching — the user's
+              query is the visible filter context during search). */}
+          {searchActive ? (
+            <SearchResultsList />
+          ) : (
+            <FileTree onSelectNote={onSelectNote} />
+          )}
         </div>
         {/*
           Phase 6.5 — Plan 06.5-04 (D-04): the tag browser panel was relocated

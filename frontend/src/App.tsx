@@ -228,6 +228,24 @@ export function handleAppCmdSlash(e: KeyboardEvent): void {
 }
 
 /**
+ * Plan 07-39 (UAT-5 N11) — Cmd+Shift+F focuses the Sidebar SearchInputBar.
+ *
+ * Window event listeners can't call hooks directly, so we dispatch a
+ * CustomEvent on window that the SearchInputBar component subscribes to
+ * in a useEffect (mirrors the phase7 dispatch pattern at the top of this
+ * file). preventDefault keeps the browser/OS default for Cmd+Shift+F
+ * (Fullscreen in some browsers) from firing.
+ */
+export function handleAppCmdShiftF(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  if (!e.shiftKey) return;
+  if (e.key !== "f" && e.key !== "F") return;
+  e.preventDefault();
+  e.stopPropagation();
+  window.dispatchEvent(new CustomEvent("jasper:focus-search"));
+}
+
+/**
  * Cmd+B — bold (CM6 owns this in its editor-level keymap via jasperKeymap.ts).
  *
  * UAT #8 fix: Brave (and other Chromium browsers with extensions like
@@ -399,6 +417,8 @@ function AppInner() {
     // UAT #8/#9 fix: block browser/extension defaults for Cmd+B / Cmd+I.
     window.addEventListener("keydown", handleAppCmdB, true);
     window.addEventListener("keydown", handleAppCmdI, true);
+    // Plan 07-39 (UAT-5 N11): Cmd+Shift+F focuses Sidebar search.
+    window.addEventListener("keydown", handleAppCmdShiftF, true);
     return () => {
       window.removeEventListener("keydown", handleAppCmdP, true);
       window.removeEventListener("keydown", handleAppCmdO, true);
@@ -406,6 +426,7 @@ function AppInner() {
       window.removeEventListener("keydown", handleAppCmdSlash, true);
       window.removeEventListener("keydown", handleAppCmdB, true);
       window.removeEventListener("keydown", handleAppCmdI, true);
+      window.removeEventListener("keydown", handleAppCmdShiftF, true);
     };
   }, []);
 
