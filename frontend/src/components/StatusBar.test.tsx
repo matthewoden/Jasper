@@ -43,7 +43,6 @@ vi.mock("../api/client", () => ({
   },
 }));
 
-import { useTreeStore } from "../lib/useTreeStore";
 import { StatusBar } from "./StatusBar";
 
 describe("<StatusBar />", () => {
@@ -93,32 +92,53 @@ describe("<StatusBar />", () => {
   });
 });
 
-// ── Plan 07-37 (UAT-3 N9) — negative assertions ────────────────────────────
+// ── Plan 07-37 (UAT-3 N9) — superseded by Plan 07-38 (UAT-4 N9) ────────────
 //
-// StatusBar must NO LONGER render the standalone refresh button or the
-// SaveIndicator (both moved into the SaveIndicator-as-refresh-button hybrid
-// in TopBar's right cluster).
+// Plan 07-37 removed the SaveIndicator from StatusBar. Plan 07-38 user
+// reversal puts it BACK — SaveIndicator as a clickable button lives in
+// StatusBar's metadata zone. The standalone "Reindex notes" button stays
+// removed (the SaveIndicator-button merger from Plan 07-37 D-55 IS preserved
+// — only the mount location is reverted).
 
-describe("StatusBar — Plan 07-37 removals (UAT-3 N9)", () => {
-  it("SB-NO-REFRESH: no standalone 'Reindex notes' button is rendered", () => {
+describe("StatusBar — Plan 07-38 (UAT-4 N9) restored SaveIndicator-button", () => {
+  it("SB-NO-REFRESH (preserved): no standalone 'Reindex notes' button is rendered (D-55 merge kept)", () => {
     render(<StatusBar />);
     expect(screen.queryByRole("button", { name: "Reindex notes" })).toBeNull();
   });
 
-  it("SB-NO-SAVE-INDICATOR-1: no [data-save-state] element (button-mode SaveIndicator) is rendered", () => {
+  it("SB-N9-1: StatusBar renders a SaveIndicator-button (button[data-save-state]) in the metadata zone", () => {
     const { container } = render(<StatusBar />);
-    expect(container.querySelector("[data-save-state]")).toBeNull();
+    const btn = container.querySelector("button[data-save-state]");
+    expect(btn).not.toBeNull();
   });
 
-  it("SB-NO-SAVE-INDICATOR-2: even when store.saveState=saving, no 'Saving…' text appears in the status bar", () => {
-    useTreeStore.setState({ saveState: { status: "saving", startedAt: new Date() } });
-    render(<StatusBar />);
-    expect(screen.queryByText("Saving…")).toBeNull();
+  it("SB-N9-2: clicking the SaveIndicator-button calls postAdminReindex('incremental')", async () => {
+    // postAdminReindex is mocked here so the StatusBar wiring is isolated
+    // from the network. The Task 3 GREEN implementation imports
+    // postAdminReindex from adminApi and wires it to the SaveIndicator's
+    // onClick — same pattern as the (since-reverted) TopBar mount.
+    const adminApi = await import("../lib/adminApi");
+    const spy = vi.spyOn(adminApi, "postAdminReindex").mockResolvedValue({
+      data: undefined,
+      error: undefined,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    try {
+      const { container } = render(<StatusBar />);
+      const btn = container.querySelector(
+        "button[data-save-state]",
+      ) as HTMLButtonElement | null;
+      expect(btn).not.toBeNull();
+      btn!.click();
+      expect(spy).toHaveBeenCalledWith("incremental");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
-  it("SB-NO-SAVE-INDICATOR-3: even when store.saveState=saved, no 'Saved' text appears in the status bar", () => {
-    useTreeStore.setState({ saveState: { status: "saved", savedAt: new Date() } });
+  it("SB-N9-3: the standalone 'Reindex notes' button is NOT rendered (Plan 07-37 removal preserved)", () => {
     render(<StatusBar />);
-    expect(screen.queryByText("Saved")).toBeNull();
+    // Title attribute used by Phase 06.6 refresh button.
+    expect(screen.queryByTitle("Reindex notes")).toBeNull();
   });
 });

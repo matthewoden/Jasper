@@ -270,14 +270,13 @@ describe("TBR-FIX (superseded by Plan 07-38) — content no longer gates", () =>
   });
 });
 
-// ── TBR-SI: Plan 07-37 (UAT-3 N9 / D-55) — SaveIndicator-button in TopBar ──
+// ── TBR-SI SUPERSEDED by Plan 07-38 (UAT-4 N9) — SaveIndicator back to StatusBar ──
 //
-// TopBar mounts the unified SaveIndicator-as-refresh-button (replaces the
-// standalone refresh button + SaveIndicator that previously lived in
-// StatusBar via Plan 07-28). The button is in the right cluster, ALWAYS
-// rendered (not gated by hasContent — refresh is always available).
+// Plan 07-37 mounted the SaveIndicator-button in TopBar. Plan 07-38 user
+// reversal moves it back to StatusBar. TopBar must NOT render any
+// [data-save-state] element.
 
-describe("TBR-SI — SaveIndicator-button in TopBar (Plan 07-37 / UAT-3 N9)", () => {
+describe("TBR-N9 — SaveIndicator removed from TopBar (Plan 07-38)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockNotesSidebarVisible = true;
@@ -287,64 +286,21 @@ describe("TBR-SI — SaveIndicator-button in TopBar (Plan 07-37 / UAT-3 N9)", ()
     mockSaveState = { status: "idle" };
   });
 
-  it("TBR-SI-1: renders the SaveIndicator-button (data-save-state attr present) even with no panel selected", () => {
-    // Plan 07-38 (UAT-4 N3): the toggle gate is now panelSelector, not
-    // content. To confirm the SaveIndicator is independent of the toggle
-    // gating, set panelSelector all-false → toggle hidden, but the
-    // SaveIndicator-button MUST still render.
-    mockTagCount = 0;
-    mockBacklinkCount = 0;
-    mockPanelSelector = { tags: false, backlinks: false };
+  it("TBR-N9-1: TopBar does NOT render a SaveIndicator-button (no [data-save-state])", () => {
+    mockPanelSelector = { tags: true, backlinks: true };
     const { container } = render(<TopBar />);
-    const btn = container.querySelector("button[data-save-state]");
-    expect(btn).not.toBeNull();
-    // The right-rail toggle should be hidden under panelSelector all-false.
-    expect(
-      screen.queryByRole("button", { name: /hide panels|show panels/i }),
-    ).toBeNull();
+    expect(container.querySelector("[data-save-state]")).toBeNull();
   });
 
-  it("TBR-SI-2: clicking the SaveIndicator-button calls postAdminReindex('incremental')", () => {
-    const { container } = render(<TopBar />);
-    const btn = container.querySelector("button[data-save-state]");
-    expect(btn).not.toBeNull();
-    fireEvent.click(btn!);
-    expect(postAdminReindex).toHaveBeenCalledWith("incremental");
+  it("TBR-N9-2: TopBar does NOT call postAdminReindex on mount", () => {
+    render(<TopBar />);
+    expect(postAdminReindex).not.toHaveBeenCalled();
   });
 
-  it("TBR-SI-3: SaveIndicator-button reflects useTreeStore.saveState.status", () => {
-    mockSaveState = { status: "saving", startedAt: new Date() };
-    const { container } = render(<TopBar />);
-    const btn = container.querySelector("button[data-save-state]");
-    expect(btn).not.toBeNull();
-    expect(btn?.getAttribute("data-save-state")).toBe("saving");
-    // saving → disabled (T-37-01 DoS guard inside SaveIndicator).
-    expect((btn as HTMLButtonElement | null)?.disabled).toBe(true);
-  });
-
-  it("TBR-SI-4: SaveIndicator-button renders inside the right-side cluster (after Breadcrumbs in DOM order)", () => {
-    const { container } = render(<TopBar />);
-    const btn = container.querySelector("button[data-save-state]");
-    const breadcrumbs = screen.getByTestId("mock-breadcrumbs");
-    expect(btn).not.toBeNull();
-    // breadcrumbs (left group) must come before the SaveIndicator-button (right cluster).
-    expect(
-      breadcrumbs.compareDocumentPosition(btn!) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it("TBR-SI-5: when hasContent is true, SaveIndicator-button comes BEFORE the panel selector + right-rail toggle", () => {
-    mockTagCount = 1; // engages hasContent → panel selector + rail toggle render
-    mockBacklinkCount = 0;
-    const { container } = render(<TopBar />);
-    const btn = container.querySelector("button[data-save-state]");
-    const panelSelector = screen.getByTestId("mock-panel-selector-dropdown");
-    expect(btn).not.toBeNull();
-    // SaveIndicator-button is the leftmost item in the right cluster, so
-    // it must appear in DOM order BEFORE the panel-selector dropdown.
-    expect(
-      btn!.compareDocumentPosition(panelSelector) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+  it("TBR-N9-3: TopBar still renders PanelSelectorDropdown (Task 2) and breadcrumbs", () => {
+    render(<TopBar />);
+    expect(screen.getByTestId("mock-panel-selector-dropdown")).toBeTruthy();
+    expect(screen.getByTestId("mock-breadcrumbs")).toBeTruthy();
   });
 });
 
