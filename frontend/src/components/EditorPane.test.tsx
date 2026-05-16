@@ -630,6 +630,36 @@ describe("<EditorPane />", () => {
         expect(getNoteMock).not.toHaveBeenCalled();
     });
 
+    // Plan 07-32b (UAT-3 R7): when useTreeStore.activeFilePath is non-null,
+    // EditorPane renders FilePreviewView in the middle pane INSTEAD of the
+    // markdown editor or the null-noteId placeholder. The new branch must
+    // sit BEFORE the `if (noteId === null)` placeholder branch so it fires
+    // even when noteId is null (the typical case: user has no note selected
+    // and clicks a non-markdown file).
+    it("EP-FPV-1: when activeFilePath is set, renders FilePreviewView (not placeholder, not editor)", async () => {
+        useTreeStore.setState({
+            activeFilePath: "gallery/attachments/photo.png",
+            activeNoteId: null,
+        });
+        try {
+            render(<EditorPane noteId={null} />);
+            await flushMicrotasks();
+            // FilePreviewView mounts — its data-testid is "file-preview-view".
+            expect(screen.getByTestId("file-preview-view")).toBeInTheDocument();
+            // Placeholder text MUST NOT be present.
+            expect(
+                screen.queryByText("Select a note to start editing."),
+            ).toBeNull();
+            // Markdown editor MUST NOT be mounted.
+            expect(screen.queryByLabelText("Note content")).toBeNull();
+            // No note GET fired because we never entered the noteId branch.
+            expect(getNoteMock).not.toHaveBeenCalled();
+        } finally {
+            // Reset so other tests are not contaminated.
+            useTreeStore.setState({ activeFilePath: null });
+        }
+    });
+
     it("TestEditorPane_NoteIdChange_TriggersReload", async () => {
         getNoteMock.mockImplementation((id: string) =>
             Promise.resolve(okGet(`content for ${id}`)),

@@ -1289,26 +1289,33 @@ describe("<TreeRow />", () => {
       expect(classes.some((c) => c.includes("lucide-file") && !c.includes("lucide-file-text"))).toBe(true);
     });
 
-    it("TR-file-4: clicking attachment file calls window.open with /api/v1/attachments/ URL", () => {
-      const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-      // File inside attachments/ folder with a parent note id.
-      const node = makeFileNode("sub/attachments/x.png", "parent-note-uuid");
+    // Plan 07-32b (UAT-3 R7) — SUPERSEDES the Plan 07-26 window.open contract.
+    // Clicking any non-markdown file row now sets useTreeStore.activeFilePath
+    // (the middle pane renders FilePreviewView) and MUST NOT call window.open.
+    it("TR-FILECLICK-1: clicking a file row calls setActiveFilePath(data.path)", () => {
+      const setActiveFilePathSpy = vi.fn();
+      // Patch the store action to spy on calls without breaking other tests
+      // (beforeEach resets the store state but not action implementations).
+      const origSet = useTreeStore.getState().setActiveFilePath;
+      useTreeStore.setState({ setActiveFilePath: setActiveFilePathSpy });
+
+      // File inside attachments/ folder with a parent note id (the parentNoteId
+      // is now a dead-write field — handler doesn't read it).
+      const node = makeFileNode("gallery/attachments/photo.png", "parent-note-uuid");
       render(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
       );
       fireEvent.click(screen.getByRole("treeitem"));
-      expect(openSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/^\/api\/v1\/attachments\/parent-note-uuid\/x\.png/),
-        "_blank",
-      );
-      openSpy.mockRestore();
+      expect(setActiveFilePathSpy).toHaveBeenCalledWith("gallery/attachments/photo.png");
+
+      // Restore the real action for other tests.
+      useTreeStore.setState({ setActiveFilePath: origSet });
     });
 
-    it("TR-file-5: clicking non-attachment file does NOT call window.open (deferred — toast or no-op)", () => {
+    it("TR-FILECLICK-2: clicking a file row does NOT call window.open (Plan 07-32b supersedes Plan 07-26 popup contract)", () => {
       const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-      // NOT inside attachments/
-      const node = makeFileNode("stray.pdf");
+      const node = makeFileNode("gallery/attachments/photo.png", "parent-note-uuid");
       render(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
@@ -1318,6 +1325,24 @@ describe("<TreeRow />", () => {
       openSpy.mockRestore();
     });
 
+    it("TR-FILECLICK-3: clicking a non-attachment file ALSO calls setActiveFilePath (no parentNoteId required)", () => {
+      // Plan 07-32b: the new endpoint is path-based, not noteId-based, so
+      // vault-root files and files in non-attachments folders are all routable.
+      const setActiveFilePathSpy = vi.fn();
+      const origSet = useTreeStore.getState().setActiveFilePath;
+      useTreeStore.setState({ setActiveFilePath: setActiveFilePathSpy });
+
+      const node = makeFileNode("stray.pdf");
+      render(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
+      );
+      fireEvent.click(screen.getByRole("treeitem"));
+      expect(setActiveFilePathSpy).toHaveBeenCalledWith("stray.pdf");
+
+      useTreeStore.setState({ setActiveFilePath: origSet });
+    });
+
     it("TR-file-6: file row shows filename as label", () => {
       const node = makeFileNode("some/path/report.pdf");
       render(
@@ -1325,6 +1350,43 @@ describe("<TreeRow />", () => {
         <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
       );
       expect(screen.getByText("report.pdf")).toBeInTheDocument();
+    });
+
+    // Plan 07-32b (UAT-3 R7) — note-click handler must explicitly clear
+    // activeFilePath BEFORE calling setActiveNote (D-41 ADD-only compliance:
+    // setActiveNote is unchanged, so callers do the reciprocal clearing).
+    it("TR-NOTECLICK-1: clicking a note row calls setActiveFilePath(null) BEFORE setActiveNote(noteId)", () => {
+      const setActiveFilePathSpy = vi.fn();
+      const setActiveNoteSpy = vi.fn();
+
+      const origSetAFP = useTreeStore.getState().setActiveFilePath;
+      const origSetAN = useTreeStore.getState().setActiveNote;
+      useTreeStore.setState({
+        setActiveFilePath: setActiveFilePathSpy,
+        setActiveNote: setActiveNoteSpy,
+      });
+
+      const node = makeNoteNode({ id: "uuid-note-1" });
+      const onSelectNote = vi.fn();
+      render(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <TreeRow node={node as any} style={{}} onSelectNote={onSelectNote} />,
+      );
+      fireEvent.click(screen.getByRole("treeitem"));
+
+      expect(setActiveFilePathSpy).toHaveBeenCalledWith(null);
+      expect(setActiveNoteSpy).toHaveBeenCalledWith("uuid-note-1");
+
+      // Critical ordering check: setActiveFilePath(null) MUST be invoked
+      // BEFORE setActiveNote(uuid). Use mock.invocationCallOrder to assert.
+      const afpOrder = setActiveFilePathSpy.mock.invocationCallOrder[0];
+      const anOrder = setActiveNoteSpy.mock.invocationCallOrder[0];
+      expect(afpOrder).toBeLessThan(anOrder);
+
+      useTreeStore.setState({
+        setActiveFilePath: origSetAFP,
+        setActiveNote: origSetAN,
+      });
     });
   });
 });

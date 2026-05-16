@@ -1232,3 +1232,76 @@ describe("Phase 7 ADD-only slices", () => {
     expect(stored).toContain("persisted-id");
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// Plan 07-32b — activeFilePath slice (D-41 ADD-only)
+//
+// Mutual exclusion policy:
+//  - setActiveFilePath(non-null) atomically clears activeNoteId.
+//  - setActiveNote is UNCHANGED (D-41 ADD-only forbids modifying existing
+//    actions). Callers (TreeRow.handleNoteClick) explicitly invoke
+//    setActiveFilePath(null) BEFORE setActiveNote(uuid) to clear the
+//    reciprocal direction.
+// ──────────────────────────────────────────────────────────────────────────
+describe("useTreeStore — activeFilePath slice (Plan 07-32b)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useTreeStore.setState({
+      activeFilePath: null,
+      activeNoteId: null,
+    });
+  });
+
+  it("TS-AFP-1: activeFilePath defaults to null", () => {
+    expect(useTreeStore.getState().activeFilePath).toBeNull();
+  });
+
+  it("TS-AFP-2: setActiveFilePath('foo/bar.png') sets activeFilePath AND atomically clears activeNoteId", () => {
+    // Pre-seed an activeNoteId.
+    useTreeStore.setState({ activeNoteId: "preexisting-note-uuid" });
+    expect(useTreeStore.getState().activeNoteId).toBe("preexisting-note-uuid");
+
+    useTreeStore.getState().setActiveFilePath("foo/bar.png");
+
+    expect(useTreeStore.getState().activeFilePath).toBe("foo/bar.png");
+    // Atomic clear: activeNoteId is now null.
+    expect(useTreeStore.getState().activeNoteId).toBeNull();
+  });
+
+  it("TS-AFP-2b: setActiveFilePath(null) clears activeFilePath without touching activeNoteId", () => {
+    useTreeStore.setState({
+      activeFilePath: "foo/bar.png",
+      activeNoteId: null,
+    });
+    useTreeStore.getState().setActiveFilePath(null);
+    expect(useTreeStore.getState().activeFilePath).toBeNull();
+    // activeNoteId still null — but the point is setActiveFilePath(null)
+    // does not auto-set activeNoteId. Seed an id and re-verify.
+    useTreeStore.setState({
+      activeFilePath: "x.png",
+      activeNoteId: "some-note-uuid",
+    });
+    // This shouldn't happen in practice (mutual exclusion), but proves
+    // setActiveFilePath(null) does not touch activeNoteId.
+    useTreeStore.getState().setActiveFilePath(null);
+    expect(useTreeStore.getState().activeFilePath).toBeNull();
+    expect(useTreeStore.getState().activeNoteId).toBe("some-note-uuid");
+  });
+
+  it("TS-AFP-3: caller-side clearing pattern — setActiveFilePath(null) BEFORE setActiveNote(uuid) clears activeFilePath and sets activeNoteId", () => {
+    // Simulate TreeRow.handleNoteClick: file is currently active, user clicks a note row.
+    useTreeStore.setState({
+      activeFilePath: "foo/bar.png",
+      activeNoteId: null,
+    });
+
+    // Caller (TreeRow) clears file path first, then sets active note. This documents
+    // the D-41 ADD-only contract: setActiveNote does NOT auto-clear activeFilePath;
+    // callers must clear explicitly.
+    useTreeStore.getState().setActiveFilePath(null);
+    useTreeStore.getState().setActiveNote("uuid-1234");
+
+    expect(useTreeStore.getState().activeFilePath).toBeNull();
+    expect(useTreeStore.getState().activeNoteId).toBe("uuid-1234");
+  });
+});
