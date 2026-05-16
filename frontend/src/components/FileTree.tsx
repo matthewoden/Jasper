@@ -48,6 +48,8 @@ import { Tree, type NodeApi, type TreeApi } from "react-arborist";
 import { extractH1FromContent, rewriteH1 } from "../lib/h1Extract";
 import { getNote, updateNote } from "../lib/notesApi";
 import { uploadFile, deleteFile, moveFile } from "../lib/filesApi";
+// Plan 07-39 (UAT-5 N2-sub-A): markdown drops route to POST /notes (not /files).
+import { createNoteFromMarkdownDrop } from "../lib/notesApi";
 import { broadcastRefresh, useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
 import {
@@ -1514,16 +1516,69 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       }
 
       // 2. Upload each file in the drop.
+      // Plan 07-39 (UAT-5 N2-sub-A): client-side .md detection. Markdown
+      // files route to POST /notes via createNoteFromMarkdownDrop (backend
+      // /files keeps refusing .md per security posture — DATA-12 case-
+      // collision semantics live on the notes endpoint). Non-markdown files
+      // continue to use filesApi.uploadFile per Plan 07-34.
       const files = Array.from(e.dataTransfer?.files ?? []);
       if (files.length === 0) return;
       let anySucceeded = false;
       for (const f of files) {
+        const isMarkdown = f.name.toLowerCase().endsWith(".md");
         try {
-          await uploadFile(targetDir, f);
-          anySucceeded = true;
+          if (isMarkdown) {
+            // Read body. Prefer File.text() (modern); fall back to FileReader
+            // for environments (older jsdom in vitest tests) that ship File
+            // without the .text() Blob method.
+            const text =
+              typeof f.text === "function"
+                ? await f.text()
+                : await new Promise<string>((resolve, reject) => {
+                    const fr = new FileReader();
+                    fr.onload = () => resolve(String(fr.result ?? ""));
+                    fr.onerror = () => reject(fr.error);
+                    fr.readAsText(f);
+                  });
+            const notePath = targetDir ? `${targetDir}/${f.name}` : f.name;
+            await createNoteFromMarkdownDrop(notePath, text);
+            anySucceeded = true;
+          } else {
+            await uploadFile(targetDir, f);
+            anySucceeded = true;
+          }
         } catch (err) {
           const status = (err as { status?: number } | null)?.status;
           const body = (err as { body?: string } | null)?.body ?? "";
+
+          // Plan 07-39: branch toast copy on markdown-drop vs file-upload path.
+          if (isMarkdown) {
+            // POST /notes failure paths (createNoteFromMarkdownDrop):
+            //   - 409 = case-collision (DATA-12) OR parent_path missing
+            //   - 400 = invalid title chars / traversal
+            //   - other = unexpected; show the helper's error message
+            let title = "Note creation failed";
+            let description = `Could not create note from ${f.name}.`;
+            if (status === 409) {
+              title = "Note already exists";
+              description = `A note with that name already exists at ${targetDir === "" ? "the vault root" : targetDir}. Rename the file before dropping again.`;
+            } else if (status === 400) {
+              title = "Note creation rejected";
+              description = `${f.name}: invalid filename or path.`;
+            } else {
+              const detail = (err as Error | null)?.message ?? "unknown error";
+              description = `Could not create note from ${f.name}.\nReason: ${detail}\n(targetDir=${targetDir === "" ? "<root>" : targetDir}, status=${status ?? "?"})`;
+            }
+            toast({ title, description, variant: "error" });
+            console.error("[FileTree] handleSidebarFileDrop (.md route):", {
+              err,
+              targetDir,
+              fileName: f.name,
+            });
+            continue;
+          }
+
+          // Non-markdown upload failure paths (Plan 07-34 / 07-38).
           // Locked toast tuples for the most common failures (mirrors the
           // attachment-upload toast shape from Plan 07-10).
           let title = "Upload failed";
