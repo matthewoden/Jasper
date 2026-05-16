@@ -2168,16 +2168,73 @@ describe("FT-folder-default — folders default CLOSED (UAT-2 N1 / Plan 07-29)",
 });
 
 // ──────────────────────────────────────────────────────────────────────────
-// Plan 07-29 — FT-NED: No external drop indicator (UAT-2 N2)
+// Plan 07-29 + Plan 07-34 — FT-NED + FT-DROP: Sidebar OS-file drop semantics.
 //
-// C2 fix: the tree container's onDragOverCapture handler inspects
-// dataTransfer.types; if "Files" is present (OS file drag), it calls
+// Plan 07-29 (UAT-2 N2): the tree container's onDragOverCapture handler
+// inspects dataTransfer.types; if "Files" is present (OS file drag), it calls
 // stopPropagation() so arborist's drag layer never receives the event,
-// suppressing the drop overlay. Internal arborist drags don't include
-// "Files" in dataTransfer.types, so they pass through unchanged.
+// suppressing arborist's react-dnd drop overlay. Internal arborist drags
+// don't include "Files" in dataTransfer.types, so they pass through unchanged.
+//
+// Plan 07-34 (UAT-3 N2) UPGRADES the handler:
+//   - preventDefault IS now called (we accept the drop, no longer want
+//     browser's not-allowed cursor)
+//   - dropEffect set to "copy"
+//   - onDropCapture wires handleSidebarFileDrop, which resolves the target
+//     dir from the row under the cursor and POSTs to /api/v1/files?path=...
+//
+// FT-DROP-1..5 cover the four target-dir resolution cases (folder/note/file/
+// empty) plus the broadcastRefresh side-effect after a successful upload.
 // ──────────────────────────────────────────────────────────────────────────
-describe("FT-no-external-drop — sidebar shows not-allowed for OS file drag (UAT-2 N2 / Plan 07-29)", () => {
-  it("FT-NED-1: dragover with OS 'Files' type calls stopPropagation to prevent arborist overlay", async () => {
+vi.mock("../lib/filesApi", () => ({
+  uploadFile: vi.fn(),
+}));
+vi.mock("../lib/useFileTree", async () => {
+  const actual = await vi.importActual<typeof import("../lib/useFileTree")>(
+    "../lib/useFileTree",
+  );
+  return {
+    ...actual,
+    useFileTree: vi.fn(),
+    broadcastRefresh: vi.fn(),
+  };
+});
+import { uploadFile as mockedUploadFile } from "../lib/filesApi";
+import { broadcastRefresh as mockedBroadcastRefresh } from "../lib/useFileTree";
+const mockedUpload = vi.mocked(mockedUploadFile);
+const mockedBcast = vi.mocked(mockedBroadcastRefresh);
+
+// Synthesize a drop / dragover event with mocked dataTransfer.types and
+// dataTransfer.files. JSDOM's DragEvent constructor doesn't accept
+// dataTransfer in init; we attach via defineProperty after construction.
+function makeOsFileDragEvent(
+  type: "dragover" | "drop",
+  files: File[],
+): Event {
+  const dt = {
+    types: ["Files"],
+    files,
+    dropEffect: "move",
+  };
+  const evt = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(evt, "dataTransfer", {
+    value: dt,
+    writable: false,
+  });
+  return evt;
+}
+
+describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3 N2)", () => {
+  beforeEach(() => {
+    mockedUpload.mockReset();
+    mockedBcast.mockReset();
+  });
+
+  // FT-NED-1 (revised under Plan 07-34): the capture-phase suppression of
+  // arborist's react-dnd overlay (stopPropagation) STAYS, but preventDefault
+  // is NOW called so the browser will deliver the subsequent drop event to
+  // our handler instead of canceling it with the not-allowed cursor.
+  it("FT-NED-1: dragover with 'Files' calls stopPropagation AND preventDefault (Plan 07-34)", async () => {
     const tree: Tree = {
       root: [
         {
@@ -2202,46 +2259,222 @@ describe("FT-no-external-drop — sidebar shows not-allowed for OS file drag (UA
       expect(screen.getByText("foo")).toBeInTheDocument();
     });
 
-    // Find the tree container — the div with the [role="tree"] child.
-    // The onDragOverCapture is on the outer wrapper div (setTreeAreaEl ref).
     const treeEl = document.querySelector('[role="tree"]');
     expect(treeEl).not.toBeNull();
 
-    // Dispatch a dragover event with "Files" in dataTransfer.types.
-    // Use fireEvent from testing-library because jsdom's DragEvent
-    // support is limited; we attach our mock dataTransfer after creation.
-    // The onDragOverCapture handler on the container div fires in the
-    // capture phase — it runs before arborist's react-dnd bubble listener.
-    //
-    // Strategy: spy on the React synthetic event's stopPropagation. We do
-    // this by tracking whether nativeDragInfoRef is null (no arborist drag
-    // in flight) AND dataTransfer.types includes "Files" causes the handler
-    // to call stopPropagation internally.
-    //
-    // Since jsdom doesn't support DragEvent well, we verify the behavior
-    // indirectly: fire a dragover on the tree element using fireEvent.dragOver
-    // (which dispatches the event without dataTransfer) and then fire a
-    // custom event with a mocked dataTransfer to exercise the isExternalDrag
-    // path. The key assertion is that the handler does NOT call
-    // e.preventDefault() for external drags — browser shows not-allowed cursor.
-    //
-    // Pragmatic approach: use a custom event with the mock dataTransfer.
-    const mockDataTransfer = {
-      types: ["Files"],
-      dropEffect: "move",
-    };
-    // Create a generic Event and inject dataTransfer — jsdom supports this pattern.
-    const customDragEvent = new Event("dragover", { bubbles: true, cancelable: true });
-    Object.defineProperty(customDragEvent, "dataTransfer", {
-      value: mockDataTransfer,
-      writable: false,
-    });
-    const stopPropSpy = vi.spyOn(customDragEvent, "stopPropagation");
-    const preventDefaultSpy = vi.spyOn(customDragEvent, "preventDefault");
-    treeEl!.dispatchEvent(customDragEvent);
-    // For OS file drag: stopPropagation must be called (block arborist from seeing it).
-    // preventDefault must NOT be called (let browser show not-allowed cursor).
+    const evt = makeOsFileDragEvent("dragover", []);
+    const stopPropSpy = vi.spyOn(evt, "stopPropagation");
+    const preventDefaultSpy = vi.spyOn(evt, "preventDefault");
+    treeEl!.dispatchEvent(evt);
     expect(stopPropSpy).toHaveBeenCalled();
-    expect(preventDefaultSpy).not.toHaveBeenCalled();
+    // Plan 07-34: we now ACCEPT the drop. preventDefault MUST be called
+    // (otherwise the browser cancels with not-allowed cursor and never
+    // delivers the matching drop event).
+    expect(preventDefaultSpy).toHaveBeenCalled();
+  });
+
+  // ── FT-DROP — Sidebar drop-target cases (Plan 07-34) ───────────────────
+  // Resolution rules:
+  //   folder row → target = folder.path
+  //   note row   → target = parent dir of note.path
+  //   file row   → target = parent dir of file.path
+  //   empty area → target = "" (vault root)
+  // After a successful upload, broadcastRefresh() fires.
+
+  // Helper: wire the standard mocks + render the tree with the given wire shape.
+  async function renderTree(tree: Tree) {
+    useTreeStore.setState({ expanded: new Set(["folderA", "folderB"]) });
+    mockedUseFileTree.mockReturnValue({
+      tree,
+      loading: false,
+      error: null,
+      refresh: noopRefresh,
+      mutate: noopMutate,
+    });
+    mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    // Wait for first render.
+    await waitFor(() => {
+      expect(document.querySelector('[role="tree"]')).not.toBeNull();
+    });
+  }
+
+  it("FT-DROP-1: dropping on a FOLDER row uploads to that folder.path", async () => {
+    const tree: Tree = {
+      root: [
+        { kind: "folder", path: "folderA", name: "folderA", children: [] },
+      ],
+    };
+    await renderTree(tree);
+    mockedUpload.mockResolvedValue({
+      path: "folderA/photo.png",
+      name: "photo.png",
+      size_bytes: 1,
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-tree-row="folderA"][data-tree-row-kind="folder"]'),
+      ).not.toBeNull();
+    });
+    const folderRow = document.querySelector(
+      '[data-tree-row="folderA"][data-tree-row-kind="folder"]',
+    ) as HTMLElement;
+
+    const file = new File(["x"], "photo.png", { type: "image/png" });
+    const evt = makeOsFileDragEvent("drop", [file]);
+    folderRow.dispatchEvent(evt);
+    await waitFor(() => {
+      expect(mockedUpload).toHaveBeenCalled();
+    });
+    expect(mockedUpload).toHaveBeenCalledWith("folderA", file);
+    await waitFor(() => {
+      expect(mockedBcast).toHaveBeenCalled();
+    });
+  });
+
+  it("FT-DROP-2: dropping on a NOTE row uploads to the note's parent dir", async () => {
+    const noteId = "00000000-0000-4000-a000-000000000111";
+    const tree: Tree = {
+      root: [
+        {
+          kind: "folder",
+          path: "folderA",
+          name: "folderA",
+          children: [
+            {
+              kind: "note",
+              id: noteId,
+              path: "folderA/sub.md",
+              title: "sub",
+            },
+          ],
+        },
+      ],
+    };
+    await renderTree(tree);
+    mockedUpload.mockResolvedValue({
+      path: "folderA/upload.png",
+      name: "upload.png",
+      size_bytes: 1,
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector(
+          `[data-tree-row="${noteId}"][data-tree-row-kind="note"]`,
+        ),
+      ).not.toBeNull();
+    });
+    const noteRow = document.querySelector(
+      `[data-tree-row="${noteId}"][data-tree-row-kind="note"]`,
+    ) as HTMLElement;
+
+    const file = new File(["x"], "upload.png", { type: "image/png" });
+    noteRow.dispatchEvent(makeOsFileDragEvent("drop", [file]));
+    await waitFor(() => {
+      expect(mockedUpload).toHaveBeenCalled();
+    });
+    // Note's parent dir = "folderA".
+    expect(mockedUpload).toHaveBeenCalledWith("folderA", file);
+  });
+
+  it("FT-DROP-3: dropping on a FILE row uploads to the file's parent dir", async () => {
+    const tree: Tree = {
+      root: [
+        {
+          kind: "folder",
+          path: "folderA",
+          name: "folderA",
+          children: [
+            {
+              kind: "file",
+              path: "folderA/existing.png",
+              name: "existing.png",
+            },
+          ],
+        },
+      ],
+    };
+    await renderTree(tree);
+    mockedUpload.mockResolvedValue({
+      path: "folderA/upload.png",
+      name: "upload.png",
+      size_bytes: 1,
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector(
+          '[data-tree-row="folderA/existing.png"][data-tree-row-kind="file"]',
+        ),
+      ).not.toBeNull();
+    });
+    const fileRow = document.querySelector(
+      '[data-tree-row="folderA/existing.png"][data-tree-row-kind="file"]',
+    ) as HTMLElement;
+
+    const file = new File(["x"], "upload.png", { type: "image/png" });
+    fileRow.dispatchEvent(makeOsFileDragEvent("drop", [file]));
+    await waitFor(() => {
+      expect(mockedUpload).toHaveBeenCalled();
+    });
+    // File's parent dir = "folderA".
+    expect(mockedUpload).toHaveBeenCalledWith("folderA", file);
+  });
+
+  it("FT-DROP-4: dropping on EMPTY tree area uploads to vault root ('')", async () => {
+    const tree: Tree = {
+      root: [
+        { kind: "folder", path: "folderA", name: "folderA", children: [] },
+      ],
+    };
+    await renderTree(tree);
+    mockedUpload.mockResolvedValue({
+      path: "rooted.png",
+      name: "rooted.png",
+      size_bytes: 1,
+    });
+
+    // Dispatch the drop on the OUTER tree container (no row under cursor).
+    // The setTreeAreaEl wrapper is the parent of [role="tree"].
+    const treeEl = document.querySelector('[role="tree"]');
+    expect(treeEl).not.toBeNull();
+    const wrapper = treeEl!.parentElement!;
+
+    const file = new File(["x"], "rooted.png", { type: "image/png" });
+    wrapper.dispatchEvent(makeOsFileDragEvent("drop", [file]));
+    await waitFor(() => {
+      expect(mockedUpload).toHaveBeenCalled();
+    });
+    expect(mockedUpload).toHaveBeenCalledWith("", file);
+  });
+
+  it("FT-DROP-5: after successful upload, broadcastRefresh() is called", async () => {
+    const tree: Tree = {
+      root: [
+        { kind: "folder", path: "folderA", name: "folderA", children: [] },
+      ],
+    };
+    await renderTree(tree);
+    mockedUpload.mockResolvedValue({
+      path: "folderA/x.png",
+      name: "x.png",
+      size_bytes: 1,
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-tree-row="folderA"][data-tree-row-kind="folder"]'),
+      ).not.toBeNull();
+    });
+    const folderRow = document.querySelector(
+      '[data-tree-row="folderA"][data-tree-row-kind="folder"]',
+    ) as HTMLElement;
+    const file = new File(["x"], "x.png");
+    folderRow.dispatchEvent(makeOsFileDragEvent("drop", [file]));
+    await waitFor(() => {
+      expect(mockedBcast).toHaveBeenCalled();
+    });
   });
 });
