@@ -132,13 +132,20 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       title: h.title,
       path: h.path,
     }));
-    const noteIds = new Set(noteItems.map((n) => n.id));
 
-    // Dedup: drop FTS5 hits whose id appears in title-fuzzy hits (title-fuzzy wins).
-    const dedupedSearchHits: SearchHitItem[] = showFtsSection
-      ? searchResults
-          .filter((r) => !noteIds.has(r.id))
-          .map((r) => ({ kind: "search-result" as const, id: r.id, result: r }))
+    // Plan 07-33 dedupe REVERSED per UAT-4 N11 — user expects the snippet
+    // preview ('Search results' section) to appear even when the matching
+    // note is already shown in the title-fuzzy 'Switch to note' section.
+    // The two rows carry different information (title row = quick switch;
+    // FTS5 row = match snippet with <mark>highlight</mark>); collapsing
+    // them hides the snippet, which was the entire point of running the
+    // body-content search in the first place.
+    const searchHits: SearchHitItem[] = showFtsSection
+      ? searchResults.map((r) => ({
+          kind: "search-result" as const,
+          id: r.id,
+          result: r,
+        }))
       : [];
 
     items = [];
@@ -146,9 +153,9 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       items.push({ kind: "group" as const, id: "group:notes", label: "Switch to note" });
       items.push(...noteItems);
     }
-    if (dedupedSearchHits.length > 0) {
+    if (searchHits.length > 0) {
       items.push({ kind: "group" as const, id: "group:search", label: "Search results" });
-      items.push(...dedupedSearchHits);
+      items.push(...searchHits);
     }
   }
 
@@ -391,7 +398,12 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                   if (item.kind === "search-result") {
                     return (
                       <div
-                        key={item.id}
+                        // Plan 07-38 N11: prefix the key so a note id
+                        // that ALSO appears in the title-fuzzy section
+                        // doesn't collide with React's key dedupe (which
+                        // would silently drop one of the two rows the
+                        // user is meant to see).
+                        key={`search:${item.id}`}
                         data-row-kind="search-result"
                         style={{
                           position: "absolute",

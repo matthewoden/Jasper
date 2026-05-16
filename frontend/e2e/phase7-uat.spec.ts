@@ -2883,7 +2883,7 @@ test.describe("Phase 7 — Sidebar OS-file drop target (S29 / UAT-3 N2 / Plan 07
 // StatusBar negative (no standalone refresh button anymore).
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UAT-3 N9 / D-55)", () => {
+test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UAT-3 N9 → UAT-4 N9 / D-55 partial-revert)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -2894,18 +2894,17 @@ test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UA
     if (jasper) await jasper.kill();
   });
 
-  test("S31 — clicking the SaveIndicator-button POSTs /api/v1/admin/reindex with mode=incremental", async ({ page }) => {
+  test("S31 (Plan 07-38) — clicking the SaveIndicator-button in StatusBar POSTs /api/v1/admin/reindex with mode=incremental", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Locate the SaveIndicator-button in TopBar's right cluster.
-    const topBar = page.locator("[data-testid='top-bar']");
-    const saveBtn = topBar.locator("button[data-save-state]");
+    // Plan 07-38 N9: SaveIndicator-button is in StatusBar (reverted from
+    // TopBar back to its Plan 07-28 location). D-55's "click = manual
+    // reindex" behavior is preserved.
+    const statusBar = page.locator("[data-testid='status-bar']");
+    const saveBtn = statusBar.locator("button[data-save-state]");
     await expect(saveBtn).toBeVisible({ timeout: 5_000 });
 
-    // Capture the next admin/reindex POST. The button's click handler is
-    // postAdminReindex('incremental'), which the openapi-fetch client wires
-    // through to POST /api/v1/admin/reindex with body {"mode":"incremental"}.
     const reindexReqPromise = page.waitForRequest(
       (req) => req.url().includes("/api/v1/admin/reindex") && req.method() === "POST",
       { timeout: 5_000 },
@@ -2919,24 +2918,91 @@ test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UA
     expect(postData?.mode).toBe("incremental");
   });
 
-  test("S31b — StatusBar no longer renders the standalone 'Reindex notes' button (Plan 07-37 removal)", async ({ page }) => {
+  test("S31b (Plan 07-38) — TopBar does NOT render SaveIndicator-button; standalone 'Reindex notes' button stays removed", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // The pre-Plan-07-37 standalone refresh button (aria-label "Reindex
-    // notes") was rendered inside StatusBar. Plan 07-37 removed it; the
-    // refresh action is now the SaveIndicator-button click in TopBar.
+    // TopBar no longer mounts the SaveIndicator (reverted to StatusBar).
+    const topBar = page.locator("[data-testid='top-bar']");
+    const topBarSaveBtn = topBar.locator("button[data-save-state]");
+    await expect(topBarSaveBtn).toHaveCount(0);
+
+    // The pre-Plan-07-37 standalone "Reindex notes" button stays REMOVED
+    // — D-55's merge behavior is preserved.
     const oldRefreshBtn = page.locator(
       "[data-testid='status-bar'] button[aria-label='Reindex notes']",
     );
     await expect(oldRefreshBtn).toHaveCount(0);
 
-    // Sanity: the StatusBar itself is still present (we didn't accidentally
-    // remove the whole footer); just the refresh button + SaveIndicator are
-    // gone.
-    const statusBar = page.locator("[data-testid='status-bar']");
-    await expect(statusBar).toBeVisible({ timeout: 3_000 });
-    const statusBarSaveBtn = page.locator("[data-testid='status-bar'] button[data-save-state]");
-    await expect(statusBarSaveBtn).toHaveCount(0);
+    // Sanity: the StatusBar SaveIndicator-button IS present.
+    const statusBarSaveBtn = page.locator(
+      "[data-testid='status-bar'] button[data-save-state]",
+    );
+    await expect(statusBarSaveBtn).toHaveCount(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S32 — Switcher snippet section always renders when FTS5 returns hits
+//       (Plan 07-38 / UAT-4 N11)
+//
+// User clarification: when a query matches both a note's title AND its body,
+// the result should appear in BOTH the "Switch to note" section (title-fuzzy)
+// AND the "Search results" section (FTS5 with snippet preview). The two
+// representations carry different information and should not be merged.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — Switcher snippet section always renders (S32 / UAT-4 N11)", () => {
+  let jasper: JasperHandle;
+  test.beforeAll(async () => { jasper = await spawnJasper(); });
+  test.afterAll(async () => { if (jasper) await jasper.kill(); });
+
+  test("S32: query matching both title AND body → both sections visible; FTS5 row shows <mark>", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Create a note whose title AND body both contain the same searchable
+    // token. The token "uat4n11needle" is intentionally exotic so it
+    // matches only this one note across the test vault.
+    await apiCreateNote(
+      page, jasper.baseURL, "s32-uat4n11needle.md", "",
+      "# uat4n11needle\n\nThe word uat4n11needle appears in the body too.\n",
+    );
+
+    // Full reindex so FTS5 picks up the body content.
+    const reindexResp = await page.request.post(
+      `${jasper.baseURL}/api/v1/admin/reindex`,
+      { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
+    );
+    expect([200, 202]).toContain(reindexResp.status());
+    await page.waitForTimeout(800);
+
+    await pressShortcut(page, "CmdO");
+    const dialog = page.getByRole("dialog", { name: "Quick switcher" });
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+    const input = dialog.getByRole("textbox");
+    await input.fill("uat4n11needle");
+    // Title-fuzzy is synchronous; FTS5 has ~200ms debounce — wait long
+    // enough for both to resolve.
+    await page.waitForTimeout(500);
+
+    // BOTH group eyebrows must be present — the Plan 07-33 dedupe was
+    // reversed by Plan 07-38 N11.
+    await expect(
+      dialog.locator('[data-row-kind="group"][data-group-id="group:notes"]'),
+    ).toBeVisible({ timeout: 3_000 });
+    await expect(
+      dialog.locator('[data-row-kind="group"][data-group-id="group:search"]'),
+    ).toBeVisible({ timeout: 3_000 });
+
+    // The FTS5 row must render with a <mark> highlight on the snippet —
+    // that's the user-visible payoff of running the body-content search.
+    const searchRow = dialog.locator('[data-row-kind="search-result"]').first();
+    await expect(searchRow).toBeVisible({ timeout: 3_000 });
+    const markEl = searchRow.locator("mark").first();
+    await expect(markEl).toBeVisible({ timeout: 3_000 });
+
+    await page.keyboard.press("Escape");
   });
 });
