@@ -146,7 +146,27 @@ export interface paths {
          */
         get: operations["getFile"];
         put?: never;
-        post?: never;
+        /**
+         * Upload an OS file into the notes/ tree at the specified directory (UAT-3 N2 / Plan 07-34).
+         * @description Multipart upload landing under <dataDir>/notes/<path>. Used by the
+         *     sidebar tree's OS-file drop target — drop on a folder row → file lands
+         *     inside that folder; drop on a note/file → file lands as sibling; drop
+         *     on empty area → file lands at vault root.
+         *
+         *     path is passed as a query parameter (mirroring DELETE /folders and the
+         *     sibling GET /files endpoint, Plan 07-32a) because OpenAPI 3.1 has no
+         *     native multi-segment path-wildcard syntax and oapi-codegen does not
+         *     emit chi `*` catch-all routes. Co-locating GET + POST at /files keeps
+         *     the surface coherent: same wire shape for both verbs.
+         *
+         *     Refuses .md uploads (markdown bodies must be created via POST /notes).
+         *     Reuses generateUniqueFilename (Plan 07-06) for collision-safe naming.
+         *     Enforces the 100 MB upload cap (D-29). Same 5-rule path-traversal
+         *     pipeline as GET /files (Plan 07-32a) plus a Lstat that ensures the
+         *     target is a directory (NO auto-mkdir — the user creates folders via
+         *     the existing tree UI before dropping).
+         */
+        post: operations["createFile"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1461,6 +1481,77 @@ export interface operations {
             };
             /** @description File not found OR path is a .md file (use /notes/{id}). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createFile: {
+        parameters: {
+            query: {
+                /**
+                 * @description Target DIRECTORY (relative to notes/). "" = vault root.
+                 *     "gallery" = notes/gallery/. "gallery/sub" = notes/gallery/sub/.
+                 *     Must not contain `..` segments or absolute path prefixes;
+                 *     must point to an existing directory (returns 400 otherwise).
+                 */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description File uploaded; returns relative path + final filename. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Relative path under notes/ (e.g. "gallery/photo-1.png"). */
+                        path: string;
+                        /** @description Final filename after collision-safe rename. */
+                        name: string;
+                        /** Format: int64 */
+                        size_bytes: number;
+                        /** @description MIME sniff of the uploaded bytes. */
+                        content_type?: string;
+                    };
+                };
+            };
+            /** @description Invalid path / filename / target dir does not exist / .md upload refused. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Symlink rejected. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description File too large (>100 MB). */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };

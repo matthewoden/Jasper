@@ -106,3 +106,16 @@ func (s *Server) GetFile(
 		ContentLength: int64(len(fileData)),
 	}, nil
 }
+
+// CreateFile (Plan 07-34) — stub for RED commit. Real implementation lands in
+// the GREEN commit below. Returning nil response intentionally fails every
+// TestCreateFile_* type-assertion so the test file is exercising contract,
+// not vacuously passing.
+//
+//nolint:revive // generated interface name
+func (s *Server) CreateFile(
+	_ context.Context,
+	_ CreateFileRequestObject,
+) (CreateFileResponseObject, error) {
+	return nil, nil //nolint:nilnil // stub; replaced in GREEN
+}
