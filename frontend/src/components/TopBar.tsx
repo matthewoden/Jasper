@@ -20,29 +20,28 @@
  * pass grid-placement props directly:
  *   <TopBar style={{ gridRow: "1", gridColumn: "2" }} />
  */
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import type { CSSProperties } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
-import { postAdminReindex } from "../lib/adminApi";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { PanelSelectorDropdown } from "./PanelSelectorDropdown";
-import { SaveIndicator } from "./SaveIndicator";
 
 // ──────────────────────────────────────────────────────────────────────
 // Styles
 // ──────────────────────────────────────────────────────────────────────
 
-// Plan 07-36 (UAT-3 N5, Approach A): horizontal padding tuned from 8px to
-// 4px so the breadcrumb text-start aligns with --editor-content-x (30px) —
-// 4px outer pad + 24px toggle button + 2px inner-group gap = 30px from the
-// grid column edge, matching the editor's paddingLeft: var(--editor-content-x).
+// Plan 07-38 (UAT-4 N5) reverts Plan 07-36's 4px/2px tune back to 8px/4px:
+// 8px outer pad + 24px toggle button + 4px inner-group gap = 36px from the
+// grid column edge, matching --editor-content-x = 36px. The user wanted
+// the EDITOR shifted right (not the breadcrumb left), so 36px is the
+// anchor and 30px is reverted.
 const topBarStyle: CSSProperties = {
   background: "var(--color-bg)",
   boxShadow: "var(--shadow-elevation-1)",
   zIndex: 10,
   height: 40,
-  padding: "0 4px",
+  padding: "0 8px",
   display: "flex",
   alignItems: "center",
   gap: 4,
@@ -115,10 +114,10 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
   const setBacklinksRailExpanded = useTreeStore(
     (s) => s.setBacklinksRailExpanded,
   );
-  // Plan 07-37 (UAT-3 N9 / D-55): SaveIndicator-button reads the hoisted
-  // saveState from the store (Plan 07-28 hoist STAYS — only the mounting
-  // location moves from StatusBar to here).
-  const saveState = useTreeStore((s) => s.saveState);
+  // Plan 07-38 (UAT-4 N9) reverts Plan 07-37's save-state indicator
+  // mount — the save-state button moves BACK to StatusBar. TopBar no
+  // longer subscribes to useTreeStore.saveState; the store slice itself
+  // is unchanged (still populated by autosave + lifecycle).
   // Plan 07-38 (UAT-4 N3): panel-selector state is now the authoritative
   // gate for the right-rail toggle (reverses Plan 07-30/07-35's
   // hasContent gate). The dropdown itself is ALWAYS visible — the user
@@ -134,33 +133,20 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
     : "Show notes sidebar";
   const railLabel = backlinksRailExpanded ? "Hide panels" : "Show panels";
 
-  // Plan 07-37: SaveIndicator-button click → manual incremental reindex (the
-  // same call the prior StatusBar refresh button issued). The SaveIndicator
-  // already DoS-guards by disabling itself while saveState.status === "saving"
-  // (T-37-01); we still wrap the await in a try/catch so an unexpected reject
-  // doesn't crash React's event loop.
-  const handleRefresh = useCallback(async () => {
-    try {
-      await postAdminReindex("incremental");
-    } catch (err) {
-      console.warn("[TopBar] SaveIndicator-button refresh failed:", err);
-    }
-  }, []);
-
   return (
     <div
       style={{ ...topBarStyle, ...style }}
       data-testid="top-bar"
     >
       {/* Left group: sidebar toggle + breadcrumbs.
-          Plan 07-36 (UAT-3 N5, Approach A): inner gap dropped from 4px to 2px
-          so the toggle (24px) + gap (2px) lands the breadcrumb text-start at
-          4px (outer pad) + 24px + 2px = 30px = --editor-content-x. */}
+          Plan 07-38 (UAT-4 N5) reverts Plan 07-36's 2px inner gap back to
+          4px so 8px (outer pad) + 24px (toggle) + 4px (inner gap) = 36px
+          breadcrumb text-start, matching the new --editor-content-x = 36px. */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 2,
+          gap: 4,
           flex: 1,
           minWidth: 0,
         }}
@@ -179,10 +165,10 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
         <Breadcrumbs />
       </div>
 
-      {/* Right group: SaveIndicator-button + PanelSelectorDropdown (always
-          present) + right-rail toggle (gated on panelSelector state).
+      {/* Right group: PanelSelectorDropdown (always present) + right-rail
+          toggle (gated on panelSelector state).
 
-          Plan 07-38 (UAT-4 N3) supersedes Plan 07-30 / 07-35 / 07-37:
+          Plan 07-38 (UAT-4 N3, N9) supersedes Plan 07-30 / 07-35 / 07-37:
           - PanelSelectorDropdown is mounted UNCONDITIONALLY — the user
             needs a way to re-enable a panel even when none is currently
             selected (the previous hasContent gate hid the dropdown when
@@ -192,9 +178,10 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
             actually a rail to show? An all-false panelSelector means the
             user has explicitly hidden every panel, so the toggle has
             nothing to toggle.
-          - The SaveIndicator-button (Plan 07-37) is REMOVED from this
-            location in Plan 07-38 (see Task 3 of Plan 07-38). It moves
-            back to StatusBar per UAT-4 N9. */}
+          - The save-state button (Plan 07-37) is REMOVED from this
+            location in Plan 07-38 N9 and moved back to StatusBar (its
+            Plan 07-28 location). D-55's "click=manual reindex" behavior
+            is PRESERVED — only the mount point changed. */}
       <div
         style={{
           display: "flex",
@@ -203,7 +190,6 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
           flexShrink: 0,
         }}
       >
-        <SaveIndicator state={saveState} onClick={handleRefresh} />
         <PanelSelectorDropdown />
         {anyPanelSelected && (
           <ToggleButton

@@ -37,11 +37,13 @@
   /* Phase 6.6 — TopBar drop shadow (D-31, UX-CHROME-01) */
   --shadow-elevation-1: 0 2px 8px rgba(0, 0, 0, 0.06);
 
-  /* Plan 07-36 (UAT-3 N5): single source of truth for editor + breadcrumb
-     left padding. Both surfaces use this token so visual alignment is
-     tunable in one place. Per UAT-3 N5: 30px is the visually-correct value
-     (Plan 07-30 used 36px which was 6px too far right). */
-  --editor-content-x: 30px;
+  /* Plan 07-38 (UAT-4 N5): editor first-char aligns with breadcrumb
+     first-char at 36px (revert of Plan 07-36's 30px tune — user wanted
+     editor shifted RIGHT, not breadcrumb shifted left). The breadcrumb
+     geometry in TopBar.tsx (8px outer pad + 24px toggle + 4px gap = 36px)
+     is the alignment anchor; the editor consumes this token so the two
+     surfaces visually line up. */
+  --editor-content-x: 36px;
 }
 
 @theme {
