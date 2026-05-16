@@ -2,9 +2,15 @@
  * SaveIndicator render tests. Per 01-UI-SPEC.md §"Save Indicator State Machine"
  * we lock copy strings + tooltip phrasing + ARIA semantics here so the contract
  * survives the Phase 5 CodeMirror swap.
+ *
+ * Plan 07-37 (UAT-3 N9): SaveIndicator additionally accepts an optional
+ * `onClick` prop. When provided it renders as a `<button>` (clickable hybrid
+ * SaveIndicator + manual-refresh control mounted in TopBar's right cluster).
+ * When omitted it preserves the legacy read-only behavior used by older
+ * mounting points.
  */
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import type { SaveState } from "../lib/saveStateMachine";
 import { SaveIndicator } from "./SaveIndicator";
@@ -93,5 +99,178 @@ describe("<SaveIndicator />", () => {
       "title",
       "Saved at 01:02:03",
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plan 07-37 (UAT-3 N9) — SaveIndicator-as-button hybrid.
+//
+// When `onClick` is provided, SaveIndicator becomes a clickable <button>:
+//   - icon-only render (no text label) sized for TopBar right cluster
+//   - state-driven icon: idle/synced=Cloud, saving=Loader2 (spin), saved=Check,
+//     error=AlertCircle, paused=CloudOff
+//   - tooltip = state copy + " — click to refresh"
+//   - disabled while a save is in flight (status === "saving") so rapid clicks
+//     don't issue overlapping reindex POSTs (T-37-01)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", () => {
+  it("SI-BTN-1: with onClick prop, renders as a <button>", () => {
+    const handler = vi.fn();
+    const { container } = render(
+      <SaveIndicator state={{ status: "idle" }} onClick={handler} />,
+    );
+    const btn = container.querySelector("button[data-save-state]");
+    expect(btn).not.toBeNull();
+    expect(btn?.tagName.toLowerCase()).toBe("button");
+  });
+
+  it("SI-BTN-2: WITHOUT onClick prop, idle still returns null (legacy read-only behavior preserved)", () => {
+    const { container } = render(<SaveIndicator state={{ status: "idle" }} />);
+    // Legacy behavior: no role=status, no svg.
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector("button[data-save-state]")).toBeNull();
+    expect(container.querySelector("svg")).toBeNull();
+  });
+
+  it("SI-BTN-3: idle (button mode) renders Cloud icon (visible always-present button)", () => {
+    const { container } = render(
+      <SaveIndicator state={{ status: "idle" }} onClick={vi.fn()} />,
+    );
+    const btn = container.querySelector("button[data-save-state='idle']");
+    expect(btn).not.toBeNull();
+    const svg = btn?.querySelector("svg");
+    expect(svg).not.toBeNull();
+    // lucide ships <svg class="lucide lucide-cloud ...">
+    expect(svg?.getAttribute("class") ?? "").toMatch(/lucide-cloud(?!-off)/);
+  });
+
+  it("SI-BTN-4: saving renders Loader2 with animate-spin class", () => {
+    const { container } = render(
+      <SaveIndicator
+        state={{ status: "saving", startedAt: new Date() }}
+        onClick={vi.fn()}
+      />,
+    );
+    const btn = container.querySelector("button[data-save-state='saving']");
+    expect(btn).not.toBeNull();
+    const svg = btn?.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(svg?.getAttribute("class") ?? "").toMatch(/animate-spin/);
+    expect(svg?.getAttribute("class") ?? "").toMatch(/lucide-loader/);
+  });
+
+  it("SI-BTN-5: saved renders Check icon", () => {
+    const { container } = render(
+      <SaveIndicator
+        state={{ status: "saved", savedAt: new Date(2025, 0, 1, 14, 30, 5) }}
+        onClick={vi.fn()}
+      />,
+    );
+    const btn = container.querySelector("button[data-save-state='saved']");
+    expect(btn).not.toBeNull();
+    const svg = btn?.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(svg?.getAttribute("class") ?? "").toMatch(/lucide-check/);
+  });
+
+  it("SI-BTN-6: error renders AlertCircle icon", () => {
+    const { container } = render(
+      <SaveIndicator
+        state={{ status: "error", error: "boom" }}
+        onClick={vi.fn()}
+      />,
+    );
+    const btn = container.querySelector("button[data-save-state='error']");
+    expect(btn).not.toBeNull();
+    const svg = btn?.querySelector("svg");
+    expect(svg).not.toBeNull();
+    // lucide AlertCircle ships as `lucide-circle-alert` in modern lucide-react;
+    // accept either historical name to stay version-tolerant.
+    expect(svg?.getAttribute("class") ?? "").toMatch(/lucide-(alert-circle|circle-alert)/);
+  });
+
+  it("SI-BTN-7: paused renders CloudOff icon", () => {
+    const { container } = render(
+      <SaveIndicator state={{ status: "paused" }} onClick={vi.fn()} />,
+    );
+    const btn = container.querySelector("button[data-save-state='paused']");
+    expect(btn).not.toBeNull();
+    const svg = btn?.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(svg?.getAttribute("class") ?? "").toMatch(/lucide-cloud-off/);
+  });
+
+  it("SI-BTN-8: tooltip is state copy + ' — click to refresh' when onClick is set", () => {
+    const { container } = render(
+      <SaveIndicator state={{ status: "idle" }} onClick={vi.fn()} />,
+    );
+    const btn = container.querySelector("button[data-save-state]");
+    expect(btn).not.toBeNull();
+    expect(btn?.getAttribute("title") ?? "").toMatch(/click to refresh/i);
+    expect(btn?.getAttribute("aria-label") ?? "").toMatch(/click to refresh/i);
+  });
+
+  it("SI-BTN-9a: button is disabled while status === 'saving' (DoS guard T-37-01)", () => {
+    const { container } = render(
+      <SaveIndicator
+        state={{ status: "saving", startedAt: new Date() }}
+        onClick={vi.fn()}
+      />,
+    );
+    const btn = container.querySelector(
+      "button[data-save-state='saving']",
+    ) as HTMLButtonElement | null;
+    expect(btn).not.toBeNull();
+    expect(btn?.disabled).toBe(true);
+  });
+
+  it("SI-BTN-9b: button is enabled in non-saving states (idle, saved, error, paused)", () => {
+    const states: SaveState[] = [
+      { status: "idle" },
+      { status: "saved", savedAt: new Date() },
+      { status: "error", error: "boom" },
+      { status: "paused" },
+    ];
+    for (const state of states) {
+      const { container, unmount } = render(
+        <SaveIndicator state={state} onClick={vi.fn()} />,
+      );
+      const btn = container.querySelector(
+        "button[data-save-state]",
+      ) as HTMLButtonElement | null;
+      expect(btn).not.toBeNull();
+      expect(btn?.disabled).toBe(false);
+      unmount();
+    }
+  });
+
+  it("SI-BTN-10: clicking the button calls the onClick handler", () => {
+    const handler = vi.fn();
+    const { container } = render(
+      <SaveIndicator state={{ status: "idle" }} onClick={handler} />,
+    );
+    const btn = container.querySelector(
+      "button[data-save-state]",
+    ) as HTMLButtonElement | null;
+    expect(btn).not.toBeNull();
+    fireEvent.click(btn!);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("SI-BTN-11: clicking while disabled (saving) does NOT call onClick", () => {
+    const handler = vi.fn();
+    const { container } = render(
+      <SaveIndicator
+        state={{ status: "saving", startedAt: new Date() }}
+        onClick={handler}
+      />,
+    );
+    const btn = container.querySelector(
+      "button[data-save-state='saving']",
+    ) as HTMLButtonElement | null;
+    expect(btn).not.toBeNull();
+    fireEvent.click(btn!);
+    // disabled button: click handler does not fire
+    expect(handler).not.toHaveBeenCalled();
   });
 });
