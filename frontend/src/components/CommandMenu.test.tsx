@@ -547,8 +547,13 @@ describe("CMM-MERGE — dual-section title-fuzzy + FTS5 merge (Plan 07-33)", () 
     expect(searchEyebrow!.textContent).toContain("Search results");
   });
 
-  it("CMM-MERGE-3: dedup — 'alpha' in both title-fuzzy AND FTS5 → only one entry; only 'Switch to note' eyebrow rendered", () => {
-    const dupFTS5Hit = { ...MOCK_FTS5_HIT, id: "n1", title: "alpha" }; // same id as title hit
+  it("CMM-N11-3 (supersedes CMM-MERGE-3): no dedup — 'alpha' in both title-fuzzy AND FTS5 → appears in BOTH sections", () => {
+    // Plan 07-38 N11: the prior CMM-MERGE-3 dedup behavior is REVERSED.
+    // The user expects to see the FTS5 snippet preview even when the same
+    // note is already listed in the title-fuzzy section — those two
+    // representations carry different information (title row = quick
+    // switch; FTS5 row = match snippet preview).
+    const dupFTS5Hit = { ...MOCK_FTS5_HIT, id: "n1", title: "alpha" };
     const titleHitAlpha = { id: "n1", title: "alpha", path: "alpha.md" };
     mockUseQuickSwitcher.mockReturnValue([titleHitAlpha]);
     mockUseSearch.mockReturnValue({ results: [dupFTS5Hit], isSearching: false });
@@ -557,16 +562,12 @@ describe("CMM-MERGE — dual-section title-fuzzy + FTS5 merge (Plan 07-33)", () 
     const input = screen.getByRole("textbox");
     fireEvent.change(input, { target: { value: "al" } });
 
-    // Only one 'alpha' row (deduped)
-    const alphaElements = screen.getAllByText("alpha");
-    // Should only appear in the note row, not duplicated as search-result row
-    expect(alphaElements.length).toBeGreaterThan(0);
-
-    // Only "Switch to note" eyebrow — no "Search results" eyebrow (all FTS5 hits were dups)
+    // BOTH eyebrows visible — search section appears whenever FTS5 has hits.
     const switchEyebrow = document.querySelector('[data-row-kind="group"][data-group-id="group:notes"]');
     const searchEyebrow = document.querySelector('[data-row-kind="group"][data-group-id="group:search"]');
     expect(switchEyebrow).not.toBeNull();
-    expect(searchEyebrow).toBeNull(); // deduped → search section absent
+    expect(searchEyebrow).not.toBeNull();
+    expect(searchEyebrow!.textContent).toContain("Search results");
   });
 
   it("CMM-MERGE-4: title-fuzzy empty + FTS5 non-empty → only 'Search results' eyebrow", () => {
@@ -608,6 +609,87 @@ describe("CMM-MERGE — dual-section title-fuzzy + FTS5 merge (Plan 07-33)", () 
     fireEvent.change(input, { target: { value: "zz" } });
 
     expect(screen.getByText(/No notes match "zz"/)).toBeTruthy();
+  });
+});
+
+// ── CMM-N11: Plan 07-38 (UAT-4 N11) — no dedupe between title-fuzzy + FTS5 ──
+//
+// User clarification (07-HUMAN-UAT-4.md): when a query matches both a
+// note's title and its body, the result should appear in BOTH the
+// "Switch to note" section (title-fuzzy) AND the "Search results"
+// section (FTS5). The two representations are NOT redundant — the
+// title row is the fast switch; the FTS5 row carries the snippet
+// preview.
+
+describe("CMM-N11 — no-dedupe snippet section (Plan 07-38 / UAT-4 N11)", () => {
+  const TITLE_HIT = { id: "n1", title: "alpha", path: "alpha.md" };
+  const FTS5_HIT = {
+    id: "n1", // same note as title hit — would have been deduped previously
+    title: "alpha",
+    path: "alpha.md",
+    excerpt_html: "the word <mark>alpha</mark> appears here",
+    matching_tags: [],
+    rank: 1,
+    modified_at: "2026-05-16T00:00:00Z",
+  };
+
+  it("CMM-N11-1: same note matches title AND body → result appears in BOTH sections", () => {
+    mockUseQuickSwitcher.mockReturnValue([TITLE_HIT]);
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
+
+    // Both group eyebrows present.
+    expect(
+      document.querySelector('[data-row-kind="group"][data-group-id="group:notes"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('[data-row-kind="group"][data-group-id="group:search"]'),
+    ).not.toBeNull();
+
+    // There are TWO rows now (the title row + the search-result row),
+    // even though the note id is identical.
+    const noteRow = document.querySelector('[data-row-kind="note"]');
+    const searchRow = document.querySelector('[data-row-kind="search-result"]');
+    expect(noteRow).not.toBeNull();
+    expect(searchRow).not.toBeNull();
+  });
+
+  it("CMM-N11-2: 'Search results' section header rendered whenever FTS5 returns hits", () => {
+    // Even when every FTS5 hit overlaps the title-fuzzy set, the FTS5
+    // section header must render — that's the user-visible confirmation
+    // that the body-content search ran.
+    mockUseQuickSwitcher.mockReturnValue([TITLE_HIT]);
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
+
+    const searchEyebrow = document.querySelector(
+      '[data-row-kind="group"][data-group-id="group:search"]',
+    );
+    expect(searchEyebrow).not.toBeNull();
+    expect(searchEyebrow!.textContent).toContain("Search results");
+  });
+
+  it("CMM-N11-3: selecting an FTS5-section row activates the same note as the title-section row would", () => {
+    // Both rows carry the same note id; selecting either should result
+    // in onActivate being called with the same id (this exercises the
+    // existing onActivate dispatch path, just verifying no duplicate
+    // handler quirk).
+    const onActivate = vi.fn();
+    mockUseQuickSwitcher.mockReturnValue([TITLE_HIT]);
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+
+    render(<CommandMenu {...defaultNoteProps} onActivate={onActivate} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
+
+    // Click the search-result row.
+    const searchRow = document.querySelector('[data-row-kind="search-result"]');
+    expect(searchRow).not.toBeNull();
+    fireEvent.click(searchRow as HTMLElement);
+    expect(onActivate).toHaveBeenCalledWith("n1");
   });
 });
 
