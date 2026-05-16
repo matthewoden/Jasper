@@ -20,14 +20,16 @@
  * pass grid-placement props directly:
  *   <TopBar style={{ gridRow: "1", gridColumn: "2" }} />
  */
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useTagsForNote } from "../lib/useTagsForNote";
 import { useBacklinks } from "../lib/useBacklinks";
+import { postAdminReindex } from "../lib/adminApi";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { PanelSelectorDropdown } from "./PanelSelectorDropdown";
+import { SaveIndicator } from "./SaveIndicator";
 
 // ──────────────────────────────────────────────────────────────────────
 // Styles
@@ -117,6 +119,10 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
   );
   // C3 (UAT-2 N3): read active note ID for backlinks count
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
+  // Plan 07-37 (UAT-3 N9 / D-55): SaveIndicator-button reads the hoisted
+  // saveState from the store (Plan 07-28 hoist STAYS — only the mounting
+  // location moves from StatusBar to here).
+  const saveState = useTreeStore((s) => s.saveState);
 
   // C3 (UAT-2 N3 → corrected UAT-3 N3): right-rail toggle only shown when the
   // ACTIVE NOTE has content to display (per-note semantics, Plan 07-35).
@@ -131,6 +137,19 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
     ? "Hide notes sidebar"
     : "Show notes sidebar";
   const railLabel = backlinksRailExpanded ? "Hide panels" : "Show panels";
+
+  // Plan 07-37: SaveIndicator-button click → manual incremental reindex (the
+  // same call the prior StatusBar refresh button issued). The SaveIndicator
+  // already DoS-guards by disabling itself while saveState.status === "saving"
+  // (T-37-01); we still wrap the await in a try/catch so an unexpected reject
+  // doesn't crash React's event loop.
+  const handleRefresh = useCallback(async () => {
+    try {
+      await postAdminReindex("incremental");
+    } catch (err) {
+      console.warn("[TopBar] SaveIndicator-button refresh failed:", err);
+    }
+  }, []);
 
   return (
     <div
@@ -164,31 +183,39 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
         <Breadcrumbs />
       </div>
 
-      {/* Right group: panel selector dropdown + right-rail toggle */}
-      {/* C3 (UAT-2 N3): right-rail toggle hidden when no tags AND no backlinks */}
-      {hasContent && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            flexShrink: 0,
-          }}
-        >
-          <PanelSelectorDropdown />
-          <ToggleButton
-            ariaLabel={railLabel}
-            onClick={() => setBacklinksRailExpanded(!backlinksRailExpanded)}
-            icon={
-              backlinksRailExpanded ? (
-                <ChevronRight size={16} aria-hidden="true" />
-              ) : (
-                <ChevronLeft size={16} aria-hidden="true" />
-              )
-            }
-          />
-        </div>
-      )}
+      {/* Right group: SaveIndicator-button (always present) + (when hasContent)
+          panel selector dropdown + right-rail toggle.
+
+          Plan 07-37 (UAT-3 N9 / D-55): the SaveIndicator-button is mounted
+          UNCONDITIONALLY — manual refresh is always available regardless of
+          whether the active note has tags / backlinks. The panel-selector +
+          rail-toggle stay hasContent-gated (Plan 07-30 / 07-35 semantics). */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          flexShrink: 0,
+        }}
+      >
+        <SaveIndicator state={saveState} onClick={handleRefresh} />
+        {hasContent && (
+          <>
+            <PanelSelectorDropdown />
+            <ToggleButton
+              ariaLabel={railLabel}
+              onClick={() => setBacklinksRailExpanded(!backlinksRailExpanded)}
+              icon={
+                backlinksRailExpanded ? (
+                  <ChevronRight size={16} aria-hidden="true" />
+                ) : (
+                  <ChevronLeft size={16} aria-hidden="true" />
+                )
+              }
+            />
+          </>
+        )}
+      </div>
     </div>
   );
 }

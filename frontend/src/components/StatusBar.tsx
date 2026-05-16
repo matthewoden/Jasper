@@ -1,11 +1,24 @@
-import { useCallback, useState } from "react";
+/**
+ * StatusBar — Phase 6.6 Plan 10 / simplified by Plan 07-37 (UAT-3 N9 / D-55).
+ *
+ * Layout (left-to-right):
+ *   [ConnectionStatusDot] [flex:1 spacer] [SettingsMenu]
+ *
+ * Plan 07-37 removes:
+ *   - The standalone "Reindex notes" refresh button (Plan 06.6).
+ *   - The SaveIndicator that Plan 07-28 hoisted into this footer (B3 /
+ *     UAT-2 N9).
+ *
+ * Both are unified into the SaveIndicator-as-refresh-button hybrid that now
+ * lives in TopBar's right cluster (see SaveIndicator.tsx button mode and
+ * TopBar.tsx mount). The `useTreeStore.saveState` slice (Plan 07-28) STAYS;
+ * TopBar reads it instead of StatusBar.
+ *
+ * The StatusBar metadata zone (Phase 06.6 D-07) is reclaimed for v2 use.
+ */
 import type { CSSProperties } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
-import { SaveIndicator } from "./SaveIndicator";
 import { SettingsMenu } from "./SettingsMenu";
-import { postAdminReindex } from "../lib/adminApi";
-import { useTreeStore } from "../lib/useTreeStore";
 
 const statusBarStyle: CSSProperties = {
   background: "var(--color-surface)",
@@ -19,70 +32,11 @@ const statusBarStyle: CSSProperties = {
   flexShrink: 0,
 };
 
-const buttonBase: CSSProperties = {
-  width: 24,
-  height: 24,
-  padding: 4,
-  background: "transparent",
-  border: "none",
-  color: "var(--color-muted)",
-  cursor: "pointer",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 4,
-};
-
 export function StatusBar() {
-  const [refreshing, setRefreshing] = useState(false);
-  const [hovering, setHovering] = useState(false);
-  // Phase 7 Plan 07-28 (UAT-2 N9 / B3): Phase 06.6 D-07 reserved this
-  // metadata zone for save state. SaveIndicator is now in the status bar
-  // (hoisted from EditorPane via useTreeStore.saveState mirror).
-  const saveState = useTreeStore((s) => s.saveState);
-
-  const handleRefresh = useCallback(async () => {
-    if (refreshing) return;
-    setRefreshing(true);
-    try {
-      await postAdminReindex("incremental");
-    } catch {
-      // App-level reindex error path handles UI feedback; status bar stays quiet.
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refreshing]);
-
   return (
     <footer style={statusBarStyle} data-testid="status-bar" aria-label="Status bar">
       <ConnectionStatusDot />
-      <button
-        type="button"
-        aria-label="Reindex notes"
-        title="Reindex notes"
-        onClick={handleRefresh}
-        disabled={refreshing}
-        onMouseEnter={() => setHovering(true)}
-        onMouseLeave={() => setHovering(false)}
-        style={{
-          ...buttonBase,
-          opacity: refreshing ? 0.5 : 1,
-          cursor: refreshing ? "wait" : "pointer",
-          background:
-            !refreshing && hovering
-              ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-              : "transparent",
-        }}
-      >
-        {refreshing ? (
-          <Loader2 size={14} aria-hidden="true" className="animate-spin" />
-        ) : (
-          <RefreshCw size={14} aria-hidden="true" />
-        )}
-      </button>
       <div style={{ flex: 1 }} data-testid="status-bar-spacer" />
-      {/* Phase 06.6 D-07 metadata zone: save state indicator */}
-      <SaveIndicator state={saveState} />
       <SettingsMenu />
     </footer>
   );
