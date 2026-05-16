@@ -33,7 +33,12 @@ export type DeleteTarget =
   // for N selected items. Copy is "Delete N items?" per the must-have
   // truth in the plan frontmatter. The body lists no per-row detail; the
   // batch is opaque from the dialog's perspective.
-  | { kind: "multi"; count: number };
+  | { kind: "multi"; count: number }
+  // Plan 07-38 R7b: file rows (non-markdown attachments / generic files)
+  // can now be deleted from the tree. Copy mirrors the note variant —
+  // single-item destructive dialog — but the action dispatches through
+  // filesApi.deleteFile instead of muts.deleteNote.
+  | { kind: "file"; name: string; path: string };
 
 export interface DeleteConfirmDialogProps {
   open: boolean;
@@ -185,6 +190,12 @@ export function DeleteConfirmDialog({
     // Branch for { kind: "multi"; count: number } — UX-13 batch delete.
     title = `Delete ${target.count} items?`;
     confirmLabel = `Delete ${target.count} items`;
+  } else if (target.kind === "file") {
+    // Plan 07-38 R7b: file variant — same destructive treatment as notes
+    // (single-item permanent removal), distinct copy that says "file"
+    // rather than "note" so the user knows what's being deleted.
+    title = "Delete this file?";
+    confirmLabel = "Delete file";
   } else {
     // Exhaustiveness guard — should be unreachable for the discriminated
     // union; if a future variant is added, the type checker steers the
@@ -212,6 +223,10 @@ export function DeleteConfirmDialog({
     line2IsDestructive = body.line2IsDestructive;
   } else if (target.kind === "multi") {
     line1 = `This will permanently delete the selected ${target.count} items from disk and from the index.`;
+    line2 = "This cannot be undone.";
+    line2IsDestructive = true;
+  } else if (target.kind === "file") {
+    line1 = `${target.name} will be permanently removed from disk.`;
     line2 = "This cannot be undone.";
     line2IsDestructive = true;
   }

@@ -21,12 +21,20 @@
  *   note         → Open · sep · New note · sep · Rename(F2) · Delete(⌫)
  *   folder       →                 New note · New folder · sep · Rename(F2) · Delete(⌫)
  *   empty-area   →                 New note · New folder
+ *   file         →                 Rename(F2) · Delete(⌫)    (Plan 07-38 R7b)
+ *
+ * Plan 07-38 R7b: file-kind rows are non-markdown attachments / generic
+ * files surfaced in the sidebar tree (FileNodeData in TreeRow.tsx). They
+ * have no "Open" because clicking the row opens the preview view; they
+ * have no "New note" / "New folder" because files cannot host children.
+ * Rename + Delete dispatch through filesApi.moveFile / deleteFile in
+ * FileTree.handleCommitRename / handleConfirmDelete.
  */
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { CSSProperties, ReactNode } from "react";
 
-export type TreeRowMenuKind = "note" | "folder" | "empty-area";
+export type TreeRowMenuKind = "note" | "folder" | "empty-area" | "file";
 
 export interface TreeRowMenuProps {
   rowKind: TreeRowMenuKind;
@@ -128,6 +136,11 @@ function MenuItems({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Sep = SepComp as any;
 
+  // Plan 07-38 R7b: file rows render ONLY Rename + Delete — no Open,
+  // no New note, no New folder. Files can't host children, and clicking
+  // the row already opens the preview view (no "Open" menu entry needed).
+  const isFile = rowKind === "file";
+
   return (
     <>
       {rowKind === "note" && (
@@ -136,23 +149,25 @@ function MenuItems({
         </Item>
       )}
       {rowKind === "note" && <Sep style={separatorStyle} />}
-      <Item
-        style={itemStyle}
-        onSelect={(event: Event) => {
-          // UX-12 / Pitfall 7 (RESEARCH §A6): right-clicking "New note"
-          // inside an expanded folder must NOT collapse that folder.
-          // Radix's onSelect fires BEFORE the menu closes and is handed
-          // the original click event; halting propagation here prevents
-          // the synthesized click from bubbling to the row's onClick
-          // handler (TreeRow.handleClick), which would otherwise toggle
-          // the folder open/closed state.
-          event.stopPropagation();
-          onNewNote();
-        }}
-      >
-        <span>New note</span>
-      </Item>
-      {rowKind !== "note" && (
+      {!isFile && (
+        <Item
+          style={itemStyle}
+          onSelect={(event: Event) => {
+            // UX-12 / Pitfall 7 (RESEARCH §A6): right-clicking "New note"
+            // inside an expanded folder must NOT collapse that folder.
+            // Radix's onSelect fires BEFORE the menu closes and is handed
+            // the original click event; halting propagation here prevents
+            // the synthesized click from bubbling to the row's onClick
+            // handler (TreeRow.handleClick), which would otherwise toggle
+            // the folder open/closed state.
+            event.stopPropagation();
+            onNewNote();
+          }}
+        >
+          <span>New note</span>
+        </Item>
+      )}
+      {rowKind !== "note" && !isFile && (
         <Item
           style={itemStyle}
           onSelect={(event: Event) => {
@@ -166,7 +181,7 @@ function MenuItems({
           <span>New folder</span>
         </Item>
       )}
-      {rowKind !== "empty-area" && <Sep style={separatorStyle} />}
+      {rowKind !== "empty-area" && !isFile && <Sep style={separatorStyle} />}
       {rowKind !== "empty-area" && (
         <Item style={itemStyle} onSelect={() => onRename?.()}>
           <span>Rename</span>

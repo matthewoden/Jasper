@@ -32,6 +32,13 @@ export interface UploadFileResult {
 
 export interface UploadFileError extends Error {
   status?: number;
+  /**
+   * Plan 07-38 N2 (UAT-4 debuggability): raw response body text so the
+   * FileTree drop-toast can show the backend's actual error message
+   * ("target dir does not exist", etc.) rather than the generic
+   * "Upload failed: Could not upload [filename]" catch-all.
+   */
+  body?: string;
 }
 
 export async function uploadFile(
@@ -66,8 +73,82 @@ export async function uploadFile(
       `uploadFile failed: ${resp.status} ${text}`,
     ) as UploadFileError;
     err.status = resp.status;
+    err.body = text;
     throw err;
   }
 
   return (await resp.json()) as UploadFileResult;
+}
+
+/**
+ * deleteFile — DELETE /api/v1/files?path=<rel> (Plan 07-38 R7b).
+ *
+ * Server refuses .md (those are served via /notes/{id}) and directories
+ * (use DELETE /folders). Returns 204 on success, 400/403/404 otherwise.
+ *
+ * Like uploadFile, the error carries .status + .body so callers can
+ * surface the backend message in their toast.
+ */
+export async function deleteFile(path: string): Promise<void> {
+  const qs = new URLSearchParams({ path }).toString();
+  const url = `/api/v1/files?${qs}`;
+
+  const resp = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      // Mirror uploadFile so the WS hub can suppress self-broadcast
+      // and the resulting tree refresh isn't double-emitted.
+      "X-Session-ID": generateOrLoadSessionId(),
+    },
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    const err = new Error(
+      `deleteFile failed: ${resp.status} ${text}`,
+    ) as UploadFileError;
+    err.status = resp.status;
+    err.body = text;
+    throw err;
+  }
+  // 204 No Content — nothing to parse.
+}
+
+export interface MoveFileResult {
+  path: string;
+  name: string;
+}
+
+/**
+ * moveFile — POST /api/v1/files/move {src_path, dst_path} (Plan 07-38 R7b).
+ *
+ * Both paths are relative under notes/. Server refuses .md files (those go
+ * through POST /notes/{id}/move with its SQLite-side canonical-path update),
+ * refuses overwrite (409), and runs the same 5-rule path-traversal pipeline
+ * on both sides. Atomic via os.Rename on POSIX.
+ */
+export async function moveFile(
+  srcPath: string,
+  dstPath: string,
+): Promise<MoveFileResult> {
+  const resp = await fetch("/api/v1/files/move", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Session-ID": generateOrLoadSessionId(),
+    },
+    body: JSON.stringify({ src_path: srcPath, dst_path: dstPath }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    const err = new Error(
+      `moveFile failed: ${resp.status} ${text}`,
+    ) as UploadFileError;
+    err.status = resp.status;
+    err.body = text;
+    throw err;
+  }
+
+  return (await resp.json()) as MoveFileResult;
 }

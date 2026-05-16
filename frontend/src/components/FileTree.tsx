@@ -47,7 +47,7 @@ import { Tree, type NodeApi, type TreeApi } from "react-arborist";
 
 import { extractH1FromContent, rewriteH1 } from "../lib/h1Extract";
 import { getNote, updateNote } from "../lib/notesApi";
-import { uploadFile } from "../lib/filesApi";
+import { uploadFile, deleteFile, moveFile } from "../lib/filesApi";
 import { broadcastRefresh, useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
 import {
@@ -773,7 +773,15 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   );
 
   const handleRequestRename = useCallback((d: TreeRowData) => {
-    if (d.kind === "file") return; // Plan 07-26: file nodes are not renameable in v1
+    // Plan 07-38 R7b lifts Plan 07-26's file-rename block — file rows
+    // now enter inline rename via filesApi.moveFile (see
+    // handleCommitRename below). target is the path (same convention as
+    // folder rename — files are identified by their relative path under
+    // notes/).
+    if (d.kind === "file") {
+      useTreeStore.getState().startRename("file", d.path);
+      return;
+    }
     useTreeStore
       .getState()
       .startRename(d.kind, d.kind === "folder" ? d.path : d.id);
@@ -782,6 +790,31 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   const handleCommitRename = useCallback(
     async (d: TreeRowData, newValue: string) => {
       try {
+        if (d.kind === "file") {
+          // Plan 07-38 R7b: file rename = filesApi.moveFile to the same
+          // parent dir with the new basename. RenameInput hands us the
+          // full filename (extension included) for files, mirroring the
+          // folder branch's "raw basename" convention. The backend
+          // refuses .md and overwrites; surface the error inline so the
+          // user can retry without leaving the rename UI.
+          const parent = (() => {
+            const i = d.path.lastIndexOf("/");
+            return i === -1 ? "" : d.path.slice(0, i);
+          })();
+          const newPath = composeNewPath(parent, newValue);
+          if (newPath === d.path) {
+            useTreeStore.getState().endRename();
+            return;
+          }
+          await moveFile(d.path, newPath);
+          useTreeStore.getState().endRename();
+          // Mirror the rest of the rename pipeline — refresh so the tree
+          // re-fetches with the new path. broadcastRefresh notifies other
+          // tabs (single-user multi-window scenario).
+          await refresh();
+          broadcastRefresh();
+          return;
+        }
         if (d.kind === "note") {
           // Reattach .md per Surface 3 contract — the input contains
           // only the basename for notes; the server expects the full
@@ -938,6 +971,15 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           name: basename(d.path),
           id: d.id,
         });
+      } else if (d.kind === "file") {
+        // Plan 07-38 R7b: file delete uses filesApi.deleteFile in
+        // handleConfirmDelete below. Carries the relative path so the
+        // wire call needs no further lookup.
+        setDeleteTarget({
+          kind: "file",
+          name: d.name,
+          path: d.path,
+        });
       } else {
         const counts = countDescendants(tree, d.path);
         setDeleteTarget({
@@ -1067,6 +1109,14 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         // order. handleRequestDelete now stashes the canonical id on the
         // dialog target at click time.
         await muts.deleteNote(deleteTarget.id);
+      } else if (deleteTarget.kind === "file") {
+        // Plan 07-38 R7b: file delete via filesApi.deleteFile. No
+        // mutator hook needed — files don't participate in the
+        // notes-service registry; the tree refresh re-fetches and the
+        // file simply vanishes from the listing.
+        await deleteFile(deleteTarget.path);
+        await refresh();
+        broadcastRefresh();
       } else {
         // WR-09: use target.path directly (same rationale — the previous
         // name-based folder lookup matched on display `name`, which is
@@ -1083,7 +1133,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     // WR-09 (Plan 13): `tree` no longer appears in the dependency list —
     // handleConfirmDelete now reads canonical id/path off the dialog
     // target instead of walking the wire tree to recover them.
-  }, [deleteTarget, muts, surfaceError]);
+  }, [deleteTarget, muts, surfaceError, refresh]);
 
   // ──────────────────────────────────────────────────────────────────
   // Drag-drop wiring. react-arborist's onMove hands us a resolved

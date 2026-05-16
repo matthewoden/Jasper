@@ -93,7 +93,7 @@ export const TAGS_PANEL_RATIO_MAX = 0.8;
 // places (here and the handle) so any future change has to land in both.
 const EDITOR_MIN = 320;
 
-export type RenameKind = "note" | "folder";
+export type RenameKind = "note" | "folder" | "file";
 
 export type PendingRename = {
   kind: RenameKind;

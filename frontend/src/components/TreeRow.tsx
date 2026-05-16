@@ -206,12 +206,19 @@ export function TreeRow({
 
   const [kebabOpen, setKebabOpen] = useState(false);
 
-  // Plan 07-26: file nodes are never renamed (no rename flow for non-markdown files).
+  // Plan 07-38 R7b lifts Plan 07-26's file rename gate — file rows can
+  // now enter inline rename. Targets are: folder→path, note→id, file→path
+  // (files are identified by their relative path under notes/, mirroring
+  // folder semantics; no UUID model exists for non-markdown files).
   const isRenamingThis =
-    !isFile &&
     pendingRename != null &&
     pendingRename.kind === data.kind &&
-    pendingRename.target === (data.kind === "folder" ? data.path : data.kind === "note" ? data.id : "");
+    pendingRename.target ===
+      (data.kind === "folder"
+        ? data.path
+        : data.kind === "note"
+          ? data.id
+          : data.path);
 
   // Bug D fix — handleCancelRename: when pendingRename.isNew is true the
   // node was just created (never confirmed) and the user pressed Escape or
@@ -317,8 +324,8 @@ export function TreeRow({
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Plan 07-26: file nodes are read-only in the sidebar — no rename flow.
-    if (isFile) return;
+    // Plan 07-38 R7b lifts Plan 07-26's file read-only block — file rows
+    // now support rename via the same flow as notes / folders.
     if (onRequestRename) onRequestRename(data);
   };
 
@@ -331,16 +338,16 @@ export function TreeRow({
       // the bubble and may swallow / re-route the key before our
       // onRequestRename callback fires.
       e.stopPropagation();
-      // Plan 07-26: file nodes are read-only — skip rename trigger.
-      if (!isFile && onRequestRename) onRequestRename(data);
+      // Plan 07-38 R7b: file rows now support rename.
+      if (onRequestRename) onRequestRename(data);
       return;
     }
     if (e.key === "Backspace" || e.key === "Delete") {
       e.preventDefault();
       // Gap 3 — same reason as F2 above.
       e.stopPropagation();
-      // Plan 07-26: file nodes are read-only — skip delete trigger.
-      if (!isFile && onRequestDelete) onRequestDelete(data);
+      // Plan 07-38 R7b: file rows now support delete.
+      if (onRequestDelete) onRequestDelete(data);
       return;
     }
   };
@@ -383,7 +390,11 @@ export function TreeRow({
   // For the rename input we strip ".md" from notes; folders keep the
   // full name. The caller (FileTree) reattaches ".md" before calling
   // moveNote.
-  // Plan 07-26: file nodes are never renamed, so renameInitial is unused.
+  // Plan 07-38 R7b: file rows present the FULL filename (with extension)
+  // for editing — the user is expected to keep .png / .pdf / .svg etc.,
+  // and the backend's filesApi.moveFile contract takes the raw new
+  // basename verbatim. We deliberately do not strip the extension so the
+  // user can rename across types if they explicitly choose to.
   const renameInitial =
     data.kind === "folder"
       ? data.name
@@ -391,7 +402,7 @@ export function TreeRow({
         ? data.title.endsWith(".md")
           ? data.title.slice(0, -3)
           : data.title
-        : data.name; // file — unreachable in practice (isFile guard in handleDoubleClick)
+        : data.name; // file — full basename including extension
 
   // Plan 04 (UX-08): note rows prefer the live H1 label (from useTreeStore.liveLabels)
   // over the canonical wire-tree title; folders always render their name.
@@ -541,7 +552,10 @@ export function TreeRow({
           hover or focus-within (Plan 03-06 chassis kept the visibility
           behavior verbatim). */}
       <TreeRowDropdownMenu
-        rowKind={isFolder ? "folder" : "note"}
+        // Plan 07-38 R7b: file rows render rowKind="file" so the menu
+        // body emits only Rename + Delete (no Open / no New note / no
+        // New folder — see TreeRowMenu.tsx for the item-set table).
+        rowKind={isFile ? "file" : isFolder ? "folder" : "note"}
         noteId={data.kind === "note" ? data.id : undefined}
         parentPath={parentPathForCreate}
         onOpen={
@@ -561,12 +575,14 @@ export function TreeRow({
             : undefined
         }
         onRename={() =>
-          // Plan 07-26: file nodes are read-only — no rename.
-          !isFile && onRequestRename ? onRequestRename(data) : noop()
+          // Plan 07-38 R7b: file rows now route through onRequestRename;
+          // the FileTree handler dispatches to filesApi.moveFile.
+          onRequestRename ? onRequestRename(data) : noop()
         }
         onDelete={() =>
-          // Plan 07-26: file nodes are read-only — no delete via tree.
-          !isFile && onRequestDelete ? onRequestDelete(data) : noop()
+          // Plan 07-38 R7b: file rows now route through onRequestDelete;
+          // the FileTree handler dispatches to filesApi.deleteFile.
+          onRequestDelete ? onRequestDelete(data) : noop()
         }
         open={kebabOpen}
         onOpenChange={setKebabOpen}
@@ -605,7 +621,9 @@ export function TreeRow({
 
   return (
     <TreeRowContextMenu
-      rowKind={isFolder ? "folder" : "note"}
+      // Plan 07-38 R7b: file rows render rowKind="file" — same item-set
+      // logic as the dropdown variant above.
+      rowKind={isFile ? "file" : isFolder ? "folder" : "note"}
       noteId={data.kind === "note" ? data.id : undefined}
       parentPath={parentPathForCreate}
       onOpen={
@@ -625,12 +643,12 @@ export function TreeRow({
           : undefined
       }
       onRename={() =>
-        // Plan 07-26: file nodes are read-only — no rename.
-        !isFile && onRequestRename ? onRequestRename(data) : noop()
+        // Plan 07-38 R7b: file rows now route through onRequestRename.
+        onRequestRename ? onRequestRename(data) : noop()
       }
       onDelete={() =>
-        // Plan 07-26: file nodes are read-only — no delete via tree.
-        !isFile && onRequestDelete ? onRequestDelete(data) : noop()
+        // Plan 07-38 R7b: file rows now route through onRequestDelete.
+        onRequestDelete ? onRequestDelete(data) : noop()
       }
     >
       {rowContent}
