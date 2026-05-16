@@ -287,16 +287,18 @@ describe("TBR-SI — SaveIndicator-button in TopBar (Plan 07-37 / UAT-3 N9)", ()
     mockSaveState = { status: "idle" };
   });
 
-  it("TBR-SI-1: renders the SaveIndicator-button (data-save-state attr present) even with hasContent=false", () => {
-    // Even with no tags and no backlinks (so the right-rail toggle is hidden),
-    // the SaveIndicator-button MUST still render — refresh is always available.
+  it("TBR-SI-1: renders the SaveIndicator-button (data-save-state attr present) even with no panel selected", () => {
+    // Plan 07-38 (UAT-4 N3): the toggle gate is now panelSelector, not
+    // content. To confirm the SaveIndicator is independent of the toggle
+    // gating, set panelSelector all-false → toggle hidden, but the
+    // SaveIndicator-button MUST still render.
     mockTagCount = 0;
     mockBacklinkCount = 0;
+    mockPanelSelector = { tags: false, backlinks: false };
     const { container } = render(<TopBar />);
     const btn = container.querySelector("button[data-save-state]");
     expect(btn).not.toBeNull();
-    // The right-rail toggle should still be hidden (sanity: hasContent gating
-    // only governs the panel-selector + rail toggle, not the SaveIndicator).
+    // The right-rail toggle should be hidden under panelSelector all-false.
     expect(
       screen.queryByRole("button", { name: /hide panels|show panels/i }),
     ).toBeNull();

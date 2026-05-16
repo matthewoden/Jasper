@@ -24,8 +24,6 @@ import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
-import { useTagsForNote } from "../lib/useTagsForNote";
-import { useBacklinks } from "../lib/useBacklinks";
 import { postAdminReindex } from "../lib/adminApi";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { PanelSelectorDropdown } from "./PanelSelectorDropdown";
@@ -117,21 +115,19 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
   const setBacklinksRailExpanded = useTreeStore(
     (s) => s.setBacklinksRailExpanded,
   );
-  // C3 (UAT-2 N3): read active note ID for backlinks count
-  const activeNoteId = useTreeStore((s) => s.activeNoteId);
   // Plan 07-37 (UAT-3 N9 / D-55): SaveIndicator-button reads the hoisted
   // saveState from the store (Plan 07-28 hoist STAYS — only the mounting
   // location moves from StatusBar to here).
   const saveState = useTreeStore((s) => s.saveState);
-
-  // C3 (UAT-2 N3 → corrected UAT-3 N3): right-rail toggle only shown when the
-  // ACTIVE NOTE has content to display (per-note semantics, Plan 07-35).
-  // useTagsForNote(activeNoteId) returns tags for the active note only — NOT
-  // vault-wide (that was the Plan 07-30 bug: useTagBrowser returned all tags).
-  // useBacklinks(activeNoteId) is already per-note (correct since Plan 06-11).
-  const { tags } = useTagsForNote(activeNoteId);
-  const { backlinks } = useBacklinks(activeNoteId);
-  const hasContent = tags.length > 0 || (backlinks?.length ?? 0) > 0;
+  // Plan 07-38 (UAT-4 N3): panel-selector state is now the authoritative
+  // gate for the right-rail toggle (reverses Plan 07-30/07-35's
+  // hasContent gate). The dropdown itself is ALWAYS visible — the user
+  // needs a way to re-enable panels even when nothing is currently
+  // selected. The toggle only appears when there's actually a rail to
+  // show/hide (i.e. at least one panel selected).
+  const panelSelectorState = useTreeStore((s) => s.panelSelector);
+  const anyPanelSelected =
+    panelSelectorState.tags || panelSelectorState.backlinks;
 
   const sidebarLabel = notesSidebarVisible
     ? "Hide notes sidebar"
@@ -183,13 +179,22 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
         <Breadcrumbs />
       </div>
 
-      {/* Right group: SaveIndicator-button (always present) + (when hasContent)
-          panel selector dropdown + right-rail toggle.
+      {/* Right group: SaveIndicator-button + PanelSelectorDropdown (always
+          present) + right-rail toggle (gated on panelSelector state).
 
-          Plan 07-37 (UAT-3 N9 / D-55): the SaveIndicator-button is mounted
-          UNCONDITIONALLY — manual refresh is always available regardless of
-          whether the active note has tags / backlinks. The panel-selector +
-          rail-toggle stay hasContent-gated (Plan 07-30 / 07-35 semantics). */}
+          Plan 07-38 (UAT-4 N3) supersedes Plan 07-30 / 07-35 / 07-37:
+          - PanelSelectorDropdown is mounted UNCONDITIONALLY — the user
+            needs a way to re-enable a panel even when none is currently
+            selected (the previous hasContent gate hid the dropdown when
+            there was no active-note content, leaving the user stuck).
+          - The right-rail toggle is now gated on
+            `useTreeStore.panelSelector.{tags,backlinks}` — i.e. is there
+            actually a rail to show? An all-false panelSelector means the
+            user has explicitly hidden every panel, so the toggle has
+            nothing to toggle.
+          - The SaveIndicator-button (Plan 07-37) is REMOVED from this
+            location in Plan 07-38 (see Task 3 of Plan 07-38). It moves
+            back to StatusBar per UAT-4 N9. */}
       <div
         style={{
           display: "flex",
@@ -199,21 +204,19 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
         }}
       >
         <SaveIndicator state={saveState} onClick={handleRefresh} />
-        {hasContent && (
-          <>
-            <PanelSelectorDropdown />
-            <ToggleButton
-              ariaLabel={railLabel}
-              onClick={() => setBacklinksRailExpanded(!backlinksRailExpanded)}
-              icon={
-                backlinksRailExpanded ? (
-                  <ChevronRight size={16} aria-hidden="true" />
-                ) : (
-                  <ChevronLeft size={16} aria-hidden="true" />
-                )
-              }
-            />
-          </>
+        <PanelSelectorDropdown />
+        {anyPanelSelected && (
+          <ToggleButton
+            ariaLabel={railLabel}
+            onClick={() => setBacklinksRailExpanded(!backlinksRailExpanded)}
+            icon={
+              backlinksRailExpanded ? (
+                <ChevronRight size={16} aria-hidden="true" />
+              ) : (
+                <ChevronLeft size={16} aria-hidden="true" />
+              )
+            }
+          />
         )}
       </div>
     </div>
