@@ -11,7 +11,12 @@
  * with GetFile (Plan 07-32a) at the same /files endpoint.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { uploadFile, type UploadFileResult } from "./filesApi";
+import {
+  uploadFile,
+  type UploadFileResult,
+  deleteFile,
+  moveFile,
+} from "./filesApi";
 
 describe("filesApi.uploadFile (Plan 07-34)", () => {
   beforeEach(() => {
@@ -139,6 +144,136 @@ describe("filesApi.uploadFile (Plan 07-34)", () => {
     const file = new File(["x"], "x.png");
     await expect(uploadFile("link-target", file)).rejects.toMatchObject({
       status: 403,
+    });
+  });
+
+  // FA-4 (Plan 07-38 N2): error includes body text + .body for caller toast.
+  it("FA-4: error includes response body text + .body field on the error", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ code: "invalid_path", message: "target dir does not exist" }),
+        { status: 400 },
+      ),
+    );
+    const file = new File(["x"], "x.png");
+    try {
+      await uploadFile("bogus", file);
+      throw new Error("expected throw");
+    } catch (e) {
+      const err = e as Error & { status?: number; body?: string };
+      expect(err.status).toBe(400);
+      expect(err.body).toContain("target dir does not exist");
+      expect(err.message).toContain("target dir does not exist");
+    }
+  });
+});
+
+describe("filesApi.deleteFile (Plan 07-38 R7b)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // FA-DEL-1: DELETE /api/v1/files?path=<encoded> with X-Session-ID.
+  it("FA-DEL-1: DELETEs /api/v1/files?path=<encoded path>", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    await deleteFile("gallery/photo.png");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, opts] = fetchSpy.mock.calls[0];
+    expect(url).toBe("/api/v1/files?path=gallery%2Fphoto.png");
+    expect(opts?.method).toBe("DELETE");
+    const headers = opts?.headers as Record<string, string> | Headers | undefined;
+    const sid =
+      headers instanceof Headers
+        ? headers.get("X-Session-ID")
+        : (headers as Record<string, string> | undefined)?.["X-Session-ID"];
+    expect(sid).toBeTruthy();
+  });
+
+  // FA-DEL-2: 204 returns undefined (success).
+  it("FA-DEL-2: 204 success resolves without error", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
+    await expect(deleteFile("x.png")).resolves.toBeUndefined();
+  });
+
+  // FA-DEL-3: 400 throws typed error with .status.
+  it("FA-DEL-3: 400 throws with .status = 400 and body in message", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ code: "invalid_path", message: "path is a directory" }),
+        { status: 400 },
+      ),
+    );
+    await expect(deleteFile("subdir")).rejects.toMatchObject({ status: 400 });
+  });
+
+  // FA-DEL-4: 404 surfaces as .status = 404.
+  it("FA-DEL-4: 404 throws with .status = 404", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("not found", { status: 404 }),
+    );
+    await expect(deleteFile("missing.png")).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("filesApi.moveFile (Plan 07-38 R7b)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // FA-MV-1: POST /api/v1/files/move with JSON body {src_path, dst_path}.
+  it("FA-MV-1: POSTs /api/v1/files/move with JSON body", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ path: "b.png", name: "b.png" }), {
+        status: 200,
+      }),
+    );
+    const result = await moveFile("a.png", "b.png");
+    expect(result.path).toBe("b.png");
+    expect(result.name).toBe("b.png");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, opts] = fetchSpy.mock.calls[0];
+    expect(url).toBe("/api/v1/files/move");
+    expect(opts?.method).toBe("POST");
+    expect(typeof opts?.body).toBe("string");
+    expect(JSON.parse(opts!.body as string)).toEqual({
+      src_path: "a.png",
+      dst_path: "b.png",
+    });
+    const headers = opts?.headers as Record<string, string> | Headers | undefined;
+    const ct =
+      headers instanceof Headers
+        ? headers.get("Content-Type")
+        : (headers as Record<string, string> | undefined)?.["Content-Type"];
+    expect(ct).toBe("application/json");
+  });
+
+  // FA-MV-2: 409 overwrite refusal surfaces as typed error.
+  it("FA-MV-2: 409 from server → throws with .status = 409", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ code: "already_exists", message: "dest exists" }),
+        { status: 409 },
+      ),
+    );
+    await expect(moveFile("a.png", "b.png")).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  // FA-MV-3: 400 (path traversal etc) surfaces as typed error.
+  it("FA-MV-3: 400 from server → throws with .status = 400 and body", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ code: "invalid_path", message: "dst escapes notes" }),
+        { status: 400 },
+      ),
+    );
+    await expect(moveFile("a.png", "../../evil.png")).rejects.toMatchObject({
+      status: 400,
     });
   });
 });

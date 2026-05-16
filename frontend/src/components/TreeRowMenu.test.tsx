@@ -318,6 +318,114 @@ describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => 
   });
 });
 
+// Plan 07-38 R7b: file-kind rows now render Rename + Delete (no Open, no
+// New note, no New folder). Mirrors the note-row item set minus Open.
+describe("<TreeRowDropdownMenu /> — file rowKind (Plan 07-38 R7b)", () => {
+  it("TestMenu_FileRow_HasRename", () => {
+    render(
+      <TreeRowDropdownMenu
+        rowKind="file"
+        parentPath="attachments"
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    expect(screen.getByText("Rename")).toBeInTheDocument();
+    expect(screen.getByText("F2")).toBeInTheDocument();
+  });
+
+  it("TestMenu_FileRow_HasDelete", () => {
+    render(
+      <TreeRowDropdownMenu
+        rowKind="file"
+        parentPath="attachments"
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    expect(screen.getByText("Delete")).toBeInTheDocument();
+    expect(screen.getByText("⌫")).toBeInTheDocument();
+  });
+
+  it("TestMenu_FileRow_NoOpen", () => {
+    render(
+      <TreeRowDropdownMenu
+        rowKind="file"
+        parentPath=""
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    expect(screen.queryByText("Open")).toBeNull();
+  });
+
+  it("TestMenu_FileRow_NoNewNote_NoNewFolder", () => {
+    // Files cannot host children — New note / New folder do not apply.
+    render(
+      <TreeRowDropdownMenu
+        rowKind="file"
+        parentPath=""
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    expect(screen.queryByText("New note")).toBeNull();
+    expect(screen.queryByText("New folder")).toBeNull();
+  });
+
+  it("TestMenu_FileRow_OnRename_Triggered", () => {
+    const onRename = vi.fn();
+    render(
+      <TreeRowDropdownMenu
+        rowKind="file"
+        parentPath=""
+        onNewNote={vi.fn()}
+        onRename={onRename}
+        onDelete={vi.fn()}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    fireEvent.click(screen.getByText("Rename"));
+    expect(onRename).toHaveBeenCalledTimes(1);
+  });
+
+  it("TestMenu_FileRow_OnDelete_Triggered", () => {
+    const onDelete = vi.fn();
+    render(
+      <TreeRowDropdownMenu
+        rowKind="file"
+        parentPath=""
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={onDelete}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    fireEvent.click(screen.getByText("Delete"));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("<TreeRowContextMenu /> — right-click trigger", () => {
   it("TestMenu_RightClickTrigger", async () => {
     render(
