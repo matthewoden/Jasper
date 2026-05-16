@@ -71,15 +71,18 @@ vi.mock("../lib/notesApi", () => ({
   ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
   getNote: vi.fn(),
   updateNote: vi.fn(),
+  // Plan 07-39 (UAT-5 N2-sub-A): markdown drops route through this helper.
+  createNoteFromMarkdownDrop: vi.fn(),
 }));
 
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeMutations } from "../lib/useTreeMutations";
-import { getNote, updateNote } from "../lib/notesApi";
+import { getNote, updateNote, createNoteFromMarkdownDrop } from "../lib/notesApi";
 const mockedUseFileTree = vi.mocked(useFileTree);
 const mockedUseTreeMutations = vi.mocked(useTreeMutations);
 const mockedGetNote = vi.mocked(getNote);
 const mockedUpdateNote = vi.mocked(updateNote);
+const mockedCreateNoteFromMarkdownDrop = vi.mocked(createNoteFromMarkdownDrop);
 
 beforeEach(() => {
   useTreeStore.setState({
@@ -2476,6 +2479,140 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
     folderRow.dispatchEvent(makeOsFileDragEvent("drop", [file]));
     await waitFor(() => {
       expect(mockedBcast).toHaveBeenCalled();
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────
+  // FT-N2-MD — Plan 07-39 (UAT-5 N2-sub-A): markdown drops route to POST
+  // /notes (via createNoteFromMarkdownDrop helper) instead of POST /files.
+  // ────────────────────────────────────────────────────────────────────
+  describe("FT-N2-MD — markdown drops create notes (Plan 07-39 / UAT-5 N2-sub-A)", () => {
+    beforeEach(() => {
+      mockedCreateNoteFromMarkdownDrop.mockReset();
+      mockedUpload.mockReset();
+      mockedBcast.mockReset();
+    });
+
+    it("FT-N2-MD-1: dropping a .md file calls createNoteFromMarkdownDrop (NOT uploadFile)", async () => {
+      const tree: Tree = {
+        root: [
+          { kind: "folder", path: "folderA", name: "folderA", children: [] },
+        ],
+      };
+      await renderTree(tree);
+      mockedCreateNoteFromMarkdownDrop.mockResolvedValue({
+        id: "uuid-1",
+        path: "folderA/dropped.md",
+      });
+
+      await waitFor(() => {
+        expect(
+          document.querySelector('[data-tree-row="folderA"][data-tree-row-kind="folder"]'),
+        ).not.toBeNull();
+      });
+      const folderRow = document.querySelector(
+        '[data-tree-row="folderA"][data-tree-row-kind="folder"]',
+      ) as HTMLElement;
+
+      const mdFile = new File(["# hello\n\nbody"], "dropped.md", { type: "text/markdown" });
+      folderRow.dispatchEvent(makeOsFileDragEvent("drop", [mdFile]));
+
+      await waitFor(() => {
+        expect(mockedCreateNoteFromMarkdownDrop).toHaveBeenCalled();
+      });
+      // The non-markdown upload path must NOT have fired.
+      expect(mockedUpload).not.toHaveBeenCalled();
+    });
+
+    it("FT-N2-MD-2: createNoteFromMarkdownDrop is called with notePath = targetDir + '/' + basename", async () => {
+      const tree: Tree = {
+        root: [
+          { kind: "folder", path: "folderA", name: "folderA", children: [] },
+        ],
+      };
+      await renderTree(tree);
+      mockedCreateNoteFromMarkdownDrop.mockResolvedValue({
+        id: "uuid-2",
+        path: "folderA/foo.md",
+      });
+
+      await waitFor(() => {
+        expect(
+          document.querySelector('[data-tree-row="folderA"][data-tree-row-kind="folder"]'),
+        ).not.toBeNull();
+      });
+      const folderRow = document.querySelector(
+        '[data-tree-row="folderA"][data-tree-row-kind="folder"]',
+      ) as HTMLElement;
+
+      const mdFile = new File(["body content"], "foo.md", { type: "text/markdown" });
+      folderRow.dispatchEvent(makeOsFileDragEvent("drop", [mdFile]));
+
+      await waitFor(() => {
+        expect(mockedCreateNoteFromMarkdownDrop).toHaveBeenCalledWith(
+          "folderA/foo.md",
+          "body content",
+        );
+      });
+    });
+
+    it("FT-N2-MD-3: dropping .md at vault root passes basename only (no leading slash)", async () => {
+      const tree: Tree = {
+        root: [
+          { kind: "folder", path: "folderA", name: "folderA", children: [] },
+        ],
+      };
+      await renderTree(tree);
+      mockedCreateNoteFromMarkdownDrop.mockResolvedValue({
+        id: "uuid-3",
+        path: "vault-root.md",
+      });
+
+      // Drop on the empty tree-area wrapper → targetDir = "".
+      const treeEl = document.querySelector('[role="tree"]');
+      expect(treeEl).not.toBeNull();
+      const wrapper = treeEl!.parentElement!;
+
+      const mdFile = new File(["root note"], "vault-root.md", { type: "text/markdown" });
+      wrapper.dispatchEvent(makeOsFileDragEvent("drop", [mdFile]));
+
+      await waitFor(() => {
+        expect(mockedCreateNoteFromMarkdownDrop).toHaveBeenCalledWith(
+          "vault-root.md",
+          "root note",
+        );
+      });
+    });
+
+    it("FT-N2-MD-4: non-.md drops still route to uploadFile (regression guard)", async () => {
+      const tree: Tree = {
+        root: [
+          { kind: "folder", path: "folderA", name: "folderA", children: [] },
+        ],
+      };
+      await renderTree(tree);
+      mockedUpload.mockResolvedValue({
+        path: "folderA/photo.png",
+        name: "photo.png",
+        size_bytes: 1,
+      });
+
+      await waitFor(() => {
+        expect(
+          document.querySelector('[data-tree-row="folderA"][data-tree-row-kind="folder"]'),
+        ).not.toBeNull();
+      });
+      const folderRow = document.querySelector(
+        '[data-tree-row="folderA"][data-tree-row-kind="folder"]',
+      ) as HTMLElement;
+
+      const pngFile = new File(["x"], "photo.png", { type: "image/png" });
+      folderRow.dispatchEvent(makeOsFileDragEvent("drop", [pngFile]));
+
+      await waitFor(() => {
+        expect(mockedUpload).toHaveBeenCalledWith("folderA", pngFile);
+      });
+      expect(mockedCreateNoteFromMarkdownDrop).not.toHaveBeenCalled();
     });
   });
 });

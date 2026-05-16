@@ -70,3 +70,87 @@ export async function searchTitles(
   }
   return data.results as NoteSearchResult[];
 }
+
+/**
+ * createNoteFromMarkdownDrop — Plan 07-39 (UAT-5 N2-sub-A).
+ *
+ * Frontend-only routing decision: backend /files refuses .md uploads per the
+ * security posture locked in Plan 07-34 (DATA-12 case-collision semantics live
+ * in POST /notes, not POST /files). When the user drops a .md file into the
+ * sidebar, FileTree.handleSidebarFileDrop detects the extension client-side
+ * and calls this helper instead of filesApi.uploadFile.
+ *
+ * Two-step server flow:
+ *   1. POST /notes {parent_path, title}  → creates an empty .md, returns id
+ *   2. PUT  /notes/{id} {content: body}  → populates the body from the drop
+ *
+ * Why two steps: the existing POST /notes contract creates an empty file
+ * (DESIGN.md §4) and we do not modify the wire shape. The PUT pairs with the
+ * existing autosave flow so server-side state — including the SQLite FTS5
+ * index — picks up the body content on the same single-flight refresh
+ * cycle the rest of the tree already triggers.
+ *
+ * Errors:
+ *   - 409 from POST: case-collision (DATA-12) OR parent_path doesn't resolve
+ *     to a folder. Throws — caller surfaces toast; does NOT auto-rename.
+ *   - 400 from POST: invalid title chars / traversal — throws.
+ *   - PUT failure after successful POST: the empty .md remains; throws.
+ *
+ * @param notePath relative path including filename ("docs/foo.md" or "foo.md")
+ * @param body markdown content to write to the new note
+ */
+export async function createNoteFromMarkdownDrop(
+  notePath: string,
+  body: string,
+): Promise<{ id: string; path: string }> {
+  // Parse: split into parent_path + title-without-.md.
+  const lastSlash = notePath.lastIndexOf("/");
+  const parentPath = lastSlash === -1 ? "" : notePath.slice(0, lastSlash);
+  const filename = lastSlash === -1 ? notePath : notePath.slice(lastSlash + 1);
+  const title = filename.toLowerCase().endsWith(".md")
+    ? filename.slice(0, -3)
+    : filename;
+
+  // Step 1: POST /notes to create the empty note.
+  const { data, error, response } = await client.POST("/notes", {
+    body: { parent_path: parentPath, title },
+  });
+  if (error || !data) {
+    const status = response.status;
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code: unknown }).code)
+        : "unknown";
+    const message =
+      error && typeof error === "object" && "message" in error
+        ? String((error as { message: unknown }).message)
+        : "createNote failed";
+    const err = new Error(
+      `createNoteFromMarkdownDrop: POST /notes failed (${status} ${code}): ${message}`,
+    ) as Error & { status?: number; code?: string };
+    err.status = status;
+    err.code = code;
+    throw err;
+  }
+
+  const note = data;
+
+  // Step 2: PUT /notes/{id} to populate the body — but only if body is non-empty.
+  // (Empty drops still create the empty note; no follow-up write needed.)
+  if (body.length > 0) {
+    const { error: putErr, response: putResp } = await client.PUT("/notes/{id}", {
+      params: { path: { id: note.id } },
+      body: { content: body },
+    });
+    if (putErr) {
+      const status = putResp.status;
+      const err = new Error(
+        `createNoteFromMarkdownDrop: PUT /notes/${note.id} failed (${status}); empty note left at ${note.path}`,
+      ) as Error & { status?: number };
+      err.status = status;
+      throw err;
+    }
+  }
+
+  return { id: note.id, path: note.path };
+}
