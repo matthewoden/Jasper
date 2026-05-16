@@ -6,9 +6,12 @@
  * Excerpt uses sanitizeHtml (Phase 5 D-36) — <mark> survives per Task 1
  * locked SEARCH-04 contract (ADD_TAGS: ["mark"] in sanitize.ts).
  *
- * Mark styling: background color-mix accent 28%, border-radius 2px, padding 0 2px.
- * Applied via the inline <style> injected once at module level (similar to the
- * .backlinks-excerpt .backlink-ref recipe at theme.css:164-168).
+ * Plan 07-39 (UAT-5 N11) legibility update: the scoped <style> block now
+ * mutes the base excerpt text (var(--color-muted)) and brightens the
+ * <mark>-wrapped match (var(--color-fg) + font-weight 600 + transparent
+ * background). Matched terms pop via brightness + weight contrast, not
+ * a yellow box fill — the previous color-mix accent fill made the
+ * highlight feel like a checkbox / form field rather than emphasis.
  */
 import { useState } from "react";
 import { sanitizeHtml } from "../lib/sanitize";
@@ -60,15 +63,20 @@ export function SearchResultRow({ result }: SearchResultRowProps) {
 
   return (
     <>
-      {/* Inject <mark> styles once — Phase 7 SEARCH-04 highlight recipe.
-          Uses a style tag scoped by the .search-result-excerpt class.
-          Matches the backlinks-excerpt .backlink-ref recipe at theme.css:164-168. */}
+      {/* Plan 07-39 (UAT-5 N11) legibility recipe.
+          Base excerpt text is muted; <mark>-wrapped match is brightened to
+          color-fg + 600 weight + transparent background. Matched terms pop
+          via brightness + weight contrast, not a yellow box.
+          Matches the backlinks-excerpt .backlink-ref recipe pattern. */}
       <style>{`
+        .search-result-excerpt {
+          color: var(--color-muted);
+        }
         .search-result-excerpt mark {
-          background: color-mix(in srgb, var(--color-accent) 28%, transparent);
-          border-radius: 2px;
-          padding: 0 2px;
-          color: inherit;
+          color: var(--color-fg);
+          font-weight: 600;
+          background: transparent;
+          padding: 0;
         }
       `}</style>
       <div
@@ -121,14 +129,16 @@ export function SearchResultRow({ result }: SearchResultRowProps) {
           {formatPath(result.path)}
         </div>
 
-        {/* Line 3: 2-line clamped excerpt with <mark> highlighting */}
+        {/* Line 3: 2-line clamped excerpt with <mark> highlighting.
+            Plan 07-39 (UAT-5 N11): color is now driven by the scoped
+            .search-result-excerpt rule above (var(--color-muted)). The
+            inline color is removed so the CSS rule wins. */}
         {result.excerpt_html && (
           <div
             className="search-result-excerpt"
             style={{
               fontSize: 14,
               fontWeight: 400,
-              color: "var(--color-fg)",
               lineHeight: 1.5,
               display: "-webkit-box",
               WebkitLineClamp: 2,
