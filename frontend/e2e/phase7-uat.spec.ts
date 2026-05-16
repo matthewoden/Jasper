@@ -2632,6 +2632,152 @@ test.describe("Phase 7 — Switcher merges title-fuzzy + FTS5 (S28 / UAT-3 N10+N
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// S29 — Sidebar OS-file drop target (UAT-3 N2 / Plan 07-34)
+//
+// End-to-end coverage: synthesize a `drop` DragEvent carrying a single File
+// onto a folder row → POST /api/v1/files?path=<folder> fires inside the
+// page → broadcastRefresh() re-fetches the tree → the new file row appears
+// under the target folder. The bonus assertion confirms the file is on disk
+// via GET /api/v1/files?path=<folder>/dropped.png.
+//
+// Synthetic-drop note: Playwright cannot deliver an OS file drop via its API
+// (no native DataTransfer plumbing). page.evaluate constructs a
+// DataTransfer + File client-side, dispatches a real DragEvent on the row,
+// and our onDropCapture handler runs the same code path it would for a
+// real OS drop. This validates the JS pipeline (handler resolves target dir
+// → calls filesApi.uploadFile → backend writes the file → broadcastRefresh
+// re-fetches the tree). The OS-level browser drop plumbing (i.e. the OS
+// surfacing files into the browser's DataTransfer) is exercised by manual
+// human UAT — same fallback documented in the plan.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — Sidebar OS-file drop target (S29 / UAT-3 N2 / Plan 07-34)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("S29: dropping OS file on folder row uploads to that folder via POST /files", async ({ page }) => {
+    // Capture network so we can assert POST /files actually fired.
+    const requests: { method: string; url: string }[] = [];
+    page.on("request", (req) => {
+      const u = req.url();
+      if (u.includes("/api/v1/")) {
+        requests.push({ method: req.method(), url: u });
+      }
+    });
+
+    // 1. Pre-create a target folder via POST /folders.
+    const folderResp = await page.request.post(
+      `${jasper.baseURL}/api/v1/folders`,
+      {
+        data: { parent_path: "", name: "drop-target-s29" },
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+    expect([200, 201]).toContain(folderResp.status());
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // 2. Wait for the folder row to render. Then EXPAND it so dropped files
+    //    are visible (folders default closed per D-52 / Plan 07-29).
+    const folderRow = page.locator(
+      '[data-tree-row="drop-target-s29"][data-tree-row-kind="folder"]',
+    );
+    await expect(folderRow).toBeVisible({ timeout: 10_000 });
+    // Click the chevron / row header to expand. The TreeRow chevron is a
+    // child of the row; clicking the row toggles open. Use a single click
+    // (NOT double-click — double-click selects).
+    await folderRow.click();
+    // Wait for arborist to mark the folder as expanded.
+    await expect(folderRow).toHaveAttribute("aria-expanded", "true", {
+      timeout: 3_000,
+    });
+
+    // 3. Dispatch a synthetic drop with a real File object onto the row.
+    //    The browser-side handler runs the same code as a real OS drop.
+    const dispatched = await page.evaluate(
+      async ({ targetSel }) => {
+        const target = document.querySelector(targetSel);
+        if (!target) return { ok: false, reason: "no target" };
+        const dt = new DataTransfer();
+        // Minimal valid PNG header so http.DetectContentType returns image/png.
+        const file = new File(
+          [
+            new Uint8Array([
+              0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+            ]),
+          ],
+          "dropped-s29.png",
+          { type: "image/png" },
+        );
+        dt.items.add(file);
+        // Dragover first so handleSidebarDragOver gets a chance to call
+        // preventDefault (matches real browser semantics — drop only fires
+        // if the matching dragover preventDefaulted).
+        target.dispatchEvent(
+          new DragEvent("dragover", {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: dt,
+          }),
+        );
+        target.dispatchEvent(
+          new DragEvent("drop", {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: dt,
+          }),
+        );
+        return { ok: true };
+      },
+      {
+        targetSel:
+          '[data-tree-row="drop-target-s29"][data-tree-row-kind="folder"]',
+      },
+    );
+    expect(dispatched.ok).toBe(true);
+
+    // Confirm POST /api/v1/files fired exactly once via the drop handler.
+    await expect
+      .poll(
+        () =>
+          requests.filter(
+            (r) => r.method === "POST" && r.url.includes("/api/v1/files"),
+          ).length,
+        { timeout: 5_000 },
+      )
+      .toBeGreaterThan(0);
+
+    // 4. Wait for the new file row to appear under drop-target-s29.
+    //    TreeRow renders file nodes with data-tree-row=<path>, kind=file.
+    const droppedRow = page.locator(
+      '[data-tree-row="drop-target-s29/dropped-s29.png"][data-tree-row-kind="file"]',
+    );
+    await expect(droppedRow).toBeVisible({ timeout: 10_000 });
+
+    // 5. Bonus: confirm the file exists on disk via GET /files.
+    const onDiskResp = await page.request.get(
+      `${jasper.baseURL}/api/v1/files?path=${encodeURIComponent("drop-target-s29/dropped-s29.png")}`,
+    );
+    expect(onDiskResp.status()).toBe(200);
+    // Disk content should match the PNG header bytes we sent.
+    const buf = await onDiskResp.body();
+    expect(buf.length).toBe(8);
+    expect(buf[0]).toBe(0x89);
+    expect(buf[1]).toBe(0x50);
+    expect(buf[2]).toBe(0x4e);
+    expect(buf[3]).toBe(0x47);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // S31 — SaveIndicator-button click triggers reindex (UAT-3 N9 / Plan 07-37)
 // Pairs with S24a above; S31 covers the click-as-refresh behavior + the
 // StatusBar negative (no standalone refresh button anymore).

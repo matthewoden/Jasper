@@ -1480,7 +1480,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
             description = "Target directory is a symlink — refused for safety.";
           }
           toast({ title, description, variant: "error" });
-          // eslint-disable-next-line no-console
           console.error("[FileTree] handleSidebarFileDrop:", err);
         }
       }
