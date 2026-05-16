@@ -44,11 +44,16 @@ import {
 } from "./helpers/phase7Helpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S1 — Search: type query in Cmd+O palette, FTS5 results appear, Enter opens note
-// UAT #11 / Plan 07-18 (architectural pivot: search now lives in Cmd+O palette)
+// S1 — Search: type query in the Sidebar SearchInputBar, FTS5 results
+// appear with mark highlight; clicking the result opens the note.
+//
+// Plan 07-39 (UAT-5 N11) UPDATE: search moved OUT of Cmd+O palette and back
+// to the Sidebar surface (resurrecting the Plan 07-08 design). The Cmd+O
+// palette is now title-fuzzy only. S1 drives the Sidebar SearchInputBar
+// + SearchResultsList instead.
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe("Phase 7 — Search in Cmd+O palette (S1 / UAT #11)", () => {
+test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -59,7 +64,7 @@ test.describe("Phase 7 — Search in Cmd+O palette (S1 / UAT #11)", () => {
     if (jasper) await jasper.kill();
   });
 
-  test("typing in Cmd+O palette shows FTS5 results with mark highlight; Enter opens note", async ({ page }) => {
+  test("typing in the Sidebar SearchInputBar shows FTS5 results with mark highlight; click opens note", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -68,9 +73,6 @@ test.describe("Phase 7 — Search in Cmd+O palette (S1 / UAT #11)", () => {
     await apiCreateNote(page, jasper.baseURL, "beta-s1.md", "", "no relevant text at all");
 
     // Trigger a full reindex to populate the FTS5 body_fts column.
-    // service.Update does NOT populate body_fts — only reconcile.go does.
-    // The reindex completes synchronously (returns 202 after rebuild) so
-    // no explicit wait is needed beyond the HTTP response.
     const reindexResp = await page.request.post(
       `${jasper.baseURL}/api/v1/admin/reindex`,
       { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
@@ -79,32 +81,32 @@ test.describe("Phase 7 — Search in Cmd+O palette (S1 / UAT #11)", () => {
 
     await page.reload();
     await waitForConnected(page);
-    // Wait for reindex progress overlay to clear (if it mounted).
     await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
 
-    // Open Cmd+O palette in notes mode and type the query.
-    // query >= 2 chars → FTS5 search fires (Plan 07-18 architecture).
-    await openCommandMenuAndType(page, "switch", "searchable");
+    // Sidebar SearchInputBar is mounted unconditionally (Plan 07-39).
+    const searchInput = page.getByPlaceholder("Search notes…");
+    await expect(searchInput).toBeVisible({ timeout: 3_000 });
+    await searchInput.fill("searchable");
 
-    // Wait for debounce (200ms) + backend roundtrip (conservative 600ms total).
+    // Wait for debounce (200ms) + backend roundtrip (conservative).
     await page.waitForTimeout(600);
 
-    // SearchResultRow renders inside the dialog — assert title text visible.
-    // The SearchResultRow may render "alpha-s1" twice (title + path components)
-    // so use .first() to avoid strict mode violation.
-    const dialog = page.getByRole("dialog", { name: "Quick switcher" });
-    const alphaResult = dialog.getByText(/alpha-s1/i).first();
+    // SearchResultsList renders SearchResultRow with title + path + excerpt.
+    // The alpha-s1 title (sans .md) must appear at least once.
+    const alphaResult = page.getByText(/alpha-s1/i).first();
     await expect(alphaResult).toBeVisible({ timeout: 5_000 });
 
-    // <mark> element confirms snippet highlighting.
-    await expect(dialog.locator("mark")).toBeVisible({ timeout: 3_000 });
+    // <mark> in the excerpt confirms snippet highlighting (Plan 07-39 N11
+    // legibility: mark color/weight tweaked, but the element still exists).
+    await expect(page.locator(".search-result-excerpt mark").first()).toBeVisible({
+      timeout: 3_000,
+    });
 
-    // Press Enter → opens alpha-s1.md (selectedIdx=0 is the top result).
-    await page.keyboard.press("Enter");
-    await expect(page.locator(".cm-content")).toContainText("searchable phrase", { timeout: 5_000 });
-
-    // Confirm dialog closed.
-    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
+    // Click the result → opens alpha-s1.md.
+    await alphaResult.click();
+    await expect(page.locator(".cm-content")).toContainText("searchable phrase", {
+      timeout: 5_000,
+    });
   });
 });
 
@@ -2617,17 +2619,22 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
 // S28b: Title-only hit AND content-only hit BOTH visible in two sections (N11).
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe("Phase 7 — Switcher merges title-fuzzy + FTS5 (S28 / UAT-3 N10+N11)", () => {
+// Plan 07-39 (UAT-5 N11) UPDATE: S28 / S28b previously tested the Plan 07-33
+// dual-section merge inside Cmd+O. Plan 07-39 reverses that — the switcher
+// is title-fuzzy only; body matches live on the Sidebar search surface.
+// S28 is now a single-section title-only assertion; S28b is replaced by S32
+// (Plan 07-39 rewrite above) which exercises both surfaces of the split.
+test.describe("Phase 7 — Switcher title-fuzzy only (S28 / UAT-5 N11 split)", () => {
   let jasper: JasperHandle;
   test.beforeAll(async () => { jasper = await spawnJasper(); });
   test.afterAll(async () => { if (jasper) await jasper.kill(); });
 
-  test("S28: typing 'te' shows note 'test' (title-fuzzy hit) at query.length >= 2", async ({ page }) => {
+  test("S28: typing 'te' shows note 'test' (title-fuzzy hit) in the single-section switcher", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
     // Pre-create a note titled "test" with body that does NOT contain "te" so the hit
-    // can ONLY come via title-fuzzy (proves the regression fix for N10).
+    // can ONLY come via title-fuzzy (proves title-only path still works post-split).
     await apiCreateNote(page, jasper.baseURL, "s28-test.md", "", "# test\n\nbody xyz only.\n");
 
     // Open Cmd+O.
@@ -2638,70 +2645,22 @@ test.describe("Phase 7 — Switcher merges title-fuzzy + FTS5 (S28 / UAT-3 N10+N
     const input = dialog.getByRole("textbox");
     await input.fill("te");
 
-    // Wait for the merged results — title-fuzzy is synchronous, FTS5 has ~200ms debounce.
-    await page.waitForTimeout(400);
+    // Title-fuzzy is synchronous; small settle.
+    await page.waitForTimeout(200);
 
-    // The note "test" must be visible — this is the regression assertion for N10.
+    // The note "test" must be visible.
     const testRow = dialog.getByText("test", { exact: false });
     await expect(testRow.first()).toBeVisible({ timeout: 3_000 });
 
-    // Assert the "Switch to note" group eyebrow is present.
-    const switchEyebrow = dialog.locator('[data-row-kind="group"][data-group-id="group:notes"]');
-    await expect(switchEyebrow).toBeVisible({ timeout: 3_000 });
-    await expect(switchEyebrow).toContainText("Switch to note");
-
-    await page.keyboard.press("Escape");
-  });
-
-  test("S28b: title-only hit AND content-only hit BOTH visible in two sections", async ({ page }) => {
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-
-    // Strategy: two notes where a single query produces hits in BOTH sections.
-    //
-    // Note "s28b-needle" — its TITLE contains "needle" (title-fuzzy hit).
-    // Body deliberately lacks any searchable content.
-    await apiCreateNote(page, jasper.baseURL, "s28b-needle.md", "", "# s28b-needle\n\nbody xyz.\n");
-    //
-    // Note "s28b-haystack" — its BODY contains "needle" as a full word (FTS5 hit).
-    // Title "s28b-haystack" does NOT contain "needle" — only the body does.
-    await apiCreateNote(
-      page, jasper.baseURL, "s28b-haystack.md", "",
-      "# s28b-haystack\n\nA needle in a haystack.\n",
-    );
-
-    // Trigger full reindex so FTS5 indexes the body content.
-    const reindexResp = await page.request.post(
-      `${jasper.baseURL}/api/v1/admin/reindex`,
-      { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
-    );
-    expect([200, 202]).toContain(reindexResp.status());
-    await page.waitForTimeout(800);
-
-    await pressShortcut(page, "CmdO");
-    const dialog = page.getByRole("dialog", { name: "Quick switcher" });
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
-
-    const input = dialog.getByRole("textbox");
-    // Query "needle" (>= 2 chars):
-    //   title-fuzzy: s28b-needle has "needle" in title → "Switch to note" section
-    //   FTS5: s28b-haystack body has "needle" as a word → "Search results" section
-    //   Dedup: s28b-needle ID won't appear in FTS5 results (body has no "needle")
-    await input.fill("needle");
-    await page.waitForTimeout(500); // wait for title-fuzzy (sync) + FTS5 (200ms debounce)
-
-    // Both group eyebrows present — dual-section render (N11).
+    // Plan 07-39 split: NO group eyebrows in notes mode (single-section
+    // list). And no 'Search results' section anywhere.
     await expect(
       dialog.locator('[data-row-kind="group"][data-group-id="group:notes"]'),
-    ).toBeVisible({ timeout: 3_000 });
+    ).toHaveCount(0);
     await expect(
       dialog.locator('[data-row-kind="group"][data-group-id="group:search"]'),
-    ).toBeVisible({ timeout: 3_000 });
-
-    // s28b-needle appears in title-fuzzy "Switch to note" section.
-    await expect(dialog.getByText(/s28b-needle/i).first()).toBeVisible({ timeout: 3_000 });
-    // s28b-haystack appears in FTS5 "Search results" section (only body contains "needle").
-    await expect(dialog.getByText(/s28b-haystack/i).first()).toBeVisible({ timeout: 3_000 });
+    ).toHaveCount(0);
+    await expect(dialog.locator('[data-row-kind="search-result"]')).toHaveCount(0);
 
     await page.keyboard.press("Escape");
   });
@@ -2922,30 +2881,35 @@ test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UA
 // S32 — Switcher snippet section always renders when FTS5 returns hits
 //       (Plan 07-38 / UAT-4 N11)
 //
-// User clarification: when a query matches both a note's title AND its body,
-// the result should appear in BOTH the "Switch to note" section (title-fuzzy)
-// AND the "Search results" section (FTS5 with snippet preview). The two
-// representations carry different information and should not be merged.
+// Plan 07-39 (UAT-5 N11) UPDATE: the prior S32 ("both sections visible") tested
+// the Plan 07-38 dedupe-removal merge that Plan 07-39 EXPLICITLY REVERSES. The
+// user wants two surfaces with two mental models:
+//   - Cmd+O switcher: title-fuzzy ONLY (no 'Search results' section).
+//   - Sidebar search: FTS5 body search with snippet excerpts (mark highlight).
+// S32 now exercises the new split surface — both sides of D-57.
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe("Phase 7 — Switcher snippet section always renders (S32 / UAT-4 N11)", () => {
+test.describe("Phase 7 — Switcher/Search split (S32 / UAT-5 N11 / D-57)", () => {
   let jasper: JasperHandle;
   test.beforeAll(async () => { jasper = await spawnJasper(); });
   test.afterAll(async () => { if (jasper) await jasper.kill(); });
 
-  test("S32: query matching both title AND body → both sections visible; FTS5 row shows <mark>", async ({ page }) => {
+  test("S32 (Plan 07-39): Cmd+O switcher renders title-fuzzy ONLY; Sidebar search renders FTS5 hits with <mark>", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create a note whose title AND body both contain the same searchable
-    // token. The token "uat4n11needle" is intentionally exotic so it
-    // matches only this one note across the test vault.
+    // Seed: a note whose title is generic but whose body contains an exotic
+    // token "uat5n11needle" so FTS5 lights up while title-fuzzy does not.
     await apiCreateNote(
-      page, jasper.baseURL, "s32-uat4n11needle.md", "",
-      "# uat4n11needle\n\nThe word uat4n11needle appears in the body too.\n",
+      page, jasper.baseURL, "s32-notes.md", "",
+      "# Plain title\n\nThe word uat5n11needle appears only in the body.\n",
+    );
+    // Plus a note whose title contains the token (title-fuzzy will match this one).
+    await apiCreateNote(
+      page, jasper.baseURL, "s32-uat5n11needle.md", "",
+      "# uat5n11needle\n\nbody.\n",
     );
 
-    // Full reindex so FTS5 picks up the body content.
     const reindexResp = await page.request.post(
       `${jasper.baseURL}/api/v1/admin/reindex`,
       { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
@@ -2953,33 +2917,41 @@ test.describe("Phase 7 — Switcher snippet section always renders (S32 / UAT-4 
     expect([200, 202]).toContain(reindexResp.status());
     await page.waitForTimeout(800);
 
+    // ── Side A: Cmd+O switcher renders ONLY the title match (single section) ──
     await pressShortcut(page, "CmdO");
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    const input = dialog.getByRole("textbox");
-    await input.fill("uat4n11needle");
-    // Title-fuzzy is synchronous; FTS5 has ~200ms debounce — wait long
-    // enough for both to resolve.
-    await page.waitForTimeout(500);
+    const switcherInput = dialog.getByRole("textbox");
+    await switcherInput.fill("uat5n11needle");
+    await page.waitForTimeout(300);
 
-    // BOTH group eyebrows must be present — the Plan 07-33 dedupe was
-    // reversed by Plan 07-38 N11.
-    await expect(
-      dialog.locator('[data-row-kind="group"][data-group-id="group:notes"]'),
-    ).toBeVisible({ timeout: 3_000 });
+    // The 'Search results' group eyebrow MUST NOT be present (Plan 07-39 split).
     await expect(
       dialog.locator('[data-row-kind="group"][data-group-id="group:search"]'),
-    ).toBeVisible({ timeout: 3_000 });
-
-    // The FTS5 row must render with a <mark> highlight on the snippet —
-    // that's the user-visible payoff of running the body-content search.
-    const searchRow = dialog.locator('[data-row-kind="search-result"]').first();
-    await expect(searchRow).toBeVisible({ timeout: 3_000 });
-    const markEl = searchRow.locator("mark").first();
-    await expect(markEl).toBeVisible({ timeout: 3_000 });
+    ).toHaveCount(0);
+    // The search-result row kind MUST NOT be present in the switcher.
+    await expect(
+      dialog.locator('[data-row-kind="search-result"]'),
+    ).toHaveCount(0);
+    // The title-fuzzy hit must be visible.
+    await expect(dialog.locator('[data-row-kind="note"]')).toHaveCount(1);
 
     await page.keyboard.press("Escape");
+
+    // ── Side B: Sidebar search renders the FTS5 hit with <mark> ─────────────
+    // The SearchInputBar lives in the sidebar; type the same token and expect
+    // a SearchResultRow with a <mark> in the excerpt.
+    const sidebarSearchInput = page.getByPlaceholder("Search notes…");
+    await expect(sidebarSearchInput).toBeVisible({ timeout: 3_000 });
+    await sidebarSearchInput.fill("uat5n11needle");
+    // 200ms debounce in useSearch + render time.
+    await page.waitForTimeout(500);
+
+    // Sidebar SearchResultsList renders one or more SearchResultRow elements;
+    // at least one must include a <mark> on the body excerpt.
+    const sidebarMark = page.locator(".search-result-excerpt mark").first();
+    await expect(sidebarMark).toBeVisible({ timeout: 5_000 });
   });
 });
 
