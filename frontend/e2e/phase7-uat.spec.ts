@@ -1570,7 +1570,9 @@ test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", 
 // S22 — All files visible in sidebar tree (UAT-2 R1-7 / Plan 07-26)
 //   S22a: non-markdown files appear as kind="file" rows with type-specific icons
 //   S22b: file rows are NOT draggable (disableDrag via react-arborist)
-//   S22c: clicking a file inside attachments/ opens /api/v1/attachments/{noteId}/{filename}
+//   S22c: clicking a file inside attachments/ renders FilePreviewView in the
+//         middle pane (Plan 07-32b — SUPERSEDES the original popup contract;
+//         backend at GET /api/v1/files?path=<encoded> per Plan 07-32a).
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT-2 R1-7)", () => {
@@ -1699,41 +1701,34 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
   });
 
   /**
-   * S22c: seed a note with an attachments/ subfolder containing photo.png.
-   * Click the photo.png file row and verify a new tab opens with the correct
-   * /api/v1/attachments/{noteId}/photo.png URL.
+   * S22c (Plan 07-32b rewrite — UAT-3 R7): seed a note with an
+   * attachments/ subfolder containing photo.png, click the photo.png file
+   * row, and verify that the middle pane renders FilePreviewView (NOT a
+   * popup window.open) with src pointing at the new generic /api/v1/files
+   * endpoint (query-parameter contract per Plan 07-32a).
    *
    * Uses a dedicated jasper instance (separate from the shared one) so S22c
    * starts with a clean vault and avoids file accumulation from S22a/S22b.
    *
    * Vault layout:
    *   notes/
-   *     gallery.md           ← created via API (has a UUID)
-   *     gallery/             ← directory created on disk (sibling to gallery.md)
+   *     gallery/             ← directory created on disk
+   *       note.md            ← created via API (gives gallery/ a child note)
    *       attachments/       ← attachments subfolder
    *         photo.png        ← the file we want to click
    *
-   * parentNoteId derivation in adaptToArborist:
-   *   "gallery/attachments/photo.png"
-   *   → ownerDir = "gallery"
-   *   → ownerNotePath = "gallery.md"
-   *   → look up notePathMap["gallery.md"] → gallery.md's UUID
+   * The new contract is path-based, not noteId-based — no parentNoteId
+   * derivation is involved.
    */
-  test("S22c — clicking attachment file opens /api/v1/attachments/{noteId}/{filename} in new tab", async ({ page }) => {
+  test("S22c — clicking attachment file renders FilePreviewView in middle pane (popup contract obviated)", async ({ page }) => {
     // Spawn a dedicated jasper with a clean vault for this test.
     const j22c = await spawnJasper();
     try {
-      // Create the gallery/ folder on disk first (the backend folder API requires
-      // the parent to exist; writing to disk before reindex is simpler here).
-      // Then create gallery/note.md inside it via API so we have a UUID.
-      // GetAttachment resolves attachments relative to the note's parent dir:
-      //   note.Path = "gallery/note.md" → noteParentDir = notes/gallery/
-      //   → attachDir = notes/gallery/attachments/ ← where we write photo.png
       const notesDir = path.join(j22c.dataDir, "notes");
       const galleryDir = path.join(notesDir, "gallery");
       fs.mkdirSync(galleryDir, { recursive: true });
 
-      const noteId = await apiCreateNote(page, j22c.baseURL, "note.md", "gallery", "# Gallery Note\n\nA note inside gallery/.\n");
+      await apiCreateNote(page, j22c.baseURL, "note.md", "gallery", "# Gallery Note\n\nA note inside gallery/.\n");
 
       // Write photo.png to the gallery/attachments/ dir on disk.
       const attachDir = path.join(galleryDir, "attachments");
@@ -1754,82 +1749,187 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
       await page.reload();
       await waitForConnected(page);
 
-      // After full reindex, the server may have re-assigned a new UUID to
-      // gallery/note.md (reindex drops + re-imports all notes).  Fetch the
-      // current UUID from the tree API so the attachment URL assertion uses
-      // the post-reindex ID rather than the stale apiCreateNote return value.
-      const treeResp = await page.request.get(`${j22c.baseURL}/api/v1/tree`);
-      // Tree schema: { root: TreeNode[] } — root is the top-level key (not "nodes").
-      const treeJson = await treeResp.json() as { root: Array<{ kind: string; path?: string; id?: string; children?: unknown[] }> };
-      type TNode = { kind: string; path?: string; id?: string; children?: unknown[] };
-      const findNoteId = (nodes: TNode[]): string | undefined => {
-        for (const n of nodes) {
-          if (n.kind === "note" && n.path === "gallery/note.md") return n.id;
-          if (n.kind === "folder" && Array.isArray(n.children)) {
-            const found = findNoteId(n.children as TNode[]);
-            if (found) return found;
-          }
-        }
-        return undefined;
-      };
-      const postReindexNoteId = findNoteId(treeJson.root ?? []) ?? noteId;
-
-      // The tree should contain:
-      //   - gallery/ folder (with attachments/ subfolder + photo.png)
-      //   - gallery.md note (Gallery)
-      //   - scratchpad.md note (default)
-      // All at root level; gallery/ is collapsed on first load.
+      // Expand gallery/ by clicking the folder row (the TreeRow click handler
+      // calls node.toggle() for folder rows). Same pattern as user interaction.
       const galleryFolder = page.locator('[data-tree-row="gallery"][data-tree-row-kind="folder"]');
       await expect(galleryFolder).toBeVisible({ timeout: 8_000 });
-
-      // Focus and press ArrowRight to expand the gallery folder.
-      // ArrowRight is react-arborist's keyboard shortcut for expanding a collapsed folder.
-      await galleryFolder.focus();
-      await page.keyboard.press("ArrowRight");
+      await galleryFolder.click();
       await expect(galleryFolder).toHaveAttribute("aria-expanded", "true", { timeout: 5_000 });
 
-      // Expand the attachments/ subfolder to reveal photo.png.
       const attachmentsFolder = page.locator('[data-tree-row="gallery/attachments"][data-tree-row-kind="folder"]');
       await expect(attachmentsFolder).toBeVisible({ timeout: 5_000 });
-      await attachmentsFolder.focus();
-      await page.keyboard.press("ArrowRight");
+      await attachmentsFolder.click();
       await expect(attachmentsFolder).toHaveAttribute("aria-expanded", "true", { timeout: 3_000 });
 
-      // photo.png should now appear as a file row.
-      const photoRow = page.locator('[data-tree-row="gallery/attachments/photo.png"][data-tree-row-kind="file"]');
-      await expect(photoRow).toBeVisible({ timeout: 5_000 });
-
-      // Override window.open to capture the URL synchronously — avoids the
-      // "popup URL is ':'" issue in headless Chromium where window.open for
-      // relative URLs resolves differently before the popup fully navigates.
+      // Spy on window.open BEFORE the click so we can assert it was NOT called.
+      // Plan 07-32b supersedes the Plan 07-26 popup contract; clicking now
+      // sets useTreeStore.activeFilePath and renders FilePreviewView inline.
       await page.evaluate(() => {
-        (window as Window & { __capturedOpenUrl?: string }).__capturedOpenUrl = undefined;
+        (window as Window & { __openWasCalled?: boolean }).__openWasCalled = false;
         const orig = window.open.bind(window);
         window.open = (...args) => {
-          (window as Window & { __capturedOpenUrl?: string }).__capturedOpenUrl = args[0] as string;
+          (window as Window & { __openWasCalled?: boolean }).__openWasCalled = true;
           return orig(...args);
         };
       });
 
+      const photoRow = page.locator('[data-tree-row="gallery/attachments/photo.png"][data-tree-row-kind="file"]');
+      await expect(photoRow).toBeVisible({ timeout: 5_000 });
       await photoRow.click();
 
-      // Poll window.__capturedOpenUrl until it's set with the expected URL.
-      // Use postReindexNoteId (fetched from tree after reindex) because a full
-      // reindex re-assigns UUIDs — the value from apiCreateNote is stale.
-      const expectedUrlPattern = new RegExp(
-        `/api/v1/attachments/${postReindexNoteId}/photo\\.png`,
+      // The FilePreviewView mounts in the middle pane with the canonical
+      // /api/v1/files?path=<encoded> URL on its <img src>.
+      const preview = page.getByTestId("file-preview-view");
+      await expect(preview).toBeVisible({ timeout: 5_000 });
+      await expect(preview).toHaveAttribute("data-file-preview-kind", "image");
+      const img = preview.locator("img");
+      const expectedUrl = `/api/v1/files?path=${encodeURIComponent("gallery/attachments/photo.png")}`;
+      await expect(img).toHaveAttribute("src", expectedUrl);
+
+      // Crucially: no popup was opened. The popup-based contract is obviated.
+      const openWasCalled = await page.evaluate(
+        () => (window as Window & { __openWasCalled?: boolean }).__openWasCalled,
       );
-      await expect
-        .poll(
-          () => page.evaluate(
-            () => (window as Window & { __capturedOpenUrl?: string }).__capturedOpenUrl,
-          ),
-          { timeout: 5_000 },
-        )
-        .toMatch(expectedUrlPattern);
+      expect(openWasCalled).toBe(false);
     } finally {
       await j22c.kill();
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S27 / S27b — File-preview view for non-markdown files (Plan 07-32b / UAT-3 R7)
+//   S27:  image attachment → middle pane shows <img> via /api/v1/files?path=<encoded>
+//   S27b: non-image file → middle pane shows metadata panel (filename + type + path)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — Image attachment file-preview in middle pane (S27 / UAT-3 R7)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("S27 — clicking image file in tree renders <img> in middle pane via /api/v1/files?path=<encoded>", async ({ page }) => {
+    // Seed gallery/note.md + gallery/attachments/photo.png on disk; reindex.
+    const notesDir = path.join(jasper.dataDir, "notes");
+    const galleryDir = path.join(notesDir, "gallery");
+    fs.mkdirSync(galleryDir, { recursive: true });
+    await apiCreateNote(page, jasper.baseURL, "note.md", "gallery", "# Gallery\n");
+    const attachDir = path.join(galleryDir, "attachments");
+    fs.mkdirSync(attachDir, { recursive: true });
+    // Real PNG header so the backend can serve real bytes (the streaming
+    // layer doesn't sniff, but having the magic bytes lets browsers attempt
+    // to decode if a future test wants to verify naturalWidth).
+    fs.writeFileSync(
+      path.join(attachDir, "photo.png"),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+    const reindexResp = await page.request.post(
+      `${jasper.baseURL}/api/v1/admin/reindex`,
+      { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
+    );
+    expect([200, 202]).toContain(reindexResp.status());
+    await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
+    await page.reload();
+    await waitForConnected(page);
+
+    // Expand gallery/ then gallery/attachments/ by clicking each folder row.
+    // (TreeRow.handleClick calls node.toggle() for folder rows; this matches
+    // the user gesture and is more reliable than ArrowRight which depends on
+    // react-arborist receiving focus at the tree level.)
+    const galleryFolder = page.locator('[data-tree-row="gallery"][data-tree-row-kind="folder"]');
+    await expect(galleryFolder).toBeVisible({ timeout: 8_000 });
+    await galleryFolder.click();
+    await expect(galleryFolder).toHaveAttribute("aria-expanded", "true", { timeout: 5_000 });
+    const attachmentsFolder = page.locator('[data-tree-row="gallery/attachments"][data-tree-row-kind="folder"]');
+    await expect(attachmentsFolder).toBeVisible({ timeout: 5_000 });
+    await attachmentsFolder.click();
+    await expect(attachmentsFolder).toHaveAttribute("aria-expanded", "true", { timeout: 3_000 });
+
+    // Click the photo.png file row.
+    const photoRow = page.locator('[data-tree-row="gallery/attachments/photo.png"][data-tree-row-kind="file"]');
+    await expect(photoRow).toBeVisible({ timeout: 5_000 });
+    await photoRow.click();
+
+    // The file-preview view appears in the middle pane with image branch.
+    const preview = page.getByTestId("file-preview-view");
+    await expect(preview).toBeVisible({ timeout: 3_000 });
+    await expect(preview).toHaveAttribute("data-file-preview-kind", "image");
+    const img = preview.locator("img");
+    const expectedUrl = `/api/v1/files?path=${encodeURIComponent("gallery/attachments/photo.png")}`;
+    await expect(img).toHaveAttribute("src", expectedUrl);
+
+    // Verify the image bytes load (HTTP 200 from the new generic endpoint).
+    const imgResp = await page.request.get(`${jasper.baseURL}${expectedUrl}`);
+    expect(imgResp.status()).toBe(200);
+  });
+});
+
+test.describe("Phase 7 — Non-image file metadata preview in middle pane (S27b / UAT-3 R7)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("S27b — clicking non-image file in tree renders metadata panel with filename + type + path", async ({ page }) => {
+    // Seed gallery/note.md + gallery/attachments/spec.pdf on disk; reindex.
+    const notesDir = path.join(jasper.dataDir, "notes");
+    const galleryDir = path.join(notesDir, "gallery");
+    fs.mkdirSync(galleryDir, { recursive: true });
+    await apiCreateNote(page, jasper.baseURL, "note.md", "gallery", "# Gallery\n");
+    const attachDir = path.join(galleryDir, "attachments");
+    fs.mkdirSync(attachDir, { recursive: true });
+    fs.writeFileSync(path.join(attachDir, "spec.pdf"), Buffer.from("%PDF-1.4 stub bytes"));
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+    const reindexResp = await page.request.post(
+      `${jasper.baseURL}/api/v1/admin/reindex`,
+      { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
+    );
+    expect([200, 202]).toContain(reindexResp.status());
+    await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
+    await page.reload();
+    await waitForConnected(page);
+
+    // Expand gallery/ then gallery/attachments/ via clicks (same pattern as S27).
+    const galleryFolder = page.locator('[data-tree-row="gallery"][data-tree-row-kind="folder"]');
+    await expect(galleryFolder).toBeVisible({ timeout: 8_000 });
+    await galleryFolder.click();
+    await expect(galleryFolder).toHaveAttribute("aria-expanded", "true", { timeout: 5_000 });
+    const attachmentsFolder = page.locator('[data-tree-row="gallery/attachments"][data-tree-row-kind="folder"]');
+    await expect(attachmentsFolder).toBeVisible({ timeout: 5_000 });
+    await attachmentsFolder.click();
+    await expect(attachmentsFolder).toHaveAttribute("aria-expanded", "true", { timeout: 3_000 });
+
+    // Click the spec.pdf file row.
+    const pdfRow = page.locator('[data-tree-row="gallery/attachments/spec.pdf"][data-tree-row-kind="file"]');
+    await expect(pdfRow).toBeVisible({ timeout: 5_000 });
+    await pdfRow.click();
+
+    // The file-preview view appears in the middle pane with metadata branch.
+    const preview = page.getByTestId("file-preview-view");
+    await expect(preview).toBeVisible({ timeout: 3_000 });
+    await expect(preview).toHaveAttribute("data-file-preview-kind", "metadata");
+    // Filename, type label (uppercased extension), and full path are all rendered.
+    await expect(preview).toContainText("spec.pdf");
+    await expect(preview).toContainText("PDF");
+    await expect(preview).toContainText("gallery/attachments/spec.pdf");
+    // No <img> in metadata mode.
+    await expect(preview.locator("img")).toHaveCount(0);
   });
 });
 
