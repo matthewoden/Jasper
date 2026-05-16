@@ -1523,6 +1523,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           anySucceeded = true;
         } catch (err) {
           const status = (err as { status?: number } | null)?.status;
+          const body = (err as { body?: string } | null)?.body ?? "";
           // Locked toast tuples for the most common failures (mirrors the
           // attachment-upload toast shape from Plan 07-10).
           let title = "Upload failed";
@@ -1536,9 +1537,26 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           } else if (status === 403) {
             title = "Upload rejected";
             description = "Target directory is a symlink — refused for safety.";
+          } else {
+            // Plan 07-38 N2 (UAT-4 debuggability): when the failure isn't
+            // 400/403/413, surface the backend's actual response body in
+            // the toast so the user can report it back. Without this, the
+            // user saw only the generic "Could not upload <name>" and
+            // there was no way to diagnose why. Common candidates:
+            //   - status undefined → network error before status code
+            //     was read (the error message will say so).
+            //   - status 5xx → backend dataDir / disk issue.
+            //   - status 404 → targetDir resolution mismatch (e.g.
+            //     dropping on a file row whose parent dir was inferred
+            //     incorrectly).
+            // Truncate to keep the toast readable.
+            const detail = body
+              ? body.slice(0, 200)
+              : (err as Error | null)?.message ?? "unknown error";
+            description = `Could not upload ${f.name}.\nReason: ${detail}\n(targetDir=${targetDir === "" ? "<root>" : targetDir}, status=${status ?? "?"})`;
           }
           toast({ title, description, variant: "error" });
-          console.error("[FileTree] handleSidebarFileDrop:", err);
+          console.error("[FileTree] handleSidebarFileDrop:", { err, targetDir, fileName: f.name });
         }
       }
 
