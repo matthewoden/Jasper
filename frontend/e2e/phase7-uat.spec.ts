@@ -2251,11 +2251,15 @@ test.describe("Phase 7 — Single-session edit produces NO phantom conflict bann
   });
 });
 
-// S24 — SaveIndicator in StatusBar + Search icon + drop indicator snap
-// UAT-2 N9 (B3) + R1-5 (B4) + R1-6 (B5) / Plan 07-28
+// S24 — SaveIndicator-button in TopBar + Search icon + drop indicator snap
+// Plan 07-37 (UAT-3 N9 / D-55): SaveIndicator + standalone refresh button
+// were unified into a SaveIndicator-as-refresh-button hybrid mounted in
+// TopBar's right cluster. Pre-Plan-07-37 home was StatusBar (Plan 07-28 B3).
+// S24a now asserts the new TopBar location; the StatusBar negatives live
+// in S31 below.
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe("Phase 7 — SaveIndicator in StatusBar + Search icon + drop snap (S24 / UAT-2 N9, R1-5, R1-6)", () => {
+test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop snap (S24 / UAT-3 N9, R1-5, R1-6)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -2266,7 +2270,7 @@ test.describe("Phase 7 — SaveIndicator in StatusBar + Search icon + drop snap 
     if (jasper) await jasper.kill();
   });
 
-  test("S24a — SaveIndicator visible in StatusBar after typing (not inside editor pane)", async ({ page }) => {
+  test("S24a — SaveIndicator-button visible in TopBar after typing (transitions through saving → saved)", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -2282,23 +2286,26 @@ test.describe("Phase 7 — SaveIndicator in StatusBar + Search icon + drop snap 
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
     await page.waitForTimeout(500); // let editor settle
 
+    // The SaveIndicator-button lives in TopBar's right cluster — assert it's
+    // present and starts in idle (or already saved from the apiCreateNote).
+    const topBar = page.locator("[data-testid='top-bar']");
+    const saveBtn = topBar.locator("button[data-save-state]");
+    await expect(saveBtn).toBeVisible({ timeout: 5_000 });
+
     // Type in the editor to trigger a save.
     await page.locator(".cm-content").click();
     await page.keyboard.type(" more text");
 
-    // Wait for autosave (2s debounce + network).
-    // After save, SaveIndicator shows "Saved" in the status bar.
-    const statusBar = page.locator("[data-testid='status-bar']");
-    await expect(statusBar).toBeVisible({ timeout: 3_000 });
+    // Wait for the data-save-state attribute to flip to "saved" (autosave: 2s
+    // debounce + network round-trip). The button transitions
+    // idle/saved → saving → saved within the autosave window.
+    await expect(saveBtn).toHaveAttribute("data-save-state", "saved", { timeout: 8_000 });
 
-    // Wait up to 7s for "Saved" to appear in the status bar.
-    await expect(statusBar.getByText(/Saved/i)).toBeVisible({ timeout: 7_000 });
-
-    // Negative assertion: confirm "Saved" does NOT appear inside the editor pane chrome.
-    // The editor pane has data-testid="editor-pane-placeholder" when empty, but when a
-    // note is open we look for the section that wraps the CM editor.
-    // The SaveIndicator is no longer mounted there (Plan 07-28 B3).
-    // We check by looking for the status role inside the .cm-editor — should not find one.
+    // Negative assertion: the SaveIndicator is NOT mounted inside the editor
+    // pane chrome (legacy overlay) NOR inside the StatusBar (Plan 07-28 mount,
+    // removed by Plan 07-37). Only the TopBar mount exists.
+    const statusBarSaveBtn = page.locator("[data-testid='status-bar'] button[data-save-state]");
+    expect(await statusBarSaveBtn.count()).toBe(0);
     const editorSavedEl = page.locator("section").filter({ hasText: /cm-editor/ }).getByRole("status");
     expect(await editorSavedEl.count()).toBe(0);
 
@@ -2621,5 +2628,69 @@ test.describe("Phase 7 — Switcher merges title-fuzzy + FTS5 (S28 / UAT-3 N10+N
     await expect(dialog.getByText(/s28b-haystack/i).first()).toBeVisible({ timeout: 3_000 });
 
     await page.keyboard.press("Escape");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S31 — SaveIndicator-button click triggers reindex (UAT-3 N9 / Plan 07-37)
+// Pairs with S24a above; S31 covers the click-as-refresh behavior + the
+// StatusBar negative (no standalone refresh button anymore).
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UAT-3 N9 / D-55)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("S31 — clicking the SaveIndicator-button POSTs /api/v1/admin/reindex with mode=incremental", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Locate the SaveIndicator-button in TopBar's right cluster.
+    const topBar = page.locator("[data-testid='top-bar']");
+    const saveBtn = topBar.locator("button[data-save-state]");
+    await expect(saveBtn).toBeVisible({ timeout: 5_000 });
+
+    // Capture the next admin/reindex POST. The button's click handler is
+    // postAdminReindex('incremental'), which the openapi-fetch client wires
+    // through to POST /api/v1/admin/reindex with body {"mode":"incremental"}.
+    const reindexReqPromise = page.waitForRequest(
+      (req) => req.url().includes("/api/v1/admin/reindex") && req.method() === "POST",
+      { timeout: 5_000 },
+    );
+
+    await saveBtn.click();
+
+    const req = await reindexReqPromise;
+    expect(req.url()).toContain("/api/v1/admin/reindex");
+    const postData = req.postDataJSON() as { mode?: string } | null;
+    expect(postData?.mode).toBe("incremental");
+  });
+
+  test("S31b — StatusBar no longer renders the standalone 'Reindex notes' button (Plan 07-37 removal)", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // The pre-Plan-07-37 standalone refresh button (aria-label "Reindex
+    // notes") was rendered inside StatusBar. Plan 07-37 removed it; the
+    // refresh action is now the SaveIndicator-button click in TopBar.
+    const oldRefreshBtn = page.locator(
+      "[data-testid='status-bar'] button[aria-label='Reindex notes']",
+    );
+    await expect(oldRefreshBtn).toHaveCount(0);
+
+    // Sanity: the StatusBar itself is still present (we didn't accidentally
+    // remove the whole footer); just the refresh button + SaveIndicator are
+    // gone.
+    const statusBar = page.locator("[data-testid='status-bar']");
+    await expect(statusBar).toBeVisible({ timeout: 3_000 });
+    const statusBarSaveBtn = page.locator("[data-testid='status-bar'] button[data-save-state]");
+    await expect(statusBarSaveBtn).toHaveCount(0);
   });
 });
