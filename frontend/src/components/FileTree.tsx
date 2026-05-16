@@ -47,7 +47,8 @@ import { Tree, type NodeApi, type TreeApi } from "react-arborist";
 
 import { extractH1FromContent, rewriteH1 } from "../lib/h1Extract";
 import { getNote, updateNote } from "../lib/notesApi";
-import { useFileTree } from "../lib/useFileTree";
+import { uploadFile } from "../lib/filesApi";
+import { broadcastRefresh, useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
 import {
   TreeMutationError,
@@ -1350,38 +1351,146 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   );
 
   // ──────────────────────────────────────────────────────────────────
-  // UAT-2 N2 fix (Plan 07-29): Suppress drop indicator for OS file drags.
+  // UAT-2 N2 (Plan 07-29) + UAT-3 N2 (Plan 07-34): Sidebar OS-file drop.
   //
-  // react-arborist uses react-dnd internally. When an OS file drag
-  // enters the sidebar, react-dnd's HTML5 backend renders its drop
-  // overlay even though there's no arborist-registered drop handler for
-  // external files. The fix: intercept dragover/dragenter at the CAPTURE
-  // phase on the tree container BEFORE react-dnd's bubble-phase listener
-  // sees the event. If the dataTransfer carries "Files" (OS file drag)
-  // and nativeDragInfoRef is null (no arborist drag in flight), we call
-  // stopPropagation — arborist never sees the event, the overlay never
-  // renders, and the browser shows the "not-allowed" cursor naturally.
+  // react-arborist uses react-dnd internally. When an OS file drag enters
+  // the sidebar, react-dnd's HTML5 backend renders its drop overlay even
+  // though arborist has no registered drop handler for external files. The
+  // fix: intercept dragover/dragenter at the CAPTURE phase on the tree
+  // container BEFORE react-dnd's bubble-phase listener sees the event. If
+  // the dataTransfer carries "Files" (OS file drag) and nativeDragInfoRef
+  // is null (no arborist drag in flight), we call stopPropagation —
+  // arborist never sees the event, the overlay never renders.
+  //
+  // Plan 07-34 UPGRADE: we now ACCEPT the drop. preventDefault MUST be
+  // called on dragover so the browser delivers the matching drop event to
+  // our handler instead of canceling with the not-allowed cursor.
+  // dropEffect is set to "copy" so the cursor reflects the upload-copy
+  // semantics. The matching drop handler (handleSidebarFileDrop) resolves
+  // the target dir from the row under the cursor and POSTs to /files via
+  // filesApi.uploadFile.
   // ──────────────────────────────────────────────────────────────────
   const handleSidebarDragOver = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      // An OS file drag includes "Files" in dataTransfer.types.
-      // An arborist-internal drag uses react-dnd's "NODE" item type —
-      // it does NOT include "Files" in dataTransfer.types.
       const types = e.dataTransfer?.types;
       if (!types) return;
       const hasFiles = Array.from(types).includes("Files");
-      // nativeDragInfoRef.current is non-null only during an arborist-
-      // internal drag (set in handleNativeDragStart, cleared on dragend).
-      // If "Files" is present and NO arborist drag is in flight → external drag.
       const isExternal = hasFiles && nativeDragInfoRef.current === null;
       if (isExternal) {
-        // Block the event from reaching arborist's react-dnd drop layer.
-        // Do NOT call preventDefault — letting the browser show its native
-        // "not-allowed" cursor and block the drop by default.
         e.stopPropagation();
+        // Plan 07-34: accept the drop so the matching drop event fires.
+        e.preventDefault();
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = "copy";
+        }
       }
     },
     [],
+  );
+
+  // Build a noteId → path lookup for handleSidebarFileDrop's "drop on note
+  // row" case. Note rows use UUID as their data-tree-row attribute, so we
+  // need to translate the UUID back to a path to compute the parent dir.
+  // Memoized against the wire tree so it only rebuilds when the tree shape
+  // changes.
+  const noteIdToPath = useMemo<Map<string, string>>(() => {
+    const map = new Map<string, string>();
+    if (!tree) return map;
+    const visit = (n: WireTreeNode) => {
+      if (n.kind === "note") {
+        map.set(n.id, n.path);
+      } else if (n.kind === "folder" && n.children) {
+        for (const c of n.children) visit(c);
+      }
+    };
+    for (const n of tree.root) visit(n);
+    return map;
+  }, [tree]);
+
+  // parentDirOfPath('foo/bar.png') === 'foo'; parentDirOfPath('bar.png') === ''.
+  const parentDirOfPath = useCallback((p: string): string => {
+    const idx = p.lastIndexOf("/");
+    return idx < 0 ? "" : p.slice(0, idx);
+  }, []);
+
+  // Plan 07-34 — handleSidebarFileDrop (UAT-3 N2). Wired via onDropCapture
+  // on the tree-area wrapper so it runs in the capture phase, ahead of any
+  // react-dnd handlers arborist might register on its descendants.
+  //
+  // Target-dir resolution:
+  //   row under drop cursor is FOLDER → target = folder.path
+  //   row under drop cursor is NOTE   → target = parentDirOfPath(note.path)
+  //   row under drop cursor is FILE   → target = parentDirOfPath(file.path)
+  //   no row under cursor (empty)     → target = "" (vault root)
+  //
+  // After every successful upload broadcastRefresh() fires once so the new
+  // file appears in the tree without a manual reload. Errors surface as a
+  // toast — the user keeps the dropped file in OS clipboard so retry is
+  // cheap.
+  const handleSidebarFileDrop = useCallback(
+    async (e: React.DragEvent<HTMLDivElement>) => {
+      const types = e.dataTransfer?.types;
+      if (!types) return;
+      const hasFiles = Array.from(types).includes("Files");
+      const isExternal = hasFiles && nativeDragInfoRef.current === null;
+      if (!isExternal) return;
+      e.stopPropagation();
+      e.preventDefault();
+
+      // 1. Resolve target dir from the row under the cursor.
+      const target = e.target as HTMLElement | null;
+      const rowEl = target?.closest("[data-tree-row]") as HTMLElement | null;
+      let targetDir = "";
+      if (rowEl) {
+        const rowKind = rowEl.getAttribute("data-tree-row-kind");
+        const rowAttr = rowEl.getAttribute("data-tree-row") ?? "";
+        if (rowKind === "folder") {
+          targetDir = rowAttr; // folder rows use path as data-tree-row
+        } else if (rowKind === "note") {
+          // Note rows use UUID as data-tree-row; translate via map.
+          const notePath = noteIdToPath.get(rowAttr);
+          targetDir = notePath ? parentDirOfPath(notePath) : "";
+        } else if (rowKind === "file") {
+          targetDir = parentDirOfPath(rowAttr);
+        }
+      }
+
+      // 2. Upload each file in the drop.
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length === 0) return;
+      let anySucceeded = false;
+      for (const f of files) {
+        try {
+          await uploadFile(targetDir, f);
+          anySucceeded = true;
+        } catch (err) {
+          const status = (err as { status?: number } | null)?.status;
+          // Locked toast tuples for the most common failures (mirrors the
+          // attachment-upload toast shape from Plan 07-10).
+          let title = "Upload failed";
+          let description = `Could not upload ${f.name}.`;
+          if (status === 413) {
+            title = "File too large";
+            description = "Maximum upload size is 100 MB.";
+          } else if (status === 400) {
+            title = "Upload rejected";
+            description = `${f.name}: invalid path or filename (markdown files must be created via the new-note action, not dropped).`;
+          } else if (status === 403) {
+            title = "Upload rejected";
+            description = "Target directory is a symlink — refused for safety.";
+          }
+          toast({ title, description, variant: "error" });
+          // eslint-disable-next-line no-console
+          console.error("[FileTree] handleSidebarFileDrop:", err);
+        }
+      }
+
+      // 3. Refresh the tree so any new files appear.
+      if (anySucceeded) {
+        await broadcastRefresh();
+      }
+    },
+    [noteIdToPath, parentDirOfPath, toast],
   );
 
   // siblingNamesFor — for the inline-rename collision check. The
@@ -1537,6 +1646,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         ref={setTreeAreaEl}
         onDragOverCapture={handleSidebarDragOver}
         onDragEnterCapture={handleSidebarDragOver}
+        onDropCapture={handleSidebarFileDrop}
         style={{
           flex: 1,
           minHeight: 0,

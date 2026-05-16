@@ -2347,6 +2347,7 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
               id: noteId,
               path: "folderA/sub.md",
               title: "sub",
+              updated_at: new Date().toISOString(),
             },
           ],
         },
