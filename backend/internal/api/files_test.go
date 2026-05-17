@@ -765,28 +765,46 @@ func TestMoveFile_RaceRepeatIdempotent(t *testing.T) {
 	t.Parallel()
 	srv, dataDir := newAttachmentTestServer(t, nil)
 
-	// Create only dst — src is "missing" because (in the real race) the
-	// first dispatch already moved the file from src to dst.
-	dstAbs := filepath.Join(dataDir, "notes", "dst.png")
-	if err := os.WriteFile(dstAbs, []byte("dst-bytes"), 0o644); err != nil {
+	// Race shape: user dragged foo.png OUT of attachments/, then immediately
+	// dragged it BACK. The first dispatch (attachments/foo.png → foo.png)
+	// succeeded server-side. The second dispatch (attachments/foo.png →
+	// attachments/foo.png — arborist's stale snapshot) reached the server AFTER
+	// the first move completed and after a subsequent re-snapshot dispatched
+	// foo.png → attachments/foo.png. By the time the SECOND dispatch's POST
+	// arrives, the file is already at attachments/foo.png — Lstat(src)=ENOENT
+	// + Lstat(dst)=OK with matching basename "foo.png" — the move is a noop.
+	if err := os.MkdirAll(filepath.Join(dataDir, "notes", "attachments"), 0o755); err != nil {
+		t.Fatalf("mkdir attachments: %v", err)
+	}
+	dstAbs := filepath.Join(dataDir, "notes", "attachments", "foo.png")
+	if err := os.WriteFile(dstAbs, []byte("foo-bytes"), 0o644); err != nil {
 		t.Fatalf("write dst: %v", err)
 	}
+	// Note: foo.png at the vault root is intentionally NOT created — it's
+	// the "src" the client believes still exists but the first move already
+	// shuffled to attachments/.
 
-	resp := callMoveFile(t, srv, "src.png", "dst.png")
+	resp := callMoveFile(t, srv, "foo.png", "attachments/foo.png")
 	got200, ok := resp.(PostFileMove200JSONResponse)
 	if !ok {
 		t.Fatalf("expected PostFileMove200JSONResponse (idempotent), got %T", resp)
 	}
-	if got200.Path != "dst.png" {
-		t.Errorf("path: got %q, want %q", got200.Path, "dst.png")
+	if got200.Path != "attachments/foo.png" {
+		t.Errorf("path: got %q, want %q", got200.Path, "attachments/foo.png")
 	}
-	if got200.Name != "dst.png" {
-		t.Errorf("name: got %q, want %q", got200.Name, "dst.png")
+	if got200.Name != "foo.png" {
+		t.Errorf("name: got %q, want %q", got200.Name, "foo.png")
 	}
 
 	// Idempotent — dst must be untouched.
-	if got, _ := os.ReadFile(dstAbs); string(got) != "dst-bytes" {
+	if got, _ := os.ReadFile(dstAbs); string(got) != "foo-bytes" {
 		t.Errorf("dst mutated by idempotent path: %q", got)
+	}
+	// Src must still NOT exist (the "first dispatch" already shuffled it
+	// away; the idempotent repeat is a noop, not a recreate).
+	srcAbs := filepath.Join(dataDir, "notes", "foo.png")
+	if _, err := os.Stat(srcAbs); !os.IsNotExist(err) {
+		t.Errorf("src still / again exists at %q: err=%v", srcAbs, err)
 	}
 }
 
@@ -800,13 +818,13 @@ func TestMoveFile_SrcMissingDifferentBasename(t *testing.T) {
 	t.Parallel()
 	srv, dataDir := newAttachmentTestServer(t, nil)
 
-	// Create dst only; src ("foo.png") is missing AND basenames differ from
-	// dst ("dst.png") — must still 404.
-	if err := os.WriteFile(filepath.Join(dataDir, "notes", "dst.png"), []byte("dst"), 0o644); err != nil {
+	// Create dst (bar.png) only; src ("foo.png") is missing AND basenames
+	// differ from dst — must still 404, NOT swallowed by the idempotent path.
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "bar.png"), []byte("bar"), 0o644); err != nil {
 		t.Fatalf("write dst: %v", err)
 	}
 
-	resp := callMoveFile(t, srv, "foo.png", "dst.png")
+	resp := callMoveFile(t, srv, "foo.png", "bar.png")
 	got404, ok := resp.(PostFileMove404JSONResponse)
 	if !ok {
 		t.Fatalf("expected PostFileMove404JSONResponse, got %T", resp)
