@@ -9,7 +9,12 @@ import { searchNotes, type SearchResult } from "./searchApi";
 // DO NOT "fix" this by adding a note:* event listener to useSearch.
 // See: .planning/phases/07-search-daily-notes-attachments-palette-switcher/07-CONTEXT.md §D-08
 
-const DEBOUNCE_MS = 200;
+// Plan 07-43 (UAT-8): bumped from 200 → 500ms so the user has time to
+// finish typing a multi-character query before the backend fetches. The
+// CommandMenu shows an inline activity indicator during the debounce
+// window + during the in-flight fetch so the perceived responsiveness
+// does not regress.
+const DEBOUNCE_MS = 500;
 const MIN_QUERY_LENGTH = 2;
 
 export interface PaletteSearchResult {
@@ -25,8 +30,8 @@ export interface PaletteSearchResult {
  *
  * Below 2-character threshold: returns { results: [], isSearching: false }
  * synchronously (no debounce, no store writes).
- * Above threshold: debounces 200ms, fires searchNotes(query, activeTagFilter, 50),
- * returns the results when they land.
+ * Above threshold: debounces 500ms (Plan 07-43, was 200ms), fires
+ * searchNotes(query, activeTagFilter, 50), returns the results when they land.
  */
 export function useSearch(
   query: string,
