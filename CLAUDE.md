@@ -207,21 +207,67 @@ If everything else about Jasper fails, this must work: open the browser, write n
 <!-- GSD:conventions-start source:CONVENTIONS.md -->
 ## Conventions
 
+> Source: `CONVENTIONS.md`. See also `.planning/PHASE-TRANSITION-CHECKLIST.md` for the phase-boundary procedure and `.planning/RETROS/PHASE-07.md` for the originating retro that produced most of these rules.
+
 ### Build & embed pipeline
 
-- **Always use `make build` for any binary that will be tested or shipped.** The Makefile's `build` target performs `cp -R frontend/dist/. backend/internal/static/dist/` between `npm run build` and `go build`. Skipping that copy step bakes the previous frontend bundle into the binary via `//go:embed all:dist`, producing a stale UI in production. Plan 05.5-15 hit this and lost a full UAT walkthrough — see `.planning/phases/05.5-sidebar-editor-shell-polish/05.5-15-SUMMARY.md` "What Got Caught Mid-Walk".
+- **Always use `make build` for any binary that will be tested or shipped.** The Makefile's `build` target performs `cp -R frontend/dist/. backend/internal/static/dist/` between `npm run build` and `go build`. Skipping that copy step bakes the previous frontend bundle into the binary via `//go:embed all:dist`, producing a stale UI in production. Plan 05.5-15 hit this and lost a full UAT walkthrough.
 - For any plan or task instruction that says `npm run build && go build`, treat it as a defect — replace with `make build`.
 
 ### Verification policy: E2E before human UAT
 
-- **Every gap-closure plan that fixes a user-facing bug MUST include a Playwright E2E scenario that exercises the fix against `bin/jasper`** (live binary), not just a vitest unit test. The unit tests are not load-bearing for production-only regressions — Phase 5.5 had multiple bugs that passed 593 unit tests but failed in real browsers (UX-09 reflow, UX-12 create-at-level, UX-13 Cmd-click).
-- Land the E2E test BEFORE asking the user for human UAT on the affected scenario. The user's time is the most expensive thing in the loop; don't burn it on stale binaries or already-broken features.
-- E2E scenarios live in `frontend/e2e/phase{N}-uat.spec.ts` (or `phase{N}_{M}-uat.spec.ts` for sub-phases like 5.5).
-- Smoke run E2E against `make build`, not `npm run build && go build`.
+- **Every gap-closure plan that fixes a user-facing bug MUST include a Playwright E2E scenario that exercises the fix against `bin/jasper`** (live binary), not just a vitest unit test. The unit tests are not load-bearing for production-only regressions — Phase 5.5 had multiple bugs that passed 593 unit tests but failed in real browsers.
+- Land the E2E test BEFORE asking the user for human UAT on the affected scenario. The user's time is the most expensive thing in the loop.
+- E2E scenarios live in `frontend/e2e/phase{N}-uat.spec.ts`. Smoke run against `make build`, not `npm run build && go build`.
 
 ### Halt-if-inconclusive gate (gap-closure pattern)
 
-- Gap-closure plans that pair `investigate → fix` tasks should set `autonomous: true` with an explicit **HALT-IF-INCONCLUSIVE GATE** in the fix task's `<action>`: re-read the investigation file's `## Recommended Fix` section; if it does not name a single file:line + concrete change, STOP and surface for human triage rather than speculatively patching. Pattern shipped in Plan 05.5-14 (toolbar regression — caught a contract drift) and Plan 05.5-17 (Bugs A/B/C).
+- Gap-closure plans that pair `investigate → fix` tasks should set `autonomous: true` with an explicit **HALT-IF-INCONCLUSIVE GATE** in the fix task's `<action>`: re-read the investigation file's `## Recommended Fix` section; if it does not name a single file:line + concrete change, STOP and surface for human triage rather than speculatively patching. Pattern shipped in Plans 05.5-14, 05.5-17, 07-31, 07-35.
+
+### Investigation-first for "behaves wrong" reports
+
+- For any UAT item phrased as "X doesn't work / shows wrong / behaves weird", **stand up the dev server (preview_start) or use `/gsd-debug` BEFORE writing the fix plan.** Backend behavior is cheap to verify (one HTTP probe); frontend behavior shows in `preview_logs` + `preview_console_logs`.
+- Plan 07-38 skipped this for N2 and burned a round shipping a "make it debuggable" patch instead of finding the real cause. The investigation can be inline (5-10 min, captured in the SUMMARY) or a dedicated `07-NN-INVESTIGATION.md` artifact.
+- Cost calibration: 15 min reproducing saves ~1 full plan-round of speculative work.
+
+### AskUserQuestion before drafting for ambiguous UAT items
+
+- For any UAT item phrased without a direction ("alignment is off", "save indicator placement wrong"), **use AskUserQuestion BEFORE drafting the fix plan**, not after the fix lands. Phase 7 N5 + N9 each cost an extra plan-round because Claude made an interpretation rather than asking.
+- Cluster 2-4 ambiguities into one prompt; save the answers under a "User clarifications (AskUserQuestion)" section in the corresponding `phase-prefix-HUMAN-UAT-{N}.md`.
+
+### Soft-accept vs hard-accept UAT discipline
+
+- A user's "accepted" in a same-day UAT walkthrough is a **soft-accept**.
+- A **hard-accept** requires the item to survive a 24-48h period of real use without being flagged in a subsequent UAT.
+- Plans that depend on a previous "accepted" item should note `soft-accept (UAT-N, YYYY-MM-DD)` in their `depends_on:` rationale. Phase 7 N10 was soft-accepted in UAT-3 and reversed in UAT-5 — the distinction would have surfaced that risk earlier.
+- Do not delete code that was reversed under a soft-accept — orphan it.
+
+### Plan-vs-investigation consistency
+
+- When an investigation reaches a different conclusion than the plan's example code, **either amend the plan file or write investigation-first plans**. Plan 07-32a's example showed `/files/{path}` but the investigation chose `/files?path=` — the plan stayed stale and three downstream executors had to be briefed about the deviation each time.
+- Acceptable patterns: amend-the-plan (update `<interfaces>`/`<action>` after investigation, commit before dispatching GREEN), OR investigation-first plan (skip example code; link to investigation as single source of truth).
+
+### Orphaned code is a design signal
+
+- Before adding a new component or merging surfaces, **grep for components that already do the thing being asked for**. If they exist with no consumers, ask "why were these orphaned?" before re-deriving the original design.
+- Phase 7: `SearchInputBar.tsx` + `SearchResultsList.tsx` sat orphaned across 4 plans (07-18 → 07-39) before being remounted. If noticed earlier, Plans 07-33 + 07-38's merge-arc could have been skipped.
+- Useful greps: `grep -rL '<ComponentName' frontend/src/`, `git log --diff-filter=D -- '<file>'`.
+
+### Plan sizing: bundle vs split
+
+- **Bundle plans** (one plan, N sequenced tasks, one executor) for small, well-scoped fixes where each task is < 30 min and the failure surface is localized. Used successfully in Plans 07-36, 07-37.
+- **Split plans** (separate files, optionally separate executors) for anything with investigation, design ambiguity, or cross-cutting refactor. Bundles save planning overhead but increase resume complexity when an agent crashes mid-flight (Plan 07-38 hit a 500 mid-Task-1).
+- Rule of thumb: if any task in the bundle would benefit from its own `INVESTIGATION.md`, split it out.
+
+### Worktree vs in-main execution default
+
+- **Default to in-main (no worktree)** for sequential single-executor work. The cherry-pick overhead from worktree isolation exceeds the parallelism gain when ≤2 plans run concurrently. The "lost worktree merge" recovery commits document a recurring failure mode.
+- **Use worktree isolation** only when ≥3 plans run in parallel AND touch disjoint code surfaces, OR the work might destabilize main temporarily.
+- After worktree work completes, cherry-pick into main and run `go clean -cache && golangci-lint cache clean` to avoid stale-path lint errors from the abandoned worktree's source.
+
+### Phase transitions
+
+- When closing a phase or starting the next, follow `.planning/PHASE-TRANSITION-CHECKLIST.md` (3 blocks: close current, audit drift, open next). Anti-patterns to avoid: closing on soft-accept, deleting orphaned code without a decision, carrying >5 pre-existing failures, skipping the retro.
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
