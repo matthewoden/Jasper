@@ -3117,10 +3117,10 @@ test.describe("Phase 7 — Cmd+Shift+F opens search modal (S34 / UAT-6 / Plan 07
     // Placeholder copy is "Search notes…" (NOT "Switch to note…" / "Type a command…").
     await expect(page.getByPlaceholder("Search notes…")).toBeVisible();
 
-    // <2 chars → empty-state hint visible.
-    await expect(
-      page.getByText(/Type at least 2 characters to search note bodies\./),
-    ).toBeVisible();
+    // Plan 07-43 (UAT-8) updated the empty-state copy. On open with an
+    // empty query, the "Type to search notes" one-liner is visible (the
+    // prescriptive "at least 2 characters" copy is gone everywhere).
+    await expect(page.getByText("Type to search notes")).toBeVisible();
 
     // Type a body-only query. "narwhal" only appears in the body, not the title.
     await page.keyboard.type("narwhal");

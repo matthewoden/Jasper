@@ -22,7 +22,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Search, Command } from "lucide-react";
+import { Search, Command, Loader2 } from "lucide-react";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette, type CommandActions } from "../lib/useCommandPalette";
 import { useSearch } from "../lib/useSearch";
@@ -95,6 +95,50 @@ function nextSelectable(items: Item[], from: number, direction: 1 | -1): number 
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// ActivityIndicator — Plan 07-43 (UAT-8)
+//
+// Inline Loader2 (spinning, via a scoped @keyframes spin) + 14px muted
+// "Searching…" label. ~64px high (matches the 48px padding empty-state
+// blocks above + below) so the modal doesn't reflow when the indicator
+// appears/disappears across debounce + fetch boundaries.
+// ──────────────────────────────────────────────────────────────────────────────
+
+function ActivityIndicator() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        padding: "48px 16px",
+        textAlign: "center",
+        color: "var(--color-muted)",
+        fontSize: 14,
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+      }}
+    >
+      {/* Scoped keyframe — kept inside the component so no global CSS
+          changes are required. Tailwind/CSS-Modules-agnostic. */}
+      <style>
+        {`@keyframes jasper-cmm-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
+      </style>
+      <Loader2
+        size={14}
+        style={{
+          animation: "jasper-cmm-spin 1s linear infinite",
+          flexShrink: 0,
+        }}
+        aria-hidden="true"
+      />
+      <span>Searching…</span>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Component
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -110,11 +154,13 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const cmdHits: Shortcut[] = mode === "commands" ? cmd.filtered(query) : [];
 
   // Plan 07-40 (UAT-6): search mode wraps useSearch (FTS5 + snippet excerpts).
-  // useSearch is internally debounced 200ms + only fires above the 2-char
-  // threshold; pass empty string when not in search mode so the hook is
-  // effectively dormant in notes/commands modes.
+  // Plan 07-43 (UAT-8): debounce is 500ms (was 200) and we surface isSearching
+  // as an inline activity indicator below — so the perceived responsiveness
+  // does not regress despite the longer wait.
+  // useSearch only fires above the 2-char threshold; pass empty string when
+  // not in search mode so the hook is effectively dormant in notes/commands.
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
-  const { results: searchHits } = useSearch(
+  const { results: searchHits, isSearching } = useSearch(
     mode === "search" ? query : "",
     mode === "search" ? activeTagFilter : null,
   );
@@ -288,10 +334,54 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   // Determine empty state copy.
   // Notes:    empty/short query → "Start typing…"; ≥2 chars no hits → "No notes match…"
   // Commands: only shows empty state when a query is set and yields no hits.
-  // Search:   <2 chars → "Type at least 2 characters…"; ≥2 chars no hits → "No notes match…"
+  // Search:   Plan 07-43 (UAT-8) branching — uses searchSurfaceContent below.
+  //   - query === ""           → "Type to search notes" (one-liner; was the
+  //                              old prescriptive "at least 2 characters" copy)
+  //   - 0 < query.length < 2   → activity indicator (typing-in-progress; the
+  //                              system is responsive even though we won't
+  //                              fetch yet)
+  //   - query >= 2, isSearching → activity indicator (in-flight fetch)
+  //   - query >= 2, !isSearching, results === [] → existing "No notes match…"
+  //   - query >= 2, results.length > 0           → virtualized results
   const showEmpty = items.length === 0;
   let emptyText: string | null = null;
-  if (showEmpty) {
+  // searchSurfaceContent is the React node rendered into the result area
+  // when mode === "search" and we do NOT want to display the virtualized
+  // result list (i.e. we're showing empty hint, activity indicator, or
+  // a no-matches state). When null, the standard emptyText render path runs.
+  let searchSurfaceContent: React.ReactNode | null = null;
+  if (mode === "search") {
+    if (query === "") {
+      searchSurfaceContent = (
+        <div
+          style={{
+            padding: "48px 16px",
+            textAlign: "center",
+            color: "var(--color-muted)",
+            fontSize: 14,
+          }}
+        >
+          Type to search notes
+        </div>
+      );
+    } else if (query.length < 2 || isSearching) {
+      searchSurfaceContent = <ActivityIndicator />;
+    } else if (items.length === 0) {
+      searchSurfaceContent = (
+        <div
+          style={{
+            padding: "48px 16px",
+            textAlign: "center",
+            color: "var(--color-muted)",
+            fontSize: 14,
+          }}
+        >
+          {`No notes match "${query}"`}
+        </div>
+      );
+    }
+    // else: results present → fall through to virtualized list below.
+  } else if (showEmpty) {
     if (mode === "notes" && query === "") {
       emptyText = "Start typing to switch notes";
     } else if (mode === "notes" && query.length >= 2) {
@@ -300,10 +390,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       emptyText = "Start typing to switch notes";
     } else if (mode === "commands" && query !== "") {
       emptyText = `No commands match "${query}"`;
-    } else if (mode === "search" && query.length < 2) {
-      emptyText = "Type at least 2 characters to search note bodies.";
-    } else if (mode === "search") {
-      emptyText = `No notes match "${query}"`;
     }
     // commands mode + empty query → full list is shown; no empty state needed
   }
@@ -373,8 +459,13 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
 
           {/* Result list — max-height 50vh, virtualized */}
           <div ref={parentRef} style={{ maxHeight: "50vh", overflowY: "auto" }}>
-            {/* Empty state */}
-            {emptyText !== null && (
+            {/* Plan 07-43 (UAT-8): search-mode surface (empty hint /
+                activity indicator / no-matches) takes precedence over the
+                generic emptyText path when mode === "search". */}
+            {searchSurfaceContent !== null && searchSurfaceContent}
+
+            {/* Empty state for notes + commands modes */}
+            {searchSurfaceContent === null && emptyText !== null && (
               <div
                 style={{
                   padding: "48px 16px",
@@ -387,8 +478,9 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
               </div>
             )}
 
-            {/* Virtualized rows */}
-            {items.length > 0 && (
+            {/* Virtualized rows — suppressed in search mode when the
+                surfaceContent path is active (indicator/empty hint). */}
+            {searchSurfaceContent === null && items.length > 0 && (
               <div
                 style={{ height: virtualizer.getTotalSize(), position: "relative" }}
               >
