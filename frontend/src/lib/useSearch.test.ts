@@ -44,20 +44,27 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
     expect(searchApi.searchNotes).not.toHaveBeenCalled();
   });
 
-  it("debounces 200ms then returns results from searchNotes", async () => {
+  // Plan 07-43 (UAT-8): debounce bumped from 200ms → 500ms.
+  it("debounces 500ms then returns results from searchNotes (USR-DEBOUNCE-500-1)", async () => {
     vi.spyOn(searchApi, "searchNotes").mockResolvedValue([MOCK_RESULT]);
     const { result } = renderHook(() => useSearch("hello", null));
 
     expect(result.current.isSearching).toBe(true);
     expect(searchApi.searchNotes).not.toHaveBeenCalled();
 
-    // advance less than debounce — not fired yet
+    // 200ms — old debounce horizon — must NOT fire under the new 500ms rule.
     await act(async () => {
-      vi.advanceTimersByTime(199);
+      vi.advanceTimersByTime(200);
     });
     expect(searchApi.searchNotes).not.toHaveBeenCalled();
 
-    // advance past debounce
+    // 499ms total — still below the new threshold.
+    await act(async () => {
+      vi.advanceTimersByTime(299);
+    });
+    expect(searchApi.searchNotes).not.toHaveBeenCalled();
+
+    // Cross the 500ms boundary — fires.
     await act(async () => {
       vi.advanceTimersByTime(2);
     });
@@ -70,7 +77,7 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
     vi.spyOn(searchApi, "searchNotes").mockResolvedValue([]);
     renderHook(() => useSearch("hello", "project"));
     await act(async () => {
-      vi.advanceTimersByTime(201);
+      vi.advanceTimersByTime(501);
     });
     expect(searchApi.searchNotes).toHaveBeenCalledWith("hello", "project", 50);
   });
@@ -84,13 +91,13 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
 
     // advance partway
     await act(async () => {
-      vi.advanceTimersByTime(100);
+      vi.advanceTimersByTime(250);
     });
 
     // change query — previous debounce should be cancelled
     rerender({ q: "hello" });
     await act(async () => {
-      vi.advanceTimersByTime(201);
+      vi.advanceTimersByTime(501);
     });
 
     // should only fire once (for final value)
@@ -121,13 +128,13 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
     );
 
     await act(async () => {
-      vi.advanceTimersByTime(201);
+      vi.advanceTimersByTime(501);
     });
     expect(searchApi.searchNotes).toHaveBeenCalledWith("hello", undefined, 50);
 
     rerender({ tag: "project" });
     await act(async () => {
-      vi.advanceTimersByTime(201);
+      vi.advanceTimersByTime(501);
     });
     expect(searchApi.searchNotes).toHaveBeenLastCalledWith("hello", "project", 50);
     expect(searchApi.searchNotes).toHaveBeenCalledTimes(2);
