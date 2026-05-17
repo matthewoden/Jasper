@@ -750,3 +750,68 @@ func TestMoveFile_PathTraversal(t *testing.T) {
 		}
 	}
 }
+
+// TestMoveFile_RaceRepeatIdempotent — Plan 07-41 (UAT-6 N2 close-out).
+//
+// User repro 2026-05-16: drag a file out of attachments, immediately drag it
+// back; arborist dispatches a SECOND POST /files/move whose src.path was
+// snapshot'd from a moment when the file had moved on disk but the second
+// dispatch's Lstat(src) misses the in-flight refresh window — the first move
+// already physically completed on disk, so the second move's src is gone +
+// dst exists. The OLD behavior was 404 (confusing). The NEW behavior treats
+// the repeat as idempotent: when basename(src)==basename(dst) AND dst exists
+// with that basename, the move is already done — return 200.
+func TestMoveFile_RaceRepeatIdempotent(t *testing.T) {
+	t.Parallel()
+	srv, dataDir := newAttachmentTestServer(t, nil)
+
+	// Create only dst — src is "missing" because (in the real race) the
+	// first dispatch already moved the file from src to dst.
+	dstAbs := filepath.Join(dataDir, "notes", "dst.png")
+	if err := os.WriteFile(dstAbs, []byte("dst-bytes"), 0o644); err != nil {
+		t.Fatalf("write dst: %v", err)
+	}
+
+	resp := callMoveFile(t, srv, "src.png", "dst.png")
+	got200, ok := resp.(PostFileMove200JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostFileMove200JSONResponse (idempotent), got %T", resp)
+	}
+	if got200.Path != "dst.png" {
+		t.Errorf("path: got %q, want %q", got200.Path, "dst.png")
+	}
+	if got200.Name != "dst.png" {
+		t.Errorf("name: got %q, want %q", got200.Name, "dst.png")
+	}
+
+	// Idempotent — dst must be untouched.
+	if got, _ := os.ReadFile(dstAbs); string(got) != "dst-bytes" {
+		t.Errorf("dst mutated by idempotent path: %q", got)
+	}
+}
+
+// TestMoveFile_SrcMissingDifferentBasename — Plan 07-41.
+//
+// The idempotent path fires ONLY when basenames match. A user who renames
+// (basename changes) AND races into a stale dispatch should still see a real
+// 404 — the request "rename foo.png → bar.png" with foo missing and bar
+// pre-existing is NOT a coincidental noop, it's an actual mismatch.
+func TestMoveFile_SrcMissingDifferentBasename(t *testing.T) {
+	t.Parallel()
+	srv, dataDir := newAttachmentTestServer(t, nil)
+
+	// Create dst only; src ("foo.png") is missing AND basenames differ from
+	// dst ("dst.png") — must still 404.
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "dst.png"), []byte("dst"), 0o644); err != nil {
+		t.Fatalf("write dst: %v", err)
+	}
+
+	resp := callMoveFile(t, srv, "foo.png", "dst.png")
+	got404, ok := resp.(PostFileMove404JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostFileMove404JSONResponse, got %T", resp)
+	}
+	if got404.Code != "not_found" {
+		t.Errorf("code: got %q, want %q", got404.Code, "not_found")
+	}
+}
