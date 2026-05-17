@@ -394,27 +394,31 @@ func (s *Server) PostFileMove(
 	}
 
 	srcRes := s.resolveFileUnderNotes(req.Body.SrcPath)
-	if !srcRes.ok {
+
+	// 400 / 403 src-validation failures short-circuit immediately — they
+	// don't depend on dst at all (and the dst is potentially also garbage).
+	if !srcRes.ok && (srcRes.status == 400 || srcRes.status == 403) {
 		switch srcRes.status {
 		case 400:
 			return PostFileMove400JSONResponse(newError(srcRes.errCode, srcRes.errMsg)), nil
 		case 403:
 			return PostFileMove403JSONResponse(newError(srcRes.errCode, srcRes.errMsg)), nil
-		case 404:
-			return PostFileMove404JSONResponse(newError(srcRes.errCode, srcRes.errMsg)), nil
-		default:
-			return nil, errors.New("could not stat src file")
 		}
 	}
-	if srcRes.fi.IsDir() {
-		return PostFileMove400JSONResponse(newError("invalid_path",
-			"src is a directory (use POST /folders/move)")), nil
+	if !srcRes.ok && !srcRes.notFound && srcRes.status != 400 && srcRes.status != 403 {
+		// Some other I/O error from Lstat(src) — propagate as 500.
+		return nil, errors.New("could not stat src file")
 	}
 
 	// Dst: same 5-rule pipeline + .md refusal, BUT must NOT exist
 	// (overwrite-refusal). We can't reuse resolveFileUnderNotes verbatim
 	// because that requires existence — instead we run the validation half
 	// and then explicitly Lstat to confirm the dst is absent.
+	//
+	// NOTE: dst validation runs even when src is missing (404), because the
+	// Plan 07-41 idempotent path needs a validated dstAbs to perform the
+	// "is the file already at dst with matching basename?" check before
+	// returning 404.
 	dstRaw := req.Body.DstPath
 	if strings.Contains(dstRaw, "..") ||
 		strings.HasPrefix(dstRaw, "/") ||
@@ -436,6 +440,51 @@ func (s *Server) PostFileMove(
 	if !strings.HasPrefix(dstAbs, cleanRoot) {
 		return PostFileMove400JSONResponse(newError("invalid_path",
 			"dst escapes notes directory")), nil
+	}
+
+	// Plan 07-41 (UAT-6 N2 close-out) — src-missing race-repeat idempotent path.
+	//
+	// Race shape (user repro 2026-05-16): user drags file OUT of attachments,
+	// then immediately drags it BACK; arborist dispatches the second move
+	// using a snapshot of the post-first-move tree, but the second POST
+	// arrives at the server while the file is mid-second-move on disk —
+	// resulting in Lstat(src)=ENOENT + Lstat(dst)=OK with matching basename.
+	// The OLD behavior (Plan 07-38) was a 404; the NEW behavior treats this
+	// as the noop it actually is and returns 200.
+	//
+	// Boundary: idempotent ONLY when basenames match. A real rename
+	// against stale state (e.g. user moved foo.png and a stale dispatch
+	// asks to rename bar.png → foo.png with bar missing) is NOT a coincident
+	// noop — basenames differ, so we still 404.
+	//
+	// Real disappearance (src AND dst both missing): still 404.
+	if srcRes.notFound {
+		// Compute the source abs path the same way resolveFileUnderNotes
+		// would have, for the idempotent basename comparison + the 404 log.
+		srcAbsForCmp := filepath.Clean(filepath.Join(notesRoot, filepath.Clean(req.Body.SrcPath)))
+		dstFi, dstErr := os.Lstat(dstAbs)
+		if dstErr == nil && !dstFi.IsDir() &&
+			filepath.Base(srcAbsForCmp) == filepath.Base(dstAbs) {
+			s.log.Info("PostFileMove: idempotent repeat dispatch (src missing, dst exists with same basename)",
+				"src", srcAbsForCmp, "dst", dstAbs)
+			finalName := filepath.Base(dstAbs)
+			finalPath := filepath.ToSlash(dstClean)
+			return PostFileMove200JSONResponse{
+				Path: finalPath,
+				Name: finalName,
+			}, nil
+		}
+		s.log.Warn("PostFileMove: src not found",
+			"src", srcAbsForCmp, "dst", dstAbs, "dstLstatErr", dstErr)
+		return PostFileMove404JSONResponse(newError(srcRes.errCode, srcRes.errMsg)), nil
+	}
+
+	// At this point srcRes.ok must be true — early-return paths above
+	// covered every !ok case. The directory-check is unreachable when src
+	// resolution failed, so it lives here.
+	if srcRes.fi.IsDir() {
+		return PostFileMove400JSONResponse(newError("invalid_path",
+			"src is a directory (use POST /folders/move)")), nil
 	}
 
 	// Overwrite refusal (T-38-04): pre-Lstat dst; refuse if it exists.
