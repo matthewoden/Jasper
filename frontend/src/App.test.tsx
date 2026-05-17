@@ -1128,14 +1128,13 @@ describe("Plan 07-17 — commandActions rewire (UAT #3, #5)", () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────
-// Plan 07-39 (UAT-5 N11) — Cmd+Shift+F focuses the Sidebar SearchInputBar.
+// Plan 07-40 (UAT-6) — Cmd+Shift+F opens CommandMenu mode='search'.
 //
-// Behavior: handleAppCmdShiftF is a window-level capture-phase handler.
-// On Mod+Shift+F it preventDefault + dispatches a CustomEvent
-// 'jasper:focus-search' that SearchInputBar listens for and uses to call
-// inputRef.current?.focus().
+// REVERSES Plan 07-39: the listener no longer dispatches a CustomEvent for
+// SearchInputBar. Instead it sets paletteMode='search' + paletteOpen=true,
+// matching the existing Cmd+P (commands) / Cmd+O (notes) pattern.
 // ──────────────────────────────────────────────────────────────────────────
-describe("Plan 07-39 — handleAppCmdShiftF (UAT-5 N11 Cmd+Shift+F focus search)", () => {
+describe("Plan 07-40 — handleAppCmdShiftF (UAT-6 Cmd+Shift+F opens search modal)", () => {
   function makeEvent(
     key: string,
     opts: { meta?: boolean; ctrl?: boolean; shift?: boolean } = {},
@@ -1152,57 +1151,54 @@ describe("Plan 07-39 — handleAppCmdShiftF (UAT-5 N11 Cmd+Shift+F focus search)
     } as unknown as KeyboardEvent & { _preventDefaultCalls: number };
   }
 
-  it("APP-N11-CMDSHIFTF-1: handleAppCmdShiftF dispatches jasper:focus-search on Mod+Shift+F", () => {
+  beforeEach(() => {
+    useTreeStore.setState({
+      paletteOpen: false,
+      paletteMode: "notes",
+    });
+  });
+
+  it("APP-CMDSHIFTF-OPEN-1: handleAppCmdShiftF sets paletteMode='search' + paletteOpen=true on Mod+Shift+F", () => {
+    const e = makeEvent("f", { meta: true, shift: true });
+    handleAppCmdShiftF(e);
+    expect(e._preventDefaultCalls).toBe(1);
+    expect(useTreeStore.getState().paletteMode).toBe("search");
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
+  });
+
+  it("APP-CMDSHIFTF-OPEN-2: handleAppCmdShiftF is a no-op without Shift", () => {
+    const e = makeEvent("f", { meta: true });
+    handleAppCmdShiftF(e);
+    expect(e._preventDefaultCalls).toBe(0);
+    // Store unchanged from beforeEach defaults.
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+    expect(useTreeStore.getState().paletteOpen).toBe(false);
+  });
+
+  it("APP-CMDSHIFTF-OPEN-3: handleAppCmdShiftF is a no-op without meta/ctrl", () => {
+    const e = makeEvent("f", { shift: true });
+    handleAppCmdShiftF(e);
+    expect(e._preventDefaultCalls).toBe(0);
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+    expect(useTreeStore.getState().paletteOpen).toBe(false);
+  });
+
+  it("APP-CMDSHIFTF-OPEN-4: handleAppCmdShiftF accepts uppercase F", () => {
+    const e = makeEvent("F", { meta: true, shift: true });
+    handleAppCmdShiftF(e);
+    expect(e._preventDefaultCalls).toBe(1);
+    expect(useTreeStore.getState().paletteMode).toBe("search");
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
+  });
+
+  it("APP-CMDSHIFTF-OPEN-5: handleAppCmdShiftF does NOT dispatch jasper:focus-search (legacy bus removed)", () => {
     let received = false;
     const listener = () => { received = true; };
     window.addEventListener("jasper:focus-search", listener);
     try {
       const e = makeEvent("f", { meta: true, shift: true });
       handleAppCmdShiftF(e);
-      expect(e._preventDefaultCalls).toBe(1);
-      expect(received).toBe(true);
-    } finally {
-      window.removeEventListener("jasper:focus-search", listener);
-    }
-  });
-
-  it("APP-N11-CMDSHIFTF-2: handleAppCmdShiftF is a no-op without Shift", () => {
-    let received = false;
-    const listener = () => { received = true; };
-    window.addEventListener("jasper:focus-search", listener);
-    try {
-      const e = makeEvent("f", { meta: true });
-      handleAppCmdShiftF(e);
-      expect(e._preventDefaultCalls).toBe(0);
       expect(received).toBe(false);
-    } finally {
-      window.removeEventListener("jasper:focus-search", listener);
-    }
-  });
-
-  it("APP-N11-CMDSHIFTF-3: handleAppCmdShiftF is a no-op without meta/ctrl", () => {
-    let received = false;
-    const listener = () => { received = true; };
-    window.addEventListener("jasper:focus-search", listener);
-    try {
-      const e = makeEvent("f", { shift: true });
-      handleAppCmdShiftF(e);
-      expect(e._preventDefaultCalls).toBe(0);
-      expect(received).toBe(false);
-    } finally {
-      window.removeEventListener("jasper:focus-search", listener);
-    }
-  });
-
-  it("APP-N11-CMDSHIFTF-4: handleAppCmdShiftF accepts uppercase F", () => {
-    let received = false;
-    const listener = () => { received = true; };
-    window.addEventListener("jasper:focus-search", listener);
-    try {
-      const e = makeEvent("F", { meta: true, shift: true });
-      handleAppCmdShiftF(e);
-      expect(e._preventDefaultCalls).toBe(1);
-      expect(received).toBe(true);
     } finally {
       window.removeEventListener("jasper:focus-search", listener);
     }

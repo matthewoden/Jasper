@@ -1202,6 +1202,20 @@ describe("Phase 7 ADD-only slices", () => {
     expect(useTreeStore.getState().paletteMode).toBe("notes");
   });
 
+  // Plan 07-40 (UAT-6) — PaletteMode union gains "search" as a third value.
+  // Cmd+Shift+F is wired (in App.tsx) to set paletteMode='search' + open.
+  it("UTS-PALETTE-SEARCH-1: setPaletteMode accepts 'search' as a third value", () => {
+    useTreeStore.getState().setPaletteMode("search");
+    expect(useTreeStore.getState().paletteMode).toBe("search");
+  });
+
+  it("UTS-PALETTE-SEARCH-2: setPaletteMode('search') + setPaletteOpen(true) opens the modal in search mode", () => {
+    useTreeStore.getState().setPaletteMode("search");
+    useTreeStore.getState().setPaletteOpen(true);
+    expect(useTreeStore.getState().paletteMode).toBe("search");
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
+  });
+
   it("recordOpenedNote pushes new id to front", () => {
     const { recordOpenedNote } = useTreeStore.getState();
     recordOpenedNote("a");

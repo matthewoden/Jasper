@@ -520,3 +520,105 @@ describe("CMM-N11-SPLIT — switcher is title-fuzzy only (Plan 07-39 / UAT-5 N11
     expect(document.querySelector('[data-row-kind="search-result"]')).toBeNull();
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// CMM-SEARCH-MODE — Plan 07-40 (UAT-6) — CommandMenu mode='search'
+//
+// Search now lives in CommandMenu as a third mode (alongside 'notes' and
+// 'commands'). Invoked by Cmd+Shift+F (App.tsx). Renders an FTS5 input,
+// empty-state when <2 chars, and SearchResultRow rows for each useSearch hit.
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("CMM-SEARCH-MODE — Plan 07-40 (UAT-6) — CommandMenu mode='search'", () => {
+  const defaultSearchProps = {
+    open: true,
+    onOpenChange: vi.fn(),
+    mode: "search" as const,
+    actions: {},
+  };
+
+  const FTS5_HIT = {
+    id: "n-search-1",
+    title: "Hello World",
+    path: "notes/hello.md",
+    excerpt_html: "this is a <mark>hello</mark> excerpt",
+    matching_tags: [],
+    rank: 1,
+    modified_at: "2026-05-16T00:00:00Z",
+  };
+
+  it("CMM-SEARCH-MODE-1: mode='search' renders input with 'Search notes…' placeholder", () => {
+    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
+    render(<CommandMenu {...defaultSearchProps} />);
+    expect(screen.getByPlaceholderText("Search notes…")).toBeTruthy();
+  });
+
+  it("CMM-SEARCH-MODE-2: typing < 2 chars renders an empty-state hint", () => {
+    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
+    render(<CommandMenu {...defaultSearchProps} />);
+    const input = screen.getByRole("textbox");
+    // 1 character — below the search threshold
+    fireEvent.change(input, { target: { value: "a" } });
+    expect(
+      screen.getByText(/Type at least 2 characters/),
+    ).toBeTruthy();
+  });
+
+  it("CMM-SEARCH-MODE-3: typing >= 2 chars triggers useSearch and renders SearchResultRow rows", () => {
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+    render(<CommandMenu {...defaultSearchProps} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "he" } });
+    // SearchResultRow renders title text "Hello World".
+    expect(screen.getByText("Hello World")).toBeTruthy();
+    // useSearch must have been called (it is the data source for mode='search').
+    expect(mockUseSearch).toHaveBeenCalled();
+  });
+
+  it("CMM-SEARCH-MODE-4: SearchResultRow shows the snippet excerpt with <mark>", () => {
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+    render(<CommandMenu {...defaultSearchProps} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "he" } });
+    // The <mark> survives sanitization (Plan 07 ADD_TAGS: ["mark"]).
+    const mark = document.querySelector("mark");
+    expect(mark).not.toBeNull();
+    expect(mark?.textContent).toBe("hello");
+  });
+
+  it("CMM-SEARCH-MODE-5: selecting a result calls setActiveNote(result.id) + closes the modal", () => {
+    const onOpenChange = vi.fn();
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+    render(<CommandMenu {...defaultSearchProps} onOpenChange={onOpenChange} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "he" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(mockSetActiveNote).toHaveBeenCalledWith(FTS5_HIT.id);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("CMM-SEARCH-MODE-6: mode='search' does NOT render the commands list nor the title-fuzzy switcher", () => {
+    // Seed both fuzzysort + command palette with hits to prove they're ignored.
+    mockUseQuickSwitcher.mockReturnValue([
+      { id: "fuzzy-1", title: "Fuzzy Hit", path: "fuzz.md" },
+    ]);
+    const cmds = [
+      { id: "new-note", label: "New note", group: "File", inPalette: true, inCheatSheet: true },
+    ];
+    const mockFiltered = vi.fn().mockReturnValue(cmds);
+    mockUseCommandPalette.mockReturnValue({
+      filtered: mockFiltered,
+      execute: vi.fn().mockReturnValue(true),
+    });
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+
+    render(<CommandMenu {...defaultSearchProps} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "he" } });
+
+    // Search results visible.
+    expect(screen.getByText("Hello World")).toBeTruthy();
+    // Fuzzy title hit must NOT be rendered.
+    expect(screen.queryByText("Fuzzy Hit")).toBeNull();
+    // Commands list must NOT be rendered.
+    expect(screen.queryByText("New note")).toBeNull();
+  });
+});
