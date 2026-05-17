@@ -480,12 +480,20 @@ describe("CMM-N11-SPLIT — switcher is title-fuzzy only (Plan 07-39 / UAT-5 N11
     expect(screen.queryByText("Search results")).toBeNull();
   });
 
-  it("CMM-N11-SPLIT-2: useSearch is NOT consumed in notes mode (call count is 0)", () => {
+  it("CMM-N11-SPLIT-2: notes mode does NOT feed query into useSearch (always called with '')", () => {
+    // Plan 07-40 (UAT-6): useSearch is now hosted inside CommandMenu so the
+    // hook is called every render, but mode='notes' passes the empty string
+    // so the hook stays dormant (no debounce, no fetch). The original spirit
+    // — "notes mode never triggers FTS5 fetches" — is preserved by gating
+    // on the empty query, not by skipping the hook entirely.
     mockUseQuickSwitcher.mockReturnValue([TITLE_HIT]);
     render(<CommandMenu {...defaultNoteProps} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
-    // useSearch must never be called — it lives at the Sidebar surface now.
-    expect(mockUseSearch).not.toHaveBeenCalled();
+    // Every call passes the empty string as the query — useSearch never sees
+    // the user's actual notes-mode query.
+    for (const call of mockUseSearch.mock.calls) {
+      expect(call[0]).toBe("");
+    }
   });
 
   it("CMM-N11-SPLIT-3: a body-only match (no title fuzzy hit) shows nothing in switcher", () => {

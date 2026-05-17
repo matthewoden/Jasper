@@ -228,13 +228,16 @@ export function handleAppCmdSlash(e: KeyboardEvent): void {
 }
 
 /**
- * Plan 07-39 (UAT-5 N11) — Cmd+Shift+F focuses the Sidebar SearchInputBar.
+ * Plan 07-40 (UAT-6) — Cmd+Shift+F opens CommandMenu mode='search'.
  *
- * Window event listeners can't call hooks directly, so we dispatch a
- * CustomEvent on window that the SearchInputBar component subscribes to
- * in a useEffect (mirrors the phase7 dispatch pattern at the top of this
- * file). preventDefault keeps the browser/OS default for Cmd+Shift+F
- * (Fullscreen in some browsers) from firing.
+ * REVERSES Plan 07-39's focus-bus dispatch. Search now lives in its own
+ * palette mode (third surface alongside Cmd+O switcher and Cmd+P palette)
+ * rather than as a Sidebar input. This matches handleAppCmdP / handleAppCmdO
+ * pattern: set paletteMode + paletteOpen, the modal renders the matching
+ * mode='search' content.
+ *
+ * preventDefault keeps the browser/OS default for Cmd+Shift+F (Fullscreen in
+ * some browsers) from firing.
  */
 export function handleAppCmdShiftF(e: KeyboardEvent): void {
   if (!(e.metaKey || e.ctrlKey)) return;
@@ -242,7 +245,9 @@ export function handleAppCmdShiftF(e: KeyboardEvent): void {
   if (e.key !== "f" && e.key !== "F") return;
   e.preventDefault();
   e.stopPropagation();
-  window.dispatchEvent(new CustomEvent("jasper:focus-search"));
+  const s = useTreeStore.getState();
+  s.setPaletteMode("search");
+  s.setPaletteOpen(true);
 }
 
 /**
@@ -417,7 +422,8 @@ function AppInner() {
     // UAT #8/#9 fix: block browser/extension defaults for Cmd+B / Cmd+I.
     window.addEventListener("keydown", handleAppCmdB, true);
     window.addEventListener("keydown", handleAppCmdI, true);
-    // Plan 07-39 (UAT-5 N11): Cmd+Shift+F focuses Sidebar search.
+    // Plan 07-40 (UAT-6): Cmd+Shift+F opens CommandMenu mode='search'.
+    // (Reverses Plan 07-39's focus-bus dispatch.)
     window.addEventListener("keydown", handleAppCmdShiftF, true);
     return () => {
       window.removeEventListener("keydown", handleAppCmdP, true);

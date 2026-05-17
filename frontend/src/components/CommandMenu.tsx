@@ -1,18 +1,19 @@
 /**
- * CommandMenu — shared modal shell for both the quick-switcher (mode="notes")
- * and command palette (mode="commands"). UI-SPEC §Surface 1.
+ * CommandMenu — shared modal shell for three distinct palette modes:
+ *   - mode="notes"    (Cmd+O) — quick switcher, title-fuzzy only
+ *   - mode="commands" (Cmd+P) — command palette
+ *   - mode="search"   (Cmd+Shift+F) — FTS5 body search + snippet excerpts (Plan 07-40)
  *
  * Uses @radix-ui/react-dialog (NOT AlertDialog — this is non-destructive per
- * UI-SPEC §Surface 1 note). Wire-up to global keymap happens in Plan 07-12
- * (App.tsx + KeyboardShortcutsDialog).
+ * UI-SPEC §Surface 1 note). Wire-up to global keymap lives in App.tsx
+ * (handleAppCmdP / handleAppCmdO / handleAppCmdShiftF).
+ *
+ * Plan 07-40 (UAT-6) — three-mode architecture supersedes Plan 07-39's
+ * Sidebar-search wiring (D-58 in 07-CONTEXT.md). Search lives in this
+ * modal as a third mode; the Sidebar no longer hosts any search UI.
  *
  * Plan 07-39 (UAT-5 N11) REVERTED Plan 07-33's title-fuzzy + FTS5 merge.
- * CommandMenu is now title-fuzzy ONLY in notes mode. FTS5 search lives at
- * the Sidebar surface (SearchInputBar + SearchResultsList), not here. The
- * user wants two distinct mental models / surfaces:
- *   - Cmd+O (this component, notes mode): lightweight title-only switcher.
- *   - Sidebar Search: FTS5 body search with snippet excerpts (the original
- *     Plan 07-08 design, resurrected after Plan 07-18 orphaned its UI).
+ * CommandMenu is title-fuzzy ONLY in notes mode (no commingled FTS5 hits).
  *
  * Group eyebrows in commands mode: deferred v1 (see comment below).
  * Implementation uses inline styles throughout — no hex literals; all colors
@@ -24,9 +25,12 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, Command } from "lucide-react";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette, type CommandActions } from "../lib/useCommandPalette";
+import { useSearch } from "../lib/useSearch";
 import { useTreeStore } from "../lib/useTreeStore";
 import { KeyboardChip } from "./KeyboardChip";
+import { SearchResultRow } from "./SearchResultRow";
 import type { Shortcut } from "../lib/shortcutsRegistry";
+import type { SearchResult } from "../lib/searchApi";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Types
@@ -47,8 +51,16 @@ interface CmdItem {
   group: string;
 }
 
-// Plan 07-39 (UAT-5 N11): SearchHitItem REMOVED. The switcher no longer
-// renders FTS5 hits — those live on the Sidebar (SearchResultsList).
+// Plan 07-39 (UAT-5 N11): SearchHitItem REMOVED from the switcher's items.
+// Plan 07-40 (UAT-6): SearchHitItem RE-ADDED as the row type used by
+// mode='search' (CommandMenu's new third mode). The row itself reuses
+// SearchResultRow from SearchResultRow.tsx (Plan 07-39 Task 2 legibility
+// carries forward automatically).
+interface SearchHitItem {
+  kind: "search-result";
+  id: string;
+  result: SearchResult;
+}
 
 // Plan 07-33 holdover: group eyebrow separator. Plan 07-39 keeps the type
 // because commands mode may still want it in a future iteration, but in
@@ -59,12 +71,13 @@ interface GroupItem {
   label: string;
 }
 
-type Item = NoteItem | CmdItem | GroupItem;
+type Item = NoteItem | CmdItem | SearchHitItem | GroupItem;
 
 export interface CommandMenuProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  mode: "notes" | "commands";
+  // Plan 07-40 (UAT-6): "search" is the third mode (Cmd+Shift+F).
+  mode: "notes" | "commands" | "search";
   actions: CommandActions;
 }
 
@@ -96,9 +109,18 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const cmd = useCommandPalette(actions);
   const cmdHits: Shortcut[] = mode === "commands" ? cmd.filtered(query) : [];
 
-  // Plan 07-39 (UAT-5 N11): notes mode is title-fuzzy ONLY. No FTS5 backend
-  // call, no Search results section, no group eyebrows in notes mode. FTS5
-  // search lives at the Sidebar surface (SearchInputBar + SearchResultsList).
+  // Plan 07-40 (UAT-6): search mode wraps useSearch (FTS5 + snippet excerpts).
+  // useSearch is internally debounced 200ms + only fires above the 2-char
+  // threshold; pass empty string when not in search mode so the hook is
+  // effectively dormant in notes/commands modes.
+  const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
+  const { results: searchHits } = useSearch(
+    mode === "search" ? query : "",
+    mode === "search" ? activeTagFilter : null,
+  );
+
+  // Plan 07-39 (UAT-5 N11): notes mode is title-fuzzy ONLY. Plan 07-40 adds
+  // mode='search' which renders FTS5 SearchResultRow rows from useSearch.
   let items: Item[];
   if (mode === "commands") {
     items = cmdHits.map((c) => ({
@@ -107,6 +129,13 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       label: c.label,
       shortcut: c.shortcut,
       group: c.group,
+    }));
+  } else if (mode === "search") {
+    // mode === "search": single-section FTS5 results. Rows are SearchResultRow.
+    items = searchHits.map((r) => ({
+      kind: "search-result" as const,
+      id: r.id,
+      result: r,
     }));
   } else {
     // mode === "notes": single-section title-fuzzy list. No eyebrows.
@@ -151,12 +180,13 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     count: items.length,
     getScrollElement: () => parentRef.current,
     // Plan 07-39 (UAT-5 N11): two possible row heights — group eyebrow (24px,
-    // commands mode only) and standard note/cmd row (36px). FTS5 search-result
-    // row removed (FTS5 lives at the Sidebar surface).
+    // commands mode only) and standard note/cmd row (36px). Plan 07-40 adds
+    // SearchResultRow (~88px: title + path + 2-line excerpt + optional chips).
     estimateSize: (index) => {
       const it = items[index];
       if (!it) return 36;
       if (it.kind === "group") return 24;
+      if (it.kind === "search-result") return 88;
       return 36; // note and cmd rows
     },
     overscan: 5,
@@ -175,13 +205,22 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const recordOpenedNote = useTreeStore((s) => s.recordOpenedNote);
 
   // Plan 07-39 (UAT-5 N11): activate handles "note" + "cmd" + defensive
-  // "group" no-op. The "search-result" branch was removed when FTS5 left
-  // the switcher.
+  // "group" no-op. Plan 07-40 (UAT-6) re-adds the "search-result" branch
+  // for mode='search' — selecting a search hit opens the note (same as
+  // a notes-mode selection).
   const activate = (i: number) => {
     const item = items[i];
     if (!item) return;
     if (item.kind === "group") return; // defensive: groups are not activatable
     if (item.kind === "note") {
+      setActiveNote(item.id);
+      recordOpenedNote(item.id);
+      onOpenChange(false);
+      return;
+    }
+    if (item.kind === "search-result") {
+      // Mirror the notes-mode selection contract: set active note, record
+      // recency, close modal.
       setActiveNote(item.id);
       recordOpenedNote(item.id);
       onOpenChange(false);
@@ -212,12 +251,30 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     }
   };
 
-  // UI metadata per mode
-  const Icon = mode === "notes" ? Search : Command;
-  const placeholder = mode === "notes" ? "Switch to note…" : "Type a command…";
-  const ariaLabel = mode === "notes" ? "Quick switcher" : "Command palette";
+  // UI metadata per mode. Plan 07-40 (UAT-6) — search mode gets its own
+  // placeholder + aria label; the Search icon is shared with notes mode.
+  const Icon = mode === "commands" ? Command : Search;
+  let placeholder: string;
+  if (mode === "commands") {
+    placeholder = "Type a command…";
+  } else if (mode === "search") {
+    placeholder = "Search notes…";
+  } else {
+    placeholder = "Switch to note…";
+  }
+  let ariaLabel: string;
+  if (mode === "commands") {
+    ariaLabel = "Command palette";
+  } else if (mode === "search") {
+    ariaLabel = "Search notes";
+  } else {
+    ariaLabel = "Quick switcher";
+  }
 
-  // Determine empty state copy (notes only; commands shows full list when empty query)
+  // Determine empty state copy.
+  // Notes:    empty/short query → "Start typing…"; ≥2 chars no hits → "No notes match…"
+  // Commands: only shows empty state when a query is set and yields no hits.
+  // Search:   <2 chars → "Type at least 2 characters…"; ≥2 chars no hits → "No notes match…"
   const showEmpty = items.length === 0;
   let emptyText: string | null = null;
   if (showEmpty) {
@@ -229,6 +286,10 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       emptyText = "Start typing to switch notes";
     } else if (mode === "commands" && query !== "") {
       emptyText = `No commands match "${query}"`;
+    } else if (mode === "search" && query.length < 2) {
+      emptyText = "Type at least 2 characters to search note bodies.";
+    } else if (mode === "search") {
+      emptyText = `No notes match "${query}"`;
     }
     // commands mode + empty query → full list is shown; no empty state needed
   }
@@ -354,8 +415,37 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                     );
                   }
 
-                  // Plan 07-39 (UAT-5 N11): search-result branch REMOVED.
-                  // FTS5 hits live at the Sidebar surface (SearchResultsList).
+                  // Plan 07-40 (UAT-6): search-result branch RE-ADDED for
+                  // mode='search'. Wraps SearchResultRow (Plan 07-39 Task 2
+                  // legibility recipe) inside a virtualized positioned div.
+                  // We do NOT pipe through the standard rowStyle below because
+                  // SearchResultRow owns its own padding + active-row styling.
+                  if (item.kind === "search-result") {
+                    return (
+                      <div
+                        key={item.id}
+                        data-row-kind="search-result"
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${vi.start}px)`,
+                          height: vi.size,
+                          // Light selection hint while keyboard-navigating;
+                          // SearchResultRow's own hover/active styling layers
+                          // on top via its inline rowBg.
+                          background: selected
+                            ? "color-mix(in srgb, var(--color-accent) 6%, transparent)"
+                            : "transparent",
+                        }}
+                        onMouseEnter={() => setSelectedIdx(vi.index)}
+                        onClick={() => activate(vi.index)}
+                      >
+                        <SearchResultRow result={item.result} />
+                      </div>
+                    );
+                  }
 
                   const rowStyle: React.CSSProperties = {
                     position: "absolute",

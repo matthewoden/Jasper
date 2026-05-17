@@ -237,8 +237,11 @@ export interface TreeStore {
   setSearchActive: (v: boolean) => void;
   paletteOpen: boolean;
   setPaletteOpen: (v: boolean) => void;
-  paletteMode: "notes" | "commands";
-  setPaletteMode: (m: "notes" | "commands") => void;
+  // Plan 07-40 (UAT-6): added "search" as a third PaletteMode value alongside
+  // "notes" (Cmd+O switcher) and "commands" (Cmd+P palette). Cmd+Shift+F now
+  // opens CommandMenu with mode='search' (see App.tsx handleAppCmdShiftF).
+  paletteMode: "notes" | "commands" | "search";
+  setPaletteMode: (m: "notes" | "commands" | "search") => void;
   recentlyOpenedNoteIds: string[];
   recordOpenedNote: (id: string) => void;
   dailyNoteLoading: boolean;
