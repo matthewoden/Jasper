@@ -3069,3 +3069,78 @@ test.describe("Phase 7 — Internal file drag via useTreeMutations.moveFile (S33
     void moveBody;
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S34 — Plan 07-40 (UAT-6): Cmd+Shift+F opens CommandMenu mode='search';
+// typing a query renders SearchResultRow rows with <mark> highlighting;
+// pressing Enter selects the first result and closes the modal.
+//
+// REVERSES Plan 07-39's Cmd+Shift+F → focus-Sidebar-input flow. Search now
+// lives in its own palette mode alongside Cmd+O (notes) and Cmd+P (commands).
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 7 — Cmd+Shift+F opens search modal (S34 / UAT-6 / Plan 07-40)", () => {
+  let jasper: JasperHandle;
+  test.beforeAll(async () => { jasper = await spawnJasper(); });
+  test.afterAll(async () => { if (jasper) await jasper.kill(); });
+
+  test("S34: Cmd+Shift+F opens the search modal; typing a query renders FTS5 results; Enter activates the first hit", async ({ page }) => {
+    // Seed a note whose body contains an obvious search target. The title is
+    // intentionally NOT a substring of the body query so the result only comes
+    // out of the FTS5 body index (proving we're not falling back to title-fuzzy).
+    const noteId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "starship-log.md",
+      "",
+      "The narwhal performed an acrobatic loop across the bay window.",
+    );
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // Reindex so the body is in the FTS5 table.
+    const reindexResp = await page.request.post(
+      `${jasper.baseURL}/api/v1/admin/reindex`,
+      { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
+    );
+    expect([200, 202]).toContain(reindexResp.status());
+    await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
+
+    // Press Cmd+Shift+F → CommandMenu mode='search' should open.
+    await page.keyboard.press("Meta+Shift+f");
+
+    // Modal opens with aria-label "Search notes" (Plan 07-40 — distinct from
+    // "Quick switcher" / "Command palette" labels for the other modes).
+    await page.getByRole("dialog", { name: "Search notes" }).waitFor({ state: "visible", timeout: 5_000 });
+
+    // Placeholder copy is "Search notes…" (NOT "Switch to note…" / "Type a command…").
+    await expect(page.getByPlaceholder("Search notes…")).toBeVisible();
+
+    // <2 chars → empty-state hint visible.
+    await expect(
+      page.getByText(/Type at least 2 characters to search note bodies\./),
+    ).toBeVisible();
+
+    // Type a body-only query. "narwhal" only appears in the body, not the title.
+    await page.keyboard.type("narwhal");
+
+    // SearchResultRow renders the title row + a <mark>-wrapped excerpt match.
+    await expect(page.getByText("starship-log")).toBeVisible({ timeout: 5_000 });
+    const mark = page.locator('[data-row-kind="search-result"] mark').first();
+    await expect(mark).toBeVisible();
+    await expect(mark).toHaveText(/narwhal/i);
+
+    // Press Enter → modal closes + the seeded note becomes active.
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("dialog", { name: "Search notes" }),
+    ).toBeHidden();
+
+    // EditorPane mounts the textarea for the now-active note.
+    await expect(page.getByLabel("Note content")).toBeVisible({ timeout: 5_000 });
+
+    // Sanity: noteId variable is the same note we seeded.
+    void noteId;
+  });
+});
