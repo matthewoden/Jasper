@@ -182,6 +182,12 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     // Plan 07-39 (UAT-5 N11): two possible row heights — group eyebrow (24px,
     // commands mode only) and standard note/cmd row (36px). Plan 07-40 adds
     // SearchResultRow (~88px: title + path + 2-line excerpt + optional chips).
+    //
+    // Plan 07-42 (UAT-7): search-result rows actually vary 80-130px+ depending
+    // on excerpt rendering (dangerouslySetInnerHTML reflows post-mount) and on
+    // matching tag chips. The 88px estimate is now ONLY the initial guess;
+    // `measureElement` below makes the virtualizer re-measure each rendered
+    // row to its true offsetHeight, so tall rows no longer clip into the next.
     estimateSize: (index) => {
       const it = items[index];
       if (!it) return 36;
@@ -190,6 +196,14 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       return 36; // note and cmd rows
     },
     overscan: 5,
+    // Plan 07-42 (UAT-7) — dynamic row measurement.
+    // @tanstack/react-virtual passes each row's outer DOM element here; we
+    // return its measured height so the virtualizer recalculates layout.
+    // The companion `ref={virtualizer.measureElement}` + `data-index` on each
+    // search-result row's outer container is what wires the DOM node back
+    // to its virtual-row index for re-measure on content changes (e.g. when
+    // the sanitized excerpt HTML settles).
+    measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });
 
   // Scroll selected item into view
@@ -420,10 +434,22 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                   // legibility recipe) inside a virtualized positioned div.
                   // We do NOT pipe through the standard rowStyle below because
                   // SearchResultRow owns its own padding + active-row styling.
+                  //
+                  // Plan 07-42 (UAT-7): the outer container now attaches
+                  // `ref={virtualizer.measureElement}` + `data-index={vi.index}`
+                  // so @tanstack/react-virtual can measure each row's true
+                  // rendered height (varies 80-130px+ depending on excerpt +
+                  // matching tag chips). The fixed `height: vi.size` is
+                  // intentionally OMITTED — the row sizes to its content and
+                  // the virtualizer reads back the actual height. The
+                  // `transform: translateY(vi.start)` still places the row at
+                  // the correct virtual-scroll offset.
                   if (item.kind === "search-result") {
                     return (
                       <div
                         key={item.id}
+                        ref={virtualizer.measureElement}
+                        data-index={vi.index}
                         data-row-kind="search-result"
                         style={{
                           position: "absolute",
@@ -431,7 +457,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                           left: 0,
                           width: "100%",
                           transform: `translateY(${vi.start}px)`,
-                          height: vi.size,
                           // Light selection hint while keyboard-navigating;
                           // SearchResultRow's own hover/active styling layers
                           // on top via its inline rowBg.
