@@ -111,17 +111,23 @@ export function SidebarToolbar({
       >
         <CalendarDays size={16} aria-hidden="true" />
       </button>
-      {/* Phase 7 Plan 07-28 (UAT-2 R1-5): Search button — opens Cmd+O palette
-          in notes mode. Reuses the existing setPaletteOpen + setPaletteMode
-          path from App.tsx handleAppCmdO handler (no new store slice). */}
+      {/* Phase 7 Plan 07-42 (UAT-7): Search button — opens the search modal
+          (Plan 07-40's mode='search'), NOT the switcher (mode='notes'). The
+          switcher remains reachable via ⌘O on the keyboard; this icon's
+          purpose is note-body FTS5 search, hence the ⌘⇧F hint.
+
+          Supersedes Plan 07-28 (UAT-2 R1-5) wiring, which conflated the
+          icon with the quick switcher. UAT-7 (2026-05-17) flagged that the
+          icon's visual affordance (magnifying glass) implies body search,
+          not title switching. */}
       <button
         type="button"
-        title="Search notes (⌘O)"
+        title="Search notes (⌘⇧F)"
         aria-label="Search notes"
         onClick={() => {
           const store = useTreeStore.getState();
+          store.setPaletteMode("search");
           store.setPaletteOpen(true);
-          store.setPaletteMode("notes");
         }}
         style={buttonBase}
       >
