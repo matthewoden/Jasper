@@ -603,3 +603,83 @@ func TestUpsert_NFC_Equivalence(t *testing.T) {
 		t.Fatalf("err: got %v, want ErrCaseCollision", err)
 	}
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Plan 07-43 (UAT-8): FTS5 prefix-match query rewriter
+//
+// prefixWrap auto-appends '*' to bare-text tokens so FTS5 MATCH returns
+// prefix matches for incremental typing ("te" → "te*" matches "test"). When
+// the user has typed FTS5 syntax (quoted phrases, AND/OR/NOT/NEAR, parens,
+// colons), the query passes through unchanged so we don't second-guess
+// intentional FTS5 queries.
+//
+// Threat invariant (T-7-08): prefixWrap rewrites the STRING value bound
+// positionally to ?1 — it does NOT construct SQL. The positional bind in
+// SearchFTS is preserved. No SQL string-concatenation is introduced.
+// ──────────────────────────────────────────────────────────────────────────────
+
+// TestPrefixWrap covers SFT-PREFIX-1..5: the pure string-to-string rewriter.
+func TestPrefixWrap(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		// SFT-PREFIX-1
+		{"single bare token gets *", "te", "te*"},
+		// SFT-PREFIX-2
+		{"two bare tokens each get *", "test driven", "test* driven*"},
+		// SFT-PREFIX-3
+		{"quoted phrase passes through", `"exact phrase"`, `"exact phrase"`},
+		// SFT-PREFIX-4
+		{"AND operator passes through", "foo AND bar", "foo AND bar"},
+		// SFT-PREFIX-5
+		{"empty stays empty", "", ""},
+		// Additional safety coverage
+		{"OR operator passes through", "foo OR bar", "foo OR bar"},
+		{"NOT operator passes through", "foo NOT bar", "foo NOT bar"},
+		{"NEAR operator passes through", "foo NEAR bar", "foo NEAR bar"},
+		{"parens pass through", "(foo bar)", "(foo bar)"},
+		{"colon passes through (column filter syntax)", "title:foo", "title:foo"},
+		{"already-prefixed token not double-starred", "te*", "te*"},
+		{"mixed prefixed + bare tokens normalized", "te* bar", "te* bar*"},
+		{"surrounding whitespace trimmed", "  hello  ", "hello*"},
+		{"internal multiple spaces collapsed to single", "foo   bar", "foo* bar*"},
+		// Lowercase 'and' is NOT an FTS5 operator — must be rewritten.
+		{"lowercase and is not an operator", "and then", "and* then*"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := prefixWrap(tc.in)
+			if got != tc.want {
+				t.Fatalf("prefixWrap(%q) = %q; want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSearchFTS_PrefixMatch — integration: seed a note containing "testing",
+// query "te"; assert ≥1 hit. Before the prefix-wrap helper, this returned 0
+// hits because the default unicode61 tokenizer wants whole-word matches.
+func TestSearchFTS_PrefixMatch(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	id := uuid.New()
+	r := rec1(id)
+	r.BodyFTS = "this note contains the word testing"
+	if err := idx.Upsert(context.Background(), r); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	hits, err := idx.SearchFTS(context.Background(), "te", "", 50)
+	if err != nil {
+		t.Fatalf("SearchFTS: %v", err)
+	}
+	if len(hits) < 1 {
+		t.Fatalf("SearchFTS(\"te\"): got %d hits, want >= 1 (prefix match against 'testing')", len(hits))
+	}
+}

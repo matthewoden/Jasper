@@ -335,6 +335,15 @@ func (x *Indexer) SearchTitles(ctx context.Context, q string, limit int) ([]note
 	return out, nil
 }
 
+// prefixWrap is the RED-phase stub for Plan 07-43 (UAT-8). The GREEN-phase
+// implementation will rewrite bare-text user queries to append '*' to each
+// token so FTS5 MATCH returns prefix matches ("te" → "te*" matches "test").
+// Returning q unchanged here is intentional — it makes TestPrefixWrap and
+// TestSearchFTS_PrefixMatch fail at runtime (RED) without breaking compile.
+func prefixWrap(q string) string {
+	return q
+}
+
 // SearchFTS runs an FTS5 MATCH query against the notes_fts virtual table with
 // an optional AND-combined tag filter. Results are ordered by the bm25 +
 // recency blend described in RESEARCH.md §bm25() × Recency SQL (D-03/D-46).
