@@ -717,6 +717,129 @@ describe("CMM-UAT7-MEASURE — virtualizer measures search-result rows (UAT-7)",
 //      existing "No notes match …" state
 // ──────────────────────────────────────────────────────────────────────────────
 
+// ──────────────────────────────────────────────────────────────────────────────
+// CMM-UAT8FU — Plan 07-44 (UAT-8 follow-up) — measureElement gated on
+// search-result rows ONLY.
+//
+// Plan 07-42 (UAT-7) wired `ref={virtualizer.measureElement}` to fix the
+// search-result row clip. But the ref was applied to EVERY rendered row
+// branch (note / cmd / group / search-result), and the virtualizer caches
+// measurements by index. Consequence:
+//   1. Cmd+P (commands) + Cmd+O (notes) rows render at their actual DOM
+//      height (~50px) instead of the 36px estimate.
+//   2. After opening search mode with tall results, switching to notes /
+//      commands mode keeps the cached search-result heights at the same
+//      indices in the new mode.
+//
+// Fix:
+//   - Apply `ref={virtualizer.measureElement}` ONLY to the search-result
+//     row branch. note / cmd / group rows render with explicit
+//     `height: vi.size` from the estimate and never get measured.
+//   - On mode change, call `virtualizer.measure()` to flush the cache so
+//     stale search-result heights don't leak into the next mode.
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("CMM-UAT8FU — measureElement gated on search-result rows only (Plan 07-44)", () => {
+  const NOTE_HIT = { id: "n-fu-1", title: "Plain Note", path: "plain.md" };
+  const CMD_ITEM = {
+    id: "new-note",
+    label: "New note",
+    group: "File",
+    shortcut: "⌘N",
+    inPalette: true,
+    inCheatSheet: true,
+  };
+  const FTS5_HIT = {
+    id: "n-fu-search-1",
+    title: "Search Hit",
+    path: "search.md",
+    excerpt_html: "an excerpt with <mark>match</mark>",
+    matching_tags: [],
+    rank: 1,
+    modified_at: "2026-05-17T00:00:00Z",
+  };
+
+  it("CMM-UAT8FU-1: in mode='commands', cmd rows do NOT have data-index (no measureElement attached)", () => {
+    const mockFiltered = vi.fn().mockReturnValue([CMD_ITEM]);
+    mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: vi.fn() });
+
+    render(<CommandMenu {...defaultCmdProps} />);
+
+    // The cmd row must be visible…
+    expect(screen.getByText("New note")).toBeTruthy();
+
+    // …but its outer container must NOT carry data-index (that attribute is
+    // the wire-up signal for measureElement). The search-result branch is
+    // the ONLY branch that carries it.
+    const cmdRow = document.querySelector('[data-row-kind="cmd"]') as HTMLElement | null;
+    expect(cmdRow).not.toBeNull();
+    expect(cmdRow?.hasAttribute("data-index")).toBe(false);
+  });
+
+  it("CMM-UAT8FU-2: in mode='notes', note rows do NOT have data-index (no measureElement attached)", () => {
+    mockUseQuickSwitcher.mockReturnValue([NOTE_HIT]);
+
+    render(<CommandMenu {...defaultNoteProps} />);
+
+    expect(screen.getByText("Plain Note")).toBeTruthy();
+
+    const noteRow = document.querySelector('[data-row-kind="note"]') as HTMLElement | null;
+    expect(noteRow).not.toBeNull();
+    expect(noteRow?.hasAttribute("data-index")).toBe(false);
+  });
+
+  it("CMM-UAT8FU-3: in mode='search', search-result rows DO have data-index (measureElement preserved from Plan 07-42)", () => {
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+
+    render(<CommandMenu open={true} onOpenChange={vi.fn()} mode="search" actions={{}} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "ma" } });
+
+    const row = document.querySelector('[data-row-kind="search-result"]') as HTMLElement | null;
+    expect(row).not.toBeNull();
+    // Plan 07-42's fix is preserved for the search mode.
+    expect(row?.getAttribute("data-index")).toBe("0");
+  });
+
+  it("CMM-UAT8FU-4: switching mode from 'search' to 'notes' calls virtualizer.measure() to flush cached row heights", () => {
+    // Spy on the virtualizer instance returned by the mock. We capture the
+    // most-recent returned object so we can assert .measure() was invoked
+    // on the mode flip.
+    const measureSpy = vi.fn();
+    mockUseVirtualizer.mockImplementation(({ count }: { count: number }) => ({
+      getVirtualItems: () =>
+        Array.from({ length: count }, (_, i) => ({
+          index: i,
+          start: i * 36,
+          size: 36,
+          key: i,
+        })),
+      getTotalSize: () => count * 36,
+      scrollToIndex: vi.fn(),
+      measureElement: vi.fn(),
+      measure: measureSpy,
+    }));
+
+    // Mount in search mode with a result.
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+    mockUseQuickSwitcher.mockReturnValue([NOTE_HIT]);
+
+    const { rerender } = render(
+      <CommandMenu open={true} onOpenChange={vi.fn()} mode="search" actions={{}} />,
+    );
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "ma" } });
+
+    measureSpy.mockClear(); // ignore mount-phase calls; only count the mode flip.
+
+    // Flip to notes mode.
+    rerender(
+      <CommandMenu open={true} onOpenChange={vi.fn()} mode="notes" actions={{}} />,
+    );
+
+    // The mode-change cache reset must have invoked .measure() at least once.
+    expect(measureSpy).toHaveBeenCalled();
+  });
+});
+
 describe("CMM-UAT8 — activity indicator + empty-state copy (Plan 07-43, UAT-8)", () => {
   const defaultSearchProps = {
     open: true,
