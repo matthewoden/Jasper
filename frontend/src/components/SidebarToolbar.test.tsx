@@ -283,27 +283,35 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(buttons[3].getAttribute("aria-label")).toBe("Search notes");
   });
 
-  // ── Phase 7 Plan 07-28 (UAT-2 R1-5): Search icon button ──────────────
-  describe("ST-search — Search icon button (UAT-2 R1-5)", () => {
+  // ── Phase 7 Plan 07-28 (UAT-2 R1-5) + Plan 07-42 (UAT-7) ──────────────
+  // Plan 07-42 re-wires the Search icon from mode='notes' (switcher) to
+  // mode='search' (Plan 07-40 FTS5 search modal) and updates the title
+  // hint from (⌘O) to (⌘⇧F). The switcher remains reachable via ⌘O on the
+  // keyboard; only the icon's onClick changes.
+  describe("ST-search — Search icon button (UAT-2 R1-5 + UAT-7)", () => {
     it("ST-S-1: renders a Search button with aria-label 'Search notes'", () => {
       render(<SidebarToolbar onNewNote={vi.fn()} onNewFolder={vi.fn()} />);
       const btn = screen.getByLabelText("Search notes");
       expect(btn).toBeInTheDocument();
     });
 
-    it("ST-S-2: clicking Search opens palette in notes mode", () => {
+    // SBT-UAT7-1 (was ST-S-2): clicking the Search icon must open the
+    // search MODAL (mode='search'), NOT the quick switcher (mode='notes').
+    it("SBT-UAT7-1: clicking Search opens palette in search mode (NOT notes)", () => {
       useTreeStore.setState({ paletteOpen: false, paletteMode: "commands" });
       render(<SidebarToolbar onNewNote={vi.fn()} onNewFolder={vi.fn()} />);
       fireEvent.click(screen.getByLabelText("Search notes"));
       const state = useTreeStore.getState();
       expect(state.paletteOpen).toBe(true);
-      expect(state.paletteMode).toBe("notes");
+      expect(state.paletteMode).toBe("search");
     });
 
-    it("ST-S-3: Search button has title tooltip 'Search notes (⌘O)'", () => {
+    // SBT-UAT7-2 (was ST-S-3): title hint now reflects the Cmd+Shift+F
+    // search keybinding, not the Cmd+O switcher keybinding.
+    it("SBT-UAT7-2: Search button has title tooltip 'Search notes (⌘⇧F)'", () => {
       render(<SidebarToolbar onNewNote={vi.fn()} onNewFolder={vi.fn()} />);
       const btn = screen.getByLabelText("Search notes");
-      expect(btn.getAttribute("title")).toBe("Search notes (⌘O)");
+      expect(btn.getAttribute("title")).toBe("Search notes (⌘⇧F)");
     });
   });
 });
