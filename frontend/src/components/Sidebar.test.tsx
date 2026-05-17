@@ -602,11 +602,13 @@ describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.
 });
 
 // ──────────────────────────────────────────────────────────────────────────
-// SBR-N11-SPLIT — Plan 07-39 (UAT-5 N11): Sidebar mounts SearchInputBar
-// (always) + conditional SearchResultsList; runs the useSearch driver effect
-// that mirrors hook results → store searchResults slice.
+// SBR-UAT6-UNMOUNT — Plan 07-40 (UAT-6) REVERSES Plan 07-39 Task 1's sidebar
+// search wiring. Search now lives in a CommandMenu mode='search' modal
+// invoked by Cmd+Shift+F (see Plan 07-40 Task 2). Sidebar.tsx no longer
+// mounts SearchInputBar or SearchResultsList, and the useSearch driver
+// effects are gone. FileTree is the unconditional sidebar surface.
 // ──────────────────────────────────────────────────────────────────────────
-describe("<Sidebar /> — Plan 07-39 Sidebar Search UI (UAT-5 N11)", () => {
+describe("<Sidebar /> — Plan 07-40 reversal of Sidebar Search UI (UAT-6)", () => {
   beforeEach(() => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
@@ -624,17 +626,40 @@ describe("<Sidebar /> — Plan 07-39 Sidebar Search UI (UAT-5 N11)", () => {
     mockedUseSearch.mockReturnValue({ results: [], isSearching: false });
   });
 
-  it("SBR-N11-SPLIT-1: SearchInputBar is mounted unconditionally inside the sidebar", () => {
+  it("SBR-UAT6-UNMOUNT-1: SearchInputBar is NOT mounted in the sidebar (any tree state)", () => {
+    // Empty tree
     renderWithProvider(<Sidebar />);
-    // SearchInputBar renders an input with placeholder "Search notes…"
-    expect(screen.getByPlaceholderText("Search notes…")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search notes…")).toBeNull();
   });
 
-  it("SBR-N11-SPLIT-2: when searchActive=false, FileTree renders + SearchResultsList does NOT", () => {
-    useTreeStore.setState({ searchActive: false, searchQuery: "" });
-    // Populate the tree so FileTree mounts the [role='tree'] arborist surface
-    // (the empty-tree branch returns <TreeEmptyState/>, which is correct but
-    // not what this contract test wants to probe).
+  it("SBR-UAT6-UNMOUNT-1b: SearchInputBar is NOT mounted even when searchActive=true", () => {
+    useTreeStore.setState({
+      searchActive: true,
+      searchQuery: "hello",
+      searchResults: [],
+    });
+    renderWithProvider(<Sidebar />);
+    expect(screen.queryByPlaceholderText("Search notes…")).toBeNull();
+  });
+
+  it("SBR-UAT6-UNMOUNT-2: SearchResultsList is NOT rendered regardless of searchActive", () => {
+    useTreeStore.setState({
+      searchActive: true,
+      searchQuery: "hello",
+      searchResults: [],
+    });
+    renderWithProvider(<Sidebar />);
+    // SearchResultsList's empty-state copy MUST NOT appear in the sidebar.
+    expect(screen.queryByText('No matches for "hello"')).toBeNull();
+  });
+
+  it("SBR-UAT6-UNMOUNT-3: FileTree is always rendered (no conditional on searchActive)", () => {
+    useTreeStore.setState({
+      searchActive: true,
+      searchQuery: "hello",
+      searchResults: [],
+    });
+    // Populate the tree so the FileTree mounts the [role='tree'] arborist surface.
     mockedUseFileTree.mockReturnValue({
       tree: {
         root: [
@@ -653,27 +678,15 @@ describe("<Sidebar /> — Plan 07-39 Sidebar Search UI (UAT-5 N11)", () => {
       mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
-    // FileTree mounts a [role='tree'] container; SearchResultsList does not.
+    // FileTree's [role='tree'] container MUST be present even with
+    // searchActive=true (Plan 07-40 removed the conditional swap).
     expect(document.querySelector('[role="tree"]')).not.toBeNull();
-    // SearchResultsList renders inside the tree-area container only when
-    // searchActive=true — its empty-state copy must NOT be present here.
-    expect(screen.queryByText(/No matches for/)).toBeNull();
   });
 
-  it("SBR-N11-SPLIT-3: when searchActive=true, SearchResultsList renders + FileTree does NOT", () => {
-    useTreeStore.setState({
-      searchActive: true,
-      searchQuery: "hello",
-      searchResults: [],
-    });
-    renderWithProvider(<Sidebar />);
-    // FileTree must NOT be in the DOM when search is active.
-    expect(document.querySelector('[role="tree"]')).toBeNull();
-    // Empty-state copy from SearchResultsList renders when query >= 2 + 0 results.
-    expect(screen.getByText('No matches for "hello"')).toBeInTheDocument();
-  });
-
-  it("SBR-N11-SPLIT-4: useSearch driver effect mirrors results → store.searchResults", async () => {
+  it("SBR-UAT6-UNMOUNT-4: useSearch driver effects do NOT run (no store writes from Sidebar)", async () => {
+    // useSearch returning hits would, under the Plan 07-39 wiring, flow
+    // into store.searchResults + flip searchActive. Plan 07-40 removed those
+    // effects — the store should stay at its initial values after render.
     const HIT = {
       id: "abc",
       title: "Hello",
@@ -683,16 +696,17 @@ describe("<Sidebar /> — Plan 07-39 Sidebar Search UI (UAT-5 N11)", () => {
       rank: 1,
       modified_at: "2026-05-16T00:00:00Z",
     };
-    // Pre-seed the driver: the Sidebar reads searchQuery from store; useSearch
-    // mock returns the hits regardless. The driver effect should write to store.
     mockedUseSearch.mockReturnValue({ results: [HIT], isSearching: false });
-    useTreeStore.setState({ searchQuery: "he", searchActive: false, searchResults: [] });
+    useTreeStore.setState({
+      searchQuery: "he",
+      searchActive: false,
+      searchResults: [],
+    });
 
     renderWithProvider(<Sidebar />);
-    await waitFor(() => {
-      expect(useTreeStore.getState().searchResults).toEqual([HIT]);
-      // query.length >= 2 must flip searchActive on.
-      expect(useTreeStore.getState().searchActive).toBe(true);
-    });
+    // Give any leftover effects a tick to flush — none should run.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(useTreeStore.getState().searchResults).toEqual([]);
+    expect(useTreeStore.getState().searchActive).toBe(false);
   });
 });
