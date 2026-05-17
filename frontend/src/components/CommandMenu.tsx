@@ -154,9 +154,10 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const cmdHits: Shortcut[] = mode === "commands" ? cmd.filtered(query) : [];
 
   // Plan 07-40 (UAT-6): search mode wraps useSearch (FTS5 + snippet excerpts).
-  // Plan 07-43 (UAT-8): debounce is 500ms (was 200) and we surface isSearching
-  // as an inline activity indicator below — so the perceived responsiveness
-  // does not regress despite the longer wait.
+  // Plan 07-43 (UAT-8): isSearching surfaces an inline activity indicator
+  // below so users see in-window feedback. Plan 07-44 (UAT-8 follow-up):
+  // debounce reverted to 200ms (was briefly 500ms in Plan 07-43) — the
+  // activity indicator made the longer debounce unnecessary.
   // useSearch only fires above the 2-char threshold; pass empty string when
   // not in search mode so the hook is effectively dormant in notes/commands.
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);

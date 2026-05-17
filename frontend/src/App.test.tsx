@@ -100,6 +100,13 @@ vi.mock("./lib/useTreeCreateActions", () => ({
 // Plan 07-17 — mock @tanstack/react-virtual so CommandMenu's virtualized list
 // renders all items in jsdom (which has no layout, so estimateSize→0 items
 // without the mock). This is the same override used in CommandMenu.test.tsx.
+//
+// Plan 07-42 (UAT-7): expose measureElement so CommandMenu's search-result
+// branch can attach `ref={virtualizer.measureElement}` without crashing.
+//
+// Plan 07-44 (UAT-8 follow-up): expose measure() so CommandMenu's mode-change
+// cache-reset useEffect doesn't throw "measure is not a function" when the
+// real App mounts the menu under test.
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: vi.fn().mockImplementation(({ count }: { count: number }) => ({
     getVirtualItems: () =>
@@ -111,6 +118,8 @@ vi.mock("@tanstack/react-virtual", () => ({
       })),
     getTotalSize: () => count * 36,
     scrollToIndex: vi.fn(),
+    measureElement: vi.fn(),
+    measure: vi.fn(),
   })),
 }));
 
