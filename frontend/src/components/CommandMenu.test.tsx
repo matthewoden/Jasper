@@ -914,3 +914,134 @@ describe("CMM-UAT8 — activity indicator + empty-state copy (Plan 07-43, UAT-8)
     expect(screen.queryByText("Type to search notes")).toBeNull();
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// CMM-UAT8FU2 — Plan 07-45 (UAT-8 follow-up 2) — input-row activity indicator
+// + result-area stale-state preservation.
+//
+// Rationale (from user verbal feedback during UAT-8): the result-area
+// ActivityIndicator Plan 07-43 added BLANKS the previous result list on every
+// keystroke while a fetch is in flight, because `isSearching` flips true →
+// false on the debounce + network round-trip. The user wants to see PRIOR
+// results stay on screen while they refine the query, with the activity hint
+// moved INSIDE the search input (right edge) — the Obsidian / VSCode / Linear
+// pattern.
+//
+// Behavior matrix Plan 07-45 ships:
+//   - mode='search' + isSearching=true              → spinner in input row
+//   - mode='search' + isSearching=false             → no spinner in input row
+//   - mode='commands' + isSearching=true (defensive)→ no spinner in input row
+//                                                     (commands mode doesn't
+//                                                     run useSearch, but we
+//                                                     defensively gate on
+//                                                     mode === 'search')
+//   - mode='search' + isSearching + results.length>0→ result list STAYS
+//                                                     rendered (stale state
+//                                                     preserved)
+//   - mode='search' + isSearching + results.length=0→ result-area
+//                                                     ActivityIndicator
+//                                                     (first-search fallback)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("CMM-UAT8FU2 — input-row activity indicator + stale-state preservation (Plan 07-45)", () => {
+  const defaultSearchProps = {
+    open: true,
+    onOpenChange: vi.fn(),
+    mode: "search" as const,
+    actions: {},
+  };
+
+  const FTS5_HIT = {
+    id: "n-uat8fu2-1",
+    title: "Stale Hit",
+    path: "notes/stale.md",
+    excerpt_html: "this is a <mark>stale</mark> excerpt",
+    matching_tags: [],
+    rank: 1,
+    modified_at: "2026-05-17T00:00:00Z",
+  };
+
+  it("CMM-UAT8FU2-1: mode='search' + isSearching=true renders a Loader2 spinner with aria-label 'Searching' inside the input row", () => {
+    mockUseSearch.mockReturnValue({ results: [], isSearching: true });
+    render(<CommandMenu {...defaultSearchProps} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "te" } });
+
+    // The input row is the parent flex container of the textbox. The spinner
+    // must live as a sibling of the input inside that same row, so we walk up
+    // to the input's parent and look for the aria-labeled spinner.
+    const inputRow = input.parentElement;
+    expect(inputRow).not.toBeNull();
+    const spinner = inputRow?.querySelector('[aria-label="Searching"]');
+    expect(spinner).not.toBeNull();
+    expect(spinner?.tagName.toLowerCase()).toBe("svg");
+  });
+
+  it("CMM-UAT8FU2-2: mode='search' + isSearching=false renders NO spinner in the input row", () => {
+    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
+    render(<CommandMenu {...defaultSearchProps} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "te" } });
+
+    const inputRow = input.parentElement;
+    expect(inputRow).not.toBeNull();
+    const spinner = inputRow?.querySelector('[aria-label="Searching"]');
+    expect(spinner).toBeNull();
+  });
+
+  it("CMM-UAT8FU2-3: mode='commands' + isSearching=true (defensive) renders NO spinner in the input row", () => {
+    // Defensive: commands mode does not invoke useSearch, so isSearching is
+    // expected to be false there. We still assert the input-row spinner is
+    // gated on `mode === 'search'` so that a future refactor that wires
+    // useSearch into commands mode by accident won't surprise the user with
+    // a spinner where none belongs.
+    mockUseSearch.mockReturnValue({ results: [], isSearching: true });
+    mockUseCommandPalette.mockReturnValue({
+      filtered: vi.fn().mockReturnValue([]),
+      execute: vi.fn().mockReturnValue(true),
+    });
+
+    render(<CommandMenu {...defaultCmdProps} />);
+    const input = screen.getByRole("textbox");
+
+    const inputRow = input.parentElement;
+    expect(inputRow).not.toBeNull();
+    const spinner = inputRow?.querySelector('[aria-label="Searching"]');
+    expect(spinner).toBeNull();
+  });
+
+  it("CMM-UAT8FU2-4: mode='search' + isSearching=true + results.length>0 keeps the prior result list rendered (stale-state preserved; ActivityIndicator NOT shown)", () => {
+    // The whole point of Plan 07-45: refining a query should NOT blank the
+    // screen. If we already have results from the prior fetch, they stay
+    // visible while the new fetch is in flight; the input-row spinner is the
+    // only visual cue that a new batch is incoming.
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: true });
+    render(<CommandMenu {...defaultSearchProps} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "st" } });
+
+    // Prior results visible.
+    expect(screen.getByText("Stale Hit")).toBeTruthy();
+    // The result-area "Searching…" indicator must NOT have replaced the list
+    // (post-Plan-07-43 behavior; Plan 07-45 narrows it).
+    expect(screen.queryByText("Searching…")).toBeNull();
+    // The input-row spinner IS present (the new replacement cue).
+    const inputRow = input.parentElement;
+    const spinner = inputRow?.querySelector('[aria-label="Searching"]');
+    expect(spinner).not.toBeNull();
+  });
+
+  it("CMM-UAT8FU2-5: mode='search' + isSearching=true + results.length===0 (first-search fallback) renders the result-area ActivityIndicator", () => {
+    // First-time search: there's no prior result list to fall back on, so the
+    // result-area indicator from Plan 07-43 is still the right surface to
+    // show. Plan 07-45 only NARROWS that branch (isSearching && !results) —
+    // it does not remove it.
+    mockUseSearch.mockReturnValue({ results: [], isSearching: true });
+    render(<CommandMenu {...defaultSearchProps} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "zz" } });
+
+    // The result-area indicator ("Searching…" label) is present.
+    expect(screen.getByText("Searching…")).toBeTruthy();
+  });
+});
