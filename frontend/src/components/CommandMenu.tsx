@@ -386,7 +386,21 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
           Type to search notes
         </div>
       );
-    } else if (query.length < 2 || isSearching) {
+    } else if (query.length < 2) {
+      // Sub-MIN typing feedback (debounce hasn't fired yet). The result-area
+      // indicator is the right surface here because we have nothing to fall
+      // back on: results.length is 0 by definition (query < 2 → useSearch
+      // doesn't fire).
+      searchSurfaceContent = <ActivityIndicator />;
+    } else if (isSearching && items.length === 0) {
+      // Plan 07-45 (UAT-8 follow-up 2): NARROWED from `isSearching` to
+      // `isSearching && items.length === 0`. First-search fallback only —
+      // when we have no prior results to show, the result-area indicator is
+      // still the right surface (nothing to keep stale). When we DO have
+      // prior results, fall through to the virtualized list below so the
+      // user sees the stale-but-visible context while the new fetch
+      // completes. The input-row Loader2 (see below) is the visual cue
+      // that a refresh is in flight.
       searchSurfaceContent = <ActivityIndicator />;
     } else if (items.length === 0) {
       searchSurfaceContent = (
@@ -477,6 +491,40 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                 fontFamily: "inherit",
               }}
             />
+            {/* Plan 07-45 (UAT-8 follow-up 2): inline activity indicator on
+                the right edge of the input row. Gated on
+                mode === "search" && isSearching so that:
+                  - notes / commands modes never see it (defensive — those
+                    modes don't fire useSearch, so isSearching is false
+                    there anyway, but the explicit mode guard keeps a future
+                    refactor from leaking a spinner into the wrong surface);
+                  - when isSearching flips to false, the spinner unmounts
+                    reactively (no manual cleanup);
+                  - flexShrink: 0 + fixed 14px size keeps the input flex
+                    layout stable (no reflow on mount/unmount; T-45-02
+                    mitigation).
+                Reuses the same jasper-cmm-spin keyframe registered by
+                ActivityIndicator (the keyframe is global once any
+                ActivityIndicator instance has mounted; we also inline the
+                animation here directly so the spinner spins even when the
+                result-area indicator isn't on screen, e.g. the
+                stale-results-during-refine case). */}
+            {mode === "search" && isSearching && (
+              <>
+                <style>
+                  {`@keyframes jasper-cmm-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
+                </style>
+                <Loader2
+                  size={14}
+                  aria-label="Searching"
+                  style={{
+                    color: "var(--color-muted)",
+                    flexShrink: 0,
+                    animation: "jasper-cmm-spin 1s linear infinite",
+                  }}
+                />
+              </>
+            )}
           </div>
 
           {/* Result list — max-height 50vh, virtualized */}
