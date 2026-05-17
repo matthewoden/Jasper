@@ -571,15 +571,19 @@ describe("CMM-SEARCH-MODE — Plan 07-40 (UAT-6) — CommandMenu mode='search'",
     expect(screen.getByPlaceholderText("Search notes…")).toBeTruthy();
   });
 
-  it("CMM-SEARCH-MODE-2: typing < 2 chars renders an empty-state hint", () => {
+  // Plan 07-43 (UAT-8): "<2 chars" no longer shows the prescriptive
+  // "Type at least 2 characters" copy. Empty query gets a one-liner
+  // ("Type to search notes") and 1-char gets the activity indicator
+  // (typing in progress). See CMM-UAT8-1 / CMM-UAT8-2.
+  it("CMM-SEARCH-MODE-2: typing < 2 chars renders an indicator or empty hint (post UAT-8)", () => {
     mockUseSearch.mockReturnValue({ results: [], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} />);
     const input = screen.getByRole("textbox");
-    // 1 character — below the search threshold
     fireEvent.change(input, { target: { value: "a" } });
-    expect(
-      screen.getByText(/Type at least 2 characters/),
-    ).toBeTruthy();
+    // Old "at least 2 characters" copy is GONE.
+    expect(screen.queryByText(/at least 2 characters/i)).toBeNull();
+    // Activity indicator visible while sub-threshold (Plan 07-43 UAT-8).
+    expect(screen.getByText("Searching…")).toBeTruthy();
   });
 
   it("CMM-SEARCH-MODE-3: typing >= 2 chars triggers useSearch and renders SearchResultRow rows", () => {
@@ -697,5 +701,89 @@ describe("CMM-UAT7-MEASURE — virtualizer measures search-result rows (UAT-7)",
       ([opts]) => typeof opts?.measureElement === "function",
     );
     expect(anyCallHasMeasure).toBe(true);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// CMM-UAT8 — Plan 07-43 (UAT-8) — activity indicator + empty-state copy
+//
+// 4 small UX items closed in one bundle alongside backend FTS5 prefix-wrap
+// (Task 1) and 500ms debounce (Task 2):
+//   1. empty query (query === "") → "Type to search notes"  (replaces the
+//      "at least 2 characters" copy)
+//   2. 0 < query.length < 2 → activity indicator (typing in progress)
+//   3. query.length >= 2 AND isSearching → activity indicator (in flight)
+//   4. query.length >= 2 AND !isSearching AND results.length === 0 →
+//      existing "No notes match …" state
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("CMM-UAT8 — activity indicator + empty-state copy (Plan 07-43, UAT-8)", () => {
+  const defaultSearchProps = {
+    open: true,
+    onOpenChange: vi.fn(),
+    mode: "search" as const,
+    actions: {},
+  };
+
+  const FTS5_HIT = {
+    id: "n-uat8-1",
+    title: "Hello World",
+    path: "notes/hello.md",
+    excerpt_html: "this is a <mark>hello</mark> excerpt",
+    matching_tags: [],
+    rank: 1,
+    modified_at: "2026-05-17T00:00:00Z",
+  };
+
+  it("CMM-UAT8-1: empty query renders 'Type to search notes' (no 'at least 2 characters' copy anywhere)", () => {
+    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
+    render(<CommandMenu {...defaultSearchProps} />);
+    // Empty query on mount → the new one-liner.
+    expect(screen.getByText("Type to search notes")).toBeTruthy();
+    // The old prescriptive copy must be gone everywhere.
+    expect(screen.queryByText(/at least 2 characters/i)).toBeNull();
+  });
+
+  it("CMM-UAT8-2: 1-char query renders the activity indicator (Loader2 + 'Searching…')", () => {
+    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
+    render(<CommandMenu {...defaultSearchProps} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "t" } });
+    expect(screen.getByText("Searching…")).toBeTruthy();
+    // The Loader2 icon ships with class "lucide-loader-2" — sanity check
+    // that the icon is rendered (presence, not pixel position).
+    const indicator = screen.getByText("Searching…").closest("div");
+    expect(indicator?.querySelector("svg")).not.toBeNull();
+  });
+
+  it("CMM-UAT8-3: query >= 2 chars AND isSearching=true renders the activity indicator", () => {
+    mockUseSearch.mockReturnValue({ results: [], isSearching: true });
+    render(<CommandMenu {...defaultSearchProps} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "test" } });
+    expect(screen.getByText("Searching…")).toBeTruthy();
+    // Stale results case: even if a prior search left items, isSearching
+    // should win — but with [] we just confirm the indicator is present.
+    expect(screen.queryByText(/No notes match/i)).toBeNull();
+  });
+
+  it("CMM-UAT8-4: query >= 2 chars AND isSearching=false AND results=[] renders existing 'No notes match' state", () => {
+    mockUseSearch.mockReturnValue({ results: [], isSearching: false });
+    render(<CommandMenu {...defaultSearchProps} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "zz" } });
+    expect(screen.getByText(/No notes match "zz"/)).toBeTruthy();
+    expect(screen.queryByText("Searching…")).toBeNull();
+  });
+
+  it("CMM-UAT8-5: query >= 2 chars AND isSearching=false AND results.length>0 renders results (no indicator, no empty state)", () => {
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+    render(<CommandMenu {...defaultSearchProps} />);
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "he" } });
+    expect(screen.getByText("Hello World")).toBeTruthy();
+    expect(screen.queryByText("Searching…")).toBeNull();
+    expect(screen.queryByText(/No notes match/i)).toBeNull();
+    expect(screen.queryByText("Type to search notes")).toBeNull();
   });
 });
