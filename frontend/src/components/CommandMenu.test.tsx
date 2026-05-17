@@ -40,6 +40,11 @@ vi.mock("../lib/useSearch", () => ({
 
 // Mock @tanstack/react-virtual — in jsdom there's no measured height, so
 // the virtualizer returns 0 items. Replacing with a simple passthrough.
+//
+// Plan 07-42 (UAT-7): the mock now exposes `measureElement` so that
+// (a) the CommandMenu source can pass it as a ref, and (b) tests can
+// assert that the option was forwarded to useVirtualizer (CMM-UAT7-MEASURE-2).
+const mockMeasureElement = vi.fn();
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: vi.fn().mockImplementation(({ count }: { count: number }) => ({
     getVirtualItems: () =>
@@ -51,6 +56,9 @@ vi.mock("@tanstack/react-virtual", () => ({
       })),
     getTotalSize: () => count * 36,
     scrollToIndex: vi.fn(),
+    // Plan 07-42: expose the dynamic-measure ref so CommandMenu's
+    // search-result branch can attach `ref={virtualizer.measureElement}`.
+    measureElement: mockMeasureElement,
   })),
 }));
 
@@ -60,12 +68,14 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette } from "../lib/useCommandPalette";
 import { useSearch } from "../lib/useSearch";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 const mockUseFileTree = useFileTree as unknown as ReturnType<typeof vi.fn>;
 const mockUseTreeStore = useTreeStore as unknown as ReturnType<typeof vi.fn>;
 const mockUseQuickSwitcher = useQuickSwitcher as unknown as ReturnType<typeof vi.fn>;
 const mockUseCommandPalette = useCommandPalette as unknown as ReturnType<typeof vi.fn>;
 const mockUseSearch = useSearch as unknown as ReturnType<typeof vi.fn>;
+const mockUseVirtualizer = useVirtualizer as unknown as ReturnType<typeof vi.fn>;
 
 // Default mocks
 const mockSetActiveNote = vi.fn();
@@ -628,5 +638,64 @@ describe("CMM-SEARCH-MODE — Plan 07-40 (UAT-6) — CommandMenu mode='search'",
     expect(screen.queryByText("Fuzzy Hit")).toBeNull();
     // Commands list must NOT be rendered.
     expect(screen.queryByText("New note")).toBeNull();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// CMM-UAT7-MEASURE — Plan 07-42 (UAT-7) — virtualizer dynamic row measurement
+//
+// SearchResultRow heights vary 80-130px+ depending on excerpt + matching tag
+// chips. The fixed 88px estimate clipped tall rows into the next row. The fix
+// is to wire @tanstack/react-virtual's `measureElement` option AND attach
+// `ref={virtualizer.measureElement}` + `data-index={vi.index}` to each rendered
+// search-result row's outer container.
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("CMM-UAT7-MEASURE — virtualizer measures search-result rows (UAT-7)", () => {
+  const defaultSearchProps = {
+    open: true,
+    onOpenChange: vi.fn(),
+    mode: "search" as const,
+    actions: {},
+  };
+
+  const FTS5_HIT = {
+    id: "n-measure-1",
+    title: "Measured Note",
+    path: "notes/measured.md",
+    excerpt_html: "an excerpt with <mark>match</mark>",
+    matching_tags: ["tagA", "tagB"],
+    rank: 1,
+    modified_at: "2026-05-16T00:00:00Z",
+  };
+
+  it("CMM-UAT7-MEASURE-1: search-result row container has a ref AND a data-index attribute", () => {
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+    render(<CommandMenu {...defaultSearchProps} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "ma" } });
+
+    // The outer container for the search-result row must carry data-index
+    // so @tanstack/react-virtual can map DOM nodes back to virtual rows
+    // for re-measurement on content settles.
+    const row = document.querySelector('[data-row-kind="search-result"]') as HTMLElement | null;
+    expect(row).not.toBeNull();
+    expect(row?.getAttribute("data-index")).toBe("0");
+  });
+
+  it("CMM-UAT7-MEASURE-2: useVirtualizer is called with a measureElement option (function)", () => {
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+    render(<CommandMenu {...defaultSearchProps} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "ma" } });
+
+    // At least one call to useVirtualizer must include a `measureElement`
+    // function option. The fixed 88px estimateSize stays as the initial
+    // estimate; measureElement is what makes the virtualizer re-measure
+    // to the actual rendered height.
+    const calls = mockUseVirtualizer.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    const anyCallHasMeasure = calls.some(
+      ([opts]) => typeof opts?.measureElement === "function",
+    );
+    expect(anyCallHasMeasure).toBe(true);
   });
 });
