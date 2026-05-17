@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,6 +13,12 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
+
+// fts5OperatorKeywordRE matches the FTS5 boolean/proximity operators which
+// are case-sensitive uppercase in the FTS5 spec. If the user has typed any
+// of these as a word-boundary token, prefixWrap treats the input as a
+// syntax-aware query and passes it through unchanged.
+var fts5OperatorKeywordRE = regexp.MustCompile(`\b(AND|OR|NOT|NEAR)\b`)
 
 // Upsert inserts or updates a row in `notes`.
 //
@@ -335,13 +342,52 @@ func (x *Indexer) SearchTitles(ctx context.Context, q string, limit int) ([]note
 	return out, nil
 }
 
-// prefixWrap is the RED-phase stub for Plan 07-43 (UAT-8). The GREEN-phase
-// implementation will rewrite bare-text user queries to append '*' to each
-// token so FTS5 MATCH returns prefix matches ("te" → "te*" matches "test").
-// Returning q unchanged here is intentional — it makes TestPrefixWrap and
-// TestSearchFTS_PrefixMatch fail at runtime (RED) without breaking compile.
+// prefixWrap rewrites a bare-text user query so FTS5 MATCH returns prefix
+// matches for incremental typing ("te" → "te*" matches "test", "team",
+// "testing"). When the query already contains FTS5 syntax — quoted phrases,
+// AND/OR/NOT/NEAR operators (uppercase, case-sensitive per the FTS5 spec),
+// parentheses, or column-filter colons — the input is returned unchanged so
+// the user's intentional FTS5 query is not second-guessed.
+//
+// Plan 07-43 (UAT-8). Examples:
+//
+//	"te"              → "te*"
+//	"test driven"     → "test* driven*"
+//	`"exact phrase"`  → `"exact phrase"`   (quoted; pass through)
+//	"foo AND bar"     → "foo AND bar"      (operator; pass through)
+//	"(foo bar)"       → "(foo bar)"        (parens; pass through)
+//	"title:foo"       → "title:foo"        (column filter; pass through)
+//	"te*"             → "te*"              (already prefixed)
+//	""                → ""
+//
+// Threat-mitigation invariant (T-7-08): prefixWrap rewrites a STRING that is
+// bound positionally to ?1 in SearchFTS. It does NOT construct SQL. The
+// positional-bind invariant required by the threat model is unchanged.
 func prefixWrap(q string) string {
-	return q
+	trimmed := strings.TrimSpace(q)
+	if trimmed == "" {
+		return ""
+	}
+	// Conservative pass-through: any FTS5-syntax marker present → return
+	// original (including surrounding whitespace) so the user's intent is
+	// preserved byte-for-byte.
+	if strings.ContainsAny(trimmed, `"():`) {
+		return q
+	}
+	if fts5OperatorKeywordRE.MatchString(trimmed) {
+		return q
+	}
+	// Bare-text path: split on whitespace, append '*' to each token that
+	// does not already end in '*', rejoin with a single space. This also
+	// normalizes runs of whitespace — fine for FTS5 (whitespace is the
+	// token separator).
+	tokens := strings.Fields(trimmed)
+	for i, tok := range tokens {
+		if !strings.HasSuffix(tok, "*") {
+			tokens[i] = tok + "*"
+		}
+	}
+	return strings.Join(tokens, " ")
 }
 
 // SearchFTS runs an FTS5 MATCH query against the notes_fts virtual table with
@@ -399,7 +445,14 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 		tagBind = tag
 	}
 
-	rows, err := x.Pair.Reader.QueryContext(ctx, sqlText, q, tagBind, limit+1)
+	// Plan 07-43 (UAT-8): rewrite bare-text user queries to enable FTS5
+	// prefix matching ("te" → "te*" matches "test", "team", "testing").
+	// The rewrite is a pure string-to-string transform; the value is still
+	// bound positionally to ?1 — T-7-08 mitigation (positional bind, no
+	// SQL string-concat) is unchanged.
+	matchQuery := prefixWrap(q)
+
+	rows, err := x.Pair.Reader.QueryContext(ctx, sqlText, matchQuery, tagBind, limit+1)
 	if err != nil {
 		if strings.Contains(err.Error(), "fts5: syntax error") {
 			return nil, fmt.Errorf("%w: %v", notes.ErrFTSQuerySyntax, err)
