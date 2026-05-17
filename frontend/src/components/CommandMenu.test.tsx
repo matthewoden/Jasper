@@ -59,6 +59,10 @@ vi.mock("@tanstack/react-virtual", () => ({
     // Plan 07-42: expose the dynamic-measure ref so CommandMenu's
     // search-result branch can attach `ref={virtualizer.measureElement}`.
     measureElement: mockMeasureElement,
+    // Plan 07-44 (UAT-8 follow-up): expose `measure()` so CommandMenu's
+    // mode-change cache reset useEffect doesn't crash on every test. The
+    // CMM-UAT8FU-4 test overrides this mock with a per-test spy.
+    measure: vi.fn(),
   })),
 }));
 

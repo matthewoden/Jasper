@@ -245,10 +245,15 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     // Plan 07-42 (UAT-7) — dynamic row measurement.
     // @tanstack/react-virtual passes each row's outer DOM element here; we
     // return its measured height so the virtualizer recalculates layout.
-    // The companion `ref={virtualizer.measureElement}` + `data-index` on each
-    // search-result row's outer container is what wires the DOM node back
-    // to its virtual-row index for re-measure on content changes (e.g. when
-    // the sanitized excerpt HTML settles).
+    //
+    // Plan 07-44 (UAT-8 follow-up): measureElement is wired ONLY on the
+    // search-result row branch via `ref={virtualizer.measureElement}` +
+    // `data-index={vi.index}`. note / cmd / group rows do NOT attach the ref
+    // and so the virtualizer keeps using the estimateSize values (36 / 24)
+    // for those rows. This prevents non-search rows from being mismeasured
+    // when their actual rendered DOM height exceeds the 36px estimate, and
+    // it pairs with the mode-change `virtualizer.measure()` call below so
+    // that cached search-result heights don't leak across modes.
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });
 
@@ -259,6 +264,22 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIdx]);
+
+  // Plan 07-44 (UAT-8 follow-up) — reset cached row measurements on mode change.
+  //
+  // @tanstack/react-virtual caches per-index `measureElement` results. Plan
+  // 07-42 wired measurement for search-result rows (which vary 80-130px+).
+  // When the user opens search mode, sees results, then flips to commands
+  // (Cmd+P) or notes (Cmd+O) mode, the virtualizer would otherwise apply
+  // the cached search-result heights to whatever items now sit at the same
+  // indices — making non-search rows render at the wrong positions.
+  //
+  // `virtualizer.measure()` is @tanstack/react-virtual's canonical
+  // "forget all cached measurements" API. Mode changes are user-initiated
+  // and rare (a few per session), so the cost is negligible.
+  useEffect(() => {
+    virtualizer.measure();
+  }, [mode, virtualizer]);
 
   // Store actions
   const setActiveNote = useTreeStore((s) => s.setActiveNote);
@@ -564,13 +585,20 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                     );
                   }
 
+                  // Plan 07-44 (UAT-8 follow-up): non-search rows use
+                  // `height: vi.size` (the estimate function's return value)
+                  // rather than a hardcoded 36. The estimate function is the
+                  // single source of truth; note/cmd rows return 36 and group
+                  // rows return 24. measureElement is NOT attached on these
+                  // branches (only search-result), so vi.size stays at the
+                  // estimate for the lifetime of the row.
                   const rowStyle: React.CSSProperties = {
                     position: "absolute",
                     top: 0,
                     left: 0,
                     width: "100%",
                     transform: `translateY(${vi.start}px)`,
-                    height: 36,
+                    height: vi.size,
                     padding: "0 16px",
                     display: "flex",
                     alignItems: "center",
