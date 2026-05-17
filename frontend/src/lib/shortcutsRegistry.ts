@@ -8,6 +8,7 @@ export type ShortcutGroup =
   | "Editor"
   | "Navigation"
   | "Sidebar"
+  | "Palette"
   | "View"
   | "Index"
   | "Help";
@@ -108,11 +109,13 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: false,
     inCheatSheet: true,
   },
-  // Sidebar group (Plan 07-39 UAT-5 N11)
+  // Palette group (Plan 07-40 UAT-6) — Cmd+Shift+F now opens a search
+  // modal (CommandMenu mode='search'), not a Sidebar input. Label updated
+  // from "Focus search" to "Search notes" to reflect the modal semantics.
   {
     id: "focus-search",
-    label: "Focus search",
-    group: "Sidebar",
+    label: "Search notes",
+    group: "Palette",
     shortcut: `${mod}${shift}F`,
     inPalette: false,
     inCheatSheet: true,
@@ -155,11 +158,15 @@ export const COMMAND_PALETTE_ENTRIES = SHORTCUTS_REGISTRY.filter((s) => s.inPale
 export const CHEAT_SHEET_ENTRIES = SHORTCUTS_REGISTRY.filter((s) => s.inCheatSheet);
 
 /** Group order used by both palette + cheat-sheet (UI-SPEC §Group order). */
+// Plan 07-40 (UAT-6): "Palette" inserted after "Sidebar" to host the
+// Cmd+Shift+F search-modal entry (label "Search notes"). "Sidebar" stays
+// in the union/order in case a future v1 entry needs it; currently empty.
 export const GROUP_ORDER: ShortcutGroup[] = [
   "File",
   "Editor",
   "Navigation",
   "Sidebar",
+  "Palette",
   "View",
   "Index",
   "Help",

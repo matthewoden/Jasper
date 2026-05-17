@@ -36,13 +36,15 @@ describe("shortcutsRegistry", () => {
   });
 
   it("group order is locked", () => {
-    // Plan 07-39 (UAT-5 N11): added "Sidebar" group between Navigation and View
-    // to host the focus-search Cmd+Shift+F entry.
+    // Plan 07-39 (UAT-5 N11): added "Sidebar" group between Navigation and View.
+    // Plan 07-40 (UAT-6): added "Palette" group after "Sidebar" to host
+    // the focus-search Cmd+Shift+F entry now that search is a modal.
     expect(GROUP_ORDER).toEqual([
       "File",
       "Editor",
       "Navigation",
       "Sidebar",
+      "Palette",
       "View",
       "Index",
       "Help",
