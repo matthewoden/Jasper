@@ -34,6 +34,30 @@ import * as treeApi from "./treeApi";
 import * as filesApi from "./filesApi";
 import { broadcastRefresh } from "./useFileTree";
 
+// Plan 07-41 (UAT-6 N2 close-out): moveFile catches 404 and reconciles
+// against the post-refresh tree. If the file IS at the expected dst, the
+// 404 was a race-repeat (server already completed the move via an earlier
+// in-flight dispatch) and the toast is suppressed. If it is NOT, the 404
+// represents a real failure and the error propagates so the existing
+// surfaceError toast still fires.
+//
+// Walks the tree DFS; returns true on the first node whose .path equals
+// the target. Folders and notes both compare by .path (which is the
+// canonical NFC + lowercased path under notes/ per the API contract).
+function treeContainsPath(
+  nodes: readonly treeApi.TreeNode[] | undefined,
+  target: string,
+): boolean {
+  if (!nodes) return false;
+  for (const node of nodes) {
+    if (node.path === target) return true;
+    if (node.kind === "folder" && node.children) {
+      if (treeContainsPath(node.children, target)) return true;
+    }
+  }
+  return false;
+}
+
 export class TreeMutationError extends Error {
   code: string;
   status: number;
@@ -143,12 +167,53 @@ export function useTreeMutations(): UseTreeMutationsResult {
       src: string,
       dst: string,
     ): Promise<filesApi.MoveFileResult> => {
-      // filesApi.moveFile throws on non-2xx with .status + .body — let the
-      // error propagate to the caller (FileTree.handleMove → surfaceError).
-      // Mirror moveNote / moveFolder: refresh ONLY on the success path.
-      const data = await filesApi.moveFile(src, dst);
-      await broadcastRefresh();
-      return data;
+      // filesApi.moveFile throws on non-2xx with .status + .body. The
+      // normal pattern (mirror moveNote / moveFolder) is: refresh ONLY on
+      // the success path, propagate the error otherwise.
+      //
+      // Plan 07-41 (UAT-6 N2 close-out) adds a 404-specific reconcile:
+      // when a 404 fires, the move MAY have actually succeeded earlier in
+      // a race-repeat scenario (Plan 07-40 INVESTIGATION hypothesis #1,
+      // confirmed by user repro 2026-05-16). We broadcast a refresh and
+      // inspect the resulting tree — if the file is at the expected dst,
+      // the 404 was a noop and we swallow it. Otherwise, the existing
+      // surfaceError pathway (whichever caller wraps moveFile) gets the
+      // throw and the user sees the existing toast. In both branches we
+      // emit a console.error breadcrumb so the next occurrence in the
+      // wild leaves a client-side trail to pair with the server log.
+      try {
+        const data = await filesApi.moveFile(src, dst);
+        await broadcastRefresh();
+        return data;
+      } catch (err) {
+        const status =
+          err && typeof err === "object" && "status" in err
+            ? (err as { status?: number }).status
+            : undefined;
+        if (status === 404) {
+          // Always log so a real occurrence leaves a breadcrumb regardless
+          // of which branch (race-repeat vs real-failure) we end up in.
+          console.error("[moveFile] 404; refreshing + reconciling", {
+            src,
+            dst,
+            err,
+          });
+          await broadcastRefresh();
+          // Inspect the post-refresh tree directly. We can't rely on
+          // useFileTree state here (the wrapper hook isn't subscribed to
+          // it), so we hit getTree() which the coalescer single-flights
+          // with the broadcast above — so this typically resolves from
+          // the same in-flight promise rather than firing a second GET.
+          const { data: tree } = await treeApi.getTree();
+          if (tree && treeContainsPath(tree.root, dst)) {
+            // Race-repeat shape — the move physically completed earlier.
+            // Swallow the 404; the tree is already in the desired state
+            // and a toast would confuse the user about a successful op.
+            return { path: dst, name: dst.split("/").pop() ?? dst };
+          }
+        }
+        throw err;
+      }
     },
     [],
   );
