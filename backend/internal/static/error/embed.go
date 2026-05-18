@@ -5,7 +5,8 @@
 // These pages are the only Phase 2 UI that lives outside frontend/src/
 // — when the migration runner aborts, the React SPA cannot load (no
 // API to talk to), so the Go binary serves a self-contained HTML file
-// directly on `127.0.0.1:3000` instead of the SPA shell.
+// directly on the listen address (default `127.0.0.1:6683` per Phase 8
+// D-40) instead of the SPA shell.
 //
 // Files in this directory must match `*.html`. Templates use Go's
 // html/template syntax with struct-typed data passed in by the

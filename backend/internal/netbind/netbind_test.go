@@ -9,7 +9,7 @@ func TestRequireLoopbackBind_AcceptsLoopback(t *testing.T) {
 	cases := []string{
 		"127.0.0.1:6683",
 		"127.0.0.1:0",
-		"127.0.0.1:3001", // dev backend per .air.toml D-13
+		"127.0.0.1:3001", // arbitrary port accepted by the loopback gate (port-agnostic)
 		"localhost:6683",
 		"[::1]:6683",
 	}

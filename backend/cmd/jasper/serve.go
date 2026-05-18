@@ -18,13 +18,20 @@ import (
 )
 
 // defaultListenAddr is the production bind address — loopback only,
-// port 3000 (the canonical Jasper port). Dev mode (.air.toml) passes
-// --addr 127.0.0.1:3001 so the Vite proxy at :5173 can target :3001
-// per CONTEXT.md D-13. Both pass netbind.RequireLoopbackBind (Phase 8
+// port 6683 (T9 keypad spelling of "NOTE"). Phase 8 D-40 / D-41
+// migrated the default from :3000 to :6683 to stop colliding with
+// everyone-else's-dev-server.
+//
+// Dev pipeline (.air.toml + Vite proxy + Playwright) reads the same
+// canonical port from scripts/port.sh so dev/prod stay in parity —
+// scripts/port.sh returns server.port from ~/.jasper/storage/config.json
+// or this default 6683 when no config exists.
+//
+// All bind paths flow through netbind.RequireLoopbackBind (Phase 8
 // Plan 08-01 Task 3 moved the function out of this file into the
 // shared backend/internal/netbind/ package so the MCP listener can
 // reuse it without an import cycle).
-const defaultListenAddr = "127.0.0.1:3000"
+const defaultListenAddr = "127.0.0.1:6683"
 
 // envMigrationsOverride names the test-only environment variable that
 // swaps the embedded migrations.FS for an on-disk directory tree. When
@@ -62,8 +69,9 @@ const envMigrationsOverride = "JASPER_TEST_MIGRATIONS_DIR"
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the Jasper HTTP + WebSocket server",
-	Long: `Start the Jasper server. Binds to 127.0.0.1:3000 by default (override
-via --addr; dev mode passes 127.0.0.1:3001 so Vite can proxy to it).
+	Long: `Start the Jasper server. Binds to 127.0.0.1:6683 by default (override
+via --addr; dev mode reads the same port from scripts/port.sh so the
+Vite proxy at :5173 forwards /api → the running backend).
 Phase 8 enforces loopback binding via internal/netbind.
 
 The data directory holds three subdirectories:
@@ -79,7 +87,7 @@ Resolution order for --data-dir:
 Examples:
   $ jasper serve                              # default loopback bind, default data dir
   $ jasper serve --data-dir /path/to/notes
-  $ jasper serve --addr 127.0.0.1:3001        # dev mode (Vite proxy target)`,
+  $ jasper serve --addr 127.0.0.1:6700        # custom port (must match config.json server.port)`,
 	// DisableFlagParsing tells cobra to hand the raw args (after the
 	// "serve" token) to RunE without intercepting --addr / --data-dir.
 	// runServe's flag.FlagSet then parses them just like before.
@@ -100,7 +108,7 @@ func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	dataDirFlag := fs.String("data-dir", "", "Path to data directory (default: $JASPER_DATA_DIR or ~/.jasper)")
 	addrFlag := fs.String("addr", defaultListenAddr,
-		"Listen address (Phase 1: loopback only). Dev passes 127.0.0.1:3001 via .air.toml.")
+		"Listen address (loopback-only by default). Dev pipeline reads the same port from scripts/port.sh.")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
