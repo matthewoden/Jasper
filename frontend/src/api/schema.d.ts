@@ -573,6 +573,172 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal a note path in the host OS file manager (SHARE-01)
+         * @description Phase 8 SHARE-01 / D-26 / D-27. Opens the host OS file manager
+         *     with the named path selected. macOS uses `open -R <path>`
+         *     (Finder reveal). WSL2 uses `explorer.exe /select,<windows-path>`
+         *     with the WSL path translated to a Windows UNC path.
+         *     Linux-native is not a v1 target (D-28) — handler returns 501.
+         *
+         *     The `path` field is the path under the vault, relative to
+         *     notes/. The handler resolves it through the same
+         *     canonicalization used by GET /notes (DATA-11) to prevent
+         *     traversal.
+         */
+        post: operations["postReveal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all MCP write grants (MCP-01)
+         * @description Returns every row in the mcp_write_grants table (Phase 8 migration
+         *     004). The frontend tree menu reads this list to render
+         *     "MCP write" indicators per folder (D-17). Folders without a row
+         *     are deny-by-default; grants at an ancestor folder grant writes
+         *     recursively (D-18, resolved server-side at write time).
+         */
+        get: operations["getMcpGrants"];
+        put?: never;
+        /**
+         * Grant (or upgrade) MCP write access for a folder (MCP-01, D-17)
+         * @description Idempotent grant for `folder_path` at `level` (1 = create+update;
+         *     2 = create+update+move+delete). If the folder already has a row,
+         *     the level is updated to the requested value (upgrade or
+         *     downgrade); `granted_at` is refreshed; `granted_via` updates to
+         *     reflect the new entry point. Broadcasts `mcp:grant_changed` on
+         *     the WS hub so every connected tab refreshes its indicators
+         *     (D-57).
+         */
+        post: operations["postMcpGrant"];
+        /**
+         * Revoke MCP write access for a folder (D-17)
+         * @description Deletes the grant row for `folder_path`. Does NOT recurse —
+         *     ancestor grants still apply per D-18. Broadcasts
+         *     `mcp:grant_changed` on success.
+         */
+        delete: operations["deleteMcpGrant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/setup/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * First-run wizard status (INSTALL-07, D-04)
+         * @description Returns whether the first-run wizard still needs to run.
+         *     `first_run = true` when no resolved `cfg.Server.DataDir` is
+         *     present (the user has not yet completed the wizard). The
+         *     frontend redirects to /setup when this returns true (D-04
+         *     wizard mount).
+         */
+        get: operations["getSetupStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/setup/validate-data-dir": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Debounced wizard-side validation of a proposed data directory (D-08)
+         * @description Called by the wizard as the user types a data-directory path.
+         *     Validates: parent exists, path is not nested inside an existing
+         *     vault, path is writable, path contains only ASCII characters.
+         *     Returns a structured `code` so the wizard can render an inline
+         *     error message. Does NOT persist anything.
+         */
+        post: operations["postSetupValidateDataDir"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit the first-run wizard (INSTALL-07, D-10)
+         * @description Persists the wizard payload: writes <data_dir>/storage/config.json
+         *     with the wizard-supplied theme, MCP enabled flag, MCP grants,
+         *     and daily-notes template, then runs migrations against the new
+         *     data dir. On success the frontend redirects to /. Only callable
+         *     when `GET /setup/status` returns `first_run: true` — repeat calls
+         *     are rejected.
+         */
+        post: operations["postSetup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notes/by-path": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lookup a note by its relative path (D-30 deep-link fallback)
+         * @description Phase 8 D-30 deep-link fallback. Used by the `?path=<rel>` URL
+         *     parameter when the canonical `/notes/{id}` form is not available
+         *     (e.g. someone shares a permalink across machines and the UUIDs
+         *     differ but the path is stable). Server canonicalizes `path` via
+         *     the same DATA-11 rules as the rest of the API.
+         */
+        get: operations["getNoteByPath"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -833,6 +999,19 @@ export interface components {
                 /** @default false */
                 vimMode: boolean;
             };
+            server?: {
+                /** @default 6683 */
+                port: number;
+                dataDir: string;
+            };
+            mcp?: {
+                /** @default false */
+                enabled: boolean;
+                /** @default 6684 */
+                port: number;
+                /** @default 127.0.0.1 */
+                bind: string;
+            };
         };
         Error: {
             /** @example not_found */
@@ -995,7 +1174,7 @@ export interface components {
          */
         WSEnvelope: {
             /** @enum {string} */
-            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status";
+            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed";
             /**
              * @description UUID of the session that originated the mutation. Empty
              *     string for server-originated events (reindex:*,
@@ -1080,6 +1259,73 @@ export interface components {
             message: string;
             /** Format: date-time */
             current_updated_at: string;
+        };
+        RevealRequest: {
+            /** @description Vault-relative path of the file to reveal (canonical NFC+lowercase). */
+            path: string;
+        };
+        RevealResponse: {
+            /**
+             * @description Host platform the reveal was executed on (D-26 / D-28).
+             * @enum {string}
+             */
+            platform: "darwin" | "wsl2";
+        };
+        McpGrant: {
+            /** @description Canonical NFC+lowercase rel path under notes/ (DATA-11). */
+            folder_path: string;
+            /**
+             * @description 1 = create+update (default); 2 = create+update+move+delete (D-13).
+             * @enum {integer}
+             */
+            level: 1 | 2;
+            /** Format: date-time */
+            granted_at: string;
+            /** @description Entry point that created the grant: 'wizard' | 'tree-context-menu' | 'tree-dropdown-menu' (D-17 telemetry). */
+            granted_via: string;
+        };
+        /** @description Wizard payload form of an MCP grant (used inside SetupRequest.mcp_grants). */
+        McpGrantSeed: {
+            folder: string;
+            /** @enum {integer} */
+            level: 1 | 2;
+        };
+        McpGrantList: {
+            grants: components["schemas"]["McpGrant"][];
+        };
+        McpGrantRequest: {
+            folder_path: string;
+            /** @enum {integer} */
+            level: 1 | 2;
+        };
+        SetupStatus: {
+            /** @description True when the first-run wizard has not yet been completed (D-04). */
+            first_run: boolean;
+        };
+        SetupValidateRequest: {
+            path: string;
+        };
+        SetupValidateResponse: {
+            valid: boolean;
+            /**
+             * @description Structured error code when valid=false (D-08).
+             * @enum {string}
+             */
+            code?: "parent_missing" | "nested_vault" | "unwritable" | "non_ascii";
+            /** @description Human-readable error message when valid=false. */
+            message?: string;
+        };
+        SetupRequest: {
+            data_dir: string;
+            /** @enum {string} */
+            theme: "dark" | "light";
+            mcp_enabled: boolean;
+            mcp_grants: components["schemas"]["McpGrantSeed"][];
+            daily_template: string;
+            create_today_daily_note: boolean;
+        };
+        SetupResponse: {
+            ok: boolean;
         };
     };
     responses: never;
@@ -2350,6 +2596,258 @@ export interface operations {
             };
             /** @description Database is in unrecoverable state (Path 3 fired) */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postReveal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevealRequest"];
+            };
+        };
+        responses: {
+            /** @description File manager launched successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevealResponse"];
+                };
+            };
+            /** @description Invalid path (traversal, empty, outside vault) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description File manager exec failed (system error) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not supported on this platform (e.g. Linux native — D-28) */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMcpGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All MCP write grants */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpGrantList"];
+                };
+            };
+        };
+    };
+    postMcpGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Grant created or upgraded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpGrant"];
+                };
+            };
+            /** @description Invalid path or level */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteMcpGrant: {
+        parameters: {
+            query: {
+                /** @description folder_path of the grant to revoke (canonical NFC+lowercase). */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Grant deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No grant exists for that folder_path */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSetupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Setup status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    postSetupValidateDataDir: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupValidateRequest"];
+            };
+        };
+        responses: {
+            /** @description Validation result (valid OR invalid with code) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupValidateResponse"];
+                };
+            };
+        };
+    };
+    postSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupRequest"];
+            };
+        };
+        responses: {
+            /** @description Setup complete */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupResponse"];
+                };
+            };
+            /** @description Invalid request (bad path, malformed body, etc.) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Setup failed (filesystem error, migration failure) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getNoteByPath: {
+        parameters: {
+            query: {
+                /** @description Relative path under notes/, e.g. "projects/foo.md". */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Note metadata for the matched path */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteSummary"];
+                };
+            };
+            /** @description No note exists at that path */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

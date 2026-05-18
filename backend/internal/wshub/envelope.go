@@ -68,4 +68,15 @@ const (
 	EventReindexStarted  = "reindex:started"
 	EventReindexComplete = "reindex:complete"
 	EventMigrationStatus = "migration:status"
+
+	// EventMcpGrantChanged is broadcast by the /mcp/grants CRUD
+	// handlers (Phase 8 Plan 08-08, D-57) whenever a grant is
+	// created, upgraded, or revoked. Callers MUST broadcast with
+	// origin_session_id = "" so every connected tab refreshes its
+	// MCP indicators (the per-session origin filter in
+	// frontend/src/lib/useSessionSync.ts:65 would otherwise drop the
+	// event for the originating tab). Matches the openapi.yaml
+	// WSEnvelope.event enum entry "mcp:grant_changed" — drift here
+	// breaks the schema-typed fixture sentinel above.
+	EventMcpGrantChanged = "mcp:grant_changed"
 )

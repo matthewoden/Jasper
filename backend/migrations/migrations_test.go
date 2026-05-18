@@ -191,3 +191,107 @@ func TestMigration002_EmbeddedFSListsFile(t *testing.T) {
 		t.Error("002_tags_backlinks.sql not found in migrations.FS")
 	}
 }
+
+// applyAllMigrations replays every embedded *.sql file in
+// lexicographic order against the test DB so Phase 8 assertions can
+// rely on the full migration chain (001+002+003+004).
+func applyAllMigrations(t *testing.T) *sql.DB {
+	t.Helper()
+	entries, err := fs.ReadDir(migrations.FS, ".")
+	if err != nil {
+		t.Fatalf("ReadDir migrations.FS: %v", err)
+	}
+	var sqls []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if len(name) < 4 || name[len(name)-4:] != ".sql" {
+			continue
+		}
+		sqls = append(sqls, readMigration(t, name))
+	}
+	return openTestDB(t, sqls...)
+}
+
+// TestMigration004_McpGrantsTableCreated — Phase 8 D-17: applying all
+// embedded migrations creates the mcp_write_grants table.
+func TestMigration004_McpGrantsTableCreated(t *testing.T) {
+	db := applyAllMigrations(t)
+
+	const query = `
+SELECT count(*) FROM sqlite_master
+WHERE type='table' AND name='mcp_write_grants'`
+	var count int
+	if err := db.QueryRowContext(context.Background(), query).Scan(&count); err != nil {
+		t.Fatalf("count mcp_write_grants: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected mcp_write_grants table, got count=%d", count)
+	}
+}
+
+// TestMigration004_McpGrantsIndexCreated — Phase 8 D-18 recursive
+// resolution walks folder_path, so the supporting index must exist.
+func TestMigration004_McpGrantsIndexCreated(t *testing.T) {
+	db := applyAllMigrations(t)
+
+	const query = `
+SELECT name FROM sqlite_master
+WHERE type='index' AND name='idx_mcp_grants_folder'`
+	var name string
+	if err := db.QueryRowContext(context.Background(), query).Scan(&name); err != nil {
+		t.Fatalf("missing idx_mcp_grants_folder: %v", err)
+	}
+	if name != "idx_mcp_grants_folder" {
+		t.Errorf("expected idx_mcp_grants_folder, got %q", name)
+	}
+}
+
+// TestMigration004_McpGrants_LevelCheckRejectsOutOfBand verifies that
+// the STRICT-mode CHECK constraint rejects level values outside {1, 2}.
+func TestMigration004_McpGrants_LevelCheckRejectsOutOfBand(t *testing.T) {
+	db := applyAllMigrations(t)
+
+	_, err := db.ExecContext(context.Background(), `
+INSERT INTO mcp_write_grants(folder_path, level, granted_at, granted_via)
+VALUES('projects/x', 3, 0, 'test')`)
+	if err == nil {
+		t.Fatal("expected CHECK violation for level=3, got nil error")
+	}
+	if !contains(err.Error(), "CHECK") {
+		t.Errorf("error did not mention CHECK constraint: %v", err)
+	}
+}
+
+// TestMigration004_McpGrants_FolderPathUniqueRejectsDuplicates
+// verifies that folder_path UNIQUE rejects duplicate inserts so the
+// upsert path in 08-08 has a backstop.
+func TestMigration004_McpGrants_FolderPathUniqueRejectsDuplicates(t *testing.T) {
+	db := applyAllMigrations(t)
+
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO mcp_write_grants(folder_path, level, granted_at, granted_via)
+VALUES('projects/x', 1, 1700000000, 'wizard')`); err != nil {
+		t.Fatalf("first insert: %v", err)
+	}
+	_, err := db.ExecContext(ctx, `
+INSERT INTO mcp_write_grants(folder_path, level, granted_at, granted_via)
+VALUES('projects/x', 2, 1700000001, 'tree-context-menu')`)
+	if err == nil {
+		t.Fatal("expected UNIQUE violation on duplicate folder_path, got nil error")
+	}
+}
+
+// contains is a local helper that avoids pulling in strings just for
+// the error-message sniffs above (keeps the imports list lean).
+func contains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
