@@ -11,6 +11,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/matthewoden/jasper/backend/internal/db/migrate"
+	"github.com/matthewoden/jasper/backend/internal/mcp"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -85,6 +86,15 @@ type Server struct {
 	// admin_reindex_handler.go uses TryLock to return 409
 	// "reindex_in_progress" when busy.
 	reindexBusy sync.Mutex
+
+	// mcpACL is the Phase 8 Plan 08-08 folder-grant ACL backing
+	// /api/v1/mcp/grants. nil-safe: when MCP is disabled in config
+	// (cfg.MCP.Enabled == false) the lifecycle never calls SetMcpACL
+	// and the handlers degrade to "mcp_disabled" 400s. The setter
+	// pattern (mirrors SetMigrationsFS) lets the composition root
+	// inject a real ACL after sqlite.Open + migrate.Run succeed
+	// without bloating NewServerWithIndex's signature.
+	mcpACL *mcp.ACL
 }
 
 // NewServer keeps Phase 1's 2-arg signature so existing call sites and
@@ -143,6 +153,17 @@ func NewServerWithIndex(
 // empty and PostSetup will short-circuit with a 500.
 func (s *Server) SetMigrationsFS(f fs.FS) {
 	s.migrationsFS = f
+}
+
+// SetMcpACL wires the folder-grant ACL into the Server so the
+// /api/v1/mcp/grants handlers can read/write the mcp_write_grants
+// table. Called by the composition root only when cfg.MCP.Enabled is
+// true; otherwise the field stays nil and the handlers return
+// "mcp_disabled" errors. Mirrors SetMigrationsFS — additive setter so
+// the NewServerWithIndex signature doesn't grow for every new Phase 8
+// dependency.
+func (s *Server) SetMcpACL(acl *mcp.ACL) {
+	s.mcpACL = acl
 }
 
 // Phase 8 Plan 08-01 deviation: the compile-time assertion
