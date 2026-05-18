@@ -7,7 +7,7 @@ import {
 } from "./shortcutsRegistry";
 
 describe("shortcutsRegistry", () => {
-  it("registry has all 8 locked Cmd+P palette entries (D-14; Plan 07-27 removed Find)", () => {
+  it("registry has all 9 locked Cmd+P palette entries (Plan 08-06 added Share/Reveal)", () => {
     const labels = COMMAND_PALETTE_ENTRIES.map((s) => s.label);
     expect(labels).toContain("New note");
     expect(labels).toContain("Save");
@@ -19,7 +19,9 @@ describe("shortcutsRegistry", () => {
     expect(labels).toContain("Refresh index");
     expect(labels).toContain("Reset and rebuild…");
     expect(labels).toContain("Show keyboard shortcuts");
-    expect(COMMAND_PALETTE_ENTRIES.length).toBe(8);
+    // Plan 08-06 (D-26 / SHARE-01 Mount C) — new "Share" group entry.
+    expect(labels).toContain("Show current note in file manager");
+    expect(COMMAND_PALETTE_ENTRIES.length).toBe(9);
   });
 
   it("cheat-sheet contains CM6 built-in editor entries", () => {
@@ -39,6 +41,8 @@ describe("shortcutsRegistry", () => {
     // Plan 07-39 (UAT-5 N11): added "Sidebar" group between Navigation and View.
     // Plan 07-40 (UAT-6): added "Palette" group after "Sidebar" to host
     // the focus-search Cmd+Shift+F entry now that search is a modal.
+    // Plan 08-06 (UI-SPEC §Surface 4 Mount C): added "Share" between
+    // "View" and "Index" for the reveal command.
     expect(GROUP_ORDER).toEqual([
       "File",
       "Editor",
@@ -46,6 +50,7 @@ describe("shortcutsRegistry", () => {
       "Sidebar",
       "Palette",
       "View",
+      "Share",
       "Index",
       "Help",
     ]);
@@ -73,8 +78,11 @@ describe("Plan 07-27 — Cmd+F removal (UAT-2 N6)", () => {
     expect(found).toBeUndefined();
   });
 
-  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 8 entries (not 9) after Find removal", () => {
-    expect(COMMAND_PALETTE_ENTRIES.length).toBe(8);
+  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 9 entries (Plan 08-06 added Share/Reveal; Find still removed)", () => {
+    // Plan 07-27 (UAT-2 N6) removed "Find in note" → 8 entries.
+    // Plan 08-06 (D-26 / SHARE-01 Mount C) added the share-reveal command
+    // → 9 entries. This assertion bakes both deltas in.
+    expect(COMMAND_PALETTE_ENTRIES.length).toBe(9);
   });
 });
 

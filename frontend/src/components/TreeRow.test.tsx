@@ -11,6 +11,15 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 
+// Plan 08-06 (D-26): TreeRow now consumes useReveal() which requires a
+// ToastProvider in the tree. Mock the hook at the module boundary so each
+// test's render() call doesn't have to wrap in <ToastProvider>; the menu
+// items wired through onReveal are exercised by the dedicated useReveal
+// unit test (src/lib/useReveal.test.ts).
+vi.mock("../lib/useReveal", () => ({
+  useReveal: () => ({ reveal: vi.fn(), loading: false }),
+}));
+
 import { useTreeStore } from "../lib/useTreeStore";
 import { TreeRow } from "./TreeRow";
 // Vite ?raw suffix loads the file's source as a string at build time —

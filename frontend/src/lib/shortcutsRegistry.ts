@@ -10,6 +10,11 @@ export type ShortcutGroup =
   | "Sidebar"
   | "Palette"
   | "View"
+  // Plan 08-06 (D-26 / SHARE-01): "Share" group hosts the
+  // "Show current note in file manager" palette command. Position
+  // is locked between "View" and "Index" per UI-SPEC §Surface 4
+  // Mount C.
+  | "Share"
   | "Index"
   | "Help";
 
@@ -128,6 +133,16 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: true,
     inCheatSheet: true,
   },
+  // Share group (Plan 08-06 UAT, SHARE-01 / D-26 Mount C) — opens the host OS
+  // file manager focused on the current note. Disabled (palette-side) when no
+  // note is active. No keybinding in v1.
+  {
+    id: "share-reveal-current-note",
+    label: "Show current note in file manager",
+    group: "Share",
+    inPalette: true,
+    inCheatSheet: false,
+  },
   // Index group
   {
     id: "refresh-index",
@@ -168,6 +183,10 @@ export const GROUP_ORDER: ShortcutGroup[] = [
   "Sidebar",
   "Palette",
   "View",
+  // Plan 08-06 (UI-SPEC §Surface 4 Mount C): "Share" sits between "View"
+  // and "Index" — the leave-app-context cluster sits with view-affecting
+  // commands rather than index-rebuild commands.
+  "Share",
   "Index",
   "Help",
 ];

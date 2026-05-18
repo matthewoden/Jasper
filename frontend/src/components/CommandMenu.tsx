@@ -49,6 +49,12 @@ interface CmdItem {
   label: string;
   shortcut?: string;
   group: string;
+  // Plan 08-06 (D-26 / SHARE-01 Mount C): dimmed-and-inert rendering for
+  // commands whose underlying action is not currently available
+  // (canonical case: "Show current note in file manager" when no note
+  // is active). UI-SPEC §Surface 4 Mount C: "palette item renders dimmed
+  // with no shortcut hint; selecting does nothing".
+  disabled?: boolean;
 }
 
 // Plan 07-39 (UAT-5 N11): SearchHitItem REMOVED from the switcher's items.
@@ -176,6 +182,12 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       label: c.label,
       shortcut: c.shortcut,
       group: c.group,
+      // Plan 08-06 (D-26 / SHARE-01 Mount C): dim + inert when the
+      // underlying action is unbound (e.g. "Show current note in file
+      // manager" with no note active). The optional-chain keeps older
+      // test mocks that didn't include isDisabled tolerant — those mocks
+      // are scoped to the pre-08-06 commands and never need disabling.
+      disabled: cmd.isDisabled?.(c.id) ?? false,
     }));
   } else if (mode === "search") {
     // mode === "search": single-section FTS5 results. Rows are SearchResultRow.
@@ -308,6 +320,9 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       onOpenChange(false);
       return;
     }
+    // Plan 08-06 (D-26 / SHARE-01 Mount C): disabled commands no-op.
+    // The palette stays open so the user can pick a different command.
+    if (item.kind === "cmd" && item.disabled) return;
     // UAT #5 fix: respect per-command closeOnExecute. switch-note keeps the
     // palette open so the mode flip (commands → notes) re-renders the list.
     const shouldClose = cmd.execute(item.id);
@@ -641,6 +656,11 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                   // rows return 24. measureElement is NOT attached on these
                   // branches (only search-result), so vi.size stays at the
                   // estimate for the lifetime of the row.
+                  // Plan 08-06 (D-26 / SHARE-01 Mount C): dim disabled
+                  // cmd rows + hide the shortcut chip (UI-SPEC: "renders
+                  // dimmed with no shortcut hint"). cursor stays default
+                  // so the row reads as inert.
+                  const cmdDisabled = item.kind === "cmd" && item.disabled === true;
                   const rowStyle: React.CSSProperties = {
                     position: "absolute",
                     top: 0,
@@ -653,18 +673,21 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                     alignItems: "center",
                     gap: 8,
                     fontSize: 14,
-                    color: "var(--color-fg)",
-                    cursor: "pointer",
+                    color: cmdDisabled ? "var(--color-muted)" : "var(--color-fg)",
+                    cursor: cmdDisabled ? "default" : "pointer",
                     background: selected
                       ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
                       : "transparent",
                     userSelect: "none",
+                    opacity: cmdDisabled ? 0.55 : 1,
                   };
 
                   return (
                     <div
                       key={item.id}
                       data-row-kind={item.kind}
+                      data-disabled={cmdDisabled ? "true" : undefined}
+                      aria-disabled={cmdDisabled || undefined}
                       style={rowStyle}
                       onMouseEnter={() => setSelectedIdx(vi.index)}
                       onClick={() => activate(vi.index)}
@@ -699,7 +722,8 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                       ) : (
                         <>
                           <span style={{ flex: 1 }}>{item.label}</span>
-                          {item.shortcut !== undefined && (
+                          {/* Plan 08-06: hide shortcut hint when disabled. */}
+                          {item.shortcut !== undefined && !cmdDisabled && (
                             <KeyboardChip>{item.shortcut}</KeyboardChip>
                           )}
                         </>

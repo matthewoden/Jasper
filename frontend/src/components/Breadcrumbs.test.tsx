@@ -31,6 +31,14 @@ vi.mock("../lib/useFileTree", () => ({
   useFileTree: () => mockUseFileTree(),
 }));
 
+// Plan 08-06 (D-26): Breadcrumbs now consumes useReveal() for the folder
+// segment context-menu reveal item. Mock at the module boundary to avoid
+// requiring a ToastProvider wrapper around every test render — the
+// reveal toast scenarios are covered by src/lib/useReveal.test.ts.
+vi.mock("../lib/useReveal", () => ({
+  useReveal: () => ({ reveal: vi.fn(), loading: false }),
+}));
+
 import { Breadcrumbs } from "./Breadcrumbs";
 
 // A fixed tree for tests
