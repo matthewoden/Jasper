@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/matthewoden/jasper/backend/internal/app"
+	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/netbind"
 )
 
@@ -79,8 +80,15 @@ func runServe(args []string) error {
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
+	// Phase 8 Plan 08-02 W3 wire-up: populate app.Config.Server so the
+	// first-run middleware (and downstream readers) can resolve
+	// cfg.Server.DataDir without re-reading config.json. The Server.Port
+	// defaults to the canonical 6683 (D-50) because cmd-side serve uses
+	// the --addr flag for actual binding; the field is informational
+	// here, but downstream code (lifecycle.go, MCP listener) reads it.
 	cfg := app.Config{
 		DataDir:    absDataDir,
+		Server:     config.ServerConfig{Port: 6683, DataDir: absDataDir},
 		ListenAddr: *addrFlag,
 		Logger:     log,
 	}

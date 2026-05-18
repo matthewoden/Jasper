@@ -1,0 +1,294 @@
+package firstrun
+
+import (
+	"database/sql"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	_ "modernc.org/sqlite"
+
+	"github.com/matthewoden/jasper/backend/internal/config"
+	"github.com/matthewoden/jasper/backend/migrations"
+)
+
+// TestRunSetup_InvalidTheme exercises the up-front theme check —
+// "darkmode" is not a valid choice and the error must surface BEFORE
+// any filesystem work.
+func TestRunSetup_InvalidTheme(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	target := filepath.Join(base, "Jasper")
+	req := SetupRequest{
+		DataDir: target,
+		Theme:   "darkmode", // invalid
+	}
+	err := RunSetup(t.Context(), req, migrations.FS)
+	if err == nil {
+		t.Fatalf("expected error for invalid theme; got nil")
+	}
+	if !strings.Contains(err.Error(), "theme must be") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+	// No config.json should have been written.
+	if _, err := os.Stat(filepath.Join(target, "storage", "config.json")); err == nil {
+		t.Fatalf("config.json should not exist on theme-rejection path")
+	}
+}
+
+// TestRunSetup_InvalidPath verifies that a non-ASCII data-dir is
+// rejected at the ValidateDataDir gate (T-08-06: hostile client
+// bypassing the debounced /validate-data-dir endpoint).
+func TestRunSetup_InvalidPath(t *testing.T) {
+	t.Parallel()
+	// A non-ASCII path — ValidateDataDir's first rule. The locked-
+	// copy message from validate.go is the error body.
+	req := SetupRequest{
+		DataDir: "/tmp/Jasper-é",
+		Theme:   "dark",
+	}
+	err := RunSetup(t.Context(), req, migrations.FS)
+	if err == nil {
+		t.Fatalf("expected error for non-ASCII path; got nil")
+	}
+	if !strings.Contains(err.Error(), "don't survive cross-platform sync") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+// TestRunSetup_HappyPath drives a fresh data-dir through the full
+// submit pipeline and asserts every side effect lands correctly:
+//   - <DataDir>/notes/   exists (0o700)
+//   - <DataDir>/storage/ exists (0o700)
+//   - <DataDir>/storage/config.json exists with the locked defaults
+//     overlaid by the wizard's choices
+//   - <DataDir>/storage/app.db exists with the mcp_write_grants table
+//     populated by migration 004
+//   - today's daily note exists when CreateTodayDailyNote=true
+func TestRunSetup_HappyPath(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	target := filepath.Join(base, "Jasper")
+	req := SetupRequest{
+		DataDir:              target,
+		Theme:                "light",
+		McpEnabled:           false,
+		DailyTemplate:        "# {{date}}\n\n- ",
+		CreateTodayDailyNote: true,
+	}
+	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
+		t.Fatalf("RunSetup: %v", err)
+	}
+
+	// notes/ and storage/ exist with 0o700.
+	for _, sub := range []string{"notes", "storage"} {
+		st, err := os.Stat(filepath.Join(target, sub))
+		if err != nil {
+			t.Fatalf("missing %s: %v", sub, err)
+		}
+		if !st.IsDir() {
+			t.Fatalf("%s is not a directory", sub)
+		}
+		// On macOS umask may alter perm bits; we just verify owner can
+		// read/write (0700 satisfies that). A stricter equality check
+		// would fail on a default-umask 0o022 system if a future change
+		// switched to MkdirAll(..., 0o777).
+		if st.Mode().Perm()&0o700 != 0o700 {
+			t.Fatalf("%s perms 0o%o lack owner rwx", sub, st.Mode().Perm())
+		}
+	}
+
+	// config.json exists with the wizard's overlays.
+	cfg, err := config.Load(target, slog.Default())
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if cfg.Server.DataDir != target {
+		t.Fatalf("Server.DataDir: got %q want %q", cfg.Server.DataDir, target)
+	}
+	if cfg.Theme != "light" {
+		t.Fatalf("Theme: got %q want %q", cfg.Theme, "light")
+	}
+	if cfg.MCP.Enabled {
+		t.Fatalf("MCP.Enabled: got true want false")
+	}
+	if cfg.Server.Port != 6683 {
+		t.Fatalf("Server.Port: got %d want 6683 (Defaults must win when wizard does not override)", cfg.Server.Port)
+	}
+	if cfg.MCP.Port != 6684 {
+		t.Fatalf("MCP.Port: got %d want 6684", cfg.MCP.Port)
+	}
+	if cfg.MCP.Bind != "127.0.0.1" {
+		t.Fatalf("MCP.Bind: got %q want 127.0.0.1", cfg.MCP.Bind)
+	}
+	if cfg.DailyNotes.Template != "# {{date}}\n\n- " {
+		t.Fatalf("DailyNotes.Template: got %q want template-override", cfg.DailyNotes.Template)
+	}
+
+	// app.db exists; mcp_write_grants table exists; row count is 0.
+	dbPath := filepath.Join(target, "storage", "app.db")
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Fatalf("missing app.db: %v", err)
+	}
+	db, err := sql.Open("sqlite", "file:"+dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	var count int
+	if err := db.QueryRow(`SELECT count(*) FROM mcp_write_grants`).Scan(&count); err != nil {
+		t.Fatalf("query grants table: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("mcp_write_grants count: got %d want 0", count)
+	}
+
+	// Today's daily note exists. Don't pin to wall-clock date — the
+	// daily/<YYYY-MM-DD>.md file is the only .md under daily/.
+	dailyDir := filepath.Join(target, "notes", "daily")
+	entries, err := os.ReadDir(dailyDir)
+	if err != nil {
+		t.Fatalf("ReadDir daily/: %v", err)
+	}
+	var mdFound bool
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".md") {
+			mdFound = true
+		}
+	}
+	if !mdFound {
+		t.Fatalf("today's daily note not created (entries=%v)", entries)
+	}
+}
+
+// TestRunSetup_McpEnabledRoundTrips is the revision-2 W1 fix
+// regression test: the wizard's mcp_enabled choice MUST persist to
+// cfg.MCP.Enabled on disk so 08-09's listener sees the user's choice
+// at next boot.
+func TestRunSetup_McpEnabledRoundTrips(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		req  SetupRequest
+		want bool
+	}{
+		{
+			name: "McpEnabled=true persists",
+			req: SetupRequest{
+				Theme:      "dark",
+				McpEnabled: true,
+			},
+			want: true,
+		},
+		{
+			name: "McpEnabled=false persists",
+			req: SetupRequest{
+				Theme:      "dark",
+				McpEnabled: false,
+			},
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			base := t.TempDir()
+			target := filepath.Join(base, "Jasper")
+			tc.req.DataDir = target
+			if err := RunSetup(t.Context(), tc.req, migrations.FS); err != nil {
+				t.Fatalf("RunSetup: %v", err)
+			}
+			cfg, err := config.Load(target, slog.Default())
+			if err != nil {
+				t.Fatalf("config.Load: %v", err)
+			}
+			if cfg.MCP.Enabled != tc.want {
+				t.Fatalf("cfg.MCP.Enabled: got %v want %v", cfg.MCP.Enabled, tc.want)
+			}
+		})
+	}
+}
+
+// TestRunSetup_SeedGrants exercises the wizard MCP-grants seeding —
+// rows must land in mcp_write_grants with granted_via='wizard' and
+// the user's chosen level (1 or 2).
+func TestRunSetup_SeedGrants(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	target := filepath.Join(base, "Jasper")
+	req := SetupRequest{
+		DataDir: target,
+		Theme:   "dark",
+		McpGrants: []SetupGrantSeed{
+			{Folder: "inbox", Level: 1},
+			{Folder: "projects/foo", Level: 2},
+		},
+	}
+	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
+		t.Fatalf("RunSetup: %v", err)
+	}
+	dbPath := filepath.Join(target, "storage", "app.db")
+	db, err := sql.Open("sqlite", "file:"+dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	rows, err := db.Query(`SELECT folder_path, level, granted_via FROM mcp_write_grants ORDER BY folder_path`)
+	if err != nil {
+		t.Fatalf("query grants: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	type row struct {
+		folder string
+		level  int
+		via    string
+	}
+	var got []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.folder, &r.level, &r.via); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, r)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("grants count: got %d want 2; rows=%+v", len(got), got)
+	}
+	if got[0] != (row{folder: "inbox", level: 1, via: "wizard"}) {
+		t.Errorf("row[0]: got %+v", got[0])
+	}
+	if got[1] != (row{folder: "projects/foo", level: 2, via: "wizard"}) {
+		t.Errorf("row[1]: got %+v", got[1])
+	}
+}
+
+// TestRunSetup_NoDailyNoteWhenOptedOut: omitting CreateTodayDailyNote
+// MUST NOT touch the daily folder.
+func TestRunSetup_NoDailyNoteWhenOptedOut(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	target := filepath.Join(base, "Jasper")
+	req := SetupRequest{
+		DataDir:              target,
+		Theme:                "dark",
+		CreateTodayDailyNote: false,
+	}
+	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
+		t.Fatalf("RunSetup: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "notes", "daily")); !os.IsNotExist(err) {
+		// Acceptable for daily/ to not exist; if it does exist (it
+		// shouldn't), then daily/<date>.md MUST NOT be there.
+		entries, _ := os.ReadDir(filepath.Join(target, "notes", "daily"))
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".md") {
+				t.Fatalf("daily/%s present but opt-in flag was false", e.Name())
+			}
+		}
+	}
+}
