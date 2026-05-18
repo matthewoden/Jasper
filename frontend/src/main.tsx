@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 
 import App from "./App";
 import { NoteNotFoundView } from "./components/NoteNotFoundView";
+import { ToastProvider } from "./components/Toast";
 import { SetupApp } from "./setup/SetupApp";
 import { loadDraft } from "./setup/draft";
 import "./theme.css";
@@ -42,10 +43,19 @@ if (path === "/setup") {
 } else if (path === "/note-not-found") {
   // Plan 08-07 (D-32 / SHARE-02): deep-link miss view. The page-title
   // string is LOCKED per UI-SPEC §Copywriting line 222.
+  //
+  // Plan 08-15 fix (Rule 1): NoteNotFoundView transitively uses
+  // useDailyNote → useToast which requires a ToastProvider in the React
+  // tree. Without the provider, the component throws "useToast must be
+  // used inside <ToastProvider>" at mount and the entire view fails to
+  // render (blank page). Wrap in ToastProvider here — same pattern as
+  // App.tsx which mounts ToastProvider at its root.
   document.title = "Note not found — Jasper";
   root.render(
     <React.StrictMode>
-      <NoteNotFoundView />
+      <ToastProvider>
+        <NoteNotFoundView />
+      </ToastProvider>
     </React.StrictMode>,
   );
 } else {
