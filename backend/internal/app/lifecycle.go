@@ -15,10 +15,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/matthewoden/jasper/backend/internal/api"
+	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/index"
+	"github.com/matthewoden/jasper/backend/internal/mcp"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/internal/static"
 	"github.com/matthewoden/jasper/backend/internal/wshub"
@@ -372,8 +374,93 @@ func (a *App) Run(ctx context.Context) error {
 	r.Mount("/", static.Handler())
 	a.handler = r
 
+	// 8b. Phase 8 Plan 08-09 — MCP server bring-up (D-14 / D-15 / D-23).
+	// Runs AFTER migrations + reindex (Ready signal), BEFORE
+	// serveListener — the MCP listener binds a SECOND loopback port
+	// (cfg.MCP.Port, default 6684) and serves /mcp StreamableHTTP.
+	//
+	// Config source: cfg.MCP comes from <dataDir>/storage/config.json
+	// (Plan 08-01 Task 4 declared the schema; Plan 08-02 wizard submit
+	// writes Enabled=true when the user opts in). We Load() here so the
+	// MCP block is in scope; load errors are non-fatal (the main listener
+	// keeps running with MCP disabled).
+	mcpCfg, mcpCfgErr := config.Load(a.cfg.DataDir, a.cfg.Logger)
+	if mcpCfgErr != nil {
+		a.cfg.Logger.Warn("MCP: config load failed (continuing with MCP disabled)", "err", mcpCfgErr)
+	} else if mcpCfg.MCP.Enabled {
+		mcpSrv, mcpShutdown, mcpErr := a.startMCP(ctx, mcpCfg.MCP, notesSvc, hub, pair)
+		if mcpErr != nil {
+			a.cfg.Logger.Error("MCP listener failed to bind; continuing without MCP", "err", mcpErr)
+		} else {
+			a.cfg.Logger.Info("MCP listener up", "port", mcpCfg.MCP.Port, "bind", mcpCfg.MCP.Bind)
+			_ = mcpSrv
+			defer func() {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := mcpShutdown(shutdownCtx); err != nil {
+					a.cfg.Logger.Warn("MCP listener shutdown error", "err", err)
+				}
+			}()
+		}
+	}
+
 	// 9. serve until ctx cancellation
 	return a.serveListener(ctx)
+}
+
+// startMCP constructs the MCP ACL + adapters + Server and starts the
+// loopback listener on cfg.Bind:cfg.Port. Returns the *http.Server and
+// a shutdown function so the caller can defer graceful teardown.
+//
+// Per D-45 the bind is re-checked at listener layer via
+// netbind.RequireLoopbackBind — defense in depth for the (unlikely)
+// case where cfg.Bind has been hand-edited to a non-loopback address.
+func (a *App) startMCP(
+	ctx context.Context,
+	cfg config.MCPConfig,
+	notesSvc *notes.Service,
+	hub *wshub.Hub,
+	pair *sqlite.Pair,
+) (*http.Server, func(context.Context) error, error) {
+	bind := cfg.Bind
+	if bind == "" {
+		bind = "127.0.0.1"
+	}
+	bindAddr := fmt.Sprintf("%s:%d", bind, cfg.Port)
+
+	acl := mcp.NewACL(pair.Writer)
+	// Adapter construction uses cfg.Server.DataDir (08-01 Task 4 thread-
+	// through on app.Config) for the attachments root.
+	dataDir := a.cfg.Server.DataDir
+	if dataDir == "" {
+		dataDir = a.cfg.DataDir
+	}
+	notesProv := mcp.NewNotesProvider(a.indexer)
+	searchProv := mcp.NewSearchAdapter(func(ctx context.Context, q string, limit int) ([]mcp.SearchHit, error) {
+		hits, err := a.indexer.SearchFTS(ctx, q, "", limit)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]mcp.SearchHit, 0, len(hits))
+		for _, h := range hits {
+			out = append(out, mcp.SearchHit{
+				ID:          h.ID,
+				Path:        h.Path,
+				Title:       h.Title,
+				ExcerptHTML: h.ExcerptHTML,
+			})
+		}
+		return out, nil
+	})
+	attachProv := mcp.NewAttachmentAdapter(notesSvc, dataDir)
+
+	mcpServer := mcp.NewServer(notesSvc, notesProv, searchProv, attachProv, acl, hub, a.cfg.Logger)
+
+	srv, err := mcp.StartMCPListener(ctx, mcpServer, bindAddr, a.cfg.Logger)
+	if err != nil {
+		return nil, nil, err
+	}
+	return srv, srv.Shutdown, nil
 }
 
 // serveListener is the listen + graceful-shutdown body, factored into
