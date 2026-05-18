@@ -15,7 +15,7 @@ import (
 // silently drops the netbind dependency surfaces in this binary's
 // test build.
 func TestServeUsesNetbind(t *testing.T) {
-	if err := netbind.RequireLoopbackBind("127.0.0.1:3000"); err != nil {
-		t.Errorf("netbind.RequireLoopbackBind(127.0.0.1:3000): unexpected err: %v", err)
+	if err := netbind.RequireLoopbackBind("127.0.0.1:6683"); err != nil {
+		t.Errorf("netbind.RequireLoopbackBind(127.0.0.1:6683): unexpected err: %v", err)
 	}
 }

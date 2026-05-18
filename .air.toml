@@ -6,9 +6,13 @@ tmp_dir = "tmp"
 [build]
   cmd = "go build -o ./tmp/jasper ./backend/cmd/jasper"
   bin = "./tmp/jasper"
-  # D-13: dev backend MUST listen on 127.0.0.1:3001 so Vite proxy at :5173
-  # forwards /api → :3001. Production binary defaults to :3000 (Plan 04 serve.go).
-  full_bin = "./tmp/jasper serve --data-dir ./tmp/jasper-data --addr 127.0.0.1:3001"
+  # Phase 8 D-40: dev backend uses serve.go's defaultListenAddr (127.0.0.1:6683).
+  # The Vite proxy in frontend/vite.config.ts reads the same port from
+  # scripts/port.sh so dev <-> prod parity is automatic. A user who sets a
+  # custom server.port in ~/.jasper/storage/config.json should also pass
+  # --addr 127.0.0.1:<port> here OR rely on the binary's eventual config-driven
+  # bind (the wizard does NOT expose server.port — file-edit override only per D-50).
+  full_bin = "./tmp/jasper serve --data-dir ./tmp/jasper-data"
   include_ext = ["go", "sql"]
   include_dir = ["backend/cmd", "backend/internal", "backend/migrations"]
   exclude_dir = ["tmp", "node_modules", "frontend", ".planning", "bin"]

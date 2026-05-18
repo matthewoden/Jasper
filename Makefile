@@ -1,4 +1,18 @@
-.PHONY: gen gen-check build test lint dev gen-go gen-ts
+.PHONY: gen gen-check build test lint dev gen-go gen-ts print-port perf-check
+
+# Phase 8 D-40: canonical port resolver. Returns server.port from
+# ~/.jasper/storage/config.json (or $JASPER_CONFIG), or 6683 if no
+# config exists. Used by .air.toml, vite.config.ts, Playwright, and
+# perf-check.
+print-port:
+	@./scripts/port.sh
+
+# Phase 8 PERF-01: 5k-note startup gate. Requires bin/jasper (run
+# `make build` first). _perf-vault/ is populated by 08-14's
+# `make perf-vault`; absent that, this still runs as a smoke check
+# but is not a real PERF-01 gate.
+perf-check:
+	@./scripts/perf-check.sh
 
 gen: gen-go gen-ts
 

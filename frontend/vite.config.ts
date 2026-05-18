@@ -1,6 +1,22 @@
+import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+
+// Phase 8 D-40: canonical port source is scripts/port.sh. Reads the
+// same server.port the production binary uses (via config.json), or
+// 6683 if no config exists. Keeps dev/prod parity automatic — when
+// the user (or a future wizard) changes server.port in config.json,
+// the Vite proxy follows without any code change here.
+//
+// Vite invokes execSync with cwd = frontend/ (where this file lives),
+// so the script path is repo-root-relative `../scripts/port.sh`.
+let PORT = "6683";
+try {
+  PORT = execSync("../scripts/port.sh", { encoding: "utf8" }).trim() || "6683";
+} catch {
+  PORT = "6683";
+}
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -8,8 +24,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      "/api": { target: "http://127.0.0.1:3001", changeOrigin: false },
-      "/ws":  { target: "http://127.0.0.1:3001", changeOrigin: false, ws: true },
+      "/api": { target: `http://127.0.0.1:${PORT}`, changeOrigin: false },
+      "/ws":  { target: `http://127.0.0.1:${PORT}`, changeOrigin: false, ws: true },
     },
   },
   build: {

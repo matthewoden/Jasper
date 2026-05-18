@@ -11,7 +11,8 @@ import { generateOrLoadSessionId } from "../lib/sessionId";
  * the spec's servers — paths in the typed `paths` object are the
  * post-servers segments (e.g. `/notes/{id}`). So the client must
  * supply the prefix itself.
- *   - In dev, Vite proxies /api → http://127.0.0.1:3001 (backend).
+ *   - In dev, Vite proxies /api → http://127.0.0.1:6683 (or whatever
+ *     scripts/port.sh resolves; see frontend/vite.config.ts).
  *   - In prod, the Go binary serves both SPA + API on the same origin
  *     and registers handlers under r.Route("/api/v1", ...).
  *
