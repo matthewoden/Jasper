@@ -20,6 +20,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/index"
+	jlog "github.com/matthewoden/jasper/backend/internal/log"
 	"github.com/matthewoden/jasper/backend/internal/mcp"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/internal/static"
@@ -135,6 +136,31 @@ func (a *App) Run(ctx context.Context) error {
 	if err := EnsureDataDir(a.cfg.DataDir); err != nil {
 		return a.serveStartupError(ctx, "Data dir", err)
 	}
+
+	// Phase 8 Plan 08-12 / D-39 / PERF-03 — file logger wire-up.
+	// Production callers (serve.go) currently pass a stderr-backed slog
+	// instance via cfg.Logger; tests do the same. When cfg.Logger is nil
+	// (a future production path may leave it nil so file logging is the
+	// default), instantiate the FileLogger against a.cfg.Server.DataDir
+	// (08-01 Task 4 thread-through field on app.Config) and stash the
+	// io.Closer on App for graceful shutdown. While cfg.Logger is set,
+	// the file logger is bypassed — the caller's logger wins.
+	if a.cfg.Logger == nil {
+		logger, closer, err := jlog.NewFileLogger(a.cfg.Server.DataDir)
+		if err != nil {
+			return a.serveStartupError(ctx, "File logger", fmt.Errorf("file logger init: %w", err))
+		}
+		a.cfg.Logger = logger
+		a.fileLogCloser = closer
+		defer func() {
+			if cerr := closer.Close(); cerr != nil {
+				// At this point the logger may be writing to a closing
+				// sink; route the failure to stderr so it isn't lost.
+				fmt.Fprintf(os.Stderr, "file logger close: %v\n", cerr)
+			}
+		}()
+	}
+
 	// 2. Seed scratchpad.md if missing.
 	if err := SeedScratchpadIfMissing(a.cfg.DataDir, a.cfg.Logger); err != nil {
 		return a.serveStartupError(ctx, "Scratchpad seed", err)
