@@ -44,6 +44,16 @@
      is the alignment anchor; the editor consumes this token so the two
      surfaces visually line up. */
   --editor-content-x: 36px;
+
+  /* Phase 8 (Plan 08-04 / D-19) — AI grant tier tokens. Used by:
+       - the wizard MCP section's Tier 1 / Tier 2 pills (08-04)
+       - the AI-grant indicator + submenu badges (08-10)
+     The dark-theme defaults below are violet-400 / violet-600; the
+     light-theme overrides shift to violet-600 / violet-800 for contrast
+     against the lighter surface palette. Reserved for AI-access UI only;
+     do not reuse for other accent shades. */
+  --color-ai-grant:        #a78bfa; /* violet-400 — Tier 1 (Edit only) */
+  --color-ai-grant-strong: #7c3aed; /* violet-600 — Tier 2 (Full) */
 }
 
 @theme {
@@ -111,6 +121,10 @@ body {
   --color-destructive:     #dc2626; /* red-600 */
   --color-warning:         #b45309; /* amber-700 — banner only */
   --color-warning-surface: #fef3c7; /* amber-50/100 — banner only */
+
+  /* Phase 8 (Plan 08-04 / D-19) — AI grant tier tokens, light theme. */
+  --color-ai-grant:        #7c3aed; /* violet-600 — Tier 1 (Edit only) */
+  --color-ai-grant-strong: #5b21b6; /* violet-800 — Tier 2 (Full) */
 }
 
 /* ────────────────────────────────────────────────────────────────────
