@@ -31,6 +31,7 @@ import { TopBar } from "./components/TopBar";
 import { ToastProvider } from "./components/Toast";
 import { postAdminReindex } from "./lib/adminApi";
 import { useDailyNote } from "./lib/useDailyNote";
+import { useDeepLink } from "./lib/useDeepLink";
 import { useMigrationStatus } from "./lib/useMigrationStatus";
 import { useReveal } from "./lib/useReveal";
 import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
@@ -527,6 +528,13 @@ function AppInner() {
   // stays undefined in that case so the palette renders it dimmed).
   const { reveal } = useReveal();
   const { tree } = useFileTree();
+
+  // SHARE-02 deep-link boot handler (Phase 8 Plan 08-07). Resolves
+  // `?note=<uuid>` or `?path=<rel>` at mount via REST, focuses the
+  // matched note, and cleans the URL. Gated on tree readiness so
+  // setActiveNote operates against populated tree data (Pitfall 6).
+  // On miss → navigates to /note-not-found (handled by main.tsx).
+  useDeepLink(tree !== null);
 
   // Phase 7 (Plan 07-12) — CommandActions for CommandMenu.
   // Each action is wired to an existing hook or store setter.
