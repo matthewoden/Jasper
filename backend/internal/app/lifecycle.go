@@ -67,6 +67,33 @@ func SeedScratchpadIfMissing(dataDir string, log *slog.Logger) error {
 	return nil
 }
 
+// serveStartupError installs the static startup-failure page (D-11,
+// UI-SPEC §Surface 7) on the listener and serves it instead of the
+// SPA + API. Called from lifecycle.Run when init fails AFTER the
+// disk-full / unrecoverable sentinels are excluded (those have their
+// own dedicated handlers via newBootErrorHandler).
+//
+// phaseName: short human-friendly init-step name (e.g. "Storage dir",
+// "SQLite open", "Migration", "Frontmatter scaffold"). Auto-escaped.
+//
+// Returns the error from a.serveListener so the caller can `return` it
+// directly. A nil return means the listener served until ctx.Done.
+func (a *App) serveStartupError(ctx context.Context, phaseName string, initErr error) error {
+	// jasper.log may or may not exist depending on how far init progressed
+	// before failure. tailLog returns a friendly placeholder when missing.
+	logsPath := filepath.Join(a.cfg.DataDir, "storage", "logs", "jasper.log")
+	data := StartupErrorData{
+		PhaseName:       phaseName,
+		ErrorSummary:    initErr.Error(),
+		SuggestedAction: suggestedActionFor(initErr),
+		LogExcerpt:      tailLog(logsPath, 20),
+	}
+	a.cfg.Logger.Error("boot failed: serving startup-error static page",
+		"phase", phaseName, "err", initErr, "data_dir", a.cfg.DataDir)
+	a.handler = newStartupErrorHandler(data)
+	return a.serveListener(ctx)
+}
+
 // Run executes the Phase 2 startup sequence and serves until ctx is
 // canceled. On ctx cancellation a graceful shutdown is attempted with
 // a 5-second deadline.
@@ -104,21 +131,21 @@ func SeedScratchpadIfMissing(dataDir string, log *slog.Logger) error {
 func (a *App) Run(ctx context.Context) error {
 	// 1. Ensure data dir + notes/ + storage/ exist.
 	if err := EnsureDataDir(a.cfg.DataDir); err != nil {
-		return err
+		return a.serveStartupError(ctx, "Data dir", err)
 	}
 	// 2. Seed scratchpad.md if missing.
 	if err := SeedScratchpadIfMissing(a.cfg.DataDir, a.cfg.Logger); err != nil {
-		return err
+		return a.serveStartupError(ctx, "Scratchpad seed", err)
 	}
 
 	// 3. Phase 2 NEW — mkdir <DataDir>/storage + storage/logs.
 	dbPath := storageDBPath(a.cfg.DataDir)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		return fmt.Errorf("ensure storage dir: %w", err)
+		return a.serveStartupError(ctx, "Storage dir", fmt.Errorf("ensure storage dir: %w", err))
 	}
 	logsDir := filepath.Join(a.cfg.DataDir, "storage", "logs")
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
-		return fmt.Errorf("ensure logs dir: %w", err)
+		return a.serveStartupError(ctx, "Logs dir", fmt.Errorf("ensure logs dir: %w", err))
 	}
 
 	// 4. Phase 2 NEW — open sqlite Pair.
@@ -142,12 +169,12 @@ func (a *App) Run(ctx context.Context) error {
 			a.handler = a.diskFullHandler
 			return a.serveListener(ctx)
 		}
-		return fmt.Errorf("disk preflight: %w", err)
+		return a.serveStartupError(ctx, "Disk preflight", fmt.Errorf("disk preflight: %w", err))
 	}
 
 	pair, err := sqlite.Open(ctx, dbPath)
 	if err != nil {
-		return fmt.Errorf("sqlite open: %w", err)
+		return a.serveStartupError(ctx, "SQLite open", fmt.Errorf("sqlite open: %w", err))
 	}
 	// pair is opened before runner.Run regardless of outcome; Close on
 	// the pair is always safe — it tears down both Reader and Writer
@@ -207,7 +234,7 @@ func (a *App) Run(ctx context.Context) error {
 			a.handler = a.diskFullHandler
 			return a.serveListener(ctx)
 		}
-		return fmt.Errorf("migrate run: %w", runErr)
+		return a.serveStartupError(ctx, "Migration", fmt.Errorf("migrate run: %w", runErr))
 	}
 	a.cfg.Logger.Info("migration runner status",
 		"state", status.State,
@@ -221,7 +248,7 @@ func (a *App) Run(ctx context.Context) error {
 	// notesDir has frontmatter. Skipped when state == Unrecoverable.
 	if status.State != migrate.StateUnrecoverable {
 		if err := InjectFrontmatterScaffoldMigration(ctx, pair.Writer, notesDir, a.cfg.Logger); err != nil {
-			return fmt.Errorf("lifecycle: frontmatter scaffold migration: %w", err)
+			return a.serveStartupError(ctx, "Frontmatter scaffold", fmt.Errorf("lifecycle: frontmatter scaffold migration: %w", err))
 		}
 	}
 

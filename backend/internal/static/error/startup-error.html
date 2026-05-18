@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <title>Jasper couldn't start</title>
+    <style>
+      body { background: #18181b; color: #e4e4e7; font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 14px; line-height: 1.5; margin: 0; padding: 32px; }
+      main { max-width: 720px; margin: 0 auto; }
+      h1 { font-size: 16px; font-weight: 600; line-height: 1.4; margin: 0 0 4px; color: #e4e4e7; }
+      .subtitle { color: #a1a1aa; margin: 0 0 32px; }
+      .eyebrow { font-size: 12px; font-weight: 600; line-height: 1.4; text-transform: uppercase; color: #a1a1aa; margin: 24px 0 8px; letter-spacing: 0.04em; }
+      .body { color: #e4e4e7; margin: 0; }
+      .log { background: #27272a; border: 1px solid #3f3f46; border-radius: 6px; padding: 12px 16px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.5; color: #a1a1aa; max-height: 320px; overflow: auto; margin: 0; }
+      footer { color: #a1a1aa; font-size: 12px; margin-top: 48px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Jasper couldn't start</h1>
+      <p class="subtitle">One of the startup steps failed. Your notes weren't touched.</p>
+
+      <h2 class="eyebrow">WHAT FAILED</h2>
+      <p class="body">{{.PhaseName}}: {{.ErrorSummary}}</p>
+
+      <h2 class="eyebrow">WHAT TO TRY</h2>
+      <p class="body">{{.SuggestedAction}}</p>
+
+      <h2 class="eyebrow">RECENT LOG LINES</h2>
+      <pre class="log">{{.LogExcerpt}}</pre>
+
+      <footer>Powered by Jasper. This page is static — no JS loaded.</footer>
+    </main>
+  </body>
+</html>
