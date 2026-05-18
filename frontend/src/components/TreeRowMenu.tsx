@@ -64,10 +64,28 @@ export interface TreeRowMenuProps {
    * Position in the menu body is locked by UI-SPEC §Surface 4 Mount A:
    *   - note rows  → directly below "Open", before the first separator
    *   - folder rows → directly below "New folder", before the AI-grant
-   *                   submenu mount-slot (placeholder until Plan 08-10)
+   *                   submenu mount-slot (filled by Plan 08-10)
    *   - file rows  → at the TOP of the menu (becomes the new first item)
    */
   onReveal?: () => void;
+
+  /**
+   * Plan 08-10 (D-17, D-19, MCP-01): MCP "Grant AI access" submenu — folder rows only.
+   *
+   *   - activeLevel: the DIRECT grant attached to this folder (1 / 2 / null).
+   *                  Null means no grant attached AT THIS leaf (ancestor
+   *                  grants don't surface here per UI-SPEC §Surface 3 —
+   *                  use directLevelFor, not levelFor).
+   *   - onGrant(level): user clicked "Edit only" (1) or "Full" (2).
+   *                     Idempotent — backend re-validates.
+   *   - onRevoke(): user clicked "Revoke access". Only shown when
+   *                 activeLevel !== null.
+   *
+   * Omitted on note / file / empty-area rows.
+   */
+  activeLevel?: 1 | 2 | null;
+  onGrant?: (level: 1 | 2) => void;
+  onRevoke?: () => void;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -130,9 +148,31 @@ type SepCompType =
   | typeof ContextMenu.Separator
   | typeof DropdownMenu.Separator;
 
+// Plan 08-10: parallel family for the Radix Sub primitives so MenuItems can
+// emit the "Grant AI access ▸" submenu against either ContextMenu.* or
+// DropdownMenu.* without branching at the call site. Each variant carries
+// its own portal / subtrigger / subcontent.
+type SubCompType =
+  | typeof ContextMenu.Sub
+  | typeof DropdownMenu.Sub;
+type SubTriggerCompType =
+  | typeof ContextMenu.SubTrigger
+  | typeof DropdownMenu.SubTrigger;
+type SubContentCompType =
+  | typeof ContextMenu.SubContent
+  | typeof DropdownMenu.SubContent;
+type PortalCompType =
+  | typeof ContextMenu.Portal
+  | typeof DropdownMenu.Portal;
+
 interface MenuItemsProps extends TreeRowMenuProps {
   ItemComp: ItemCompType;
   SepComp: SepCompType;
+  // Plan 08-10 — parallel sub family; one set per primitive variant.
+  SubComp: SubCompType;
+  SubTriggerComp: SubTriggerCompType;
+  SubContentComp: SubContentCompType;
+  PortalComp: PortalCompType;
 }
 
 function MenuItems({
@@ -143,8 +183,15 @@ function MenuItems({
   onRename,
   onDelete,
   onReveal,
+  activeLevel,
+  onGrant,
+  onRevoke,
   ItemComp,
   SepComp,
+  SubComp,
+  SubTriggerComp,
+  SubContentComp,
+  PortalComp,
 }: MenuItemsProps) {
   // Cast each Radix Item/Separator to a permissive type so we can hand
   // them inline `style` props uniformly. Both ContextMenu.Item and
@@ -154,6 +201,15 @@ function MenuItems({
   const Item = ItemComp as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Sep = SepComp as any;
+  // Plan 08-10 — same permissive cast for the Sub family.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const Sub = SubComp as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SubTrigger = SubTriggerComp as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SubContent = SubContentComp as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const Portal = PortalComp as any;
 
   // Plan 07-38 R7b: file rows render ONLY Rename + Delete — no Open,
   // no New note, no New folder. Files can't host children, and clicking
@@ -232,8 +288,77 @@ function MenuItems({
           Plan 08-10 — for now just leave a marker comment so the next
           plan knows the slot. */}
       {rowKind === "folder" && revealItem}
-      {/* TODO(08-10): Grant AI access submenu mounts here, between Reveal
-          and the separator/Rename/Delete cluster below. */}
+      {/* Plan 08-10 (D-17, D-19, MCP-01) — "Grant AI access ▸" submenu mounts
+          between Reveal and the Rename/Delete separator on folder rows only.
+          The submenu offers Tier 1 (Edit only) + Tier 2 (Full) items; when a
+          grant is already attached at this leaf, a "Revoke access" destructive
+          item appears below a separator. Locked copy + locked layout from
+          UI-SPEC §Surface 2 lines 180-194. */}
+      {rowKind === "folder" && (onGrant || onRevoke) && (
+        <Sub>
+          <SubTrigger style={itemStyle}>
+            <span>Grant AI access</span>
+            {activeLevel && (
+              <span style={shortcutStyle}>
+                {activeLevel === 1 ? "Edit only" : "Full"}
+              </span>
+            )}
+          </SubTrigger>
+          <Portal>
+            <SubContent style={menuContainerStyle}>
+              <Item
+                style={{
+                  ...itemStyle,
+                  height: 36,
+                  background:
+                    activeLevel === 1
+                      ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+                      : undefined,
+                }}
+                onSelect={() => onGrant?.(1)}
+              >
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontSize: 14 }}>Edit only</span>
+                  <span style={{ fontSize: 12, color: "var(--color-muted)" }}>
+                    Create + update
+                    {activeLevel === 1 ? " — Active" : ""}
+                  </span>
+                </div>
+              </Item>
+              <Item
+                style={{
+                  ...itemStyle,
+                  height: 36,
+                  background:
+                    activeLevel === 2
+                      ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+                      : undefined,
+                }}
+                onSelect={() => onGrant?.(2)}
+              >
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontSize: 14 }}>Full</span>
+                  <span style={{ fontSize: 12, color: "var(--color-muted)" }}>
+                    Create + update + move + delete
+                    {activeLevel === 2 ? " — Active" : ""}
+                  </span>
+                </div>
+              </Item>
+              {activeLevel && onRevoke && (
+                <>
+                  <Sep style={separatorStyle} />
+                  <Item
+                    style={destructiveItemStyle}
+                    onSelect={() => onRevoke()}
+                  >
+                    <span>Revoke access</span>
+                  </Item>
+                </>
+              )}
+            </SubContent>
+          </Portal>
+        </Sub>
+      )}
       {rowKind !== "empty-area" && !isFile && <Sep style={separatorStyle} />}
       {rowKind !== "empty-area" && (
         <Item style={itemStyle} onSelect={() => onRename?.()}>
@@ -268,6 +393,10 @@ export function TreeRowContextMenu({
             {...props}
             ItemComp={ContextMenu.Item}
             SepComp={ContextMenu.Separator}
+            SubComp={ContextMenu.Sub}
+            SubTriggerComp={ContextMenu.SubTrigger}
+            SubContentComp={ContextMenu.SubContent}
+            PortalComp={ContextMenu.Portal}
           />
         </ContextMenu.Content>
       </ContextMenu.Portal>
@@ -294,6 +423,10 @@ export function TreeRowDropdownMenu({
             {...props}
             ItemComp={DropdownMenu.Item}
             SepComp={DropdownMenu.Separator}
+            SubComp={DropdownMenu.Sub}
+            SubTriggerComp={DropdownMenu.SubTrigger}
+            SubContentComp={DropdownMenu.SubContent}
+            PortalComp={DropdownMenu.Portal}
           />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>

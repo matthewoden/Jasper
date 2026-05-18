@@ -59,7 +59,9 @@ import {
 import { useTreeStore } from "../lib/useTreeStore";
 import { useTreeMutations } from "../lib/useTreeMutations";
 import { useReveal } from "../lib/useReveal";
+import { useMcpGrants } from "../lib/useMcpGrants";
 import { RenameInput } from "./RenameInput";
+import { McpGrantIndicator } from "./McpGrantIndicator";
 import {
   TreeRowContextMenu,
   TreeRowDropdownMenu,
@@ -169,6 +171,11 @@ export function TreeRow({
   // `data.path` for all three row kinds (note / folder / file) — the
   // tree-node shape carries `path` on every kind.
   const { reveal } = useReveal();
+  // Plan 08-10 (MCP-01 / MCP-02): MCP grant indicator + submenu wiring.
+  // directLevelFor (not levelFor) — UI-SPEC §Surface 3 says the indicator
+  // and the submenu's active-state subtitle render ONLY at the leaf where
+  // the grant was attached, never on descendant rows (T-08-48 mitigation).
+  const { directLevelFor, grant: grantMcp, revoke: revokeMcp } = useMcpGrants();
   // UAT follow-up 2026-05-12 — pulse highlight when navigated to via breadcrumb.
   const pulseTarget = useTreeStore((s) => s.pulseTarget);
   // Plan 04 (UX-08): live H1 label override for note rows. Falls back to
@@ -209,6 +216,13 @@ export function TreeRow({
   // 16px indent step (UI-SPEC §Layout). 16px base padding-left + 16px per
   // depth level. Verified by TestRow_IndentScalesWithLevel.
   const indent = 16 + 16 * node.level;
+
+  // Plan 08-10: per-row MCP direct grant level. Null for notes/files (they
+  // cannot host grants — only folders can). Drives both the Sparkles
+  // indicator and the submenu's "active level" subtitle/checkmark.
+  const grantLevel = isFolder
+    ? directLevelFor((data as FolderNodeData).path)
+    : null;
 
   const [kebabOpen, setKebabOpen] = useState(false);
 
@@ -553,6 +567,18 @@ export function TreeRow({
       {/* Label OR inline-rename input. React text-content escape is
           the XSS gate; no inner-HTML escape hatch anywhere. */}
       {labelOrInput}
+      {/* Plan 08-10 (MCP-02 / UI-SPEC §Surface 3): Sparkles indicator on
+          folder rows that hold a DIRECT grant. Sits BEFORE the kebab (left
+          of it), 4px gap. Folder name truncates first because the label
+          span is `flex: 1` and both the indicator wrapper and the kebab
+          are `flex-shrink: 0` — the indicator is always visible at the
+          row's right edge per MCP-02. */}
+      {grantLevel !== null && (
+        <>
+          <McpGrantIndicator level={grantLevel} />
+          <span aria-hidden="true" style={{ width: 4, flexShrink: 0 }} />
+        </>
+      )}
       {/* Kebab — wraps a TreeRowDropdownMenu so click reveals the same
           item set as the right-click context menu. Hidden until row
           hover or focus-within (Plan 03-06 chassis kept the visibility
@@ -594,6 +620,19 @@ export function TreeRow({
         // `path` field; the reveal hook dispatches POST /api/v1/reveal
         // and fires the LOCKED platform-correct toast.
         onReveal={() => void reveal(data.path)}
+        // Plan 08-10 (MCP-01): folder-row "Grant AI access" submenu.
+        // Undefined on note / file rows so the submenu is suppressed.
+        activeLevel={isFolder ? grantLevel : null}
+        onGrant={
+          isFolder
+            ? (level) => void grantMcp((data as FolderNodeData).path, level)
+            : undefined
+        }
+        onRevoke={
+          isFolder
+            ? () => void revokeMcp((data as FolderNodeData).path)
+            : undefined
+        }
         open={kebabOpen}
         onOpenChange={setKebabOpen}
       >
@@ -663,6 +702,19 @@ export function TreeRow({
       // Plan 08-06 (D-26 / SHARE-01): mirrors the dropdown variant —
       // same reveal hook, same path source.
       onReveal={() => void reveal(data.path)}
+      // Plan 08-10 (MCP-01): mirrors the dropdown variant — same grant
+      // hook, same path source. Undefined on note / file rows.
+      activeLevel={isFolder ? grantLevel : null}
+      onGrant={
+        isFolder
+          ? (level) => void grantMcp((data as FolderNodeData).path, level)
+          : undefined
+      }
+      onRevoke={
+        isFolder
+          ? () => void revokeMcp((data as FolderNodeData).path)
+          : undefined
+      }
     >
       {rowContent}
     </TreeRowContextMenu>

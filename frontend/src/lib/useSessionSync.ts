@@ -5,6 +5,7 @@ import { useTreeStore } from "./useTreeStore";
 import { useFileTree } from "./useFileTree";
 import { dispatchTagEvent } from "./useTagBrowser";
 import { dispatchLinksEvent } from "./useBacklinks";
+import { dispatchMcpGrantsEvent } from "./useMcpGrants";
 import type { components } from "../api/schema";
 
 type WSEnvelope = components["schemas"]["WSEnvelope"];
@@ -183,6 +184,13 @@ export function useSessionSync(
             void refreshTree();
             // Notify optional App.tsx handler (e.g. to show error banner on partial failure).
             handlersRef.current.onLinksRewritten?.(env.payload as WSLinksRewrittenPayload);
+            break;
+          case "mcp:grant_changed":
+            // Plan 08-10 (D-57): fan-out to useMcpGrants subscribers so the
+            // Sparkles indicator + submenu state refresh in every connected
+            // tab. The backend broadcasts after every POST/DELETE so a
+            // grant change made in one tab propagates to every other tab.
+            dispatchMcpGrantsEvent();
             break;
           // migration:status: deferred to Phase 2 retro;
           // unknown future events ignored without warning so they don't crash.
