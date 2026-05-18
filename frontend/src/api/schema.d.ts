@@ -2846,6 +2846,15 @@ export interface operations {
                     "application/json": components["schemas"]["NoteSummary"];
                 };
             };
+            /** @description Path failed validation (traversal, absolute, non-.md, or empty) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description No note exists at that path */
             404: {
                 headers: {

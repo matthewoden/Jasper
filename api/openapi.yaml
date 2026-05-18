@@ -1293,6 +1293,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NoteSummary"
+        "400":
+          description: Path failed validation (traversal, absolute, non-.md, or empty)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: No note exists at that path
           content:

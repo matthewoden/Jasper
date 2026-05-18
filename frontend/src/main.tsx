@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 
 import App from "./App";
+import { NoteNotFoundView } from "./components/NoteNotFoundView";
 import { SetupApp } from "./setup/SetupApp";
 import { loadDraft } from "./setup/draft";
 import "./theme.css";
@@ -38,8 +39,16 @@ if (path === "/setup") {
       <SetupApp />
     </React.StrictMode>,
   );
+} else if (path === "/note-not-found") {
+  // Plan 08-07 (D-32 / SHARE-02): deep-link miss view. The page-title
+  // string is LOCKED per UI-SPEC §Copywriting line 222.
+  document.title = "Note not found — Jasper";
+  root.render(
+    <React.StrictMode>
+      <NoteNotFoundView />
+    </React.StrictMode>,
+  );
 } else {
-  // Plan 08-07 inserts `/note-not-found` branch here as an additional `else if`.
   root.render(
     <React.StrictMode>
       <App />
