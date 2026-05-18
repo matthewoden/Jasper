@@ -21,6 +21,11 @@ export interface CommandActions {
   onRefreshIndex?: () => void;
   onRebuildIndex?: () => void;
   onShowShortcuts?: () => void;
+  // Plan 08-06 (D-26 / SHARE-01 Mount C): opens the host OS file manager
+  // focused on the currently active note. The caller is expected to
+  // resolve the active note's path before invoking; if no note is active,
+  // the caller passes undefined so the palette renders the entry dimmed.
+  onShareRevealCurrentNote?: () => void;
 }
 
 /**
@@ -40,6 +45,13 @@ export interface CommandPaletteResult {
    * No-ops (but still returns true) if id unknown or action not provided.
    */
   execute: (id: string) => boolean;
+  /**
+   * Plan 08-06 (D-26 / SHARE-01 Mount C): true when the command's
+   * underlying action is unavailable (e.g. "Show current note in file
+   * manager" with no note active). Palette uses this to render the row
+   * dimmed-and-inert without filtering it out.
+   */
+  isDisabled: (id: string) => boolean;
 }
 
 export function useCommandPalette(actions: CommandActions): CommandPaletteResult {
@@ -54,6 +66,8 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       "refresh-index": actions.onRefreshIndex,
       "rebuild-index": actions.onRebuildIndex,
       "show-shortcuts": actions.onShowShortcuts,
+      // Plan 08-06: undefined when no note is active (palette renders dimmed).
+      "share-reveal-current-note": actions.onShareRevealCurrentNote,
     }),
     [
       actions.onNewNote,
@@ -64,6 +78,7 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       actions.onRefreshIndex,
       actions.onRebuildIndex,
       actions.onShowShortcuts,
+      actions.onShareRevealCurrentNote,
     ],
   );
 
@@ -85,5 +100,20 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
     [idToAction],
   );
 
-  return { filtered, execute };
+  // Plan 08-06: a command is disabled when the lookup table has no
+  // bound action for its id. We restrict disabled-rendering to commands
+  // that explicitly opt in to a "dim-when-unavailable" UI affordance —
+  // current set: just share-reveal-current-note. Existing commands
+  // (new-note / save / today / ...) are always present whenever the
+  // palette opens, so undefined-fn means "not wired" and we still
+  // gracefully no-op execute() rather than render them dimmed.
+  const DISABLEABLE_IDS: ReadonlySet<string> = new Set([
+    "share-reveal-current-note",
+  ]);
+  const isDisabled = useCallback(
+    (id: string): boolean => DISABLEABLE_IDS.has(id) && !idToAction[id],
+    [idToAction],
+  );
+
+  return { filtered, execute, isDisabled };
 }

@@ -16,8 +16,11 @@
  */
 import React from "react";
 import type { CSSProperties } from "react";
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import { FolderOpen } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useFileTree } from "../lib/useFileTree";
+import { useReveal } from "../lib/useReveal";
 import { expandAndScrollToFolder } from "./FileTree";
 import type { TreeNode } from "../lib/treeApi";
 
@@ -137,6 +140,38 @@ const titleSpanStyle: CSSProperties = {
   minWidth: 0,
 };
 
+// Plan 08-06 (D-26 / SHARE-01 Mount B): "Show in file manager" context
+// menu for each folder segment. Style values mirror TreeRowMenu.tsx
+// (menuContainerStyle + itemStyle around lines 59-83) so the visual
+// language stays consistent across the four reveal mount points. We
+// duplicate rather than import to avoid an unwanted style export
+// surface on TreeRowMenu.tsx.
+const menuContainerStyle: CSSProperties = {
+  background: "var(--color-surface)",
+  border: "1px solid var(--color-border)",
+  borderRadius: 6,
+  paddingTop: 4,
+  paddingBottom: 4,
+  minWidth: 200,
+  maxWidth: 320,
+  boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+  zIndex: 50,
+};
+
+const menuItemStyle: CSSProperties = {
+  height: 32,
+  display: "flex",
+  alignItems: "center",
+  padding: "0 16px",
+  gap: 8,
+  fontSize: 14,
+  fontWeight: 400,
+  color: "var(--color-fg)",
+  cursor: "pointer",
+  outline: "none",
+  userSelect: "none",
+};
+
 // ──────────────────────────────────────────────────────────────────────
 // Component
 // ──────────────────────────────────────────────────────────────────────
@@ -147,6 +182,9 @@ export function Breadcrumbs(): React.ReactElement | null {
     activeNoteId ? (s.liveLabels?.[activeNoteId] ?? "") : "",
   );
   const { tree } = useFileTree();
+  // Plan 08-06 (D-26 / SHARE-01 Mount B): shared reveal hook for the
+  // folder-segment context menu. Single dispatch, LOCKED toast copy.
+  const { reveal } = useReveal();
 
   if (!activeNoteId) return null;
 
@@ -173,32 +211,58 @@ export function Breadcrumbs(): React.ReactElement | null {
           {seg.isTitle ? (
             <span style={titleSpanStyle}>{seg.label}</span>
           ) : (
-            <button
-              type="button"
-              aria-label={`Navigate to folder: ${seg.label}`}
-              onClick={() => {
-                expandAndScrollToFolder(seg.path!);
-                // UAT follow-up 2026-05-12: brief pulse on the target row.
-                useTreeStore
-                  .getState()
-                  .setPulseTarget({ kind: "folder", target: seg.path! });
-                window.setTimeout(() => {
-                  const cur = useTreeStore.getState().pulseTarget;
-                  if (cur && cur.kind === "folder" && cur.target === seg.path) {
-                    useTreeStore.getState().setPulseTarget(null);
+            // Plan 08-06 (D-26 / SHARE-01 Mount B): each folder-segment
+            // <button> becomes a Radix ContextMenu.Trigger. Right-click
+            // surfaces a 1-item menu "Show in file manager"; left-click
+            // still expands/scrolls the tree (existing behavior). The
+            // menu items use the same visual treatment as TreeRowMenu's
+            // itemStyle (32px row, 14px regular, --color-fg) per UI-SPEC
+            // §Surface 4 — researcher pinned the icon-included variant
+            // for visual scan.
+            <ContextMenu.Root>
+              <ContextMenu.Trigger asChild>
+                <button
+                  type="button"
+                  aria-label={`Navigate to folder: ${seg.label}`}
+                  onClick={() => {
+                    expandAndScrollToFolder(seg.path!);
+                    // UAT follow-up 2026-05-12: brief pulse on the target row.
+                    useTreeStore
+                      .getState()
+                      .setPulseTarget({ kind: "folder", target: seg.path! });
+                    window.setTimeout(() => {
+                      const cur = useTreeStore.getState().pulseTarget;
+                      if (cur && cur.kind === "folder" && cur.target === seg.path) {
+                        useTreeStore.getState().setPulseTarget(null);
+                      }
+                    }, 900);
+                  }}
+                  style={folderButtonStyle}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.color = "var(--color-accent)")
                   }
-                }, 900);
-              }}
-              style={folderButtonStyle}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.color = "var(--color-accent)")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.color = "var(--color-fg)")
-              }
-            >
-              {seg.label}
-            </button>
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.color = "var(--color-fg)")
+                  }
+                >
+                  {seg.label}
+                </button>
+              </ContextMenu.Trigger>
+              <ContextMenu.Portal>
+                <ContextMenu.Content style={menuContainerStyle}>
+                  <ContextMenu.Item
+                    style={menuItemStyle}
+                    aria-label={`Show ${seg.label} in file manager`}
+                    onSelect={() => {
+                      if (seg.path) void reveal(seg.path);
+                    }}
+                  >
+                    <FolderOpen size={16} aria-hidden="true" />
+                    <span>Show in file manager</span>
+                  </ContextMenu.Item>
+                </ContextMenu.Content>
+              </ContextMenu.Portal>
+            </ContextMenu.Root>
           )}
         </React.Fragment>
       ))}

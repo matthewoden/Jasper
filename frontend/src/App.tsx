@@ -32,10 +32,31 @@ import { ToastProvider } from "./components/Toast";
 import { postAdminReindex } from "./lib/adminApi";
 import { useDailyNote } from "./lib/useDailyNote";
 import { useMigrationStatus } from "./lib/useMigrationStatus";
+import { useReveal } from "./lib/useReveal";
 import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
 import { useTreeStore } from "./lib/useTreeStore";
 import { useTreeCreateActions } from "./lib/useTreeCreateActions";
+import { useFileTree } from "./lib/useFileTree";
 import type { CommandActions } from "./lib/useCommandPalette";
+import type { TreeNode } from "./lib/treeApi";
+
+// Plan 08-06 (D-26 / SHARE-01 Mount C): resolve activeNoteId → path by
+// walking the in-memory wire tree. Mirrors the helper in Breadcrumbs.tsx;
+// we duplicate it here rather than export from Breadcrumbs to avoid an
+// inter-component import cycle (Breadcrumbs lives inside TopBar).
+function findActiveNotePath(
+  nodes: ReadonlyArray<TreeNode>,
+  id: string,
+): string | null {
+  for (const node of nodes) {
+    if (node.kind === "note" && node.id === id) return node.path;
+    if (node.kind === "folder" && Array.isArray(node.children)) {
+      const found = findActiveNotePath(node.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Phase 7 (Plan 07-12) — Global keymap module-level event bus.
@@ -499,6 +520,14 @@ function AppInner() {
   // Must be called inside the component body (hook rule); captured in commandActions dep array.
   const { createNoteAt } = useTreeCreateActions();
 
+  // Plan 08-06 (D-26 / SHARE-01 Mount C): shared reveal hook for the
+  // palette "Share" command + the file-tree wire used to resolve
+  // activeNoteId → path at call time. The hook is a no-op when called
+  // without an active note (handled below — onShareRevealCurrentNote
+  // stays undefined in that case so the palette renders it dimmed).
+  const { reveal } = useReveal();
+  const { tree } = useFileTree();
+
   // Phase 7 (Plan 07-12) — CommandActions for CommandMenu.
   // Each action is wired to an existing hook or store setter.
   // Stable reference via useMemo (actions only change if dependencies change).
@@ -591,8 +620,31 @@ function AppInner() {
         setPaletteOpen(false);
         setCheatSheetOpen(true);
       },
+
+      // Plan 08-06 (D-26 / SHARE-01 Mount C): "Show current note in file
+      // manager". onShareRevealCurrentNote is undefined when no note is
+      // active so the palette renders the entry dimmed (UI-SPEC §Surface 4
+      // Mount C). When set, it resolves the active note's path from the
+      // live wire tree and dispatches the reveal — closing the palette
+      // first so the toast surface is unobstructed.
+      onShareRevealCurrentNote:
+        activeNoteId != null
+          ? () => {
+              const path = findActiveNotePath(tree?.root ?? [], activeNoteId);
+              setPaletteOpen(false);
+              if (path) void reveal(path);
+            }
+          : undefined,
     }),
-    [openToday, setPaletteOpen, setCheatSheetOpen, createNoteAt],
+    [
+      openToday,
+      setPaletteOpen,
+      setCheatSheetOpen,
+      createNoteAt,
+      activeNoteId,
+      reveal,
+      tree,
+    ],
   );
 
   return (

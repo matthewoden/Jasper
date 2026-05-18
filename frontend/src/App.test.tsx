@@ -1051,9 +1051,10 @@ describe("Phase 7 (Plan 07-16) — handleAppCmdP store mutation contract (UAT #2
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Plan 07-17 — UAT #2 / BLOCKER #2: cold Cmd+P shows all 9 commands
+// Plan 07-17 — UAT #2 / BLOCKER #2: cold Cmd+P shows all commands
+// Plan 08-06 — entry count bumped to 9 (Share/Reveal command added).
 // ──────────────────────────────────────────────────────────────────────────────
-describe("Plan 07-17 — cold Cmd+P shows all 9 commands (UAT #2 / BLOCKER #2)", () => {
+describe("Plan 07-17 — cold Cmd+P shows all palette commands (UAT #2 / BLOCKER #2)", () => {
   beforeEach(() => {
     getAdminStatusMock.mockResolvedValue({
       data: { migration_status: "ok" as const, notes_indexed: 0 },
@@ -1064,7 +1065,7 @@ describe("Plan 07-17 — cold Cmd+P shows all 9 commands (UAT #2 / BLOCKER #2)",
     useTreeStore.setState({ paletteOpen: false, paletteMode: "notes" });
   });
 
-  it("cold Cmd+P shows all 8 commands (UAT #2 / BLOCKER #2 / Plan 07-27: Find removed)", async () => {
+  it("cold Cmd+P shows all 9 commands (Plan 07-27: Find removed; Plan 08-06: Share/Reveal added)", async () => {
     render(<App />);
 
     // Fire the global Cmd+P handler at window (App attaches handleAppCmdP
@@ -1074,13 +1075,14 @@ describe("Plan 07-17 — cold Cmd+P shows all 9 commands (UAT #2 / BLOCKER #2)",
     });
 
     // After Cmd+P: palette open AND mode='commands' — CommandMenu renders
-    // in commands mode showing ALL 8 COMMAND_PALETTE_ENTRIES rows (Plan 07-27: Find removed).
+    // in commands mode showing ALL COMMAND_PALETTE_ENTRIES rows.
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     expect(palette).toBeInTheDocument();
 
     const commandLabels = COMMAND_PALETTE_ENTRIES.map((e) => e.label);
-    // Sanity: there are 8 entries (Plan 07-27: "Find in note" removed)
-    expect(commandLabels).toHaveLength(8);
+    // Sanity: 9 entries (8 after Plan 07-27's Find removal + 1 from Plan 08-06's
+    // share-reveal-current-note addition).
+    expect(commandLabels).toHaveLength(9);
     for (const label of commandLabels) {
       expect(within(palette).getByText(label)).toBeInTheDocument();
     }

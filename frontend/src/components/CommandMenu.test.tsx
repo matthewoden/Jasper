@@ -110,6 +110,9 @@ function setupMocks() {
     // Default: execute returns true (close palette) — matches real useCommandPalette
     // behavior for all commands except switch-note.
     execute: vi.fn().mockReturnValue(true),
+    // Plan 08-06: real hook exposes isDisabled() for the share-reveal command.
+    // Default to "everything enabled" so existing tests behave unchanged.
+    isDisabled: vi.fn().mockReturnValue(false),
   });
   // Bucket B1 default: no FTS5 search results.
   mockUseSearch.mockReturnValue({ results: [], isSearching: false });
