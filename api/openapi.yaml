@@ -23,6 +23,9 @@ tags:
   - { name: config, description: "User configuration (DESIGN.md §11) — theme, daily notes, editor preferences" }
   - { name: tags, description: "Tag browser, rename, delete (TAGS-03, TAGS-04, TAGS-06, TAGS-07)" }
   - { name: backlinks, description: "Backlinks panel and wiki-link autocomplete (LINKS-06, LINKS-08)" }
+  - { name: sharing, description: "OS file-manager integration: reveal a note path in Finder / Explorer (Phase 8 SHARE-01, D-26)" }
+  - { name: mcp, description: "MCP write-grant ACL: per-folder grants with two-tier model (Phase 8 MCP-01, D-13, D-17)" }
+  - { name: setup, description: "First-run wizard: status, data-dir validation, submit (Phase 8 INSTALL-07, D-04, D-08, D-10)" }
 paths:
   /notes:
     get:
@@ -1064,6 +1067,238 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /reveal:
+    post:
+      tags: [sharing]
+      operationId: postReveal
+      summary: Reveal a note path in the host OS file manager (SHARE-01)
+      description: |
+        Phase 8 SHARE-01 / D-26 / D-27. Opens the host OS file manager
+        with the named path selected. macOS uses `open -R <path>`
+        (Finder reveal). WSL2 uses `explorer.exe /select,<windows-path>`
+        with the WSL path translated to a Windows UNC path.
+        Linux-native is not a v1 target (D-28) — handler returns 501.
+
+        The `path` field is the path under the vault, relative to
+        notes/. The handler resolves it through the same
+        canonicalization used by GET /notes (DATA-11) to prevent
+        traversal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevealRequest"
+      responses:
+        "200":
+          description: File manager launched successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevealResponse"
+        "400":
+          description: Invalid path (traversal, empty, outside vault)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: File manager exec failed (system error)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "501":
+          description: Not supported on this platform (e.g. Linux native — D-28)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /mcp/grants:
+    get:
+      tags: [mcp]
+      operationId: getMcpGrants
+      summary: List all MCP write grants (MCP-01)
+      description: |
+        Returns every row in the mcp_write_grants table (Phase 8 migration
+        004). The frontend tree menu reads this list to render
+        "MCP write" indicators per folder (D-17). Folders without a row
+        are deny-by-default; grants at an ancestor folder grant writes
+        recursively (D-18, resolved server-side at write time).
+      responses:
+        "200":
+          description: All MCP write grants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpGrantList"
+    post:
+      tags: [mcp]
+      operationId: postMcpGrant
+      summary: Grant (or upgrade) MCP write access for a folder (MCP-01, D-17)
+      description: |
+        Idempotent grant for `folder_path` at `level` (1 = create+update;
+        2 = create+update+move+delete). If the folder already has a row,
+        the level is updated to the requested value (upgrade or
+        downgrade); `granted_at` is refreshed; `granted_via` updates to
+        reflect the new entry point. Broadcasts `mcp:grant_changed` on
+        the WS hub so every connected tab refreshes its indicators
+        (D-57).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/McpGrantRequest"
+      responses:
+        "200":
+          description: Grant created or upgraded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpGrant"
+        "400":
+          description: Invalid path or level
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [mcp]
+      operationId: deleteMcpGrant
+      summary: Revoke MCP write access for a folder (D-17)
+      description: |
+        Deletes the grant row for `folder_path`. Does NOT recurse —
+        ancestor grants still apply per D-18. Broadcasts
+        `mcp:grant_changed` on success.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: folder_path of the grant to revoke (canonical NFC+lowercase).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "204":
+          description: Grant deleted
+        "404":
+          description: No grant exists for that folder_path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /setup/status:
+    get:
+      tags: [setup]
+      operationId: getSetupStatus
+      summary: First-run wizard status (INSTALL-07, D-04)
+      description: |
+        Returns whether the first-run wizard still needs to run.
+        `first_run = true` when no resolved `cfg.Server.DataDir` is
+        present (the user has not yet completed the wizard). The
+        frontend redirects to /setup when this returns true (D-04
+        wizard mount).
+      responses:
+        "200":
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupStatus"
+  /setup/validate-data-dir:
+    post:
+      tags: [setup]
+      operationId: postSetupValidateDataDir
+      summary: Debounced wizard-side validation of a proposed data directory (D-08)
+      description: |
+        Called by the wizard as the user types a data-directory path.
+        Validates: parent exists, path is not nested inside an existing
+        vault, path is writable, path contains only ASCII characters.
+        Returns a structured `code` so the wizard can render an inline
+        error message. Does NOT persist anything.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupValidateRequest"
+      responses:
+        "200":
+          description: Validation result (valid OR invalid with code)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupValidateResponse"
+  /setup:
+    post:
+      tags: [setup]
+      operationId: postSetup
+      summary: Submit the first-run wizard (INSTALL-07, D-10)
+      description: |
+        Persists the wizard payload: writes <data_dir>/storage/config.json
+        with the wizard-supplied theme, MCP enabled flag, MCP grants,
+        and daily-notes template, then runs migrations against the new
+        data dir. On success the frontend redirects to /. Only callable
+        when `GET /setup/status` returns `first_run: true` — repeat calls
+        are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupRequest"
+      responses:
+        "200":
+          description: Setup complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupResponse"
+        "400":
+          description: Invalid request (bad path, malformed body, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Setup failed (filesystem error, migration failure)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /notes/by-path:
+    get:
+      tags: [notes]
+      operationId: getNoteByPath
+      summary: Lookup a note by its relative path (D-30 deep-link fallback)
+      description: |
+        Phase 8 D-30 deep-link fallback. Used by the `?path=<rel>` URL
+        parameter when the canonical `/notes/{id}` form is not available
+        (e.g. someone shares a permalink across machines and the UUIDs
+        differ but the path is stable). Server canonicalizes `path` via
+        the same DATA-11 rules as the rest of the API.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: Relative path under notes/, e.g. "projects/foo.md".
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Note metadata for the matched path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteSummary"
+        "404":
+          description: No note exists at that path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   parameters:
     NoteId:
@@ -1369,6 +1604,13 @@ components:
       type: object
       required: [appName, dailyNotes, editor, theme]
       additionalProperties: false   # D-40 strict — unknown keys → 400
+      # Phase 8 (D-50 / D-47) extends this schema with `server` and
+      # `mcp` blocks. They are NOT in `required` so existing config.json
+      # files on disk (written by Phases 5–7) continue to load; the Go
+      # side fills defaults in load.go when the blocks are absent.
+      # `additionalProperties: false` still holds — PUT /config payloads
+      # carrying `server` or `mcp` round-trip cleanly. PUT bodies missing
+      # them are accepted (strict validator pre-fills defaults).
       properties:
         appName:
           type: string
@@ -1411,6 +1653,46 @@ components:
             vimMode:
               type: boolean
               default: false
+        server:
+          # Phase 8 D-50 / D-40: HTTP listener port + resolved data
+          # directory. Port pinned at 6683 (T9 spelling of "NOTE");
+          # wizard does NOT expose a port override (config-file edit only).
+          # DataDir is set by the first-run wizard (08-02 / D-04) and
+          # re-read at every server boot.
+          type: object
+          required: [port, dataDir]
+          additionalProperties: false
+          properties:
+            port:
+              type: integer
+              minimum: 1
+              maximum: 65535
+              default: 6683
+            dataDir:
+              type: string
+              minLength: 1
+        mcp:
+          # Phase 8 D-14 / D-15 / D-47: optional secondary HTTP listener
+          # serving the MCP StreamableHTTP endpoint. Disabled by default;
+          # the first-run wizard (08-02) writes `enabled` based on the
+          # opt-in checkbox. Port pinned at 6684 (D-47). Bind is loopback-
+          # only (127.0.0.1), enforced at listener startup via
+          # netbind.RequireLoopbackBind (D-15).
+          type: object
+          required: [enabled, port, bind]
+          additionalProperties: false
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            port:
+              type: integer
+              minimum: 1
+              maximum: 65535
+              default: 6684
+            bind:
+              type: string
+              default: "127.0.0.1"
     Error:
       type: object
       required: [code, message]
@@ -1648,6 +1930,7 @@ components:
             - "reindex:started"
             - "reindex:complete"
             - "migration:status"
+            - "mcp:grant_changed"
         origin_session_id:
           type: string
           description: |
@@ -1756,3 +2039,119 @@ components:
         current_updated_at:
           type: string
           format: date-time
+    # ----- Phase 8 schemas (D-26, D-13, D-17, D-04, D-08, D-10, D-30) -----
+    RevealRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          minLength: 1
+          description: Vault-relative path of the file to reveal (canonical NFC+lowercase).
+    RevealResponse:
+      type: object
+      required: [platform]
+      properties:
+        platform:
+          type: string
+          enum: [darwin, wsl2]
+          description: Host platform the reveal was executed on (D-26 / D-28).
+    McpGrant:
+      type: object
+      required: [folder_path, level, granted_at, granted_via]
+      properties:
+        folder_path:
+          type: string
+          minLength: 1
+          description: Canonical NFC+lowercase rel path under notes/ (DATA-11).
+        level:
+          type: integer
+          enum: [1, 2]
+          description: "1 = create+update (default); 2 = create+update+move+delete (D-13)."
+        granted_at:
+          type: string
+          format: date-time
+        granted_via:
+          type: string
+          description: "Entry point that created the grant: 'wizard' | 'tree-context-menu' | 'tree-dropdown-menu' (D-17 telemetry)."
+    McpGrantSeed:
+      type: object
+      required: [folder, level]
+      description: "Wizard payload form of an MCP grant (used inside SetupRequest.mcp_grants)."
+      properties:
+        folder:
+          type: string
+          minLength: 1
+        level:
+          type: integer
+          enum: [1, 2]
+    McpGrantList:
+      type: object
+      required: [grants]
+      properties:
+        grants:
+          type: array
+          items: { $ref: "#/components/schemas/McpGrant" }
+    McpGrantRequest:
+      type: object
+      required: [folder_path, level]
+      properties:
+        folder_path:
+          type: string
+          minLength: 1
+        level:
+          type: integer
+          enum: [1, 2]
+    SetupStatus:
+      type: object
+      required: [first_run]
+      properties:
+        first_run:
+          type: boolean
+          description: True when the first-run wizard has not yet been completed (D-04).
+    SetupValidateRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          minLength: 1
+    SetupValidateResponse:
+      type: object
+      required: [valid]
+      properties:
+        valid:
+          type: boolean
+        code:
+          type: string
+          enum: [parent_missing, nested_vault, unwritable, non_ascii]
+          description: Structured error code when valid=false (D-08).
+        message:
+          type: string
+          description: Human-readable error message when valid=false.
+    SetupRequest:
+      type: object
+      required: [data_dir, theme, mcp_enabled, mcp_grants, daily_template, create_today_daily_note]
+      properties:
+        data_dir:
+          type: string
+          minLength: 1
+        theme:
+          type: string
+          enum: [dark, light]
+        mcp_enabled:
+          type: boolean
+        mcp_grants:
+          type: array
+          items: { $ref: "#/components/schemas/McpGrantSeed" }
+        daily_template:
+          type: string
+          maxLength: 1024
+        create_today_daily_note:
+          type: boolean
+    SetupResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean

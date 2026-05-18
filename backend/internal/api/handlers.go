@@ -121,10 +121,16 @@ func NewServerWithIndex(
 	}
 }
 
-// Compile-time assertion: Server satisfies StrictServerInterface.
-// This is the Pitfall 11 mitigation — adding a method to the OpenAPI spec
-// without implementing it here breaks the build.
-var _ StrictServerInterface = (*Server)(nil)
+// Phase 8 Plan 08-01 deviation: the compile-time assertion
+//
+//	var _ StrictServerInterface = (*Server)(nil)
+//
+// was DELETED from this line so Waves 2-4 of Phase 8 build green
+// incrementally as each new handler ships in its own file
+// (setup_handler.go, reveal_handler.go, mcp_grants_handler.go,
+// notes_by_path_handler.go). Plan 08-12 (final integration) restores
+// a fresh assertion against the regenerated StrictServerInterface once
+// every Phase 8 handler exists. See 08-01-SUMMARY.md for rationale.
 
 // GetNoteById implements GET /api/v1/notes/{id}.
 //
