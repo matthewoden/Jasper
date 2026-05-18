@@ -1,0 +1,394 @@
+package api
+
+// reveal_handler_test.go — Plan 08-05 unit tests for PostReveal.
+//
+// Two layers of coverage:
+//
+//   1. Path-validation cases (independent of runtime.GOOS) — exercise the
+//      5-rule pipeline via the resolveRevealPath helper. These run on every
+//      platform because they never reach the platform dispatch.
+//   2. Platform dispatch — fake revealDarwinFn / revealWSL2Fn via the package
+//      vars so we can verify the right helper is called with the right abs
+//      path WITHOUT shelling out (CI safety — never pop a Finder/Explorer
+//      window during `go test`).
+//
+// isWSL() is exercised via the osreleasePath package var pointing at a
+// tmp file with controlled content.
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+// newRevealServer builds a *Server with dataDir pointed at a tmpdir whose
+// notes/ subfolder is pre-created. Returns the dataDir for tests that need
+// to write fixture files.
+func newRevealServer(t *testing.T) (*Server, string) {
+	t.Helper()
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, "notes"), 0o755); err != nil {
+		t.Fatalf("mkdir notes: %v", err)
+	}
+	s := &Server{
+		log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		dataDir: tmp,
+	}
+	return s, tmp
+}
+
+// stubDispatchers replaces revealDarwinFn / revealWSL2Fn with fakes that
+// record the abs path they received and return the configured err. Returns
+// a cleanup that restores the originals.
+type dispatchCall struct {
+	called bool
+	abs    string
+}
+
+func stubDispatchers(t *testing.T, darwinErr, wslErr error) (*dispatchCall, *dispatchCall, func()) {
+	t.Helper()
+	darwinCall := &dispatchCall{}
+	wslCall := &dispatchCall{}
+	origD := revealDarwinFn
+	origW := revealWSL2Fn
+	revealDarwinFn = func(_ context.Context, abs string) error {
+		darwinCall.called = true
+		darwinCall.abs = abs
+		return darwinErr
+	}
+	revealWSL2Fn = func(_ context.Context, abs string) error {
+		wslCall.called = true
+		wslCall.abs = abs
+		return wslErr
+	}
+	return darwinCall, wslCall, func() {
+		revealDarwinFn = origD
+		revealWSL2Fn = origW
+	}
+}
+
+// stubOsrelease overrides osreleasePath to point at a tmp file with the
+// supplied content (use empty string to simulate "file does not exist").
+func stubOsrelease(t *testing.T, content string) func() {
+	t.Helper()
+	orig := osreleasePath
+	if content == "" {
+		// Point at a path that does not exist so os.ReadFile returns an error.
+		osreleasePath = filepath.Join(t.TempDir(), "does-not-exist")
+		return func() { osreleasePath = orig }
+	}
+	tmp := filepath.Join(t.TempDir(), "osrelease")
+	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile osrelease: %v", err)
+	}
+	osreleasePath = tmp
+	return func() { osreleasePath = orig }
+}
+
+// ----------------------------------------------------------------------------
+// Path validation (platform-independent)
+// ----------------------------------------------------------------------------
+
+func TestPostReveal_PathValidation_RejectsBadPaths(t *testing.T) {
+	s, dataDir := newRevealServer(t)
+	// Seed one legit file so "exists" path is differentiable.
+	legit := filepath.Join(dataDir, "notes", "legit.md")
+	if err := os.WriteFile(legit, []byte("# legit"), 0o600); err != nil {
+		t.Fatalf("seed legit.md: %v", err)
+	}
+
+	// Stub dispatchers — none should fire on the validation-rejection cases.
+	darwinCall, wslCall, restore := stubDispatchers(t, nil, nil)
+	defer restore()
+
+	cases := []struct {
+		name    string
+		path    string
+		wantMsg string // substring of returned Error.Message
+	}{
+		{"dot-dot", "..", "path must not contain"},
+		{"parent-escape", "../etc/passwd", "path must not contain"},
+		{"absolute-posix", "/etc/passwd", "path must be relative"},
+		{"absolute-windows-backslash", `\Windows\System32`, "path must be relative"},
+		{"missing-target", "foo/bar.md", "target does not exist"},
+		{"empty", "", "path is required"},
+		{"deep-parent-escape", "../../escape.md", "path must not contain"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := &PostRevealJSONRequestBody{Path: tc.path}
+			resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: body})
+			if err != nil {
+				t.Fatalf("PostReveal returned error: %v", err)
+			}
+			r400, ok := resp.(PostReveal400JSONResponse)
+			if !ok {
+				t.Fatalf("expected PostReveal400JSONResponse, got %T", resp)
+			}
+			if !strings.Contains(r400.Message, tc.wantMsg) {
+				t.Fatalf("Message=%q, want substring %q", r400.Message, tc.wantMsg)
+			}
+			if r400.Code != "invalid_path" && r400.Code != "invalid_request" {
+				t.Fatalf("Code=%q, want invalid_path or invalid_request", r400.Code)
+			}
+		})
+	}
+
+	if darwinCall.called {
+		t.Fatalf("revealDarwinFn must NOT be called when path validation rejects")
+	}
+	if wslCall.called {
+		t.Fatalf("revealWSL2Fn must NOT be called when path validation rejects")
+	}
+}
+
+func TestPostReveal_PathValidation_MissingBody(t *testing.T) {
+	s, _ := newRevealServer(t)
+	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: nil})
+	if err != nil {
+		t.Fatalf("PostReveal returned error: %v", err)
+	}
+	r400, ok := resp.(PostReveal400JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostReveal400JSONResponse, got %T", resp)
+	}
+	if r400.Code != "invalid_request" {
+		t.Fatalf("Code=%q, want invalid_request", r400.Code)
+	}
+}
+
+func TestPostReveal_PathValidation_SymlinkRejected(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on Windows")
+	}
+	s, dataDir := newRevealServer(t)
+	notesDir := filepath.Join(dataDir, "notes")
+
+	// Create the legit note inside the vault and the symlink target outside.
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	if err := os.WriteFile(outside, []byte("# outside"), 0o600); err != nil {
+		t.Fatalf("seed outside.md: %v", err)
+	}
+	link := filepath.Join(notesDir, "evil.md")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	darwinCall, wslCall, restore := stubDispatchers(t, nil, nil)
+	defer restore()
+
+	body := &PostRevealJSONRequestBody{Path: "evil.md"}
+	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: body})
+	if err != nil {
+		t.Fatalf("PostReveal returned error: %v", err)
+	}
+	r400, ok := resp.(PostReveal400JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostReveal400JSONResponse, got %T", resp)
+	}
+	if r400.Code != "invalid_path" || !strings.Contains(r400.Message, "symlink") {
+		t.Fatalf("Code=%q Message=%q, want invalid_path + 'symlink'", r400.Code, r400.Message)
+	}
+	if darwinCall.called || wslCall.called {
+		t.Fatalf("symlink rejection must short-circuit BEFORE dispatch")
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Platform dispatch — fakes so we never shell out in CI.
+// ----------------------------------------------------------------------------
+
+func TestPostReveal_DarwinDispatch_HappyPath(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only dispatch")
+	}
+	s, dataDir := newRevealServer(t)
+	legit := filepath.Join(dataDir, "notes", "legit.md")
+	if err := os.WriteFile(legit, []byte("# legit"), 0o600); err != nil {
+		t.Fatalf("seed legit.md: %v", err)
+	}
+	darwinCall, _, restore := stubDispatchers(t, nil, nil)
+	defer restore()
+
+	body := &PostRevealJSONRequestBody{Path: "legit.md"}
+	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: body})
+	if err != nil {
+		t.Fatalf("PostReveal returned error: %v", err)
+	}
+	r200, ok := resp.(PostReveal200JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostReveal200JSONResponse, got %T (resp=%+v)", resp, resp)
+	}
+	if r200.Platform != Darwin {
+		t.Fatalf("Platform=%q, want %q", r200.Platform, Darwin)
+	}
+	if !darwinCall.called {
+		t.Fatalf("revealDarwinFn was not called")
+	}
+	wantAbs := filepath.Join(dataDir, "notes", "legit.md")
+	if darwinCall.abs != wantAbs {
+		t.Fatalf("dispatch abs=%q, want %q", darwinCall.abs, wantAbs)
+	}
+}
+
+func TestPostReveal_DarwinDispatch_ExecFailure_Returns500(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only dispatch")
+	}
+	s, dataDir := newRevealServer(t)
+	legit := filepath.Join(dataDir, "notes", "legit.md")
+	if err := os.WriteFile(legit, []byte("# legit"), 0o600); err != nil {
+		t.Fatalf("seed legit.md: %v", err)
+	}
+	_, _, restore := stubDispatchers(t, errors.New("boom"), nil)
+	defer restore()
+
+	body := &PostRevealJSONRequestBody{Path: "legit.md"}
+	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: body})
+	if err != nil {
+		t.Fatalf("PostReveal returned error: %v", err)
+	}
+	r500, ok := resp.(PostReveal500JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostReveal500JSONResponse, got %T", resp)
+	}
+	if r500.Code != "exec_failed" {
+		t.Fatalf("Code=%q, want exec_failed", r500.Code)
+	}
+	// T-08-22: message must NOT leak the raw exec stderr.
+	if strings.Contains(strings.ToLower(r500.Message), "boom") {
+		t.Fatalf("Message=%q leaks underlying exec error", r500.Message)
+	}
+}
+
+func TestPostReveal_DarwinDispatch_FolderPath(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only dispatch")
+	}
+	// D-26: reveal accepts folders (4 mount points include folder rows).
+	s, dataDir := newRevealServer(t)
+	folder := filepath.Join(dataDir, "notes", "myfolder")
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatalf("mkdir myfolder: %v", err)
+	}
+	darwinCall, _, restore := stubDispatchers(t, nil, nil)
+	defer restore()
+
+	body := &PostRevealJSONRequestBody{Path: "myfolder"}
+	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: body})
+	if err != nil {
+		t.Fatalf("PostReveal returned error: %v", err)
+	}
+	if _, ok := resp.(PostReveal200JSONResponse); !ok {
+		t.Fatalf("expected PostReveal200JSONResponse, got %T", resp)
+	}
+	if !darwinCall.called || darwinCall.abs != folder {
+		t.Fatalf("dispatch did not receive folder abs path: called=%v abs=%q want=%q",
+			darwinCall.called, darwinCall.abs, folder)
+	}
+}
+
+func TestPostReveal_LinuxNative_Returns501WithAbsPath(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux-only check")
+	}
+	// Force isWSL() to return false (point osreleasePath at non-existent file).
+	restore := stubOsrelease(t, "")
+	defer restore()
+
+	s, dataDir := newRevealServer(t)
+	legit := filepath.Join(dataDir, "notes", "legit.md")
+	if err := os.WriteFile(legit, []byte("# legit"), 0o600); err != nil {
+		t.Fatalf("seed legit.md: %v", err)
+	}
+
+	body := &PostRevealJSONRequestBody{Path: "legit.md"}
+	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: body})
+	if err != nil {
+		t.Fatalf("PostReveal returned error: %v", err)
+	}
+	r501, ok := resp.(PostReveal501JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostReveal501JSONResponse, got %T", resp)
+	}
+	if r501.Code != "not_supported" {
+		t.Fatalf("Code=%q, want not_supported", r501.Code)
+	}
+	wantAbs := filepath.Join(dataDir, "notes", "legit.md")
+	if !strings.Contains(r501.Message, wantAbs) {
+		t.Fatalf("Message=%q must contain abs path %q (UI copy: surface file location for native Linux)",
+			r501.Message, wantAbs)
+	}
+}
+
+func TestPostReveal_WSL2Dispatch_HappyPath(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux-only dispatch")
+	}
+	// Force isWSL() to return true.
+	restore := stubOsrelease(t, "5.15.90.1-microsoft-standard-WSL2")
+	defer restore()
+
+	s, dataDir := newRevealServer(t)
+	legit := filepath.Join(dataDir, "notes", "legit.md")
+	if err := os.WriteFile(legit, []byte("# legit"), 0o600); err != nil {
+		t.Fatalf("seed legit.md: %v", err)
+	}
+	_, wslCall, restoreDisp := stubDispatchers(t, nil, nil)
+	defer restoreDisp()
+
+	body := &PostRevealJSONRequestBody{Path: "legit.md"}
+	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: body})
+	if err != nil {
+		t.Fatalf("PostReveal returned error: %v", err)
+	}
+	r200, ok := resp.(PostReveal200JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostReveal200JSONResponse, got %T", resp)
+	}
+	if r200.Platform != Wsl2 {
+		t.Fatalf("Platform=%q, want %q", r200.Platform, Wsl2)
+	}
+	if !wslCall.called {
+		t.Fatalf("revealWSL2Fn was not called")
+	}
+	wantAbs := filepath.Join(dataDir, "notes", "legit.md")
+	if wslCall.abs != wantAbs {
+		t.Fatalf("dispatch abs=%q, want %q", wslCall.abs, wantAbs)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// isWSL — direct unit test via the package-var osrelease path.
+// ----------------------------------------------------------------------------
+
+func TestIsWSL(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string // "" → file does not exist
+		want    bool
+	}{
+		{"missing-file", "", false},
+		{"linux-native", "5.15.0-1023-generic\n", false},
+		{"wsl2-microsoft-lowercase", "5.15.90.1-microsoft-standard-WSL2\n", true},
+		{"wsl2-microsoft-uppercase", "5.15.0-1023-Microsoft\n", true},
+		{"wsl1-classic", "4.4.0-19041-Microsoft\n", true},
+		{"empty-file", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			restore := stubOsrelease(t, tc.content)
+			defer restore()
+			if got := isWSL(); got != tc.want {
+				t.Fatalf("isWSL()=%v, want %v (content=%q)", got, tc.want, tc.content)
+			}
+		})
+	}
+}
