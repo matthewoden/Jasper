@@ -1,0 +1,211 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/kardianos/service"
+	"github.com/spf13/cobra"
+
+	_ "modernc.org/sqlite"
+
+	"github.com/matthewoden/jasper/backend/internal/config"
+)
+
+// fakeStatusProvider lets tests inject a deterministic service.Status
+// without constructing a real kardianos service handle.
+type fakeStatusProvider struct {
+	state service.Status
+	err   error
+}
+
+func (f *fakeStatusProvider) Status() (service.Status, error) { return f.state, f.err }
+
+// withStatusFactory temporarily swaps the package-level factory for the
+// fake. Returns a teardown closure (test calls via t.Cleanup).
+func withStatusFactory(t *testing.T, prov statusProvider) {
+	t.Helper()
+	orig := statusFactory
+	statusFactory = func(string) (statusProvider, error) { return prov, nil }
+	t.Cleanup(func() { statusFactory = orig })
+}
+
+// writeMinimalConfig creates <dataDir>/storage/config.json with the
+// given Server.Port / MCP block so config.Load resolves cleanly.
+func writeMinimalConfig(t *testing.T, dataDir string, cfg config.Config) {
+	t.Helper()
+	storageDir := filepath.Join(dataDir, "storage")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatalf("mkdir storage: %v", err)
+	}
+	body, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal cfg: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "config.json"), body, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+}
+
+// TestRunStatus_NoConfig_PrintsSetupHint asserts the not-yet-set-up
+// branch: with no config.json on disk, status prints the wizard hint.
+func TestRunStatus_NoConfig_PrintsSetupHint(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("JASPER_DATA_DIR", dir)
+
+	var buf bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&buf)
+
+	if err := runStatus(cmd, nil); err != nil {
+		t.Fatalf("runStatus: %v", err)
+	}
+	if !strings.Contains(buf.String(), "not yet set up") {
+		t.Errorf("want setup hint, got %q", buf.String())
+	}
+}
+
+// TestRunStatus_RunningService_PrintsAllFields drives the happy path —
+// config on disk + running service → all six lines emitted with the
+// expected substrings.
+func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("JASPER_DATA_DIR", dir)
+	writeMinimalConfig(t, dir, config.Config{
+		AppName: "Jasper",
+		Theme:   "dark",
+		Server:  config.ServerConfig{Port: 6683, DataDir: dir},
+		MCP:     config.MCPConfig{Enabled: false, Port: 6684, Bind: "127.0.0.1"},
+	})
+	withStatusFactory(t, &fakeStatusProvider{state: service.StatusRunning})
+
+	var buf bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&buf)
+
+	if err := runStatus(cmd, nil); err != nil {
+		t.Fatalf("runStatus: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"Jasper service: running",
+		"Bound on:       127.0.0.1:6683",
+		"Data directory: " + dir,
+		filepath.Join(dir, "logs", "jasper.log"),
+		"MCP enabled:    no",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("status output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestRunStatus_McpEnabledWithGrants pins the D-36 MCP summary line
+// including per-grant breakdown.
+func TestRunStatus_McpEnabledWithGrants(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("JASPER_DATA_DIR", dir)
+	writeMinimalConfig(t, dir, config.Config{
+		AppName: "Jasper",
+		Theme:   "dark",
+		Server:  config.ServerConfig{Port: 6683, DataDir: dir},
+		MCP:     config.MCPConfig{Enabled: true, Port: 6684, Bind: "127.0.0.1"},
+	})
+	withStatusFactory(t, &fakeStatusProvider{state: service.StatusRunning})
+
+	// Seed an app.db with two grants.
+	storageDir := filepath.Join(dir, "storage")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatalf("mkdir storage: %v", err)
+	}
+	dbPath := filepath.Join(storageDir, "app.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `
+		CREATE TABLE mcp_write_grants (
+			id INTEGER PRIMARY KEY,
+			folder_path TEXT NOT NULL UNIQUE,
+			level INTEGER NOT NULL CHECK (level IN (1, 2)),
+			granted_at INTEGER NOT NULL,
+			granted_via TEXT NOT NULL DEFAULT 'tree-menu'
+		);
+		INSERT INTO mcp_write_grants (folder_path, level, granted_at) VALUES ('projects', 1, 1);
+		INSERT INTO mcp_write_grants (folder_path, level, granted_at) VALUES ('scratch', 2, 1);
+	`); err != nil {
+		t.Fatalf("seed grants: %v", err)
+	}
+	_ = db.Close()
+
+	var buf bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&buf)
+	if err := runStatus(cmd, nil); err != nil {
+		t.Fatalf("runStatus: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"MCP enabled:    yes on 127.0.0.1:6684",
+		"2 grants",
+		"Tier 1 in projects/",
+		"Tier 2 in scratch/",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("mcp output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestSummarizeGrants_MissingDB_GracefulNoGrants pins that a missing
+// app.db doesn't crash the status path — summarizeGrants returns a
+// friendly placeholder.
+func TestSummarizeGrants_MissingDB_GracefulNoGrants(t *testing.T) {
+	dir := t.TempDir()
+	n, summary := summarizeGrants(dir)
+	if n != 0 {
+		t.Errorf("want n=0 for missing db, got %d", n)
+	}
+	if summary == "" {
+		t.Errorf("want non-empty summary string")
+	}
+}
+
+// TestHumanState pins the three branches of the kardianos status mapper.
+func TestHumanState(t *testing.T) {
+	cases := []struct {
+		in   service.Status
+		want string
+	}{
+		{service.StatusRunning, "running"},
+		{service.StatusStopped, "stopped"},
+		{service.StatusUnknown, "unknown (service may not be installed)"},
+	}
+	for _, tc := range cases {
+		if got := humanState(tc.in); got != tc.want {
+			t.Errorf("humanState(%v) = %q; want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestStatusCmd_Registered pins rootCmd wiring.
+func TestStatusCmd_Registered(t *testing.T) {
+	found := false
+	for _, c := range rootCmd.Commands() {
+		if c.Use == "status" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("statusCmd not registered on rootCmd")
+	}
+}

@@ -19,6 +19,7 @@
 package app
 
 import (
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -150,6 +151,14 @@ type App struct {
 	// when migrate.Run returns ErrDiskFull or ErrUnrecoverable.
 	// nil during normal operation.
 	diskFullHandler http.Handler
+
+	// fileLogCloser is the io.Closer returned by jlog.NewFileLogger when
+	// lifecycle.Run instantiates the file logger (production path where
+	// cfg.Logger is nil — Plan 08-12 / D-39 / PERF-03). On graceful
+	// shutdown the listener path closes this so the JSON log file is
+	// fsync'd and the OS handle released. nil when cfg.Logger was
+	// provided by the caller (tests).
+	fileLogCloser io.Closer
 }
 
 // storageDBPath returns <dataDir>/storage/app.db — the canonical

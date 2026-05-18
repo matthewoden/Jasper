@@ -166,16 +166,22 @@ func (s *Server) SetMcpACL(acl *mcp.ACL) {
 	s.mcpACL = acl
 }
 
-// Phase 8 Plan 08-01 deviation: the compile-time assertion
+// StrictServerInterface compile-time assertion (Plan 08-12 final
+// integration — restored after the Wave 1-4 partial-handler period).
+// Plans 08-02 / 08-05 / 08-07 / 08-08 / 08-09 each contributed handler
+// methods on *Server in their own dedicated files (setup_handler.go,
+// reveal_handler.go, notes_by_path_handler.go, mcp_grants_handler.go,
+// plus MCP server wiring). This line verifies every spec method on
+// StrictServerInterface has a corresponding *Server method. If `make
+// gen` emits a new method signature without a matching method on
+// *Server, the build fails here with a clear "missing method" error
+// — a much sharper signal than the implicit type-check at the
+// NewStrictHandler call site in app.go.
 //
-//	var _ StrictServerInterface = (*Server)(nil)
-//
-// was DELETED from this line so Waves 2-4 of Phase 8 build green
-// incrementally as each new handler ships in its own file
-// (setup_handler.go, reveal_handler.go, mcp_grants_handler.go,
-// notes_by_path_handler.go). Plan 08-12 (final integration) restores
-// a fresh assertion against the regenerated StrictServerInterface once
-// every Phase 8 handler exists. See 08-01-SUMMARY.md for rationale.
+// Plan 08-01 deleted the pre-existing assertion so each downstream
+// wave could build with a partial handler set; 08-12 (this line)
+// restores it now that every Phase 8 handler exists.
+var _ StrictServerInterface = (*Server)(nil)
 
 // GetNoteById implements GET /api/v1/notes/{id}.
 //
