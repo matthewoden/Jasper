@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/spf13/cobra"
+
 	"github.com/matthewoden/jasper/backend/internal/app"
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/netbind"
@@ -40,6 +42,56 @@ const defaultListenAddr = "127.0.0.1:3000"
 // deployment surfaces in the standard slog stream (T-02-06-01
 // mitigation).
 const envMigrationsOverride = "JASPER_TEST_MIGRATIONS_DIR"
+
+// serveCmd is the cobra wrapper around runServe. Plan 08-11 (D-34)
+// migrated dispatch from stdlib flag to cobra; the underlying runServe
+// signature `runServe(args []string) error` is preserved so existing
+// callers (smoke_test.go) keep working.
+//
+// The serve flags (--data-dir, --addr) are kept on a flag.FlagSet
+// inside runServe rather than promoted to cobra-native flags because:
+//   - smoke_test.go and the broader integration test fleet drive
+//     runServe directly with an args slice, not via rootCmd.Execute(),
+//   - keeping the flag parsing inside runServe means one source of
+//     truth for "what args does serve accept" and zero divergence
+//     between the cobra path (production) and the direct-call path
+//     (tests).
+//
+// The cobra command simply re-collects os.Args after the "serve"
+// subcommand token and hands them to runServe.
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Start the Jasper HTTP + WebSocket server",
+	Long: `Start the Jasper server. Binds to 127.0.0.1:3000 by default (override
+via --addr; dev mode passes 127.0.0.1:3001 so Vite can proxy to it).
+Phase 8 enforces loopback binding via internal/netbind.
+
+The data directory holds three subdirectories:
+  notes/    — your .md files (the source of truth)
+  storage/  — the SQLite index (regenerable from notes/)
+  logs/     — jasper.log with daily rotation
+
+Resolution order for --data-dir:
+  1. --data-dir flag
+  2. $JASPER_DATA_DIR environment variable
+  3. ~/.jasper (default)
+
+Examples:
+  $ jasper serve                              # default loopback bind, default data dir
+  $ jasper serve --data-dir /path/to/notes
+  $ jasper serve --addr 127.0.0.1:3001        # dev mode (Vite proxy target)`,
+	// DisableFlagParsing tells cobra to hand the raw args (after the
+	// "serve" token) to RunE without intercepting --addr / --data-dir.
+	// runServe's flag.FlagSet then parses them just like before.
+	DisableFlagParsing: true,
+	RunE: func(_ *cobra.Command, args []string) error {
+		return runServe(args)
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(serveCmd)
+}
 
 // runServe parses flags, resolves the data directory per D-07
 // precedence (flag > env > default), enforces the loopback bind rule,

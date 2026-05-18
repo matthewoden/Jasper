@@ -10,6 +10,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.6.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.7.0
 	github.com/oapi-codegen/runtime v1.4.0
+	github.com/spf13/cobra v1.10.1
 	github.com/yuin/goldmark v1.8.2
 	go.abhg.dev/goldmark/frontmatter v0.3.0
 	go.abhg.dev/goldmark/wikilink v0.6.0
@@ -88,7 +89,6 @@ require (
 	github.com/speakeasy-api/openapi v1.19.2 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.8.0 // indirect
-	github.com/spf13/cobra v1.10.1 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/tdewolff/parse/v2 v2.8.1 // indirect
 	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect
