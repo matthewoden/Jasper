@@ -1,0 +1,178 @@
+package firstrun
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+func TestValidateDataDir_Valid(t *testing.T) {
+	t.Parallel()
+	// A fresh sub-path under t.TempDir() — parent exists, no nested
+	// vault, writable. ValidateDataDir will mkdir it via os.MkdirAll
+	// (D-08c write probe) as a side effect; that's expected.
+	base := t.TempDir()
+	target := filepath.Join(base, "Jasper")
+	res := ValidateDataDir(target)
+	if !res.Valid {
+		t.Fatalf("expected Valid=true; got Code=%q Message=%q", res.Code, res.Message)
+	}
+	if res.Code != "" || res.Message != "" {
+		t.Fatalf("expected zero refusal fields on valid result; got Code=%q Message=%q", res.Code, res.Message)
+	}
+}
+
+func TestValidateDataDir_ParentMissing(t *testing.T) {
+	t.Parallel()
+	// Parent directory is itself a not-yet-created path.
+	base := t.TempDir()
+	target := filepath.Join(base, "no-such-parent-12345", "Jasper")
+	res := ValidateDataDir(target)
+	if res.Valid {
+		t.Fatalf("expected Valid=false; got Valid=true")
+	}
+	if res.Code != RefusalParentMissing {
+		t.Fatalf("Code: got %q want %q", res.Code, RefusalParentMissing)
+	}
+	if !strings.Contains(res.Message, "parent folder doesn't exist") {
+		t.Fatalf("Message missing locked phrase: got %q", res.Message)
+	}
+	// Locked-copy regression: exact UI-SPEC string.
+	if res.Message != msgParentMissing {
+		t.Fatalf("Message drift from locked copy:\n got: %q\nwant: %q", res.Message, msgParentMissing)
+	}
+}
+
+func TestValidateDataDir_NestedVault(t *testing.T) {
+	t.Parallel()
+	// Build a fake vault at base/vault/{notes/, storage/app.db} and
+	// validate a path one level deeper.
+	base := t.TempDir()
+	vault := filepath.Join(base, "vault")
+	if err := os.MkdirAll(filepath.Join(vault, "notes"), 0o755); err != nil {
+		t.Fatalf("mkdir notes: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(vault, "storage"), 0o755); err != nil {
+		t.Fatalf("mkdir storage: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(vault, "storage", "app.db"), []byte("fake"), 0o600); err != nil {
+		t.Fatalf("write app.db: %v", err)
+	}
+
+	// Target: a path strictly nested under the vault. isInsideExistingVault
+	// walks parents of `target`, so the nesting check is against ancestors
+	// of `target` — `target`'s grandparent is the vault root, which carries
+	// the notes+app.db pair. The parent dir (vault/subfolder) MUST exist
+	// so the parent_missing rule (which runs before nested_vault) doesn't
+	// short-circuit on us.
+	subfolder := filepath.Join(vault, "subfolder")
+	if err := os.MkdirAll(subfolder, 0o755); err != nil {
+		t.Fatalf("mkdir subfolder: %v", err)
+	}
+	target := filepath.Join(subfolder, "Jasper")
+	res := ValidateDataDir(target)
+	if res.Valid {
+		t.Fatalf("expected Valid=false; got Valid=true (target=%q)", target)
+	}
+	if res.Code != RefusalNestedVault {
+		t.Fatalf("Code: got %q want %q", res.Code, RefusalNestedVault)
+	}
+	if !strings.Contains(res.Message, "inside an existing Jasper vault") {
+		t.Fatalf("Message missing locked phrase: got %q", res.Message)
+	}
+	if res.Message != msgNestedVault {
+		t.Fatalf("Message drift from locked copy:\n got: %q\nwant: %q", res.Message, msgNestedVault)
+	}
+}
+
+func TestValidateDataDir_Unwritable(t *testing.T) {
+	// Windows file permission semantics are different (the 0o000 trick
+	// doesn't reliably reject writes); skip there. Linux/macOS root would
+	// also bypass the test — gate on euid != 0.
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping unwritable check on windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("skipping unwritable check as root (root bypasses 0o000)")
+	}
+	t.Parallel()
+
+	base := t.TempDir()
+	unwritableParent := filepath.Join(base, "ro")
+	if err := os.MkdirAll(unwritableParent, 0o755); err != nil {
+		t.Fatalf("mkdir ro: %v", err)
+	}
+	// Chmod to 0o500 (read+execute only) so MkdirAll on a child path
+	// fails with EACCES. Restore perms in cleanup so t.TempDir() can
+	// remove the directory tree.
+	if err := os.Chmod(unwritableParent, 0o500); err != nil {
+		t.Fatalf("chmod 0500: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(unwritableParent, 0o755)
+	})
+
+	target := filepath.Join(unwritableParent, "Jasper")
+	res := ValidateDataDir(target)
+	if res.Valid {
+		t.Fatalf("expected Valid=false; got Valid=true (target=%q)", target)
+	}
+	if res.Code != RefusalUnwritable {
+		t.Fatalf("Code: got %q want %q (msg=%q)", res.Code, RefusalUnwritable, res.Message)
+	}
+	if !strings.HasPrefix(res.Message, "Jasper can't write here:") {
+		t.Fatalf("Message missing locked prefix: got %q", res.Message)
+	}
+	if !strings.HasSuffix(res.Message, "Check folder permissions.") {
+		t.Fatalf("Message missing locked suffix: got %q", res.Message)
+	}
+}
+
+func TestValidateDataDir_NonASCII(t *testing.T) {
+	t.Parallel()
+	// Composed (NFC) é falls into the unicode.MaxASCII check, decomposed
+	// (NFD) "é" fails the NFC normalization check first. Cover both.
+	cases := []struct {
+		name string
+		path string
+	}{
+		{name: "NFC é", path: "/tmp/Documents/Jasper-é"},
+		{name: "NFD e+combining-acute", path: "/tmp/Documents/Jasper-é"},
+		{name: "CJK chars", path: "/tmp/筆記"},
+		{name: "emoji", path: "/tmp/jasper-🚀"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			res := ValidateDataDir(tc.path)
+			if res.Valid {
+				t.Fatalf("expected Valid=false for non-ASCII path %q; got Valid=true", tc.path)
+			}
+			if res.Code != RefusalNonASCII {
+				t.Fatalf("Code: got %q want %q", res.Code, RefusalNonASCII)
+			}
+			if !strings.Contains(res.Message, "don't survive cross-platform sync") {
+				t.Fatalf("Message missing locked phrase: got %q", res.Message)
+			}
+			if res.Message != msgNonASCII {
+				t.Fatalf("Message drift from locked copy:\n got: %q\nwant: %q", res.Message, msgNonASCII)
+			}
+		})
+	}
+}
+
+// TestValidateDataDir_PathTooLong covers T-08-07 DoS mitigation —
+// oversized paths short-circuit before any syscall runs.
+func TestValidateDataDir_PathTooLong(t *testing.T) {
+	t.Parallel()
+	huge := strings.Repeat("a", maxDataDirPathLen+1)
+	res := ValidateDataDir(huge)
+	if res.Valid {
+		t.Fatalf("expected Valid=false for oversized path; got Valid=true")
+	}
+	if res.Code != RefusalNonASCII {
+		t.Fatalf("Code: got %q want %q (oversized path mapped to NonASCII per T-08-07)", res.Code, RefusalNonASCII)
+	}
+}

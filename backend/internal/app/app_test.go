@@ -36,9 +36,10 @@ func newTestApp(t *testing.T) (*App, string) {
 		t.Fatalf("SeedScratchpadIfMissing: %v", err)
 	}
 	a, err := New(Config{
-		DataDir:    dir,
-		ListenAddr: "127.0.0.1:0",
-		Logger:     logger,
+		DataDir:             dir,
+		ListenAddr:          "127.0.0.1:0",
+		Logger:              logger,
+		DisableFirstRunGate: true, // Phase 8 Plan 08-02: pre-wizard API tests bypass the firstrun gate
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -285,9 +286,10 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 	addr := pickFreePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{
-		DataDir:    dir,
-		ListenAddr: addr,
-		Logger:     logger,
+		DataDir:             dir,
+		ListenAddr:          addr,
+		Logger:              logger,
+		DisableFirstRunGate: true, // Phase 8 Plan 08-02
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -425,10 +427,11 @@ func TestApp_Run_BrokenMigration_FiresPath1(t *testing.T) {
 	addr := pickFreePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{
-		DataDir:            dir,
-		ListenAddr:         addr,
-		Logger:             logger,
-		MigrationsOverride: override,
+		DataDir:             dir,
+		ListenAddr:          addr,
+		Logger:              logger,
+		MigrationsOverride:  override,
+		DisableFirstRunGate: true, // Phase 8 Plan 08-02
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -505,7 +508,7 @@ func seedRealSQLiteDB(t *testing.T, dir string) {
 	// reach into the migration runner; instead spawn a tiny in-process
 	// boot and shut it down immediately.
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a, err := New(Config{DataDir: dir, ListenAddr: "127.0.0.1:0", Logger: logger})
+	a, err := New(Config{DataDir: dir, ListenAddr: "127.0.0.1:0", Logger: logger, DisableFirstRunGate: true}) // Phase 8 Plan 08-02
 	if err != nil {
 		t.Fatalf("New (seed): %v", err)
 	}
@@ -555,9 +558,10 @@ func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
 	addr := pickFreePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{
-		DataDir:    dir,
-		ListenAddr: addr,
-		Logger:     logger,
+		DataDir:             dir,
+		ListenAddr:          addr,
+		Logger:              logger,
+		DisableFirstRunGate: true, // Phase 8 Plan 08-02
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -630,9 +634,10 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 	addr := pickFreePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{
-		DataDir:    dir,
-		ListenAddr: addr,
-		Logger:     logger,
+		DataDir:             dir,
+		ListenAddr:          addr,
+		Logger:              logger,
+		DisableFirstRunGate: true, // Phase 8 Plan 08-02
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -710,9 +715,10 @@ func TestRun_HydrateRegistry(t *testing.T) {
 	addr := pickFreePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{
-		DataDir:    dir,
-		ListenAddr: addr,
-		Logger:     logger,
+		DataDir:             dir,
+		ListenAddr:          addr,
+		Logger:              logger,
+		DisableFirstRunGate: true, // Phase 8 Plan 08-02
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -846,9 +852,10 @@ func TestApp_ListenerGated(t *testing.T) {
 	addr := pickFreePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{
-		DataDir:    dir,
-		ListenAddr: addr,
-		Logger:     logger,
+		DataDir:             dir,
+		ListenAddr:          addr,
+		Logger:              logger,
+		DisableFirstRunGate: true, // Phase 8 Plan 08-02
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -932,7 +939,7 @@ func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
 
 	addr := pickFreePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger})
+	a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger, DisableFirstRunGate: true}) // Phase 8 Plan 08-02
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -992,7 +999,7 @@ func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 	{
 		addr := pickFreePort(t)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger})
+		a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger, DisableFirstRunGate: true}) // Phase 8 Plan 08-02
 		if err != nil {
 			t.Fatalf("New (first): %v", err)
 		}
@@ -1029,7 +1036,7 @@ func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 	{
 		addr := pickFreePort(t)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger})
+		a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger, DisableFirstRunGate: true}) // Phase 8 Plan 08-02
 		if err != nil {
 			t.Fatalf("New (second): %v", err)
 		}
