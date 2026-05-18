@@ -37,3 +37,7 @@ backend/internal/static/dist/*
 frontend/e2e/.artifacts/
 frontend/playwright-report/
 frontend/test-results/
+
+# Phase 8 Plan 08-14 / D-42: synthetic 5k-note vault for PERF-01 cold-start
+# benchmark. Populated by `make perf-vault`; never committed.
+/_perf-vault/

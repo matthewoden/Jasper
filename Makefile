@@ -1,4 +1,4 @@
-.PHONY: gen gen-check build test lint dev gen-go gen-ts print-port perf-check
+.PHONY: gen gen-check build test lint dev gen-go gen-ts print-port perf-check perf-vault
 
 # Phase 8 D-40: canonical port resolver. Returns server.port from
 # ~/.jasper/storage/config.json (or $JASPER_CONFIG), or 6683 if no
@@ -13,6 +13,14 @@ print-port:
 # but is not a real PERF-01 gate.
 perf-check:
 	@./scripts/perf-check.sh
+
+# Phase 8 Plan 08-14 / D-42: generate a deterministic 5k-note synthetic
+# vault under _perf-vault/notes/ for the PERF-01 cold-start gate.
+# Distribution: 80% body-only, 15% tagged, 5% wiki-link.
+# Full pipeline: `make build && make perf-vault && make perf-check`.
+# _perf-vault/ is .gitignored — local-only artifact.
+perf-vault:
+	@bash scripts/generate-perf-vault.sh _perf-vault 5000
 
 gen: gen-go gen-ts
 
