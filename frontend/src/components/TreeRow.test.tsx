@@ -20,6 +20,23 @@ vi.mock("../lib/useReveal", () => ({
   useReveal: () => ({ reveal: vi.fn(), loading: false }),
 }));
 
+// Plan 08-10 (MCP-01 / MCP-02): TreeRow now consumes useMcpGrants() for
+// the folder-row grant submenu + Sparkles indicator. The hook calls
+// useToast() and listGrants() at mount; mock it here so the existing
+// tree tests don't need a ToastProvider wrapper or a mocked API client.
+// The dedicated hook unit tests live in src/lib/useMcpGrants.test.ts;
+// the indicator component tests live in McpGrantIndicator.test.tsx.
+vi.mock("../lib/useMcpGrants", () => ({
+  useMcpGrants: () => ({
+    grants: [],
+    refresh: vi.fn(),
+    grant: vi.fn(),
+    revoke: vi.fn(),
+    levelFor: () => null,
+    directLevelFor: () => null,
+  }),
+}));
+
 import { useTreeStore } from "../lib/useTreeStore";
 import { TreeRow } from "./TreeRow";
 // Vite ?raw suffix loads the file's source as a string at build time —
