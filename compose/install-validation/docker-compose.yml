@@ -1,0 +1,44 @@
+# compose/install-validation/docker-compose.yml
+# Phase 8 Plan 08-14 / INSTALL-09 / D-38 / D-48.
+#
+# Purpose: fresh-VM rehearsal of the README install flow on a real
+# systemd-enabled Ubuntu image. Catches regressions in the
+# `jasper install` / `jasper status` / `jasper doctor` / `jasper uninstall`
+# subcommand surface against a real systemd PID 1 (a WSL2-like environment).
+#
+# Image: jrei/systemd-ubuntu:noble (24.04, amd64-only).
+#
+# Platform pin: `platform: linux/amd64` is REQUIRED on Apple-Silicon
+# developer machines (RESEARCH.md Pitfall 8). Rosetta-2 + Docker Desktop
+# transparently emulate amd64; CI runs on amd64 GitHub Actions runners
+# so the pin is a no-op there.
+#
+# `privileged: true` is REQUIRED for systemd-as-PID-1. The container is
+# isolated, short-lived, and does not expose any host network ports —
+# the threat-model trade-off is documented in 08-14-PLAN.md §threat_model.
+#
+# Mounts:
+#   ../../bin           → /opt/jasper/bin     (built binary, read-only)
+#   ../../README.md     → /opt/jasper/README.md (docs validation, read-only)
+#   ./test-install.sh   → /opt/jasper/test-install.sh (script, read-only)
+
+services:
+  jasper-install-test:
+    image: jrei/systemd-ubuntu:noble
+    platform: linux/amd64
+    privileged: true
+    tmpfs:
+      - /tmp
+      - /run
+      - /run/lock
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - ../../bin:/opt/jasper/bin:ro
+      - ../../README.md:/opt/jasper/README.md:ro
+      - ./test-install.sh:/opt/jasper/test-install.sh:ro
+    command: ["/sbin/init"]
+    healthcheck:
+      test: ["CMD", "systemctl", "is-system-running", "--quiet", "--wait"]
+      interval: 5s
+      timeout: 60s
+      retries: 12

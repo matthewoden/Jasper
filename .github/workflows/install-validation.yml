@@ -1,0 +1,75 @@
+# .github/workflows/install-validation.yml
+# Phase 8 Plan 08-14 / INSTALL-09 / D-38 / D-48.
+#
+# CI gate that runs the install-validation docker-compose suite on every
+# push to main and every PR targeting main. Asserts:
+#
+#   1. `make build` produces a working bin/jasper.
+#   2. compose/install-validation/docker-compose.yml boots jrei/systemd-ubuntu:noble.
+#   3. compose/install-validation/test-install.sh exits 0 inside the container,
+#      proving the README install flow works end-to-end on a fresh
+#      WSL2-like system.
+#
+# Local UAT note: Apple-Silicon devs can reproduce this locally by
+# `cd compose/install-validation && docker-compose up -d &&
+#  docker-compose exec -T jasper-install-test bash /opt/jasper/test-install.sh &&
+#  docker-compose down`. The `platform: linux/amd64` pin in the compose
+# file routes through Rosetta-2; first run is slow but works.
+
+name: install-validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  install-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the binary
+        run: make build
+
+      - name: docker-compose up
+        working-directory: compose/install-validation
+        run: docker compose up -d
+
+      - name: Wait for systemd to become ready
+        working-directory: compose/install-validation
+        run: |
+          for i in $(seq 1 24); do
+            if docker compose exec -T jasper-install-test systemctl is-system-running --quiet --wait 2>/dev/null; then
+              echo "systemd ready (after iter $i)"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "FAIL: systemd never became ready" >&2
+          docker compose logs >&2
+          exit 1
+
+      - name: Run test-install.sh inside the container
+        working-directory: compose/install-validation
+        run: docker compose exec -T jasper-install-test bash /opt/jasper/test-install.sh
+
+      - name: docker-compose down (cleanup)
+        if: always()
+        working-directory: compose/install-validation
+        run: docker compose down --volumes --remove-orphans
