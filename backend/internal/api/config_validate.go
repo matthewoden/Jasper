@@ -114,8 +114,14 @@ func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 // caught at test time (TestPutConfig_RoundTrip decodes the echoed body
 // back into api.Config, ensuring field alignment).
 //
-// DailyNotes and Editor are inline structs to match the generated
-// anonymous-struct shapes in openapi_gen.go.
+// DailyNotes, Editor, Server, and Mcp are inline structs to match the
+// generated anonymous-struct shapes in openapi_gen.go.
+//
+// Phase 8 Plan 08-01 Task 4: the Server and Mcp blocks are POINTER
+// types so PUT /config bodies that omit them (pre-Phase-8 clients)
+// still pass strict-decode. With DisallowUnknownFields the inline
+// fields catch typos; with the pointer wrapper, total absence is
+// tolerated.
 type strictConfigValidator struct {
 	AppName    string `json:"appName"`
 	Theme      string `json:"theme"`
@@ -128,4 +134,13 @@ type strictConfigValidator struct {
 		LineHeight float64 `json:"lineHeight"`
 		VimMode    bool    `json:"vimMode"`
 	} `json:"editor"`
+	Server *struct {
+		Port    int    `json:"port"`
+		DataDir string `json:"dataDir"`
+	} `json:"server,omitempty"`
+	Mcp *struct {
+		Enabled bool   `json:"enabled"`
+		Port    int    `json:"port"`
+		Bind    string `json:"bind"`
+	} `json:"mcp,omitempty"`
 }

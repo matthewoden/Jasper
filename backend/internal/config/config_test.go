@@ -1,10 +1,12 @@
 package config
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -65,11 +67,15 @@ func TestLoad_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	mkdirStorage(t, dir)
 
+	// Phase 8 Plan 08-01: round-trip carries Server + MCP blocks so
+	// the test catches drift between Defaults() and Save/Load.
 	in := Config{
 		AppName:    "Jasper",
 		DailyNotes: DailyNotes{Folder: "journal", Template: "## {{date}}"},
 		Editor:     Editor{FontSize: 16, LineHeight: 1.7, VimMode: true},
 		Theme:      "light",
+		Server:     ServerConfig{Port: 6683, DataDir: "/tmp/jasper-test"},
+		MCP:        MCPConfig{Enabled: true, Port: 6684, Bind: "127.0.0.1"},
 	}
 	if err := Save(dir, in); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -113,6 +119,121 @@ func TestLoad_MalformedFallsBackToDefaults(t *testing.T) {
 	}
 	if string(got) != string(bad) {
 		t.Errorf("bad file was overwritten:\n got  %q\n want %q", got, bad)
+	}
+}
+
+// TestDefaults_ServerAndMCP — Phase 8 D-50 / D-47. The Defaults factory
+// must return canonical port + bind values for every downstream plan
+// that reads cfg.Server.Port / cfg.MCP.* without re-deriving them.
+func TestDefaults_ServerAndMCP(t *testing.T) {
+	t.Parallel()
+	d := Defaults()
+	if d.Server.Port != 6683 {
+		t.Errorf("Server.Port: got %d, want 6683 (D-50)", d.Server.Port)
+	}
+	if d.Server.DataDir == "" {
+		t.Errorf("Server.DataDir: got empty; expected non-empty default (DefaultDataDir)")
+	}
+	if d.MCP.Port != 6684 {
+		t.Errorf("MCP.Port: got %d, want 6684 (D-47)", d.MCP.Port)
+	}
+	if d.MCP.Enabled {
+		t.Errorf("MCP.Enabled: got true, want false (opt-in via wizard)")
+	}
+	if d.MCP.Bind != "127.0.0.1" {
+		t.Errorf("MCP.Bind: got %q, want 127.0.0.1 (D-15)", d.MCP.Bind)
+	}
+	if d.Theme != "dark" {
+		t.Errorf("Theme: got %q, want dark", d.Theme)
+	}
+	if d.AppName != "Jasper" {
+		t.Errorf("AppName: got %q, want Jasper", d.AppName)
+	}
+}
+
+// TestDefaults_MatchesDefaultConfig — DefaultConfig is the pre-Phase-8
+// alias; both must return the same struct so existing callers keep
+// working.
+func TestDefaults_MatchesDefaultConfig(t *testing.T) {
+	t.Parallel()
+	if Defaults() != DefaultConfig() {
+		t.Errorf("Defaults() != DefaultConfig(); alias must mirror the canonical factory")
+	}
+}
+
+// TestDefaultDataDir_NonEmpty — the helper resolves to ~/.jasper on
+// macOS/Linux. Asserts non-empty (the empty-string error path is
+// triggered only when os.UserHomeDir fails, which is exceedingly rare
+// in test environments).
+func TestDefaultDataDir_NonEmpty(t *testing.T) {
+	t.Parallel()
+	got := DefaultDataDir()
+	if got == "" {
+		t.Skip("os.UserHomeDir returned empty/err — skipping (rare env)")
+	}
+	if !filepath.IsAbs(got) {
+		t.Errorf("DefaultDataDir: got %q, want absolute path", got)
+	}
+}
+
+// TestDefaults_JSONRoundTrip — the marshalled defaults must round-trip
+// bit-for-bit and use the lowercase-first JSON keys required by
+// api/openapi.yaml (server, port, dataDir, mcp, enabled, bind).
+func TestDefaults_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
+	d := Defaults()
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, key := range []string{
+		`"appName"`, `"theme"`, `"dailyNotes"`, `"editor"`,
+		`"server"`, `"port"`, `"dataDir"`,
+		`"mcp"`, `"enabled"`, `"bind"`,
+	} {
+		if !strings.Contains(string(raw), key) {
+			t.Errorf("missing JSON key %s in: %s", key, raw)
+		}
+	}
+	var back Config
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back != d {
+		t.Errorf("round-trip mismatch:\n got  %+v\n want %+v", back, d)
+	}
+}
+
+// TestLoad_OldConfigWithoutServerOrMCP_BackCompat — Phase 8 backward
+// compat. A pre-Phase-8 config.json (no `server`, no `mcp`) loads with
+// the canonical defaults applied (Server.Port=6683, MCP.Port=6684,
+// MCP.Bind=127.0.0.1) so downstream readers never see zero values.
+func TestLoad_OldConfigWithoutServerOrMCP_BackCompat(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, "storage", "config.json")
+	old := []byte(`{
+		"appName":"Jasper","theme":"dark",
+		"dailyNotes":{"folder":"daily","template":""},
+		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false}
+	}`)
+	if err := os.WriteFile(path, old, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Server.Port != 6683 {
+		t.Errorf("Server.Port: got %d, want 6683 (defaulted)", cfg.Server.Port)
+	}
+	if cfg.MCP.Port != 6684 {
+		t.Errorf("MCP.Port: got %d, want 6684 (defaulted)", cfg.MCP.Port)
+	}
+	if cfg.MCP.Bind != "127.0.0.1" {
+		t.Errorf("MCP.Bind: got %q, want 127.0.0.1 (defaulted)", cfg.MCP.Bind)
 	}
 }
 

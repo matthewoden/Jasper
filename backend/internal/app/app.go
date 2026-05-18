@@ -29,6 +29,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/matthewoden/jasper/backend/internal/api"
+	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
@@ -46,10 +47,30 @@ type Config struct {
 	// holds .md files and <DataDir>/storage/ holds Phase 2's SQLite
 	// database (app.db) and logs. Caller passes an absolute path;
 	// lifecycle.go creates the subdirs on Run.
+	//
+	// LEGACY (pre-Phase-8): this top-level field is retained for
+	// backward compat with existing lifecycle.go references
+	// (a.cfg.DataDir). New code paths SHOULD prefer cfg.Server.DataDir
+	// (forward-looking — Phase 8 D-04 wizard wires it).
+	// Both carry the same value (set at app init by cmd/jasper/serve.go).
 	DataDir string
 
+	// Server mirrors the loaded config.Config.Server block. Set at app
+	// init from the config.Load result. Makes cfg.Server.DataDir
+	// reachable in downstream middleware (Plan 08-02 firstrun) and
+	// the FileLogger (Plan 08-12) without those code paths having to
+	// re-load config.json or thread an additional argument.
+	//
+	// Phase 8 Plan 08-01 Task 4 thread-through: declared here so
+	// downstream waves compile cleanly. cmd/jasper/serve.go (or the
+	// equivalent app-init caller in 08-02) populates the value before
+	// calling app.New. While the field is zero-valued, downstream
+	// readers may fall back to cfg.DataDir.
+	Server config.ServerConfig
+
 	// ListenAddr is the host:port to bind. Phase 1 enforces loopback
-	// at the CLI layer (see cmd/jasper/serve.requireLoopbackBind).
+	// at the CLI layer (see cmd/jasper/serve.go's call to
+	// netbind.RequireLoopbackBind, Plan 08-01 Task 3).
 	ListenAddr string
 
 	// Logger is the structured logger used by middleware and lifecycle.
