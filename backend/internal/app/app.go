@@ -38,6 +38,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/internal/static"
 	"github.com/matthewoden/jasper/backend/internal/wshub"
+	"github.com/matthewoden/jasper/backend/migrations"
 )
 
 // Config is the resolved runtime configuration for `jasper serve`.
@@ -186,6 +187,17 @@ func New(cfg Config) (*App, error) {
 	// after sqlite.Open + migrate.Run succeed.
 	notesSvc := notes.NewService(files, nil, nil, cfg.Logger)
 	apiServer := api.NewServerWithIndex(notesSvc, nil, nil, nil, nil, cfg.Logger, cfg.DataDir)
+	// Plan 08-02: wire the embedded migrations FS into the api.Server
+	// so PostSetup (firstrun.RunSetup) can apply migrations against
+	// the user-chosen <DataDir>/storage/app.db. The Phase-1-shape
+	// server (this one, mounted in New) serves /api/v1/setup* until
+	// lifecycle.Run rebuilds the Server in step 8; the wizard runs
+	// against the Phase-1 server, so it MUST have migrationsFS wired.
+	var migrationsFS fs.FS = migrations.FS
+	if cfg.MigrationsOverride != nil {
+		migrationsFS = cfg.MigrationsOverride
+	}
+	apiServer.SetMigrationsFS(migrationsFS)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)

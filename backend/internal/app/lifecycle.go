@@ -306,6 +306,10 @@ func (a *App) Run(ctx context.Context) error {
 	// once as the status reader for /admin/status and once as the
 	// runner for /admin/reindex.
 	apiServer := api.NewServerWithIndex(notesSvc, a.runner, a.runner, a.indexer, hub, a.cfg.Logger, a.cfg.DataDir)
+	// Plan 08-02: keep migrationsFS wired on the rebuilt server (parity
+	// with app.New). The wizard's PostSetup is normally a one-shot at
+	// first-run, but the field stays available for any future re-seed.
+	apiServer.SetMigrationsFS(a.runner.Migrations)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)

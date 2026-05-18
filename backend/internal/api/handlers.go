@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"sync"
 
@@ -68,6 +69,18 @@ type Server struct {
 	// wires a real path.
 	dataDir string
 
+	// migrationsFS is the embedded migrations fs.FS used by the wizard
+	// submit pipeline (firstrun.RunSetup) to apply schema migrations
+	// against the user-chosen <DataDir>/storage/app.db. Plumbed through
+	// from app.New (which sources it from cfg.MigrationsOverride or
+	// migrations.FS) so the api package doesn't take a direct import
+	// dependency on backend/migrations (kept loose for testability).
+	//
+	// nil-safe: setup_handler.go's PostSetup returns 500 if the field
+	// is empty — guards against test-only constructors that didn't
+	// wire it.
+	migrationsFS fs.FS
+
 	// reindexBusy serializes /admin/reindex calls per-Server.
 	// admin_reindex_handler.go uses TryLock to return 409
 	// "reindex_in_progress" when busy.
@@ -119,6 +132,17 @@ func NewServerWithIndex(
 		log:         log,
 		dataDir:     dataDir,
 	}
+}
+
+// SetMigrationsFS wires the embedded migrations.FS into the Server so
+// the wizard submit pipeline (firstrun.RunSetup) can apply schema
+// migrations against the chosen <DataDir>/storage/app.db. Called by
+// the composition root (app.New / lifecycle.Run) after construction
+// so we don't have to evolve NewServerWithIndex's signature for every
+// new Phase 8 dependency. nil-safe — passing nil leaves the field
+// empty and PostSetup will short-circuit with a 500.
+func (s *Server) SetMigrationsFS(f fs.FS) {
+	s.migrationsFS = f
 }
 
 // Phase 8 Plan 08-01 deviation: the compile-time assertion
