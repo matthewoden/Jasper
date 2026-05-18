@@ -58,6 +58,7 @@ import {
 
 import { useTreeStore } from "../lib/useTreeStore";
 import { useTreeMutations } from "../lib/useTreeMutations";
+import { useReveal } from "../lib/useReveal";
 import { RenameInput } from "./RenameInput";
 import {
   TreeRowContextMenu,
@@ -163,6 +164,11 @@ export function TreeRow({
 }: TreeRowProps) {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const pendingRename = useTreeStore((s) => s.pendingRename);
+  // Plan 08-06 (D-26 / SHARE-01): shared reveal hook for the row's
+  // context + dropdown menu "Show in file manager" items. Path is
+  // `data.path` for all three row kinds (note / folder / file) — the
+  // tree-node shape carries `path` on every kind.
+  const { reveal } = useReveal();
   // UAT follow-up 2026-05-12 — pulse highlight when navigated to via breadcrumb.
   const pulseTarget = useTreeStore((s) => s.pulseTarget);
   // Plan 04 (UX-08): live H1 label override for note rows. Falls back to
@@ -584,6 +590,10 @@ export function TreeRow({
           // the FileTree handler dispatches to filesApi.deleteFile.
           onRequestDelete ? onRequestDelete(data) : noop()
         }
+        // Plan 08-06 (D-26 / SHARE-01): all three row kinds carry a
+        // `path` field; the reveal hook dispatches POST /api/v1/reveal
+        // and fires the LOCKED platform-correct toast.
+        onReveal={() => void reveal(data.path)}
         open={kebabOpen}
         onOpenChange={setKebabOpen}
       >
@@ -650,6 +660,9 @@ export function TreeRow({
         // Plan 07-38 R7b: file rows now route through onRequestDelete.
         onRequestDelete ? onRequestDelete(data) : noop()
       }
+      // Plan 08-06 (D-26 / SHARE-01): mirrors the dropdown variant —
+      // same reveal hook, same path source.
+      onReveal={() => void reveal(data.path)}
     >
       {rowContent}
     </TreeRowContextMenu>

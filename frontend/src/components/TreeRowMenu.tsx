@@ -32,6 +32,7 @@
  */
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { FolderOpen } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 
 export type TreeRowMenuKind = "note" | "folder" | "empty-area" | "file";
@@ -50,6 +51,23 @@ export interface TreeRowMenuProps {
   onRename?: () => void;
   /** not on empty-area */
   onDelete?: () => void;
+  /**
+   * Plan 08-06 (D-26 / SHARE-01): "Show in file manager" reveal action.
+   *
+   * Present on note / folder / file rows; omitted on empty-area (no path).
+   * The caller is expected to wire this through useReveal().reveal(path)
+   * with the correct path for the row kind:
+   *   - note   → note path (e.g. "projects/jasper/note.md")
+   *   - folder → folder path (e.g. "projects/jasper")
+   *   - file   → file path (e.g. "attachments/diagram.png")
+   *
+   * Position in the menu body is locked by UI-SPEC §Surface 4 Mount A:
+   *   - note rows  → directly below "Open", before the first separator
+   *   - folder rows → directly below "New folder", before the AI-grant
+   *                   submenu mount-slot (placeholder until Plan 08-10)
+   *   - file rows  → at the TOP of the menu (becomes the new first item)
+   */
+  onReveal?: () => void;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -124,6 +142,7 @@ function MenuItems({
   onNewFolder,
   onRename,
   onDelete,
+  onReveal,
   ItemComp,
   SepComp,
 }: MenuItemsProps) {
@@ -141,6 +160,25 @@ function MenuItems({
   // the row already opens the preview view (no "Open" menu entry needed).
   const isFile = rowKind === "file";
 
+  // Plan 08-06 (D-26 / SHARE-01): "Show in file manager" item appears on
+  // note / folder / file rows; never on empty-area (no path to reveal).
+  // The aria-label varies per row kind so screen readers announce the
+  // verb-noun verbatim from UI-SPEC §Copywriting "4 mount points" table.
+  const revealLabel = "Show in file manager";
+  const revealAria =
+    rowKind === "note"
+      ? "Show note in file manager"
+      : rowKind === "folder"
+        ? "Show folder in file manager"
+        : "Show file in file manager"; // file
+  const revealItem =
+    rowKind !== "empty-area" && onReveal ? (
+      <Item style={itemStyle} aria-label={revealAria} onSelect={() => onReveal()}>
+        <FolderOpen size={16} aria-hidden="true" />
+        <span>{revealLabel}</span>
+      </Item>
+    ) : null;
+
   return (
     <>
       {rowKind === "note" && (
@@ -148,7 +186,14 @@ function MenuItems({
           <span>Open</span>
         </Item>
       )}
+      {/* Plan 08-06 Mount A — note rows: Reveal sits just below "Open" and
+          BEFORE the first separator (UI-SPEC §Surface 4 Mount A). */}
+      {rowKind === "note" && revealItem}
       {rowKind === "note" && <Sep style={separatorStyle} />}
+      {/* Plan 08-06 Mount A — file rows: Reveal is the TOP item, before
+          any other action (UI-SPEC §Surface 4 Mount A). File rows
+          otherwise only have Rename + Delete (07-38 R7b). */}
+      {isFile && revealItem}
       {!isFile && (
         <Item
           style={itemStyle}
@@ -181,6 +226,14 @@ function MenuItems({
           <span>New folder</span>
         </Item>
       )}
+      {/* Plan 08-06 Mount A — folder rows: Reveal sits just below
+          "New folder" and BEFORE the AI-grant submenu mount-slot
+          (UI-SPEC §Surface 4 Mount A). The AI-grant submenu lands in
+          Plan 08-10 — for now just leave a marker comment so the next
+          plan knows the slot. */}
+      {rowKind === "folder" && revealItem}
+      {/* TODO(08-10): Grant AI access submenu mounts here, between Reveal
+          and the separator/Rename/Delete cluster below. */}
       {rowKind !== "empty-area" && !isFile && <Sep style={separatorStyle} />}
       {rowKind !== "empty-area" && (
         <Item style={itemStyle} onSelect={() => onRename?.()}>
