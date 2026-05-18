@@ -256,6 +256,29 @@ export interface TreeStore {
   // ADD-only per D-41 invariant.
   saveState: import("./saveStateMachine").SaveState;
   setSaveState: (s: import("./saveStateMachine").SaveState) => void;
+
+  // Phase 8 Plan 08-10 ADD-ONLY (D-55 / MCP-01 / MCP-02): MCP grants slice.
+  // Holds the current set of MCP write grants returned from the backend
+  // (GET /api/v1/mcp/grants in 08-08). useMcpGrants composes this slice
+  // with the API calls and a WS refresh subscription on `mcp:grant_changed`.
+  // mcpEnabled mirrors the wizard / config setting (whether the MCP server
+  // is active). Both are transient — they re-hydrate from the backend on
+  // every mount (no localStorage persistence — the backend is the source
+  // of truth, mirrors the WS-cache-invalidation pattern from PROJECT.md).
+  mcpGrants: McpGrant[];
+  mcpEnabled: boolean;
+  setMcpGrants: (grants: McpGrant[]) => void;
+  setMcpEnabled: (enabled: boolean) => void;
+}
+
+// Phase 8 Plan 08-10 ADD-ONLY: MCP grant record shape (mirrors the
+// `McpGrant` component from the OpenAPI schema — kept here as a local
+// alias to avoid pulling the full schema type into a hot path).
+export interface McpGrant {
+  folder_path: string;
+  level: 1 | 2;
+  granted_at: string;
+  granted_via: string;
 }
 
 export const useTreeStore = create<TreeStore>((set) => ({
@@ -392,6 +415,12 @@ export const useTreeStore = create<TreeStore>((set) => ({
   // Phase 7 Plan 07-28 ADD-ONLY (UAT-2 N9 / B3)
   saveState: { status: "idle" },
   setSaveState: (s) => set({ saveState: s }),
+
+  // Phase 8 Plan 08-10 ADD-ONLY (D-55 / MCP-01 / MCP-02).
+  mcpGrants: [],
+  mcpEnabled: false,
+  setMcpGrants: (grants) => set({ mcpGrants: grants }),
+  setMcpEnabled: (enabled) => set({ mcpEnabled: enabled }),
 }));
 
 /**
