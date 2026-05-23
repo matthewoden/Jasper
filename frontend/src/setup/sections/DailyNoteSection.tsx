@@ -50,6 +50,25 @@ export function DailyNoteSection({
         starter template here.
       </p>
 
+      <p style={{ fontSize: 12, color: "var(--color-muted)", margin: "0 0 8px", lineHeight: 1.5 }}>
+        Use <code style={{ fontFamily: "var(--font-mono)" }}>{"{{date}}"}</code> to insert today&apos;s date (e.g. 2026-05-19). It&apos;s the only supported token — everything else is inserted unchanged.{" "}
+        <button
+          type="button"
+          onClick={() => onTemplateChange("# {{date}}\n\n")}
+          style={{
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            color: "var(--color-accent)",
+            textDecoration: "underline",
+            cursor: "pointer",
+            fontSize: 12,
+          }}
+        >
+          Insert example
+        </button>
+      </p>
+
       <label
         htmlFor="setup-daily-template"
         style={{

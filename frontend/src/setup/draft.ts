@@ -42,17 +42,19 @@ export interface SetupDraft {
  * that bypasses the D-08 validation. The default theme is "dark" —
  * matches the project's existing dark-first palette in theme.css.
  *
- * dailyTemplate defaults to the project's DAILY-03 template literal:
- *   `# YYYY-MM-DD\n\n`
- * (the wizard surfaces it in the textarea so the user can edit before
- * submit; an unchanged draft submits the literal default).
+ * dailyTemplate defaults to the `{{date}}` token —
+ * backend/internal/markdown/newnote.go substitutes the actual date at
+ * write time per DAILY-03. The previous literal "YYYY-MM-DD" was a
+ * regression that survived strings.ReplaceAll unchanged and produced
+ * literal "# YYYY-MM-DD" headers in users' daily notes instead of
+ * substituted dates.
  */
 export const DEFAULT_DRAFT: SetupDraft = {
   dataDir: "",
   theme: "dark",
   mcpEnabled: false,
   mcpGrants: [],
-  dailyTemplate: "# YYYY-MM-DD\n\n",
+  dailyTemplate: "# {{date}}\n\n",
   createTodayDailyNote: false,
 };
 
