@@ -2,7 +2,7 @@
  * Tests for SetupApp — the /setup wizard root.
  *
  * Coverage:
- *   - All 4 section headings (DATA DIRECTORY, THEME, AI ACCESS (MCP), DAILY NOTES) render.
+ *   - All 4 section headings (DATA DIRECTORY · REQUIRED, THEME, AI ACCESS (MCP), DAILY NOTES) render.
  *   - LOCKED copy strings present (Set up Jasper / Start Jasper / subtitle).
  *   - "Start Jasper" CTA is disabled until DataDirSection reports valid=true.
  *   - On a successful submit (mocked client.POST returns 200), the wizard:
@@ -108,7 +108,7 @@ describe("SetupApp — rendering", () => {
       screen.getByText(/A few choices and you're writing/),
     ).toBeInTheDocument();
     // 4 section eyebrows
-    expect(screen.getByText("DATA DIRECTORY")).toBeInTheDocument();
+    expect(screen.getByText("DATA DIRECTORY · REQUIRED")).toBeInTheDocument();
     expect(screen.getByText("THEME")).toBeInTheDocument();
     expect(screen.getByText("AI ACCESS (MCP)")).toBeInTheDocument();
     expect(screen.getByText("DAILY NOTES")).toBeInTheDocument();
