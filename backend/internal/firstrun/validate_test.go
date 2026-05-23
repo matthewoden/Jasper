@@ -133,13 +133,13 @@ func TestValidateDataDir_Unwritable(t *testing.T) {
 func TestValidateDataDir_NonASCII(t *testing.T) {
 	t.Parallel()
 	// Composed (NFC) é falls into the unicode.MaxASCII check, decomposed
-	// (NFD) "é" fails the NFC normalization check first. Cover both.
+	// (NFD) "é" fails the NFC normalization check first. Cover both.
 	cases := []struct {
 		name string
 		path string
 	}{
 		{name: "NFC é", path: "/tmp/Documents/Jasper-é"},
-		{name: "NFD e+combining-acute", path: "/tmp/Documents/Jasper-é"},
+		{name: "NFD e+combining-acute", path: "/tmp/Documents/Jasper-é"},
 		{name: "CJK chars", path: "/tmp/筆記"},
 		{name: "emoji", path: "/tmp/jasper-🚀"},
 	}
@@ -174,5 +174,137 @@ func TestValidateDataDir_PathTooLong(t *testing.T) {
 	}
 	if res.Code != RefusalNonASCII {
 		t.Fatalf("Code: got %q want %q (oversized path mapped to NonASCII per T-08-07)", res.Code, RefusalNonASCII)
+	}
+}
+
+// TestResolveDataDir_TildeExpansion covers the UAT-1 fix
+// (debug firstrun-tilde-not-expanded.md): bare "~" and "~/..." paths
+// must expand against os.UserHomeDir() into absolute paths. Without
+// this, sqlite.Open at the end of RunSetup rejects the resulting
+// dbPath with "dbPath must be absolute" and the wizard fails after
+// the user has already committed.
+func TestResolveDataDir_TildeExpansion(t *testing.T) {
+	t.Parallel()
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("os.UserHomeDir empty/err — skipping (rare env)")
+	}
+
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"bare_tilde", "~", home},
+		{"tilde_slash", "~/", home},
+		{"tilde_subdir", "~/Documents/Jasper", filepath.Join(home, "Documents/Jasper")},
+		{"tilde_deep", "~/a/b/c", filepath.Join(home, "a/b/c")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, code, msg := ResolveDataDir(tc.in)
+			if code != "" {
+				t.Fatalf("expected success; got code=%q msg=%q", code, msg)
+			}
+			if got != tc.want {
+				t.Fatalf("resolved path:\n got: %q\nwant: %q", got, tc.want)
+			}
+			if !filepath.IsAbs(got) {
+				t.Fatalf("resolved path %q is not absolute — sqlite.Open will reject it", got)
+			}
+		})
+	}
+}
+
+// TestResolveDataDir_AbsolutePassthrough verifies that an already-
+// absolute path (the common /tmp/foo case used by tests) survives
+// ResolveDataDir unchanged after filepath.Clean.
+func TestResolveDataDir_AbsolutePassthrough(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"/tmp/Jasper", "/tmp/Jasper"},
+		{"/tmp//Jasper//", "/tmp/Jasper"},
+		{"/tmp/./Jasper", "/tmp/Jasper"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			got, code, msg := ResolveDataDir(tc.in)
+			if code != "" {
+				t.Fatalf("expected success; got code=%q msg=%q", code, msg)
+			}
+			if got != tc.want {
+				t.Fatalf("resolved path:\n got: %q\nwant: %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestResolveDataDir_NotAbsolute covers the new not_absolute refusal
+// code: a relative path (no leading "/" and no expandable "~/" prefix)
+// must be refused before the write probe runs. "~user" forms (NOT
+// supported) also fall into this bucket.
+func TestResolveDataDir_NotAbsolute(t *testing.T) {
+	t.Parallel()
+	cases := []string{
+		"Documents/Jasper", // bare relative
+		"./Jasper",         // dot-relative
+		"../Jasper",        // parent-relative
+		"~someuser/Jasper", // ~user form — unsupported, treated as relative
+		"~someuser",        // unsupported bare ~user
+		"",                 // empty
+	}
+	for _, in := range cases {
+		in := in
+		t.Run(in, func(t *testing.T) {
+			t.Parallel()
+			got, code, msg := ResolveDataDir(in)
+			if code != RefusalNotAbsolute {
+				t.Fatalf("got code=%q want %q (in=%q got=%q)", code, RefusalNotAbsolute, in, got)
+			}
+			if msg != msgNotAbsolute {
+				t.Fatalf("Message drift:\n got: %q\nwant: %q", msg, msgNotAbsolute)
+			}
+		})
+	}
+}
+
+// TestValidateDataDir_TildePath_NoStrayDir is the integration check
+// tying ResolveDataDir into ValidateDataDir. A "~/..." path passed
+// through ValidateDataDir must NOT create a stray "~"-rooted directory
+// under the test runner's cwd — that was the original symptom of the
+// bug fixed in debug session firstrun-tilde-not-expanded.md.
+//
+// We snapshot cwd, check whether a literal "./~" already exists (so
+// we don't false-positive on leftover artifacts), call ValidateDataDir
+// on a tilded path, and then assert that no stray "./~" appeared.
+func TestValidateDataDir_TildePath_NoStrayDir(t *testing.T) {
+	// Cannot Parallel — checks cwd-relative filesystem state.
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	strayPath := filepath.Join(cwd, "~")
+
+	preExists := false
+	if _, err := os.Stat(strayPath); err == nil {
+		preExists = true
+	}
+
+	// Pick an arbitrary subdir under a tilded path. Whatever the
+	// result of ValidateDataDir, the literal "~" dir must not appear.
+	_ = ValidateDataDir("~/jasper-tilde-test-zzz-08-uat1")
+
+	if !preExists {
+		if _, err := os.Stat(strayPath); err == nil {
+			// Clean it up so the bug repro doesn't leave artifacts
+			// behind, then fail loudly.
+			_ = os.RemoveAll(strayPath)
+			t.Fatalf("ValidateDataDir created stray literal-tilde dir at %q — tilde expansion did not run", strayPath)
+		}
 	}
 }

@@ -2130,7 +2130,7 @@ components:
           type: boolean
         code:
           type: string
-          enum: [parent_missing, nested_vault, unwritable, non_ascii]
+          enum: [parent_missing, nested_vault, unwritable, non_ascii, not_absolute]
           description: Structured error code when valid=false (D-08).
         message:
           type: string

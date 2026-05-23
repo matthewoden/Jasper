@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
@@ -20,21 +21,32 @@ import (
 // path (PATH_MAX on macOS is 1024; Linux is 4096).
 const maxDataDirPathLen = 4096
 
-// RefusalCode names one of the four D-08 refusal cases or "" when
+// RefusalCode names one of the five D-08 refusal cases or "" when
 // the validation passes. The wire format (api.SetupValidateResponseCode)
 // uses the same string constants — so the handler in setup_handler.go
 // can cast directly.
 type RefusalCode string
 
-// The four D-08 refusal codes. Strings match openapi.yaml's
+// The five D-08 refusal codes. Strings match openapi.yaml's
 // SetupValidateResponseCode enum (generated as
 // api.SetupValidateResponseCode constants ParentMissing, NestedVault,
-// Unwritable, NonAscii).
+// Unwritable, NonAscii, NotAbsolute).
+//
+// `not_absolute` was added in the Phase 08 UAT-1 fix
+// (debug session firstrun-tilde-not-expanded, 2026-05-18): when the
+// user types a relative path (e.g. "Jasper/notes") that ResolveDataDir
+// cannot normalise into an absolute path against $HOME, the wizard
+// refuses with this code rather than silently materialising a stray
+// directory under the binary's launch CWD. Tilde-prefixed paths
+// (`~`, `~/...`) are NOT relative — they are resolved against
+// os.UserHomeDir() before this check runs, so the common
+// `~/Documents/Jasper` case lands cleanly on the Valid path.
 const (
 	RefusalParentMissing RefusalCode = "parent_missing"
 	RefusalNestedVault   RefusalCode = "nested_vault"
 	RefusalUnwritable    RefusalCode = "unwritable"
 	RefusalNonASCII      RefusalCode = "non_ascii"
+	RefusalNotAbsolute   RefusalCode = "not_absolute"
 )
 
 // LOCKED refusal messages (UI-SPEC §Copywriting Contract lines 134-143).
@@ -47,10 +59,16 @@ const (
 	// unwritable format string: "Jasper can't write here: %s. Check folder permissions."
 	// — the %s is the underlying os error per UI-SPEC.
 	msgUnwritableFmt = "Jasper can't write here: %s. Check folder permissions."
+	// not_absolute: surfaced when the user enters a relative path that
+	// can't be tilde-expanded. The placeholder copy in the wizard input
+	// (DataDirSection.tsx) is `~/Documents/Jasper` so the typical happy
+	// path is "user types `~`-prefixed → backend resolves → validates".
+	// This message points the user at the same shape.
+	msgNotAbsolute = "Pick an absolute path (starts with `/`) or a path beginning with `~/`."
 )
 
 // ValidateResult is the outcome of ValidateDataDir. Valid is true ONLY
-// when none of the four D-08 rules fires; otherwise Code carries the
+// when none of the D-08 rules fires; otherwise Code carries the
 // machine-readable rule name and Message carries the locked UI string.
 type ValidateResult struct {
 	Valid   bool
@@ -58,9 +76,70 @@ type ValidateResult struct {
 	Message string
 }
 
-// ValidateDataDir applies the four D-08 refusal rules in order:
+// ResolveDataDir normalises a wizard-supplied data-dir path into an
+// absolute filesystem path BEFORE any other validation runs. Two
+// transforms are applied, in order:
 //
-//  1. non-ASCII / non-NFC (cheap; runs first)
+//  1. Tilde expansion. A bare "~" or a "~/..." prefix is rewritten
+//     against os.UserHomeDir(). The shell convention "~user" (expand
+//     against another user's home) is NOT supported — those forms are
+//     treated as relative and fall through to the absolute-path check.
+//     This matches what users will plausibly type into the wizard input
+//     whose placeholder is `~/Documents/Jasper`.
+//
+//  2. Absolute-path enforcement. After expansion the path MUST be
+//     filepath.IsAbs() — otherwise sqlite.Open will reject it later
+//     with a confusing "dbPath must be absolute" error, and the
+//     write-probe step in ValidateDataDir will silently create a
+//     stray directory tree under the binary's launch CWD (the symptom
+//     that motivated this helper; see debug
+//     firstrun-tilde-not-expanded.md).
+//
+// On success returns (resolved, "", "") — the resolved path is what
+// callers should persist into cfg.Server.DataDir / pass to MkdirAll /
+// hand to sqlite.Open. On failure returns ("", code, locked message)
+// matching ValidateResult's Code/Message fields exactly.
+//
+// This function does NO filesystem I/O. It is safe to call from any
+// goroutine, and ValidateDataDir + RunSetup both call it.
+func ResolveDataDir(raw string) (string, RefusalCode, string) {
+	// Tilde expansion. Allowed forms: "~", "~/", "~/anything".
+	// Disallowed: "~user", "~user/...". The disallowed forms fall
+	// through unchanged and the absolute-path check below catches them.
+	expanded := raw
+	if raw == "~" || strings.HasPrefix(raw, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			// Very rare on macOS / WSL; the runtime has no notion of
+			// $HOME for some reason. Surface as not_absolute so the UI
+			// renders a useful hint rather than failing silently.
+			return "", RefusalNotAbsolute, msgNotAbsolute
+		}
+		if raw == "~" {
+			expanded = home
+		} else {
+			// "~/<rest>": join home with the rest. filepath.Join
+			// normalises duplicate slashes and trailing dots so the
+			// result is clean.
+			expanded = filepath.Join(home, raw[2:])
+		}
+	}
+
+	if !filepath.IsAbs(expanded) {
+		return "", RefusalNotAbsolute, msgNotAbsolute
+	}
+	// filepath.Clean tidies up things like "/tmp//foo/./bar" into
+	// "/tmp/foo/bar" so the rest of the pipeline (and the persisted
+	// config.json) sees a canonical form.
+	return filepath.Clean(expanded), "", ""
+}
+
+// ValidateDataDir applies the D-08 refusal rules in order:
+//
+//  0. tilde-expand + absolute-path check (ResolveDataDir; new in
+//     UAT-1 fix — prevents the write-probe from creating a stray "~"
+//     directory under the binary's launch CWD).
+//  1. non-ASCII / non-NFC (cheap; runs on the resolved path)
 //  2. parent directory missing
 //  3. nested-vault detection
 //  4. write probe (mkdir 0700 + create+remove a tempfile)
@@ -88,9 +167,21 @@ func ValidateDataDir(path string) ValidateResult {
 		return ValidateResult{Code: RefusalNonASCII, Message: msgNonASCII}
 	}
 
-	// D-08d: non-ASCII / non-NFC chars. Run this FIRST — pure-in-memory
-	// work, no syscall, so a hostile client can't cause filesystem load
-	// with a deliberately-bad path.
+	// D-08e (UAT-1 fix): tilde-expand and refuse non-absolute paths
+	// BEFORE any filesystem syscall. This must come before the write
+	// probe — otherwise a relative path like "~/Documents/Jasper" would
+	// be MkdirAll'd verbatim under the binary's launch CWD, creating
+	// a literal "~" tree (the symptom motivating this rule).
+	resolved, refusalCode, refusalMsg := ResolveDataDir(path)
+	if refusalCode != "" {
+		return ValidateResult{Code: refusalCode, Message: refusalMsg}
+	}
+	path = resolved
+
+	// D-08d: non-ASCII / non-NFC chars. Run this FIRST among the
+	// "examine the path string" checks — pure-in-memory work, no
+	// syscall, so a hostile client can't cause filesystem load with
+	// a deliberately-bad path.
 	//
 	// Two checks: norm.NFC.IsNormalString catches decomposed forms
 	// (e.g. NFD "é" rendered as "e" + U+0301) that survive a casual

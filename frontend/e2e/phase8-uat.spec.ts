@@ -12,6 +12,9 @@
  *                redirect tests are currently test.fixme()'d — see the
  *                "Known issue" note below. The happy-path content
  *                assertions on the wizard SPA itself work and run.
+ *                Two regression tests for the UAT-1 tilde-expansion bug
+ *                also live in this describe block (live HTTP against
+ *                bin/jasper — they do NOT depend on the redirect).
  *
  *   @reveal      tree-row right-click exposes "Show in file manager". The
  *                test only asserts visibility — it does NOT click the item
@@ -149,6 +152,143 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
       await expect(
         page.getByText(/don('|’)t survive cross-platform sync/i),
       ).toBeVisible({ timeout: 5_000 });
+    },
+  );
+
+  // ──────────────────────────────────────────────────────────────────────
+  // UAT-1 (Phase 08, 2026-05-18) regression: tilde-prefixed data-dir paths
+  // must be expanded against os.UserHomeDir() BEFORE any other validation
+  // runs. Without this, sqlite.Open at the end of the wizard submit
+  // rejects the dbPath with
+  //   "sqlite open: sqlite.Open: dbPath must be absolute, got %q"
+  // and the wizard fails AFTER the user has already committed. The
+  // first user UAT (Phase 08 UAT-1) hit exactly this failure mode.
+  //
+  // We drive the backend directly via HTTP (rather than driving the SPA
+  // form) for two reasons:
+  //   1. The SPA-form path is gated by the @first-run redirect fixme
+  //      above — the wizard is reachable but the submit step would
+  //      race against the auto-created config.json.
+  //   2. The bug is entirely on the backend; the wizard input has no
+  //      client-side expansion to test (and cannot — there is no
+  //      browser API for os.UserHomeDir).
+  //
+  // Cleanup: the validate endpoint creates the resolved dir via the
+  // write probe (D-08c) — we use a unique suffix and unlink it after
+  // the assertion so the user's $HOME is not polluted.
+  // ──────────────────────────────────────────────────────────────────────
+  test(
+    "UAT-1: tilde-prefixed data-dir paths are expanded against $HOME (not literal)",
+    async () => {
+      const os = await import("node:os");
+      const path = await import("node:path");
+      const fs = await import("node:fs/promises");
+
+      // Unique suffix per run so reruns don't collide and $HOME isn't
+      // littered. The test cleans up in the finally block.
+      const suffix = `jasper-e2e-tilde-${Date.now()}-${Math.floor(
+        Math.random() * 1e6,
+      )}`;
+      const tildePath = `~/${suffix}`;
+      const expandedPath = path.join(os.homedir(), suffix);
+
+      // CWD of the spawned binary is whatever node was launched in
+      // (Playwright runs from frontend/). If tilde-expansion did NOT
+      // run, the validator's MkdirAll would create a literal "~"
+      // directory under that CWD. We snapshot whether it already
+      // exists so we can distinguish "we created it" from "it was
+      // left behind by a previous failed run".
+      const cwdTildePath = path.join(process.cwd(), "~");
+      const preExistedTildeDir = await fs
+        .stat(cwdTildePath)
+        .then(() => true)
+        .catch(() => false);
+
+      try {
+        const resp = await fetch(
+          jasper.baseURL + "/api/v1/setup/validate-data-dir",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ path: tildePath }),
+          },
+        );
+        expect(resp.status).toBe(200);
+        const body = (await resp.json()) as {
+          valid: boolean;
+          code?: string;
+          message?: string;
+        };
+        // After tilde expansion the path is well-formed: $HOME exists,
+        // parent exists, no nested vault, write-probe succeeds. Expect
+        // valid=true. If valid=false here, the failure surface is
+        // either the tilde-expansion regression (was the bug we fixed)
+        // or one of the D-08 rules tripping on the user's actual
+        // $HOME — surface the response body in the failure message.
+        expect(
+          body.valid,
+          `expected valid=true after tilde expansion; body=${JSON.stringify(body)}`,
+        ).toBe(true);
+
+        // Regression guard: the validator MUST NOT have created a
+        // literal "~" dir at the binary's CWD. If preExisted is true
+        // we can't tell whether this call created it or a previous
+        // run did — skip the assertion in that case (still flagged
+        // by the unit test TestValidateDataDir_TildePath_NoStrayDir
+        // which controls its own preExisted check).
+        const postExistsTildeDir = await fs
+          .stat(cwdTildePath)
+          .then(() => true)
+          .catch(() => false);
+        if (!preExistedTildeDir) {
+          expect(
+            postExistsTildeDir,
+            `validator created a literal "~" dir at ${cwdTildePath} — tilde expansion did not run`,
+          ).toBe(false);
+        }
+
+        // The validator's write probe created the resolved dir at
+        // $HOME/<suffix>. Stat it to prove the expansion landed where
+        // we expect, then clean up in finally.
+        const exists = await fs
+          .stat(expandedPath)
+          .then(() => true)
+          .catch(() => false);
+        expect(
+          exists,
+          `expected write-probe target ${expandedPath} to exist after validate`,
+        ).toBe(true);
+      } finally {
+        // Best-effort cleanup. rm -rf semantics; ignore ENOENT.
+        await fs.rm(expandedPath, { recursive: true, force: true }).catch(() => {});
+      }
+    },
+  );
+
+  test(
+    "UAT-1: relative paths are refused with the not_absolute code",
+    async () => {
+      // A bare relative path has no tilde to expand and is not absolute.
+      // The new ResolveDataDir helper refuses it with code=not_absolute,
+      // surfacing a useful UI hint instead of letting MkdirAll create
+      // a stray dir under the binary's CWD.
+      const resp = await fetch(
+        jasper.baseURL + "/api/v1/setup/validate-data-dir",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ path: "Documents/Jasper" }),
+        },
+      );
+      expect(resp.status).toBe(200);
+      const body = (await resp.json()) as {
+        valid: boolean;
+        code?: string;
+        message?: string;
+      };
+      expect(body.valid).toBe(false);
+      expect(body.code).toBe("not_absolute");
+      expect(body.message).toMatch(/absolute path/i);
     },
   );
 });

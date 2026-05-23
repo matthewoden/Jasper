@@ -1311,7 +1311,7 @@ export interface components {
              * @description Structured error code when valid=false (D-08).
              * @enum {string}
              */
-            code?: "parent_missing" | "nested_vault" | "unwritable" | "non_ascii";
+            code?: "parent_missing" | "nested_vault" | "unwritable" | "non_ascii" | "not_absolute";
             /** @description Human-readable error message when valid=false. */
             message?: string;
         };
