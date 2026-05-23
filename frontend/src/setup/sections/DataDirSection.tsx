@@ -129,7 +129,7 @@ export function DataDirSection({
           marginBottom: 6,
         }}
       >
-        DATA DIRECTORY
+        DATA DIRECTORY · REQUIRED
       </div>
       <p
         style={{
