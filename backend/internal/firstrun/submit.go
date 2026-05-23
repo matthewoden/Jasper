@@ -245,12 +245,26 @@ func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
 	return nil
 }
 
-// insertSeedGrants opens a short-lived sql.DB on dbPath, INSERTs each
-// grant row, and closes. Granted_via is hard-coded "wizard" so 08-08's
-// telemetry surface can attribute the row to the first-run wizard
-// rather than the tree-context-menu / dropdown-menu paths. now is
-// captured once at the top so all rows share the same granted_at —
-// useful for "show me everything seeded by the wizard" queries later.
+// insertSeedGrants opens a short-lived sql.DB on dbPath, upserts each
+// grant row via ON CONFLICT(folder_path) DO UPDATE, and closes.
+// Granted_via is hard-coded "wizard" so 08-08's telemetry surface can
+// attribute the row to the first-run wizard rather than the
+// tree-context-menu / dropdown-menu paths. now is captured once at the
+// top so all rows share the same granted_at — useful for "show me
+// everything seeded by the wizard" queries later.
+//
+// UAT-1 N8 (2026-05-19): the wizard's McpSection.handleAddFolder had no
+// duplicate guard so a user could add the same folder twice before
+// submitting. The previous plain INSERT hit SQLite extended error 2067
+// (SQLITE_CONSTRAINT_UNIQUE) on the second row and failed the whole
+// submit. Fixed via defense-in-depth at three layers:
+//  1. Frontend McpSection.handleAddFolder: inline error on re-add.
+//  2. Frontend SetupApp.handleSubmit: dedupGrantsByFolder before POST.
+//  3. This function (layer 3): ON CONFLICT upsert — idempotent for
+//     any caller that passes duplicate folder paths. Last-write-wins
+//     on level. granted_via stays "wizard" on conflict (the row was
+//     originally seeded by the wizard; conflicts only happen during
+//     the same submit batch).
 //
 // Errors here are FATAL to the submit (caller wraps and returns 500).
 // We could survive a partial insert by ignoring per-row failures, but
@@ -264,7 +278,7 @@ func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
 // "sqlite" (NOT "sqlite3"); the file:<path> DSN suppresses the auto-
 // created "$home/test.db" surprise.
 //
-// errors.Is + sql.ErrNoRows is not relevant here — we're INSERT-only.
+// errors.Is + sql.ErrNoRows is not relevant here — we're upsert-only.
 func insertSeedGrants(ctx context.Context, dbPath string, grants []SetupGrantSeed) error {
 	if len(grants) == 0 {
 		return nil
@@ -279,7 +293,12 @@ func insertSeedGrants(ctx context.Context, dbPath string, grants []SetupGrantSee
 	}
 	now := time.Now().Unix()
 	stmt, err := db.PrepareContext(ctx,
-		`INSERT INTO mcp_write_grants (folder_path, level, granted_at, granted_via) VALUES (?, ?, ?, 'wizard')`)
+		`INSERT INTO mcp_write_grants (folder_path, level, granted_at, granted_via)
+		 VALUES (?, ?, ?, 'wizard')
+		 ON CONFLICT(folder_path) DO UPDATE SET
+		   level = excluded.level,
+		   granted_at = excluded.granted_at,
+		   granted_via = 'wizard'`)
 	if err != nil {
 		return fmt.Errorf("prepare insert: %w", err)
 	}

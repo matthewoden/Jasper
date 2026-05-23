@@ -267,6 +267,121 @@ func TestRunSetup_SeedGrants(t *testing.T) {
 	}
 }
 
+// TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel exercises the
+// ON CONFLICT(folder_path) DO UPDATE upsert semantics of insertSeedGrants
+// (UAT-1 N8 layer 3). Two rows with the same Folder ("ai-zone") but
+// Level=1 then Level=2 must: (a) return nil error, (b) leave exactly
+// one row in mcp_write_grants, (c) with level=2 (last-write-wins).
+//
+// Before the ON CONFLICT fix, the second INSERT hit SQLite extended error
+// 2067 (SQLITE_CONSTRAINT_UNIQUE) and returned a non-nil error — the
+// whole wizard submit failed with:
+//
+//	"seed grants: insert grant "ai-zone": constraint failed: UNIQUE
+//	 constraint failed: mcp_write_grants.folder_path (2067)"
+func TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	target := filepath.Join(base, "Jasper")
+	req := SetupRequest{
+		DataDir: target,
+		Theme:   "dark",
+		McpGrants: []SetupGrantSeed{
+			{Folder: "ai-zone", Level: 1},
+			{Folder: "ai-zone", Level: 2}, // duplicate — upsert must win
+		},
+	}
+	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
+		t.Fatalf("RunSetup with duplicate grant: %v", err)
+	}
+	dbPath := filepath.Join(target, "storage", "app.db")
+	db, err := sql.Open("sqlite", "file:"+dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	var count int
+	if err := db.QueryRow(`SELECT count(*) FROM mcp_write_grants`).Scan(&count); err != nil {
+		t.Fatalf("query count: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 row after duplicate upsert; got %d", count)
+	}
+
+	var level int
+	if err := db.QueryRow(`SELECT level FROM mcp_write_grants WHERE folder_path = 'ai-zone'`).Scan(&level); err != nil {
+		t.Fatalf("query level: %v", err)
+	}
+	if level != 2 {
+		t.Fatalf("expected level=2 (last-write-wins); got %d", level)
+	}
+}
+
+// TestInsertSeedGrants_MixedDuplicates exercises a seed list with one
+// duplicate (A appears twice) and one unique row (B appears once). The
+// result must be exactly 2 rows: A at the last-seen level, B at its
+// original level. Nil error is required.
+func TestInsertSeedGrants_MixedDuplicates(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	target := filepath.Join(base, "Jasper")
+	req := SetupRequest{
+		DataDir: target,
+		Theme:   "dark",
+		McpGrants: []SetupGrantSeed{
+			{Folder: "projects", Level: 1},
+			{Folder: "inbox", Level: 1},
+			{Folder: "projects", Level: 2}, // duplicate — upsert overwrites level
+		},
+	}
+	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
+		t.Fatalf("RunSetup with mixed duplicates: %v", err)
+	}
+	dbPath := filepath.Join(target, "storage", "app.db")
+	db, err := sql.Open("sqlite", "file:"+dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	var count int
+	if err := db.QueryRow(`SELECT count(*) FROM mcp_write_grants`).Scan(&count); err != nil {
+		t.Fatalf("query count: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected exactly 2 rows after mixed-duplicate upsert; got %d", count)
+	}
+
+	rows, err := db.Query(`SELECT folder_path, level FROM mcp_write_grants ORDER BY folder_path`)
+	if err != nil {
+		t.Fatalf("query rows: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	type row struct {
+		folder string
+		level  int
+	}
+	var got []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.folder, &r.level); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, r)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows err: %v", err)
+	}
+	// After ORDER BY folder_path: inbox=1, projects=2 (last-write-wins)
+	if got[0] != (row{folder: "inbox", level: 1}) {
+		t.Errorf("row[0]: got %+v want {inbox, 1}", got[0])
+	}
+	if got[1] != (row{folder: "projects", level: 2}) {
+		t.Errorf("row[1]: got %+v want {projects, 2}", got[1])
+	}
+}
+
 // TestRunSetup_NoDailyNoteWhenOptedOut: omitting CreateTodayDailyNote
 // MUST NOT touch the daily folder.
 func TestRunSetup_NoDailyNoteWhenOptedOut(t *testing.T) {

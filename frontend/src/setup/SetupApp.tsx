@@ -30,8 +30,25 @@ import {
   saveDraft,
   clearDraft,
   type SetupDraft,
+  type SetupGrantDraft,
 } from "./draft";
 import { submitSetup, type McpGrantSeed } from "./setupApi";
+
+// dedupGrantsByFolder collapses duplicate folder entries in the grant list
+// before POST. Last-write-wins on level — a folder appearing twice keeps the
+// later entry's level. This is UAT-1 N8 layer 2 (belt-and-braces against
+// legacy localStorage drafts that already contain duplicates from before the
+// McpSection handleAddFolder duplicate guard landed). Layer 1 = McpSection
+// handleAddFolder guard; Layer 3 = backend ON CONFLICT upsert.
+function dedupGrantsByFolder(grants: SetupGrantDraft[]): SetupGrantDraft[] {
+  const map = new Map<string, SetupGrantDraft>();
+  for (const g of grants) {
+    const key = g.folder.trim().toLowerCase();
+    if (key === "") continue;
+    map.set(key, g); // last-write-wins on level
+  }
+  return Array.from(map.values());
+}
 import { DataDirSection } from "./sections/DataDirSection";
 import { ThemeSection } from "./sections/ThemeSection";
 import { McpSection } from "./sections/McpSection";
@@ -69,8 +86,8 @@ export function SetupApp() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const grants: McpGrantSeed[] = draft.mcpGrants.map((g) => ({
-        folder: g.folder,
+      const grants: McpGrantSeed[] = dedupGrantsByFolder(draft.mcpGrants).map((g) => ({
+        folder: g.folder.trim(),
         level: g.level,
       }));
       await submitSetup({

@@ -148,4 +148,58 @@ describe("McpSection — render integration", () => {
       screen.getByText(/No folders granted yet\. \(Reads are global once MCP is on\.\)/),
     ).toBeInTheDocument();
   });
+
+  // ── Duplicate-guard tests (UAT-1 N8 layer 1) ──────────────────────────
+  // handleAddFolder must reject a folder that already exists in the grants
+  // list (exact match, case-insensitive, whitespace-trimmed) with the
+  // locked error copy. onGrantsChange must NOT be called.
+
+  it("dup_exact: rejects exact duplicate folder and shows locked error copy", () => {
+    promptSpy.mockReturnValue("ai-zone");
+    const { onGrantsChange } = renderWith([{ folder: "ai-zone", level: 1 }]);
+
+    fireEvent.click(screen.getByText("Add folder…"));
+
+    expect(onGrantsChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("alert"),
+    ).toHaveTextContent("Folder already granted. Remove it first to change its tier.");
+  });
+
+  it("dup_case_insensitive: rejects case-insensitive duplicate folder", () => {
+    promptSpy.mockReturnValue("AI-Zone");
+    const { onGrantsChange } = renderWith([{ folder: "ai-zone", level: 1 }]);
+
+    fireEvent.click(screen.getByText("Add folder…"));
+
+    expect(onGrantsChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("alert"),
+    ).toHaveTextContent("Folder already granted. Remove it first to change its tier.");
+  });
+
+  it("dup_whitespace: rejects whitespace-padded duplicate folder", () => {
+    promptSpy.mockReturnValue("  ai-zone  ");
+    const { onGrantsChange } = renderWith([{ folder: "ai-zone", level: 1 }]);
+
+    fireEvent.click(screen.getByText("Add folder…"));
+
+    expect(onGrantsChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("alert"),
+    ).toHaveTextContent("Folder already granted. Remove it first to change its tier.");
+  });
+
+  it("unique_passes: accepts a folder not already in the grants list", () => {
+    promptSpy.mockReturnValue("projects");
+    const { onGrantsChange } = renderWith([{ folder: "ai-zone", level: 1 }]);
+
+    fireEvent.click(screen.getByText("Add folder…"));
+
+    expect(onGrantsChange).toHaveBeenCalledTimes(1);
+    expect(onGrantsChange).toHaveBeenCalledWith([
+      { folder: "ai-zone", level: 1 },
+      { folder: "projects", level: 1 },
+    ]);
+  });
 });

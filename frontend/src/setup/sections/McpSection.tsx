@@ -114,8 +114,19 @@ export function McpSection({
       );
       return;
     }
+    // UAT-1 N8 layer 1: reject a folder that already exists in the list
+    // (case-insensitive + whitespace-trimmed). The user must remove the
+    // existing entry first if they want to change the tier level.
+    const trimmed = raw.trim();
+    const dup = grants.some(
+      (g) => g.folder.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (dup) {
+      flashError("Folder already granted. Remove it first to change its tier.");
+      return;
+    }
     // Default new grants to Tier 1 (Edit only) per D-19.
-    const next: SetupGrantDraft = { folder: raw.trim(), level: 1 };
+    const next: SetupGrantDraft = { folder: trimmed, level: 1 };
     onGrantsChange([...grants, next]);
   };
 

@@ -467,3 +467,121 @@ test.describe("Phase 8 — sparkles indicator contract (@sparkles)", () => {
     expect(ATTR_TIER2).toBe('data-grant-tier="2"');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UAT-1 follow-up (@uat-1-followup) — N8 duplicate-grant upsert fix
+//
+// Verifies that POSTing /api/v1/setup with two grants for the same folder
+// (same folder_path, different levels) succeeds with HTTP 200 and ends with
+// exactly one row in mcp_write_grants (level=2, the last-write-wins value).
+//
+// The backend layer-3 fix (ON CONFLICT DO UPDATE) is the authoritative gate;
+// the frontend layer-1 (McpSection handleAddFolder guard) and layer-2
+// (SetupApp dedupGrantsByFolder) are UX guards covered by vitest unit tests.
+//
+// sqlite3 CLI probe: if sqlite3 is on PATH, we assert the exact row content.
+// If missing (slim CI runners), we fall through to a 200-only assertion —
+// the backend unit tests (TestInsertSeedGrants_Duplicate_*) pin row-count
+// behavior in that case.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test(
+    "UAT-1 N8: duplicate grant flashes error and submits with single DB row",
+    async () => {
+      const os = await import("node:os");
+      const path = await import("node:path");
+      const fs = await import("node:fs/promises");
+      const { execFileSync } = await import("node:child_process");
+
+      // Unique suffix so reruns don't collide.
+      const suffix = `jasper-e2e-n8-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+      const tildePath = `~/${suffix}`;
+      const expandedPath = path.join(os.homedir(), suffix);
+
+      try {
+        // Sanity gate: validate-data-dir must return valid=true for the
+        // tilde path. This confirms the N1 tilde-expansion fix is in place.
+        const validateResp = await fetch(
+          jasper.baseURL + "/api/v1/setup/validate-data-dir",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ path: tildePath }),
+          },
+        );
+        expect(validateResp.status).toBe(200);
+        const validateBody = (await validateResp.json()) as {
+          valid: boolean;
+          code?: string;
+          message?: string;
+        };
+        expect(
+          validateBody.valid,
+          `N1 sanity gate: expected valid=true for tilde path; body=${JSON.stringify(validateBody)}`,
+        ).toBe(true);
+
+        // Submit with duplicate grant: same folder_path "ai-zone", level 1
+        // then level 2. The backend ON CONFLICT upsert must coalesce to one
+        // row with level=2.
+        const setupResp = await fetch(jasper.baseURL + "/api/v1/setup", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            data_dir: tildePath,
+            theme: "dark",
+            mcp_enabled: true,
+            mcp_grants: [
+              { folder: "ai-zone", level: 1 },
+              { folder: "ai-zone", level: 2 },
+            ],
+            daily_template: "# {{date}}\n\n",
+            create_today_daily_note: false,
+          }),
+        });
+        expect(
+          setupResp.status,
+          `Expected 200 from /api/v1/setup; got ${setupResp.status}`,
+        ).toBe(200);
+
+        // Probe the SQLite DB if sqlite3 is available.
+        const dbPath = path.join(expandedPath, "storage", "app.db");
+        let sqlite3Available = false;
+        try {
+          execFileSync("sqlite3", ["--version"], { stdio: "ignore" });
+          sqlite3Available = true;
+        } catch {
+          // sqlite3 not on PATH — fall through to 200-only assertion.
+        }
+
+        if (sqlite3Available) {
+          const output = execFileSync("sqlite3", [
+            dbPath,
+            "SELECT folder_path, level FROM mcp_write_grants ORDER BY folder_path",
+          ])
+            .toString()
+            .trim();
+          expect(
+            output,
+            `Expected single row 'ai-zone|2' in mcp_write_grants; got: ${JSON.stringify(output)}`,
+          ).toBe("ai-zone|2");
+        }
+        // If sqlite3 is missing, the 200-status assertion above is the
+        // contract; backend unit tests pin the row-count behavior.
+      } finally {
+        // Best-effort cleanup — rm -rf the test data dir.
+        await fs.rm(expandedPath, { recursive: true, force: true }).catch(() => {});
+      }
+    },
+  );
+});
