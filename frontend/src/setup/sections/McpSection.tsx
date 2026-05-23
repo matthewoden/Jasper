@@ -171,6 +171,9 @@ export function McpSection({
             Pick folders where AI can create and edit notes. You can change this
             later from any folder's right-click menu.
           </p>
+          <p style={{ ...HELPER_STYLE, margin: "0 0 8px", fontSize: 12 }}>
+            Tier 1 lets AI edit existing notes in this folder. Tier 2 also lets it create, move, and delete.
+          </p>
 
           {grants.length === 0 ? (
             <div
@@ -230,8 +233,8 @@ export function McpSection({
                       fontWeight: 600,
                     }}
                   >
-                    <option value={1}>Tier 1</option>
-                    <option value={2}>Tier 2</option>
+                    <option value={1}>Tier 1 — Edit only</option>
+                    <option value={2}>Tier 2 — Full (create + edit + delete)</option>
                   </select>
                   <button
                     type="button"
