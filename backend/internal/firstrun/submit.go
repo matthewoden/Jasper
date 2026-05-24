@@ -12,10 +12,9 @@ import (
 	_ "modernc.org/sqlite" // registers the "sqlite" sql driver
 
 	"github.com/matthewoden/jasper/backend/internal/config"
-	"github.com/matthewoden/jasper/backend/internal/db/migrate"
-	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/markdown"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 // SetupRequest is the in-process form of a wizard submit. The handler
@@ -78,76 +77,64 @@ type SetupGrantSeed struct {
 // RunSetup is the submit pipeline. Per D-10 the order is:
 //
 //  1. Theme value-check (cheap, no syscall).
-//  2. ResolveDataDir: tilde-expand + absolute-path enforcement
-//     (UAT-1 fix — without this, a tilded path bypasses
-//     filepath.IsAbs in sqlite.Open and surfaces a confusing
-//     "dbPath must be absolute" error mid-submit).
-//  3. ValidateDataDir against the resolved path (final gate vs
-//     T-08-06 client bypass; also performs the write probe so
-//     the data-dir exists at 0o700 after this returns).
-//  4. mkdir <DataDir>/notes    0o700
-//     mkdir <DataDir>/storage  0o700 (config.Save's atomic write
-//     writes into this dir so it MUST exist before Save runs).
-//  5. config.Save with Defaults() overlaid by:
-//     - cfg.Server.DataDir = <resolved DataDir>
-//     - cfg.Theme          = req.Theme
-//     - cfg.MCP.Enabled    = req.McpEnabled         (revision 2 W1)
-//     - cfg.DailyNotes.Template = req.DailyTemplate
-//     Server.Port (6683), MCP.Port (6684), MCP.Bind ("127.0.0.1")
-//     are NOT overridable from the wizard (D-50 generalization —
-//     port edits go through config.json directly).
-//  6. Open sqlite.Pair on <DataDir>/storage/app.db, build a
-//     migrate.Runner with the embedded migrations FS, run it, close
-//     the pair. The Pair lifecycle is local to RunSetup — once the
-//     migrations apply, the surrounding lifecycle.Run (after the
-//     SPA's redirect-on-load cycle) opens its own long-lived Pair.
-//  7. Seed MCP grants by opening a short-lived sql.DB and INSERT-ing
-//     each (folder, level, now, 'wizard') row. The grant table is
-//     created by migration 004 in step 6 so this must follow.
-//  8. (optional) Write <notes>/daily/<today>.md from the template.
+//  2. ResolveDataDir: tilde-expand + absolute-path enforcement.
+//  3. ValidateDataDir against the resolved path (final gate vs T-08-06).
+//  4. vault.CreateVault: creates <DataDir>/.jasper/, config.json, app.db,
+//     runs migrations, and registers the vault in app.json.
+//  5. config.Save (legacy compatibility): also writes the old-style
+//     <DataDir>/storage/config.json so pre-vault-model lifecycle code
+//     that reads this file continues to work until fully removed.
+//  6. Seed MCP grants in the new vault's app.db.
+//  7. (optional) Write <DataDir>/notes/daily/<today>.md from the template.
+//
+// Plan 08-17b: steps 4+ now delegate vault initialization to
+// vault.CreateVault (which handles .jasper/ + app.db + app.json). The
+// legacy config.Save in step 5 is retained for backward compatibility
+// with any code that still reads <DataDir>/storage/config.json; it will
+// be removed when the old lifecycle path is fully retired.
 //
 // Errors are wrapped with a UI-friendly prefix; the handler maps the
 // resulting error to a 500 with the wrapped message in the body.
 //
 // migrationsFS is the embedded migrations.FS plumbed through from
-// app.New's caller (Server.migrationsFS). Tests pass a small fstest.MapFS
-// or os.DirFS pointed at backend/migrations.
+// app.New's caller (Server.migrationsFS).
 func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
 	// Step 1: validate theme up front (cheap, no syscall).
 	if req.Theme != "dark" && req.Theme != "light" {
 		return fmt.Errorf("theme must be 'dark' or 'light'")
 	}
 
-	// Step 2: resolve the data-dir BEFORE any other check or filesystem
-	// work. The wizard input accepts "~/..." paths (the placeholder is
-	// literally `~/Documents/Jasper`); we expand the tilde against
-	// os.UserHomeDir() and refuse any path that ends up non-absolute.
-	//
-	// This MUST come before ValidateDataDir below — even though
-	// ValidateDataDir also calls ResolveDataDir internally (defensive
-	// for direct firstrun.ValidateDataDir callers), we need the
-	// resolved path locally so the MkdirAll, config.Save, and
-	// sqlite.Open below all see the absolute form. Without this,
-	// sqlite.Open at step 6 rejects a tilded path with the
-	// "dbPath must be absolute" error that motivated this fix
-	// (debug firstrun-tilde-not-expanded.md).
+	// Step 2: resolve the data-dir.
 	dataDir, refusalCode, refusalMsg := ResolveDataDir(req.DataDir)
 	if refusalCode != "" {
 		return fmt.Errorf("%s", refusalMsg)
 	}
 
-	// Step 3: re-validate the resolved data-dir. ValidateDataDir also
-	// mkdir-0700s dataDir as part of the write probe, so when this
-	// returns Valid: true the directory already exists with the right
-	// perms.
+	// Step 3: re-validate the resolved data-dir.
 	if v := ValidateDataDir(dataDir); !v.Valid {
 		return fmt.Errorf("%s", v.Message)
 	}
 
-	// Step 4: create <DataDir>/notes/ and <DataDir>/storage/ at 0o700.
-	// ValidateDataDir created <DataDir> itself; we materialize the
-	// canonical subdir layout here so the SPA + sqlite + config.Save
-	// don't race against missing parents.
+	// Step 4: delegate vault initialization to vault.CreateVault.
+	// This creates <dataDir>/.jasper/{config.json,app.db}, runs migrations,
+	// and registers the vault in app.json as the current_vault.
+	canonical, err := vault.Canonicalize(dataDir)
+	if err != nil {
+		return fmt.Errorf("canonicalize data dir: %w", err)
+	}
+	if _, err := vault.CreateVault(ctx, canonical, vault.CreateOpts{
+		Theme:         req.Theme,
+		DailyTemplate: req.DailyTemplate,
+		MCPEnabled:    req.McpEnabled,
+		MigrationsFS:  migrationsFS,
+	}); err != nil {
+		return fmt.Errorf("create vault: %w", err)
+	}
+
+	// Step 5 (legacy compat): write <DataDir>/storage/config.json so
+	// pre-vault-model lifecycle code that reads this file still finds it.
+	// Also ensure the legacy directory layout exists so any downstream
+	// code that assumes notes/ + storage/ subdirs doesn't race.
 	notesDir := filepath.Join(dataDir, "notes")
 	if err := os.MkdirAll(notesDir, 0o700); err != nil {
 		return fmt.Errorf("create notes dir: %w", err)
@@ -156,80 +143,24 @@ func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
 	if err := os.MkdirAll(storageDir, 0o700); err != nil {
 		return fmt.Errorf("create storage dir: %w", err)
 	}
-
-	// Step 5: build + save config from Defaults() with the wizard's
-	// choices overlaid. Defaults() seeds Server.Port=6683, MCP.Port=6684,
-	// MCP.Bind="127.0.0.1" — the wizard never overrides those (D-50).
 	cfg := config.Defaults()
 	cfg.Server.DataDir = dataDir
 	cfg.Theme = req.Theme
-	cfg.MCP.Enabled = req.McpEnabled // revision 2 W1 fix
+	cfg.MCP.Enabled = req.McpEnabled
 	if req.DailyTemplate != "" {
 		cfg.DailyNotes.Template = req.DailyTemplate
 	}
 	if err := config.Save(dataDir, cfg); err != nil {
-		return fmt.Errorf("save config: %w", err)
+		return fmt.Errorf("save legacy config: %w", err)
 	}
 
-	// Step 6: run migrations against the new data-dir. We open a
-	// short-lived sqlite.Pair + migrate.Runner scoped to this submit
-	// call. The runner's Run method honors the three-path strategy
-	// (DESIGN.md §4.4); on first run there's nothing to roll back so
-	// the only failure modes are disk-full (returned as an error) and
-	// unrecoverable schema state. Both surface as a 500 to the
-	// wizard — the user can fix the underlying problem and resubmit
-	// (RunSetup is idempotent for everything except the daily-note
-	// step, which checks idempotency at AtomicWrite time).
-	dbPath := filepath.Join(storageDir, "app.db")
-	backupPath := dbPath + ".backup"
-	logsPath := filepath.Join(storageDir, "logs", "jasper.log")
-	if err := os.MkdirAll(filepath.Dir(logsPath), 0o700); err != nil {
-		return fmt.Errorf("create logs dir: %w", err)
-	}
-	pair, err := sqlite.Open(ctx, dbPath)
-	if err != nil {
-		return fmt.Errorf("sqlite open: %w", err)
-	}
-	runner := migrate.NewRunner(migrate.RunnerOptions{
-		DBPath:     dbPath,
-		BackupPath: backupPath,
-		LogsPath:   logsPath,
-		Migrations: migrationsFS,
-		Pair:       pair,
-	})
-	status, runErr := runner.Run(ctx)
-	// Close the pair regardless of outcome — the lifecycle.Run that
-	// follows the wizard's POST→302→SPA-reload cycle opens its own
-	// pair, so we MUST release ours.
-	if cerr := pair.Close(); cerr != nil && runErr == nil {
-		runErr = fmt.Errorf("close sqlite pair: %w", cerr)
-	}
-	if runErr != nil {
-		return fmt.Errorf("run migrations: %w", runErr)
-	}
-	if status.State == migrate.StateUnrecoverable {
-		return fmt.Errorf("run migrations: unrecoverable schema state")
-	}
-
-	// Step 7: seed MCP grants directly via SQL. Migration 004 (Plan
-	// 08-01) created the mcp_write_grants table; we INSERT the wizard's
-	// seed rows with granted_via='wizard' so 08-08's UI can distinguish
-	// wizard-seeded grants from tree-context-menu grants for the
-	// telemetry / display surface.
+	// Step 6: seed MCP grants in the vault DB.
+	dbPath := filepath.Join(dataDir, ".jasper", "app.db")
 	if err := insertSeedGrants(ctx, dbPath, req.McpGrants); err != nil {
 		return fmt.Errorf("seed grants: %w", err)
 	}
 
-	// Step 8 (optional): create today's daily note. The wizard step
-	// labeled "Create today's daily note?" passes
-	// CreateTodayDailyNote=true when the checkbox is on. We mirror
-	// api/daily.go's create branch: mkdir daily/ + AtomicWrite from
-	// markdown.NewDailyNoteContent. We do NOT touch the SQLite index
-	// here — the index lives in the indexer package and the next
-	// lifecycle.Run incremental reconcile pass picks the file up
-	// (DATA-09). Keeping the side effect tree-only also means
-	// idempotent retries: AtomicWrite is overwrite-safe and the
-	// content is deterministic for (date, template).
+	// Step 7 (optional): create today's daily note.
 	if req.CreateTodayDailyNote {
 		today := time.Now().Format("2006-01-02")
 		dailyDir := filepath.Join(notesDir, "daily")

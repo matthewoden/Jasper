@@ -17,19 +17,14 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"time"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
 
-	"github.com/matthewoden/jasper/backend/internal/db/migrate"
-	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
-	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/migrations"
 
 	"github.com/matthewoden/jasper/backend/internal/vault"
@@ -266,88 +261,18 @@ func (s *Server) PostVaultCreate(
 		mcpEnabled = *req.Body.McpEnabled
 	}
 
-	// Create .jasper/ with 0700.
-	if mkdirErr := os.MkdirAll(jasperDir, 0o700); mkdirErr != nil {
-		return PostVaultCreate400JSONResponse(newError("create_failed",
-			"failed to create .jasper/ directory: "+mkdirErr.Error())), nil
-	}
-
-	// Write minimal per-vault config.json.
-	cfgPath := filepath.Join(jasperDir, "config.json")
-	now := time.Now().UTC()
-	type dailyNotesCfg struct {
-		Template string `json:"template"`
-	}
-	type mcpCfg struct {
-		Enabled bool `json:"enabled"`
-	}
-	type perVaultConfig struct {
-		DisplayName string        `json:"display_name"`
-		CreatedAt   string        `json:"created_at"`
-		Theme       string        `json:"theme"`
-		DailyNotes  dailyNotesCfg `json:"daily_notes"`
-		MCP         mcpCfg        `json:"mcp"`
-	}
-	cfgData := perVaultConfig{
-		DisplayName: displayName,
-		CreatedAt:   now.Format(time.RFC3339),
-		Theme:       theme,
-		DailyNotes:  dailyNotesCfg{Template: dailyTemplate},
-		MCP:         mcpCfg{Enabled: mcpEnabled},
-	}
-	cfgBytes, jsonErr := json.MarshalIndent(cfgData, "", "  ")
-	if jsonErr != nil {
-		return nil, fmt.Errorf("PostVaultCreate: marshal config: %w", jsonErr)
-	}
-	if writeErr := fsstore.AtomicWrite(cfgPath, cfgBytes); writeErr != nil {
-		return nil, fmt.Errorf("PostVaultCreate: write config.json: %w", writeErr)
-	}
-
-	// Open DB and run migrations.
-	dbPath := filepath.Join(jasperDir, "app.db")
-	backupPath := dbPath + ".backup"
-	logsDir := filepath.Join(jasperDir, "logs")
-	if logsErr := os.MkdirAll(logsDir, 0o700); logsErr != nil {
-		return nil, fmt.Errorf("PostVaultCreate: ensure logs dir: %w", logsErr)
-	}
-	logsPath := filepath.Join(logsDir, "jasper.log")
-
-	pair, sqlErr := sqlite.Open(ctx, dbPath)
-	if sqlErr != nil {
-		return nil, fmt.Errorf("PostVaultCreate: sqlite open: %w", sqlErr)
-	}
-
-	migrFS := vaultMigrationsFS(s)
-	runner := migrate.NewRunner(migrate.RunnerOptions{
-		DBPath:     dbPath,
-		BackupPath: backupPath,
-		LogsPath:   logsPath,
-		Migrations: migrFS,
-		Pair:       pair,
+	// Delegate the actual vault creation to vault.CreateVault which is also
+	// called by the /setup legacy alias (firstrun.RunSetup). This avoids
+	// duplicating the mkdir→config→migrations→app.json pipeline.
+	appState, createErr := vault.CreateVault(ctx, canonical, vault.CreateOpts{
+		DisplayName:   displayName,
+		Theme:         theme,
+		DailyTemplate: dailyTemplate,
+		MCPEnabled:    mcpEnabled,
+		MigrationsFS:  vaultMigrationsFS(s),
 	})
-	status, runErr := runner.Run(ctx)
-	if cerr := pair.Close(); cerr != nil && runErr == nil {
-		runErr = cerr
-	}
-	if runErr != nil {
-		return nil, fmt.Errorf("PostVaultCreate: run migrations: %w", runErr)
-	}
-	if status.State == migrate.StateUnrecoverable {
-		return nil, fmt.Errorf("PostVaultCreate: unrecoverable migration state")
-	}
-
-	// Register in app.json.
-	appJSONPath, appErr := vault.AppJSONPath()
-	if appErr != nil {
-		return nil, fmt.Errorf("PostVaultCreate: resolve app home: %w", appErr)
-	}
-	appState, loadErr := vault.LoadAppJSON(appJSONPath)
-	if loadErr != nil {
-		return nil, fmt.Errorf("PostVaultCreate: load app.json: %w", loadErr)
-	}
-	vault.TouchOpened(appState, canonical, displayName)
-	if saveErr := vault.SaveAppJSON(appJSONPath, appState); saveErr != nil {
-		return nil, fmt.Errorf("PostVaultCreate: save app.json: %w", saveErr)
+	if createErr != nil {
+		return nil, fmt.Errorf("PostVaultCreate: %w", createErr)
 	}
 	BootBanner = ""
 
@@ -357,7 +282,7 @@ func (s *Server) PostVaultCreate(
 			return PostVaultCreate200JSONResponse(wire), nil
 		}
 	}
-	return nil, fmt.Errorf("PostVaultCreate: entry not found after TouchOpened")
+	return nil, fmt.Errorf("PostVaultCreate: entry not found after CreateVault")
 }
 
 // PostVaultForget removes a vault entry from recent_vaults. Idempotent.

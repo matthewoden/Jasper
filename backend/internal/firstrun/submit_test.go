@@ -63,12 +63,14 @@ func TestRunSetup_InvalidPath(t *testing.T) {
 //   - <DataDir>/notes/   exists (0o700)
 //   - <DataDir>/storage/ exists (0o700)
 //   - <DataDir>/storage/config.json exists with the locked defaults
-//     overlaid by the wizard's choices
-//   - <DataDir>/storage/app.db exists with the mcp_write_grants table
-//     populated by migration 004
+//     overlaid by the wizard's choices (legacy compat — plan 08-17b keeps this)
+//   - <DataDir>/.jasper/app.db exists with the mcp_write_grants table
+//     populated by migration 004 (vault model — plan 08-17b moved DB here)
 //   - today's daily note exists when CreateTodayDailyNote=true
 func TestRunSetup_HappyPath(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() because t.Setenv requires non-parallel execution.
+	// Redirect app.json writes so this test doesn't touch ~/.jasper.
+	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
 	req := SetupRequest{
@@ -127,8 +129,8 @@ func TestRunSetup_HappyPath(t *testing.T) {
 		t.Fatalf("DailyNotes.Template: got %q want template-override", cfg.DailyNotes.Template)
 	}
 
-	// app.db exists; mcp_write_grants table exists; row count is 0.
-	dbPath := filepath.Join(target, "storage", "app.db")
+	// app.db exists (plan 08-17b: vault model places DB at .jasper/app.db).
+	dbPath := filepath.Join(target, ".jasper", "app.db")
 	if _, err := os.Stat(dbPath); err != nil {
 		t.Fatalf("missing app.db: %v", err)
 	}
@@ -168,7 +170,7 @@ func TestRunSetup_HappyPath(t *testing.T) {
 // cfg.MCP.Enabled on disk so 08-09's listener sees the user's choice
 // at next boot.
 func TestRunSetup_McpEnabledRoundTrips(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() because subtests use t.Setenv.
 	cases := []struct {
 		name string
 		req  SetupRequest
@@ -193,7 +195,9 @@ func TestRunSetup_McpEnabledRoundTrips(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+			// Cannot use t.Parallel() because t.Setenv requires non-parallel execution.
+			// Redirect app.json writes so this test doesn't touch ~/.jasper.
+			t.Setenv("JASPER_APP_HOME", t.TempDir())
 			base := t.TempDir()
 			target := filepath.Join(base, "Jasper")
 			tc.req.DataDir = target
@@ -215,7 +219,9 @@ func TestRunSetup_McpEnabledRoundTrips(t *testing.T) {
 // rows must land in mcp_write_grants with granted_via='wizard' and
 // the user's chosen level (1 or 2).
 func TestRunSetup_SeedGrants(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() because t.Setenv requires non-parallel execution.
+	// Redirect app.json writes so this test doesn't touch ~/.jasper.
+	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
 	req := SetupRequest{
@@ -229,7 +235,8 @@ func TestRunSetup_SeedGrants(t *testing.T) {
 	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
 		t.Fatalf("RunSetup: %v", err)
 	}
-	dbPath := filepath.Join(target, "storage", "app.db")
+	// Plan 08-17b: vault model places DB at .jasper/app.db.
+	dbPath := filepath.Join(target, ".jasper", "app.db")
 	db, err := sql.Open("sqlite", "file:"+dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -280,7 +287,9 @@ func TestRunSetup_SeedGrants(t *testing.T) {
 //	"seed grants: insert grant "ai-zone": constraint failed: UNIQUE
 //	 constraint failed: mcp_write_grants.folder_path (2067)"
 func TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() because t.Setenv requires non-parallel execution.
+	// Redirect app.json writes so this test doesn't touch ~/.jasper.
+	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
 	req := SetupRequest{
@@ -294,7 +303,8 @@ func TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel(t *testing.T) {
 	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
 		t.Fatalf("RunSetup with duplicate grant: %v", err)
 	}
-	dbPath := filepath.Join(target, "storage", "app.db")
+	// Plan 08-17b: vault model places DB at .jasper/app.db.
+	dbPath := filepath.Join(target, ".jasper", "app.db")
 	db, err := sql.Open("sqlite", "file:"+dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -323,7 +333,9 @@ func TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel(t *testing.T) {
 // result must be exactly 2 rows: A at the last-seen level, B at its
 // original level. Nil error is required.
 func TestInsertSeedGrants_MixedDuplicates(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() because t.Setenv requires non-parallel execution.
+	// Redirect app.json writes so this test doesn't touch ~/.jasper.
+	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
 	req := SetupRequest{
@@ -338,7 +350,8 @@ func TestInsertSeedGrants_MixedDuplicates(t *testing.T) {
 	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
 		t.Fatalf("RunSetup with mixed duplicates: %v", err)
 	}
-	dbPath := filepath.Join(target, "storage", "app.db")
+	// Plan 08-17b: vault model places DB at .jasper/app.db.
+	dbPath := filepath.Join(target, ".jasper", "app.db")
 	db, err := sql.Open("sqlite", "file:"+dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -385,7 +398,9 @@ func TestInsertSeedGrants_MixedDuplicates(t *testing.T) {
 // TestRunSetup_NoDailyNoteWhenOptedOut: omitting CreateTodayDailyNote
 // MUST NOT touch the daily folder.
 func TestRunSetup_NoDailyNoteWhenOptedOut(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() because t.Setenv requires non-parallel execution.
+	// Redirect app.json writes so this test doesn't touch ~/.jasper.
+	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
 	req := SetupRequest{

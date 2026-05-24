@@ -30,6 +30,12 @@ import (
 // RedirectMiddleware returns a chi middleware that 302-redirects every
 // request to /setup when <dataDir>/storage/config.json is absent.
 //
+// Deprecated: as of Plan 08-17b (vault model), the no-vault state is
+// handled by the lifecycle's vaultMode branch — not by a redirect
+// middleware. The /setup route is repurposed as a legacy alias for
+// /vault/create. This function is retained for one minor version to
+// ease testing rollback; it is NOT mounted on the live router.
+//
 // Pass-through rules (must run before the existence check):
 //   - exact path /setup (the wizard SPA mount point)
 //   - any path with /api/v1/setup prefix (validate-data-dir, status, submit)
@@ -37,12 +43,6 @@ import (
 //     from the embedded //go:embed dist/)
 //
 // Once config.json exists, the middleware is a no-op for every request.
-//
-// The cfgPath is resolved once at construction so the per-request hot
-// path is a single os.Stat call. dataDir is passed by value; if the
-// caller's config.Server.DataDir changes after the middleware is
-// constructed (it does not in the current architecture; data-dir is
-// fixed at boot), the middleware will keep checking the original path.
 func RedirectMiddleware(dataDir string) func(http.Handler) http.Handler {
 	cfgPath := filepath.Join(dataDir, "storage", "config.json")
 	return func(next http.Handler) http.Handler {

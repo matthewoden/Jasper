@@ -136,31 +136,41 @@ func runServe(args []string) error {
 	//   1. --vault <abs>       (CLI override; CI/E2E; bypasses picker)
 	//   2. --data-dir          (DEPRECATED ALIAS — warns; back-compat until removed pre-v1.0)
 	//   3. JASPER_DATA_DIR     (DEPRECATED ENV ALIAS — warns; retained for CI/tests)
-	//   4. ~/.jasper           (legacy default; 17b will swap this for app.json current_vault)
-	var dataDir string
+	//   4. app.json current_vault (read by resolveVaultMode in lifecycle.Run)
+	//
+	// Plan 08-17b: --vault / --data-dir / JASPER_DATA_DIR are promoted to
+	// cfg.VaultOverride (consumed by resolveVaultMode) instead of a local
+	// dataDir variable. The local `dataDir` variable from 17a is fully
+	// superseded; resolveVaultMode now reads cfg.VaultOverride directly.
+	var legacyDataDir string
 	switch {
 	case vaultFlag != "":
 		canonical, err := vault.Canonicalize(vaultFlag)
 		if err != nil {
 			return fmt.Errorf("invalid --vault path: %w", err)
 		}
-		dataDir = canonical
+		// --vault populates VaultOverride to bypass app.json's current_vault.
+		// legacyDataDir also set for the Config.DataDir backward-compat field.
+		legacyDataDir = canonical
 	case *dataDirFlag != "":
 		log.Warn("--data-dir is deprecated; use --vault per ADR-001", "value", *dataDirFlag)
-		dataDir = *dataDirFlag
+		legacyDataDir = *dataDirFlag
 	case os.Getenv("JASPER_DATA_DIR") != "":
 		log.Warn("JASPER_DATA_DIR is deprecated and retained as a hidden alias for tests/CI; use --vault per ADR-001")
-		dataDir = os.Getenv("JASPER_DATA_DIR")
+		legacyDataDir = os.Getenv("JASPER_DATA_DIR")
 	default:
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("resolve $HOME for default data-dir: %w", err)
-		}
-		dataDir = filepath.Join(home, ".jasper")
+		// No override: resolveVaultMode reads app.json's current_vault at boot.
+		// legacyDataDir stays empty; lifecycle.Run will populate cfg.DataDir
+		// once the vault is resolved.
+		legacyDataDir = ""
 	}
-	absDataDir, err := filepath.Abs(dataDir)
-	if err != nil {
-		return fmt.Errorf("resolve data-dir to absolute path: %w", err)
+	absDataDir := legacyDataDir
+	if legacyDataDir != "" {
+		var err error
+		absDataDir, err = filepath.Abs(legacyDataDir)
+		if err != nil {
+			return fmt.Errorf("resolve data-dir to absolute path: %w", err)
+		}
 	}
 
 	// Bind-address gate — Phase 1 refuses non-loopback bind to enforce
@@ -171,17 +181,17 @@ func runServe(args []string) error {
 		return err
 	}
 
-	// Phase 8 Plan 08-02 W3 wire-up: populate app.Config.Server so the
-	// first-run middleware (and downstream readers) can resolve
-	// cfg.Server.DataDir without re-reading config.json. The Server.Port
-	// defaults to the canonical 6683 (D-50) because cmd-side serve uses
-	// the --addr flag for actual binding; the field is informational
-	// here, but downstream code (lifecycle.go, MCP listener) reads it.
+	// Populate app.Config. Server.Port defaults to 6683 (D-50). VaultOverride
+	// is set when --vault / --data-dir / JASPER_DATA_DIR points at a specific
+	// vault path; resolveVaultMode in lifecycle.Run reads it to bypass
+	// app.json's current_vault (ADR-001 §2). DataDir is set to the same
+	// value for backward compatibility with code that reads cfg.DataDir.
 	cfg := app.Config{
-		DataDir:    absDataDir,
-		Server:     config.ServerConfig{Port: 6683, DataDir: absDataDir},
-		ListenAddr: *addrFlag,
-		Logger:     log,
+		DataDir:       absDataDir,
+		Server:        config.ServerConfig{Port: 6683, DataDir: absDataDir},
+		ListenAddr:    *addrFlag,
+		Logger:        log,
+		VaultOverride: absDataDir, // non-empty only when a flag/env was given
 	}
 
 	// Test-only: JASPER_TEST_MIGRATIONS_DIR replaces the embedded
