@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -69,9 +70,18 @@ func LoadAppJSON(path string) (*AppState, error) {
 		state.RecentVaults = []RecentVaultEntry{}
 	}
 
-	// V11: probe each entry; mark missing=true on stat failure.
+	// V11 + V14: probe each entry; mark missing=true when:
+	//   - the vault folder does not exist (V11 / V13), OR
+	//   - the folder exists but lacks a .jasper/ sub-directory (V14).
+	// V14 entries must stay Missing=true across reloads so the picker
+	// continues to show them as non-openable even though the folder exists.
 	for i := range state.RecentVaults {
-		if _, sErr := os.Stat(state.RecentVaults[i].Path); sErr != nil {
+		p := state.RecentVaults[i].Path
+		if _, sErr := os.Stat(p); sErr != nil {
+			// Folder gone (V13).
+			state.RecentVaults[i].Missing = true
+		} else if _, jsErr := os.Stat(filepath.Join(p, ".jasper")); jsErr != nil {
+			// Folder present but .jasper/ absent (V14).
 			state.RecentVaults[i].Missing = true
 		} else {
 			state.RecentVaults[i].Missing = false

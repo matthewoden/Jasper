@@ -24,9 +24,15 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/mcp"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/internal/static"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 	"github.com/matthewoden/jasper/backend/internal/wshub"
 	"github.com/matthewoden/jasper/backend/migrations"
 )
+
+// ErrAlreadyOpen is returned by OpenVault when a vault is already open.
+// Plan 08-17d adds the in-process mutex + concurrent 409 enforcement;
+// 17b returns this sentinel as a stub for the "switch is unsupported" case.
+var ErrAlreadyOpen = errors.New("a vault is already open; hot-swap not yet supported (see 08-17d)")
 
 // notesDirFor returns <dataDir>/notes — the source-of-truth directory
 // per DESIGN.md §4.1. Centralized so app.New and lifecycle agree.
@@ -101,8 +107,14 @@ func (a *App) serveStartupError(ctx context.Context, phaseName string, initErr e
 // canceled. On ctx cancellation a graceful shutdown is attempted with
 // a 5-second deadline.
 //
-// Steps (DESIGN.md §6.1 — listener gated until migrate + reindex
-// complete):
+// Plan 08-17b adds a "no-vault" branch at the top of the sequence
+// (ADR-001 §2 boot steps):
+//
+//  0. resolveVaultMode — read app.json; determine modeOpen vs modeNoVault.
+//     V13 + V14 clear current_vault + set banner atomically; per-vault
+//     subsystems remain dormant in no-vault mode.
+//
+// Per-vault steps (only when modeOpen):
 //
 //  1. EnsureDataDir — mkdir <DataDir>/{notes,storage}.
 //  2. SeedScratchpadIfMissing — write the welcome template if absent.
@@ -132,6 +144,52 @@ func (a *App) serveStartupError(ctx context.Context, phaseName string, initErr e
 // slowloris-style attacks. Full ReadTimeout / WriteTimeout are
 // deferred to Phase 4 alongside the WebSocket hub timeout config.
 func (a *App) Run(ctx context.Context) error {
+	// 0. Resolve vault mode (ADR-001 §2 boot sequence).
+	appJSONPath, err := vault.AppJSONPath()
+	if err != nil {
+		return fmt.Errorf("resolve app home: %w", err)
+	}
+	mode, banner, openPath, err := resolveVaultMode(appJSONPath, a.cfg.VaultOverride)
+	if err != nil {
+		return fmt.Errorf("resolve vault mode: %w", err)
+	}
+	api.BootBanner = banner
+
+	if mode == modeNoVault {
+		// Legacy fallback: if cfg.DataDir was explicitly set by the caller
+		// (pre-vault-model wiring — tests, or serve.go before 17b) and no
+		// V13/V14 banner was generated, treat DataDir as the vault and boot
+		// the per-vault subsystems directly. This preserves backward
+		// compatibility with existing app_test.go tests that call Run()
+		// with DataDir set but without app.json plumbing.
+		if a.cfg.DataDir != "" && banner == "" {
+			a.cfg.Logger.Info("jasper boot: legacy DataDir fallback (pre-vault-model wiring)",
+				"data_dir", a.cfg.DataDir)
+			return a.bootPerVaultSubsystems(ctx)
+		}
+		// No-vault mode: serve the picker SPA shell + /vault/* handlers only.
+		// Per-vault subsystems (DB, migrations, indexer, MCP, WS hub, file
+		// logger) remain dormant. The chi router built in New() already mounts
+		// all /vault/* routes via the strict handler — no additional wiring.
+		if a.cfg.Logger == nil {
+			a.cfg.Logger = slog.Default()
+		}
+		a.cfg.Logger.Info("jasper boot: no vault selected, serving picker shell")
+		return a.serveListener(ctx)
+	}
+
+	// modeOpen: standard per-vault bring-up.
+	a.cfg.DataDir = openPath
+	return a.bootPerVaultSubsystems(ctx)
+}
+
+// bootPerVaultSubsystems runs the per-vault startup sequence (steps 1–9).
+// Called by Run when modeOpen, and by OpenVault to transition a running
+// no-vault instance to open-vault mode.
+//
+// Caller MUST have set a.cfg.DataDir to the vault's canonical path before
+// calling this method.
+func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	// 1. Ensure data dir + notes/ + storage/ exist.
 	if err := EnsureDataDir(a.cfg.DataDir); err != nil {
 		return a.serveStartupError(ctx, "Data dir", err)
@@ -519,4 +577,54 @@ func (a *App) serveListener(ctx context.Context) error {
 		}
 		return err
 	}
+}
+
+// OpenVault transitions a no-vault App to an open-vault App.
+// Called by POST /vault/open and POST /vault/create after their disk-side
+// preparation work completes.
+//
+// Plan 08-17b implementation: single-shot. Returns ErrAlreadyOpen if a
+// vault DB pair is already set up (i.e., bootPerVaultSubsystems already
+// ran). Plan 08-17d adds hot-swap support with an in-process mutex.
+//
+// The ctx parameter controls the lifetime of the newly started per-vault
+// server. Cancel it to shut down the server loop and release DB handles.
+//
+// Side effect: updates app.json via vault.TouchOpened + SaveAppJSON so
+// current_vault is persisted and last_opened_at is refreshed. Clears
+// api.BootBanner so subsequent GET /vault/recent returns no banner.
+func (a *App) OpenVault(ctx context.Context, absCanonical string) error {
+	a.mu.Lock()
+	if a.pair != nil {
+		a.mu.Unlock()
+		return ErrAlreadyOpen
+	}
+	a.mu.Unlock()
+
+	// Update app.json: register the vault as current + refresh last_opened_at.
+	appJSONPath, err := vault.AppJSONPath()
+	if err != nil {
+		return fmt.Errorf("OpenVault: resolve app home: %w", err)
+	}
+	state, err := vault.LoadAppJSON(appJSONPath)
+	if err != nil {
+		return fmt.Errorf("OpenVault: load app.json: %w", err)
+	}
+	// Use existing display_name if the entry is already registered.
+	displayName := filepath.Base(absCanonical)
+	for _, e := range state.RecentVaults {
+		if e.Path == absCanonical {
+			displayName = e.DisplayName
+			break
+		}
+	}
+	vault.TouchOpened(state, absCanonical, displayName)
+	if err := vault.SaveAppJSON(appJSONPath, state); err != nil {
+		return fmt.Errorf("OpenVault: save app.json: %w", err)
+	}
+	api.BootBanner = ""
+
+	// Boot the per-vault subsystems against the new path.
+	a.cfg.DataDir = absCanonical
+	return a.bootPerVaultSubsystems(ctx)
 }

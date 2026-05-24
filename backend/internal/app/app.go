@@ -33,7 +33,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
-	"github.com/matthewoden/jasper/backend/internal/firstrun"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/notes"
@@ -92,20 +91,19 @@ type Config struct {
 	//     this field to os.DirFS(<dir>) before calling app.New).
 	MigrationsOverride fs.FS
 
-	// DisableFirstRunGate is a TEST-ONLY flag that bypasses the
-	// firstrun.RedirectMiddleware mount. Phase 2-7 tests in app_test.go
-	// construct a *App via New(Config{...}) and serve handlers directly
-	// via httptest.NewServer(a.Handler()) without ever materializing a
-	// <dataDir>/storage/config.json — they're testing post-setup
-	// behavior of the API surface, not the first-run gate itself.
-	// Plan 08-02 adds the gate; without this opt-out every pre-Phase-8
-	// API test would 302 to /setup and fail.
-	//
-	// Production callers (cmd/jasper/serve.go) leave this false so the
-	// real first-run flow is in force. The dedicated firstrun-middleware
-	// tests in internal/firstrun/middleware_test.go cover the gate
-	// itself.
+	// DisableFirstRunGate is a TEST-ONLY flag retained for backward
+	// compatibility. As of Plan 08-17b the firstrun.RedirectMiddleware
+	// is no longer mounted on the live router (the vault-model lifecycle
+	// branch handles the no-vault state). This field is now a no-op;
+	// it is kept so existing test code that sets it continues to compile.
 	DisableFirstRunGate bool
+
+	// VaultOverride is the canonical path supplied via --vault (cobra flag,
+	// added in Plan 08-17a). Empty when no override is given.
+	// resolveVaultMode consults this BEFORE consulting app.json's
+	// current_vault. Set by cmd/jasper/serve.go after canonicalizing the
+	// flag value.
+	VaultOverride string
 }
 
 // App bundles the wired application. New constructs Phase-1-shape
@@ -212,21 +210,10 @@ func New(cfg Config) (*App, error) {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeadersMiddleware) // Plan 05-04 — SECURITY-01, SECURITY-04, D-35: BEFORE requestLogger so 500-via-Recoverer responses carry the headers.
-	// Plan 08-02 — INSTALL-07 / D-04: 302 every non-/setup, non-/api/v1/setup,
-	// non-/assets request to /setup when <dataDir>/storage/config.json is
-	// absent. The middleware reads cfg.Server.DataDir (Phase 8 D-50) when
-	// populated and falls back to the legacy cfg.DataDir while the
-	// caller-side wiring transitions. cmd/jasper/serve.go now sets both
-	// fields (08-02 W3 wire-up) so production runs always hit the
-	// Server.DataDir path. DisableFirstRunGate is a test-only opt-out
-	// for app_test.go's pre-Phase-8 API tests.
-	if !cfg.DisableFirstRunGate {
-		firstrunDataDir := cfg.Server.DataDir
-		if firstrunDataDir == "" {
-			firstrunDataDir = cfg.DataDir
-		}
-		r.Use(firstrun.RedirectMiddleware(firstrunDataDir))
-	}
+	// Plan 08-17b: firstrun.RedirectMiddleware REMOVED. The no-vault
+	// lifecycle branch (vaultMode) now gates per-vault subsystems and
+	// serves the picker SPA shell directly. No server-side redirect needed.
+	// DisableFirstRunGate retained as a no-op field for backward compat.
 	r.Use(requestLogger(cfg.Logger))
 
 	// ORDER MATTERS — Pitfall 13.
