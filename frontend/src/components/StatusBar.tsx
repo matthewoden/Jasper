@@ -20,10 +20,12 @@
 import { useCallback } from "react";
 import type { CSSProperties } from "react";
 import { useTreeStore } from "../lib/useTreeStore";
+import { useVaultPicker } from "../lib/useVaultPicker";
 import { postAdminReindex } from "../lib/adminApi";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
 import { SaveIndicator } from "./SaveIndicator";
 import { SettingsMenu } from "./SettingsMenu";
+import { VaultPicker } from "./VaultPicker";
 
 const statusBarStyle: CSSProperties = {
   background: "var(--color-surface)",
@@ -43,6 +45,9 @@ export function StatusBar() {
   // STAYS, only the mount location reverts).
   const saveState = useTreeStore((s) => s.saveState);
 
+  // Plan 08-17c: vault picker state — shows current vault display_name segment.
+  const { current, open } = useVaultPicker();
+
   // Plan 07-38 (UAT-4 N9): same handler the TopBar mount used. Manual
   // incremental reindex on click; the SaveIndicator-as-button mode
   // DoS-guards by disabling itself while saving (T-37-01 inside the
@@ -58,9 +63,31 @@ export function StatusBar() {
   return (
     <footer style={statusBarStyle} data-testid="status-bar" aria-label="Status bar">
       <ConnectionStatusDot />
+      {/* Plan 08-17c (V7): vault display_name segment; click opens the picker in switch mode */}
+      {current && (
+        <button
+          type="button"
+          className="status-bar__vault"
+          onClick={open}
+          title="Click to switch vault"
+          data-testid="status-bar-vault"
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "var(--color-muted)",
+            fontSize: 12,
+            cursor: "pointer",
+            padding: "0 4px",
+          }}
+        >
+          {current.display_name}
+        </button>
+      )}
       <div style={{ flex: 1 }} data-testid="status-bar-spacer" />
       <SaveIndicator state={saveState} onClick={handleRefresh} />
       <SettingsMenu />
+      {/* Plan 08-17c: VaultPicker in switch mode — persistent modal, controlled by useTreeStore.vaultPickerOpen */}
+      <VaultPicker mode="switch" />
     </footer>
   );
 }

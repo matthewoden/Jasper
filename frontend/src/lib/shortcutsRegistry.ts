@@ -16,7 +16,9 @@ export type ShortcutGroup =
   // Mount C.
   | "Share"
   | "Index"
-  | "Help";
+  | "Help"
+  // Plan 08-17c (V7): "Vault" group hosts vault-switching commands.
+  | "Vault";
 
 export interface Shortcut {
   /** Stable identifier; commands wire actions by id (Plan 07-11). */
@@ -133,6 +135,15 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: true,
     inCheatSheet: true,
   },
+  // Vault group (Plan 08-17c V7) — vault switching command.
+  // NOTE: Cmd-Shift-V hotkey is intentionally ABSENT (Chrome paste collision).
+  {
+    id: "vault.switch",
+    label: "Switch vault…",
+    group: "Vault",
+    inPalette: true,
+    inCheatSheet: false,
+  },
   // Share group (Plan 08-06 UAT, SHARE-01 / D-26 Mount C) — opens the host OS
   // file manager focused on the current note. Disabled (palette-side) when no
   // note is active. No keybinding in v1.
@@ -189,4 +200,6 @@ export const GROUP_ORDER: ShortcutGroup[] = [
   "Share",
   "Index",
   "Help",
+  // Plan 08-17c (V7): "Vault" group — vault-switching command.
+  "Vault",
 ];
