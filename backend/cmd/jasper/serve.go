@@ -15,6 +15,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/app"
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/netbind"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 // defaultListenAddr is the production bind address — loopback only,
@@ -101,24 +102,56 @@ func init() {
 	rootCmd.AddCommand(serveCmd)
 }
 
-// runServe parses flags, resolves the data directory per D-07
-// precedence (flag > env > default), enforces the loopback bind rule,
-// and runs app.Run until SIGINT/SIGTERM.
+// serveLog is the logger used by runServe. It defaults to stderr text handler
+// but is replaceable via setServeLogForTest for test-seam injection.
+var serveLog = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+// setServeLogForTest replaces the package-level serveLog for the duration of
+// the test and restores it afterward. Test-only; no production callers.
+func setServeLogForTest(t interface{ Cleanup(func()) }, l *slog.Logger) {
+	orig := serveLog
+	serveLog = l
+	t.Cleanup(func() { serveLog = orig })
+}
+
+// runServe parses flags, resolves the data directory per ADR-001
+// precedence (--vault > --data-dir alias > JASPER_DATA_DIR alias > ~/.jasper),
+// enforces the loopback bind rule, and runs app.Run until SIGINT/SIGTERM.
+//
+// --vault (ADR-001): canonical abs path to the vault; bypasses picker.
+// --data-dir: deprecated alias for --vault (warns); will be removed pre-v1.0.
+// JASPER_DATA_DIR: deprecated env alias for --vault (warns); retained for CI/tests.
 func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
-	dataDirFlag := fs.String("data-dir", "", "Path to data directory (default: $JASPER_DATA_DIR or ~/.jasper)")
+	dataDirFlag := fs.String("data-dir", "", "Path to data directory (deprecated: use --vault per ADR-001)")
 	addrFlag := fs.String("addr", defaultListenAddr,
 		"Listen address (loopback-only by default). Dev pipeline reads the same port from scripts/port.sh.")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	// D-07 precedence: --data-dir flag > $JASPER_DATA_DIR env > ~/.jasper.
-	dataDir := *dataDirFlag
-	if dataDir == "" {
+	log := serveLog
+
+	// ADR-001 precedence:
+	//   1. --vault <abs>       (CLI override; CI/E2E; bypasses picker)
+	//   2. --data-dir          (DEPRECATED ALIAS — warns; back-compat until removed pre-v1.0)
+	//   3. JASPER_DATA_DIR     (DEPRECATED ENV ALIAS — warns; retained for CI/tests)
+	//   4. ~/.jasper           (legacy default; 17b will swap this for app.json current_vault)
+	var dataDir string
+	switch {
+	case vaultFlag != "":
+		canonical, err := vault.Canonicalize(vaultFlag)
+		if err != nil {
+			return fmt.Errorf("invalid --vault path: %w", err)
+		}
+		dataDir = canonical
+	case *dataDirFlag != "":
+		log.Warn("--data-dir is deprecated; use --vault per ADR-001", "value", *dataDirFlag)
+		dataDir = *dataDirFlag
+	case os.Getenv("JASPER_DATA_DIR") != "":
+		log.Warn("JASPER_DATA_DIR is deprecated and retained as a hidden alias for tests/CI; use --vault per ADR-001")
 		dataDir = os.Getenv("JASPER_DATA_DIR")
-	}
-	if dataDir == "" {
+	default:
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return fmt.Errorf("resolve $HOME for default data-dir: %w", err)
@@ -137,8 +170,6 @@ func runServe(args []string) error {
 	if err := netbind.RequireLoopbackBind(*addrFlag); err != nil {
 		return err
 	}
-
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	// Phase 8 Plan 08-02 W3 wire-up: populate app.Config.Server so the
 	// first-run middleware (and downstream readers) can resolve

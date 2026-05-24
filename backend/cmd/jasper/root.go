@@ -16,6 +16,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// vaultFlag is the persistent --vault flag shared across all subcommands.
+// When set, it overrides app.json current_vault for the current invocation
+// (useful for CI, E2E tests, and single-vault power-user workflows).
+// Per ADR-001: --vault > JASPER_DATA_DIR (deprecated alias) > app.json > picker.
+var vaultFlag string
+
 // rootCmd is the top-level `jasper` cobra command. `main.go` simply
 // calls rootCmd.Execute() and returns its exit code.
 //
@@ -39,4 +45,11 @@ Common subcommands:
   doctor      Diagnose install/runtime issues with plain-English remediation
   version     Print the binary version and build commit`,
 	SilenceUsage: true,
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringVar(&vaultFlag, "vault", "",
+		"Absolute path to the vault to open (overrides app.json current_vault). "+
+			"When unset, the server reads ~/.jasper/app.json (or $JASPER_APP_HOME/app.json) "+
+			"to find current_vault; if that is unset, the picker is served at /.")
 }
