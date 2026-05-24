@@ -10,12 +10,14 @@ vi.mock("../../lib/vaultApi", () => ({
   vaultApi: {
     open: vi.fn().mockResolvedValue({}),
     forget: vi.fn().mockResolvedValue(undefined),
+    switch: vi.fn().mockResolvedValue({}),
   },
   validateVaultPath: vi.fn().mockReturnValue({ ok: true }),
 }));
 
 import { VaultPickerRow } from "./VaultPickerRow";
 import { vaultApi } from "../../lib/vaultApi";
+import type { Mock } from "vitest";
 
 const entry = {
   path: "/Users/me/vault",
@@ -95,5 +97,82 @@ describe("<VaultPickerRow />", () => {
       expect(vaultApi.forget).toHaveBeenCalledWith(missingEntry.path);
       expect(onForgotten).toHaveBeenCalled();
     });
+  });
+
+  // ── Plan 08-17d: mode="switch" calls vaultApi.switch, NOT vaultApi.open ──
+
+  it('mode="switch" + click → calls vaultApi.switch (not vaultApi.open)', async () => {
+    Object.defineProperty(window, "location", {
+      value: { reload: vi.fn() },
+      writable: true,
+    });
+    (vaultApi.open as Mock).mockClear();
+    (vaultApi.switch as Mock).mockClear();
+
+    const onReconnect = vi.fn();
+    const onForgotten = vi.fn();
+    render(
+      <VaultPickerRow
+        entry={entry}
+        onReconnect={onReconnect}
+        onForgotten={onForgotten}
+        mode="switch"
+      />,
+    );
+    const row = screen.getByTestId(`vault-row-${entry.path}`);
+    fireEvent.click(row);
+    await waitFor(() => {
+      expect(vaultApi.switch).toHaveBeenCalledWith(entry.path);
+    });
+    // vaultApi.open must NOT be called in switch mode.
+    expect(vaultApi.open).not.toHaveBeenCalled();
+  });
+
+  it('mode="boot" + click → calls vaultApi.open (not vaultApi.switch)', async () => {
+    Object.defineProperty(window, "location", {
+      value: { reload: vi.fn() },
+      writable: true,
+    });
+    (vaultApi.open as Mock).mockClear();
+    (vaultApi.switch as Mock).mockClear();
+
+    const onReconnect = vi.fn();
+    const onForgotten = vi.fn();
+    render(
+      <VaultPickerRow
+        entry={entry}
+        onReconnect={onReconnect}
+        onForgotten={onForgotten}
+        mode="boot"
+      />,
+    );
+    const row = screen.getByTestId(`vault-row-${entry.path}`);
+    fireEvent.click(row);
+    await waitFor(() => {
+      expect(vaultApi.open).toHaveBeenCalledWith(entry.path);
+    });
+    // vaultApi.switch must NOT be called in boot mode.
+    expect(vaultApi.switch).not.toHaveBeenCalled();
+  });
+
+  it('mode defaults to "boot" when not specified', async () => {
+    Object.defineProperty(window, "location", {
+      value: { reload: vi.fn() },
+      writable: true,
+    });
+    (vaultApi.open as Mock).mockClear();
+    (vaultApi.switch as Mock).mockClear();
+
+    const onReconnect = vi.fn();
+    const onForgotten = vi.fn();
+    render(
+      <VaultPickerRow entry={entry} onReconnect={onReconnect} onForgotten={onForgotten} />,
+    );
+    const row = screen.getByTestId(`vault-row-${entry.path}`);
+    fireEvent.click(row);
+    await waitFor(() => {
+      expect(vaultApi.open).toHaveBeenCalledWith(entry.path);
+    });
+    expect(vaultApi.switch).not.toHaveBeenCalled();
   });
 });

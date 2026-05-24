@@ -188,6 +188,35 @@ export const vaultApi = {
   },
 
   /**
+   * POST /api/v1/vault/switch
+   * Hot-swaps from the currently open vault to the target vault path.
+   * Returns the new vault's RecentVaultEntry on success.
+   * Throws on 400 (bad path) or 409 (switch already in progress).
+   * Validates path locally before the network call (SECURITY-06).
+   */
+  switch: async (path: string): Promise<RecentVaultEntry> => {
+    const validation = validateVaultPath(path);
+    if (!validation.ok) {
+      throw new Error(validation.message);
+    }
+    const { data, error, response } = await client.POST("/vault/switch", {
+      body: { path },
+    });
+    if (response.status === 409) {
+      const body = (await response.json()) as { current_target?: string };
+      throw new Error(`Already switching to ${body.current_target ?? "unknown"}`);
+    }
+    if (error) {
+      const msg =
+        typeof error === "object" && error !== null && "message" in error
+          ? String((error as { message: unknown }).message)
+          : "Failed to switch vault";
+      throw new Error(msg);
+    }
+    return data as RecentVaultEntry;
+  },
+
+  /**
    * POST /api/v1/vault/forget
    * Removes an entry from recent_vaults (idempotent, does NOT delete files).
    */

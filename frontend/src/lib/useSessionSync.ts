@@ -26,6 +26,17 @@ export interface SessionSyncHandlers {
    * surface a RenameRewriteErrorBanner on partial failure.
    */
   onLinksRewritten?: (p: WSLinksRewrittenPayload) => void;
+  /**
+   * Plan 08-17d (V4): called when the server broadcasts vault.switching.
+   * The SPA should mount the VaultSwitchOverlay and schedule the 10s failsafe.
+   * Payload contains target_path + target_display_name.
+   */
+  onVaultSwitching?: (p: { target_path: string; target_display_name: string }) => void;
+  /**
+   * Plan 08-17d (V4): called when the server broadcasts vault.switched.
+   * The SPA should call window.location.reload() to reconnect to the new vault.
+   */
+  onVaultSwitched?: () => void;
 }
 
 /**
@@ -192,6 +203,24 @@ export function useSessionSync(
             // grant change made in one tab propagates to every other tab.
             dispatchMcpGrantsEvent();
             break;
+          case "vault.switching": {
+            // Plan 08-17d (V4): server is tearing down the current vault.
+            // Mount the overlay; the 10-second failsafe is scheduled inside
+            // the onVaultSwitching handler (via useVaultSwitch.markSwitching).
+            const vaultSwitchingPayload = env.payload as {
+              target_path: string;
+              target_display_name: string;
+            };
+            handlersRef.current.onVaultSwitching?.(vaultSwitchingPayload);
+            break;
+          }
+          case "vault.switched": {
+            // Plan 08-17d (V4): server has opened the new vault and is ready.
+            // Reload the SPA so it reconnects to the new hub and fetches
+            // fresh state from the new vault.
+            handlersRef.current.onVaultSwitched?.();
+            break;
+          }
           // migration:status: deferred to Phase 2 retro;
           // unknown future events ignored without warning so they don't crash.
           default:

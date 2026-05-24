@@ -105,6 +105,7 @@ export function VaultPicker({ mode }: VaultPickerProps) {
                     entry={e}
                     onReconnect={onReconnect}
                     onForgotten={() => void refresh()}
+                    mode={mode}
                   />
                 ))
               ))}

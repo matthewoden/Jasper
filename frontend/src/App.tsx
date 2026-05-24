@@ -38,6 +38,8 @@ import { useDeepLink } from "./lib/useDeepLink";
 import { useMigrationStatus } from "./lib/useMigrationStatus";
 import { useReveal } from "./lib/useReveal";
 import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
+import { useVaultSwitch } from "./lib/useVaultSwitch";
+import { VaultSwitchOverlay } from "./components/VaultSwitchOverlay";
 import { useTreeStore } from "./lib/useTreeStore";
 import { useTreeCreateActions } from "./lib/useTreeCreateActions";
 import { useFileTree } from "./lib/useFileTree";
@@ -405,6 +407,11 @@ function AppInner() {
   // useSessionSync then dispatches WS events into EditorPane via this ref.
   const editorHandlersRef = useRef<EditorPaneHandlers | null>(null);
 
+  // Phase 8 Plan 08-17d (V4): vault switch overlay state + event handlers.
+  // Must come BEFORE sessionSyncHandlers useMemo so markSwitching/markSwitched
+  // are available in the closure (React rules of hooks: hooks must precede useMemo).
+  const { markSwitching, markSwitched, switching: vaultSwitching, targetName: vaultSwitchTargetName } = useVaultSwitch();
+
   // Phase 4 (Plan 04-05, UX-04) — session sync handlers.
   // onReindexStarted/Complete wire WS reindex events to the ReindexProgress
   // overlay phase state; onNoteUpdated/Deleted fan out to EditorPane via ref.
@@ -438,8 +445,17 @@ function AppInner() {
         // set rewriteError here: setRewriteError({ kind: "rename", missedCount: ... }).
         void _p;
       },
+      // Plan 08-17d (V4): vault switch WS event handlers.
+      // vault.switching → mount the overlay + schedule 10s failsafe.
+      onVaultSwitching: (p) => {
+        markSwitching(p.target_display_name);
+      },
+      // vault.switched → SPA reloads so it reconnects to the new vault's hub.
+      onVaultSwitched: () => {
+        markSwitched();
+      },
     }),
-    [],
+    [markSwitching, markSwitched],
   );
 
   // Phase 4 (Plan 04-05): mount the WebSocket session-sync hook once at root.
@@ -697,6 +713,12 @@ function AppInner() {
   );
 
   return (
+    <>
+    {/* Plan 08-17d (V4): vault-switch overlay. Mounts above everything on
+        vault.switching WS event; SPA reloads on vault.switched (or 10s failsafe). */}
+    {vaultSwitching && (
+      <VaultSwitchOverlay targetName={vaultSwitchTargetName} />
+    )}
     <div
       style={{
         display: "flex",
@@ -800,5 +822,6 @@ function AppInner() {
       {/* Phase 6.6 — StatusBar: below the grid, full app width (D-06) */}
       <StatusBar />
     </div>
+    </>
   );
 }

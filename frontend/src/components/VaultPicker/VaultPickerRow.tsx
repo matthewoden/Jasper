@@ -5,6 +5,10 @@
  * plus Reconnect and Remove action buttons.
  *
  * Plan 08-17c Task 2.
+ * Plan 08-17d: `mode` prop added. "switch" mode calls vaultApi.switch (hot-swap
+ * while a vault is already open); "boot" mode calls vaultApi.open (first open
+ * when no vault is active). The WS vault.switching event drives the overlay;
+ * window.location.reload fires on vault.switched (or 10s failsafe).
  */
 
 import { vaultApi } from "../../lib/vaultApi";
@@ -16,16 +20,30 @@ export interface VaultPickerRowProps {
   entry: RecentVaultEntry;
   onReconnect: (path: string) => void;
   onForgotten: () => void;
+  /**
+   * "boot" — no vault is open; vaultApi.open is called + page reloads (17c behaviour).
+   * "switch" — a vault is already open; vaultApi.switch is called; the WS event
+   * drives the overlay and the SPA reload (17d behaviour).
+   * Defaults to "boot" for backward-compat.
+   */
+  mode?: "boot" | "switch";
 }
 
 export function VaultPickerRow({
   entry,
   onReconnect,
   onForgotten,
+  mode = "boot",
 }: VaultPickerRowProps) {
   const handleOpen = async () => {
-    await vaultApi.open(entry.path);
-    window.location.reload();
+    if (mode === "switch") {
+      // Hot-swap: the WS vault.switching event mounts the overlay and
+      // vault.switched (or the 10s failsafe) triggers window.location.reload().
+      await vaultApi.switch(entry.path);
+    } else {
+      await vaultApi.open(entry.path);
+      window.location.reload();
+    }
   };
 
   const handleForget = async () => {
