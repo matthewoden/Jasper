@@ -277,6 +277,13 @@ export interface TreeStore {
   // StatusBar click + Cmd+P "Switch vault…" flow.
   vaultPickerOpen: boolean;
   setVaultPickerOpen: (v: boolean) => void;
+
+  // Phase 8 Plan 08-17d ADD-ONLY (D-55 invariant): vault switch overlay state.
+  // Active when a vault.switching WS event has been received and the SPA is
+  // waiting for vault.switched (or the 10s V4 failsafe fires). Transient —
+  // NOT persisted. Cleared automatically on window.location.reload().
+  vaultSwitching: { active: boolean; targetName: string };
+  setVaultSwitching: (s: { active: boolean; targetName: string }) => void;
 }
 
 // Phase 8 Plan 08-10 ADD-ONLY: MCP grant record shape (mirrors the
@@ -433,6 +440,10 @@ export const useTreeStore = create<TreeStore>((set) => ({
   // Phase 8 Plan 08-17c ADD-ONLY (D-55 invariant).
   vaultPickerOpen: false,
   setVaultPickerOpen: (v) => set({ vaultPickerOpen: v }),
+
+  // Phase 8 Plan 08-17d ADD-ONLY (D-55 invariant): vault switch overlay state.
+  vaultSwitching: { active: false, targetName: "" },
+  setVaultSwitching: (s) => set({ vaultSwitching: s }),
 }));
 
 /**

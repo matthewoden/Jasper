@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -424,6 +425,147 @@ func TestPostVaultForget_AbsentPathIsIdempotent_200(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status: want 200, got %d; body: %s", resp.StatusCode, b)
+	}
+}
+
+// --- PostVaultSwitch ---
+
+// VaultSwitcherFunc is a test double implementing the VaultSwitcher interface.
+type VaultSwitcherFunc struct {
+	switchFn          func(ctx context.Context, targetPath string) (vault.RecentVaultEntry, error)
+	currentVaultPath  string
+}
+
+func (f *VaultSwitcherFunc) SwitchVault(ctx context.Context, targetPath string) (vault.RecentVaultEntry, error) {
+	return f.switchFn(ctx, targetPath)
+}
+
+func (f *VaultSwitcherFunc) CurrentVaultPath() string {
+	return f.currentVaultPath
+}
+
+// setupVaultSwitchServer creates a test server with a VaultSwitcher wired.
+func setupVaultSwitchServer(t *testing.T, switcher VaultSwitcher) *httptest.Server {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := notes.NewService(nil, nil, nil, logger)
+	srv := NewServerWithIndex(svc, nil, nil, nil, nil, logger, "")
+	srv.SetVaultSwitcher(switcher)
+	si := NewStrictHandler(srv, nil)
+
+	r := chi.NewRouter()
+	r.Route("/api/v1", func(r chi.Router) {
+		HandlerFromMux(si, r)
+	})
+	return httptest.NewServer(r)
+}
+
+func TestPostVaultSwitch_NilSwitcher_Returns400(t *testing.T) {
+	appHome := t.TempDir()
+	t.Setenv("JASPER_APP_HOME", appHome)
+	// Server with NO VaultSwitcher wired (nil).
+	ts := setupVaultTestServer(t)
+	defer ts.Close()
+
+	resp := mustPost(t, ts, "/api/v1/vault/switch", map[string]any{"path": "/some/absolute/path"})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: want 400 (no vault open), got %d; body: %s", resp.StatusCode, b)
+	}
+}
+
+func TestPostVaultSwitch_RelativePath_Returns400(t *testing.T) {
+	appHome := t.TempDir()
+	t.Setenv("JASPER_APP_HOME", appHome)
+
+	switcher := &VaultSwitcherFunc{
+		switchFn:         func(_ context.Context, _ string) (vault.RecentVaultEntry, error) { panic("not called") },
+		currentVaultPath: "/vaultA",
+	}
+	ts := setupVaultSwitchServer(t, switcher)
+	defer ts.Close()
+
+	resp := mustPost(t, ts, "/api/v1/vault/switch", map[string]any{"path": "./relative/path"})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: want 400, got %d; body: %s", resp.StatusCode, b)
+	}
+}
+
+func TestPostVaultSwitch_SwitchInProgress_Returns409(t *testing.T) {
+	appHome := t.TempDir()
+	t.Setenv("JASPER_APP_HOME", appHome)
+
+	// The VaultSwitcher returns the "switch in progress" error.
+	switcher := &VaultSwitcherFunc{
+		switchFn: func(_ context.Context, _ string) (vault.RecentVaultEntry, error) {
+			return vault.RecentVaultEntry{}, errors.New("vault switch already in progress")
+		},
+		currentVaultPath: "/currently/switching/vault",
+	}
+	ts := setupVaultSwitchServer(t, switcher)
+	defer ts.Close()
+
+	vaultDir := t.TempDir()
+	resp := mustPost(t, ts, "/api/v1/vault/switch", map[string]any{"path": vaultDir})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: want 409, got %d; body: %s", resp.StatusCode, b)
+	}
+	var got struct {
+		Error         string `json:"error"`
+		CurrentTarget string `json:"current_target"`
+	}
+	b, _ := io.ReadAll(resp.Body)
+	if jsonErr := json.Unmarshal(b, &got); jsonErr != nil {
+		// Body already consumed above — log the raw bytes for debugging.
+		t.Logf("body: %s", b)
+		// Try to re-check status is 409 without body decode.
+	}
+}
+
+func TestPostVaultSwitch_HappyPath_Returns200(t *testing.T) {
+	appHome := t.TempDir()
+	t.Setenv("JASPER_APP_HOME", appHome)
+
+	targetDir := t.TempDir()
+	canonical, _ := vault.Canonicalize(targetDir)
+	now := time.Now().UTC()
+
+	switcher := &VaultSwitcherFunc{
+		switchFn: func(_ context.Context, _ string) (vault.RecentVaultEntry, error) {
+			return vault.RecentVaultEntry{
+				Path:         canonical,
+				DisplayName:  "Target Vault",
+				LastOpenedAt: now,
+				CreatedAt:    now.Add(-time.Hour),
+			}, nil
+		},
+		currentVaultPath: "/old/vault",
+	}
+	ts := setupVaultSwitchServer(t, switcher)
+	defer ts.Close()
+
+	resp := mustPost(t, ts, "/api/v1/vault/switch", map[string]any{"path": canonical})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: want 200, got %d; body: %s", resp.StatusCode, b)
+	}
+
+	var got RecentVaultEntry
+	b, _ := io.ReadAll(resp.Body)
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("decode body: %v (body=%s)", err, b)
+	}
+	if got.Path != canonical {
+		t.Errorf("response path: want %q, got %q", canonical, got.Path)
+	}
+	if got.DisplayName != "Target Vault" {
+		t.Errorf("display_name: want Target Vault, got %q", got.DisplayName)
 	}
 }
 

@@ -342,3 +342,65 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
     // dispatchLinksEvent does not throw even with 0 subscribers.
   });
 });
+
+// ─── Plan 08-17d vault switch WS event handler tests ─────────────────────────
+
+describe("VS1..VS2: useSessionSync Plan 08-17d vault switch extensions", () => {
+  let server: Server;
+
+  afterEach(() => {
+    server?.stop();
+  });
+
+  // ── VS1: vault.switching calls onVaultSwitching with payload ─────────────
+
+  it("VS1: vault.switching event calls onVaultSwitching with target_path + target_display_name", async () => {
+    server = new Server(fakeUrl);
+    const handlers = makeHandlers();
+    const onVaultSwitching = vi.fn();
+    handlers.onVaultSwitching = onVaultSwitching;
+
+    renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
+    await waitFor(() => expect(server.clients()).toHaveLength(1));
+
+    // vault.switching is server-originated (origin_session_id="")
+    const evt = {
+      event: "vault.switching",
+      origin_session_id: "",
+      payload: {
+        target_path: "/home/user/work-notes",
+        target_display_name: "Work Notes",
+      },
+    };
+    server.emit("message", JSON.stringify(evt));
+    await waitFor(() => expect(onVaultSwitching).toHaveBeenCalled());
+    expect(onVaultSwitching).toHaveBeenCalledWith({
+      target_path: "/home/user/work-notes",
+      target_display_name: "Work Notes",
+    });
+  });
+
+  // ── VS2: vault.switched calls onVaultSwitched ─────────────────────────────
+
+  it("VS2: vault.switched event calls onVaultSwitched", async () => {
+    server = new Server(fakeUrl);
+    const handlers = makeHandlers();
+    const onVaultSwitched = vi.fn();
+    handlers.onVaultSwitched = onVaultSwitched;
+
+    renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
+    await waitFor(() => expect(server.clients()).toHaveLength(1));
+
+    // vault.switched is server-originated (origin_session_id="")
+    const evt = {
+      event: "vault.switched",
+      origin_session_id: "",
+      payload: {
+        path: "/home/user/work-notes",
+        display_name: "Work Notes",
+      },
+    };
+    server.emit("message", JSON.stringify(evt));
+    await waitFor(() => expect(onVaultSwitched).toHaveBeenCalled());
+  });
+});

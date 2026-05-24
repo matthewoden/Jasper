@@ -30,6 +30,35 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
+// VaultSwitcher is the interface the /vault/switch handler uses to initiate
+// a hot-swap. Implemented by *app.App; kept as an interface here to avoid
+// an import cycle (api imports app would be circular since app imports api).
+//
+// nil-safe: PostVaultSwitch returns 400 "no_vault_open" when switcher is nil
+// (i.e., the server is in no-vault mode and there is nothing to switch from).
+type VaultSwitcher interface {
+	// SwitchVault transitions the running server from the current vault to
+	// targetPath. Returns ErrSwitchInProgress on contention.
+	SwitchVault(ctx context.Context, targetPath string) (vault.RecentVaultEntry, error)
+
+	// CurrentVaultPath returns the canonical path of the currently open
+	// vault, or "" when none is open.
+	CurrentVaultPath() string
+}
+
+// switchInProgressMsg is the error message returned by app.ErrSwitchInProgress.
+// The handler compares on this string to detect concurrent-switch 409s without
+// needing to import the app package (import cycle: app → api → app).
+const switchInProgressMsg = "vault switch already in progress"
+
+// SetVaultSwitcher wires the hot-swap entry point into the Server so the
+// /vault/switch handler can call SwitchVault. Uses the same additive-setter
+// pattern as SetMigrationsFS + SetMcpACL so the NewServerWithIndex signature
+// does not need to grow for every new Phase 8 dependency.
+func (s *Server) SetVaultSwitcher(vs VaultSwitcher) {
+	s.vaultSwitcher = vs
+}
+
 // BootBanner is a process-level string populated by lifecycle.Run when a
 // V13/V14 condition is detected at boot. GetVaultRecent reads this and
 // includes it in the response so the picker UI can render the banner.
@@ -283,6 +312,54 @@ func (s *Server) PostVaultCreate(
 		}
 	}
 	return nil, fmt.Errorf("PostVaultCreate: entry not found after CreateVault")
+}
+
+// PostVaultSwitch initiates a hot-swap to the given target vault path.
+//
+// Returns 200 with the new vault entry on success.
+// Returns 400 when the target path is invalid or missing .jasper/.
+// Returns 409 (vault_switch_in_progress) when a switch is already in progress (V5).
+//
+// Wire: POST /api/v1/vault/switch
+//
+//nolint:revive // generated interface method name
+func (s *Server) PostVaultSwitch(
+	ctx context.Context,
+	req PostVaultSwitchRequestObject,
+) (PostVaultSwitchResponseObject, error) {
+	if req.Body == nil {
+		return PostVaultSwitch400JSONResponse(newError("invalid_request", "request body required")), nil
+	}
+
+	if s.vaultSwitcher == nil {
+		// No vault is currently open; cannot switch.
+		return PostVaultSwitch400JSONResponse(newError("no_vault_open",
+			"no vault is currently open; use /vault/open to open a vault first")), nil
+	}
+
+	rawPath := req.Body.Path
+	if !filepath.IsAbs(rawPath) {
+		return PostVaultSwitch400JSONResponse(newError("invalid_path", "path must be absolute")), nil
+	}
+	if err := validateVaultPath(rawPath); err != nil {
+		return PostVaultSwitch400JSONResponse(newError("invalid_path", err.Error())), nil
+	}
+
+	entry, err := s.vaultSwitcher.SwitchVault(ctx, rawPath)
+	if err != nil {
+		// V5: concurrent switch in progress — return 409 with current_target.
+		// We match on message string to avoid an import cycle (app → api → app).
+		if err.Error() == switchInProgressMsg {
+			currentTarget := s.vaultSwitcher.CurrentVaultPath()
+			return PostVaultSwitch409JSONResponse{
+				Error:         VaultSwitchInProgress,
+				CurrentTarget: currentTarget,
+			}, nil
+		}
+		return PostVaultSwitch400JSONResponse(newError("switch_failed", err.Error())), nil
+	}
+
+	return PostVaultSwitch200JSONResponse(toWireRecentVaultEntry(entry)), nil
 }
 
 // PostVaultForget removes a vault entry from recent_vaults. Idempotent.

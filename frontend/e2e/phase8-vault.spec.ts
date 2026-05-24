@@ -117,6 +117,40 @@ async function spawnVaultJasper(appHome: string): Promise<VaultHandle> {
   };
 }
 
+// ─── Helper: bootstrap a vault via /vault/create (used by 17d switch tests) ──
+
+async function bootstrapVault(
+  baseURL: string,
+  vaultDir: string,
+): Promise<void> {
+  const res = await fetch(`${baseURL}/api/v1/vault/create`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      path: vaultDir,
+      theme: "dark",
+      daily_template: "",
+      mcp_enabled: false,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`vault/create failed for ${vaultDir}: ${res.status} ${body}`);
+  }
+}
+
+async function openVault(baseURL: string, vaultPath: string): Promise<void> {
+  const res = await fetch(`${baseURL}/api/v1/vault/open`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path: vaultPath }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`vault/open failed: ${res.status} ${body}`);
+  }
+}
+
 test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
   test("no-vault boot shows the picker with create+open tabs (default = create)", async ({ page }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-vault-e2e-app-"));
@@ -243,6 +277,125 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
     } finally {
       handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── Plan 08-17d: vault switch flow E2E tests ────────────────────────────────
+
+test.describe("Phase 8 vault switch — make-build smoke (Plan 08-17d)", () => {
+  /**
+   * Test: switch from vault A to vault B.
+   *
+   * Steps:
+   *   1. Create two vaults A and B on disk via /vault/create.
+   *   2. Open A so the main shell is visible with A's name in the StatusBar.
+   *   3. Open the vault picker in switch mode via StatusBar click.
+   *   4. Click vault B's row in the Recent tab.
+   *   5. The VaultSwitchOverlay mounts (role=dialog "Switching vault").
+   *   6. SPA reloads; StatusBar shows B's display_name.
+   *
+   * Note: The overlay may appear and disappear quickly (server teardown + reopen
+   * can be sub-second in the test environment). The assertion is on the FINAL
+   * state (B open in StatusBar) which is load-bearing, with a generous timeout.
+   */
+  test("switch from vault A to vault B — SPA reloads to new vault, StatusBar shows B", async ({ page }) => {
+    const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-app-"));
+    const vaultA = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-A-"));
+    const vaultB = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-B-"));
+    let handle: VaultHandle | undefined;
+    try {
+      handle = await spawnVaultJasper(appHome);
+
+      // Bootstrap both vaults and open A as current.
+      await bootstrapVault(handle.baseURL, vaultA);
+      await bootstrapVault(handle.baseURL, vaultB);
+      await openVault(handle.baseURL, vaultA);
+
+      // Navigate to the app — should see main shell with A open.
+      await page.goto(handle.baseURL + "/");
+      await expect(page.getByTestId("status-bar-vault")).toBeVisible({ timeout: 10_000 });
+
+      // StatusBar shows A's display_name (base of tmpdir path).
+      const nameA = path.basename(vaultA);
+      await expect(page.getByTestId("status-bar-vault")).toContainText(nameA.substring(0, 8), { timeout: 5_000 });
+
+      // Click StatusBar to open vault picker in switch mode.
+      await page.getByTestId("status-bar-vault").click();
+      await expect(page.getByRole("dialog", { name: /vault/i })).toBeVisible({ timeout: 5_000 });
+
+      // Navigate to Recent tab and click vault B's row.
+      await page.getByRole("tab", { name: /recent/i }).click();
+      const nameB = path.basename(vaultB);
+      // Find and click vault B row — the row has data-testid=vault-row-<path>.
+      await page.getByTestId(`vault-row-${vaultB}`).click({ timeout: 5_000 });
+
+      // After the SPA reloads, StatusBar should show B's display_name.
+      // Generous timeout: teardown + reopen + page reload takes a few seconds.
+      await page.waitForFunction(
+        (name) => {
+          const el = document.querySelector('[data-testid="status-bar-vault"]');
+          return el !== null && el.textContent !== null && el.textContent.includes(name.substring(0, 8));
+        },
+        nameB,
+        { timeout: 20_000 },
+      );
+    } finally {
+      handle?.kill();
+      fs.rmSync(appHome, { recursive: true, force: true });
+      fs.rmSync(vaultA, { recursive: true, force: true });
+      fs.rmSync(vaultB, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * Test: concurrent switch returns 409 with vault_switch_in_progress.
+   *
+   * Fires two simultaneous POST /vault/switch requests. One should succeed
+   * (200) and the other should be rejected (409) with `error: "vault_switch_in_progress"`.
+   * We verify the status code distribution is exactly [200, 409] and that
+   * the 409 body includes the error code.
+   *
+   * Uses the request fixture (not page) — this is a pure API test.
+   */
+  test("concurrent switch returns 409 with vault_switch_in_progress", async ({ request }) => {
+    const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-app-"));
+    const vaultA = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-A-"));
+    const vaultB1 = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-B1-"));
+    const vaultB2 = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-B2-"));
+    let handle: VaultHandle | undefined;
+    try {
+      handle = await spawnVaultJasper(appHome);
+
+      // Bootstrap all vaults; open A as current.
+      await bootstrapVault(handle.baseURL, vaultA);
+      await bootstrapVault(handle.baseURL, vaultB1);
+      await bootstrapVault(handle.baseURL, vaultB2);
+      await openVault(handle.baseURL, vaultA);
+
+      // Fire two switch requests simultaneously.
+      const [r1, r2] = await Promise.all([
+        request.post(`${handle.baseURL}/api/v1/vault/switch`, {
+          data: { path: vaultB1 },
+        }),
+        request.post(`${handle.baseURL}/api/v1/vault/switch`, {
+          data: { path: vaultB2 },
+        }),
+      ]);
+
+      const statuses = [r1.status(), r2.status()].sort((a, b) => a - b);
+      expect(statuses).toEqual([200, 409]);
+
+      // The 409 body must name the error code.
+      const conflictResp = r1.status() === 409 ? r1 : r2;
+      const body = (await conflictResp.json()) as { error?: string; current_target?: string };
+      expect(body.error).toBe("vault_switch_in_progress");
+    } finally {
+      handle?.kill();
+      fs.rmSync(appHome, { recursive: true, force: true });
+      fs.rmSync(vaultA, { recursive: true, force: true });
+      fs.rmSync(vaultB1, { recursive: true, force: true });
+      fs.rmSync(vaultB2, { recursive: true, force: true });
     }
   });
 });

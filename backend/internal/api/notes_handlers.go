@@ -73,6 +73,8 @@ func (s *Server) PostNotes(
 	ctx context.Context,
 	req PostNotesRequestObject,
 ) (PostNotesResponseObject, error) {
+	// V6 drain: signal to SwitchVault that a write is in progress.
+	defer s.trackWrite()()
 	if req.Body == nil {
 		return PostNotes400JSONResponse(newError("invalid_request", "request body required")), nil
 	}
@@ -109,6 +111,8 @@ func (s *Server) DeleteNoteById(
 	ctx context.Context,
 	req DeleteNoteByIdRequestObject,
 ) (DeleteNoteByIdResponseObject, error) {
+	// V6 drain: signal to SwitchVault that a write is in progress.
+	defer s.trackWrite()()
 	if err := s.notes.Delete(ctx, uuid.UUID(req.Id)); err != nil {
 		s.log.Error("DeleteNoteById: domain error",
 			"id", uuid.UUID(req.Id).String(),
@@ -142,6 +146,8 @@ func (s *Server) PostNoteMove(
 	ctx context.Context,
 	req PostNoteMoveRequestObject,
 ) (PostNoteMoveResponseObject, error) {
+	// V6 drain: signal to SwitchVault that a write is in progress.
+	defer s.trackWrite()()
 	if req.Body == nil {
 		return PostNoteMove400JSONResponse(newError("invalid_request", "request body required")), nil
 	}

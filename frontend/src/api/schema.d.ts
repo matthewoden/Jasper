@@ -831,6 +831,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vault/switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hot-swap from the currently open vault to a target vault
+         * @description Initiates a hot-swap: broadcasts vault.switching, drains pending writes
+         *     (2-second cap), tears down per-vault subsystems in V6 order, opens the
+         *     new vault, runs migrations, kicks the indexer, optionally restarts MCP,
+         *     then broadcasts vault.switched. The SPA reloads on vault.switched.
+         *     Returns 409 when a switch is already in progress.
+         *     Returns 400 when the target path is invalid or missing .jasper/.
+         */
+        post: operations["postVaultSwitch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notes/by-path": {
         parameters: {
             query?: never;
@@ -1290,7 +1315,7 @@ export interface components {
          */
         WSEnvelope: {
             /** @enum {string} */
-            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed";
+            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed" | "vault.switching" | "vault.switched";
             /**
              * @description UUID of the session that originated the mutation. Empty
              *     string for server-originated events (reindex:*,
@@ -1506,6 +1531,16 @@ export interface components {
         VaultForgetRequest: {
             /** @description Absolute canonical path of the vault entry to remove from recent_vaults. */
             path: string;
+        };
+        VaultSwitchRequest: {
+            /** @description Absolute path to the target vault (must already exist with .jasper/). */
+            path: string;
+        };
+        VaultSwitchInProgressResponse: {
+            /** @enum {string} */
+            error: "vault_switch_in_progress";
+            /** @description The vault path that was being switched to when the 409 fired. */
+            current_target: string;
         };
     };
     responses: never;
@@ -3148,6 +3183,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    postVaultSwitch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultSwitchRequest"];
+            };
+        };
+        responses: {
+            /** @description Switch initiated; vault.switching has been broadcast; SPA should mount the overlay */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentVaultEntry"];
+                };
+            };
+            /** @description Invalid target; .jasper/ missing; non-ASCII; etc. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A switch is already in progress */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultSwitchInProgressResponse"];
+                };
             };
         };
     };
