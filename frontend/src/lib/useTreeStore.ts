@@ -269,6 +269,14 @@ export interface TreeStore {
   mcpEnabled: boolean;
   setMcpGrants: (grants: McpGrant[]) => void;
   setMcpEnabled: (enabled: boolean) => void;
+
+  // Phase 8 Plan 08-17c ADD-ONLY (D-55 invariant): vault picker open state.
+  // Controls whether the <VaultPicker mode="switch"> modal is open.
+  // Transient — NOT persisted. Boot detection in App.tsx uses mode="boot"
+  // (always open) rather than this slice. This slice is only for the
+  // StatusBar click + Cmd+P "Switch vault…" flow.
+  vaultPickerOpen: boolean;
+  setVaultPickerOpen: (v: boolean) => void;
 }
 
 // Phase 8 Plan 08-10 ADD-ONLY: MCP grant record shape (mirrors the
@@ -421,6 +429,10 @@ export const useTreeStore = create<TreeStore>((set) => ({
   mcpEnabled: false,
   setMcpGrants: (grants) => set({ mcpGrants: grants }),
   setMcpEnabled: (enabled) => set({ mcpEnabled: enabled }),
+
+  // Phase 8 Plan 08-17c ADD-ONLY (D-55 invariant).
+  vaultPickerOpen: false,
+  setVaultPickerOpen: (v) => set({ vaultPickerOpen: v }),
 }));
 
 /**

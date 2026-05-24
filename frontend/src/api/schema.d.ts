@@ -715,6 +715,122 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vault/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the currently open vault (or null if none)
+         * @description Returns the RecentVaultEntry for the current_vault from app.json,
+         *     or null when no vault is open (no-vault state per ADR-001 §2).
+         *     Used by the picker UI (17c) to decide which shell to render.
+         */
+        get: operations["getVaultCurrent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the recent_vaults list (newest-first; missing entries included with missing=true)
+         * @description Returns all entries from app.json's recent_vaults list sorted newest-first
+         *     (LRU by last_opened_at). Missing entries are included with missing=true
+         *     so the picker UI can render them with a warning badge (V11).
+         *     The optional banner string is set by V13/V14 boot conditions.
+         */
+        get: operations["getVaultRecent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open an existing vault (must already contain a .jasper/ directory)
+         * @description Opens an existing vault folder that already has a .jasper/ directory.
+         *     Canonicalizes the path, verifies .jasper/ exists, updates app.json via
+         *     TouchOpened, and transitions the app to open-vault mode.
+         *     Returns 400 when the path is invalid or .jasper/ is missing.
+         *     Returns 409 when a vault switch is already in progress.
+         */
+        post: operations["postVaultOpen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a new vault inside a chosen folder; runs migrations; registers in recent_vaults
+         * @description Creates a new Jasper vault inside the given folder: creates .jasper/ with
+         *     0700 perms, writes a minimal per-vault config.json, runs migrations, and
+         *     opens the vault. Refuses with 400 if the folder is already a vault, if the
+         *     path is inside an existing Jasper vault (nested-vault, D-08), or if path
+         *     validation rules fail (abs, ASCII+NFC, parent must exist).
+         *     Returns 409 when a vault switch is already in progress.
+         */
+        post: operations["postVaultCreate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/forget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove an entry from recent_vaults (idempotent; does NOT delete the vault on disk)
+         * @description Removes the entry with the given path from recent_vaults in app.json.
+         *     Idempotent — calling it for a path not in the list returns 200 silently.
+         *     Does NOT delete any files or directories on disk.
+         */
+        post: operations["postVaultForget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notes/by-path": {
         parameters: {
             query?: never;
@@ -1326,6 +1442,70 @@ export interface components {
         };
         SetupResponse: {
             ok: boolean;
+        };
+        /** @description One entry in the recent_vaults list (V9). path is always an absolute canonical path (V10). */
+        RecentVaultEntry: {
+            /** @description Absolute canonical path to the vault folder (V10). */
+            path: string;
+            /** @description Human-readable name; defaults to filepath.Base(path). */
+            display_name: string;
+            /**
+             * Format: date-time
+             * @description RFC3339 UTC timestamp of the last open; drives LRU sort.
+             */
+            last_opened_at: string;
+            /**
+             * Format: date-time
+             * @description RFC3339 UTC timestamp when the vault was first registered.
+             */
+            created_at: string;
+            /** @description True when os.Stat(path) failed at boot (V11); entry is shown with a warning badge. */
+            missing: boolean;
+        };
+        VaultRecentResponse: {
+            /** @description Recent vaults sorted newest-first by last_opened_at. */
+            vaults: components["schemas"]["RecentVaultEntry"][];
+            /**
+             * @description Optional banner message set by V13/V14 boot conditions.
+             *     Empty string when no banner. Rendered in the picker UI's
+             *     informational strip. Safe for direct display (no HTML).
+             */
+            banner: string;
+        };
+        VaultOpenRequest: {
+            /** @description Absolute path to the vault folder (must contain a .jasper/ directory). */
+            path: string;
+        };
+        VaultCreateRequest: {
+            /** @description Absolute path to the (empty or existing) folder that will become a vault. */
+            path: string;
+            /** @description Optional display name; defaults to filepath.Base(path). */
+            display_name?: string;
+            /**
+             * @description Per-vault theme preference.
+             * @default dark
+             * @enum {string}
+             */
+            theme: "dark" | "light";
+            /** @description Per-vault daily-note template (inherits 08-04/08-16 wizard polish in 17c). */
+            daily_template?: string;
+            /**
+             * @description Whether to enable the MCP listener for this vault.
+             * @default false
+             */
+            mcp_enabled: boolean;
+        };
+        /**
+         * @description Wrapper for the current vault. vault is null when no vault is open
+         *     (no-vault state per ADR-001 §2).
+         */
+        VaultCurrentResponse: {
+            /** @description The currently open vault, or null when no vault is open. */
+            vault?: components["schemas"]["RecentVaultEntry"];
+        };
+        VaultForgetRequest: {
+            /** @description Absolute canonical path of the vault entry to remove from recent_vaults. */
+            path: string;
         };
     };
     responses: never;
@@ -2822,6 +3002,152 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Error"];
                 };
+            };
+        };
+    };
+    getVaultCurrent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current vault or null */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultCurrentResponse"];
+                };
+            };
+        };
+    };
+    getVaultRecent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of recent vaults plus optional banner */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultRecentResponse"];
+                };
+            };
+        };
+    };
+    postVaultOpen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultOpenRequest"];
+            };
+        };
+        responses: {
+            /** @description Vault opened; per-vault subsystems coming up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentVaultEntry"];
+                };
+            };
+            /** @description Invalid path (not abs, traversal, non-ASCII, etc.) or .jasper/ missing */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A vault switch is already in progress */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postVaultCreate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Vault created; opened; per-vault subsystems coming up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentVaultEntry"];
+                };
+            };
+            /** @description Invalid path; parent does not exist; nested-vault detected; folder already a vault; non-ASCII; etc. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Switch already in progress */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postVaultForget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultForgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Forgotten (or wasn't in the list to begin with) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

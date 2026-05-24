@@ -26,6 +26,7 @@ tags:
   - { name: sharing, description: "OS file-manager integration: reveal a note path in Finder / Explorer (Phase 8 SHARE-01, D-26)" }
   - { name: mcp, description: "MCP write-grant ACL: per-folder grants with two-tier model (Phase 8 MCP-01, D-13, D-17)" }
   - { name: setup, description: "First-run wizard: status, data-dir validation, submit (Phase 8 INSTALL-07, D-04, D-08, D-10)" }
+  - { name: vault, description: "Vault registry: current vault, recent vaults, open/create/forget (ADR-001, VAULT-01)" }
 paths:
   /notes:
     get:
@@ -1267,6 +1268,130 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /vault/current:
+    get:
+      tags: [vault]
+      operationId: getVaultCurrent
+      summary: Get the currently open vault (or null if none)
+      description: |
+        Returns the RecentVaultEntry for the current_vault from app.json,
+        or null when no vault is open (no-vault state per ADR-001 §2).
+        Used by the picker UI (17c) to decide which shell to render.
+      responses:
+        "200":
+          description: Current vault or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultCurrentResponse"
+  /vault/recent:
+    get:
+      tags: [vault]
+      operationId: getVaultRecent
+      summary: Get the recent_vaults list (newest-first; missing entries included with missing=true)
+      description: |
+        Returns all entries from app.json's recent_vaults list sorted newest-first
+        (LRU by last_opened_at). Missing entries are included with missing=true
+        so the picker UI can render them with a warning badge (V11).
+        The optional banner string is set by V13/V14 boot conditions.
+      responses:
+        "200":
+          description: List of recent vaults plus optional banner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultRecentResponse"
+  /vault/open:
+    post:
+      tags: [vault]
+      operationId: postVaultOpen
+      summary: Open an existing vault (must already contain a .jasper/ directory)
+      description: |
+        Opens an existing vault folder that already has a .jasper/ directory.
+        Canonicalizes the path, verifies .jasper/ exists, updates app.json via
+        TouchOpened, and transitions the app to open-vault mode.
+        Returns 400 when the path is invalid or .jasper/ is missing.
+        Returns 409 when a vault switch is already in progress.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VaultOpenRequest"
+      responses:
+        "200":
+          description: Vault opened; per-vault subsystems coming up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecentVaultEntry"
+        "400":
+          description: Invalid path (not abs, traversal, non-ASCII, etc.) or .jasper/ missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: A vault switch is already in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /vault/create:
+    post:
+      tags: [vault]
+      operationId: postVaultCreate
+      summary: Create a new vault inside a chosen folder; runs migrations; registers in recent_vaults
+      description: |
+        Creates a new Jasper vault inside the given folder: creates .jasper/ with
+        0700 perms, writes a minimal per-vault config.json, runs migrations, and
+        opens the vault. Refuses with 400 if the folder is already a vault, if the
+        path is inside an existing Jasper vault (nested-vault, D-08), or if path
+        validation rules fail (abs, ASCII+NFC, parent must exist).
+        Returns 409 when a vault switch is already in progress.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VaultCreateRequest"
+      responses:
+        "200":
+          description: Vault created; opened; per-vault subsystems coming up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecentVaultEntry"
+        "400":
+          description: Invalid path; parent does not exist; nested-vault detected; folder already a vault; non-ASCII; etc.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Switch already in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /vault/forget:
+    post:
+      tags: [vault]
+      operationId: postVaultForget
+      summary: Remove an entry from recent_vaults (idempotent; does NOT delete the vault on disk)
+      description: |
+        Removes the entry with the given path from recent_vaults in app.json.
+        Idempotent — calling it for a path not in the list returns 200 silently.
+        Does NOT delete any files or directories on disk.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VaultForgetRequest"
+      responses:
+        "200":
+          description: Forgotten (or wasn't in the list to begin with)
   /notes/by-path:
     get:
       tags: [notes]
@@ -2161,3 +2286,90 @@ components:
       properties:
         ok:
           type: boolean
+    RecentVaultEntry:
+      type: object
+      required: [path, display_name, last_opened_at, created_at, missing]
+      description: One entry in the recent_vaults list (V9). path is always an absolute canonical path (V10).
+      properties:
+        path:
+          type: string
+          description: Absolute canonical path to the vault folder (V10).
+        display_name:
+          type: string
+          description: Human-readable name; defaults to filepath.Base(path).
+        last_opened_at:
+          type: string
+          format: date-time
+          description: RFC3339 UTC timestamp of the last open; drives LRU sort.
+        created_at:
+          type: string
+          format: date-time
+          description: RFC3339 UTC timestamp when the vault was first registered.
+        missing:
+          type: boolean
+          description: True when os.Stat(path) failed at boot (V11); entry is shown with a warning badge.
+    VaultRecentResponse:
+      type: object
+      required: [vaults, banner]
+      properties:
+        vaults:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecentVaultEntry"
+          description: Recent vaults sorted newest-first by last_opened_at.
+        banner:
+          type: string
+          description: |
+            Optional banner message set by V13/V14 boot conditions.
+            Empty string when no banner. Rendered in the picker UI's
+            informational strip. Safe for direct display (no HTML).
+    VaultOpenRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Absolute path to the vault folder (must contain a .jasper/ directory).
+          minLength: 1
+    VaultCreateRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Absolute path to the (empty or existing) folder that will become a vault.
+          minLength: 1
+        display_name:
+          type: string
+          description: Optional display name; defaults to filepath.Base(path).
+        theme:
+          type: string
+          enum: [dark, light]
+          default: dark
+          description: Per-vault theme preference.
+        daily_template:
+          type: string
+          description: Per-vault daily-note template (inherits 08-04/08-16 wizard polish in 17c).
+          maxLength: 1024
+        mcp_enabled:
+          type: boolean
+          default: false
+          description: Whether to enable the MCP listener for this vault.
+    VaultCurrentResponse:
+      type: object
+      description: |
+        Wrapper for the current vault. vault is null when no vault is open
+        (no-vault state per ADR-001 §2).
+      properties:
+        vault:
+          $ref: "#/components/schemas/RecentVaultEntry"
+          description: The currently open vault, or null when no vault is open.
+          nullable: true
+    VaultForgetRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Absolute canonical path of the vault entry to remove from recent_vaults.
+          minLength: 1
