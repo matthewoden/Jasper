@@ -311,3 +311,167 @@ body {
   pointer-events: none;
   z-index: 5;
 }
+
+/* ────────────────────────────────────────────────────────────────────
+   Plan 08-17c — VaultPicker modal styles.
+
+   The picker is a Radix Dialog rendered in a portal. Without these rules
+   the overlay/content divs have no positioning or backdrop and the
+   modal collapses into the document flow invisibly. Style tokens align
+   with the rest of the design system (zinc surface palette + 8px radius
+   per UI-SPEC §Spacing). UAT-2 #1c gap-closure.
+   ──────────────────────────────────────────────────────────────────── */
+.vault-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 50;
+}
+
+.vault-picker-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 640px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 96px);
+  background: var(--color-surface);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  z-index: 51;
+}
+
+.vault-picker-modal [data-radix-dialog-title] {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-fg);
+}
+
+.vault-picker-banner {
+  padding: var(--spacing-md-tight) 16px;
+  background: var(--color-warning-surface);
+  border: 1px solid var(--color-warning);
+  border-radius: 6px;
+  color: var(--color-warning);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.vault-picker-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.vault-picker-tabs button {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--color-muted);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.vault-picker-tabs button:hover {
+  color: var(--color-fg);
+}
+
+.vault-picker-tabs button[aria-selected="true"] {
+  color: var(--color-fg);
+  border-bottom-color: var(--color-accent);
+}
+
+.vault-picker-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vault-picker-error {
+  color: var(--color-destructive);
+  font-size: 13px;
+  padding: 8px 12px;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.32);
+  border-radius: 6px;
+}
+
+.vault-picker-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "name actions"
+    "path actions"
+    "last actions"
+    "caption actions";
+  align-items: center;
+  gap: 2px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-subtle);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  appearance: none;
+  color: inherit;
+  font: inherit;
+}
+
+.vault-picker-row:hover {
+  border-color: var(--color-accent);
+}
+
+.vault-picker-row--missing {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.vault-picker-row__name {
+  grid-area: name;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-fg);
+}
+
+.vault-picker-row__path {
+  grid-area: path;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-muted);
+  word-break: break-all;
+}
+
+.vault-picker-row__last {
+  grid-area: last;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.vault-picker-row__caption {
+  grid-area: caption;
+  font-size: 12px;
+  color: var(--color-warning);
+}
+
+.vault-picker-row__actions {
+  grid-area: actions;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

@@ -39,7 +39,7 @@ import { createServer } from "node:net";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..");
 const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
 
 async function findFreePort(): Promise<number> {
@@ -151,6 +151,36 @@ async function openVault(baseURL: string, vaultPath: string): Promise<void> {
   }
 }
 
+/**
+ * expectActuallyPainted — asserts a locator is rendered with non-trivial
+ * geometry, not just "in the DOM with some bounding box from child text."
+ * Playwright's stock toBeVisible() returns true for an unstyled div whose
+ * children give it any non-zero size — so a modal whose CSS classes were
+ * never written passes toBeVisible() while looking nothing like a modal.
+ *
+ * UAT-2 #1c surfaced exactly this: vault-picker-overlay / vault-picker-modal
+ * had zero CSS rules; the picker mounted but had no fixed positioning, no
+ * backdrop, no centering. The agent's existing toBeVisible() check passed.
+ *
+ * This helper enforces a minimum width/height (defaults: 200×100) so an
+ * unstyled element fails the gate. Tune per-call when asserting smaller
+ * surfaces (toasts, pills, etc.).
+ */
+async function expectActuallyPainted(
+  loc: import("@playwright/test").Locator,
+  opts: { minWidth?: number; minHeight?: number; description?: string } = {},
+): Promise<void> {
+  const minW = opts.minWidth ?? 200;
+  const minH = opts.minHeight ?? 100;
+  const label = opts.description ?? "element";
+  await expect(loc, `${label}: not in DOM`).toBeAttached();
+  await expect(loc, `${label}: not visible per Playwright`).toBeVisible();
+  const box = await loc.boundingBox();
+  expect(box, `${label}: no bounding box`).not.toBeNull();
+  expect(box!.width, `${label}: width ${box!.width}px < ${minW}px (likely unstyled)`).toBeGreaterThanOrEqual(minW);
+  expect(box!.height, `${label}: height ${box!.height}px < ${minH}px (likely unstyled)`).toBeGreaterThanOrEqual(minH);
+}
+
 test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
   test("no-vault boot shows the picker with create+open tabs (default = create)", async ({ page }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-vault-e2e-app-"));
@@ -159,8 +189,27 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
       handle = await spawnVaultJasper(appHome);
       await page.goto(handle.baseURL + "/");
 
-      // The picker dialog should be visible
-      await expect(page.getByRole("dialog", { name: /vault/i })).toBeVisible();
+      // The picker dialog should be visible AND actually painted (not just an
+      // unstyled div passing toBeVisible with a tiny text-only bounding box).
+      // UAT-2 #1c — without these size assertions, the missing-CSS regression
+      // would have shipped to UAT again.
+      const picker = page.getByRole("dialog", { name: /vault/i });
+      await expectActuallyPainted(picker, {
+        minWidth: 400,
+        minHeight: 300,
+        description: "vault picker modal",
+      });
+
+      // The backdrop overlay must cover the viewport — assert it's at least
+      // most of the screen so a missing position:fixed / inset:0 fails the gate.
+      const viewport = page.viewportSize();
+      const minOverlayW = viewport ? Math.floor(viewport.width * 0.9) : 800;
+      const minOverlayH = viewport ? Math.floor(viewport.height * 0.9) : 600;
+      await expectActuallyPainted(page.locator(".vault-picker-overlay"), {
+        minWidth: minOverlayW,
+        minHeight: minOverlayH,
+        description: "vault picker overlay backdrop",
+      });
 
       // Both tab labels should be visible
       await expect(page.getByRole("tab", { name: /open existing/i })).toBeVisible();
