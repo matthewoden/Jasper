@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
@@ -16,6 +17,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/matthewoden/jasper/backend/internal/config"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 // fakeStatusProvider lets tests inject a deterministic service.Status
@@ -207,5 +209,89 @@ func TestStatusCmd_Registered(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("statusCmd not registered on rootCmd")
+	}
+}
+
+// writeAppJSON writes a vault.AppState to JASPER_APP_HOME/app.json and
+// returns the path to the app.json file.
+func writeAppJSON(t *testing.T, appHome string, state *vault.AppState) string {
+	t.Helper()
+	if err := os.MkdirAll(appHome, 0o700); err != nil {
+		t.Fatalf("mkdir app home: %v", err)
+	}
+	path := filepath.Join(appHome, "app.json")
+	if err := vault.SaveAppJSON(path, state); err != nil {
+		t.Fatalf("SaveAppJSON: %v", err)
+	}
+	return path
+}
+
+// TestStatus_PrintsVaultFromAppJSON verifies that when app.json has a current_vault
+// and a matching recent_vaults entry, "status" prints the display_name and path.
+func TestStatus_PrintsVaultFromAppJSON(t *testing.T) {
+	dir := t.TempDir()
+	appHome := filepath.Join(dir, "appHome")
+	t.Setenv("JASPER_APP_HOME", appHome)
+	// Clear vault flag so app.json is the source.
+	orig := vaultFlag
+	vaultFlag = ""
+	t.Cleanup(func() { vaultFlag = orig })
+
+	// Create a temp "vault" dir.
+	vaultDir := filepath.Join(dir, "myvault")
+	if err := os.MkdirAll(vaultDir, 0o700); err != nil {
+		t.Fatalf("mkdir vault: %v", err)
+	}
+	now := time.Now().UTC()
+	state := &vault.AppState{
+		CurrentVault: vaultDir,
+		RecentVaults: []vault.RecentVaultEntry{
+			{Path: vaultDir, DisplayName: "MyVault", LastOpenedAt: now, CreatedAt: now},
+		},
+	}
+	writeAppJSON(t, appHome, state)
+
+	var buf bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&buf)
+
+	// Ignore errors (e.g. "not yet set up") since we didn't write a config.json.
+	_ = runStatus(cmd, nil)
+	out := buf.String()
+	if !strings.Contains(out, "Vault:") {
+		t.Errorf("want 'Vault:' line in status output:\n%s", out)
+	}
+	if !strings.Contains(out, "MyVault") {
+		t.Errorf("want display_name 'MyVault' in output:\n%s", out)
+	}
+	if !strings.Contains(out, vaultDir) {
+		t.Errorf("want vault path %q in output:\n%s", vaultDir, out)
+	}
+}
+
+// TestStatus_NoVaultSelectedShowsPickerMessage verifies that when app.json
+// has no current_vault, the output says "none selected".
+func TestStatus_NoVaultSelectedShowsPickerMessage(t *testing.T) {
+	dir := t.TempDir()
+	appHome := filepath.Join(dir, "appHome")
+	t.Setenv("JASPER_APP_HOME", appHome)
+	// Also clear JASPER_DATA_DIR so the legacy fallback doesn't interfere.
+	t.Setenv("JASPER_DATA_DIR", filepath.Join(dir, "datadir"))
+	orig := vaultFlag
+	vaultFlag = ""
+	t.Cleanup(func() { vaultFlag = orig })
+
+	// Write empty app.json.
+	state := &vault.AppState{RecentVaults: []vault.RecentVaultEntry{}}
+	writeAppJSON(t, appHome, state)
+
+	var buf bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&buf)
+
+	_ = runStatus(cmd, nil)
+	out := buf.String()
+	if !strings.Contains(out, "none selected") {
+		t.Errorf("want 'none selected' in output:\n%s", out)
 	}
 }

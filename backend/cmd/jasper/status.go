@@ -17,6 +17,7 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/installer"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 // statusProvider is the read-side of kardianos's service.Service that
@@ -41,7 +42,9 @@ var statusCmd = &cobra.Command{
 	Long: `Print the current Jasper service state in plain English:
   - Service state (running / stopped / unknown)
   - Bound HTTP address (e.g., 127.0.0.1:6683)
-  - Data directory location
+  - Current vault (from app.json or --vault override)
+  - Recent vaults count
+  - App home directory
   - Log file path
   - MCP-enabled flag and per-grant summary
 
@@ -51,9 +54,75 @@ This is read-only; it does not modify any service files.`,
 
 func runStatus(cmd *cobra.Command, _ []string) error {
 	out := cmd.OutOrStdout()
-	dataDir := os.Getenv("JASPER_DATA_DIR")
-	if dataDir == "" {
-		dataDir = config.DefaultDataDir()
+
+	// Resolve app.json path for vault registry.
+	appJSONPath, appJSONErr := vault.AppJSONPath()
+	appHome, appHomeErr := vault.AppHomePath()
+
+	// Load current vault info from app.json. On any error, fall through to
+	// the legacy data-dir path for backward compat.
+	var appState *vault.AppState
+	if appJSONErr == nil {
+		if state, err := vault.LoadAppJSON(appJSONPath); err == nil {
+			appState = state
+		}
+	}
+
+	// Resolve the data directory for legacy config + service status.
+	// With the vault model, this is either the vault from --vault flag,
+	// the current_vault from app.json, or the legacy default.
+	var dataDir string
+	if vaultFlag != "" {
+		if c, err := vault.Canonicalize(vaultFlag); err == nil {
+			dataDir = c
+		} else {
+			dataDir = vaultFlag
+		}
+	} else if appState != nil && appState.CurrentVault != "" {
+		dataDir = appState.CurrentVault
+	} else {
+		dataDir = os.Getenv("JASPER_DATA_DIR")
+		if dataDir == "" {
+			dataDir = config.DefaultDataDir()
+		}
+	}
+
+	// Print vault section (V-PARK-3 update).
+	if vaultFlag != "" {
+		canonical := dataDir
+		if _, err := fmt.Fprintf(out, "Vault:          (overridden via --vault) %s\n", canonical); err != nil {
+			return err
+		}
+	} else if appState != nil && appState.CurrentVault != "" {
+		// Find the matching recent_vaults entry for display_name.
+		name := filepath.Base(appState.CurrentVault)
+		for _, e := range appState.RecentVaults {
+			if e.Path == appState.CurrentVault {
+				name = e.DisplayName
+				break
+			}
+		}
+		if _, err := fmt.Fprintf(out, "Vault:          %s  (%s)\n", name, appState.CurrentVault); err != nil {
+			return err
+		}
+	} else {
+		if _, err := fmt.Fprintln(out, "Vault:          (none selected — server will serve the vault picker on next request)"); err != nil {
+			return err
+		}
+	}
+
+	recentCount := 0
+	if appState != nil {
+		recentCount = len(appState.RecentVaults)
+	}
+	if _, err := fmt.Fprintf(out, "Recent Vaults:  %d entries\n", recentCount); err != nil {
+		return err
+	}
+
+	if appHomeErr == nil {
+		if _, err := fmt.Fprintf(out, "App Home:       %s\n", appHome); err != nil {
+			return err
+		}
 	}
 
 	// Probe for an existing config.json. If absent (or unreadable), tell

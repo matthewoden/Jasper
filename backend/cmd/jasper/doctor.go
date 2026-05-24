@@ -23,6 +23,7 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/static"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
@@ -69,6 +70,22 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	}
 	cfg, _ := config.Load(dataDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
+	// V-PARK-3: load app.json for vault-aware checks.
+	appJSONPath, _ := vault.AppJSONPath()
+	appState, _ := vault.LoadAppJSON(appJSONPath)
+
+	// Honor --vault override for the current_vault checks.
+	currentVault := ""
+	if vaultFlag != "" {
+		if c, err := vault.Canonicalize(vaultFlag); err == nil {
+			currentVault = c
+		} else {
+			currentVault = vaultFlag
+		}
+	} else if appState != nil {
+		currentVault = appState.CurrentVault
+	}
+
 	checks := []DoctorCheck{
 		checkWslSystemd(),
 		checkLinger(),
@@ -78,6 +95,9 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		checkMigrationState(dataDir),
 		checkLogWritable(dataDir),
 		checkFrontendEmbed(),
+		checkAppJSONReadable(appJSONPath),
+		checkCurrentVaultExists(currentVault),
+		checkCurrentVaultHasJasperDir(currentVault),
 	}
 
 	anyFail := false
@@ -381,4 +401,56 @@ func checkFrontendEmbed() DoctorCheck {
 		}
 	}
 	return DoctorCheck{Name: "frontend embed", Status: "ok"}
+}
+
+// checkAppJSONReadable probes whether app.json is readable and parseable
+// (V-PARK-3). This is informational — the corrupt-backup-reset semantics
+// of LoadAppJSON mean a corrupt file auto-recovers; we surface the outcome.
+// JSON key: "app_json_readable"
+func checkAppJSONReadable(appJSONPath string) DoctorCheck {
+	_, err := vault.LoadAppJSON(appJSONPath)
+	if err != nil {
+		return DoctorCheck{
+			Name:   "app.json readable at " + appJSONPath,
+			Status: "fail",
+			Hint:   "app.json write failed after corrupt-backup-reset: " + err.Error(),
+		}
+	}
+	return DoctorCheck{Name: "app_json_readable", Status: "ok"}
+}
+
+// checkCurrentVaultExists verifies that the current_vault path exists on disk.
+// If no vault is selected, the check is skipped.
+// JSON key: "current_vault_exists"
+func checkCurrentVaultExists(currentVault string) DoctorCheck {
+	if currentVault == "" {
+		return DoctorCheck{Name: "current_vault_exists", Status: "skip", Hint: "no current_vault set"}
+	}
+	if _, err := os.Stat(currentVault); err != nil {
+		return DoctorCheck{
+			Name:   "current_vault_exists",
+			Status: "fail",
+			Hint:   "Run `jasper` and use the vault picker to select or create a vault.",
+		}
+	}
+	return DoctorCheck{Name: "current_vault_exists", Status: "ok"}
+}
+
+// checkCurrentVaultHasJasperDir verifies that the current vault's .jasper/
+// directory exists. Missing → the vault needs to be (re)opened via the picker
+// to initialize the .jasper/ skeleton.
+// JSON key: "current_vault_has_jasper_dir"
+func checkCurrentVaultHasJasperDir(currentVault string) DoctorCheck {
+	if currentVault == "" {
+		return DoctorCheck{Name: "current_vault_has_jasper_dir", Status: "skip", Hint: "no current_vault set"}
+	}
+	jasperDir := filepath.Join(currentVault, ".jasper")
+	if _, err := os.Stat(jasperDir); err != nil {
+		return DoctorCheck{
+			Name:   "current_vault_has_jasper_dir",
+			Status: "fail",
+			Hint:   "Vault folder exists but is missing .jasper/ — open the vault via the picker; the create-existing flow will recreate it.",
+		}
+	}
+	return DoctorCheck{Name: "current_vault_has_jasper_dir", Status: "ok"}
 }

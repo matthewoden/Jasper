@@ -11,12 +11,14 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	_ "modernc.org/sqlite"
 
 	"github.com/matthewoden/jasper/backend/internal/config"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 // TestDoctor_JSONFlag_EmitsParseableArray pins the --json contract:
@@ -39,8 +41,8 @@ func TestDoctor_JSONFlag_EmitsParseableArray(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &arr); err != nil {
 		t.Fatalf("--json output not parseable: %v\nbody=%s", err, buf.String())
 	}
-	if len(arr) != 8 {
-		t.Errorf("want 8 checks, got %d", len(arr))
+	if len(arr) != 11 {
+		t.Errorf("want 11 checks (8 original + 3 vault checks), got %d", len(arr))
 	}
 	// Every entry must have a name and a status field.
 	for i, c := range arr {
@@ -342,4 +344,151 @@ func TestRunDoctor_FailingChecks_ReturnsError(t *testing.T) {
 	if err == nil {
 		t.Errorf("want non-nil error when checks fail; got nil. output=%s", buf.String())
 	}
+}
+
+// writeTestAppJSON writes an app.json to JASPER_APP_HOME for doctor tests.
+func writeTestAppJSON(t *testing.T, appHome string, state *vault.AppState) {
+	t.Helper()
+	if err := os.MkdirAll(appHome, 0o700); err != nil {
+		t.Fatalf("mkdir app home: %v", err)
+	}
+	if err := vault.SaveAppJSON(filepath.Join(appHome, "app.json"), state); err != nil {
+		t.Fatalf("SaveAppJSON: %v", err)
+	}
+}
+
+// TestDoctor_AppJSONReadableCheck_PassesOnValidFile verifies that a valid
+// app.json produces a "app_json_readable" ok check.
+func TestDoctor_AppJSONReadableCheck_PassesOnValidFile(t *testing.T) {
+	dir := t.TempDir()
+	appHome := filepath.Join(dir, "appHome")
+	t.Setenv("JASPER_APP_HOME", appHome)
+	t.Setenv("JASPER_DATA_DIR", dir)
+	_ = os.Chmod(dir, 0o700)
+	t.Cleanup(func() { doctorJSON = false })
+	doctorJSON = false
+
+	state := &vault.AppState{RecentVaults: []vault.RecentVaultEntry{}}
+	writeTestAppJSON(t, appHome, state)
+
+	var buf bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&buf)
+	_ = runDoctor(cmd, nil)
+
+	if !strings.Contains(buf.String(), "app_json_readable") {
+		t.Errorf("want 'app_json_readable' check in output:\n%s", buf.String())
+	}
+	// The app_json_readable check should pass (✓).
+	// Scan for the line containing app_json_readable and verify no ✗ marker.
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, "app_json_readable") {
+			if strings.HasPrefix(line, "✗") {
+				t.Errorf("app_json_readable should pass, got fail line: %q", line)
+			}
+			return
+		}
+	}
+}
+
+// TestDoctor_CurrentVaultMissingCheck_FailsAfterDeletion verifies that when
+// current_vault is set but the folder is deleted, the check shows ✗.
+func TestDoctor_CurrentVaultMissingCheck_FailsAfterDeletion(t *testing.T) {
+	dir := t.TempDir()
+	appHome := filepath.Join(dir, "appHome")
+	t.Setenv("JASPER_APP_HOME", appHome)
+	t.Setenv("JASPER_DATA_DIR", dir)
+	_ = os.Chmod(dir, 0o700)
+	t.Cleanup(func() { doctorJSON = false })
+	doctorJSON = false
+	// Clear vault flag.
+	orig := vaultFlag
+	vaultFlag = ""
+	t.Cleanup(func() { vaultFlag = orig })
+
+	// Create a vault dir, write app.json pointing at it, then delete the dir.
+	vaultDir := filepath.Join(dir, "vault-to-delete")
+	if err := os.Mkdir(vaultDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	now := time.Now().UTC()
+	state := &vault.AppState{
+		CurrentVault: vaultDir,
+		RecentVaults: []vault.RecentVaultEntry{
+			{Path: vaultDir, DisplayName: "gone", LastOpenedAt: now, CreatedAt: now},
+		},
+	}
+	writeTestAppJSON(t, appHome, state)
+	if err := os.Remove(vaultDir); err != nil {
+		t.Fatalf("remove vault dir: %v", err)
+	}
+
+	var buf bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&buf)
+	_ = runDoctor(cmd, nil)
+
+	// Look for the ✗ current_vault_exists line.
+	found := false
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, "current_vault_exists") && strings.HasPrefix(line, "✗") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("want '✗ current_vault_exists on disk' after deletion:\n%s", buf.String())
+	}
+}
+
+// TestDoctor_JSONMode_IncludesNewChecks verifies that --json output includes
+// the three new vault-related check keys.
+func TestDoctor_JSONMode_IncludesNewChecks(t *testing.T) {
+	dir := t.TempDir()
+	appHome := filepath.Join(dir, "appHome")
+	t.Setenv("JASPER_APP_HOME", appHome)
+	t.Setenv("JASPER_DATA_DIR", dir)
+	_ = os.Chmod(dir, 0o700)
+	t.Cleanup(func() { doctorJSON = false })
+	doctorJSON = true
+	// Clear vault flag.
+	orig := vaultFlag
+	vaultFlag = ""
+	t.Cleanup(func() { vaultFlag = orig })
+
+	state := &vault.AppState{RecentVaults: []vault.RecentVaultEntry{}}
+	writeTestAppJSON(t, appHome, state)
+
+	var buf bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&buf)
+	_ = runDoctor(cmd, nil)
+
+	var arr []DoctorCheck
+	if err := json.Unmarshal(buf.Bytes(), &arr); err != nil {
+		t.Fatalf("--json output not parseable: %v\nbody=%s", err, buf.String())
+	}
+
+	wantKeys := []string{"app_json_readable", "current_vault_exists", "current_vault_has_jasper_dir"}
+	for _, key := range wantKeys {
+		found := false
+		for _, c := range arr {
+			if c.Name == key {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("key %q missing from JSON output; got names: %v", key, checkNames(arr))
+		}
+	}
+}
+
+// checkNames extracts the Name field from a slice of DoctorCheck.
+func checkNames(arr []DoctorCheck) []string {
+	names := make([]string, len(arr))
+	for i, c := range arr {
+		names[i] = c.Name
+	}
+	return names
 }
