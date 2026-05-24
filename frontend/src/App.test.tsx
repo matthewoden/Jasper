@@ -159,6 +159,7 @@ vi.mock("@tanstack/react-virtual", () => ({
 }));
 
 import App, {
+  AppShell,
   handleAppF2KeyDown,
   handleAppCmdP,
   handleAppCmdO,
@@ -168,6 +169,12 @@ import App, {
   handleAppCmdI,
   handleAppCmdShiftF,
 } from "./App";
+// Tests render <AppShell /> to bypass BootGate's async vault probe — BootGate
+// renders null during loading after the 08-17c+ UAT-2 fix, so the prior
+// render(<App />) flow no longer mounts the shell synchronously. AppShell is
+// the same ToastProvider + AppInner composition BootGate uses for vault-open
+// boots. The default <App /> export is preserved for boot-flow tests.
+void App;
 import { useTreeStore } from "./lib/useTreeStore";
 import { COMMAND_PALETTE_ENTRIES } from "./lib/shortcutsRegistry";
 
@@ -199,7 +206,7 @@ describe("<App /> — Phase 2 shell composition", () => {
       error: undefined,
     });
 
-    const { container } = render(<App />);
+    const { container } = render(<AppShell />);
     const root = container.firstChild as HTMLElement;
     expect(root).not.toBeNull();
     expect(root.style.display).toBe("flex");
@@ -236,7 +243,7 @@ describe("<App /> — Phase 2 shell composition", () => {
       error: undefined,
     });
 
-    render(<App />);
+    render(<AppShell />);
     expect(screen.queryByRole("alert")).toBeNull();
     const textarea = screen.getByLabelText(
       "Note content",
@@ -255,7 +262,7 @@ describe("<App /> — Phase 2 shell composition", () => {
       error: undefined,
     });
 
-    render(<App />);
+    render(<AppShell />);
     await waitFor(() =>
       expect(screen.getByRole("alert")).toBeInTheDocument(),
     );
@@ -281,7 +288,7 @@ describe("<App /> — Phase 2 shell composition", () => {
       error: undefined,
     });
 
-    render(<App />);
+    render(<AppShell />);
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: "Reset and rebuild database" }),
@@ -331,7 +338,7 @@ describe("<App /> — Phase 2 shell composition", () => {
       error: { code: "unrecoverable", message: "db is busy" },
     });
 
-    render(<App />);
+    render(<AppShell />);
     await waitFor(() =>
       expect(screen.getByRole("alert")).toBeInTheDocument(),
     );
@@ -363,7 +370,7 @@ describe("<App /> — Phase 2 shell composition", () => {
       data: { state: "ok" },
       error: undefined,
     });
-    render(<App />);
+    render(<AppShell />);
     // Radix Toast.Viewport renders as a wrapper div with
     // role="region" aria-label="Notifications (F8)". Asserting count==1
     // proves the provider is mounted exactly once at the App root.
@@ -386,7 +393,7 @@ describe("<App /> — Phase 2 shell composition", () => {
       data: { state: "ok" },
       error: undefined,
     });
-    render(<App />);
+    render(<AppShell />);
     await waitFor(() => {
       expect(
         screen.getByText("Select a note to start editing."),
@@ -548,7 +555,7 @@ describe("<App /> — Phase 2 shell composition", () => {
       const addSpy = vi.spyOn(document, "addEventListener");
       const removeSpy = vi.spyOn(document, "removeEventListener");
       try {
-        const { unmount } = render(<App />);
+        const { unmount } = render(<AppShell />);
         const keydownAdds = addSpy.mock.calls.filter(
           (c) => c[0] === "keydown",
         );
@@ -581,7 +588,7 @@ describe("<App /> — Phase 2 shell composition", () => {
         data: { state: "ok" },
         error: undefined,
       });
-      render(<App />);
+      render(<AppShell />);
       // Dispatch a real KeyboardEvent on document with a non-form
       // target (document.body is a generic element, not an input).
       await act(async () => {
@@ -614,7 +621,7 @@ describe("<App /> — Phase 2 shell composition", () => {
       data: { state: "ok" },
       error: undefined,
     });
-    render(<App />);
+    render(<AppShell />);
     await waitFor(() => {
       expect(
         screen.getByText("Select a note to start editing."),
@@ -656,12 +663,12 @@ describe("<App /> — Phase 4 session sync (Plan 04-05)", () => {
   });
 
   it("A-Phase4-1: mounts useSessionSync on render and captures handlers", async () => {
-    render(<App />);
+    render(<AppShell />);
     await waitFor(() => expect(capturedSessionSyncHandlers).not.toBeNull());
   });
 
   it("A-Phase4-2: onReindexStarted flips ReindexProgress to running (shows Rebuilding…)", async () => {
-    render(<App />);
+    render(<AppShell />);
     await waitFor(() => expect(capturedSessionSyncHandlers).not.toBeNull());
     act(() => {
       capturedSessionSyncHandlers!.onReindexStarted();
@@ -673,7 +680,7 @@ describe("<App /> — Phase 4 session sync (Plan 04-05)", () => {
   });
 
   it("A-Phase4-3: onReindexComplete returns ReindexProgress to idle (hides Rebuilding…)", async () => {
-    render(<App />);
+    render(<AppShell />);
     await waitFor(() => expect(capturedSessionSyncHandlers).not.toBeNull());
     act(() => {
       capturedSessionSyncHandlers!.onReindexStarted();
@@ -713,17 +720,17 @@ describe("<App /> — Phase 6.6 two-row grid + chrome mounts (Plan 06.6-11)", ()
   });
 
   it("A6.6-1: App renders a TopBar (data-testid='top-bar')", async () => {
-    render(<App />);
+    render(<AppShell />);
     expect(screen.getByTestId("top-bar")).toBeInTheDocument();
   });
 
   it("A6.6-2: App renders a StatusBar (data-testid='status-bar')", async () => {
-    render(<App />);
+    render(<AppShell />);
     expect(screen.getByTestId("status-bar")).toBeInTheDocument();
   });
 
   it("A6.6-3: two-row grid — gridTemplateRows is 'auto minmax(0, 1fr)'", async () => {
-    render(<App />);
+    render(<AppShell />);
     const grid = document.querySelector(
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
@@ -733,7 +740,7 @@ describe("<App /> — Phase 6.6 two-row grid + chrome mounts (Plan 06.6-11)", ()
 
   it("A6.6-4: when notesSidebarVisible=true, sidebar column is sidebarWidth px (260px default)", async () => {
     useTreeStore.setState({ notesSidebarVisible: true, sidebarWidth: 260 });
-    render(<App />);
+    render(<AppShell />);
     const grid = document.querySelector(
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
@@ -743,7 +750,7 @@ describe("<App /> — Phase 6.6 two-row grid + chrome mounts (Plan 06.6-11)", ()
 
   it("A6.6-5: when notesSidebarVisible=false, sidebar column is 0px", async () => {
     useTreeStore.setState({ notesSidebarVisible: false });
-    render(<App />);
+    render(<AppShell />);
     const grid = document.querySelector(
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
@@ -753,7 +760,7 @@ describe("<App /> — Phase 6.6 two-row grid + chrome mounts (Plan 06.6-11)", ()
 
   it("A6.6-6: when backlinksRailExpanded=false, rail column is 0px", async () => {
     useTreeStore.setState({ backlinksRailExpanded: false });
-    render(<App />);
+    render(<AppShell />);
     const grid = document.querySelector(
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
@@ -762,7 +769,7 @@ describe("<App /> — Phase 6.6 two-row grid + chrome mounts (Plan 06.6-11)", ()
   });
 
   it("A6.6-7: StatusBar is a sibling AFTER the grid div (not a grid child)", async () => {
-    render(<App />);
+    render(<AppShell />);
     const grid = document.querySelector(
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
@@ -773,7 +780,7 @@ describe("<App /> — Phase 6.6 two-row grid + chrome mounts (Plan 06.6-11)", ()
   });
 
   it("A6.6-8: TopBar has gridRow=1 gridColumn=2 style (set by App.tsx)", async () => {
-    render(<App />);
+    render(<AppShell />);
     const topBar = screen.getByTestId("top-bar");
     expect(topBar.style.gridRow).toBe("1");
     expect(topBar.style.gridColumn).toBe("2");
@@ -1101,7 +1108,7 @@ describe("Plan 07-17 — cold Cmd+P shows all palette commands (UAT #2 / BLOCKER
   });
 
   it("cold Cmd+P shows all 10 commands (Plan 07-27: Find removed; Plan 08-06: Share/Reveal added; Plan 08-17c: Switch vault… added)", async () => {
-    render(<App />);
+    render(<AppShell />);
 
     // Fire the global Cmd+P handler at window (App attaches handleAppCmdP
     // to window keydown in capture phase). Synthesize the same event.
@@ -1140,7 +1147,7 @@ describe("Plan 07-17 — commandActions rewire (UAT #3, #5)", () => {
   });
 
   it("commandActions.onNewNote calls createNoteAt with '' (vault root) and closes palette", async () => {
-    render(<App />);
+    render(<AppShell />);
 
     // Open palette in commands mode
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
@@ -1157,7 +1164,7 @@ describe("Plan 07-17 — commandActions rewire (UAT #3, #5)", () => {
   });
 
   it("commandActions.onSwitchNote sets paletteMode='notes' without closing palette", async () => {
-    render(<App />);
+    render(<AppShell />);
 
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
 

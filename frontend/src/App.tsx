@@ -336,24 +336,39 @@ export function handleAppCmdI(e: KeyboardEvent): void {
  * (the picker IS the page). If a vault is open, renders the normal app shell.
  * Errors err on the side of showing the picker to avoid a blank-page state.
  *
- * Implementation note: the main shell renders immediately (optimistic) and the
- * boot state is checked asynchronously. When no vault is found, the VaultPicker
- * overlays the shell in boot mode (non-dismissable). This avoids a blank-screen
- * flash during the initial network check.
+ * Implementation note: the boot check is local (127.0.0.1) and resolves in a
+ * few ms. We render nothing during the check rather than optimistically mounting
+ * AppInner — the prior optimistic mount spawned the WebSocket against
+ * /api/v1/ws which is dormant in no-vault mode, producing console errors that
+ * confused first-run UAT. The brief blank is preferable to a torn-mount race.
  */
+type BootState = "loading" | "noVault" | "vaultOpen";
+
 function BootGate() {
-  const [noVault, setNoVault] = useState(false);
+  const [state, setState] = useState<BootState>("loading");
 
   useEffect(() => {
     vaultApi
       .getCurrent()
       .then((current) => {
-        if (current === null) setNoVault(true);
+        setState(current === null ? "noVault" : "vaultOpen");
       })
-      .catch(() => setNoVault(true));
+      .catch(() => setState("noVault"));
   }, []);
 
-  if (noVault) return <VaultPicker mode="boot" />;
+  if (state === "loading") return null;
+  if (state === "noVault") return <VaultPicker mode="boot" />;
+  return (
+    <ToastProvider>
+      <AppInner />
+    </ToastProvider>
+  );
+}
+
+// AppShell — exported wrapper that pairs ToastProvider with AppInner so tests
+// rendering the main shell don't have to remember the provider. BootGate uses
+// the inline composition above for production, but the shapes match.
+export function AppShell() {
   return (
     <ToastProvider>
       <AppInner />
@@ -365,7 +380,10 @@ export default function App() {
   return <BootGate />;
 }
 
-function AppInner() {
+// Exported for tests that exercise the app composition without going through
+// BootGate's async vault probe. Tests render <AppInner /> directly so the
+// shell is mounted synchronously; BootGate gating is covered separately.
+export function AppInner() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reindexPhase, setReindexPhase] = useState<ReindexPhase>("idle");
   const [reindexError, setReindexError] = useState<string | undefined>();
