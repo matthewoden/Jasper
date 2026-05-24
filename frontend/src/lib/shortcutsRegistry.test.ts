@@ -7,7 +7,7 @@ import {
 } from "./shortcutsRegistry";
 
 describe("shortcutsRegistry", () => {
-  it("registry has all 9 locked Cmd+P palette entries (Plan 08-06 added Share/Reveal)", () => {
+  it("registry has all 10 locked Cmd+P palette entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault)", () => {
     const labels = COMMAND_PALETTE_ENTRIES.map((s) => s.label);
     expect(labels).toContain("New note");
     expect(labels).toContain("Save");
@@ -21,7 +21,9 @@ describe("shortcutsRegistry", () => {
     expect(labels).toContain("Show keyboard shortcuts");
     // Plan 08-06 (D-26 / SHARE-01 Mount C) — new "Share" group entry.
     expect(labels).toContain("Show current note in file manager");
-    expect(COMMAND_PALETTE_ENTRIES.length).toBe(9);
+    // Plan 08-17c (V7) — vault group "Switch vault…" command.
+    expect(labels).toContain("Switch vault…");
+    expect(COMMAND_PALETTE_ENTRIES.length).toBe(10);
   });
 
   it("cheat-sheet contains CM6 built-in editor entries", () => {
@@ -43,6 +45,7 @@ describe("shortcutsRegistry", () => {
     // the focus-search Cmd+Shift+F entry now that search is a modal.
     // Plan 08-06 (UI-SPEC §Surface 4 Mount C): added "Share" between
     // "View" and "Index" for the reveal command.
+    // Plan 08-17c (V7): added "Vault" group after "Help" for vault management.
     expect(GROUP_ORDER).toEqual([
       "File",
       "Editor",
@@ -53,6 +56,7 @@ describe("shortcutsRegistry", () => {
       "Share",
       "Index",
       "Help",
+      "Vault",
     ]);
   });
 
@@ -78,11 +82,11 @@ describe("Plan 07-27 — Cmd+F removal (UAT-2 N6)", () => {
     expect(found).toBeUndefined();
   });
 
-  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 9 entries (Plan 08-06 added Share/Reveal; Find still removed)", () => {
+  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 10 entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Find still removed)", () => {
     // Plan 07-27 (UAT-2 N6) removed "Find in note" → 8 entries.
-    // Plan 08-06 (D-26 / SHARE-01 Mount C) added the share-reveal command
-    // → 9 entries. This assertion bakes both deltas in.
-    expect(COMMAND_PALETTE_ENTRIES.length).toBe(9);
+    // Plan 08-06 (D-26 / SHARE-01 Mount C) added the share-reveal command → 9 entries.
+    // Plan 08-17c (V7) added "Switch vault…" to Vault group → 10 entries.
+    expect(COMMAND_PALETTE_ENTRIES.length).toBe(10);
   });
 });
 

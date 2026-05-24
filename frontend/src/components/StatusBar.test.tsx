@@ -43,7 +43,36 @@ vi.mock("../api/client", () => ({
   },
 }));
 
+// Plan 08-17c: mock useVaultPicker so StatusBar doesn't spin up real API calls.
+// Default: current=null (no vault active) so the vault segment is not rendered.
+const mockUseVaultPickerOpen = vi.fn();
+vi.mock("../lib/useVaultPicker", () => ({
+  useVaultPicker: vi.fn(() => ({
+    isOpen: false,
+    open: mockUseVaultPickerOpen,
+    close: vi.fn(),
+    current: null,
+    recents: [],
+    banner: "",
+    isLoading: false,
+    refresh: vi.fn(),
+  })),
+}));
+
+// Plan 08-17c: mock vaultApi used by VaultPicker (mounted as switch-mode modal in StatusBar).
+vi.mock("../lib/vaultApi", () => ({
+  vaultApi: {
+    getCurrent: vi.fn().mockResolvedValue(null),
+    getRecent: vi.fn().mockResolvedValue({ vaults: [], banner: "" }),
+    open: vi.fn().mockResolvedValue({}),
+    create: vi.fn().mockResolvedValue({}),
+    forget: vi.fn().mockResolvedValue(undefined),
+  },
+  validateVaultPath: vi.fn().mockReturnValue({ ok: true }),
+}));
+
 import { StatusBar } from "./StatusBar";
+import { useVaultPicker } from "../lib/useVaultPicker";
 
 describe("<StatusBar />", () => {
   it("Test1_RendersFooterWithCorrectStyles", () => {
@@ -140,5 +169,69 @@ describe("StatusBar — Plan 07-38 (UAT-4 N9) restored SaveIndicator-button", ()
     render(<StatusBar />);
     // Title attribute used by Phase 06.6 refresh button.
     expect(screen.queryByTitle("Reindex notes")).toBeNull();
+  });
+});
+
+// ── Plan 08-17c (V7) — vault segment in StatusBar ────────────────────────────
+describe("StatusBar — Plan 08-17c vault segment", () => {
+  it("SB-VAULT-1: vault segment NOT rendered when current is null", () => {
+    vi.mocked(useVaultPicker).mockReturnValue({
+      isOpen: false,
+      open: vi.fn(),
+      close: vi.fn(),
+      current: null,
+      recents: [],
+      banner: "",
+      isLoading: false,
+      refresh: vi.fn(),
+    });
+    render(<StatusBar />);
+    expect(screen.queryByTestId("status-bar-vault")).toBeNull();
+  });
+
+  it("SB-VAULT-2: vault segment renders display_name when current is non-null", () => {
+    vi.mocked(useVaultPicker).mockReturnValue({
+      isOpen: false,
+      open: vi.fn(),
+      close: vi.fn(),
+      current: {
+        path: "/Users/me/vault",
+        display_name: "My Notes",
+        last_opened_at: "2026-05-24T00:00:00Z",
+        created_at: "2026-05-24T00:00:00Z",
+        missing: false,
+      },
+      recents: [],
+      banner: "",
+      isLoading: false,
+      refresh: vi.fn(),
+    });
+    render(<StatusBar />);
+    expect(screen.getByTestId("status-bar-vault")).toBeInTheDocument();
+    expect(screen.getByTestId("status-bar-vault")).toHaveTextContent("My Notes");
+  });
+
+  it("SB-VAULT-3: clicking the vault segment calls open() from useVaultPicker", () => {
+    const openFn = vi.fn();
+    vi.mocked(useVaultPicker).mockReturnValue({
+      isOpen: false,
+      open: openFn,
+      close: vi.fn(),
+      current: {
+        path: "/Users/me/vault",
+        display_name: "My Notes",
+        last_opened_at: "2026-05-24T00:00:00Z",
+        created_at: "2026-05-24T00:00:00Z",
+        missing: false,
+      },
+      recents: [],
+      banner: "",
+      isLoading: false,
+      refresh: vi.fn(),
+    });
+    render(<StatusBar />);
+    const segment = screen.getByTestId("status-bar-vault");
+    segment.click();
+    expect(openFn).toHaveBeenCalled();
   });
 });

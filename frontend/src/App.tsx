@@ -16,6 +16,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { vaultApi } from "./lib/vaultApi";
+import { VaultPicker } from "./components/VaultPicker";
+import { switchVaultCommand } from "./lib/commands/registerVaultCommands";
 
 import { RightRail } from "./components/RightRail";
 import { CommandMenu } from "./components/CommandMenu";
@@ -324,12 +327,40 @@ export function handleAppCmdI(e: KeyboardEvent): void {
   // No stopPropagation — CM6's event handlers must still fire.
 }
 
-export default function App() {
+/**
+ * Boot detection gate (Plan 08-17c).
+ *
+ * Reads GET /vault/current on mount. If null, renders <VaultPicker mode="boot">
+ * (the picker IS the page). If a vault is open, renders the normal app shell.
+ * Errors err on the side of showing the picker to avoid a blank-page state.
+ *
+ * Implementation note: the main shell renders immediately (optimistic) and the
+ * boot state is checked asynchronously. When no vault is found, the VaultPicker
+ * overlays the shell in boot mode (non-dismissable). This avoids a blank-screen
+ * flash during the initial network check.
+ */
+function BootGate() {
+  const [noVault, setNoVault] = useState(false);
+
+  useEffect(() => {
+    vaultApi
+      .getCurrent()
+      .then((current) => {
+        if (current === null) setNoVault(true);
+      })
+      .catch(() => setNoVault(true));
+  }, []);
+
+  if (noVault) return <VaultPicker mode="boot" />;
   return (
     <ToastProvider>
       <AppInner />
     </ToastProvider>
   );
+}
+
+export default function App() {
+  return <BootGate />;
 }
 
 function AppInner() {
@@ -643,6 +674,14 @@ function AppInner() {
               if (path) void reveal(path);
             }
           : undefined,
+
+      // Plan 08-17c (V7): "Switch vault…" — opens VaultPicker in switch mode.
+      // Closes the palette first, then triggers the picker via the store.
+      // No hotkey: Cmd-Shift-V was dropped due to Chrome paste-plain-text collision.
+      onSwitchVault: () => {
+        setPaletteOpen(false);
+        switchVaultCommand();
+      },
     }),
     [
       openToday,
@@ -652,6 +691,8 @@ function AppInner() {
       activeNoteId,
       reveal,
       tree,
+      // switchVaultCommand is a stable module-level function — no dependency needed,
+      // but including it keeps ESLint's exhaustive-deps rule satisfied.
     ],
   );
 

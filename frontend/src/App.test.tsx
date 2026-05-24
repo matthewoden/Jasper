@@ -14,6 +14,41 @@ import {
   vi,
 } from "vitest";
 
+// Plan 08-17c — mock vaultApi so BootGate + StatusBar (via useVaultPicker) do not
+// trigger real network calls in App tests. Default: getCurrent returns a vault
+// entry (non-null) so BootGate renders the main shell, not <VaultPicker mode="boot">.
+vi.mock("./lib/vaultApi", () => ({
+  vaultApi: {
+    getCurrent: vi.fn().mockResolvedValue({
+      path: "/vault",
+      display_name: "Test Vault",
+      last_opened_at: "2026-05-24T00:00:00Z",
+      created_at: "2026-05-24T00:00:00Z",
+      missing: false,
+    }),
+    getRecent: vi.fn().mockResolvedValue({ vaults: [], banner: "" }),
+    open: vi.fn().mockResolvedValue({}),
+    create: vi.fn().mockResolvedValue({}),
+    forget: vi.fn().mockResolvedValue(undefined),
+  },
+  validateVaultPath: vi.fn().mockReturnValue({ ok: true }),
+}));
+
+// Plan 08-17c — mock useVaultPicker so StatusBar doesn't spin up real API calls.
+// Returns current=null so the vault segment is hidden in App tests.
+vi.mock("./lib/useVaultPicker", () => ({
+  useVaultPicker: vi.fn(() => ({
+    isOpen: false,
+    open: vi.fn(),
+    close: vi.fn(),
+    current: null,
+    recents: [],
+    banner: "",
+    isLoading: false,
+    refresh: vi.fn(),
+  })),
+}));
+
 vi.mock("./lib/notesApi", () => ({
   ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
   getNote: vi.fn().mockResolvedValue({
@@ -1065,7 +1100,7 @@ describe("Plan 07-17 — cold Cmd+P shows all palette commands (UAT #2 / BLOCKER
     useTreeStore.setState({ paletteOpen: false, paletteMode: "notes" });
   });
 
-  it("cold Cmd+P shows all 9 commands (Plan 07-27: Find removed; Plan 08-06: Share/Reveal added)", async () => {
+  it("cold Cmd+P shows all 10 commands (Plan 07-27: Find removed; Plan 08-06: Share/Reveal added; Plan 08-17c: Switch vault… added)", async () => {
     render(<App />);
 
     // Fire the global Cmd+P handler at window (App attaches handleAppCmdP
@@ -1080,9 +1115,9 @@ describe("Plan 07-17 — cold Cmd+P shows all palette commands (UAT #2 / BLOCKER
     expect(palette).toBeInTheDocument();
 
     const commandLabels = COMMAND_PALETTE_ENTRIES.map((e) => e.label);
-    // Sanity: 9 entries (8 after Plan 07-27's Find removal + 1 from Plan 08-06's
-    // share-reveal-current-note addition).
-    expect(commandLabels).toHaveLength(9);
+    // Sanity: 10 entries (8 after Plan 07-27's Find removal + 1 from Plan 08-06's
+    // share-reveal-current-note addition + 1 from Plan 08-17c's "Switch vault…").
+    expect(commandLabels).toHaveLength(10);
     for (const label of commandLabels) {
       expect(within(palette).getByText(label)).toBeInTheDocument();
     }

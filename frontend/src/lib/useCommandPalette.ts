@@ -26,6 +26,9 @@ export interface CommandActions {
   // resolve the active note's path before invoking; if no note is active,
   // the caller passes undefined so the palette renders the entry dimmed.
   onShareRevealCurrentNote?: () => void;
+  // Plan 08-17c (V7): opens the VaultPicker in switch mode.
+  // No hotkey (Cmd-Shift-V dropped per V7 — Chrome paste collision).
+  onSwitchVault?: () => void;
 }
 
 /**
@@ -68,6 +71,8 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       "show-shortcuts": actions.onShowShortcuts,
       // Plan 08-06: undefined when no note is active (palette renders dimmed).
       "share-reveal-current-note": actions.onShareRevealCurrentNote,
+      // Plan 08-17c (V7): opens the VaultPicker in switch mode.
+      "vault.switch": actions.onSwitchVault,
     }),
     [
       actions.onNewNote,
@@ -79,6 +84,7 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       actions.onRebuildIndex,
       actions.onShowShortcuts,
       actions.onShareRevealCurrentNote,
+      actions.onSwitchVault,
     ],
   );
 
