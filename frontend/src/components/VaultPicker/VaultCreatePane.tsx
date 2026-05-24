@@ -21,6 +21,7 @@
 import { useState } from "react";
 import { vaultApi, validateVaultPath } from "../../lib/vaultApi";
 import { applyTheme } from "../../lib/useTheme";
+import { FolderPicker } from "./FolderPicker";
 
 export interface VaultCreatePaneProps {
   onCreated: () => void;
@@ -48,9 +49,9 @@ const HELPER_STYLE: React.CSSProperties = {
 };
 
 export function VaultCreatePane({ onCreated }: VaultCreatePaneProps) {
-  // Section 1: vault path. Stays empty until the user types or (Pass 2) picks
-  // a folder via the upcoming Browse… modal.
+  // Section 1: vault path. Set via the Browse modal or typed directly.
   const [path, setPath] = useState("");
+  const [browsing, setBrowsing] = useState(false);
 
   // Section 2: theme. Live-apply on change so the modal flips as the radio
   // is clicked — feedback before commit.
@@ -109,21 +110,51 @@ export function VaultCreatePane({ onCreated }: VaultCreatePaneProps) {
         <label className="vault-picker-field-label" htmlFor="vault-create-path">
           Absolute path
         </label>
-        <input
-          id="vault-create-path"
-          className="vault-picker-input"
-          type="text"
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          placeholder="/Users/you/Documents/Jasper"
-          data-testid="vault-create-path-input"
-          autoFocus
-        />
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            id="vault-create-path"
+            className="vault-picker-input"
+            type="text"
+            value={path}
+            onChange={(e) => setPath(e.target.value)}
+            placeholder="/Users/you/Documents/Jasper"
+            data-testid="vault-create-path-input"
+            autoFocus
+            style={{ flex: 1 }}
+          />
+          <button
+            type="button"
+            onClick={() => setBrowsing(true)}
+            data-testid="vault-create-browse"
+            style={{
+              appearance: "none",
+              background: "transparent",
+              color: "var(--color-fg)",
+              border: "1px solid var(--color-border)",
+              borderRadius: 6,
+              padding: "8px 14px",
+              fontSize: 14,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Browse…
+          </button>
+        </div>
         {!pathValidation.ok && path !== "" && (
           <div style={{ fontSize: 12, color: "var(--color-destructive)", marginTop: 4 }}>
             {pathValidation.message}
           </div>
         )}
+        <FolderPicker
+          open={browsing}
+          initialPath={path || undefined}
+          onCancel={() => setBrowsing(false)}
+          onSelect={(p) => {
+            setPath(p);
+            setBrowsing(false);
+          }}
+        />
       </section>
 
       {/* Section 2: Theme — live preview */}

@@ -856,6 +856,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/fs/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List subdirectories of an absolute path (UAT-2
+         * @description Returns the subdirectories of the given absolute path, plus the
+         *     canonical absolute path and the parent path (for breadcrumbs).
+         *     Used exclusively by the vault picker's "Browse…" modal to let the
+         *     user click through folders without typing an absolute path.
+         *
+         *     Safety posture: Jasper runs as the local user and is bound to
+         *     loopback, so the user already has filesystem access at their own
+         *     privilege level — this endpoint exposes no escalation. The handler
+         *     still:
+         *       - Rejects non-absolute paths (400 invalid_path).
+         *       - Canonicalizes via filepath.Abs + filepath.Clean (symlink
+         *         resolution happens via os.ReadDir's stat per entry, NOT via
+         *         EvalSymlinks on the parent — we don't auto-leak the link
+         *         target if the parent itself is a symlink).
+         *       - Returns 400 (not 404) when the path is missing so a typo
+         *         doesn't reveal which paths exist outside the user's view.
+         *       - Returns 403 on EACCES so the picker can surface "no permission."
+         *
+         *     When `path` is omitted, defaults to the user's home directory.
+         */
+        get: operations["getFsList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notes/by-path": {
         parameters: {
             query?: never;
@@ -1541,6 +1579,23 @@ export interface components {
             error: "vault_switch_in_progress";
             /** @description The vault path that was being switched to when the 409 fired. */
             current_target: string;
+        };
+        FsListEntry: {
+            /** @description Display name of the subdirectory (basename). */
+            name: string;
+            /** @description Absolute path of the subdirectory. */
+            path: string;
+        };
+        FsListResponse: {
+            /** @description Canonical absolute path of the directory that was listed. */
+            path: string;
+            /**
+             * @description Absolute path of the parent directory. Empty string when path is the
+             *     filesystem root (so the picker can hide the up-arrow / breadcrumb-back affordance).
+             */
+            parent: string;
+            /** @description Subdirectories of `path`, sorted case-insensitive alphabetical. */
+            entries: components["schemas"]["FsListEntry"][];
         };
     };
     responses: never;
@@ -3224,6 +3279,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VaultSwitchInProgressResponse"];
+                };
+            };
+        };
+    };
+    getFsList: {
+        parameters: {
+            query?: {
+                /** @description Absolute path to enumerate. Defaults to $HOME when omitted. */
+                path?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical path + parent + subdirectory entries (alphabetical, case-insensitive) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FsListResponse"];
+                };
+            };
+            /** @description Path is not absolute, missing, or not a directory */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Permission denied on the requested directory */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

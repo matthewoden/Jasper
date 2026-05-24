@@ -262,6 +262,62 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
     }
   });
 
+  test("folder picker — browse, click into a subfolder, select returns that path", async ({ page }) => {
+    const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-fs-pick-app-"));
+    // Build a known directory tree under the OS tmp dir so we can navigate
+    // to a deterministic subfolder name regardless of $HOME's contents.
+    const browseRoot = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-fs-pick-root-"));
+    const targetSub = "uat-picker-target";
+    fs.mkdirSync(path.join(browseRoot, targetSub));
+    fs.mkdirSync(path.join(browseRoot, "another-sibling"));
+
+    let handle: VaultHandle | undefined;
+    try {
+      handle = await spawnVaultJasper(appHome);
+      await page.goto(handle.baseURL + "/");
+
+      // Pre-fill the input with the deterministic tmp root so Browse opens there
+      // (the picker uses the input as its initial path when non-empty).
+      await page.getByTestId("vault-create-path-input").fill(browseRoot);
+      await page.getByTestId("vault-create-browse").click();
+
+      // FolderPicker modal mounts above the vault picker.
+      const folderPicker = page.getByTestId("folder-picker");
+      await expectActuallyPainted(folderPicker, {
+        minWidth: 400,
+        minHeight: 300,
+        description: "folder picker modal",
+      });
+
+      // Current path shows the canonical root we started from. macOS resolves
+      // /var/folders/... to /private/var/folders/..., so accept either prefix.
+      await expect(page.getByTestId("folder-picker-current-path")).toContainText(
+        new RegExp(path.basename(browseRoot)),
+      );
+
+      // Entries list contains our two seeded subdirs alphabetically.
+      const entries = page.getByTestId("folder-picker-entries");
+      await expect(entries.locator("button")).toHaveCount(2);
+      await expect(entries.locator("button").first()).toContainText("another-sibling");
+
+      // Click into the target subfolder.
+      await page.getByTestId(`folder-picker-entry-${targetSub}`).click();
+      await expect(page.getByTestId("folder-picker-current-path")).toContainText(targetSub);
+
+      // Select returns the absolute path to the create form's input.
+      await page.getByTestId("folder-picker-select").click();
+      // FolderPicker closes; vault picker still open with input populated.
+      await expect(folderPicker).toHaveCount(0);
+      const inputValue = await page.getByTestId("vault-create-path-input").inputValue();
+      expect(inputValue).toContain(targetSub);
+      expect(path.isAbsolute(inputValue)).toBe(true);
+    } finally {
+      handle?.kill();
+      fs.rmSync(appHome, { recursive: true, force: true });
+      fs.rmSync(browseRoot, { recursive: true, force: true });
+    }
+  });
+
   test("create new vault → StatusBar shows vault display_name after reload", async ({ page }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-vault-e2e-app-"));
     const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-vault-e2e-vault-"));

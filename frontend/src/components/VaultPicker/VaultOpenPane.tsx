@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { vaultApi, validateVaultPath } from "../../lib/vaultApi";
+import { FolderPicker } from "./FolderPicker";
 
 export interface VaultOpenPaneProps {
   initialPath?: string;
@@ -29,6 +30,7 @@ export function VaultOpenPane({
   const [path, setPath] = useState(initialPath);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
 
   // Sync initialPath changes (e.g. when Reconnect pre-fills the path)
   useEffect(() => {
@@ -66,15 +68,45 @@ export function VaultOpenPane({
       <label className="vault-picker-field-label" htmlFor="vault-open-path">
         Vault folder
       </label>
-      <input
-        id="vault-open-path"
-        className="vault-picker-input"
-        type="text"
-        value={path}
-        onChange={(e) => setPath(e.target.value)}
-        placeholder="/Users/you/Documents/Jasper"
-        data-testid="vault-open-input"
-        autoFocus
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          id="vault-open-path"
+          className="vault-picker-input"
+          type="text"
+          value={path}
+          onChange={(e) => setPath(e.target.value)}
+          placeholder="/Users/you/Documents/Jasper"
+          data-testid="vault-open-input"
+          autoFocus
+          style={{ flex: 1 }}
+        />
+        <button
+          type="button"
+          onClick={() => setBrowsing(true)}
+          data-testid="vault-open-browse"
+          style={{
+            appearance: "none",
+            background: "transparent",
+            color: "var(--color-fg)",
+            border: "1px solid var(--color-border)",
+            borderRadius: 6,
+            padding: "8px 14px",
+            fontSize: 14,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Browse…
+        </button>
+      </div>
+      <FolderPicker
+        open={browsing}
+        initialPath={path || undefined}
+        onCancel={() => setBrowsing(false)}
+        onSelect={(p) => {
+          setPath(p);
+          setBrowsing(false);
+        }}
       />
       {!validation.ok && path !== "" && (
         <div className="vault-picker-error" style={{ marginTop: 8 }}>

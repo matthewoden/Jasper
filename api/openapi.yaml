@@ -1429,6 +1429,57 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VaultSwitchInProgressResponse"
+  /fs/list:
+    get:
+      tags: [fs]
+      operationId: getFsList
+      summary: List subdirectories of an absolute path (UAT-2 #1d folder picker)
+      description: |
+        Returns the subdirectories of the given absolute path, plus the
+        canonical absolute path and the parent path (for breadcrumbs).
+        Used exclusively by the vault picker's "Browse…" modal to let the
+        user click through folders without typing an absolute path.
+
+        Safety posture: Jasper runs as the local user and is bound to
+        loopback, so the user already has filesystem access at their own
+        privilege level — this endpoint exposes no escalation. The handler
+        still:
+          - Rejects non-absolute paths (400 invalid_path).
+          - Canonicalizes via filepath.Abs + filepath.Clean (symlink
+            resolution happens via os.ReadDir's stat per entry, NOT via
+            EvalSymlinks on the parent — we don't auto-leak the link
+            target if the parent itself is a symlink).
+          - Returns 400 (not 404) when the path is missing so a typo
+            doesn't reveal which paths exist outside the user's view.
+          - Returns 403 on EACCES so the picker can surface "no permission."
+
+        When `path` is omitted, defaults to the user's home directory.
+      parameters:
+        - name: path
+          in: query
+          required: false
+          description: Absolute path to enumerate. Defaults to $HOME when omitted.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Canonical path + parent + subdirectory entries (alphabetical, case-insensitive)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FsListResponse"
+        "400":
+          description: Path is not absolute, missing, or not a directory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Permission denied on the requested directory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /notes/by-path:
     get:
       tags: [notes]
@@ -2430,3 +2481,30 @@ components:
         current_target:
           type: string
           description: The vault path that was being switched to when the 409 fired.
+    FsListEntry:
+      type: object
+      required: [name, path]
+      properties:
+        name:
+          type: string
+          description: Display name of the subdirectory (basename).
+        path:
+          type: string
+          description: Absolute path of the subdirectory.
+    FsListResponse:
+      type: object
+      required: [path, parent, entries]
+      properties:
+        path:
+          type: string
+          description: Canonical absolute path of the directory that was listed.
+        parent:
+          type: string
+          description: |
+            Absolute path of the parent directory. Empty string when path is the
+            filesystem root (so the picker can hide the up-arrow / breadcrumb-back affordance).
+        entries:
+          type: array
+          description: Subdirectories of `path`, sorted case-insensitive alphabetical.
+          items:
+            $ref: "#/components/schemas/FsListEntry"
