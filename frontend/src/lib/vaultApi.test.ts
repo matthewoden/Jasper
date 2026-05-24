@@ -89,14 +89,22 @@ describe("vaultApi openapi-fetch wrappers", () => {
     mockPost = vi.mocked(client.POST);
   });
 
-  it("getCurrent returns null when no vault open", async () => {
-    mockGet.mockResolvedValueOnce({ data: null, error: undefined });
+  it("getCurrent returns null when no vault open (empty wrapper from omitempty)", async () => {
+    // Real backend wire shape: VaultCurrentResponse has `vault` as omitempty,
+    // so the no-vault case sends `{}` (not `null`). Verify unwrap handles both.
+    mockGet.mockResolvedValueOnce({ data: {}, error: undefined });
     const result = await vaultApi.getCurrent();
     expect(result).toBeNull();
     expect(mockGet).toHaveBeenCalledWith("/vault/current");
   });
 
-  it("getCurrent returns entry when vault open", async () => {
+  it("getCurrent returns null when wrapper.vault is explicitly null", async () => {
+    mockGet.mockResolvedValueOnce({ data: { vault: null }, error: undefined });
+    const result = await vaultApi.getCurrent();
+    expect(result).toBeNull();
+  });
+
+  it("getCurrent returns entry when vault open (unwraps data.vault)", async () => {
     const entry = {
       path: "/Users/me/vault",
       display_name: "My Vault",
@@ -104,7 +112,7 @@ describe("vaultApi openapi-fetch wrappers", () => {
       created_at: "2026-05-24T00:00:00Z",
       missing: false,
     };
-    mockGet.mockResolvedValueOnce({ data: entry, error: undefined });
+    mockGet.mockResolvedValueOnce({ data: { vault: entry }, error: undefined });
     const result = await vaultApi.getCurrent();
     expect(result).toEqual(entry);
   });

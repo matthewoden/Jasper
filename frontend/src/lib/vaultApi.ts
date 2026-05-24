@@ -110,13 +110,17 @@ export const vaultApi = {
   /**
    * GET /api/v1/vault/current
    * Returns the open vault's RecentVaultEntry, or null when no vault is open.
+   *
+   * Wire shape per openapi.yaml VaultCurrentResponse is `{ vault?: RecentVaultEntry | null }`
+   * — the field is omitempty on the backend so an empty wrapper `{}` means "no vault open."
+   * Unwrap `data.vault` (treating absence as null) so BootGate's `current === null`
+   * check actually fires on first-run / wiped-state boots.
    */
   getCurrent: async (): Promise<RecentVaultEntry | null> => {
     const { data, error } = await client.GET("/vault/current");
     if (error) throw new Error("Failed to fetch current vault");
-    // The backend returns JSON null when no vault is open; openapi-fetch
-    // may return undefined or null depending on the response body.
-    return (data as RecentVaultEntry | null | undefined) ?? null;
+    const wrapper = data as { vault?: RecentVaultEntry | null } | null | undefined;
+    return wrapper?.vault ?? null;
   },
 
   /**
