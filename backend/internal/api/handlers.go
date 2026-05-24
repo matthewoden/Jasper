@@ -87,6 +87,17 @@ type Server struct {
 	// "reindex_in_progress" when busy.
 	reindexBusy sync.Mutex
 
+	// vaultSwitcher is the hot-swap entry point wired by lifecycle.Run
+	// after the full per-vault subsystem stack is up. nil in no-vault mode
+	// and in Phase-1-shape tests. SetVaultSwitcher wires the production value.
+	vaultSwitcher VaultSwitcher
+
+	// inFlightWrites is the WaitGroup from *app.App that SwitchVault drains
+	// before tearing down per-vault subsystems (V6). Write handlers call
+	// Add(1) at entry and Done() in defer. nil-safe: if not set (Phase-1-shape
+	// tests, no-vault mode), the WG calls are no-ops.
+	inFlightWrites *sync.WaitGroup
+
 	// mcpACL is the Phase 8 Plan 08-08 folder-grant ACL backing
 	// /api/v1/mcp/grants. nil-safe: when MCP is disabled in config
 	// (cfg.MCP.Enabled == false) the lifecycle never calls SetMcpACL
@@ -166,6 +177,25 @@ func (s *Server) SetMcpACL(acl *mcp.ACL) {
 	s.mcpACL = acl
 }
 
+// SetInFlightWrites wires the *App's inFlightWrites WaitGroup into the
+// Server so write handlers can signal to SwitchVault's drain that a write
+// is in progress. Called by lifecycle.Run after bootPerVaultSubsystems.
+// nil-safe — passing nil is equivalent to no drain tracking.
+func (s *Server) SetInFlightWrites(wg *sync.WaitGroup) {
+	s.inFlightWrites = wg
+}
+
+// trackWrite increments the inFlightWrites counter (V6 drain) if wired.
+// Returns a Done function the caller must defer. Safe to call when
+// inFlightWrites is nil (no-op).
+func (s *Server) trackWrite() func() {
+	if s.inFlightWrites == nil {
+		return func() {}
+	}
+	s.inFlightWrites.Add(1)
+	return s.inFlightWrites.Done
+}
+
 // StrictServerInterface compile-time assertion (Plan 08-12 final
 // integration — restored after the Wave 1-4 partial-handler period).
 // Plans 08-02 / 08-05 / 08-07 / 08-08 / 08-09 each contributed handler
@@ -228,6 +258,8 @@ func (s *Server) PutNoteById(
 	ctx context.Context,
 	request PutNoteByIdRequestObject,
 ) (PutNoteByIdResponseObject, error) {
+	// V6 drain: signal to SwitchVault that a write is in progress.
+	defer s.trackWrite()()
 	if request.Body == nil {
 		return PutNoteById400JSONResponse(newError("invalid_request", "request body required")), nil
 	}

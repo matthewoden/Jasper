@@ -79,4 +79,19 @@ const (
 	// WSEnvelope.event enum entry "mcp:grant_changed" — drift here
 	// breaks the schema-typed fixture sentinel above.
 	EventMcpGrantChanged = "mcp:grant_changed"
+
+	// EventVaultSwitching is broadcast at the start of a hot-swap
+	// (Plan 08-17d SwitchVault). Payload: {"target_path": string,
+	// "target_display_name": string}. The SPA mounts VaultSwitchOverlay
+	// on receipt. Broadcast with origin_session_id = "" — all tabs must
+	// show the overlay.
+	EventVaultSwitching = "vault.switching"
+
+	// EventVaultSwitched is broadcast after the new vault's subsystems
+	// are fully up (Plan 08-17d SwitchVault). Payload: {"path": string,
+	// "display_name": string}. The SPA calls window.location.reload()
+	// on receipt; a 10-second failsafe reload is set on vault.switching
+	// (V4) so a lost vault.switched does not leave the SPA stranded.
+	// Broadcast with origin_session_id = "" — all tabs must reload.
+	EventVaultSwitched = "vault.switched"
 )

@@ -189,6 +189,10 @@ func (a *App) Run(ctx context.Context) error {
 //
 // Caller MUST have set a.cfg.DataDir to the vault's canonical path before
 // calling this method.
+//
+// For the hot-swap (SwitchVault) path, use initVaultSubsystemsOnly instead —
+// it performs steps 1–8 without step 9 (serveListener), leaving the existing
+// HTTP listener running.
 func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	// 1. Ensure data dir + notes/ + storage/ exist.
 	if err := EnsureDataDir(a.cfg.DataDir); err != nil {
@@ -423,6 +427,13 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	// with app.New). The wizard's PostSetup is normally a one-shot at
 	// first-run, but the field stays available for any future re-seed.
 	apiServer.SetMigrationsFS(a.runner.Migrations)
+	// Plan 08-17d: wire the hot-swap entry point so /vault/switch can call
+	// SwitchVault. The VaultSwitcher interface is defined in api/vault.go to
+	// avoid an import cycle; *App satisfies it.
+	apiServer.SetVaultSwitcher(a)
+	// Plan 08-17d: wire the inFlightWrites WaitGroup so write handlers
+	// participate in SwitchVault's drain (V6 2-second cap).
+	apiServer.SetInFlightWrites(&a.inFlightWrites)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -472,24 +483,219 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	if mcpCfgErr != nil {
 		a.cfg.Logger.Warn("MCP: config load failed (continuing with MCP disabled)", "err", mcpCfgErr)
 	} else if mcpCfg.MCP.Enabled {
-		mcpSrv, mcpShutdown, mcpErr := a.startMCP(ctx, mcpCfg.MCP, notesSvc, hub, pair)
+		mcpSrv, mcpShutdownFn, mcpErr := a.startMCP(ctx, mcpCfg.MCP, notesSvc, hub, pair)
 		if mcpErr != nil {
 			a.cfg.Logger.Error("MCP listener failed to bind; continuing without MCP", "err", mcpErr)
 		} else {
 			a.cfg.Logger.Info("MCP listener up", "port", mcpCfg.MCP.Port, "bind", mcpCfg.MCP.Bind)
-			_ = mcpSrv
-			defer func() {
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if err := mcpShutdown(shutdownCtx); err != nil {
-					a.cfg.Logger.Warn("MCP listener shutdown error", "err", err)
-				}
-			}()
+			// Store on App so SwitchVault's tearDownPerVaultSubsystems can call
+			// Shutdown to release the port before the new vault's MCP binds.
+			a.mcpServer = mcpSrv
+			a.mcpShutdown = mcpShutdownFn
 		}
 	}
 
-	// 9. serve until ctx cancellation
+	// Update currentVaultPath so /vault/switch 409 responses can report
+	// what is currently open. Also set when VaultOverride is in use.
+	a.setCurrentVaultPath(a.cfg.DataDir)
+
+	// 9. serve until ctx cancellation; MCP Shutdown deferred here for
+	// clean exit when ctx is canceled (normal app shutdown).
+	defer func() {
+		if a.mcpShutdown != nil {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := a.mcpShutdown(shutdownCtx); err != nil {
+				a.cfg.Logger.Warn("MCP listener shutdown error", "err", err)
+			}
+			a.mcpShutdown = nil
+		}
+		// Close a.pair on app shutdown. After a SwitchVault, a.pair is the
+		// LAST vault's pair; it was not covered by the local defer above
+		// (which closes only the original pair). Guard: if pair == a.pair we
+		// are closing the same object; if they differ (hot-swap happened), the
+		// original pair is already closed by the local defer and a.pair still
+		// needs closing.
+		if a.pair != nil && a.pair != pair {
+			_ = a.pair.Close()
+		}
+	}()
 	return a.serveListener(ctx)
+}
+
+// initVaultSubsystemsOnly performs steps 1–8 of the per-vault boot sequence
+// (DB open, migrations, indexer, notes service, API server, MCP) WITHOUT
+// calling serveListener (step 9). It is used exclusively by SwitchVault so
+// the existing HTTP listener keeps running through a hot-swap.
+//
+// Unlike bootPerVaultSubsystems, it does NOT defer pair.Close; the caller
+// (SwitchVault) is responsible for closing the pair on the next switch or
+// on normal shutdown (via the a.pair field which is inspected by
+// tearDownPerVaultSubsystems).
+//
+// Returns a non-nil error for any hard failure (DB open, migration, etc.).
+// Disk-full and unrecoverable migration states are surfaced as plain errors
+// (the switch handler converts them to HTTP 4xx/5xx rather than the static
+// error page served during initial boot).
+//
+// Caller MUST have set a.cfg.DataDir to the new vault's canonical path.
+func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
+	// 1. Ensure data dir + notes/ + storage/ exist.
+	if err := EnsureDataDir(a.cfg.DataDir); err != nil {
+		return fmt.Errorf("initVaultSubsystemsOnly: data dir: %w", err)
+	}
+
+	// File logger: for the hot-swap path, cfg.Logger is always set by the
+	// caller (it was set during the initial boot); skip the nil-logger branch.
+	// If for some reason it is nil, fall back to the default logger.
+	if a.cfg.Logger == nil {
+		a.cfg.Logger = slog.Default()
+	}
+
+	// 2. Seed scratchpad.md if missing.
+	if err := SeedScratchpadIfMissing(a.cfg.DataDir, a.cfg.Logger); err != nil {
+		return fmt.Errorf("initVaultSubsystemsOnly: scratchpad seed: %w", err)
+	}
+
+	// 3. mkdir <DataDir>/storage + storage/logs.
+	dbPath := storageDBPath(a.cfg.DataDir)
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return fmt.Errorf("initVaultSubsystemsOnly: storage dir: %w", err)
+	}
+	logsDir := filepath.Join(a.cfg.DataDir, "storage", "logs")
+	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		return fmt.Errorf("initVaultSubsystemsOnly: logs dir: %w", err)
+	}
+
+	// 4. Open sqlite Pair.
+	backupPath := dbPath + ".backup"
+	logsPath := filepath.Join(logsDir, "jasper.log")
+
+	if err := migrate.PreflightFreeSpace(dbPath); err != nil {
+		return fmt.Errorf("initVaultSubsystemsOnly: disk preflight: %w", err)
+	}
+
+	pair, err := sqlite.Open(ctx, dbPath)
+	if err != nil {
+		return fmt.Errorf("initVaultSubsystemsOnly: sqlite open: %w", err)
+	}
+	// NOTE: no defer pair.Close here — caller (SwitchVault) owns the pair's
+	// lifecycle via a.pair + tearDownPerVaultSubsystems.
+	a.pair = pair
+
+	// 5. Build Runner + Indexer.
+	notesDir := notesDirFor(a.cfg.DataDir)
+	a.indexer = index.New(pair, notesDir, a.cfg.Logger)
+
+	a.runner = migrate.NewRunner(migrate.RunnerOptions{
+		DBPath:     dbPath,
+		BackupPath: backupPath,
+		LogsPath:   logsPath,
+		Migrations: migrations.FS,
+		Pair:       pair,
+		Log:        a.cfg.Logger,
+	})
+	if a.cfg.MigrationsOverride != nil {
+		a.runner.Migrations = a.cfg.MigrationsOverride
+	}
+	a.runner.Path2Rebuild = func(ctx context.Context) (int, error) {
+		return a.indexer.Reconcile(ctx, index.ModeFull)
+	}
+
+	// 6. Run migrations.
+	status, runErr := a.runner.Run(ctx)
+	if runErr != nil {
+		return fmt.Errorf("initVaultSubsystemsOnly: migrations: %w", runErr)
+	}
+	a.cfg.Logger.Info("migration runner status (switch)",
+		"state", status.State,
+		"failed_migration", status.FailedMigration)
+
+	// 6b. Frontmatter scaffold injection (idempotent).
+	if status.State != migrate.StateUnrecoverable {
+		if err := InjectFrontmatterScaffoldMigration(ctx, pair.Writer, notesDir, a.cfg.Logger); err != nil {
+			return fmt.Errorf("initVaultSubsystemsOnly: frontmatter scaffold: %w", err)
+		}
+	}
+
+	// 7. Incremental reindex.
+	if status.State != migrate.StateUnrecoverable {
+		n, err := a.indexer.ReconcileWithRegistry(ctx, index.ModeIncremental, nil)
+		if err != nil {
+			a.cfg.Logger.Warn("switch: incremental reindex failed (non-fatal)", "err", err)
+		} else {
+			a.cfg.Logger.Info("switch: incremental reindex done", "notes_indexed", n)
+		}
+	}
+
+	// 8. Rebuild api.Server, WS hub, MCP.
+	// The hub is rebuilt per-vault so new WS connections (after the SPA
+	// reloads) hit the new vault's hub. Existing WS connections remain on
+	// the old hub until the SPA reloads.
+	hub := wshub.New(a.cfg.Logger)
+	a.mu.Lock()
+	a.hub = hub
+	a.mu.Unlock()
+
+	files := fsstore.NewStore(notesDir)
+	notesSvc := notes.NewService(files, a.indexer, hub, a.cfg.Logger)
+
+	if a.indexer != nil && status.State != migrate.StateUnrecoverable {
+		if summaries, err := a.indexer.List(ctx); err == nil {
+			notesSvc.Registry().Hydrate(summaries)
+			a.cfg.Logger.Info("switch: registry hydrated", "count", len(summaries))
+			if rErr := a.indexer.ResolvePendingBacklinks(ctx, notesSvc.Registry()); rErr != nil {
+				a.cfg.Logger.Warn("switch: pending backlinks resolution failed (non-fatal)", "err", rErr)
+			}
+		} else {
+			a.cfg.Logger.Warn("switch: registry hydrate: List failed", "err", err)
+		}
+	}
+	a.mu.Lock()
+	a.notesSvc = notesSvc
+	a.mu.Unlock()
+
+	apiServer := api.NewServerWithIndex(notesSvc, a.runner, a.runner, a.indexer, hub, a.cfg.Logger, a.cfg.DataDir)
+	apiServer.SetMigrationsFS(a.runner.Migrations)
+	apiServer.SetVaultSwitcher(a)
+	apiServer.SetInFlightWrites(&a.inFlightWrites)
+
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Recoverer)
+	r.Use(securityHeadersMiddleware)
+	r.Use(requestLogger(a.cfg.Logger))
+	si := api.NewStrictHandler(apiServer, nil)
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
+		r.Use(sessionIDMiddleware)
+		r.Use(api.ConfigStrictBodyMiddleware)
+		api.HandlerFromMux(si, r)
+		r.Get("/ws", hub.ServeHTTP)
+		r.Get("/files", apiServer.ServeFile)
+	})
+	r.Mount("/", static.Handler())
+	a.handler = r
+
+	// 8b. MCP server bring-up for the new vault.
+	a.mcpServer = nil
+	a.mcpShutdown = nil
+	mcpCfg, mcpCfgErr := config.Load(a.cfg.DataDir, a.cfg.Logger)
+	if mcpCfgErr != nil {
+		a.cfg.Logger.Warn("switch: MCP config load failed (continuing with MCP disabled)", "err", mcpCfgErr)
+	} else if mcpCfg.MCP.Enabled {
+		mcpSrv, mcpShutdownFn, mcpErr := a.startMCP(ctx, mcpCfg.MCP, notesSvc, hub, pair)
+		if mcpErr != nil {
+			a.cfg.Logger.Error("switch: MCP listener failed to bind; continuing without MCP", "err", mcpErr)
+		} else {
+			a.cfg.Logger.Info("switch: MCP listener up", "port", mcpCfg.MCP.Port)
+			a.mcpServer = mcpSrv
+			a.mcpShutdown = mcpShutdownFn
+		}
+	}
+
+	a.setCurrentVaultPath(a.cfg.DataDir)
+	return nil
 }
 
 // startMCP constructs the MCP ACL + adapters + Server and starts the

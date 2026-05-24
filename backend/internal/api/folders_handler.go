@@ -19,6 +19,8 @@ func (s *Server) PostFolders(
 	ctx context.Context,
 	req PostFoldersRequestObject,
 ) (PostFoldersResponseObject, error) {
+	// V6 drain: signal to SwitchVault that a write is in progress.
+	defer s.trackWrite()()
 	if req.Body == nil {
 		return PostFolders400JSONResponse(newError("invalid_request", "request body required")), nil
 	}
@@ -61,6 +63,8 @@ func (s *Server) DeleteFolder(
 	ctx context.Context,
 	req DeleteFolderRequestObject,
 ) (DeleteFolderResponseObject, error) {
+	// V6 drain: signal to SwitchVault that a write is in progress.
+	defer s.trackWrite()()
 	recursive := false
 	if req.Params.Recursive != nil {
 		recursive = *req.Params.Recursive
@@ -93,6 +97,8 @@ func (s *Server) PostFolderMove(
 	ctx context.Context,
 	req PostFolderMoveRequestObject,
 ) (PostFolderMoveResponseObject, error) {
+	// V6 drain: signal to SwitchVault that a write is in progress.
+	defer s.trackWrite()()
 	if req.Body == nil {
 		return PostFolderMove400JSONResponse(newError("invalid_request", "request body required")), nil
 	}

@@ -1392,6 +1392,43 @@ paths:
       responses:
         "200":
           description: Forgotten (or wasn't in the list to begin with)
+  /vault/switch:
+    post:
+      tags: [vault]
+      operationId: postVaultSwitch
+      summary: Hot-swap from the currently open vault to a target vault
+      description: |
+        Initiates a hot-swap: broadcasts vault.switching, drains pending writes
+        (2-second cap), tears down per-vault subsystems in V6 order, opens the
+        new vault, runs migrations, kicks the indexer, optionally restarts MCP,
+        then broadcasts vault.switched. The SPA reloads on vault.switched.
+        Returns 409 when a switch is already in progress.
+        Returns 400 when the target path is invalid or missing .jasper/.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VaultSwitchRequest"
+      responses:
+        "200":
+          description: Switch initiated; vault.switching has been broadcast; SPA should mount the overlay
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecentVaultEntry"
+        "400":
+          description: Invalid target; .jasper/ missing; non-ASCII; etc.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: A switch is already in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultSwitchInProgressResponse"
   /notes/by-path:
     get:
       tags: [notes]
@@ -2062,6 +2099,8 @@ components:
             - "reindex:complete"
             - "migration:status"
             - "mcp:grant_changed"
+            - "vault.switching"
+            - "vault.switched"
         origin_session_id:
           type: string
           description: |
@@ -2373,3 +2412,21 @@ components:
           type: string
           description: Absolute canonical path of the vault entry to remove from recent_vaults.
           minLength: 1
+    VaultSwitchRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Absolute path to the target vault (must already exist with .jasper/).
+          minLength: 1
+    VaultSwitchInProgressResponse:
+      type: object
+      required: [error, current_target]
+      properties:
+        error:
+          type: string
+          enum: [vault_switch_in_progress]
+        current_target:
+          type: string
+          description: The vault path that was being switched to when the 409 fired.

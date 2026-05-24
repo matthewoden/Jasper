@@ -19,12 +19,14 @@
 package app
 
 import (
+	"context"
 	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -157,6 +159,31 @@ type App struct {
 	// fsync'd and the OS handle released. nil when cfg.Logger was
 	// provided by the caller (tests).
 	fileLogCloser io.Closer
+
+	// swapMu serializes hot-swap operations (V5 from ADR-001 §4).
+	// TryLock returns false immediately when a switch is in progress.
+	// Distinct from mu (which guards notesSvc + hub) to avoid lock
+	// ordering issues.
+	swapMu sync.Mutex
+
+	// inFlightWrites tracks writes from both the SPA (chi handlers) and
+	// the MCP tools so SwitchVault can drain them before teardown (V6).
+	// Each write handler calls Add(1) at entry and Done() in defer.
+	// SwitchVault calls Wait() with a 2-second cap before closing pair.
+	inFlightWrites sync.WaitGroup
+
+	// currentVaultPath mirrors app.json's current_vault for the running
+	// open-mode App; used by the /vault/switch handler to report the
+	// in-progress target on 409 responses.
+	currentVaultPath atomic.Pointer[string]
+
+	// mcpServer is the *http.Server for the MCP listener. nil when MCP
+	// is disabled for the current vault. Stored so tearDownPerVaultSubsystems
+	// can Shutdown() it to release port 6684 (V-TEST-1).
+	mcpServer *http.Server
+
+	// mcpShutdown is the Shutdown func for mcpServer. nil when mcpServer is nil.
+	mcpShutdown func(ctx context.Context) error
 }
 
 // storageDBPath returns <dataDir>/storage/app.db — the canonical
@@ -246,6 +273,20 @@ func (a *App) Handler() http.Handler { return a.handler }
 
 // Config returns the resolved configuration the app was built with.
 func (a *App) Config() Config { return a.cfg }
+
+// CurrentVaultPath returns the canonical path of the currently open vault.
+// Returns an empty string when no vault is open. Safe for concurrent callers.
+func (a *App) CurrentVaultPath() string {
+	if p := a.currentVaultPath.Load(); p != nil {
+		return *p
+	}
+	return ""
+}
+
+// setCurrentVaultPath updates the stored vault path atomically.
+func (a *App) setCurrentVaultPath(p string) {
+	a.currentVaultPath.Store(&p)
+}
 
 // NotesService returns the wired *notes.Service. Returns nil if Run
 // has not yet executed step 8 (or if Run took the disk-full /
