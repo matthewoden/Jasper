@@ -432,8 +432,8 @@ func TestPostVaultForget_AbsentPathIsIdempotent_200(t *testing.T) {
 
 // VaultSwitcherFunc is a test double implementing the VaultSwitcher interface.
 type VaultSwitcherFunc struct {
-	switchFn          func(ctx context.Context, targetPath string) (vault.RecentVaultEntry, error)
-	currentVaultPath  string
+	switchFn         func(ctx context.Context, targetPath string) (vault.RecentVaultEntry, error)
+	currentVaultPath string
 }
 
 func (f *VaultSwitcherFunc) SwitchVault(ctx context.Context, targetPath string) (vault.RecentVaultEntry, error) {
@@ -468,7 +468,7 @@ func TestPostVaultSwitch_NilSwitcher_Returns400(t *testing.T) {
 	defer ts.Close()
 
 	resp := mustPost(t, ts, "/api/v1/vault/switch", map[string]any{"path": "/some/absolute/path"})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status: want 400 (no vault open), got %d; body: %s", resp.StatusCode, b)
@@ -487,7 +487,7 @@ func TestPostVaultSwitch_RelativePath_Returns400(t *testing.T) {
 	defer ts.Close()
 
 	resp := mustPost(t, ts, "/api/v1/vault/switch", map[string]any{"path": "./relative/path"})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status: want 400, got %d; body: %s", resp.StatusCode, b)
@@ -510,7 +510,7 @@ func TestPostVaultSwitch_SwitchInProgress_Returns409(t *testing.T) {
 
 	vaultDir := t.TempDir()
 	resp := mustPost(t, ts, "/api/v1/vault/switch", map[string]any{"path": vaultDir})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusConflict {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status: want 409, got %d; body: %s", resp.StatusCode, b)
@@ -550,7 +550,7 @@ func TestPostVaultSwitch_HappyPath_Returns200(t *testing.T) {
 	defer ts.Close()
 
 	resp := mustPost(t, ts, "/api/v1/vault/switch", map[string]any{"path": canonical})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status: want 200, got %d; body: %s", resp.StatusCode, b)
