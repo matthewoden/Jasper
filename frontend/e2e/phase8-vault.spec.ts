@@ -211,18 +211,51 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
         description: "vault picker overlay backdrop",
       });
 
-      // Both tab labels should be visible
-      await expect(page.getByRole("tab", { name: /open existing/i })).toBeVisible();
-      await expect(page.getByRole("tab", { name: /create new/i })).toBeVisible();
+      // Strong header — title "Choose a vault" with a subtitle, not just "Vault".
+      await expect(page.getByRole("heading", { name: /choose a vault/i })).toBeVisible();
+
+      // Tab labels — no ellipses per UAT-2 #1d.
+      await expect(page.getByRole("tab", { name: "Open existing", exact: true })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Create new", exact: true })).toBeVisible();
 
       // No recents on first boot → default tab is "create new"
-      await expect(page.getByRole("tab", { name: /create new/i })).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("tab", { name: "Create new", exact: true })).toHaveAttribute("aria-selected", "true");
 
-      // 08-16 polish verbatim (MCP section needs to be enabled to show tier copy)
-      await page.getByRole("checkbox", { name: /enable mcp/i }).click();
-      await expect(page.getByText("Edit only (create + update)")).toBeVisible();
-      await expect(page.getByText("Full (create + update + move + delete)")).toBeVisible();
-      await expect(page.getByText("REQUIRED")).toBeVisible();
+      // MCP must NOT appear in vault creation per UAT-2 #1d ("new vault is always empty").
+      await expect(page.getByRole("checkbox", { name: /enable mcp/i })).toHaveCount(0);
+      await expect(page.getByText(/edit only \(create \+ update\)/i)).toHaveCount(0);
+
+      // Path input must be full-width and visually styled (border + background).
+      // Width ≥ 400 catches the "no CSS, default browser width" regression.
+      await expectActuallyPainted(page.getByTestId("vault-create-path-input"), {
+        minWidth: 400,
+        minHeight: 28,
+        description: "vault path input",
+      });
+
+      // Daily template textarea must be pre-filled with the backend default and
+      // be a fully styled, multi-line surface (catches "invisible textarea" regression).
+      const ta = page.getByRole("textbox", { name: /daily note template/i });
+      await expect(ta).toHaveValue("# {{date}}\n\n");
+      await expectActuallyPainted(ta, { minWidth: 400, minHeight: 80, description: "daily template textarea" });
+
+      // Submit button must be present, visible, and styled as a real button
+      // (catches "no submit button" UAT-2 #1d blocker).
+      const submitBtn = page.getByTestId("vault-create-submit");
+      await expectActuallyPainted(submitBtn, { minWidth: 100, minHeight: 32, description: "Create vault button" });
+      await expect(submitBtn).toHaveText(/create vault/i);
+      // Disabled while path is empty.
+      await expect(submitBtn).toBeDisabled();
+      // Typing a valid absolute path enables it.
+      await page.getByTestId("vault-create-path-input").fill("/tmp/jasper-uat-2-1d-smoke");
+      await expect(submitBtn).toBeEnabled();
+      // Don't actually submit here — that's covered by the next test.
+
+      // Theme picker live-applies. Pick light, html should flip; pick dark, flip back.
+      await page.getByRole("radio", { name: /light/i }).check();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+      await page.getByRole("radio", { name: /dark/i }).check();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     } finally {
       handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });

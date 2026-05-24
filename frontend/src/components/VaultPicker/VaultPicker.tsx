@@ -54,11 +54,16 @@ export function VaultPicker({ mode }: VaultPickerProps) {
           className="vault-picker-modal"
           aria-label="Vault picker"
         >
-          <Dialog.Title>Vault</Dialog.Title>
-          <VisuallyHidden.Root asChild>
-            <Dialog.Description>
-              Select, open, or create a vault.
+          <header className="vault-picker-header">
+            <Dialog.Title>{mode === "switch" ? "Switch vault" : "Choose a vault"}</Dialog.Title>
+            <Dialog.Description className="vault-picker-header__subtitle">
+              {mode === "switch"
+                ? "Open a different vault. Unsaved drafts are kept in the browser."
+                : "Open an existing folder, pick a recent one, or create a new vault."}
             </Dialog.Description>
+          </header>
+          <VisuallyHidden.Root asChild>
+            <span>Vault picker dialog</span>
           </VisuallyHidden.Root>
 
           {banner && (
@@ -82,7 +87,7 @@ export function VaultPicker({ mode }: VaultPickerProps) {
               aria-selected={tab === "open"}
               onClick={() => setTab("open")}
             >
-              Open existing…
+              Open existing
             </button>
             <button
               type="button"
@@ -90,14 +95,17 @@ export function VaultPicker({ mode }: VaultPickerProps) {
               aria-selected={tab === "create"}
               onClick={() => setTab("create")}
             >
-              Create new…
+              Create new
             </button>
           </nav>
 
           <div className="vault-picker-body">
             {tab === "recent" &&
               (recents.length === 0 ? (
-                <p>No recent vaults. Create one or open an existing folder.</p>
+                <div className="vault-picker-empty">
+                  No recent vaults yet. Use <strong>Open existing</strong> to point
+                  Jasper at a folder, or <strong>Create new</strong> to start fresh.
+                </div>
               ) : (
                 recents.map((e) => (
                   <VaultPickerRow

@@ -1,10 +1,10 @@
 /**
- * VaultOpenPane — text input + validate + open for an existing vault folder.
+ * VaultOpenPane — type or paste a path to an existing vault folder and open it.
  *
  * Path validation runs client-side via validateVaultPath (5-rule pipeline)
  * before submitting to the backend (SECURITY-06 defense-in-depth).
  *
- * Plan 08-17c Task 2.
+ * Plan 08-17c Task 2 + UAT-2 #1d input-style rework.
  */
 
 import { useEffect, useState } from "react";
@@ -14,6 +14,13 @@ export interface VaultOpenPaneProps {
   initialPath?: string;
   onOpened: () => void;
 }
+
+const HELPER_STYLE: React.CSSProperties = {
+  fontSize: 13,
+  color: "var(--color-muted)",
+  margin: "0 0 10px",
+  lineHeight: 1.5,
+};
 
 export function VaultOpenPane({
   initialPath = "",
@@ -52,22 +59,41 @@ export function VaultOpenPane({
         if (canSubmit) void handleSubmit();
       }}
     >
-      <label>
-        Absolute path to the vault folder
-        <input
-          type="text"
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          placeholder="/Users/you/Documents/Notes"
-          data-testid="vault-open-input"
-        />
+      <p style={HELPER_STYLE}>
+        Point Jasper at a folder that already contains a vault (a{" "}
+        <code>.jasper/</code> subdirectory). Use an absolute path.
+      </p>
+      <label className="vault-picker-field-label" htmlFor="vault-open-path">
+        Vault folder
       </label>
+      <input
+        id="vault-open-path"
+        className="vault-picker-input"
+        type="text"
+        value={path}
+        onChange={(e) => setPath(e.target.value)}
+        placeholder="/Users/you/Documents/Jasper"
+        data-testid="vault-open-input"
+        autoFocus
+      />
       {!validation.ok && path !== "" && (
-        <div className="vault-picker-error">{validation.message}</div>
+        <div className="vault-picker-error" style={{ marginTop: 8 }}>
+          {validation.message}
+        </div>
       )}
-      {error && <div className="vault-picker-error">{error}</div>}
-      <button type="submit" disabled={!canSubmit} data-testid="vault-open-submit">
-        Open
+      {error && (
+        <div className="vault-picker-error" style={{ marginTop: 8 }}>
+          {error}
+        </div>
+      )}
+      <button
+        type="submit"
+        className="vault-picker-button-primary"
+        disabled={!canSubmit}
+        data-testid="vault-open-submit"
+        style={{ marginTop: 16 }}
+      >
+        Open vault
       </button>
     </form>
   );

@@ -28,7 +28,11 @@ export function getCurrentTheme(): "dark" | "light" {
   return v === "light" ? "light" : "dark";
 }
 
-function applyTheme(theme: "dark" | "light"): void {
+// Exported so the vault-picker create pane can flip <html data-theme>
+// live as the user clicks the radio (no save round-trip; the picker
+// reloads the SPA after submit, at which point useTheme reconciles
+// with the persisted config).
+export function applyTheme(theme: "dark" | "light"): void {
   document.documentElement.setAttribute("data-theme", theme);
 }
 

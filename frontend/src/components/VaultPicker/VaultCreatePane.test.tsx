@@ -1,9 +1,16 @@
 /**
- * VaultCreatePane tests — Plan 08-17c Task 2.
+ * VaultCreatePane tests — Plan 08-17c Task 2 + UAT-2 #1d rework.
  *
- * Tests 4-section structure, 08-16 N8/N3 copy verbatim, and submit behavior.
+ * New surface (post-UAT-2 #1d):
+ *   - 3 sections (vault path / theme / daily template) — MCP grants moved
+ *     out of vault creation per "a new vault is always empty."
+ *   - Daily template pre-filled with `# {{date}}\n\n` (sensible default).
+ *   - Theme picker live-applies to <html data-theme> on radio change.
+ *   - Submit button is the primary action and stays disabled until path
+ *     validates.
+ *   - Submit always posts mcp_enabled: false (MCP enabled post-vault).
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("../../lib/vaultApi", () => ({
@@ -24,62 +31,81 @@ vi.mock("../../lib/vaultApi", () => ({
   }),
 }));
 
+const applyThemeMock = vi.fn();
+vi.mock("../../lib/useTheme", () => ({
+  applyTheme: (t: "dark" | "light") => applyThemeMock(t),
+}));
+
 import { VaultCreatePane } from "./VaultCreatePane";
 import { vaultApi } from "../../lib/vaultApi";
-import { TIER_1_LABEL, TIER_2_LABEL, DAILY_TEMPLATE_REQUIRED_LABEL, DAILY_TEMPLATE_HELP } from "./vaultCopy";
 
 describe("<VaultCreatePane />", () => {
-  it("renders all 4 sections (path, theme, MCP, daily-note)", () => {
+  beforeEach(() => {
+    applyThemeMock.mockClear();
+    // Reset <html data-theme> between tests so applyTheme assertions are clean.
+    document.documentElement.removeAttribute("data-theme");
+  });
+
+  it("renders 3 sections (path, theme, daily-note) — no MCP grants", () => {
     render(<VaultCreatePane onCreated={vi.fn()} />);
     // Section 1: path
     expect(screen.getByTestId("vault-create-path-input")).toBeInTheDocument();
-    // Section 2: theme (dark/light radio)
+    // Section 2: theme (dark/light radios)
     expect(screen.getByRole("radio", { name: /dark/i })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /light/i })).toBeInTheDocument();
-    // Section 3: MCP
-    expect(screen.getByRole("checkbox", { name: /enable mcp/i })).toBeInTheDocument();
-    // Section 4: daily note template
-    expect(screen.getByRole("textbox", { name: /daily note template/i })).toBeInTheDocument();
+    // Section 3: daily note textarea
+    expect(
+      screen.getByRole("textbox", { name: /daily note template/i }),
+    ).toBeInTheDocument();
+    // MCP must be gone — moved to per-folder grant menu post-vault.
+    expect(screen.queryByRole("checkbox", { name: /enable mcp/i })).toBeNull();
   });
 
-  it(`renders Tier-1 copy: "${TIER_1_LABEL}"`, () => {
+  it("pre-fills daily template with the backend default `# {{date}}\\n\\n`", () => {
     render(<VaultCreatePane onCreated={vi.fn()} />);
-    // Enable MCP to show the grants section
-    fireEvent.click(screen.getByRole("checkbox", { name: /enable mcp/i }));
-    expect(screen.getByText(TIER_1_LABEL)).toBeInTheDocument();
-  });
-
-  it(`renders Tier-2 copy: "${TIER_2_LABEL}"`, () => {
-    render(<VaultCreatePane onCreated={vi.fn()} />);
-    fireEvent.click(screen.getByRole("checkbox", { name: /enable mcp/i }));
-    expect(screen.getByText(TIER_2_LABEL)).toBeInTheDocument();
-  });
-
-  it(`renders REQUIRED eyebrow: "${DAILY_TEMPLATE_REQUIRED_LABEL}"`, () => {
-    render(<VaultCreatePane onCreated={vi.fn()} />);
-    expect(screen.getByText(DAILY_TEMPLATE_REQUIRED_LABEL)).toBeInTheDocument();
-  });
-
-  it(`renders {{date}} help text`, () => {
-    render(<VaultCreatePane onCreated={vi.fn()} />);
-    expect(screen.getByText(new RegExp(DAILY_TEMPLATE_HELP.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))).toBeInTheDocument();
+    const ta = screen.getByRole("textbox", {
+      name: /daily note template/i,
+    }) as HTMLTextAreaElement;
+    expect(ta.value).toBe("# {{date}}\n\n");
   });
 
   it("submit is disabled when path is empty", () => {
     render(<VaultCreatePane onCreated={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /create vault/i })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /create vault/i }),
+    ).toBeDisabled();
   });
 
-  it("calls vaultApi.create with assembled payload on submit", async () => {
-    // Mock reload
+  it("submit enables once path validates", () => {
+    render(<VaultCreatePane onCreated={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("vault-create-path-input"), {
+      target: { value: "/Users/me/vault" },
+    });
+    expect(
+      screen.getByRole("button", { name: /create vault/i }),
+    ).not.toBeDisabled();
+  });
+
+  it("theme radio applies live to <html data-theme> on change", () => {
+    render(<VaultCreatePane onCreated={vi.fn()} />);
+    // Initial render flips data-theme to the default (dark).
+    expect(applyThemeMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("radio", { name: /light/i }));
+    expect(applyThemeMock).toHaveBeenLastCalledWith("light");
+    fireEvent.click(screen.getByRole("radio", { name: /dark/i }));
+    expect(applyThemeMock).toHaveBeenLastCalledWith("dark");
+  });
+
+  it("calls vaultApi.create with assembled payload (mcp_enabled always false)", async () => {
     Object.defineProperty(window, "location", {
       value: { reload: vi.fn() },
       writable: true,
     });
     const onCreated = vi.fn();
     render(<VaultCreatePane onCreated={onCreated} />);
-    const input = screen.getByTestId("vault-create-path-input");
-    fireEvent.change(input, { target: { value: "/Users/me/vault" } });
+    fireEvent.change(screen.getByTestId("vault-create-path-input"), {
+      target: { value: "/Users/me/vault" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /create vault/i }));
     await waitFor(() => {
       expect(vaultApi.create).toHaveBeenCalled();
@@ -87,5 +113,7 @@ describe("<VaultCreatePane />", () => {
     const callArg = vi.mocked(vaultApi.create).mock.calls[0][0];
     expect(callArg.path).toBe("/Users/me/vault");
     expect(callArg.theme).toBe("dark"); // Default dark per D-06
+    expect(callArg.mcp_enabled).toBe(false); // MCP moved out of vault creation
+    expect(callArg.daily_template).toBe("# {{date}}\n\n");
   });
 });
