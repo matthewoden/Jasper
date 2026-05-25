@@ -59,6 +59,36 @@ func (s *Server) SetVaultSwitcher(vs VaultSwitcher) {
 	s.vaultSwitcher = vs
 }
 
+// VaultOpener is the interface PostVaultCreate + PostVaultOpen use to
+// transition the running server from no-vault mode (picker shell only) to
+// vault-open mode (full stack). Implemented by *app.App.
+//
+// Distinct from VaultSwitcher: SwitchVault assumes a vault is already open
+// and runs the teardown protocol; OpenVault assumes no vault is open and
+// just brings the per-vault subsystems up alongside the existing listener.
+//
+// nil-safe: when the opener isn't wired (Phase-1-shape tests, or the
+// pre-08-17e code path) the handlers fall back to "best effort" — write to
+// disk and update app.json, but skip the in-process transition. The next
+// process restart picks it up via lifecycle.Run. This preserves backward
+// compat for tests that don't wire the opener.
+type VaultOpener interface {
+	// OpenVault transitions a no-vault App to an open-vault App for the
+	// vault at absCanonical. Updates app.json and brings up the per-vault
+	// subsystems (DB, indexer, MCP, etc.). Returns an error if a vault is
+	// already open (use SwitchVault for vault → vault transitions) or
+	// another concurrent open/switch is in progress.
+	OpenVault(ctx context.Context, absCanonical string) error
+}
+
+// SetVaultOpener wires the no-vault → open transition entry point into
+// the Server. PostVaultCreate + PostVaultOpen call it after their disk
+// preparation completes so the running listener picks up the new vault
+// without a process restart.
+func (s *Server) SetVaultOpener(vo VaultOpener) {
+	s.vaultOpener = vo
+}
+
 // BootBanner is a process-level string populated by lifecycle.Run when a
 // V13/V14 condition is detected at boot. GetVaultRecent reads this and
 // includes it in the response so the picker UI can render the banner.
@@ -142,7 +172,7 @@ func (s *Server) GetVaultRecent(
 //
 //nolint:revive // generated interface method name
 func (s *Server) PostVaultOpen(
-	_ context.Context,
+	ctx context.Context,
 	req PostVaultOpenRequestObject,
 ) (PostVaultOpenResponseObject, error) {
 	if req.Body == nil {
@@ -215,6 +245,17 @@ func (s *Server) PostVaultOpen(
 		return nil, fmt.Errorf("PostVaultOpen: save app.json: %w", err)
 	}
 	BootBanner = "" // V13/V14 banner cleared on successful open.
+
+	// In-place transition: bring up the per-vault subsystems against the
+	// just-registered vault so the running listener serves /notes etc.
+	// without a process restart. When the opener isn't wired (Phase-1-shape
+	// tests, older code paths) skip — app.json is already updated, and the
+	// next process boot will pick it up via lifecycle.Run.
+	if s.vaultOpener != nil {
+		if err := s.vaultOpener.OpenVault(ctx, canonical); err != nil {
+			return nil, fmt.Errorf("PostVaultOpen: open in place: %w", err)
+		}
+	}
 
 	// Find the entry we just touched.
 	for _, e := range state.RecentVaults {
@@ -371,6 +412,19 @@ func (s *Server) PostVaultCreate(
 		return nil, fmt.Errorf("PostVaultCreate: %w", createErr)
 	}
 	BootBanner = ""
+
+	// In-place transition: bring up the per-vault subsystems against the
+	// just-created vault so the running listener serves /notes etc.
+	// without a process restart. vault.CreateVault already wrote .jasper/
+	// + ran migrations + registered the vault as current_vault; OpenVault
+	// re-runs TouchOpened (idempotent) and brings the DB / indexer / API
+	// router online. When the opener isn't wired (Phase-1-shape tests),
+	// skip — disk state is correct, next process boot picks it up.
+	if s.vaultOpener != nil {
+		if err := s.vaultOpener.OpenVault(ctx, canonical); err != nil {
+			return nil, fmt.Errorf("PostVaultCreate: open in place: %w", err)
+		}
+	}
 
 	for _, e := range appState.RecentVaults {
 		if e.Path == canonical {

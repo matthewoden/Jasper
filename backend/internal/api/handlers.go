@@ -92,6 +92,12 @@ type Server struct {
 	// and in Phase-1-shape tests. SetVaultSwitcher wires the production value.
 	vaultSwitcher VaultSwitcher
 
+	// vaultOpener is the no-vault → open transition entry point wired by
+	// lifecycle.Run for the no-vault picker-shell server. nil in tests
+	// that don't exercise the create/open lifecycle. SetVaultOpener wires
+	// the production value (always *app.App).
+	vaultOpener VaultOpener
+
 	// inFlightWrites is the WaitGroup from *app.App that SwitchVault drains
 	// before tearing down per-vault subsystems (V6). Write handlers call
 	// Add(1) at entry and Done() in defer. nil-safe: if not set (Phase-1-shape

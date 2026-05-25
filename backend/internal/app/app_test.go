@@ -1069,3 +1069,153 @@ func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 		t.Errorf("file changed on second boot:\nbefore: %q\nafter:  %q", afterFirst, afterSecond)
 	}
 }
+
+// TestApp_Run_NoVault_CreateVault_InPlaceTransition — UAT regression for the
+// bug where POST /vault/create succeeded on disk but the running listener
+// stayed in no-vault mode (frozen picker-shell handler), so subsequent /tree
+// requests failed until process restart.
+//
+// Boots the app with no current_vault in app.json. The /api/v1/tree route on
+// the no-vault picker shell returns an error because notesSvc is nil. After
+// POST /api/v1/vault/create, the in-place transition (a.OpenVault →
+// initVaultSubsystemsOnly + a.handler.Swap) must flip the listener over to
+// the full per-vault router so /api/v1/tree returns 200.
+func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
+	// Isolate ~/.jasper so we don't read the dev's real registry.
+	appHome := filepath.Join(t.TempDir(), ".jasper")
+	t.Setenv("JASPER_APP_HOME", appHome)
+
+	// Vault target lives outside the app home so the create handler doesn't
+	// trip its "already a vault" / app-home checks.
+	vaultDir := t.TempDir()
+
+	addr := pickFreePort(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	// DataDir intentionally empty so the legacy fallback at lifecycle.Run
+	// doesn't kick in — we want the real no-vault path.
+	a, err := New(Config{
+		DataDir:    "",
+		ListenAddr: addr,
+		Logger:     logger,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runErr := make(chan error, 1)
+	go func() { runErr <- a.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-runErr:
+		case <-time.After(2 * time.Second):
+		}
+	})
+
+	if err := waitFor(t, 5*time.Second, func() error {
+		c, dErr := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if dErr != nil {
+			return dErr
+		}
+		_ = c.Close()
+		return nil
+	}); err != nil {
+		t.Fatalf("listener did not come up: %v", err)
+	}
+
+	// Sanity 1: no-vault mode — /vault/current returns empty wrapper.
+	{
+		resp, err := http.Get("http://" + addr + "/api/v1/vault/current")
+		if err != nil {
+			t.Fatalf("GET /vault/current (no-vault): %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("pre-create /vault/current status: got %d, want 200; body=%s", resp.StatusCode, body)
+		}
+		// Wrapper has vault either omitted or null; either way no path field.
+		if strings.Contains(string(body), `"path":`) {
+			t.Errorf("pre-create /vault/current should not name a path; body=%s", body)
+		}
+	}
+
+	// Create the vault. Mirrors what the frontend's VaultCreatePane POSTs.
+	createReq := fmt.Sprintf(`{"path":%q,"theme":"dark","mcp_enabled":false,"daily_template":"# {{date}}\n\n"}`, vaultDir)
+	createResp, err := http.Post("http://"+addr+"/api/v1/vault/create", "application/json", strings.NewReader(createReq))
+	if err != nil {
+		t.Fatalf("POST /vault/create: %v", err)
+	}
+	createBody, _ := io.ReadAll(createResp.Body)
+	_ = createResp.Body.Close()
+	if createResp.StatusCode != 200 {
+		t.Fatalf("POST /vault/create status: got %d, want 200; body=%s", createResp.StatusCode, createBody)
+	}
+
+	// Disk-side assertions: .jasper/ exists with a config.json + app.db inside;
+	// app.json on the app home now has current_vault set.
+	if _, statErr := os.Stat(filepath.Join(vaultDir, ".jasper")); statErr != nil {
+		t.Fatalf("expected %s/.jasper to exist after create: %v", vaultDir, statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(vaultDir, ".jasper", "config.json")); statErr != nil {
+		t.Errorf("expected .jasper/config.json after create: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(vaultDir, ".jasper", "app.db")); statErr != nil {
+		t.Errorf("expected .jasper/app.db after create (migrations ran): %v", statErr)
+	}
+	appJSON, appJSONErr := os.ReadFile(filepath.Join(appHome, "app.json"))
+	if appJSONErr != nil {
+		t.Fatalf("read app.json: %v", appJSONErr)
+	}
+	if !strings.Contains(string(appJSON), `"current_vault"`) {
+		t.Errorf("app.json should have current_vault set; got %s", appJSON)
+	}
+
+	// Critical: per-vault endpoints reachable on the SAME listener without
+	// restart. /tree and /admin/status are not served by the no-vault
+	// picker-shell router. If a.handler.Swap is broken these will hang or
+	// return whatever the no-vault router exposes — neither is a healthy
+	// per-vault response.
+	{
+		resp, err := http.Get("http://" + addr + "/api/v1/tree")
+		if err != nil {
+			t.Fatalf("GET /tree post-create: %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("post-create /tree status: got %d, want 200 (in-place transition failed?); body=%s", resp.StatusCode, body)
+		}
+	}
+	{
+		resp, err := http.Get("http://" + addr + "/api/v1/admin/status")
+		if err != nil {
+			t.Fatalf("GET /admin/status post-create: %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("post-create /admin/status: got %d, want 200; body=%s", resp.StatusCode, body)
+		}
+		if !strings.Contains(string(body), `"state":"ok"`) {
+			t.Errorf("post-create /admin/status state: expected ok; body=%s", body)
+		}
+	}
+
+	// /vault/current now points at the new vault.
+	{
+		resp, err := http.Get("http://" + addr + "/api/v1/vault/current")
+		if err != nil {
+			t.Fatalf("GET /vault/current post-create: %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		// vaultDir gets darwin-lowercased + symlink-resolved by Canonicalize.
+		// Use the basename as a stable substring (t.TempDir's last segment).
+		base := filepath.Base(vaultDir)
+		if !strings.Contains(strings.ToLower(string(body)), strings.ToLower(base)) {
+			t.Errorf("post-create /vault/current should name %q; body=%s", base, body)
+		}
+	}
+}

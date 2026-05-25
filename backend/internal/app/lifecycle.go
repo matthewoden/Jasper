@@ -99,7 +99,7 @@ func (a *App) serveStartupError(ctx context.Context, phaseName string, initErr e
 	}
 	a.cfg.Logger.Error("boot failed: serving startup-error static page",
 		"phase", phaseName, "err", initErr, "data_dir", a.cfg.DataDir)
-	a.handler = newStartupErrorHandler(data)
+	a.handler.Swap(newStartupErrorHandler(data))
 	return a.serveListener(ctx)
 }
 
@@ -256,7 +256,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 				"disk-full.html",
 				buildDiskFullData(dbPath, a.cfg.DataDir),
 			)
-			a.handler = a.diskFullHandler
+			a.handler.Swap(a.diskFullHandler)
 			return a.serveListener(ctx)
 		}
 		return a.serveStartupError(ctx, "Disk preflight", fmt.Errorf("disk preflight: %w", err))
@@ -311,7 +311,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 				"disk-full.html",
 				buildDiskFullData(dbPath, a.cfg.DataDir),
 			)
-			a.handler = a.diskFullHandler
+			a.handler.Swap(a.diskFullHandler)
 			return a.serveListener(ctx)
 		}
 		if errors.Is(runErr, migrate.ErrUnrecoverable) {
@@ -321,7 +321,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 				"unrecoverable.html",
 				buildUnrecoverableData(logsPath),
 			)
-			a.handler = a.diskFullHandler
+			a.handler.Swap(a.diskFullHandler)
 			return a.serveListener(ctx)
 		}
 		return a.serveStartupError(ctx, "Migration", fmt.Errorf("migrate run: %w", runErr))
@@ -467,7 +467,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 		r.Get("/files", apiServer.ServeFile)
 	})
 	r.Mount("/", static.Handler())
-	a.handler = r
+	a.handler.Swap(r)
 
 	// 8b. Phase 8 Plan 08-09 — MCP server bring-up (D-14 / D-15 / D-23).
 	// Runs AFTER migrations + reindex (Ready signal), BEFORE
@@ -675,7 +675,7 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 		r.Get("/files", apiServer.ServeFile)
 	})
 	r.Mount("/", static.Handler())
-	a.handler = r
+	a.handler.Swap(r)
 
 	// 8b. MCP server bring-up for the new vault.
 	a.mcpServer = nil
@@ -800,12 +800,22 @@ func (a *App) serveListener(ctx context.Context) error {
 // current_vault is persisted and last_opened_at is refreshed. Clears
 // api.BootBanner so subsequent GET /vault/recent returns no banner.
 func (a *App) OpenVault(ctx context.Context, absCanonical string) error {
+	// V5 single-flight: piggyback on the hot-swap mutex so concurrent
+	// OpenVault + SwitchVault calls can't race. The swap mutex was
+	// added for 17d; reusing it here means a user clicking Create then
+	// Switch in quick succession serializes safely.
+	if !a.swapMu.TryLock() {
+		return ErrSwitchInProgress
+	}
+	defer a.swapMu.Unlock()
+
 	a.mu.Lock()
-	if a.pair != nil {
-		a.mu.Unlock()
+	alreadyOpen := a.pair != nil
+	a.mu.Unlock()
+	if alreadyOpen {
+		// Caller should use SwitchVault for vault → vault transitions.
 		return ErrAlreadyOpen
 	}
-	a.mu.Unlock()
 
 	// Update app.json: register the vault as current + refresh last_opened_at.
 	appJSONPath, err := vault.AppJSONPath()
@@ -830,7 +840,13 @@ func (a *App) OpenVault(ctx context.Context, absCanonical string) error {
 	}
 	api.BootBanner = ""
 
-	// Boot the per-vault subsystems against the new path.
+	// Bring up the per-vault subsystems against the new path. We use
+	// initVaultSubsystemsOnly (steps 1-8, no listener) rather than
+	// bootPerVaultSubsystems (1-9 — opens a NEW listener). The HTTP
+	// listener installed by lifecycle.Run for the no-vault picker shell
+	// is still serving on this port; we just need to swap its handler
+	// to the newly-built full-stack router, which initVaultSubsystemsOnly
+	// already does via a.handler.Swap(r) at its router-build step.
 	a.cfg.DataDir = absCanonical
-	return a.bootPerVaultSubsystems(ctx)
+	return a.initVaultSubsystemsOnly(ctx)
 }

@@ -121,8 +121,15 @@ type Config struct {
 // ErrUnrecoverable). When non-nil, lifecycle.Run installs it as
 // a.handler and serves it on the listener instead of the API + SPA.
 type App struct {
-	cfg     Config
-	handler http.Handler
+	cfg Config
+	// handler is a swappable wrapper installed as http.Server.Handler in
+	// serveListener. Subsystem transitions (no-vault → open, hot-swap)
+	// call handler.Swap(newRouter) so the running listener picks up
+	// the new router without rebinding the port. Pre-08-17e this was a
+	// raw http.Handler captured at server construction; that captured
+	// the picker-shell router so a vault-create transition couldn't
+	// expose /notes etc. against the same listener.
+	handler *swappableHandler
 
 	pair    *sqlite.Pair
 	runner  *migrate.Runner
@@ -264,11 +271,21 @@ func New(cfg Config) (*App, error) {
 	// SPA fallback LAST.
 	r.Mount("/", static.Handler())
 
-	return &App{cfg: cfg, handler: r}, nil
+	a := &App{cfg: cfg, handler: newSwappableHandler(r)}
+	// Wire the no-vault → open transition. The Phase-1-shape api.Server
+	// built above is the one mounted on the picker-shell router that
+	// serves no-vault boots; PostVaultCreate + PostVaultOpen call into
+	// a.OpenVault via this VaultOpener interface to flip the listener
+	// over to vault-open mode without a process restart.
+	apiServer.SetVaultOpener(a)
+	return a, nil
 }
 
 // Handler returns the composed http.Handler for the app — useful
-// for httptest in unit tests.
+// for httptest in unit tests. The returned handler is the swappable
+// wrapper; ServeHTTP delegates to whatever router is currently
+// installed (initial Phase-1 router → no-vault picker shell → per-vault
+// full stack as the app transitions).
 func (a *App) Handler() http.Handler { return a.handler }
 
 // Config returns the resolved configuration the app was built with.
