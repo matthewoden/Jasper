@@ -1,0 +1,386 @@
+/**
+ * G3 diagnostic: vault switch doesn't take until SPA writes.
+ *
+ * Reproduces the UAT-2 round 2 G3 report:
+ *   1. User in vault A, modifies scratchpad.
+ *   2. Switches to vault B.
+ *   3. Observed: editor still shows A's scratchpad content; brief error flash.
+ *
+ * This spec captures the smoking gun for hypothesis discrimination
+ * (see .planning/phases/08-native-install-service-sharing-first-run-polish/08-G3-INVESTIGATION.md):
+ *
+ *   - H1: SPA never reloads (no navigation, no markSwitched fire).
+ *   - H3: server-side race — request hits wrong notesService.
+ *   - H4: WS broadcast cancels in-flight POST.
+ *
+ * Captures:
+ *   - All WS frames (event names) seen by the SPA.
+ *   - All console messages (errors + warnings + custom markers).
+ *   - All page navigations (frame load events).
+ *   - The editor's textContent BEFORE and AFTER the switch.
+ *   - The vault.switched broadcast time vs the navigation time.
+ *
+ * Per CLAUDE.md §Halt-if-inconclusive: if this run does not yield a
+ * single concrete root cause we stop and surface for triage rather
+ * than speculatively patch.
+ */
+
+import { test, expect } from "@playwright/test";
+import { spawn, type ChildProcess } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createServer } from "node:net";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, "..", "..");
+const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
+
+async function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.unref();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address();
+      if (typeof addr === "object" && addr) {
+        const p = addr.port;
+        srv.close(() => resolve(p));
+      } else {
+        reject(new Error("could not allocate free port"));
+      }
+    });
+  });
+}
+
+async function waitForVaultEndpoint(baseURL: string, deadlineMs: number): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < deadlineMs) {
+    try {
+      const r = await fetch(`${baseURL}/api/v1/vault/current`);
+      if (r.ok || r.status === 404) return;
+    } catch {
+      // not yet listening
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`jasper did not become ready at ${baseURL} within ${deadlineMs}ms`);
+}
+
+interface VaultHandle {
+  proc: ChildProcess;
+  baseURL: string;
+  appHome: string;
+  logBuffer: string[];
+  kill: () => void;
+}
+
+async function spawnVaultJasper(appHome: string): Promise<VaultHandle> {
+  if (!fs.existsSync(JASPER_BIN)) {
+    throw new Error(`bin/jasper missing — run 'make build' first. Expected at: ${JASPER_BIN}`);
+  }
+  const port = await findFreePort();
+  const proc = spawn(
+    JASPER_BIN,
+    ["serve", "--addr", `127.0.0.1:${port}`],
+    {
+      env: { ...process.env, JASPER_APP_HOME: appHome },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  const logBuffer: string[] = [];
+  proc.stdout?.on("data", (b) => {
+    const line = b.toString();
+    logBuffer.push(`[stdout] ${line}`);
+    process.stderr.write(`[jasper] ${line}`);
+  });
+  proc.stderr?.on("data", (b) => {
+    const line = b.toString();
+    logBuffer.push(`[stderr] ${line}`);
+    process.stderr.write(`[jasper] ${line}`);
+  });
+
+  const baseURL = `http://127.0.0.1:${port}`;
+  try {
+    await waitForVaultEndpoint(baseURL, 15_000);
+  } catch (e) {
+    proc.kill("SIGTERM");
+    throw e;
+  }
+  return {
+    proc,
+    baseURL,
+    appHome,
+    logBuffer,
+    kill: () => proc.kill("SIGTERM"),
+  };
+}
+
+async function bootstrapVault(baseURL: string, vaultDir: string): Promise<void> {
+  const res = await fetch(`${baseURL}/api/v1/vault/create`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      path: vaultDir,
+      theme: "dark",
+      daily_template: "",
+      mcp_enabled: false,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`vault/create failed for ${vaultDir}: ${res.status} ${body}`);
+  }
+}
+
+async function openVault(baseURL: string, vaultPath: string): Promise<void> {
+  const res = await fetch(`${baseURL}/api/v1/vault/open`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path: vaultPath }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`vault/open failed: ${res.status} ${body}`);
+  }
+}
+
+test.describe("G3 — vault switch content swap diagnostic", () => {
+  test("switch from A to B: capture WS frames + console + nav + editor content", async ({ page }) => {
+    const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "g3-app-"));
+    const vaultA = fs.mkdtempSync(path.join(os.tmpdir(), "g3-A-"));
+    const vaultB = fs.mkdtempSync(path.join(os.tmpdir(), "g3-B-"));
+    let handle: VaultHandle | undefined;
+
+    // diagnostic buffers
+    const wsFrames: Array<{ t: number; dir: "in" | "out"; event?: string; preview: string }> = [];
+    const consoleEvents: Array<{ t: number; type: string; text: string }> = [];
+    const navigations: Array<{ t: number; url: string; type: string }> = [];
+    const requestEvents: Array<{ t: number; method: string; url: string }> = [];
+    const responseEvents: Array<{ t: number; status: number; url: string; failure?: string }> = [];
+    const t0 = Date.now();
+    const ts = () => Date.now() - t0;
+
+    try {
+      handle = await spawnVaultJasper(appHome);
+
+      // Set up vaults A and B.
+      await bootstrapVault(handle.baseURL, vaultA);
+      await bootstrapVault(handle.baseURL, vaultB);
+
+      // Pre-seed distinct scratchpad content so a content swap is observable.
+      const sentinelA = `# Vault A scratchpad\n\nUNIQUE_SENTINEL_AAAAA_${Date.now()}\n`;
+      const sentinelB = `# Vault B scratchpad\n\nUNIQUE_SENTINEL_BBBBB_${Date.now()}\n`;
+      fs.mkdirSync(path.join(vaultA, "notes"), { recursive: true });
+      fs.mkdirSync(path.join(vaultB, "notes"), { recursive: true });
+      fs.writeFileSync(path.join(vaultA, "notes", "scratchpad.md"), sentinelA);
+      fs.writeFileSync(path.join(vaultB, "notes", "scratchpad.md"), sentinelB);
+
+      await openVault(handle.baseURL, vaultA);
+
+      // ---- Wire diagnostic listeners BEFORE goto ----
+      page.on("console", (msg) => {
+        consoleEvents.push({ t: ts(), type: msg.type(), text: msg.text() });
+      });
+      page.on("pageerror", (err) => {
+        consoleEvents.push({ t: ts(), type: "pageerror", text: err.message });
+      });
+      page.on("framenavigated", (frame) => {
+        if (frame === page.mainFrame()) {
+          navigations.push({ t: ts(), url: frame.url(), type: "framenavigated" });
+        }
+      });
+      page.on("load", () => {
+        navigations.push({ t: ts(), url: page.url(), type: "load" });
+      });
+      page.on("request", (req) => {
+        if (req.url().includes("/api/v1/")) {
+          requestEvents.push({ t: ts(), method: req.method(), url: req.url().replace(handle!.baseURL, "") });
+        }
+      });
+      page.on("response", (res) => {
+        if (res.url().includes("/api/v1/")) {
+          responseEvents.push({ t: ts(), status: res.status(), url: res.url().replace(handle!.baseURL, "") });
+        }
+      });
+      page.on("requestfailed", (req) => {
+        if (req.url().includes("/api/v1/")) {
+          responseEvents.push({
+            t: ts(),
+            status: 0,
+            url: req.url().replace(handle!.baseURL, ""),
+            failure: req.failure()?.errorText ?? "unknown",
+          });
+        }
+      });
+      page.on("websocket", (ws) => {
+        wsFrames.push({ t: ts(), dir: "out", preview: `[connect] ${ws.url().replace(handle!.baseURL, "")}` });
+        ws.on("framereceived", (data) => {
+          let event: string | undefined;
+          let preview = "";
+          try {
+            const obj = JSON.parse(data.payload.toString());
+            event = obj.event;
+            preview = JSON.stringify(obj).slice(0, 200);
+          } catch {
+            preview = String(data.payload).slice(0, 200);
+          }
+          wsFrames.push({ t: ts(), dir: "in", event, preview });
+        });
+        ws.on("framesent", (data) => {
+          wsFrames.push({ t: ts(), dir: "out", preview: String(data.payload).slice(0, 100) });
+        });
+        ws.on("close", () => {
+          wsFrames.push({ t: ts(), dir: "in", preview: "[ws closed]" });
+        });
+      });
+
+      // ---- Open SPA ----
+      await page.goto(handle.baseURL + "/");
+      await expect(page.getByTestId("status-bar-vault")).toBeVisible({ timeout: 10_000 });
+
+      // Click the scratchpad node in the tree to open it (no auto-open behavior).
+      await page.getByText("scratchpad").first().click({ timeout: 5_000 });
+
+      // Wait for the editor to render some content so we know A's scratchpad
+      // is loaded.
+      await page.waitForFunction(
+        (sentinel) => document.body.textContent?.includes(sentinel) === true,
+        "UNIQUE_SENTINEL_AAAAA_",
+        { timeout: 10_000 },
+      );
+
+      // Snapshot editor content before switch.
+      const editorContentBefore = await page.evaluate(() => {
+        const cm = document.querySelector(".cm-content");
+        return cm?.textContent ?? "";
+      });
+      consoleEvents.push({ t: ts(), type: "info", text: `[diag] editor content BEFORE switch length=${editorContentBefore.length} contains_A=${editorContentBefore.includes("UNIQUE_SENTINEL_AAAAA_")} contains_B=${editorContentBefore.includes("UNIQUE_SENTINEL_BBBBB_")}` });
+
+      // Inject a marker to detect a reload — set a sessionStorage key with a
+      // unique value. After reload, sessionStorage survives (it persists per
+      // tab) so we can prove the page DID reload by comparing window-load
+      // counters, OR by checking whether a `window.__g3PreReloadMark` we set
+      // is still there (it survives reload because it's just a string on a
+      // global object that gets destroyed) — wait, that's the OPPOSITE: a
+      // global on `window` does NOT survive reload. Use that.
+      await page.evaluate(() => {
+        (window as unknown as { __g3PreReloadMark?: number }).__g3PreReloadMark = Date.now();
+      });
+      const preReloadMark = await page.evaluate(
+        () => (window as unknown as { __g3PreReloadMark?: number }).__g3PreReloadMark,
+      );
+      consoleEvents.push({ t: ts(), type: "info", text: `[diag] set window.__g3PreReloadMark=${preReloadMark}` });
+
+      // ---- Trigger the switch ----
+      consoleEvents.push({ t: ts(), type: "info", text: `[diag] clicking StatusBar to open switch picker` });
+      await page.getByTestId("status-bar-vault").click();
+      await expect(page.getByRole("dialog", { name: /vault/i })).toBeVisible({ timeout: 5_000 });
+
+      await page.getByRole("tab", { name: /recent/i }).click();
+      consoleEvents.push({ t: ts(), type: "info", text: `[diag] clicked Recent tab; about to click vault B row` });
+
+      // Click B row.
+      const switchClickTime = ts();
+      // G2 Test 5 confirmed: vault-row-${path} testid is missing in switch-mode (only present in boot-mode). Click by display name text instead.
+      await page.getByText(path.basename(vaultB)).first().click({ timeout: 5_000 });
+      consoleEvents.push({ t: ts(), type: "info", text: `[diag] clicked vault-row-${vaultB} at t=${switchClickTime}` });
+
+      // ---- Wait ~6s to observe whether the SPA reloads ----
+      await page.waitForTimeout(6000);
+
+      // After the wait, check whether the global marker survived (= NO reload).
+      const postWaitMark = await page.evaluate(
+        () => (window as unknown as { __g3PreReloadMark?: number }).__g3PreReloadMark,
+      );
+      const reloadOccurred = postWaitMark === undefined;
+      consoleEvents.push({ t: ts(), type: "info", text: `[diag] post-wait window.__g3PreReloadMark=${postWaitMark}; reloadOccurred=${reloadOccurred}` });
+
+      // Snapshot editor content after the wait.
+      const editorContentAfter = await page.evaluate(() => {
+        const cm = document.querySelector(".cm-content");
+        return cm?.textContent ?? "";
+      });
+      consoleEvents.push({ t: ts(), type: "info", text: `[diag] editor content AFTER switch length=${editorContentAfter.length} contains_A=${editorContentAfter.includes("UNIQUE_SENTINEL_AAAAA_")} contains_B=${editorContentAfter.includes("UNIQUE_SENTINEL_BBBBB_")}` });
+
+      // ---- G3 regression: vault B scratchpad on-disk content ----
+      //
+      // Root cause of G3 (debug session vault-switch-not-taking):
+      // window.location.reload() triggered visibilitychange to hidden,
+      // which fired a keepalive PUT carrying vault A's in-memory editor
+      // bytes; that PUT arrived at the backend AFTER the swap had
+      // completed and overwrote vault B's scratchpad with vault A's text.
+      // The fix (EditorPane.tsx) gates the keepalive PUT on
+      // userHasEdited.current AND !vaultSwitching.active so the PUT
+      // never fires in this scenario.
+      //
+      // Regression assertion: vault B's scratchpad on disk must still
+      // be the original sentinelB content -- no contamination from A.
+      const vaultBScratchpad = path.join(vaultB, "notes", "scratchpad.md");
+      const vaultBContent = fs.readFileSync(vaultBScratchpad, "utf8");
+      consoleEvents.push({
+        t: ts(),
+        type: "info",
+        text: `[diag] vault B scratchpad on disk: length=${vaultBContent.length} contains_A=${vaultBContent.includes("UNIQUE_SENTINEL_AAAAA_")} contains_B=${vaultBContent.includes("UNIQUE_SENTINEL_BBBBB_")}`,
+      });
+      // Hard assertions (must hold after the G3 fix):
+      expect(vaultBContent).toContain("UNIQUE_SENTINEL_BBBBB_");
+      expect(vaultBContent).not.toContain("UNIQUE_SENTINEL_AAAAA_");
+
+      // ---- Dump diagnostics ----
+      const dumpPath = path.join(repoRoot, "test-results", "g3-diagnostic.json");
+      fs.mkdirSync(path.dirname(dumpPath), { recursive: true });
+      fs.writeFileSync(
+        dumpPath,
+        JSON.stringify(
+          {
+            switchClickTime,
+            reloadOccurred,
+            editorContentBefore: editorContentBefore.slice(0, 300),
+            editorContentAfter: editorContentAfter.slice(0, 300),
+            wsFrames,
+            consoleEvents,
+            navigations,
+            requestEvents,
+            responseEvents,
+            serverLog: handle.logBuffer.slice(-200),
+          },
+          null,
+          2,
+        ),
+      );
+      // eslint-disable-next-line no-console
+      console.log(`\n[diag] wrote diagnostic dump to ${dumpPath}\n`);
+      // eslint-disable-next-line no-console
+      console.log(`\n[diag] SUMMARY:`);
+      // eslint-disable-next-line no-console
+      console.log(`  reloadOccurred=${reloadOccurred}`);
+      // eslint-disable-next-line no-console
+      console.log(`  editor BEFORE: ${editorContentBefore.slice(0, 80)}`);
+      // eslint-disable-next-line no-console
+      console.log(`  editor AFTER:  ${editorContentAfter.slice(0, 80)}`);
+      // eslint-disable-next-line no-console
+      console.log(`  ws frames (last 10):`);
+      for (const f of wsFrames.slice(-10)) {
+        // eslint-disable-next-line no-console
+        console.log(`    [${f.t}ms ${f.dir}] ${f.event ?? ""} ${f.preview}`);
+      }
+      // eslint-disable-next-line no-console
+      console.log(`  navigations: ${JSON.stringify(navigations)}`);
+      // eslint-disable-next-line no-console
+      console.log(`  request failures: ${JSON.stringify(responseEvents.filter(r => r.failure || r.status >= 400))}`);
+
+      // Soft assertions — surface results in test output but don't gate on
+      // them (we want the diagnostic to always finish + dump regardless).
+      // The hard assertion is just "we got *some* observation."
+      expect(wsFrames.length).toBeGreaterThan(0);
+    } finally {
+      handle?.kill();
+      fs.rmSync(appHome, { recursive: true, force: true });
+      fs.rmSync(vaultA, { recursive: true, force: true });
+      fs.rmSync(vaultB, { recursive: true, force: true });
+    }
+  });
+});

@@ -2016,6 +2016,126 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
         }
     });
 
+    it("G3 fix: visibilitychange to hidden does NOT fire keepalive when user has not edited (vault-switch contamination guard)", async () => {
+        // Root cause of G3 (debug session vault-switch-not-taking):
+        // when window.location.reload() runs (triggered by vault.switched WS
+        // event), the browser fires visibilitychange to hidden BEFORE the
+        // navigation, which dispatched a keepalive PUT carrying the
+        // editor's in-memory bytes. If the user never edited, those bytes
+        // are an exact copy of what the server already has -- a no-op at
+        // best, and ACTIVELY HARMFUL if the receiver vault has been swapped
+        // (vault A bytes overwriting vault B's same-UUID file).
+        // Fix: gate the keepalive PUT on userHasEdited.current.
+        getNoteMock.mockResolvedValue(okGet("untouched"));
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("untouched"));
+
+            // User never types -- userHasEdited.current stays false.
+            const restore = setVisibilityState("hidden");
+            try {
+                await act(async () => {
+                    document.dispatchEvent(new Event("visibilitychange"));
+                    await Promise.resolve();
+                });
+                // The keepalive PUT must NOT fire.
+                expect(fetchMock).not.toHaveBeenCalled();
+            } finally {
+                restore();
+            }
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    it("G3 fix: visibilitychange to hidden does NOT fire keepalive while a vault switch is active (even after editing)", async () => {
+        // Second G3 guard: even if the user has unsaved edits, a vault swap
+        // in flight means the target vault's notes service is being rebuilt.
+        // A keepalive PUT in that window could land in the wrong vault's
+        // namespace. Losing unsaved bytes here is strictly better than
+        // writing them into the wrong vault's same-UUID file.
+        getNoteMock.mockResolvedValue(okGet("hello"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("hello"));
+
+            // Type to set userHasEdited.current = true.
+            fireEvent.change(editor, { target: { value: "my unsaved edit" } });
+
+            // Simulate a vault switch in progress via the same store path
+            // that useSessionSync's vault.switching handler uses.
+            act(() => {
+                useTreeStore
+                    .getState()
+                    .setVaultSwitching({ active: true, targetName: "vault-b" });
+            });
+
+            const restore = setVisibilityState("hidden");
+            try {
+                await act(async () => {
+                    document.dispatchEvent(new Event("visibilitychange"));
+                    await Promise.resolve();
+                });
+                // The keepalive PUT must NOT fire while vaultSwitching.active.
+                expect(fetchMock).not.toHaveBeenCalled();
+            } finally {
+                restore();
+                // Reset the store so other tests don't see stale state.
+                act(() => {
+                    useTreeStore
+                        .getState()
+                        .setVaultSwitching({ active: false, targetName: "" });
+                });
+            }
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    it("G3 fix: beforeunload also gates on userHasEdited (parity with visibilitychange)", async () => {
+        // The same gate applies to beforeunload so the fallback path
+        // (browsers that fire beforeunload without a prior visibilitychange)
+        // does not regress G3.
+        getNoteMock.mockResolvedValue(okGet("untouched"));
+        const fetchMock = vi.fn().mockResolvedValue(new Response());
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        try {
+            render(<EditorPane noteId={ScratchpadUUID} />);
+            await flushMicrotasks();
+            const editor = screen.getByLabelText(
+                "Note content",
+            ) as HTMLTextAreaElement;
+            await waitFor(() => expect(editor.value).toBe("untouched"));
+
+            // No edit. Fire beforeunload directly.
+            act(() => {
+                window.dispatchEvent(new Event("beforeunload"));
+            });
+            expect(fetchMock).not.toHaveBeenCalled();
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
     afterEach(() => {
         useTreeStore.setState({ connectionStatus: "connected" });
     });

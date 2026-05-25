@@ -730,6 +730,22 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       // Phase 4 paused gate — same condition performSave uses.
       if (connectionStatusRef.current !== "connected") return;
       if (keepaliveSentRef.current) return;
+      // G3 fix (UAT-2 round 2, debug session vault-switch-not-taking):
+      // gate keepalive PUT on user-has-edited so an unmodified editor
+      // never issues a write. Without this, window.location.reload()
+      // triggered by a vault.switched event fires visibilitychange to
+      // hidden, which dispatched a PUT of vault A's in-memory content.
+      // That PUT landed in vault B's namespace (same well-known
+      // scratchpad UUID across vaults) and polluted vault B's
+      // scratchpad with vault A's text. The user reported "vault
+      // switch doesn't take until I create a new file" -- that was the
+      // contaminated scratchpad.
+      if (!userHasEdited.current) return;
+      // G3 fix continued: even if userHasEdited, a vault swap in progress
+      // means the target vault's notes service is being rebuilt. A PUT in
+      // that window can land in the wrong vault. Losing unsaved bytes is
+      // strictly better than writing them into the wrong vault.
+      if (useTreeStore.getState().vaultSwitching.active) return;
       keepaliveSentRef.current = true;
       // BL-04: keepalive: true survives tab close. The previous
       // performSave(latestContentRef.current) issued a non-keepalive PUT
@@ -759,6 +775,11 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       const id = noteIdRef.current;
       if (id === null) return;
       if (connectionStatusRef.current !== "connected") return;
+      // G3 fix (same as onVisibilityChange above): skip when the user
+      // never edited, and skip during a vault swap. See the longer
+      // comment in onVisibilityChange for the failure mode.
+      if (!userHasEdited.current) return;
+      if (useTreeStore.getState().vaultSwitching.active) return;
       keepaliveSentRef.current = true;
       void fetch(`/api/v1/notes/${encodeURIComponent(id)}`, {
         method: "PUT",
