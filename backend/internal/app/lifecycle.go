@@ -483,7 +483,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	if mcpCfgErr != nil {
 		a.cfg.Logger.Warn("MCP: config load failed (continuing with MCP disabled)", "err", mcpCfgErr)
 	} else if mcpCfg.MCP.Enabled {
-		mcpSrv, mcpShutdownFn, mcpErr := a.startMCP(ctx, mcpCfg.MCP, notesSvc, hub, pair)
+		mcpSrv, mcpShutdownFn, acl, mcpErr := a.startMCP(ctx, mcpCfg.MCP, notesSvc, hub, pair)
 		if mcpErr != nil {
 			a.cfg.Logger.Error("MCP listener failed to bind; continuing without MCP", "err", mcpErr)
 		} else {
@@ -492,6 +492,10 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 			// Shutdown to release the port before the new vault's MCP binds.
 			a.mcpServer = mcpSrv
 			a.mcpShutdown = mcpShutdownFn
+			// UAT-2 round 3 M1: wire the ACL into the HTTP API server so
+			// /api/v1/mcp/grants stops returning "MCP server is disabled in
+			// config" when MCP is actually up.
+			apiServer.SetMcpACL(acl)
 		}
 	}
 
@@ -684,13 +688,16 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	if mcpCfgErr != nil {
 		a.cfg.Logger.Warn("switch: MCP config load failed (continuing with MCP disabled)", "err", mcpCfgErr)
 	} else if mcpCfg.MCP.Enabled {
-		mcpSrv, mcpShutdownFn, mcpErr := a.startMCP(ctx, mcpCfg.MCP, notesSvc, hub, pair)
+		mcpSrv, mcpShutdownFn, acl, mcpErr := a.startMCP(ctx, mcpCfg.MCP, notesSvc, hub, pair)
 		if mcpErr != nil {
 			a.cfg.Logger.Error("switch: MCP listener failed to bind; continuing without MCP", "err", mcpErr)
 		} else {
 			a.cfg.Logger.Info("switch: MCP listener up", "port", mcpCfg.MCP.Port)
 			a.mcpServer = mcpSrv
 			a.mcpShutdown = mcpShutdownFn
+			// UAT-2 round 3 M1: wire the ACL into the rebuilt HTTP API
+			// server so the grants endpoint sees the new vault's ACL.
+			apiServer.SetMcpACL(acl)
 		}
 	}
 
@@ -711,7 +718,7 @@ func (a *App) startMCP(
 	notesSvc *notes.Service,
 	hub *wshub.Hub,
 	pair *sqlite.Pair,
-) (*http.Server, func(context.Context) error, error) {
+) (*http.Server, func(context.Context) error, *mcp.ACL, error) {
 	bind := cfg.Bind
 	if bind == "" {
 		bind = "127.0.0.1"
@@ -748,9 +755,9 @@ func (a *App) startMCP(
 
 	srv, err := mcp.StartMCPListener(ctx, mcpServer, bindAddr, a.cfg.Logger)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return srv, srv.Shutdown, nil
+	return srv, srv.Shutdown, acl, nil
 }
 
 // serveListener is the listen + graceful-shutdown body, factored into
