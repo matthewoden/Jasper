@@ -565,3 +565,24 @@ body {
   flex-direction: column;
   gap: 6px;
 }
+
+/* ── UAT-2 round 3 M3 — Radix dropdown/context menu hover indicator ────
+   Match the side-panel accent-12% hover tint (D-17 — same as autocomplete
+   rows and the backlinks list). Radix sets data-highlighted="" on the
+   currently hovered OR keyboard-focused item; covers DropdownMenu.Item,
+   ContextMenu.Item, *.RadioItem, *.CheckboxItem, and *.SubTrigger across
+   every menu surface (SettingsMenu, TreeRowMenu, PanelSelectorDropdown,
+   Breadcrumbs overflow, etc).
+
+   Flyout submenus inherit because Radix renders SubContent through the
+   same Portal/Content pipeline; the SubTrigger row also gets the tint
+   while the flyout is open via [data-state="open"].
+   ───────────────────────────────────────────────────────────────────── */
+[role="menuitem"][data-highlighted],
+[role="menuitemradio"][data-highlighted],
+[role="menuitemcheckbox"][data-highlighted],
+[role="menuitem"][data-state="open"] {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  outline: none;
+}
+
