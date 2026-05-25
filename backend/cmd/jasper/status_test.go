@@ -59,6 +59,7 @@ func writeMinimalConfig(t *testing.T, dataDir string, cfg config.Config) {
 // branch: with no config.json on disk, status prints the wizard hint.
 func TestRunStatus_NoConfig_PrintsSetupHint(t *testing.T) {
 	dir := t.TempDir()
+	t.Setenv("JASPER_APP_HOME", filepath.Join(dir, "appHome"))
 	t.Setenv("JASPER_DATA_DIR", dir)
 
 	var buf bytes.Buffer
@@ -78,6 +79,7 @@ func TestRunStatus_NoConfig_PrintsSetupHint(t *testing.T) {
 // expected substrings.
 func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 	dir := t.TempDir()
+	t.Setenv("JASPER_APP_HOME", filepath.Join(dir, "appHome"))
 	t.Setenv("JASPER_DATA_DIR", dir)
 	writeMinimalConfig(t, dir, config.Config{
 		AppName: "Jasper",
@@ -112,6 +114,7 @@ func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 // including per-grant breakdown.
 func TestRunStatus_McpEnabledWithGrants(t *testing.T) {
 	dir := t.TempDir()
+	t.Setenv("JASPER_APP_HOME", filepath.Join(dir, "appHome"))
 	t.Setenv("JASPER_DATA_DIR", dir)
 	writeMinimalConfig(t, dir, config.Config{
 		AppName: "Jasper",

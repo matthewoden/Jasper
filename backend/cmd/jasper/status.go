@@ -118,6 +118,28 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	if _, err := fmt.Fprintf(out, "Recent Vaults:  %d entries\n", recentCount); err != nil {
 		return err
 	}
+	// UAT-2 G5: enumerate each entry instead of just the count. RecentVaults
+	// is sorted newest-first (LRU). Missing entries get a "(missing)" tag.
+	if appState != nil {
+		for _, e := range appState.RecentVaults {
+			name := e.DisplayName
+			if name == "" {
+				name = filepath.Base(e.Path)
+			}
+			missing := ""
+			if e.Missing {
+				missing = " (missing)"
+			}
+			last := "never"
+			if !e.LastOpenedAt.IsZero() {
+				last = e.LastOpenedAt.Local().Format("2006-01-02 15:04")
+			}
+			if _, err := fmt.Fprintf(out, "  - %s (%s) — last opened %s%s\n",
+				name, e.Path, last, missing); err != nil {
+				return err
+			}
+		}
+	}
 
 	if appHomeErr == nil {
 		if _, err := fmt.Fprintf(out, "App Home:       %s\n", appHome); err != nil {
