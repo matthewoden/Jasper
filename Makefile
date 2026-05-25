@@ -58,3 +58,23 @@ dev:
 	cd frontend && npx concurrently --kill-others --names BACKEND,FRONTEND --prefix-colors blue,magenta \
 	  "cd .. && go tool air" \
 	  "npm run dev"
+
+# Docker-as-fake-WSL e2e: builds the Linux jasper binary inside a container
+# with a fake /proc/sys/kernel/osrelease ("microsoft"), brings the bridge up,
+# runs the WSL parity Playwright spec, tears down regardless of outcome.
+# See compose/wsl-validation/README in the Dockerfile header for the design.
+.PHONY: test-wsl-e2e
+test-wsl-e2e:
+	@echo "==> Building wsl-validation image + bringing up container"
+	@# frontend/dist/ must exist before the Dockerfile COPY step runs.
+	@# Build it host-side via the standard Vite pipeline; it's cheap if
+	@# already current.
+	cd frontend && npm install && npm run build
+	docker compose -f compose/wsl-validation/docker-compose.yml up \
+	  --build --detach --wait
+	@echo "==> Running Playwright fake-WSL spec"
+	@# Wait flag above blocks until healthcheck passes; the spec then
+	@# connects to the published host port. Tear down on success OR failure.
+	@trap 'docker compose -f compose/wsl-validation/docker-compose.yml down -v --remove-orphans' EXIT; \
+	  cd frontend && JASPER_WSL_E2E=1 JASPER_WSL_HOST_PORT=$${JASPER_WSL_HOST_PORT:-6684} \
+	    npx playwright test phase8-wsl-vault.spec.ts

@@ -17,7 +17,17 @@ import (
 // tests so the probe can be driven against a fixture without touching /proc.
 // Production value is /proc/sys/kernel/osrelease; on WSL2 it contains a
 // version string like "5.15.167.4-microsoft-standard-WSL2".
-var OsreleasePath = "/proc/sys/kernel/osrelease"
+//
+// At process start the JASPER_OSRELEASE_PATH env var (when non-empty) takes
+// precedence — used by the Docker-as-fake-WSL e2e harness in
+// compose/wsl-validation/ to exercise the WSL branch from CI without a
+// Windows host. Production runs leave the env var unset.
+var OsreleasePath = func() string {
+	if p := os.Getenv("JASPER_OSRELEASE_PATH"); p != "" {
+		return p
+	}
+	return "/proc/sys/kernel/osrelease"
+}()
 
 // IsWSL returns true when the current host is WSL2. Detection is the
 // case-insensitive substring "microsoft" in /proc/sys/kernel/osrelease.

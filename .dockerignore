@@ -1,0 +1,37 @@
+# Top-level .dockerignore — first Docker-builds-from-source path lands with
+# compose/wsl-validation/. Without this file the build context is the entire
+# repo tree (including .git history) — slow + balloons the build cache.
+#
+# Kept conservative. Add narrowing rules only when we know a Docker build
+# elsewhere needs them.
+
+# Version control + planning artifacts the binary never needs.
+.git/
+.planning/
+
+# Other compose harnesses don't COPY into one another.
+compose/install-validation/
+compose/wsl-validation/.artifacts/
+
+# Frontend dev artefacts. We COPY frontend/dist explicitly — node_modules
+# is rebuilt inside the host's `make build` before the Docker layer.
+frontend/node_modules/
+frontend/test-results/
+frontend/playwright-report/
+frontend/.artifacts/
+frontend/e2e/.artifacts/
+
+# Host binary (darwin) doesn't belong in a linux container; the Dockerfile
+# cross-compiles its own.
+bin/
+
+# Editor / OS scratch.
+.vscode/
+.idea/
+.DS_Store
+*.log
+
+# Claude Code / harness scratch.
+.claude/
+.vite/
+test-results/

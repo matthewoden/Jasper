@@ -1,0 +1,47 @@
+# compose/wsl-validation/docker-compose.yml
+#
+# Docker-as-fake-WSL e2e target. Spins up the jasper Linux binary with a
+# fake /proc/sys/kernel/osrelease containing "microsoft" so the runtime
+# IsWSL() probe returns true. The Playwright spec phase8-wsl-vault.spec.ts
+# drives the picker against the published port and asserts Windows-form
+# breadcrumb + footer.
+#
+# Why not network_mode: host?
+#   Doesn't work on macOS Docker Desktop (the host network is a VM, not
+#   the actual host). The socat bridge in entrypoint.sh forwards 0.0.0.0
+#   inside the container to jasper's loopback listener, preserving the
+#   binary's production-grade loopback-only guarantee.
+#
+# Platform pin:
+#   linux/amd64 because the Go binary is cross-compiled for that target
+#   in the Dockerfile. Apple-Silicon developer machines run it under
+#   Rosetta-2 emulation; CI on amd64 GitHub Actions runners is a no-op.
+
+services:
+  jasper-wsl:
+    build:
+      # docker compose uses the directory containing docker-compose.yml as
+      # the build context by default; we need the repo root so the
+      # Dockerfile can COPY backend/ and frontend/dist/. Override here.
+      context: ../..
+      dockerfile: compose/wsl-validation/Dockerfile
+    platform: linux/amd64
+    container_name: jasper-wsl-validation
+    ports:
+      # host:container. The host port is configurable via JASPER_WSL_HOST_PORT
+      # so two devs running the harness simultaneously on the same machine
+      # don't collide. Defaults to 6684.
+      - "${JASPER_WSL_HOST_PORT:-6684}:6684"
+    # No volumes — every test run starts from a fresh container so the
+    # vault registry (~/.jasper/app.json) and the fixture /mnt/c tree are
+    # both pristine. Persistence would defeat the "make every CI run
+    # deterministic" point.
+    healthcheck:
+      # The bridge is healthy when socat is accepting AND jasper's vault
+      # endpoint is responding through it. Curl hitting 6684 (the bridge)
+      # exercises both legs.
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:6684/api/v1/vault/recent"]
+      interval: 2s
+      timeout: 1s
+      retries: 15
+      start_period: 5s
