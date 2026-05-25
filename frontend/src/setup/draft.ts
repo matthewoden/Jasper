@@ -52,7 +52,7 @@ export interface SetupDraft {
 export const DEFAULT_DRAFT: SetupDraft = {
   dataDir: "",
   theme: "dark",
-  mcpEnabled: false,
+  mcpEnabled: true,
   mcpGrants: [],
   dailyTemplate: "# {{date}}\n\n",
   createTodayDailyNote: false,

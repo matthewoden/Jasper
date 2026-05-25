@@ -137,8 +137,8 @@ func TestDefaults_ServerAndMCP(t *testing.T) {
 	if d.MCP.Port != 6684 {
 		t.Errorf("MCP.Port: got %d, want 6684 (D-47)", d.MCP.Port)
 	}
-	if d.MCP.Enabled {
-		t.Errorf("MCP.Enabled: got true, want false (opt-in via wizard)")
+	if !d.MCP.Enabled {
+		t.Errorf("MCP.Enabled: got false, want true (UAT-2 round 2 Q3 — default-on)")
 	}
 	if d.MCP.Bind != "127.0.0.1" {
 		t.Errorf("MCP.Bind: got %q, want 127.0.0.1 (D-15)", d.MCP.Bind)
