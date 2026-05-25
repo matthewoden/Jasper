@@ -201,6 +201,76 @@ func TestGetFsList_DropsDotfileSubdirs(t *testing.T) {
 	}
 }
 
+// is_vault: present + true when the listed dir contains a .jasper/ that
+// isn't the app-home registry. Absent / false otherwise. UAT-2 follow-up
+// "detect existing vault during browse" coverage.
+func TestGetFsList_IsVault_TrueForFolderContainingDotJasper(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".jasper"), 0o700); err != nil {
+		t.Fatalf("seed .jasper: %v", err)
+	}
+	// Isolate JASPER_APP_HOME to a separate tmpdir so the .jasper under
+	// `root` is unambiguously a vault marker, not the registry.
+	t.Setenv("JASPER_APP_HOME", t.TempDir())
+
+	s := newFsListServer(t)
+	resp, _ := s.GetFsList(context.Background(), GetFsListRequestObject{
+		Params: GetFsListParams{Path: ptr(root)},
+	})
+	ok, isOk := resp.(GetFsList200JSONResponse)
+	if !isOk {
+		t.Fatalf("want 200, got %T", resp)
+	}
+	if ok.IsVault == nil || !*ok.IsVault {
+		t.Errorf("IsVault: got %v, want pointer to true", ok.IsVault)
+	}
+}
+
+func TestGetFsList_IsVault_FalseForFolderContainingAppRegistry(t *testing.T) {
+	// fakeHome/.jasper IS the app registry. Listing fakeHome must NOT
+	// flip is_vault — same canonicalize-and-compare-to-app-home logic
+	// as PostVaultCreate's already_a_vault exemption.
+	fakeHome := t.TempDir()
+	appHome := filepath.Join(fakeHome, ".jasper")
+	if err := os.MkdirAll(appHome, 0o700); err != nil {
+		t.Fatalf("seed app home: %v", err)
+	}
+	t.Setenv("JASPER_APP_HOME", appHome)
+
+	s := newFsListServer(t)
+	resp, _ := s.GetFsList(context.Background(), GetFsListRequestObject{
+		Params: GetFsListParams{Path: ptr(fakeHome)},
+	})
+	ok, isOk := resp.(GetFsList200JSONResponse)
+	if !isOk {
+		t.Fatalf("want 200, got %T", resp)
+	}
+	// IsVault must be present + false. nil would mean "no .jasper found"
+	// which is technically incorrect (there IS a .jasper, it's just the
+	// registry); we explicitly emit false so the picker can know "this
+	// is the user's home with the registry sitting next to it" if it
+	// wants to.
+	if ok.IsVault == nil || *ok.IsVault {
+		t.Errorf("IsVault: got %v, want pointer to false (it's the registry)", ok.IsVault)
+	}
+}
+
+func TestGetFsList_IsVault_NilWhenNoDotJasper(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("JASPER_APP_HOME", t.TempDir())
+	s := newFsListServer(t)
+	resp, _ := s.GetFsList(context.Background(), GetFsListRequestObject{
+		Params: GetFsListParams{Path: ptr(root)},
+	})
+	ok, isOk := resp.(GetFsList200JSONResponse)
+	if !isOk {
+		t.Fatalf("want 200, got %T", resp)
+	}
+	if ok.IsVault != nil {
+		t.Errorf("IsVault: got %v, want nil (no .jasper present)", ok.IsVault)
+	}
+}
+
 func TestGetFsList_WindowsPath_OmittedOnNonWSL(t *testing.T) {
 	// Default isWSLProbe (platform.IsWSL) returns false on macOS CI / native
 	// Linux. Sanity-check that the field stays nil so the JSON omits it.

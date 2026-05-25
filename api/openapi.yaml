@@ -1429,6 +1429,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VaultSwitchInProgressResponse"
+  /fs/mkdir:
+    post:
+      tags: [fs]
+      operationId: postFsMkdir
+      summary: Create a directory at an absolute path (folder-picker "New folder")
+      description: |
+        Creates a new directory at `path` (must be absolute). Used by the
+        vault picker's "New folder" affordance so the user can prep an
+        empty folder for vault creation without bouncing out to Finder.
+
+        Returns 200 on success (and when the directory already exists —
+        idempotent). 400 for non-absolute paths or names that fail the
+        same ASCII / NFC / no-`..` / no-`//` validation pipeline as
+        `validateVaultPath`. 403 on EACCES.
+
+        Same posture as `/fs/list`: Jasper runs as the local user on
+        loopback, so this exposes nothing beyond what the user could
+        `mkdir` themselves.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FsMkdirRequest"
+      responses:
+        "200":
+          description: Directory created (or already existed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FsMkdirResponse"
+        "400":
+          description: Invalid path (non-absolute, validation failed, or parent missing)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Permission denied creating the directory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /fs/list:
     get:
       tags: [fs]
@@ -2481,6 +2524,21 @@ components:
         current_target:
           type: string
           description: The vault path that was being switched to when the 409 fired.
+    FsMkdirRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Absolute path of the directory to create.
+          minLength: 1
+    FsMkdirResponse:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Canonical absolute path of the (now-existing) directory.
     FsListEntry:
       type: object
       required: [name, path]
@@ -2511,6 +2569,14 @@ components:
             Empty string in every other case (native macOS/Linux, paths under
             /home/..., etc.). The picker renders this as the user-facing path
             when present and keeps `path` as the click-target for backend ops.
+        is_vault:
+          type: boolean
+          description: |
+            True when `path` contains a `.jasper/` directory AND that directory
+            is not the Jasper app-home registry. The picker uses this to flip
+            its footer from "Select this folder" to "Open Vault" so the user
+            can open the existing vault instead of seeing an "already_a_vault"
+            error from the create handler.
         entries:
           type: array
           description: Subdirectories of `path`, sorted case-insensitive alphabetical.

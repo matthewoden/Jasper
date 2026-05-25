@@ -368,6 +368,99 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
     }
   });
 
+  test("folder picker — detects existing .jasper/ and swaps footer to Open Vault + Go up", async ({
+    page,
+  }) => {
+    const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-pick-detect-app-"));
+    const browseRoot = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-pick-detect-root-"));
+    const existingVault = path.join(browseRoot, "ExistingVault");
+    fs.mkdirSync(existingVault);
+    // Seed a .jasper/ so the backend reports is_vault: true for this folder.
+    fs.mkdirSync(path.join(existingVault, ".jasper"));
+    fs.mkdirSync(path.join(browseRoot, "PlainFolder"));
+
+    let handle: VaultHandle | undefined;
+    try {
+      handle = await spawnVaultJasper(appHome);
+      await page.goto(handle.baseURL + "/");
+
+      // Open the picker via the create form's Browse… button.
+      await page.getByTestId("vault-create-path-input").fill(browseRoot);
+      await page.getByTestId("vault-create-browse").click();
+      await expect(page.getByTestId("folder-picker")).toBeVisible();
+
+      // No vault detected at the browseRoot itself.
+      await expect(page.getByTestId("folder-picker-vault-banner")).toHaveCount(0);
+      await expect(page.getByTestId("folder-picker-select")).toBeVisible();
+
+      // Click into the seeded vault folder.
+      await page.getByTestId("folder-picker-entry-ExistingVault").click();
+
+      // Banner appears + footer flips.
+      await expect(page.getByTestId("folder-picker-vault-banner")).toContainText(
+        /already a Jasper vault/i,
+      );
+      await expect(page.getByTestId("folder-picker-open-vault")).toBeVisible();
+      await expect(page.getByTestId("folder-picker-go-up")).toBeVisible();
+      await expect(page.getByTestId("folder-picker-select")).toHaveCount(0);
+
+      // Go up navigates the picker to the parent — banner clears.
+      await page.getByTestId("folder-picker-go-up").click();
+      await expect(page.getByTestId("folder-picker-vault-banner")).toHaveCount(0);
+      await expect(page.getByTestId("folder-picker-current-path-primary")).toContainText(
+        path.basename(browseRoot),
+      );
+      // Picker is still open — Cancel did NOT close it.
+      await expect(page.getByTestId("folder-picker")).toBeVisible();
+    } finally {
+      handle?.kill();
+      fs.rmSync(appHome, { recursive: true, force: true });
+      fs.rmSync(browseRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("folder picker — '+ New folder' creates a folder inline and re-lists", async ({
+    page,
+  }) => {
+    const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-pick-mkdir-app-"));
+    const browseRoot = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-pick-mkdir-root-"));
+
+    let handle: VaultHandle | undefined;
+    try {
+      handle = await spawnVaultJasper(appHome);
+      await page.goto(handle.baseURL + "/");
+
+      await page.getByTestId("vault-create-path-input").fill(browseRoot);
+      await page.getByTestId("vault-create-browse").click();
+      await expect(page.getByTestId("folder-picker")).toBeVisible();
+
+      // Open the inline new-folder input.
+      await page.getByTestId("folder-picker-new-folder-button").click();
+      const nameInput = page.getByTestId("folder-picker-new-folder-input");
+      await expect(nameInput).toBeVisible();
+
+      // Type a name with mixed case + spaces so the test also covers
+      // the case-preservation fix on darwin (the backend would otherwise
+      // lowercase via vault.Canonicalize).
+      const targetName = "Brand New Vault";
+      await nameInput.fill(targetName);
+      await nameInput.press("Enter");
+
+      // Inline input closes on success.
+      await expect(nameInput).toHaveCount(0);
+      // The new folder is now in the listing.
+      await expect(
+        page.getByTestId(`folder-picker-entry-${targetName}`),
+      ).toBeVisible({ timeout: 5_000 });
+      // And on disk, with the case preserved.
+      expect(fs.existsSync(path.join(browseRoot, targetName))).toBe(true);
+    } finally {
+      handle?.kill();
+      fs.rmSync(appHome, { recursive: true, force: true });
+      fs.rmSync(browseRoot, { recursive: true, force: true });
+    }
+  });
+
   test("create new vault → StatusBar shows vault display_name after reload", async ({ page }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-vault-e2e-app-"));
     const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-vault-e2e-vault-"));

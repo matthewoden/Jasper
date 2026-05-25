@@ -107,6 +107,19 @@ export function VaultOpenPane({
           setPath(p);
           setBrowsing(false);
         }}
+        // On the Open tab, a detected vault is exactly what we want —
+        // call vaultApi.open and reload, identical to the form-submit path.
+        onOpenVault={(p) => {
+          void (async () => {
+            try {
+              await vaultApi.open(p);
+              window.location.reload();
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "Failed to open vault.");
+              setBrowsing(false);
+            }
+          })();
+        }}
       />
       {!validation.ok && path !== "" && (
         <div className="vault-picker-error" style={{ marginTop: 8 }}>

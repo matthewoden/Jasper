@@ -31,4 +31,24 @@ export const fsApi = {
     }
     return data;
   },
+
+  /**
+   * POST /api/v1/fs/mkdir — create a directory at an absolute path.
+   * Idempotent on already-existing directories; throws on validation
+   * failure, missing parent, or permission denied.
+   */
+  mkdir: async (path: string): Promise<string> => {
+    const { data, error, response } = await client.POST("/fs/mkdir", {
+      body: { path },
+    });
+    if (error || !data) {
+      const body = (error as { code?: string; message?: string } | undefined) ?? {};
+      const msg = body.message ?? `fs/mkdir failed (HTTP ${response?.status ?? "?"})`;
+      const err = new Error(msg) as Error & { code?: string; status?: number };
+      err.code = body.code;
+      err.status = response?.status;
+      throw err;
+    }
+    return data.path;
+  },
 };

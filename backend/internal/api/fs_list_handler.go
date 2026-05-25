@@ -34,6 +34,7 @@ import (
 	"strings"
 
 	"github.com/matthewoden/jasper/backend/internal/platform"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 // isWSLProbe is the function fs_list_handler asks "are we on WSL?". Indirected
@@ -163,10 +164,48 @@ func (s *Server) GetFsList(
 		}
 	}
 
+	// is_vault: does `abs` contain a .jasper/ directory that ISN'T the app
+	// home registry? The picker uses this to swap "Select this folder" for
+	// "Open Vault" so the user gets a clear path instead of an
+	// already_a_vault error after submit. Reuses the same canonicalized
+	// app-home comparison as PostVaultCreate so picking ~/.jasper/'s parent
+	// (i.e. $HOME) does not light up the indicator on the registry itself.
+	isVaultPtr := isVaultMarker(filepath.Join(abs, ".jasper"))
+
 	return GetFsList200JSONResponse(FsListResponse{
 		Path:        abs,
 		Parent:      parent,
 		WindowsPath: winPath,
+		IsVault:     isVaultPtr,
 		Entries:     subdirs,
 	}), nil
+}
+
+// isVaultMarker returns a pointer to true when jasperDir exists, is a
+// directory, AND is not the app-home registry. Returns a pointer to false
+// (omitted by the omitempty JSON tag → "false" in TS-land via the schema's
+// boolean nullable) when none of the above. Centralized so PostVaultCreate's
+// already_a_vault check and the picker's is_vault hint stay aligned.
+func isVaultMarker(jasperDir string) *bool {
+	info, statErr := os.Stat(jasperDir)
+	if statErr != nil || !info.IsDir() {
+		return nil
+	}
+	// Canonicalize both sides so symlink-resolved + darwin-lowercased forms
+	// match. Failure paths fall through to "treat as vault" (conservative —
+	// the picker will offer Open Vault, which the user can decline).
+	rawAppHome, appHomeErr := vault.AppHomePath()
+	if appHomeErr == nil {
+		appHomeCanon, cErr := vault.Canonicalize(rawAppHome)
+		if cErr == nil {
+			jasperCanon, jcErr := vault.Canonicalize(jasperDir)
+			if jcErr == nil && jasperCanon == appHomeCanon {
+				// The .jasper/ found is the app registry, not a vault.
+				falseVal := false
+				return &falseVal
+			}
+		}
+	}
+	trueVal := true
+	return &trueVal
 }

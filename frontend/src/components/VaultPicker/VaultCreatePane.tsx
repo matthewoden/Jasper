@@ -154,6 +154,20 @@ export function VaultCreatePane({ onCreated }: VaultCreatePaneProps) {
             setPath(p);
             setBrowsing(false);
           }}
+          // When the picker lands on an existing vault, take the user
+          // straight there instead of bouncing through the create form
+          // (which would reject with already_a_vault on submit).
+          onOpenVault={(p) => {
+            void (async () => {
+              try {
+                await vaultApi.open(p);
+                window.location.reload();
+              } catch (e) {
+                setSubmitError(e instanceof Error ? e.message : "Failed to open vault.");
+                setBrowsing(false);
+              }
+            })();
+          }}
         />
       </section>
 

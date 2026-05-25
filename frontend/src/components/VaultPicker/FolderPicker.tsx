@@ -17,6 +17,11 @@ import { useCallback, useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { fsApi, type FsListResponse } from "../../lib/fsApi";
 
+// Allow-listed name characters for the inline "New folder" affordance.
+// Mirrors the backend validateVaultPath shape (ASCII + no `/` + no `..`)
+// so a name we accept here also passes the server-side mkdir validation.
+const FOLDER_NAME_OK = /^[A-Za-z0-9 _.()'-][A-Za-z0-9 _.()'-]*$/;
+
 export interface FolderPickerProps {
   open: boolean;
   /** Path to start browsing from. Omit to default to the user's $HOME. */
@@ -25,6 +30,15 @@ export interface FolderPickerProps {
   onSelect: (path: string) => void;
   /** Called when the user dismisses the picker without selecting. */
   onCancel: () => void;
+  /**
+   * Optional. When set AND the picker navigates to a folder whose
+   * is_vault flag is true (the backend stat'd a .jasper/ that isn't the
+   * app registry), the footer swaps "Select this folder" for "Open Vault"
+   * which calls this callback. Without this prop the picker still flips
+   * to a "this is already a vault" banner but Select stays — the parent
+   * (e.g. VaultOpenPane) just opens whatever path was selected.
+   */
+  onOpenVault?: (path: string) => void;
 }
 
 function breadcrumb(absPath: string): { label: string; path: string }[] {
@@ -79,6 +93,7 @@ export function FolderPicker({
   initialPath,
   onSelect,
   onCancel,
+  onOpenVault,
 }: FolderPickerProps) {
   const [state, setState] = useState<FsListResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -131,8 +146,44 @@ export function FolderPicker({
     if (!open) {
       setEditingPath(false);
       setEditPath("");
+      setNewFolderOpen(false);
+      setNewFolderName("");
+      setNewFolderErr(null);
     }
   }, [open]);
+
+  // Inline "New folder" affordance — toggled by the "New folder" button.
+  // When open, replaces the entries-list-header area with a name input.
+  // Submit calls fsApi.mkdir at <state.path>/<name> and refreshes the listing.
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [newFolderErr, setNewFolderErr] = useState<string | null>(null);
+
+  const submitNewFolder = async () => {
+    if (!state) return;
+    const name = newFolderName.trim();
+    if (!name) {
+      setNewFolderErr("Enter a name.");
+      return;
+    }
+    if (!FOLDER_NAME_OK.test(name) || name.includes("..")) {
+      setNewFolderErr("Use letters, digits, spaces, and . _ - ( ) ' only.");
+      return;
+    }
+    setNewFolderErr(null);
+    try {
+      const created = await fsApi.mkdir(`${state.path}/${name}`);
+      // Re-list the CURRENT directory so the new folder shows up; do not
+      // auto-navigate into it (user might want to keep browsing siblings).
+      // The created path is canonical and matches what /fs/list will report.
+      void created;
+      setNewFolderOpen(false);
+      setNewFolderName("");
+      await load(state.path);
+    } catch (e) {
+      setNewFolderErr(e instanceof Error ? e.message : "Failed to create folder.");
+    }
+  };
 
   // Load on open. We use `open` as the trigger so re-opening the picker
   // returns to the user's starting point (and refreshes the listing in case
@@ -255,6 +306,122 @@ export function FolderPicker({
             </nav>
           )}
 
+          {/* Vault-detected banner — surfaces above the entries list when
+              the current folder already contains a .jasper/ that isn't
+              the app registry. The picker doesn't decide whether to open
+              it; the footer's Open Vault button is what fires the action. */}
+          {state?.is_vault === true && (
+            <div
+              className="vault-picker-banner"
+              role="status"
+              data-testid="folder-picker-vault-banner"
+              style={{ marginTop: 4 }}
+            >
+              This folder is already a Jasper vault.
+              {onOpenVault
+                ? " Open it, or go up to choose a different folder."
+                : " Select it to open."}
+            </div>
+          )}
+
+          {/* New-folder affordance — either a button to start, or the
+              inline name input. Keeps the user in the picker rather
+              than punting them out to Finder to mkdir. */}
+          {newFolderOpen ? (
+            <div
+              data-testid="folder-picker-new-folder-edit"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                paddingTop: 4,
+              }}
+            >
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  className="vault-picker-input"
+                  data-testid="folder-picker-new-folder-input"
+                  value={newFolderName}
+                  onChange={(e) => {
+                    setNewFolderName(e.target.value);
+                    setNewFolderErr(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void submitNewFolder();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setNewFolderOpen(false);
+                      setNewFolderName("");
+                      setNewFolderErr(null);
+                    }
+                  }}
+                  placeholder="New folder name"
+                  aria-label="New folder name"
+                  autoFocus
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="vault-picker-button-primary"
+                  data-testid="folder-picker-new-folder-create"
+                  onClick={() => void submitNewFolder()}
+                >
+                  Create
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewFolderOpen(false);
+                    setNewFolderName("");
+                    setNewFolderErr(null);
+                  }}
+                  style={{
+                    appearance: "none",
+                    background: "transparent",
+                    color: "var(--color-fg)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: 6,
+                    padding: "8px 12px",
+                    fontSize: 14,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+              {newFolderErr && (
+                <div className="vault-picker-error" data-testid="folder-picker-new-folder-error">
+                  {newFolderErr}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: 4 }}>
+              <button
+                type="button"
+                data-testid="folder-picker-new-folder-button"
+                disabled={!state}
+                onClick={() => setNewFolderOpen(true)}
+                style={{
+                  appearance: "none",
+                  background: "transparent",
+                  color: "var(--color-fg)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: 6,
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  cursor: state ? "pointer" : "not-allowed",
+                  opacity: state ? 1 : 0.5,
+                }}
+              >
+                + New folder
+              </button>
+            </div>
+          )}
+
           {/* Body — entries or status */}
           <div
             style={{
@@ -375,31 +542,70 @@ export function FolderPicker({
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={onCancel}
-              style={{
-                appearance: "none",
-                background: "transparent",
-                color: "var(--color-fg)",
-                border: "1px solid var(--color-border)",
-                borderRadius: 6,
-                padding: "8px 14px",
-                fontSize: 14,
-                cursor: "pointer",
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="vault-picker-button-primary"
-              data-testid="folder-picker-select"
-              disabled={!state}
-              onClick={() => state && onSelect(state.path)}
-            >
-              Select this folder
-            </button>
+            {state?.is_vault === true && onOpenVault ? (
+              // Vault detected: replace "Cancel / Select" with
+              // "Go up / Open Vault" so the user gets a clear action
+              // instead of selecting a folder the create flow would
+              // reject. Go up navigates the picker to state.parent
+              // rather than dismissing the picker entirely.
+              <>
+                <button
+                  type="button"
+                  data-testid="folder-picker-go-up"
+                  onClick={() => state.parent && void load(state.parent)}
+                  disabled={!state.parent}
+                  style={{
+                    appearance: "none",
+                    background: "transparent",
+                    color: "var(--color-fg)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: 6,
+                    padding: "8px 14px",
+                    fontSize: 14,
+                    cursor: state.parent ? "pointer" : "not-allowed",
+                    opacity: state.parent ? 1 : 0.5,
+                  }}
+                >
+                  Go up
+                </button>
+                <button
+                  type="button"
+                  className="vault-picker-button-primary"
+                  data-testid="folder-picker-open-vault"
+                  onClick={() => state && onOpenVault(state.path)}
+                >
+                  Open Vault
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  style={{
+                    appearance: "none",
+                    background: "transparent",
+                    color: "var(--color-fg)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: 6,
+                    padding: "8px 14px",
+                    fontSize: 14,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="vault-picker-button-primary"
+                  data-testid="folder-picker-select"
+                  disabled={!state}
+                  onClick={() => state && onSelect(state.path)}
+                >
+                  Select this folder
+                </button>
+              </>
+            )}
           </footer>
         </Dialog.Content>
       </Dialog.Portal>

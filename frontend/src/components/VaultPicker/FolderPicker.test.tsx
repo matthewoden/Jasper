@@ -10,8 +10,12 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import type { FsListResponse } from "../../lib/fsApi";
 
 const listMock = vi.fn();
+const mkdirMock = vi.fn();
 vi.mock("../../lib/fsApi", () => ({
-  fsApi: { list: (...args: unknown[]) => listMock(...args) },
+  fsApi: {
+    list: (...args: unknown[]) => listMock(...args),
+    mkdir: (...args: unknown[]) => mkdirMock(...args),
+  },
 }));
 
 import { FolderPicker } from "./FolderPicker";
@@ -38,6 +42,7 @@ const DOCS_RESP: FsListResponse = {
 describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => {
   beforeEach(() => {
     listMock.mockReset();
+    mkdirMock.mockReset();
   });
 
   it("renders breadcrumb segments after initial load", async () => {
@@ -208,5 +213,151 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
     // Breadcrumb is back, input is gone.
     expect(await screen.findByTestId("folder-picker-breadcrumb")).toBeInTheDocument();
     expect(screen.queryByTestId("folder-picker-path-input")).toBeNull();
+  });
+
+  // UAT-2 #1e — picker UX for already-a-vault detection, "Go up" navigation,
+  // and "New folder" inline mkdir.
+  describe("is_vault detection + Open Vault / Go up footer (UAT-2 #1e)", () => {
+    const VAULT_RESP: FsListResponse = {
+      path: "/Users/me/MyVault",
+      parent: "/Users/me",
+      is_vault: true,
+      entries: [],
+    };
+
+    it("renders the 'this folder is already a Jasper vault' banner when is_vault is true", async () => {
+      listMock.mockReturnValueOnce(ok(VAULT_RESP));
+      render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} onOpenVault={vi.fn()} />);
+      const banner = await screen.findByTestId("folder-picker-vault-banner");
+      expect(banner).toHaveTextContent(/already a Jasper vault/i);
+    });
+
+    it("swaps the footer to Go up + Open Vault when is_vault is true AND onOpenVault is provided", async () => {
+      listMock.mockReturnValueOnce(ok(VAULT_RESP));
+      const onOpenVault = vi.fn();
+      render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} onOpenVault={onOpenVault} />);
+      await screen.findByTestId("folder-picker-vault-banner");
+      // The Select / Cancel pair is gone.
+      expect(screen.queryByTestId("folder-picker-select")).toBeNull();
+      // Open Vault + Go up are present.
+      expect(screen.getByTestId("folder-picker-open-vault")).toBeInTheDocument();
+      expect(screen.getByTestId("folder-picker-go-up")).toBeInTheDocument();
+    });
+
+    it("Open Vault fires onOpenVault with the current canonical path", async () => {
+      listMock.mockReturnValueOnce(ok(VAULT_RESP));
+      const onOpenVault = vi.fn();
+      render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} onOpenVault={onOpenVault} />);
+      const btn = await screen.findByTestId("folder-picker-open-vault");
+      fireEvent.click(btn);
+      expect(onOpenVault).toHaveBeenCalledWith("/Users/me/MyVault");
+    });
+
+    it("Go up calls list() with state.parent (one level up), NOT onCancel", async () => {
+      listMock.mockReturnValueOnce(ok(VAULT_RESP)).mockReturnValueOnce(
+        ok({ path: "/Users/me", parent: "/Users", entries: [] }),
+      );
+      const onCancel = vi.fn();
+      render(<FolderPicker open onSelect={vi.fn()} onCancel={onCancel} onOpenVault={vi.fn()} />);
+      const goUp = await screen.findByTestId("folder-picker-go-up");
+      fireEvent.click(goUp);
+      await waitFor(() => {
+        expect(listMock).toHaveBeenLastCalledWith("/Users/me");
+      });
+      // Crucially: the picker stays open. onCancel was not the click target.
+      expect(onCancel).not.toHaveBeenCalled();
+    });
+
+    it("falls through to Select when is_vault is true but onOpenVault is NOT provided", async () => {
+      listMock.mockReturnValueOnce(ok(VAULT_RESP));
+      // No onOpenVault — caller is e.g. VaultOpenPane in some legacy form
+      // where the pane handles vault detection itself via fall-through Select.
+      render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} />);
+      await screen.findByTestId("folder-picker-vault-banner");
+      // Footer keeps Select; no Open Vault button.
+      expect(screen.getByTestId("folder-picker-select")).toBeInTheDocument();
+      expect(screen.queryByTestId("folder-picker-open-vault")).toBeNull();
+    });
+
+    it("does NOT render the banner when is_vault is omitted or false", async () => {
+      listMock.mockReturnValueOnce(
+        ok({ path: "/Users/me", parent: "/Users", entries: [] }),
+      );
+      render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} onOpenVault={vi.fn()} />);
+      await screen.findByTestId("folder-picker-breadcrumb");
+      expect(screen.queryByTestId("folder-picker-vault-banner")).toBeNull();
+    });
+  });
+
+  describe("inline 'New folder' affordance (UAT-2 #1e)", () => {
+    const ROOT_RESP: FsListResponse = {
+      path: "/Users/me",
+      parent: "/Users",
+      entries: [{ name: "Documents", path: "/Users/me/Documents" }],
+    };
+    const ROOT_AFTER: FsListResponse = {
+      path: "/Users/me",
+      parent: "/Users",
+      entries: [
+        { name: "Documents", path: "/Users/me/Documents" },
+        { name: "NewVault", path: "/Users/me/NewVault" },
+      ],
+    };
+
+    it("clicking '+ New folder' opens an inline name input", async () => {
+      listMock.mockReturnValueOnce(ok(ROOT_RESP));
+      render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} />);
+      const btn = await screen.findByTestId("folder-picker-new-folder-button");
+      fireEvent.click(btn);
+      expect(screen.getByTestId("folder-picker-new-folder-input")).toBeInTheDocument();
+    });
+
+    it("Enter on a valid name calls fsApi.mkdir then re-lists the current path", async () => {
+      listMock.mockReturnValueOnce(ok(ROOT_RESP)).mockReturnValueOnce(ok(ROOT_AFTER));
+      mkdirMock.mockResolvedValueOnce("/Users/me/NewVault");
+      render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} />);
+      fireEvent.click(await screen.findByTestId("folder-picker-new-folder-button"));
+      const input = screen.getByTestId("folder-picker-new-folder-input");
+      fireEvent.change(input, { target: { value: "NewVault" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      await waitFor(() => {
+        expect(mkdirMock).toHaveBeenCalledWith("/Users/me/NewVault");
+      });
+      await waitFor(() => {
+        expect(listMock).toHaveBeenLastCalledWith("/Users/me");
+      });
+      // After success the inline input closes.
+      await waitFor(() => {
+        expect(screen.queryByTestId("folder-picker-new-folder-input")).toBeNull();
+      });
+    });
+
+    it("Enter on an invalid name shows an inline error and does NOT call mkdir", async () => {
+      listMock.mockReturnValueOnce(ok(ROOT_RESP));
+      render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} />);
+      fireEvent.click(await screen.findByTestId("folder-picker-new-folder-button"));
+      const input = screen.getByTestId("folder-picker-new-folder-input");
+      // `/` in a folder name is invalid — backend would reject too.
+      fireEvent.change(input, { target: { value: "bad/name" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      const err = await screen.findByTestId("folder-picker-new-folder-error");
+      expect(err).toBeInTheDocument();
+      expect(mkdirMock).not.toHaveBeenCalled();
+      // Input stays open so the user can fix.
+      expect(screen.getByTestId("folder-picker-new-folder-input")).toBeInTheDocument();
+    });
+
+    it("Escape closes the inline input without calling mkdir", async () => {
+      listMock.mockReturnValueOnce(ok(ROOT_RESP));
+      render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} />);
+      fireEvent.click(await screen.findByTestId("folder-picker-new-folder-button"));
+      const input = screen.getByTestId("folder-picker-new-folder-input");
+      fireEvent.change(input, { target: { value: "Whatever" } });
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(mkdirMock).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("folder-picker-new-folder-input")).toBeNull();
+    });
   });
 });

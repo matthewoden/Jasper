@@ -856,6 +856,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/fs/mkdir": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a directory at an absolute path (folder-picker "New folder")
+         * @description Creates a new directory at `path` (must be absolute). Used by the
+         *     vault picker's "New folder" affordance so the user can prep an
+         *     empty folder for vault creation without bouncing out to Finder.
+         *
+         *     Returns 200 on success (and when the directory already exists —
+         *     idempotent). 400 for non-absolute paths or names that fail the
+         *     same ASCII / NFC / no-`..` / no-`//` validation pipeline as
+         *     `validateVaultPath`. 403 on EACCES.
+         *
+         *     Same posture as `/fs/list`: Jasper runs as the local user on
+         *     loopback, so this exposes nothing beyond what the user could
+         *     `mkdir` themselves.
+         */
+        post: operations["postFsMkdir"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/fs/list": {
         parameters: {
             query?: never;
@@ -1580,6 +1611,14 @@ export interface components {
             /** @description The vault path that was being switched to when the 409 fired. */
             current_target: string;
         };
+        FsMkdirRequest: {
+            /** @description Absolute path of the directory to create. */
+            path: string;
+        };
+        FsMkdirResponse: {
+            /** @description Canonical absolute path of the (now-existing) directory. */
+            path: string;
+        };
         FsListEntry: {
             /** @description Display name of the subdirectory (basename). */
             name: string;
@@ -1602,6 +1641,14 @@ export interface components {
              *     when present and keeps `path` as the click-target for backend ops.
              */
             windows_path?: string;
+            /**
+             * @description True when `path` contains a `.jasper/` directory AND that directory
+             *     is not the Jasper app-home registry. The picker uses this to flip
+             *     its footer from "Select this folder" to "Open Vault" so the user
+             *     can open the existing vault instead of seeing an "already_a_vault"
+             *     error from the create handler.
+             */
+            is_vault?: boolean;
             /** @description Subdirectories of `path`, sorted case-insensitive alphabetical. */
             entries: components["schemas"]["FsListEntry"][];
         };
@@ -3287,6 +3334,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VaultSwitchInProgressResponse"];
+                };
+            };
+        };
+    };
+    postFsMkdir: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FsMkdirRequest"];
+            };
+        };
+        responses: {
+            /** @description Directory created (or already existed) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FsMkdirResponse"];
+                };
+            };
+            /** @description Invalid path (non-absolute, validation failed, or parent missing) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Permission denied creating the directory */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
