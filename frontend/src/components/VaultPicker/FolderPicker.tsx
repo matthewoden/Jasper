@@ -41,6 +41,39 @@ function breadcrumb(absPath: string): { label: string; path: string }[] {
   return crumbs;
 }
 
+// On WSL2 the backend may surface a Windows-form path alongside the WSL-form
+// canonical path (e.g. `C:\Users\you` for `/mnt/c/Users/you`). When present
+// we relabel the breadcrumb so Windows users see paths they recognize. The
+// click-target for each segment STAYS the WSL form — the Go server only
+// operates on /mnt/... paths.
+//
+// Returns null when the inputs don't pair up into a clean Windows-form
+// breadcrumb (windowsPath empty, wslPath doesn't share a /mnt/<drive>/ prefix,
+// drive letters mismatch). Callers fall back to the WSL-form breadcrumb.
+function windowsBreadcrumb(
+  wslPath: string,
+  windowsPath: string,
+): { label: string; path: string }[] | null {
+  if (!windowsPath) return null;
+  const wslMatch = wslPath.match(/^\/mnt\/([a-z])(\/.*)?$/);
+  if (!wslMatch) return null;
+  const drive = wslMatch[1];
+  const winSegments = windowsPath.split("\\").filter(Boolean);
+  // winSegments[0] is e.g. "C:" — must match the WSL drive letter.
+  if (winSegments.length === 0) return null;
+  if (winSegments[0].toLowerCase() !== `${drive}:`) return null;
+
+  const crumbs: { label: string; path: string }[] = [];
+  // Root crumb labels "C:\" but navigates to /mnt/c (the drive root).
+  crumbs.push({ label: `${winSegments[0].toUpperCase()}\\`, path: `/mnt/${drive}` });
+  let cur = `/mnt/${drive}`;
+  for (let i = 1; i < winSegments.length; i++) {
+    cur += "/" + winSegments[i];
+    crumbs.push({ label: winSegments[i], path: cur });
+  }
+  return crumbs;
+}
+
 export function FolderPicker({
   open,
   initialPath,
@@ -109,7 +142,13 @@ export function FolderPicker({
     void load(initialPath);
   }, [open, initialPath, load]);
 
-  const crumbs = state ? breadcrumb(state.path) : [];
+  // Prefer the Windows-form breadcrumb on WSL when the backend supplied
+  // windows_path. Falls through to the WSL/POSIX breadcrumb otherwise. The
+  // click-target on each crumb is always the WSL/POSIX path the backend
+  // operates on.
+  const crumbs = state
+    ? (windowsBreadcrumb(state.path, state.windows_path ?? "") ?? breadcrumb(state.path))
+    : [];
 
   return (
     <Dialog.Root open={open} onOpenChange={(v) => !v && onCancel()} modal>
@@ -296,19 +335,45 @@ export function FolderPicker({
             }}
           >
             <div
-              style={{
-                fontSize: 12,
-                color: "var(--color-muted)",
-                fontFamily: "var(--font-mono)",
-                flex: 1,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
               data-testid="folder-picker-current-path"
               title={state?.path ?? ""}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+              }}
             >
-              {state?.path ?? "—"}
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "var(--color-fg)",
+                  fontFamily: "var(--font-mono)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                data-testid="folder-picker-current-path-primary"
+              >
+                {state?.windows_path || state?.path || "—"}
+              </div>
+              {state?.windows_path && (
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--color-muted)",
+                    fontFamily: "var(--font-mono)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  data-testid="folder-picker-current-path-secondary"
+                  title="WSL path used by the backend"
+                >
+                  {state.path}
+                </div>
+              )}
             </div>
             <button
               type="button"

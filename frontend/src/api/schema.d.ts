@@ -1594,6 +1594,14 @@ export interface components {
              *     filesystem root (so the picker can hide the up-arrow / breadcrumb-back affordance).
              */
             parent: string;
+            /**
+             * @description Windows-form equivalent of `path` (e.g. `C:\Users\you`) when the
+             *     server is running under WSL2 and `path` lives under /mnt/<drive>/...
+             *     Empty string in every other case (native macOS/Linux, paths under
+             *     /home/..., etc.). The picker renders this as the user-facing path
+             *     when present and keeps `path` as the click-target for backend ops.
+             */
+            windows_path?: string;
             /** @description Subdirectories of `path`, sorted case-insensitive alphabetical. */
             entries: components["schemas"]["FsListEntry"][];
         };

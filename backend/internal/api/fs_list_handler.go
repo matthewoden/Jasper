@@ -32,7 +32,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/matthewoden/jasper/backend/internal/platform"
 )
+
+// isWSLProbe is the function fs_list_handler asks "are we on WSL?". Indirected
+// through a package var so handler tests can flip the answer without poking
+// /proc/sys/kernel/osrelease. Production value is platform.IsWSL.
+var isWSLProbe = platform.IsWSL
 
 // GetFsList implements GET /api/v1/fs/list?path=...
 //
@@ -145,9 +152,21 @@ func (s *Server) GetFsList(
 		parent = ""
 	}
 
+	// When running on WSL2 and the listed directory lives under /mnt/<drive>/,
+	// also surface the Windows-form path so the picker can render labels
+	// Windows users actually recognize (C:\Users\... instead of /mnt/c/Users/...).
+	// Empty (omitted) on non-WSL hosts and for /home/... or other Linux-only paths.
+	var winPath *string
+	if isWSLProbe() {
+		if w := platform.WslToWindows(abs); w != "" {
+			winPath = &w
+		}
+	}
+
 	return GetFsList200JSONResponse(FsListResponse{
-		Path:    abs,
-		Parent:  parent,
-		Entries: subdirs,
+		Path:        abs,
+		Parent:      parent,
+		WindowsPath: winPath,
+		Entries:     subdirs,
 	}), nil
 }
