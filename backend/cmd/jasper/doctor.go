@@ -283,8 +283,11 @@ func checkDataDirPerms(dir string) DoctorCheck {
 	return DoctorCheck{Name: "data-dir perms", Status: "ok"}
 }
 
-// checkMigrationState compares the latest applied migration version against
-// the highest embedded migration file. Mismatch = pending migrations.
+// checkMigrationState verifies every embedded migration filename is recorded
+// in schema_migrations. The version column is TEXT (e.g. '001_initial.sql'),
+// not an int — the previous implementation scanned MAX(version) into an int
+// which always failed and produced a misleading "table missing" error
+// (UAT-2 round 3 M2).
 func checkMigrationState(dir string) DoctorCheck {
 	dbPath := filepath.Join(dir, "storage", "app.db")
 	if _, err := os.Stat(dbPath); err != nil {
@@ -299,41 +302,60 @@ func checkMigrationState(dir string) DoctorCheck {
 		return DoctorCheck{Name: "migration state", Status: "fail", Hint: "could not open app.db: " + err.Error()}
 	}
 	defer func() { _ = db.Close() }()
-	var maxApplied int
-	err = db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&maxApplied)
-	if err != nil {
+
+	// Collect applied migrations (TEXT versions — filename or sentinel rows).
+	applied := map[string]bool{}
+	rows, queryErr := db.Query(`SELECT version FROM schema_migrations`)
+	if queryErr != nil {
+		// Distinguish "table missing" from other query errors so the hint
+		// matches reality.
+		msg := queryErr.Error()
+		if strings.Contains(msg, "no such table") {
+			return DoctorCheck{
+				Name:   "migration state",
+				Status: "fail",
+				Hint:   "schema_migrations table missing — restart 'jasper serve' to apply migrations",
+			}
+		}
 		return DoctorCheck{
 			Name:   "migration state",
 			Status: "fail",
-			Hint:   "schema_migrations table missing — restart 'jasper serve' to apply migrations",
+			Hint:   "query schema_migrations: " + msg,
 		}
 	}
-	// Count embedded .sql files to derive the highest version number.
+	for rows.Next() {
+		var v string
+		if scanErr := rows.Scan(&v); scanErr != nil {
+			_ = rows.Close()
+			return DoctorCheck{Name: "migration state", Status: "fail", Hint: "scan schema_migrations.version: " + scanErr.Error()}
+		}
+		applied[v] = true
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return DoctorCheck{Name: "migration state", Status: "fail", Hint: "iterate schema_migrations: " + rowsErr.Error()}
+	}
+	_ = rows.Close()
+
+	// Enumerate embedded migrations; missing entries are pending migrations.
 	entries, err := migrations.FS.ReadDir(".")
 	if err != nil {
 		return DoctorCheck{Name: "migration state", Status: "fail", Hint: "could not enumerate embedded migrations"}
 	}
-	maxEmbedded := 0
+	var missing []string
 	for _, e := range entries {
 		name := e.Name()
 		if !strings.HasSuffix(name, ".sql") {
 			continue
 		}
-		// Filename pattern: NNN_*.sql — parse leading number.
-		for i := 0; i < len(name); i++ {
-			if name[i] < '0' || name[i] > '9' {
-				if v, err := strconv.Atoi(name[:i]); err == nil && v > maxEmbedded {
-					maxEmbedded = v
-				}
-				break
-			}
+		if !applied[name] {
+			missing = append(missing, name)
 		}
 	}
-	if maxApplied < maxEmbedded {
+	if len(missing) > 0 {
 		return DoctorCheck{
 			Name:   "migration state",
 			Status: "fail",
-			Hint:   fmt.Sprintf("applied=%d, embedded=%d — restart 'jasper serve' to apply pending migrations", maxApplied, maxEmbedded),
+			Hint:   fmt.Sprintf("pending migrations: %s — restart 'jasper serve' to apply", strings.Join(missing, ", ")),
 		}
 	}
 	return DoctorCheck{Name: "migration state", Status: "ok"}
