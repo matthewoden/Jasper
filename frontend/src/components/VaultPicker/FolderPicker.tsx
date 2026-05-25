@@ -51,21 +51,55 @@ export function FolderPicker({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (path?: string) => {
+  // Returns true on success so the "type a path" edit mode knows whether to
+  // commit (revert to breadcrumb) or stay open with the error visible.
+  const load = useCallback(async (path?: string): Promise<boolean> => {
     setLoading(true);
     setError(null);
     try {
       const data = await fsApi.list(path);
       setState(data);
+      return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to list folder.";
       setError(msg);
       // Don't blow away `state` on error — the user can still navigate to
       // siblings via the breadcrumb.
+      return false;
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // "Type a path" edit mode. Double-clicking the breadcrumb bar (but not a
+  // segment button) swaps the bar for a text input pre-filled with the
+  // current canonical path. Enter commits (load + exit on success); Escape
+  // cancels.
+  const [editingPath, setEditingPath] = useState(false);
+  const [editPath, setEditPath] = useState("");
+
+  const enterPathEdit = () => {
+    setEditPath(state?.path ?? "");
+    setEditingPath(true);
+  };
+
+  const submitPathEdit = async () => {
+    const ok = await load(editPath);
+    if (ok) setEditingPath(false);
+  };
+
+  const cancelPathEdit = () => {
+    setEditingPath(false);
+    setError(null);
+  };
+
+  // Reset edit state when the picker closes so the next open starts fresh.
+  useEffect(() => {
+    if (!open) {
+      setEditingPath(false);
+      setEditPath("");
+    }
+  }, [open]);
 
   // Load on open. We use `open` as the trigger so re-opening the picker
   // returns to the user's starting point (and refreshes the listing in case
@@ -94,42 +128,93 @@ export function FolderPicker({
             </Dialog.Description>
           </header>
 
-          {/* Breadcrumb */}
-          <nav
-            aria-label="Folder breadcrumb"
-            data-testid="folder-picker-breadcrumb"
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 4,
-              fontSize: 12,
-              color: "var(--color-muted)",
-              padding: "4px 0",
-              borderBottom: "1px solid var(--color-border)",
-            }}
-          >
-            {crumbs.map((c, i) => (
-              <span key={c.path} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                {i > 0 && <span aria-hidden="true">›</span>}
-                <button
-                  type="button"
-                  onClick={() => void load(c.path)}
-                  style={{
-                    appearance: "none",
-                    background: "transparent",
-                    border: "none",
-                    color: i === crumbs.length - 1 ? "var(--color-fg)" : "var(--color-muted)",
-                    cursor: "pointer",
-                    padding: "2px 4px",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 12,
-                  }}
-                >
-                  {c.label}
-                </button>
-              </span>
-            ))}
-          </nav>
+          {/* Breadcrumb (or typed-path input when editing) */}
+          {editingPath ? (
+            <div
+              data-testid="folder-picker-breadcrumb-edit"
+              style={{
+                padding: "4px 0",
+                borderBottom: "1px solid var(--color-border)",
+              }}
+            >
+              <input
+                type="text"
+                className="vault-picker-input"
+                value={editPath}
+                onChange={(e) => setEditPath(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void submitPathEdit();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    cancelPathEdit();
+                  }
+                }}
+                onBlur={cancelPathEdit}
+                placeholder="/absolute/path/to/folder"
+                aria-label="Type an absolute path"
+                data-testid="folder-picker-path-input"
+                autoFocus
+                spellCheck={false}
+                style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
+              />
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--color-muted)",
+                  marginTop: 4,
+                }}
+              >
+                Enter to go there · Escape to cancel
+              </div>
+            </div>
+          ) : (
+            <nav
+              aria-label="Folder breadcrumb"
+              data-testid="folder-picker-breadcrumb"
+              title="Double-click to type a path"
+              onDoubleClick={(e) => {
+                // Skip when the user double-clicks ON a segment button — that's
+                // a (presumably accidental) navigate, not a request to edit.
+                if ((e.target as HTMLElement).closest("button")) return;
+                enterPathEdit();
+              }}
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 4,
+                fontSize: 12,
+                color: "var(--color-muted)",
+                padding: "4px 0",
+                borderBottom: "1px solid var(--color-border)",
+                cursor: "text",
+                userSelect: "none",
+              }}
+            >
+              {crumbs.map((c, i) => (
+                <span key={c.path} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {i > 0 && <span aria-hidden="true">›</span>}
+                  <button
+                    type="button"
+                    onClick={() => void load(c.path)}
+                    style={{
+                      appearance: "none",
+                      background: "transparent",
+                      border: "none",
+                      color: i === crumbs.length - 1 ? "var(--color-fg)" : "var(--color-muted)",
+                      cursor: "pointer",
+                      padding: "2px 4px",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 12,
+                    }}
+                  >
+                    {c.label}
+                  </button>
+                </span>
+              ))}
+            </nav>
+          )}
 
           {/* Body — entries or status */}
           <div

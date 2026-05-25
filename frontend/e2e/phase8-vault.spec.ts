@@ -318,6 +318,56 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
     }
   });
 
+  test("folder picker — double-click breadcrumb opens path input; Enter loads typed path", async ({
+    page,
+  }) => {
+    const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "fs-pick-edit-app-"));
+    const browseRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fs-pick-edit-root-"));
+    const jumpTarget = path.join(browseRoot, "jump-target");
+    fs.mkdirSync(jumpTarget);
+    fs.mkdirSync(path.join(browseRoot, "unrelated-sibling"));
+
+    let handle: VaultHandle | undefined;
+    try {
+      handle = await spawnVaultJasper(appHome);
+      await page.goto(handle.baseURL + "/");
+
+      // Open the folder picker via the create form's Browse… button.
+      await page.getByTestId("vault-create-path-input").fill(browseRoot);
+      await page.getByTestId("vault-create-browse").click();
+      await expect(page.getByTestId("folder-picker")).toBeVisible();
+
+      // Double-click the breadcrumb bar (not on a segment button).
+      const crumb = page.getByTestId("folder-picker-breadcrumb");
+      await crumb.dblclick();
+
+      // Input appears, pre-filled with the current canonical path.
+      const pathInput = page.getByTestId("folder-picker-path-input");
+      await expect(pathInput).toBeVisible();
+      const prefilled = await pathInput.inputValue();
+      expect(path.isAbsolute(prefilled)).toBe(true);
+
+      // Type the deep target and submit with Enter.
+      await pathInput.fill(jumpTarget);
+      await pathInput.press("Enter");
+
+      // Edit mode exits on success → breadcrumb back, current path reflects the jump.
+      await expect(page.getByTestId("folder-picker-path-input")).toHaveCount(0);
+      await expect(page.getByTestId("folder-picker-current-path")).toContainText(
+        path.basename(jumpTarget),
+      );
+
+      // Select propagates the absolute path back to the create form.
+      await page.getByTestId("folder-picker-select").click();
+      const inputValue = await page.getByTestId("vault-create-path-input").inputValue();
+      expect(inputValue).toContain(path.basename(jumpTarget));
+    } finally {
+      handle?.kill();
+      fs.rmSync(appHome, { recursive: true, force: true });
+      fs.rmSync(browseRoot, { recursive: true, force: true });
+    }
+  });
+
   test("create new vault → StatusBar shows vault display_name after reload", async ({ page }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-vault-e2e-app-"));
     const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-vault-e2e-vault-"));
