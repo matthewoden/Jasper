@@ -163,6 +163,26 @@ func (s *Server) PostVaultOpen(
 		return PostVaultOpen400JSONResponse(newError("invalid_path", err.Error())), nil
 	}
 
+	// Refuse opening a folder whose .jasper/ IS the app registry. Catches
+	// the inverse of the create-handler footgun: picking $HOME and clicking
+	// "Open" would otherwise treat $HOME/.jasper as a vault marker and run
+	// migrations against the directory that holds app.json — corrupting
+	// the registry. Comparison goes through Canonicalize on both sides so
+	// the symlink-resolved + darwin-lowercased `canonical` matches a
+	// canonicalized AppHomePath.
+	if rawAppHome, appHomeErr := vault.AppHomePath(); appHomeErr == nil {
+		appHomeCanonical, cErr := vault.Canonicalize(rawAppHome)
+		if cErr != nil {
+			appHomeCanonical = rawAppHome
+		}
+		candidateJasper := filepath.Join(canonical, ".jasper")
+		if candJasperCanon, cErr := vault.Canonicalize(candidateJasper); cErr == nil &&
+			candJasperCanon == appHomeCanonical {
+			return PostVaultOpen400JSONResponse(newError("missing_jasper_dir",
+				"this folder's .jasper/ is the Jasper app registry, not a vault — create a vault in a different folder")), nil
+		}
+	}
+
 	// Verify .jasper/ exists (V14 invariant — missing .jasper is an error, not auto-rebuild).
 	jasperDir := filepath.Join(canonical, ".jasper")
 	info, statErr := os.Stat(jasperDir)
@@ -244,6 +264,37 @@ func (s *Server) PostVaultCreate(
 		return PostVaultCreate400JSONResponse(newError("invalid_path", err.Error())), nil
 	}
 
+	// Resolve the app home (e.g. ~/.jasper) so the "already a vault" and
+	// "nested vault" checks below can distinguish vault data dirs from the
+	// app registry. Without this guard, picking $HOME (or any ancestor of
+	// $HOME/.jasper) as a vault location trips on the app registry that
+	// boot itself creates — the "vault model first-boot blocks the user
+	// from creating their first vault under $HOME" bug.
+	//
+	// Both sides of every equality test need to be in the same canonical
+	// form (symlinks resolved, darwin-lowercased) since `canonical` above
+	// went through vault.Canonicalize. We push the raw AppHomePath through
+	// Canonicalize too — falling back to the raw form if Canonicalize fails
+	// (e.g. app home doesn't exist yet on a fresh first boot).
+	appHomeCanonical := ""
+	if raw, err := vault.AppHomePath(); err == nil {
+		if c, cErr := vault.Canonicalize(raw); cErr == nil {
+			appHomeCanonical = c
+		} else {
+			appHomeCanonical = raw
+		}
+	}
+
+	// Refuse picking the app home itself as a vault — it would mix per-vault
+	// data (DBs, indexer state) into the same directory as app.json and the
+	// app-level logs, and any subsequent boot would not be able to tell what
+	// to load. Catches the "user picks ~/.jasper as a vault" footgun.
+	if appHomeCanonical != "" && canonical == appHomeCanonical {
+		return PostVaultCreate400JSONResponse(newError("invalid_path",
+			"cannot create a vault at the Jasper app home directory ("+appHomeCanonical+
+				"); choose a different folder")), nil
+	}
+
 	// Parent directory must exist.
 	parent := filepath.Dir(canonical)
 	if _, parentErr := os.Stat(parent); os.IsNotExist(parentErr) {
@@ -251,23 +302,39 @@ func (s *Server) PostVaultCreate(
 			"the parent folder doesn't exist; create it first")), nil
 	}
 
-	// Already a vault?
+	// Already a vault? The candidate's <path>/.jasper/ is treated as a vault
+	// marker UNLESS it IS the app home registry itself (canonical == $HOME
+	// and jasperDir == ~/.jasper). Same logic, two-way: equal app home →
+	// it's the registry, not a vault. jasperDir is canonicalized before
+	// comparison so the symlink-resolved + darwin-lowercased `appHomeCanonical`
+	// has something equivalent to match against.
 	jasperDir := filepath.Join(canonical, ".jasper")
 	if _, jasperErr := os.Stat(jasperDir); jasperErr == nil {
-		return PostVaultCreate400JSONResponse(newError("already_a_vault",
-			"this folder already contains a .jasper/ directory; open it instead of creating")), nil
+		if jasperDirCanon, cErr := vault.Canonicalize(jasperDir); cErr != nil ||
+			jasperDirCanon != appHomeCanonical {
+			return PostVaultCreate400JSONResponse(newError("already_a_vault",
+				"this folder already contains a .jasper/ directory; open it instead of creating")), nil
+		}
 	}
 
-	// Nested-vault detection (T-17b-02): walk ancestors for any .jasper/ directory.
+	// Nested-vault detection (T-17b-02): walk ancestors for any .jasper/
+	// directory. Skip ancestor matches that ARE the app home — finding
+	// ~/.jasper while creating a vault at ~/anything is expected (the
+	// app home lives next to the user's vaults, not above them in the
+	// nesting sense).
 	cur := canonical
 	for {
 		anc := filepath.Dir(cur)
 		if anc == cur {
 			break
 		}
-		if _, statErr := os.Stat(filepath.Join(anc, ".jasper")); statErr == nil {
-			return PostVaultCreate400JSONResponse(newError("nested_vault",
-				"path is inside an existing Jasper vault: "+anc)), nil
+		ancJasper := filepath.Join(anc, ".jasper")
+		if _, statErr := os.Stat(ancJasper); statErr == nil {
+			ancJasperCanon, cErr := vault.Canonicalize(ancJasper)
+			if cErr != nil || ancJasperCanon != appHomeCanonical {
+				return PostVaultCreate400JSONResponse(newError("nested_vault",
+					"path is inside an existing Jasper vault: "+anc)), nil
+			}
 		}
 		cur = anc
 	}

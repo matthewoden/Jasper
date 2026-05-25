@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -302,6 +303,115 @@ func TestPostVaultCreate_NestedVault_Returns400(t *testing.T) {
 	b, _ := io.ReadAll(resp.Body)
 	if len(b) > 0 {
 		t.Logf("body: %s", b)
+	}
+}
+
+// Regression: ~/.jasper (the app-level registry directory) must not be
+// mistaken for a vault marker, otherwise the user can't create their first
+// vault under $HOME — every candidate trips the nested-vault check on its
+// way up the ancestor walk.
+func TestPostVaultCreate_AppHomeRegistry_DoesNotBlockSiblingVaults(t *testing.T) {
+	// Lay out a fake-$HOME tree: <fakeHome>/.jasper is the app registry,
+	// <fakeHome>/MyVault is what the user wants to create.
+	fakeHome := t.TempDir()
+	appHome := filepath.Join(fakeHome, ".jasper")
+	if err := os.MkdirAll(appHome, 0o700); err != nil {
+		t.Fatalf("seed app home: %v", err)
+	}
+	t.Setenv("JASPER_APP_HOME", appHome)
+	ts := setupVaultTestServer(t)
+	defer ts.Close()
+
+	target := filepath.Join(fakeHome, "MyVault")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+
+	resp := mustPost(t, ts, "/api/v1/vault/create", map[string]any{
+		"path":        target,
+		"theme":       "dark",
+		"mcp_enabled": false,
+	})
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("creating vault next to app registry: want 200, got %d; body: %s", resp.StatusCode, b)
+	}
+}
+
+// Regression: picking $HOME itself as the vault path used to trip the
+// already_a_vault check because the app registry lives at $HOME/.jasper.
+// Verify the create handler now treats that .jasper/ as the app registry,
+// not a vault marker.
+func TestPostVaultCreate_AtHomeContainingAppRegistry_Succeeds(t *testing.T) {
+	fakeHome := t.TempDir()
+	appHome := filepath.Join(fakeHome, ".jasper")
+	if err := os.MkdirAll(appHome, 0o700); err != nil {
+		t.Fatalf("seed app home: %v", err)
+	}
+	t.Setenv("JASPER_APP_HOME", appHome)
+	ts := setupVaultTestServer(t)
+	defer ts.Close()
+
+	resp := mustPost(t, ts, "/api/v1/vault/create", map[string]any{
+		"path":        fakeHome,
+		"theme":       "dark",
+		"mcp_enabled": false,
+	})
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("creating vault at home containing app registry: want 200, got %d; body: %s", resp.StatusCode, b)
+	}
+}
+
+// New footgun guard: refuse the app home itself as a vault target. Without
+// this we'd happily create <appHome>/.jasper/ next to <appHome>/app.json,
+// after which boot can't tell registry from vault.
+func TestPostVaultCreate_AppHomeAsVault_Returns400(t *testing.T) {
+	fakeHome := t.TempDir()
+	appHome := filepath.Join(fakeHome, ".jasper")
+	if err := os.MkdirAll(appHome, 0o700); err != nil {
+		t.Fatalf("seed app home: %v", err)
+	}
+	t.Setenv("JASPER_APP_HOME", appHome)
+	ts := setupVaultTestServer(t)
+	defer ts.Close()
+
+	resp := mustPost(t, ts, "/api/v1/vault/create", map[string]any{
+		"path":        appHome,
+		"theme":       "dark",
+		"mcp_enabled": false,
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("creating vault AT app home: want 400, got %d; body: %s", resp.StatusCode, b)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(b), "app home") {
+		t.Errorf("error body should mention app home; got %s", b)
+	}
+}
+
+// Inverse: opening $HOME (which contains the app registry $HOME/.jasper)
+// must NOT be treated as opening a vault. Otherwise migrations run against
+// the registry directory and corrupt app.json.
+func TestPostVaultOpen_AtHomeContainingAppRegistry_Returns400(t *testing.T) {
+	fakeHome := t.TempDir()
+	appHome := filepath.Join(fakeHome, ".jasper")
+	if err := os.MkdirAll(appHome, 0o700); err != nil {
+		t.Fatalf("seed app home: %v", err)
+	}
+	t.Setenv("JASPER_APP_HOME", appHome)
+	ts := setupVaultTestServer(t)
+	defer ts.Close()
+
+	resp := mustPost(t, ts, "/api/v1/vault/open", map[string]any{"path": fakeHome})
+	if resp.StatusCode != http.StatusBadRequest {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("opening $HOME with only the app registry: want 400, got %d; body: %s", resp.StatusCode, b)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(b), "app registry") {
+		t.Errorf("error body should mention app registry; got %s", b)
 	}
 }
 
