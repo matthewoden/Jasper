@@ -64,17 +64,18 @@ type DoctorCheck struct {
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
-	dataDir := os.Getenv("JASPER_DATA_DIR")
-	if dataDir == "" {
-		dataDir = config.DefaultDataDir()
-	}
-	cfg, _ := config.Load(dataDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
-
-	// V-PARK-3: load app.json for vault-aware checks.
+	// V-PARK-3 / UAT-2 round 2 G4: under the vault model, per-vault state
+	// (config.json, app.db, logs/) lives under <currentVault>/storage, NOT
+	// ~/.jasper/storage. Load app.json first to find the current vault, then
+	// use that path as dataDir for all per-vault checks. JASPER_DATA_DIR and
+	// --vault still override for support-tooling use.
 	appJSONPath, _ := vault.AppJSONPath()
 	appState, _ := vault.LoadAppJSON(appJSONPath)
 
-	// Honor --vault override for the current_vault checks.
+	// currentVault: which vault are we diagnosing? Order:
+	//   1. --vault flag (explicit override)
+	//   2. current_vault from app.json (normal vault-model path)
+	//   3. "" when neither is set
 	currentVault := ""
 	if vaultFlag != "" {
 		if c, err := vault.Canonicalize(vaultFlag); err == nil {
@@ -86,18 +87,34 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		currentVault = appState.CurrentVault
 	}
 
+	// dataDir: where do per-vault checks (migration, data-dir perms,
+	// logs) look? Under the vault model this IS currentVault. Pre-vault-
+	// model installs fall back to JASPER_DATA_DIR, then ~/.jasper.
+	dataDir := currentVault
+	if dataDir == "" {
+		dataDir = os.Getenv("JASPER_DATA_DIR")
+	}
+	if dataDir == "" {
+		dataDir = config.DefaultDataDir()
+	}
+
+	cfg, _ := config.Load(dataDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	// Order: pure-stat vault checks run BEFORE checkLogWritable, which
+	// MkdirAll's <dataDir>/logs/ and would mask a deleted-vault scenario
+	// under the vault model (dataDir == currentVault).
 	checks := []DoctorCheck{
 		checkWslSystemd(),
 		checkLinger(),
 		checkPortAvailable("server.port", cfg.Server.Port),
 		mcpPortCheck(cfg),
+		checkAppJSONReadable(appJSONPath),
+		checkCurrentVaultExists(currentVault),
+		checkCurrentVaultHasJasperDir(currentVault),
 		checkDataDirPerms(dataDir),
 		checkMigrationState(dataDir),
 		checkLogWritable(dataDir),
 		checkFrontendEmbed(),
-		checkAppJSONReadable(appJSONPath),
-		checkCurrentVaultExists(currentVault),
-		checkCurrentVaultHasJasperDir(currentVault),
 	}
 
 	anyFail := false
