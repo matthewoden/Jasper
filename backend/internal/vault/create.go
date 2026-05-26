@@ -19,6 +19,15 @@ package vault
 // so callers that produce the vault folder through other means (e.g.
 // restoring from backup) can still register via TouchOpened + SaveAppJSON
 // directly.
+//
+// KNOWN ORPHAN (UAT-2 R3 F2 — see .planning/notes/F2-two-db-assessment.md):
+// Steps 3–5 write a fully-migrated DB at <canonical>/.jasper/app.db, but
+// the running server opens its DB at <canonical>/storage/app.db
+// (lifecycle.go storageDBPath). The .jasper/app.db is therefore never
+// read after creation. Per ADR-001 §6 the canonical location IS .jasper/
+// — the server side was not updated to match. The mismatch wastes a
+// few seconds of CPU + a few MB of disk per vault but is functionally
+// benign. Consolidation is a future-phase plan, not a session fix.
 
 import (
 	"context"
