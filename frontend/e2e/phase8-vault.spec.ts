@@ -117,6 +117,18 @@ async function spawnVaultJasper(appHome: string): Promise<VaultHandle> {
   };
 }
 
+// ─── Helper: mirror backend's vault.Canonicalize() output ────────────────────
+//
+// Backend's vault.Canonicalize (backend/internal/vault/canonical.go) does:
+//   filepath.Abs → filepath.EvalSymlinks → filepath.Clean → strings.ToLower (darwin)
+//
+// app.json + the picker testid use this canonical form. Tests must mirror it
+// so [data-testid="vault-row-<path>"] selectors match (UAT-2 R3 F3a/b).
+function canonVaultPath(p: string): string {
+  const real = fs.realpathSync(p);
+  return process.platform === "darwin" ? real.toLowerCase() : real;
+}
+
 // ─── Helper: bootstrap a vault via /vault/create (used by 17d switch tests) ──
 
 async function bootstrapVault(
@@ -582,8 +594,14 @@ test.describe("Phase 8 vault switch — make-build smoke (Plan 08-17d)", () => {
    */
   test("switch from vault A to vault B — SPA reloads to new vault, StatusBar shows B", async ({ page }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-app-"));
-    const vaultA = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-A-"));
-    const vaultB = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-B-"));
+    // UAT-2 R3 F3a: match backend's vault.Canonicalize() output. On macOS:
+    //   /var/folders/... → realpath → /private/var/folders/...
+    //   THEN strings.ToLower (darwin branch in canonical.go)
+    // app.json + the picker testid use this canonical form. Without the
+    // toLowerCase the selector silently never matches the mixed-case
+    // mkdtemp suffix.
+    const vaultA = canonVaultPath(fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-A-")));
+    const vaultB = canonVaultPath(fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-B-")));
     let handle: VaultHandle | undefined;
     try {
       handle = await spawnVaultJasper(appHome);
@@ -608,7 +626,8 @@ test.describe("Phase 8 vault switch — make-build smoke (Plan 08-17d)", () => {
       // Navigate to Recent tab and click vault B's row.
       await page.getByRole("tab", { name: /recent/i }).click();
       const nameB = path.basename(vaultB);
-      // Find and click vault B row — the row has data-testid=vault-row-<path>.
+      // Find and click vault B row — the row has data-testid=vault-row-<path>
+      // where <path> is the canonical (EvalSymlinks-resolved) form.
       await page.getByTestId(`vault-row-${vaultB}`).click({ timeout: 5_000 });
 
       // After the SPA reloads, StatusBar should show B's display_name.
@@ -641,9 +660,13 @@ test.describe("Phase 8 vault switch — make-build smoke (Plan 08-17d)", () => {
    */
   test("concurrent switch returns 409 with vault_switch_in_progress", async ({ request }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-app-"));
-    const vaultA = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-A-"));
-    const vaultB1 = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-B1-"));
-    const vaultB2 = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-B2-"));
+    // UAT-2 R3 F3b: see canonVaultPath() — matches backend's
+    // vault.Canonicalize (realpath + darwin toLowerCase) so the test's
+    // path strings match what the swap mutex + app.json see after
+    // canonicalization.
+    const vaultA = canonVaultPath(fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-A-")));
+    const vaultB1 = canonVaultPath(fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-B1-")));
+    const vaultB2 = canonVaultPath(fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-B2-")));
     let handle: VaultHandle | undefined;
     try {
       handle = await spawnVaultJasper(appHome);
