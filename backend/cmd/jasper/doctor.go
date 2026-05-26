@@ -251,22 +251,30 @@ func checkPortAvailable(label string, port int) DoctorCheck {
 	return DoctorCheck{Name: label, Status: "ok"}
 }
 
-// checkDataDirPerms ensures the data directory exists and has mode 0700.
-// A wider mode (e.g., 0777) is a fail because notes shouldn't be world-readable.
+// checkDataDirPerms ensures Jasper's private state directory has mode 0700.
+// Under the vault model the user picks the vault root (often a user-managed
+// dir like ~/Documents/vault-name that inherits 0755) — so we check the
+// <vault>/.jasper/ subdir Jasper itself creates with 0o700, not the root.
+// Legacy installs fall back to checking the root (~/.jasper) for parity
+// with the pre-vault behavior. UAT-2 round 3 F1.
 func checkDataDirPerms(dir string) DoctorCheck {
-	fi, err := os.Stat(dir)
+	checkDir := dir
+	if jasperDir := filepath.Join(dir, ".jasper"); pathIsDir(jasperDir) {
+		checkDir = jasperDir
+	}
+	fi, err := os.Stat(checkDir)
 	if err != nil {
 		return DoctorCheck{
 			Name:   "data-dir perms",
 			Status: "fail",
-			Hint:   "data directory missing at " + dir + " — run the first-run wizard",
+			Hint:   "data directory missing at " + checkDir + " — run the first-run wizard",
 		}
 	}
 	if !fi.IsDir() {
 		return DoctorCheck{
 			Name:   "data-dir perms",
 			Status: "fail",
-			Hint:   dir + " is not a directory",
+			Hint:   checkDir + " is not a directory",
 		}
 	}
 	if runtime.GOOS == "windows" {
@@ -277,10 +285,17 @@ func checkDataDirPerms(dir string) DoctorCheck {
 		return DoctorCheck{
 			Name:   "data-dir perms",
 			Status: "fail",
-			Hint:   fmt.Sprintf("expected mode 0700, got %#o — run 'chmod 0700 %s'", mode, dir),
+			Hint:   fmt.Sprintf("expected mode 0700, got %#o — run 'chmod 0700 %s'", mode, checkDir),
 		}
 	}
 	return DoctorCheck{Name: "data-dir perms", Status: "ok"}
+}
+
+// pathIsDir returns true when p exists and is a directory. Used to
+// distinguish vault-model (.jasper/ present) from legacy installs.
+func pathIsDir(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
 }
 
 // checkMigrationState verifies every embedded migration filename is recorded
