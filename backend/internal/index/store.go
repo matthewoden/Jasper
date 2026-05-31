@@ -381,8 +381,23 @@ func prefixWrap(q string) string {
 	// does not already end in '*', rejoin with a single space. This also
 	// normalizes runs of whitespace — fine for FTS5 (whitespace is the
 	// token separator).
+	//
+	// UAT-2 R4-3: tokens containing '-' or '_' MUST be wrapped in double
+	// quotes to escape FTS5's column-filter / negation operators. The
+	// `tokenize = "unicode61 tokenchars '_-'"` index config treats those
+	// chars as part of tokens, but the FTS5 QUERY grammar still parses '-'
+	// as a binary operator outside quotes — `note-00123*` errors with
+	// "no such column: 00123". Quoted phrases can't carry a prefix
+	// wildcard, so we fall back to exact-token match; the title-LIKE
+	// fallback in SearchFTS catches substring intent (e.g. "note-001"
+	// matching "note-00123" by path).
 	tokens := strings.Fields(trimmed)
 	for i, tok := range tokens {
+		if strings.ContainsAny(tok, "-_") {
+			// Strip any pre-existing wildcard the user typed; quote.
+			tokens[i] = `"` + strings.TrimSuffix(tok, "*") + `"`
+			continue
+		}
 		if !strings.HasSuffix(tok, "*") {
 			tokens[i] = tok + "*"
 		}
@@ -475,6 +490,34 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 		return nil, fmt.Errorf("searchfts iter: %w", err)
 	}
 
+	// UAT-2 R4-3: title/path substring fallback. FTS5's unicode61 tokenizer
+	// with tokenchars '_-' indexes "note-00123" as ONE token, so the user's
+	// "123" query rewritten to "123*" never matches via prefix (the token
+	// starts with "n"). Run a parallel LIKE search over title + path and
+	// merge in any IDs not already returned by FTS. FTS hits keep their
+	// bm25 rank + snippet; LIKE-only hits append with rank=999 (lowest)
+	// and a synthesized excerpt-less row.
+	//
+	// Only fires for bare-text queries (no FTS5 syntax) so power users with
+	// quoted phrases / column filters / boolean operators get pure FTS
+	// semantics. Same gate prefixWrap uses.
+	trimmed := strings.TrimSpace(q)
+	if trimmed != "" && !strings.ContainsAny(trimmed, `"():`) && !fts5OperatorKeywordRE.MatchString(trimmed) && len(hits) <= limit {
+		existing := make(map[string]bool, len(hits))
+		for _, h := range hits {
+			existing[h.ID] = true
+		}
+		need := limit + 1 - len(hits)
+		if need > 0 {
+			likeHits, lerr := x.searchTitlePathLike(ctx, trimmed, tag, existing, need)
+			if lerr != nil {
+				x.Log.Warn("searchfts: title-LIKE fallback failed (continuing with FTS-only)", "err", lerr)
+			} else {
+				hits = append(hits, likeHits...)
+			}
+		}
+	}
+
 	// Populate MatchingTags via per-hit lookup. Cheap because limit ≤ 100.
 	for i := range hits {
 		tagNames, terr := x.tagNamesForNote(ctx, hits[i].ID)
@@ -483,6 +526,70 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 			continue
 		}
 		hits[i].MatchingTags = tagNames
+	}
+	return hits, nil
+}
+
+// searchTitlePathLike runs a substring search over notes.title + notes.path
+// to backstop FTS5's prefix-only matching (UAT-2 R4-3). Exclude IDs already
+// in `existing` to avoid duplicating FTS hits. Returns up to `limit` hits
+// with rank=999 so the merge ranks them after every FTS hit.
+//
+// Security: q is bound positionally via ?1 → "%" || ?1 || "%" runs entirely
+// in SQL with no string concat — same T-7-08 invariant SearchFTS holds.
+// Tag filter parallels SearchFTS's EXISTS form.
+func (x *Indexer) searchTitlePathLike(
+	ctx context.Context,
+	q, tag string,
+	existing map[string]bool,
+	limit int,
+) ([]notes.SearchHit, error) {
+	const sqlText = `
+		SELECT n.id, n.title, n.path, n.updated_at
+		FROM notes n
+		WHERE (n.title LIKE '%' || ?1 || '%' OR n.path LIKE '%' || ?1 || '%')
+		  AND (
+		    ?2 IS NULL
+		    OR EXISTS (
+		        SELECT 1 FROM note_tags nt
+		        JOIN tags t ON t.id = nt.tag_id
+		        WHERE nt.note_id = n.id AND t.name = ?2
+		    )
+		  )
+		ORDER BY n.updated_at DESC
+		LIMIT ?3
+	`
+	var tagBind any
+	if tag != "" {
+		tagBind = tag
+	}
+	// Over-fetch to absorb post-filter dedup against `existing`.
+	overFetch := limit + len(existing) + 10
+	rows, err := x.Pair.Reader.QueryContext(ctx, sqlText, q, tagBind, overFetch)
+	if err != nil {
+		return nil, fmt.Errorf("searchlike query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var hits []notes.SearchHit
+	for rows.Next() {
+		if len(hits) >= limit {
+			break
+		}
+		var h notes.SearchHit
+		var updatedAt int64
+		if err := rows.Scan(&h.ID, &h.Title, &h.Path, &updatedAt); err != nil {
+			return nil, fmt.Errorf("searchlike scan: %w", err)
+		}
+		if existing[h.ID] {
+			continue
+		}
+		h.ModifiedAt = time.Unix(updatedAt, 0).UTC()
+		h.Rank = 999 // sentinel: rank LIKE-only matches after every FTS hit
+		hits = append(hits, h)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("searchlike iter: %w", err)
 	}
 	return hits, nil
 }
