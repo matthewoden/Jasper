@@ -154,6 +154,14 @@ export interface TreeStore {
   // TREE-12: consumed by ConnectionStatusDot and EditorPane (Plan 04-05).
   connectionStatus: ConnectionStatus;
 
+  // UAT-2 R4-2: manual-reconnect trigger. useSessionSync writes the actual
+  // implementation here at mount; SaveIndicator-button click invokes it when
+  // saveState.status === "paused" so the user can short-circuit the
+  // exponential-backoff wait after a server restart. Default no-op so
+  // callers don't have to guard on existence.
+  forceWsReconnect: () => void;
+  setForceWsReconnect: (fn: () => void) => void;
+
   // Phase 5.5 — UX-08: live H1 → tree label override (transient).
   // Keyed by note id; cleared on note switch with unsaved edits and on
   // successful save (Plan 04 wires the switch path; saved-transition cleanup
@@ -333,6 +341,9 @@ export const useTreeStore = create<TreeStore>((set) => ({
   endDraftCreate: () => set({ draftCreate: null }),
   setSelectedRow: (sr) => set({ selectedRow: sr }),
   setConnectionStatus: (s) => set({ connectionStatus: s }),
+  // UAT-2 R4-2: default no-op; useSessionSync overwrites at mount.
+  forceWsReconnect: () => {},
+  setForceWsReconnect: (fn) => set({ forceWsReconnect: fn }),
   // Plan 04 (UX-08) — liveLabels mutators.
   setLiveLabel: (id, label) =>
     set((s) => ({ liveLabels: { ...s.liveLabels, [id]: label } })),

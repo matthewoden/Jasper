@@ -11,6 +11,10 @@ type WSEnvelope = components["schemas"]["WSEnvelope"];
 // Mock useFileTree and useTreeStore to avoid spinning up real stores.
 const refreshMock = vi.fn(async () => {});
 const setStatusMock = vi.fn();
+// UAT-2 R4-2: setForceWsReconnect is the publish-side of the manual
+// reconnect handle; mock + assert callable. Tests don't exercise the
+// reconnect path itself yet (that needs MockSocket coordination).
+const setForceWsReconnectMock = vi.fn();
 
 vi.mock("./useFileTree", () => ({
   useFileTree: () => ({
@@ -23,8 +27,18 @@ vi.mock("./useFileTree", () => ({
 }));
 vi.mock("./useTreeStore", () => ({
   useTreeStore: vi.fn(
-    (selector?: (s: { setConnectionStatus: typeof setStatusMock }) => unknown) =>
-      selector ? selector({ setConnectionStatus: setStatusMock }) : { setConnectionStatus: setStatusMock },
+    (
+      selector?: (s: {
+        setConnectionStatus: typeof setStatusMock;
+        setForceWsReconnect: typeof setForceWsReconnectMock;
+      }) => unknown,
+    ) => {
+      const state = {
+        setConnectionStatus: setStatusMock,
+        setForceWsReconnect: setForceWsReconnectMock,
+      };
+      return selector ? selector(state) : state;
+    },
   ),
 }));
 vi.mock("./sessionId", () => ({

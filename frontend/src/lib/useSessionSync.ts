@@ -84,6 +84,7 @@ export function useSessionSync(
   opts: UseSessionSyncOptions = {},
 ): void {
   const setStatus = useTreeStore((s) => s.setConnectionStatus);
+  const setForceWsReconnect = useTreeStore((s) => s.setForceWsReconnect);
   const { refresh: refreshTree } = useFileTree();
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
@@ -241,14 +242,41 @@ export function useSessionSync(
       };
     };
 
+    // UAT-2 R4-2: short-circuit the exponential-backoff wait after a
+    // server restart. Cancels the pending reconnect timer, closes any
+    // half-open socket (without re-firing onclose's backoff schedule),
+    // resets the attempt counter, and connects immediately. Idempotent
+    // — safe to call from any connection state.
+    const forceReconnect = () => {
+      if (cancelled) return;
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      if (ws && ws.readyState !== WebSocket.CLOSED) {
+        ws.onclose = null; // suppress backoff re-schedule
+        try {
+          ws.close();
+        } catch {
+          // ignore close errors
+        }
+      }
+      attempt = 0;
+      connect();
+    };
+    setForceWsReconnect(forceReconnect);
+
     connect();
 
     return () => {
       cancelled = true;
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       ws?.close();
+      // Restore the no-op so a stale handle from an unmounted tree
+      // can't trigger a reconnect on the next mount.
+      setForceWsReconnect(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshTree, setStatus, wsUrlFn]);
+  }, [refreshTree, setStatus, setForceWsReconnect, wsUrlFn]);
   // handlers consumed via handlersRef.current — intentionally NOT in deps.
 }

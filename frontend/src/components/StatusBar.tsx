@@ -52,13 +52,25 @@ export function StatusBar() {
   // incremental reindex on click; the SaveIndicator-as-button mode
   // DoS-guards by disabling itself while saving (T-37-01 inside the
   // SaveIndicator component).
+  //
+  // UAT-2 R4-2: when saveState.status === "paused" (WS is down), the
+  // click now triggers an immediate WS reconnect attempt instead of a
+  // doomed reindex POST. The reindex would always fail because the
+  // server is the same thing that owns the WS — if WS is down, the
+  // HTTP listener is too. forceWsReconnect short-circuits the backoff
+  // timer so the user doesn't have to wait up to 45s after a restart.
+  const forceWsReconnect = useTreeStore((s) => s.forceWsReconnect);
   const handleRefresh = useCallback(async () => {
+    if (saveState.status === "paused") {
+      forceWsReconnect();
+      return;
+    }
     try {
       await postAdminReindex("incremental");
     } catch (err) {
       console.warn("[StatusBar] SaveIndicator-button refresh failed:", err);
     }
-  }, []);
+  }, [saveState.status, forceWsReconnect]);
 
   return (
     <footer style={statusBarStyle} data-testid="status-bar" aria-label="Status bar">
