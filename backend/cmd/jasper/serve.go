@@ -126,8 +126,18 @@ func runServe(args []string) error {
 	dataDirFlag := fs.String("data-dir", "", "Path to data directory (deprecated: use --vault per ADR-001)")
 	addrFlag := fs.String("addr", defaultListenAddr,
 		"Listen address (loopback-only by default). Dev pipeline reads the same port from scripts/port.sh.")
+	// UAT-2 R4-1: --vault is declared as a root PersistentFlag (root.go), but
+	// serveCmd has DisableFlagParsing=true so the persistent binding never
+	// runs. Mirror the flag locally so `bin/jasper serve --vault <path>`
+	// works alongside the legacy `bin/jasper --vault <path> serve` form.
+	// The local value seeds the package-level vaultFlag that the resolution
+	// switch below reads.
+	vaultFlagLocal := fs.String("vault", "", "Path to vault (ADR-001; bypasses picker)")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *vaultFlagLocal != "" {
+		vaultFlag = *vaultFlagLocal
 	}
 
 	log := serveLog
