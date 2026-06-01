@@ -584,5 +584,25 @@ body {
 [role="menuitem"][data-state="open"] {
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   outline: none;
+  /* UAT-2 R4-5: subtle inset + rounded corners give each hovered row
+     a "chip" feel; visually separates consecutive highlighted items
+     and keeps the corner profile consistent with the panel surfaces. */
+  border-radius: 4px;
+  margin: 0 4px;
+}
+
+/* UAT-2 R4-5: items with an explicit active/selected state (set via
+   inline style or data-active attr) get a stronger tint + accent-color
+   left stripe + bold weight so they remain visually distinguished from
+   the hover state, which sits at the same accent-12% background. The
+   stripe + weight remain visible under hover. The marker `data-active`
+   is opt-in — set it on items that carry their own "selected" semantic
+   (e.g. AI grant tier rows). */
+[role="menuitem"][data-active="true"],
+[role="menuitemradio"][data-active="true"],
+[role="menuitemcheckbox"][data-active="true"] {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent) !important;
+  box-shadow: inset 3px 0 0 0 var(--color-accent);
+  font-weight: 600;
 }
 

@@ -306,15 +306,13 @@ function MenuItems({
           </SubTrigger>
           <Portal>
             <SubContent style={menuContainerStyle}>
+              {/* UAT-2 R4-5: data-active drives the global "active item"
+                  CSS rule (theme.css) — stronger tint + left stripe + bold
+                  weight so it stays distinguishable from hover (which uses
+                  the same accent-12% background). */}
               <Item
-                style={{
-                  ...itemStyle,
-                  height: 36,
-                  background:
-                    activeLevel === 1
-                      ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
-                      : undefined,
-                }}
+                data-active={activeLevel === 1 ? "true" : undefined}
+                style={{ ...itemStyle, height: 36 }}
                 onSelect={() => onGrant?.(1)}
               >
                 <div style={{ display: "flex", flexDirection: "column" }}>
@@ -326,14 +324,8 @@ function MenuItems({
                 </div>
               </Item>
               <Item
-                style={{
-                  ...itemStyle,
-                  height: 36,
-                  background:
-                    activeLevel === 2
-                      ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
-                      : undefined,
-                }}
+                data-active={activeLevel === 2 ? "true" : undefined}
+                style={{ ...itemStyle, height: 36 }}
                 onSelect={() => onGrant?.(2)}
               >
                 <div style={{ display: "flex", flexDirection: "column" }}>
