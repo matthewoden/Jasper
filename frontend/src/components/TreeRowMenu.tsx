@@ -32,7 +32,7 @@
  */
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, Sparkles } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 
 export type TreeRowMenuKind = "note" | "folder" | "empty-area" | "file";
@@ -298,10 +298,30 @@ function MenuItems({
         <Sub>
           <SubTrigger style={itemStyle}>
             <span>Grant AI access</span>
+            {/* UAT-2 R4-6: Sparkles icon next to the SubTrigger when this
+                folder has an active grant — replaces the in-row indicator
+                so the granted folder reads via background tint + the
+                in-menu icon (legible only when the menu is open). Color
+                tier matches the inline tint: violet-400 for Tier 1,
+                violet-600 for Tier 2. */}
             {activeLevel && (
-              <span style={shortcutStyle}>
-                {activeLevel === 1 ? "Edit only" : "Full"}
-              </span>
+              <>
+                <Sparkles
+                  size={14}
+                  aria-hidden="true"
+                  style={{
+                    marginLeft: "auto",
+                    color:
+                      activeLevel === 2
+                        ? "var(--color-ai-grant-strong)"
+                        : "var(--color-ai-grant)",
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ ...shortcutStyle, marginLeft: 4 }}>
+                  {activeLevel === 1 ? "Edit only" : "Full"}
+                </span>
+              </>
             )}
           </SubTrigger>
           <Portal>

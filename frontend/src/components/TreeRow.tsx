@@ -61,7 +61,6 @@ import { useTreeMutations } from "../lib/useTreeMutations";
 import { useReveal } from "../lib/useReveal";
 import { useMcpGrants } from "../lib/useMcpGrants";
 import { RenameInput } from "./RenameInput";
-import { McpGrantIndicator } from "./McpGrantIndicator";
 import {
   TreeRowContextMenu,
   TreeRowDropdownMenu,
@@ -175,7 +174,7 @@ export function TreeRow({
   // directLevelFor (not levelFor) — UI-SPEC §Surface 3 says the indicator
   // and the submenu's active-state subtitle render ONLY at the leaf where
   // the grant was attached, never on descendant rows (T-08-48 mitigation).
-  const { directLevelFor, grant: grantMcp, revoke: revokeMcp } = useMcpGrants();
+  const { directLevelFor, levelFor, grant: grantMcp, revoke: revokeMcp } = useMcpGrants();
   // UAT follow-up 2026-05-12 — pulse highlight when navigated to via breadcrumb.
   const pulseTarget = useTreeStore((s) => s.pulseTarget);
   // Plan 04 (UX-08): live H1 label override for note rows. Falls back to
@@ -223,6 +222,15 @@ export function TreeRow({
   const grantLevel = isFolder
     ? directLevelFor((data as FolderNodeData).path)
     : null;
+
+  // UAT-2 R4-6: tint scope is "granted root + ALL subfolders" (user choice
+  // 2026-05-31). Use levelFor (ancestor walk) for the tint so every
+  // descendant of a granted folder also reads as AI-eligible. The submenu
+  // still uses `grantLevel` (direct) so the "Active" labels point at the
+  // leaf where the grant was attached. data.path exists on all three row
+  // kinds; for files inside an attachments/ folder the parent folder's
+  // grant cascades correctly via levelFor's ancestor walk.
+  const effectiveAiLevel: 1 | 2 | null = levelFor(data.path);
 
   const [kebabOpen, setKebabOpen] = useState(false);
 
@@ -382,6 +390,12 @@ export function TreeRow({
     isSelected && !isActive
       ? "color-mix(in srgb, var(--color-accent) 4%, transparent)"
       : undefined;
+  // UAT-2 R4-6: when no active/selected tint exists, defer to the
+  // data-ai-level CSS rule by leaving the inline background undefined
+  // (CSS wins by default since no inline value to override). When an
+  // active/selected tint IS present, the inline accent background
+  // visually dominates the AI tint — acceptable because the user has
+  // explicitly focused that row.
   const rowBackground = activeBackground ?? selectedBackground;
 
   // Plan 07-26: file nodes use path as the row identifier (no note id).
@@ -492,6 +506,7 @@ export function TreeRow({
       }
       data-tree-row={dataTreeRowValue}
       data-tree-row-kind={data.kind}
+      data-ai-level={effectiveAiLevel ?? undefined}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onKeyDown={handleKeyDown}
@@ -567,18 +582,11 @@ export function TreeRow({
       {/* Label OR inline-rename input. React text-content escape is
           the XSS gate; no inner-HTML escape hatch anywhere. */}
       {labelOrInput}
-      {/* Plan 08-10 (MCP-02 / UI-SPEC §Surface 3): Sparkles indicator on
-          folder rows that hold a DIRECT grant. Sits BEFORE the kebab (left
-          of it), 4px gap. Folder name truncates first because the label
-          span is `flex: 1` and both the indicator wrapper and the kebab
-          are `flex-shrink: 0` — the indicator is always visible at the
-          row's right edge per MCP-02. */}
-      {grantLevel !== null && (
-        <>
-          <McpGrantIndicator level={grantLevel} />
-          <span aria-hidden="true" style={{ width: 4, flexShrink: 0 }} />
-        </>
-      )}
+      {/* UAT-2 R4-6: Sparkles indicator moved from the row to the
+          "Grant AI access" submenu's SubTrigger (TreeRowMenu.tsx).
+          The row now carries `data-ai-level` (set above) so theme.css
+          can apply a violet tint to granted folders + every descendant
+          (user choice: tint scope = root + all subfolders). */}
       {/* Kebab — wraps a TreeRowDropdownMenu so click reveals the same
           item set as the right-click context menu. Hidden until row
           hover or focus-within (Plan 03-06 chassis kept the visibility

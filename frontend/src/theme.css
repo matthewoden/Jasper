@@ -606,3 +606,17 @@ body {
   font-weight: 600;
 }
 
+/* UAT-2 R4-6: AI-granted folder tint. data-ai-level is set on every
+   TreeRow whose effective ancestor grant is non-null (root + all
+   subfolders, per user choice 2026-05-31). Tier 1 = violet-400 8%;
+   Tier 2 = violet-600 10% (deeper, since Full grant is the more
+   capable permission). The tint composes with the existing hover /
+   active row backgrounds — hovered granted rows blend toward accent
+   without losing their AI identity. */
+[data-tree-row][data-ai-level="1"] {
+  background: color-mix(in srgb, var(--color-ai-grant) 8%, transparent);
+}
+[data-tree-row][data-ai-level="2"] {
+  background: color-mix(in srgb, var(--color-ai-grant-strong) 10%, transparent);
+}
+
