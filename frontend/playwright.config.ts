@@ -17,6 +17,11 @@ try {
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.ts",
+  // Exclude stale Claude-agent worktrees that contain duplicate spec
+  // files. Without this, Playwright walks into the worktree mirrors
+  // and double-loads test.beforeEach / test.describe causing "Test
+  // did not expect ... to be called here" errors.
+  testIgnore: ["**/.claude/**", "**/node_modules/**"],
   // Each test gets a fresh data dir + ephemeral port via beforeEach.
   fullyParallel: false, // we manage one binary per test serially
   workers: 1,
