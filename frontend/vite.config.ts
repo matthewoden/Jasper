@@ -31,5 +31,10 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    // Plan 08-18 (R4-11 BLOCKER): honour VITE_SOURCEMAP=true so the
+    // sourcemap-enabled build resolves minified symbols in DevTools.
+    // Task 1c reverts this to its prior state once the investigation is
+    // complete — do NOT ship sourcemaps in production builds.
+    sourcemap: process.env.VITE_SOURCEMAP === "true",
   },
 });
