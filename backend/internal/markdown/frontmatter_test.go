@@ -1,60 +1,113 @@
 package markdown
 
 import (
+	"strings"
 	"testing"
 )
 
-// TestHasFrontmatter verifies the frontmatter detection contract (TAGS-EXT-03, D-10, D-11).
+// TestHasFrontmatter verifies the canonical frontmatter detection contract
+// (TAGS-EXT-03, D-10, D-11, R4-5 — Plan 08-21).
 //
-// HasFrontmatter is the gate used by:
-//   - D-11 one-time migration: "does this file already have frontmatter?"
-//   - D-10 auto-restore on save: "should we inject the scaffold?"
-//   - InjectFrontmatterScaffold (idempotency guard)
+// HasFrontmatter is the SINGLE source of truth for "is a frontmatter block
+// present in this file?" — duplicate implementations elsewhere in the tree
+// would re-introduce the loose-vs-strict drift R4-5 was filed to fix.
+//
+// The contract (also recorded verbatim in FrontmatterCanonicalContract):
+//
+//	Frontmatter is present iff the file begins at byte 0 with the exact
+//	bytes "---\n" (three hyphens + LF), AND a subsequent line consisting
+//	of exactly "---\n" appears before EOF. Case-sensitive. No leading BOM,
+//	no leading whitespace, no CR/CRLF line endings, no four-or-more
+//	hyphens, no trailing space on the fence.
+//
+// The matrix below covers every rejection axis named in the contract.
 func TestHasFrontmatter(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
 		want  bool
 	}{
+		// ── HAPPY PATH ────────────────────────────────────────────────
 		{
-			name:  "standard frontmatter block",
-			input: "---\ntags: []\n---\nbody",
+			name:  "canonical happy path — tags array + body",
+			input: "---\ntags: []\n---\n# title\n",
 			want:  true,
 		},
 		{
-			name:  "leading whitespace before fence — TrimSpace first",
-			input: "  \n---\nfoo: bar\n---",
+			name:  "canonical with body after close",
+			input: "---\nkey: value\n---\n\n# Title\n\nbody text",
 			want:  true,
+		},
+		{
+			name:  "alt-cased key inside is irrelevant to detection",
+			input: "---\nTags: [a]\n---\nbody",
+			want:  true,
+		},
+		{
+			name:  "canonical case key",
+			input: "---\ntags: [a]\n---\nbody",
+			want:  true,
+		},
+		// ── REJECTION AXES ────────────────────────────────────────────
+		{
+			name:  "empty file",
+			input: "",
+			want:  false,
+		},
+		{
+			name:  "BOM at byte 0 — out of contract",
+			input: "\xef\xbb\xbf---\ntags: []\n---\n",
+			want:  false,
+		},
+		{
+			name:  "leading space — out of contract (byte-0 rule)",
+			input: " ---\ntags: []\n---\n",
+			want:  false,
+		},
+		{
+			name:  "leading blank line — out of contract",
+			input: "\n---\ntags: []\n---\n",
+			want:  false,
+		},
+		{
+			name:  "CRLF open fence — out of contract (LF-canonical)",
+			input: "---\r\ntags: []\r\n---\r\n",
+			want:  false,
+		},
+		{
+			name:  "canonical CRLF row from plan — out of contract",
+			input: "---\r\ntags: []\r\n---\r\n# body",
+			want:  false,
+		},
+		{
+			name:  "four hyphens — not a fence",
+			input: "----\ntags: []\n----\n",
+			want:  false,
+		},
+		{
+			name:  "trailing space on open fence — not a fence",
+			input: "--- \ntags: []\n---\n",
+			want:  false,
+		},
+		{
+			name:  "unclosed frontmatter — opening fence with no closing fence",
+			input: "---\nno closing fence here\nfile ends without close",
+			want:  false,
+		},
+		{
+			name:  "only two dashes — not a valid fence",
+			input: "--\nfoo\n---\n",
+			want:  false,
+		},
+		{
+			name:  "dashes inline — not a fence",
+			input: "---abc\n---\n",
+			want:  false,
 		},
 		{
 			name:  "plain heading — no frontmatter",
 			input: "# H1\nbody",
 			want:  false,
-		},
-		{
-			name:  "empty string",
-			input: "",
-			want:  false,
-		},
-		{
-			name:  "only dashes inline — not a fence",
-			input: "---abc",
-			want:  false,
-		},
-		{
-			name:  "only two dashes — not a valid fence",
-			input: "--\nfoo",
-			want:  false,
-		},
-		{
-			name:  "unclosed frontmatter — opening fence with no closing fence",
-			input: "---\nno closing fence\n",
-			want:  false,
-		},
-		{
-			name:  "frontmatter with content after close",
-			input: "---\nkey: value\n---\n\n# Title\n\nbody text",
-			want:  true,
 		},
 		{
 			name:  "body-only with dashes in middle — not frontmatter",
@@ -77,6 +130,26 @@ func TestHasFrontmatter(t *testing.T) {
 func TestHasFrontmatter_Nil(t *testing.T) {
 	if HasFrontmatter(nil) {
 		t.Error("HasFrontmatter(nil) = true, want false")
+	}
+}
+
+// TestFrontmatterCanonicalContract_SmokeContent guarantees the exported
+// contract string contains the load-bearing phrases that downstream MCP
+// tool descriptions cite. Catches accidental rewording that would drift
+// the documented contract from the implementation.
+func TestFrontmatterCanonicalContract_SmokeContent(t *testing.T) {
+	must := []string{
+		"byte 0",
+		`"---\n"`,
+		"Case-sensitive",
+		"No leading BOM",
+		"no leading whitespace",
+		"no CR/CRLF",
+	}
+	for _, phrase := range must {
+		if !strings.Contains(FrontmatterCanonicalContract, phrase) {
+			t.Errorf("FrontmatterCanonicalContract missing required phrase %q", phrase)
+		}
 	}
 }
 

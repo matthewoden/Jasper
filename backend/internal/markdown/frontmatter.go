@@ -5,56 +5,68 @@ import (
 	"bytes"
 )
 
-// HasFrontmatter returns true iff content starts with a YAML frontmatter
-// block: a "---" fence on its own line (optionally preceded by whitespace),
-// followed by at least one more line, then a closing "---" fence on its
-// own line.
+// FrontmatterCanonicalContract is the single-sentence definition of
+// "frontmatter is present" used across the entire codebase. It is exported
+// so MCP tool descriptions, OpenAPI docs, and migration logs can cite the
+// exact same wording the implementation enforces.
 //
-// This is the gate used by:
+// Suitable to embed verbatim in tool descriptions and developer docs.
+const FrontmatterCanonicalContract = "Frontmatter is present iff the file begins at byte 0 with the exact bytes \"---\\n\" (three hyphens + LF), AND a subsequent line consisting of exactly \"---\\n\" appears before EOF. Case-sensitive. No leading BOM, no leading whitespace, no CR/CRLF line endings, no four-or-more hyphens, no trailing space on the fence."
+
+// HasFrontmatter returns true iff content begins with a canonical YAML
+// frontmatter block per the rule in FrontmatterCanonicalContract:
+//
+//   - The file MUST start at byte 0 with the exact four bytes "---\n"
+//     (three hyphens followed by an LF). No leading BOM, no leading
+//     whitespace (spaces, tabs, blank lines), no CR / CRLF.
+//   - A subsequent line consisting of exactly "---\n" MUST appear before
+//     end-of-file. (CR / CRLF closing lines are also rejected — vault
+//     files are LF-canonical.)
+//   - Detection is case-sensitive. The contents of the YAML body
+//     (key casing, etc.) are irrelevant to detection: HasFrontmatter only
+//     answers "is the block delimited?", not "is the YAML valid?".
+//   - Rejected: "----\n" (four hyphens), "--- \n" (trailing space on
+//     the open fence), missing close delimiter, the four bytes "---\r\n"
+//     (CRLF on the open fence — out of contract per R4-5; vault files
+//     are LF-canonical).
+//
+// Used by:
 //   - The D-11 one-time startup migration (TAGS-EXT-03): "does this file
 //     already have a frontmatter block?"
 //   - InjectFrontmatterScaffold (idempotency guard): "is the scaffold
 //     already present?"
 //   - The D-10 auto-restore on save (TAGS-EXT-02): "should we inject?"
+//   - The MCP create_note / update_note tools (R4-5) — they MUST route
+//     through this function rather than duplicating the check.
 //
-// Precision requirements (mirrors title.go's frontmatter scanner):
-//   - "---abc" on a single line (no newline after the fence) → false.
-//   - "--\nfoo" (only two dashes) → false.
-//   - "---\nno closing fence\n" (unclosed) → false.
-//   - Leading whitespace / blank lines before "---" → true (TrimLeft first).
-//
-// A "---" line that appears mid-document (e.g., an HR after body text)
-// returns false because the opening fence must be the first non-whitespace
-// content in the file.
+// See FrontmatterCanonicalContract for the contract suitable for embedding
+// in user-facing docs.
 func HasFrontmatter(content []byte) bool {
-	if len(content) == 0 {
+	if len(content) < 4 {
 		return false
 	}
-	// Skip leading whitespace (spaces, tabs, CR, LF). We do NOT use
-	// bytes.TrimSpace here because we want to detect if the very first
-	// non-whitespace content is a "---\n" line, not just a "---" anywhere.
-	rest := bytes.TrimLeft(content, " \t\r\n")
-	// Opening fence must be exactly "---" followed immediately by a newline
-	// (LF or CRLF). Reject "---abc" or "---" at EOF.
-	if !bytes.HasPrefix(rest, []byte("---\n")) && !bytes.HasPrefix(rest, []byte("---\r\n")) {
+	// Strict byte-0 open fence: exactly "---\n", LF only. No leading
+	// whitespace, no BOM, no CR.
+	if !bytes.HasPrefix(content, []byte("---\n")) {
 		return false
 	}
-	// Walk lines until we find the closing "---" fence. Cap scanner buffer
-	// to 1 MiB (same as title.go) so a pathological long-line file does not
-	// error out.
+	// Walk lines after the open fence looking for an exact "---" line
+	// (terminated by LF or by EOF). The scanner's Text() strips the
+	// terminating "\n" but NOT a preceding "\r" — so "---\r" indicates a
+	// CRLF close fence and must be rejected.
+	rest := content[len("---\n"):]
 	sc := bufio.NewScanner(bytes.NewReader(rest))
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	if !sc.Scan() {
-		return false // could not even read the opening "---" line
-	}
-	// First line is "---"; scan remaining lines for the closing fence.
 	for sc.Scan() {
 		line := sc.Text()
-		if line == "---" || line == "---\r" {
+		if line == "---" {
 			return true
 		}
+		// Anything that looks like a CRLF-encoded close fence ("---\r")
+		// is explicitly OUT of contract (LF-canonical vault files only).
+		// Other lines are interior YAML content — keep scanning.
 	}
-	return false // unclosed frontmatter → no valid block
+	return false
 }
 
 // InjectFrontmatterScaffold prepends the canonical scaffold to content IFF
