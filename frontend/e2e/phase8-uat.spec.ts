@@ -1485,3 +1485,327 @@ test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @r4-3-r4-4-r4-6 — 08-21 MCP tooling improvements.
+//
+// R4-3: list_grants tool returns the active vault's grants sorted asc.
+// R4-4: create_note honours optional `title` param (H1 = title, filename = slug).
+// R4-6: update_note accepts if_match="*" as a last-writer-wins opt-in;
+//       response carries force_write: true. A literal stale tag still 409s.
+//
+// Each scenario drives bin/jasper via spawnJasper with MCP enabled by
+// default (UAT-2 round 2 Q3). The MCP StreamableHTTP RPC helper mirrors
+// the @r4-1 scenario above — POST initialize → grab Mcp-Session-Id →
+// POST notifications/initialized → POST tools/call.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
+  let jasper: JasperHandle;
+  const MCP_PORT = 6684;
+  const MCP_URL = `http://127.0.0.1:${MCP_PORT}/mcp`;
+
+  test.beforeAll(async () => {
+    const path = await import("node:path");
+    const fs = await import("node:fs/promises");
+
+    jasper = await spawnJasper();
+
+    // Pre-create the parent folders the scenarios target (fsstore
+    // CreateFile is single-level mkdir only).
+    await fs.mkdir(path.join(jasper.dataDir, "notes", "projects"), { recursive: true });
+    await fs.mkdir(path.join(jasper.dataDir, "notes", "drafts"), { recursive: true });
+
+    // Wait for the MCP listener.
+    const deadline = Date.now() + 5_000;
+    let lastErr: unknown;
+    while (Date.now() < deadline) {
+      try {
+        const probe = await fetch(`http://127.0.0.1:${MCP_PORT}/healthz`);
+        if (probe.status === 200) {
+          break;
+        }
+      } catch (e) {
+        lastErr = e;
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `MCP /healthz did not respond at port ${MCP_PORT} within 5s: ${String(lastErr)}`,
+      );
+    }
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  // Each scenario opens its own MCP session — beforeAll() can't share one
+  // because the SDK keys sessions to a single handshake and we want each
+  // test to be independent.
+  async function newMcpSession(): Promise<{
+    rpc: (
+      method: string,
+      params: Record<string, unknown> | undefined,
+      isNotification: boolean,
+    ) => Promise<{ result?: unknown; error?: { code: number; message: string } }>;
+  }> {
+    let sessionID: string | null = null;
+    let nextID = 1;
+
+    async function rpc(
+      method: string,
+      params: Record<string, unknown> | undefined,
+      isNotification: boolean,
+    ): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
+      const body: Record<string, unknown> = { jsonrpc: "2.0", method };
+      if (params !== undefined) body.params = params;
+      if (!isNotification) body.id = nextID++;
+
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      };
+      if (sessionID) headers["mcp-session-id"] = sessionID;
+
+      const resp = await fetch(MCP_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+      const sid = resp.headers.get("mcp-session-id");
+      if (sid && !sessionID) sessionID = sid;
+
+      if (isNotification) {
+        if (resp.status !== 202 && resp.status !== 200) {
+          const t = await resp.text();
+          throw new Error(`notification ${method} status=${resp.status}: ${t}`);
+        }
+        return {};
+      }
+
+      const text = await resp.text();
+      const dataLine = text.split(/\r?\n/).find((l) => l.startsWith("data: "));
+      if (!dataLine) {
+        throw new Error(`no SSE data line (status=${resp.status}): ${text}`);
+      }
+      return JSON.parse(dataLine.slice("data: ".length)) as {
+        result?: unknown;
+        error?: { code: number; message: string };
+      };
+    }
+
+    // Handshake.
+    const initOut = await rpc(
+      "initialize",
+      {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "r4-3-r4-4-r4-6-spec", version: "1.0.0" },
+      },
+      false,
+    );
+    expect(
+      initOut.error,
+      `initialize error: ${JSON.stringify(initOut.error)}`,
+    ).toBeUndefined();
+    expect(sessionID, "expected Mcp-Session-Id header").toBeTruthy();
+    await rpc("notifications/initialized", {}, true);
+
+    return { rpc };
+  }
+
+  test("R4-3 — list_grants returns active grants", async () => {
+    // Seed two grants via the existing HTTP grant API.
+    const grantsToSeed = [
+      { folder_path: "projects", level: 1 },
+      { folder_path: "drafts", level: 2 },
+    ];
+    for (const g of grantsToSeed) {
+      const r = await fetch(jasper.baseURL + "/api/v1/mcp/grants", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(g),
+      });
+      expect(
+        r.status,
+        `mcp/grants seed for ${g.folder_path} failed: ${r.status} ${await r.text()}`,
+      ).toBe(200);
+    }
+
+    const { rpc } = await newMcpSession();
+    const out = await rpc(
+      "tools/call",
+      { name: "list_grants", arguments: {} },
+      false,
+    );
+    expect(out.error, `RPC error: ${JSON.stringify(out.error)}`).toBeUndefined();
+    const result = out.result as {
+      isError?: boolean;
+      structuredContent?: { grants?: Array<{ path: string; tier: number; granted_at: string }> };
+      content?: Array<{ type: string; text?: string }>;
+    };
+    expect(
+      result.isError,
+      `list_grants tool error: ${JSON.stringify(result)}`,
+    ).toBeFalsy();
+    const grants = result.structuredContent?.grants;
+    expect(grants, "expected grants in structuredContent").toBeTruthy();
+    expect(grants!.length).toBe(2);
+
+    // Sorted asc: "drafts" < "projects".
+    expect(grants![0].path).toBe("drafts");
+    expect(grants![0].tier).toBe(2);
+    expect(grants![1].path).toBe("projects");
+    expect(grants![1].tier).toBe(1);
+    // RFC3339 timestamp shape.
+    for (const g of grants!) {
+      expect(g.granted_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    }
+
+    // Cleanup so subsequent tests see a clean grant set.
+    for (const g of grantsToSeed) {
+      await fetch(
+        jasper.baseURL + "/api/v1/mcp/grants?path=" + encodeURIComponent(g.folder_path),
+        { method: "DELETE" },
+      );
+    }
+  });
+
+  test("R4-4 — create_note honours optional title", async () => {
+    const path = await import("node:path");
+    const fs = await import("node:fs/promises");
+    // Seed a grant so create_note can write under projects/.
+    const grantResp = await fetch(jasper.baseURL + "/api/v1/mcp/grants", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ folder_path: "projects", level: 1 }),
+    });
+    expect(grantResp.status).toBe(200);
+
+    const { rpc } = await newMcpSession();
+    const out = await rpc(
+      "tools/call",
+      {
+        name: "create_note",
+        arguments: {
+          path: "projects/r4-4-title.md",
+          title: "My Friendly Title",
+        },
+      },
+      false,
+    );
+    expect(out.error, `RPC error: ${JSON.stringify(out.error)}`).toBeUndefined();
+    const result = out.result as {
+      isError?: boolean;
+      structuredContent?: { id?: string; path?: string; updated_at?: string };
+    };
+    expect(
+      result.isError,
+      `create_note tool error: ${JSON.stringify(result)}`,
+    ).toBeFalsy();
+
+    // File MUST be at the slugified path.
+    const filePath = path.join(jasper.dataDir, "notes", "projects", "r4-4-title.md");
+    const contents = await fs.readFile(filePath, "utf8");
+    // H1 MUST be the friendly title.
+    expect(contents).toContain("# My Friendly Title");
+    // The slug "r4-4-title" MUST NOT appear as a leading H1.
+    expect(contents).not.toMatch(/^# r4-4-title\b/m);
+
+    // Cleanup the grant.
+    await fetch(jasper.baseURL + "/api/v1/mcp/grants?path=projects", {
+      method: "DELETE",
+    });
+  });
+
+  test("R4-6 — update_note accepts if_match=* and rejects stale literal tag", async () => {
+    const path = await import("node:path");
+    const fs = await import("node:fs/promises");
+    // Grant + create a note (pure write workflow — no prior read_note).
+    const grantResp = await fetch(jasper.baseURL + "/api/v1/mcp/grants", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ folder_path: "projects", level: 1 }),
+    });
+    expect(grantResp.status).toBe(200);
+
+    const { rpc } = await newMcpSession();
+    const createOut = await rpc(
+      "tools/call",
+      {
+        name: "create_note",
+        arguments: { path: "projects/r4-6-wildcard.md", body: "initial body\n" },
+      },
+      false,
+    );
+    expect(createOut.error).toBeUndefined();
+    const createResult = createOut.result as {
+      isError?: boolean;
+      structuredContent?: { id?: string; path?: string; updated_at?: string };
+    };
+    expect(createResult.isError, JSON.stringify(createResult)).toBeFalsy();
+    const notePath = createResult.structuredContent!.path!;
+
+    // Wildcard arm: no prior read; force overwrite.
+    const wildcardBody = "wildcard overwrite body — last writer wins\n";
+    const wildcardOut = await rpc(
+      "tools/call",
+      {
+        name: "update_note",
+        arguments: {
+          path: notePath,
+          body: wildcardBody,
+          if_match: "*",
+        },
+      },
+      false,
+    );
+    expect(wildcardOut.error).toBeUndefined();
+    const wildcardResult = wildcardOut.result as {
+      isError?: boolean;
+      structuredContent?: { force_write?: boolean; updated_at?: string };
+    };
+    expect(
+      wildcardResult.isError,
+      `wildcard update tool error: ${JSON.stringify(wildcardResult)}`,
+    ).toBeFalsy();
+    expect(wildcardResult.structuredContent?.force_write).toBe(true);
+
+    // File body MUST be the wildcard payload (after frontmatter scaffold).
+    const filePath = path.join(jasper.dataDir, "notes", "projects", "r4-6-wildcard.md");
+    const onDisk = await fs.readFile(filePath, "utf8");
+    expect(onDisk).toContain(wildcardBody);
+
+    // Stale-literal arm: an obviously-stale RFC3339Nano tag MUST still 409.
+    const staleTag = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const staleOut = await rpc(
+      "tools/call",
+      {
+        name: "update_note",
+        arguments: {
+          path: notePath,
+          body: "this should never land",
+          if_match: staleTag,
+        },
+      },
+      false,
+    );
+    expect(staleOut.error).toBeUndefined();
+    const staleResult = staleOut.result as {
+      isError?: boolean;
+      content?: Array<{ type: string; text?: string }>;
+    };
+    expect(staleResult.isError, "expected conflict for stale literal tag").toBe(true);
+    const staleText = JSON.stringify(staleResult);
+    expect(staleText).toContain("conflict");
+    // force_write must NOT leak into the conflict path.
+    expect(staleText).not.toContain(`"force_write":true`);
+
+    // Cleanup grant.
+    await fetch(jasper.baseURL + "/api/v1/mcp/grants?path=projects", {
+      method: "DELETE",
+    });
+  });
+});
