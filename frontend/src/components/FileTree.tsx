@@ -937,12 +937,32 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   // re-runs each time the user toggles selection — keeps the invariant
   // even after partial deselects.
   // ──────────────────────────────────────────────────────────────────
+  // Plan 08-18 (R4-11 BLOCKER) — reentrancy guard for handleSelect.
+  //
+  // react-arborist's TreeApi.deselect (tree-api.js:319-325) fires
+  // props.onSelect synchronously after every dispatch. Without this guard,
+  // handleSelect → deselectDescendantsOfFolders → tree.deselect → onSelect →
+  // handleSelect re-enters per descendant, and on a folder with hundreds of
+  // descendants the cascade exhausts V8's stack ("Maximum call stack size
+  // exceeded"). See .planning/phases/08-…/08-18-INVESTIGATION.md for the
+  // sourcemap repro + resolved minified symbols (fG=identify, R1=this
+  // function, mG=identifyNull).
+  //
+  // The flag lives in a useRef so it's stable across renders and writable
+  // synchronously inside the cascade.
+  const handleSelectReentrant = useRef(false);
   const handleSelect = useCallback(
     (nodes: NodeApi<ArboristNode>[]) => {
-      // Delegates to the pure helper so the cascade is unit-testable.
-      deselectDescendantsOfFolders(nodes, (id) =>
-        treeRef.current?.deselect(id),
-      );
+      if (handleSelectReentrant.current) return;
+      handleSelectReentrant.current = true;
+      try {
+        // Delegates to the pure helper so the cascade is unit-testable.
+        deselectDescendantsOfFolders(nodes, (id) =>
+          treeRef.current?.deselect(id),
+        );
+      } finally {
+        handleSelectReentrant.current = false;
+      }
     },
     [],
   );
