@@ -585,3 +585,109 @@ test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
     },
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @r4-11 — R4-11 BLOCKER regression: opening a wide folder must not throw
+// `Maximum call stack size exceeded`.
+//
+// Root cause (08-18-INVESTIGATION.md): react-arborist's TreeApi.deselect fires
+// props.onSelect synchronously per call. Our handleSelect → tree.deselect →
+// onSelect → handleSelect re-entered without a guard, exhausting the stack on
+// any folder with hundreds of descendants. The fix (FileTree.tsx:940 — useRef
+// reentrancy guard) drops the synchronous re-fire. This scenario builds the
+// reproduction vault programmatically, launches bin/jasper, and asserts that
+// expanding the previously-crashing folder produces zero stack-overflow
+// console errors.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 8 — R4-11 (@r4-11) stack-overflow regression", () => {
+  let jasper: JasperHandle;
+  let dataDir: string;
+
+  test.beforeAll(async () => {
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const fs = await import("node:fs/promises");
+
+    // Build the reproduction vault on disk BEFORE the binary spawns so the
+    // first-run wizard does not interpose itself (the binary still
+    // auto-creates config.json during boot — that's the known interleaving
+    // documented in the file header — but a pre-populated notes/ tree is
+    // sufficient for the SPA to render against the tree handler directly
+    // when we navigate to "/").
+    dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "jasper-r4-11-"));
+    const wide = path.join(dataDir, "notes", "wide");
+    await fs.mkdir(wide, { recursive: true });
+    // 500 sub-folders, each holding one note. The 1000-id descendant
+    // payload is what blows up handleSelect's pre-fix recursion.
+    for (let i = 0; i < 500; i++) {
+      const sub = path.join(wide, `sub-${i.toString().padStart(3, "0")}`);
+      await fs.mkdir(sub, { recursive: true });
+      await fs.writeFile(path.join(sub, "n.md"), `# n${i}\n`, "utf8");
+    }
+    jasper = await spawnJasper({ dataDir });
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+    if (dataDir) {
+      const fs = await import("node:fs/promises");
+      await fs.rm(dataDir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
+  test("R4-11 — opens crashing folder without stack overflow", async ({
+    page,
+  }) => {
+    const STACK_OVERFLOW_RE = /Maximum call stack size exceeded/i;
+    const captured: string[] = [];
+
+    // Both `pageerror` and `console` are surveilled — Chrome reports the
+    // crash via different channels depending on whether it bubbles to the
+    // window's error event or stays in a promise rejection.
+    page.on("pageerror", (err) => {
+      const msg = `${err.name}: ${err.message}\n${err.stack ?? ""}`;
+      if (STACK_OVERFLOW_RE.test(msg)) captured.push("pageerror: " + msg);
+    });
+    page.on("console", (msg) => {
+      if (msg.type() === "error") {
+        const text = msg.text();
+        if (STACK_OVERFLOW_RE.test(text)) captured.push("console: " + text);
+      }
+    });
+
+    await page.goto(jasper.baseURL);
+    // If the wizard redirects us, navigate back to "/" — config.json
+    // already exists from lifecycle.Run's boot, so "/" serves the SPA.
+    if (page.url().endsWith("/setup")) {
+      await page.goto(jasper.baseURL);
+    }
+
+    // Wait for the tree to render (data-tree-row appears on every row).
+    await page.waitForSelector("[data-tree-row]", { timeout: 10_000 });
+
+    // Click the `wide` folder — the same plain-left-click that triggered
+    // the R4-11 BLOCKER on the user's vault. The folder's data-tree-row
+    // is its path ("wide" at root). Use a folder-kind filter so we don't
+    // accidentally pick a same-name note/file row.
+    const wideRow = page.locator(
+      '[data-tree-row="wide"][data-tree-row-kind="folder"]',
+    );
+    await wideRow.waitFor({ state: "visible", timeout: 5_000 });
+    await wideRow.click();
+
+    // 2-second observation window for any deferred recursion. react-arborist's
+    // onSelect cascade is synchronous, so 2s is generous; CI hosts may add
+    // event-loop latency that delays Chrome's pageerror dispatch.
+    await page.waitForTimeout(2_000);
+
+    // Post-condition: the wide folder is now expanded (aria-expanded="true")
+    // AND zero stack-overflow messages reached either channel.
+    await expect(wideRow).toHaveAttribute("aria-expanded", "true");
+    expect(
+      captured,
+      `Stack overflow detected on plain-click folder expansion — R4-11 regression.\nCaptured:\n${captured.join("\n\n")}`,
+    ).toEqual([]);
+  });
+});
+
