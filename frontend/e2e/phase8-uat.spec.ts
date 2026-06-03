@@ -691,3 +691,298 @@ test.describe("Phase 8 — R4-11 (@r4-11) stack-overflow regression", () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// @r4-1 — 08-19 R4-1/R4-2 atomic create_note regression guard.
+//
+// Pre-fix: MCP `create_note` ran Service.Create (scaffold write #1) then
+// Service.Update (body write #2). The two writes had independent
+// updated_at values; the second If-Match check raced its own scaffold-write
+// timestamp and failed even with no other writer present. The user saw an
+// error, but a partial scaffold-only file landed on disk — a UAT-2 R4
+// data-integrity BLOCKER.
+//
+// Post-fix (08-19): notes.Service.CreateWithBody composes scaffold + body
+// in memory and writes ONCE via WriteAtomic. R4-2 error codes collapse to
+// {already_exists, invalid_path, internal} — partial_create is unreachable.
+//
+// This spec drives the live MCP StreamableHTTP endpoint at /mcp against
+// bin/jasper:
+//   1. Spawn binary, drive POST /api/v1/vault/create to bring up MCP.
+//   2. POST /api/v1/mcp/grants to seed a Tier-1 grant on `projects/`.
+//   3. JSON-RPC initialize → notifications/initialized → tools/call.
+//   4. Assert success-arm: file lands with scaffold + body in one write.
+//   5. Assert already-exists arm: second create on same path errors with
+//      `already_exists`; on-disk bytes unchanged.
+//
+// MCP listens on the hardcoded port 6684 (cfg.MCP.Port default); the
+// Playwright config pins workers=1 + fullyParallel=false so the port is
+// not contested across specs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
+  let jasper: JasperHandle;
+  const MCP_PORT = 6684; // cfg.MCP.Port default per config.go D-47
+  const MCP_URL = `http://127.0.0.1:${MCP_PORT}/mcp`;
+
+  test.beforeAll(async () => {
+    const path = await import("node:path");
+    const fs = await import("node:fs/promises");
+
+    // spawnJasper boots in modeOpen against its --data-dir vault and per
+    // config defaults (UAT-2 round 2 Q3) has MCP enabled out of the box.
+    // No /vault/create dance needed — the fsstore root is
+    // <jasper.dataDir>/notes/ and MCP listens on 6684 from first boot.
+    jasper = await spawnJasper();
+
+    // Create the parent folder for the test path. fsstore's CreateFile
+    // is single-level-mkdir only — it requires the immediate parent to
+    // exist, so pre-create it.
+    const projectsDir = path.join(jasper.dataDir, "notes", "projects");
+    await fs.mkdir(projectsDir, { recursive: true });
+
+    // Seed a Tier-1 grant on "projects" so create_note's ACL gate passes.
+    const grantResp = await fetch(jasper.baseURL + "/api/v1/mcp/grants", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ folder_path: "projects", level: 1 }),
+    });
+    if (grantResp.status !== 200) {
+      const body = await grantResp.text();
+      throw new Error(`mcp/grants POST failed: ${grantResp.status} ${body}`);
+    }
+
+    // Wait for the MCP listener on 6684 — startMCP runs `go
+    // srv.ListenAndServe()` so there is a brief window between log
+    // "MCP listener starting" and Accept().
+    const deadline = Date.now() + 5_000;
+    let lastErr: unknown;
+    while (Date.now() < deadline) {
+      try {
+        const probe = await fetch(`http://127.0.0.1:${MCP_PORT}/healthz`);
+        if (probe.status === 200) {
+          break;
+        }
+      } catch (e) {
+        lastErr = e;
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `MCP /healthz did not respond at port ${MCP_PORT} within 5s: ${String(lastErr)}`,
+      );
+    }
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("R4-1 — create_note is atomic, no partial scaffold on failure", async () => {
+    const path = await import("node:path");
+    const fs = await import("node:fs/promises");
+    const notesRoot = path.join(jasper.dataDir, "notes");
+
+    // ── Tiny MCP StreamableHTTP client ────────────────────────────────────
+    // Protocol: POST initialize → captures Mcp-Session-Id from response
+    // headers; POST notifications/initialized with that header; POST
+    // tools/call with the same header. Responses arrive as SSE
+    // (Content-Type: text/event-stream) — each event is a `data: <json>`
+    // line. We grep the first `data:` line to extract the JSON-RPC payload.
+    let sessionID: string | null = null;
+    let nextID = 1;
+
+    async function rpc(
+      method: string,
+      params: Record<string, unknown> | undefined,
+      isNotification: boolean,
+    ): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
+      const body: Record<string, unknown> = {
+        jsonrpc: "2.0",
+        method,
+      };
+      if (params !== undefined) body.params = params;
+      if (!isNotification) body.id = nextID++;
+
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      };
+      if (sessionID) headers["mcp-session-id"] = sessionID;
+
+      const resp = await fetch(MCP_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+      // Initialize response carries Mcp-Session-Id; capture it.
+      const sid = resp.headers.get("mcp-session-id");
+      if (sid && !sessionID) sessionID = sid;
+
+      if (isNotification) {
+        // 202 Accepted with no body for notifications.
+        if (resp.status !== 202 && resp.status !== 200) {
+          const t = await resp.text();
+          throw new Error(`notification ${method} status=${resp.status}: ${t}`);
+        }
+        return {};
+      }
+
+      // tools/call + initialize: SSE-encoded JSON-RPC envelope.
+      const text = await resp.text();
+      // Find the first `data: {...}` line.
+      const dataLine = text.split(/\r?\n/).find((l) => l.startsWith("data: "));
+      if (!dataLine) {
+        throw new Error(
+          `no SSE data line in response (status=${resp.status}): ${text}`,
+        );
+      }
+      const payload = JSON.parse(dataLine.slice("data: ".length)) as {
+        result?: unknown;
+        error?: { code: number; message: string };
+      };
+      return payload;
+    }
+
+    // ── 1. Initialize the MCP session. ───────────────────────────────────
+    const initOut = await rpc(
+      "initialize",
+      {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "r4-1-spec", version: "1.0.0" },
+      },
+      false,
+    );
+    expect(
+      initOut.error,
+      `initialize returned an error: ${JSON.stringify(initOut.error)}`,
+    ).toBeUndefined();
+    expect(sessionID, "expected Mcp-Session-Id header on initialize response").toBeTruthy();
+    await rpc("notifications/initialized", {}, true);
+
+    // ── 2. Success arm: create_note with body lands one file in one write.
+    const body =
+      "First line of body.\n\n```go\nfunc main(){println(\"hello\")}\n```\n\nSecond paragraph after the fence.\n";
+    const successOut = await rpc(
+      "tools/call",
+      {
+        name: "create_note",
+        arguments: {
+          path: "projects/r4-1-atomic.md",
+          body,
+        },
+      },
+      false,
+    );
+    expect(
+      successOut.error,
+      `create_note success arm returned RPC error: ${JSON.stringify(successOut.error)}`,
+    ).toBeUndefined();
+    // Tool error surfaces as result.isError per MCP spec.
+    const successResult = successOut.result as {
+      isError?: boolean;
+      structuredContent?: { id?: string; path?: string; updated_at?: string };
+      content?: Array<{ type: string; text?: string }>;
+    };
+    expect(
+      successResult.isError,
+      `expected success; tool result: ${JSON.stringify(successResult)}`,
+    ).toBeFalsy();
+    expect(successResult.structuredContent?.id, "expected id in structuredContent").toBeTruthy();
+    expect(successResult.structuredContent?.updated_at, "expected updated_at").toBeTruthy();
+
+    // Disk-side assertion: the file exists with scaffold + body verbatim.
+    // fsstore root is <jasper.dataDir>/notes/ so the absolute path is
+    // <jasper.dataDir>/notes/projects/r4-1-atomic.md.
+    const filePath = path.join(notesRoot, "projects", "r4-1-atomic.md");
+    const onDisk = await fs.readFile(filePath, "utf8");
+    const wantPrefix = "---\ntags: []\n---\n\n# r4-1-atomic\n\n";
+    expect(
+      onDisk.startsWith(wantPrefix),
+      `file missing canonical scaffold prefix.\n got=${JSON.stringify(onDisk)}\n want prefix=${JSON.stringify(wantPrefix)}`,
+    ).toBe(true);
+    expect(
+      onDisk,
+      `body bytes must append verbatim after the scaffold (no separator).`,
+    ).toBe(wantPrefix + body);
+
+    // ── 3. Already-exists arm: second create on the same path errors with
+    //      already_exists; on-disk bytes do NOT change.
+    const collisionOut = await rpc(
+      "tools/call",
+      {
+        name: "create_note",
+        arguments: {
+          path: "projects/r4-1-atomic.md",
+          body: "this body would clobber the first file",
+        },
+      },
+      false,
+    );
+    expect(
+      collisionOut.error,
+      `collision arm: expected MCP RPC OK but tool-level error; got RPC error: ${JSON.stringify(collisionOut.error)}`,
+    ).toBeUndefined();
+    const collisionResult = collisionOut.result as {
+      isError?: boolean;
+      content?: Array<{ type: string; text?: string }>;
+    };
+    expect(
+      collisionResult.isError,
+      `expected isError=true on duplicate-path create; got: ${JSON.stringify(collisionResult)}`,
+    ).toBe(true);
+    const collisionText = JSON.stringify(collisionResult);
+    expect(
+      collisionText.includes("already_exists"),
+      `expected 'already_exists' in collision error: ${collisionText}`,
+    ).toBe(true);
+    // R4-2 regression guard: partial_create string must not appear.
+    expect(
+      collisionText.includes("partial_create"),
+      `R4-2 regression: response contains partial_create: ${collisionText}`,
+    ).toBe(false);
+
+    // On-disk bytes unchanged from the first successful write.
+    const afterCollision = await fs.readFile(filePath, "utf8");
+    expect(afterCollision, "file mutated by failed collision create").toBe(onDisk);
+
+    // ── 4. Invalid-path arm (recommended): a path containing `..` is
+    //      rejected. The MCP layer's splitNotePath only checks for `.md`
+    //      suffix + emptiness, so `..` traversal is rejected by either
+    //      the ACL gate (`no_grant` — most likely outcome since `..` is
+    //      not covered by the grant) OR the fsstore canonicalize step.
+    //      Either way the file does not land.
+    const traversalOut = await rpc(
+      "tools/call",
+      {
+        name: "create_note",
+        arguments: {
+          path: "../traversal.md",
+          body: "should never land",
+        },
+      },
+      false,
+    );
+    const traversalResult = traversalOut.result as {
+      isError?: boolean;
+      content?: Array<{ type: string; text?: string }>;
+    };
+    expect(traversalResult.isError, "expected isError on traversal path").toBe(true);
+    // Whichever guard rejected it (no_grant / invalid_path / internal),
+    // partial_create must not appear.
+    const traversalText = JSON.stringify(traversalResult);
+    expect(
+      traversalText.includes("partial_create"),
+      `R4-2 regression: traversal error contains partial_create: ${traversalText}`,
+    ).toBe(false);
+    // No file landed outside the vault.
+    const traversalCheck = path.join(jasper.dataDir, "..", "traversal.md");
+    await expect(
+      fs.stat(traversalCheck).then(
+        () => "exists",
+        () => "missing",
+      ),
+    ).resolves.toBe("missing");
+  });
+});
