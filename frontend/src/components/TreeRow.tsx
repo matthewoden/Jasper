@@ -507,6 +507,16 @@ export function TreeRow({
       data-tree-row={dataTreeRowValue}
       data-tree-row-kind={data.kind}
       data-ai-level={effectiveAiLevel ?? undefined}
+      /* UAT-2 R4-10 (2026-06-02): expose active/selected as DOM
+         attributes so theme.css can apply the violet-survives-selection
+         variant. Without these, the inline `background` style applied
+         above (rowBackground = accent-8% / accent-4%) wins over the CSS
+         data-ai-level tint and AI-granted rows lose their violet
+         identity when selected. The CSS selector targets
+         `[data-tree-row][data-ai-level][data-selected]` with
+         !important to beat the inline style. */
+      data-active={isActive ? "true" : undefined}
+      data-selected={isSelected ? "true" : undefined}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onKeyDown={handleKeyDown}

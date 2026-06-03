@@ -577,6 +577,15 @@ body {
    Flyout submenus inherit because Radix renders SubContent through the
    same Portal/Content pipeline; the SubTrigger row also gets the tint
    while the flyout is open via [data-state="open"].
+
+   UAT-2 R4-7 (2026-06-02): rule is now a PURE color shift — no
+   padding/margin/transform/border-radius deltas. Previously R4-5 added
+   `border-radius: 4px` + `margin: 0 4px` for a "chip" feel, but that
+   produced a visible horizontal shift on hover (user observation: items
+   moved over). The chip style is removed; hover/keyboard-focus changes
+   only background + outline. Only `background`, `outline`, and color
+   properties are allowed in this rule — guarded by the R4-7 Playwright
+   scenario that captures `boundingBox()` pre- and post-hover.
    ───────────────────────────────────────────────────────────────────── */
 [role="menuitem"][data-highlighted],
 [role="menuitemradio"][data-highlighted],
@@ -584,20 +593,19 @@ body {
 [role="menuitem"][data-state="open"] {
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   outline: none;
-  /* UAT-2 R4-5: subtle inset + rounded corners give each hovered row
-     a "chip" feel; visually separates consecutive highlighted items
-     and keeps the corner profile consistent with the panel surfaces. */
-  border-radius: 4px;
-  margin: 0 4px;
 }
 
-/* UAT-2 R4-5: items with an explicit active/selected state (set via
-   inline style or data-active attr) get a stronger tint + accent-color
-   left stripe + bold weight so they remain visually distinguished from
-   the hover state, which sits at the same accent-12% background. The
-   stripe + weight remain visible under hover. The marker `data-active`
-   is opt-in — set it on items that carry their own "selected" semantic
-   (e.g. AI grant tier rows). */
+/* UAT-2 R4-5 / R4-8: items with an explicit active/selected state get a
+   stronger tint + accent-color left stripe + bold weight so they remain
+   visually distinguished from hover, which sits at the accent-12%
+   background. The stripe + weight remain visible under hover. The marker
+   `data-active` is opt-in — set it on items that carry their own
+   "selected" semantic (e.g. AI grant tier rows).
+
+   UAT-2 R4-8 (2026-06-02): no `border-radius` on this rule. Combined
+   with R4-7 removing radius from `[data-highlighted]`, the active+
+   highlighted combinator now produces a flat color shift with stable
+   box geometry across all states. */
 [role="menuitem"][data-active="true"],
 [role="menuitemradio"][data-active="true"],
 [role="menuitemcheckbox"][data-active="true"] {
@@ -618,5 +626,26 @@ body {
 }
 [data-tree-row][data-ai-level="2"] {
   background: color-mix(in srgb, var(--color-ai-grant-strong) 10%, transparent);
+}
+
+/* UAT-2 R4-10 (2026-06-02): AI-granted rows retain their violet identity
+   when selected or active. Pre-fix: TreeRow sets an inline `background`
+   style (rowBackground = accent-8% for active, accent-4% for selected)
+   that wins over the data-ai-level tint above; the user reported
+   "violet disappears when selected". Post-fix: a stronger violet mix
+   (24% — visibly distinct from the unselected 8%/10% base tints)
+   replaces the generic accent so AI-granted rows still read as AI when
+   they're the active/selected target. `!important` is required to beat
+   the inline style. TreeRow.tsx emits `data-active="true"` /
+   `data-selected="true"` for these states (see TreeRow comment block).
+   Tier 1 uses the regular violet; Tier 2 uses the stronger violet token
+   to preserve the existing tier visual hierarchy. */
+[data-tree-row][data-ai-level="1"][data-selected="true"],
+[data-tree-row][data-ai-level="1"][data-active="true"] {
+  background: color-mix(in srgb, var(--color-ai-grant) 24%, transparent) !important;
+}
+[data-tree-row][data-ai-level="2"][data-selected="true"],
+[data-tree-row][data-ai-level="2"][data-active="true"] {
+  background: color-mix(in srgb, var(--color-ai-grant-strong) 24%, transparent) !important;
 }
 
