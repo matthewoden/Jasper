@@ -14,21 +14,35 @@ const setVaultSwitchingMock = vi.fn((s: { active: boolean; targetName: string })
   vaultSwitchingState.active = s.active;
   vaultSwitchingState.targetName = s.targetName;
 });
+// R4-13 (Plan 08-22): markSwitching now also clears the active-note
+// state via setActiveNote(null) + setActiveFilePath(null) so the
+// in-flight getNote AbortController fires and the post-reload SPA
+// doesn't refetch the prior vault's note. Mock both setters.
+const setActiveNoteMock = vi.fn();
+const setActiveFilePathMock = vi.fn();
 
 type StoreState = {
   vaultSwitching: typeof vaultSwitchingState;
   setVaultSwitching: typeof setVaultSwitchingMock;
+  setActiveNote: typeof setActiveNoteMock;
+  setActiveFilePath: typeof setActiveFilePathMock;
 };
 
-vi.mock("./useTreeStore", () => ({
-  useTreeStore: vi.fn((selector?: (s: StoreState) => unknown) => {
-    const state: StoreState = {
-      vaultSwitching: vaultSwitchingState,
-      setVaultSwitching: setVaultSwitchingMock,
-    };
+vi.mock("./useTreeStore", () => {
+  const buildState = (): StoreState => ({
+    vaultSwitching: vaultSwitchingState,
+    setVaultSwitching: setVaultSwitchingMock,
+    setActiveNote: setActiveNoteMock,
+    setActiveFilePath: setActiveFilePathMock,
+  });
+  const fn = vi.fn((selector?: (s: StoreState) => unknown) => {
+    const state = buildState();
     return selector ? selector(state) : state;
-  }),
-}));
+  });
+  return {
+    useTreeStore: Object.assign(fn, { getState: () => buildState() }),
+  };
+});
 
 import { useVaultSwitch } from "./useVaultSwitch";
 
@@ -44,6 +58,8 @@ describe("useVaultSwitch", () => {
     vi.useFakeTimers();
     reloadMock.mockClear();
     setVaultSwitchingMock.mockClear();
+    setActiveNoteMock.mockClear();
+    setActiveFilePathMock.mockClear();
     vaultSwitchingState.active = false;
     vaultSwitchingState.targetName = "";
   });

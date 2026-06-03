@@ -174,7 +174,15 @@ export function TreeRow({
   // directLevelFor (not levelFor) — UI-SPEC §Surface 3 says the indicator
   // and the submenu's active-state subtitle render ONLY at the leaf where
   // the grant was attached, never on descendant rows (T-08-48 mitigation).
-  const { directLevelFor, levelFor, grant: grantMcp, revoke: revokeMcp } = useMcpGrants();
+  const {
+    directLevelFor,
+    levelFor,
+    grant: grantMcp,
+    revoke: revokeMcp,
+    // R4-9 (Plan 08-22): ancestor-grant lookup drives the disabled
+    // "Inherits AI access from <ancestor>" menu item in TreeRowMenu.
+    inheritedGrantOn,
+  } = useMcpGrants();
   // UAT follow-up 2026-05-12 — pulse highlight when navigated to via breadcrumb.
   const pulseTarget = useTreeStore((s) => s.pulseTarget);
   // Plan 04 (UX-08): live H1 label override for note rows. Falls back to
@@ -233,6 +241,34 @@ export function TreeRow({
   const effectiveAiLevel: 1 | 2 | null = levelFor(data.path);
 
   const [kebabOpen, setKebabOpen] = useState(false);
+
+  // R4-9 (Plan 08-22): inherited grant on an ancestor folder. Null when
+  // this row IS the granted folder (directLevelFor handles the leaf
+  // case), null when no ancestor holds a grant, and {level, ancestorPath}
+  // otherwise. Drives TreeRowMenu's disabled "Inherits AI access" item.
+  const inheritedGrant = isFolder
+    ? inheritedGrantOn((data as FolderNodeData).path)
+    : null;
+
+  // R4-12 (Plan 08-22): wrap the grant/revoke handlers so the kebab
+  // dropdown closes synchronously (its `open` IS controlled). The
+  // ContextMenu does not expose a controlled `open` prop in Radix, so
+  // dismissing the right-click menu relies on Radix's default
+  // onSelect close behavior + the `<Sub key={activeLevel}>` remount
+  // safety net inside MenuItems (which guarantees a stale
+  // `data-state="open"` cannot survive a grant-driven re-render).
+  const handleGrant = isFolder
+    ? (level: 1 | 2) => {
+        setKebabOpen(false);
+        void grantMcp((data as FolderNodeData).path, level);
+      }
+    : undefined;
+  const handleRevoke = isFolder
+    ? () => {
+        setKebabOpen(false);
+        void revokeMcp((data as FolderNodeData).path);
+      }
+    : undefined;
 
   // Plan 07-38 R7b lifts Plan 07-26's file rename gate — file rows can
   // now enter inline rename. Targets are: folder→path, note→id, file→path
@@ -641,16 +677,14 @@ export function TreeRow({
         // Plan 08-10 (MCP-01): folder-row "Grant AI access" submenu.
         // Undefined on note / file rows so the submenu is suppressed.
         activeLevel={isFolder ? grantLevel : null}
-        onGrant={
-          isFolder
-            ? (level) => void grantMcp((data as FolderNodeData).path, level)
-            : undefined
-        }
-        onRevoke={
-          isFolder
-            ? () => void revokeMcp((data as FolderNodeData).path)
-            : undefined
-        }
+        // R4-12 (Plan 08-22): handleGrant / handleRevoke close the menu
+        // before invoking the network call so the WS event's re-render
+        // cannot restore a stale `data-state="open"` on the Sub.
+        onGrant={handleGrant}
+        onRevoke={handleRevoke}
+        // R4-9 (Plan 08-22): inherited grant suppresses the redundant
+        // submenu on descendants of granted folders.
+        inheritedGrant={inheritedGrant}
         open={kebabOpen}
         onOpenChange={setKebabOpen}
       >
@@ -723,16 +757,15 @@ export function TreeRow({
       // Plan 08-10 (MCP-01): mirrors the dropdown variant — same grant
       // hook, same path source. Undefined on note / file rows.
       activeLevel={isFolder ? grantLevel : null}
-      onGrant={
-        isFolder
-          ? (level) => void grantMcp((data as FolderNodeData).path, level)
-          : undefined
-      }
-      onRevoke={
-        isFolder
-          ? () => void revokeMcp((data as FolderNodeData).path)
-          : undefined
-      }
+      // R4-12 (Plan 08-22): handleGrant / handleRevoke close the menu
+      // before invoking the network call.
+      onGrant={handleGrant}
+      onRevoke={handleRevoke}
+      // R4-9 (Plan 08-22): inherited grant disables the redundant submenu.
+      // R4-12 fix lives in MenuItems' `<Sub key={...}>` block, which
+      // forces a clean remount when activeLevel changes — see
+      // TreeRowMenu.tsx for the key strategy.
+      inheritedGrant={inheritedGrant}
     >
       {rowContent}
     </TreeRowContextMenu>

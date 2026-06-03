@@ -683,7 +683,13 @@ describe("<EditorPane />", () => {
         // and getNote should be called with the new id.
         rerender(<EditorPane noteId="other-id" />);
         await flushMicrotasks();
-        expect(getNoteMock).toHaveBeenCalledWith("other-id");
+        // R4-13 (Plan 08-22): getNote now receives an AbortController
+        // signal as a second argument; assert on the id + presence of a
+        // signal rather than positional equality.
+        expect(getNoteMock).toHaveBeenCalledWith(
+            "other-id",
+            expect.objectContaining({ signal: expect.any(Object) }),
+        );
     });
 });
 

@@ -68,6 +68,22 @@ function normPath(p: string): string {
   return p.toLowerCase().replace(/^\/+/, "").replace(/\/+$/, "");
 }
 
+/**
+ * Result of `inheritedGrantOn(path)` — describes the FIRST ANCESTOR
+ * folder that holds a direct grant, or null if none exists.
+ *
+ * Distinct from `levelFor` (self-or-ancestor) — this helper SKIPS the
+ * folder itself, so a folder with its own direct grant returns null
+ * (its grant is its own, not inherited).
+ *
+ * Drives the R4-9 disabled "Inherits AI access from {ancestor}" menu
+ * item in TreeRowMenu — Plan 08-22.
+ */
+export interface InheritedGrant {
+  level: 1 | 2;
+  ancestorPath: string;
+}
+
 export interface UseMcpGrantsResult {
   grants: McpGrant[];
   refresh: () => Promise<void>;
@@ -75,6 +91,13 @@ export interface UseMcpGrantsResult {
   revoke: (folderPath: string) => Promise<void>;
   levelFor: (folderPath: string) => 1 | 2 | null;
   directLevelFor: (folderPath: string) => 1 | 2 | null;
+  /**
+   * R4-9 (Plan 08-22) — returns the FIRST ANCESTOR folder that holds a
+   * direct grant, or null if none exists. The folder itself is NOT
+   * considered (use `directLevelFor` for that). Mirrors D-18's
+   * recursive coverage semantics on the server.
+   */
+  inheritedGrantOn: (folderPath: string) => InheritedGrant | null;
 }
 
 export function useMcpGrants(): UseMcpGrantsResult {
@@ -143,6 +166,43 @@ export function useMcpGrants(): UseMcpGrantsResult {
       const norm = normPath(folderPath);
       const hit = grants.find((g) => g.folder_path === norm);
       return hit ? hit.level : null;
+    },
+    [grants],
+  );
+
+  /**
+   * inheritedGrantOn — R4-9 (Plan 08-22).
+   *
+   * Walks the ancestor chain (skipping the folder itself) and returns
+   * the first ancestor that holds a direct grant, plus the grant's
+   * level. Used by TreeRowMenu to suppress the redundant "Grant AI
+   * access" submenu on descendants of a granted folder.
+   *
+   * The walk is bounded by the path's slash count + the root check —
+   * a deeply-nested path collapses to O(depth × grants.length).
+   */
+  const inheritedGrantOn = useCallback(
+    (folderPath: string): InheritedGrant | null => {
+      const norm = normPath(folderPath);
+      // Skip the folder itself — start at the parent.
+      const firstSlash = norm.lastIndexOf("/");
+      let cur = firstSlash < 0 ? "" : norm.slice(0, firstSlash);
+      while (cur && cur !== "." && cur !== "/") {
+        const hit = grants.find((g) => g.folder_path === cur);
+        if (hit) return { level: hit.level, ancestorPath: cur };
+        const idx = cur.lastIndexOf("/");
+        if (idx < 0) break;
+        cur = cur.slice(0, idx);
+      }
+      // Root-level grant covers every folder except the root itself.
+      // norm === "" means the row IS the root; root cannot inherit.
+      if (norm !== "" && norm !== ".") {
+        const root = grants.find(
+          (g) => g.folder_path === "" || g.folder_path === ".",
+        );
+        if (root) return { level: root.level, ancestorPath: "" };
+      }
+      return null;
     },
     [grants],
   );
@@ -227,7 +287,15 @@ export function useMcpGrants(): UseMcpGrantsResult {
     [grants, setGrants, toast],
   );
 
-  return { grants, refresh, grant, revoke, levelFor, directLevelFor };
+  return {
+    grants,
+    refresh,
+    grant,
+    revoke,
+    levelFor,
+    directLevelFor,
+    inheritedGrantOn,
+  };
 }
 
 // ────────────────────────────────────────────────────────────────────────────

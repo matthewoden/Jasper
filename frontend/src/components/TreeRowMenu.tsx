@@ -86,6 +86,44 @@ export interface TreeRowMenuProps {
   activeLevel?: 1 | 2 | null;
   onGrant?: (level: 1 | 2) => void;
   onRevoke?: () => void;
+
+  /**
+   * R4-9 (Plan 08-22): inherited grant on an ANCESTOR folder. When
+   * non-null AND `activeLevel` is null (no direct grant on this leaf),
+   * the "Grant AI access ▸" SubTrigger is replaced by a single DISABLED
+   * menu item reading `Inherits AI access from <basename(ancestorPath)>
+   * (<tierLabel(level)>)`. This prevents the user from creating a
+   * redundant grant on a child whose ancestor already covers it (D-18
+   * recursive coverage).
+   *
+   * If the row holds its own direct grant (`activeLevel != null`), the
+   * existing Sub still renders so Revoke is reachable.
+   *
+   * Omitted on note / file / empty-area rows (no MCP submenu there).
+   */
+  inheritedGrant?: InheritedGrant | null;
+}
+
+/**
+ * Mirrors useMcpGrants.InheritedGrant — duplicated here so the menu
+ * component doesn't have to import from the hook (avoids a cycle when
+ * future code paths build menus inside the hook for previews).
+ */
+export interface InheritedGrant {
+  level: 1 | 2;
+  ancestorPath: string;
+}
+
+/** Tier label per UI-SPEC §Surface 2 — locked copy. */
+function tierLabel(level: 1 | 2): string {
+  return level === 2 ? "Full Access" : "Edit only";
+}
+
+/** Basename helper: last path segment, or "vault root" for empty paths. */
+function basenameOf(path: string): string {
+  if (path === "" || path === ".") return "vault root";
+  const idx = path.lastIndexOf("/");
+  return idx < 0 ? path : path.slice(idx + 1);
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -186,6 +224,7 @@ function MenuItems({
   activeLevel,
   onGrant,
   onRevoke,
+  inheritedGrant,
   ItemComp,
   SepComp,
   SubComp,
@@ -288,14 +327,62 @@ function MenuItems({
           Plan 08-10 — for now just leave a marker comment so the next
           plan knows the slot. */}
       {rowKind === "folder" && revealItem}
+      {/* R4-9 (Plan 08-22): if an ANCESTOR folder holds a grant AND this
+          folder has no direct grant of its own, replace the "Grant AI
+          access ▸" submenu with a single DISABLED inheritance label.
+          D-18 recursive coverage means the ancestor grant already covers
+          this folder; offering a separate grant creates ambiguous state.
+          To revoke the inherited grant, the user goes to the ancestor's
+          menu (which is where the grant was attached). */}
+      {rowKind === "folder" && inheritedGrant && !activeLevel && (
+        <Item
+          style={{ ...itemStyle, opacity: 0.6, cursor: "not-allowed" }}
+          disabled
+          onSelect={(e: Event) => {
+            // Radix Item onSelect would close the menu — for a disabled
+            // informational item we want neither close nor action.
+            e.preventDefault();
+          }}
+          data-inherited-grant="true"
+        >
+          <Sparkles
+            size={14}
+            aria-hidden="true"
+            style={{
+              color:
+                inheritedGrant.level === 2
+                  ? "var(--color-ai-grant-strong)"
+                  : "var(--color-ai-grant)",
+              flexShrink: 0,
+            }}
+          />
+          <span>
+            Inherits AI access from {basenameOf(inheritedGrant.ancestorPath)} ({tierLabel(inheritedGrant.level)})
+          </span>
+        </Item>
+      )}
       {/* Plan 08-10 (D-17, D-19, MCP-01) — "Grant AI access ▸" submenu mounts
           between Reveal and the Rename/Delete separator on folder rows only.
           The submenu offers Tier 1 (Edit only) + Tier 2 (Full) items; when a
           grant is already attached at this leaf, a "Revoke access" destructive
           item appears below a separator. Locked copy + locked layout from
-          UI-SPEC §Surface 2 lines 180-194. */}
-      {rowKind === "folder" && (onGrant || onRevoke) && (
-        <Sub>
+          UI-SPEC §Surface 2 lines 180-194.
+
+          R4-9 (Plan 08-22): suppressed when inheritedGrant exists AND no
+          direct grant on this leaf — the disabled label above takes over. */}
+      {rowKind === "folder" &&
+        (onGrant || onRevoke) &&
+        !(inheritedGrant && !activeLevel) && (
+        // R4-12 (Plan 08-22): key the Sub on the activeLevel so a
+        // grant change forces a clean unmount + remount. Without
+        // this, Radix's internal Sub state machine restores
+        // `data-state="open"` against the new SubTrigger render
+        // (now showing Sparkles + tier label), surfacing as the
+        // menu spontaneously re-opening ~1-2s after the user
+        // clicked a tier. With the key, the entire Sub subtree
+        // tears down on the optimistic setGrants and the WS
+        // re-render simply mounts a fresh closed Sub.
+        <Sub key={`sub-${activeLevel ?? "none"}`}>
           <SubTrigger style={itemStyle}>
             <span>Grant AI access</span>
             {/* UAT-2 R4-6: Sparkles icon next to the SubTrigger when this
@@ -394,10 +481,24 @@ function MenuItems({
 
 export function TreeRowContextMenu({
   children,
+  onOpenChange,
   ...props
-}: TreeRowMenuProps & { children: ReactNode }) {
+}: TreeRowMenuProps & {
+  children: ReactNode;
+  /**
+   * R4-12 (Plan 08-22): receive Radix's open-state transitions so
+   * TreeRow can observe menu-close events. Radix's ContextMenu.Root
+   * is open-on-right-click and only exposes `onOpenChange` (not a
+   * controlled `open` prop) — so we can't force-close from outside.
+   * Instead, the R4-12 fix keys the `<Sub>` block on `activeLevel`
+   * inside MenuItems, which guarantees full unmount + remount of the
+   * SubContent when grants change. This callback is forwarded so
+   * future surfaces can react to dismissals.
+   */
+  onOpenChange?: (open: boolean) => void;
+}) {
   return (
-    <ContextMenu.Root>
+    <ContextMenu.Root onOpenChange={onOpenChange}>
       <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content style={menuContainerStyle}>

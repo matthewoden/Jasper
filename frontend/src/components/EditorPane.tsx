@@ -351,7 +351,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       setDeletedBanner(null);
       return;
     }
-    let cancelled = false;
+    // R4-13 (Plan 08-22): wrap the in-flight getNote in an AbortController
+    // so the network request itself is cancelled (not just its
+    // response-handling branch). Cleanup runs on noteId change AND on
+    // unmount — which happens during vault.switching because
+    // useVaultSwitch.markSwitching now sets activeNoteId=null
+    // synchronously before the SPA reloads. Net effect: no 404 flash
+    // when switching from a vault that had an open note.
+    const abortCtrl = new AbortController();
     setLoadStatus("loading");
     userHasEdited.current = false;
     // Plan 03-22 — clear the rename error banner on note switch so a
@@ -361,8 +368,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     setConflictBanner(null);
     setDeletedBanner(null);
     (async () => {
-      const { data, error } = await getNote(noteId);
-      if (cancelled) return;
+      const { data, error } = await getNote(noteId, {
+        signal: abortCtrl.signal,
+      });
+      if (abortCtrl.signal.aborted) return;
       if (error || !data) {
         setLoadStatus("error");
         return;
@@ -387,7 +396,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       setLoadStatus("loaded");
     })();
     return () => {
-      cancelled = true;
+      // R4-13 (Plan 08-22): abort cancels the underlying fetch so the
+      // server response is never delivered to a stale closure (no 404
+      // flash when switching vaults).
+      abortCtrl.abort();
     };
   }, [noteId]);
 

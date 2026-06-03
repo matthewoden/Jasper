@@ -34,6 +34,11 @@ vi.mock("../lib/useMcpGrants", () => ({
     revoke: vi.fn(),
     levelFor: () => null,
     directLevelFor: () => null,
+    // R4-9 (Plan 08-22) — new ancestor-grant helper consumed by
+    // TreeRow's folder-row branch. Default to null (no inherited
+    // grant) so existing test fixtures stay representative of the
+    // common no-grant case.
+    inheritedGrantOn: () => null,
   }),
 }));
 

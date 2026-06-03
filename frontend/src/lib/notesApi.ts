@@ -25,9 +25,13 @@ import { client } from "../api/client";
 export const ScratchpadUUID =
   "00000000-0000-4000-a000-000000000001" as const;
 
-export function getNote(id: string) {
+export function getNote(id: string, options?: { signal?: AbortSignal }) {
   return client.GET("/notes/{id}", {
     params: { path: { id } },
+    // R4-13 (Plan 08-22): vault.switching aborts the in-flight fetch so
+    // the SPA does not flash a 404 for the prior vault's note. openapi-fetch
+    // forwards `signal` through to the underlying `fetch` init.
+    ...(options?.signal ? { signal: options.signal } : {}),
   });
 }
 
