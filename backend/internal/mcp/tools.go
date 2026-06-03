@@ -30,6 +30,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path"
 	"strings"
 	"time"
@@ -37,6 +38,7 @@ import (
 	"github.com/google/uuid"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -281,33 +283,46 @@ func (s *Server) registerCreateNote() {
 		}
 		parent, title, err := splitNotePath(args.Path)
 		if err != nil {
-			return nil, CreateNoteResult{}, fmt.Errorf("create_note: %w", err)
+			// splitNotePath only rejects empty paths and non-.md suffixes —
+			// both are caller-supplied invariant violations, surface as
+			// invalid_path so the four-code surface stays clean (R4-2).
+			return nil, CreateNoteResult{}, fmt.Errorf("invalid_path: %w", err)
 		}
-		// notes.Service.Create handles atomic-write + frontmatter scaffold (D-56)
-		// and broadcasts note:created itself (D-57).
-		summary, err := s.notesSvc.Create(ctx, parent, title)
+		// 08-19 R4-1 atomic create: notes.Service.CreateWithBody composes
+		// (scaffold + body) in memory and writes it via a SINGLE atomic
+		// WriteAtomic. No follow-up Service.Update call, no second
+		// If-Match check, no partial scaffold-only file on failure.
+		// Service broadcasts note:created itself (D-57).
+		summary, err := s.notesSvc.CreateWithBody(ctx, parent, title, args.Body)
 		if err != nil {
-			return nil, CreateNoteResult{}, fmt.Errorf("create_note: %w", err)
-		}
-		// Apply the optional body via Update; the just-emitted UpdatedAt
-		// is our If-Match comparator.
-		updated := summary.UpdatedAt
-		if args.Body != "" {
-			ifMatch := summary.UpdatedAt.UTC().Format(time.RFC3339Nano)
-			n, uerr := s.notesSvc.Update(ctx, summary.ID, args.Body, ifMatch)
-			if uerr != nil {
-				return nil, CreateNoteResult{}, fmt.Errorf("create_note (body apply): %w", uerr)
-			}
-			updated = n.UpdatedAt
+			return nil, CreateNoteResult{}, mapCreateNoteErr(args.Path, err)
 		}
 		level, _ := s.acl.Resolve(ctx, args.Path)
 		s.log.Info("mcp.write", "tool", "create_note", "path", args.Path, "level", int(level))
 		return nil, CreateNoteResult{
 			ID:        summary.ID.String(),
 			Path:      summary.Path,
-			UpdatedAt: updated.UTC().Format(time.RFC3339Nano),
+			UpdatedAt: summary.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		}, nil
 	})
+}
+
+// mapCreateNoteErr classifies a CreateWithBody error into the distinct
+// R4-2 error-code surface: already_exists, invalid_path, internal. The
+// no_grant case is handled by the ACL gate above this call site; the
+// legacy partial_create code is UNREACHABLE from the atomic path and
+// is not emitted by this mapper.
+func mapCreateNoteErr(p string, err error) error {
+	switch {
+	case errors.Is(err, fs.ErrExist),
+		errors.Is(err, notes.ErrCaseCollision),
+		errors.Is(err, fsstore.ErrCaseCollision):
+		return fmt.Errorf("already_exists: note already exists at %q", p)
+	case errors.Is(err, notes.ErrInvalidContent):
+		return fmt.Errorf("invalid_path: %w", err)
+	default:
+		return fmt.Errorf("internal: create_note: %w", err)
+	}
 }
 
 // update_note — Tier-1 write. ACL.CanUpdate gate. SYNC-06 If-Match propagation.

@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -566,6 +567,193 @@ func TestTool_DeleteNote_AllowedAtTier2(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("tool error: %v", flattenContent(res))
 	}
+}
+
+// ---------- 12. create_note atomic write (08-19 R4-1 + R4-2) ----------
+
+// failingWriteStore wraps a real fsstore.Store and fails WriteAtomic
+// after N successful calls. Used by TestCreateNoteAtomic's write-fail arm
+// to assert that no partial file lands on disk when the single atomic
+// write fails. All other methods delegate to the wrapped store.
+type failingWriteStore struct {
+	inner       *fsstore.Store
+	allowWrites int
+	writeCalls  int
+}
+
+func (f *failingWriteStore) Read(p string) ([]byte, error) { return f.inner.Read(p) }
+func (f *failingWriteStore) WriteAtomic(p string, data []byte) error {
+	f.writeCalls++
+	if f.writeCalls > f.allowWrites {
+		return errors.New("simulated WriteAtomic failure (test injection)")
+	}
+	return f.inner.WriteAtomic(p, data)
+}
+func (f *failingWriteStore) Stat(p string) (time.Time, error) { return f.inner.Stat(p) }
+
+func (f *failingWriteStore) CreateFile(p string) error { return f.inner.CreateFile(p) }
+
+func (f *failingWriteStore) DeleteFile(p string) error { return f.inner.DeleteFile(p) }
+
+func (f *failingWriteStore) MoveFile(o, n string) error { return f.inner.MoveFile(o, n) }
+func (f *failingWriteStore) CreateDir(p string) error   { return f.inner.CreateDir(p) }
+func (f *failingWriteStore) DeleteDir(p string, recursive bool) error {
+	return f.inner.DeleteDir(p, recursive)
+}
+
+func (f *failingWriteStore) MoveDir(o, n string) error { return f.inner.MoveDir(o, n) }
+
+// TestCreateNoteAtomic — 08-19 R4-1: create_note composes scaffold+body in
+// memory and writes ONCE via WriteAtomic. No partial scaffold-only file
+// lands on disk under any failure mode reachable from the MCP handler.
+// R4-2: error codes distinguish {already_exists, invalid_path, internal};
+// the legacy partial_create code is unreachable from this path.
+func TestCreateNoteAtomic(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success: scaffold+body in one write", func(t *testing.T) {
+		t.Parallel()
+		f := newTestServer(t)
+		if _, err := f.ACL.Set(context.Background(), "projects", mcp.TierEditOnly, "test"); err != nil {
+			t.Fatalf("Set grant: %v", err)
+		}
+		body := "First line of body.\n\n```go\nfunc main(){println(\"hello\")}\n```\n\nSecond paragraph.\n"
+		res, err := f.callTool(t, "create_note", map[string]any{
+			"path": "projects/atomic.md",
+			"body": body,
+		})
+		if err != nil {
+			t.Fatalf("CallTool: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("tool error: %v", flattenContent(res))
+		}
+		// File must exist with scaffold+body byte-for-byte.
+		got, readErr := os.ReadFile(filepath.Join(f.Root, "projects", "atomic.md"))
+		if readErr != nil {
+			t.Fatalf("expected projects/atomic.md on disk: %v", readErr)
+		}
+		// Scaffold is `---\ntags: []\n---\n\n# atomic\n\n` (heading line +
+		// trailing blank line per markdown.scaffoldFor).
+		wantPrefix := "---\ntags: []\n---\n\n# atomic\n\n"
+		if !strings.HasPrefix(string(got), wantPrefix) {
+			t.Errorf("file missing canonical scaffold prefix.\n got=%q\n want prefix=%q", string(got), wantPrefix)
+		}
+		// Body bytes appended verbatim after the scaffold's trailing blank —
+		// no extra separator, no server-side massaging.
+		want := wantPrefix + body
+		if string(got) != want {
+			t.Errorf("scaffold+body byte mismatch.\n got=%q\n want=%q", string(got), want)
+		}
+		// Single-write property: the file's mtime equals the response's
+		// updated_at. If a second write had run, the mtimes would diverge.
+		text := flattenContent(res)
+		if !strings.Contains(text, `"updated_at":`) {
+			t.Errorf("expected updated_at in response: %s", text)
+		}
+		// Regression guard: error mapper must never re-introduce partial_create.
+		if strings.Contains(text, "partial_create") {
+			t.Errorf("R4-2 regression: response contains partial_create: %s", text)
+		}
+	})
+
+	t.Run("write fails: no partial file lands on disk", func(t *testing.T) {
+		t.Parallel()
+		// Build a server with a FileStore that fails on the first
+		// WriteAtomic call. Service.CreateWithBody runs CreateFile
+		// (creates a zero-byte placeholder) then WriteAtomic — the
+		// failing WriteAtomic must surface as `internal` AND the
+		// rollback DeleteFile must unlink the placeholder so no
+		// scaffold-only file is observable.
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, "projects"), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		failStore := &failingWriteStore{inner: fsstore.NewStore(root), allowWrites: 0}
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		notesSvc := notes.NewService(failStore, nil, nil, logger)
+		acl := mcp.NewACL(openTestDB(t))
+		if _, err := acl.Set(context.Background(), "projects", mcp.TierEditOnly, "test"); err != nil {
+			t.Fatalf("Set grant: %v", err)
+		}
+		srv := mcp.NewServer(notesSvc, &fakeNotesProvider{}, &fakeSearchProvider{}, &fakeAttachProvider{}, acl, nil, logger)
+		f := &testServerFixture{Server: srv, NotesSvc: notesSvc, ACL: acl, Root: root}
+
+		res, err := f.callTool(t, "create_note", map[string]any{
+			"path": "projects/fail.md",
+			"body": "this body never lands",
+		})
+		if err != nil {
+			t.Fatalf("CallTool: %v", err)
+		}
+		if !res.IsError {
+			t.Fatal("expected tool error from WriteAtomic injection")
+		}
+		text := flattenContent(res)
+		// Error code distinguishes internal failure (R4-2).
+		if !strings.Contains(text, "internal") {
+			t.Errorf("expected 'internal' in error: %s", text)
+		}
+		// Regression guard: no partial_create code in the new atomic path.
+		if strings.Contains(text, "partial_create") {
+			t.Errorf("R4-2 regression: error contains partial_create: %s", text)
+		}
+		// No partial file on disk. Service.CreateWithBody's rollback
+		// DeleteFile (existing pre-08-19 logic) removes the placeholder
+		// when WriteAtomic fails; the assertion fails the test if a
+		// scaffold-only file landed.
+		path := filepath.Join(root, "projects", "fail.md")
+		if _, statErr := os.Stat(path); statErr == nil {
+			contents, _ := os.ReadFile(path)
+			t.Errorf("R4-1 regression: partial file exists at %s after failed WriteAtomic.\n contents=%q", path, string(contents))
+		} else if !os.IsNotExist(statErr) {
+			t.Errorf("unexpected stat error: %v", statErr)
+		}
+	})
+
+	t.Run("already_exists: collision returns distinct error code", func(t *testing.T) {
+		t.Parallel()
+		f := newTestServer(t)
+		if _, err := f.ACL.Set(context.Background(), "projects", mcp.TierEditOnly, "test"); err != nil {
+			t.Fatalf("Set grant: %v", err)
+		}
+		// First call seeds the note.
+		res1, err := f.callTool(t, "create_note", map[string]any{
+			"path": "projects/dupe.md",
+			"body": "first body",
+		})
+		if err != nil {
+			t.Fatalf("first CallTool: %v", err)
+		}
+		if res1.IsError {
+			t.Fatalf("first call: tool error: %v", flattenContent(res1))
+		}
+		firstBytes, err := os.ReadFile(filepath.Join(f.Root, "projects", "dupe.md"))
+		if err != nil {
+			t.Fatalf("first read: %v", err)
+		}
+		// Second call against the same path MUST fail with already_exists
+		// AND must NOT mutate the existing file.
+		res2, err := f.callTool(t, "create_note", map[string]any{
+			"path": "projects/dupe.md",
+			"body": "would clobber",
+		})
+		if err != nil {
+			t.Fatalf("second CallTool: %v", err)
+		}
+		if !res2.IsError {
+			t.Fatal("expected already_exists error on duplicate path")
+		}
+		text := flattenContent(res2)
+		if !strings.Contains(text, "already_exists") {
+			t.Errorf("expected 'already_exists' in error: %s", text)
+		}
+		// File contents unchanged from first write.
+		secondBytes, _ := os.ReadFile(filepath.Join(f.Root, "projects", "dupe.md"))
+		if string(firstBytes) != string(secondBytes) {
+			t.Errorf("file mutated by failed second create.\n first=%q\n second=%q", firstBytes, secondBytes)
+		}
+	})
 }
 
 // ---------- helpers ----------

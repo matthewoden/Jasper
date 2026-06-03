@@ -336,7 +336,34 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 // creation, the file is deleted in a best-effort cleanup and the index
 // error is returned wrapped. The reconciler heals any half-state if the
 // cleanup fails (DESIGN.md §4.4).
+//
+// Create is a thin wrapper around CreateWithBody — preserves the
+// pre-08-19 signature for every existing caller while routing through
+// the single-write code path that eliminates the R4-1 partial-create
+// class of failures.
 func (s *Service) Create(ctx context.Context, parentPath, title string) (NoteSummary, error) {
+	return s.CreateWithBody(ctx, parentPath, title, "")
+}
+
+// CreateWithBody creates a new note at <parentPath>/<title>.md, optionally
+// pre-populating it with the supplied body. Composes (scaffold + body) IN
+// MEMORY and writes it via the existing atomic temp+rename helper EXACTLY
+// ONCE. Eliminates the R4-1 two-write split that landed a partial
+// scaffold-only file on disk when the MCP `create_note` tool's
+// scaffold→body sequence raced its own If-Match check.
+//
+// body == "" is byte-equivalent to the pre-08-19 Create behaviour: the
+// canonical NewNoteContent(title) scaffold lands in one atomic write.
+//
+// body != "" appends the body BYTES VERBATIM after the scaffold (which
+// itself ends in a trailing blank line per UI-SPEC §Copywriting Contract
+// > Frontmatter scaffold), so the MCP caller's content is preserved
+// exactly as supplied — no server-side massaging beyond the scaffold
+// prefix.
+//
+// Single updated_at, single WS broadcast, single index Upsert. R4-2's
+// partial_create error code is unreachable from this path by construction.
+func (s *Service) CreateWithBody(ctx context.Context, parentPath, title, body string) (NoteSummary, error) {
 	if err := validateNoteTitle(title); err != nil {
 		return NoteSummary{}, fmt.Errorf("notes.Create: %w", err)
 	}
@@ -350,8 +377,21 @@ func (s *Service) Create(ctx context.Context, parentPath, title string) (NoteSum
 	// new note ships with `---\ntags: []\n---\n\n# {Title}\n`. Every create
 	// path MUST call this so the scaffold is uniform vault-wide. The title
 	// is derived from the filename (without .md) per Phase 3 R2.
+	//
+	// 08-19 (R4-1): compose scaffold + body IN MEMORY before the single
+	// WriteAtomic. The scaffold already terminates with a trailing blank
+	// line (NewNoteContent format), so the body bytes append directly
+	// without an injected separator.
 	displayTitle := deriveTitleFromFilename(title)
-	scaffoldContent := markdown.NewNoteContent(displayTitle)
+	scaffold := markdown.NewNoteContent(displayTitle)
+	var scaffoldContent []byte
+	if body == "" {
+		scaffoldContent = scaffold
+	} else {
+		scaffoldContent = make([]byte, 0, len(scaffold)+len(body))
+		scaffoldContent = append(scaffoldContent, scaffold...)
+		scaffoldContent = append(scaffoldContent, body...)
+	}
 	canonPath := canonicalRelPath(relPath)
 	if err := s.files.WriteAtomic(canonPath, scaffoldContent); err != nil {
 		// Best-effort rollback on scaffold write failure.
