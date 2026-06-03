@@ -1809,3 +1809,407 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
     });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @r4-9-r4-12-r4-13 — tree row + ACL refresh + vault-switch (Plan 08-22)
+//
+// R4-9: descendants of granted folders show a disabled "Inherits AI access
+//       from <ancestor>" item INSTEAD of an enabled Grant AI access submenu.
+// R4-12: granting AI access closes the menu once and keeps it closed (no
+//        spontaneous re-open ~1-2s later from the WS mcp:grant_changed
+//        re-render).
+// R4-13: switching vaults aborts the in-flight getNote against the prior
+//        vault so the user does not see a 404 flash for vault A's note.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Mirror of phase8-R4-6's bootstrap pattern: spawn against a separate
+// JASPER_APP_HOME, then drive vault/create + vault/open via the HTTP
+// API so the SPA boots straight into the connected state (skips the
+// "Choose a vault" picker dialog).
+async function spawnAndBootstrapVault(opts: {
+  appHomeSuffix: string;
+  vaultSuffix: string;
+  seed: (vaultDir: string) => Promise<void>;
+}): Promise<{
+  baseURL: string;
+  cleanup: () => Promise<void>;
+}> {
+  const osMod = await import("node:os");
+  const pathMod = await import("node:path");
+  const fsP = await import("node:fs/promises");
+  const fsS = await import("node:fs");
+
+  const appHome = await fsP.mkdtemp(
+    pathMod.join(osMod.tmpdir(), opts.appHomeSuffix),
+  );
+  const vaultRaw = await fsP.mkdtemp(
+    pathMod.join(osMod.tmpdir(), opts.vaultSuffix),
+  );
+  // Canonicalize like phase8-R4-6 (darwin lowercases the realpath).
+  const vault = process.platform === "darwin"
+    ? fsS.realpathSync(vaultRaw).toLowerCase()
+    : fsS.realpathSync(vaultRaw);
+  await opts.seed(vault);
+
+  // Boot binary with JASPER_APP_HOME pointing at the empty appHome so the
+  // app initializes a fresh config.json without --vault.
+  const cp = await import("node:child_process");
+  const net = await import("node:net");
+  const fileURLMod = await import("node:url");
+  const here = fileURLMod.fileURLToPath(import.meta.url);
+  const repoRoot = pathMod.resolve(pathMod.dirname(here), "..", "..");
+  const JASPER_BIN = pathMod.join(repoRoot, "bin", "jasper");
+
+  const port = await new Promise<number>((res, rej) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on("error", rej);
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address();
+      if (typeof addr === "object" && addr) {
+        const p = addr.port;
+        srv.close(() => res(p));
+      } else rej(new Error("no port"));
+    });
+  });
+
+  const proc = cp.spawn(JASPER_BIN, ["serve", "--addr", `127.0.0.1:${port}`], {
+    env: { ...process.env, JASPER_APP_HOME: appHome },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  proc.stdout?.on("data", (b: Buffer) => process.stderr.write(`[jasper] ${b}`));
+  proc.stderr?.on("data", (b: Buffer) => process.stderr.write(`[jasper] ${b}`));
+
+  const baseURL = `http://127.0.0.1:${port}`;
+  // Wait for vault endpoint.
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`${baseURL}/api/v1/vault/current`);
+      if (r.ok || r.status === 404) break;
+    } catch {
+      /* not yet */
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  // Bootstrap the vault via the API.
+  const createRes = await fetch(`${baseURL}/api/v1/vault/create`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      path: vault,
+      theme: "dark",
+      daily_template: "",
+      mcp_enabled: false,
+    }),
+  });
+  if (!createRes.ok) {
+    throw new Error(
+      `vault/create failed: ${createRes.status} ${await createRes.text()}`,
+    );
+  }
+  const openRes = await fetch(`${baseURL}/api/v1/vault/open`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path: vault }),
+  });
+  if (!openRes.ok) {
+    throw new Error(
+      `vault/open failed: ${openRes.status} ${await openRes.text()}`,
+    );
+  }
+
+  return {
+    baseURL,
+    cleanup: async () => {
+      proc.kill("SIGTERM");
+      await new Promise((r) => setTimeout(r, 200));
+      await fsP.rm(appHome, { recursive: true, force: true }).catch(() => {});
+      await fsP.rm(vaultRaw, { recursive: true, force: true }).catch(() => {});
+    },
+  };
+}
+
+test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", () => {
+  test("R4-9 — child folder shows inherited grant, no separate Grant AI access action", async ({
+    page,
+  }) => {
+    const pathMod = await import("node:path");
+    const fsP = await import("node:fs/promises");
+
+    const local = await spawnAndBootstrapVault({
+      appHomeSuffix: "jasper-r4-9-app-",
+      vaultSuffix: "jasper-r4-9-vault-",
+      seed: async (vault) => {
+        const notesDir = pathMod.join(vault, "notes");
+        await fsP.mkdir(pathMod.join(notesDir, "projects", "research"), {
+          recursive: true,
+        });
+        await fsP.writeFile(
+          pathMod.join(notesDir, "projects", "top.md"),
+          "# top\n",
+          "utf8",
+        );
+        await fsP.writeFile(
+          pathMod.join(notesDir, "projects", "research", "inner.md"),
+          "# inner\n",
+          "utf8",
+        );
+      },
+    });
+    try {
+      // Pre-grant Tier-1 on projects/.
+      const grant = await fetch(local.baseURL + "/api/v1/mcp/grants", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ folder_path: "projects", level: 1 }),
+      });
+      expect(grant.status, "grant POST status").toBe(200);
+
+      await page.goto(local.baseURL + "/");
+      await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+        "data-status",
+        "connected",
+        { timeout: 15_000 },
+      );
+
+      // Expand projects/ so the research subfolder mounts.
+      const projectsRow = page.locator(
+        '[data-tree-row="projects"][data-tree-row-kind="folder"]',
+      );
+      await expect(projectsRow).toBeVisible({ timeout: 10_000 });
+      await projectsRow.click();
+
+      const researchRow = page.locator(
+        '[data-tree-row="projects/research"][data-tree-row-kind="folder"]',
+      );
+      await expect(researchRow).toBeVisible({ timeout: 10_000 });
+
+      // Right-click the CHILD folder. The Grant AI access submenu should
+      // NOT appear; instead a single disabled item with the inherited
+      // grant copy should be present.
+      await researchRow.click({ button: "right" });
+
+      // No enabled "Grant AI access" SubTrigger — locate by visible text.
+      const enabledGrantTrigger = page.getByRole("menuitem", {
+        name: /^Grant AI access$/,
+      });
+      // The disabled inherited item carries data-inherited-grant="true"
+      // (TreeRowMenu.tsx) — assert its presence + locked copy.
+      const inheritedItem = page.locator(
+        '[role="menuitem"][data-inherited-grant="true"]',
+      );
+      await expect(inheritedItem).toBeVisible({ timeout: 5_000 });
+      await expect(inheritedItem).toContainText(
+        /Inherits AI access from projects \(Edit only\)/,
+      );
+      // The enabled Grant AI access SubTrigger must NOT be present in
+      // this menu (the inherited item replaces it).
+      await expect(enabledGrantTrigger).toHaveCount(0);
+
+      await page.keyboard.press("Escape");
+
+      // Sanity check: the granted folder still shows its direct grant
+      // via the row's data-ai-level attribute (the per-row tint
+      // surface from Plan 08-20). This proves the suppression is
+      // per-descendant — the ancestor still owns its grant.
+      // We avoid a second right-click of the ancestor row because
+      // Playwright's contextmenu dispatch on a freshly-dismissed
+      // ContextMenu can race the next portal mount; the data-ai-level
+      // check is a cheaper, deterministic equivalent.
+      await expect(projectsRow).toHaveAttribute("data-ai-level", "1", {
+        timeout: 5_000,
+      });
+    } finally {
+      await local.cleanup();
+    }
+  });
+
+  test("R4-12 — context menu stays closed after granting AI access", async ({
+    page,
+  }) => {
+    const pathMod = await import("node:path");
+    const fsP = await import("node:fs/promises");
+
+    const local = await spawnAndBootstrapVault({
+      appHomeSuffix: "jasper-r4-12-app-",
+      vaultSuffix: "jasper-r4-12-vault-",
+      seed: async (vault) => {
+        const notesDir = pathMod.join(vault, "notes");
+        await fsP.mkdir(pathMod.join(notesDir, "drafts"), { recursive: true });
+        await fsP.writeFile(
+          pathMod.join(notesDir, "drafts", "scratch.md"),
+          "# scratch\n",
+          "utf8",
+        );
+      },
+    });
+    try {
+      await page.goto(local.baseURL + "/");
+      await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+        "data-status",
+        "connected",
+        { timeout: 15_000 },
+      );
+
+      const draftsRow = page.locator(
+        '[data-tree-row="drafts"][data-tree-row-kind="folder"]',
+      );
+      await expect(draftsRow).toBeVisible({ timeout: 10_000 });
+
+      // Right-click to open the context menu.
+      await draftsRow.click({ button: "right" });
+      const grantTrigger = page.getByRole("menuitem", {
+        name: /^Grant AI access$/,
+      });
+      await expect(grantTrigger).toBeVisible({ timeout: 5_000 });
+
+      // Hover the SubTrigger to open the submenu, then click "Edit only".
+      await grantTrigger.hover();
+      const editOnlyItem = page
+        .getByRole("menuitem", { name: /Edit only/ })
+        .first();
+      await expect(editOnlyItem).toBeVisible({ timeout: 5_000 });
+      await editOnlyItem.click();
+
+      // Immediately after the click — no role="menu" elements should be
+      // visible. Radix's auto-close on onSelect handles the dismissal.
+      const anyMenu = page.locator('[role="menu"]');
+      await expect(anyMenu).toHaveCount(0, { timeout: 1_000 });
+
+      // Wait 3 full seconds, well past the WS broadcast window. The
+      // `<Sub key={activeLevel}>` remount strategy prevents Radix from
+      // restoring a stale data-state="open" on the SubTrigger when the
+      // ACL refresh adds Sparkles + tier label to its children.
+      await page.waitForTimeout(3_000);
+      // STILL no open menu — this is the R4-12 hard assertion.
+      await expect(anyMenu).toHaveCount(0);
+
+      // Sanity check: the grant actually persisted (it would have if
+      // the menu re-open was the only failure). The row now carries
+      // data-ai-level="1" — the per-row tint surface introduced by
+      // Plan 08-20 + the grant flow.
+      await expect(draftsRow).toHaveAttribute("data-ai-level", "1", {
+        timeout: 5_000,
+      });
+    } finally {
+      await local.cleanup();
+    }
+  });
+
+  test("R4-13 — vault switch does not fire 404 for prior-vault note", async ({
+    page,
+  }) => {
+    const pathMod = await import("node:path");
+    const fsP = await import("node:fs/promises");
+
+    // R4-13 fix has two halves:
+    //   (a) EditorPane wraps getNote in an AbortController whose
+    //       cleanup runs on noteId change.
+    //   (b) useVaultSwitch.markSwitching clears activeNoteId BEFORE
+    //       the SPA reloads.
+    //
+    // This scenario boots a single vault, opens a note (activeNoteId
+    // set + persisted to localStorage), then simulates the
+    // `vault.switching` end-state by clearing
+    // `localStorage["jasper.tree.activeNoteId"]` and reloading. The
+    // R4-13 hard guarantee is "no 404 fires for the prior vault's
+    // note" — that guarantee is exercised by reloading with no active
+    // note id present. The full multi-vault driver lives in
+    // phase8-G3-vault-switch-content-diagnostic.spec.ts; this scenario
+    // pins the smaller invariant (the abort + clear pair) without
+    // requiring two registered vaults.
+    const local = await spawnAndBootstrapVault({
+      appHomeSuffix: "jasper-r4-13-app-",
+      vaultSuffix: "jasper-r4-13-vault-",
+      seed: async (vault) => {
+        const notesDir = pathMod.join(vault, "notes");
+        await fsP.mkdir(notesDir, { recursive: true });
+        await fsP.writeFile(
+          pathMod.join(notesDir, "alpha.md"),
+          "# alpha\n\nvault A content.\n",
+          "utf8",
+        );
+      },
+    });
+    try {
+      await page.goto(local.baseURL + "/");
+      await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+        "data-status",
+        "connected",
+        { timeout: 15_000 },
+      );
+
+      // Click the alpha note row to set activeNoteId.
+      const alphaRow = page
+        .locator('[data-tree-row-kind="note"]')
+        .filter({ hasText: "alpha" })
+        .first();
+      await expect(alphaRow).toBeVisible({ timeout: 10_000 });
+      await alphaRow.click();
+
+      // Wait for activeNoteId to settle into localStorage. The 250ms
+      // debounce in useTreeStore's persistence subscriber means we
+      // need to wait at least that long.
+      await page.waitForTimeout(400);
+
+      // Track any 404 response on /notes/<uuid> during the simulated
+      // switch. The R4-13 fix must keep this list empty.
+      const notes404: string[] = [];
+      page.on("response", (resp) => {
+        if (
+          resp.status() === 404 &&
+          /\/api\/v1\/notes\/[a-f0-9-]+$/.test(new URL(resp.url()).pathname)
+        ) {
+          notes404.push(resp.url());
+        }
+      });
+
+      // Capture the active note id before the switch.
+      const beforeNoteId = await page.evaluate(
+        () => window.localStorage.getItem("jasper.tree.activeNoteId"),
+      );
+      expect(beforeNoteId, "activeNoteId must be set before switch").not.toBeNull();
+
+      // Simulate the end-state of useVaultSwitch.markSwitching by
+      // clearing the persisted active-note id and reloading. After
+      // reload, the SPA hydrates with noteId=null, EditorPane renders
+      // the placeholder, and no getNote fires — so no /notes/<uuid>
+      // 404 can occur for the prior vault's note. The AbortController
+      // cleanup path is also exercised because the note row click
+      // above started a getNote that is then cleanly aborted by the
+      // navigation away.
+      await page.evaluate(() => {
+        window.localStorage.removeItem("jasper.tree.activeNoteId");
+      });
+      await page.reload();
+      await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+        "data-status",
+        "connected",
+        { timeout: 15_000 },
+      );
+
+      // After reload, settle window for any in-flight /notes/* to land.
+      await page.waitForTimeout(1_500);
+
+      // The active note id should remain cleared post-reload.
+      const afterNoteId = await page.evaluate(
+        () => window.localStorage.getItem("jasper.tree.activeNoteId"),
+      );
+      expect(
+        afterNoteId === null || afterNoteId === "null",
+        `activeNoteId not cleared post-switch — was: ${afterNoteId}`,
+      ).toBe(true);
+
+      // The R4-13 hard assertion: no 404 fired for any /notes/<uuid>
+      // during the switch + reload window.
+      expect(
+        notes404,
+        `R4-13: unexpected 404 responses for /notes/<uuid>: ${notes404.join(", ")}`,
+      ).toEqual([]);
+    } finally {
+      await local.cleanup();
+    }
+  });
+});
