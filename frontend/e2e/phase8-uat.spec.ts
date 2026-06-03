@@ -1287,3 +1287,201 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @r4-15 — --data-dir flag removed; JASPER_DATA_DIR silently ignored.
+//
+// UAT-2 R4-15: the deprecated --data-dir flag and JASPER_DATA_DIR env var
+// were excised entirely in Plan 08-23. This spec is the regression guard:
+//
+//   1. Spawning `bin/jasper serve --data-dir <tmp>` exits non-zero with
+//      stderr containing "flag provided but not defined: -data-dir"
+//      (Go stdlib's default error string for an unknown flag).
+//
+//   2. Spawning `bin/jasper serve` with JASPER_DATA_DIR set in the env
+//      boots cleanly (the env var is silently ignored — no deprecation
+//      warning, no failure).
+//
+// Both arms run against the live bin/jasper binary so a stale build of
+// the flag-removal change cannot pass silently.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
+  test("R4-15 — --data-dir flag is removed (unknown flag)", async () => {
+    const { spawn } = await import("node:child_process");
+    const path = await import("node:path");
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const { fileURLToPath } = await import("node:url");
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const repoRoot = path.resolve(__dirname, "..", "..");
+    const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
+
+    const exists = await fs
+      .stat(JASPER_BIN)
+      .then(() => true)
+      .catch(() => false);
+    if (!exists) {
+      throw new Error(
+        `bin/jasper missing — run \`make build\` first. Expected at: ${JASPER_BIN}`,
+      );
+    }
+
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "jasper-r4-15-"));
+
+    try {
+      const proc = spawn(
+        JASPER_BIN,
+        ["serve", "--data-dir", tmpDir, "--addr", "127.0.0.1:0"],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
+
+      let stderr = "";
+      proc.stderr?.on("data", (b: Buffer) => {
+        stderr += b.toString();
+      });
+      let stdout = "";
+      proc.stdout?.on("data", (b: Buffer) => {
+        stdout += b.toString();
+      });
+
+      // Wait for the process to exit (or kill after 5s as a guard so a
+      // hung process doesn't stall the suite).
+      const exitCode = await new Promise<number | null>((resolve) => {
+        const killTimer = setTimeout(() => {
+          proc.kill("SIGKILL");
+        }, 5_000);
+        proc.once("exit", (code) => {
+          clearTimeout(killTimer);
+          resolve(code);
+        });
+      });
+
+      // Plan 08-23: --data-dir is no longer declared, so fs.Parse rejects
+      // it with a non-zero exit and the canonical stdlib error string.
+      expect(
+        exitCode !== 0 && exitCode !== null,
+        `expected non-zero exit; got code=${exitCode}; stdout=${stdout}; stderr=${stderr}`,
+      ).toBe(true);
+      expect(
+        stderr.includes("flag provided but not defined: -data-dir"),
+        `expected stderr to contain stdlib unknown-flag error; got: ${stderr}`,
+      ).toBe(true);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
+  test("R4-15 — JASPER_DATA_DIR is silently ignored (no deprecation warning)", async () => {
+    const { spawn } = await import("node:child_process");
+    const { createServer } = await import("node:net");
+    const path = await import("node:path");
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const { fileURLToPath } = await import("node:url");
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const repoRoot = path.resolve(__dirname, "..", "..");
+    const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
+
+    // Allocate a free port — same pattern as helpers/binary.ts.
+    const port = await new Promise<number>((resolve, reject) => {
+      const srv = createServer();
+      srv.unref();
+      srv.on("error", reject);
+      srv.listen(0, "127.0.0.1", () => {
+        const addr = srv.address();
+        if (typeof addr === "object" && addr) {
+          const p = addr.port;
+          srv.close(() => resolve(p));
+        } else {
+          reject(new Error("could not allocate free port"));
+        }
+      });
+    });
+
+    const vaultDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "jasper-r4-15-vault-"),
+    );
+    const fakeAppHome = await fs.mkdtemp(
+      path.join(os.tmpdir(), "jasper-r4-15-app-"),
+    );
+    const ignoredPath = path.join(os.tmpdir(), "this-path-must-not-be-used");
+
+    try {
+      // Boot with JASPER_DATA_DIR set; the env var should be silently
+      // ignored and the server should come up against --vault. We DO
+      // pass --vault so the server doesn't hit the picker.
+      const proc = spawn(
+        JASPER_BIN,
+        ["serve", "--vault", vaultDir, "--addr", `127.0.0.1:${port}`],
+        {
+          env: {
+            ...process.env,
+            JASPER_DATA_DIR: ignoredPath,
+            JASPER_APP_HOME: fakeAppHome,
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+
+      let stderr = "";
+      proc.stderr?.on("data", (b: Buffer) => {
+        stderr += b.toString();
+      });
+      let stdout = "";
+      proc.stdout?.on("data", (b: Buffer) => {
+        stdout += b.toString();
+      });
+
+      // Poll /api/v1/admin/status until it answers OR timeout.
+      const baseURL = `http://127.0.0.1:${port}`;
+      const deadline = Date.now() + 15_000;
+      let ready = false;
+      while (Date.now() < deadline) {
+        try {
+          const r = await fetch(`${baseURL}/api/v1/admin/status`);
+          if (r.status === 200) {
+            ready = true;
+            break;
+          }
+        } catch {
+          // not yet listening
+        }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
+      try {
+        expect(
+          ready,
+          `server with JASPER_DATA_DIR set did not become ready; stdout=${stdout}; stderr=${stderr}`,
+        ).toBe(true);
+
+        // Plan 08-23 (R4-15): no deprecation warning should fire because
+        // the env var is no longer recognized at all.
+        expect(
+          stderr.includes("JASPER_DATA_DIR is deprecated"),
+          `JASPER_DATA_DIR should be silently ignored, but a deprecation warning was emitted: ${stderr}`,
+        ).toBe(false);
+      } finally {
+        proc.kill("SIGTERM");
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(() => {
+            proc.kill("SIGKILL");
+            resolve();
+          }, 3_000);
+          proc.once("exit", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      }
+    } finally {
+      await fs.rm(vaultDir, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(fakeAppHome, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+});
