@@ -345,6 +345,21 @@ func (s *Service) Create(ctx context.Context, parentPath, title string) (NoteSum
 	return s.CreateWithBody(ctx, parentPath, title, "")
 }
 
+// CreateWithBodyAndTitle creates a new note at <parentPath>/<title>.md with
+// an optional human-friendly display title used for the scaffold H1.
+//
+// R4-4 (08-21): the MCP create_note tool exposes an optional `title` param
+// so AI callers can give a note a friendly H1 (`# My Friendly Title`) while
+// the filename stays slugified (`some/slug.md`). When displayTitle == "",
+// the scaffold's H1 falls back to the filename-derived title (legacy
+// CreateWithBody behaviour).
+//
+// displayTitle is sanitized at the call site (MCP tool handler) to strip
+// newlines + control chars + collapse whitespace.
+func (s *Service) CreateWithBodyAndTitle(ctx context.Context, parentPath, title, body, displayTitle string) (NoteSummary, error) {
+	return s.createInternal(ctx, parentPath, title, body, displayTitle)
+}
+
 // CreateWithBody creates a new note at <parentPath>/<title>.md, optionally
 // pre-populating it with the supplied body. Composes (scaffold + body) IN
 // MEMORY and writes it via the existing atomic temp+rename helper EXACTLY
@@ -364,6 +379,15 @@ func (s *Service) Create(ctx context.Context, parentPath, title string) (NoteSum
 // Single updated_at, single WS broadcast, single index Upsert. R4-2's
 // partial_create error code is unreachable from this path by construction.
 func (s *Service) CreateWithBody(ctx context.Context, parentPath, title, body string) (NoteSummary, error) {
+	return s.createInternal(ctx, parentPath, title, body, "")
+}
+
+// createInternal is the shared implementation for CreateWithBody and
+// CreateWithBodyAndTitle. When displayTitleOverride is non-empty, the
+// scaffold's H1 is `# {displayTitleOverride}`; otherwise it falls back to
+// the filename-derived title (legacy behaviour). The filename itself is
+// always derived from `title` — the override only affects the H1.
+func (s *Service) createInternal(ctx context.Context, parentPath, title, body, displayTitleOverride string) (NoteSummary, error) {
 	if err := validateNoteTitle(title); err != nil {
 		return NoteSummary{}, fmt.Errorf("notes.Create: %w", err)
 	}
@@ -376,13 +400,17 @@ func (s *Service) CreateWithBody(ctx context.Context, parentPath, title, body st
 	// D-09 (TAGS-EXT-01): write the canonical frontmatter scaffold so the
 	// new note ships with `---\ntags: []\n---\n\n# {Title}\n`. Every create
 	// path MUST call this so the scaffold is uniform vault-wide. The title
-	// is derived from the filename (without .md) per Phase 3 R2.
+	// is derived from the filename (without .md) per Phase 3 R2, unless an
+	// explicit display title is supplied (R4-4 / 08-21 — MCP create_note).
 	//
 	// 08-19 (R4-1): compose scaffold + body IN MEMORY before the single
 	// WriteAtomic. The scaffold already terminates with a trailing blank
 	// line (NewNoteContent format), so the body bytes append directly
 	// without an injected separator.
 	displayTitle := deriveTitleFromFilename(title)
+	if displayTitleOverride != "" {
+		displayTitle = displayTitleOverride
+	}
 	scaffold := markdown.NewNoteContent(displayTitle)
 	var scaffoldContent []byte
 	if body == "" {

@@ -112,10 +112,12 @@ type ReadAttachmentResult struct {
 }
 
 // CreateNoteArgs — create_note takes a notes/-relative path ending in
-// .md and an optional initial body.
+// .md, an optional initial body, and an optional human-friendly title
+// (R4-4 / 08-21).
 type CreateNoteArgs struct {
-	Path string `json:"path" jsonschema:"folder-relative path under notes/, e.g. projects/2026-roadmap.md (must end .md)"`
-	Body string `json:"body,omitempty" jsonschema:"optional initial markdown body; if omitted, only the frontmatter scaffold + heading are written"`
+	Path  string `json:"path" jsonschema:"folder-relative path under notes/, e.g. projects/2026-roadmap.md (must end .md)"`
+	Body  string `json:"body,omitempty" jsonschema:"optional initial markdown body; if omitted, only the frontmatter scaffold + heading are written"`
+	Title string `json:"title,omitempty" jsonschema:"optional human-friendly H1 title; when provided the first heading is '# {title}' (filename stays slugified, derived from path)"`
 }
 
 // CreateNoteResult — id + path + updated_at of the new note.
@@ -134,11 +136,30 @@ type UpdateNoteArgs struct {
 	IfMatch string `json:"if_match,omitempty" jsonschema:"updated_at from prior read; required for race protection (SYNC-06)"`
 }
 
-// UpdateNoteResult — id + path + updated_at after the write.
+// UpdateNoteResult — id + path + updated_at after the write. ForceWrite is
+// true iff the caller passed if_match="*" (last-writer-wins opt-in, R4-6).
 type UpdateNoteResult struct {
-	ID        string `json:"id"`
+	ID         string `json:"id"`
+	Path       string `json:"path"`
+	UpdatedAt  string `json:"updated_at"`
+	ForceWrite bool   `json:"force_write,omitempty"`
+}
+
+// GrantInfo is the wire shape of a single grant returned by list_grants
+// (R4-3). Path is the canonical folder path (notes/-relative, lower-cased),
+// Tier is 1 (Edit only) or 2 (Full), GrantedAt is RFC3339.
+type GrantInfo struct {
 	Path      string `json:"path"`
-	UpdatedAt string `json:"updated_at"`
+	Tier      int    `json:"tier"`
+	GrantedAt string `json:"granted_at"`
+}
+
+// ListGrantsArgs — list_grants takes no arguments.
+type ListGrantsArgs struct{}
+
+// ListGrantsResult envelope.
+type ListGrantsResult struct {
+	Grants []GrantInfo `json:"grants"`
 }
 
 // MoveNoteArgs — move_note takes the source path and a new full path.
@@ -171,10 +192,48 @@ func (s *Server) registerTools() {
 	s.registerReadNote()
 	s.registerSearchNotes()
 	s.registerReadAttachment()
+	s.registerListGrants()
 	s.registerCreateNote()
 	s.registerUpdateNote()
 	s.registerMoveNote()
 	s.registerDeleteNote()
+}
+
+// list_grants — metadata read. Returns every explicit folder grant currently
+// authorizing AI writes in the active vault, sorted alphabetically by path.
+//
+// R4-3 / 08-21: AI clients previously had no way to discover writable folders
+// without trial-and-error writes. list_grants surfaces the explicit grant set
+// directly. Per D-17/D-18 grants are recursive — a grant on parents/ covers
+// parents/child/draft.md — but list_grants returns only EXPLICIT rows from
+// mcp_write_grants. Callers compute inheritance themselves.
+//
+// No ACL check is required to call this tool. Listing grants is metadata,
+// not a write; reads are global per D-12.
+func (s *Server) registerListGrants() {
+	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
+		Name: "list_grants",
+		Description: "List the folder grants currently authorizing AI writes in the active vault. " +
+			"Returns each grant's folder path, tier (1=Edit only, 2=Full), and grant timestamp. " +
+			"Grants are recursive — a grant on parents/ covers parents/child/.",
+	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, _ ListGrantsArgs) (*mcpsdk.CallToolResult, ListGrantsResult, error) {
+		if s.acl == nil {
+			return nil, ListGrantsResult{}, errors.New("list_grants: ACL not configured")
+		}
+		raw, err := s.acl.List(ctx)
+		if err != nil {
+			return nil, ListGrantsResult{}, fmt.Errorf("list_grants: %w", err)
+		}
+		out := make([]GrantInfo, 0, len(raw))
+		for _, g := range raw {
+			out = append(out, GrantInfo{
+				Path:      g.FolderPath,
+				Tier:      int(g.Level),
+				GrantedAt: g.GrantedAt.UTC().Format(time.RFC3339),
+			})
+		}
+		return nil, ListGrantsResult{Grants: out}, nil
+	})
 }
 
 // list_notes — global read. Returns every indexed note.
@@ -276,7 +335,8 @@ func (s *Server) registerCreateNote() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name: "create_note",
 		Description: "Create a new note. Path must end in .md and live in a folder where the user has granted AI write access (Tier 1 or Tier 2). " +
-			"The frontmatter scaffold (---\\ntags: []\\n---) and # Title heading are auto-prepended by the server.",
+			"The frontmatter scaffold (---\\ntags: []\\n---) and # Title heading are auto-prepended by the server. " +
+			"Optional 'title' overrides the H1 with a human-friendly string while the filename stays slugified from the path.",
 	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args CreateNoteArgs) (*mcpsdk.CallToolResult, CreateNoteResult, error) {
 		if !s.acl.CanCreate(ctx, args.Path) {
 			return nil, CreateNoteResult{}, fmt.Errorf("no_grant: folder for %q has no AI write grant", args.Path)
@@ -288,12 +348,20 @@ func (s *Server) registerCreateNote() {
 			// invalid_path so the four-code surface stays clean (R4-2).
 			return nil, CreateNoteResult{}, fmt.Errorf("invalid_path: %w", err)
 		}
+		// R4-4 (08-21): sanitize the optional human-friendly title for
+		// embedding in the H1. Strip control chars + newlines, collapse
+		// internal whitespace, trim. Reject empty post-sanitization with
+		// invalid_path so the four-code surface stays consistent.
+		displayTitle, sanErr := sanitizeCreateTitle(args.Title)
+		if sanErr != nil {
+			return nil, CreateNoteResult{}, fmt.Errorf("invalid_path: %w", sanErr)
+		}
 		// 08-19 R4-1 atomic create: notes.Service.CreateWithBody composes
 		// (scaffold + body) in memory and writes it via a SINGLE atomic
 		// WriteAtomic. No follow-up Service.Update call, no second
 		// If-Match check, no partial scaffold-only file on failure.
 		// Service broadcasts note:created itself (D-57).
-		summary, err := s.notesSvc.CreateWithBody(ctx, parent, title, args.Body)
+		summary, err := s.notesSvc.CreateWithBodyAndTitle(ctx, parent, title, args.Body, displayTitle)
 		if err != nil {
 			return nil, CreateNoteResult{}, mapCreateNoteErr(args.Path, err)
 		}
@@ -330,8 +398,10 @@ func (s *Server) registerUpdateNote() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name: "update_note",
 		Description: "Update a note's markdown body. The folder must have a Tier 1 or Tier 2 AI write grant. " +
-			"Supply if_match (the updated_at value from a prior read_note) for race protection — a mismatch returns a 'conflict' error " +
-			"with the current updated_at so the caller can re-read and retry.",
+			"if_match: pass the note's current updated_at as returned by read_note to detect stale-write conflicts " +
+			"(conflict error). Pass '*' to explicitly opt-in to last-writer-wins (force overwrite — response will include " +
+			"force_write: true). Omitting if_match is equivalent to passing the result of read_note immediately prior; " +
+			"this is recommended for safety.",
 	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args UpdateNoteArgs) (*mcpsdk.CallToolResult, UpdateNoteResult, error) {
 		notePath := args.Path
 		if notePath == "" && args.ID != "" {
@@ -353,7 +423,17 @@ func (s *Server) registerUpdateNote() {
 		if err != nil {
 			return nil, UpdateNoteResult{}, fmt.Errorf("update_note: %w", err)
 		}
-		n, err := s.notesSvc.Update(ctx, id, args.Body, args.IfMatch)
+		// R4-6 (08-21): if_match="*" is an explicit last-writer-wins opt-in.
+		// Pass "" to notes.Service.Update (permissive — no stale-write check)
+		// and surface force_write=true in the result so the caller's logs
+		// make the bypass explicit. Any other if_match value (including the
+		// empty string) falls through to the legacy SYNC-06 behaviour.
+		forceWrite := args.IfMatch == "*"
+		effectiveIfMatch := args.IfMatch
+		if forceWrite {
+			effectiveIfMatch = ""
+		}
+		n, err := s.notesSvc.Update(ctx, id, args.Body, effectiveIfMatch)
 		if err != nil {
 			// SYNC-06: surface a structured conflict error with the
 			// current updated_at so the caller can retry. The notes
@@ -368,11 +448,12 @@ func (s *Server) registerUpdateNote() {
 			return nil, UpdateNoteResult{}, fmt.Errorf("update_note: %w", err)
 		}
 		level, _ := s.acl.Resolve(ctx, notePath)
-		s.log.Info("mcp.write", "tool", "update_note", "path", notePath, "level", int(level))
+		s.log.Info("mcp.write", "tool", "update_note", "path", notePath, "level", int(level), "force_write", forceWrite)
 		return nil, UpdateNoteResult{
-			ID:        n.ID.String(),
-			Path:      n.Path,
-			UpdatedAt: n.UpdatedAt.UTC().Format(time.RFC3339Nano),
+			ID:         n.ID.String(),
+			Path:       n.Path,
+			UpdatedAt:  n.UpdatedAt.UTC().Format(time.RFC3339Nano),
+			ForceWrite: forceWrite,
 		}, nil
 	})
 }
@@ -485,6 +566,47 @@ func splitNotePath(rel string) (parent, title string, err error) {
 		return "", "", fmt.Errorf("path %q has empty filename", rel)
 	}
 	return parent, title, nil
+}
+
+// sanitizeCreateTitle prepares an MCP-supplied create_note title for
+// embedding in the scaffold H1 (R4-4 / 08-21). Strips control chars +
+// newlines + tabs, collapses runs of whitespace to a single space, trims
+// surrounding whitespace. Returns ("", nil) for an empty input (caller
+// falls back to filename-derived title). Returns ("", err) when the
+// post-sanitization title is empty after originally containing characters
+// (means the input was nothing but control chars) — surfaced as
+// invalid_path so the four-code R4-2 surface stays clean.
+func sanitizeCreateTitle(in string) (string, error) {
+	if in == "" {
+		return "", nil
+	}
+	var b strings.Builder
+	b.Grow(len(in))
+	lastSpace := false
+	for _, r := range in {
+		if r == '\n' || r == '\r' || r == '\t' || r < 0x20 || r == 0x7f {
+			// Control char or newline → collapse to single space.
+			if !lastSpace {
+				b.WriteRune(' ')
+				lastSpace = true
+			}
+			continue
+		}
+		if r == ' ' {
+			if !lastSpace {
+				b.WriteRune(' ')
+				lastSpace = true
+			}
+			continue
+		}
+		b.WriteRune(r)
+		lastSpace = false
+	}
+	out := strings.TrimSpace(b.String())
+	if out == "" {
+		return "", errors.New("title is empty after sanitization (only control chars)")
+	}
+	return out, nil
 }
 
 // canonNotePath lowercases + forward-slashes a path so registry lookups

@@ -756,6 +756,209 @@ func TestCreateNoteAtomic(t *testing.T) {
 	})
 }
 
+// ---------- 13. list_grants (R4-3 / 08-21) ----------
+
+// TestListGrants verifies the list_grants tool returns every explicit
+// folder grant, sorted alphabetically by path, with tier values and
+// RFC3339 timestamps. Per R4-3 / D-18 list_grants surfaces ONLY explicit
+// grants — clients compute recursive inheritance themselves.
+func TestListGrants(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty grants returns empty array", func(t *testing.T) {
+		t.Parallel()
+		f := newTestServer(t)
+		res, err := f.callTool(t, "list_grants", map[string]any{})
+		if err != nil {
+			t.Fatalf("CallTool: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("tool error: %v", flattenContent(res))
+		}
+		text := flattenContent(res)
+		if !strings.Contains(text, `"grants":[]`) {
+			t.Errorf("expected empty grants array, got: %s", text)
+		}
+	})
+
+	t.Run("two grants returned sorted with correct tiers", func(t *testing.T) {
+		t.Parallel()
+		f := newTestServer(t)
+		ctx := context.Background()
+		// Insert in REVERSE alphabetical order so we can verify the tool
+		// returns them sorted ascending.
+		if _, err := f.ACL.Set(ctx, "zeta", mcp.TierFull, "test"); err != nil {
+			t.Fatalf("Set zeta: %v", err)
+		}
+		if _, err := f.ACL.Set(ctx, "alpha", mcp.TierEditOnly, "test"); err != nil {
+			t.Fatalf("Set alpha: %v", err)
+		}
+		res, err := f.callTool(t, "list_grants", map[string]any{})
+		if err != nil {
+			t.Fatalf("CallTool: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("tool error: %v", flattenContent(res))
+		}
+		text := flattenContent(res)
+		// Sorted ASC: "alpha" appears before "zeta" in the JSON output.
+		alphaIdx := strings.Index(text, `"alpha"`)
+		zetaIdx := strings.Index(text, `"zeta"`)
+		if alphaIdx < 0 || zetaIdx < 0 {
+			t.Fatalf("missing grants in output: %s", text)
+		}
+		if alphaIdx > zetaIdx {
+			t.Errorf("expected alpha before zeta in sorted output; got: %s", text)
+		}
+		// Tier values surfaced correctly.
+		if !strings.Contains(text, `"tier":1`) {
+			t.Errorf("expected tier=1 for alpha grant: %s", text)
+		}
+		if !strings.Contains(text, `"tier":2`) {
+			t.Errorf("expected tier=2 for zeta grant: %s", text)
+		}
+		// RFC3339 timestamp shape (must contain "T" and "Z").
+		if !strings.Contains(text, "T") || !strings.Contains(text, "Z") {
+			t.Errorf("expected RFC3339 timestamp in grants: %s", text)
+		}
+	})
+}
+
+// ---------- 14. create_note title param (R4-4 / 08-21) ----------
+
+// TestCreateNoteTitleParam verifies the optional `title` param overrides
+// the scaffold H1 while the filename stays slugified from the path.
+func TestCreateNoteTitleParam(t *testing.T) {
+	t.Parallel()
+	f := newTestServer(t)
+	if _, err := f.ACL.Set(context.Background(), "projects", mcp.TierEditOnly, "test"); err != nil {
+		t.Fatalf("Set grant: %v", err)
+	}
+	res, err := f.callTool(t, "create_note", map[string]any{
+		"path":  "projects/some-slug.md",
+		"title": "My Friendly Title",
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool error: %v", flattenContent(res))
+	}
+	// File MUST live at the slugified path (filename derived from path).
+	filePath := filepath.Join(f.Root, "projects", "some-slug.md")
+	contents, readErr := os.ReadFile(filePath)
+	if readErr != nil {
+		t.Fatalf("expected projects/some-slug.md on disk: %v", readErr)
+	}
+	// H1 MUST be the friendly title (NOT the slug).
+	if !strings.Contains(string(contents), "# My Friendly Title") {
+		t.Errorf("expected '# My Friendly Title' H1 in file; got: %q", string(contents))
+	}
+	// Belt + suspenders: the slug "some-slug" MUST NOT appear as the H1.
+	if strings.Contains(string(contents), "# some-slug") {
+		t.Errorf("filename-derived H1 leaked into scaffold despite title override: %q", string(contents))
+	}
+}
+
+// TestCreateNoteTitleParam_Sanitization verifies that newlines + control
+// chars are stripped and whitespace collapsed before embedding in the H1.
+func TestCreateNoteTitleParam_Sanitization(t *testing.T) {
+	t.Parallel()
+	f := newTestServer(t)
+	if _, err := f.ACL.Set(context.Background(), "projects", mcp.TierEditOnly, "test"); err != nil {
+		t.Fatalf("Set grant: %v", err)
+	}
+	res, err := f.callTool(t, "create_note", map[string]any{
+		"path":  "projects/sanitize-me.md",
+		"title": "  Title\nwith\tcontrol\x01chars  ",
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool error: %v", flattenContent(res))
+	}
+	contents, _ := os.ReadFile(filepath.Join(f.Root, "projects", "sanitize-me.md"))
+	// Whitespace collapsed; newline → space; control char dropped to space; trim.
+	if !strings.Contains(string(contents), "# Title with control chars") {
+		t.Errorf("expected sanitized H1; got: %q", string(contents))
+	}
+}
+
+// ---------- 15. update_note if_match="*" wildcard (R4-6 / 08-21) ----------
+
+// TestUpdateNoteIfMatchWildcard verifies that if_match="*" bypasses the
+// stale-write check and surfaces force_write: true in the response. With
+// a literal stale tag (not "*"), the legacy conflict behaviour still fires.
+func TestUpdateNoteIfMatchWildcard(t *testing.T) {
+	t.Parallel()
+
+	t.Run("wildcard succeeds and surfaces force_write true", func(t *testing.T) {
+		t.Parallel()
+		f := newTestServer(t)
+		if _, err := f.ACL.Set(context.Background(), "projects", mcp.TierEditOnly, "test"); err != nil {
+			t.Fatalf("Set grant: %v", err)
+		}
+		summary, err := f.NotesSvc.Create(context.Background(), "projects", "wild")
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		f.NotesProv.notes = []notes.NoteSummary{{ID: summary.ID, Path: summary.Path, Title: summary.Title}}
+		// Caller supplies "*" without any prior read_note — the bypass is
+		// explicit; the response MUST carry force_write: true.
+		res, err := f.callTool(t, "update_note", map[string]any{
+			"path":     summary.Path,
+			"body":     "last writer wins body",
+			"if_match": "*",
+		})
+		if err != nil {
+			t.Fatalf("CallTool: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("tool error: %v", flattenContent(res))
+		}
+		text := flattenContent(res)
+		if !strings.Contains(text, `"force_write":true`) {
+			t.Errorf("expected force_write:true in response: %s", text)
+		}
+	})
+
+	t.Run("literal stale tag still returns conflict", func(t *testing.T) {
+		t.Parallel()
+		f := newTestServer(t)
+		if _, err := f.ACL.Set(context.Background(), "projects", mcp.TierEditOnly, "test"); err != nil {
+			t.Fatalf("Set grant: %v", err)
+		}
+		summary, err := f.NotesSvc.Create(context.Background(), "projects", "wild-stale")
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		f.NotesProv.notes = []notes.NoteSummary{{ID: summary.ID, Path: summary.Path, Title: summary.Title}}
+		// An obviously-stale tag (NOT "*") MUST still return conflict so
+		// the wildcard opt-in does not weaken the default behaviour.
+		staleTag := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339Nano)
+		res, err := f.callTool(t, "update_note", map[string]any{
+			"path":     summary.Path,
+			"body":     "would clobber",
+			"if_match": staleTag,
+		})
+		if err != nil {
+			t.Fatalf("CallTool: %v", err)
+		}
+		if !res.IsError {
+			t.Fatal("expected conflict error for stale literal If-Match")
+		}
+		text := flattenContent(res)
+		if !strings.Contains(text, "conflict") {
+			t.Errorf("expected 'conflict' in error: %s", text)
+		}
+		// force_write must NOT leak into the conflict path.
+		if strings.Contains(text, `"force_write":true`) {
+			t.Errorf("force_write must not appear on conflict path: %s", text)
+		}
+	})
+}
+
 // ---------- helpers ----------
 
 // flattenContent collects every text payload from a CallToolResult into

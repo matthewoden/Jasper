@@ -20,9 +20,11 @@ import (
 )
 
 // expectedToolNames is the D-16 canonical tool name list.
+// list_grants added in Plan 08-21 (R4-3): metadata read, no ACL check.
 var expectedToolNames = []string{
 	"create_note",
 	"delete_note",
+	"list_grants",
 	"list_notes",
 	"move_note",
 	"read_attachment",
@@ -39,7 +41,8 @@ func TestNewServer_ReturnsNonNilSDK(t *testing.T) {
 	}
 }
 
-// TestNewServer_All8ToolsRegistered uses the SDK's in-memory transport
+// TestNewServer_All8ToolsRegistered (now 9 tools — list_grants added 08-21)
+// uses the SDK's in-memory transport
 // to connect a client and run ListTools — the same path Claude Desktop
 // uses. The set of tool names must equal expectedToolNames exactly.
 func TestNewServer_All8ToolsRegistered(t *testing.T) {
