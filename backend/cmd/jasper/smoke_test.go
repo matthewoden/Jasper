@@ -85,13 +85,15 @@ func pickFreePort(t *testing.T) string {
 	return addr
 }
 
-// spawn starts the jasper binary with the given data-dir, addr, and
+// spawn starts the jasper binary with the given vault directory, addr, and
 // extra env vars. Returns the *exec.Cmd so the caller can SIGTERM it.
 // stderr/stdout are captured into the returned bytes.Buffer for
 // post-mortem on failure.
+//
+// Plan 08-23 (R4-15): switched from removed `--data-dir` to canonical `--vault`.
 func spawn(t *testing.T, dataDir, addr string, env []string) (*exec.Cmd, *bytes.Buffer) {
 	t.Helper()
-	cmd := exec.Command(jasperBin, "serve", "--data-dir", dataDir, "--addr", addr)
+	cmd := exec.Command(jasperBin, "serve", "--vault", dataDir, "--addr", addr)
 	cmd.Env = append(os.Environ(), env...)
 	var buf bytes.Buffer
 	cmd.Stdout = &buf

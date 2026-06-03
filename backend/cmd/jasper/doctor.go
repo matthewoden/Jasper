@@ -67,8 +67,9 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	// V-PARK-3 / UAT-2 round 2 G4: under the vault model, per-vault state
 	// (config.json, app.db, logs/) lives under <currentVault>/storage, NOT
 	// ~/.jasper/storage. Load app.json first to find the current vault, then
-	// use that path as dataDir for all per-vault checks. JASPER_DATA_DIR and
-	// --vault still override for support-tooling use.
+	// use that path as dataDir for all per-vault checks. --vault still
+	// overrides for support-tooling use.
+	// Plan 08-23 (R4-15): JASPER_DATA_DIR removed.
 	appJSONPath, _ := vault.AppJSONPath()
 	appState, _ := vault.LoadAppJSON(appJSONPath)
 
@@ -87,13 +88,10 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		currentVault = appState.CurrentVault
 	}
 
-	// dataDir: where do per-vault checks (migration, data-dir perms,
-	// logs) look? Under the vault model this IS currentVault. Pre-vault-
-	// model installs fall back to JASPER_DATA_DIR, then ~/.jasper.
+	// dataDir: where do per-vault checks (migration, vault perms,
+	// logs) look? Under the vault model this IS currentVault. If unset,
+	// fall back to the default app-home (~/.jasper).
 	dataDir := currentVault
-	if dataDir == "" {
-		dataDir = os.Getenv("JASPER_DATA_DIR")
-	}
 	if dataDir == "" {
 		dataDir = config.DefaultDataDir()
 	}

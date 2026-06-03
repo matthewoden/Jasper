@@ -28,10 +28,8 @@ Notes:
     directory manually after uninstall.
   - Idempotent — safe to run even if Jasper wasn't installed.`,
 	RunE: func(_ *cobra.Command, _ []string) error {
-		dataDir := os.Getenv("JASPER_DATA_DIR")
-		if dataDir == "" {
-			dataDir = config.DefaultDataDir()
-		}
+		// Plan 08-23 (R4-15): JASPER_DATA_DIR removed; resolve directly.
+		dataDir := config.DefaultDataDir()
 		svc, err := installer.New(dataDir)
 		if err != nil {
 			return fmt.Errorf("create service config: %w", err)

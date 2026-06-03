@@ -110,11 +110,12 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; owns
   const port = opts.port ?? await findFreePort();
   const ownsDataDir = opts.ownsDataDir;
   const binPath = path.join(repoRoot, "bin", "jasper");
+  // Plan 08-23 (R4-15): switched from removed --data-dir to canonical --vault.
   const proc = spawn(
     binPath,
     [
       "serve",
-      "--data-dir",
+      "--vault",
       dataDir,
       "--addr",
       `127.0.0.1:${port}`,

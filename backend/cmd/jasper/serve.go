@@ -56,7 +56,7 @@ const envMigrationsOverride = "JASPER_TEST_MIGRATIONS_DIR"
 // signature `runServe(args []string) error` is preserved so existing
 // callers (smoke_test.go) keep working.
 //
-// The serve flags (--data-dir, --addr) are kept on a flag.FlagSet
+// The serve flags (--vault, --addr) are kept on a flag.FlagSet
 // inside runServe rather than promoted to cobra-native flags because:
 //   - smoke_test.go and the broader integration test fleet drive
 //     runServe directly with an args slice, not via rootCmd.Execute(),
@@ -75,22 +75,22 @@ via --addr; dev mode reads the same port from scripts/port.sh so the
 Vite proxy at :5173 forwards /api → the running backend).
 Phase 8 enforces loopback binding via internal/netbind.
 
-The data directory holds three subdirectories:
+The vault directory holds:
   notes/    — your .md files (the source of truth)
-  storage/  — the SQLite index (regenerable from notes/)
+  .jasper/  — per-vault SQLite index, config, app.db (regenerable from notes/)
   logs/     — jasper.log with daily rotation
 
-Resolution order for --data-dir:
-  1. --data-dir flag
-  2. $JASPER_DATA_DIR environment variable
-  3. ~/.jasper (default)
+Vault resolution order (ADR-001):
+  1. --vault flag (absolute path; bypasses picker)
+  2. current_vault in ~/.jasper/app.json
+  3. picker UI served at /
 
 Examples:
-  $ jasper serve                              # default loopback bind, default data dir
-  $ jasper serve --data-dir /path/to/notes
+  $ jasper serve                              # default loopback bind; picker or app.json
+  $ jasper serve --vault /path/to/vault       # bypass picker
   $ jasper serve --addr 127.0.0.1:6700        # custom port (must match config.json server.port)`,
 	// DisableFlagParsing tells cobra to hand the raw args (after the
-	// "serve" token) to RunE without intercepting --addr / --data-dir.
+	// "serve" token) to RunE without intercepting --addr / --vault.
 	// runServe's flag.FlagSet then parses them just like before.
 	DisableFlagParsing: true,
 	RunE: func(_ *cobra.Command, args []string) error {
@@ -114,16 +114,16 @@ func setServeLogForTest(t interface{ Cleanup(func()) }, l *slog.Logger) {
 	t.Cleanup(func() { serveLog = orig })
 }
 
-// runServe parses flags, resolves the data directory per ADR-001
-// precedence (--vault > --data-dir alias > JASPER_DATA_DIR alias > ~/.jasper),
-// enforces the loopback bind rule, and runs app.Run until SIGINT/SIGTERM.
+// runServe parses flags, resolves the vault per ADR-001 precedence
+// (--vault > app.json current_vault > picker), enforces the loopback
+// bind rule, and runs app.Run until SIGINT/SIGTERM.
 //
 // --vault (ADR-001): canonical abs path to the vault; bypasses picker.
-// --data-dir: deprecated alias for --vault (warns); will be removed pre-v1.0.
-// JASPER_DATA_DIR: deprecated env alias for --vault (warns); retained for CI/tests.
+// Plan 08-23 (R4-15): the deprecated --data-dir flag and JASPER_DATA_DIR
+// env var aliases were removed. Greenfield posture (pre-v1.0) — no
+// user-side migration needed because they were never in production use.
 func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
-	dataDirFlag := fs.String("data-dir", "", "Path to data directory (deprecated: use --vault per ADR-001)")
 	addrFlag := fs.String("addr", defaultListenAddr,
 		"Listen address (loopback-only by default). Dev pipeline reads the same port from scripts/port.sh.")
 	// UAT-2 R4-1: --vault is declared as a root PersistentFlag (root.go), but
@@ -144,42 +144,26 @@ func runServe(args []string) error {
 
 	// ADR-001 precedence:
 	//   1. --vault <abs>       (CLI override; CI/E2E; bypasses picker)
-	//   2. --data-dir          (DEPRECATED ALIAS — warns; back-compat until removed pre-v1.0)
-	//   3. JASPER_DATA_DIR     (DEPRECATED ENV ALIAS — warns; retained for CI/tests)
-	//   4. app.json current_vault (read by resolveVaultMode in lifecycle.Run)
+	//   2. app.json current_vault (read by resolveVaultMode in lifecycle.Run)
+	//   3. picker UI at /
 	//
-	// Plan 08-17b: --vault / --data-dir / JASPER_DATA_DIR are promoted to
-	// cfg.VaultOverride (consumed by resolveVaultMode) instead of a local
-	// dataDir variable. The local `dataDir` variable from 17a is fully
-	// superseded; resolveVaultMode now reads cfg.VaultOverride directly.
-	var legacyDataDir string
-	switch {
-	case vaultFlag != "":
+	// Plan 08-17b: --vault is promoted to cfg.VaultOverride (consumed by
+	// resolveVaultMode). Plan 08-23: --data-dir and JASPER_DATA_DIR were
+	// the only other sources of cfg.VaultOverride; both removed.
+	var vaultOverride string
+	if vaultFlag != "" {
 		canonical, err := vault.Canonicalize(vaultFlag)
 		if err != nil {
 			return fmt.Errorf("invalid --vault path: %w", err)
 		}
-		// --vault populates VaultOverride to bypass app.json's current_vault.
-		// legacyDataDir also set for the Config.DataDir backward-compat field.
-		legacyDataDir = canonical
-	case *dataDirFlag != "":
-		log.Warn("--data-dir is deprecated; use --vault per ADR-001", "value", *dataDirFlag)
-		legacyDataDir = *dataDirFlag
-	case os.Getenv("JASPER_DATA_DIR") != "":
-		log.Warn("JASPER_DATA_DIR is deprecated and retained as a hidden alias for tests/CI; use --vault per ADR-001")
-		legacyDataDir = os.Getenv("JASPER_DATA_DIR")
-	default:
-		// No override: resolveVaultMode reads app.json's current_vault at boot.
-		// legacyDataDir stays empty; lifecycle.Run will populate cfg.DataDir
-		// once the vault is resolved.
-		legacyDataDir = ""
+		vaultOverride = canonical
 	}
-	absDataDir := legacyDataDir
-	if legacyDataDir != "" {
+	absVault := vaultOverride
+	if vaultOverride != "" {
 		var err error
-		absDataDir, err = filepath.Abs(legacyDataDir)
+		absVault, err = filepath.Abs(vaultOverride)
 		if err != nil {
-			return fmt.Errorf("resolve data-dir to absolute path: %w", err)
+			return fmt.Errorf("resolve vault path: %w", err)
 		}
 	}
 
@@ -192,16 +176,16 @@ func runServe(args []string) error {
 	}
 
 	// Populate app.Config. Server.Port defaults to 6683 (D-50). VaultOverride
-	// is set when --vault / --data-dir / JASPER_DATA_DIR points at a specific
-	// vault path; resolveVaultMode in lifecycle.Run reads it to bypass
-	// app.json's current_vault (ADR-001 §2). DataDir is set to the same
-	// value for backward compatibility with code that reads cfg.DataDir.
+	// is set when --vault points at a specific vault path; resolveVaultMode
+	// in lifecycle.Run reads it to bypass app.json's current_vault (ADR-001 §2).
+	// DataDir is set to the same value for backward compatibility with code
+	// that reads cfg.DataDir.
 	cfg := app.Config{
-		DataDir:       absDataDir,
-		Server:        config.ServerConfig{Port: 6683, DataDir: absDataDir},
+		DataDir:       absVault,
+		Server:        config.ServerConfig{Port: 6683, DataDir: absVault},
 		ListenAddr:    *addrFlag,
 		Logger:        log,
-		VaultOverride: absDataDir, // non-empty only when a flag/env was given
+		VaultOverride: absVault, // non-empty only when --vault was given
 	}
 
 	// Test-only: JASPER_TEST_MIGRATIONS_DIR replaces the embedded

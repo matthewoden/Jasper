@@ -45,14 +45,15 @@ fast and idempotent.`,
 	RunE: runInstall,
 }
 
-// runInstall is the cobra RunE — resolves the data dir, constructs the
-// service.Service via installer.New, calls Install (idempotent), then
-// finalizes via the platform-specific bootstrap/linger steps.
+// runInstall is the cobra RunE — resolves the app home directory (used by
+// the kardianos service config for the working dir + plist arguments),
+// calls Install (idempotent), then finalizes via the platform-specific
+// bootstrap/linger steps.
+//
+// Plan 08-23 (R4-15): JASPER_DATA_DIR was removed; this falls back
+// directly to ~/.jasper (DefaultDataDir's canonical app-home location).
 func runInstall(_ *cobra.Command, _ []string) error {
-	dataDir := os.Getenv("JASPER_DATA_DIR")
-	if dataDir == "" {
-		dataDir = config.DefaultDataDir()
-	}
+	dataDir := config.DefaultDataDir()
 
 	svc, err := installer.New(dataDir)
 	if err != nil {

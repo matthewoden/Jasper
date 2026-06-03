@@ -60,7 +60,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	appHome, appHomeErr := vault.AppHomePath()
 
 	// Load current vault info from app.json. On any error, fall through to
-	// the legacy data-dir path for backward compat.
+	// the default app-home path for backward compat.
 	var appState *vault.AppState
 	if appJSONErr == nil {
 		if state, err := vault.LoadAppJSON(appJSONPath); err == nil {
@@ -68,9 +68,10 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Resolve the data directory for legacy config + service status.
+	// Resolve the data directory for config + service status.
 	// With the vault model, this is either the vault from --vault flag,
-	// the current_vault from app.json, or the legacy default.
+	// the current_vault from app.json, or the default app home (~/.jasper).
+	// Plan 08-23 (R4-15): JASPER_DATA_DIR removed as fallback.
 	var dataDir string
 	if vaultFlag != "" {
 		if c, err := vault.Canonicalize(vaultFlag); err == nil {
@@ -81,10 +82,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	} else if appState != nil && appState.CurrentVault != "" {
 		dataDir = appState.CurrentVault
 	} else {
-		dataDir = os.Getenv("JASPER_DATA_DIR")
-		if dataDir == "" {
-			dataDir = config.DefaultDataDir()
-		}
+		dataDir = config.DefaultDataDir()
 	}
 
 	// Print vault section (V-PARK-3 update).

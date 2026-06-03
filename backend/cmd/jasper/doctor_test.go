@@ -25,7 +25,10 @@ import (
 // stdout is a single JSON array, each element shaped like DoctorCheck.
 func TestDoctor_JSONFlag_EmitsParseableArray(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("JASPER_DATA_DIR", dir)
+	// Plan 08-23 (R4-15): JASPER_DATA_DIR removed; use --vault (vaultFlag).
+	orig := vaultFlag
+	vaultFlag = dir
+	t.Cleanup(func() { vaultFlag = orig })
 	// Pre-seed the data dir with mode 0700 so checkDataDirPerms doesn't
 	// fail noisily.
 	_ = os.Chmod(dir, 0o700)
@@ -59,7 +62,9 @@ func TestDoctor_JSONFlag_EmitsParseableArray(t *testing.T) {
 // at least one ✓/✗/· marker per line.
 func TestDoctor_TextOutput_HasMarkers(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("JASPER_DATA_DIR", dir)
+	orig := vaultFlag
+	vaultFlag = dir
+	t.Cleanup(func() { vaultFlag = orig })
 	_ = os.Chmod(dir, 0o700)
 	t.Cleanup(func() { doctorJSON = false })
 	doctorJSON = false
@@ -333,7 +338,9 @@ func TestRunDoctor_FailingChecks_ReturnsError(t *testing.T) {
 	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	t.Setenv("JASPER_DATA_DIR", blocker)
+	orig := vaultFlag
+	vaultFlag = blocker
+	t.Cleanup(func() { vaultFlag = orig })
 	t.Cleanup(func() { doctorJSON = false })
 	doctorJSON = false
 
@@ -363,7 +370,9 @@ func TestDoctor_AppJSONReadableCheck_PassesOnValidFile(t *testing.T) {
 	dir := t.TempDir()
 	appHome := filepath.Join(dir, "appHome")
 	t.Setenv("JASPER_APP_HOME", appHome)
-	t.Setenv("JASPER_DATA_DIR", dir)
+	orig := vaultFlag
+	vaultFlag = dir
+	t.Cleanup(func() { vaultFlag = orig })
 	_ = os.Chmod(dir, 0o700)
 	t.Cleanup(func() { doctorJSON = false })
 	doctorJSON = false
@@ -397,11 +406,11 @@ func TestDoctor_CurrentVaultMissingCheck_FailsAfterDeletion(t *testing.T) {
 	dir := t.TempDir()
 	appHome := filepath.Join(dir, "appHome")
 	t.Setenv("JASPER_APP_HOME", appHome)
-	t.Setenv("JASPER_DATA_DIR", dir)
 	_ = os.Chmod(dir, 0o700)
 	t.Cleanup(func() { doctorJSON = false })
 	doctorJSON = false
-	// Clear vault flag.
+	// Plan 08-23: --vault is the only override now; clear it so app.json
+	// is the source of currentVault for this test.
 	orig := vaultFlag
 	vaultFlag = ""
 	t.Cleanup(func() { vaultFlag = orig })
@@ -447,11 +456,10 @@ func TestDoctor_JSONMode_IncludesNewChecks(t *testing.T) {
 	dir := t.TempDir()
 	appHome := filepath.Join(dir, "appHome")
 	t.Setenv("JASPER_APP_HOME", appHome)
-	t.Setenv("JASPER_DATA_DIR", dir)
 	_ = os.Chmod(dir, 0o700)
 	t.Cleanup(func() { doctorJSON = false })
 	doctorJSON = true
-	// Clear vault flag.
+	// Plan 08-23: clear vaultFlag so app.json drives currentVault.
 	orig := vaultFlag
 	vaultFlag = ""
 	t.Cleanup(func() { vaultFlag = orig })

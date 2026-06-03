@@ -57,10 +57,15 @@ func writeMinimalConfig(t *testing.T, dataDir string, cfg config.Config) {
 
 // TestRunStatus_NoConfig_PrintsSetupHint asserts the not-yet-set-up
 // branch: with no config.json on disk, status prints the wizard hint.
+//
+// Plan 08-23 (R4-15): switched from removed JASPER_DATA_DIR env to --vault
+// (via vaultFlag) to point status at the per-test tempdir.
 func TestRunStatus_NoConfig_PrintsSetupHint(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JASPER_APP_HOME", filepath.Join(dir, "appHome"))
-	t.Setenv("JASPER_DATA_DIR", dir)
+	orig := vaultFlag
+	vaultFlag = dir
+	t.Cleanup(func() { vaultFlag = orig })
 
 	var buf bytes.Buffer
 	cmd := &cobra.Command{}
@@ -80,7 +85,9 @@ func TestRunStatus_NoConfig_PrintsSetupHint(t *testing.T) {
 func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JASPER_APP_HOME", filepath.Join(dir, "appHome"))
-	t.Setenv("JASPER_DATA_DIR", dir)
+	orig := vaultFlag
+	vaultFlag = dir
+	t.Cleanup(func() { vaultFlag = orig })
 	writeMinimalConfig(t, dir, config.Config{
 		AppName: "Jasper",
 		Theme:   "dark",
@@ -97,11 +104,18 @@ func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 		t.Fatalf("runStatus: %v", err)
 	}
 	out := buf.String()
+	// Plan 08-23 (R4-15): Path comes through vault.Canonicalize which
+	// EvalSymlinks (turning /var/... into /private/var/... on macOS) and
+	// lowercases on darwin. Compute expected dir the same way.
+	canon, err := vault.Canonicalize(dir)
+	if err != nil {
+		t.Fatalf("canonicalize: %v", err)
+	}
 	for _, want := range []string{
 		"Jasper service: running",
 		"Bound on:       127.0.0.1:6683",
-		"Data directory: " + dir,
-		filepath.Join(dir, "logs", "jasper.log"),
+		"Data directory: " + canon,
+		filepath.Join(canon, "logs", "jasper.log"),
 		"MCP enabled:    no",
 	} {
 		if !strings.Contains(out, want) {
@@ -115,7 +129,9 @@ func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 func TestRunStatus_McpEnabledWithGrants(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JASPER_APP_HOME", filepath.Join(dir, "appHome"))
-	t.Setenv("JASPER_DATA_DIR", dir)
+	orig := vaultFlag
+	vaultFlag = dir
+	t.Cleanup(func() { vaultFlag = orig })
 	writeMinimalConfig(t, dir, config.Config{
 		AppName: "Jasper",
 		Theme:   "dark",
@@ -278,8 +294,7 @@ func TestStatus_NoVaultSelectedShowsPickerMessage(t *testing.T) {
 	dir := t.TempDir()
 	appHome := filepath.Join(dir, "appHome")
 	t.Setenv("JASPER_APP_HOME", appHome)
-	// Also clear JASPER_DATA_DIR so the legacy fallback doesn't interfere.
-	t.Setenv("JASPER_DATA_DIR", filepath.Join(dir, "datadir"))
+	// Plan 08-23 (R4-15): no JASPER_DATA_DIR fallback exists post-removal.
 	orig := vaultFlag
 	vaultFlag = ""
 	t.Cleanup(func() { vaultFlag = orig })

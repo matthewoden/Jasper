@@ -19,7 +19,7 @@ import (
 // vaultFlag is the persistent --vault flag shared across all subcommands.
 // When set, it overrides app.json current_vault for the current invocation
 // (useful for CI, E2E tests, and single-vault power-user workflows).
-// Per ADR-001: --vault > JASPER_DATA_DIR (deprecated alias) > app.json > picker.
+// Per ADR-001 (post Plan 08-23): --vault > app.json > picker.
 var vaultFlag string
 
 // rootCmd is the top-level `jasper` cobra command. `main.go` simply
