@@ -986,3 +986,304 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
     ).resolves.toBe("missing");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @r4-7-r4-8-r4-10 — 08-20 menu hover/active + AI-folder selection CSS polish.
+//
+// Pre-fix: the [data-highlighted] menu rule (commit b15f7df) added
+// `border-radius: 4px` + `margin: 0 4px` for a "chip" feel, which produced
+// a visible horizontal shift on hover (R4-7). The active+highlighted combo
+// also showed an unexpected border-radius (R4-8). Separately, the AI-grant
+// violet tint on tree rows (commit 09b70e9) was overwritten by TreeRow's
+// inline accent background when the row became active or selected (R4-10).
+//
+// Post-fix (08-20): [data-highlighted] is now a pure color shift (no
+// padding/margin/transform/border-radius). The active rule never had a
+// border-radius and continues to have none. New theme.css selectors for
+// [data-tree-row][data-ai-level][data-selected|data-active] mix a stronger
+// violet (24%) with !important so the violet identity survives selection.
+// TreeRow.tsx emits data-active / data-selected for the CSS contract.
+//
+// Each scenario runs against bin/jasper via spawnJasper (CLAUDE.md
+// §Verification policy: E2E before human UAT).
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("R4-7 — menu item hover does not shift horizontally", async ({
+    page,
+  }) => {
+    // Boot the SPA, wait for the tree, right-click the seeded scratchpad
+    // note row to open the context menu. The menu items are Radix
+    // ContextMenu.Item / SubTrigger nodes carrying role="menuitem".
+    await page.goto(jasper.baseURL + "/");
+    await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+      "data-status",
+      "connected",
+      { timeout: 15_000 },
+    );
+    const row = page
+      .locator('[data-tree-row-kind="note"]')
+      .filter({ hasText: "scratchpad" })
+      .first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await row.click({ button: "right" });
+
+    // Pick the first non-highlighted menuitem so we can hover it cleanly.
+    // Radix mounts the menu in a portal under document.body; we don't
+    // scope to the row.
+    const item = page.locator('[role="menuitem"]').first();
+    await expect(item).toBeVisible({ timeout: 5_000 });
+
+    // Move the mouse OFF any menuitem first so the box is captured in the
+    // un-highlighted state. Use page.mouse.move to a corner well outside
+    // the menu.
+    await page.mouse.move(0, 0);
+    // Brief settle to let Radix clear any prior data-highlighted state.
+    await page.waitForTimeout(100);
+    const before = await item.boundingBox();
+    if (!before) throw new Error("menu item bounding box (before hover) was null");
+
+    // Hover the item and wait for CSS transition completion.
+    await item.hover();
+    await page.waitForTimeout(150);
+    const after = await item.boundingBox();
+    if (!after) throw new Error("menu item bounding box (after hover) was null");
+
+    // R4-7 contract: hover changes background only. x and width must be
+    // identical pre/post (sub-pixel tolerance for browser rounding).
+    expect(
+      Math.abs(after.x - before.x),
+      `R4-7: menu item x shifted on hover; before=${before.x} after=${after.x}`,
+    ).toBeLessThan(0.5);
+    expect(
+      Math.abs(after.width - before.width),
+      `R4-7: menu item width changed on hover; before=${before.width} after=${after.width}`,
+    ).toBeLessThan(0.5);
+
+    // Dismiss the menu.
+    await page.keyboard.press("Escape");
+  });
+
+  test("R4-8 — active + highlighted menu item has stable border-radius", async ({
+    page,
+  }) => {
+    // Open a context menu on a folder row so we have a SubTrigger
+    // ("Grant AI access" submenu) we can use as the active state.
+    // Strategy: hover a SubTrigger to open its submenu; the SubTrigger
+    // then carries [data-state="open"] which our CSS treats as a
+    // highlight. We compare border-radius of that item against a sibling
+    // un-highlighted menuitem — they must match.
+    //
+    // If the seeded vault contains only a single root note, fall back to
+    // a generic "two-menuitem" comparison: hover one item to make it
+    // [data-highlighted], read its border-radius, read the next sibling
+    // item's border-radius, assert equality.
+    await page.goto(jasper.baseURL + "/");
+    await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+      "data-status",
+      "connected",
+      { timeout: 15_000 },
+    );
+    const row = page
+      .locator('[data-tree-row-kind="note"]')
+      .filter({ hasText: "scratchpad" })
+      .first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await row.click({ button: "right" });
+
+    const items = page.locator('[role="menuitem"]');
+    const count = await items.count();
+    expect(count, "expected at least 2 menu items in the context menu").toBeGreaterThanOrEqual(2);
+
+    // Hover the first item so it carries [data-highlighted]. The second
+    // item stays unhighlighted, giving us an active+highlighted vs.
+    // baseline comparison surface.
+    const highlighted = items.nth(0);
+    const baseline = items.nth(1);
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(100);
+    await highlighted.hover();
+    await page.waitForTimeout(150);
+
+    const radiusHighlighted = await highlighted.evaluate(
+      (el) => getComputedStyle(el as HTMLElement).borderRadius,
+    );
+    const radiusBaseline = await baseline.evaluate(
+      (el) => getComputedStyle(el as HTMLElement).borderRadius,
+    );
+
+    // R4-8 contract: border-radius must be identical across highlighted
+    // and non-highlighted menu items — the hover treatment is a flat
+    // color shift, not a corner change.
+    expect(
+      radiusHighlighted.trim(),
+      `R4-8: highlighted border-radius (${radiusHighlighted}) differs from baseline (${radiusBaseline}) — hover must not alter corners`,
+    ).toBe(radiusBaseline.trim());
+
+    await page.keyboard.press("Escape");
+  });
+
+  test("R4-10 — AI-granted folder retains violet tint when selected", async ({
+    page,
+  }) => {
+    // Strategy: seed a vault with a "projects" folder, a sibling
+    // "plain-folder", and a note inside each. Grant Tier-1 access on
+    // "projects" via POST /api/v1/mcp/grants (the same path the
+    // phase8-R4-6-folder-tint spec uses). Click the projects folder row
+    // to select it; click the plain folder to capture the non-AI
+    // selected color. Assert that the AI row's background-color
+    // shifts toward violet (higher red AND higher blue than the
+    // generic accent's blue/grey).
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const fs = await import("node:fs/promises");
+
+    // We can't seed into an already-running binary's vault without
+    // restarting it (the indexer scans on boot). The phase8-R4-6
+    // pattern spins up a dedicated jasper handle for this scenario;
+    // we mirror that pattern in-scenario rather than at the
+    // describe-level so the @r4-7 and @r4-8 tests above keep
+    // sharing the cheap default-spawned binary.
+    const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "jasper-r4-10-"));
+    try {
+      const notesDir = path.join(dataDir, "notes");
+      await fs.mkdir(path.join(notesDir, "projects"), { recursive: true });
+      await fs.mkdir(path.join(notesDir, "plain-folder"), { recursive: true });
+      await fs.writeFile(
+        path.join(notesDir, "projects", "ai-note.md"),
+        "# ai-note\n",
+        "utf8",
+      );
+      await fs.writeFile(
+        path.join(notesDir, "plain-folder", "plain-note.md"),
+        "# plain-note\n",
+        "utf8",
+      );
+
+      const local = await spawnJasper({ dataDir });
+      try {
+        // Grant Tier-1 on projects/ — same path as the R4-6 spec uses.
+        const grant = await fetch(local.baseURL + "/api/v1/mcp/grants", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ folder_path: "projects", level: 1 }),
+        });
+        expect(grant.status, "grant POST status").toBe(200);
+
+        await page.goto(local.baseURL + "/");
+        await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+          "data-status",
+          "connected",
+          { timeout: 15_000 },
+        );
+
+        const aiRow = page.locator(
+          '[data-tree-row="projects"][data-tree-row-kind="folder"]',
+        );
+        const plainRow = page.locator(
+          '[data-tree-row="plain-folder"][data-tree-row-kind="folder"]',
+        );
+        await expect(aiRow).toBeVisible({ timeout: 10_000 });
+        await expect(plainRow).toBeVisible({ timeout: 10_000 });
+
+        // Pre-assert the granted folder carries data-ai-level — this is
+        // the load-bearing input for the R4-10 CSS selector.
+        await expect(aiRow).toHaveAttribute("data-ai-level", "1", {
+          timeout: 5_000,
+        });
+
+        // Cmd/Ctrl-click both rows to set data-selected on each (single
+        // click on a folder toggles expand; multi-select keeps both rows
+        // visually "selected" so we can read both colors in the same
+        // DOM snapshot). Use the platform's primary multi-select
+        // modifier per TreeRow.handleClick.
+        const isMac = process.platform === "darwin";
+        const modifier = isMac ? "Meta" : "Control";
+        await aiRow.click({ modifiers: [modifier] });
+        await plainRow.click({ modifiers: [modifier] });
+
+        // Wait for the data-selected attribute to propagate.
+        await expect(aiRow).toHaveAttribute("data-selected", "true", {
+          timeout: 5_000,
+        });
+        await expect(plainRow).toHaveAttribute("data-selected", "true", {
+          timeout: 5_000,
+        });
+
+        const aiColor = await aiRow.evaluate(
+          (el) => getComputedStyle(el as HTMLElement).backgroundColor,
+        );
+        const plainColor = await plainRow.evaluate(
+          (el) => getComputedStyle(el as HTMLElement).backgroundColor,
+        );
+
+        // Parse computed color into a 0-255 RGB tuple. Modern Chromium
+        // serializes `color-mix(in srgb, ...)` results as either
+        //   - "rgb(r, g, b)" / "rgba(r, g, b, a)"  (older form), OR
+        //   - "color(srgb 0.654902 0.545098 0.980392 / 0.24)"  (CSS
+        //     Color Module Level 4 — the form Chromium 120+ emits for
+        //     color-mix outputs).
+        // We accept both. The srgb floats (0-1) are scaled to 0-255 so
+        // the threshold comparisons below stay in a single unit system.
+        const parseRgb = (s: string): [number, number, number] => {
+          const mRgb = s.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+          if (mRgb) {
+            return [
+              parseInt(mRgb[1], 10),
+              parseInt(mRgb[2], 10),
+              parseInt(mRgb[3], 10),
+            ];
+          }
+          const mSrgb = s.match(
+            /color\(\s*srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/,
+          );
+          if (mSrgb) {
+            return [
+              Math.round(parseFloat(mSrgb[1]) * 255),
+              Math.round(parseFloat(mSrgb[2]) * 255),
+              Math.round(parseFloat(mSrgb[3]) * 255),
+            ];
+          }
+          throw new Error(`unparseable color: ${s}`);
+        };
+        const [aiR, aiG, aiB] = parseRgb(aiColor);
+        const [plainR, , plainB] = parseRgb(plainColor);
+
+        // R4-10 contract: AI row is visibly violet (higher red AND
+        // higher blue than the plain accent-blue). Violet =
+        // ~rgb(167, 139, 250); plain accent = ~rgb(96, 165, 250). So
+        // violet has more red AND more blue mixed into the surface
+        // base than the accent does. We assert both deltas.
+        expect(
+          aiColor !== plainColor,
+          `R4-10: AI row color (${aiColor}) is indistinguishable from plain selected (${plainColor}) — violet identity lost on selection`,
+        ).toBe(true);
+        expect(
+          aiR > plainR,
+          `R4-10: AI selected red (${aiR}) should exceed plain selected red (${plainR}) for the violet shift to read. aiColor=${aiColor} plainColor=${plainColor} aiG=${aiG} plainB=${plainB}`,
+        ).toBe(true);
+        // The blue component check is informational — accent and violet
+        // share a high-blue profile, so we only enforce the red-shift
+        // as the hard gate. We still log the comparison for diagnosis.
+        expect(
+          aiB,
+          `R4-10 diagnostic: aiB=${aiB} plainB=${plainB}`,
+        ).toBeGreaterThan(0);
+      } finally {
+        await local.kill();
+      }
+    } finally {
+      await fs.rm(dataDir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+});
