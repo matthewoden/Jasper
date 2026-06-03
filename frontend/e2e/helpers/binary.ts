@@ -104,8 +104,13 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..");
  * Spawn a Jasper binary against the given dataDir and port.
  * If dataDir is not provided, an ephemeral tmpdir is created.
  * If port is not provided, a free port is allocated.
+ *
+ * env (08-24 R4-14): optional environment overlay merged on top of
+ * process.env. Used by the deterministic-timing MCP race spec to set
+ * JASPER_MCP_TEST_DELAY without leaking into unrelated tests. Pass
+ * undefined to inherit process.env verbatim.
  */
-async function spawnJasperInternal(opts: { dataDir?: string; port?: number; ownsDataDir: boolean }): Promise<JasperHandle> {
+async function spawnJasperInternal(opts: { dataDir?: string; port?: number; ownsDataDir: boolean; env?: NodeJS.ProcessEnv }): Promise<JasperHandle> {
   const dataDir = opts.dataDir ?? await mkdtemp(path.join(tmpdir(), "jasper-e2e-"));
   const port = opts.port ?? await findFreePort();
   const ownsDataDir = opts.ownsDataDir;
@@ -122,6 +127,7 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; owns
     ],
     {
       stdio: ["ignore", "pipe", "pipe"],
+      env: opts.env ? { ...process.env, ...opts.env } : process.env,
     },
   );
   proc.stdout?.on("data", (b) => {
@@ -157,7 +163,7 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; owns
     await new Promise((r) => setTimeout(r, 200));
     // Spawn a new instance against the same dataDir + same port.
     // The new handle owns the dataDir cleanup (ownsDataDir: true → same as original).
-    return spawnJasperInternal({ dataDir, port, ownsDataDir });
+    return spawnJasperInternal({ dataDir, port, ownsDataDir, env: opts.env });
   };
 
   return { proc, port, dataDir, baseURL, kill, restart };
@@ -171,6 +177,13 @@ export interface SpawnOpts {
    * will NOT be deleted on kill(). Use kill() on the new handle only.
    */
   dataDir?: string;
+  /**
+   * Optional environment overlay (merged on top of process.env). Used by the
+   * 08-24 R4-14 deterministic-timing MCP race spec to set
+   * JASPER_MCP_TEST_DELAY without leaking into unrelated tests. Empty/undefined
+   * inherits process.env verbatim.
+   */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -195,7 +208,7 @@ export async function spawnJasper(opts: SpawnOpts = {}): Promise<JasperHandle> {
   if (opts.dataDir !== undefined) {
     // Caller-provided dataDir: caller owns cleanup (ownsDataDir=false so kill()
     // does NOT delete it — the caller manages the directory lifecycle).
-    return spawnJasperInternal({ dataDir: opts.dataDir, ownsDataDir: false });
+    return spawnJasperInternal({ dataDir: opts.dataDir, ownsDataDir: false, env: opts.env });
   }
-  return spawnJasperInternal({ ownsDataDir: true });
+  return spawnJasperInternal({ ownsDataDir: true, env: opts.env });
 }
