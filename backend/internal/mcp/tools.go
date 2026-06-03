@@ -31,7 +31,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -355,6 +357,22 @@ func (s *Server) registerCreateNote() {
 		displayTitle, sanErr := sanitizeCreateTitle(args.Title)
 		if sanErr != nil {
 			return nil, CreateNoteResult{}, fmt.Errorf("invalid_path: %w", sanErr)
+		}
+		// 08-24 R4-14 test hook: when JASPER_MCP_TEST_DELAY is set to a
+		// non-zero integer milliseconds (1..9999), sleep that long BEFORE
+		// the atomic write to widen the race window for the deterministic-
+		// timing phase8-mcp-vault-switch.spec.ts test. The sleep respects
+		// the request context so V6's drain-cap (2s) can still cancel an
+		// in-flight write when the vault swap times out. NEVER enabled in
+		// production builds; the env var is undocumented and unsupported.
+		if d := os.Getenv("JASPER_MCP_TEST_DELAY"); d != "" {
+			if ms, err := strconv.Atoi(d); err == nil && ms > 0 && ms < 10000 {
+				select {
+				case <-time.After(time.Duration(ms) * time.Millisecond):
+				case <-ctx.Done():
+					return nil, CreateNoteResult{}, ctx.Err()
+				}
+			}
 		}
 		// 08-19 R4-1 atomic create: notes.Service.CreateWithBody composes
 		// (scaffold + body) in memory and writes it via a SINGLE atomic

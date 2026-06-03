@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -960,6 +961,42 @@ func TestUpdateNoteIfMatchWildcard(t *testing.T) {
 }
 
 // ---------- helpers ----------
+
+// ---------- 16. JASPER_MCP_TEST_DELAY throttle hook (08-24 R4-14) ----------
+
+// TestCreateNoteRespectsTestDelay verifies that the debug-only
+// JASPER_MCP_TEST_DELAY env var widens the create_note write window by the
+// configured number of milliseconds. The hook exists exclusively so the
+// phase8-mcp-vault-switch.spec.ts deterministic-timing test can reproduce
+// the V-TEST-4 race; production builds never set this env var.
+func TestCreateNoteRespectsTestDelay(t *testing.T) {
+	// Cannot t.Parallel — t.Setenv requires non-parallel.
+	const delayMS = 200
+	t.Setenv("JASPER_MCP_TEST_DELAY", strconv.Itoa(delayMS))
+	f := newTestServer(t)
+	if _, err := f.ACL.Set(context.Background(), "projects", mcp.TierEditOnly, "test"); err != nil {
+		t.Fatalf("Set grant: %v", err)
+	}
+	start := time.Now()
+	res, err := f.callTool(t, "create_note", map[string]any{
+		"path": "projects/delayed.md",
+	})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool error: %v", flattenContent(res))
+	}
+	if elapsed < time.Duration(delayMS)*time.Millisecond {
+		t.Errorf("expected create_note to sleep >= %dms with JASPER_MCP_TEST_DELAY=%d; got %v",
+			delayMS, delayMS, elapsed)
+	}
+	// Sanity: file landed on disk after the throttle.
+	if _, err := os.Stat(filepath.Join(f.Root, "projects", "delayed.md")); err != nil {
+		t.Errorf("expected projects/delayed.md on disk after throttled create: %v", err)
+	}
+}
 
 // flattenContent collects every text payload from a CallToolResult into
 // a single string so assertions can grep for substrings.
