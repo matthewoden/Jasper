@@ -437,10 +437,12 @@ func (r *Runner) refreshNoteCount(ctx context.Context) {
 //
 //  1. Set Status = Rebuilding so admin/status surfaces the progress
 //     overlay.
-//  2. BEGIN IMMEDIATE; DROP TABLE IF EXISTS notes; DELETE FROM
-//     schema_migrations; COMMIT. The notes table is the only derived
-//     table in Phase 2; future phases (6 tags, 6 backlinks, 7 FTS5)
-//     extend the drop list.
+//  2. BEGIN IMMEDIATE; DROP every derived table (see dropStatements);
+//     COMMIT. All tables created by migrations must be listed here so
+//     that applyAll can re-create them from a truly clean slate.
+//     MAINTENANCE NOTE: when adding a new NNN_*.sql migration that
+//     creates tables, add a corresponding DROP TABLE IF EXISTS entry in
+//     dropStatements below, ordered so FK dependents are dropped first.
 //  3. Re-run every migration on the clean schema via discoverPending +
 //     applyAll. If any migration breaks on the now-clean schema, the
 //     whole rebuild is unrecoverable (Path 3) — there is no prior
@@ -460,9 +462,14 @@ func (r *Runner) refreshNoteCount(ctx context.Context) {
 func (r *Runner) RebuildAndReindex(ctx context.Context) (Status, error) {
 	r.store.set(Status{State: StateRebuilding, LogsPath: r.LogsPath})
 
-	// 1. Drop derived tables. schema_migrations is preserved as a
-	// table but truncated separately so the next applyAll re-runs
-	// every migration on the clean schema.
+	// 1. Drop all derived tables so applyAll can re-create them from a
+	// clean slate. Order matters: FK dependents must be dropped before
+	// their referenced tables.
+	//
+	// MAINTENANCE: add a DROP TABLE IF EXISTS here for every table (or
+	// virtual table) that a new NNN_*.sql migration creates. Omitting a
+	// table here causes RebuildAndReindex to 503 "unrecoverable" because
+	// re-applying the migration will fail on a duplicate CREATE TABLE.
 	tx, err := r.Pair.BeginImmediate(ctx)
 	if err != nil {
 		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
@@ -485,6 +492,10 @@ func (r *Runner) RebuildAndReindex(ctx context.Context) (Status, error) {
 		`DROP TABLE IF EXISTS tags`,
 		// Phase 1 notes table (001_initial.sql).
 		`DROP TABLE IF EXISTS notes`,
+		// Phase 8 MCP write ACL table (004_mcp_grants.sql). No FK
+		// references to notes — safe to drop in any order relative to
+		// notes, but listed here before schema_migrations for clarity.
+		`DROP TABLE IF EXISTS mcp_write_grants`,
 		// schema_migrations is dropped (NOT just truncated via
 		// `DELETE FROM schema_migrations`) because the 001_initial.sql
 		// migration body itself creates the table — if we kept the
