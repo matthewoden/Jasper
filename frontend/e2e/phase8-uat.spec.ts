@@ -2296,3 +2296,108 @@ test.describe("Phase 8 — sb5 menu vertical spacing (@sb5)", () => {
     await page.keyboard.press("Escape");
   });
 });
+
+// ---------------------------------------------------------------------------
+// 260603-six — Notes-sidebar kebab DropdownMenu opens to the RIGHT of the
+// trigger (side="right" align="start"), not below over the row.
+// Asserts geometry against bin/jasper (built via `make build`) so we catch
+// any future regression of the prop change in TreeRowMenu.tsx:534.
+// ---------------------------------------------------------------------------
+test.describe("Phase 8 — 260603-six kebab opens right (@six-kebab-right)", () => {
+  test("kebab DropdownMenu opens to the right of the trigger with top-aligned edge", async ({
+    page,
+  }) => {
+    const pathMod = await import("node:path");
+    const fsP = await import("node:fs/promises");
+
+    const local = await spawnAndBootstrapVault({
+      appHomeSuffix: "jasper-six-kebab-app-",
+      vaultSuffix: "jasper-six-kebab-vault-",
+      seed: async (vault) => {
+        const notesDir = pathMod.join(vault, "notes");
+        await fsP.mkdir(pathMod.join(notesDir, "projects"), { recursive: true });
+        await fsP.writeFile(
+          pathMod.join(notesDir, "projects", "note.md"),
+          "# note\n",
+          "utf8",
+        );
+      },
+    });
+    try {
+      await page.goto(local.baseURL + "/");
+      await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+        "data-status",
+        "connected",
+        { timeout: 15_000 },
+      );
+
+      // Locate the projects/ folder row.
+      const projectsRow = page.locator(
+        '[data-tree-row="projects"][data-tree-row-kind="folder"]',
+      );
+      await expect(projectsRow).toBeVisible({ timeout: 10_000 });
+
+      // Kebab is `opacity:0` until group-hover — hover the row first.
+      await projectsRow.hover();
+      const kebab = projectsRow.locator("[data-tree-row-kebab]");
+      await expect(kebab).toBeVisible({ timeout: 5_000 });
+
+      const kebabBox = await kebab.boundingBox();
+      if (!kebabBox) {
+        throw new Error("six-kebab-right: kebab boundingBox was null");
+      }
+
+      await kebab.click();
+
+      // Scope to the menu that opened on the right — the Radix data-side
+      // attribute is set on the Content element. If the menu opened on a
+      // different side (collision-detection flip), this locator will not
+      // resolve and the test will halt — per plan HALT-IF-INCONCLUSIVE GATE
+      // we do NOT relax the assertion.
+      const menu = page.locator('[role="menu"][data-side="right"]');
+      await expect(
+        menu,
+        "kebab DropdownMenu must open on the right (data-side=\"right\"). " +
+          "If this fails, Radix collision-detection likely flipped the menu — " +
+          "HALT and surface for human triage; do NOT relax the assertion.",
+      ).toBeVisible({ timeout: 5_000 });
+
+      const menuBox = await menu.boundingBox();
+      if (!menuBox) {
+        throw new Error("six-kebab-right: menu boundingBox was null");
+      }
+
+      const viewport = page.viewportSize();
+      if (!viewport) {
+        throw new Error("six-kebab-right: viewport size was null");
+      }
+
+      // 1. Menu's LEFT edge sits at or to the right of the trigger's RIGHT edge.
+      //    The -1 tolerates sub-pixel layout rounding.
+      expect(
+        menuBox.x,
+        `menu.x (${menuBox.x}) must be >= kebab.right (${kebabBox.x + kebabBox.width}) - 1; ` +
+          `menu opened on wrong side`,
+      ).toBeGreaterThanOrEqual(kebabBox.x + kebabBox.width - 1);
+
+      // 2. Menu's TOP edge is aligned with the kebab's TOP edge.
+      //    align="start" + sideOffset={4} → expect within ~6px.
+      const yDelta = Math.abs(menuBox.y - kebabBox.y);
+      expect(
+        yDelta,
+        `|menu.y - kebab.y| (${yDelta}) must be <= 6 (align="start" should top-align)`,
+      ).toBeLessThanOrEqual(6);
+
+      // 3. Menu fits within the viewport horizontally (no clipping).
+      expect(
+        menuBox.x + menuBox.width,
+        `menu right edge (${menuBox.x + menuBox.width}) must be within viewport ` +
+          `(${viewport.width})`,
+      ).toBeLessThanOrEqual(viewport.width);
+
+      await page.keyboard.press("Escape");
+    } finally {
+      await local.cleanup();
+    }
+  });
+});
