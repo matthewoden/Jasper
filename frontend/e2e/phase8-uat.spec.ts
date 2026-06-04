@@ -2213,3 +2213,86 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @sb5 — sb5 (2026-06-03) menu-item vertical spacing.
+//
+// Pre-fix: items sat flush against each other (height: 32px, no margin),
+// user requested more breathing room between items after UAT-2 R5.
+// Post-fix: theme.css adds `margin-top: 4px` to every menuitem that
+// follows another menuitem. Outer container padding (TreeRowMenu
+// paddingTop/paddingBottom: 4) MUST stay untouched.
+//
+// This scenario runs against bin/jasper via spawnJasper
+// (CLAUDE.md §Verification policy: E2E before human UAT).
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe("Phase 8 — sb5 menu vertical spacing (@sb5)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("sb5 — consecutive menu items have a visible vertical gap", async ({ page }) => {
+    await page.goto(jasper.baseURL + "/");
+    await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+      "data-status",
+      "connected",
+      { timeout: 15_000 },
+    );
+    const row = page
+      .locator('[data-tree-row-kind="note"]')
+      .filter({ hasText: "scratchpad" })
+      .first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await row.click({ button: "right" });
+
+    const items = page.locator('[role="menuitem"]');
+    const count = await items.count();
+    expect(count, "expected at least 2 menu items in the context menu").toBeGreaterThanOrEqual(2);
+
+    // Move the mouse OFF the menu so no item carries [data-highlighted];
+    // we are measuring resting-state geometry, not hover-state geometry.
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(100);
+
+    // Pick the first two items that are adjacent siblings in the DOM
+    // (Radix renders separators between groups; the first two items in
+    // every TreeRowMenu opened on the scratchpad row are siblings —
+    // "Open", "Rename" — so items.nth(0) + items.nth(1) is safe here).
+    const first = items.nth(0);
+    const second = items.nth(1);
+
+    const firstBox = await first.boundingBox();
+    const secondBox = await second.boundingBox();
+    if (!firstBox || !secondBox) {
+      throw new Error("menu item bounding boxes were null");
+    }
+
+    const gap = secondBox.y - (firstBox.y + firstBox.height);
+
+    // sb5 contract: items must be visibly separated.
+    // Pre-fix gap was 0 (items flush); rule adds 4px margin-top.
+    // Allow >= 3px tolerance for sub-pixel rendering.
+    expect(
+      gap,
+      `sb5: expected vertical gap between consecutive menu items >= 3px, got ${gap}px ` +
+        `(first.y=${firstBox.y} first.height=${firstBox.height} second.y=${secondBox.y})`,
+    ).toBeGreaterThanOrEqual(3);
+
+    // Also assert the gap is bounded — guards against an accidental
+    // "16px margin everywhere" regression. Item-height is 32px; 4px
+    // gap is ~12% of item height. A 12px ceiling catches anything
+    // that would feel like a misclick target.
+    expect(
+      gap,
+      `sb5: gap should stay small (<= 12px), got ${gap}px`,
+    ).toBeLessThanOrEqual(12);
+
+    await page.keyboard.press("Escape");
+  });
+});
