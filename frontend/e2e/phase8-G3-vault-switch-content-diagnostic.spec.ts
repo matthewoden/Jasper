@@ -351,25 +351,16 @@ test.describe("G3 — vault switch content swap diagnostic", () => {
           2,
         ),
       );
-      // eslint-disable-next-line no-console
       console.log(`\n[diag] wrote diagnostic dump to ${dumpPath}\n`);
-      // eslint-disable-next-line no-console
       console.log(`\n[diag] SUMMARY:`);
-      // eslint-disable-next-line no-console
       console.log(`  reloadOccurred=${reloadOccurred}`);
-      // eslint-disable-next-line no-console
       console.log(`  editor BEFORE: ${editorContentBefore.slice(0, 80)}`);
-      // eslint-disable-next-line no-console
       console.log(`  editor AFTER:  ${editorContentAfter.slice(0, 80)}`);
-      // eslint-disable-next-line no-console
       console.log(`  ws frames (last 10):`);
       for (const f of wsFrames.slice(-10)) {
-        // eslint-disable-next-line no-console
-        console.log(`    [${f.t}ms ${f.dir}] ${f.event ?? ""} ${f.preview}`);
+          console.log(`    [${f.t}ms ${f.dir}] ${f.event ?? ""} ${f.preview}`);
       }
-      // eslint-disable-next-line no-console
       console.log(`  navigations: ${JSON.stringify(navigations)}`);
-      // eslint-disable-next-line no-console
       console.log(`  request failures: ${JSON.stringify(responseEvents.filter(r => r.failure || r.status >= 400))}`);
 
       // Soft assertions — surface results in test output but don't gate on

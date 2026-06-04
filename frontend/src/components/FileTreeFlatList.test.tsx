@@ -218,7 +218,7 @@ describe("FileTree — flat-list mode (Phase 6 activeTagFilter branch)", () => {
     renderFileTree();
 
     await waitFor(() => {
-      const chip = screen.getByRole("button", { name: "Remove tag filter: mytag" });
+      const chip = screen.getByRole("button", { name: "Remove tag filter: #mytag" });
       expect(chip).toBeInTheDocument();
     });
   });

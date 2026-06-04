@@ -431,7 +431,6 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         // primary invariant is "no partial file", and that is upheld by
         // the absence of the file on disk. Document the path the run took
         // so a future flake investigator can correlate with binary logs.
-        // eslint-disable-next-line no-console
         console.warn(
           `R4-14 took the drain-cap arm — race.md absent on disk; ` +
             `mcpError=${mcpError ? mcpError.message : "null"}, ` +

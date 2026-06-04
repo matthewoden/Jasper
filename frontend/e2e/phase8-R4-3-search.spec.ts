@@ -145,7 +145,6 @@ test.describe("Phase 8 R4-3 — search partial number + hyphen escape", () => {
       const deadline = Date.now() + 8_000;
       let r123: Response;
       let r123Body: { results: Array<{ title: string; path: string }> };
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         r123 = await fetch(`${handle.baseURL}/api/v1/search?q=123&limit=10`);
         if (r123.ok) {
