@@ -531,7 +531,16 @@ export function TreeRowDropdownMenu({
     <DropdownMenu.Root open={open} onOpenChange={onOpenChange}>
       <DropdownMenu.Trigger asChild>{children}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content style={menuContainerStyle} align="end">
+        {/* Open to the right of the kebab trigger with the top edge aligned
+            to the trigger's top — keeps the source row visible (otherwise
+            the default side="bottom" align="end" drops the menu over the
+            narrow sidebar row the user just clicked). */}
+        <DropdownMenu.Content
+          style={menuContainerStyle}
+          side="right"
+          align="start"
+          sideOffset={4}
+        >
           <MenuItems
             {...props}
             ItemComp={DropdownMenu.Item}
