@@ -649,3 +649,26 @@ body {
   background: color-mix(in srgb, var(--color-ai-grant-strong) 24%, transparent) !important;
 }
 
+/* ── sb5 (2026-06-03) — vertical breathing room between menu items ────
+   User feedback after UAT-2 R5: items currently sit flush against each
+   other (item height 32px, no margin). Add a 4px top margin to every
+   menu item that follows another menu item — adjacent-sibling so the
+   gap appears BETWEEN items only, never above the first item or below
+   the last. Outer container padding (TreeRowMenu menuContainerStyle
+   paddingTop/paddingBottom: 4) stays untouched.
+
+   Composes safely with R4-7 (pure colour hover) and R4-8 (active +
+   stripe): margin lives outside the painted box, so background /
+   border-radius / box-shadow contracts are unaffected. After a
+   [role="separator"] the next item drops back to its natural top
+   (the separator already carries its own margin: 4px 0) so dividers
+   still feel like dividers rather than gaps inside gaps.
+
+   Verified by the @sb5 Playwright scenario in phase8-uat.spec.ts
+   which captures boundingBox().y of two consecutive menuitems and
+   asserts the visible vertical gap is >= 3px (sub-pixel tolerance).
+   ───────────────────────────────────────────────────────────────── */
+[role^="menuitem"] + [role^="menuitem"] {
+  margin-top: 4px;
+}
+
