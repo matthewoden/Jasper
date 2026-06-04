@@ -1476,10 +1476,15 @@ export interface components {
         };
         RevealResponse: {
             /**
-             * @description Host platform the reveal was executed on (D-26 / D-28).
+             * @description Host platform the reveal was executed on. `darwin` opens Finder with
+             *     the file selected (`open -R`). `wsl2` opens Explorer with the file
+             *     selected (`explorer.exe /select,<wslpath>`). `linux` (native, not
+             *     WSL2) opens the parent directory in the default file manager via
+             *     `xdg-open` — `xdg-open` cannot pre-select a target file, so the
+             *     best-effort UX is parent-directory navigation (D-26 / D-28).
              * @enum {string}
              */
-            platform: "darwin" | "wsl2";
+            platform: "darwin" | "wsl2" | "linux";
         };
         McpGrant: {
             /** @description Canonical NFC+lowercase rel path under notes/ (DATA-11). */

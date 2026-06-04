@@ -8,7 +8,10 @@ package api
 //   - darwin (macOS):   exec "open" "-R" <abs>           → Finder opens, file selected
 //   - linux (WSL2):     exec "wslpath" "-w" <abs>        → translate to Windows path
 //                       exec "explorer.exe" "/select,<wp>" → Explorer opens, file selected
-//   - linux (native):   501 + friendly message naming the abs path (D-28; v1 scope)
+//   - linux (native):   exec "xdg-open" <parent_dir>     → default file manager opens
+//                       at the parent directory. xdg-open cannot pre-select a target
+//                       file; opening the parent dir is the best-effort UX (closes
+//                       D-28 for v1.1).
 //   - other GOOS:       501 + generic "not supported" message
 //
 // Path-traversal hardened with the same 5-rule pipeline as files.go GetFile
@@ -46,12 +49,14 @@ import (
 // "microsoft" on WSL kernels — case-insensitive match).
 var osreleasePath = "/proc/sys/kernel/osrelease"
 
-// revealDarwinFn / revealWSL2Fn are the exec dispatchers, factored out as
-// package vars so reveal_handler_test.go can swap them with table-driven
-// fakes without shelling out. Production values use exec.CommandContext.
+// revealDarwinFn / revealWSL2Fn / revealLinuxFn are the exec dispatchers,
+// factored out as package vars so reveal_handler_test.go can swap them with
+// table-driven fakes without shelling out. Production values use
+// exec.CommandContext.
 var (
 	revealDarwinFn = revealOnDarwin
 	revealWSL2Fn   = revealOnWSL2
+	revealLinuxFn  = revealOnLinux
 )
 
 // PostReveal implements POST /api/v1/reveal — opens the host OS file manager
@@ -91,10 +96,15 @@ func (s *Server) PostReveal(
 			}
 			return PostReveal200JSONResponse{Platform: Wsl2}, nil
 		}
-		// D-28: native Linux is out of v1 scope. Surface the abs path so the
-		// user can copy it into another tool. UI-SPEC §Copywriting toast.
-		return PostReveal501JSONResponse(newError("not_supported",
-			fmt.Sprintf("Show in file manager isn't supported on Linux yet. The file is at %s.", abs))), nil
+		// Native Linux (v1.1, closes D-28): xdg-open the parent directory.
+		// xdg-open cannot pre-select a file the way Finder/Explorer do, so we
+		// fall back to opening the parent directory in the default file
+		// manager. For directory targets, abs IS the directory.
+		if err := revealLinuxFn(ctx, abs); err != nil {
+			s.log.Error("PostReveal: linux dispatch failed", "path", abs, "err", err)
+			return PostReveal500JSONResponse(newError("exec_failed", "Could not open file manager")), nil
+		}
+		return PostReveal200JSONResponse{Platform: Linux}, nil
 
 	default:
 		return PostReveal501JSONResponse(newError("not_supported", "platform not supported")), nil
@@ -171,6 +181,29 @@ func revealOnWSL2(ctx context.Context, abs string) error {
 	}
 	go func() { _ = cmd.Wait() }()
 	return nil
+}
+
+// revealOnLinux opens the default file manager at the parent directory of
+// the target. xdg-open(1) has no equivalent of `open -R` or `explorer.exe
+// /select,` — invoking xdg-open on a file would open the file in its default
+// app (image viewer, text editor, etc.) which is NOT what "Reveal in file
+// manager" means. Opening the parent directory gives the user a file
+// manager window at the correct location; the file itself is not
+// pre-selected.
+//
+// For directory targets (D-26 — reveal is wired to both note and folder
+// rows), abs IS the directory we want to open, so opening abs directly is
+// correct.
+//
+// The ctx ties the child process lifetime to the HTTP request (T-08-24).
+// xdg-open exits with status 0 once the file manager spawn succeeds — no
+// goroutine drain dance needed (unlike explorer.exe's /select quirk).
+func revealOnLinux(ctx context.Context, abs string) error {
+	target := abs
+	if fi, err := os.Lstat(abs); err == nil && !fi.IsDir() {
+		target = filepath.Dir(abs)
+	}
+	return exec.CommandContext(ctx, "xdg-open", target).Run()
 }
 
 // isWSL returns true when the current Linux host is WSL2 — detected by the
