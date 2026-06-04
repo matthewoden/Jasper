@@ -437,12 +437,11 @@ func (r *Runner) refreshNoteCount(ctx context.Context) {
 //
 //  1. Set Status = Rebuilding so admin/status surfaces the progress
 //     overlay.
-//  2. BEGIN IMMEDIATE; DROP every derived table (see dropStatements);
-//     COMMIT. All tables created by migrations must be listed here so
-//     that applyAll can re-create them from a truly clean slate.
-//     MAINTENANCE NOTE: when adding a new NNN_*.sql migration that
-//     creates tables, add a corresponding DROP TABLE IF EXISTS entry in
-//     dropStatements below, ordered so FK dependents are dropped first.
+//  2. BEGIN IMMEDIATE; DROP every derived table; COMMIT. The drop
+//     list is derived at runtime from the embedded migrations via
+//     deriveDropStatements — newer migrations' tables drop first,
+//     schema_migrations drops last. Adding a new NNN_*.sql migration
+//     is automatically picked up; no manual list maintenance.
 //  3. Re-run every migration on the clean schema via discoverPending +
 //     applyAll. If any migration breaks on the now-clean schema, the
 //     whole rebuild is unrecoverable (Path 3) — there is no prior
@@ -459,54 +458,32 @@ func (r *Runner) refreshNoteCount(ctx context.Context) {
 // holds reindexBusy for the entire call; combined with
 // Pair.Writer.SetMaxOpenConns(1), no concurrent Service.Update can
 // interleave with the DROP.
+//
+// Historical note: the drop list was previously hardcoded. Phase 8
+// added `004_mcp_grants.sql` (mcp_write_grants) without updating the
+// list, which caused every rebuild to 503 "unrecoverable" because
+// re-applying 004 hit a duplicate CREATE TABLE. Resolved in commit
+// 0240d36 (hardcoded fix) then structurally eliminated by switching
+// to deriveDropStatements.
 func (r *Runner) RebuildAndReindex(ctx context.Context) (Status, error) {
 	r.store.set(Status{State: StateRebuilding, LogsPath: r.LogsPath})
 
-	// 1. Drop all derived tables so applyAll can re-create them from a
-	// clean slate. Order matters: FK dependents must be dropped before
-	// their referenced tables.
-	//
-	// MAINTENANCE: add a DROP TABLE IF EXISTS here for every table (or
-	// virtual table) that a new NNN_*.sql migration creates. Omitting a
-	// table here causes RebuildAndReindex to 503 "unrecoverable" because
-	// re-applying the migration will fail on a duplicate CREATE TABLE.
+	// 1. Derive drop list from the embedded migrations and drop every
+	// derived table so applyAll can re-create them from a clean slate.
+	// Order (newest migration first, schema_migrations last) is handled
+	// inside deriveDropStatements.
+	dropStatements, err := deriveDropStatements(r.Migrations)
+	if err != nil {
+		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
+		r.store.set(out)
+		return out, fmt.Errorf("%w: derive drop list: %v", ErrUnrecoverable, err)
+	}
+
 	tx, err := r.Pair.BeginImmediate(ctx)
 	if err != nil {
 		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
 		r.store.set(out)
 		return out, fmt.Errorf("%w: rebuild begin: %v", ErrUnrecoverable, err)
-	}
-	dropStatements := []string{
-		// Phase 7 FTS5 virtual table (003_fts.sql). MUST be dropped before
-		// notes because notes_fts is declared with `content='notes'` —
-		// rebuilding the FTS table after notes is dropped would fail on the
-		// re-apply pass with "table notes_fts already exists". The triggers
-		// (notes_fts_ai/au/ad) are tied to the `notes` table and disappear
-		// automatically when notes is dropped, but the virtual table itself
-		// is independent.
-		`DROP TABLE IF EXISTS notes_fts`,
-		// Phase 6 derived tables (002_tags_backlinks.sql). Must be dropped
-		// before notes because note_tags/backlinks FK-reference notes(id).
-		`DROP TABLE IF EXISTS backlinks`,
-		`DROP TABLE IF EXISTS note_tags`,
-		`DROP TABLE IF EXISTS tags`,
-		// Phase 1 notes table (001_initial.sql).
-		`DROP TABLE IF EXISTS notes`,
-		// Phase 8 MCP write ACL table (004_mcp_grants.sql). No FK
-		// references to notes — safe to drop in any order relative to
-		// notes, but listed here before schema_migrations for clarity.
-		`DROP TABLE IF EXISTS mcp_write_grants`,
-		// schema_migrations is dropped (NOT just truncated via
-		// `DELETE FROM schema_migrations`) because the 001_initial.sql
-		// migration body itself creates the table — if we kept the
-		// table around with rows deleted, re-running 001 would fail on
-		// the duplicate CREATE TABLE schema_migrations. Dropping it
-		// lets applyAll rebuild the entire derived schema from a truly
-		// clean slate.
-		// (Rule 1 deviation from 02-04b plan text: the plan suggested
-		// `DELETE FROM schema_migrations` but that conflicts with the
-		// CREATE TABLE schema_migrations statement inside 001_initial.sql.)
-		`DROP TABLE IF EXISTS schema_migrations`,
 	}
 	for _, stmt := range dropStatements {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
