@@ -292,7 +292,7 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
 // ──────────────────────────────────────────────────────────────────────────
 describe("WR-09 — DeleteTarget carries canonical id/path", () => {
   it("WR-09 / Test 1: note variant requires `id: string`", () => {
-    const validNote: import("./DeleteConfirmDialog").DeleteTarget = {
+    const validNote: import("./deleteConfirmDialog.utils").DeleteTarget = {
       kind: "note",
       name: "foo.md",
       id: "uuid-foo",
@@ -300,7 +300,7 @@ describe("WR-09 — DeleteTarget carries canonical id/path", () => {
     expect(validNote.kind).toBe("note");
 
     // @ts-expect-error — note variant without `id` must be a type error.
-    const missingId: import("./DeleteConfirmDialog").DeleteTarget = {
+    const missingId: import("./deleteConfirmDialog.utils").DeleteTarget = {
       kind: "note",
       name: "foo.md",
     };
@@ -310,7 +310,7 @@ describe("WR-09 — DeleteTarget carries canonical id/path", () => {
   });
 
   it("WR-09 / Test 2: folder variant requires `path: string`", () => {
-    const validFolder: import("./DeleteConfirmDialog").DeleteTarget = {
+    const validFolder: import("./deleteConfirmDialog.utils").DeleteTarget = {
       kind: "folder",
       name: "projects",
       path: "projects",
@@ -320,7 +320,7 @@ describe("WR-09 — DeleteTarget carries canonical id/path", () => {
     expect(validFolder.kind).toBe("folder");
 
     // @ts-expect-error — folder variant without `path` must be a type error.
-    const missingPath: import("./DeleteConfirmDialog").DeleteTarget = {
+    const missingPath: import("./deleteConfirmDialog.utils").DeleteTarget = {
       kind: "folder",
       name: "projects",
       noteCount: 0,
@@ -330,7 +330,7 @@ describe("WR-09 — DeleteTarget carries canonical id/path", () => {
   });
 
   it("WR-09 / Test 3: multi variant is unchanged ({ kind, count } only)", () => {
-    const validMulti: import("./DeleteConfirmDialog").DeleteTarget = {
+    const validMulti: import("./deleteConfirmDialog.utils").DeleteTarget = {
       kind: "multi",
       count: 5,
     };

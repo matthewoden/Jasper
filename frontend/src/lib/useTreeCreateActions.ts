@@ -56,7 +56,7 @@ import {
   useTreeMutations,
 } from "./useTreeMutations";
 import { useTreeStore } from "./useTreeStore";
-import { useToast } from "../components/Toast";
+import { useToast } from "../components/toast.utils";
 
 export interface UseTreeCreateActions {
   createNoteAt: (parentPath: string) => Promise<void>;

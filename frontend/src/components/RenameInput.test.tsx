@@ -10,7 +10,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { TreeMutationError } from "../lib/useTreeMutations";
-import { RenameInput, validateRename } from "./RenameInput";
+import { RenameInput } from "./RenameInput";
+import { validateRename } from "./renameInput.utils";
 
 describe("validateRename — pure validation function", () => {
   it("accepts a normal name", () => {

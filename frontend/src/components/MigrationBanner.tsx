@@ -15,7 +15,7 @@ import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
 
 import type { UseMigrationStatusResult } from "../lib/useMigrationStatus";
-import { useToast } from "./Toast";
+import { useToast } from "./toast.utils";
 
 interface Props {
   onResetConfirm: () => void;

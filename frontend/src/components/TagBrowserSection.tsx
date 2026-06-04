@@ -33,7 +33,7 @@ import { useTagBrowser } from "../lib/useTagBrowser";
 import { renameTag, deleteTag } from "../lib/tagsApi";
 import { TagDeleteConfirmDialog } from "./TagDeleteConfirmDialog";
 import { RenameInput } from "./RenameInput";
-import { useToast } from "./Toast";
+import { useToast } from "./toast.utils";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Locked styles (UI-SPEC §Surface 1)

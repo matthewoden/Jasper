@@ -33,7 +33,7 @@ vi.mock("./mcpGrantsApi", () => ({
 // ToastProvider wrapper. We mock useToast directly so we can read the
 // toast() calls without depending on Radix's portal rendering.
 const toastSpy = vi.fn();
-vi.mock("../components/Toast", () => ({
+vi.mock("../components/toast.utils", () => ({
   useToast: () => ({ toast: toastSpy }),
   ToastProvider: ({ children }: { children: ReactNode }) => children,
 }));

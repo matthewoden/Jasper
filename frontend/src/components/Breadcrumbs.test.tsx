@@ -20,7 +20,7 @@ import { useTreeStore } from "../lib/useTreeStore";
 
 // Mock expandAndScrollToFolder
 const mockExpandAndScrollToFolder = vi.fn();
-vi.mock("./FileTree", () => ({
+vi.mock("./fileTree.utils", () => ({
   expandAndScrollToFolder: (...args: unknown[]) =>
     mockExpandAndScrollToFolder(...args),
 }));

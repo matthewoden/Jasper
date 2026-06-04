@@ -32,47 +32,15 @@
 import { useCallback, useRef } from "react";
 import type React from "react";
 
-import {
-  useTreeStore,
-  SIDEBAR_WIDTH_DEFAULT,
-} from "../lib/useTreeStore";
+import { useTreeStore, SIDEBAR_WIDTH_DEFAULT } from "../lib/useTreeStore";
+
+import { computeMaxWidth } from "./sidebarResizeHandle.utils";
 
 const SIDEBAR_WIDTH_MIN = SIDEBAR_WIDTH_DEFAULT;
 
-/**
- * Editor pane needs at least 320px to remain usable.
- *
- * BL-03 (Phase 5.5 gap-closure Plan 11) — narrow-viewport fix. Previously
- * `Math.max(SIDEBAR_WIDTH_MIN, innerWidth - 320)` floored to MIN whenever
- * the viewport was too narrow for both floors, which let the sidebar
- * consume editor pane area. The replacement: when the viewport can't
- * satisfy both floors, give the editor pane whatever's left
- * (`innerWidth - EDITOR_MIN`, floored at 0). The sidebar may end up
- * narrower than its preferred MIN on tiny viewports — acceptable
- * degradation for the unsupported-but-not-broken case.
- *
- * Computed dynamically so a window-resize between drags (or even
- * mid-drag) reflects the new viewport's max.
- */
-const EDITOR_MIN = 320;
-const computeMaxWidth = (): number => {
-  const room = window.innerWidth - EDITOR_MIN;
-  if (room < SIDEBAR_WIDTH_MIN) {
-    // Viewport too narrow for both floors — preserve the editor floor
-    // by giving the sidebar only the leftover room (or 0 on degenerate
-    // sub-EDITOR_MIN viewports).
-    return Math.max(0, room);
-  }
-  return room;
-};
-
-/**
- * Internal-only export for unit tests. Lets tests reach `computeMaxWidth`
- * and the `EDITOR_MIN` constant directly without going through the React
- * component shell. Public consumers should NOT depend on this; the shape
- * is allowed to change without a major bump.
- */
-export const __testing__ = { computeMaxWidth, EDITOR_MIN };
+// Re-exported helpers (computeMaxWidth, EDITOR_MIN, __testing__) live in
+// ./sidebarResizeHandle.utils.ts — keeps this file's exports React-only so
+// Fast Refresh works without warnings.
 
 // Phase 6.6 D-12/D-14: cursor-only affordance — no visible band.
 // Pitfall 5: absolute clientX math (Math.min/max + computeMaxWidth) preserved here

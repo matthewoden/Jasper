@@ -4,10 +4,13 @@
  * Per CONTEXT.md API-03: the frontend NEVER hand-writes a request shape.
  * All API calls route through the typed openapi-fetch client.
  *
- * Backend (Plan 08-05) dispatches per host platform:
+ * Backend (Plan 08-05, extended in v1.1 for native Linux) dispatches per
+ * host platform:
  *   - macOS  → `open -R <abs>`, 200 {platform: "darwin"}
  *   - WSL2   → `wslpath -w` + `explorer.exe /select,...`, 200 {platform: "wsl2"}
- *   - Linux  → 501 {code: "not_supported", message: "...The file is at {abs_path}."}
+ *   - Linux  → `xdg-open <parent_dir>`, 200 {platform: "linux"} — xdg-open
+ *              cannot pre-select a target file, so the parent directory opens
+ *              in the default file manager (closes D-28 / SHARE-01).
  *   - Other  → 4xx/5xx Error envelope
  *
  * This wrapper preserves the {ok, platform?, status, errorMessage?} shape so
@@ -21,7 +24,7 @@ export interface RevealResult {
   /** true on 2xx; false on every non-2xx outcome (4xx / 5xx / 501). */
   ok: boolean;
   /** Present iff ok === true. Platform that handled the dispatch (D-26/D-28). */
-  platform?: "darwin" | "wsl2";
+  platform?: "darwin" | "wsl2" | "linux";
   /** HTTP status — used to specialize the 501 toast copy in useReveal. */
   status: number;
   /** Server-provided message string when error is present (T-08-25: never HTML, always plain text). */

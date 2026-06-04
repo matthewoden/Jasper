@@ -27,10 +27,8 @@ import {
   SIDEBAR_WIDTH_DEFAULT,
   useTreeStore,
 } from "../lib/useTreeStore";
-import {
-  __testing__,
-  SidebarResizeHandle,
-} from "./SidebarResizeHandle";
+import { SidebarResizeHandle } from "./SidebarResizeHandle";
+import { __testing__ } from "./sidebarResizeHandle.utils";
 
 function dispatchPointerMove(clientX: number) {
   // jsdom: PointerEvent is not constructible; MouseEvent dispatched with

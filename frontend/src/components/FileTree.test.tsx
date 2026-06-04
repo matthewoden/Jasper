@@ -29,8 +29,8 @@ import {
 import type { Tree } from "../lib/treeApi";
 import { useTreeStore } from "../lib/useTreeStore";
 import { TreeMutationError } from "../lib/useTreeMutations";
+import { FileTree } from "./FileTree";
 import {
-  FileTree,
   adaptToArborist,
   basename,
   buildMultiDeleteTarget,
@@ -41,7 +41,7 @@ import {
   isCycleDrop,
   resetTreeListLayout,
   type ArboristNode,
-} from "./FileTree";
+} from "./fileTree.utils";
 import type { TreeRowData } from "./TreeRow";
 import type { NodeApi, TreeApi } from "react-arborist";
 import { ToastProvider } from "./Toast";

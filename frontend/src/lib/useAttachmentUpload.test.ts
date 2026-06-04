@@ -19,7 +19,7 @@ import type { AttachmentUploadResult } from "./attachmentApi";
 
 // Mock useToast
 const mockToastFn = vi.fn();
-vi.mock("../components/Toast", () => ({
+vi.mock("../components/toast.utils", () => ({
   useToast: () => ({
     toast: mockToastFn,
   }),

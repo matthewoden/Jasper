@@ -1,0 +1,360 @@
+/**
+ * FileTree pure helpers (Phase 3 + 5.5 + 7). Extracted from
+ * FileTree.tsx so the component file only exports React components —
+ * satisfies react-refresh/only-export-components and restores Fast
+ * Refresh DX for the sidebar file-tree surface.
+ *
+ * Everything here is pure (no React hooks, no DOM dependencies other
+ * than the small set used by `expandAndScrollToFolder` and
+ * `resetTreeListLayout`). All functions are exercised by FileTree.test.tsx
+ * directly.
+ */
+import type React from "react";
+import type { NodeApi, TreeApi } from "react-arborist";
+
+import type {
+  Tree as WireTree,
+  TreeNode as WireTreeNode,
+} from "../lib/treeApi";
+import { useTreeStore } from "../lib/useTreeStore";
+import type { TreeRowData } from "./TreeRow";
+
+/**
+ * The shape react-arborist actually walks: id is unique across
+ * folders+notes via a "folder:" / "note:" prefix; name is the visible
+ * label (used by arborist for keyboard search); data preserves the
+ * original wire shape so TreeRow can branch on `kind` without
+ * re-parsing; children is folder-only (notes are leaves).
+ */
+export interface ArboristNode {
+  id: string;
+  name: string;
+  data: TreeRowData;
+  children?: ArboristNode[];
+}
+
+/**
+ * Build a path → noteId lookup map by walking the wire tree.
+ * Used by adaptToArborist to resolve parentNoteId for attachment files.
+ * Only note nodes are indexed — folder and file nodes are skipped.
+ */
+export function buildNotePathMap(
+  nodes: readonly WireTreeNode[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+  const visit = (n: WireTreeNode) => {
+    if (n.kind === "note") {
+      map.set(n.path, n.id);
+    } else if (n.kind === "folder" && n.children) {
+      for (const child of n.children) visit(child);
+    }
+  };
+  for (const n of nodes) visit(n);
+  return map;
+}
+
+/**
+ * Derive the parentNoteId for a file node at `filePath`.
+ *
+ * Plan 07-26 (UAT-2 R1-7) narrowed scope: only files inside an
+ * `attachments/` subfolder are click-routable in v1.
+ *
+ * @deprecated Plan 07-32b (UAT-3 R7) — TreeRow no longer reads
+ * FileNodeData.parentNoteId. The new file-click handler calls
+ * `useTreeStore.setActiveFilePath(data.path)`, which drives
+ * EditorPane → FilePreviewView with the generic GET /api/v1/files
+ * endpoint. This function is preserved as a dead-write to satisfy D-41
+ * ADD-only.
+ */
+export function deriveParentNoteId(
+  filePath: string,
+  notePathMap: Map<string, string>,
+): string | undefined {
+  const idx = filePath.indexOf("/attachments/");
+  if (idx < 0) return undefined;
+  const ownerDir = filePath.slice(0, idx);
+
+  const siblingNote = ownerDir + ".md";
+  if (notePathMap.has(siblingNote)) {
+    return notePathMap.get(siblingNote);
+  }
+
+  const prefix = ownerDir + "/";
+  for (const [notePath, noteId] of notePathMap) {
+    if (notePath.startsWith(prefix) && notePath.endsWith(".md")) {
+      return noteId;
+    }
+  }
+
+  return undefined;
+}
+
+export function adaptToArborist(
+  node: WireTreeNode,
+  notePathMap?: Map<string, string>,
+): ArboristNode {
+  if (node.kind === "folder") {
+    return {
+      id: "folder:" + node.path,
+      name: node.name,
+      data: { kind: "folder", path: node.path, name: node.name },
+      children: (node.children ?? []).map((c) =>
+        adaptToArborist(c, notePathMap),
+      ),
+    };
+  }
+  if (node.kind === "file") {
+    const parentNoteId = notePathMap
+      ? deriveParentNoteId(node.path, notePathMap)
+      : undefined;
+    return {
+      id: "file:" + node.path,
+      name: node.name,
+      data: { kind: "file", path: node.path, name: node.name, parentNoteId },
+    };
+  }
+  return {
+    id: "note:" + node.id,
+    name: node.title,
+    data: {
+      kind: "note",
+      id: node.id,
+      path: node.path,
+      title: node.title,
+    },
+  };
+}
+
+export function adaptTree(wireTree: WireTree): ArboristNode[] {
+  const notePathMap = buildNotePathMap(wireTree.root);
+  return wireTree.root.map((n) => adaptToArborist(n, notePathMap));
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Path helpers (pure).
+// ────────────────────────────────────────────────────────────────────
+
+export function basename(path: string): string {
+  const i = path.lastIndexOf("/");
+  return i === -1 ? path : path.slice(i + 1);
+}
+
+export function composeNewPath(parent: string, name: string): string {
+  if (parent === "") return name;
+  return `${parent}/${name}`;
+}
+
+// ────────────────────────────────────────────────────────────────────
+// computeMoveTarget — drag-drop destination resolver (Plan 03-11).
+// ────────────────────────────────────────────────────────────────────
+export interface MoveTarget {
+  newPath: string;
+  isNoOp: boolean;
+}
+
+export function computeMoveTarget(args: {
+  sourcePath: string;
+  parentNode: NodeApi<ArboristNode> | null;
+}): MoveTarget {
+  const { sourcePath, parentNode } = args;
+  let parentPath = "";
+  if (parentNode != null) {
+    const pData = parentNode.data.data;
+    if (pData.kind === "folder") {
+      parentPath = pData.path;
+    } else {
+      const grand = parentNode.parent;
+      if (grand && grand.data.data.kind === "folder") {
+        parentPath = grand.data.data.path;
+      } else {
+        parentPath = "";
+      }
+    }
+  }
+  const baseName = basename(sourcePath);
+  const newPath = composeNewPath(parentPath, baseName);
+  return { newPath, isNoOp: newPath === sourcePath };
+}
+
+/**
+ * UX-13 (Plan 07): decide which DeleteConfirmDialog variant to open.
+ */
+export function buildMultiDeleteTarget(
+  d: TreeRowData,
+  selectedNodes: ReadonlyArray<NodeApi<ArboristNode>>,
+): { kind: "multi"; count: number } | null {
+  const isMulti =
+    selectedNodes.length > 1 && selectedNodes.some((n) => n.data.data === d);
+  if (isMulti) {
+    return { kind: "multi", count: selectedNodes.length };
+  }
+  return null;
+}
+
+/**
+ * UX-13 (Plan 07): execute a batch delete over a captured snapshot of
+ * arborist's selectedNodes. Sequential, graceful partial-completion.
+ */
+export async function executeBatchDelete(
+  selectedSnapshot: ReadonlyArray<NodeApi<ArboristNode>>,
+  muts: {
+    deleteNote: (id: string) => Promise<unknown>;
+    deleteFolder: (path: string, recursive: boolean) => Promise<unknown>;
+  },
+): Promise<{ succeeded: number; total: number }> {
+  let succeeded = 0;
+  const total = selectedSnapshot.length;
+  for (const node of selectedSnapshot) {
+    const data = node.data.data;
+    try {
+      if (data.kind === "note") {
+        await muts.deleteNote(data.id);
+      } else {
+        await muts.deleteFolder(data.path, true);
+      }
+      succeeded += 1;
+    } catch (err) {
+      console.warn(
+        "executeBatchDelete: per-item delete failed; continuing",
+        err,
+      );
+    }
+  }
+  return { succeeded, total };
+}
+
+/**
+ * UX-13 (Plan 07): descendant-deselect cascade for folder multi-selection.
+ */
+export function deselectDescendantsOfFolders(
+  nodes: ReadonlyArray<NodeApi<ArboristNode>>,
+  deselect: (id: string) => void,
+): void {
+  const selectedFolders = nodes.filter((n) => n.data.data.kind === "folder");
+  if (selectedFolders.length === 0) return;
+  const collectIds = (n: NodeApi<ArboristNode>): string[] => {
+    const out: string[] = [];
+    if (!n.children) return out;
+    for (const child of n.children) {
+      out.push(child.id);
+      out.push(...collectIds(child));
+    }
+    return out;
+  };
+  for (const folder of selectedFolders) {
+    for (const id of collectIds(folder)) {
+      deselect(id);
+    }
+  }
+}
+
+/**
+ * Walk the wire tree starting at the matching folder path; returns the
+ * counts of immediate notes + immediate subfolders for the delete
+ * dialog body.
+ */
+export function countDescendants(
+  tree: WireTree | null,
+  folderPath: string,
+): { notes: number; folders: number } {
+  let notes = 0;
+  let folders = 0;
+  const findFolder = (
+    nodes: readonly WireTreeNode[],
+  ): WireTreeNode | null => {
+    for (const n of nodes) {
+      if (n.kind === "folder" && n.path === folderPath) return n;
+      if (n.kind === "folder" && n.children) {
+        const found = findFolder(n.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  if (!tree) return { notes, folders };
+  const folder = findFolder(tree.root);
+  if (!folder || folder.kind !== "folder" || !folder.children)
+    return { notes, folders };
+  for (const child of folder.children) {
+    if (child.kind === "folder") folders++;
+    else notes++;
+  }
+  return { notes, folders };
+}
+
+/**
+ * BL-02 (Phase 5.5 gap-closure Plan 10) — cycle-prevention check for the
+ * native-DnD bypass. Folder cannot be dropped onto itself or its
+ * descendants.
+ */
+export function isCycleDrop(
+  dragNodes: NodeApi<ArboristNode>[],
+  destFolderPath: string,
+): boolean {
+  for (const dn of dragNodes) {
+    if (dn.data.data.kind !== "folder") continue;
+    const src = dn.data.data.path;
+    if (destFolderPath === src) return true;
+    if (destFolderPath.startsWith(src + "/")) return true;
+  }
+  return false;
+}
+
+/**
+ * resetTreeListLayout — Gap R2-3 closure (Plan 03-18).
+ *
+ * Invalidates react-arborist's react-window FixedSizeList row-offset
+ * cache after a wire-tree mutation.
+ */
+export function resetTreeListLayout(
+  ref: React.RefObject<TreeApi<ArboristNode> | null>,
+): void {
+  const tree = ref.current;
+  if (!tree) return;
+  const list = tree.list?.current;
+  if (!list) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const anyList = list as any;
+  if (typeof anyList.resetAfterIndex === "function") {
+    anyList.resetAfterIndex(0);
+    return;
+  }
+  if (typeof anyList.forceUpdate === "function") {
+    anyList.forceUpdate();
+    return;
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Module-level ref shim for cross-component callers (e.g., Breadcrumbs
+// in TopBar). Set inside the FileTree component's useEffect when
+// treeRef.current becomes available; cleared on unmount.
+// ────────────────────────────────────────────────────────────────────
+let currentTreeRef: TreeApi<ArboristNode> | null = null;
+
+export function setCurrentTreeRef(
+  ref: TreeApi<ArboristNode> | null,
+): void {
+  currentTreeRef = ref;
+}
+
+/**
+ * Expand and scroll the file tree to `folderPath`. Called by
+ * Breadcrumbs when the user clicks a folder segment.
+ */
+export function expandAndScrollToFolder(folderPath: string): void {
+  if (!folderPath) return;
+  const state = useTreeStore.getState();
+  if (!state.expanded.has(folderPath)) {
+    state.toggleExpanded(folderPath);
+  }
+  const id = "folder:" + folderPath;
+  try {
+    currentTreeRef?.open(id);
+    currentTreeRef?.scrollTo(id, "auto");
+  } catch {
+    // FileTree may be unmounted or arborist API mismatch — persistence
+    // step above is sufficient; ignore.
+  }
+  state.setNotesSidebarVisible(true);
+}

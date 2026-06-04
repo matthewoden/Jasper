@@ -276,7 +276,6 @@ export function useSessionSync(
       // can't trigger a reconnect on the next mount.
       setForceWsReconnect(() => {});
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTree, setStatus, setForceWsReconnect, wsUrlFn]);
   // handlers consumed via handlersRef.current — intentionally NOT in deps.
 }

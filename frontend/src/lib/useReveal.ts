@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useState } from "react";
-import { useToast } from "../components/Toast";
+import { useToast } from "../components/toast.utils";
 import { revealPath } from "./revealApi";
 
 export function useReveal() {

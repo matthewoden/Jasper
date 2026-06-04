@@ -17,7 +17,7 @@ import { useCallback } from "react";
 import { useTreeStore } from "./useTreeStore";
 import { openTodayDailyNote } from "./dailyNoteApi";
 import { broadcastRefresh } from "./useFileTree";
-import { useToast } from "../components/Toast";
+import { useToast } from "../components/toast.utils";
 
 export function useDailyNote() {
   const dailyNoteLoading = useTreeStore((s) => s.dailyNoteLoading);

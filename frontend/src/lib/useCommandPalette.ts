@@ -12,6 +12,19 @@
 import { useCallback, useMemo } from "react";
 import { COMMAND_PALETTE_ENTRIES, type Shortcut } from "./shortcutsRegistry";
 
+// Module-level constant — never changes across renders, so it doesn't
+// belong in any useCallback / useMemo dep array. Plan 08-06: a command
+// is "disabled" (rendered dimmed) when the lookup table has no bound
+// action for its id. We restrict disabled-rendering to commands that
+// explicitly opt in to that affordance — current set: just
+// share-reveal-current-note. Existing commands (new-note / save /
+// today / ...) are always present whenever the palette opens, so an
+// undefined fn means "not wired" and we still gracefully no-op
+// execute() rather than render them dimmed.
+const DISABLEABLE_IDS: ReadonlySet<string> = new Set([
+  "share-reveal-current-note",
+]);
+
 export interface CommandActions {
   onNewNote?: () => void;
   onSave?: () => void;
@@ -106,16 +119,7 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
     [idToAction],
   );
 
-  // Plan 08-06: a command is disabled when the lookup table has no
-  // bound action for its id. We restrict disabled-rendering to commands
-  // that explicitly opt in to a "dim-when-unavailable" UI affordance —
-  // current set: just share-reveal-current-note. Existing commands
-  // (new-note / save / today / ...) are always present whenever the
-  // palette opens, so undefined-fn means "not wired" and we still
-  // gracefully no-op execute() rather than render them dimmed.
-  const DISABLEABLE_IDS: ReadonlySet<string> = new Set([
-    "share-reveal-current-note",
-  ]);
+  // DISABLEABLE_IDS lives at module scope — see the const at the top.
   const isDisabled = useCallback(
     (id: string): boolean => DISABLEABLE_IDS.has(id) && !idToAction[id],
     [idToAction],

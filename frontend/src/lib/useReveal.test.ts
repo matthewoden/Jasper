@@ -27,7 +27,7 @@ vi.mock("./revealApi", () => ({
 // "../components/Toast". Returning a stable mock fn from useToast lets each
 // test assert title/description/variant without rendering the real toast DOM.
 const toastSpy = vi.fn();
-vi.mock("../components/Toast", () => ({
+vi.mock("../components/toast.utils", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 

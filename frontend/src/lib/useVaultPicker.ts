@@ -69,7 +69,7 @@ export function useVaultPicker(): UseVaultPickerResult {
   // the empty dep array is correct (fetch once at mount, re-fetch via explicit refresh()).
   useEffect(() => {
     void refresh();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   return {
     isOpen,

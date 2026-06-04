@@ -33,19 +33,10 @@ import type { SetupGrantDraft } from "../draft";
 /**
  * Phase 8 Warning #7 client-side validation. Backend re-validates (T-08-06).
  *
- * Exported so McpSection.test.tsx (and any future shared use) can drive
- * the validator as a pure function. The grep gate in 08-04 done-criteria
- * checks for the function name + each of the rejection patterns below.
+ * Re-exported helper isValidGrantFolderPath lives in ./mcpSection.utils
+ * so McpSection.tsx exports React components only (react-refresh DX).
  */
-export function isValidGrantFolderPath(p: string): boolean {
-  const trimmed = p.trim();
-  if (trimmed.length === 0) return false;
-  if (trimmed.includes("..")) return false;
-  if (trimmed.startsWith("/")) return false;
-  if (/^[A-Za-z]:[\\/]/.test(trimmed)) return false;
-  if (/[^\x20-\x7E]/.test(trimmed)) return false;
-  return true;
-}
+import { isValidGrantFolderPath } from "./mcpSection.utils";
 
 interface McpSectionProps {
   enabled: boolean;

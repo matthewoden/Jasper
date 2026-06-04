@@ -52,32 +52,9 @@ import {
 
 import { TreeMutationError } from "../lib/useTreeMutations";
 
-// eslint-disable-next-line no-control-regex -- intentionally rejects ASCII control chars in user-typed names
-const ILLEGAL_CHAR_REGEX = /[/\\:*?"<>|\x00-\x1F]/;
-
-export interface ValidateResult {
-  valid: boolean;
-  error?: string;
-}
-
-export function validateRename(
-  value: string,
-  siblingNames: string[],
-): ValidateResult {
-  if (value === "")
-    return { valid: false, error: "Name cannot be empty." };
-  if (ILLEGAL_CHAR_REGEX.test(value))
-    return {
-      valid: false,
-      error: "Use letters, numbers, dashes, and underscores only.",
-    };
-  const lower = value.toLowerCase();
-  for (const sib of siblingNames) {
-    if (sib.toLowerCase() === lower)
-      return { valid: false, error: "Already exists." };
-  }
-  return { valid: true };
-}
+// validateRename + ValidateResult live in ./renameInput.utils so this file
+// only exports React components — react-refresh/only-export-components.
+import { validateRename } from "./renameInput.utils";
 
 export interface RenameInputProps {
   initialValue: string;

@@ -12,7 +12,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { ToastProvider, useToast, type ToastOptions } from "./Toast";
+import { ToastProvider } from "./Toast";
+import { useToast, type ToastOptions } from "./toast.utils";
 
 function Trigger({ opts, label }: { opts: ToastOptions; label: string }) {
   const { toast } = useToast();

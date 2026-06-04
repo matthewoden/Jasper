@@ -41,6 +41,18 @@ import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
 import { useVaultSwitch } from "./lib/useVaultSwitch";
 import { VaultSwitchOverlay } from "./components/VaultSwitchOverlay";
 import { useTreeStore } from "./lib/useTreeStore";
+import {
+  handleAppCmdB,
+  handleAppCmdI,
+  handleAppCmdO,
+  handleAppCmdP,
+  handleAppCmdShiftD,
+  handleAppCmdShiftF,
+  handleAppCmdSlash,
+  handleAppF2KeyDown,
+  handleAppPanelShortcuts,
+  subscribePhase7,
+} from "./lib/appShortcuts";
 import { useTreeCreateActions } from "./lib/useTreeCreateActions";
 import { useFileTree } from "./lib/useFileTree";
 import type { CommandActions } from "./lib/useCommandPalette";
@@ -64,27 +76,6 @@ function findActiveNotePath(
   return null;
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Phase 7 (Plan 07-12) — Global keymap module-level event bus.
-//
-// Window event listeners run outside the React render cycle, so they can't
-// call hooks directly. This tiny pub/sub bridges the gap: handlers dispatch
-// events; AppInner subscribes in a useEffect to call the actual hook methods.
-// Pattern mirrors dispatchTagEvent from useTagBrowser.ts.
-// ────────────────────────────────────────────────────────────────────────────
-type Phase7DispatchEvent = "openToday";
-const phase7Subscribers = new Set<(ev: Phase7DispatchEvent) => void>();
-
-function dispatchPhase7(ev: Phase7DispatchEvent) {
-  for (const fn of Array.from(phase7Subscribers)) fn(ev);
-}
-
-function subscribePhase7(fn: (ev: Phase7DispatchEvent) => void): () => void {
-  phase7Subscribers.add(fn);
-  return () => {
-    phase7Subscribers.delete(fn);
-  };
-}
 
 // W-4 LOCKED: the parent owns the phase enum; ReindexProgress is purely
 // presentational. 'starting' is driven by WS reindex:started events (Plan
@@ -99,235 +90,6 @@ type ReindexPhase =
 
 const SUCCESS_TRANSIENT_MS = 600;
 
-/**
- * Plan 03-20 Gap R2-4 — document-level F2 routing.
- *
- * Clicking a tree row mounts the editor and EditorPane.useEffect
- * focuses the textarea on `loadStatus === "loaded"`. Without this
- * handler, F2 dispatched by the user would arrive at the textarea
- * (or whichever element holds focus) and Plan 03-12's row-local F2
- * handler would never see it. Routing F2 through the document level
- * + reading the most-recently-clicked row from
- * useTreeStore.selectedRow ensures rename works regardless of which
- * element holds focus.
- *
- * Guard order (intentional):
- *   1. e.key !== "F2"             → fast bail-out for the common case
- *   2. target is form-control     → don't hijack typing in inputs /
- *                                   textareas / contenteditable
- *      (RenameInput.tsx itself stops propagation on every keystroke
- *      per Plan 03-12, so this guard is mostly defense-in-depth +
- *      the load-bearing case for Gap R2-4 — the editor textarea)
- *   3. pendingRename != null      → a rename is already in progress;
- *                                   defer to RenameInput's own
- *                                   handlers
- *   4. selectedRow == null        → nothing to rename; no-op
- *
- * Only when all guards pass do we preventDefault + dispatch
- * startRename. The TreeRow's local F2 handler (Plan 03-12) is
- * unchanged — it remains the fallback for the auto-focused-row
- * case (e.g., right after a toolbar create when arborist auto-
- * focuses the new row before the editor takes over).
- *
- * Exported as a named function so unit tests can drive it as a
- * pure function instead of reaching into a mounted React tree's
- * effect — same pattern other one-shot handlers in the codebase
- * follow.
- */
-export function handleAppF2KeyDown(e: KeyboardEvent): void {
-  if (e.key !== "F2") return;
-  const target = e.target;
-  if (
-    target instanceof HTMLElement &&
-    target.matches("input, textarea, [contenteditable=true]")
-  ) {
-    return;
-  }
-  const state = useTreeStore.getState();
-  // If a rename is already in progress, defer to its own handlers.
-  if (state.pendingRename !== null) return;
-  const sr = state.selectedRow;
-  if (sr === null) return;
-  e.preventDefault();
-  state.startRename(sr.kind, sr.target);
-}
-
-/**
- * UAT follow-up 2026-05-12 — global panel-toggle shortcuts.
- *
- * Cmd+Alt+T (Mac) / Ctrl+Alt+T (Win/Linux) — toggle Tags panel.
- * Cmd+Alt+B (Mac) / Ctrl+Alt+B (Win/Linux) — toggle Backlinks panel.
- *
- * Modifier choice — Cmd+Alt prefix avoids the heavily-used Cmd-only namespace
- * (Cmd+T new tab, Cmd+W close tab, Cmd+Shift+T restore tab, Cmd+S save,
- * Cmd+F find, Cmd+K command palette) so this never collides with anything
- * the user already has muscle memory for. Letters: T(ags), B(acklinks) —
- * trivially memorable.
- *
- * Behavior: toggles the panelSelector slice. If opening a panel while the
- * rail is collapsed, also expands the rail. If closing the last visible
- * panel, the rail auto-collapses via RightRail's useEffect.
- *
- * Exported for unit tests, mirroring handleAppF2KeyDown.
- */
-export function handleAppPanelShortcuts(e: KeyboardEvent): void {
-  if (!e.altKey || !(e.metaKey || e.ctrlKey)) return;
-  const k = e.key.toLowerCase();
-  if (k !== "t" && k !== "b") return;
-  e.preventDefault();
-  e.stopPropagation();
-  const s = useTreeStore.getState();
-  if (k === "t") {
-    const next = !s.panelSelector.tags;
-    s.setPanelSelector({ tags: next });
-    if (next && !s.backlinksRailExpanded) s.setBacklinksRailExpanded(true);
-  } else {
-    const next = !s.panelSelector.backlinks;
-    s.setPanelSelector({ backlinks: next });
-    if (next && !s.backlinksRailExpanded) s.setBacklinksRailExpanded(true);
-  }
-}
-
-/**
- * Phase 7 (Plan 07-12) — Global capture-phase keymap handlers.
- *
- * Each handler checks meta/ctrl modifier first (fast bail-out for the common
- * case where no modifier is held). capture=true registration (in AppInner's
- * useEffect) intercepts before CM6 processes keyboard events (RESEARCH §Pitfall 5).
- *
- * NOT in this list: Cmd+B, Cmd+I, Cmd+F, Cmd+S — CM6 keymap owns those.
- *
- * Exported as named functions so unit tests can drive them as pure functions
- * (same pattern as handleAppF2KeyDown / handleAppPanelShortcuts).
- */
-
-/**
- * Cmd+P — open command palette (mode="commands").
- * preventDefault prevents the browser's native Print dialog.
- */
-export function handleAppCmdP(e: KeyboardEvent): void {
-  if (!(e.metaKey || e.ctrlKey)) return;
-  if (e.key !== "p" && e.key !== "P") return;
-  e.preventDefault();
-  e.stopPropagation();
-  const s = useTreeStore.getState();
-  s.setPaletteMode("commands");
-  s.setPaletteOpen(true);
-}
-
-/**
- * Cmd+O — open quick-switcher (mode="notes").
- * preventDefault prevents the browser's native Open File dialog.
- */
-export function handleAppCmdO(e: KeyboardEvent): void {
-  if (!(e.metaKey || e.ctrlKey)) return;
-  if (e.key !== "o" && e.key !== "O") return;
-  e.preventDefault();
-  e.stopPropagation();
-  const s = useTreeStore.getState();
-  s.setPaletteMode("notes");
-  s.setPaletteOpen(true);
-}
-
-/**
- * Cmd+Shift+D — open today's daily note.
- * Dispatches via phase7 event bus (can't call useDailyNote hook directly
- * from a window event listener — no React context available).
- */
-export function handleAppCmdShiftD(e: KeyboardEvent): void {
-  if (!(e.metaKey || e.ctrlKey)) return;
-  if (!e.shiftKey) return;
-  if (e.key !== "d" && e.key !== "D") return;
-  e.preventDefault();
-  e.stopPropagation();
-  dispatchPhase7("openToday");
-}
-
-/**
- * Cmd+/ — open keyboard shortcuts cheat-sheet dialog.
- */
-export function handleAppCmdSlash(e: KeyboardEvent): void {
-  if (!(e.metaKey || e.ctrlKey)) return;
-  if (e.key !== "/") return;
-  e.preventDefault();
-  e.stopPropagation();
-  useTreeStore.getState().setCheatSheetOpen(true);
-}
-
-/**
- * Plan 07-40 (UAT-6) — Cmd+Shift+F opens CommandMenu mode='search'.
- *
- * REVERSES Plan 07-39's focus-bus dispatch. Search now lives in its own
- * palette mode (third surface alongside Cmd+O switcher and Cmd+P palette)
- * rather than as a Sidebar input. This matches handleAppCmdP / handleAppCmdO
- * pattern: set paletteMode + paletteOpen, the modal renders the matching
- * mode='search' content.
- *
- * preventDefault keeps the browser/OS default for Cmd+Shift+F (Fullscreen in
- * some browsers) from firing.
- */
-export function handleAppCmdShiftF(e: KeyboardEvent): void {
-  if (!(e.metaKey || e.ctrlKey)) return;
-  if (!e.shiftKey) return;
-  if (e.key !== "f" && e.key !== "F") return;
-  e.preventDefault();
-  e.stopPropagation();
-  const s = useTreeStore.getState();
-  s.setPaletteMode("search");
-  s.setPaletteOpen(true);
-}
-
-/**
- * Cmd+B — bold (CM6 owns this in its editor-level keymap via jasperKeymap.ts).
- *
- * UAT #8 fix: Brave (and other Chromium browsers with extensions like
- * Leo AI) intercept Cmd+B before it reaches CM6. We register a
- * WINDOW-level capture-phase handler that blocks the browser/OS default
- * for the font panel / Leo sidebar.
- *
- * Plan 07-24 bug fix (Rule 1): the original handler called e.preventDefault()
- * unconditionally, which set event.defaultPrevented=true. CM6's internal
- * eventBelongsToEditor() returns false when defaultPrevented is set — so
- * CM6 was skipping the event entirely, preventing toggleBold from running.
- *
- * Fix: only call preventDefault when the event does NOT originate from
- * inside the CM6 editor. When focus is in the editor, CM6's keymap handles
- * Cmd+B via toggleBold (jasperKeymap.ts) — no preventDefault needed at
- * the window level. When focus is outside the editor (sidebar, dialog, etc.),
- * block the OS/browser default to prevent Brave Leo / font panel.
- *
- * Test pinned in App.test.tsx (KC-B-*).
- */
-export function handleAppCmdB(e: KeyboardEvent): void {
-  if (!(e.metaKey || e.ctrlKey)) return;
-  if (e.key !== "b" && e.key !== "B") return;
-  // Only block the browser default when outside the CM6 editor.
-  // Inside the editor, CM6's jasperKeymap handles Cmd+B via toggleBold.
-  // Unconditional preventDefault breaks CM6's eventBelongsToEditor check.
-  const isInsideEditor =
-    (e.target as HTMLElement | null)?.closest?.(".cm-editor") != null;
-  if (!isInsideEditor) {
-    e.preventDefault();
-  }
-  // No stopPropagation — CM6's event handlers must still fire.
-}
-
-/**
- * Cmd+I — italic (CM6 owns via jasperKeymap.ts toggleItalic).
- *
- * Plan 07-24 bug fix: same fix as handleAppCmdB — only preventDefault
- * when outside the CM6 editor to avoid breaking CM6's eventBelongsToEditor.
- */
-export function handleAppCmdI(e: KeyboardEvent): void {
-  if (!(e.metaKey || e.ctrlKey)) return;
-  if (e.key !== "i" && e.key !== "I") return;
-  const isInsideEditor =
-    (e.target as HTMLElement | null)?.closest?.(".cm-editor") != null;
-  if (!isInsideEditor) {
-    e.preventDefault();
-  }
-  // No stopPropagation — CM6's event handlers must still fire.
-}
 
 /**
  * Boot detection gate (Plan 08-17c).

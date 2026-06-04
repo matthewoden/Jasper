@@ -15,31 +15,14 @@
 
 import * as Toast from "@radix-ui/react-toast";
 import { AlertCircle, X } from "lucide-react";
-import {
-  type ReactNode,
-  createContext,
-  useCallback,
-  useContext,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 
-export type ToastOptions = {
-  title: string;
-  description?: string;
-  variant?: "error" | "info";
-  durationMs?: number;
-};
+import { ToastCtx } from "./toast.utils";
+import type { ToastOptions } from "./toast.utils";
 
 interface ToastEntry extends ToastOptions {
   id: number;
 }
-
-interface ToastApi {
-  toast: (opts: ToastOptions) => void;
-}
-
-const ToastCtx = createContext<ToastApi | null>(null);
 
 const DEFAULT_DURATION_MS = 5000;
 
@@ -160,10 +143,5 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useToast(): ToastApi {
-  const ctx = useContext(ToastCtx);
-  if (!ctx) {
-    throw new Error("useToast must be used inside <ToastProvider>");
-  }
-  return ctx;
-}
+// useToast + ToastOptions + ToastApi + ToastCtx all live in
+// ./toast.utils — see file header.

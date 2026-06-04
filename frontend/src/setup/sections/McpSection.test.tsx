@@ -25,7 +25,8 @@ import {
   vi,
 } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { McpSection, isValidGrantFolderPath } from "./McpSection";
+import { McpSection } from "./McpSection";
+import { isValidGrantFolderPath } from "./mcpSection.utils";
 import type { SetupGrantDraft } from "../draft";
 
 describe("isValidGrantFolderPath", () => {

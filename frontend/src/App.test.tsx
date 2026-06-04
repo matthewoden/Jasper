@@ -158,17 +158,17 @@ vi.mock("@tanstack/react-virtual", () => ({
   })),
 }));
 
-import App, {
-  AppShell,
-  handleAppF2KeyDown,
-  handleAppCmdP,
-  handleAppCmdO,
-  handleAppCmdShiftD,
-  handleAppCmdSlash,
+import App, { AppShell } from "./App";
+import {
   handleAppCmdB,
   handleAppCmdI,
+  handleAppCmdO,
+  handleAppCmdP,
+  handleAppCmdShiftD,
   handleAppCmdShiftF,
-} from "./App";
+  handleAppCmdSlash,
+  handleAppF2KeyDown,
+} from "./lib/appShortcuts";
 // Tests render <AppShell /> to bypass BootGate's async vault probe — BootGate
 // renders null during loading after the 08-17c+ UAT-2 fix, so the prior
 // render(<App />) flow no longer mounts the shell synchronously. AppShell is

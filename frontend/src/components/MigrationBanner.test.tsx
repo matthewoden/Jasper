@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockToast = vi.fn();
 
-vi.mock("./Toast", () => ({
+vi.mock("./toast.utils", () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 

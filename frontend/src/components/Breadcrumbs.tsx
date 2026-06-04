@@ -21,7 +21,7 @@ import { FolderOpen } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useFileTree } from "../lib/useFileTree";
 import { useReveal } from "../lib/useReveal";
-import { expandAndScrollToFolder } from "./FileTree";
+import { expandAndScrollToFolder } from "./fileTree.utils";
 import type { TreeNode } from "../lib/treeApi";
 
 // ──────────────────────────────────────────────────────────────────────

@@ -23,7 +23,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { uploadAttachment, AttachmentTooLargeError } from "./attachmentApi";
-import { useToast } from "../components/Toast";
+import { useToast } from "../components/toast.utils";
 
 export interface UseAttachmentUploadResult {
   /** True when a file drag is over the editor surface (depth > 0). */
