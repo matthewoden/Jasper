@@ -80,3 +80,21 @@ Project-level process rules. Source of truth for the `## Conventions` block in C
 - TDD: RED commit → GREEN commit. Each phase's commit log should read RED→GREEN→RED→GREEN in roughly equal counts. Plans without a RED commit are doing exploration, not execution — that's fine but flag it (`type: "auto"` with `tdd="false"` and a documented reason).
 - Pre-commit hooks (`gen-check` + `golangci-lint` + `eslint`) MUST pass on every commit. No `--no-verify` unless explicitly authorized for the specific commit.
 - Pre-existing test failures are tracked in `deferred-items.md`. New failures are blockers.
+
+## Flaky tests are bugs (2026-06-05)
+
+**A test that fails non-deterministically is a defect — either in the test or in the code under test — and must be fixed, not retried, quarantined, or skipped.**
+
+- **Never label a flake as "transient" and move on.** The convenient explanations ("filesystem race", "CI timing", "intermittent") almost always conceal a real race condition in production code or a real test-infra bug (TOCTOU, shared global state, leaked goroutines, missing wait-for-ready synchronization). The Phase 9 surrounding work surfaced this directly: TestApp_Run_FreshDB was labelled "filesystem race / pre-existing" by an executor; the actual cause was a TCP-port TOCTOU between `pickFreePort` closing the listener and the SUT re-binding it — fixed in commit `491169d`. The "race" diagnosis was correct in spirit but the fix would never have happened without isolating it.
+- **Reproduce before you theorise.** `go test -count=N ./internal/app/` (isolated) AND `go test -count=N ./...` (full sweep). A test that passes 30/30 isolated but flakes in `./...` mode is suffering from cross-package state interference, not "luck."
+- **HTTP readiness probes, not TCP.** Any test that boots a server and then asserts on application state MUST use a probe that confirms the application is ready (HTTP round-trip to a known endpoint), not just that the kernel accepts TCP. Pre-bound listeners (`net.Listen` → close → re-bind by SUT) accept TCP the moment they're bound but the handler chain isn't wired until much later in startup. See `httpReadyProbe` / `diskFullReadyProbe` in `backend/internal/app/app_test.go` for the canonical pattern.
+- **`t.Cleanup` over `defer` for resources that outlive the test goroutine.** Listeners handed to `http.Server.Serve` are closed by `Server.Shutdown`; the `t.Cleanup` registration is a safety net for crash paths, not the primary close.
+- **Order discovery, then fix.** If a flake reproduces only in the full-suite sweep, name the offender by running with `-shuffle=on -p 1` and capturing `-v` output. Don't guess at "which test is leaving state behind."
+- **Allowed shortcuts: none.** `t.Skip` under a build tag, retries via `testing.Run` loops, `time.Sleep` "to let it settle" — all of these encode the flake into the test rather than fix it.
+
+**Known instances awaiting fix** (treat as blockers, not deferred items):
+
+- `backend/internal/app/lifecycle.go:297-299` — `registry.Hydrate` silently no-ops when `indexer.List(ctx)` returns an error; under parallel-package filesystem load this surfaces as `TestApp_Run_FreshDB_BootsAndIndexesScratchpad` returning `notes:[]` instead of the seeded scratchpad. Either retry, fail-fast, or surface the error to the caller — but warn-and-proceed-with-empty-registry is wrong both for tests and for users.
+- `TestApp_Run_DiskFull_ServesStaticPage` / `TestRun_DiskFull_PreflightHaltsBeforeOpen` — intermittent 5s `waitFor` timeout in `./...` sweep mode despite the dedicated `diskFullReadyProbe`. Root cause not yet isolated; likely deeper interaction between `JASPER_TEST_FORCE_DISK_FULL` env timing and parallel sqlite/filesystem activity.
+
+When fixing one of the above, delete its bullet from this list AND add a one-line entry under it referencing the commit that fixed it, so the history of "we knew about this and fixed it" stays in this file.

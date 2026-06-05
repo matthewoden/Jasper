@@ -268,6 +268,10 @@ If everything else about Jasper fails, this must work: open the browser, write n
 ### Phase transitions
 
 - When closing a phase or starting the next, follow `.planning/PHASE-TRANSITION-CHECKLIST.md` (3 blocks: close current, audit drift, open next). Anti-patterns to avoid: closing on soft-accept, deleting orphaned code without a decision, carrying >5 pre-existing failures, skipping the retro.
+
+### Flaky tests are bugs (2026-06-05)
+
+- **A test that fails non-deterministically is a defect — fix it, do not retry, skip, or rationalise as "transient."** See `CONVENTIONS.md` § "Flaky tests are bugs" for the reproduction protocol, the HTTP-readiness probe pattern, and the running list of known instances awaiting fix. Originating incident: commit `491169d` (TCP-port TOCTOU in `pickFreePort` masquerading as "filesystem race / pre-existing").
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
