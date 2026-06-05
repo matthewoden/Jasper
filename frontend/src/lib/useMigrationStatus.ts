@@ -73,10 +73,6 @@ export function useMigrationStatus(): UseMigrationStatusResult {
     }
   }, []);
 
-  // Single-flight on mount. The cancelled flag mirrors EditorPane's
-  // userHasEdited pattern (CR-04): under React 19 StrictMode the effect
-  // runs twice; we ignore the resolution from the first (cancelled) run
-  // so we don't double-set state.
   useEffect(() => {
     let cancelled = false;
     (async () => {

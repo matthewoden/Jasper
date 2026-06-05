@@ -36,7 +36,6 @@ describe("loadDraft", () => {
   it("returns DEFAULT_DRAFT when localStorage is empty", () => {
     const result = loadDraft();
     expect(result).toEqual(DEFAULT_DRAFT);
-    // Mutating the returned draft must not mutate the module default.
     result.dataDir = "x";
     expect(DEFAULT_DRAFT.dataDir).toBe("");
   });
@@ -65,7 +64,6 @@ describe("loadDraft", () => {
   });
 
   it("shallow-merges older drafts missing newer fields with DEFAULT_DRAFT", () => {
-    // Simulate an older draft missing createTodayDailyNote + mcpGrants.
     localStorage.setItem(
       SETUP_DRAFT_KEY,
       JSON.stringify({ dataDir: "~/X", theme: "light" }),
@@ -73,7 +71,6 @@ describe("loadDraft", () => {
     const out = loadDraft();
     expect(out.dataDir).toBe("~/X");
     expect(out.theme).toBe("light");
-    // Missing fields fall back to DEFAULT_DRAFT values.
     expect(out.mcpEnabled).toBe(DEFAULT_DRAFT.mcpEnabled);
     expect(out.mcpGrants).toEqual(DEFAULT_DRAFT.mcpGrants);
     expect(out.dailyTemplate).toBe(DEFAULT_DRAFT.dailyTemplate);
@@ -86,7 +83,6 @@ describe("saveDraft", () => {
     saveDraft({ dataDir: "~/Notes" });
     const stored = JSON.parse(localStorage.getItem(SETUP_DRAFT_KEY)!);
     expect(stored.dataDir).toBe("~/Notes");
-    // The other fields are populated from DEFAULT_DRAFT via loadDraft's merge.
     expect(stored.theme).toBe(DEFAULT_DRAFT.theme);
     expect(stored.mcpEnabled).toBe(DEFAULT_DRAFT.mcpEnabled);
   });
@@ -107,7 +103,6 @@ describe("clearDraft", () => {
     expect(localStorage.getItem(SETUP_DRAFT_KEY)).not.toBeNull();
     clearDraft();
     expect(localStorage.getItem(SETUP_DRAFT_KEY)).toBeNull();
-    // loadDraft after clearDraft returns DEFAULT_DRAFT (D-10 next-run safety).
     expect(loadDraft()).toEqual(DEFAULT_DRAFT);
   });
 
@@ -118,8 +113,6 @@ describe("clearDraft", () => {
 });
 
 describe("private-mode safety", () => {
-  // Each test below replaces a single localStorage method with a thrower
-  // to simulate Safari private mode / disabled storage.
   let originalGet: typeof Storage.prototype.getItem;
   let originalSet: typeof Storage.prototype.setItem;
   let originalRemove: typeof Storage.prototype.removeItem;

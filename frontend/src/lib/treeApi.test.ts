@@ -234,8 +234,6 @@ describe("treeApi", () => {
   });
 
   it("PassThroughError_NonObject_DefaultsToUnknown: malformed error body still surfaces with status", async () => {
-    // The server is supposed to always return an Error shape, but if the
-    // wire breaks we should still surface SOMETHING the caller can branch on.
     postMock.mockResolvedValue({
       data: undefined,
       error: "totally malformed",

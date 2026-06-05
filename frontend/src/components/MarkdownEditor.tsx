@@ -49,8 +49,8 @@ import {
   setWikilinkHandlerCallbacks,
 } from "../editor/linkClickHandler";
 import { codeblockExpand } from "../editor/codeblockExpand";
-// Phase 6.5 / Plan 06.5-06 / UX-T-04: replaced frontmatterPlugin with frontmatterHidePlugin.
-// frontmatterPlugin.ts stays on disk (ADD-only invariant) but is no longer in extensions.
+
+
 import {
   frontmatterHideExtension,
   frontmatterToggleKeymap,
@@ -58,11 +58,11 @@ import {
 import { wikilinkPlugin, resolvedTitlesChanged } from "../editor/wikilinkPlugin";
 import { codeLanguages } from "../editor/codeLanguages";
 import { externalImagePlugin } from "../editor/externalImagePlugin";
-import { imageAttachmentPlugin } from "../editor/imageAttachmentWidget"; // Phase 7 Plan 10 / ATTACH-05
-import { fileChipPlugin } from "../editor/fileChipWidget"; // Phase 7 Plan 10 / ATTACH-06
-import { dropPosField, dropIndicatorPlugin } from "../editor/dropIndicatorWidget"; // Phase 7 Plan 20 / C3 UAT #12
-import { useAttachmentUpload } from "../lib/useAttachmentUpload"; // Phase 7 Plan 10 / ATTACH-01..02
-import { saveKeymap, jasperKeymap } from "../editor/jasperKeymap"; // Plan 05-11 / EDIT-10; Plan 07-24 adds jasperKeymap (toggleBold/toggleItalic)
+import { imageAttachmentPlugin } from "../editor/imageAttachmentWidget";
+import { fileChipPlugin } from "../editor/fileChipWidget";
+import { dropPosField, dropIndicatorPlugin } from "../editor/dropIndicatorWidget";
+import { useAttachmentUpload } from "../lib/useAttachmentUpload";
+import { saveKeymap, jasperKeymap } from "../editor/jasperKeymap";
 import {
   tagClickPlugin,
   setTagClickHandler,
@@ -152,10 +152,9 @@ function getNoteFolder(noteId: string | null, root: TreeNode[]): string {
   const visit = (node: TreeNode): string | null => {
     if (node.kind === "note") {
       if (node.id === noteId) {
-        // note.path = "folder/sub/Note.md"; folder = "folder/sub"
         const parts = node.path.split("/");
-        parts.pop(); // remove filename
-        return parts.join("/"); // "" for root-level notes
+        parts.pop();
+        return parts.join("/");
       }
       return null;
     }
@@ -182,54 +181,29 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     const hostRef = useRef<HTMLDivElement | null>(null);
     const viewRef = useRef<EditorView | null>(null);
 
-    // cbRef pattern — RESEARCH §Pattern 1 (line 426-428). The
-    // EditorView's updateListener captures its closure ONCE on mount;
-    // refreshing the cbRef on every render keeps callbacks current
-    // without rebuilding the editor.
-    // Phase 5.5 / UX-07: onBlur added to the captured set so the new
-    // domEventHandlers({ blur }) extension reads the freshest callback.
     const cbRef = useRef({ onChange, onH1Change, onSaveRequested, onBlur });
     cbRef.current = { onChange, onH1Change, onSaveRequested, onBlur };
 
-    // Phase 6 / Plan 06-09: wiki-link decoration + resolution wiring.
-    // useResolvedTitleSet reads from useFileTree and returns a memoized
-    // { titleSet, idMap } whenever the tree changes. The module-level
-    // snapshot is updated in a useEffect so the CM6 plugin can read it
-    // synchronously during decoration build.
     const { titleSet, idMap } = useResolvedTitleSet();
     useEffect(() => {
       setResolvedTitlesSnapshot(titleSet, idMap);
-      // After updating the snapshot, dispatch the resolvedTitlesChanged
-      // StateEffect so wikilinkPlugin.update() triggers a full createDeco()
-      // rebuild. MatchDecorator.updateDeco() only rebuilds on doc/viewport
-      // changes; a selection-only dispatch is silently ignored internally.
-      // The StateEffect approach is the CM6-idiomatic way to signal that
-      // external state changed (rather than hacking the doc or selection).
       const v = viewRef.current;
       if (v) {
         v.dispatch({ effects: resolvedTitlesChanged.of(undefined) });
       }
     }, [titleSet, idMap]);
 
-    // Wire the click-handler callbacks (setActiveNoteId + getCurrentSourceFolder).
-    // These must be kept fresh (not stale from mount-time closure) via refs.
     const activeNoteId = useTreeStore((s) => s.activeNoteId);
     const setActiveNote = useTreeStore((s) => s.setActiveNote);
     const setActiveTagFilter = useTreeStore((s) => s.setActiveTagFilter);
     const setTagBrowserExpanded = useTreeStore((s) => s.setTagBrowserExpanded);
     const { tree } = useFileTree();
 
-    // Phase 6 / Plan 06-10: tag autocomplete snapshot — feeds tagCompletionSource.
-    // useTagBrowser fetches from GET /api/v1/tags and reacts to WS events.
     const { tags: allTags } = useTagBrowser();
 
-    // Phase 7 Plan 10: mutable noteId ref for attachment plugins.
-    // The plugins are created ONCE (EDIT-01 stability) but read this ref
-    // at decoration-build time so they stay current across note navigation.
     const noteIdRef = useRef<string | null>(activeNoteId);
     noteIdRef.current = activeNoteId;
 
-    // Use a ref to keep the callbacks fresh without re-registering effects.
     const wikilinkCbRef = useRef({ activeNoteId, setActiveNote, tree });
     wikilinkCbRef.current = { activeNoteId, setActiveNote, tree };
 
@@ -246,9 +220,6 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       // Called once — the callbacks read fresh state from wikilinkCbRef.current.
     }, []);
 
-    // Phase 6 / Plan 06-10: wire autocomplete callbacks for [[ completion source.
-    // createNoteAndNavigate: creates a note via linkClickHandler's create path,
-    // then navigates to it. Reads fresh state from wikilinkCbRef each call.
     useEffect(() => {
       setWikilinkAutocompleteCallbacks({
         createNoteAndNavigate: async (rawTitle: string, sourceFolder: string) => {
@@ -272,19 +243,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       // Called once — callbacks read fresh state from wikilinkCbRef.current.
     }, []);
 
-    // Phase 6 / Plan 06-10: tag autocomplete snapshot sync.
-    // Whenever useTagBrowser returns new data, push it to the module-level
-    // snapshot so tagCompletionSource can read it synchronously.
-    // Phase 6.5 / Plan 06.5-05: also push to inlineTagAutocomplete's snapshot
-    // for the # body trigger (same data source, separate snapshot per D-14).
     useEffect(() => {
       setTagSnapshot(allTags ?? []);
       setInlineTagSnapshot(allTags ?? []);
     }, [allTags]);
 
-    // Phase 6 / Plan 06-10: tag click handler wiring (D-08).
-    // Plain click on a cm-tag-clickable span calls setActiveTagFilter
-    // and expands the tag browser section so it's visible.
     useEffect(() => {
       setTagClickHandler((tag: string) => {
         setActiveTagFilter(tag);
@@ -294,24 +257,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       // Zustand setters (reference-stable between renders).
     }, [setActiveTagFilter, setTagBrowserExpanded]);
 
-    // Phase 7 Plan 10 / ATTACH-01..02: attachment drag-drop + paste handlers.
-    // The noteId is passed to useAttachmentUpload; the drop-active state drives
-    // the cm-drop-target-active class on the editor wrapper div.
     const [dropActive, setDropActive] = useState(false);
     const { dragHandlers, pasteHandler, isDropTargetActive } = useAttachmentUpload(
       activeNoteId
     );
-    // Keep dropActive in sync with the hook's isDropTargetActive
-    // (the hook tracks depth internally via a ref; we sync to React state for rendering).
     useEffect(() => {
       setDropActive(isDropTargetActive);
     }, [isDropTargetActive]);
 
-    // D-16 Cmd-held affordance (T-06-09-04: cleanup in useEffect return).
-    // Adds/removes data-cmd-held on the .cm-editor root when Cmd/Ctrl is held,
-    // so CSS can change the cursor to pointer over wiki-link widgets.
-    // Choice: React useEffect (simpler than a CM6 EditorView.domEventHandlers
-    // extension since it doesn't need CM6 state and survives plugin teardown).
     useEffect(() => {
       const onKeyDown = (e: KeyboardEvent) => {
         if (e.metaKey || e.ctrlKey) {
@@ -351,39 +304,16 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             inlineTagPlugin, // Phase 6.5 / Plan 06.5-05 / UX-T-02 — body inline #tagname decoration
             linkClickHandler, // 05.5-18 — Cmd/Ctrl-click opens external links in a new tab
             externalImagePlugin, // Plan 05-08 — SECURITY-03 external image gate
-            // Phase 7 Plan 10 / ATTACH-05..06: attachment image + file-chip widgets.
-            // noteIdRef provides the current noteId at decoration-build time so note
-            // navigation doesn't require EditorView re-creation (EDIT-01 preserved).
             imageAttachmentPlugin(noteIdRef), // renders ![alt](attachments/…) below line
             fileChipPlugin(noteIdRef), // renders [name](attachments/…) chip below line
-            // Phase 7 Plan 20 / C3 (UAT #12): drop indicator — blinking caret at
-            // posAtCoords during file dragover. dropPosField MUST precede
-            // dropIndicatorPlugin so the plugin's first update() can read the field.
             dropPosField,         // StateField: current drag position (null = hidden)
             dropIndicatorPlugin,  // ViewPlugin: attaches dragover/dragleave/drop listeners
-            // Phase 6 / Plan 06-10 — autocomplete: [[ wiki-links + tag names.
-            // Phase 6.5 / Plan 06.5-05 — added inlineTagCompletionSource for # trigger in body.
-            // override: [] disables lang-markdown's emoji shortcodes (acceptable for
-            // v1 — documented tradeoff in wikilinkAutocomplete.ts).
             autocompletion({ override: [wikilinkCompletionSource, tagCompletionSource, inlineTagCompletionSource] }),
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // Plan 05-11 / EDIT-10 — BEFORE defaultKeymap so Cmd+S takes precedence
             frontmatterToggleKeymap, // Phase 6.5 / Plan 06.5-06 / UX-T-04 — Cmd-Shift-Y toggles raw frontmatter view
-            // 05.5-18: ```-Enter expands to a bounded fenced block.
-            // BEFORE defaultKeymap so it can short-circuit Enter
-            // before the default newline handler runs.
             codeblockExpand,
             keymap.of([...jasperKeymap, ...defaultKeymap, ...historyKeymap]), // Plan 07-24: jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap's cursorCharLeft/selectParentSyntax; Plan 07-27: searchKeymap removed (browser native Cmd+F)
-            // Phase 5.5 / UX-11: enable soft line-wrapping inside .cm-content
-            // so long lines wrap at the reading-width clamp set by themeBridge
-            // instead of scrolling horizontally forever.
             EditorView.lineWrapping,
-            // Phase 5.5 / UX-07: editor blur — fires when CM6's contenteditable
-            // surface loses focus to an element outside the editor (e.g. user
-            // clicks the sidebar / browser chrome). EditorView.domEventHandlers
-            // is editor-scoped (NOT React's onBlur which would also fire for
-            // intra-editor focus moves like opening the search panel). The
-            // optional-chain on cbRef.current.onBlur keeps the no-prop case safe
-            // (RESEARCH §Pitfall A1).
             EditorView.domEventHandlers({
               blur() {
                 cbRef.current.onBlur?.();
@@ -391,8 +321,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             }),
             EditorView.updateListener.of((u) => {
               if (!u.docChanged) return;
-              if (u.view.composing) return; // D-07/D-31 IME gate
-              // Skip onChange for server-driven reloads — D-10.
+              if (u.view.composing) return;
               for (const tr of u.transactions) {
                 if (tr.annotation(ServerUpdateAnnotation)) return;
               }
@@ -452,14 +381,6 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       []
     );
 
-    // aria-label preserves the "Note content" semantic the textarea era
-    // shipped with — App.test.tsx + a11y users keep working without
-    // re-querying the editor surface.
-    //
-    // Phase 7 Plan 10 / ATTACH-01..02: wrap the editor host in a div that
-    // handles drag-over and paste events. The outer wrapper gets the
-    // cm-drop-target-active class when a file is dragged over it, showing
-    // the inset ring + hint banner (UI-SPEC §Surface 7).
     return (
       <div
         style={{ flex: 1, minHeight: 0, display: "flex", position: "relative" }}
@@ -490,9 +411,6 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           aria-label="Note content"
           aria-multiline="true"
           style={{
-            // Flex-fill within the cm-host-shell so CM6's .cm-editor /
-            // .cm-scroller can reach height: 100% and scroll long
-            // documents internally instead of expanding the page.
             flex: 1,
             minHeight: 0,
             display: "flex",

@@ -60,10 +60,6 @@ export async function validateDataDir(
 export async function submitSetup(req: SetupRequest): Promise<void> {
   const { error } = await client.POST("/setup", { body: req });
   if (error) {
-    // Surface the backend error message verbatim so the wizard's locked
-    // copy ("{server_message}. Check the log file and try again.") can
-    // render it directly. Stringify the whole payload so we don't drop
-    // any structured fields the executor of future iterations might want.
     const msg =
       error && typeof error === "object" && "message" in error
         ? String((error as { message?: unknown }).message ?? "")

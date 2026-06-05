@@ -17,7 +17,7 @@ import * as attachmentApiModule from "./attachmentApi";
 import { AttachmentTooLargeError } from "./attachmentApi";
 import type { AttachmentUploadResult } from "./attachmentApi";
 
-// Mock useToast
+
 const mockToastFn = vi.fn();
 vi.mock("../components/toast.utils", () => ({
   useToast: () => ({
@@ -25,7 +25,7 @@ vi.mock("../components/toast.utils", () => ({
   }),
 }));
 
-// Helper to create a minimal fake EditorView
+
 function makeFakeView(insertedAt: { pos: number; text: string }) {
   const state = {
     selection: {
@@ -61,22 +61,17 @@ describe("useAttachmentUpload / drag counter pattern", () => {
       clientY: 0,
     } as unknown as DragEvent);
 
-    // Initial: not active
     expect(result.current.isDropTargetActive).toBe(false);
 
-    // First enter → depth becomes 1, active
     act(() => { result.current.dragHandlers.onDragEnter(makeEvent()); });
     expect(result.current.isDropTargetActive).toBe(true);
 
-    // Second enter (child element) → depth becomes 2, still active
     act(() => { result.current.dragHandlers.onDragEnter(makeEvent()); });
     expect(result.current.isDropTargetActive).toBe(true);
 
-    // First leave → depth back to 1, still active
     act(() => { result.current.dragHandlers.onDragLeave(makeEvent()); });
     expect(result.current.isDropTargetActive).toBe(true);
 
-    // Second leave → depth back to 0, no longer active
     act(() => { result.current.dragHandlers.onDragLeave(makeEvent()); });
     expect(result.current.isDropTargetActive).toBe(false);
   });
@@ -114,7 +109,6 @@ describe("useAttachmentUpload / drag counter pattern", () => {
       dataTransfer: { types: ["Files"] },
     } as unknown as DragEvent;
 
-    // Enter twice
     act(() => { result.current.dragHandlers.onDragEnter(enterEvent); });
     act(() => { result.current.dragHandlers.onDragEnter(enterEvent); });
     expect(result.current.isDropTargetActive).toBe(true);
@@ -133,7 +127,6 @@ describe("useAttachmentUpload / drag counter pattern", () => {
       await result.current.dragHandlers.onDrop(dropEvent, view);
     });
 
-    // After drop, depth should be 0 (inactive)
     expect(result.current.isDropTargetActive).toBe(false);
   });
 });
@@ -167,7 +160,6 @@ describe("useAttachmentUpload / pasteHandler", () => {
       await result.current.pasteHandler(e, view);
     });
 
-    // Non-image: should NOT call uploadAttachment
     expect(uploadSpy).not.toHaveBeenCalled();
     expect(e.preventDefault).not.toHaveBeenCalled();
   });
@@ -210,19 +202,15 @@ describe("useAttachmentUpload / pasteHandler", () => {
       await result.current.pasteHandler(e, view);
     });
 
-    // Must call preventDefault (intercept clipboard default)
     expect(e.preventDefault).toHaveBeenCalled();
 
-    // Must upload the file
     expect(attachmentApiModule.uploadAttachment).toHaveBeenCalledOnce();
 
-    // Uploaded file must have paste- prefix
     const uploadedFile = vi.mocked(attachmentApiModule.uploadAttachment).mock
       .calls[0][1] as File;
     expect(uploadedFile.name).toMatch(/^paste-\d{4}-\d{2}-\d{2}T/);
     expect(uploadedFile.type).toBe("image/png");
 
-    // Markdown for image should be inserted
     expect(insertedAt.text).toMatch(/^!\[/);
     expect(insertedAt.text).toContain("attachments/");
   });

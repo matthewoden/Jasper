@@ -71,15 +71,11 @@ describe("isValidGrantFolderPath", () => {
   });
 
   it("rejects non-ASCII characters (zero-width)", () => {
-    // U+200B zero-width space embedded in a benign-looking string.
     expect(isValidGrantFolderPath("notes​")).toBe(false);
   });
 });
 
 describe("McpSection — render integration", () => {
-  // Vitest's vi.spyOn type is fussy about indexing the Window interface
-  // for `prompt`. Stash the spy as `unknown` and narrow when we call
-  // mockReturnValue / mockRestore — the runtime behavior is identical.
   let promptSpy: { mockReturnValue: (v: string | null) => void; mockRestore: () => void };
 
   beforeEach(() => {
@@ -110,9 +106,7 @@ describe("McpSection — render integration", () => {
 
     fireEvent.click(screen.getByText("Add folder…"));
 
-    // No mutation to the grants list.
     expect(onGrantsChange).not.toHaveBeenCalled();
-    // Locked error copy is visible.
     expect(
       screen.getByText(/Invalid folder path\./),
     ).toBeInTheDocument();
@@ -128,7 +122,6 @@ describe("McpSection — render integration", () => {
     expect(onGrantsChange).toHaveBeenCalledWith([
       { folder: "projects", level: 1 },
     ]);
-    // No error message visible after success.
     expect(screen.queryByText(/Invalid folder path/)).toBeNull();
   });
 
@@ -150,10 +143,6 @@ describe("McpSection — render integration", () => {
     ).toBeInTheDocument();
   });
 
-  // ── Duplicate-guard tests (UAT-1 N8 layer 1) ──────────────────────────
-  // handleAddFolder must reject a folder that already exists in the grants
-  // list (exact match, case-insensitive, whitespace-trimmed) with the
-  // locked error copy. onGrantsChange must NOT be called.
 
   it("dup_exact: rejects exact duplicate folder and shows locked error copy", () => {
     promptSpy.mockReturnValue("ai-zone");

@@ -36,8 +36,6 @@ describe("jasperKeymap / saveKeymap", () => {
       }),
     });
     try {
-      // In happy-dom (navigator.platform=""), CM6 maps "Mod-" to ctrlKey.
-      // On macOS (navigator.platform contains "Mac"), it maps to metaKey.
       const ev = new KeyboardEvent("keydown", {
         key: "s",
         code: "KeyS",
@@ -108,13 +106,6 @@ describe("jasperKeymap / saveKeymap", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Plan 07-24 / UAT-2 R1-4: toggleBold / toggleItalic CM6 commands
-//
-// NOTE on EditorView in happy-dom:
-//   CM6's EditorView creates a contenteditable div that must be attached
-//   to the document for selection/dispatch to work correctly.
-// ─────────────────────────────────────────────────────────────────────────────
 
 describe("JK-bold-italic — toggleBold / toggleItalic commands (UAT-2 R1-4)", () => {
   function makeView(doc: string, selFrom: number, selTo: number): EditorView {
@@ -130,7 +121,6 @@ describe("JK-bold-italic — toggleBold / toggleItalic commands (UAT-2 R1-4)", (
       const result = toggleBold(view);
       expect(result).toBe(true);
       expect(view.state.doc.toString()).toBe("hello****");
-      // Cursor lands at position 7 (hello + ** = offset 7, before the closing **)
       expect(view.state.selection.main.from).toBe(7);
     } finally {
       view.destroy();
@@ -172,7 +162,6 @@ describe("JK-bold-italic — toggleBold / toggleItalic commands (UAT-2 R1-4)", (
     try {
       toggleItalic(view);
       expect(view.state.doc.toString()).toBe("hello**");
-      // Cursor lands at position 6 (hello + * = offset 6, before closing *)
       expect(view.state.selection.main.from).toBe(6);
     } finally {
       view.destroy();
@@ -200,8 +189,4 @@ describe("JK-bold-italic — toggleBold / toggleItalic commands (UAT-2 R1-4)", (
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Plan 07-36 (UAT-3 N7): JK-underline tests REMOVED. Cmd+U binding reverted —
-// CM6 markdown editor renders raw source so <u>...</u> tags are visible literal
-// characters, not an underline. See 07-CONTEXT.md D-51 REMOVED sub-section.
-// ─────────────────────────────────────────────────────────────────────────────
+

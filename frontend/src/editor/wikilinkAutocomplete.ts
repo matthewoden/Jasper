@@ -29,9 +29,6 @@ import type { CompletionContext, CompletionResult, Completion } from "@codemirro
 import { syntaxTree } from "@codemirror/language";
 import { searchTitles, type NoteSearchResult } from "../lib/notesApi";
 
-// ---------------------------------------------------------------------------
-// Module-level callbacks — set by MarkdownEditor.tsx via useEffect.
-// ---------------------------------------------------------------------------
 
 interface WikilinkAutocompleteCallbacks {
   /** Called with (rawTitle, sourceFolder) when the user selects Create. */
@@ -52,9 +49,6 @@ export function setWikilinkAutocompleteCallbacks(
   _callbacks = cbs;
 }
 
-// ---------------------------------------------------------------------------
-// D-19 / D-47 code-context guard — same pattern as wikilinkPlugin.ts
-// ---------------------------------------------------------------------------
 
 /**
  * Returns true if the position is inside a code context (fenced code,
@@ -81,9 +75,6 @@ function isInsideCodeOrFrontmatter(ctx: CompletionContext): boolean {
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// wikilinkCompletionSource — the exported CompletionSource
-// ---------------------------------------------------------------------------
 
 /**
  * CompletionSource for wiki-link autocomplete. Register this in
@@ -97,40 +88,31 @@ function isInsideCodeOrFrontmatter(ctx: CompletionContext): boolean {
 export async function wikilinkCompletionSource(
   ctx: CompletionContext,
 ): Promise<CompletionResult | null> {
-  // D-47: suppress inside code or frontmatter
   if (isInsideCodeOrFrontmatter(ctx)) return null;
 
-  // Match [[ followed by any non-bracket, non-newline text (including empty)
   const trigger = ctx.matchBefore(/\[\[([^\]\n]*)$/);
   if (!trigger) return null;
 
-  // Extract the text typed after [[
-  const typed = trigger.text.slice(2); // remove the leading [[
+  const typed = trigger.text.slice(2);
 
-  // Fetch matching note titles from the server.
   let results: NoteSearchResult[] = [];
   try {
     results = await searchTitles(typed, 10);
   } catch (e) {
-    // W11: graceful degradation — server error shows only Create row.
     console.warn("[jasper] [[ autocomplete: search-titles failed; showing Create row only", e);
   }
 
-  // Build options from server results.
   const options: Completion[] = results.map((r) => ({
     label: r.title,
     detail: r.folder ?? undefined,
     type: "text",
     apply(view, _completion, _from, to) {
-      // Replace from the start of [[ to the current end position.
       view.dispatch({
         changes: { from: trigger.from, to, insert: `[[${r.title}]]` },
       });
     },
   }));
 
-  // D-14: ALWAYS append "Create '{typed}'" as the LAST row.
-  // boost: -Infinity pins it to the bottom regardless of CM6's internal sorting.
   const createLabel = `Create "${typed}"`;
   options.push({
     label: createLabel,
@@ -139,7 +121,6 @@ export async function wikilinkCompletionSource(
     apply(view, _completion, _from, to) {
       const cbs = _callbacks;
       const sourceFolder = cbs?.getCurrentSourceFolder() ?? "";
-      // Insert [[typed]] immediately (optimistic) then navigate.
       view.dispatch({
         changes: { from: trigger.from, to, insert: `[[${typed}]]` },
       });
@@ -152,10 +133,8 @@ export async function wikilinkCompletionSource(
   });
 
   return {
-    // Pitfall 9: from is AFTER [[ so accepted text doesn't double-up the markers.
     from: trigger.from + 2,
     options,
-    // validFor: keep the popup open while the user types more letters/digits/hyphens
     validFor: /[^\]\n]*/,
   };
 }

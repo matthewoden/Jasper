@@ -41,8 +41,6 @@ export function saveStateReducer(
 ): SaveState {
   switch (event.type) {
     case "edit":
-      // Pure typing does not transition; the component's debounce dispatches
-      // requestSave when the 2s timer fires (or Cmd+S fires immediately).
       return state;
     case "requestSave":
       return { status: "saving", startedAt: new Date() };
@@ -51,23 +49,12 @@ export function saveStateReducer(
     case "saveFailed":
       return { status: "error", error: event.error };
     case "savedTimerExpired":
-      // Only transition out of saved → idle; ignore stale timer firings if
-      // we've already moved on (e.g. user typed during the sticky window and
-      // we're already saving again).
       return state.status === "saved" ? { status: "idle" } : state;
     case "connectionLost":
-      // D-06: any state → paused on connection loss. Saves are blocked
-      // until the connection is restored. Idempotent (paused → paused is fine).
       return { status: "paused" };
     case "connectionRestored":
-      // D-06: paused → idle on reconnect. If not paused (e.g. already idle
-      // or saving), no-op — the connection was restored but we were not
-      // blocked.
       return state.status === "paused" ? { status: "idle" } : state;
     default:
-      // Exhaustiveness — TypeScript narrows `event` to `never` here. We do
-      // NOT bind it to a local (`noUnusedLocals` would flag that); the
-      // type system gives us the check at compile time.
       return state;
   }
 }

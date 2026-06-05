@@ -27,15 +27,7 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { PanelSelectorDropdown } from "./PanelSelectorDropdown";
 
-// ──────────────────────────────────────────────────────────────────────
-// Styles
-// ──────────────────────────────────────────────────────────────────────
 
-// Plan 07-38 (UAT-4 N5) reverts Plan 07-36's 4px/2px tune back to 8px/4px:
-// 8px outer pad + 24px toggle button + 4px inner-group gap = 36px from the
-// grid column edge, matching --editor-content-x = 36px. The user wanted
-// the EDITOR shifted right (not the breadcrumb left), so 36px is the
-// anchor and 30px is reverted.
 const topBarStyle: CSSProperties = {
   background: "var(--color-bg)",
   boxShadow: "var(--shadow-elevation-1)",
@@ -62,9 +54,6 @@ const buttonBase: CSSProperties = {
   borderRadius: 4,
 };
 
-// ──────────────────────────────────────────────────────────────────────
-// Internal ToggleButton helper
-// ──────────────────────────────────────────────────────────────────────
 
 interface ToggleButtonProps {
   ariaLabel: string;
@@ -98,9 +87,6 @@ function ToggleButton({
   );
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// TopBar component
-// ──────────────────────────────────────────────────────────────────────
 
 export interface TopBarProps {
   /** Optional style override — typically used by App.tsx for grid placement. */
@@ -114,16 +100,6 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
   const setBacklinksRailExpanded = useTreeStore(
     (s) => s.setBacklinksRailExpanded,
   );
-  // Plan 07-38 (UAT-4 N9) reverts Plan 07-37's save-state indicator
-  // mount — the save-state button moves BACK to StatusBar. TopBar no
-  // longer subscribes to useTreeStore.saveState; the store slice itself
-  // is unchanged (still populated by autosave + lifecycle).
-  // Plan 07-38 (UAT-4 N3): panel-selector state is now the authoritative
-  // gate for the right-rail toggle (reverses Plan 07-30/07-35's
-  // hasContent gate). The dropdown itself is ALWAYS visible — the user
-  // needs a way to re-enable panels even when nothing is currently
-  // selected. The toggle only appears when there's actually a rail to
-  // show/hide (i.e. at least one panel selected).
   const panelSelectorState = useTreeStore((s) => s.panelSelector);
   const anyPanelSelected =
     panelSelectorState.tags || panelSelectorState.backlinks;

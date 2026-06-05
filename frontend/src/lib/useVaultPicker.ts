@@ -65,8 +65,6 @@ export function useVaultPicker(): UseVaultPickerResult {
     }
   };
 
-  // Fetch on mount — refresh is intentionally stable (closure over stable setters);
-  // the empty dep array is correct (fetch once at mount, re-fetch via explicit refresh()).
   useEffect(() => {
     void refresh();
   }, []);

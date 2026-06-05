@@ -42,8 +42,8 @@ import { css } from "@codemirror/lang-css";
 import { json } from "@codemirror/lang-json";
 import { yaml } from "@codemirror/lang-yaml";
 import { markdown } from "@codemirror/lang-markdown";
-// legacy-modes/mode/shell is the CM5 stream-mode shim — there is no
-// first-party CM6 shell grammar (RESEARCH §Pitfall 10).
+
+
 import { shell } from "@codemirror/legacy-modes/mode/shell";
 
 export const codeLanguages: LanguageDescription[] = [

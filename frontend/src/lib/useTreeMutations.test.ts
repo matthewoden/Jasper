@@ -19,7 +19,7 @@ const postFoldersMock = vi.fn();
 const deleteFolderMock = vi.fn();
 const postFolderMoveMock = vi.fn();
 const getTreeMock = vi.fn();
-// Plan 07-39 (UAT-5 N2-sub-B): filesApi.moveFile wrapped by useTreeMutations.moveFile.
+
 const filesApiMoveFileMock = vi.fn();
 
 vi.mock("./treeApi", () => ({
@@ -49,8 +49,6 @@ describe("useTreeMutations", () => {
     postFolderMoveMock.mockReset();
     getTreeMock.mockReset();
     filesApiMoveFileMock.mockReset();
-    // Default: getTree resolves to an empty tree so the post-success
-    // refresh() inside each mutator (Plan 03-09) doesn't blow up.
     getTreeMock.mockResolvedValue({ data: { root: [] } });
   });
 
@@ -195,23 +193,7 @@ describe("useTreeMutations", () => {
   });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Plan 03-09 — auto-refresh contract (Gap 1)
-//
-// After every successful mutation, useTreeMutations MUST trigger a
-// useFileTree refresh — i.e. one additional GET /tree call beyond the
-// mount-time fetch — so the consumer never has to remember to call
-// refresh() manually. On error, no refresh fires (server is the truth;
-// failed mutation = no change).
-//
-// useTreeMutations now calls useFileTree() internally (Plan 03-09
-// GREEN design — the contract lives in the data layer, not the
-// caller). The harness renders ONLY useTreeMutations so there is a
-// single useFileTree instance subscribed to the module-level
-// broadcast (one mount → one getTree call). After a successful
-// mutation, refresh() broadcasts to that subscriber → second
-// getTree call lands.
-// ────────────────────────────────────────────────────────────────────
+
 describe("auto-refresh contract (Gap 1)", () => {
   beforeEach(() => {
     postNotesMock.mockReset();
@@ -221,35 +203,21 @@ describe("auto-refresh contract (Gap 1)", () => {
     deleteFolderMock.mockReset();
     postFolderMoveMock.mockReset();
     getTreeMock.mockReset();
-    // Plan 07-39 (UAT-5 N2-sub-B): reset filesApi.moveFile mock between tests
-    // so UTM-MOVEFILE-* doesn't carry resolved values from sibling tests.
     filesApiMoveFileMock.mockReset();
-    // Default: getTree resolves to an empty tree so each mutator's
-    // post-success refresh() (Plan 03-09 GREEN) doesn't blow up.
     getTreeMock.mockResolvedValue({ data: { root: [] } });
   });
 
-  // Clean up the previous renderHook between tests so leftover hooks
-  // (especially useFileTree's mount-time fetch effect) don't pollute
-  // the getTree call count of the next test.
   afterEach(() => {
     cleanup();
   });
 
   function harness() {
-    // After the 2026-05-09 decoupling refactor, useTreeMutations no
-    // longer subscribes to useFileTree internally — it calls
-    // broadcastRefresh() directly. To exercise the auto-refresh
-    // contract we must mount a real useFileTree in the harness so the
-    // module-level subscriber Set has a target for the broadcast (in
-    // production, Sidebar / FileTree / EditorPane fill that role).
     return renderHook(() => ({
       tree: useFileTree(),
       muts: useTreeMutations(),
     }));
   }
 
-  // ──────────────────────────── createNote ────────────────────────────
   it("createNote refreshes useFileTree after success", async () => {
     postNotesMock.mockResolvedValue({
       data: {
@@ -284,12 +252,10 @@ describe("auto-refresh contract (Gap 1)", () => {
       }),
     ).rejects.toBeInstanceOf(TreeMutationError);
 
-    // Give any erroneous trailing fetch a tick to land — then assert it didn't.
     await new Promise((r) => setTimeout(r, 10));
     expect(getTreeMock).toHaveBeenCalledTimes(1);
   });
 
-  // ──────────────────────────── deleteNote ────────────────────────────
   it("deleteNote refreshes useFileTree after success", async () => {
     deleteNoteByIdMock.mockResolvedValue({});
 
@@ -321,7 +287,6 @@ describe("auto-refresh contract (Gap 1)", () => {
     expect(getTreeMock).toHaveBeenCalledTimes(1);
   });
 
-  // ──────────────────────────── moveNote ────────────────────────────
   it("moveNote refreshes useFileTree after success", async () => {
     postNoteMoveMock.mockResolvedValue({
       data: {
@@ -360,7 +325,6 @@ describe("auto-refresh contract (Gap 1)", () => {
     expect(getTreeMock).toHaveBeenCalledTimes(1);
   });
 
-  // ──────────────────────────── createFolder ────────────────────────────
   it("createFolder refreshes useFileTree after success", async () => {
     postFoldersMock.mockResolvedValue({
       data: { kind: "folder", path: "ideas", name: "ideas" },
@@ -394,7 +358,6 @@ describe("auto-refresh contract (Gap 1)", () => {
     expect(getTreeMock).toHaveBeenCalledTimes(1);
   });
 
-  // ──────────────────────────── deleteFolder ────────────────────────────
   it("deleteFolder refreshes useFileTree after success", async () => {
     deleteFolderMock.mockResolvedValue({});
 
@@ -430,7 +393,6 @@ describe("auto-refresh contract (Gap 1)", () => {
     expect(getTreeMock).toHaveBeenCalledTimes(1);
   });
 
-  // ──────────────────────────── moveFolder ────────────────────────────
   it("moveFolder refreshes useFileTree after success", async () => {
     postFolderMoveMock.mockResolvedValue({
       data: { kind: "folder", path: "projects/new", name: "new" },
@@ -470,10 +432,6 @@ describe("auto-refresh contract (Gap 1)", () => {
     expect(getTreeMock).toHaveBeenCalledTimes(1);
   });
 
-  // ────────────────────────── moveFile (Plan 07-39) ──────────────────────────
-  // UTM-MOVEFILE — wraps filesApi.moveFile + tree refresh (mirrors moveNote /
-  // moveFolder). Adds internal drag-and-drop of non-markdown files (UAT-5
-  // N2-sub-B).
   it("UTM-MOVEFILE-1: moveFile calls filesApi.moveFile with src and dst paths", async () => {
     filesApiMoveFileMock.mockResolvedValue({
       path: "folderA/upload.png",
@@ -527,19 +485,6 @@ describe("auto-refresh contract (Gap 1)", () => {
     expect(getTreeMock).toHaveBeenCalledTimes(1);
   });
 
-  // ─── UTM-MOVEFILE-404-* (Plan 07-41 — UAT-6 N2 close-out, frontend layer) ───
-  //
-  // When filesApi.moveFile rejects with status=404, the wrapper now treats
-  // it as a possible race-repeat shape: broadcast a refresh, then inspect
-  // the tree. If the file IS at the expected dst post-refresh, the move
-  // was already done (race repeat) — swallow the error so the user doesn't
-  // see a confusing toast for an op that actually succeeded. If the file
-  // is NOT at dst, the 404 represents a real failure and the error
-  // propagates so the existing toast surface still fires.
-  //
-  // In every 404 catch, console.error logs src+dst+the caught error so the
-  // next occurrence leaves a client-side breadcrumb to pair with the
-  // server-side log added in the same plan.
 
   it("UTM-MOVEFILE-404-RECONCILE-1: moveFile swallows 404 when file is at dst after refresh", async () => {
     const err = new Error("moveFile failed: 404") as Error & {
@@ -548,9 +493,6 @@ describe("auto-refresh contract (Gap 1)", () => {
     err.status = 404;
     filesApiMoveFileMock.mockRejectedValue(err);
 
-    // Default getTree resolves to empty root in beforeEach. Override so the
-    // post-refresh tree shows the file already at the expected dst — the
-    // race-repeat shape where the move physically succeeded earlier.
     getTreeMock.mockResolvedValue({
       data: {
         root: [
@@ -575,7 +517,6 @@ describe("auto-refresh contract (Gap 1)", () => {
     const { result } = harness();
     await waitFor(() => expect(getTreeMock).toHaveBeenCalledTimes(1));
 
-    // Must NOT reject — the race-repeat is swallowed silently.
     await act(async () => {
       await result.current.muts.moveFile(
         "upload.png",
@@ -583,7 +524,6 @@ describe("auto-refresh contract (Gap 1)", () => {
       );
     });
 
-    // The caught 404 was logged for triage.
     expect(consoleErrorSpy).toHaveBeenCalled();
     const logCall = consoleErrorSpy.mock.calls.find((args) =>
       args.some(
@@ -592,8 +532,6 @@ describe("auto-refresh contract (Gap 1)", () => {
     );
     expect(logCall, "expected [moveFile] 404 console.error breadcrumb").toBeTruthy();
 
-    // A refresh fired after the 404 (so the harness fetched the tree at
-    // least twice: mount + post-404 reconcile).
     await waitFor(() =>
       expect(getTreeMock.mock.calls.length).toBeGreaterThanOrEqual(2),
     );
@@ -608,8 +546,6 @@ describe("auto-refresh contract (Gap 1)", () => {
     err.status = 404;
     filesApiMoveFileMock.mockRejectedValue(err);
 
-    // Post-refresh tree shows the file is NOT at the expected dst — this
-    // is a real failure, not a race-repeat. The error must propagate.
     getTreeMock.mockResolvedValue({ data: { root: [] } });
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -626,7 +562,6 @@ describe("auto-refresh contract (Gap 1)", () => {
       }),
     ).rejects.toThrow();
 
-    // Still logged for triage even on the real-404 path.
     expect(consoleErrorSpy).toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();

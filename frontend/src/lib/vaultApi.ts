@@ -22,7 +22,6 @@ export interface GetVaultRecentResponse {
   banner: string;
 }
 
-// ── Path validation pipeline ─────────────────────────────────────────────────
 
 export type PathValidationError = {
   ok: false;
@@ -71,9 +70,6 @@ export function validateVaultPath(path: string): PathValidationResult {
       message: "Path must not contain double slashes.",
     };
   }
-  // NFC gate first (V-PARK-1) — catches decomposed (NFD) forms before the
-  // ASCII check so the user sees "NFC-normalize" (actionable) rather than
-  // "ASCII only" (confusing for a folder the OS displays in NFC form).
   if (path.normalize("NFC") !== path) {
     return {
       ok: false,
@@ -81,8 +77,6 @@ export function validateVaultPath(path: string): PathValidationResult {
       message: "Path must be Unicode-NFC-normalized for cross-platform safety.",
     };
   }
-  // ASCII gate (V-PARK-1) — catches emoji and other non-ASCII chars that
-  // pass NFC normalization (i.e., NFC == itself but still has code points > 0x7F).
   for (let i = 0; i < path.length; i++) {
     if (path.charCodeAt(i) > 0x7f) {
       return {
@@ -96,7 +90,6 @@ export function validateVaultPath(path: string): PathValidationResult {
   return { ok: true };
 }
 
-// ── API client ───────────────────────────────────────────────────────────────
 
 /**
  * vaultApi — typed wrappers calling /api/v1/vault/* via the shared openapi-fetch
@@ -131,7 +124,6 @@ export const vaultApi = {
   getRecent: async (): Promise<GetVaultRecentResponse> => {
     const { data, error } = await client.GET("/vault/recent");
     if (error) throw new Error("Failed to fetch recent vaults");
-    // schema generates vaults as array + banner as string
     const resp = data as { vaults?: RecentVaultEntry[]; banner?: string } | undefined;
     return {
       vaults: resp?.vaults ?? [],
@@ -229,7 +221,6 @@ export const vaultApi = {
       body: { path },
     });
     if (error) {
-      // Forget is idempotent — swallow errors for "not found" but log others
       console.warn("[vaultApi.forget] error:", error);
     }
   },

@@ -35,9 +35,6 @@ import {
   INLINE_CODE_PROD_DOC,
 } from "./__fixtures__/spike-doc";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeView(doc: string, selectionPos = 0): EditorView {
   const parent = document.createElement("div");
@@ -88,11 +85,6 @@ function collectDecorations(view: EditorView): DecoEntry[] {
   const cursor = plugin.decorations.iter();
   while (cursor.value !== null) {
     const spec = (cursor.value as unknown as { spec: Record<string, unknown> }).spec;
-    // Decoration.replace has spec.startSide defined or spec.replace flag
-    // Decoration.line has spec.line === true (internal CM6 detail)
-    // We detect replace by checking if the decoration's spec has an 'inclusive'
-    // key or if from === to and has no class (line deco is from===to with class).
-    // Actually: use the fact that replace decorations have a `.point` field.
     const isLine = cursor.from === cursor.to && spec?.class !== undefined;
     const isReplace =
       !isLine &&
@@ -111,9 +103,6 @@ function collectDecorations(view: EditorView): DecoEntry[] {
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// describe: heading-line-decoration
-// ---------------------------------------------------------------------------
 
 describe("livePreviewPlugin / heading-line-decoration", () => {
   const views: EditorView[] = [];
@@ -124,7 +113,6 @@ describe("livePreviewPlugin / heading-line-decoration", () => {
   });
 
   it("emits cm-heading-1 line decoration for # ATX heading", () => {
-    // Selection at position 0 (line 1) — same line as the heading
     const view = makeView(HEADING_DOC, 0);
     views.push(view);
 
@@ -132,7 +120,6 @@ describe("livePreviewPlugin / heading-line-decoration", () => {
     const headingDecos = decos.filter((d) => d.class === "cm-heading-1");
     expect(headingDecos.length).toBeGreaterThan(0);
 
-    // The decoration should start at line 1 (position 0)
     const line1 = view.state.doc.line(1);
     expect(headingDecos.some((d) => d.from === line1.from)).toBe(true);
   });
@@ -145,15 +132,11 @@ describe("livePreviewPlugin / heading-line-decoration", () => {
     const heading2Decos = decos.filter((d) => d.class === "cm-heading-2");
     expect(heading2Decos.length).toBeGreaterThan(0);
 
-    // ## Heading 2 is on line 4 of HEADING_DOC
     const line4 = view.state.doc.line(4);
     expect(heading2Decos.some((d) => d.from === line4.from)).toBe(true);
   });
 });
 
-// ---------------------------------------------------------------------------
-// describe: emphasis-marks
-// ---------------------------------------------------------------------------
 
 describe("livePreviewPlugin / emphasis-marks", () => {
   const views: EditorView[] = [];
@@ -164,7 +147,6 @@ describe("livePreviewPlugin / emphasis-marks", () => {
   });
 
   it("emits cm-strong mark over **bold** text", () => {
-    // Cursor at position 0 (line 1 = same line as **bold**)
     const view = makeView(EMPHASIS_DOC, 0);
     views.push(view);
 
@@ -174,35 +156,26 @@ describe("livePreviewPlugin / emphasis-marks", () => {
   });
 
   it("hides EmphasisMark with Decoration.replace when cursor is OFF the line", () => {
-    // EMPHASIS_DOC line 1: "Plain text with **bold** and *italic*."
-    // EMPHASIS_DOC line 2: "Another **strong** word here."
-    // Put cursor on line 2 (well past line 1) — EmphasisMark on line 1 should hide
     const line2Start = EMPHASIS_DOC.indexOf("\n") + 1;
-    const view = makeView(EMPHASIS_DOC, line2Start + 5); // mid-line 2
+    const view = makeView(EMPHASIS_DOC, line2Start + 5);
     views.push(view);
 
     const decos = collectDecorations(view);
-    // Should have Decoration.replace entries (isReplace === true)
     const replaceDecos = decos.filter((d) => d.isReplace);
     expect(replaceDecos.length).toBeGreaterThan(0);
   });
 
   it("shows EmphasisMark as visible marker when cursor is ON the line", () => {
-    // Cursor at position 17 (inside **bold** on line 1)
     const boldPos = EMPHASIS_DOC.indexOf("**bold**") + 2;
     const view = makeView(EMPHASIS_DOC, boldPos);
     views.push(view);
 
     const decos = collectDecorations(view);
-    // EmphasisMark on cursor line should be cm-marker (visible), not replace
     const markerDecos = decos.filter((d) => d.class === "cm-marker");
     expect(markerDecos.length).toBeGreaterThan(0);
   });
 });
 
-// ---------------------------------------------------------------------------
-// describe: multi-line-selection (D-06)
-// ---------------------------------------------------------------------------
 
 describe("livePreviewPlugin / multi-line-selection (D-06)", () => {
   const views: EditorView[] = [];
@@ -213,32 +186,18 @@ describe("livePreviewPlugin / multi-line-selection (D-06)", () => {
   });
 
   it("keeps markers visible on every line in a multi-line selection range", () => {
-    // MULTI_LINE_SELECTION_DOC:
-    //   line 1: # Heading A
-    //   line 2: body
-    //   line 3: ## Heading B
-    //   line 4: body
-    //   line 5: ### Heading C
-    //
-    // Select from line 1 to line 5 (anchor=0, head=end)
     const doc = MULTI_LINE_SELECTION_DOC;
     const view = makeViewWithSelection(doc, 0, doc.length);
     views.push(view);
 
     const decos = collectDecorations(view);
-    // All HeaderMark decorations should be cm-marker (visible), NOT Decoration.replace
     const replaceDecos = decos.filter((d) => d.isReplace);
-    // Expect zero replace decorations since all heading lines are in the selection
     expect(replaceDecos.length).toBe(0);
-    // And cm-marker should appear for lines that are in the selection
     const markerDecos = decos.filter((d) => d.class === "cm-marker");
     expect(markerDecos.length).toBeGreaterThan(0);
   });
 });
 
-// ---------------------------------------------------------------------------
-// describe: code-fence-guard (D-09)
-// ---------------------------------------------------------------------------
 
 describe("livePreviewPlugin / code-fence-guard (D-09)", () => {
   const views: EditorView[] = [];
@@ -249,17 +208,13 @@ describe("livePreviewPlugin / code-fence-guard (D-09)", () => {
   });
 
   it("does NOT hide EmphasisMark inside a fenced code block", () => {
-    // CODE_FENCE_DOC has **not bold** inside a ```typescript fence.
-    // Cursor is placed on the first line (outside the fence).
     const view = makeView(CODE_FENCE_DOC, 0);
     views.push(view);
 
     const decos = collectDecorations(view);
-    // Find the position of **not bold** inside the fence
     const fenceContentPos = CODE_FENCE_DOC.indexOf("**not bold**");
     expect(fenceContentPos).toBeGreaterThan(-1);
 
-    // No Decoration.replace should cover that position
     const replaceAtFence = decos.filter(
       (d) => d.isReplace && d.from <= fenceContentPos && d.to >= fenceContentPos
     );
@@ -267,20 +222,13 @@ describe("livePreviewPlugin / code-fence-guard (D-09)", () => {
   });
 
   it("InlineCode is rendered as cm-inline-code mark; backticks hide off-line per UI-SPEC §Live Preview", () => {
-    // INLINE_CODE_PROD_DOC: "Run `npm install` to start."
-    // Cursor at position 0 (start of line, which IS the inline code line).
-    // Verify InlineCode emits a cm-inline-code mark decoration.
     const view = makeView(INLINE_CODE_PROD_DOC, 0);
     views.push(view);
 
     const decos = collectDecorations(view);
-    // InlineCode mark decoration should be present
     const inlineCodeDecos = decos.filter((d) => d.class === "cm-inline-code");
     expect(inlineCodeDecos.length).toBeGreaterThan(0);
 
-    // Also verify spike regression: INLINE_CODE_DOC (emphasis inside backticks)
-    // — lezer does not produce EmphasisMark nodes inside InlineCode verbatim
-    // content, so there are no replace decorations at that position regardless.
     const spikeView = makeView(INLINE_CODE_DOC, 0);
     views.push(spikeView);
     const spikeDecos = collectDecorations(spikeView);
@@ -293,17 +241,9 @@ describe("livePreviewPlugin / code-fence-guard (D-09)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// describe: IME composing gate (D-07/D-31)
-// ---------------------------------------------------------------------------
 
 describe("livePreviewPlugin / IME composing gate (D-07/D-31)", () => {
   it("preserves decorations through u.changes when view.composing is true", () => {
-    // Verify the composing-gate behavior directly:
-    // The gate calls `this.decorations = this.decorations.map(u.changes)` instead
-    // of rebuilding. We test this by verifying that mapping an existing DecorationSet
-    // through a no-op ChangeSet preserves the same decoration count (same as
-    // frontmatterPlugin.test.ts IME test pattern).
     const parent = document.createElement("div");
     document.body.append(parent);
     const view = new EditorView({
@@ -314,12 +254,10 @@ describe("livePreviewPlugin / IME composing gate (D-07/D-31)", () => {
       }),
     });
 
-    // Verify the plugin is registered and produces decorations
     const plugin = view.plugin(livePreviewPlugin);
     expect(plugin).not.toBeNull();
     expect(plugin!.decorations).toBeDefined();
 
-    // Count initial decorations
     let initialCount = 0;
     const cursor = plugin!.decorations.iter();
     while (cursor.value !== null) {
@@ -328,9 +266,6 @@ describe("livePreviewPlugin / IME composing gate (D-07/D-31)", () => {
     }
     expect(initialCount).toBeGreaterThan(0);
 
-    // Simulate what the composing gate does: map decorations through a
-    // no-op transaction's changes (no document change = identity mapping).
-    // This is the exact operation `this.decorations.map(u.changes)` performs.
     const noOpTx = view.state.update({});
     const mappedDecos = plugin!.decorations.map(noOpTx.changes);
 
@@ -341,11 +276,8 @@ describe("livePreviewPlugin / IME composing gate (D-07/D-31)", () => {
       mappedCursor.next();
     }
 
-    // Same count proves mapping preserves decorations (no churn)
     expect(mappedCount).toBe(initialCount);
 
-    // Also verify that a normal selection-change dispatch (composing=false)
-    // still produces valid decorations (the plugin update() path works).
     view.dispatch({ selection: { anchor: 5, head: 5 } });
     const pluginAfter = view.plugin(livePreviewPlugin)!;
     expect(pluginAfter.decorations).toBeDefined();
@@ -354,9 +286,6 @@ describe("livePreviewPlugin / IME composing gate (D-07/D-31)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Helper function unit tests
-// ---------------------------------------------------------------------------
 
 describe("computeCursorLines", () => {
   it("returns the set of line numbers covered by all selection ranges", () => {
@@ -372,7 +301,6 @@ describe("computeCursorLines", () => {
     });
 
     const lines = computeCursorLines(view);
-    // MULTI_LINE_SELECTION_DOC has 5 lines; all should be in the set
     expect(lines.has(1)).toBe(true);
     expect(lines.has(3)).toBe(true);
     expect(lines.has(5)).toBe(true);
@@ -381,10 +309,6 @@ describe("computeCursorLines", () => {
   });
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-// Production scope tests (Plan 05-06): list bullets, blockquote,
-// inline code, HR — EDIT-04..EDIT-07.
-// ────────────────────────────────────────────────────────────────────────────
 
 describe("livePreviewPlugin / list-bullets (EDIT-04 / D-04)", () => {
   const views: EditorView[] = [];
@@ -395,15 +319,12 @@ describe("livePreviewPlugin / list-bullets (EDIT-04 / D-04)", () => {
   });
 
   it("Unordered ListMark renders BulletWidget '•' when cursor is off the list line", () => {
-    // LIST_DOC line 1: "Some text." — put cursor here, list starts line 3
     const view = makeView(LIST_DOC, 0);
     views.push(view);
 
     const plugin = view.plugin(livePreviewPlugin);
     expect(plugin).not.toBeNull();
 
-    // Walk the DecorationSet looking for a widget-bearing Decoration.replace
-    // whose toDOM() emits a span.cm-list-bullet containing '•'.
     let foundBullet = false;
     const cursor = plugin!.decorations.iter();
     while (cursor.value !== null) {
@@ -416,8 +337,6 @@ describe("livePreviewPlugin / list-bullets (EDIT-04 / D-04)", () => {
           dom.classList.contains("cm-list-bullet") &&
           dom.textContent === "•"
         ) {
-          // EDIT-04: the unordered `- ` text is replaced by a real bullet.
-          // Verify the replaced range covers the ListMark `-` character.
           const replacedText = view.state.doc.sliceString(cursor.from, cursor.to);
           expect(replacedText).toBe("-");
           foundBullet = true;
@@ -430,9 +349,6 @@ describe("livePreviewPlugin / list-bullets (EDIT-04 / D-04)", () => {
   });
 
   it("Ordered ListMark stays visible (no decoration) — '1.' IS the bullet (EDIT-04)", () => {
-    // LIST_DOC has an ordered list at "1. First". Cursor far away so we'd
-    // expect any "hide" pass to fire if it were going to. After the fix,
-    // ordered ListMark is left visible — no Decoration.replace covers it.
     const view = makeView(LIST_DOC, 0);
     views.push(view);
 
@@ -440,7 +356,6 @@ describe("livePreviewPlugin / list-bullets (EDIT-04 / D-04)", () => {
     const orderedMarkPos = LIST_DOC.indexOf("1.");
     expect(orderedMarkPos).toBeGreaterThan(-1);
 
-    // No replace decoration should cover the "1." range.
     const replaceCovering = decos.find((d) => {
       if (!d.isReplace) return false;
       return d.from <= orderedMarkPos && d.to >= orderedMarkPos + 2;
@@ -449,16 +364,12 @@ describe("livePreviewPlugin / list-bullets (EDIT-04 / D-04)", () => {
   });
 
   it("ListMark shows as cm-marker when cursor IS on the list line", () => {
-    // Place cursor inside "- Bullet one" — the ListMark should be cm-marker
     const listLineStart = LIST_DOC.indexOf("- Bullet one");
     expect(listLineStart).toBeGreaterThan(-1);
-    const view = makeView(LIST_DOC, listLineStart + 2); // inside the bullet text
+    const view = makeView(LIST_DOC, listLineStart + 2);
     views.push(view);
 
     const decos = collectDecorations(view);
-    // Phase 5.5 UX-16: on-cursor ListMark mark now carries a compound class
-    // string `cm-marker cm-list-marker` so themeBridge can reserve a fixed
-    // width column matching BulletWidget. Match by token, not strict equality.
     const markerDecos = decos.filter(
       (d) => d.class !== undefined && d.class.split(/\s+/).includes("cm-marker")
     );
@@ -484,13 +395,11 @@ describe("livePreviewPlugin / blockquote (EDIT-05)", () => {
   });
 
   it("both quoted lines receive cm-blockquote decoration", () => {
-    // BLOCKQUOTE_DOC has two "> " lines — both should get cm-blockquote
     const view = makeView(BLOCKQUOTE_DOC, 0);
     views.push(view);
 
     const decos = collectDecorations(view);
     const blockquoteDecos = decos.filter((d) => d.class === "cm-blockquote");
-    // Two quoted lines: "> A quoted line" and "> Another quoted line"
     expect(blockquoteDecos.length).toBeGreaterThanOrEqual(2);
   });
 });
@@ -552,9 +461,6 @@ describe("livePreviewPlugin / horizontal-rule (EDIT-07)", () => {
   });
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-// Phase 5.5 Plan 02 — UX-15 (heading left-alignment) + UX-16 (bullet column).
-// ────────────────────────────────────────────────────────────────────────────
 
 describe("livePreviewPlugin / UX-15 heading trailing-space swallow", () => {
   const views: EditorView[] = [];
@@ -565,20 +471,11 @@ describe("livePreviewPlugin / UX-15 heading trailing-space swallow", () => {
   });
 
   it("UX-15: off-cursor HeaderMark range covers trailing space", () => {
-    // Doc: "# heading\nbody". Place cursor on line 2 (so line 1 is OFF-cursor).
-    // For an ATX heading, lezer-markdown's HeaderMark covers exactly the
-    // `#` at [0,1). The UX-15 fix extends the off-cursor `Decoration.replace`
-    // range to `node.to + 1 = 2` so the trailing space at index 1..2 is
-    // swallowed alongside the `#` — the heading text starts at index 2,
-    // sharing its left edge with body paragraphs.
     const doc = "# heading\nbody";
-    // Line 2 starts at index 10 (after "# heading\n"); place cursor there.
     const view = makeView(doc, 10);
     views.push(view);
 
     const decos = collectDecorations(view);
-    // Find the off-cursor replace decoration that starts at the HeaderMark
-    // position (index 0). Per the fix it should extend to index 2.
     const replaceAtZero = decos.find(
       (d) => d.isReplace && d.from === 0
     );
@@ -587,40 +484,15 @@ describe("livePreviewPlugin / UX-15 heading trailing-space swallow", () => {
   });
 
   it("UX-15: off-cursor HeaderMark falls back to node.to when next char is not a space", () => {
-    // The defensive `nextChar === " "` check means: if lezer's A2 invariant
-    // (HeaderMark always followed by exactly one space) is ever wrong, the
-    // range degrades safely to `node.to` — no residual whitespace, no
-    // accidentally swallowing a non-space character.
-    //
-    // Construct a doc where HeaderMark's node.to lands on a non-space char.
-    // The cleanest way: a setext-style heading where there is no trailing
-    // space after the marker, OR an ATX heading where the doc ends right
-    // after the `#`. The string "#" alone yields HeaderMark at [0,1) with
-    // no following char (sliceString returns "").
-    //
-    // Place cursor on line 2 of a doc whose line 1 is bare "#" so the
-    // HeaderMark's trailing char is "" (or more accurately, off the doc
-    // end). The defensive guard should keep `to = node.to = 1`.
-    //
-    // Doc: "#\nbody" — line 1 is just "#", line 2 is "body".
     const doc = "#\nbody";
-    // Cursor on line 2 (offset 2, after "#\n").
     const view = makeView(doc, 2);
     views.push(view);
 
     const decos = collectDecorations(view);
-    // Find the replace decoration covering the HeaderMark on line 1.
-    // Without the trailing-space extension, `to` should equal `node.to = 1`.
-    // (Note: lezer may not even emit a HeaderMark for a bare `#`; in that
-    // case there will be no replace decoration at index 0 — also acceptable
-    // because the assertion is "no overshoot beyond node.to".)
     const replaceAtZero = decos.find(
       (d) => d.isReplace && d.from === 0
     );
     if (replaceAtZero) {
-      // If a HeaderMark replace IS emitted, it must NOT overshoot — the
-      // defensive check leaves `to` at `node.to` (here 1) when the next
-      // char is not a literal space.
       expect(replaceAtZero.to).toBe(1);
     }
     // If no replace was emitted, the test still asserts the property of
@@ -637,21 +509,15 @@ describe("livePreviewPlugin / UX-16 cm-list-marker class", () => {
   });
 
   it("UX-16: on-cursor ListMark mark decoration carries cm-list-marker class", () => {
-    // Doc: "- item". Cursor on line 1 — the ListMark `-` should be a
-    // visible marker AND carry cm-list-marker so themeBridge can reserve a
-    // fixed-width column matching BulletWidget's off-cursor 1.5ch slot.
     const doc = "- item";
-    // Cursor at offset 3 (inside "item", on line 1).
     const view = makeView(doc, 3);
     views.push(view);
 
     const decos = collectDecorations(view);
-    // The on-cursor ListMark mark uses class "cm-marker cm-list-marker".
     const listMarker = decos.find(
       (d) => d.class !== undefined && d.class.includes("cm-list-marker")
     );
     expect(listMarker).toBeDefined();
-    // Sanity: the existing cm-marker class is still present alongside it.
     expect(listMarker!.class).toContain("cm-marker");
   });
 });
@@ -673,9 +539,6 @@ describe("livePreviewPlugin / all-features mixed doc", () => {
       decos.map((d) => d.class).filter((c): c is string => !!c)
     );
 
-    // We expect at LEAST one decoration with each of these classes:
-    //   cm-heading-1, cm-strong, cm-emphasis, cm-blockquote, cm-codeblock
-    // (cm-frontmatter is owned by frontmatterPlugin — not checked here)
     expect(classes.has("cm-heading-1")).toBe(true);
     expect(classes.has("cm-strong")).toBe(true);
     expect(classes.has("cm-emphasis")).toBe(true);

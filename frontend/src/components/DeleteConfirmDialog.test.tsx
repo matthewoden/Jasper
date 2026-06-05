@@ -86,7 +86,6 @@ describe("<DeleteConfirmDialog /> — folder variant", () => {
         "Your other notes are not touched — only this folder is affected.",
       ),
     ).toBeInTheDocument();
-    // Empty-folder copy is NOT destructive
     const reassurance = screen.getByText(
       "Your other notes are not touched — only this folder is affected.",
     );
@@ -108,12 +107,10 @@ describe("<DeleteConfirmDialog /> — folder variant", () => {
         onConfirm={vi.fn().mockResolvedValue(undefined)}
       />,
     );
-    // Body line 1 should contain "1 note" (singular)
     const line1 = screen.getByText(
       /x contains 1 note\. All of them will be permanently removed/,
     );
     expect(line1).toBeInTheDocument();
-    // Should NOT contain "1 notes" (plural for 1)
     expect(screen.queryByText(/1 notes/)).toBeNull();
   });
 
@@ -139,7 +136,6 @@ describe("<DeleteConfirmDialog /> — folder variant", () => {
     ).toBeInTheDocument();
     const line2 = screen.getByText("This cannot be undone.");
     expect(line2).toBeInTheDocument();
-    // line2 has destructive color
     expect(line2.style.color).toContain("destructive");
   });
 
@@ -217,16 +213,12 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
         onConfirm={vi.fn().mockResolvedValue(undefined)}
       />,
     );
-    // Title copy locked by the plan must-have truth: "Delete N items?".
     expect(screen.getByText("Delete 5 items?")).toBeInTheDocument();
-    // Body line 1 references the count again so the dialog is unambiguous
-    // even when scanned without the title.
     expect(
       screen.getByText(
         /This will permanently delete the selected 5 items from disk and from the index\./,
       ),
     ).toBeInTheDocument();
-    // Destructive second line — matches the folder-with-contents posture.
     const line2 = screen.getByText("This cannot be undone.");
     expect(line2).toBeInTheDocument();
     expect(line2.style.color).toContain("destructive");
@@ -265,7 +257,6 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Delete note" }));
-    // While the promise is in flight, dialog stays mounted.
     expect(screen.getByText("Delete this note?")).toBeInTheDocument();
     resolveConfirm();
     await waitFor(() => {
@@ -274,22 +265,7 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// WR-09 (Phase 5.5 gap-closure Plan 13) — DeleteTarget type contract.
-//
-// The DeleteTarget union now carries the canonical identifier directly:
-//   - { kind: "note"; name: string; id: string }
-//   - { kind: "folder"; name: string; path: string; noteCount, subfolderCount }
-//   - { kind: "multi"; count: number }    // unchanged
-//
-// FileTree.handleConfirmDelete reads `target.id` / `target.path` directly
-// instead of re-deriving from the display name (the previous lookup was
-// ambiguous when two notes shared a basename across subtrees).
-//
-// We use `// @ts-expect-error` to assert that omitting the new required
-// fields is a TypeScript error — the directive itself becomes an error if
-// the line type-checks, so `tsc --noEmit` enforces the contract.
-// ──────────────────────────────────────────────────────────────────────────
+
 describe("WR-09 — DeleteTarget carries canonical id/path", () => {
   it("WR-09 / Test 1: note variant requires `id: string`", () => {
     const validNote: import("./deleteConfirmDialog.utils").DeleteTarget = {
@@ -304,8 +280,6 @@ describe("WR-09 — DeleteTarget carries canonical id/path", () => {
       kind: "note",
       name: "foo.md",
     };
-    // Reference the value so it isn't tree-shaken — we only care that the
-    // assignment above is a type error, not that the runtime branch differs.
     expect(missingId.kind).toBe("note");
   });
 
@@ -341,9 +315,6 @@ describe("WR-09 — DeleteTarget carries canonical id/path", () => {
   });
 
   it("WR-09: note variant `id` field is rendered transparently (dialog still shows the name)", () => {
-    // The dialog body must not leak the id into the user-visible copy —
-    // the id is purely for the caller's bookkeeping. The dialog continues
-    // to display the human-readable `name` only.
     render(
       <DeleteConfirmDialog
         open={true}
@@ -357,7 +328,6 @@ describe("WR-09 — DeleteTarget carries canonical id/path", () => {
         "subdir/Foo.md will be permanently removed from disk and from the index.",
       ),
     ).toBeInTheDocument();
-    // The id should NOT appear anywhere in the dialog DOM.
     expect(screen.queryByText(/uuid-deep/)).toBeNull();
   });
 

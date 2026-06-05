@@ -79,8 +79,6 @@ describe("<ResetAndRebuildDialog />", () => {
       screen.getByRole("button", { name: "Keep current schema" }),
     );
     expect(onOpenChange).toHaveBeenCalled();
-    // Radix Cancel triggers onOpenChange with false (or via the natural
-    // open-state transition). We accept any falsy invocation.
     const calls = onOpenChange.mock.calls;
     const hasFalse = calls.some(([arg]) => arg === false);
     expect(hasFalse).toBe(true);

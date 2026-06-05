@@ -4,7 +4,7 @@ import { SearchResultsList } from "./SearchResultsList";
 import { useTreeStore } from "../lib/useTreeStore";
 import type { SearchResult } from "../lib/searchApi";
 
-// Mock @tanstack/react-virtual for unit tests (no real DOM measurement).
+
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: ({ count }: { count: number }) => ({
     getVirtualItems: () =>
@@ -44,9 +44,7 @@ describe("SearchResultsList", () => {
   it("renders nothing (no results, short query) when query < 2 chars", () => {
     useTreeStore.setState({ searchQuery: "a", searchResults: [] });
     const { container } = render(<SearchResultsList />);
-    // No empty state message — query too short
     expect(screen.queryByText(/No matches/)).toBeNull();
-    // Container should be the empty-state-less path (no list either)
     expect(container.textContent).toBe("");
   });
 
@@ -64,7 +62,6 @@ describe("SearchResultsList", () => {
     ];
     useTreeStore.setState({ searchQuery: "al", searchResults: results });
     render(<SearchResultsList />);
-    // getAllByText because title text also appears in the excerpt_html
     expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Beta").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Gamma").length).toBeGreaterThan(0);

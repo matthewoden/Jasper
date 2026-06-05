@@ -17,9 +17,7 @@ import { useCallback, useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { fsApi, type FsListResponse } from "../../lib/fsApi";
 
-// Allow-listed name characters for the inline "New folder" affordance.
-// Mirrors the backend validateVaultPath shape (ASCII + no `/` + no `..`)
-// so a name we accept here also passes the server-side mkdir validation.
+
 const FOLDER_NAME_OK = /^[A-Za-z0-9 _.()'-][A-Za-z0-9 _.()'-]*$/;
 
 export interface FolderPickerProps {
@@ -42,8 +40,6 @@ export interface FolderPickerProps {
 }
 
 function breadcrumb(absPath: string): { label: string; path: string }[] {
-  // Build [{label: "/", path:"/"}, {label: "Users", path: "/Users"}, ...] from
-  // an absolute path. Empty input → just the root.
   if (!absPath || !absPath.startsWith("/")) return [{ label: "/", path: "/" }];
   const segments = absPath.split("/").filter(Boolean);
   const crumbs: { label: string; path: string }[] = [{ label: "/", path: "/" }];
@@ -55,15 +51,7 @@ function breadcrumb(absPath: string): { label: string; path: string }[] {
   return crumbs;
 }
 
-// On WSL2 the backend may surface a Windows-form path alongside the WSL-form
-// canonical path (e.g. `C:\Users\you` for `/mnt/c/Users/you`). When present
-// we relabel the breadcrumb so Windows users see paths they recognize. The
-// click-target for each segment STAYS the WSL form — the Go server only
-// operates on /mnt/... paths.
-//
-// Returns null when the inputs don't pair up into a clean Windows-form
-// breadcrumb (windowsPath empty, wslPath doesn't share a /mnt/<drive>/ prefix,
-// drive letters mismatch). Callers fall back to the WSL-form breadcrumb.
+
 function windowsBreadcrumb(
   wslPath: string,
   windowsPath: string,
@@ -73,12 +61,10 @@ function windowsBreadcrumb(
   if (!wslMatch) return null;
   const drive = wslMatch[1];
   const winSegments = windowsPath.split("\\").filter(Boolean);
-  // winSegments[0] is e.g. "C:" — must match the WSL drive letter.
   if (winSegments.length === 0) return null;
   if (winSegments[0].toLowerCase() !== `${drive}:`) return null;
 
   const crumbs: { label: string; path: string }[] = [];
-  // Root crumb labels "C:\" but navigates to /mnt/c (the drive root).
   crumbs.push({ label: `${winSegments[0].toUpperCase()}\\`, path: `/mnt/${drive}` });
   let cur = `/mnt/${drive}`;
   for (let i = 1; i < winSegments.length; i++) {
@@ -99,8 +85,6 @@ export function FolderPicker({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Returns true on success so the "type a path" edit mode knows whether to
-  // commit (revert to breadcrumb) or stay open with the error visible.
   const load = useCallback(async (path?: string): Promise<boolean> => {
     setLoading(true);
     setError(null);
@@ -111,18 +95,12 @@ export function FolderPicker({
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to list folder.";
       setError(msg);
-      // Don't blow away `state` on error — the user can still navigate to
-      // siblings via the breadcrumb.
       return false;
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // "Type a path" edit mode. Double-clicking the breadcrumb bar (but not a
-  // segment button) swaps the bar for a text input pre-filled with the
-  // current canonical path. Enter commits (load + exit on success); Escape
-  // cancels.
   const [editingPath, setEditingPath] = useState(false);
   const [editPath, setEditPath] = useState("");
 
@@ -141,7 +119,6 @@ export function FolderPicker({
     setError(null);
   };
 
-  // Reset edit state when the picker closes so the next open starts fresh.
   useEffect(() => {
     if (!open) {
       setEditingPath(false);
@@ -152,9 +129,6 @@ export function FolderPicker({
     }
   }, [open]);
 
-  // Inline "New folder" affordance — toggled by the "New folder" button.
-  // When open, replaces the entries-list-header area with a name input.
-  // Submit calls fsApi.mkdir at <state.path>/<name> and refreshes the listing.
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [newFolderErr, setNewFolderErr] = useState<string | null>(null);
@@ -173,9 +147,6 @@ export function FolderPicker({
     setNewFolderErr(null);
     try {
       const created = await fsApi.mkdir(`${state.path}/${name}`);
-      // Re-list the CURRENT directory so the new folder shows up; do not
-      // auto-navigate into it (user might want to keep browsing siblings).
-      // The created path is canonical and matches what /fs/list will report.
       void created;
       setNewFolderOpen(false);
       setNewFolderName("");
@@ -185,18 +156,11 @@ export function FolderPicker({
     }
   };
 
-  // Load on open. We use `open` as the trigger so re-opening the picker
-  // returns to the user's starting point (and refreshes the listing in case
-  // they created folders in the OS between visits).
   useEffect(() => {
     if (!open) return;
     void load(initialPath);
   }, [open, initialPath, load]);
 
-  // Prefer the Windows-form breadcrumb on WSL when the backend supplied
-  // windows_path. Falls through to the WSL/POSIX breadcrumb otherwise. The
-  // click-target on each crumb is always the WSL/POSIX path the backend
-  // operates on.
   const crumbs = state
     ? (windowsBreadcrumb(state.path, state.windows_path ?? "") ?? breadcrumb(state.path))
     : [];
@@ -265,8 +229,6 @@ export function FolderPicker({
               data-testid="folder-picker-breadcrumb"
               title="Double-click to type a path"
               onDoubleClick={(e) => {
-                // Skip when the user double-clicks ON a segment button — that's
-                // a (presumably accidental) navigate, not a request to edit.
                 if ((e.target as HTMLElement).closest("button")) return;
                 enterPathEdit();
               }}
@@ -543,11 +505,6 @@ export function FolderPicker({
               )}
             </div>
             {state?.is_vault === true && onOpenVault ? (
-              // Vault detected: replace "Cancel / Select" with
-              // "Go up / Open Vault" so the user gets a clear action
-              // instead of selecting a folder the create flow would
-              // reject. Go up navigates the picker to state.parent
-              // rather than dismissing the picker entirely.
               <>
                 <button
                   type="button"

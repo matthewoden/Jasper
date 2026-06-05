@@ -79,9 +79,7 @@ export type NoteNodeData = {
   title: string;
 };
 
-// Plan 07-26 (UAT-2 R1-7): non-markdown files surfaced in the sidebar tree.
-// parentNoteId is set for files inside an attachments/ folder so the click
-// handler can route to /api/v1/attachments/{noteId}/{filename}.
+
 export type FileNodeData = {
   kind: "file";
   path: string;
@@ -124,8 +122,7 @@ function noop() {
   /* placeholder when callback not wired */
 }
 
-// Plan 07-26 (UAT-2 R1-7): pick a lucide icon component based on file extension.
-// Returns a React component (not an element) so the caller renders it with size/style.
+
 type IconComponent = React.FC<{ size?: number; style?: CSSProperties; "aria-hidden"?: boolean | "true" }>;
 function getFileIconComponent(filename: string): IconComponent {
   const ext = filename.lastIndexOf(".") >= 0
@@ -136,20 +133,6 @@ function getFileIconComponent(filename: string): IconComponent {
   return FileIcon;
 }
 
-// Plan 07-32b (UAT-3 R7): clicking a non-markdown file sets
-// useTreeStore.activeFilePath; EditorPane subscribes and renders
-// FilePreviewView in the middle pane.
-//
-// SUPERSEDES Plan 07-26 — the previous routing called
-// `window.open(/api/v1/attachments/{parentNoteId}/{filename})` which
-// failed for vault-root files and files outside attachments/ because
-// `parentNoteId` derivation had two failure modes (see 07-31-INVESTIGATION.md
-// §"Root Cause"). The new path-based contract works uniformly for all
-// non-markdown files via the generic GET /api/v1/files?path=<encoded>
-// endpoint introduced in Plan 07-32a.
-//
-// FileNodeData.parentNoteId is preserved on the type (D-41 ADD-only) but
-// no longer passed or consumed here.
 
 export function TreeRow({
   node,
@@ -165,29 +148,15 @@ export function TreeRow({
 }: TreeRowProps) {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const pendingRename = useTreeStore((s) => s.pendingRename);
-  // Plan 08-06 (D-26 / SHARE-01): shared reveal hook for the row's
-  // context + dropdown menu "Show in file manager" items. Path is
-  // `data.path` for all three row kinds (note / folder / file) — the
-  // tree-node shape carries `path` on every kind.
   const { reveal } = useReveal();
-  // Plan 08-10 (MCP-01 / MCP-02): MCP grant indicator + submenu wiring.
-  // directLevelFor (not levelFor) — UI-SPEC §Surface 3 says the indicator
-  // and the submenu's active-state subtitle render ONLY at the leaf where
-  // the grant was attached, never on descendant rows (T-08-48 mitigation).
   const {
     directLevelFor,
     levelFor,
     grant: grantMcp,
     revoke: revokeMcp,
-    // R4-9 (Plan 08-22): ancestor-grant lookup drives the disabled
-    // "Inherits AI access from <ancestor>" menu item in TreeRowMenu.
     inheritedGrantOn,
   } = useMcpGrants();
-  // UAT follow-up 2026-05-12 — pulse highlight when navigated to via breadcrumb.
   const pulseTarget = useTreeStore((s) => s.pulseTarget);
-  // Plan 04 (UX-08): live H1 label override for note rows. Falls back to
-  // the canonical title from the wire tree when no override is present.
-  // Folder rows are unaffected (folders use `data.name`).
   const liveLabel = useTreeStore((s) =>
     node.data.kind === "note" ? s.liveLabels[node.data.id] : undefined,
   );
@@ -195,68 +164,24 @@ export function TreeRow({
   const data = node.data;
   const isFolder = data.kind === "folder";
   const isFile = data.kind === "file";
-  // Plan 07-26: file nodes are never "active" (no note loading path).
   const isActive = !isFolder && !isFile && data.kind === "note" && activeNoteId === data.id;
-  // UX-13 (gap-closure 2026-05-09) — render multi-select state.
-  // node.isSelected reads from react-arborist's Redux selection store.
-  // Without this surface, Cmd+click and Shift+click set aria-selected on
-  // the outer arborist wrapper but produce ZERO visible change in the
-  // tree, leading users to report multi-select as "broken" even though
-  // the underlying selection state is correct (the Bug C Playwright
-  // scenario passes precisely because it queries aria-selected, not
-  // pixels). Active styling outranks selected styling — a row that's
-  // both active AND selected uses the strong accent treatment so the
-  // active anchor is never visually demoted by joining a multi-select.
   const isSelected = node.isSelected === true;
-  // Phase 7 D-18: root-level daily/ folder gets the CalendarDays icon in accent color.
-  // Exact match on data.path === "daily" — sub-paths like "archive/daily" keep the
-  // default Folder/FolderOpen icon. Level-0 guard is implicit: react-arborist only
-  // gives path === "daily" to root-level folders (sub-paths always have a prefix slash
-  // separator, e.g. "projects/daily"). Exact string match is sufficient.
   const isDailyFolder = isFolder && (data as FolderNodeData).path === "daily";
-  // Plan 07-20 (UAT #13 C4): attachments/ folders get a Paperclip icon at any depth.
-  // Matched by folder NAME (not path) so root-level "attachments" and nested
-  // "projects/jasper/attachments" both receive the icon. Folder contents are still
-  // not indexed as notes (walk.go unchanged) — the folder appears empty when expanded.
-  // File visibility inside attachments/ is a v2 polish item.
   const isAttachmentsFolder = isFolder && (data as FolderNodeData).name === "attachments";
-  // 16px indent step (UI-SPEC §Layout). 16px base padding-left + 16px per
-  // depth level. Verified by TestRow_IndentScalesWithLevel.
   const indent = 16 + 16 * node.level;
 
-  // Plan 08-10: per-row MCP direct grant level. Null for notes/files (they
-  // cannot host grants — only folders can). Drives both the Sparkles
-  // indicator and the submenu's "active level" subtitle/checkmark.
   const grantLevel = isFolder
     ? directLevelFor((data as FolderNodeData).path)
     : null;
 
-  // UAT-2 R4-6: tint scope is "granted root + ALL subfolders" (user choice
-  // 2026-05-31). Use levelFor (ancestor walk) for the tint so every
-  // descendant of a granted folder also reads as AI-eligible. The submenu
-  // still uses `grantLevel` (direct) so the "Active" labels point at the
-  // leaf where the grant was attached. data.path exists on all three row
-  // kinds; for files inside an attachments/ folder the parent folder's
-  // grant cascades correctly via levelFor's ancestor walk.
   const effectiveAiLevel: 1 | 2 | null = levelFor(data.path);
 
   const [kebabOpen, setKebabOpen] = useState(false);
 
-  // R4-9 (Plan 08-22): inherited grant on an ancestor folder. Null when
-  // this row IS the granted folder (directLevelFor handles the leaf
-  // case), null when no ancestor holds a grant, and {level, ancestorPath}
-  // otherwise. Drives TreeRowMenu's disabled "Inherits AI access" item.
   const inheritedGrant = isFolder
     ? inheritedGrantOn((data as FolderNodeData).path)
     : null;
 
-  // R4-12 (Plan 08-22): wrap the grant/revoke handlers so the kebab
-  // dropdown closes synchronously (its `open` IS controlled). The
-  // ContextMenu does not expose a controlled `open` prop in Radix, so
-  // dismissing the right-click menu relies on Radix's default
-  // onSelect close behavior + the `<Sub key={activeLevel}>` remount
-  // safety net inside MenuItems (which guarantees a stale
-  // `data-state="open"` cannot survive a grant-driven re-render).
   const handleGrant = isFolder
     ? (level: 1 | 2) => {
         setKebabOpen(false);
@@ -270,10 +195,6 @@ export function TreeRow({
       }
     : undefined;
 
-  // Plan 07-38 R7b lifts Plan 07-26's file rename gate — file rows can
-  // now enter inline rename. Targets are: folder→path, note→id, file→path
-  // (files are identified by their relative path under notes/, mirroring
-  // folder semantics; no UUID model exists for non-markdown files).
   const isRenamingThis =
     pendingRename != null &&
     pendingRename.kind === data.kind &&
@@ -284,16 +205,9 @@ export function TreeRow({
           ? data.id
           : data.path);
 
-  // Bug D fix — handleCancelRename: when pendingRename.isNew is true the
-  // node was just created (never confirmed) and the user pressed Escape or
-  // blurred without changing the placeholder name. In that case we delete
-  // the ephemeral node and then close the rename input. For ordinary
-  // F2/double-click renames (isNew is falsy) we just close the input.
   const handleCancelRename = useCallback(async () => {
     const pr = useTreeStore.getState().pendingRename;
     if (pr?.isNew) {
-      // Ephemeral node: delete it (best-effort — if the delete fails we
-      // still close the input so the user isn't stuck).
       try {
         if (data.kind === "note") {
           await muts.deleteNote(data.id);
@@ -301,7 +215,6 @@ export function TreeRow({
           await muts.deleteFolder(data.path, true);
         }
       } catch (err) {
-        // Log and fall through to endRename so the input always closes.
         console.warn(
           "TreeRow: failed to delete ephemeral node on cancel; tree may show stale row until next refresh",
           err,
@@ -312,62 +225,23 @@ export function TreeRow({
   }, [data, muts]);
 
   const handleClick = (e: React.MouseEvent) => {
-    if (isRenamingThis) return; // guarded — clicks inside the input are handled by RenameInput
+    if (isRenamingThis) return;
 
-    // UX-13 / Pattern 4 (Phase 5.5 Plan 07): delegate Cmd / Ctrl / Shift
-    // to react-arborist's built-in multi-select. node.handleClick reads
-    // e.metaKey + e.shiftKey and calls selectMulti / selectContiguous /
-    // activate as appropriate. RESEARCH §A4: Cmd on Mac, Ctrl on Win/Linux —
-    // accept either for cross-platform correctness.
-    //
-    // Pitfall 5: when modifier is present, RETURN immediately after
-    // node.handleClick(e). Do NOT also fire onSelectNote / setActiveNote /
-    // setSelectedRow — that would switch the loaded note despite the user
-    // only intending to multi-select.
-    //
-    // WR-01 (Phase 5.5 gap-closure Plan 10) — gate ctrlKey on non-Mac
-    // platforms. On macOS, Ctrl-click is the OS-level secondary-click
-    // gesture that opens the right-click context menu; intercepting it
-    // for multi-select breaks platform conventions. Mac users get
-    // multi-select via Cmd-click (metaKey) and contextmenu via
-    // Ctrl-click; other platforms keep both Ctrl and Cmd as multi-select
-    // modifiers. Convention: read navigator.platform (matches
-    // editor/jasperKeymap's existing platform-detection convention).
     const isMac =
       typeof navigator !== "undefined" &&
       navigator.platform.toLowerCase().includes("mac");
     const isModifierClick = e.metaKey || (!isMac && e.ctrlKey) || e.shiftKey;
     if (isModifierClick) {
       node.handleClick(e);
-      // Plan 17 Bug C (UX-13): react-arborist's DefaultRow component
-      // (the outer wrapper around our TreeRow's <div role="treeitem">)
-      // also has `onClick={node.handleClick}`. Without stopPropagation,
-      // the click bubbles to the outer wrapper which fires
-      // node.handleClick AGAIN — toggling Cmd-click's selectMulti right
-      // back to deselect. Net effect: Cmd-click was inert, multi-select
-      // never reached the DOM, multi-delete consequently inert too.
-      // See 05.5-17c-INVESTIGATION.md for the full trace.
       e.stopPropagation();
       return;
     }
 
-    // Plan 07-32b (UAT-3 R7): file nodes set activeFilePath; EditorPane
-    // subscribes and renders FilePreviewView in the middle pane (no popup,
-    // no fetch). The setter atomically clears activeNoteId so the previously
-    // active note's content stops being held in the editor.
     if (isFile) {
       useTreeStore.getState().setActiveFilePath(data.path);
       return;
     }
 
-    // No modifier — existing single-click semantics (Plan 03-20 selectedRow + activate).
-    // Gap R2-4 (Plan 03-20): track this row as the F2 routing target.
-    // App.tsx's document-level keydown listener reads
-    // useTreeStore.selectedRow at fire time to dispatch rename to the
-    // right row even after the editor textarea has stolen focus
-    // (EditorPane focuses the textarea on loadStatus === "loaded").
-    // Both folder and note rows participate — folders rename via the
-    // same selectedRow → startRename path.
     useTreeStore.getState().setSelectedRow(
       data.kind === "folder"
         ? { kind: "folder", target: data.path }
@@ -376,10 +250,6 @@ export function TreeRow({
     if (isFolder) {
       node.toggle();
     } else {
-      // Plan 07-32b (UAT-3 R7): explicitly clear activeFilePath BEFORE
-      // calling setActiveNote. setActiveNote is unchanged per D-41 ADD-only,
-      // so callers must do the reciprocal clearing — otherwise a previously
-      // file-preview-active state would persist into the note view.
       useTreeStore.getState().setActiveFilePath(null);
       onSelectNote((data as NoteNodeData).id);
       useTreeStore.getState().setActiveNote((data as NoteNodeData).id);
@@ -388,29 +258,20 @@ export function TreeRow({
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Plan 07-38 R7b lifts Plan 07-26's file read-only block — file rows
-    // now support rename via the same flow as notes / folders.
     if (onRequestRename) onRequestRename(data);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (isRenamingThis) return; // RenameInput owns key handling while open
+    if (isRenamingThis) return;
     if (e.key === "F2") {
       e.preventDefault();
-      // Gap 3 — keep arborist's keymap from also handling F2. Without
-      // stopPropagation react-arborist's tree-container keymap receives
-      // the bubble and may swallow / re-route the key before our
-      // onRequestRename callback fires.
       e.stopPropagation();
-      // Plan 07-38 R7b: file rows now support rename.
       if (onRequestRename) onRequestRename(data);
       return;
     }
     if (e.key === "Backspace" || e.key === "Delete") {
       e.preventDefault();
-      // Gap 3 — same reason as F2 above.
       e.stopPropagation();
-      // Plan 07-38 R7b: file rows now support delete.
       if (onRequestDelete) onRequestDelete(data);
       return;
     }
@@ -419,52 +280,28 @@ export function TreeRow({
   const activeBackground = isActive
     ? "color-mix(in srgb, var(--color-accent) 8%, transparent)"
     : undefined;
-  // UX-13 selected-but-not-active styling. Half the accent intensity of
-  // the active treatment so the active anchor still reads as primary
-  // when both states co-occur (single-click activates AND selects).
   const selectedBackground =
     isSelected && !isActive
       ? "color-mix(in srgb, var(--color-accent) 4%, transparent)"
       : undefined;
-  // UAT-2 R4-6: when no active/selected tint exists, defer to the
-  // data-ai-level CSS rule by leaving the inline background undefined
-  // (CSS wins by default since no inline value to override). When an
-  // active/selected tint IS present, the inline accent background
-  // visually dominates the AI tint — acceptable because the user has
-  // explicitly focused that row.
   const rowBackground = activeBackground ?? selectedBackground;
 
-  // Plan 07-26: file nodes use path as the row identifier (no note id).
   const dataTreeRowValue = isFolder
     ? data.path
     : isFile
       ? data.path
       : (data as NoteNodeData).id;
 
-  // UAT follow-up 2026-05-12 — does the pulse target match this row?
-  // Plan 07-26: file nodes never pulse (no pulse-target tracking for files).
   const isPulseTarget =
     !isFile &&
     pulseTarget !== null &&
     pulseTarget.kind === data.kind &&
     pulseTarget.target === (data.kind === "folder" ? data.path : (data as NoteNodeData).id);
 
-  // Compute the parent path used for "New note" / "New folder" from this row's
-  // context menu or kebab. Folder rows create children inside themselves;
-  // note rows create siblings (same parent folder).
-  // Plan 07-26: file nodes use the file's parent directory.
   const parentPathForCreate = isFolder
     ? data.path
     : parentDirOf(data.path);
 
-  // For the rename input we strip ".md" from notes; folders keep the
-  // full name. The caller (FileTree) reattaches ".md" before calling
-  // moveNote.
-  // Plan 07-38 R7b: file rows present the FULL filename (with extension)
-  // for editing — the user is expected to keep .png / .pdf / .svg etc.,
-  // and the backend's filesApi.moveFile contract takes the raw new
-  // basename verbatim. We deliberately do not strip the extension so the
-  // user can rename across types if they explicitly choose to.
   const renameInitial =
     data.kind === "folder"
       ? data.name
@@ -472,11 +309,8 @@ export function TreeRow({
         ? data.title.endsWith(".md")
           ? data.title.slice(0, -3)
           : data.title
-        : data.name; // file — full basename including extension
+        : data.name;
 
-  // Plan 04 (UX-08): note rows prefer the live H1 label (from useTreeStore.liveLabels)
-  // over the canonical wire-tree title; folders always render their name.
-  // Plan 07-26: file rows render their filename (data.name).
   const displayLabel =
     isFolder
       ? data.name
@@ -519,11 +353,6 @@ export function TreeRow({
 
   const rowContent = (
     <div
-      // Gap R2-1: arborist hands us a callback ref via the children
-      // render-prop; attaching it on the row container is what registers
-      // the row as a react-dnd drag source. Without this, ALL drag
-      // events are silently dropped — both Playwright synthetic AND
-      // real mouse drags (03-RESEARCH-ROUND2.md §1.2).
       ref={dragHandle}
       style={{
         ...style, // react-arborist virtualization: top, height, etc.
@@ -543,14 +372,6 @@ export function TreeRow({
       data-tree-row={dataTreeRowValue}
       data-tree-row-kind={data.kind}
       data-ai-level={effectiveAiLevel ?? undefined}
-      /* UAT-2 R4-10 (2026-06-02): expose active/selected as DOM
-         attributes so theme.css can apply the violet-survives-selection
-         variant. Without these, the inline `background` style applied
-         above (rowBackground = accent-8% / accent-4%) wins over the CSS
-         data-ai-level tint and AI-granted rows lose their violet
-         identity when selected. The CSS selector targets
-         `[data-tree-row][data-ai-level][data-selected]` with
-         !important to beat the inline style. */
       data-active={isActive ? "true" : undefined}
       data-selected={isSelected ? "true" : undefined}
       onClick={handleClick}
@@ -638,9 +459,6 @@ export function TreeRow({
           hover or focus-within (Plan 03-06 chassis kept the visibility
           behavior verbatim). */}
       <TreeRowDropdownMenu
-        // Plan 07-38 R7b: file rows render rowKind="file" so the menu
-        // body emits only Rename + Delete (no Open / no New note / no
-        // New folder — see TreeRowMenu.tsx for the item-set table).
         rowKind={isFile ? "file" : isFolder ? "folder" : "note"}
         noteId={data.kind === "note" ? data.id : undefined}
         parentPath={parentPathForCreate}
@@ -661,29 +479,15 @@ export function TreeRow({
             : undefined
         }
         onRename={() =>
-          // Plan 07-38 R7b: file rows now route through onRequestRename;
-          // the FileTree handler dispatches to filesApi.moveFile.
           onRequestRename ? onRequestRename(data) : noop()
         }
         onDelete={() =>
-          // Plan 07-38 R7b: file rows now route through onRequestDelete;
-          // the FileTree handler dispatches to filesApi.deleteFile.
           onRequestDelete ? onRequestDelete(data) : noop()
         }
-        // Plan 08-06 (D-26 / SHARE-01): all three row kinds carry a
-        // `path` field; the reveal hook dispatches POST /api/v1/reveal
-        // and fires the LOCKED platform-correct toast.
         onReveal={() => void reveal(data.path)}
-        // Plan 08-10 (MCP-01): folder-row "Grant AI access" submenu.
-        // Undefined on note / file rows so the submenu is suppressed.
         activeLevel={isFolder ? grantLevel : null}
-        // R4-12 (Plan 08-22): handleGrant / handleRevoke close the menu
-        // before invoking the network call so the WS event's re-render
-        // cannot restore a stale `data-state="open"` on the Sub.
         onGrant={handleGrant}
         onRevoke={handleRevoke}
-        // R4-9 (Plan 08-22): inherited grant suppresses the redundant
-        // submenu on descendants of granted folders.
         inheritedGrant={inheritedGrant}
         open={kebabOpen}
         onOpenChange={setKebabOpen}
@@ -692,11 +496,6 @@ export function TreeRow({
           type="button"
           data-tree-row-kebab
           aria-label="Row menu"
-          // Stop propagation in the bubbling phase so the row's onClick
-          // (which would toggle/select) doesn't also fire. We intentionally
-          // do NOT call e.preventDefault — Radix's DropdownMenu.Trigger
-          // (via asChild) needs the native click to fire its own
-          // open-on-click handler.
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           className="invisible group-hover:visible group-focus-within:visible"
@@ -722,8 +521,6 @@ export function TreeRow({
 
   return (
     <TreeRowContextMenu
-      // Plan 07-38 R7b: file rows render rowKind="file" — same item-set
-      // logic as the dropdown variant above.
       rowKind={isFile ? "file" : isFolder ? "folder" : "note"}
       noteId={data.kind === "note" ? data.id : undefined}
       parentPath={parentPathForCreate}
@@ -744,27 +541,15 @@ export function TreeRow({
           : undefined
       }
       onRename={() =>
-        // Plan 07-38 R7b: file rows now route through onRequestRename.
         onRequestRename ? onRequestRename(data) : noop()
       }
       onDelete={() =>
-        // Plan 07-38 R7b: file rows now route through onRequestDelete.
         onRequestDelete ? onRequestDelete(data) : noop()
       }
-      // Plan 08-06 (D-26 / SHARE-01): mirrors the dropdown variant —
-      // same reveal hook, same path source.
       onReveal={() => void reveal(data.path)}
-      // Plan 08-10 (MCP-01): mirrors the dropdown variant — same grant
-      // hook, same path source. Undefined on note / file rows.
       activeLevel={isFolder ? grantLevel : null}
-      // R4-12 (Plan 08-22): handleGrant / handleRevoke close the menu
-      // before invoking the network call.
       onGrant={handleGrant}
       onRevoke={handleRevoke}
-      // R4-9 (Plan 08-22): inherited grant disables the redundant submenu.
-      // R4-12 fix lives in MenuItems' `<Sub key={...}>` block, which
-      // forces a clean remount when activeLevel changes — see
-      // TreeRowMenu.tsx for the key strategy.
       inheritedGrant={inheritedGrant}
     >
       {rowContent}

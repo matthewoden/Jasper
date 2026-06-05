@@ -49,33 +49,23 @@ interface Props {
   onClick?: () => void;
 }
 
-// Floats above the editor pane's top-right corner. zIndex high
-// enough to sit above CM6's gutters and overlay decorations but
-// below modal dialogs / context menus.
+
 const OVERLAY_STYLE: CSSProperties = {
   position: "absolute",
   top: 4,
   right: 8,
   zIndex: 5,
-  // Tinted pill so the indicator reads as overlay-on-content rather
-  // than flat chrome. Color-mix with surface keeps the chip visible
-  // in both dark and light themes via CSS-variable retargeting.
   background: "color-mix(in srgb, var(--color-surface) 90%, transparent)",
   border: "1px solid var(--color-border)",
   borderRadius: 6,
   padding: "2px 8px",
-  // Don't intercept clicks — the editor surface beneath stays
-  // selectable through the overlay. Pointer events re-enable for
-  // hover/title display via the inner span if/when needed.
   pointerEvents: "none",
 };
 
 const CONTAINER_CLASS =
   "flex items-center justify-end gap-1 text-sm";
 
-// Plan 07-37: button-mode style — sized to match TopBar's right-cluster
-// ToggleButton helper (24×24, 4px padding, transparent background, 4px
-// border-radius). Cursor flips to "wait" when disabled (saving).
+
 const BUTTON_STYLE: CSSProperties = {
   width: 24,
   height: 24,
@@ -95,9 +85,7 @@ function pad2(n: number): string {
   return n.toString().padStart(2, "0");
 }
 
-// Locked copy from legacy overlay render — reused verbatim by button mode so
-// the tooltip prefix stays identical to what users (and tests C2/C3/C4) saw
-// pre-Plan 07-37.
+
 function legacyTooltipFor(state: SaveState): string {
   switch (state.status) {
     case "saving":
@@ -116,9 +104,7 @@ function legacyTooltipFor(state: SaveState): string {
   }
 }
 
-// Button-mode visual lookup — picks the lucide icon + spin flag per state.
-// Idle renders a cloud-check icon (always-present button affordance) rather
-// than null (which is the legacy overlay's idle behavior).
+
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement> & { size?: number | string }>;
 
 function buttonVisualFor(state: SaveState): { Icon: LucideIcon; spin: boolean } {
@@ -138,16 +124,9 @@ function buttonVisualFor(state: SaveState): { Icon: LucideIcon; spin: boolean } 
 }
 
 export function SaveIndicator({ state, onClick }: Props) {
-  // ── Plan 07-37 button-mode ──────────────────────────────────────────────
-  // When `onClick` is provided, render as the unified SaveIndicator-button
-  // hybrid (lives in TopBar's right cluster). Always renders SOMETHING (even
-  // for idle) so the affordance stays clickable.
   if (onClick) {
     const { Icon, spin } = buttonVisualFor(state);
     const tooltip = `${legacyTooltipFor(state)} — click to refresh`;
-    // T-37-01 DoS guard: rapid-clicking can't queue overlapping reindex POSTs.
-    // The button is disabled while a save is in flight (which the autosave
-    // path drives via useTreeStore.saveState).
     const isDisabled = state.status === "saving";
     return (
       <button
@@ -172,10 +151,8 @@ export function SaveIndicator({ state, onClick }: Props) {
     );
   }
 
-  // ── Legacy read-only overlay (no onClick) ───────────────────────────────
   switch (state.status) {
     case "idle":
-      // No layout impact when idle — see file header comment.
       return null;
 
     case "saving":
@@ -233,9 +210,6 @@ export function SaveIndicator({ state, onClick }: Props) {
       );
 
     case "paused":
-      // Legacy overlay had no paused render (paused was added by Plan 07-28
-      // for the StatusBar mount which read store state). Return null to
-      // preserve "no overlay, no layout impact" semantics for legacy callers.
       return null;
   }
 }

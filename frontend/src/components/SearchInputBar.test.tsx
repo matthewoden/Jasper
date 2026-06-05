@@ -21,7 +21,6 @@ describe("SearchInputBar", () => {
 
   it("renders the Search (lucide) icon — aria-hidden", () => {
     render(<SearchInputBar />);
-    // Lucide icons render as SVG elements. Check the container has an svg.
     const container = screen.getByRole("textbox", { name: "Search notes" })
       .parentElement;
     expect(container?.querySelector("svg")).toBeTruthy();

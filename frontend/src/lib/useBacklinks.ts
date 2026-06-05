@@ -23,15 +23,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getNoteBacklinks, type BacklinkRow } from "./backlinksApi";
 
-// ────────────────────────────────────────────────────────────────────────────
-// Module-level subscriber registry — mirrors useTagBrowser/useFileTree.
-//
-// Each mounted useBacklinks instance registers its fetchBacklinks callback.
-// dispatchLinksEvent() iterates the Set on the relevant WS events.
-// ────────────────────────────────────────────────────────────────────────────
-// Exported so useTagsForNote (Plan 07-35) can subscribe to the same WS events
-// without duplicating the subscriber-set infrastructure. Both hooks refetch on
-// note:updated / note:created / links:rewritten — sharing one Set is correct.
+
 export const linksEventSubscribers = new Set<() => void>();
 
 export type LinksEventType = "note:updated" | "note:created" | "links:rewritten";
@@ -42,8 +34,6 @@ export type LinksEventType = "note:updated" | "note:created" | "links:rewritten"
  * all mounted useBacklinks instances to refetch.
  */
 export function dispatchLinksEvent(event: LinksEventType): void {
-  // event type is part of the public API so callers can pass it explicitly.
-  // Both "note:updated" and "note:created" trigger the same refetch.
   void event;
   const snapshot = Array.from(linksEventSubscribers);
   for (const fn of snapshot) {
@@ -71,9 +61,7 @@ export function useBacklinks(noteId: string | null): UseBacklinksResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const cancelled = useRef(false);
-  // Retain previous data on error (mirrors useTagBrowser precedent).
   const backlinksRef = useRef<BacklinkRow[] | null>(null);
-  // Keep noteId in a ref so the subscriber closure always reads the current value.
   const noteIdRef = useRef(noteId);
   noteIdRef.current = noteId;
 
@@ -96,13 +84,11 @@ export function useBacklinks(noteId: string | null): UseBacklinksResult {
     } catch (e) {
       if (cancelled.current) return;
       setError(e instanceof Error ? e : new Error(String(e)));
-      // Preserve previous data on error (D-30 / useTagBrowser precedent).
       setBacklinks(backlinksRef.current);
       setLoading(false);
     }
-  }, []); // fetchBacklinks has no deps — reads noteIdRef.current at call time.
+  }, []);
 
-  // Re-run on noteId change.
   useEffect(() => {
     cancelled.current = false;
 
@@ -115,7 +101,6 @@ export function useBacklinks(noteId: string | null): UseBacklinksResult {
       void fetchBacklinks();
     }
 
-    // Register for WS fan-out.
     const subscriber = () => {
       if (noteIdRef.current) void fetchBacklinks();
     };
@@ -136,9 +121,7 @@ export function useBacklinks(noteId: string | null): UseBacklinksResult {
   return { backlinks, loading, error, refresh };
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Test helpers — mirrors useTagBrowser.__testing__.
-// ────────────────────────────────────────────────────────────────────────────
+
 export const __testing__ = {
   simulateEvent: (event: LinksEventType) => {
     dispatchLinksEvent(event);

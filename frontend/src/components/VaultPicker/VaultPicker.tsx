@@ -23,7 +23,7 @@ import { VaultCreatePane } from "./VaultCreatePane";
 type Tab = "recent" | "open" | "create";
 
 export interface VaultPickerProps {
-  mode: "boot" | "switch"; // "boot" = picker IS the page; "switch" = modal over MainShell
+  mode: "boot" | "switch";
 }
 
 export function VaultPicker({ mode }: VaultPickerProps) {

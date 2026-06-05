@@ -52,25 +52,18 @@ export function DataDirSection({
 }: DataDirSectionProps) {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
-  // Monotonic id so out-of-order responses can be discarded.
   const requestIdRef = useRef(0);
-  // Latest AbortController so we can cancel on keystroke / unmount.
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    // Empty input is the initial state — neither valid nor "invalid"
-    // (we don't show the red border before the user has typed anything).
     if (value.trim().length === 0) {
       setStatus({ kind: "idle" });
       onValidityChange(false);
-      // Cancel any in-flight validation if the user cleared the input.
       abortRef.current?.abort();
       return;
     }
 
     setStatus({ kind: "pending" });
-    // Don't claim "valid" while a check is pending — caller should not
-    // enable submit during this window.
     onValidityChange(false);
 
     const reqId = ++requestIdRef.current;
@@ -81,7 +74,6 @@ export function DataDirSection({
     const timer = window.setTimeout(async () => {
       try {
         const resp = await validateDataDir(value, ac.signal);
-        // Race guard: a newer keystroke may have superseded us.
         if (reqId !== requestIdRef.current) return;
         if (resp.valid) {
           setStatus({ kind: "valid" });
@@ -89,19 +81,11 @@ export function DataDirSection({
         } else {
           setStatus({
             kind: "invalid",
-            // LOCKED copy comes from the backend (UI-SPEC §Copywriting
-            // Contract D-08a..d). Default to a generic refusal if the
-            // backend somehow returns no message (defensive — should
-            // not happen).
             message: resp.message ?? "Invalid path.",
           });
           onValidityChange(false);
         }
       } catch (err) {
-        // Abort is expected when the user keeps typing. Anything else
-        // is treated as a transient network failure — keep submit
-        // disabled but don't render an invalid-style border, since the
-        // user didn't enter anything actually invalid.
         if ((err as { name?: string } | null)?.name === "AbortError") return;
         if (reqId !== requestIdRef.current) return;
         setStatus({ kind: "idle" });

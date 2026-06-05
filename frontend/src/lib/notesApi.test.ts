@@ -68,8 +68,6 @@ describe("notesApi", () => {
   });
 
   it("N3: ScratchpadUUID matches the locked byte-for-byte constant from D-06", () => {
-    // This must remain identical to Plan 02's notes.ScratchpadUUID. A mismatch
-    // would surface as a 404 on every GET/PUT against the backend.
     expect(ScratchpadUUID).toBe("00000000-0000-4000-a000-000000000001");
   });
 

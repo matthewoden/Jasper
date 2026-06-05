@@ -26,7 +26,7 @@
  * invariant per CONTEXT D-32). This file is the active implementation.
  */
 import { useState, useEffect, useId, type CSSProperties } from "react";
-// C4 (UAT-2 N4): removed ChevronRight + ChevronDown — expand/collapse chevron removed
+
 import { X } from "lucide-react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 
@@ -37,9 +37,6 @@ import { TagDeleteConfirmDialog } from "./TagDeleteConfirmDialog";
 import { RenameInput } from "./RenameInput";
 import { useToast } from "./toast.utils";
 
-// ────────────────────────────────────────────────────────────────────────────
-// Locked styles (UI-SPEC §Surface 2-NEW)
-// ────────────────────────────────────────────────────────────────────────────
 
 /** Panel card shell — shared treatment per Surface 1-NEW. */
 const panelCardStyle: CSSProperties = {
@@ -135,7 +132,7 @@ const emptyStateStyle: CSSProperties = {
   textAlign: "center",
 };
 
-// Context menu styles (mirrors TreeRowMenu locked styles)
+
 const menuContainerStyle: CSSProperties = {
   background: "var(--color-surface)",
   border: "1px solid var(--color-border)",
@@ -166,18 +163,12 @@ const destructiveItemStyle: CSSProperties = {
   color: "var(--color-destructive)",
 };
 
-// T-06-08-01: client-side pre-validation for tag names before PUT
+
 const TAG_CHARSET_REGEX = /^[a-z0-9_-]+$/;
 
 export function RightRailTagsPanel() {
-  // C4 (UAT-2 N4): rightRailTagsPanelExpanded is now dead-read from this component.
-  // Phase 06.6 D-36 gates panel visibility at the parent level (panelSelector.tags).
-  // The slice remains in useTreeStore per ADD-only invariant (D-41); v2 cleanup can prune.
-  // We still READ it here for backward compat (other consumers may exist), but the
-  // chevron + expand/collapse behavior is removed. The content is always visible.
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
   const setActiveTagFilter = useTreeStore((s) => s.setActiveTagFilter);
-  // T-06.5-11: reset searchQuery when note switches
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const { tags, refresh } = useTagBrowser();
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -185,23 +176,18 @@ export function RightRailTagsPanel() {
     name: string;
     count: number;
   } | null>(null);
-  // D-22: soft-select state — set on right-click, cleared when context menu closes
   const [softSelected, setSoftSelected] = useState<string | null>(null);
   const listId = useId();
   const { toast } = useToast();
 
-  // D-19: local search state — NOT persisted (D-20)
   const [searchQuery, setSearchQuery] = useState("");
 
-  // T-06.5-11: clear searchQuery when note switches (D-20: clears on note switch)
   useEffect(() => {
     setSearchQuery("");
   }, [activeNoteId]);
 
-  // Sort alphabetically (server already does this; defense-in-depth)
   const sortedTags = [...tags].sort((a, b) => a.name.localeCompare(b.name));
 
-  // D-19: strict case-insensitive substring filter
   const filteredTags =
     searchQuery === ""
       ? sortedTags
@@ -210,7 +196,6 @@ export function RightRailTagsPanel() {
         );
 
   const handleRenameCommit = async (oldName: string, newName: string) => {
-    // T-06-08-01: pre-validate charset before sending to server
     if (!TAG_CHARSET_REGEX.test(newName)) {
       throw new Error(
         "Tag names may only contain lowercase letters, digits, hyphens, and underscores.",
@@ -220,11 +205,9 @@ export function RightRailTagsPanel() {
       const result = await renameTag(oldName, newName);
       setRenaming(null);
       await refresh();
-      // If the active filter was the old name, update it
       if (activeTagFilter === oldName) {
         setActiveTagFilter(newName);
       }
-      // Toast for N > 5 affected (D-23 — silent for N ≤ 5)
       if (result.touched_note_ids.length > 5) {
         toast({
           title: "Tag renamed",
@@ -239,7 +222,6 @@ export function RightRailTagsPanel() {
 
   const handleDeleteClick = (tag: { name: string; count: number }) => {
     if (tag.count <= 5) {
-      // Silent delete for N ≤ 5
       void (async () => {
         try {
           await deleteTag(tag.name);
@@ -256,7 +238,6 @@ export function RightRailTagsPanel() {
         }
       })();
     } else {
-      // Show confirmation dialog for N > 5
       setConfirming({ name: tag.name, count: tag.count });
     }
   };
@@ -270,7 +251,6 @@ export function RightRailTagsPanel() {
       }
       await refresh();
       setConfirming(null);
-      // Toast for N > 5 (D-24)
       if (result.touched_note_ids.length > 5) {
         toast({
           title: "Tag removed",
@@ -346,14 +326,12 @@ export function RightRailTagsPanel() {
               {/* Empty states — two variants per UI-SPEC */}
               {filteredTags.length === 0 ? (
                 searchQuery !== "" ? (
-                  /* SR5: no-match state when search has query */
                   <li>
                     <p role="status" style={emptyStateStyle}>
                       No tags match &ldquo;{searchQuery}&rdquo;.
                     </p>
                   </li>
                 ) : (
-                  /* TB12: no tags at all — body-first messaging per D-04 */
                   <li>
                     <p role="status" style={emptyStateStyle}>
                       No tags yet. Type #tagname in any note to add a tag.

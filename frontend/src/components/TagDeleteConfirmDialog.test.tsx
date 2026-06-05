@@ -19,7 +19,6 @@ describe("TagDeleteConfirmDialog", () => {
         onConfirm={onConfirm}
       />,
     );
-    // Radix AlertDialog with open=false renders no visible content
     expect(screen.queryByText("Remove tag 'project'?")).toBeNull();
     expect(container.querySelector('[role="alertdialog"]')).toBeNull();
   });
@@ -37,20 +36,16 @@ describe("TagDeleteConfirmDialog", () => {
       />,
     );
 
-    // Title
     expect(screen.getByText("Remove tag 'project'?")).toBeInTheDocument();
 
-    // Body line 1
     expect(
       screen.getByText(
         'This will remove "project" from 12 notes. Their frontmatter will be rewritten.',
       ),
     ).toBeInTheDocument();
 
-    // Body line 2 (destructive)
     expect(screen.getByText("This cannot be undone.")).toBeInTheDocument();
 
-    // Buttons
     expect(screen.getByRole("button", { name: "Keep tag" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove tag" })).toBeInTheDocument();
   });
@@ -102,7 +97,6 @@ describe("TagDeleteConfirmDialog", () => {
       />,
     );
 
-    // Radix AlertDialog sets role="alertdialog" automatically
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
   });
 });

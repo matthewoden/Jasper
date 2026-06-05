@@ -34,18 +34,13 @@ import {
 } from "./draft";
 import { submitSetup, type McpGrantSeed } from "./setupApi";
 
-// dedupGrantsByFolder collapses duplicate folder entries in the grant list
-// before POST. Last-write-wins on level — a folder appearing twice keeps the
-// later entry's level. This is UAT-1 N8 layer 2 (belt-and-braces against
-// legacy localStorage drafts that already contain duplicates from before the
-// McpSection handleAddFolder duplicate guard landed). Layer 1 = McpSection
-// handleAddFolder guard; Layer 3 = backend ON CONFLICT upsert.
+
 function dedupGrantsByFolder(grants: SetupGrantDraft[]): SetupGrantDraft[] {
   const map = new Map<string, SetupGrantDraft>();
   for (const g of grants) {
     const key = g.folder.trim().toLowerCase();
     if (key === "") continue;
-    map.set(key, g); // last-write-wins on level
+    map.set(key, g);
   }
   return Array.from(map.values());
 }
@@ -60,17 +55,10 @@ export function SetupApp() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // D-06: keep <html data-theme> in sync with the draft on every change.
-  // ThemeSection also writes it directly on click for instant feedback,
-  // but this effect handles the initial-mount case (when loadDraft()
-  // returned a non-default theme) and any indirect mutation paths.
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", draft.theme);
   }, [draft.theme]);
 
-  // D-09: persist every field change. Wraps setState so the React tree
-  // and localStorage stay in lockstep (no debounce — these are tiny
-  // synchronous writes; the user's reload-mid-wizard case is the value).
   const updateDraft = (patch: Partial<SetupDraft>) => {
     setDraft((d) => {
       const next = { ...d, ...patch };
@@ -98,8 +86,6 @@ export function SetupApp() {
         daily_template: draft.dailyTemplate,
         create_today_daily_note: draft.createTodayDailyNote,
       });
-      // D-10: clear the draft BEFORE redirect so any subsequent first-run
-      // (e.g., the user wipes their data-dir and reinstalls) starts clean.
       clearDraft();
       window.location.assign("/");
     } catch (e) {

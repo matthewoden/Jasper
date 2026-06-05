@@ -27,8 +27,6 @@ function asApiError(error: unknown, status: number): ApiError {
 
 export async function getConfig(): Promise<{ data?: Config; error?: ApiError }> {
   const res = await client.GET("/config");
-  // openapi-typescript types /config as having no error responses, so
-  // `res.error` is typed as `never` — use a runtime guard instead.
   if (!res.data) {
     const status = (res.response as { status?: number } | undefined)?.status ?? 0;
     return { error: asApiError(res.error, status) };
@@ -70,15 +68,15 @@ export function useConfig(): {
   }, []);
 
   const saveConfig = useCallback(async (next: Config) => {
-    const prev = config; // capture before optimistic write
-    setConfig(next); // optimistic
+    const prev = config;
+    setConfig(next);
     const { data, error: err } = await putConfig(next);
     if (err) {
-      setConfig(prev); // rollback to pre-optimistic state
+      setConfig(prev);
       setError(err);
       return { error: err };
     }
-    if (data) setConfig(data); // server may have echoed back exactly next
+    if (data) setConfig(data);
     return {};
   }, [config]);
 

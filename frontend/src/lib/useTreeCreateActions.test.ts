@@ -48,7 +48,6 @@ function defaultMutsResult() {
     createFolder: vi.fn(),
     deleteFolder: vi.fn(),
     moveFolder: vi.fn(),
-    // Plan 07-39 (UAT-5 N2-sub-B): internal file drag mutator.
     moveFile: vi.fn(),
   };
 }
@@ -145,12 +144,6 @@ describe("useTreeCreateActions — auto-increment default name (Gap 5)", () => {
   });
 
   it("createNoteAt inside a nested folder uses ONLY that folder's siblings", async () => {
-    // The root contains an untitled.md note AND a `projects` folder
-    // that itself contains an untitled.md. The root-level note must
-    // NOT count as a sibling when creating inside `projects` — the
-    // result must be `untitled 1` (because of the in-folder collision)
-    // not `untitled 2` (which would happen if we mistakenly mixed the
-    // root and folder siblings).
     setUseFileTree({
       root: [
         {
@@ -284,19 +277,15 @@ describe("useTreeCreateActions — in-flight guard (Gap R2-2)", () => {
       firstPending = result.current.createNoteAt("");
     });
 
-    // Wait until the in-flight flag has flipped — proves the first call has
-    // committed to the guard before we attempt the second.
     await waitFor(() => {
       expect(result.current.isCreating).toBe(true);
     });
 
-    // Second call MUST early-return without invoking createFolder.
     await act(async () => {
       await result.current.createFolderAt("");
     });
     expect(muts.createFolder).not.toHaveBeenCalled();
 
-    // Clean up: resolve the first call so the hook settles.
     await act(async () => {
       d.resolve({
         id: "n1",

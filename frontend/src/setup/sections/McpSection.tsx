@@ -70,8 +70,6 @@ export function McpSection({
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<number | null>(null);
 
-  // Clear any pending auto-clear timer when this component unmounts so we
-  // don't call setState on an unmounted React node.
   useEffect(() => {
     return () => {
       if (errorTimerRef.current !== null) {
@@ -92,12 +90,7 @@ export function McpSection({
   };
 
   const handleAddFolder = () => {
-    // v1 implementation per 08-PATTERNS.md §"No Analog Found" — no folder
-    // picker primitive exists in-repo yet. The wizard surfaces this as a
-    // known rough edge; v2 replaces with a native picker.
     const raw = window.prompt("Folder path under notes/:");
-    // `null` = user pressed Cancel; do nothing (no error message — the
-    // user explicitly bailed out).
     if (raw === null) return;
     if (!isValidGrantFolderPath(raw)) {
       flashError(
@@ -105,9 +98,6 @@ export function McpSection({
       );
       return;
     }
-    // UAT-1 N8 layer 1: reject a folder that already exists in the list
-    // (case-insensitive + whitespace-trimmed). The user must remove the
-    // existing entry first if they want to change the tier level.
     const trimmed = raw.trim();
     const dup = grants.some(
       (g) => g.folder.trim().toLowerCase() === trimmed.toLowerCase(),
@@ -116,7 +106,6 @@ export function McpSection({
       flashError("Folder already granted. Remove it first to change its tier.");
       return;
     }
-    // Default new grants to Tier 1 (Edit only) per D-19.
     const next: SetupGrantDraft = { folder: trimmed, level: 1 };
     onGrantsChange([...grants, next]);
   };

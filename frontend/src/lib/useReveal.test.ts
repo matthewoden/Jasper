@@ -18,14 +18,12 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock revealPath at the module boundary. The hook imports it from "./revealApi".
+
 vi.mock("./revealApi", () => ({
   revealPath: vi.fn(),
 }));
 
-// Capture toast() calls by mocking useToast — the hook imports it from
-// "../components/Toast". Returning a stable mock fn from useToast lets each
-// test assert title/description/variant without rendering the real toast DOM.
+
 const toastSpy = vi.fn();
 vi.mock("../components/toast.utils", () => ({
   useToast: () => ({ toast: toastSpy }),
@@ -123,8 +121,6 @@ describe("useReveal", () => {
   });
 
   it("REVEAL-HOOK-5: re-entrancy guard — second reveal() while in-flight is a no-op", async () => {
-    // First call returns a pending promise so loading stays true while we fire
-    // the second one. Mirrors useDailyNote's DN-HOOK-4 pattern.
     let resolve: (v: { ok: true; platform: "darwin"; status: 200 }) => void = () => {};
     const pending = new Promise<{ ok: true; platform: "darwin"; status: 200 }>(
       (r) => {
@@ -135,25 +131,20 @@ describe("useReveal", () => {
 
     const { result } = renderHook(() => useReveal());
 
-    // Start first call (don't await).
     act(() => {
       void result.current.reveal("a.md");
     });
 
-    // Wait for `loading` to flip true so the guard is armed.
     await waitFor(() => {
       expect(result.current.loading).toBe(true);
     });
 
-    // Fire second call while first is in flight.
     await act(async () => {
       await result.current.reveal("b.md");
     });
 
-    // Only the first call reached revealPath; second was guarded.
     expect(mockedRevealPath).toHaveBeenCalledTimes(1);
 
-    // Resolve the first call to clean up the hanging promise.
     act(() => {
       resolve({ ok: true, platform: "darwin", status: 200 });
     });
@@ -161,7 +152,6 @@ describe("useReveal", () => {
       expect(result.current.loading).toBe(false);
     });
 
-    // Resolution toasts once for the first call (success).
     expect(toastSpy).toHaveBeenCalledTimes(1);
     expect(toastSpy.mock.calls[0][0].title).toBe("Opened in Finder");
   });

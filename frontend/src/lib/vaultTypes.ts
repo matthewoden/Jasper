@@ -6,5 +6,5 @@
  * useVaultPicker.ts import directly from vaultApi.ts or this module.
  */
 
-// Re-export from vaultApi.ts which is the canonical location.
+
 export type { RecentVaultEntry, GetVaultRecentResponse } from "./vaultApi";

@@ -18,9 +18,6 @@ import { yamlFrontmatter } from "@codemirror/lang-yaml";
 
 import { imageAttachmentPlugin, buildImageAttachmentDecorations } from "./imageAttachmentWidget";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeView(doc: string, noteId = "test-note-id"): EditorView {
   const parent = document.createElement("div");
@@ -42,18 +39,12 @@ const views: EditorView[] = [];
 afterEach(() => {
   for (const v of views) v.destroy();
   views.length = 0;
-  // Clean up any DOM appended by makeView
   document.body.innerHTML = "";
 });
 
-// ---------------------------------------------------------------------------
-// describe: imageAttachmentPlugin
-// ---------------------------------------------------------------------------
 
 describe("imageAttachmentWidget / imageAttachmentPlugin", () => {
   it("emits a widget for ![alt](attachments/x.png)", () => {
-    // CM6 ViewPlugin constraint: block:true is NOT allowed in plugins.
-    // The widget uses side:1 at line.to for correct placement.
     const doc = "![my chart](attachments/chart.png)";
     const view = makeView(doc);
     views.push(view);
@@ -111,8 +102,6 @@ describe("imageAttachmentWidget / imageAttachmentPlugin", () => {
   });
 
   it("emits widget at the END of the markdown image line (side:1 = after)", () => {
-    // block:true is NOT used (CM6 ViewPlugin constraint forbids it).
-    // Widget is at line.to with side:1 — CSS display:block gives visual placement.
     const doc = "![photo](attachments/photo.jpg)";
     const view = makeView(doc);
     views.push(view);
@@ -122,7 +111,6 @@ describe("imageAttachmentWidget / imageAttachmentPlugin", () => {
     while (cursor.value !== null) {
       const spec = (cursor.value as unknown as { spec: { widget?: unknown; side?: number } }).spec;
       if (spec?.widget) {
-        // Widget must be at line.to (end of the line, after the source text)
         const lineEnd = view.state.doc.lineAt(0).to;
         expect(cursor.from).toBe(lineEnd);
         expect(cursor.to).toBe(lineEnd);

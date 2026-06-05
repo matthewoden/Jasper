@@ -6,7 +6,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useTreeStore } from "../lib/useTreeStore";
 
-// Mock useTagBrowser
+
 const mockRefresh = vi.fn().mockResolvedValue(undefined);
 vi.mock("../lib/useTagBrowser", () => ({
   useTagBrowser: vi.fn(() => ({
@@ -17,7 +17,7 @@ vi.mock("../lib/useTagBrowser", () => ({
   })),
 }));
 
-// Mock tagsApi
+
 const mockRenameTag = vi.fn();
 const mockDeleteTag = vi.fn();
 vi.mock("../lib/tagsApi", () => ({
@@ -27,7 +27,7 @@ vi.mock("../lib/tagsApi", () => ({
   deleteTag: (...args: unknown[]) => mockDeleteTag(...args),
 }));
 
-// Mock useTheme to avoid config fetching
+
 vi.mock("../lib/useTheme", () => ({
   useTheme: () => ({ theme: "dark", setTheme: vi.fn() }),
   THEME_BOOTSTRAP_KEY: "jasper:theme-bootstrap",
@@ -54,7 +54,6 @@ function renderSection() {
 }
 
 beforeEach(() => {
-  // Reset store state
   useTreeStore.setState({ tagBrowserExpanded: false, activeTagFilter: null });
   mockedUseTagBrowser.mockReset();
   mockedUseTagBrowser.mockReturnValue({
@@ -72,10 +71,8 @@ describe("TagBrowserSection", () => {
     useTreeStore.setState({ tagBrowserExpanded: false });
     renderSection();
 
-    // Header should show tag count
     expect(screen.getByText(/TAGS \(3\)/)).toBeInTheDocument();
 
-    // No tag rows visible
     expect(screen.queryByText("alpha")).toBeNull();
     expect(screen.queryByText("beta")).toBeNull();
   });
@@ -84,10 +81,8 @@ describe("TagBrowserSection", () => {
     useTreeStore.setState({ tagBrowserExpanded: true });
     renderSection();
 
-    // Header should still show count
     expect(screen.getByText(/TAGS \(3\)/)).toBeInTheDocument();
 
-    // Tag rows should be visible
     expect(screen.getByText("alpha")).toBeInTheDocument();
     expect(screen.getByText("beta")).toBeInTheDocument();
     expect(screen.getByText("project")).toBeInTheDocument();
@@ -111,15 +106,13 @@ describe("TagBrowserSection", () => {
     renderSection();
 
     const tagItems = screen.getAllByRole("listitem");
-    // Tags should appear in alphabetical order: alpha, beta, project
     expect(tagItems[0]).toHaveTextContent("alpha");
     expect(tagItems[1]).toHaveTextContent("beta");
     expect(tagItems[2]).toHaveTextContent("project");
 
-    // Count badges visible
-    expect(screen.getByText("5")).toBeInTheDocument(); // alpha count
-    expect(screen.getByText("2")).toBeInTheDocument(); // beta count
-    expect(screen.getByText("12")).toBeInTheDocument(); // project count
+    expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
   });
 
   it("TB5: clicking a tag row calls setActiveTagFilter with the tag name", () => {
@@ -134,7 +127,6 @@ describe("TagBrowserSection", () => {
     useTreeStore.setState({ tagBrowserExpanded: true, activeTagFilter: "beta" });
     renderSection();
 
-    // The beta row should have active styling - check via test-id or class
     const betaRow = screen.getByTestId("tag-row-beta");
     expect(betaRow).toHaveAttribute("data-active", "true");
   });
@@ -143,10 +135,6 @@ describe("TagBrowserSection", () => {
     useTreeStore.setState({ tagBrowserExpanded: true });
     renderSection();
 
-    // Verify the tag rows have right-click triggers (ContextMenu.Root wrapping)
-    // We can't easily simulate right-click in jsdom with Radix ContextMenu,
-    // but we can verify the component renders without errors and the
-    // rows exist with their data attributes
     const projectRow = screen.getByTestId("tag-row-project");
     expect(projectRow).toBeInTheDocument();
   });
@@ -155,12 +143,8 @@ describe("TagBrowserSection", () => {
     mockDeleteTag.mockResolvedValue({ old_name: "alpha", touched_note_ids: ["id-1"] });
     useTreeStore.setState({ tagBrowserExpanded: true });
 
-    // We need to access the delete handler directly since right-click in jsdom is hard
-    // The component exposes a data-testid on the row; we test the handler via the
-    // exposed onDelete prop of the context menu
     const { container } = renderSection();
 
-    // Find the alpha row's delete trigger button
     const deleteBtn = container.querySelector('[data-testid="delete-tag-alpha"]');
     if (deleteBtn) {
       fireEvent.click(deleteBtn);

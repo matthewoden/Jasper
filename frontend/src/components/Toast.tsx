@@ -143,5 +143,4 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// useToast + ToastOptions + ToastApi + ToastCtx all live in
-// ./toast.utils — see file header.
+

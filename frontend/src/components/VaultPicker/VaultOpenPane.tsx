@@ -32,7 +32,6 @@ export function VaultOpenPane({
   const [submitting, setSubmitting] = useState(false);
   const [browsing, setBrowsing] = useState(false);
 
-  // Sync initialPath changes (e.g. when Reconnect pre-fills the path)
   useEffect(() => {
     setPath(initialPath);
   }, [initialPath]);
@@ -107,8 +106,6 @@ export function VaultOpenPane({
           setPath(p);
           setBrowsing(false);
         }}
-        // On the Open tab, a detected vault is exactly what we want —
-        // call vaultApi.open and reload, identical to the form-submit path.
         onOpenVault={(p) => {
           void (async () => {
             try {

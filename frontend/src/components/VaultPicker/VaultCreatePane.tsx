@@ -27,9 +27,7 @@ export interface VaultCreatePaneProps {
   onCreated: () => void;
 }
 
-// Daily-template default mirrors config.Defaults() in backend/internal/config/defaults.go
-// so a user who keeps the default ends up with the same template the backend
-// would have written via the legacy bootstrap path.
+
 const DEFAULT_DAILY_TEMPLATE = "# {{date}}\n\n";
 
 const SECTION_EYEBROW_STYLE: React.CSSProperties = {
@@ -49,22 +47,17 @@ const HELPER_STYLE: React.CSSProperties = {
 };
 
 export function VaultCreatePane({ onCreated }: VaultCreatePaneProps) {
-  // Section 1: vault path. Set via the Browse modal or typed directly.
   const [path, setPath] = useState("");
   const [browsing, setBrowsing] = useState(false);
 
-  // Section 2: theme. Live-apply on change so the modal flips as the radio
-  // is clicked — feedback before commit.
   const [theme, setThemeState] = useState<"dark" | "light">("dark");
   const setTheme = (t: "dark" | "light") => {
     setThemeState(t);
     applyTheme(t);
   };
 
-  // Section 3: daily template, pre-filled with the same default the backend uses.
   const [dailyTemplate, setDailyTemplate] = useState(DEFAULT_DAILY_TEMPLATE);
 
-  // Submit state
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
@@ -80,8 +73,6 @@ export function VaultCreatePane({ onCreated }: VaultCreatePaneProps) {
         path,
         theme,
         daily_template: dailyTemplate,
-        // MCP stays off at vault-creation time (UAT-2 #1d). Owner grants
-        // folders from TreeRowMenu after the vault is open.
         mcp_enabled: false,
       });
       onCreated();
@@ -154,9 +145,6 @@ export function VaultCreatePane({ onCreated }: VaultCreatePaneProps) {
             setPath(p);
             setBrowsing(false);
           }}
-          // When the picker lands on an existing vault, take the user
-          // straight there instead of bouncing through the create form
-          // (which would reject with already_a_vault on submit).
           onOpenVault={(p) => {
             void (async () => {
               try {

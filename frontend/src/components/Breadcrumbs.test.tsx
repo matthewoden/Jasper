@@ -18,30 +18,27 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useTreeStore } from "../lib/useTreeStore";
 
-// Mock expandAndScrollToFolder
+
 const mockExpandAndScrollToFolder = vi.fn();
 vi.mock("./fileTree.utils", () => ({
   expandAndScrollToFolder: (...args: unknown[]) =>
     mockExpandAndScrollToFolder(...args),
 }));
 
-// Mock useFileTree
+
 const mockUseFileTree = vi.fn();
 vi.mock("../lib/useFileTree", () => ({
   useFileTree: () => mockUseFileTree(),
 }));
 
-// Plan 08-06 (D-26): Breadcrumbs now consumes useReveal() for the folder
-// segment context-menu reveal item. Mock at the module boundary to avoid
-// requiring a ToastProvider wrapper around every test render — the
-// reveal toast scenarios are covered by src/lib/useReveal.test.ts.
+
 vi.mock("../lib/useReveal", () => ({
   useReveal: () => ({ reveal: vi.fn(), loading: false }),
 }));
 
 import { Breadcrumbs } from "./Breadcrumbs";
 
-// A fixed tree for tests
+
 const fakeTree = {
   root: [
     {
@@ -101,7 +98,6 @@ describe("Breadcrumbs", () => {
   it("T2: root-level note renders just the title — no separators, no folder buttons", () => {
     useTreeStore.setState({ activeNoteId: "note-root-uuid", liveLabels: {} });
     render(<Breadcrumbs />);
-    // UAT 2026-05-12: "notes" root segment removed; root note is title-only.
     expect(screen.queryByText("notes")).toBeNull();
     expect(screen.queryAllByText("/").length).toBe(0);
     expect(screen.getByText("My Note")).toBeInTheDocument();
@@ -138,7 +134,6 @@ describe("Breadcrumbs", () => {
     });
     fireEvent.click(projectsBtn);
     expect(mockExpandAndScrollToFolder).toHaveBeenCalledWith("projects");
-    // UAT 2026-05-12: click also pulses the tree row briefly.
     expect(useTreeStore.getState().pulseTarget).toEqual({
       kind: "folder",
       target: "projects",
@@ -160,7 +155,6 @@ describe("Breadcrumbs", () => {
     render(<Breadcrumbs />);
     const titleEl = screen.getByText("Deep Note");
     expect(titleEl.tagName.toLowerCase()).toBe("span");
-    // Verify it's not a button
     expect(titleEl.closest("button")).toBeNull();
   });
 
@@ -184,7 +178,6 @@ describe("Breadcrumbs", () => {
   it("T9: segments are separated by '/' separators", () => {
     useTreeStore.setState({ activeNoteId: "note-deep-uuid", liveLabels: {} });
     render(<Breadcrumbs />);
-    // UAT 2026-05-12: "projects / jasper / Deep Note" → 2 separators (was 3).
     const separators = screen.getAllByText("/");
     expect(separators.length).toBe(2);
   });

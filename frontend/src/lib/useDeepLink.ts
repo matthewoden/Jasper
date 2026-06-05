@@ -36,8 +36,6 @@ export function useDeepLink(treeReady: boolean): void {
   const setActiveNote = useTreeStore((s) => s.setActiveNote);
 
   useEffect(() => {
-    // Gate on tree readiness so setActiveNote operates against
-    // populated tree data (Pitfall 6).
     if (!treeReady) return;
 
     const url = new URL(window.location.href);
@@ -45,13 +43,11 @@ export function useDeepLink(treeReady: boolean): void {
     const path = url.searchParams.get("path");
     if (!id && !path) return;
 
-    // D-30 preference: ?note=<uuid> wins when both are present.
     const queryRaw = id ?? path ?? "";
 
     const cleanUrl = (): void => {
       url.searchParams.delete("note");
       url.searchParams.delete("path");
-      // Preserve pathname (/ for default route); only strip the params.
       window.history.replaceState({}, "", url.toString());
     };
 

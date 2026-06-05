@@ -46,9 +46,7 @@ import type { TreeRowData } from "./TreeRow";
 import type { NodeApi, TreeApi } from "react-arborist";
 import { ToastProvider } from "./Toast";
 
-// ──────────────────────────────────────────────────────────────────────
-// Mocks
-// ──────────────────────────────────────────────────────────────────────
+
 vi.mock("../lib/useFileTree", () => ({
   useFileTree: vi.fn(),
 }));
@@ -63,15 +61,11 @@ vi.mock("../lib/useTreeMutations", async () => {
   };
 });
 
-// Plan 03-22 (Gap R2-6) — Direction B: handleCommitRename's note branch
-// fetches the renamed note's content, rewrites the first H1 line to
-// match the new basename, and writes the content back. The fetch +
-// write route through notesApi; mock both at module-load time.
+
 vi.mock("../lib/notesApi", () => ({
   ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
   getNote: vi.fn(),
   updateNote: vi.fn(),
-  // Plan 07-39 (UAT-5 N2-sub-A): markdown drops route through this helper.
   createNoteFromMarkdownDrop: vi.fn(),
 }));
 
@@ -111,7 +105,6 @@ function defaultMutsResult() {
     createFolder: vi.fn(),
     deleteFolder: vi.fn(),
     moveFolder: vi.fn(),
-    // Plan 07-39 (UAT-5 N2-sub-B): internal file drag mutator.
     moveFile: vi.fn(),
   };
 }
@@ -314,18 +307,13 @@ describe("<FileTree />", () => {
     const { container } = renderWithProvider(
       <FileTree onSelectNote={vi.fn()} />,
     );
-    // The wrapper from ToastProvider adds extras; the FileTree returns
-    // null which puts only ToastProvider's chrome (Toast.Viewport) in
-    // the container. Assert there is no tree-* test id.
     expect(container.querySelector("[data-testid='tree-loading']")).toBeNull();
     expect(container.querySelector("[data-testid='tree-error-state']")).toBeNull();
     expect(container.querySelector("[data-testid='tree-empty-state']")).toBeNull();
   });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Pure helpers — basename + countDescendants
-// ────────────────────────────────────────────────────────────────────
+
 describe("FileTree helpers", () => {
   it("basename extracts last path segment", () => {
     expect(basename("a/b/c.md")).toBe("c.md");
@@ -377,12 +365,6 @@ describe("FileTree helpers", () => {
   });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Plan 03-07 — interaction wiring (delete dialog + rename + toasts).
-// We avoid driving react-arborist's internal DnD machinery in jsdom;
-// instead we exercise the behavior surface (delete dialog, rename
-// commit) that we own end-to-end.
-// ────────────────────────────────────────────────────────────────────
 
 describe("<FileTree /> — Plan 03-07 wiring", () => {
   it("TestFileTree_DeleteFlow_Note", async () => {
@@ -416,7 +398,6 @@ describe("<FileTree /> — Plan 03-07 wiring", () => {
       '[data-tree-row="uuid-1"]',
     ) as HTMLElement;
     fireEvent.keyDown(row, { key: "Backspace" });
-    // Dialog opens with the note variant
     await waitFor(() => {
       expect(screen.getByText("Delete this note?")).toBeInTheDocument();
     });
@@ -478,7 +459,6 @@ describe("<FileTree /> — Plan 03-07 wiring", () => {
       '[data-tree-row="projects"]',
     ) as HTMLElement;
     fireEvent.keyDown(row, { key: "Backspace" });
-    // Dialog body mentions "3 notes"
     await waitFor(() => {
       expect(screen.getByText(/3 notes/)).toBeInTheDocument();
     });
@@ -578,21 +558,11 @@ describe("<FileTree /> — Plan 03-07 wiring", () => {
   });
 
   it("TestFileTree_DragDrop_FolderIntoDescendant_Rejected — disableDrop returns true", async () => {
-    // Snapshot test: render, then directly invoke the disableDrop that
-    // got passed to <Tree>. We do this via a spy on the Tree props.
-    // Easiest path: assert via the helper independently — disableDrop
-    // semantics are pure and easily covered by unit-level scenarios.
-    // The cycle prevention itself is tested in a fresh suite below.
     expect(true).toBe(true);
   });
 });
 
 describe("FileTree.disableDrop — cycle prevention semantics", () => {
-  // The handleDisableDrop callback in FileTree.tsx walks up from
-  // parentNode looking for the source folder. We exercise that
-  // semantics here without mounting react-arborist by hand-crafting
-  // a NodeApi-shaped chain. The function is internal to FileTree, so
-  // we replicate it for unit assertion at this layer.
   function buildHandleDisableDrop() {
     return (args: {
       parentNode: { data: { data: { kind: string; path?: string } }; parent: object | null };
@@ -625,8 +595,6 @@ describe("FileTree.disableDrop — cycle prevention semantics", () => {
     const sourceFolder = {
       data: { data: { kind: "folder", path: "projects" } },
     };
-    // Build a parentNode chain: x/y/projects/subfolder where subfolder
-    // is the drop target — its parent is "projects" (the source).
     const projects = {
       data: { data: { kind: "folder", path: "projects" } },
       parent: null,
@@ -656,22 +624,8 @@ describe("FileTree.disableDrop — cycle prevention semantics", () => {
   });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Plan 03-11 — Gap 2 closure. Drag-drop onto the same parent must
-// produce ZERO move requests; cross-parent drops must produce exactly
-// one. The UAT log evidence (`untitled.md → untitled.md` repeating with
-// 409s) is the literal symptom these tests prove gone.
-//
-// We test computeMoveTarget directly — a pure function exported from
-// FileTree.tsx — because the full Tree.onMove harness in jsdom is
-// fragile and react-arborist owns the DnD machinery. The behaviour
-// we OWN is the resolver; locking it down with unit tests is the
-// strongest guarantee that the production handleMove cannot regress.
-// ────────────────────────────────────────────────────────────────────
+
 describe("handleMove same-parent no-op (Gap 2)", () => {
-  // Hand-build a NodeApi-shaped stub: only the fields handleMove /
-  // computeMoveTarget read are populated. The cast through `unknown` is
-  // necessary because NodeApi has many getters we don't simulate.
   function nodeStub(args: {
     data: TreeRowData;
     parent?: ReturnType<typeof nodeStub> | null;
@@ -699,8 +653,6 @@ describe("handleMove same-parent no-op (Gap 2)", () => {
   }
 
   it("same-parent drop on a root-level note → isNoOp (no move call)", () => {
-    // dragNode: a note at path "untitled.md" living at root.
-    // parentNode: null (drop onto root).
     const result = computeMoveTarget({
       sourcePath: "untitled.md",
       parentNode: null,
@@ -710,8 +662,6 @@ describe("handleMove same-parent no-op (Gap 2)", () => {
   });
 
   it("same-parent drop on a nested note → isNoOp (no move call)", () => {
-    // dragNode: note at "projects/jasper/scratchpad.md".
-    // parentNode: folder at "projects/jasper" (the note's current parent).
     const parentNode = nodeStub({
       data: {
         kind: "folder",
@@ -728,8 +678,6 @@ describe("handleMove same-parent no-op (Gap 2)", () => {
   });
 
   it("cross-parent drop on a note → not no-op; newPath under destination folder", () => {
-    // dragNode: note at "untitled.md" (root).
-    // parentNode: folder at "projects/jasper".
     const parentNode = nodeStub({
       data: {
         kind: "folder",
@@ -746,9 +694,6 @@ describe("handleMove same-parent no-op (Gap 2)", () => {
   });
 
   it("same-parent drop on a folder → isNoOp (no folder move)", () => {
-    // dragNode: folder at "projects/jasper".
-    // parentNode: folder at "projects" (jasper's actual parent).
-    // The would-be newPath "projects/jasper" equals sourcePath → no-op.
     const parentNode = nodeStub({
       data: {
         kind: "folder",
@@ -765,9 +710,6 @@ describe("handleMove same-parent no-op (Gap 2)", () => {
   });
 
   it("cross-parent drop on a folder → not no-op; folder rebased under new parent", () => {
-    // dragNode: folder at "archive/old".
-    // parentNode: folder at "projects".
-    // newPath should be "projects/old".
     const parentNode = nodeStub({
       data: {
         kind: "folder",
@@ -784,21 +726,8 @@ describe("handleMove same-parent no-op (Gap 2)", () => {
   });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Plan 03-18 — Gap R2-3 closure. resetTreeListLayout is the helper
-// that pokes react-arborist's react-window FixedSizeList after a
-// successful create so the new row paints at the correct Y-offset.
-// The helper is defensively layered: prefer resetAfterIndex(0) (a
-// VariableSizeList API, kept as a forward-compat hook for future
-// arborist versions); fall back to forceUpdate() (FixedSizeList's
-// built-in React.Component method); silently no-op if neither
-// exists (covers null refs at mount time / jsdom test envs).
-// ────────────────────────────────────────────────────────────────────
+
 describe("resetTreeListLayout (Gap R2-3)", () => {
-  // Build a TreeApi-shaped stub exposing only `.list.current`. Using
-  // `unknown` casts because TreeApi has dozens of getters we don't
-  // simulate; the helper only reads `.list.current.{resetAfterIndex|
-  // forceUpdate}`.
   function makeTreeApiStub(listCurrent: unknown): TreeApi<ArboristNode> {
     return {
       list: { current: listCurrent },
@@ -818,8 +747,6 @@ describe("resetTreeListLayout (Gap R2-3)", () => {
 
   it("falls back to forceUpdate() when resetAfterIndex is absent", () => {
     const forceUpdate = vi.fn();
-    // FixedSizeList in react-window has forceUpdate (from React.Component)
-    // but not resetAfterIndex (that's VariableSizeList).
     const tree = makeTreeApiStub({ forceUpdate });
     const ref = { current: tree } as React.RefObject<TreeApi<ArboristNode> | null>;
     resetTreeListLayout(ref);
@@ -830,40 +757,23 @@ describe("resetTreeListLayout (Gap R2-3)", () => {
     const ref = {
       current: null,
     } as React.RefObject<TreeApi<ArboristNode> | null>;
-    // Should not throw.
     expect(() => resetTreeListLayout(ref)).not.toThrow();
   });
 
   it("is a no-op when treeRef.current.list.current is null", () => {
     const tree = makeTreeApiStub(null);
     const ref = { current: tree } as React.RefObject<TreeApi<ArboristNode> | null>;
-    // Should not throw.
     expect(() => resetTreeListLayout(ref)).not.toThrow();
   });
 
   it("is a no-op when neither primitive is exposed (defensive last branch)", () => {
-    // No resetAfterIndex, no forceUpdate — defensive against unknown
-    // future react-window versions.
     const tree = makeTreeApiStub({});
     const ref = { current: tree } as React.RefObject<TreeApi<ArboristNode> | null>;
     expect(() => resetTreeListLayout(ref)).not.toThrow();
   });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Plan 03-22 — Gap R2-6 Direction B (filename → H1).
-//
-// After a successful tree-rename of a note, handleCommitRename
-// additionally fetches the renamed note's content via getNote, rewrites
-// the first H1 line to match the new basename via rewriteH1, and writes
-// the content back via updateNote. No-op cases:
-//   - file has no H1 (research §2.4: do NOT auto-insert)
-//   - existing H1 already matches the new basename (loop guard)
-//
-// All assertions drive handleCommitRename through the existing
-// pendingRename → RenameInput → onCommit chain so the test exercises
-// the production code path end-to-end.
-// ────────────────────────────────────────────────────────────────────
+
 describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)", () => {
   type GetReturn = Awaited<ReturnType<typeof getNote>>;
   type PutReturn = Awaited<ReturnType<typeof updateNote>>;
@@ -975,13 +885,9 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
     await waitFor(() => {
       expect(muts.moveNote).toHaveBeenCalledWith("uuid-1", "renamed.md");
     });
-    // getNote is still called (we look BEFORE deciding to skip), but
-    // the rewrite-vs-content equality check short-circuits before
-    // updateNote fires.
     await waitFor(() => {
       expect(mockedGetNote).toHaveBeenCalledWith("uuid-1");
     });
-    // No updateNote — no H1 to rewrite, and we DO NOT auto-insert one.
     expect(mockedUpdateNote).not.toHaveBeenCalled();
   });
 
@@ -1025,16 +931,11 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
     await waitFor(() => {
       expect(muts.moveFolder).toHaveBeenCalledWith("projects", "renamed");
     });
-    // Folder branch must not touch getNote / updateNote.
     expect(mockedGetNote).not.toHaveBeenCalled();
     expect(mockedUpdateNote).not.toHaveBeenCalled();
   });
 
   it("R2-6 D4: H1 already matches new name → no redundant updateNote (loop guard)", async () => {
-    // The user renames the file to "renamed" but the file already has
-    // "# renamed" as its H1 (e.g. Direction A just landed on the
-    // server). rewriteH1 on already-equal content returns the input
-    // byte-for-byte; we detect that and skip updateNote.
     const { muts } = setupNoteRename({ content: "# renamed\n\nbody" });
 
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
@@ -1050,7 +951,6 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
     await waitFor(() => {
       expect(mockedGetNote).toHaveBeenCalledWith("uuid-1");
     });
-    // H1 already matches — no rewrite needed, no updateNote dispatched.
     expect(mockedUpdateNote).not.toHaveBeenCalled();
   });
 
@@ -1079,8 +979,6 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
     await waitFor(() => {
       expect(warnSpy).toHaveBeenCalled();
     });
-    // No updateNote, no toast (the move already committed; reconciler
-    // / next save will heal).
     expect(mockedUpdateNote).not.toHaveBeenCalled();
     expect(
       screen.queryByText(/couldn't update the heading/i),
@@ -1114,8 +1012,6 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
   });
 
   it("R2-6 D7: pre-existing happy-path rename (no H1 in content) is unchanged — moveNote only, no toast", async () => {
-    // Belt-and-suspenders for D2 — confirms the new code does not
-    // introduce a regression in the original Plan 03-07 rename path.
     const { muts } = setupNoteRename({ content: "" });
 
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
@@ -1129,7 +1025,6 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
       expect(muts.moveNote).toHaveBeenCalledWith("uuid-1", "renamed.md");
     });
     expect(mockedUpdateNote).not.toHaveBeenCalled();
-    // No toast surfaces — empty file with no H1 is a normal happy path.
     expect(
       screen.queryByText(/couldn't update the heading/i),
     ).not.toBeInTheDocument();
@@ -1138,11 +1033,6 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
 
 describe('Bug F — file/folder duplicate-name validation', () => {
   it('TestFileTree_BugF_FolderRenameInput_DoesNotCollideWithSameNameNote — a folder named untitled does not show Already exists when a note untitled.md is a sibling', async () => {
-    // Bug F: siblingNamesFor was building a mixed list (folders + notes
-    // with .md stripped), so the folder rename input for 'untitled'
-    // showed 'Already exists.'  because note 'untitled.md'
-    // contributed 'untitled' to the sibling set. The fix filters to
-    // same-kind only before mapping names.
     useTreeStore.setState({
       pendingRename: { kind: 'folder', target: 'untitled', isNew: true },
     });
@@ -1187,60 +1077,21 @@ describe('Bug F — file/folder duplicate-name validation', () => {
       expect(input).not.toBeNull();
     });
 
-    // The input should show no inline validation error — 'Already exists.'
-    // must NOT be in the document when the folder rename input opens with
-    // value 'untitled' while a sibling note 'untitled.md' exists.
     expect(screen.queryByText('Already exists.')).not.toBeInTheDocument();
 
-    // The user accepts the placeholder name by pressing Enter.
-    // Bug 5 fix: same-path guard in handleCommitRename skips the API call
-    // entirely when newPath === d.path (the folder is already correctly named).
-    // moveFolder must NOT be called — the rename input should close cleanly.
     const input = document.querySelector(
       "input[type='text']",
     ) as HTMLInputElement;
     fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => {
-      // endRename() should have fired, closing the input.
       expect(document.querySelector("input[type='text']")).toBeNull();
     });
-    // moveFolder must NOT have been called — same-path is a no-op.
     expect(muts.moveFolder).not.toHaveBeenCalled();
   });
 });
 
-// ──────────────────────────────────────────────────────────────────
-// Phase 5.5 / Plan 07 (UX-13) — multi-select + batch operations.
-//
-// Five behavior contracts:
-//   1. handleSelect deselects descendants of every selected folder
-//      (deselectDescendantsOfFolders pure helper).
-//   2. handleMove iterates dragNodes and calls moveNote/moveFolder per
-//      source — verified by the source-grep contract enforced at the
-//      acceptance-criteria level (`args.dragNodes.map` and
-//      `for (const src of sources)`) plus the no-op gate test below.
-//   3. handleMove skips no-op moves (computeMoveTarget.isNoOp guards
-//      same-parent reorders from generating spurious requests).
-//   4. handleRequestDelete builds a multi target when selectedNodes
-//      length > 1 AND the requested row is selected
-//      (buildMultiDeleteTarget pure helper).
-//   5. handleConfirmDelete iterates the captured snapshot via
-//      executeBatchDelete; partial-completion is graceful.
-//
-// Driving react-arborist's selection through DOM-level Cmd+click in
-// jsdom is fragile (react-dnd's HTML5Backend throws "hover invariant"
-// errors when the mock dragstart bubbles). The robust approach is
-// PURE-FUNCTION testing of the helpers we extracted — the helpers
-// ARE the production code path (FileTree wires them in 1:1). This
-// gives us deterministic coverage without DOM-event flakiness.
-// Plan 09's Playwright UAT covers the user-visible end-to-end path.
-// ──────────────────────────────────────────────────────────────────
 
 describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () => {
-  // Hand-build NodeApi-shaped stubs: the production handleSelect reads
-  // n.data.data.kind and n.children; the production batch-delete reads
-  // n.data.data. The cast through unknown is necessary because NodeApi
-  // exposes many getters we don't simulate.
   function folderNodeStub(args: {
     id: string;
     path: string;
@@ -1283,7 +1134,6 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
   }
 
   it("UX-13: handleSelect deselects descendants when a folder enters selection", () => {
-    // Folder A with three children (two notes + one nested folder).
     const childA1 = noteNodeStub({ id: "n1", path: "a/x.md" });
     const childA2 = noteNodeStub({ id: "n2", path: "a/y.md" });
     const childA3 = folderNodeStub({
@@ -1300,11 +1150,8 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     });
 
     const deselect = vi.fn<(id: string) => void>();
-    // Folder A is in the selection along with one of its children
-    // (childA1) — exactly the descendant-deselect trigger condition.
     deselectDescendantsOfFolders([folderA, childA1], deselect);
 
-    // All descendants of folderA must be deselected: n1, n2, sub, z (n3).
     expect(deselect).toHaveBeenCalledWith("note:n1");
     expect(deselect).toHaveBeenCalledWith("note:n2");
     expect(deselect).toHaveBeenCalledWith("folder:a/sub");
@@ -1313,8 +1160,6 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
   });
 
   it("UX-13: handleSelect is a no-op when only notes are selected (no folders)", () => {
-    // Defense-in-depth: if no folder is in the selection, the cascade
-    // must NOT touch anything (notes have no descendants in the tree).
     const note1 = noteNodeStub({ id: "n1", path: "x.md" });
     const note2 = noteNodeStub({ id: "n2", path: "y.md" });
     const deselect = vi.fn<(id: string) => void>();
@@ -1323,25 +1168,10 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
   });
 
   it("UX-13: handleMove iterates dragNodes and calls moveNote/moveFolder per source (executeBatchMove contract via executeBatchDelete-style helpers)", async () => {
-    // The production handleMove iterates `args.dragNodes` via the
-    // `args.dragNodes.map(...)` snapshot + `for (const src of sources)`
-    // loop. The acceptance-criteria source grep gate enforces both
-    // patterns at the plan level. Here we assert the BEHAVIOR contract:
-    // given two notes + one folder source captured upfront, three
-    // mutation calls fire (2 moveNote + 1 moveFolder) when each lands at
-    // a non-no-op target.
-    //
-    // We test the iteration contract via direct simulation of the
-    // production loop body — a minimal harness that mirrors the
-    // production sources.map() → for-of pipeline. Since the loop body
-    // is the exact code `executeBatchDelete` pattern, this test gives
-    // deterministic coverage without requiring DOM-driven DnD.
     const muts = defaultMutsResult();
     muts.moveNote.mockResolvedValue(undefined);
     muts.moveFolder.mockResolvedValue(undefined);
 
-    // Build dragNodes that look like arborist's NodeApi shape — only
-    // .data.data is read by the loop body.
     const buildNodeApiStub = (
       data: TreeRowData,
       arboristId: string,
@@ -1377,9 +1207,6 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
       parent: null,
     } as unknown) as NodeApi<ArboristNode>;
 
-    // Mirror of the production handleMove loop body. The acceptance
-    // criteria grep gate (`args.dragNodes.map` + `for (const src of
-    // sources)`) verifies the production source matches this shape.
     const sources = dragNodes.map((dn) => ({
       kind: dn.data.data.kind,
       id: dn.data.data.kind === "note" ? dn.data.data.id : null,
@@ -1398,20 +1225,14 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
       }
     }
 
-    // Two moveNote calls — one per dragged note, with the destination
-    // path computed by computeMoveTarget.
     expect(muts.moveNote).toHaveBeenCalledTimes(2);
     expect(muts.moveNote).toHaveBeenCalledWith("note-a", "dest/a.md");
     expect(muts.moveNote).toHaveBeenCalledWith("note-b", "dest/b.md");
-    // One moveFolder call — the dragged folder rebased under dest.
     expect(muts.moveFolder).toHaveBeenCalledTimes(1);
     expect(muts.moveFolder).toHaveBeenCalledWith("src", "dest/src");
   });
 
   it("UX-13: handleMove skips no-op moves (computeMoveTarget.isNoOp branch)", async () => {
-    // Mix one no-op (same-parent drop) with one real move; assert the
-    // loop dispatches exactly ONE mutation. Mirrors the production
-    // `if (target.isNoOp) continue;` gate.
     const muts = defaultMutsResult();
     muts.moveNote.mockResolvedValue(undefined);
 
@@ -1430,36 +1251,22 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
       } as unknown as NodeApi<ArboristNode>;
     };
     const dragNodes: NodeApi<ArboristNode>[] = [
-      // Note "a.md" already at root; dropping onto root is a no-op.
       buildNodeApiStub(
         { kind: "note", id: "note-a", path: "a.md", title: "A" },
         "note:note-a",
       ),
-      // Note "b.md" at root; dropping onto /dest is a real move.
       buildNodeApiStub(
         { kind: "note", id: "note-b", path: "b.md", title: "B" },
         "note:note-b",
       ),
     ];
 
-    // First drop: root parent (no-op for note-a, real move for note-b).
-    // We split into TWO simulated drops to keep the parentNode argument
-    // distinct per source — but the iteration contract only checks one
-    // parentNode at a time in production (single drop event). Use the
-    // /dest parent node for both: note-a → dest/a.md (REAL), note-b →
-    // dest/b.md (REAL). To make ONE no-op, compute against null parent
-    // for note-a (which keeps it at root → isNoOp).
     const noOpResult = computeMoveTarget({
       sourcePath: "a.md",
       parentNode: null,
     });
     expect(noOpResult.isNoOp).toBe(true);
 
-    // Now run the loop with a parentNode that produces a real move for
-    // note-b but a no-op for "b.md" if dropped on its current parent.
-    // Simpler: use null parent for both; note-a is at root (no-op),
-    // note-b is also at root (no-op). To differentiate, we reset note-b
-    // to live under a folder so dropping at root is a real move.
     dragNodes[1] = buildNodeApiStub(
       { kind: "note", id: "note-b", path: "subdir/b.md", title: "B" },
       "note:note-b",
@@ -1481,21 +1288,12 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
         await muts.moveNote(src.id, target.newPath);
       }
     }
-    // note-a (root → root) is a no-op; note-b (subdir/ → root) is a
-    // real move. Exactly ONE moveNote call.
     expect(muts.moveNote).toHaveBeenCalledTimes(1);
     expect(muts.moveNote).toHaveBeenCalledWith("note-b", "b.md");
   });
 
-  // FT-FILE-DRAG — Plan 07-39 (UAT-5 N2-sub-B): internal file drag dispatches
-  // to muts.moveFile (not moveNote / moveFolder). Mirrors the production
-  // handleMove dispatch table: src.kind === "file" → muts.moveFile(src.path, dst).
   it("FT-FILE-DRAG-1: file source triggers muts.moveFile(src.path, target.newPath)", async () => {
     const muts = defaultMutsResult();
-    // Extend the result shape to include moveFile — defaultMutsResult is a test
-    // helper that only declares the historical six mutators; we widen it here
-    // so the type-narrow below picks up the new method without churning the
-    // helper for unrelated tests.
     (muts as unknown as { moveFile: ReturnType<typeof vi.fn> }).moveFile =
       vi.fn().mockResolvedValue(undefined);
 
@@ -1514,7 +1312,6 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
       } as unknown as NodeApi<ArboristNode>;
     };
 
-    // File "doc.pdf" lives at root; we drop it onto /folderA (real move).
     const fileNode = buildNodeApiStub(
       { kind: "file", path: "doc.pdf", name: "doc.pdf" },
       "file:doc.pdf",
@@ -1524,7 +1321,6 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
       parent: null,
     } as unknown) as NodeApi<ArboristNode>;
 
-    // Mirror of the production handleMove loop body for a single file source.
     const sources = [fileNode].map((dn) => ({
       kind: dn.data.data.kind,
       id: dn.data.data.kind === "note" ? dn.data.data.id : null,
@@ -1544,21 +1340,15 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
       }
     }
 
-    // moveFile called once with src='doc.pdf' and dst='folderA/doc.pdf'.
     const moveFileSpy = (muts as unknown as { moveFile: ReturnType<typeof vi.fn> })
       .moveFile;
     expect(moveFileSpy).toHaveBeenCalledTimes(1);
     expect(moveFileSpy).toHaveBeenCalledWith("doc.pdf", "folderA/doc.pdf");
-    // moveNote and moveFolder must NOT have fired — file drag takes the new branch.
     expect(muts.moveNote).not.toHaveBeenCalled();
     expect(muts.moveFolder).not.toHaveBeenCalled();
   });
 
   it("UX-13: handleRequestDelete with multi-selection sets multi target (buildMultiDeleteTarget)", () => {
-    // Build three NodeApi-shaped stubs and a TreeRowData reference for
-    // the requested row. The pure helper accepts any array of
-    // NodeApi-shaped wrappers; production wires it to
-    // treeRef.current.selectedNodes.
     const buildSelected = (
       data: TreeRowData,
       arboristId: string,
@@ -1597,15 +1387,11 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
       buildSelected(dataC, "note:n3"),
     ];
 
-    // The requested row IS one of the selected — multi-target fires.
     const result = buildMultiDeleteTarget(dataB, selectedNodes);
     expect(result).toEqual({ kind: "multi", count: 3 });
   });
 
   it("UX-13: handleRequestDelete returns null when only one row is selected (single target)", () => {
-    // Defense-in-depth: a single-selection row must NOT route to the
-    // multi branch. The caller falls through to the existing single
-    // note/folder branches.
     const dataA: TreeRowData = {
       kind: "note",
       id: "n1",
@@ -1621,8 +1407,6 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
       { id: "note:n1", data: arborist } as unknown as NodeApi<ArboristNode>,
     ];
     expect(buildMultiDeleteTarget(dataA, onlyOne)).toBeNull();
-    // Also: the requested row is NOT among the selection — caller
-    // routes to single (e.g. user right-clicked a non-selected row).
     const dataOther: TreeRowData = {
       kind: "note",
       id: "n9",
@@ -1633,9 +1417,6 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
   });
 
   it("UX-13: handleConfirmDelete with multi target iterates and deletes all (executeBatchDelete)", async () => {
-    // Two notes + one folder in the snapshot; assert deleteNote runs
-    // twice and deleteFolder runs once. Dialog close is the caller's
-    // concern (handleConfirmDelete sets deleteTarget=null after).
     const muts = {
       deleteNote: vi.fn().mockResolvedValue(undefined),
       deleteFolder: vi.fn().mockResolvedValue(undefined),
@@ -1678,9 +1459,6 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
   });
 
   it("UX-13: handleConfirmDelete with multi target surfaces partial-completion when some deletes fail", async () => {
-    // Partial-completion: the first deleteNote succeeds, the second
-    // fails, the folder succeeds. succeeded=2, total=3 → caller surfaces
-    // a "Deleted 2 of 3 items." toast.
     const muts = {
       deleteNote: vi
         .fn()
@@ -1718,42 +1496,16 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     ];
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = await executeBatchDelete(snapshot, muts);
-    // All three calls were attempted; one failed.
     expect(muts.deleteNote).toHaveBeenCalledTimes(2);
     expect(muts.deleteFolder).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ succeeded: 2, total: 3 });
-    // The failure is logged at warn-level, not raised.
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind
-//
-// Closes the four DnD-and-modifier-click correctness gaps flagged by
-// 05.5-REVIEW.md:
-//   - BL-01: handleNativeDrop folder-row branch must filter dragNodes by
-//     kind === "folder" before dispatching handleMove (mixed-kind selections
-//     no longer silently drop).
-//   - BL-02: handleNativeDragOver and handleNativeDrop must call isCycleDrop
-//     before preventDefault / dispatch (folder-onto-descendant drops never
-//     reach the server).
-//   - WR-08: handleNativeDragStart derives dragIds from the documented
-//     `api.dragNodes.map(n => n.id)` surface, not `api.state.dnd.dragIds`.
-//
-// The pure helper (isCycleDrop) is the load-bearing logic; the inline
-// branches inside the useEffect are integration-tested by the Playwright
-// human UAT walkthrough (Plan 05.5-15) plus Plan 09 phase5_5-uat scenario
-// 11b. We unit-test the helper directly + a simulation of the drop-branch
-// filter — the production handleNativeDrop folder branch is the exact
-// shape we mirror in the BL-01 mixed-kind test below.
-// ────────────────────────────────────────────────────────────────────
+
 describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
-  // Build a NodeApi<ArboristNode>-shaped stub. Only `.data.data.{kind,path,id}`
-  // and `.id` are read by isCycleDrop / the drop-branch filter / dragIds
-  // derivation. The cast through `unknown` is necessary because NodeApi has
-  // many getters we don't simulate.
   function folderNode(path: string): NodeApi<ArboristNode> {
     const arborist: ArboristNode = {
       id: "folder:" + path,
@@ -1787,7 +1539,6 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
     } as unknown as NodeApi<ArboristNode>;
   }
 
-  // ── BL-02 — isCycleDrop pure helper ────────────────────────────────
 
   it("BL-02 / Test 1: isCycleDrop returns true when dest equals a dragged folder's path (self-cycle)", () => {
     expect(isCycleDrop([folderNode("projects")], "projects")).toBe(true);
@@ -1802,17 +1553,12 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
   });
 
   it("BL-02 / Test 4: isCycleDrop ignores note-kind dragNodes (only folder-kind ancestry counts)", () => {
-    // A dragged note whose path happens to begin with the dest folder's
-    // path is NOT a cycle — only folder→folder ancestry creates a cycle.
     expect(
       isCycleDrop([noteNode({ id: "n1", path: "projects/x.md" })], "projects"),
     ).toBe(false);
   });
 
   it("BL-02 / Test 5: isCycleDrop guards against prefix-string false-positives (uses '/' separator)", () => {
-    // "projects" is a string-prefix of "projects" + anything that follows
-    // without a '/' — the helper must not treat unrelated sibling folders
-    // as descendants. dest "projects" vs source "proj" must NOT cycle.
     expect(isCycleDrop([folderNode("proj")], "projects")).toBe(false);
   });
 
@@ -1821,8 +1567,6 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
   });
 
   it("BL-02: isCycleDrop ignores notes mixed in with folders — uses only folder ancestry", () => {
-    // A mixed selection: one note, one folder. Only the folder counts for
-    // cycle detection; the note's path does not contribute.
     const mixed = [
       noteNode({ id: "n1", path: "projects/x.md" }),
       folderNode("projects"),
@@ -1831,20 +1575,8 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
     expect(isCycleDrop(mixed, "elsewhere")).toBe(false);
   });
 
-  // ── BL-01 — mixed-kind filter on the folder-drop branch ────────────
 
   it("BL-01: mixed-kind drag onto a folder filters dragNodes to folder-kind only", () => {
-    // Production handleNativeDrop folder-row branch:
-    //   const folderSources = info.dragNodes.filter(
-    //     (n) => n.data.data.kind === "folder",
-    //   );
-    //   if (folderSources.length === 0) return;
-    //   ...
-    //   void handleMove({ dragNodes: folderSources, ... });
-    //
-    // We mirror that shape here so the test asserts the BEHAVIOR (length
-    // and identity of the array passed to handleMove) without requiring
-    // a full window-DnD harness in jsdom.
     const dragNodes: NodeApi<ArboristNode>[] = [
       noteNode({ id: "n1", path: "projects/x.md" }),
       folderNode("archive/old"),
@@ -1854,9 +1586,6 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
     );
     expect(folderSources).toHaveLength(1);
     expect(folderSources[0]!.data.data.kind).toBe("folder");
-    // Dispatching handleMove with this filtered list is the production
-    // contract — the previous bug was passing all dragNodes (or aborting
-    // entirely when dragNodes[0].kind !== "folder").
     const handleMoveSpy = vi.fn();
     handleMoveSpy({
       dragIds: folderSources.map((n) => n.id),
@@ -1874,9 +1603,6 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
   });
 
   it("BL-01: all-note drag onto a folder yields empty folderSources → no handleMove dispatch", () => {
-    // Production guard: `if (folderSources.length === 0) return;` —
-    // arborist's own pipeline handles note→folder drops; the native-DnD
-    // bypass exists only for folder→folder drags.
     const dragNodes: NodeApi<ArboristNode>[] = [
       noteNode({ id: "n1", path: "x.md" }),
       noteNode({ id: "n2", path: "y.md" }),
@@ -1889,14 +1615,6 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
   });
 
   it("BL-02: folder-drop branch re-checks isCycleDrop and bails before dispatching", () => {
-    // The folder-drop branch:
-    //   const folderSources = info.dragNodes.filter(...);
-    //   if (folderSources.length === 0) return;
-    //   if (isCycleDrop(folderSources, folderPath)) return;
-    //   ...
-    // Asserts the cycle gate fires on the FILTERED sources (not the raw
-    // dragNodes), because notes mixed in must not influence the cycle
-    // check (BL-02 / Test 4 invariant).
     const folderPath = "projects/sub";
     const dragNodes: NodeApi<ArboristNode>[] = [
       noteNode({ id: "n1", path: "projects/x.md" }),
@@ -1908,14 +1626,8 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
     expect(isCycleDrop(folderSources, folderPath)).toBe(true);
   });
 
-  // ── WR-08 — dragIds derived from documented `api.dragNodes` surface ─
 
   it("WR-08: dragIds are derived from api.dragNodes.map(n => n.id), not api.state.dnd.dragIds", () => {
-    // The production handleNativeDragStart now reads the documented
-    // `api.dragNodes` surface and maps to `n.id`. We assert the shape
-    // produced is byte-identical to what the previous private-API read
-    // would have produced for the same drag — proving the migration is
-    // semantically equivalent.
     const nodes: NodeApi<ArboristNode>[] = [
       folderNode("archive/old"),
       noteNode({ id: "n1", path: "projects/x.md" }),
@@ -1927,9 +1639,6 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
   });
 
   it("WR-08: dragIds shape matches dragNodes ids in iteration order", () => {
-    // Defense-in-depth: nativeDragInfoRef stores BOTH dragIds and
-    // dragNodes. The two arrays must be in lockstep so handleMove's
-    // per-source dispatch maps correctly.
     const nodes: NodeApi<ArboristNode>[] = [
       folderNode("a"),
       folderNode("b"),
@@ -1943,24 +1652,9 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// Phase 5.5 gap-closure Plan 13 — WR-09: DeleteTarget carries canonical
-// id (note) / path (folder); handleConfirmDelete uses them directly so
-// basename collisions across subtrees no longer cause the wrong row to be
-// deleted.
-//
-// The load-bearing test here is the basename-collision regression: two
-// notes both named `Foo.md` (one at root, one in a subfolder). The
-// previous implementation walked the wire tree and matched on basename,
-// returning the FIRST hit — which could delete the root `Foo.md` when
-// the user requested deletion of the subfolder one. The new
-// id-on-DeleteTarget contract makes this deterministic.
-// ──────────────────────────────────────────────────────────────────────────
+
 describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTarget", () => {
   it("WR-09 / Test 4: handleRequestDelete (note branch) routes the canonical id to deleteNote", async () => {
-    // The setDeleteTarget call site now stashes `target.id`. We assert this
-    // end-to-end through handleConfirmDelete: pressing Backspace on a note
-    // row + clicking Delete must call deleteNote with that note's id.
     const tree: Tree = {
       root: [
         {
@@ -2032,7 +1726,6 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
 
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
     await waitFor(() => {
-      // Folder rows render `data.name` (the leaf segment), not the path.
       expect(screen.getByText("folder")).toBeInTheDocument();
     });
     const row = document.querySelector(
@@ -2044,7 +1737,6 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
     });
     fireEvent.click(screen.getByRole("button", { name: "Delete folder" }));
     await waitFor(() => {
-      // Canonical FULL path, not just the display name "folder".
       expect(muts.deleteFolder).toHaveBeenCalledWith(
         "deeply/nested/folder",
         true,
@@ -2053,20 +1745,12 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
   });
 
   it("WR-09 / Tests 6-7: handleConfirmDelete uses target.id / target.path directly (no name-based lookup helpers)", () => {
-    // Static guard — assert the FileTree.tsx source no longer references
-    // the removed lookup helpers anywhere. If a future refactor re-adds
-    // them, this test fails fast.
     const fileTreeSrc = String(FileTree.toString());
     expect(fileTreeSrc).not.toMatch(/findNoteIdByName/);
     expect(fileTreeSrc).not.toMatch(/findFolderPathByName/);
   });
 
   it("WR-09 / Test 8: basename collision regression — two notes named Foo.md, deleting the SUBFOLDER one removes only the subfolder note", async () => {
-    // The load-bearing regression test: two notes share basename `Foo.md`
-    // — one at root, one in `subdir/`. With the previous name-based
-    // lookup, deleting the SUBFOLDER one could delete the ROOT one
-    // (whichever comes first in the tree walk). The new id-on-DeleteTarget
-    // contract makes this deterministic.
     const tree: Tree = {
       root: [
         {
@@ -2092,7 +1776,6 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
         },
       ],
     };
-    // Pre-expand the subdir so the inner row renders.
     useTreeStore.setState({
       expanded: new Set(["subdir"]),
     });
@@ -2109,7 +1792,6 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
 
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
     await waitFor(() => {
-      // Both Foo rows render — pre-condition for the regression test.
       expect(
         document.querySelector('[data-tree-row="root-foo-id"]'),
       ).not.toBeNull();
@@ -2118,7 +1800,6 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
       ).not.toBeNull();
     });
 
-    // Trigger delete on the SUBFOLDER one (specifically, NOT the root one).
     const subdirRow = document.querySelector(
       '[data-tree-row="subdir-foo-id"]',
     ) as HTMLElement;
@@ -2130,23 +1811,12 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
     await waitFor(() => {
       expect(muts.deleteNote).toHaveBeenCalledWith("subdir-foo-id");
     });
-    // And specifically NOT called with the root id — proves the lookup is
-    // deterministic and not "first basename match".
     expect(muts.deleteNote).not.toHaveBeenCalledWith("root-foo-id");
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// Plan 07-29 — FT-FD: Folders default CLOSED (UAT-2 N1)
-//
-// C1 fix: passing `openByDefault={false}` to react-arborist's <Tree> so
-// useTreeStore.expanded is the sole source of truth for which folders are
-// open at load time. Pre-fix, the library's default (openByDefault=true)
-// made every folder appear open regardless of the persisted expanded Set.
-// ──────────────────────────────────────────────────────────────────────────
+
 describe("FT-folder-default — folders default CLOSED (UAT-2 N1 / Plan 07-29)", () => {
-  // A tree with two folders, each with a child note, so arborist renders
-  // them as non-leaf nodes with aria-expanded attributes.
   const twoFolderTree: Tree = {
     root: [
       {
@@ -2195,13 +1865,8 @@ describe("FT-folder-default — folders default CLOSED (UAT-2 N1 / Plan 07-29)",
       expect(screen.getByText("foo")).toBeInTheDocument();
       expect(screen.getByText("bar")).toBeInTheDocument();
     });
-    // With openByDefault=false + empty expanded set, no folder is open.
-    // react-arborist sets aria-expanded={node.isOpen} on each treeitem row.
-    // TreeRow also sets aria-expanded on the folder element itself.
-    // Both sources must show false when the folder is closed.
     const expandedItems = document.querySelectorAll("[aria-expanded='true']");
     expect(expandedItems.length).toBe(0);
-    // Child notes are NOT visible because both folders are closed.
     expect(screen.queryByText("A")).toBeNull();
     expect(screen.queryByText("C")).toBeNull();
   });
@@ -2218,46 +1883,22 @@ describe("FT-folder-default — folders default CLOSED (UAT-2 N1 / Plan 07-29)",
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
     await waitFor(() => {
-      // Both folder rows render.
       expect(screen.getByText("foo")).toBeInTheDocument();
       expect(screen.getByText("bar")).toBeInTheDocument();
     });
-    // "foo" is open: its child "A" should be visible.
     await waitFor(() => {
       expect(screen.getByText("A")).toBeInTheDocument();
     });
-    // "bar" is closed: its child "C" should NOT be visible.
     expect(screen.queryByText("C")).toBeNull();
-    // Arborist row container sets aria-expanded=true on the "foo" treeitem.
-    // "bar" treeitem must have aria-expanded=false (or no attribute if default-false).
     const barFolderRow = document.querySelector(
       '[data-tree-row-kind="folder"][data-tree-row="bar"]',
     );
     expect(barFolderRow).not.toBeNull();
-    // The bar row's aria-expanded must NOT be "true" — it is closed.
     expect(barFolderRow!.getAttribute("aria-expanded")).not.toBe("true");
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// Plan 07-29 + Plan 07-34 — FT-NED + FT-DROP: Sidebar OS-file drop semantics.
-//
-// Plan 07-29 (UAT-2 N2): the tree container's onDragOverCapture handler
-// inspects dataTransfer.types; if "Files" is present (OS file drag), it calls
-// stopPropagation() so arborist's drag layer never receives the event,
-// suppressing arborist's react-dnd drop overlay. Internal arborist drags
-// don't include "Files" in dataTransfer.types, so they pass through unchanged.
-//
-// Plan 07-34 (UAT-3 N2) UPGRADES the handler:
-//   - preventDefault IS now called (we accept the drop, no longer want
-//     browser's not-allowed cursor)
-//   - dropEffect set to "copy"
-//   - onDropCapture wires handleSidebarFileDrop, which resolves the target
-//     dir from the row under the cursor and POSTs to /api/v1/files?path=...
-//
-// FT-DROP-1..5 cover the four target-dir resolution cases (folder/note/file/
-// empty) plus the broadcastRefresh side-effect after a successful upload.
-// ──────────────────────────────────────────────────────────────────────────
+
 vi.mock("../lib/filesApi", () => ({
   uploadFile: vi.fn(),
 }));
@@ -2276,9 +1917,7 @@ import { broadcastRefresh as mockedBroadcastRefresh } from "../lib/useFileTree";
 const mockedUpload = vi.mocked(mockedUploadFile);
 const mockedBcast = vi.mocked(mockedBroadcastRefresh);
 
-// Synthesize a drop / dragover event with mocked dataTransfer.types and
-// dataTransfer.files. JSDOM's DragEvent constructor doesn't accept
-// dataTransfer in init; we attach via defineProperty after construction.
+
 function makeOsFileDragEvent(
   type: "dragover" | "drop",
   files: File[],
@@ -2302,10 +1941,6 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
     mockedBcast.mockReset();
   });
 
-  // FT-NED-1 (revised under Plan 07-34): the capture-phase suppression of
-  // arborist's react-dnd overlay (stopPropagation) STAYS, but preventDefault
-  // is NOW called so the browser will deliver the subsequent drop event to
-  // our handler instead of canceling it with the not-allowed cursor.
   it("FT-NED-1: dragover with 'Files' calls stopPropagation AND preventDefault (Plan 07-34)", async () => {
     const tree: Tree = {
       root: [
@@ -2339,21 +1974,10 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
     const preventDefaultSpy = vi.spyOn(evt, "preventDefault");
     treeEl!.dispatchEvent(evt);
     expect(stopPropSpy).toHaveBeenCalled();
-    // Plan 07-34: we now ACCEPT the drop. preventDefault MUST be called
-    // (otherwise the browser cancels with not-allowed cursor and never
-    // delivers the matching drop event).
     expect(preventDefaultSpy).toHaveBeenCalled();
   });
 
-  // ── FT-DROP — Sidebar drop-target cases (Plan 07-34) ───────────────────
-  // Resolution rules:
-  //   folder row → target = folder.path
-  //   note row   → target = parent dir of note.path
-  //   file row   → target = parent dir of file.path
-  //   empty area → target = "" (vault root)
-  // After a successful upload, broadcastRefresh() fires.
 
-  // Helper: wire the standard mocks + render the tree with the given wire shape.
   async function renderTree(tree: Tree) {
     useTreeStore.setState({ expanded: new Set(["folderA", "folderB"]) });
     mockedUseFileTree.mockReturnValue({
@@ -2365,7 +1989,6 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
-    // Wait for first render.
     await waitFor(() => {
       expect(document.querySelector('[role="tree"]')).not.toBeNull();
     });
@@ -2448,7 +2071,6 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
     await waitFor(() => {
       expect(mockedUpload).toHaveBeenCalled();
     });
-    // Note's parent dir = "folderA".
     expect(mockedUpload).toHaveBeenCalledWith("folderA", file);
   });
 
@@ -2492,7 +2114,6 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
     await waitFor(() => {
       expect(mockedUpload).toHaveBeenCalled();
     });
-    // File's parent dir = "folderA".
     expect(mockedUpload).toHaveBeenCalledWith("folderA", file);
   });
 
@@ -2509,8 +2130,6 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
       size_bytes: 1,
     });
 
-    // Dispatch the drop on the OUTER tree container (no row under cursor).
-    // The setTreeAreaEl wrapper is the parent of [role="tree"].
     const treeEl = document.querySelector('[role="tree"]');
     expect(treeEl).not.toBeNull();
     const wrapper = treeEl!.parentElement!;
@@ -2551,10 +2170,6 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
     });
   });
 
-  // ────────────────────────────────────────────────────────────────────
-  // FT-N2-MD — Plan 07-39 (UAT-5 N2-sub-A): markdown drops route to POST
-  // /notes (via createNoteFromMarkdownDrop helper) instead of POST /files.
-  // ────────────────────────────────────────────────────────────────────
   describe("FT-N2-MD — markdown drops create notes (Plan 07-39 / UAT-5 N2-sub-A)", () => {
     beforeEach(() => {
       mockedCreateNoteFromMarkdownDrop.mockReset();
@@ -2589,7 +2204,6 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
       await waitFor(() => {
         expect(mockedCreateNoteFromMarkdownDrop).toHaveBeenCalled();
       });
-      // The non-markdown upload path must NOT have fired.
       expect(mockedUpload).not.toHaveBeenCalled();
     });
 
@@ -2637,7 +2251,6 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
         path: "vault-root.md",
       });
 
-      // Drop on the empty tree-area wrapper → targetDir = "".
       const treeEl = document.querySelector('[role="tree"]');
       expect(treeEl).not.toBeNull();
       const wrapper = treeEl!.parentElement!;

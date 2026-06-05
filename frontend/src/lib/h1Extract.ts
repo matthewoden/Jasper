@@ -51,8 +51,6 @@ export function extractH1FromContent(content: string): string | null {
     const trimmed = rawLine.trim();
 
     if (!firstSignificantSeen) {
-      // Tolerate leading blank lines for forgiveness; the server does
-      // the same. The frontmatter spec is "first line"; we relax it.
       if (trimmed === "") continue;
       firstSignificantSeen = true;
       if (trimmed === "---") {
@@ -69,7 +67,6 @@ export function extractH1FromContent(content: string): string | null {
     if (trimmed.startsWith("# ")) {
       return trimmed.slice(2).trim();
     }
-    // First non-blank, non-heading line: bail out — no H1 found.
     if (trimmed !== "") {
       return null;
     }
@@ -150,15 +147,11 @@ export function rewriteH1(content: string, newH1: string): string {
     }
 
     if (trimmed.startsWith("# ")) {
-      // Preserve leading whitespace on the original line so a
-      // deliberately-indented heading isn't re-flush-left'd.
       const leading = rawLine.length - rawLine.trimStart().length;
       lines[i] = " ".repeat(leading) + "# " + newH1;
       return lines.join("\n");
     }
     if (trimmed !== "") {
-      // First non-blank non-heading: no H1 to rewrite. Return content
-      // unchanged.
       return content;
     }
   }

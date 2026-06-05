@@ -28,9 +28,7 @@ import type {
 
 const noop = () => undefined;
 
-// Status is now a prop owned by App.tsx (so a single hook instance is
-// shared between the banner and the rebuild flow's refresh()). Tests
-// pass a fixture rather than mocking the hook.
+
 function makeStatus(
   overrides: Partial<UseMigrationStatusResult> & { state: MigrationState },
 ): UseMigrationStatusResult {
@@ -121,7 +119,6 @@ describe("<MigrationBanner />", () => {
     fireEvent.click(logsButton);
 
     expect(writeTextMock).toHaveBeenCalledWith("/tmp/jasper.log");
-    // Allow the awaited writeText promise to resolve before checking the toast.
     await Promise.resolve();
     expect(mockToast).toHaveBeenCalledWith({
       title: "Log path copied to clipboard.",
@@ -198,10 +195,6 @@ describe("<MigrationBanner />", () => {
   });
 
   it("MB9: hides when state transitions from rolled_back to ok (post-rebuild refresh)", () => {
-    // The bug being fixed: a second useMigrationStatus() instance inside
-    // MigrationBanner used to make App's status.refresh() invisible to
-    // the banner. Now the parent passes one shared status; flipping it
-    // from rolled_back → ok must hide the banner without remount.
     const { rerender } = render(
       <MigrationBanner
         onResetConfirm={noop}

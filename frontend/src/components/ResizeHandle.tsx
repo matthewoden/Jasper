@@ -63,11 +63,8 @@ export function ResizeHandle({
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      e.preventDefault(); // prevent native text-selection drag
+      e.preventDefault();
       draggingRef.current = true;
-      // Use nullish coalescing to handle jsdom environments where clientX/Y
-      // may be undefined (e.g. in tests using fireEvent.pointerDown without
-      // explicit clientX/Y). In real browser, clientX/Y are always numbers.
       lastPosRef.current =
         orientation === "vertical" ? (e.clientX ?? 0) : (e.clientY ?? 0);
       document.addEventListener("pointermove", onPointerMove);
@@ -76,7 +73,6 @@ export function ResizeHandle({
     [onPointerMove, onPointerUp, orientation],
   );
 
-  // Cleanup on unmount — guard against listeners surviving a mid-drag unmount.
   useEffect(() => {
     return () => {
       document.removeEventListener("pointermove", onPointerMove);

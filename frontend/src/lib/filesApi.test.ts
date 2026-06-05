@@ -27,7 +27,6 @@ describe("filesApi.uploadFile (Plan 07-34)", () => {
     vi.restoreAllMocks();
   });
 
-  // FA-1: target dir is encoded into the query param.
   it("FA-1: POSTs to /api/v1/files?path=<encoded targetDir> with multipart body", async () => {
     const mockResult: UploadFileResult = {
       path: "gallery/photo.png",
@@ -47,11 +46,9 @@ describe("filesApi.uploadFile (Plan 07-34)", () => {
     expect(result).toEqual(mockResult);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, opts] = fetchSpy.mock.calls[0];
-    // QUERY-PARAMETER wire format (matches GET /files/?path=...).
     expect(url).toBe("/api/v1/files?path=gallery");
     expect(opts?.method).toBe("POST");
     expect(opts?.body).toBeInstanceOf(FormData);
-    // X-Session-ID is propagated (matches uploadAttachment pattern; see UAT-2 N8).
     const headers = opts?.headers as Record<string, string> | Headers | undefined;
     const sid =
       headers instanceof Headers
@@ -60,7 +57,6 @@ describe("filesApi.uploadFile (Plan 07-34)", () => {
     expect(sid).toBeTruthy();
   });
 
-  // FA-1b: empty target dir = vault root → ?path=
   it("FA-1b: empty targetDir means vault root → ?path=", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -77,8 +73,6 @@ describe("filesApi.uploadFile (Plan 07-34)", () => {
     expect(url).toBe("/api/v1/files?path=");
   });
 
-  // FA-1c: nested target dir with slash is encoded by-segment so `/` survives
-  // (the backend's path-traversal pipeline canonicalizes it relative to notes/).
   it("FA-1c: nested targetDir 'a/b' encodes to ?path=a%2Fb (default URLSearchParams)", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -90,13 +84,10 @@ describe("filesApi.uploadFile (Plan 07-34)", () => {
       );
     const file = new File(["x"], "x.png");
     await uploadFile("a/b", file);
-    // URLSearchParams encodes "/" as %2F. The server's `path` query parser
-    // decodes it back to "a/b" before the path-traversal pipeline runs.
     const [url] = fetchSpy.mock.calls[0];
     expect(url).toBe("/api/v1/files?path=a%2Fb");
   });
 
-  // FA-2: 201 returns the parsed body verbatim.
   it("FA-2: 201 returns the parsed FileNode-shaped result", async () => {
     const mockResult: UploadFileResult = {
       path: "photo-1.png",
@@ -114,7 +105,6 @@ describe("filesApi.uploadFile (Plan 07-34)", () => {
     expect(result.size_bytes).toBe(99);
   });
 
-  // FA-3: 413 throws Error with .status = 413.
   it("FA-3: 413 from server → throws Error with .status = 413", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("file too large", { status: 413 }),
@@ -125,7 +115,6 @@ describe("filesApi.uploadFile (Plan 07-34)", () => {
     });
   });
 
-  // FA-3b: 400 (e.g. .md upload refused) likewise carries .status.
   it("FA-3b: 400 from server → throws Error with .status = 400", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("invalid_filename", { status: 400 }),
@@ -136,7 +125,6 @@ describe("filesApi.uploadFile (Plan 07-34)", () => {
     });
   });
 
-  // FA-3c: 403 (symlink rejected) carries .status.
   it("FA-3c: 403 from server → throws Error with .status = 403", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("symlink_rejected", { status: 403 }),
@@ -147,7 +135,6 @@ describe("filesApi.uploadFile (Plan 07-34)", () => {
     });
   });
 
-  // FA-4 (Plan 07-38 N2): error includes body text + .body for caller toast.
   it("FA-4: error includes response body text + .body field on the error", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -173,7 +160,6 @@ describe("filesApi.deleteFile (Plan 07-38 R7b)", () => {
     vi.restoreAllMocks();
   });
 
-  // FA-DEL-1: DELETE /api/v1/files?path=<encoded> with X-Session-ID.
   it("FA-DEL-1: DELETEs /api/v1/files?path=<encoded path>", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -191,7 +177,6 @@ describe("filesApi.deleteFile (Plan 07-38 R7b)", () => {
     expect(sid).toBeTruthy();
   });
 
-  // FA-DEL-2: 204 returns undefined (success).
   it("FA-DEL-2: 204 success resolves without error", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(null, { status: 204 }),
@@ -199,7 +184,6 @@ describe("filesApi.deleteFile (Plan 07-38 R7b)", () => {
     await expect(deleteFile("x.png")).resolves.toBeUndefined();
   });
 
-  // FA-DEL-3: 400 throws typed error with .status.
   it("FA-DEL-3: 400 throws with .status = 400 and body in message", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -210,7 +194,6 @@ describe("filesApi.deleteFile (Plan 07-38 R7b)", () => {
     await expect(deleteFile("subdir")).rejects.toMatchObject({ status: 400 });
   });
 
-  // FA-DEL-4: 404 surfaces as .status = 404.
   it("FA-DEL-4: 404 throws with .status = 404", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("not found", { status: 404 }),
@@ -224,7 +207,6 @@ describe("filesApi.moveFile (Plan 07-38 R7b)", () => {
     vi.restoreAllMocks();
   });
 
-  // FA-MV-1: POST /api/v1/files/move with JSON body {src_path, dst_path}.
   it("FA-MV-1: POSTs /api/v1/files/move with JSON body", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ path: "b.png", name: "b.png" }), {
@@ -251,7 +233,6 @@ describe("filesApi.moveFile (Plan 07-38 R7b)", () => {
     expect(ct).toBe("application/json");
   });
 
-  // FA-MV-2: 409 overwrite refusal surfaces as typed error.
   it("FA-MV-2: 409 from server → throws with .status = 409", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -264,7 +245,6 @@ describe("filesApi.moveFile (Plan 07-38 R7b)", () => {
     });
   });
 
-  // FA-MV-3: 400 (path traversal etc) surfaces as typed error.
   it("FA-MV-3: 400 from server → throws with .status = 400 and body", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(

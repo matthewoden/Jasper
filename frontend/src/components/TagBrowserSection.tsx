@@ -35,9 +35,6 @@ import { TagDeleteConfirmDialog } from "./TagDeleteConfirmDialog";
 import { RenameInput } from "./RenameInput";
 import { useToast } from "./toast.utils";
 
-// ────────────────────────────────────────────────────────────────────────────
-// Locked styles (UI-SPEC §Surface 1)
-// ────────────────────────────────────────────────────────────────────────────
 
 const sectionStyle: CSSProperties = {
   borderTop: "1px solid var(--color-border)",
@@ -123,7 +120,7 @@ const emptyStateStyle: CSSProperties = {
   color: "var(--color-muted)",
 };
 
-// Context menu styles (mirrors TreeRowMenu locked styles)
+
 const menuContainerStyle: CSSProperties = {
   background: "var(--color-surface)",
   border: "1px solid var(--color-border)",
@@ -154,7 +151,7 @@ const destructiveItemStyle: CSSProperties = {
   color: "var(--color-destructive)",
 };
 
-// T-06-08-01: client-side pre-validation for tag names before PUT
+
 const TAG_CHARSET_REGEX = /^[a-z0-9_-]+$/;
 
 export function TagBrowserSection() {
@@ -171,11 +168,9 @@ export function TagBrowserSection() {
   const listId = useId();
   const { toast } = useToast();
 
-  // Sort alphabetically (server already does this; defense-in-depth)
   const sortedTags = [...tags].sort((a, b) => a.name.localeCompare(b.name));
 
   const handleRenameCommit = async (oldName: string, newName: string) => {
-    // T-06-08-01: pre-validate charset before sending to server
     if (!TAG_CHARSET_REGEX.test(newName)) {
       throw new Error(
         "Tag names may only contain lowercase letters, digits, hyphens, and underscores.",
@@ -185,11 +180,9 @@ export function TagBrowserSection() {
       const result = await renameTag(oldName, newName);
       setRenaming(null);
       await refresh();
-      // If the active filter was the old name, update it
       if (activeTagFilter === oldName) {
         setActiveTagFilter(newName);
       }
-      // Toast for N > 5 affected (D-23 — silent for N ≤ 5)
       if (result.touched_note_ids.length > 5) {
         toast({
           title: "Tag renamed",
@@ -204,7 +197,6 @@ export function TagBrowserSection() {
 
   const handleDeleteClick = (tag: { name: string; count: number }) => {
     if (tag.count <= 5) {
-      // Silent delete for N ≤ 5
       void (async () => {
         try {
           await deleteTag(tag.name);
@@ -221,7 +213,6 @@ export function TagBrowserSection() {
         }
       })();
     } else {
-      // Show confirmation dialog for N > 5
       setConfirming({ name: tag.name, count: tag.count });
     }
   };
@@ -235,7 +226,6 @@ export function TagBrowserSection() {
       }
       await refresh();
       setConfirming(null);
-      // Toast for N > 5 (D-24)
       if (result.touched_note_ids.length > 5) {
         toast({
           title: "Tag removed",

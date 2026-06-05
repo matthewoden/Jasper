@@ -27,7 +27,6 @@ describe("<TreeErrorState />", () => {
 
   it("TestErrorState_HasRoleAlert", () => {
     render(<TreeErrorState onRetry={() => {}} />);
-    // Container is the role="alert" element so screen readers announce.
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
@@ -36,7 +35,6 @@ describe("<TreeErrorState />", () => {
     const btn = screen.getByRole("button", { name: "Try again" }) as HTMLButtonElement;
     expect(btn.style.height).toBe("28px");
     expect(btn.style.border).toContain("1px");
-    // border style references --color-border via inline style; assert the var name appears.
     expect(btn.style.border).toContain("--color-border");
   });
 });

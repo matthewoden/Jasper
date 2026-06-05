@@ -42,22 +42,17 @@ import { vaultApi } from "../../lib/vaultApi";
 describe("<VaultCreatePane />", () => {
   beforeEach(() => {
     applyThemeMock.mockClear();
-    // Reset <html data-theme> between tests so applyTheme assertions are clean.
     document.documentElement.removeAttribute("data-theme");
   });
 
   it("renders 3 sections (path, theme, daily-note) — no MCP grants", () => {
     render(<VaultCreatePane onCreated={vi.fn()} />);
-    // Section 1: path
     expect(screen.getByTestId("vault-create-path-input")).toBeInTheDocument();
-    // Section 2: theme (dark/light radios)
     expect(screen.getByRole("radio", { name: /dark/i })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /light/i })).toBeInTheDocument();
-    // Section 3: daily note textarea
     expect(
       screen.getByRole("textbox", { name: /daily note template/i }),
     ).toBeInTheDocument();
-    // MCP must be gone — moved to per-folder grant menu post-vault.
     expect(screen.queryByRole("checkbox", { name: /enable mcp/i })).toBeNull();
   });
 
@@ -88,7 +83,6 @@ describe("<VaultCreatePane />", () => {
 
   it("theme radio applies live to <html data-theme> on change", () => {
     render(<VaultCreatePane onCreated={vi.fn()} />);
-    // Initial render flips data-theme to the default (dark).
     expect(applyThemeMock).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("radio", { name: /light/i }));
     expect(applyThemeMock).toHaveBeenLastCalledWith("light");
@@ -112,8 +106,8 @@ describe("<VaultCreatePane />", () => {
     });
     const callArg = vi.mocked(vaultApi.create).mock.calls[0][0];
     expect(callArg.path).toBe("/Users/me/vault");
-    expect(callArg.theme).toBe("dark"); // Default dark per D-06
-    expect(callArg.mcp_enabled).toBe(false); // MCP moved out of vault creation
+    expect(callArg.theme).toBe("dark");
+    expect(callArg.mcp_enabled).toBe(false);
     expect(callArg.daily_template).toBe("# {{date}}\n\n");
   });
 });

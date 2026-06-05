@@ -46,10 +46,6 @@ export async function revealPath(path: string): Promise<RevealResult> {
     body: { path },
   });
   if (error || !data) {
-    // Generated Error envelope is `{ code: string, message: string }`. Extract
-    // the message defensively — older spec drafts shipped a bare-string error
-    // shape and we don't want a property-access TypeError to swallow the
-    // toast.
     const errObj = error as { message?: string } | undefined;
     const message =
       errObj && typeof errObj.message === "string" && errObj.message.length > 0

@@ -33,9 +33,6 @@ import type { KeyBinding } from "@codemirror/view";
 import type { EditorView } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Plan 05-11 — Cmd+S save shortcut
-// ─────────────────────────────────────────────────────────────────────────────
 
 export function saveKeymap(onSave: () => void): Extension {
   return keymap.of([
@@ -44,30 +41,12 @@ export function saveKeymap(onSave: () => void): Extension {
       preventDefault: true,
       run: () => {
         onSave();
-        return true; // CM6 keymap: returning true = handled (≈ preventDefault)
+        return true;
       },
     },
   ]);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Plan 07-24 — toggleBold / toggleItalic (UAT-2 R1-4)
-//
-// Design: a single `wrapWith(view, marker)` helper handles both commands.
-// It iterates the selection's ranges and for each range determines whether to:
-//   (A) Toggle off: the selected text itself starts+ends with the marker
-//       (e.g., selection is "**foo**" → strip to "foo")
-//   (B) Toggle off: the selection is the INNER content and the surrounding
-//       context (before/after) are the marker (e.g., cursor is on "foo" inside
-//       "**foo**" → extend the change to strip the outer "**" pairs)
-//   (C) Wrap: insert marker before and after the selection
-//       (e.g., "foo" → "**foo**"; empty → "****" with cursor between)
-//
-// After dispatch, for the empty-cursor case (no selection), CM6 places the
-// cursor at the END of the inserted text (i.e., after the closing marker).
-// We adjust the selection with a second dispatch to move the cursor BETWEEN
-// the two marker strings (at r.from + marker.length).
-// ─────────────────────────────────────────────────────────────────────────────
 
 function wrapWith(view: EditorView, marker: string): boolean {
   const state = view.state;
@@ -79,21 +58,16 @@ function wrapWith(view: EditorView, marker: string): boolean {
     const sel = state.sliceDoc(r.from, r.to);
 
     if (isEmpty) {
-      // Insert marker pair; cursor position recorded for post-dispatch adjustment
       changes.push({ from: r.from, to: r.to, insert: `${marker}${marker}` });
       cursorInsertPos = r.from + marker.length;
     } else if (sel.startsWith(marker) && sel.endsWith(marker) && sel.length >= marker.length * 2) {
-      // (A) Toggle off: selection is the full marked span, e.g. "**foo**"
       changes.push({ from: r.from, to: r.to, insert: sel.slice(marker.length, sel.length - marker.length) });
     } else {
-      // Check (B): is the selection's surrounding context the marker?
       const before = state.sliceDoc(Math.max(0, r.from - marker.length), r.from);
       const after = state.sliceDoc(r.to, Math.min(state.doc.length, r.to + marker.length));
       if (before === marker && after === marker) {
-        // Toggle off: extend the change range to include the surrounding markers
         changes.push({ from: r.from - marker.length, to: r.to + marker.length, insert: sel });
       } else {
-        // (C) Wrap: insert marker pair around the selection
         changes.push({ from: r.from, to: r.to, insert: `${marker}${sel}${marker}` });
       }
     }
@@ -101,7 +75,6 @@ function wrapWith(view: EditorView, marker: string): boolean {
 
   view.dispatch({ changes });
 
-  // For empty-cursor insertion, adjust cursor to sit between the two markers
   if (cursorInsertPos !== null) {
     view.dispatch({ selection: { anchor: cursorInsertPos } });
   }
@@ -134,15 +107,6 @@ export function toggleItalic(view: EditorView): boolean {
   return wrapWith(view, "*");
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Plan 07-36 (UAT-3 N7): Cmd+U underline REMOVED.
-// Plan 07-27 added a Mod-u → toggleUnderline binding that wrapped the selection
-// in <u>...</u> HTML tags. The CM6 markdown editor renders raw markdown source —
-// inline HTML tags are NOT interpreted, so the user saw literal "<u>text</u>"
-// characters instead of an underline. Reverted per UAT-3 N7. See
-// 07-CONTEXT.md D-51 "REMOVED 2026-05-15 (UAT-3 N7)" sub-section for full
-// rationale and v2 deferral plan.
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * jasperKeymap — CM6 KeyBinding array for project-specific shortcuts.

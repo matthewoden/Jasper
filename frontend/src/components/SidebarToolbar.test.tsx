@@ -32,8 +32,7 @@ vi.mock("../api/client", () => ({
   },
 }));
 
-// Mock useDailyNote so SidebarToolbar can render without ToastProvider.
-// Default: openToday is a spy, isLoading is false.
+
 const mockOpenToday = vi.fn();
 vi.mock("../lib/useDailyNote", () => ({
   useDailyNote: vi.fn(() => ({
@@ -108,7 +107,6 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     ).toBe("New folder");
   });
 
-  // ── Gap R2-2: in-flight guard for create buttons ─────────────────────
   it("TestToolbar_CreatingFalse_ButtonsEnabled — default state", () => {
     render(
       <SidebarToolbar
@@ -170,7 +168,6 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(screen.getByRole("button", { name: "New folder" })).not.toBeDisabled();
   });
 
-  // ── D-08 enforcement: global controls are NOT present ──────────────
   it("TestToolbar_DoesNotRenderConnectionStatusDot (D-08)", () => {
     render(
       <SidebarToolbar
@@ -202,7 +199,6 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(screen.queryByTestId("settings-menu-trigger")).toBeNull();
   });
 
-  // ── Phase 7 D-16: Today button (CalendarDays) ──────────────────────
   it("TestToolbar_RendersTodayButton", () => {
     render(
       <SidebarToolbar
@@ -275,7 +271,6 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
       />,
     );
     const buttons = screen.getAllByRole("button");
-    // Expect: [New note, New folder, Today, Search]
     expect(buttons).toHaveLength(4);
     expect(buttons[0].getAttribute("aria-label")).toBe("New note");
     expect(buttons[1].getAttribute("aria-label")).toBe("New folder");
@@ -283,11 +278,6 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(buttons[3].getAttribute("aria-label")).toBe("Search notes");
   });
 
-  // ── Phase 7 Plan 07-28 (UAT-2 R1-5) + Plan 07-42 (UAT-7) ──────────────
-  // Plan 07-42 re-wires the Search icon from mode='notes' (switcher) to
-  // mode='search' (Plan 07-40 FTS5 search modal) and updates the title
-  // hint from (⌘O) to (⌘⇧F). The switcher remains reachable via ⌘O on the
-  // keyboard; only the icon's onClick changes.
   describe("ST-search — Search icon button (UAT-2 R1-5 + UAT-7)", () => {
     it("ST-S-1: renders a Search button with aria-label 'Search notes'", () => {
       render(<SidebarToolbar onNewNote={vi.fn()} onNewFolder={vi.fn()} />);
@@ -295,8 +285,6 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
       expect(btn).toBeInTheDocument();
     });
 
-    // SBT-UAT7-1 (was ST-S-2): clicking the Search icon must open the
-    // search MODAL (mode='search'), NOT the quick switcher (mode='notes').
     it("SBT-UAT7-1: clicking Search opens palette in search mode (NOT notes)", () => {
       useTreeStore.setState({ paletteOpen: false, paletteMode: "commands" });
       render(<SidebarToolbar onNewNote={vi.fn()} onNewFolder={vi.fn()} />);
@@ -306,8 +294,6 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
       expect(state.paletteMode).toBe("search");
     });
 
-    // SBT-UAT7-2 (was ST-S-3): title hint now reflects the Cmd+Shift+F
-    // search keybinding, not the Cmd+O switcher keybinding.
     it("SBT-UAT7-2: Search button has title tooltip 'Search notes (⌘⇧F)'", () => {
       render(<SidebarToolbar onNewNote={vi.fn()} onNewFolder={vi.fn()} />);
       const btn = screen.getByLabelText("Search notes");

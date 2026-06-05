@@ -40,7 +40,6 @@ describe("<VaultPickerRow />", () => {
   });
 
   it("non-missing row click calls vaultApi.open", async () => {
-    // Mock window.location.reload
     Object.defineProperty(window, "location", {
       value: { reload: vi.fn() },
       writable: true,
@@ -99,7 +98,6 @@ describe("<VaultPickerRow />", () => {
     });
   });
 
-  // ── Plan 08-17d: mode="switch" calls vaultApi.switch, NOT vaultApi.open ──
 
   it('mode="switch" + click → calls vaultApi.switch (not vaultApi.open)', async () => {
     Object.defineProperty(window, "location", {
@@ -124,7 +122,6 @@ describe("<VaultPickerRow />", () => {
     await waitFor(() => {
       expect(vaultApi.switch).toHaveBeenCalledWith(entry.path);
     });
-    // vaultApi.open must NOT be called in switch mode.
     expect(vaultApi.open).not.toHaveBeenCalled();
   });
 
@@ -151,7 +148,6 @@ describe("<VaultPickerRow />", () => {
     await waitFor(() => {
       expect(vaultApi.open).toHaveBeenCalledWith(entry.path);
     });
-    // vaultApi.switch must NOT be called in boot mode.
     expect(vaultApi.switch).not.toHaveBeenCalled();
   });
 

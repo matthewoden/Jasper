@@ -126,9 +126,6 @@ function basenameOf(path: string): string {
   return idx < 0 ? path : path.slice(idx + 1);
 }
 
-// ────────────────────────────────────────────────────────────────────
-// Locked styles (UI-SPEC §Surface 2)
-// ────────────────────────────────────────────────────────────────────
 
 const menuContainerStyle: CSSProperties = {
   background: "var(--color-surface)",
@@ -175,9 +172,6 @@ const separatorStyle: CSSProperties = {
   border: "none",
 };
 
-// ────────────────────────────────────────────────────────────────────
-// Shared item body
-// ────────────────────────────────────────────────────────────────────
 
 type ItemCompType =
   | typeof ContextMenu.Item
@@ -186,10 +180,7 @@ type SepCompType =
   | typeof ContextMenu.Separator
   | typeof DropdownMenu.Separator;
 
-// Plan 08-10: parallel family for the Radix Sub primitives so MenuItems can
-// emit the "Grant AI access ▸" submenu against either ContextMenu.* or
-// DropdownMenu.* without branching at the call site. Each variant carries
-// its own portal / subtrigger / subcontent.
+
 type SubCompType =
   | typeof ContextMenu.Sub
   | typeof DropdownMenu.Sub;
@@ -206,7 +197,6 @@ type PortalCompType =
 interface MenuItemsProps extends TreeRowMenuProps {
   ItemComp: ItemCompType;
   SepComp: SepCompType;
-  // Plan 08-10 — parallel sub family; one set per primitive variant.
   SubComp: SubCompType;
   SubTriggerComp: SubTriggerCompType;
   SubContentComp: SubContentCompType;
@@ -232,15 +222,10 @@ function MenuItems({
   SubContentComp,
   PortalComp,
 }: MenuItemsProps) {
-  // Cast each Radix Item/Separator to a permissive type so we can hand
-  // them inline `style` props uniformly. Both ContextMenu.Item and
-  // DropdownMenu.Item accept `onSelect`, `style`, and `children` — the
-  // shared props we use here.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Item = ItemComp as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Sep = SepComp as any;
-  // Plan 08-10 — same permissive cast for the Sub family.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Sub = SubComp as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -250,22 +235,15 @@ function MenuItems({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Portal = PortalComp as any;
 
-  // Plan 07-38 R7b: file rows render ONLY Rename + Delete — no Open,
-  // no New note, no New folder. Files can't host children, and clicking
-  // the row already opens the preview view (no "Open" menu entry needed).
   const isFile = rowKind === "file";
 
-  // Plan 08-06 (D-26 / SHARE-01): "Show in file manager" item appears on
-  // note / folder / file rows; never on empty-area (no path to reveal).
-  // The aria-label varies per row kind so screen readers announce the
-  // verb-noun verbatim from UI-SPEC §Copywriting "4 mount points" table.
   const revealLabel = "Show in file manager";
   const revealAria =
     rowKind === "note"
       ? "Show note in file manager"
       : rowKind === "folder"
         ? "Show folder in file manager"
-        : "Show file in file manager"; // file
+        : "Show file in file manager";
   const revealItem =
     rowKind !== "empty-area" && onReveal ? (
       <Item style={itemStyle} aria-label={revealAria} onSelect={() => onReveal()}>
@@ -293,13 +271,6 @@ function MenuItems({
         <Item
           style={itemStyle}
           onSelect={(event: Event) => {
-            // UX-12 / Pitfall 7 (RESEARCH §A6): right-clicking "New note"
-            // inside an expanded folder must NOT collapse that folder.
-            // Radix's onSelect fires BEFORE the menu closes and is handed
-            // the original click event; halting propagation here prevents
-            // the synthesized click from bubbling to the row's onClick
-            // handler (TreeRow.handleClick), which would otherwise toggle
-            // the folder open/closed state.
             event.stopPropagation();
             onNewNote();
           }}
@@ -311,9 +282,6 @@ function MenuItems({
         <Item
           style={itemStyle}
           onSelect={(event: Event) => {
-            // UX-12 / Pitfall 7 — same reasoning as the New note Item
-            // above. Folder rows hosting "New folder" otherwise collapse
-            // when the menu dismisses.
             event.stopPropagation();
             onNewFolder?.();
           }}
@@ -339,8 +307,6 @@ function MenuItems({
           style={{ ...itemStyle, opacity: 0.6, cursor: "not-allowed" }}
           disabled
           onSelect={(e: Event) => {
-            // Radix Item onSelect would close the menu — for a disabled
-            // informational item we want neither close nor action.
             e.preventDefault();
           }}
           data-inherited-grant="true"
@@ -373,15 +339,6 @@ function MenuItems({
       {rowKind === "folder" &&
         (onGrant || onRevoke) &&
         !(inheritedGrant && !activeLevel) && (
-        // R4-12 (Plan 08-22): key the Sub on the activeLevel so a
-        // grant change forces a clean unmount + remount. Without
-        // this, Radix's internal Sub state machine restores
-        // `data-state="open"` against the new SubTrigger render
-        // (now showing Sparkles + tier label), surfacing as the
-        // menu spontaneously re-opening ~1-2s after the user
-        // clicked a tier. With the key, the entire Sub subtree
-        // tears down on the optimistic setGrants and the WS
-        // re-render simply mounts a fresh closed Sub.
         <Sub key={`sub-${activeLevel ?? "none"}`}>
           <SubTrigger style={itemStyle}>
             <span>Grant AI access</span>
@@ -475,9 +432,6 @@ function MenuItems({
   );
 }
 
-// ────────────────────────────────────────────────────────────────────
-// Trigger variants
-// ────────────────────────────────────────────────────────────────────
 
 export function TreeRowContextMenu({
   children,

@@ -48,20 +48,12 @@ export async function uploadFile(
   const formData = new FormData();
   formData.append("file", file);
 
-  // URLSearchParams gives us correct application/x-www-form-urlencoded
-  // escaping for the path query parameter — including "/" → "%2F" for
-  // multi-segment target dirs. The server decodes back to the original
-  // multi-segment string before the path-traversal pipeline runs.
   const qs = new URLSearchParams({ path: targetDir }).toString();
   const url = `/api/v1/files?${qs}`;
 
   const resp = await fetch(url, {
     method: "POST",
     headers: {
-      // X-Session-ID propagation matches uploadAttachment (UAT-2 N8 fix);
-      // the backend uses this to suppress self-broadcast on the WS hub.
-      // Do NOT set Content-Type — fetch generates the multipart boundary
-      // from the FormData body automatically.
       "X-Session-ID": generateOrLoadSessionId(),
     },
     body: formData,
@@ -96,8 +88,6 @@ export async function deleteFile(path: string): Promise<void> {
   const resp = await fetch(url, {
     method: "DELETE",
     headers: {
-      // Mirror uploadFile so the WS hub can suppress self-broadcast
-      // and the resulting tree refresh isn't double-emitted.
       "X-Session-ID": generateOrLoadSessionId(),
     },
   });

@@ -34,11 +34,7 @@ import {
 import { syntaxTree } from "@codemirror/language";
 import { RangeSetBuilder } from "@codemirror/state";
 
-// Matches: [display text](attachments/filename.ext)
-// MUST NOT match image links (![...](...)). The negative lookbehind `(?<!!)`
-// ensures we only match plain links, not image links.
-// We use a workaround since JS regex negative lookbehind is supported in
-// modern browsers: check the character before the match ourselves.
+
 const LINK_RE = /\[([^\]]*)\]\((attachments\/[^)]+)\)/;
 
 /**
@@ -66,8 +62,7 @@ const EXT_ICON_CATEGORY: Record<string, string> = {
   ".rar": "FileArchive",
 };
 
-// Image extensions — used to filter out image links that should be handled
-// by imageAttachmentPlugin instead.
+
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico", ".avif"]);
 
 function getExtension(filename: string): string {
@@ -116,7 +111,6 @@ class FileChipWidget extends WidgetType {
     anchor.dataset.testid = "file-chip-widget";
     anchor.dataset.iconCategory = iconCategory;
 
-    // UI-SPEC §Surface 8 §File-chip widget
     anchor.style.cssText = [
       "display:inline-flex",
       "align-items:center",
@@ -133,12 +127,10 @@ class FileChipWidget extends WidgetType {
       "max-width:360px",
     ].join(";");
 
-    // Icon placeholder (text-based icon since Lucide requires React)
     const icon = document.createElement("span");
     icon.className = `cm-file-chip-icon cm-file-chip-icon-${iconCategory.toLowerCase()}`;
     icon.setAttribute("aria-hidden", "true");
     icon.style.cssText = "color:var(--color-muted);flex-shrink:0;font-size:16px;";
-    // Use a text glyph as a lightweight icon in the DOM widget
     const iconGlyph: Record<string, string> = {
       FileText: "📄",
       FileVideo: "🎬",
@@ -149,7 +141,6 @@ class FileChipWidget extends WidgetType {
     icon.textContent = iconGlyph[iconCategory] ?? "📎";
     anchor.appendChild(icon);
 
-    // Filename label (truncated via CSS)
     const nameEl = document.createElement("span");
     nameEl.className = "cm-file-chip-name";
     nameEl.style.cssText = [
@@ -159,10 +150,9 @@ class FileChipWidget extends WidgetType {
       "font-size:14px",
       "color:var(--color-fg)",
     ].join(";");
-    nameEl.textContent = filename; // textContent is XSS-safe (T-7-29)
+    nameEl.textContent = filename;
     anchor.appendChild(nameEl);
 
-    // Hover style via mouseenter/mouseleave (can't use :hover in JS-created DOM)
     anchor.addEventListener("mouseenter", () => {
       anchor.style.background = "color-mix(in srgb, var(--color-muted) 8%, transparent)";
       anchor.style.borderColor = "color-mix(in srgb, var(--color-accent) 40%, transparent)";
@@ -176,11 +166,11 @@ class FileChipWidget extends WidgetType {
   }
 
   get estimatedHeight(): number {
-    return 32; // one chip row
+    return 32;
   }
 
   ignoreEvent(): boolean {
-    return false; // allow click to propagate
+    return false;
   }
 }
 
@@ -208,14 +198,9 @@ export function buildFileChipDecorations(
         const line = view.state.doc.lineAt(node.from);
         const lineText = line.text;
 
-        // Check: must be a plain link (NOT preceded by ! which makes it an Image)
-        // The Image node in lezer-markdown encompasses the entire ![alt](src),
-        // so if node.name === "Link" it's already not an image syntax link.
-        // But we also need to check the character just before the [ in the line
-        // to be sure.
         const nodeOffsetInLine = node.from - line.from;
         if (nodeOffsetInLine > 0 && lineText[nodeOffsetInLine - 1] === "!") {
-          return; // This is part of an Image syntax — skip
+          return;
         }
 
         const m = LINK_RE.exec(lineText);
@@ -224,13 +209,9 @@ export function buildFileChipDecorations(
         const [, label, src] = m;
         if (!src.startsWith("attachments/")) return;
 
-        // Skip images — handled by imageAttachmentPlugin
         const filename = src.replace(/^attachments\//, "");
         if (isImageFilename(filename)) return;
 
-        // Widget at END of line, side:1. block:true intentionally OMITTED
-        // (CM6 ViewPlugin constraint). CSS display:inline-flex provides visual
-        // block appearance.
         builder.add(
           line.to,
           line.to,

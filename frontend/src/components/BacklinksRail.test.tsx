@@ -9,7 +9,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-// ── Mocks set up before importing the component ──────────────────────────────
 
 const mockSetExpanded = vi.fn();
 const mockSetActiveNote = vi.fn();
@@ -26,13 +25,13 @@ vi.mock("../lib/useTreeStore", () => ({
   },
 }));
 
-// Mock useBacklinks so we control the state.
+
 const mockUseBacklinks = vi.fn();
 vi.mock("../lib/useBacklinks", () => ({
   useBacklinks: (...args: unknown[]) => mockUseBacklinks(...args),
 }));
 
-// Mock sanitize.ts so BR7 can assert call count.
+
 const mockSanitizeHtml = vi.fn((s: string) => s);
 vi.mock("../lib/sanitize", () => ({
   sanitizeHtml: (s: string) => mockSanitizeHtml(s),
@@ -58,7 +57,6 @@ const ROW_B = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Default: empty state.
   mockUseBacklinks.mockReturnValue({
     backlinks: [],
     loading: false,
@@ -68,7 +66,6 @@ beforeEach(() => {
   mockSetPanelSelector.mockReset();
 });
 
-// ─── BR1: noteId=null shows empty state ──────────────────────────────────────
 
 describe("BR1: noteId=null renders empty state", () => {
   it("shows 'No notes link here yet.' when noteId is null", () => {
@@ -89,7 +86,6 @@ describe("BR1: noteId=null renders empty state", () => {
   });
 });
 
-// ─── BR2: loading state ───────────────────────────────────────────────────────
 
 describe("BR2: loading state shows affordance", () => {
   it("renders loading text while backlinks are being fetched", () => {
@@ -105,7 +101,6 @@ describe("BR2: loading state shows affordance", () => {
   });
 });
 
-// ─── BR3: 0 results → empty state ────────────────────────────────────────────
 
 describe("BR3: 0 backlinks shows 'No notes link here yet.'", () => {
   it("renders empty state when note is open but has no backlinks", () => {
@@ -121,7 +116,6 @@ describe("BR3: 0 backlinks shows 'No notes link here yet.'", () => {
   });
 });
 
-// ─── BR4: row renders title + sanitized excerpt ───────────────────────────────
 
 describe("BR4: each row renders source title + excerpt via dangerouslySetInnerHTML", () => {
   it("renders row with note title and excerpt", () => {
@@ -134,14 +128,12 @@ describe("BR4: each row renders source title + excerpt via dangerouslySetInnerHT
 
     render(<BacklinksRail noteId="target-id" />);
     expect(screen.getByText("Note A")).toBeInTheDocument();
-    // Excerpt is rendered as HTML; check for the text inside the mark.
     const excerptEl = document.querySelector(".backlinks-excerpt");
     expect(excerptEl).not.toBeNull();
     expect(excerptEl?.innerHTML).toContain("[[Target]]");
   });
 });
 
-// ─── BR5: click title sets active note ───────────────────────────────────────
 
 describe("BR5: clicking source title sets active note", () => {
   it("calls setActiveNote with source id on title click", () => {
@@ -159,7 +151,6 @@ describe("BR5: clicking source title sets active note", () => {
   });
 });
 
-// ─── BR6: count badge when N > 1 ─────────────────────────────────────────────
 
 describe("BR6: count badge appears when count > 1", () => {
   it("renders count badge for ROW_B which has count=2", () => {
@@ -171,7 +162,6 @@ describe("BR6: count badge appears when count > 1", () => {
     });
 
     render(<BacklinksRail noteId="target-id" />);
-    // Badge text is "·2" (middot + count).
     expect(screen.getByText(/·2/)).toBeInTheDocument();
   });
 
@@ -188,7 +178,6 @@ describe("BR6: count badge appears when count > 1", () => {
   });
 });
 
-// ─── BR7: sanitize.ts called for every row excerpt ───────────────────────────
 
 describe("BR7: sanitizeHtml called for every row excerpt", () => {
   it("calls sanitizeHtml once per row", () => {
@@ -201,14 +190,12 @@ describe("BR7: sanitizeHtml called for every row excerpt", () => {
 
     render(<BacklinksRail noteId="target-id" />);
 
-    // sanitizeHtml should be called once per row (two rows → two calls).
     expect(mockSanitizeHtml).toHaveBeenCalledTimes(2);
     expect(mockSanitizeHtml).toHaveBeenCalledWith(ROW_A.excerpt);
     expect(mockSanitizeHtml).toHaveBeenCalledWith(ROW_B.excerpt);
   });
 });
 
-// ─── BR8: hover background via CSS class ─────────────────────────────────────
 
 describe("BR8: rows have backlinks-row CSS class for hover background", () => {
   it("each row li has class backlinks-row", () => {
@@ -225,7 +212,6 @@ describe("BR8: rows have backlinks-row CSS class for hover background", () => {
   });
 });
 
-// ─── Header / hide button (preserved from Plan 06-07 chrome tests) ───────────
 
 describe("Header chrome (from Plan 06-07)", () => {
   it("renders 'Linked from' header", () => {
@@ -242,15 +228,11 @@ describe("Header chrome (from Plan 06-07)", () => {
   });
 
   it("UAT 2026-05-12: rail-level 'Hide backlinks panel' chevron button is removed", () => {
-    // The rail collapses automatically when all panels are deselected
-    // (RightRail useEffect). Clicking × on the only visible panel collapses
-    // the rail; there is no longer a dedicated rail-collapse chevron.
     render(<BacklinksRail noteId={null} />);
     expect(screen.queryByRole("button", { name: /hide backlinks panel/i })).toBeNull();
   });
 });
 
-// ─── Phase 6.6 (Plan 06.6-11) — Per-panel × close button (D-04) ─────────────
 
 describe("Phase 6.6: BacklinksRail × close button (D-04)", () => {
   it("BR-6.6-1: header contains a button with aria-label='Close Backlinks panel'", () => {
@@ -269,7 +251,6 @@ describe("Phase 6.6: BacklinksRail × close button (D-04)", () => {
   it("BR-6.6-3: × button has Lucide X icon (aria-hidden svg child)", () => {
     render(<BacklinksRail noteId={null} />);
     const closeBtn = screen.getByRole("button", { name: /close backlinks panel/i });
-    // The X Lucide icon is an SVG inside the button
     const svg = closeBtn.querySelector("svg");
     expect(svg).not.toBeNull();
     expect(svg).toHaveAttribute("aria-hidden", "true");

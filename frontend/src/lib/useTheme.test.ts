@@ -50,11 +50,6 @@ describe("useTheme", () => {
       response: { status: 200 },
     });
     const { result } = renderHook(() => useTheme());
-    // result.current.theme reads the DOM via getCurrentTheme, so it is
-    // ALWAYS defined immediately. We need to wait until the GET-driven
-    // config-arrives effect has actually run (the one that flips
-    // data-theme + writes the LS bootstrap cache) — otherwise setTheme
-    // takes the "config is null" early-return and never calls PUT.
     await waitFor(() => expect(mockClient.GET).toHaveBeenCalled());
     await waitFor(() =>
       expect(document.documentElement.getAttribute("data-theme")).toBe("dark"),
@@ -68,13 +63,6 @@ describe("useTheme", () => {
   });
 
   it("on PUT failure: reverts data-theme AND rolls back LS bootstrap (WR-04 fix)", async () => {
-    // WR-04 (review e228119): the previous behavior left data-theme at the
-    // new (unsaved) value, creating a silent UI inconsistency — the
-    // SettingsMenu reads from live DOM and would show the user-clicked
-    // theme as "selected" even though the server still held the old value.
-    // Post-fix (commit 05545cf): on PUT failure, useTheme reverts BOTH the
-    // DOM attribute and the LS bootstrap so the visual state matches what
-    // the server actually persisted.
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
     mockClient.PUT.mockResolvedValue({
       error: { code: "internal", message: "save failed" },
@@ -89,9 +77,7 @@ describe("useTheme", () => {
       res = await result.current.setTheme("light");
     });
     expect(res?.error).toBeDefined();
-    // DOM reverts to the previously-applied theme (dark).
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
-    // LS bootstrap is rolled back so next reload also matches.
     expect(localStorage.getItem(THEME_BOOTSTRAP_KEY)).toBeNull();
   });
 });

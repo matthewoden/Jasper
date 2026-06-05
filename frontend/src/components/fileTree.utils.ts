@@ -130,9 +130,6 @@ export function adaptTree(wireTree: WireTree): ArboristNode[] {
   return wireTree.root.map((n) => adaptToArborist(n, notePathMap));
 }
 
-// ────────────────────────────────────────────────────────────────────
-// Path helpers (pure).
-// ────────────────────────────────────────────────────────────────────
 
 export function basename(path: string): string {
   const i = path.lastIndexOf("/");
@@ -144,9 +141,7 @@ export function composeNewPath(parent: string, name: string): string {
   return `${parent}/${name}`;
 }
 
-// ────────────────────────────────────────────────────────────────────
-// computeMoveTarget — drag-drop destination resolver (Plan 03-11).
-// ────────────────────────────────────────────────────────────────────
+
 export interface MoveTarget {
   newPath: string;
   isNoOp: boolean;
@@ -325,11 +320,7 @@ export function resetTreeListLayout(
   }
 }
 
-// ────────────────────────────────────────────────────────────────────
-// Module-level ref shim for cross-component callers (e.g., Breadcrumbs
-// in TopBar). Set inside the FileTree component's useEffect when
-// treeRef.current becomes available; cleared on unmount.
-// ────────────────────────────────────────────────────────────────────
+
 let currentTreeRef: TreeApi<ArboristNode> | null = null;
 
 export function setCurrentTreeRef(

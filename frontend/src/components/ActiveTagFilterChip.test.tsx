@@ -47,7 +47,6 @@ describe("ActiveTagFilterChip", () => {
     });
     expect(dismissBtn).toBeInTheDocument();
     expect(dismissBtn).toHaveStyle({ cursor: "pointer" });
-    // X icon is rendered as an SVG child
     expect(dismissBtn.querySelector("svg")).not.toBeNull();
   });
 
@@ -59,14 +58,11 @@ describe("ActiveTagFilterChip", () => {
       name: "Remove tag filter: #project",
     });
 
-    // Initial color
     expect(dismissBtn).toHaveStyle({ color: "var(--color-fg)" });
 
-    // After hover
     fireEvent.mouseEnter(dismissBtn);
     expect(dismissBtn).toHaveStyle({ color: "var(--color-accent)" });
 
-    // After unhover
     fireEvent.mouseLeave(dismissBtn);
     expect(dismissBtn).toHaveStyle({ color: "var(--color-fg)" });
   });

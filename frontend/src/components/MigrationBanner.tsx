@@ -19,11 +19,6 @@ import { useToast } from "./toast.utils";
 
 interface Props {
   onResetConfirm: () => void;
-  // Status is provided by the parent (App.tsx) so the same hook instance
-  // is shared with the rebuild flow's `refresh()` after a successful
-  // POST /admin/reindex. Calling useMigrationStatus() here would create
-  // a second, independent state machine and the banner would never see
-  // the post-rebuild `state: "ok"` transition.
   status: UseMigrationStatusResult;
 }
 
@@ -33,10 +28,6 @@ export function MigrationBanner({ onResetConfirm, status }: Props) {
 
   if (status.state !== "rolled_back" || dismissed) return null;
 
-  // Locked copy template per UI-SPEC §Surface 1. The headline is
-  // `Migration {filename} failed.` — `{filename}` is the spec's literal
-  // template marker; it is replaced at render time with the concrete
-  // failed_migration value (or `(unknown)` if absent).
   const filename = status.failedMigration ?? "(unknown)";
   const logsPath = status.logsPath ?? "";
 
@@ -61,11 +52,8 @@ export function MigrationBanner({ onResetConfirm, status }: Props) {
       aria-live="polite"
       className="bg-warning-surface flex items-start w-full"
       style={{
-        // Locked spec: 4px left border --color-warning, 1px bottom border
-        // --color-border (continuous with the sidebar/editor divider).
         borderLeft: "4px solid var(--color-warning)",
         borderBottom: "1px solid var(--color-border)",
-        // 16px (md) horizontal padding, 12px vertical (--spacing-md-tight).
         paddingTop: "var(--spacing-md-tight)",
         paddingBottom: "var(--spacing-md-tight)",
         paddingLeft: 16,
@@ -118,9 +106,6 @@ export function MigrationBanner({ onResetConfirm, status }: Props) {
               fontFamily: "inherit",
               textDecoration: "none",
             }}
-            // Hover effect (underline + accent) is handled inline via
-            // onMouseEnter/Leave to avoid leaking these styles into the
-            // global CSS — the banner is the only "warning surface" use site.
             onMouseEnter={(e) => {
               e.currentTarget.style.textDecoration = "underline";
               e.currentTarget.style.color = "var(--color-accent)";

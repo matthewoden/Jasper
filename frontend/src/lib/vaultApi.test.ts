@@ -12,7 +12,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { validateVaultPath, vaultApi } from "./vaultApi";
 
-// ── validateVaultPath table-driven tests ────────────────────────────────────
 
 describe("validateVaultPath", () => {
   it('rejects empty string with code "empty"', () => {
@@ -46,11 +45,8 @@ describe("validateVaultPath", () => {
   });
 
   it('rejects paths with decomposed (NFD) chars with code "non-nfc"', () => {
-    // Explicitly construct NFD form of "é" = U+0065 + U+0301
-    // Cannot write the literal in source because editors/git normalize to NFC.
-    const nfdE = "é"; // e + combining acute accent (NFD form)
+    const nfdE = "é";
     const nfdPath = `/caf${nfdE}/test`;
-    // Verify the test itself is set up correctly (NFD path should not be NFC)
     expect(nfdPath.normalize("NFC")).not.toBe(nfdPath);
     const result = validateVaultPath(nfdPath);
     expect(result.ok).toBe(false);
@@ -68,9 +64,7 @@ describe("validateVaultPath", () => {
   });
 });
 
-// ── vaultApi openapi-fetch wrapper tests ─────────────────────────────────────
 
-// Mock the API client singleton used by vaultApi.
 vi.mock("../api/client", () => ({
   client: {
     GET: vi.fn(),
@@ -90,8 +84,6 @@ describe("vaultApi openapi-fetch wrappers", () => {
   });
 
   it("getCurrent returns null when no vault open (empty wrapper from omitempty)", async () => {
-    // Real backend wire shape: VaultCurrentResponse has `vault` as omitempty,
-    // so the no-vault case sends `{}` (not `null`). Verify unwrap handles both.
     mockGet.mockResolvedValueOnce({ data: {}, error: undefined });
     const result = await vaultApi.getCurrent();
     expect(result).toBeNull();

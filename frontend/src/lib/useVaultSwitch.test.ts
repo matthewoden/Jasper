@@ -7,17 +7,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
-// Stub useTreeStore with a real implementation backed by module-level state
-// to avoid importing the real zustand store (avoids LS side-effects in tests).
+
 const vaultSwitchingState = { active: false, targetName: "" };
 const setVaultSwitchingMock = vi.fn((s: { active: boolean; targetName: string }) => {
   vaultSwitchingState.active = s.active;
   vaultSwitchingState.targetName = s.targetName;
 });
-// R4-13 (Plan 08-22): markSwitching now also clears the active-note
-// state via setActiveNote(null) + setActiveFilePath(null) so the
-// in-flight getNote AbortController fires and the post-reload SPA
-// doesn't refetch the prior vault's note. Mock both setters.
+
+
 const setActiveNoteMock = vi.fn();
 const setActiveFilePathMock = vi.fn();
 
@@ -46,7 +43,7 @@ vi.mock("./useTreeStore", () => {
 
 import { useVaultSwitch } from "./useVaultSwitch";
 
-// Stub window.location.reload so tests don't actually navigate.
+
 const reloadMock = vi.fn();
 Object.defineProperty(window, "location", {
   value: { reload: reloadMock },
@@ -90,10 +87,8 @@ describe("useVaultSwitch", () => {
     act(() => {
       result.current.markSwitching("Work Vault");
     });
-    // Before 10s — reload not called yet.
     vi.advanceTimersByTime(9999);
     expect(reloadMock).not.toHaveBeenCalled();
-    // At 10s — failsafe fires.
     vi.advanceTimersByTime(1);
     expect(reloadMock).toHaveBeenCalledTimes(1);
   });

@@ -54,18 +54,13 @@ export function RightRail({ activeNoteId, style }: Props) {
   const setExpanded = useTreeStore((s) => s.setBacklinksRailExpanded);
   const setWidth = useTreeStore((s) => s.setBacklinksRailWidth);
   const heightRatio = useTreeStore((s) => s.tagsPanelHeightRatio);
-  // Phase 6.6 — Plan 06.6-11 (D-36): panelSelector gates per-panel rendering.
-  // The panelSelector slice is separate from expanded/collapsed-within-card state.
   const panelSelector = useTreeStore((s) => s.panelSelector);
   const draggingRef = useRef(false);
-  // railRef passed to InterPanelDivider for getBoundingClientRect ratio computation
   const railRef = useRef<HTMLElement>(null);
 
   const onPointerMove = useCallback(
     (e: PointerEvent) => {
       if (!draggingRef.current) return;
-      // Right-rail: drag LEFT to expand. Width = window.innerWidth - clientX.
-      // Clamped to [RAIL_MIN_WIDTH, RAIL_MAX_WIDTH]; store also clamps in setter.
       const newWidth = Math.min(
         RAIL_MAX_WIDTH,
         Math.max(RAIL_MIN_WIDTH, window.innerWidth - e.clientX),
@@ -83,7 +78,7 @@ export function RightRail({ activeNoteId, style }: Props) {
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      e.preventDefault(); // prevent native text-selection drag
+      e.preventDefault();
       draggingRef.current = true;
       document.addEventListener("pointermove", onPointerMove);
       document.addEventListener("pointerup", onPointerUp);
@@ -91,15 +86,12 @@ export function RightRail({ activeNoteId, style }: Props) {
     [onPointerMove, onPointerUp],
   );
 
-  // Phase 6.6 — Plan 06.6-11 (D-36): auto-collapse when both panels are hidden.
-  // Must be declared before any early return (Rules of Hooks).
   useEffect(() => {
     if (expanded && !panelSelector.tags && !panelSelector.backlinks) {
       setExpanded(false);
     }
   }, [expanded, panelSelector.tags, panelSelector.backlinks, setExpanded]);
 
-  // D-36: collapsed rail returns null — TopBar panel dropdown is the re-open path.
   if (!expanded) return null;
 
   const bothPanelsVisible = panelSelector.tags && panelSelector.backlinks;
@@ -110,8 +102,6 @@ export function RightRail({ activeNoteId, style }: Props) {
       style={{
         width,
         height: "100%",
-        // UI-SPEC §Rail Container: --color-bg exposes the gap between panel cards
-        // for the "floating panel" aesthetic (D-03). Changed from Phase 6 --color-surface.
         background: "var(--color-bg)",
         position: "relative",
         display: "flex",

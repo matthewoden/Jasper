@@ -6,7 +6,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
-// Mock useVaultPicker to control hook output
+
 vi.mock("../../lib/useVaultPicker", () => ({
   useVaultPicker: vi.fn(() => ({
     isOpen: true,
@@ -20,7 +20,7 @@ vi.mock("../../lib/useVaultPicker", () => ({
   })),
 }));
 
-// Mock vaultApi
+
 vi.mock("../../lib/vaultApi", () => ({
   vaultApi: {
     getCurrent: vi.fn().mockResolvedValue(null),
@@ -109,7 +109,6 @@ describe("<VaultPicker />", () => {
     });
     render(<VaultPicker mode="boot" />);
     fireEvent.click(screen.getByRole("tab", { name: /open existing/i }));
-    // VaultOpenPane renders an input
     expect(screen.getByTestId("vault-open-input")).toBeInTheDocument();
   });
 });

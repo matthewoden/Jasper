@@ -50,7 +50,6 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
     render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} />);
     await waitFor(() => expect(listMock).toHaveBeenCalled());
     const crumb = await screen.findByTestId("folder-picker-breadcrumb");
-    // / › Users › me
     expect(within(crumb).getByRole("button", { name: "/" })).toBeInTheDocument();
     expect(within(crumb).getByRole("button", { name: "Users" })).toBeInTheDocument();
     expect(within(crumb).getByRole("button", { name: "me" })).toBeInTheDocument();
@@ -61,13 +60,11 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
     render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} />);
     const crumb = await screen.findByTestId("folder-picker-breadcrumb");
 
-    // Double-click the bar itself (not a segment button).
     fireEvent.doubleClick(crumb);
 
     const input = await screen.findByTestId("folder-picker-path-input");
     expect(input).toBeInTheDocument();
     expect((input as HTMLInputElement).value).toBe("/Users/me");
-    // Breadcrumb is gone while editing.
     expect(screen.queryByTestId("folder-picker-breadcrumb")).toBeNull();
   });
 
@@ -79,8 +76,6 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
 
     fireEvent.doubleClick(segment);
 
-    // Edit input must NOT have appeared — the double-click on the segment is
-    // accidental clicking, not a request to type a path.
     expect(screen.queryByTestId("folder-picker-path-input")).toBeNull();
     expect(screen.getByTestId("folder-picker-breadcrumb")).toBeInTheDocument();
   });
@@ -97,7 +92,6 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
     await waitFor(() => {
       expect(listMock).toHaveBeenLastCalledWith("/Users/me/Documents");
     });
-    // After successful load, edit mode exits → breadcrumb is back.
     await waitFor(() => {
       expect(screen.queryByTestId("folder-picker-path-input")).toBeNull();
     });
@@ -123,14 +117,9 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
     await waitFor(() =>
       expect(screen.getByTestId("folder-picker-error")).toHaveTextContent(/no such directory/i),
     );
-    // Input stays so the user can fix the typo without re-engaging the breadcrumb.
     expect(screen.getByTestId("folder-picker-path-input")).toBeInTheDocument();
   });
 
-  // WSL Windows-form display (UAT-2 #1d follow-up). When the backend
-  // supplies windows_path on a /mnt/<drive> listing, the breadcrumb relabels
-  // segments to Windows-form (C:\, Users, you, ...) and the footer shows the
-  // Windows path as primary with the WSL form as the small secondary line.
   describe("WSL windows_path display", () => {
     const WSL_RESP: FsListResponse = {
       path: "/mnt/c/Users/you",
@@ -145,11 +134,9 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
       listMock.mockReturnValueOnce(ok(WSL_RESP));
       render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} />);
       const crumb = await screen.findByTestId("folder-picker-breadcrumb");
-      // Windows-form labels: "C:\" then "Users" then "you".
       expect(within(crumb).getByRole("button", { name: "C:\\" })).toBeInTheDocument();
       expect(within(crumb).getByRole("button", { name: "Users" })).toBeInTheDocument();
       expect(within(crumb).getByRole("button", { name: "you" })).toBeInTheDocument();
-      // WSL-form root segments must NOT appear as labels in WSL mode.
       expect(within(crumb).queryByRole("button", { name: "/" })).toBeNull();
       expect(within(crumb).queryByRole("button", { name: "mnt" })).toBeNull();
       expect(within(crumb).queryByRole("button", { name: "c" })).toBeNull();
@@ -168,7 +155,6 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
       const crumb = await screen.findByTestId("folder-picker-breadcrumb");
       fireEvent.click(within(crumb).getByRole("button", { name: "Users" }));
       await waitFor(() => {
-        // The hop loaded the WSL path even though the user clicked the Windows label.
         expect(listMock).toHaveBeenLastCalledWith("/mnt/c/Users");
       });
     });
@@ -183,7 +169,6 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
     });
 
     it("falls back to POSIX breadcrumb when windows_path is absent (non-WSL or /home/...)", async () => {
-      // Same shape as WSL response BUT no windows_path → behaves like before.
       listMock.mockReturnValueOnce(
         ok({ path: "/home/me/notes", parent: "/home/me", entries: [] }),
       );
@@ -192,7 +177,6 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
       expect(within(crumb).getByRole("button", { name: "/" })).toBeInTheDocument();
       expect(within(crumb).getByRole("button", { name: "home" })).toBeInTheDocument();
       expect(within(crumb).getByRole("button", { name: "me" })).toBeInTheDocument();
-      // No secondary line when windows_path is absent.
       expect(screen.queryByTestId("folder-picker-current-path-secondary")).toBeNull();
     });
   });
@@ -208,15 +192,11 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
     const callsBeforeEscape = listMock.mock.calls.length;
     fireEvent.keyDown(input, { key: "Escape" });
 
-    // No second list() call should fire on cancel.
     expect(listMock.mock.calls.length).toBe(callsBeforeEscape);
-    // Breadcrumb is back, input is gone.
     expect(await screen.findByTestId("folder-picker-breadcrumb")).toBeInTheDocument();
     expect(screen.queryByTestId("folder-picker-path-input")).toBeNull();
   });
 
-  // UAT-2 #1e — picker UX for already-a-vault detection, "Go up" navigation,
-  // and "New folder" inline mkdir.
   describe("is_vault detection + Open Vault / Go up footer (UAT-2 #1e)", () => {
     const VAULT_RESP: FsListResponse = {
       path: "/Users/me/MyVault",
@@ -237,9 +217,7 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
       const onOpenVault = vi.fn();
       render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} onOpenVault={onOpenVault} />);
       await screen.findByTestId("folder-picker-vault-banner");
-      // The Select / Cancel pair is gone.
       expect(screen.queryByTestId("folder-picker-select")).toBeNull();
-      // Open Vault + Go up are present.
       expect(screen.getByTestId("folder-picker-open-vault")).toBeInTheDocument();
       expect(screen.getByTestId("folder-picker-go-up")).toBeInTheDocument();
     });
@@ -264,17 +242,13 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
       await waitFor(() => {
         expect(listMock).toHaveBeenLastCalledWith("/Users/me");
       });
-      // Crucially: the picker stays open. onCancel was not the click target.
       expect(onCancel).not.toHaveBeenCalled();
     });
 
     it("falls through to Select when is_vault is true but onOpenVault is NOT provided", async () => {
       listMock.mockReturnValueOnce(ok(VAULT_RESP));
-      // No onOpenVault — caller is e.g. VaultOpenPane in some legacy form
-      // where the pane handles vault detection itself via fall-through Select.
       render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} />);
       await screen.findByTestId("folder-picker-vault-banner");
-      // Footer keeps Select; no Open Vault button.
       expect(screen.getByTestId("folder-picker-select")).toBeInTheDocument();
       expect(screen.queryByTestId("folder-picker-open-vault")).toBeNull();
     });
@@ -327,7 +301,6 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
       await waitFor(() => {
         expect(listMock).toHaveBeenLastCalledWith("/Users/me");
       });
-      // After success the inline input closes.
       await waitFor(() => {
         expect(screen.queryByTestId("folder-picker-new-folder-input")).toBeNull();
       });
@@ -338,14 +311,12 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
       render(<FolderPicker open onSelect={vi.fn()} onCancel={vi.fn()} />);
       fireEvent.click(await screen.findByTestId("folder-picker-new-folder-button"));
       const input = screen.getByTestId("folder-picker-new-folder-input");
-      // `/` in a folder name is invalid — backend would reject too.
       fireEvent.change(input, { target: { value: "bad/name" } });
       fireEvent.keyDown(input, { key: "Enter" });
 
       const err = await screen.findByTestId("folder-picker-new-folder-error");
       expect(err).toBeInTheDocument();
       expect(mkdirMock).not.toHaveBeenCalled();
-      // Input stays open so the user can fix.
       expect(screen.getByTestId("folder-picker-new-folder-input")).toBeInTheDocument();
     });
 

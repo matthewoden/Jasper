@@ -77,8 +77,6 @@ export function FilePreviewView({ path, style }: FilePreviewViewProps): React.JS
   const ext = getExt(path);
   const name = basename(path);
   const isImage = IMAGE_EXTS.includes(ext);
-  // Query-parameter URL — full encodeURIComponent (forward slashes also get %2F-encoded).
-  // Matches Plan 07-32a's GET /files?path=<encoded> contract.
   const url = `/api/v1/files?path=${encodeURIComponent(path)}`;
   const typeLabel = ext ? ext.toUpperCase() : "FILE";
 

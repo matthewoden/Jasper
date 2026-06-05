@@ -71,10 +71,6 @@ function parentPathForCreate(
 ): string {
   if (!sr) return "";
   if (sr.kind === "folder") return sr.target;
-  // sr.kind === "note": sr.target is the note id; walk the tree to find
-  // its path, then take the parent dir. Fall back to root if the note
-  // can't be found (e.g., tree hasn't loaded yet OR the selected note
-  // was just deleted from a sibling surface).
   const path = findNotePathById(tree, sr.target);
   if (path === null) return "";
   return parentDirOf(path);
@@ -91,7 +87,6 @@ function findNotePathById(tree: Tree | null, id: string): string | null {
     if (node.kind === "note") {
       return node.id === id ? node.path : null;
     }
-    // Plan 07-26: "file" kind has no id and no children; skip.
     if (node.kind !== "folder") return null;
     if (node.children) {
       for (const child of node.children) {
@@ -111,31 +106,9 @@ function findNotePathById(tree: Tree | null, id: string): string | null {
 export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
   const { tree } = useFileTree();
   const { createNoteAt, createFolderAt, isCreating } = useTreeCreateActions();
-  // Phase 5.5 — Plan 05 (UX-09): width comes from the store; resize handle
-  // mounts as the last child of <nav> so it overlays the FileTree's
-  // overflow:auto container.
   const sidebarWidth = useTreeStore((s) => s.sidebarWidth);
-  // Phase 6.6 — Plan 06.6-11 (D-10, UX-CHROME-03): visibility gating.
-  // When notesSidebarVisible is false, the sidebar column in App.tsx grid
-  // collapses to 0px and the Sidebar returns null to avoid invisible DOM.
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
-  // Phase 6.6 — handleRefresh removed from Sidebar (D-08).
-  // Refresh moved to StatusBar. SidebarToolbar no longer receives onRefresh.
-  //
-  // Plan 07-40 (UAT-6) — the Plan 07-39 useSearch driver effects that
-  // mirrored hook results → store.searchResults and flipped searchActive
-  // based on searchQuery.length were REMOVED. Search is now an independent
-  // modal (CommandMenu mode='search' invoked by Cmd+Shift+F) that owns its
-  // own useSearch call. The legacy store slices (searchQuery, searchActive,
-  // searchResults) remain in useTreeStore as dead-code per the long-running
-  // HALT discipline; they're not read by anything user-facing anymore.
 
-  // UX-12: toolbar New note / New folder target the parent of the currently
-  // selected row (or inside the selected folder). Falls back to root only
-  // when no row has been selected. selectedRow is read via getState() at
-  // click time — NOT subscribed — so the Sidebar doesn't re-render on
-  // every selection change. This matches Plan 03-20's pattern (App.tsx's
-  // document-level F2 listener also reads selectedRow via getState()).
   const handleNewNote = useCallback(() => {
     const sr = useTreeStore.getState().selectedRow;
     const parent = parentPathForCreate(tree, sr);
@@ -148,16 +121,9 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
     void createFolderAt(parent);
   }, [createFolderAt, tree]);
 
-  // All hooks must be called before any conditional return (Rules of Hooks).
   if (!notesSidebarVisible) return null;
 
   return (
-    // Phase 6.6 — Plan 06.6-11 (D-10, UX-CHROME-03): floating-panel card aesthetic.
-    // Outer nav uses --color-bg so the 8px inset exposes the app background through
-    // the gap between the card and the app edges — matching the right-rail aesthetic.
-    // Inner card carries the visible border/radius/surface color.
-    // SidebarResizeHandle stays on the outer nav's right edge (not inside the card)
-    // so the user grabs the column boundary, not the card boundary.
     <nav
       style={{
         width: sidebarWidth,

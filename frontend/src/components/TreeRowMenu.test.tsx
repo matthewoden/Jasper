@@ -202,8 +202,6 @@ describe("<TreeRowDropdownMenu /> — item rendering by rowKind", () => {
       </TreeRowDropdownMenu>,
     );
     const deleteText = screen.getByText("Delete");
-    // Walk up to find the menu-item; its inline style should reference
-    // the destructive color token.
     let el: HTMLElement | null = deleteText;
     let foundDestructive = false;
     while (el) {
@@ -218,13 +216,7 @@ describe("<TreeRowDropdownMenu /> — item rendering by rowKind", () => {
   });
 });
 
-// UX-12 / Pitfall 7 (RESEARCH §A6): the New note / New folder Item
-// onSelect handlers must call event.stopPropagation() so that, after
-// Radix dismisses the menu, the synthesized click doesn't bubble to
-// the host folder's onClick (TreeRow.handleClick) and collapse the
-// folder. Rename / Delete don't have this hazard — they're verified
-// here as "still a single-arg lambda" so we don't drift into "add
-// stopPropagation everywhere" cargo-cult code.
+
 describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => {
   it("UX-12: New note onSelect calls event.stopPropagation()", () => {
     const onNewNote = vi.fn();
@@ -241,12 +233,6 @@ describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => 
         <button>trigger</button>
       </TreeRowDropdownMenu>,
     );
-    // Radix's Item is rendered as role="menuitem". Find the New note
-    // entry, dispatch a click that carries a synthetic Event whose
-    // stopPropagation we can spy on — but since fireEvent.click
-    // synthesizes its own MouseEvent, we instead patch
-    // Event.prototype.stopPropagation across this single click and
-    // assert it was called.
     const item = screen.getByText("New note").closest('[role="menuitem"]');
     expect(item).not.toBeNull();
     const stopSpy = vi.spyOn(Event.prototype, "stopPropagation");
@@ -307,9 +293,6 @@ describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => 
     const stopSpy = vi.spyOn(Event.prototype, "stopPropagation");
     try {
       fireEvent.click(item as HTMLElement);
-      // Rename's onSelect is `() => onRename?.()` — no event arg, no
-      // stopPropagation. Defensive: ensures we didn't accidentally
-      // sprinkle stopPropagation across every Item.
       expect(stopSpy).not.toHaveBeenCalled();
       expect(onRename).toHaveBeenCalledTimes(1);
     } finally {
@@ -318,8 +301,7 @@ describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => 
   });
 });
 
-// Plan 07-38 R7b: file-kind rows now render Rename + Delete (no Open, no
-// New note, no New folder). Mirrors the note-row item set minus Open.
+
 describe("<TreeRowDropdownMenu /> — file rowKind (Plan 07-38 R7b)", () => {
   it("TestMenu_FileRow_HasRename", () => {
     render(
@@ -372,7 +354,6 @@ describe("<TreeRowDropdownMenu /> — file rowKind (Plan 07-38 R7b)", () => {
   });
 
   it("TestMenu_FileRow_NoNewNote_NoNewFolder", () => {
-    // Files cannot host children — New note / New folder do not apply.
     render(
       <TreeRowDropdownMenu
         rowKind="file"
@@ -443,7 +424,6 @@ describe("<TreeRowContextMenu /> — right-click trigger", () => {
     );
     const row = screen.getByTestId("row");
     fireEvent.contextMenu(row);
-    // After right-click, menu should mount; Radix puts content into a portal.
     expect(await screen.findByText("Open")).toBeInTheDocument();
     expect(screen.getByText("Rename")).toBeInTheDocument();
     expect(screen.getByText("Delete")).toBeInTheDocument();

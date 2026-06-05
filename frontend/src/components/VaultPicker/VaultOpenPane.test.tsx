@@ -46,7 +46,6 @@ describe("<VaultOpenPane />", () => {
     render(<VaultOpenPane onOpened={onOpened} />);
     const input = screen.getByTestId("vault-open-input");
     fireEvent.change(input, { target: { value: "/Users/me/vault" } });
-    // Submit button should be enabled
     expect(screen.getByTestId("vault-open-submit")).not.toBeDisabled();
     fireEvent.click(screen.getByTestId("vault-open-submit"));
     await waitFor(() => {

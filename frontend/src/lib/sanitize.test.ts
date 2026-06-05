@@ -60,15 +60,6 @@ describe("sanitizeHtml — XSS strip", () => {
     const out = sanitizeHtml(
       '<a href="data:text/html,<script>alert(1)</script>">click</a>',
     );
-    // DOMPurify allows data: URIs per ALLOWED_URI_REGEXP, BUT the
-    // smuggled <script> tag inside the data URI is irrelevant —
-    // the URL itself is fine; the danger is if the browser ever
-    // navigates to it. Phase 6+ link rendering uses target="_blank"
-    // and rel="noreferrer noopener" anyway. Document the boundary:
-    // sanitizeHtml does NOT validate URI targets beyond the regex;
-    // callers MUST also apply rel="noopener noreferrer" on links.
-    // This test asserts the OUTPUT does not contain a literal
-    // <script> tag (which DOMPurify's URL parsing handles).
     expect(out).not.toContain("<script");
   });
 
@@ -132,10 +123,6 @@ describe("sanitizeHtml — benign HTML preserved", () => {
   });
 
   it("preserves <mark> for FTS5 search highlights (Phase 7 SEARCH-04)", () => {
-    // Server-side FTS5 snippet() output wraps matched terms in <mark>...</mark>
-    // (Phase 7 D-04). The sanitize boundary MUST preserve <mark> end-to-end or
-    // every search highlight is silently stripped at render time.
-    // Locked contract — do NOT loosen this assertion without a follow-up plan.
     const out = sanitizeHtml("<p>foo <mark>bar</mark></p>");
     expect(out).toContain("<mark>bar</mark>");
   });

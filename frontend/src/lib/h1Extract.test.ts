@@ -127,7 +127,6 @@ describe("sanitizeH1ForFilename", () => {
   });
 
   it("rejects ASCII control characters", () => {
-    // \x00 is the NUL byte; the same regex used in RenameInput rejects \x00-\x1F.
     const r = sanitizeH1ForFilename("a\x00b");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/aren't allowed/i);
@@ -142,9 +141,6 @@ describe("rewriteH1", () => {
   });
 
   it("returns content unchanged when no H1 is present (no auto-insert)", () => {
-    // Research §2.4 — explicit deviation from the Obsidian plugin's
-    // optional insertHeadingIfMissing setting. The filename-rename
-    // path must NOT synthesize an H1 the user never wrote.
     expect(rewriteH1("body without heading\nmore", "Renamed")).toBe(
       "body without heading\nmore",
     );
@@ -161,8 +157,6 @@ describe("rewriteH1", () => {
   });
 
   it("preserves up to 3 leading spaces on an indented ATX heading", () => {
-    // CommonMark §4.2 allows up to 3 leading spaces before the '#'.
-    // We don't re-indent the heading on rewrite — preserve as authored.
     expect(rewriteH1("  # Old\nbody", "New")).toBe("  # New\nbody");
   });
 

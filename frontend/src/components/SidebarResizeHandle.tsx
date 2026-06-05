@@ -38,14 +38,7 @@ import { computeMaxWidth } from "./sidebarResizeHandle.utils";
 
 const SIDEBAR_WIDTH_MIN = SIDEBAR_WIDTH_DEFAULT;
 
-// Re-exported helpers (computeMaxWidth, EDITOR_MIN, __testing__) live in
-// ./sidebarResizeHandle.utils.ts — keeps this file's exports React-only so
-// Fast Refresh works without warnings.
 
-// Phase 6.6 D-12/D-14: cursor-only affordance — no visible band.
-// Pitfall 5: absolute clientX math (Math.min/max + computeMaxWidth) preserved here
-// to prevent delta accumulation drift at clamp boundaries.
-// NOT delegating to ResizeHandle.tsx; keep own onPointerMove with absolute clientX.
 export function SidebarResizeHandle() {
   const setSidebarWidth = useTreeStore((s) => s.setSidebarWidth);
   const draggingRef = useRef(false);
@@ -53,12 +46,6 @@ export function SidebarResizeHandle() {
   const onPointerMove = useCallback(
     (e: PointerEvent) => {
       if (!draggingRef.current) return;
-      // BL-03 (Phase 5.5 gap-closure Plan 11): max is computed against the
-      // LIVE viewport every pointermove so a window-resize-narrower
-      // mid-drag immediately reflects the tighter bound. The lower clamp
-      // at SIDEBAR_WIDTH_MIN is preserved; on a narrow viewport this
-      // collapses newWidth to the live max (since `min(small_max, MIN+) =
-      // small_max`), which is the correct degraded-but-usable behavior.
       const newWidth = Math.min(
         computeMaxWidth(),
         Math.max(SIDEBAR_WIDTH_MIN, e.clientX),
@@ -76,7 +63,7 @@ export function SidebarResizeHandle() {
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      e.preventDefault(); // prevent native text-selection drag
+      e.preventDefault();
       draggingRef.current = true;
       document.addEventListener("pointermove", onPointerMove);
       document.addEventListener("pointerup", onPointerUp);

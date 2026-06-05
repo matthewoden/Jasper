@@ -37,8 +37,6 @@ export function VaultPickerRow({
 }: VaultPickerRowProps) {
   const handleOpen = async () => {
     if (mode === "switch") {
-      // Hot-swap: the WS vault.switching event mounts the overlay and
-      // vault.switched (or the 10s failsafe) triggers window.location.reload().
       await vaultApi.switch(entry.path);
     } else {
       await vaultApi.open(entry.path);

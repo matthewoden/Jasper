@@ -28,10 +28,7 @@ export function getCurrentTheme(): "dark" | "light" {
   return v === "light" ? "light" : "dark";
 }
 
-// Exported so the vault-picker create pane can flip <html data-theme>
-// live as the user clicks the radio (no save round-trip; the picker
-// reloads the SPA after submit, at which point useTheme reconciles
-// with the persisted config).
+
 export function applyTheme(theme: "dark" | "light"): void {
   document.documentElement.setAttribute("data-theme", theme);
 }
@@ -49,13 +46,8 @@ export function useTheme(): {
   setTheme: (t: "dark" | "light") => Promise<{ error?: { message: string } }>;
 } {
   const { config, saveConfig } = useConfig();
-  // Track whether the user has manually toggled. After a toggle, we
-  // suppress the config-driven effect so the DOM is not reverted.
   const userToggledRef = useRef(false);
 
-  // When config first arrives (and user has not manually toggled yet),
-  // overwrite data-theme with the persisted value (the bootstrap script
-  // may have set it from prefers-color-scheme before the real value was known).
   useEffect(() => {
     if (!config || userToggledRef.current) return;
     const next: "dark" | "light" = config.theme === "light" ? "light" : "dark";
@@ -65,25 +57,16 @@ export function useTheme(): {
 
   const setTheme = useCallback(
     async (t: "dark" | "light") => {
-      // Mark user toggle so the config effect no longer overwrites data-theme.
       userToggledRef.current = true;
-      // Capture current theme before optimistic apply so we can roll back.
       const prevTheme = getCurrentTheme();
-      // Optimistic: flip data-theme + LS bootstrap immediately so the
-      // user sees the change without round-trip latency.
       applyTheme(t);
       persistBootstrap(t);
       if (!config) {
-        // No config loaded yet — schedule the persist for after load.
-        // Acceptable v1 behavior; the bootstrap LS cache covers reload.
         return {};
       }
       const next: Config = { ...config, theme: t };
       const { error } = await saveConfig(next);
       if (error) {
-        // Full rollback: revert DOM and LS cache so the UI matches
-        // persisted state (avoids confusing mismatch between visual
-        // theme and Settings menu check-mark on PUT failure).
         applyTheme(prevTheme);
         try {
           localStorage.removeItem(THEME_BOOTSTRAP_KEY);

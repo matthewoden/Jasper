@@ -67,7 +67,6 @@ function openPanel(panel: "tags" | "backlinks"): void {
     tags: boolean;
     backlinks: boolean;
   }>);
-  // Ensure the rail itself is expanded so the panel is actually visible.
   if (!s.backlinksRailExpanded) {
     s.setBacklinksRailExpanded(true);
   }

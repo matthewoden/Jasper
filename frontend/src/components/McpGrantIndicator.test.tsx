@@ -26,13 +26,9 @@ describe("McpGrantIndicator", () => {
     expect(wrapper.getAttribute("title")).toBe("AI access: Edit only");
     expect(wrapper.getAttribute("aria-label")).toBe("AI access: Edit only");
 
-    // Sparkles is the only SVG child (lucide-react renders <svg>).
     const svg = container.querySelector("svg");
     expect(svg).toBeTruthy();
 
-    // Tier-1 must NOT have the badge dot. The badge is the absolutely-positioned
-    // <span> with aria-hidden + bottom/right offsets; we assert by counting
-    // span children inside the wrapper.
     const badge = wrapper.querySelector("span[aria-hidden='true']");
     expect(badge).toBeNull();
   });
@@ -47,7 +43,6 @@ describe("McpGrantIndicator", () => {
 
     expect(container.querySelector("svg")).toBeTruthy();
 
-    // Badge dot is present on Tier 2.
     const badge = wrapper.querySelector("span[aria-hidden='true']");
     expect(badge).toBeTruthy();
   });
@@ -57,16 +52,11 @@ describe("McpGrantIndicator", () => {
     const wrapper = getByTestId("mcp-grant-indicator");
     const badge = wrapper.querySelector("span[aria-hidden='true']") as HTMLElement;
     expect(badge).toBeTruthy();
-    // The inline style.background uses the token; in JSDOM the style string
-    // preserves the var(...) wrapper verbatim.
     expect(badge.style.background).toContain("--color-ai-grant-strong");
-    // Halo border uses the surface token.
     expect(badge.style.border).toContain("--color-surface");
   });
 
   it("I4: data-testid is exactly 'mcp-grant-indicator' (selector contract)", () => {
-    // 08-15 Playwright depends on this exact testid value. A rename would
-    // silently break the e2e — fail fast here instead.
     const { getByTestId } = render(<McpGrantIndicator level={1} />);
     expect(getByTestId("mcp-grant-indicator")).toBeTruthy();
   });

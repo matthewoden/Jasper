@@ -59,9 +59,7 @@ import type { SyntaxNodeRef } from "@lezer/common";
 
 import { isExternalLikeUrl } from "./linkUrl";
 
-// Map from lezer node name → CSS class for heading line decorations.
-// Decoration.line is used (not Decoration.mark on the text) to avoid
-// cursor-jump artifacts when the heading font-size changes (Pitfall 3).
+
 export const HEADING_LINE_CLASSES: Record<string, string> = {
   ATXHeading1: "cm-heading-1",
   ATXHeading2: "cm-heading-2",
@@ -73,18 +71,11 @@ export const HEADING_LINE_CLASSES: Record<string, string> = {
   SetextHeading2: "cm-heading-2",
 };
 
-// Production scope (Plan 05-06): extend spike's heading + emphasis
-// marks with the SPIKE-FINDINGS recommendation list.
+
 export const HIDEABLE_MARKER_NODES = new Set<string>([
   "HeaderMark",   // # ## ###
   "EmphasisMark", // * _ ** __
   "QuoteMark",    // >
-  // ListMark (`-` / `*` / `+` / `1.`) is NOT in this set because EDIT-04
-  // requires "actual bullets/numbers, not visible `- ` or `1. ` text" —
-  // a zero-width replace would leave the line bullet-less. ListMark is
-  // handled by a dedicated branch in buildDecorations() that swaps a
-  // BulletWidget (`•`) for unordered marks when off-cursor and leaves
-  // ordered marks (`1.`) visible (the digit IS the desired bullet).
   "LinkMark",     // [ ]
   "URL",          // (href)
   "HardBreak",    // trailing 2-space line break
@@ -98,19 +89,12 @@ export const VISIBLE_MARKER_CLASS = "cm-marker";
 export const LINK_MARK_CLASS = "cm-link";
 export const EXTERNAL_LINK_MARK_CLASS = "cm-link cm-link-external";
 
-// 05.5-18: external-link icon glyph rendered after the visible link
-// text via Decoration.widget. The widget is `aria-hidden` so screen
-// readers don't double-announce; it's a pure visual cue. Keep the
-// markup tiny — ignoreEvent so clicks pass through to the editor's
-// dom event handlers (the link click handler below intercepts cmd /
-// ctrl click).
+
 class ExternalLinkIconWidget extends WidgetType {
   toDOM() {
     const span = document.createElement("span");
     span.className = "cm-external-link-icon";
     span.setAttribute("aria-hidden", "true");
-    // U+2197 NORTH EAST ARROW — universal "external" glyph; matches
-    // the shape Obsidian uses inline after external links.
     span.textContent = "↗";
     return span;
   }
@@ -126,37 +110,23 @@ const externalLinkIconDeco = Decoration.widget({
   side: 1,
 });
 
-// Block-level line decorations (production extends spike).
+
 export const BLOCKQUOTE_LINE_CLASS = "cm-blockquote";
 export const CODEBLOCK_LINE_CLASS = "cm-codeblock";
 export const INLINE_CODE_MARK_CLASS = "cm-inline-code";
 
 const blockquoteLineDeco = Decoration.line({ class: BLOCKQUOTE_LINE_CLASS });
 const codeblockLineDeco  = Decoration.line({ class: CODEBLOCK_LINE_CLASS });
-// inclusive: true → startSide=-1, same as parent span marks (StrongEmphasis,
-// Emphasis). Required so InlineCode sorts before its CodeMark children at the
-// same `from` position (RangeSetBuilder startSide ordering constraint).
+
+
 const inlineCodeMarkDeco = Decoration.mark({ class: INLINE_CODE_MARK_CLASS, inclusive: true });
 
-// Block-node → line decoration map. Used by the line-decoration pass
-// to emit ONE Decoration.line per line that sits inside a Blockquote
-// or FencedCode block. Walk the line range; for each line whose
-// resolveInner block parent matches a key in this map, emit the deco.
-//
-// FencedCode is NOT in this map — the codeblock visual is built up
-// from position-aware classes (cm-codeblock + cm-codeblock-first /
-// cm-codeblock-last) so a multi-line fenced range renders as ONE
-// continuous rounded rectangle rather than a stack of per-line
-// boxes (the per-line approach used to apply border + radius to
-// every line, producing a separator gap between rows). Handled in a
-// dedicated branch in buildDecorations().
+
 const BLOCK_LINE_DECOS: Record<string, Decoration> = {
   Blockquote: blockquoteLineDeco,
 };
 
-// 05.5-18 codeblock visual fix — position-aware line classes.
-// Pre-built so each line in a fenced range can pick the right slot
-// without allocating fresh decorations per render.
+
 export const CODEBLOCK_FIRST_LINE_CLASS = "cm-codeblock cm-codeblock-first";
 export const CODEBLOCK_LAST_LINE_CLASS = "cm-codeblock cm-codeblock-last";
 export const CODEBLOCK_BOTH_LINE_CLASS =
@@ -172,10 +142,7 @@ const codeblockBothLineDeco = Decoration.line({
   class: CODEBLOCK_BOTH_LINE_CLASS,
 });
 
-// EDIT-07 — HorizontalRule rendering. Decoration.replace with a tiny
-// widget that renders an <hr class="cm-hr">. The themeBridge styles
-// .cm-hr (border-color: var(--color-border), vertical margin 16px
-// per UI-SPEC §Spacing).
+
 class HRWidget extends WidgetType {
   toDOM() {
     const hr = document.createElement("hr");
@@ -188,17 +155,13 @@ class HRWidget extends WidgetType {
 }
 const hrDeco = Decoration.replace({ widget: new HRWidget() });
 
-// EDIT-04 — bullet rendering for unordered list items. ListMark for
-// `- foo` / `* foo` / `+ foo` gets replaced (off-cursor) with a span
-// containing `•` so the list line shows an actual bullet instead of
-// the raw `- ` text. Ordered marks (`1.`) are left visible because the
-// digit itself is the desired bullet rendering.
+
 class BulletWidget extends WidgetType {
   toDOM() {
     const span = document.createElement("span");
     span.className = "cm-list-bullet";
     span.setAttribute("aria-hidden", "true");
-    span.textContent = "•"; // U+2022 BULLET
+    span.textContent = "•";
     return span;
   }
   eq() { return true; }
@@ -252,15 +215,6 @@ export function buildDecorations(view: EditorView): DecorationSet {
   const cursorLines = computeCursorLines(view);
   const tree = syntaxTree(view.state);
 
-  // Collect decorations in two separate arrays to avoid RangeSetBuilder
-  // ordering conflicts between zero-width line decorations and inline marks:
-  //   lineDecos  — Decoration.line entries (zero-width, from===to)
-  //   markDecos  — Decoration.mark / Decoration.replace (inline spans)
-  //
-  // RangeSetBuilder requires strictly sorted input by (from, startSide).
-  // Line decorations at position P must be added BEFORE inline marks at P.
-  // We guarantee this by sorting lineDecos and markDecos independently and
-  // interleaving them with line-before-mark priority.
   const lineDecos: { from: number; deco: Decoration }[] = [];
   const markDecos: Entry[] = [];
 
@@ -269,8 +223,6 @@ export function buildDecorations(view: EditorView): DecorationSet {
       from,
       to,
       enter(node) {
-        // --- Heading line decoration (EDIT-02) ---
-        // Decoration.line on the cm-line wrapper. CSS targets .cm-line.cm-heading-N.
         const headingClass = HEADING_LINE_CLASSES[node.name];
         if (headingClass !== undefined) {
           const line = view.state.doc.lineAt(node.from);
@@ -278,12 +230,9 @@ export function buildDecorations(view: EditorView): DecorationSet {
             from: line.from,
             deco: Decoration.line({ class: headingClass }),
           });
-          // Tree continues into children (HeaderMark) — do NOT return.
           return;
         }
 
-        // --- Block-node line decorations (Blockquote) ---
-        // Apply line-deco to every line in the block's range.
         if (BLOCK_LINE_DECOS[node.name]) {
           const deco = BLOCK_LINE_DECOS[node.name];
           let pos = node.from;
@@ -293,18 +242,9 @@ export function buildDecorations(view: EditorView): DecorationSet {
             if (line.to >= node.to) break;
             pos = line.to + 1;
           }
-          // Return false to continue iteration into children (QuoteMark etc.)
           return;
         }
 
-        // --- FencedCode (05.5-18) ---
-        // Position-aware classes so a multi-line fenced range renders
-        // as ONE continuous rounded rectangle. The first line gets
-        // top border + top-radius; the last line gets bottom border +
-        // bottom-radius; middle lines get only side borders +
-        // background. Single-line fences get both first AND last in
-        // one combined class. Walk the lines once collecting their
-        // start positions, then emit position-aware decos.
         if (node.name === "FencedCode") {
           const lineStarts: number[] = [];
           let pos = node.from;
@@ -327,12 +267,9 @@ export function buildDecorations(view: EditorView): DecorationSet {
                     : codeblockMidLineDeco;
             lineDecos.push({ from: lineStarts[i], deco });
           }
-          // Continue iteration into children (CodeMark, CodeText) so
-          // marker hiding etc. still work inside the fence.
           return;
         }
 
-        // --- HorizontalRule (EDIT-07) ---
         if (node.name === "HorizontalRule") {
           markDecos.push({
             from: node.from,
@@ -343,11 +280,6 @@ export function buildDecorations(view: EditorView): DecorationSet {
           return;
         }
 
-        // --- Emphasis span decorations (StrongEmphasis, Emphasis — EDIT-03) ---
-        // Mark the full ** ... ** / * ... * span so CSS can style it.
-        // inclusive: true sets the mark's startSide to -1, which satisfies
-        // RangeSetBuilder's requirement that parent marks (startSide=-1) sort
-        // before child marks (startSide=0) when they share the same `from`.
         if (node.name === "StrongEmphasis") {
           markDecos.push({
             from: node.from,
@@ -355,7 +287,6 @@ export function buildDecorations(view: EditorView): DecorationSet {
             deco: Decoration.mark({ class: STRONG_MARK_CLASS, inclusive: true }),
             sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
           });
-          // Fall through: tree continues into EmphasisMark children.
           return;
         }
         if (node.name === "Emphasis") {
@@ -368,22 +299,10 @@ export function buildDecorations(view: EditorView): DecorationSet {
           return;
         }
 
-        // --- Link (05.5-18) ---
-        // [text](url) markdown link. Mark the whole Link span with
-        // cm-link (the URL portion is hidden off-cursor by the
-        // HIDEABLE_MARKER_NODES branch below, so visually only [text]
-        // gets styled). External links (http(s)://) additionally get
-        // cm-link-external + a trailing ↗ icon widget.
         if (node.name === "Link") {
-          // Walk this Link's children to extract the URL text and the
-          // closing-bracket position. lezer-markdown emits the link
-          // structure as: [ LinkMark text LinkMark ( URL ) ]
-          // where the second LinkMark is the closing `]`.
           let urlText = "";
           let closeBracketTo = -1;
           let linkMarkCount = 0;
-          // Use a ChildCursor — node.cursor() walks the WHOLE subtree,
-          // we only need direct + grandchild structure.
           const c = node.node.cursor();
           if (c.firstChild()) {
             do {
@@ -406,29 +325,16 @@ export function buildDecorations(view: EditorView): DecorationSet {
             sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
           });
           if (isExternal && closeBracketTo > 0) {
-            // Widget at the closing-bracket boundary (zero-width
-            // mark; side: 1 places it AFTER the bracket so it sits
-            // immediately after the visible link text when the URL +
-            // surrounding marks are hidden off-cursor).
             markDecos.push({
               from: closeBracketTo,
               to: closeBracketTo,
               deco: externalLinkIconDeco,
-              // Sort with a small +1 nudge so the widget lands AFTER
-              // any zero-width Decoration.replace at the same position.
               sortKey: closeBracketTo * 1e9 + 1,
             });
           }
-          // Continue iteration into children so LinkMark / URL hide
-          // off-cursor via the existing HIDEABLE_MARKER_NODES branch.
           return;
         }
 
-        // --- InlineCode (EDIT-06) ---
-        // Mark the full `...` span with cm-inline-code.
-        // D-09 amendment: InlineCode is NOT a no-hide container for its
-        // own CodeMark children — they hide off-line per UI-SPEC line 323.
-        // isInsideCode only guards against FencedCode.
         if (node.name === "InlineCode") {
           markDecos.push({
             from: node.from,
@@ -436,34 +342,20 @@ export function buildDecorations(view: EditorView): DecorationSet {
             deco: inlineCodeMarkDeco,
             sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
           });
-          // Continue into children (CodeMark nodes) for marker hiding.
           return;
         }
 
-        // --- ListMark (EDIT-04 / D-04) ---
-        // Unordered (`-`, `*`, `+`): off-cursor → BulletWidget rendering `•`
-        //   (so the list line shows an actual bullet, not raw `- `).
-        // Ordered  (`1.`, `2.`): leave visible — the digit IS the
-        //   desired numeric rendering.
-        // On-cursor: show the raw markdown character styled via cm-marker.
-        //   UX-16: on-cursor mark also carries cm-list-marker so themeBridge
-        //   can reserve the same fixed-width column as BulletWidget — keeps
-        //   the bullet column stable across cursor crossings.
-        // D-09 FencedCode guard still applies.
         if (node.name === "ListMark") {
           if (isInsideCode(node)) return;
           const text = view.state.doc.sliceString(node.from, node.to).trim();
           const isUnordered = /^[-*+]$/.test(text);
-          if (!isUnordered) return; // ordered: leave visible
+          if (!isUnordered) return;
           const lineNum = view.state.doc.lineAt(node.from).number;
           const onCursorLine = cursorLines.has(lineNum);
           markDecos.push({
             from: node.from,
             to: node.to,
             deco: onCursorLine
-              // UX-16: cm-list-marker class lets the theme bridge reserve a
-              // fixed-width slot identical to BulletWidget's so the bullet
-              // column does not jiggle on cursor cross.
               ? Decoration.mark({ class: `${VISIBLE_MARKER_CLASS} cm-list-marker` })
               : bulletDeco,
             sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
@@ -471,12 +363,8 @@ export function buildDecorations(view: EditorView): DecorationSet {
           return;
         }
 
-        // --- Hideable marker decoration (extended set — D-01) ---
-        // Off-line → Decoration.replace({}) hides the marker character(s).
-        // On-line  → Decoration.mark({class:"cm-marker"}) shows them styled.
-        // D-09: markers inside FencedCode are NEVER hidden (isInsideCode).
         if (HIDEABLE_MARKER_NODES.has(node.name)) {
-          if (isInsideCode(node)) return; // D-09 FencedCode guard
+          if (isInsideCode(node)) return;
           const lineNum = view.state.doc.lineAt(node.from).number;
           const onCursorLine = cursorLines.has(lineNum);
           if (onCursorLine) {
@@ -484,18 +372,11 @@ export function buildDecorations(view: EditorView): DecorationSet {
               from: node.from,
               to: node.to,
               deco: Decoration.mark({ class: VISIBLE_MARKER_CLASS }),
-              // Narrower child markers sort after their wider parents at same pos.
               sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
             });
             return;
           }
 
-          // Off-cursor — hide the marker. UX-15: for HeaderMark, also swallow
-          // the single trailing space after the `#` so the heading text shares
-          // its left edge with body paragraphs. lezer-markdown's ATXHeading
-          // grammar guarantees exactly one space (RESEARCH §A2); the
-          // `nextChar === " "` check is defense-in-depth — if A2 is ever wrong
-          // (tab, multiple spaces) the range degrades safely to `node.to`.
           let to = node.to;
           if (node.name === "HeaderMark") {
             const nextChar = view.state.doc.sliceString(node.to, node.to + 1);
@@ -505,7 +386,6 @@ export function buildDecorations(view: EditorView): DecorationSet {
             from: node.from,
             to,
             deco: Decoration.replace({}),
-            // Narrower child markers sort after their wider parents at same pos.
             sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
           });
         }
@@ -513,13 +393,9 @@ export function buildDecorations(view: EditorView): DecorationSet {
     });
   }
 
-  // Sort each array independently, then interleave: line decos at position P
-  // always feed into the builder before inline marks at the same P.
   lineDecos.sort((a, b) => a.from - b.from);
   markDecos.sort((a, b) => a.sortKey - b.sortKey);
 
-  // Merge: consume lineDecos and markDecos in ascending-from order,
-  // with line decos taking priority when from values are equal.
   let li = 0;
   let mi = 0;
   while (li < lineDecos.length || mi < markDecos.length) {
@@ -545,8 +421,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
     }
     update(u: ViewUpdate) {
       if (u.view.composing) {
-        // D-07/D-31: do not rebuild during IME composition. Map existing
-        // decorations through the document changes to keep positions valid.
         this.decorations = this.decorations.map(u.changes);
         return;
       }

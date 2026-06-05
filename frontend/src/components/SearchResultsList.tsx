@@ -27,7 +27,6 @@ export function SearchResultsList() {
     overscan: 5,
   });
 
-  // Empty state: query >= 2 chars but no results.
   if (searchQuery.length >= 2 && searchResults.length === 0) {
     return (
       <div
@@ -48,7 +47,6 @@ export function SearchResultsList() {
     );
   }
 
-  // Footer condition: exactly 50 results means we hit the cap — hasMore is implied.
   const hasMore = searchResults.length === 50;
 
   return (

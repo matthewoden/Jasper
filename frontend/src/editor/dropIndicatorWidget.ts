@@ -39,11 +39,7 @@ import {
 } from "@codemirror/view";
 import { StateEffect, StateField } from "@codemirror/state";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CSS animation — injected once at module load (same pattern as other widgets
-// in this folder: imageAttachmentWidget.ts, externalImagePlugin.ts).
-// Guards against double-injection if the module is HMR-reloaded.
-// ─────────────────────────────────────────────────────────────────────────────
+
 if (typeof document !== "undefined" && !document.getElementById("cm-drop-indicator-style")) {
   const style = document.createElement("style");
   style.id = "cm-drop-indicator-style";
@@ -66,9 +62,7 @@ if (typeof document !== "undefined" && !document.getElementById("cm-drop-indicat
   document.head.appendChild(style);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DropCaretWidget — renders a thin blinking vertical bar at the drop position.
-// ─────────────────────────────────────────────────────────────────────────────
+
 class DropCaretWidget extends WidgetType {
   toDOM(): HTMLElement {
     const el = document.createElement("span");
@@ -78,39 +72,15 @@ class DropCaretWidget extends WidgetType {
   }
 
   ignoreEvent(): boolean {
-    // The widget must not intercept events — all drag events go to the
-    // plugin's DOM listener on the editor's root element.
     return true;
   }
 
   eq(other: DropCaretWidget): boolean {
-    // All DropCaretWidget instances are identical in appearance.
     return other instanceof DropCaretWidget;
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// snapDropPos — pure helper that snaps a raw document position to the nearest
-// LINE BOUNDARY (start or end of the line) based on the pointer's horizontal
-// position within the line.
-//
-// Exported for unit testing (see dropIndicatorWidget.test.ts DI-snap tests).
-//
-// UAT-2 R1-6 (Plan 07-28): drops mid-paragraph showed a caret in the middle
-// of a sentence which felt "weird". Snapping to line boundaries gives the
-// user a clear "between lines" insertion preview rather than a mid-word one.
-//
-// Algorithm:
-//   colInLine = rawPos - line.from      ← offset within the line
-//   lineLen   = line.to - line.from     ← character count of the line
-//   if colInLine < lineLen / 2: snap to line.from (beginning of line)
-//   else:                        snap to line.to   (end of line)
-//
-// Edge cases:
-//   - Empty line (lineLen=0): colInLine=0, 0 < 0 → false, snaps to line.to
-//     but since from===to for empty lines this is the same position.
-//   - Single-char line: lineLen=1, colInLine=0 → from; colInLine=1 → to.
-// ─────────────────────────────────────────────────────────────────────────────
+
 export function snapDropPos(
   rawPos: number,
   state: import("@codemirror/state").EditorState,
@@ -121,19 +91,10 @@ export function snapDropPos(
   return colInLine < lineLen / 2 ? line.from : line.to;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// StateEffect — dispatched by the plugin to set or clear the drop position.
-// Exported so MarkdownEditor can include it in the extensions array check
-// (and for testing).
-// ─────────────────────────────────────────────────────────────────────────────
+
 export const setDropPos = StateEffect.define<number | null>();
 
-// ─────────────────────────────────────────────────────────────────────────────
-// dropPosField — StateField that holds the current drag-hover position.
-// Exported and listed BEFORE dropIndicatorPlugin in the extensions array so
-// the plugin's first update() call can read it (field must be registered
-// before the plugin that reads it).
-// ─────────────────────────────────────────────────────────────────────────────
+
 export const dropPosField = StateField.define<number | null>({
   create() {
     return null;
@@ -146,14 +107,7 @@ export const dropPosField = StateField.define<number | null>({
   },
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// dropIndicatorPlugin — CM6 ViewPlugin that manages DOM listeners and
-// decorations for the drag-drop visual indicator.
-//
-// DOM listeners are attached to view.dom (the .cm-editor root) rather
-// than view.contentDOM (.cm-content) because dragover fires on the entire
-// editor surface, not just the editable content area.
-// ─────────────────────────────────────────────────────────────────────────────
+
 export const dropIndicatorPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet = Decoration.none;
@@ -172,22 +126,14 @@ export const dropIndicatorPlugin = ViewPlugin.fromClass(
       this.view.dom.removeEventListener("drop", this.onDrop);
     }
 
-    // Arrow functions so `this` is the plugin instance, not the event target.
     private readonly onDragOver = (e: DragEvent) => {
-      // Only react to file drag events (e.g. from the OS file picker).
-      // Ignore other drag types (text selection, link drags).
       if (!e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
 
-      // posAtCoords returns null when the pointer is outside the document
-      // range (e.g. in the gutter, below the last line). In that case we
-      // clear the indicator rather than rendering at a stale position.
       const rawPos = this.view.posAtCoords({ x: e.clientX, y: e.clientY });
       if (rawPos === null) {
         this.view.dispatch({ effects: setDropPos.of(null) });
         return;
       }
-      // UAT-2 R1-6 (Plan 07-28): snap to nearest line boundary so the indicator
-      // visually represents "between lines" rather than mid-word.
       const snapped = snapDropPos(rawPos, this.view.state);
       this.view.dispatch({ effects: setDropPos.of(snapped) });
     };
@@ -201,9 +147,6 @@ export const dropIndicatorPlugin = ViewPlugin.fromClass(
     };
 
     update(update: ViewUpdate) {
-      // Rebuild decorations whenever the drop position changes.
-      // dropPosField is registered in the same extensions array (before
-      // this plugin) so it is always available via update.state.field().
       const pos = update.state.field(dropPosField);
       if (pos == null) {
         this.decorations = Decoration.none;
@@ -211,8 +154,6 @@ export const dropIndicatorPlugin = ViewPlugin.fromClass(
         this.decorations = Decoration.set([
           Decoration.widget({
             widget: new DropCaretWidget(),
-            // side: 0 renders the widget at the position (before the character).
-            // This mimics a text cursor at the insertion point.
             side: 0,
           }).range(pos),
         ]);
@@ -220,9 +161,6 @@ export const dropIndicatorPlugin = ViewPlugin.fromClass(
     }
   },
   {
-    // Provide the decorations getter so CM6's view layer picks up our
-    // decoration set and renders it. This is the standard pattern from
-    // imageAttachmentWidget.ts and externalImagePlugin.ts.
     decorations: (v) => v.decorations,
   },
 );

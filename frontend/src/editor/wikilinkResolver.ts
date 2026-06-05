@@ -35,9 +35,6 @@ import { useMemo } from "react";
 import { useFileTree } from "../lib/useFileTree";
 import type { TreeNode } from "../lib/treeApi";
 
-// ---------------------------------------------------------------------------
-// Module-level snapshot — updated by MarkdownEditor's useEffect.
-// ---------------------------------------------------------------------------
 
 let _titleSet: Set<string> = new Set();
 let _idMap: Map<string, string> | null = null;
@@ -66,9 +63,6 @@ export function getResolvedTitlesSnapshot(): {
   return { titles: _titleSet, idMap: _idMap };
 }
 
-// ---------------------------------------------------------------------------
-// React hook — produces the resolved-title set from live tree data.
-// ---------------------------------------------------------------------------
 
 /**
  * Walk the tree recursively, collecting every note's title (NFC-normalized,
@@ -79,8 +73,6 @@ function collectNoteTitles(nodes: TreeNode[]): Map<string, string> {
   const visit = (node: TreeNode): void => {
     if (node.kind === "note") {
       const key = node.title.normalize("NFC").toLowerCase();
-      // Last writer wins when there are duplicate titles.
-      // D-20 disambiguation is the backend's job.
       map.set(key, node.id);
     } else if (node.kind === "folder" && node.children) {
       for (const child of node.children) visit(child);
@@ -115,9 +107,6 @@ export function useResolvedTitleSet(): {
   }, [tree]);
 }
 
-// ---------------------------------------------------------------------------
-// Pure resolution function — no React, no side effects.
-// ---------------------------------------------------------------------------
 
 export interface WikilinkResolution {
   resolved: boolean;

@@ -9,7 +9,7 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock the API module before importing the hook.
+
 vi.mock("./backlinksApi", () => ({
   getNoteBacklinks: vi.fn(),
 }));
@@ -40,7 +40,6 @@ beforeEach(() => {
   mockGetNoteBacklinks.mockResolvedValue([]);
 });
 
-// ─── UB1: noteId=null ────────────────────────────────────────────────────────
 
 describe("UB1: noteId=null returns stable null state", () => {
   it("returns { backlinks: null, loading: false, error: null } immediately", () => {
@@ -54,7 +53,6 @@ describe("UB1: noteId=null returns stable null state", () => {
   });
 });
 
-// ─── UB2: noteId present — fetch and populate ────────────────────────────────
 
 describe("UB2: noteId present triggers fetch; data populates", () => {
   it("starts with loading=true, resolves to data", async () => {
@@ -64,7 +62,6 @@ describe("UB2: noteId present triggers fetch; data populates", () => {
       useBacklinks("cccccccc-cccc-cccc-cccc-cccccccccccc"),
     );
 
-    // Loading starts immediately.
     expect(result.current.loading).toBe(true);
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -80,7 +77,6 @@ describe("UB2: noteId present triggers fetch; data populates", () => {
   });
 });
 
-// ─── UB3: noteId change triggers refetch ─────────────────────────────────────
 
 describe("UB3: changing noteId triggers a new fetch", () => {
   it("refetches when noteId changes", async () => {
@@ -106,7 +102,6 @@ describe("UB3: changing noteId triggers a new fetch", () => {
   });
 });
 
-// ─── UB4: error surfaces; previous data retained ─────────────────────────────
 
 describe("UB4: error surfaces; stale data retained", () => {
   it("preserves previous backlinks on fetch error", async () => {
@@ -117,17 +112,14 @@ describe("UB4: error surfaces; stale data retained", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.backlinks).toEqual([ROW_A]);
 
-    // Simulate error on next fetch.
     const fetchError = new Error("network failure");
     mockGetNoteBacklinks.mockRejectedValue(fetchError);
 
-    // Trigger a refresh (mimics a WS event).
     await act(async () => {
       await result.current.refresh();
     });
 
     expect(result.current.error).toEqual(fetchError);
-    // Data is preserved — not cleared on error.
     expect(result.current.backlinks).toEqual([ROW_A]);
     expect(result.current.loading).toBe(false);
 
@@ -136,7 +128,6 @@ describe("UB4: error surfaces; stale data retained", () => {
   });
 });
 
-// ─── UB5: refresh() works ────────────────────────────────────────────────────
 
 describe("UB5: refresh() re-fetches", () => {
   it("calling refresh() triggers a new fetch", async () => {
@@ -163,7 +154,6 @@ describe("UB5: refresh() re-fetches", () => {
   });
 });
 
-// ─── UB6: WS events trigger refetch ─────────────────────────────────────────
 
 describe("UB6: WS events note:updated, note:created, links:rewritten trigger refetch", () => {
   it.each(["note:updated", "note:created", "links:rewritten"] as const)(
@@ -196,12 +186,9 @@ describe("UB6: WS events note:updated, note:created, links:rewritten trigger ref
   );
 });
 
-// ─── UB7: WS event from unrelated note still triggers refresh ────────────────
 
 describe("UB7: WS event not targeted at current note still triggers refresh", () => {
   it("any links event causes refresh regardless of payload note id", async () => {
-    // The subscriber pattern refreshes unconditionally — any save anywhere
-    // could have added/removed a [[...]] reference to the currently open note.
     mockGetNoteBacklinks.mockResolvedValue([ROW_A]);
 
     const { result, unmount } = renderHook(() =>
@@ -226,11 +213,7 @@ describe("UB7: WS event not targeted at current note still triggers refresh", ()
   });
 });
 
-// ─── Subscriber cleanup guard ─────────────────────────────────────────────────
 
 afterEach(() => {
-  // Belt-and-suspenders: ensure no lingering subscribers after each test.
-  // Each test's unmount() call should have already cleared them.
-  // If this fires, a test is missing its unmount() call.
   expect(__testing__.getSubscriberCount()).toBe(0);
 });

@@ -24,9 +24,6 @@ import {
   writeAllowlist,
 } from "./externalImagePlugin";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeView(doc: string): EditorView {
   const parent = document.createElement("div");
@@ -49,19 +46,13 @@ function tick(): Promise<void> {
   return new Promise((r) => setTimeout(r, 0));
 }
 
-// ---------------------------------------------------------------------------
-// describe: isExternalUrl (D-23)
-// ---------------------------------------------------------------------------
 
 describe("externalImagePlugin / isExternalUrl (D-23)", () => {
   it("https URL with foreign host is external", () => {
-    // Override window.location.hostname for the test environment
-    // jsdom sets it to "localhost" by default
     expect(isExternalUrl("https://example.com/image.png")).toBe(true);
   });
 
   it("same-origin https URL is internal", () => {
-    // jsdom hostname = "localhost"
     const sameOrigin = `https://${window.location.hostname}/some/path.png`;
     expect(isExternalUrl(sameOrigin)).toBe(false);
   });
@@ -80,9 +71,6 @@ describe("externalImagePlugin / isExternalUrl (D-23)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// describe: allow-list persistence (D-21, D-43)
-// ---------------------------------------------------------------------------
 
 describe("externalImagePlugin / allow-list persistence (D-21, D-43)", () => {
   beforeEach(() => {
@@ -115,9 +103,6 @@ describe("externalImagePlugin / allow-list persistence (D-21, D-43)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// describe: ExternalImageWidget
-// ---------------------------------------------------------------------------
 
 describe("externalImagePlugin / ExternalImageWidget", () => {
   const EXTERNAL_URL = "https://example.com/photo.png";
@@ -126,8 +111,6 @@ describe("externalImagePlugin / ExternalImageWidget", () => {
   beforeEach(() => {
     localStorage.removeItem(ALLOWLIST_KEY);
     vi.restoreAllMocks();
-    // jsdom does not implement URL.createObjectURL / revokeObjectURL.
-    // Assign stubs so vi.spyOn can wrap them in individual tests.
     if (!URL.createObjectURL) {
       URL.createObjectURL = vi.fn().mockReturnValue("blob:stub");
     }
@@ -140,11 +123,9 @@ describe("externalImagePlugin / ExternalImageWidget", () => {
     const widget = new ExternalImageWidget(EXTERNAL_URL, ALT);
     const dom = widget.toDOM();
 
-    // Must show the host label
     const hostEl = dom.querySelector(".cm-img-host");
     expect(hostEl?.textContent).toBe("example.com");
 
-    // Must have the "Allow this image" button with locked copy
     const btn = dom.querySelector<HTMLButtonElement>(
       '[data-testid="external-image-allow-btn"]'
     );
@@ -163,7 +144,6 @@ describe("externalImagePlugin / ExternalImageWidget", () => {
   });
 
   it("clicking 'Allow this image' adds URL to allow-list", async () => {
-    // Mock fetch to avoid network call in this test
     const mockBlob = new Blob(["x"], { type: "image/png" });
     vi.stubGlobal(
       "fetch",
@@ -183,7 +163,6 @@ describe("externalImagePlugin / ExternalImageWidget", () => {
     );
     btn?.click();
 
-    // Allow-list should now contain the URL
     const saved = readAllowlist();
     expect(saved.has(EXTERNAL_URL)).toBe(true);
 
@@ -191,7 +170,6 @@ describe("externalImagePlugin / ExternalImageWidget", () => {
   });
 
   it("fetch success renders <img src='blob:...'> via createObjectURL", async () => {
-    // Pre-allow so toDOM() goes straight to renderLoaded
     writeAllowlist(new Set([EXTERNAL_URL]));
 
     const mockBlob = new Blob(["x"], { type: "image/png" });
@@ -241,7 +219,6 @@ describe("externalImagePlugin / ExternalImageWidget", () => {
 
     const errEl = dom.querySelector('[data-testid="external-image-error"]');
     expect(errEl).toBeTruthy();
-    // VERBATIM locked error copy (UI-SPEC §Copywriting Contract)
     expect(errEl?.textContent).toBe("Could not load image from example.com.");
   });
 
@@ -266,21 +243,15 @@ describe("externalImagePlugin / ExternalImageWidget", () => {
 
     await tick();
 
-    // Verify img is rendered (renderLoaded completed)
     const img = dom.querySelector('[data-testid="external-image-loaded"]');
     expect(img).toBeTruthy();
 
-    // Simulate widget unmount (scrolled away, file navigated)
     widget.destroy();
 
-    // Must revoke the blob URL to prevent memory leak
     expect(revokeSpy).toHaveBeenCalledWith("blob:fake-url");
   });
 });
 
-// ---------------------------------------------------------------------------
-// describe: plugin integration
-// ---------------------------------------------------------------------------
 
 describe("externalImagePlugin / plugin integration", () => {
   const views: EditorView[] = [];
@@ -300,7 +271,6 @@ describe("externalImagePlugin / plugin integration", () => {
     const view = makeView(doc);
     views.push(view);
 
-    // Wait for lezer to parse (sync in test env)
     const decos = buildImageDecorations(view);
     let hasWidget = false;
     const cursor = decos.iter();

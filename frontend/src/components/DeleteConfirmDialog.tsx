@@ -14,8 +14,7 @@
  */
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 
-// DeleteTarget union + buildFolderBody helper live in
-// ./deleteConfirmDialog.utils so this file only exports React components.
+
 import { buildFolderBody } from "./deleteConfirmDialog.utils";
 import type { DeleteTarget } from "./deleteConfirmDialog.utils";
 
@@ -113,9 +112,6 @@ export function DeleteConfirmDialog({
   target,
   onConfirm,
 }: DeleteConfirmDialogProps) {
-  // UX-13 (Plan 07): multi variant uses dedicated copy "Delete N items?"
-  // and a destructive "This cannot be undone." second line. Note + folder
-  // copy are preserved verbatim.
   let title: string;
   let confirmLabel: string;
   if (target.kind === "note") {
@@ -125,19 +121,12 @@ export function DeleteConfirmDialog({
     title = "Delete this folder?";
     confirmLabel = "Delete folder";
   } else if (target.kind === "multi") {
-    // Branch for { kind: "multi"; count: number } — UX-13 batch delete.
     title = `Delete ${target.count} items?`;
     confirmLabel = `Delete ${target.count} items`;
   } else if (target.kind === "file") {
-    // Plan 07-38 R7b: file variant — same destructive treatment as notes
-    // (single-item permanent removal), distinct copy that says "file"
-    // rather than "note" so the user knows what's being deleted.
     title = "Delete this file?";
     confirmLabel = "Delete file";
   } else {
-    // Exhaustiveness guard — should be unreachable for the discriminated
-    // union; if a future variant is added, the type checker steers the
-    // implementer to handle it explicitly here.
     title = "Delete?";
     confirmLabel = "Delete";
   }
@@ -170,8 +159,6 @@ export function DeleteConfirmDialog({
   }
 
   const handleConfirm = async (e: React.MouseEvent) => {
-    // Keep the dialog mounted while the async onConfirm resolves —
-    // the parent closes via setDeleteTarget(null) on success.
     e.preventDefault();
     await onConfirm();
   };

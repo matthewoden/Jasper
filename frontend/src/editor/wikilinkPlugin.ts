@@ -54,9 +54,6 @@ import { StateEffect } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { getResolvedTitlesSnapshot } from "./wikilinkResolver";
 
-// ---------------------------------------------------------------------------
-// StateEffect — resolved-titles refresh signal
-// ---------------------------------------------------------------------------
 
 /**
  * Dispatching this effect tells the wikilinkPlugin to do a full
@@ -73,9 +70,6 @@ import { getResolvedTitlesSnapshot } from "./wikilinkResolver";
  */
 export const resolvedTitlesChanged = StateEffect.define<void>();
 
-// ---------------------------------------------------------------------------
-// Regex
-// ---------------------------------------------------------------------------
 
 /**
  * Matches [[Title]] and [[Title|Alias]] across a single line.
@@ -90,9 +84,6 @@ export const resolvedTitlesChanged = StateEffect.define<void>();
  */
 export const WIKILINK_RE = /\[\[([^\]\n]+?)(?:\|([^\]\n]+?))?\]\]/g;
 
-// ---------------------------------------------------------------------------
-// WikiLinkWidget — WidgetType subclass (Pitfall 1: must use toDOM)
-// ---------------------------------------------------------------------------
 
 /**
  * Renders the visible [[Title]] / [[Title|Alias]] replacement.
@@ -119,7 +110,6 @@ export class WikiLinkWidget extends WidgetType {
   toDOM(): HTMLElement {
     const span = document.createElement("span");
     span.className = this.isResolved ? "cm-wiki-link" : "cm-wiki-link-pending";
-    // textContent NOT innerHTML — T-06-09-01 XSS mitigation
     span.textContent = this.displayText;
     span.setAttribute("data-wikilink-title", this.rawTitle);
     if (this.targetId) {
@@ -148,9 +138,6 @@ export class WikiLinkWidget extends WidgetType {
   }
 }
 
-// ---------------------------------------------------------------------------
-// D-19 code-context guard
-// ---------------------------------------------------------------------------
 
 /**
  * Returns true if the position is inside any code or frontmatter context
@@ -181,9 +168,6 @@ function isInsideCodeOrFrontmatter(view: EditorView, from: number): boolean {
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// Cursor-line set helper (mirror of livePreviewPlugin.computeCursorLines)
-// ---------------------------------------------------------------------------
 
 function computeCursorLines(view: EditorView): Set<number> {
   const lines = new Set<number>();
@@ -195,17 +179,12 @@ function computeCursorLines(view: EditorView): Set<number> {
   return lines;
 }
 
-// ---------------------------------------------------------------------------
-// MatchDecorator instance
-// ---------------------------------------------------------------------------
 
 const wikilinkMatcher = new MatchDecorator({
   regexp: WIKILINK_RE,
   decorate(add, from, to, match, view) {
-    // D-19: skip matches inside code / frontmatter context
     if (isInsideCodeOrFrontmatter(view, from)) return;
 
-    // On-cursor line: skip — leave raw [[...]] markup visible for editing
     const cursorLines = computeCursorLines(view);
     const lineNum = view.state.doc.lineAt(from).number;
     if (cursorLines.has(lineNum)) return;
@@ -214,8 +193,6 @@ const wikilinkMatcher = new MatchDecorator({
     const alias = match[2];
     const displayText = alias ?? rawTitle;
 
-    // Read the module-level snapshot from wikilinkResolver.
-    // MarkdownEditor keeps this up to date via useEffect.
     const { titles, idMap } = getResolvedTitlesSnapshot();
     const lower = rawTitle.normalize("NFC").toLowerCase();
     const resolved = titles.has(lower);
@@ -231,9 +208,6 @@ const wikilinkMatcher = new MatchDecorator({
   },
 });
 
-// ---------------------------------------------------------------------------
-// ViewPlugin
-// ---------------------------------------------------------------------------
 
 /**
  * The exported CM6 extension. Slot this into MarkdownEditor's extensions
@@ -258,14 +232,9 @@ export const wikilinkPlugin = ViewPlugin.fromClass(
 
     update(u: ViewUpdate) {
       if (u.view.composing) {
-        // IME gate — D-07/D-31 pattern: map existing decorations through
-        // document changes to keep positions valid without a full rebuild.
         this.decorations = this.decorations.map(u.changes);
         return;
       }
-      // Full rebuild when the resolved-titles snapshot changed (external
-      // state — MatchDecorator.updateDeco won't catch it on selection-only
-      // dispatches). createDeco rebuilds all visible decorations from scratch.
       const titlesRefreshed = u.transactions.some((tr) =>
         tr.effects.some((e) => e.is(resolvedTitlesChanged)),
       );

@@ -38,12 +38,7 @@ import { useToast } from "../components/toast.utils";
 import { useTreeStore, type McpGrant } from "./useTreeStore";
 import { listGrants, postGrant, deleteGrant } from "./mcpGrantsApi";
 
-// ────────────────────────────────────────────────────────────────────────────
-// Module-level subscriber registry — mirrors useTagBrowser's
-// tagEventSubscribers. useSessionSync calls dispatchMcpGrantsEvent() from
-// the `mcp:grant_changed` WS branch; each mounted hook's refresh callback
-// is invoked so the indicator updates everywhere.
-// ────────────────────────────────────────────────────────────────────────────
+
 const mcpGrantsSubscribers = new Set<() => void>();
 
 /**
@@ -145,8 +140,6 @@ export function useMcpGrants(): UseMcpGrantsResult {
         if (idx < 0) break;
         cur = cur.slice(0, idx);
       }
-      // Root-level grant: backends represent the vault root as either
-      // "" or "." depending on canonicalization context; check both.
       const root = grants.find(
         (g) => g.folder_path === "" || g.folder_path === ".",
       );
@@ -184,7 +177,6 @@ export function useMcpGrants(): UseMcpGrantsResult {
   const inheritedGrantOn = useCallback(
     (folderPath: string): InheritedGrant | null => {
       const norm = normPath(folderPath);
-      // Skip the folder itself — start at the parent.
       const firstSlash = norm.lastIndexOf("/");
       let cur = firstSlash < 0 ? "" : norm.slice(0, firstSlash);
       while (cur && cur !== "." && cur !== "/") {
@@ -194,8 +186,6 @@ export function useMcpGrants(): UseMcpGrantsResult {
         if (idx < 0) break;
         cur = cur.slice(0, idx);
       }
-      // Root-level grant covers every folder except the root itself.
-      // norm === "" means the row IS the root; root cannot inherit.
       if (norm !== "" && norm !== ".") {
         const root = grants.find(
           (g) => g.folder_path === "" || g.folder_path === ".",
@@ -227,8 +217,6 @@ export function useMcpGrants(): UseMcpGrantsResult {
       const before = directLevelFor(folderPath);
       try {
         const g = await postGrant(folderPath, level);
-        // Replace any existing row for the same folder_path; then append
-        // the new/upgraded row.
         const next = [
           ...grants.filter((x) => x.folder_path !== g.folder_path),
           g,
@@ -298,10 +286,7 @@ export function useMcpGrants(): UseMcpGrantsResult {
   };
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Test helpers — exported under __testing__ namespace, not part of the
-// public surface. Mirrors useTagBrowser's __testing__ export.
-// ────────────────────────────────────────────────────────────────────────────
+
 export const __testing__ = {
   getSubscriberCount: () => mcpGrantsSubscribers.size,
   simulateEvent: () => dispatchMcpGrantsEvent(),

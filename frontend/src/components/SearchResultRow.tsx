@@ -29,7 +29,6 @@ interface SearchResultRowProps {
  */
 function formatPath(path: string): string {
   const parts = path.split("/");
-  // Remove .md extension from the last part for display
   if (parts.length > 0) {
     parts[parts.length - 1] = parts[parts.length - 1].replace(/\.md$/, "");
   }
@@ -53,7 +52,6 @@ export function SearchResultRow({ result }: SearchResultRowProps) {
     setSearchResults([]);
   };
 
-  // Determine row background per UI-SPEC §Surface 3.
   let rowBg = "transparent";
   if (isActive) {
     rowBg = "color-mix(in srgb, var(--color-accent) 12%, transparent)";
@@ -145,8 +143,6 @@ export function SearchResultRow({ result }: SearchResultRowProps) {
               WebkitBoxOrient: "vertical",
               overflow: "hidden",
             }}
-            // T-7-23: server-built HTML MUST go through sanitize.ts (Phase 5 D-36 / SEARCH-04).
-            // <mark> survives because sanitize.ts SAFE_CONFIG has ADD_TAGS: ["mark"] (Task 1).
             dangerouslySetInnerHTML={{ __html: sanitizeHtml(result.excerpt_html) }}
           />
         )}

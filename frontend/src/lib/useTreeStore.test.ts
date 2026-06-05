@@ -34,14 +34,12 @@ const FULL_DEFAULT_STATE = {
   pendingRename: null,
   draftCreate: null,
   selectedRow: null,
-  // Phase 5.5 — Plan 04 (UX-08) / Plan 05 (UX-09) added slices.
   liveLabels: {} as Record<string, string>,
   sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
 };
 
 describe("useTreeStore — default + mutators", () => {
   beforeEach(() => {
-    // Reset store to defaults between tests; localStorage is cleared too.
     localStorage.clear();
     useTreeStore.setState({
       expanded: new Set(),
@@ -145,7 +143,6 @@ describe("useTreeStore — localStorage hydration on module load", () => {
   it("TestStore_CorruptedLocalStorage_FallsBackToDefault: bad JSON does not throw", async () => {
     localStorage.setItem(LS_KEY_EXPANDED, "not json{");
     localStorage.setItem(LS_KEY_ACTIVE_NOTE, "alsobad{");
-    // Just re-importing must not throw — and state defaults to empty.
     vi.resetModules();
     const mod = await import("./useTreeStore");
     const s = mod.useTreeStore.getState();
@@ -186,7 +183,6 @@ describe("useTreeStore — debounced persistence", () => {
       useTreeStore.getState().toggleExpanded("e");
     });
 
-    // Inside the debounce window — no writes yet.
     const writesBeforeFlush = setItemSpy.mock.calls.filter(
       (c) => c[0] === LS_KEY_EXPANDED,
     ).length;
@@ -266,23 +262,12 @@ describe("pruneStaleTreeState", () => {
     const before = useTreeStore.getState();
     pruneStaleTreeState(new Set(["a"]), new Set(["uuid-x"]));
     const after = useTreeStore.getState();
-    // Object identity for `expanded` should be preserved if nothing changed.
     expect(after.expanded).toBe(before.expanded);
     expect(after.activeNoteId).toBe(before.activeNoteId);
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// Plan 03-20 Gap R2-4 — selectedRow transient slot.
-//
-// Document-level F2 routing in App.tsx reads useTreeStore.selectedRow at
-// fire time to dispatch rename to the most-recently-clicked tree row,
-// even when DOM focus has shifted to the editor textarea.
-//
-// The slot is purely transient — same precedent as pendingRename and
-// draftCreate. It MUST NOT be persisted to localStorage and MUST NOT be
-// touched by pruneStaleTreeState.
-// ──────────────────────────────────────────────────────────────────────────
+
 describe("useTreeStore — selectedRow (Gap R2-4)", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -338,14 +323,10 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
           target: "abc-uuid",
         });
       });
-      // Even after the debounce window, no key should have been written
-      // for selectedRow. The persistence subscriber only watches
-      // expanded + activeNoteId.
       act(() => {
         vi.advanceTimersByTime(500);
       });
       const writes = setItemSpy.mock.calls.map((c) => c[0]);
-      // No selectedRow-shaped key.
       expect(
         writes.some(
           (k) =>
@@ -353,8 +334,6 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
             k.toLowerCase().includes("selectedrow"),
         ),
       ).toBe(false);
-      // Specifically, neither of the persisted keys was touched as a
-      // side-effect of setSelectedRow alone.
       expect(writes).not.toContain(LS_KEY_EXPANDED);
       expect(writes).not.toContain(LS_KEY_ACTIVE_NOTE);
     } finally {
@@ -380,11 +359,6 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
     expect(s.selectedRow).toEqual({ kind: "note", target: "uuid-zzz" });
   });
 
-  // ──────────────────────────────────────────────────────────────────
-  // Phase 5.5 — Plan 04 (UX-08): live H1 → tree label slice.
-  // Phase 5.5 — Plan 05 (UX-09): sidebar width slice (schema lands here;
-  // LS hydration + setter wiring is owned by Plan 05).
-  // ──────────────────────────────────────────────────────────────────
 
   it("UX-08: setLiveLabel adds an entry keyed by note id", () => {
     useTreeStore.getState().setLiveLabel("note-a", "Hello");
@@ -392,22 +366,16 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
   });
 
   it("UX-08: clearLiveLabel removes the entry; absent id is a no-op preserving object identity", () => {
-    // Set then clear → entry gone.
     useTreeStore.getState().setLiveLabel("note-a", "Hello");
     expect(useTreeStore.getState().liveLabels["note-a"]).toBe("Hello");
     useTreeStore.getState().clearLiveLabel("note-a");
     expect(useTreeStore.getState().liveLabels["note-a"]).toBeUndefined();
 
-    // Absent id → no-op; the liveLabels reference must NOT change so
-    // memoized selectors don't re-render. Capture the full state object
-    // before and assert reference identity afterwards.
     const stateBefore = useTreeStore.getState();
     const labelsBefore = stateBefore.liveLabels;
     useTreeStore.getState().clearLiveLabel("definitely-not-here");
     const stateAfter = useTreeStore.getState();
     expect(stateAfter.liveLabels).toBe(labelsBefore);
-    // The whole state object identity is also preserved — no setState
-    // fired (the mutator returns `s` unchanged).
     expect(stateAfter).toBe(stateBefore);
   });
 
@@ -425,10 +393,8 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
 
   it("UX-09: setSidebarWidth clamps to SIDEBAR_WIDTH_DEFAULT (MIN)", async () => {
     const { setSidebarWidth } = useTreeStore.getState();
-    // Below MIN clamps up to default.
     setSidebarWidth(100);
     expect(useTreeStore.getState().sidebarWidth).toBe(260);
-    // Above MIN passes through unchanged.
     setSidebarWidth(400);
     expect(useTreeStore.getState().sidebarWidth).toBe(400);
   });
@@ -448,8 +414,6 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
       kind: "note",
       target: "uuid-zzz",
     });
-    // Even when the prune ALSO drops a stale active note, selectedRow
-    // is left alone — it's a transient slot driven by row clicks.
     useTreeStore.setState({
       expanded: new Set(),
       activeNoteId: "ghost-uuid",
@@ -464,14 +428,7 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// Phase 5.5 — Plan 05 (UX-09) — sidebarWidth LS hydration + debounced write.
-//
-// Hydration tests use `vi.resetModules()` + dynamic import so the module-load
-// `if (typeof window !== "undefined")` block runs against a freshly-seeded
-// localStorage (matching the existing pattern for `expanded` and
-// `activeNoteId` hydration). Debounced-write tests use `vi.useFakeTimers()`.
-// ──────────────────────────────────────────────────────────────────────────
+
 describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () => {
   afterEach(() => {
     localStorage.clear();
@@ -492,17 +449,6 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
     expect(mod.useTreeStore.getState().sidebarWidth).toBe(260);
   });
 
-  // ────────────────────────────────────────────────────────────────────
-  // BL-03 (Phase 5.5 gap-closure Plan 11) — hydration must clamp persisted
-  // width against the LIVE viewport's editor-floor headroom. A wide-monitor
-  // session that saved 1200px must NOT load at 1200px on a narrow laptop
-  // window; it should be clamped to `innerWidth - EDITOR_MIN`.
-  //
-  // The pattern mirrors the existing hydration tests above: stub
-  // localStorage + window.innerWidth, then `vi.resetModules()` + dynamic
-  // import to force the module-load `if (typeof window !== "undefined")`
-  // hydration block to re-run against the freshly-seeded environment.
-  // ────────────────────────────────────────────────────────────────────
   it("BL-03: hydration clamps wide-monitor 1200px persisted width against narrow 900px viewport", async () => {
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -512,8 +458,6 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
     localStorage.setItem(LS_KEY_SIDEBAR_WIDTH, JSON.stringify(1200));
     vi.resetModules();
     const mod = await import("./useTreeStore");
-    // Live max = 900 - 320 = 580. The persisted 1200 is clamped down to
-    // 580 because the editor pane can't go below 320 on a 900px window.
     expect(mod.useTreeStore.getState().sidebarWidth).toBe(580);
   });
 
@@ -526,7 +470,6 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
     localStorage.setItem(LS_KEY_SIDEBAR_WIDTH, JSON.stringify(1200));
     vi.resetModules();
     const mod = await import("./useTreeStore");
-    // Live max = 1600 - 320 = 1280. 1200 fits — load at 1200.
     expect(mod.useTreeStore.getState().sidebarWidth).toBe(1200);
   });
 
@@ -539,8 +482,6 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
     localStorage.setItem(LS_KEY_SIDEBAR_WIDTH, JSON.stringify(1200));
     vi.resetModules();
     const mod = await import("./useTreeStore");
-    // Live max = max(0, 400 - 320) = 80. Sidebar shrinks below MIN to
-    // preserve the editor floor; matches SidebarResizeHandle.computeMaxWidth.
     expect(mod.useTreeStore.getState().sidebarWidth).toBe(80);
   });
 
@@ -553,8 +494,6 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
     localStorage.setItem(LS_KEY_SIDEBAR_WIDTH, JSON.stringify(200));
     vi.resetModules();
     const mod = await import("./useTreeStore");
-    // 200 < SIDEBAR_WIDTH_DEFAULT (260); first clamp UP to 260, then
-    // min(260, 1024 - 320 = 704) = 260. Existing UX-09 A8 rule preserved.
     expect(mod.useTreeStore.getState().sidebarWidth).toBe(260);
   });
 
@@ -564,7 +503,6 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
       writable: true,
       value: 1024,
     });
-    // No setItem.
     vi.resetModules();
     const mod = await import("./useTreeStore");
     expect(mod.useTreeStore.getState().sidebarWidth).toBe(SIDEBAR_WIDTH_DEFAULT);
@@ -574,13 +512,9 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
     localStorage.clear();
     vi.useFakeTimers();
     try {
-      // Reset width on the live store so the subscriber's `lastWidth`
-      // tracker sees the change deterministically.
       act(() => {
         useTreeStore.setState({ sidebarWidth: SIDEBAR_WIDTH_DEFAULT });
       });
-      // Drain the post-reset 250ms persistence tick so the spy below only
-      // sees the write produced by the explicit setSidebarWidth(380) call.
       act(() => {
         vi.advanceTimersByTime(260);
       });
@@ -590,12 +524,10 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
         act(() => {
           useTreeStore.getState().setSidebarWidth(380);
         });
-        // Inside the debounce window — no write yet for this key.
         const writesBeforeFlush = setItemSpy.mock.calls.filter(
           (c) => c[0] === LS_KEY_SIDEBAR_WIDTH,
         ).length;
         expect(writesBeforeFlush).toBe(0);
-        // Flush the debounce.
         act(() => {
           vi.advanceTimersByTime(260);
         });
@@ -612,13 +544,7 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// Phase 6 — Plan 06-07: useTreeStore ADD-only extension.
-//
-// Tests for the four new slices: tagBrowserExpanded, activeTagFilter,
-// backlinksRailExpanded, backlinksRailWidth. Uses the same module-reset
-// pattern as the existing hydration tests above.
-// ──────────────────────────────────────────────────────────────────────────
+
 describe("Phase 6 — useTreeStore ADD-only slices", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -637,7 +563,6 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     vi.resetModules();
   });
 
-  // S1: Defaults
   it("S1: fresh store returns tagBrowserExpanded=false, activeTagFilter=null, backlinksRailExpanded=false, backlinksRailWidth=280", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -648,7 +573,6 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     expect(s.backlinksRailWidth).toBe(280);
   });
 
-  // S2: Setters
   it("S2: setTagBrowserExpanded(true) updates the store", () => {
     useTreeStore.getState().setTagBrowserExpanded(true);
     expect(useTreeStore.getState().tagBrowserExpanded).toBe(true);
@@ -661,7 +585,6 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     expect(useTreeStore.getState().backlinksRailWidth).toBe(350);
   });
 
-  // S3: Clamp
   it("S3: setBacklinksRailWidth(100) clamps up to RAIL_MIN_WIDTH (220)", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -676,7 +599,6 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     expect(mod.useTreeStore.getState().backlinksRailWidth).toBe(mod.RAIL_MAX_WIDTH);
   });
 
-  // S4: LS hydration on load — width
   it("S4: pre-seeded backlinksRailWidth in LS hydrates on module load", async () => {
     localStorage.setItem("jasper.backlinks.rail.width", "350");
     vi.resetModules();
@@ -684,7 +606,6 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     expect(mod.useTreeStore.getState().backlinksRailWidth).toBe(350);
   });
 
-  // S5: LS hydration on load — boolean
   it("S5: pre-seeded tagBrowserExpanded=true in LS hydrates on module load", async () => {
     localStorage.setItem("jasper.tag.browser.expanded", "true");
     vi.resetModules();
@@ -692,7 +613,6 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     expect(mod.useTreeStore.getState().tagBrowserExpanded).toBe(true);
   });
 
-  // S6: LS hydration — invalid value falls back to default
   it("S6: pre-seeded backlinksRailWidth='garbage' falls back to RAIL_DEFAULT_WIDTH (280)", async () => {
     localStorage.setItem("jasper.backlinks.rail.width", "garbage");
     vi.resetModules();
@@ -700,7 +620,6 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     expect(mod.useTreeStore.getState().backlinksRailWidth).toBe(280);
   });
 
-  // S6 also: out-of-range value falls back to default
   it("S6: pre-seeded backlinksRailWidth out of range falls back to RAIL_DEFAULT_WIDTH (280)", async () => {
     localStorage.setItem("jasper.backlinks.rail.width", "50");
     vi.resetModules();
@@ -708,7 +627,6 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     expect(mod.useTreeStore.getState().backlinksRailWidth).toBe(280);
   });
 
-  // S7: LS persistence — boolean
   it("S7: setTagBrowserExpanded(true) persists to LS after debounce", () => {
     vi.useFakeTimers();
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
@@ -726,7 +644,6 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     }
   });
 
-  // S8: LS persistence — width
   it("S8: setBacklinksRailWidth(300) persists to LS after debounce", () => {
     vi.useFakeTimers();
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
@@ -744,7 +661,6 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     }
   });
 
-  // S9: activeTagFilter is NOT persisted
   it("S9: setActiveTagFilter does NOT write to localStorage", () => {
     vi.useFakeTimers();
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
@@ -753,7 +669,6 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
         useTreeStore.getState().setActiveTagFilter("foo");
       });
       act(() => { vi.advanceTimersByTime(500); });
-      // No LS key should contain "filter" or "tag.filter"
       const allWrites = setItemSpy.mock.calls.map(c => c[0] as string);
       expect(allWrites.some(k => k.includes("filter"))).toBe(false);
     } finally {
@@ -763,14 +678,12 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
   });
 
   it("S9: activeTagFilter stays null on fresh module load (not persisted)", async () => {
-    // Even if something wrote a filter key, it should not hydrate.
     localStorage.setItem("jasper.tag.filter", "somefilter");
     vi.resetModules();
     const mod = await import("./useTreeStore");
     expect(mod.useTreeStore.getState().activeTagFilter).toBeNull();
   });
 
-  // S10: Existing slices unchanged
   it("S10: existing slices still work correctly after Phase 6 additions (regression guard)", () => {
     const { result } = renderHook(() => useTreeStore());
     act(() => {
@@ -778,19 +691,16 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
       result.current.setActiveNote("uuid-foo");
       result.current.startRename("note", "uuid-bar");
       result.current.setSelectedRow({ kind: "note", target: "uuid-zzz" });
-      // Also set Phase 6 slices to ensure coexistence
       result.current.setTagBrowserExpanded(true);
       result.current.setActiveTagFilter("my-tag");
       result.current.setBacklinksRailExpanded(true);
       result.current.setBacklinksRailWidth(320);
     });
     const s = result.current;
-    // Existing slices
     expect(s.expanded.has("projects")).toBe(true);
     expect(s.activeNoteId).toBe("uuid-foo");
     expect(s.pendingRename).toEqual({ kind: "note", target: "uuid-bar" });
     expect(s.selectedRow).toEqual({ kind: "note", target: "uuid-zzz" });
-    // Phase 6 slices
     expect(s.tagBrowserExpanded).toBe(true);
     expect(s.activeTagFilter).toBe("my-tag");
     expect(s.backlinksRailExpanded).toBe(true);
@@ -798,12 +708,7 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// Phase 6.5 — Plan 06.5-02: useTreeStore ADD-only extension (UX-T-01).
-//
-// Tests for the two new slices: tagsPanelHeightRatio, rightRailTagsPanelExpanded.
-// Uses the same module-reset pattern as the existing hydration tests above.
-// ──────────────────────────────────────────────────────────────────────────
+
 describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -822,7 +727,6 @@ describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () =
     vi.resetModules();
   });
 
-  // T1: Defaults
   it("T1: fresh store returns tagsPanelHeightRatio=0.5, rightRailTagsPanelExpanded=true", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -831,7 +735,6 @@ describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () =
     expect(s.rightRailTagsPanelExpanded).toBe(true);
   });
 
-  // T2: Setters
   it("T2: setTagsPanelHeightRatio(0.65) stores 0.65 (within bounds)", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -846,7 +749,6 @@ describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () =
     expect(mod.useTreeStore.getState().rightRailTagsPanelExpanded).toBe(false);
   });
 
-  // T3: Clamp
   it("T3: setTagsPanelHeightRatio(0.1) clamps up to TAGS_PANEL_RATIO_MIN (0.2)", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -863,7 +765,6 @@ describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () =
     expect(mod.useTreeStore.getState().tagsPanelHeightRatio).toBe(0.8);
   });
 
-  // T4: LS hydration — ratio
   it("T4: pre-seeded tagsPanelHeightRatio=0.7 in LS hydrates on module load", async () => {
     localStorage.setItem("jasper.rail.tags.height.ratio", "0.7");
     vi.resetModules();
@@ -885,7 +786,6 @@ describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () =
     expect(mod.useTreeStore.getState().tagsPanelHeightRatio).toBe(0.5);
   });
 
-  // T5: LS hydration — boolean
   it("T5: pre-seeded rightRailTagsPanelExpanded=false in LS hydrates on module load", async () => {
     localStorage.setItem("jasper.rail.tags.expanded", "false");
     vi.resetModules();
@@ -899,7 +799,6 @@ describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () =
     expect(mod.useTreeStore.getState().rightRailTagsPanelExpanded).toBe(true);
   });
 
-  // T6: LS persistence — ratio (debounced 250ms)
   it("T6: setTagsPanelHeightRatio(0.7) persists to LS after 250ms debounce", () => {
     vi.useFakeTimers();
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
@@ -907,7 +806,6 @@ describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () =
       act(() => {
         useTreeStore.getState().setTagsPanelHeightRatio(0.7);
       });
-      // Inside debounce window — no write yet
       const writesBeforeFlush = setItemSpy.mock.calls.filter(
         (c) => c[0] === "jasper.rail.tags.height.ratio",
       ).length;
@@ -924,7 +822,6 @@ describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () =
     }
   });
 
-  // T7: LS persistence — boolean (immediate)
   it("T7: setRightRailTagsPanelExpanded(false) immediately writes to LS (no debounce)", () => {
     vi.useFakeTimers();
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
@@ -943,7 +840,6 @@ describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () =
     }
   });
 
-  // T8: LS key constants
   it("T8: LS key constants have expected literal string values", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -951,29 +847,20 @@ describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () =
     expect(mod.LS_KEY_TAGS_PANEL_EXPANDED).toBe("jasper.rail.tags.expanded");
   });
 
-  // T9: Existing Phase 6 slices unchanged
   it("T9: existing Phase 6 slices work alongside Phase 6.5 additions (regression guard)", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
     const s = mod.useTreeStore.getState();
-    // Phase 6 defaults still correct
     expect(s.tagBrowserExpanded).toBe(false);
     expect(s.activeTagFilter).toBeNull();
     expect(s.backlinksRailExpanded).toBe(false);
     expect(s.backlinksRailWidth).toBe(280);
-    // Phase 6.5 defaults also correct
     expect(s.tagsPanelHeightRatio).toBe(0.5);
     expect(s.rightRailTagsPanelExpanded).toBe(true);
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// Phase 6.6 — Plan 06.6-02: useTreeStore ADD-only chrome slices (D-29).
-//
-// Tests for three new slices: notesSidebarVisible, panelSelector.tags,
-// panelSelector.backlinks. Uses the same module-reset hydration pattern
-// as existing hydration tests.
-// ──────────────────────────────────────────────────────────────────────────
+
 describe("Phase 6.6 chrome slices", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -992,7 +879,6 @@ describe("Phase 6.6 chrome slices", () => {
     vi.resetModules();
   });
 
-  // C1: Initial state — all three default to true when LS empty
   it("C1: fresh store returns notesSidebarVisible=true, panelSelector={tags:true, backlinks:true}", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -1002,7 +888,6 @@ describe("Phase 6.6 chrome slices", () => {
     expect(s.panelSelector.backlinks).toBe(true);
   });
 
-  // C2: setNotesSidebarVisible flips the slice
   it("C2: setNotesSidebarVisible(false) flips the slice; setNotesSidebarVisible(true) restores it", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -1012,7 +897,6 @@ describe("Phase 6.6 chrome slices", () => {
     expect(mod.useTreeStore.getState().notesSidebarVisible).toBe(true);
   });
 
-  // C3: Partial setter — setPanelSelector({tags:false}) leaves backlinks unchanged
   it("C3: setPanelSelector({tags:false}) sets tags=false, leaves backlinks=true", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -1022,7 +906,6 @@ describe("Phase 6.6 chrome slices", () => {
     expect(s.panelSelector.backlinks).toBe(true);
   });
 
-  // C3 also: updating both keys at once
   it("C3: setPanelSelector({tags:false, backlinks:false}) updates both keys", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -1032,11 +915,10 @@ describe("Phase 6.6 chrome slices", () => {
     expect(s.panelSelector.backlinks).toBe(false);
   });
 
-  // C4: LS persistence — after setNotesSidebarVisible(false), LS key = "false"
   it("C4: setNotesSidebarVisible(false) immediately writes 'false' to LS_KEY_SIDEBAR_VISIBLE", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
-    vi.useRealTimers(); // no debounce — persistence is immediate for chrome slices
+    vi.useRealTimers();
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
     try {
       act(() => {
@@ -1052,9 +934,7 @@ describe("Phase 6.6 chrome slices", () => {
     }
   });
 
-  // C5: LS hydration — pre-setting "false" before module load yields notesSidebarVisible=false
   it("C5: pre-seeded LS_KEY_SIDEBAR_VISIBLE='false' yields notesSidebarVisible=false on load", async () => {
-    // Seed BEFORE module import (vi.resetModules was called in afterEach)
     localStorage.setItem("jasper.chrome.sidebar.visible", "false");
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -1083,7 +963,6 @@ describe("Phase 6.6 chrome slices", () => {
     expect(mod.useTreeStore.getState().panelSelector.tags).toBe(true);
   });
 
-  // C6: ADD-ONLY invariant — Phase 6.5 slices still exist with their defaults
   it("C6: ADD-ONLY — Phase 6.5 slices (tagsPanelHeightRatio, rightRailTagsPanelExpanded, backlinksRailExpanded) unchanged", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -1093,7 +972,6 @@ describe("Phase 6.6 chrome slices", () => {
     expect(s.backlinksRailExpanded).toBe(false);
   });
 
-  // LS key constants
   it("C7: LS key constants have expected literal string values", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -1103,21 +981,7 @@ describe("Phase 6.6 chrome slices", () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// WR-07 (Phase 5.5 gap-closure Plan 13) — pruneStaleTreeState liveLabels rebuild.
-//
-// The original implementation cloned `liveLabels` lazily and then `delete`d
-// keys via a `Record<string, string>` cast — the cast defeats TypeScript
-// narrowing on the liveLabels shape. The rebuild pattern replaces the
-// cloned-and-deleted object with `Object.fromEntries(...)` over the kept
-// entries, which is non-mutating and keeps the derived type aligned with
-// the source `liveLabels` type.
-//
-// Behavior contract (does NOT change):
-//   - Stale id removal still drops the bad keys.
-//   - No-op pass (every id is still present) preserves liveLabels reference
-//     identity so memoized consumers don't re-render.
-// ──────────────────────────────────────────────────────────────────────────
+
 describe("WR-07 pruneStaleTreeState liveLabels rebuild (Phase 5.5 gap-closure Plan 13)", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -1167,12 +1031,9 @@ describe("WR-07 pruneStaleTreeState liveLabels rebuild (Phase 5.5 gap-closure Pl
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// Phase 7 ADD-only slices (D-41 / UI-SPEC §Forward-Compat Assert #7).
-// ──────────────────────────────────────────────────────────────────────────
+
 describe("Phase 7 ADD-only slices", () => {
   beforeEach(() => {
-    // Reset all Phase 7 slices to defaults
     useTreeStore.setState({
       searchQuery: "",
       searchResults: [],
@@ -1202,8 +1063,6 @@ describe("Phase 7 ADD-only slices", () => {
     expect(useTreeStore.getState().paletteMode).toBe("notes");
   });
 
-  // Plan 07-40 (UAT-6) — PaletteMode union gains "search" as a third value.
-  // Cmd+Shift+F is wired (in App.tsx) to set paletteMode='search' + open.
   it("UTS-PALETTE-SEARCH-1: setPaletteMode accepts 'search' as a third value", () => {
     useTreeStore.getState().setPaletteMode("search");
     expect(useTreeStore.getState().paletteMode).toBe("search");
@@ -1240,23 +1099,13 @@ describe("Phase 7 ADD-only slices", () => {
 
   it("recentlyOpenedNoteIds persists to localStorage", async () => {
     useTreeStore.getState().recordOpenedNote("persisted-id");
-    // Subscriber may be async — wait a tick
     await new Promise((r) => setTimeout(r, 0));
     const stored = window.localStorage.getItem("jasper:switcher:recency");
     expect(stored).toContain("persisted-id");
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// Plan 07-32b — activeFilePath slice (D-41 ADD-only)
-//
-// Mutual exclusion policy:
-//  - setActiveFilePath(non-null) atomically clears activeNoteId.
-//  - setActiveNote is UNCHANGED (D-41 ADD-only forbids modifying existing
-//    actions). Callers (TreeRow.handleNoteClick) explicitly invoke
-//    setActiveFilePath(null) BEFORE setActiveNote(uuid) to clear the
-//    reciprocal direction.
-// ──────────────────────────────────────────────────────────────────────────
+
 describe("useTreeStore — activeFilePath slice (Plan 07-32b)", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -1271,14 +1120,12 @@ describe("useTreeStore — activeFilePath slice (Plan 07-32b)", () => {
   });
 
   it("TS-AFP-2: setActiveFilePath('foo/bar.png') sets activeFilePath AND atomically clears activeNoteId", () => {
-    // Pre-seed an activeNoteId.
     useTreeStore.setState({ activeNoteId: "preexisting-note-uuid" });
     expect(useTreeStore.getState().activeNoteId).toBe("preexisting-note-uuid");
 
     useTreeStore.getState().setActiveFilePath("foo/bar.png");
 
     expect(useTreeStore.getState().activeFilePath).toBe("foo/bar.png");
-    // Atomic clear: activeNoteId is now null.
     expect(useTreeStore.getState().activeNoteId).toBeNull();
   });
 
@@ -1289,29 +1136,21 @@ describe("useTreeStore — activeFilePath slice (Plan 07-32b)", () => {
     });
     useTreeStore.getState().setActiveFilePath(null);
     expect(useTreeStore.getState().activeFilePath).toBeNull();
-    // activeNoteId still null — but the point is setActiveFilePath(null)
-    // does not auto-set activeNoteId. Seed an id and re-verify.
     useTreeStore.setState({
       activeFilePath: "x.png",
       activeNoteId: "some-note-uuid",
     });
-    // This shouldn't happen in practice (mutual exclusion), but proves
-    // setActiveFilePath(null) does not touch activeNoteId.
     useTreeStore.getState().setActiveFilePath(null);
     expect(useTreeStore.getState().activeFilePath).toBeNull();
     expect(useTreeStore.getState().activeNoteId).toBe("some-note-uuid");
   });
 
   it("TS-AFP-3: caller-side clearing pattern — setActiveFilePath(null) BEFORE setActiveNote(uuid) clears activeFilePath and sets activeNoteId", () => {
-    // Simulate TreeRow.handleNoteClick: file is currently active, user clicks a note row.
     useTreeStore.setState({
       activeFilePath: "foo/bar.png",
       activeNoteId: null,
     });
 
-    // Caller (TreeRow) clears file path first, then sets active note. This documents
-    // the D-41 ADD-only contract: setActiveNote does NOT auto-clear activeFilePath;
-    // callers must clear explicitly.
     useTreeStore.getState().setActiveFilePath(null);
     useTreeStore.getState().setActiveNote("uuid-1234");
 

@@ -55,7 +55,6 @@ describe("<RenameInput />", () => {
   });
 
   it("TestRename_FullTextSelectedOnMount", () => {
-    // jsdom supports input.select() — check selectionStart/End
     render(
       <RenameInput
         initialValue="scratchpad"
@@ -85,7 +84,6 @@ describe("<RenameInput />", () => {
     expect(
       screen.getByText("Use letters, numbers, dashes, and underscores only."),
     ).toBeInTheDocument();
-    // The input has destructive border
     expect(input.style.borderColor).toContain("destructive");
   });
 
@@ -206,8 +204,6 @@ describe("<RenameInput />", () => {
     );
     const input = screen.getByRole("textbox") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "valid" } });
-    // Click outside via mousedown event on document (matches RenameInput
-    // listener pattern).
     fireEvent.mouseDown(screen.getByTestId("outside"));
     await waitFor(() => {
       expect(onCommit).toHaveBeenCalledWith("valid");
@@ -235,26 +231,15 @@ describe("<RenameInput />", () => {
     await waitFor(() => {
       expect(onCommit).toHaveBeenCalled();
     });
-    // Input still mounted
     expect(screen.getByRole("textbox")).toBeInTheDocument();
-    // Server error message rendered as inline error
     await waitFor(() => {
       expect(screen.getByText(/server says nope/)).toBeInTheDocument();
     });
-    // Border destructive
     const inp = screen.getByRole("textbox") as HTMLInputElement;
     expect(inp.style.borderColor).toContain("destructive");
   });
 });
 
-// ──────────────────────────────────────────────────────────────────
-// Plan 03-12 Gap 4 — RenameInput must trap key events so they do
-// NOT bubble up to the tree's keymap. react-arborist listens at the
-// tree-container level for first-letter-jump (alphanumerics), Enter
-// (open / toggle), Escape (close), arrow keys (navigation). While
-// the inline-rename input is mounted, NONE of those should fire —
-// the input is the active control.
-// ──────────────────────────────────────────────────────────────────
 
 describe("key event trap (Gap 4)", () => {
   it("alphanumeric key does not bubble to parent", () => {
@@ -293,10 +278,6 @@ describe("key event trap (Gap 4)", () => {
       </div>,
     );
     const input = getByRole("textbox") as HTMLInputElement;
-    // Type a changed value so commit() takes the onCommit path
-    // (the same-name short-circuit added in Plan 03-19 would otherwise
-    // route to onCancel — which is also fine for the bubble check, but
-    // assertion below specifically targets the commit branch).
     fireEvent.change(input, { target: { value: "hello-renamed" } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() =>
@@ -342,8 +323,6 @@ describe("key event trap (Gap 4)", () => {
       </div>,
     );
     const input = getByRole("textbox") as HTMLInputElement;
-    // Type a changed value so commit() takes the onCommit path
-    // (Plan 03-19 same-name short-circuit otherwise routes to onCancel).
     fireEvent.change(input, { target: { value: "hello-renamed" } });
     fireEvent.keyDown(input, { key: "Tab" });
     await waitFor(() =>
@@ -373,20 +352,6 @@ describe("key event trap (Gap 4)", () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────
-// Plan 03-19 Gap R2-5 — same-name commit is a no-op.
-//
-// When the user presses Enter / Tab / clicks outside without changing
-// the value (or types a new value and erases back to the original),
-// RenameInput must call onCancel (NOT onCommit). This avoids a
-// false-positive 409 case-collision against the row's own current
-// path in Service.Move (research §3.4 — the server's Move does not
-// short-circuit oldRelPath == canonNew, and FileStore's collision
-// check has no source-vs-destination distinction at that layer).
-//
-// Symmetric to Plan 03-11's computeMoveTarget same-parent guard for
-// the drag path.
-// ──────────────────────────────────────────────────────────────────
 
 describe("same-name no-op short-circuit (Gap R2-5)", () => {
   it("Enter on unchanged value calls onCancel, never onCommit", async () => {
@@ -402,7 +367,6 @@ describe("same-name no-op short-circuit (Gap R2-5)", () => {
       />,
     );
     const input = screen.getByRole("textbox") as HTMLInputElement;
-    // Press Enter WITHOUT typing.
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => {
       expect(onCancel).toHaveBeenCalledTimes(1);
@@ -487,7 +451,6 @@ describe("same-name no-op short-circuit (Gap R2-5)", () => {
       />,
     );
     const input = screen.getByRole("textbox") as HTMLInputElement;
-    // Type a new value then erase back to the original.
     fireEvent.change(input, { target: { value: "alphabet" } });
     fireEvent.change(input, { target: { value: "alpha" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -512,12 +475,8 @@ describe("same-name no-op short-circuit (Gap R2-5)", () => {
     const input = screen.getByRole("textbox") as HTMLInputElement;
     expect(input.value).toBe("");
     fireEvent.keyDown(input, { key: "Enter" });
-    // The "empty" validation path runs — onCancel must NOT fire (the
-    // short-circuit is gated on value !== ""), and onCommit also must
-    // NOT fire (validation rejects).
     expect(onCancel).not.toHaveBeenCalled();
     expect(onCommit).not.toHaveBeenCalled();
-    // The empty-validation error stays rendered.
     expect(screen.getByText("Name cannot be empty.")).toBeInTheDocument();
   });
 
@@ -542,16 +501,6 @@ describe("same-name no-op short-circuit (Gap R2-5)", () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────
-// Bug D fix — isNew=true changes the same-name short-circuit in
-// commit() so that Enter/Tab/blur without changing the placeholder
-// name commits (keeps the file) rather than cancelling (which would
-// delete the ephemeral node via TreeRow.handleCancelRename).
-//
-// Escape must still cancel unconditionally regardless of isNew, since
-// the user explicitly pressed the cancel key — TreeRow.handleCancelRename
-// handles the deletion of the ephemeral node in that path.
-// ──────────────────────────────────────────────────────────────────
 
 describe("isNew — ephemeral-node commit semantics (Bug D)", () => {
   it("Enter on unchanged placeholder name COMMITS when isNew=true", async () => {

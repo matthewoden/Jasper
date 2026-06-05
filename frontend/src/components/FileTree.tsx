@@ -48,7 +48,7 @@ import { Tree, type NodeApi, type TreeApi } from "react-arborist";
 import { extractH1FromContent, rewriteH1 } from "../lib/h1Extract";
 import { getNote, updateNote } from "../lib/notesApi";
 import { uploadFile, deleteFile, moveFile } from "../lib/filesApi";
-// Plan 07-39 (UAT-5 N2-sub-A): markdown drops route to POST /notes (not /files).
+
 import { createNoteFromMarkdownDrop } from "../lib/notesApi";
 import { broadcastRefresh, useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
@@ -96,17 +96,8 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     null,
   );
 
-  // Gap R2-3 (Plan 03-18) — imperative handle into react-arborist's
-  // <Tree> so we can poke its react-window FixedSizeList row-position
-  // cache after a create. Without this, optimistic-update +
-  // broadcast-refresh layouts the new row at a stale Y-offset until the
-  // next interaction. See resetTreeListLayout helper above.
   const treeRef = useRef<TreeApi<ArboristNode> | null>(null);
 
-  // Plan 06.6-07 — sync the module-level currentTreeRef so that
-  // expandAndScrollToFolder (called by Breadcrumbs) can reach into the
-  // arborist TreeApi from outside this component. Cleared on unmount so
-  // callers gracefully no-op when the sidebar is hidden.
   useEffect(() => {
     setCurrentTreeRef(treeRef.current);
     return () => {
@@ -114,34 +105,11 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     };
   }, []);
 
-  // Bug A + B native DnD fix: track the currently dragged nodes in a ref
-  // so our window-level drop handler can access them even after react-dnd
-  // has cleared its internal drag state via endDrag().
-  //
-  // Populated by our window-level 'dragstart' listener (fires after
-  // react-dnd's handleTopDragStart + arborist's dnd.dragStart dispatch).
-  // Cleared on 'drop' (consumed) and 'dragend' (cleanup).
   const nativeDragInfoRef = useRef<{
     dragIds: string[];
     dragNodes: NodeApi<ArboristNode>[];
   } | null>(null);
 
-  // Dynamic Tree height — react-arborist requires a numeric height
-  // and uses react-window's FixedSizeList internally. ResizeObserver
-  // tracks the live size of the bounded parent (Sidebar's tree-area
-  // shell, height = `minmax(0, 1fr)` of viewport) and feeds it back
-  // so the Tree fills exactly the available area; long lists then
-  // scroll inside the Tree's own scroller instead of inflating the
-  // parent.
-  //
-  // Callback ref pattern (NOT useRef + useEffect): FileTree has
-  // several early-return branches above the main JSX (loading /
-  // empty / error). On the very first render those return BEFORE
-  // the ref-bearing wrap exists, so a useEffect-based observer
-  // would install with `current === null` and never re-attach when
-  // the ref later populated — leaving the Tree stuck at the default
-  // height. The callback ref fires on every attach/detach, which
-  // covers the loading→loaded transition uniformly.
   const observerRef = useRef<ResizeObserver | null>(null);
   const treeAreaRef = useRef<HTMLDivElement | null>(null);
   const [treeHeight, setTreeHeight] = useState(400);
@@ -170,12 +138,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     };
   }, []);
 
-  // Phase 6 — Plan 06-08: flat-list mode when activeTagFilter is active.
-  // When a tag is selected in TagBrowserSection, useTreeStore's activeTagFilter
-  // becomes non-null. FileTree fetches tag notes via listTagNotes and renders
-  // a flat list (no arborist tree). ActiveTagFilterChip is pinned above the list.
-  // activeNoteIdForFlatList is subscribed here (before early returns) to satisfy
-  // the Rules of Hooks — hooks must be called unconditionally.
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
   const activeNoteIdForFlatList = useTreeStore((s) => s.activeNoteId);
   const [flatNotes, setFlatNotes] = useState<NoteSummary[] | null>(null);
@@ -208,22 +170,10 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
 
   const data = useMemo(() => (tree ? adaptTree(tree) : []), [tree]);
 
-  // Gap R2-3 — when the wire shape changes (a new node was added by
-  // any path: toolbar `+`, per-row context-menu, drag-drop, etc.),
-  // invalidate the FixedSizeList row-position cache once. data is
-  // re-derived only when `tree` (the wire shape) changes — on
-  // expand/collapse, `tree` is unchanged, so this effect does NOT
-  // fire. T-R2-3-01 disposition (accept): bounded by the rate of
-  // human-driven create/delete/move actions.
   useEffect(() => {
     resetTreeListLayout(treeRef);
   }, [data]);
 
-  // Compute the initial open-state map ONCE per FileTree mount. After
-  // mount, react-arborist owns its own open-state and our zustand store
-  // observes `onToggle` to stay in sync. The empty deps array is
-  // intentional — re-deriving on every store change would fight
-  // arborist's internal state.
   const initialOpenState = useMemo<Record<string, boolean>>(() => {
     const expanded = useTreeStore.getState().expanded;
     const out: Record<string, boolean> = {};
@@ -238,11 +188,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     }
   }, []);
 
-  // ──────────────────────────────────────────────────────────────────
-  // Toast surfacing — the 5 locked tuples from UI-SPEC §Surface 5.
-  // The opName drives the case-collision branch (move uses a
-  // different copy than create/rename).
-  // ──────────────────────────────────────────────────────────────────
   const surfaceError = useCallback(
     (
       err: unknown,
@@ -287,12 +232,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     [toast],
   );
 
-  // Per-row "New note" / "New folder" — delegate to the shared hook
-  // (Sidebar's toolbar uses the same). After the create resolves, fire
-  // the FixedSizeList layout reset (Gap R2-3) so the new row paints at
-  // its correct Y-offset on the first paint. The data-effect above is
-  // the primary path; these per-handler calls are belt-and-suspenders
-  // for the per-row context-menu create case.
   const handleRequestNewNote = useCallback(
     async (parentPath: string) => {
       await createNoteAt(parentPath);
@@ -310,11 +249,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   );
 
   const handleRequestRename = useCallback((d: TreeRowData) => {
-    // Plan 07-38 R7b lifts Plan 07-26's file-rename block — file rows
-    // now enter inline rename via filesApi.moveFile (see
-    // handleCommitRename below). target is the path (same convention as
-    // folder rename — files are identified by their relative path under
-    // notes/).
     if (d.kind === "file") {
       useTreeStore.getState().startRename("file", d.path);
       return;
@@ -328,12 +262,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     async (d: TreeRowData, newValue: string) => {
       try {
         if (d.kind === "file") {
-          // Plan 07-38 R7b: file rename = filesApi.moveFile to the same
-          // parent dir with the new basename. RenameInput hands us the
-          // full filename (extension included) for files, mirroring the
-          // folder branch's "raw basename" convention. The backend
-          // refuses .md and overwrites; surface the error inline so the
-          // user can retry without leaving the rename UI.
           const parent = (() => {
             const i = d.path.lastIndexOf("/");
             return i === -1 ? "" : d.path.slice(0, i);
@@ -345,49 +273,22 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           }
           await moveFile(d.path, newPath);
           useTreeStore.getState().endRename();
-          // Mirror the rest of the rename pipeline — refresh so the tree
-          // re-fetches with the new path. broadcastRefresh notifies other
-          // tabs (single-user multi-window scenario).
           await refresh();
           broadcastRefresh();
           return;
         }
         if (d.kind === "note") {
-          // Reattach .md per Surface 3 contract — the input contains
-          // only the basename for notes; the server expects the full
-          // file name in the new_path.
           const parent = (() => {
             const i = d.path.lastIndexOf("/");
             return i === -1 ? "" : d.path.slice(0, i);
           })();
           const newPath = composeNewPath(parent, newValue + ".md");
-          // Bug 5 fix (same-path guard): if the computed new path is identical to
-          // the current path, the file is already correctly named. This happens when
-          // the user accepts the placeholder name for a newly created note (isNew=true
-          // path in RenameInput). Skip the API call and close cleanly — the backend
-          // would otherwise reject the same-path move with ErrCaseCollision (409)
-          // because MoveFile's target-exists check fires before it detects old==new.
           if (newPath === d.path) {
             useTreeStore.getState().endRename();
             return;
           }
           await muts.moveNote(d.id, newPath);
 
-          // Plan 03-22 (Gap R2-6) — Direction B: bidirectional binding
-          // per PROJECT.md 2026-05-03 Key Decision. After a successful
-          // tree-rename, rewrite the first H1 in the file content to
-          // match the new basename. No-op cases:
-          //   - file has no H1 (research §2.4: do NOT auto-insert).
-          //   - existing H1 already matches newValue (rewriteH1
-          //     returns the input byte-for-byte; we detect that and
-          //     skip the redundant updateNote — also serves as the
-          //     loop guard against a Direction-A round-trip that just
-          //     landed on the server with the H1 already in sync).
-          //
-          // Best-effort path — the move already committed. A getNote
-          // failure (file vanished) drops to a warn-level log; an
-          // updateNote failure surfaces a half-state toast so the user
-          // knows the filename and the H1 may not match.
           try {
             const noteResp = await getNote(d.id);
             if (noteResp.data) {
@@ -404,13 +305,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
                       variant: "error",
                     });
                   } else {
-                    // Plan 03-23 — broadcast refresh so the tree picks
-                    // up the title freshly extracted from the rewritten
-                    // H1 (Service.Update title-refresh). Without this,
-                    // moveNote's refresh fired with the OLD H1 still
-                    // in the file (Title="Old Title"), and the
-                    // subsequent updateNote landed Title="New Name" in
-                    // the index but the FileTree never re-fetched.
                     await refresh();
                   }
                 }
@@ -422,10 +316,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
               );
             }
           } catch (rewriteErr) {
-            // Defense-in-depth — the rewrite is best-effort. Don't fail
-            // the whole rename if it can't run; the move already
-            // succeeded. Log at warn level so it surfaces in the
-            // browser console for triage but doesn't reach the toast.
             console.warn(
               "FileTree.handleCommitRename: H1 rewrite failed; rename still committed",
               rewriteErr,
@@ -437,61 +327,27 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
             return i === -1 ? "" : d.path.slice(0, i);
           })();
           const newPath = composeNewPath(parent, newValue);
-          // Bug 5 fix (same-path guard): same as note branch above — if the computed
-          // new path is identical to the current path, close the rename cleanly without
-          // an API call. The backend rejects a same-path folder move with ErrCycle (400)
-          // via isPathInside(same, same) → true.
           if (newPath === d.path) {
             useTreeStore.getState().endRename();
             return;
           }
           await muts.moveFolder(d.path, newPath);
         }
-        // Plan 03-09 (Gap 1): the mutator already refreshed the tree
-        // on success — no need to refresh again here.
         useTreeStore.getState().endRename();
       } catch (e) {
         surfaceError(e, "rename");
-        // Re-throw so RenameInput catches and re-renders with the
-        // server's inline error message — letting the user retry.
         throw e;
       }
     },
     [muts, surfaceError, toast, refresh],
   );
 
-  // ──────────────────────────────────────────────────────────────────
-  // UX-13 (Plan 07) — handleSelect: descendant-deselect wrapper.
-  //
-  // When a folder enters multi-selection, deselect every descendant of
-  // that folder (operations apply to the directory whole, not its
-  // contents). Mirrors RESEARCH §Pattern 4 descendant-deselect.
-  //
-  // Wired into the <Tree onSelect={handleSelect} ...> prop below. arborist
-  // calls onSelect on every selection change, so the deselect cascade
-  // re-runs each time the user toggles selection — keeps the invariant
-  // even after partial deselects.
-  // ──────────────────────────────────────────────────────────────────
-  // Plan 08-18 (R4-11 BLOCKER) — reentrancy guard for handleSelect.
-  //
-  // react-arborist's TreeApi.deselect (tree-api.js:319-325) fires
-  // props.onSelect synchronously after every dispatch. Without this guard,
-  // handleSelect → deselectDescendantsOfFolders → tree.deselect → onSelect →
-  // handleSelect re-enters per descendant, and on a folder with hundreds of
-  // descendants the cascade exhausts V8's stack ("Maximum call stack size
-  // exceeded"). See .planning/phases/08-…/08-18-INVESTIGATION.md for the
-  // sourcemap repro + resolved minified symbols (fG=identify, R1=this
-  // function, mG=identifyNull).
-  //
-  // The flag lives in a useRef so it's stable across renders and writable
-  // synchronously inside the cascade.
   const handleSelectReentrant = useRef(false);
   const handleSelect = useCallback(
     (nodes: NodeApi<ArboristNode>[]) => {
       if (handleSelectReentrant.current) return;
       handleSelectReentrant.current = true;
       try {
-        // Delegates to the pure helper so the cascade is unit-testable.
         deselectDescendantsOfFolders(nodes, (id) =>
           treeRef.current?.deselect(id),
         );
@@ -504,24 +360,12 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
 
   const handleRequestDelete = useCallback(
     (d: TreeRowData) => {
-      // UX-13 (Plan 07) — if this row is part of a multi-selection,
-      // route to the batch-delete branch so the user sees ONE prompt
-      // ("Delete N items?") instead of N sequential prompts.
-      //
-      // Multi-selection contract: read tree.selectedNodes (length and
-      // identity match) via the imperative arborist handle.
       const selected = treeRef.current?.selectedNodes ?? [];
       const multi = buildMultiDeleteTarget(d, selected);
       if (multi !== null) {
         setDeleteTarget(multi);
         return;
       }
-      // Existing single-target branches.
-      // WR-09 (Phase 5.5 gap-closure Plan 13): stash the canonical id (note)
-      // and path (folder) on the dialog target so handleConfirmDelete can
-      // dispatch deletion directly without re-deriving the identifier from
-      // the display name (the previous lookup was ambiguous when two
-      // siblings shared a basename across subtrees).
       if (d.kind === "note") {
         setDeleteTarget({
           kind: "note",
@@ -529,9 +373,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           id: d.id,
         });
       } else if (d.kind === "file") {
-        // Plan 07-38 R7b: file delete uses filesApi.deleteFile in
-        // handleConfirmDelete below. Carries the relative path so the
-        // wire call needs no further lookup.
         setDeleteTarget({
           kind: "file",
           name: d.name,
@@ -551,29 +392,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     [tree],
   );
 
-  // Plan 17 Bug C (UX-13) — multi-delete via Backspace/Delete keystroke.
-  //
-  // After a Cmd-click, focus lives on arborist's outer RowContainer
-  // wrapper (NOT our inner <div role="treeitem">), so TreeRow's
-  // `onKeyDown` doesn't fire. Two paths needed:
-  //
-  // 1) Backspace: react-arborist's default-container.js keymap handles
-  //    it IF we pass `onDelete` to <Tree>. handleArboristDelete is the
-  //    bridge to our existing handleRequestDelete pipeline. arborist
-  //    passes us `{ nodes, ids }` of the selection; handleRequestDelete
-  //    itself reads `treeRef.current.selectedNodes`, so the multi-vs-
-  //    single branch is decided correctly regardless of which row we
-  //    name.
-  //
-  // 2) Delete (Forward Delete): arborist's keymap only listens for
-  //    Backspace, NOT Delete. The HUMAN-UAT walkthrough used Delete
-  //    (the existing UX-13 batch-delete spec also uses Delete). Wire a
-  //    tree-level keydown listener to catch Delete and route it to the
-  //    same arborist API path. Scope the listener to events whose
-  //    target lives inside the tree's <div role="tree">, so the editor
-  //    textarea's Delete keystrokes are not hijacked.
-  //
-  // See 05.5-17c-INVESTIGATION.md for the full trace.
   const handleArboristDelete = useCallback(
     (args: { nodes: NodeApi<ArboristNode>[]; ids: string[] }) => {
       if (args.nodes.length === 0) return;
@@ -597,19 +415,9 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       const api = treeRef.current;
       if (!api) return;
 
-      // 05.5-18: Escape clears multi-selection. When the user has
-      // built up a multi-selection via Cmd+click / Shift+click, Escape
-      // is the conventional "abandon this batch" affordance (matches
-      // VS Code Explorer + macOS Finder). We only fire when the
-      // selection has 2+ entries — single-row Escape stays a no-op so
-      // it doesn't fight first-letter-jump or future single-row
-      // shortcuts that arborist's keymap may want.
       if (e.key === "Escape") {
         if (api.selectedIds.size <= 1) return;
         e.preventDefault();
-        // Iterate selectedIds and deselect each — react-arborist's
-        // public TreeApi exposes deselect(idOrNode) but no clear-all
-        // primitive in the v3.5 surface.
         for (const id of Array.from(api.selectedIds)) {
           api.deselect(id);
         }
@@ -617,11 +425,8 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       }
 
       if (e.key !== "Delete") return;
-      // Mirror arborist's Backspace handler: read selectedIds, dispatch
-      // to onDelete via tree.delete().
       const ids = Array.from(api.selectedIds);
       if (ids.length === 0) {
-        // Nothing selected — fall back to focused node (single-target).
         const fn = api.focusedNode;
         if (!fn) return;
         e.preventDefault();
@@ -641,10 +446,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     if (!deleteTarget) return;
     try {
       if (deleteTarget.kind === "multi") {
-        // UX-13 (Plan 07): batch delete iterates the current arborist
-        // selection. Capture the snapshot of tree.selectedNodes once so
-        // the loop is stable even if a per-call refresh repopulates
-        // arborist's internal selection mid-iteration.
         if (!treeRef.current) return;
         const selectedSnapshot = treeRef.current.selectedNodes.slice();
         const { succeeded, total } = await executeBatchDelete(
@@ -658,31 +459,14 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           );
         }
       } else if (deleteTarget.kind === "note") {
-        // WR-09 (Phase 5.5 gap-closure Plan 13): use target.id directly.
-        // The previous name-based lookup (now removed — see comment at the
-        // bottom of this file) was ambiguous when two notes shared a
-        // basename across subtrees — it returned the FIRST match, which
-        // could delete the wrong note after a tree refresh shuffled the
-        // order. handleRequestDelete now stashes the canonical id on the
-        // dialog target at click time.
         await muts.deleteNote(deleteTarget.id);
       } else if (deleteTarget.kind === "file") {
-        // Plan 07-38 R7b: file delete via filesApi.deleteFile. No
-        // mutator hook needed — files don't participate in the
-        // notes-service registry; the tree refresh re-fetches and the
-        // file simply vanishes from the listing.
         await deleteFile(deleteTarget.path);
         await refresh();
         broadcastRefresh();
       } else {
-        // WR-09: use target.path directly (same rationale — the previous
-        // name-based folder lookup matched on display `name`, which is
-        // ambiguous when two folders share the same display name across
-        // subtrees).
         await muts.deleteFolder(deleteTarget.path, true);
       }
-      // Plan 03-09 (Gap 1): the mutator already refreshed the tree
-      // on success — no need to refresh again here.
       setDeleteTarget(null);
     } catch (e) {
       surfaceError(e, "delete");
@@ -692,14 +476,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     // target instead of walking the wire tree to recover them.
   }, [deleteTarget, muts, surfaceError, refresh]);
 
-  // ──────────────────────────────────────────────────────────────────
-  // Drag-drop wiring. react-arborist's onMove hands us a resolved
-  // parentNode (NodeApi for the drop destination, null = root). We
-  // delegate path computation + same-parent detection to the pure
-  // computeMoveTarget resolver (Gap 2 closure — Plan 03-11), then
-  // dispatch the matching server operation only if the drop actually
-  // changes the wire path.
-  // ──────────────────────────────────────────────────────────────────
   const handleMove = useCallback(
     async (args: {
       dragIds: string[];
@@ -710,12 +486,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     }) => {
       if (args.dragNodes.length === 0) return;
 
-      // UX-13 (Plan 07) — multi-drag iteration. Capture all source
-      // identities upfront BEFORE iteration begins (RESEARCH §Pitfall 9).
-      // Note moves are id-based (refresh-stable) so capturing the id is
-      // enough. Folder moves are path-based; capture the pre-iteration
-      // path so a mid-loop refresh cannot swap one folder's path under
-      // a sibling iteration.
       const sources = args.dragNodes.map((dn) => ({
         kind: dn.data.data.kind,
         id: dn.data.data.kind === "note" ? dn.data.data.id : null,
@@ -729,10 +499,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
             parentNode: args.parentNode,
           });
           if (target.isNoOp) {
-            // Same-parent drop — react-arborist's reordering within the
-            // same parent is a UI concern only; we don't track ordering
-            // server-side (notes order alphabetically per UI-SPEC §Surface
-            // 1). No API call needed. Logged at debug for triage.
             console.debug("FileTree: same-parent drop ignored", {
               sourcePath: src.path,
             });
@@ -743,10 +509,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           } else if (src.kind === "note" && src.id !== null) {
             await muts.moveNote(src.id, target.newPath);
           } else if (src.kind === "file") {
-            // Plan 07-39 (UAT-5 N2-sub-B): internal file drag routes to
-            // muts.moveFile → filesApi.moveFile (POST /api/v1/files/move).
-            // Backend uses the same 5-rule path-traversal pipeline proven
-            // in Plan 07-38.
             await muts.moveFile(src.path, target.newPath);
           }
         }
@@ -756,38 +518,13 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         // fanout to one in-flight network round across the loop.
       } catch (e) {
         surfaceError(e, "move");
-        // Server is the truth — refresh to revert the optimistic
-        // arborist tree state. (KEEP this one — the mutator threw
-        // before its own refresh fired, and arborist is now showing
-        // an optimistic-but-rejected layout.)
         await refresh();
       }
     },
     [muts, refresh, surfaceError],
   );
 
-  // ──────────────────────────────────────────────────────────────────
-  // Bug A + B native DnD bypass — window-level listeners registered
-  // AFTER react-dnd's DndProvider mounts (useEffect fires post-commit).
-  //
-  // Root cause: react-dnd's HTML5Backend registers handleTopDragOver on
-  // window. When canDrop() returns false (broken arborist state during
-  // folder-to-folder drags, or non-react-dnd targets like the trailing
-  // dropzone), it sets dataTransfer.dropEffect='none'. Chrome never
-  // fires the native drop event in that case, so no onMove fires.
-  //
-  // Fix: register our own dragover + drop listeners on window AFTER
-  // react-dnd's (ordering guaranteed because useEffect runs after
-  // DndProvider's synchronous mount). Our dragover overrides dropEffect
-  // back to 'move' for our custom targets; our drop calls handleMove
-  // directly for folder-to-folder drags (bypassing broken react-dnd).
-  // ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    // dragstart: capture arborist drag state right after react-dnd's
-    // handleTopDragStart fires (it calls item() in useDrag which
-    // dispatches dnd.dragStart to arborist's Redux store). Our listener
-    // is at window bubble phase, registered later than react-dnd's, so
-    // it fires after handleTopDragStart has set dragIds.
     const handleNativeDragStart = () => {
       const api = treeRef.current;
       if (!api) {
@@ -799,25 +536,12 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         nativeDragInfoRef.current = null;
         return;
       }
-      // WR-08 (Phase 5.5 gap-closure Plan 10): derive dragIds from the
-      // documented `api.dragNodes` surface. The previous private-API read
-      // (removed: api .state .dnd .dragIds .slice) reached into arborist
-      // internals (that shape is not part of arborist's documented public
-      // API) and would silently break on a version bump.
       nativeDragInfoRef.current = {
         dragIds: nodes.map((n) => n.id),
         dragNodes: nodes,
       };
     };
 
-    // dragover: fires AFTER react-dnd's handleTopDragOver (same window
-    // bubble phase, registered later). For folder rows AND any other
-    // location inside the tree (empty area below rows → root-drop
-    // target), override dropEffect back to 'move' so Chrome will fire
-    // the drop event. The trailing-dropzone strip was removed
-    // 2026-05-10 because its 60px reserved space cropped the sidebar
-    // visually; root-drop targeting is now uniform across the entire
-    // tree area.
     const handleNativeDragOver = (e: DragEvent) => {
       const info = nativeDragInfoRef.current;
       if (!info) return;
@@ -826,11 +550,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       const folderRow = target.closest('[data-tree-row-kind="folder"]');
       const insideTree = target.closest('[role="tree"]');
       if (!folderRow && !insideTree) return;
-      // BL-02 (Phase 5.5 gap-closure Plan 10): cycle prevention. If the
-      // hovered folder is a dragged folder (or one of its descendants),
-      // do NOT preventDefault — let the browser show its native no-drop
-      // cursor. Mirrors handleDisableDrop because the native-DnD path
-      // bypasses arborist's onMove pipeline.
       if (folderRow) {
         const folderPath = folderRow.getAttribute("data-tree-row");
         if (folderPath !== null && isCycleDrop(info.dragNodes, folderPath)) {
@@ -841,15 +560,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     };
 
-    // drop: fires AFTER react-dnd's handleTopDrop (same window bubble
-    // phase, registered later). By then react-dnd has called endDrag()
-    // which clears its own monitor state. Arborist's dnd.dragEnd()
-    // fires on the following dragend event, but React root's synthetic
-    // onDrop (which handles the trailing dropzone) has already fired
-    // before this point. We only intercept folder-to-folder drops here.
-    //
-    // We use nativeDragInfoRef (captured at dragstart) because
-    // api.dragNodes may be empty after endDrag().
     const handleNativeDrop = (e: DragEvent) => {
       const info = nativeDragInfoRef.current;
       nativeDragInfoRef.current = null;
@@ -861,10 +571,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       const noteRow = target.closest('[data-tree-row-kind="note"]');
       const insideTree = target.closest('[role="tree"]');
 
-      // Drop inside the tree area but NOT on any row → root-drop.
-      // (2026-05-10) Replaces the dedicated trailing-dropzone strip
-      // — root-drop targeting is now uniform across the empty area
-      // below the rows.
       if (insideTree && !folderRow && !noteRow) {
         e.preventDefault();
         const api = treeRef.current;
@@ -883,24 +589,13 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         return;
       }
 
-      // Folder row drop (Bug B) — only handle folder-source drags.
-      // Note drags use arborist's own drop path (not broken for notes).
       if (folderRow) {
-        // BL-01 (Phase 5.5 gap-closure Plan 10) — filter dragNodes to
-        // folders; mixed-kind selections must not silently drop, and
-        // per-source dispatch happens inside handleMove. (The previous
-        // `dragNodes[0].kind === "folder"` gate aborted the entire drop
-        // when the first node happened to be a note.)
         const folderSources = info.dragNodes.filter(
           (n) => n.data.data.kind === "folder",
         );
         if (folderSources.length === 0) return;
         const folderPath = folderRow.getAttribute("data-tree-row");
         if (folderPath === null) return;
-        // BL-02 (Phase 5.5 gap-closure Plan 10): cycle prevention — must
-        // mirror handleDisableDrop because the native-DnD path bypasses
-        // arborist's onMove pipeline. We re-check on the FILTERED sources
-        // (note paths must not influence the cycle check).
         if (isCycleDrop(folderSources, folderPath)) return;
         e.preventDefault();
         const api = treeRef.current;
@@ -934,9 +629,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     };
   }, [handleMove]);
 
-  // disableDrop returns TRUE to BLOCK the drop — that's the
-  // react-arborist contract. Cycle prevention: dragging a folder onto
-  // itself or any of its descendants (T-03-07-04 mitigation).
   const handleDisableDrop = useCallback(
     (args: {
       parentNode: NodeApi<ArboristNode>;
@@ -948,13 +640,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       for (const dn of dragNodes) {
         if (dn.data.data.kind !== "folder") continue;
         const sourcePath = dn.data.data.path;
-        // Walk up from parentNode; if we ever land on the source
-        // folder itself, the drop would create a cycle — block it.
-        // Guard: react-arborist's virtual root node has data: { id: ROOT_ID }
-        // (not an ArboristNode), so cur.data.data is undefined on the root.
-        // Stop the walk before we reach the virtual root to avoid a TypeError.
-        // (Bug B / Bug C fix — the crash caused canDrop() to return false for
-        // ALL folder moves, silently blocking every folder DnD.)
         let cur: NodeApi<ArboristNode> | null = parentNode;
         while (cur && cur.data?.data != null) {
           if (
@@ -971,26 +656,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     [],
   );
 
-  // ──────────────────────────────────────────────────────────────────
-  // UAT-2 N2 (Plan 07-29) + UAT-3 N2 (Plan 07-34): Sidebar OS-file drop.
-  //
-  // react-arborist uses react-dnd internally. When an OS file drag enters
-  // the sidebar, react-dnd's HTML5 backend renders its drop overlay even
-  // though arborist has no registered drop handler for external files. The
-  // fix: intercept dragover/dragenter at the CAPTURE phase on the tree
-  // container BEFORE react-dnd's bubble-phase listener sees the event. If
-  // the dataTransfer carries "Files" (OS file drag) and nativeDragInfoRef
-  // is null (no arborist drag in flight), we call stopPropagation —
-  // arborist never sees the event, the overlay never renders.
-  //
-  // Plan 07-34 UPGRADE: we now ACCEPT the drop. preventDefault MUST be
-  // called on dragover so the browser delivers the matching drop event to
-  // our handler instead of canceling with the not-allowed cursor.
-  // dropEffect is set to "copy" so the cursor reflects the upload-copy
-  // semantics. The matching drop handler (handleSidebarFileDrop) resolves
-  // the target dir from the row under the cursor and POSTs to /files via
-  // filesApi.uploadFile.
-  // ──────────────────────────────────────────────────────────────────
   const handleSidebarDragOver = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
       const types = e.dataTransfer?.types;
@@ -999,7 +664,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       const isExternal = hasFiles && nativeDragInfoRef.current === null;
       if (isExternal) {
         e.stopPropagation();
-        // Plan 07-34: accept the drop so the matching drop event fires.
         e.preventDefault();
         if (e.dataTransfer) {
           e.dataTransfer.dropEffect = "copy";
@@ -1009,11 +673,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     [],
   );
 
-  // Build a noteId → path lookup for handleSidebarFileDrop's "drop on note
-  // row" case. Note rows use UUID as their data-tree-row attribute, so we
-  // need to translate the UUID back to a path to compute the parent dir.
-  // Memoized against the wire tree so it only rebuilds when the tree shape
-  // changes.
   const noteIdToPath = useMemo<Map<string, string>>(() => {
     const map = new Map<string, string>();
     if (!tree) return map;
@@ -1028,26 +687,11 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     return map;
   }, [tree]);
 
-  // parentDirOfPath('foo/bar.png') === 'foo'; parentDirOfPath('bar.png') === ''.
   const parentDirOfPath = useCallback((p: string): string => {
     const idx = p.lastIndexOf("/");
     return idx < 0 ? "" : p.slice(0, idx);
   }, []);
 
-  // Plan 07-34 — handleSidebarFileDrop (UAT-3 N2). Wired via onDropCapture
-  // on the tree-area wrapper so it runs in the capture phase, ahead of any
-  // react-dnd handlers arborist might register on its descendants.
-  //
-  // Target-dir resolution:
-  //   row under drop cursor is FOLDER → target = folder.path
-  //   row under drop cursor is NOTE   → target = parentDirOfPath(note.path)
-  //   row under drop cursor is FILE   → target = parentDirOfPath(file.path)
-  //   no row under cursor (empty)     → target = "" (vault root)
-  //
-  // After every successful upload broadcastRefresh() fires once so the new
-  // file appears in the tree without a manual reload. Errors surface as a
-  // toast — the user keeps the dropped file in OS clipboard so retry is
-  // cheap.
   const handleSidebarFileDrop = useCallback(
     async (e: React.DragEvent<HTMLDivElement>) => {
       const types = e.dataTransfer?.types;
@@ -1058,7 +702,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       e.stopPropagation();
       e.preventDefault();
 
-      // 1. Resolve target dir from the row under the cursor.
       const target = e.target as HTMLElement | null;
       const rowEl = target?.closest("[data-tree-row]") as HTMLElement | null;
       let targetDir = "";
@@ -1066,9 +709,8 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         const rowKind = rowEl.getAttribute("data-tree-row-kind");
         const rowAttr = rowEl.getAttribute("data-tree-row") ?? "";
         if (rowKind === "folder") {
-          targetDir = rowAttr; // folder rows use path as data-tree-row
+          targetDir = rowAttr;
         } else if (rowKind === "note") {
-          // Note rows use UUID as data-tree-row; translate via map.
           const notePath = noteIdToPath.get(rowAttr);
           targetDir = notePath ? parentDirOfPath(notePath) : "";
         } else if (rowKind === "file") {
@@ -1076,12 +718,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         }
       }
 
-      // 2. Upload each file in the drop.
-      // Plan 07-39 (UAT-5 N2-sub-A): client-side .md detection. Markdown
-      // files route to POST /notes via createNoteFromMarkdownDrop (backend
-      // /files keeps refusing .md per security posture — DATA-12 case-
-      // collision semantics live on the notes endpoint). Non-markdown files
-      // continue to use filesApi.uploadFile per Plan 07-34.
       const files = Array.from(e.dataTransfer?.files ?? []);
       if (files.length === 0) return;
       let anySucceeded = false;
@@ -1089,9 +725,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         const isMarkdown = f.name.toLowerCase().endsWith(".md");
         try {
           if (isMarkdown) {
-            // Read body. Prefer File.text() (modern); fall back to FileReader
-            // for environments (older jsdom in vitest tests) that ship File
-            // without the .text() Blob method.
             const text =
               typeof f.text === "function"
                 ? await f.text()
@@ -1112,12 +745,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           const status = (err as { status?: number } | null)?.status;
           const body = (err as { body?: string } | null)?.body ?? "";
 
-          // Plan 07-39: branch toast copy on markdown-drop vs file-upload path.
           if (isMarkdown) {
-            // POST /notes failure paths (createNoteFromMarkdownDrop):
-            //   - 409 = case-collision (DATA-12) OR parent_path missing
-            //   - 400 = invalid title chars / traversal
-            //   - other = unexpected; show the helper's error message
             let title = "Note creation failed";
             let description = `Could not create note from ${f.name}.`;
             if (status === 409) {
@@ -1139,9 +767,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
             continue;
           }
 
-          // Non-markdown upload failure paths (Plan 07-34 / 07-38).
-          // Locked toast tuples for the most common failures (mirrors the
-          // attachment-upload toast shape from Plan 07-10).
           let title = "Upload failed";
           let description = `Could not upload ${f.name}.`;
           if (status === 413) {
@@ -1154,18 +779,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
             title = "Upload rejected";
             description = "Target directory is a symlink — refused for safety.";
           } else {
-            // Plan 07-38 N2 (UAT-4 debuggability): when the failure isn't
-            // 400/403/413, surface the backend's actual response body in
-            // the toast so the user can report it back. Without this, the
-            // user saw only the generic "Could not upload <name>" and
-            // there was no way to diagnose why. Common candidates:
-            //   - status undefined → network error before status code
-            //     was read (the error message will say so).
-            //   - status 5xx → backend dataDir / disk issue.
-            //   - status 404 → targetDir resolution mismatch (e.g.
-            //     dropping on a file row whose parent dir was inferred
-            //     incorrectly).
-            // Truncate to keep the toast readable.
             const detail = body
               ? body.slice(0, 200)
               : (err as Error | null)?.message ?? "unknown error";
@@ -1176,7 +789,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         }
       }
 
-      // 3. Refresh the tree so any new files appear.
       if (anySucceeded) {
         await broadcastRefresh();
       }
@@ -1184,18 +796,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     [noteIdToPath, parentDirOfPath, toast],
   );
 
-  // siblingNamesFor — for the inline-rename collision check. The
-  // current row is excluded so renaming "foo" to "foo" doesn't trip
-  // the same-name-as-myself collision.
-  //
-  // Bug F fix: only compare against same-kind siblings. A note named
-  // "untitled.md" (display label "untitled") must NOT block renaming a
-  // folder to "untitled" — they are distinct filesystem entries
-  // (untitled.md vs untitled/). Filtering to nodeKind before mapping
-  // ensures the RenameInput validation is kind-scoped, matching the
-  // server's collision check which is also kind-scoped (mkdir checks
-  // for a directory, not for any inode named the same as the basename
-  // without extension).
   const siblingNamesFor = (node: NodeApi<ArboristNode>): string[] => {
     const parent = node.parent;
     const siblings = parent?.children ?? [];
@@ -1206,9 +806,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       .map((s: NodeApi<ArboristNode>) => {
         const sd = s.data.data;
         if (sd.kind === "folder") return sd.name;
-        if (sd.kind === "file") return sd.name; // Plan 07-26: file nodes use name
-        // For notes, compare against the basename WITHOUT .md so it
-        // matches what the user is typing in the rename input.
+        if (sd.kind === "file") return sd.name;
         return sd.title.endsWith(".md")
           ? sd.title.slice(0, -3)
           : sd.title;
@@ -1218,8 +816,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   if (error) return <TreeErrorState onRetry={refresh} />;
 
   if (loading && !tree) {
-    // 1px indeterminate progress stripe at the top of the scroll area —
-    // re-uses Phase 2's keyframes from theme.css.
     return (
       <div
         data-testid="tree-loading"
@@ -1241,10 +837,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     );
   }
 
-  // Phase 6 — Plan 06-08: flat-list branch. When activeTagFilter is set,
-  // render ActiveTagFilterChip + a flat list of notes tagged with that tag.
-  // This branch supersedes the arborist tree render entirely while the filter
-  // is active. The chip's × button clears the filter and returns to the normal tree.
   if (activeTagFilter !== null) {
     return (
       <div
@@ -1354,42 +946,16 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         openByDefault={false}
         onToggle={handleToggle}
         onMove={handleMove}
-        // UX-13 (Plan 07): every selection change runs the
-        // descendant-deselect cascade — when a folder enters the
-        // selection, its descendants exit. Operations apply to the
-        // directory whole, not its contents.
         onSelect={handleSelect}
-        // Plan 17 Bug C (UX-13): wire onDelete so arborist's tree-level
-        // Backspace/Delete keymap routes into our handleRequestDelete
-        // pipeline. Without this prop, default-container.js short-
-        // circuits on Backspace, and multi-delete via keyboard is dead.
-        // See 05.5-17c-INVESTIGATION.md.
         onDelete={handleArboristDelete}
         disableDrop={handleDisableDrop}
-        // Plan 07-39 (UAT-5 N2-sub-B): file nodes are now draggable. Plan 07-38
-        // shipped POST /api/v1/files/move; Plan 07-39 wires handleMove's
-        // src.kind === "file" branch to muts.moveFile → filesApi.moveFile. The
-        // Plan 07-26 disableDrag={kind === "file"} predicate is therefore
-        // removed — files participate in DnD like notes and folders.
-        // (Empty BoolFunc returning false → drag never disabled per-row;
-        // react-arborist defaults to draggable when the prop is omitted, but
-        // we keep an explicit predicate slot for future per-row guards.)
         disableDrag={() => false}
         rowHeight={32}
         width="100%"
-        // Tree fills the entire treeAreaRef height. Root-drop is now
-        // handled by the window-level handleNativeDrop checking for
-        // drops inside [role="tree"] but NOT on a folder/note row —
-        // there's no separate dropzone strip eating sidebar space
-        // (the previous 60px reserved area read as cropped-short).
         height={treeHeight}
       >
         {(props) => (
           <TreeRow
-            // The arborist NodeApi<ArboristNode> exposes node.data.data as
-            // the original wire shape (TreeRowData). The inner data is what
-            // TreeRow consumes; we narrow the generic by passing through
-            // the same NodeApi instance with a typed view of `.data`.
             node={
               new Proxy(props.node, {
                 get(target, prop) {
@@ -1401,11 +967,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
               }) as unknown as NodeApi<TreeRowData>
             }
             style={props.style}
-            // Gap R2-1: arborist hands us a callback ref via children
-            // render-prop; attaching it on the row container is what
-            // registers the row as a react-dnd drag source. Without
-            // this forward, ALL drag events are silently dropped —
-            // both Playwright synthetic AND real mouse drags.
             dragHandle={props.dragHandle}
             onSelectNote={onSelectNote}
             onRequestRename={handleRequestRename}
@@ -1430,11 +991,4 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   );
 }
 
-// WR-09 (Phase 5.5 gap-closure Plan 13) — REMOVED.
-// Two private helpers (one for notes, one for folders) previously walked
-// the wire tree to recover canonical identifiers from the dialog's display
-// name. That post-hoc lookup was ambiguous when two notes shared a
-// basename across subtrees (returned the FIRST match, potentially the
-// wrong one). `DeleteTarget` now carries `id` (note) / `path` (folder)
-// directly, so the helpers are no longer needed. See `handleConfirmDelete`
-// above.
+

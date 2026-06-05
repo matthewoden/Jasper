@@ -12,7 +12,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useTreeStore } from "../lib/useTreeStore";
 
-// Mock useTagBrowser
+
 const mockRefresh = vi.fn().mockResolvedValue(undefined);
 vi.mock("../lib/useTagBrowser", () => ({
   useTagBrowser: vi.fn(() => ({
@@ -23,7 +23,7 @@ vi.mock("../lib/useTagBrowser", () => ({
   })),
 }));
 
-// Mock tagsApi
+
 const mockRenameTag = vi.fn();
 const mockDeleteTag = vi.fn();
 vi.mock("../lib/tagsApi", () => ({
@@ -33,7 +33,7 @@ vi.mock("../lib/tagsApi", () => ({
   deleteTag: (...args: unknown[]) => mockDeleteTag(...args),
 }));
 
-// Mock useTheme to avoid config fetching
+
 vi.mock("../lib/useTheme", () => ({
   useTheme: () => ({ theme: "dark", setTheme: vi.fn() }),
   THEME_BOOTSTRAP_KEY: "jasper:theme-bootstrap",
@@ -62,7 +62,6 @@ function renderPanel() {
 }
 
 beforeEach(() => {
-  // Reset store state — use rightRailTagsPanelExpanded (not tagBrowserExpanded)
   useTreeStore.setState({
     rightRailTagsPanelExpanded: false,
     activeTagFilter: null,
@@ -84,10 +83,8 @@ describe("RightRailTagsPanel — header and collapsed state", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     renderPanel();
 
-    // Header must use title-case "Tags (N)" — NOT uppercase "TAGS (N)"
     expect(screen.getByText(/^Tags \(5\)$/)).toBeInTheDocument();
 
-    // No tag rows visible
     expect(screen.queryByText("alpha")).toBeNull();
     expect(screen.queryByText("beta")).toBeNull();
   });
@@ -96,7 +93,6 @@ describe("RightRailTagsPanel — header and collapsed state", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     renderPanel();
 
-    // Must NOT find uppercase TAGS label (that was Phase 6 left-sidebar style)
     expect(screen.queryByText(/TAGS \(\d+\)/)).toBeNull();
   });
 
@@ -104,15 +100,12 @@ describe("RightRailTagsPanel — header and collapsed state", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: true });
     renderPanel();
 
-    // Header shows count
     expect(screen.getByText(/^Tags \(5\)$/)).toBeInTheDocument();
 
-    // Tag rows visible with #-prefix format (D-20)
     expect(screen.getByTestId("tag-row-alpha")).toBeInTheDocument();
     expect(screen.getByTestId("tag-row-beta")).toBeInTheDocument();
     expect(screen.getByTestId("tag-row-project")).toBeInTheDocument();
 
-    // Search input visible when expanded
     expect(screen.getByPlaceholderText("Filter tags…")).toBeInTheDocument();
   });
 
@@ -120,10 +113,7 @@ describe("RightRailTagsPanel — header and collapsed state", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     renderPanel();
 
-    // C4: the expand-toggle button is REMOVED. There is no button with aria-label
-    // matching "tags panel, collapsed/expanded". Only the close (×) button remains.
     expect(screen.queryByRole("button", { name: /^tags panel,/i })).toBeNull();
-    // The close button IS there
     expect(screen.getByRole("button", { name: /close tags panel/i })).toBeInTheDocument();
   });
 
@@ -131,8 +121,6 @@ describe("RightRailTagsPanel — header and collapsed state", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     renderPanel();
 
-    // C4: the expand-toggle button with aria-expanded is gone.
-    // There should be no button with aria-expanded attribute.
     const buttons = screen.getAllByRole("button");
     const expandButton = buttons.find(
       (btn) => btn.hasAttribute("aria-expanded"),
@@ -145,10 +133,8 @@ describe("RightRailTagsPanel — panel card shell spec", () => {
   it("panel card has borderRadius: 8 style", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     const { container } = renderPanel();
-    // The outer panel card element is container.firstChild (the <div style={panelCardStyle}>)
     const panel = container.firstChild as HTMLElement | null;
     expect(panel).toBeTruthy();
-    // Verify via style attribute string — borderRadius: 8 renders as "8px"
     const styleAttr = (panel as HTMLElement)?.getAttribute("style") ?? "";
     expect(styleAttr).toContain("border-radius: 8px");
   });
@@ -162,15 +148,12 @@ describe("RightRailTagsPanel — tag list behaviors (adapted from Phase 6)", () 
     const tagItems = screen.getAllByRole("listitem");
     expect(tagItems[0]).toHaveTextContent("alpha");
     expect(tagItems[1]).toHaveTextContent("beta");
-    // UAT 2026-05-12: counts now render as a pill badge (bare number, no
-    // parentheses) with aria-label="<N> notes" for assistive tech.
     const alphaRow = screen.getByTestId("tag-row-alpha");
     const betaRow = screen.getByTestId("tag-row-beta");
     expect(alphaRow).toHaveTextContent("5");
     expect(betaRow).toHaveTextContent("2");
     expect(alphaRow.querySelector('[aria-label="5 notes"]')).not.toBeNull();
     expect(betaRow.querySelector('[aria-label="2 notes"]')).not.toBeNull();
-    // No parentheses anywhere in the row (badge replaces the "(N)" format).
     expect(alphaRow.textContent ?? "").not.toMatch(/\(\d/);
   });
 
@@ -178,7 +161,6 @@ describe("RightRailTagsPanel — tag list behaviors (adapted from Phase 6)", () 
     useTreeStore.setState({ rightRailTagsPanelExpanded: true });
     renderPanel();
 
-    // Click on the row button (not the # span — ensure bare name is stored)
     fireEvent.click(screen.getByTestId("tag-row-alpha"));
     expect(useTreeStore.getState().activeTagFilter).toBe("alpha");
   });
@@ -243,21 +225,16 @@ describe("RightRailTagsPanel — empty states", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: true });
     renderPanel();
 
-    // The Phase 6 left-sidebar copy must be gone
     expect(screen.queryByText(/Add tags: \[\]/)).toBeNull();
   });
 });
 
-// ── SR: Search input behaviors (NEW for Phase 6.5 UX-T-05) ──────────────────
 
 describe("RightRailTagsPanel — search input (SR1..SR6)", () => {
   it("SR1: C4 (UAT-2 N4) — search input is ALWAYS visible (expand/collapse removed)", () => {
-    // C4: the expand/collapse gating is removed. The search input is always visible
-    // when the panel is rendered (panel visibility is gated at parent level via panelSelector).
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     renderPanel();
 
-    // Search input is now always present — no collapse possible from within the panel
     expect(screen.getByPlaceholderText("Filter tags…")).toBeInTheDocument();
   });
 
@@ -277,12 +254,10 @@ describe("RightRailTagsPanel — search input (SR1..SR6)", () => {
     const input = screen.getByPlaceholderText("Filter tags…");
     fireEvent.change(input, { target: { value: "pro" } });
 
-    // "project", "prototype", "process" all contain "pro"
     expect(screen.getByTestId("tag-row-project")).toBeInTheDocument();
     expect(screen.getByTestId("tag-row-prototype")).toBeInTheDocument();
     expect(screen.getByTestId("tag-row-process")).toBeInTheDocument();
 
-    // "alpha", "beta" do NOT contain "pro"
     expect(screen.queryByTestId("tag-row-alpha")).toBeNull();
     expect(screen.queryByTestId("tag-row-beta")).toBeNull();
   });
@@ -319,11 +294,9 @@ describe("RightRailTagsPanel — search input (SR1..SR6)", () => {
     const input = screen.getByPlaceholderText("Filter tags…");
     fireEvent.change(input, { target: { value: "zzz" } });
 
-    // Use function matcher to handle Unicode quotes (“ / ”) from &ldquo;/&rdquo;
     expect(
       screen.getByText((text) => text.includes("No tags match") && text.includes("zzz")),
     ).toBeInTheDocument();
-    // Must NOT show the "no tags" message (there ARE tags, just none matching)
     expect(screen.queryByText(/No tags yet\./)).toBeNull();
   });
 
@@ -335,7 +308,6 @@ describe("RightRailTagsPanel — search input (SR1..SR6)", () => {
     fireEvent.change(input, { target: { value: "pro" } });
     expect((input as HTMLInputElement).value).toBe("pro");
 
-    // Simulate note switch by changing activeNoteId in the store
     useTreeStore.setState({ activeNoteId: "note-2" });
 
     await waitFor(() => {
@@ -344,20 +316,16 @@ describe("RightRailTagsPanel — search input (SR1..SR6)", () => {
   });
 });
 
-// ── Phase 6.6 Plan 04: Task 2 — row format + soft-select ────────────────────
 
 describe("RightRailTagsPanel — Phase 6.6 row format (D-20/D-21/D-22)", () => {
   it("tag row renders '#tagname' + count badge (UAT 2026-05-12)", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: true });
     renderPanel();
 
-    // The row for {name: "project", count: 12} must contain "#project" and the
-    // bare count "12" (rendered inside a badge, no parentheses).
     const row = screen.getByTestId("tag-row-project");
     expect(row).toHaveTextContent("#project");
     expect(row).toHaveTextContent("12");
     expect(row).not.toHaveTextContent("(12)");
-    // The count lives in a badge with an aria-label for assistive tech.
     expect(row.querySelector('[aria-label="12 notes"]')).not.toBeNull();
   });
 
@@ -365,7 +333,6 @@ describe("RightRailTagsPanel — Phase 6.6 row format (D-20/D-21/D-22)", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: true });
     renderPanel();
 
-    // The # + name span should have --color-accent; find it by text content
     const hashSpan = screen.getByText("#project");
     expect(hashSpan).toHaveStyle({ color: "var(--color-accent)" });
   });
@@ -374,7 +341,6 @@ describe("RightRailTagsPanel — Phase 6.6 row format (D-20/D-21/D-22)", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: true });
     renderPanel();
 
-    // UAT 2026-05-12: count is a pill badge addressed by aria-label, not "(N)" text.
     const row = screen.getByTestId("tag-row-project");
     const badge = row.querySelector('[aria-label="12 notes"]') as HTMLElement | null;
     expect(badge).not.toBeNull();
@@ -385,7 +351,6 @@ describe("RightRailTagsPanel — Phase 6.6 row format (D-20/D-21/D-22)", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: true });
     renderPanel();
 
-    // Click the row button — onClick calls setActiveTagFilter(tag.name) with bare name
     fireEvent.click(screen.getByTestId("tag-row-project"));
     expect(useTreeStore.getState().activeTagFilter).toBe("project");
     expect(useTreeStore.getState().activeTagFilter).not.toBe("#project");
@@ -398,24 +363,18 @@ describe("RightRailTagsPanel — Phase 6.6 row format (D-20/D-21/D-22)", () => {
     const row = screen.getByTestId("tag-row-alpha");
     fireEvent.contextMenu(row);
 
-    // After contextMenu, the row should have the soft-select tint
-    // (color-mix or data-soft-selected attribute)
     const style = (row as HTMLElement).style.background;
     expect(style).toContain("color-mix");
     expect(style).toContain("8%");
   });
 });
 
-// ── Phase 6.6 Plan 04: Header refresh tests ─────────────────────────────────
 
 describe("RightRailTagsPanel — Phase 6.6 header refresh (D-19, D-04)", () => {
   it("header renders text 'Tags (N)' with NO icon component before the label", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
     renderPanel();
-    // The label must exist
     expect(screen.getByText(/^Tags \(5\)$/)).toBeInTheDocument();
-    // No Key icon (aria-label or title) — lucide Key has no accessible name by default
-    // but verify no data-testid or role=img with Key label
     expect(screen.queryByRole("img", { name: /key/i })).toBeNull();
   });
 
@@ -429,7 +388,6 @@ describe("RightRailTagsPanel — Phase 6.6 header refresh (D-19, D-04)", () => {
 
   it("clicking × button calls setPanelSelector({ tags: false })", () => {
     useTreeStore.setState({ rightRailTagsPanelExpanded: false });
-    // Seed panelSelector.tags = true
     useTreeStore.setState({ panelSelector: { tags: true, backlinks: true } });
     renderPanel();
 
@@ -450,12 +408,10 @@ describe("RightRailTagsPanel — Phase 6.6 header refresh (D-19, D-04)", () => {
     const closeBtn = screen.getByRole("button", { name: /close tags panel/i });
     fireEvent.click(closeBtn);
 
-    // Expand state must remain unchanged
     expect(useTreeStore.getState().rightRailTagsPanelExpanded).toBe(expandedBefore);
   });
 });
 
-// ── RRTP-no-chevron: C4 (UAT-2 N4) — tags panel header has no chevron ────────
 
 describe("RRTP-no-chevron — tags panel header has no chevron (UAT-2 N4)", () => {
   it("RRTP-NC-1: no .lucide-chevron-down or .lucide-chevron-right in the header", () => {
@@ -487,29 +443,22 @@ describe("RRTP-no-chevron — tags panel header has no chevron (UAT-2 N4)", () =
 
 describe("RightRailTagsPanel — slice isolation (ADD-only invariant)", () => {
   it("uses rightRailTagsPanelExpanded slice — not tagBrowserExpanded", () => {
-    // Set rightRailTagsPanelExpanded=true but tagBrowserExpanded=false
-    // Panel should still show content
     useTreeStore.setState({
       rightRailTagsPanelExpanded: true,
       tagBrowserExpanded: false,
     });
     renderPanel();
 
-    // Tags visible — the new slice controls expansion (row has data-testid)
     expect(screen.getByTestId("tag-row-alpha")).toBeInTheDocument();
   });
 
   it("tagBrowserExpanded=true does NOT affect RightRailTagsPanel (C4: expand removed)", () => {
-    // C4: expand/collapse is removed from RightRailTagsPanel. Tags are always visible.
-    // tagBrowserExpanded has no effect on this component.
     useTreeStore.setState({
       rightRailTagsPanelExpanded: false,
       tagBrowserExpanded: true,
     });
     renderPanel();
 
-    // C4: tags ARE visible — expand/collapse gating removed from this component.
-    // Panel visibility is gated at parent level (panelSelector.tags).
     expect(screen.getByTestId("tag-row-alpha")).toBeInTheDocument();
   });
 });

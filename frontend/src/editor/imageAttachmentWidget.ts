@@ -40,8 +40,7 @@ import {
 import { syntaxTree } from "@codemirror/language";
 import { RangeSetBuilder } from "@codemirror/state";
 
-// Matches: ![alt text](attachments/filename.ext)
-// Does NOT match external URLs.
+
 const IMG_RE = /!\[([^\]]*)\]\((attachments\/[^)]+)\)/;
 
 /**
@@ -67,7 +66,6 @@ class InlineImageWidget extends WidgetType {
 
   toDOM(): HTMLElement {
     const container = document.createElement("div");
-    // UI-SPEC §Surface 8 — inline image widget container
     container.style.cssText = [
       "display:block",
       "max-width:min(640px,calc(100% - 32px))",
@@ -75,7 +73,6 @@ class InlineImageWidget extends WidgetType {
       "border-radius:6px",
       "overflow:hidden",
       "background:var(--color-surface-subtle)",
-      // 3:2 aspect-ratio loading placeholder (Pitfall 3 reflow mitigation)
       "aspect-ratio:3/2",
     ].join(";");
     container.dataset.testid = "attachment-image-widget";
@@ -90,12 +87,10 @@ class InlineImageWidget extends WidgetType {
     img.dataset.testid = "attachment-image-loaded";
 
     img.onload = () => {
-      // Clear the aspect-ratio placeholder after the image loads
       container.style.aspectRatio = "";
     };
 
     img.onerror = () => {
-      // On error: swap to file-chip "missing" state
       container.replaceChildren();
       container.style.aspectRatio = "";
       const missing = document.createElement("div");
@@ -123,7 +118,7 @@ class InlineImageWidget extends WidgetType {
   }
 
   get estimatedHeight(): number {
-    return 200; // CM6 hint to reduce reflow
+    return 200;
   }
 
   ignoreEvent(): boolean {
@@ -163,9 +158,6 @@ export function buildImageAttachmentDecorations(
         const [, alt, src] = m;
         if (!src.startsWith("attachments/")) return;
 
-        // Widget at END of line, side:1 → renders after the source line.
-        // block:true is intentionally OMITTED — CM6 ViewPlugin constraint.
-        // The widget's CSS `display:block` provides the visual block appearance.
         builder.add(
           line.to,
           line.to,
@@ -206,7 +198,6 @@ export function imageAttachmentPlugin(
         this.decorations = buildImageAttachmentDecorations(view, getNoteId());
       }
       update(u: ViewUpdate) {
-        // IME guard (RESEARCH §Pitfall — composing state)
         if (u.view.composing) {
           this.decorations = this.decorations.map(u.changes);
           return;

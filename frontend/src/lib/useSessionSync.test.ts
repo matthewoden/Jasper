@@ -5,15 +5,14 @@ import type { components } from "../api/schema";
 import { useSessionSync, type SessionSyncHandlers } from "./useSessionSync";
 import { __testing__ as backlinksTesting } from "./useBacklinks";
 
-// Amendment 2: all fixtures use the generated schema types — no bypass casts.
+
 type WSEnvelope = components["schemas"]["WSEnvelope"];
 
-// Mock useFileTree and useTreeStore to avoid spinning up real stores.
+
 const refreshMock = vi.fn(async () => {});
 const setStatusMock = vi.fn();
-// UAT-2 R4-2: setForceWsReconnect is the publish-side of the manual
-// reconnect handle; mock + assert callable. Tests don't exercise the
-// reconnect path itself yet (that needs MockSocket coordination).
+
+
 const setForceWsReconnectMock = vi.fn();
 
 vi.mock("./useFileTree", () => ({
@@ -45,9 +44,6 @@ vi.mock("./sessionId", () => ({
   generateOrLoadSessionId: () => "client-session-id",
 }));
 
-// DO NOT mock useTagBrowser or useBacklinks — we use the real module-level
-// subscriber Sets so we can assert dispatchLinksEvent actually fires.
-// The __testing__ exports give us introspection without hooking into React.
 
 const fakeUrl = "ws://localhost:1234/api/v1/ws";
 
@@ -103,14 +99,12 @@ describe("useSessionSync", () => {
     const handlers = makeHandlers();
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
     await waitFor(() => expect(server.clients()).toHaveLength(1));
-    // Use typed fixture per Amendment 2
     const evt: WSEnvelope = {
       event: "note:updated",
       origin_session_id: "client-session-id", // OWN sid — should be filtered out
       payload: { id: "x", path: "x.md", updated_at: "2026-05-06T12:00:00Z" },
     };
     server.emit("message", JSON.stringify(evt));
-    // Wait a tick to let any dispatch happen.
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
@@ -180,7 +174,6 @@ describe("useSessionSync", () => {
   });
 });
 
-// ─── Plan 06-11 SS tests: new WS event handlers ──────────────────────────────
 
 describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
   let server: Server;
@@ -189,10 +182,8 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
     server?.stop();
   });
 
-  // ── SS1: tags:updated dispatches to tag browser ───────────────────────────
 
   it("SS1: tags:updated dispatches to tag browser (existing behavior)", async () => {
-    // tags:updated was wired in Plan 06-08; verify it still fires after 06-11 changes.
     server = new Server(fakeUrl);
     const handlers = makeHandlers();
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
@@ -203,7 +194,6 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
       origin_session_id: "other-session",
       payload: { tag: "updated-tag", touched_note_ids: [] },
     };
-    // Dispatch — no error means the case is handled.
     server.emit("message", JSON.stringify(evt));
     await act(async () => {
       await new Promise((r) => setTimeout(r, 30));
@@ -212,7 +202,6 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
     // No assertion on subscribers here; useTagBrowser.test.ts covers that.
   });
 
-  // ── SS2: tags:rewritten dispatches to tag browser ─────────────────────────
 
   it("SS2: tags:rewritten dispatches to tag browser (existing behavior)", async () => {
     server = new Server(fakeUrl);
@@ -232,7 +221,6 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
     // No throw = handled.
   });
 
-  // ── SS3: links:rewritten dispatches to useBacklinks + calls onLinksRewritten
 
   it("SS3: links:rewritten calls onLinksRewritten handler + dispatches links event", async () => {
     server = new Server(fakeUrl);
@@ -250,11 +238,9 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
     };
     server.emit("message", JSON.stringify(evt));
     await waitFor(() => expect(onLinksRewritten).toHaveBeenCalled());
-    // links:rewritten also triggers refreshTree (for sidebar label updates).
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
   });
 
-  // ── SS4: D-35 self-suppression for batch events ───────────────────────────
 
   it("SS4: links:rewritten with own session_id is suppressed (D-35)", async () => {
     server = new Server(fakeUrl);
@@ -265,7 +251,6 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
     await waitFor(() => expect(server.clients()).toHaveLength(1));
 
-    // origin_session_id matches own session id ("client-session-id" per mock).
     const selfEvt: WSEnvelope = {
       event: "links:rewritten",
       origin_session_id: "client-session-id",
@@ -275,26 +260,17 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
-    // Handler should NOT be called because origin matches own session.
     expect(onLinksRewritten).not.toHaveBeenCalled();
   });
 
-  // ── SS5: note:updated fans out to useBacklinks ────────────────────────────
 
   it("SS5: note:updated fans out to useBacklinks dispatch", async () => {
     server = new Server(fakeUrl);
     const handlers = makeHandlers();
 
-    // Register a fake useBacklinks subscriber.
     const linksSubscriber = vi.fn();
-    // Access the module-level set via the testing export's simulateEvent
-    // and subscriber count — we can't inject directly, so instead we
-    // verify that the dispatch path is active by checking no error is thrown
-    // and using the backlinksTesting.getSubscriberCount for state.
 
-    // Create a hook that registers a subscriber.
     const { unmount } = renderHook(() => {
-      // We don't use the hook output — just need it mounted to register.
       void linksSubscriber;
     });
 
@@ -309,14 +285,11 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
     };
     server.emit("message", JSON.stringify(evt));
     await waitFor(() => expect(handlers.onNoteUpdated).toHaveBeenCalled());
-    // note:updated also fans to onNoteUpdated handler (existing) AND dispatches links event.
-    // Subscriber count is 0 (no useBacklinks mounted in test), but dispatchLinksEvent runs.
     expect(backlinksTesting.getSubscriberCount()).toBe(beforeCount);
 
     unmount();
   });
 
-  // ── SS6: links:rewritten also calls refreshTree (sidebar label update) ────
 
   it("SS6: links:rewritten calls refreshTree for sidebar label updates", async () => {
     server = new Server(fakeUrl);
@@ -335,7 +308,6 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
   });
 
-  // ── SS7: note:created dispatches links event AND refreshTree ──────────────
 
   it("SS7: note:created fans out to useBacklinks AND refreshTree", async () => {
     server = new Server(fakeUrl);
@@ -351,13 +323,11 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
       payload: { id: "y", path: "y.md", title: "New Note", updated_at: "2026-05-06T12:00:00Z" },
     };
     server.emit("message", JSON.stringify(evt));
-    // note:created triggers both dispatchLinksEvent AND refreshTree.
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     // dispatchLinksEvent does not throw even with 0 subscribers.
   });
 });
 
-// ─── Plan 08-17d vault switch WS event handler tests ─────────────────────────
 
 describe("VS1..VS2: useSessionSync Plan 08-17d vault switch extensions", () => {
   let server: Server;
@@ -366,7 +336,6 @@ describe("VS1..VS2: useSessionSync Plan 08-17d vault switch extensions", () => {
     server?.stop();
   });
 
-  // ── VS1: vault.switching calls onVaultSwitching with payload ─────────────
 
   it("VS1: vault.switching event calls onVaultSwitching with target_path + target_display_name", async () => {
     server = new Server(fakeUrl);
@@ -377,7 +346,6 @@ describe("VS1..VS2: useSessionSync Plan 08-17d vault switch extensions", () => {
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
     await waitFor(() => expect(server.clients()).toHaveLength(1));
 
-    // vault.switching is server-originated (origin_session_id="")
     const evt = {
       event: "vault.switching",
       origin_session_id: "",
@@ -394,7 +362,6 @@ describe("VS1..VS2: useSessionSync Plan 08-17d vault switch extensions", () => {
     });
   });
 
-  // ── VS2: vault.switched calls onVaultSwitched ─────────────────────────────
 
   it("VS2: vault.switched event calls onVaultSwitched", async () => {
     server = new Server(fakeUrl);
@@ -405,7 +372,6 @@ describe("VS1..VS2: useSessionSync Plan 08-17d vault switch extensions", () => {
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
     await waitFor(() => expect(server.clients()).toHaveLength(1));
 
-    // vault.switched is server-originated (origin_session_id="")
     const evt = {
       event: "vault.switched",
       origin_session_id: "",

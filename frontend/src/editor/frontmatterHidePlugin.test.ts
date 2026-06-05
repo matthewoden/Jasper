@@ -23,9 +23,6 @@ import {
   countTagsInFrontmatter,
 } from "./frontmatterHidePlugin";
 
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
 
 function makeView(doc: string): EditorView {
   const parent = document.createElement("div");
@@ -61,8 +58,6 @@ function hasReplaceDecoration(view: EditorView): boolean {
   if (!plugin) return false;
   const cursor = plugin.decorations.iter();
   while (cursor.value !== null) {
-    // Replace decorations have a widget spec (or are collapsed)
-    // spec.widget is the defining property for Decoration.replace with widget
     if (cursor.value.spec?.widget !== undefined) {
       return true;
     }
@@ -77,7 +72,6 @@ function hasLineDecoration(view: EditorView): boolean {
   if (!plugin) return false;
   const cursor = plugin.decorations.iter();
   while (cursor.value !== null) {
-    // Line decorations have from === to and have a class in spec
     if (cursor.from === cursor.to && cursor.value.spec?.class !== undefined) {
       return true;
     }
@@ -96,7 +90,6 @@ function getEmptyWidgetSpan(view: EditorView): HTMLSpanElement | null {
   const cursor = plugin.decorations.iter();
   while (cursor.value !== null) {
     if (cursor.value.spec?.widget !== undefined) {
-      // toDOM() produces the span — no view arg needed for FrontmatterEmptyWidget
       const el = cursor.value.spec.widget.toDOM();
       if (el instanceof HTMLSpanElement) return el;
     }
@@ -105,9 +98,6 @@ function getEmptyWidgetSpan(view: EditorView): HTMLSpanElement | null {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Test docs
-// ---------------------------------------------------------------------------
 
 const DOC_WITH_TWO_TAGS = `---
 tags: [foo, bar]
@@ -138,9 +128,6 @@ tags:
 ---
 # Body`;
 
-// ---------------------------------------------------------------------------
-// Tests — hidden state (default)
-// ---------------------------------------------------------------------------
 
 describe("frontmatterHidePlugin — hidden state (default)", () => {
   const views: EditorView[] = [];
@@ -154,15 +141,12 @@ describe("frontmatterHidePlugin — hidden state (default)", () => {
     const view = makeView(DOC_WITH_TWO_TAGS);
     views.push(view);
 
-    // Should have a replace decoration
     expect(hasReplaceDecoration(view)).toBe(true);
 
-    // Widget must produce an empty span — not a button, not affordance text
     const span = getEmptyWidgetSpan(view);
     expect(span).not.toBeNull();
     expect(span?.getAttribute("aria-hidden")).toBe("true");
     expect(span?.style.display).toBe("none");
-    // No visible label or text content
     expect(span?.textContent).toBe("");
   });
 
@@ -207,9 +191,6 @@ describe("frontmatterHidePlugin — hidden state (default)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tests — FrontmatterEmptyWidget contract
-// ---------------------------------------------------------------------------
 
 describe("frontmatterHidePlugin — FrontmatterEmptyWidget contract", () => {
   const views: EditorView[] = [];
@@ -244,8 +225,6 @@ describe("frontmatterHidePlugin — FrontmatterEmptyWidget contract", () => {
     const cursor = plugin.decorations.iter();
     if (cursor.value?.spec?.widget) {
       const widget = cursor.value.spec.widget;
-      // eq() should return true when compared to another instance of the same type
-      // We test by comparing it to itself (same instance satisfies instanceof check)
       expect(widget.eq(widget)).toBe(true);
     }
   });
@@ -276,9 +255,6 @@ describe("frontmatterHidePlugin — FrontmatterEmptyWidget contract", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tests — toggle StateEffect
-// ---------------------------------------------------------------------------
 
 describe("frontmatterHidePlugin — toggle StateEffect", () => {
   const views: EditorView[] = [];
@@ -292,13 +268,10 @@ describe("frontmatterHidePlugin — toggle StateEffect", () => {
     const view = makeView(DOC_WITH_TWO_TAGS);
     views.push(view);
 
-    // Initially hidden → replace decoration (empty widget)
     expect(hasReplaceDecoration(view)).toBe(true);
 
-    // Dispatch toggle
     view.dispatch({ effects: toggleFrontmatterVisibility.of(undefined) });
 
-    // Now raw view → line decorations
     expect(hasReplaceDecoration(view)).toBe(false);
     expect(hasLineDecoration(view)).toBe(true);
   });
@@ -307,19 +280,14 @@ describe("frontmatterHidePlugin — toggle StateEffect", () => {
     const view = makeView(DOC_WITH_TWO_TAGS);
     views.push(view);
 
-    // Toggle to raw
     view.dispatch({ effects: toggleFrontmatterVisibility.of(undefined) });
     expect(hasReplaceDecoration(view)).toBe(false);
 
-    // Toggle back to hidden
     view.dispatch({ effects: toggleFrontmatterVisibility.of(undefined) });
     expect(hasReplaceDecoration(view)).toBe(true);
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tests — keymap (D-17 preserved)
-// ---------------------------------------------------------------------------
 
 describe("frontmatterHidePlugin — keymap", () => {
   it("frontmatterToggleKeymap is defined and importable", () => {
@@ -341,13 +309,11 @@ describe("frontmatterHidePlugin — keymap", () => {
       }),
     });
 
-    // Verify the view built without error and the keymap is usable
     expect(view.state.doc.length).toBeGreaterThan(0);
     view.destroy();
   });
 
   it("frontmatterToggleKeymap key is 'Mod-Shift-y'", () => {
-    // Verify by directly inspecting the exported keymap extension structure
     const parent = document.createElement("div");
     document.body.append(parent);
     const view = new EditorView({
@@ -362,19 +328,14 @@ describe("frontmatterHidePlugin — keymap", () => {
       }),
     });
 
-    // Verify the view has the keymap installed by checking doc is accessible
     expect(view.state.doc.toString()).toContain("tags: [foo, bar]");
     view.destroy();
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tests — note-switch reset
-// ---------------------------------------------------------------------------
 
 describe("frontmatterHidePlugin — note-switch reset", () => {
   it("creating a new EditorView resets frontmatterHidden to true", () => {
-    // First view: toggle to raw (hidden=false)
     const parent1 = document.createElement("div");
     document.body.append(parent1);
     const view1 = new EditorView({
@@ -385,13 +346,11 @@ describe("frontmatterHidePlugin — note-switch reset", () => {
       }),
     });
 
-    // Toggle to raw view
     view1.dispatch({ effects: toggleFrontmatterVisibility.of(undefined) });
     expect(hasReplaceDecoration(view1)).toBe(false);
 
     view1.destroy();
 
-    // Second view: should start hidden again (constructor resets frontmatterHidden)
     const parent2 = document.createElement("div");
     document.body.append(parent2);
     const view2 = new EditorView({
@@ -402,16 +361,12 @@ describe("frontmatterHidePlugin — note-switch reset", () => {
       }),
     });
 
-    // New view should show the empty widget (hidden=true)
     expect(hasReplaceDecoration(view2)).toBe(true);
 
     view2.destroy();
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tests — IME composition gate
-// ---------------------------------------------------------------------------
 
 describe("frontmatterHidePlugin — IME composition gate", () => {
   it("decorations survive mapping through no-op changes (composition guard)", () => {
@@ -428,7 +383,6 @@ describe("frontmatterHidePlugin — IME composition gate", () => {
     const plugin = view.plugin(frontmatterHidePlugin);
     expect(plugin).not.toBeNull();
 
-    // Map decorations through empty changes (simulates IME gate behavior)
     const emptyTx = view.state.update({});
     const mapped = plugin!.decorations.map(emptyTx.changes);
     let count = 0;
@@ -438,16 +392,12 @@ describe("frontmatterHidePlugin — IME composition gate", () => {
       cursor.next();
     }
 
-    // Should still have the replace decoration (empty widget)
     expect(count).toBeGreaterThan(0);
 
     view.destroy();
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tests — countTagsInFrontmatter helper (preserved, independent)
-// ---------------------------------------------------------------------------
 
 describe("countTagsInFrontmatter — helper preserved", () => {
   it("flow-sequence: tags: [foo, bar] → 2", () => {

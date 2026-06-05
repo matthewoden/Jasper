@@ -12,15 +12,7 @@
 import { useCallback, useMemo } from "react";
 import { COMMAND_PALETTE_ENTRIES, type Shortcut } from "./shortcutsRegistry";
 
-// Module-level constant — never changes across renders, so it doesn't
-// belong in any useCallback / useMemo dep array. Plan 08-06: a command
-// is "disabled" (rendered dimmed) when the lookup table has no bound
-// action for its id. We restrict disabled-rendering to commands that
-// explicitly opt in to that affordance — current set: just
-// share-reveal-current-note. Existing commands (new-note / save /
-// today / ...) are always present whenever the palette opens, so an
-// undefined fn means "not wired" and we still gracefully no-op
-// execute() rather than render them dimmed.
+
 const DISABLEABLE_IDS: ReadonlySet<string> = new Set([
   "share-reveal-current-note",
 ]);
@@ -34,13 +26,7 @@ export interface CommandActions {
   onRefreshIndex?: () => void;
   onRebuildIndex?: () => void;
   onShowShortcuts?: () => void;
-  // Plan 08-06 (D-26 / SHARE-01 Mount C): opens the host OS file manager
-  // focused on the currently active note. The caller is expected to
-  // resolve the active note's path before invoking; if no note is active,
-  // the caller passes undefined so the palette renders the entry dimmed.
   onShareRevealCurrentNote?: () => void;
-  // Plan 08-17c (V7): opens the VaultPicker in switch mode.
-  // No hotkey (Cmd-Shift-V dropped per V7 — Chrome paste collision).
   onSwitchVault?: () => void;
 }
 
@@ -71,7 +57,6 @@ export interface CommandPaletteResult {
 }
 
 export function useCommandPalette(actions: CommandActions): CommandPaletteResult {
-  // Build id → action lookup table; re-derived when actions reference changes.
   const idToAction: Record<string, (() => void) | undefined> = useMemo(
     () => ({
       "new-note": actions.onNewNote,
@@ -82,9 +67,7 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       "refresh-index": actions.onRefreshIndex,
       "rebuild-index": actions.onRebuildIndex,
       "show-shortcuts": actions.onShowShortcuts,
-      // Plan 08-06: undefined when no note is active (palette renders dimmed).
       "share-reveal-current-note": actions.onShareRevealCurrentNote,
-      // Plan 08-17c (V7): opens the VaultPicker in switch mode.
       "vault.switch": actions.onSwitchVault,
     }),
     [
@@ -113,13 +96,11 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
     (id: string): boolean => {
       const fn = idToAction[id];
       if (fn) fn();
-      // Return true (close palette) for all commands EXCEPT those in COMMANDS_KEEP_OPEN.
       return !COMMANDS_KEEP_OPEN.has(id);
     },
     [idToAction],
   );
 
-  // DISABLEABLE_IDS lives at module scope — see the const at the top.
   const isDisabled = useCallback(
     (id: string): boolean => DISABLEABLE_IDS.has(id) && !idToAction[id],
     [idToAction],

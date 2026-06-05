@@ -14,8 +14,6 @@ import { describe, expect, it, vi } from "vitest";
 import { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog";
 import { CHEAT_SHEET_ENTRIES, GROUP_ORDER } from "../lib/shortcutsRegistry";
 
-// Radix Dialog uses portals — jsdom does not need special setup since
-// @testing-library/react appends portals to document.body by default.
 
 describe("KeyboardShortcutsDialog", () => {
   it("KSD-1: renders title 'Keyboard shortcuts' when open=true", () => {
@@ -62,7 +60,6 @@ describe("KeyboardShortcutsDialog", () => {
   it("KSD-6: GROUP_ORDER groups present as eyebrow headings (case-insensitive uppercase)", () => {
     const onOpenChange = vi.fn();
     render(<KeyboardShortcutsDialog open={true} onOpenChange={onOpenChange} />);
-    // Groups that actually have entries in CHEAT_SHEET_ENTRIES
     const presentGroups = GROUP_ORDER.filter((g) =>
       CHEAT_SHEET_ENTRIES.some((e) => e.group === g),
     );
@@ -82,7 +79,6 @@ describe("KeyboardShortcutsDialog", () => {
   it("KSD-8: entries with shortcut render a KeyboardChip (kbd element)", () => {
     const onOpenChange = vi.fn();
     render(<KeyboardShortcutsDialog open={true} onOpenChange={onOpenChange} />);
-    // At least one <kbd> element should be present for entries with shortcuts
     const kbdElements = document.querySelectorAll("kbd");
     const entriesWithShortcut = CHEAT_SHEET_ENTRIES.filter((e) => e.shortcut);
     expect(kbdElements.length).toBeGreaterThanOrEqual(
@@ -93,12 +89,10 @@ describe("KeyboardShortcutsDialog", () => {
   it("KSD-9: entries without shortcut render an em-dash", () => {
     const onOpenChange = vi.fn();
     render(<KeyboardShortcutsDialog open={true} onOpenChange={onOpenChange} />);
-    // "Toggle theme" is in CHEAT_SHEET_ENTRIES with no shortcut
     const noShortcutEntry = CHEAT_SHEET_ENTRIES.find(
       (e) => !e.shortcut && e.inCheatSheet,
     );
     if (noShortcutEntry) {
-      // Should render an em-dash for the missing shortcut
       const dashes = screen.getAllByText("—");
       expect(dashes.length).toBeGreaterThan(0);
     }

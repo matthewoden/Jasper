@@ -24,7 +24,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-// Mock client (used by SettingsMenu → useTheme → useConfig)
+
 vi.mock("../api/client", () => ({
   client: {
     GET: vi.fn().mockResolvedValue({
@@ -43,8 +43,7 @@ vi.mock("../api/client", () => ({
   },
 }));
 
-// Plan 08-17c: mock useVaultPicker so StatusBar doesn't spin up real API calls.
-// Default: current=null (no vault active) so the vault segment is not rendered.
+
 const mockUseVaultPickerOpen = vi.fn();
 vi.mock("../lib/useVaultPicker", () => ({
   useVaultPicker: vi.fn(() => ({
@@ -59,7 +58,7 @@ vi.mock("../lib/useVaultPicker", () => ({
   })),
 }));
 
-// Plan 08-17c: mock vaultApi used by VaultPicker (mounted as switch-mode modal in StatusBar).
+
 vi.mock("../lib/vaultApi", () => ({
   vaultApi: {
     getCurrent: vi.fn().mockResolvedValue(null),
@@ -95,7 +94,6 @@ describe("<StatusBar />", () => {
     const spacer = container.querySelector("[data-testid='status-bar-spacer']");
     expect(spacer).not.toBeNull();
     expect(spacer?.getAttribute("style") ?? "").toContain("flex: 1");
-    // Connection dot must come before the spacer (left side); settings after.
     const dot = screen.getByTestId("connection-status-dot");
     expect(
       dot.compareDocumentPosition(spacer!) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -108,7 +106,6 @@ describe("<StatusBar />", () => {
     expect(settingsTrigger).toBeInTheDocument();
     const spacer = container.querySelector("[data-testid='status-bar-spacer']");
     expect(spacer).not.toBeNull();
-    // Spacer should come before the settings trigger (settings is after spacer).
     expect(
       spacer!.compareDocumentPosition(settingsTrigger) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -121,13 +118,6 @@ describe("<StatusBar />", () => {
   });
 });
 
-// ── Plan 07-37 (UAT-3 N9) — superseded by Plan 07-38 (UAT-4 N9) ────────────
-//
-// Plan 07-37 removed the SaveIndicator from StatusBar. Plan 07-38 user
-// reversal puts it BACK — SaveIndicator as a clickable button lives in
-// StatusBar's metadata zone. The standalone "Reindex notes" button stays
-// removed (the SaveIndicator-button merger from Plan 07-37 D-55 IS preserved
-// — only the mount location is reverted).
 
 describe("StatusBar — Plan 07-38 (UAT-4 N9) restored SaveIndicator-button", () => {
   it("SB-NO-REFRESH (preserved): no standalone 'Reindex notes' button is rendered (D-55 merge kept)", () => {
@@ -142,10 +132,6 @@ describe("StatusBar — Plan 07-38 (UAT-4 N9) restored SaveIndicator-button", ()
   });
 
   it("SB-N9-2: clicking the SaveIndicator-button calls postAdminReindex('incremental')", async () => {
-    // postAdminReindex is mocked here so the StatusBar wiring is isolated
-    // from the network. The Task 3 GREEN implementation imports
-    // postAdminReindex from adminApi and wires it to the SaveIndicator's
-    // onClick — same pattern as the (since-reverted) TopBar mount.
     const adminApi = await import("../lib/adminApi");
     const spy = vi.spyOn(adminApi, "postAdminReindex").mockResolvedValue({
       data: undefined,
@@ -167,12 +153,11 @@ describe("StatusBar — Plan 07-38 (UAT-4 N9) restored SaveIndicator-button", ()
 
   it("SB-N9-3: the standalone 'Reindex notes' button is NOT rendered (Plan 07-37 removal preserved)", () => {
     render(<StatusBar />);
-    // Title attribute used by Phase 06.6 refresh button.
     expect(screen.queryByTitle("Reindex notes")).toBeNull();
   });
 });
 
-// ── Plan 08-17c (V7) — vault segment in StatusBar ────────────────────────────
+
 describe("StatusBar — Plan 08-17c vault segment", () => {
   it("SB-VAULT-1: vault segment NOT rendered when current is null", () => {
     vi.mocked(useVaultPicker).mockReturnValue({

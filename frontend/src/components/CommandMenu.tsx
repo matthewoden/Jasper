@@ -32,9 +32,6 @@ import { SearchResultRow } from "./SearchResultRow";
 import type { Shortcut } from "../lib/shortcutsRegistry";
 import type { SearchResult } from "../lib/searchApi";
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Types
-// ──────────────────────────────────────────────────────────────────────────────
 
 interface NoteItem {
   kind: "note";
@@ -49,31 +46,20 @@ interface CmdItem {
   label: string;
   shortcut?: string;
   group: string;
-  // Plan 08-06 (D-26 / SHARE-01 Mount C): dimmed-and-inert rendering for
-  // commands whose underlying action is not currently available
-  // (canonical case: "Show current note in file manager" when no note
-  // is active). UI-SPEC §Surface 4 Mount C: "palette item renders dimmed
-  // with no shortcut hint; selecting does nothing".
   disabled?: boolean;
 }
 
-// Plan 07-39 (UAT-5 N11): SearchHitItem REMOVED from the switcher's items.
-// Plan 07-40 (UAT-6): SearchHitItem RE-ADDED as the row type used by
-// mode='search' (CommandMenu's new third mode). The row itself reuses
-// SearchResultRow from SearchResultRow.tsx (Plan 07-39 Task 2 legibility
-// carries forward automatically).
+
 interface SearchHitItem {
   kind: "search-result";
   id: string;
   result: SearchResult;
 }
 
-// Plan 07-33 holdover: group eyebrow separator. Plan 07-39 keeps the type
-// because commands mode may still want it in a future iteration, but in
-// notes mode we no longer emit groups (single-section list).
+
 interface GroupItem {
   kind: "group";
-  id: string;     // synthetic e.g. "group:notes" or "group:search"
+  id: string;
   label: string;
 }
 
@@ -82,14 +68,10 @@ type Item = NoteItem | CmdItem | SearchHitItem | GroupItem;
 export interface CommandMenuProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  // Plan 07-40 (UAT-6): "search" is the third mode (Cmd+Shift+F).
   mode: "notes" | "commands" | "search";
   actions: CommandActions;
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Helper: skip group-eyebrow rows during keyboard navigation
-// ──────────────────────────────────────────────────────────────────────────────
 
 function nextSelectable(items: Item[], from: number, direction: 1 | -1): number {
   let i = from + direction;
@@ -97,17 +79,9 @@ function nextSelectable(items: Item[], from: number, direction: 1 | -1): number 
     if (items[i].kind !== "group") return i;
     i += direction;
   }
-  return from; // clamp at original if no selectable in that direction
+  return from;
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// ActivityIndicator — Plan 07-43 (UAT-8)
-//
-// Inline Loader2 (spinning, via a scoped @keyframes spin) + 14px muted
-// "Searching…" label. ~64px high (matches the 48px padding empty-state
-// blocks above + below) so the modal doesn't reflow when the indicator
-// appears/disappears across debounce + fetch boundaries.
-// ──────────────────────────────────────────────────────────────────────────────
 
 function ActivityIndicator() {
   return (
@@ -144,36 +118,22 @@ function ActivityIndicator() {
   );
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Component
-// ──────────────────────────────────────────────────────────────────────────────
 
 export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuProps) {
   const [query, setQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
 
-  // Notes mode: fuzzysort over in-memory note list (always run; cheap pure client compute)
   const noteHits = useQuickSwitcher(mode === "notes" ? query : "");
 
-  // Commands mode: label substring filter over COMMAND_PALETTE_ENTRIES
   const cmd = useCommandPalette(actions);
   const cmdHits: Shortcut[] = mode === "commands" ? cmd.filtered(query) : [];
 
-  // Plan 07-40 (UAT-6): search mode wraps useSearch (FTS5 + snippet excerpts).
-  // Plan 07-43 (UAT-8): isSearching surfaces an inline activity indicator
-  // below so users see in-window feedback. Plan 07-44 (UAT-8 follow-up):
-  // debounce reverted to 200ms (was briefly 500ms in Plan 07-43) — the
-  // activity indicator made the longer debounce unnecessary.
-  // useSearch only fires above the 2-char threshold; pass empty string when
-  // not in search mode so the hook is effectively dormant in notes/commands.
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
   const { results: searchHits, isSearching } = useSearch(
     mode === "search" ? query : "",
     mode === "search" ? activeTagFilter : null,
   );
 
-  // Plan 07-39 (UAT-5 N11): notes mode is title-fuzzy ONLY. Plan 07-40 adds
-  // mode='search' which renders FTS5 SearchResultRow rows from useSearch.
   let items: Item[];
   if (mode === "commands") {
     items = cmdHits.map((c) => ({
@@ -182,22 +142,15 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       label: c.label,
       shortcut: c.shortcut,
       group: c.group,
-      // Plan 08-06 (D-26 / SHARE-01 Mount C): dim + inert when the
-      // underlying action is unbound (e.g. "Show current note in file
-      // manager" with no note active). The optional-chain keeps older
-      // test mocks that didn't include isDisabled tolerant — those mocks
-      // are scoped to the pre-08-06 commands and never need disabling.
       disabled: cmd.isDisabled?.(c.id) ?? false,
     }));
   } else if (mode === "search") {
-    // mode === "search": single-section FTS5 results. Rows are SearchResultRow.
     items = searchHits.map((r) => ({
       kind: "search-result" as const,
       id: r.id,
       result: r,
     }));
   } else {
-    // mode === "notes": single-section title-fuzzy list. No eyebrows.
     items = noteHits.map((h) => ({
       kind: "note" as const,
       id: h.id,
@@ -206,24 +159,17 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     }));
   }
 
-  // UAT-3 N10 + N11 (Plan 07-33): Start selectedIdx at the FIRST SELECTABLE row
-  // (skip any leading group eyebrow). Previously `setSelectedIdx(0)` would land on
-  // the group eyebrow when notes mode prepends "Switch to note" — fix: find the
-  // first non-group index.
   useEffect(() => {
     const first = items.findIndex((it) => it.kind !== "group");
     setSelectedIdx(first >= 0 ? first : 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, items.length]);
 
-  // UAT-2 R1-2 (Plan 07-23 Fix B): reset query on open AND on mode change.
   useEffect(() => {
     if (open) setQuery("");
   }, [open, mode]);
 
-  // UAT-2 R1-2 (Plan 07-23): Force virtualizer to re-subscribe to ResizeObserver
-  // after the dialog opens.
-  const [, setVirtualizerMountKey] = useState(0); // mount key — only setter is used (triggers re-render)
+  const [, setVirtualizerMountKey] = useState(0);
   useEffect(() => {
     if (open) {
       const id = setTimeout(() => {
@@ -233,44 +179,21 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     }
   }, [open]);
 
-  // Virtualization
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    // Plan 07-39 (UAT-5 N11): two possible row heights — group eyebrow (24px,
-    // commands mode only) and standard note/cmd row (36px). Plan 07-40 adds
-    // SearchResultRow (~88px: title + path + 2-line excerpt + optional chips).
-    //
-    // Plan 07-42 (UAT-7): search-result rows actually vary 80-130px+ depending
-    // on excerpt rendering (dangerouslySetInnerHTML reflows post-mount) and on
-    // matching tag chips. The 88px estimate is now ONLY the initial guess;
-    // `measureElement` below makes the virtualizer re-measure each rendered
-    // row to its true offsetHeight, so tall rows no longer clip into the next.
     estimateSize: (index) => {
       const it = items[index];
       if (!it) return 36;
       if (it.kind === "group") return 24;
       if (it.kind === "search-result") return 88;
-      return 36; // note and cmd rows
+      return 36;
     },
     overscan: 5,
-    // Plan 07-42 (UAT-7) — dynamic row measurement.
-    // @tanstack/react-virtual passes each row's outer DOM element here; we
-    // return its measured height so the virtualizer recalculates layout.
-    //
-    // Plan 07-44 (UAT-8 follow-up): measureElement is wired ONLY on the
-    // search-result row branch via `ref={virtualizer.measureElement}` +
-    // `data-index={vi.index}`. note / cmd / group rows do NOT attach the ref
-    // and so the virtualizer keeps using the estimateSize values (36 / 24)
-    // for those rows. This prevents non-search rows from being mismeasured
-    // when their actual rendered DOM height exceeds the 36px estimate, and
-    // it pairs with the mode-change `virtualizer.measure()` call below so
-    // that cached search-result heights don't leak across modes.
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });
 
-  // Scroll selected item into view
   useEffect(() => {
     if (items.length > 0) {
       virtualizer.scrollToIndex(Math.max(0, Math.min(selectedIdx, items.length - 1)));
@@ -278,34 +201,17 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIdx]);
 
-  // Plan 07-44 (UAT-8 follow-up) — reset cached row measurements on mode change.
-  //
-  // @tanstack/react-virtual caches per-index `measureElement` results. Plan
-  // 07-42 wired measurement for search-result rows (which vary 80-130px+).
-  // When the user opens search mode, sees results, then flips to commands
-  // (Cmd+P) or notes (Cmd+O) mode, the virtualizer would otherwise apply
-  // the cached search-result heights to whatever items now sit at the same
-  // indices — making non-search rows render at the wrong positions.
-  //
-  // `virtualizer.measure()` is @tanstack/react-virtual's canonical
-  // "forget all cached measurements" API. Mode changes are user-initiated
-  // and rare (a few per session), so the cost is negligible.
   useEffect(() => {
     virtualizer.measure();
   }, [mode, virtualizer]);
 
-  // Store actions
   const setActiveNote = useTreeStore((s) => s.setActiveNote);
   const recordOpenedNote = useTreeStore((s) => s.recordOpenedNote);
 
-  // Plan 07-39 (UAT-5 N11): activate handles "note" + "cmd" + defensive
-  // "group" no-op. Plan 07-40 (UAT-6) re-adds the "search-result" branch
-  // for mode='search' — selecting a search hit opens the note (same as
-  // a notes-mode selection).
   const activate = (i: number) => {
     const item = items[i];
     if (!item) return;
-    if (item.kind === "group") return; // defensive: groups are not activatable
+    if (item.kind === "group") return;
     if (item.kind === "note") {
       setActiveNote(item.id);
       recordOpenedNote(item.id);
@@ -313,26 +219,18 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       return;
     }
     if (item.kind === "search-result") {
-      // Mirror the notes-mode selection contract: set active note, record
-      // recency, close modal.
       setActiveNote(item.id);
       recordOpenedNote(item.id);
       onOpenChange(false);
       return;
     }
-    // Plan 08-06 (D-26 / SHARE-01 Mount C): disabled commands no-op.
-    // The palette stays open so the user can pick a different command.
     if (item.kind === "cmd" && item.disabled) return;
-    // UAT #5 fix: respect per-command closeOnExecute. switch-note keeps the
-    // palette open so the mode flip (commands → notes) re-renders the list.
     const shouldClose = cmd.execute(item.id);
     if (shouldClose) {
       onOpenChange(false);
     }
   };
 
-  // UAT-3 N10 + N11 (Plan 07-33): keyboard navigation skips group-eyebrow rows
-  // via nextSelectable() helper.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -348,8 +246,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     }
   };
 
-  // UI metadata per mode. Plan 07-40 (UAT-6) — search mode gets its own
-  // placeholder + aria label; the Search icon is shared with notes mode.
   const Icon = mode === "commands" ? Command : Search;
   let placeholder: string;
   if (mode === "commands") {
@@ -368,24 +264,8 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     ariaLabel = "Quick switcher";
   }
 
-  // Determine empty state copy.
-  // Notes:    empty/short query → "Start typing…"; ≥2 chars no hits → "No notes match…"
-  // Commands: only shows empty state when a query is set and yields no hits.
-  // Search:   Plan 07-43 (UAT-8) branching — uses searchSurfaceContent below.
-  //   - query === ""           → "Type to search notes" (one-liner; was the
-  //                              old prescriptive "at least 2 characters" copy)
-  //   - 0 < query.length < 2   → activity indicator (typing-in-progress; the
-  //                              system is responsive even though we won't
-  //                              fetch yet)
-  //   - query >= 2, isSearching → activity indicator (in-flight fetch)
-  //   - query >= 2, !isSearching, results === [] → existing "No notes match…"
-  //   - query >= 2, results.length > 0           → virtualized results
   const showEmpty = items.length === 0;
   let emptyText: string | null = null;
-  // searchSurfaceContent is the React node rendered into the result area
-  // when mode === "search" and we do NOT want to display the virtualized
-  // result list (i.e. we're showing empty hint, activity indicator, or
-  // a no-matches state). When null, the standard emptyText render path runs.
   let searchSurfaceContent: React.ReactNode | null = null;
   if (mode === "search") {
     if (query === "") {
@@ -402,20 +282,8 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
         </div>
       );
     } else if (query.length < 2) {
-      // Sub-MIN typing feedback (debounce hasn't fired yet). The result-area
-      // indicator is the right surface here because we have nothing to fall
-      // back on: results.length is 0 by definition (query < 2 → useSearch
-      // doesn't fire).
       searchSurfaceContent = <ActivityIndicator />;
     } else if (isSearching && items.length === 0) {
-      // Plan 07-45 (UAT-8 follow-up 2): NARROWED from `isSearching` to
-      // `isSearching && items.length === 0`. First-search fallback only —
-      // when we have no prior results to show, the result-area indicator is
-      // still the right surface (nothing to keep stale). When we DO have
-      // prior results, fall through to the virtualized list below so the
-      // user sees the stale-but-visible context while the new fetch
-      // completes. The input-row Loader2 (see below) is the visual cue
-      // that a refresh is in flight.
       searchSurfaceContent = <ActivityIndicator />;
     } else if (items.length === 0) {
       searchSurfaceContent = (
@@ -445,7 +313,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     // commands mode + empty query → full list is shown; no empty state needed
   }
 
-  // NOTE: Group eyebrows in commands mode are deferred to v1 UAT feedback.
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -573,8 +440,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                   const item = items[vi.index];
                   const selected = vi.index === selectedIdx;
 
-                  // UAT-3 N10 + N11 (Plan 07-33): group eyebrow rows — non-selectable
-                  // separators with subdued uppercase label.
                   if (item.kind === "group") {
                     return (
                       <div
@@ -596,7 +461,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                           letterSpacing: "0.05em",
                           display: "flex",
                           alignItems: "center",
-                          // Non-selectable: no hover, no click, no cursor pointer.
                           cursor: "default",
                           userSelect: "none",
                         }}
@@ -606,21 +470,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                     );
                   }
 
-                  // Plan 07-40 (UAT-6): search-result branch RE-ADDED for
-                  // mode='search'. Wraps SearchResultRow (Plan 07-39 Task 2
-                  // legibility recipe) inside a virtualized positioned div.
-                  // We do NOT pipe through the standard rowStyle below because
-                  // SearchResultRow owns its own padding + active-row styling.
-                  //
-                  // Plan 07-42 (UAT-7): the outer container now attaches
-                  // `ref={virtualizer.measureElement}` + `data-index={vi.index}`
-                  // so @tanstack/react-virtual can measure each row's true
-                  // rendered height (varies 80-130px+ depending on excerpt +
-                  // matching tag chips). The fixed `height: vi.size` is
-                  // intentionally OMITTED — the row sizes to its content and
-                  // the virtualizer reads back the actual height. The
-                  // `transform: translateY(vi.start)` still places the row at
-                  // the correct virtual-scroll offset.
                   if (item.kind === "search-result") {
                     return (
                       <div
@@ -634,9 +483,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                           left: 0,
                           width: "100%",
                           transform: `translateY(${vi.start}px)`,
-                          // Light selection hint while keyboard-navigating;
-                          // SearchResultRow's own hover/active styling layers
-                          // on top via its inline rowBg.
                           background: selected
                             ? "color-mix(in srgb, var(--color-accent) 6%, transparent)"
                             : "transparent",
@@ -649,17 +495,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                     );
                   }
 
-                  // Plan 07-44 (UAT-8 follow-up): non-search rows use
-                  // `height: vi.size` (the estimate function's return value)
-                  // rather than a hardcoded 36. The estimate function is the
-                  // single source of truth; note/cmd rows return 36 and group
-                  // rows return 24. measureElement is NOT attached on these
-                  // branches (only search-result), so vi.size stays at the
-                  // estimate for the lifetime of the row.
-                  // Plan 08-06 (D-26 / SHARE-01 Mount C): dim disabled
-                  // cmd rows + hide the shortcut chip (UI-SPEC: "renders
-                  // dimmed with no shortcut hint"). cursor stays default
-                  // so the row reads as inert.
                   const cmdDisabled = item.kind === "cmd" && item.disabled === true;
                   const rowStyle: React.CSSProperties = {
                     position: "absolute",

@@ -12,7 +12,6 @@ describe("useCommandPalette — filtered()", () => {
     const { result } = renderHook(() => useCommandPalette({}));
     const all = result.current.filtered("");
     expect(all).toHaveLength(COMMAND_PALETTE_ENTRIES.length);
-    // Should return all 9 entries
     expect(all).toEqual(COMMAND_PALETTE_ENTRIES);
   });
 
@@ -44,17 +43,13 @@ describe("useCommandPalette — filtered()", () => {
 
   it("matches partial label substring", () => {
     const { result } = renderHook(() => useCommandPalette({}));
-    // "New note" should match "new"
     const hits = result.current.filtered("new");
     expect(hits.some((h) => h.id === "new-note")).toBe(true);
   });
 
   it("filters multiple matching entries", () => {
     const { result } = renderHook(() => useCommandPalette({}));
-    // "index" matches "Refresh index" and "Reset and rebuild…"? — actually only "Refresh index"
-    // "re" matches "Refresh index", "Reset and rebuild…"
     const hits = result.current.filtered("re");
-    // Should match at least "refresh-index" and "rebuild-index"
     expect(hits.some((h) => h.id === "refresh-index")).toBe(true);
     expect(hits.some((h) => h.id === "rebuild-index")).toBe(true);
   });
@@ -81,7 +76,6 @@ describe("useCommandPalette — execute()", () => {
     expect(onSave).toHaveBeenCalledOnce();
   });
 
-  // "find" command removed in Plan 07-27 — browser native Cmd+F fires instead.
 
   it("calls onToday when execute('today') is called", () => {
     const onToday = vi.fn();
@@ -128,14 +122,12 @@ describe("useCommandPalette — execute()", () => {
   it("does nothing when execute is called with unknown id", () => {
     const onNewNote = vi.fn();
     const { result } = renderHook(() => useCommandPalette({ onNewNote }));
-    // Should not throw
     act(() => { result.current.execute("does-not-exist"); });
     expect(onNewNote).not.toHaveBeenCalled();
   });
 
   it("does nothing when action is not provided (optional action)", () => {
     const { result } = renderHook(() => useCommandPalette({}));
-    // Should not throw even when no actions are provided
     act(() => { result.current.execute("new-note"); });
   });
 });
@@ -181,11 +173,9 @@ describe("useCommandPalette — all 8 COMMAND_PALETTE_ENTRIES reachable (Plan 07
     const { result } = renderHook(() => useCommandPalette({}));
     const all = result.current.filtered("");
     const ids = all.map((e) => e.id);
-    // The 8 palette-eligible commands from shortcutsRegistry (Plan 07-27: "find" removed)
     const expectedIds = [
       "new-note",
       "save",
-      // "find" removed in Plan 07-27 — browser native Cmd+F fires instead
       "today",
       "switch-note",
       "toggle-theme",
@@ -196,7 +186,6 @@ describe("useCommandPalette — all 8 COMMAND_PALETTE_ENTRIES reachable (Plan 07
     for (const id of expectedIds) {
       expect(ids).toContain(id);
     }
-    // Verify "find" is NOT in the palette
     expect(ids).not.toContain("find");
   });
 });

@@ -17,9 +17,6 @@ import { yamlFrontmatter } from "@codemirror/lang-yaml";
 
 import { fileChipPlugin, buildFileChipDecorations } from "./fileChipWidget";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeView(doc: string, noteId = "test-note-id"): EditorView {
   const parent = document.createElement("div");
@@ -44,14 +41,9 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-// ---------------------------------------------------------------------------
-// describe: fileChipPlugin
-// ---------------------------------------------------------------------------
 
 describe("fileChipWidget / fileChipPlugin", () => {
   it("emits a widget for [doc](attachments/x.pdf)", () => {
-    // CM6 ViewPlugin constraint: block:true is NOT allowed in plugins.
-    // The widget uses side:1 at line.to for correct placement.
     const doc = "[report](attachments/report.pdf)";
     const view = makeView(doc);
     views.push(view);
@@ -71,7 +63,6 @@ describe("fileChipWidget / fileChipPlugin", () => {
   });
 
   it("does NOT emit a widget for image attachments (![...](...) — those go to imageAttachmentPlugin)", () => {
-    // fileChipPlugin should not intercept image markdown (leading !)
     const doc = "![photo](attachments/photo.png)";
     const view = makeView(doc);
     views.push(view);
@@ -159,7 +150,6 @@ describe("fileChipWidget / fileChipPlugin", () => {
       const spec = (cursor.value as unknown as { spec: { widget?: { toDOM?: () => HTMLElement } } }).spec;
       if (spec?.widget && typeof spec.widget.toDOM === "function") {
         const dom = spec.widget.toDOM();
-        // Should be an anchor element
         const anchor = dom.tagName === "A" ? dom as HTMLAnchorElement : dom.querySelector("a");
         expect(anchor).not.toBeNull();
         expect(anchor?.href ?? anchor?.getAttribute("href")).toContain("attachments");

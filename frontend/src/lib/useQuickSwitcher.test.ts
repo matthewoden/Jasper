@@ -8,12 +8,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 
-// Mock useFileTree
+
 vi.mock("./useFileTree", () => ({
   useFileTree: vi.fn(),
 }));
 
-// Mock useTreeStore — return a selector-compatible mock
+
 vi.mock("./useTreeStore", () => ({
   useTreeStore: vi.fn(),
 }));
@@ -25,7 +25,7 @@ import { useTreeStore } from "./useTreeStore";
 const mockUseFileTree = useFileTree as unknown as ReturnType<typeof vi.fn>;
 const mockUseTreeStore = useTreeStore as unknown as ReturnType<typeof vi.fn>;
 
-// Helper to build a minimal Tree with NoteNodes
+
 function makeTree(notes: Array<{ id: string; title: string; path: string }>) {
   return {
     root: notes.map((n) => ({
@@ -50,20 +50,16 @@ describe("useQuickSwitcher — empty query (recency sort)", () => {
       { id: "c", title: "Gamma", path: "gamma.md" },
     ];
     mockUseFileTree.mockReturnValue({ tree: makeTree(notes), loading: false, error: null });
-    // recentlyOpenedNoteIds: b first, then a
     mockUseTreeStore.mockReturnValue(["b", "a"]);
 
     const { result } = renderHook(() => useQuickSwitcher(""));
     const ids = result.current.map((h) => h.id);
-    // b, a come first (recency), then c
     expect(ids[0]).toBe("b");
     expect(ids[1]).toBe("a");
     expect(ids[2]).toBe("c");
   });
 
   it("returns notes with no recency entry sorted by updated_at desc (most recent first)", () => {
-    // C2 fix (UAT #10): empty-recency branch must fall back to updated_at desc,
-    // NOT alphabetical. ISO 8601 strings sort correctly via localeCompare.
     const tree = {
       root: [
         {
@@ -90,18 +86,16 @@ describe("useQuickSwitcher — empty query (recency sort)", () => {
       ],
     };
     mockUseFileTree.mockReturnValue({ tree, loading: false, error: null });
-    mockUseTreeStore.mockReturnValue([]); // no recency
+    mockUseTreeStore.mockReturnValue([]);
 
     const { result } = renderHook(() => useQuickSwitcher(""));
     const ids = result.current.map((h) => h.id);
-    // Most recent (June) first, then March, then January
     expect(ids[0]).toBe("new");
     expect(ids[1]).toBe("mid");
     expect(ids[2]).toBe("old");
   });
 
   it("NoteHit shape includes updated_at field", () => {
-    // C2 fix: NoteHit must expose updated_at so the sort comparator can use it.
     const tree = {
       root: [
         {
@@ -159,23 +153,20 @@ describe("useQuickSwitcher — non-empty query (fuzzysort)", () => {
 
     const { result } = renderHook(() => useQuickSwitcher("alpha"));
     const titles = result.current.map((h) => h.title);
-    // Both "Alpha Notes" and "Alphabet Soup" should match; Beta should not
     expect(titles.some((t) => t.includes("Alpha"))).toBe(true);
     expect(titles.every((t) => !t.includes("Beta"))).toBe(true);
   });
 
   it("applies recency tiebreaker on equal-score results", () => {
-    // Two identically-named notes (edge case) — recency decides order
     const notes = [
       { id: "x", title: "Meeting Notes", path: "x.md" },
       { id: "y", title: "Meeting Notes", path: "y.md" },
     ];
     mockUseFileTree.mockReturnValue({ tree: makeTree(notes), loading: false, error: null });
-    mockUseTreeStore.mockReturnValue(["y"]); // y opened more recently
+    mockUseTreeStore.mockReturnValue(["y"]);
 
     const { result } = renderHook(() => useQuickSwitcher("meeting"));
     const ids = result.current.map((h) => h.id);
-    // y should come before x due to recency tiebreaker
     expect(ids[0]).toBe("y");
   });
 

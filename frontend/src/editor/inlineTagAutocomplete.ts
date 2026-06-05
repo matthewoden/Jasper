@@ -31,9 +31,6 @@ import type { CompletionContext, CompletionResult, Completion } from "@codemirro
 import { syntaxTree } from "@codemirror/language";
 import type { TagWithCount } from "../lib/tagsApi";
 
-// ---------------------------------------------------------------------------
-// Module-level snapshot — set by MarkdownEditor.tsx via useEffect.
-// ---------------------------------------------------------------------------
 
 let _inlineTagSnapshot: TagWithCount[] = [];
 
@@ -47,9 +44,6 @@ export function setInlineTagSnapshot(tags: TagWithCount[]): void {
   _inlineTagSnapshot = tags;
 }
 
-// ---------------------------------------------------------------------------
-// D-19 code-context guard (copied verbatim from wikilinkPlugin / inlineTagPlugin)
-// ---------------------------------------------------------------------------
 
 /**
  * Returns true if the cursor position is inside any code or frontmatter context.
@@ -80,9 +74,6 @@ function isInsideCodeOrFrontmatterForAutocomplete(
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// inlineTagCompletionSource — the exported CompletionSource
-// ---------------------------------------------------------------------------
 
 /**
  * CompletionSource for inline `#tagname` body syntax.
@@ -98,37 +89,22 @@ function isInsideCodeOrFrontmatterForAutocomplete(
 export async function inlineTagCompletionSource(
   ctx: CompletionContext,
 ): Promise<CompletionResult | null> {
-  // Trigger detection: cursor must be after `#` followed by zero or more tag chars.
-  // `# ` (hash + space) won't match because space is not in [a-z0-9_-].
   const match = ctx.matchBefore(/#[a-z0-9_-]*/);
   if (!match) return null;
 
-  // Code-context guard: suppress inside fenced code, inline code, frontmatter
   if (isInsideCodeOrFrontmatterForAutocomplete(ctx, match.from)) return null;
 
-  // `from: match.from + 1` — replace only the part after `#` so acceptance
-  // of `foo` from `#fo|` produces `#foo` (not `##foo` or `#fofoo`).
   const from = match.from + 1;
 
-  // The typed prefix (after `#`) — used for filtering.
   const typed = match.text.slice(1).toLowerCase();
 
-  // Filter the snapshot: if typed is empty show all; otherwise filter by substring.
-  // Note: @codemirror/autocomplete also does prefix filtering based on the `from`
-  // position, but we pre-filter here as well for consistency with tagAutocomplete.
   const matches =
     typed === ""
       ? _inlineTagSnapshot
       : _inlineTagSnapshot.filter((t) => t.name.includes(typed));
 
-  // D-14: no Create row — if no matches, return null to close the popup.
   if (matches.length === 0) return null;
 
-  // UAT follow-up 2026-05-12: custom `type: "tag"` styled as a blue `#` icon
-  // in theme.css. No `displayLabel` — second UAT pass flagged a double-hashtag
-  // (icon column + label prefix); the icon column alone reads as the
-  // indicator. `detail` is the bare count — theme.css styles the
-  // completion-detail span on tag rows as a pill badge.
   const options: Completion[] = matches.map((t) => ({
     label: t.name,
     detail: String(t.count),

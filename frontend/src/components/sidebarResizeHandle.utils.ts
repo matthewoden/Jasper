@@ -30,9 +30,6 @@ export const EDITOR_MIN = 320;
 export const computeMaxWidth = (): number => {
   const room = window.innerWidth - EDITOR_MIN;
   if (room < SIDEBAR_WIDTH_MIN) {
-    // Viewport too narrow for both floors — preserve the editor floor
-    // by giving the sidebar only the leftover room (or 0 on degenerate
-    // sub-EDITOR_MIN viewports).
     return Math.max(0, room);
   }
   return room;

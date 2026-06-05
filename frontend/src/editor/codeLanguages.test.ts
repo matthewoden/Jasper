@@ -9,11 +9,6 @@ import { codeLanguages } from "./codeLanguages";
 describe("codeLanguages", () => {
   it("declares the D-03 bundled grammar set (10 entries — including markdown for recursive nesting)", () => {
     const names = codeLanguages.map((l) => l.name);
-    // D-03 set: typescript, javascript, python, go, sh/bash, json,
-    // yaml, markdown, html, css. (sh/bash share the "shell" entry
-    // with aliases.) Plan 05-07 ships 10 LanguageDescription entries
-    // because typescript and javascript have separate descriptions
-    // even though they share the lang-javascript package.
     expect(names).toContain("javascript");
     expect(names).toContain("typescript");
     expect(names).toContain("python");
@@ -49,8 +44,7 @@ describe("codeLanguages", () => {
   });
 });
 
-// Helper: case-insensitive lookup over name + alias matching CM6's
-// markdown({codeLanguages}) resolution semantics.
+
 function LanguageDescriptionMatch(
   langs: typeof codeLanguages,
   key: string

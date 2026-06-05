@@ -22,14 +22,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listTags, type TagWithCount } from "./tagsApi";
 
-// ────────────────────────────────────────────────────────────────────────────
-// Module-level subscriber registry — mirrors useFileTree's treeFetchSubscribers.
-//
-// Each mounted useTagBrowser instance registers its fetchTags callback here.
-// When a WS event fires, App.tsx calls dispatchTagEvent("tags:updated") or
-// dispatchTagEvent("tags:rewritten"), which iterates the set and triggers
-// each subscriber to refetch.
-// ────────────────────────────────────────────────────────────────────────────
+
 const tagEventSubscribers = new Set<() => void>();
 
 type TagEventType = "tags:updated" | "tags:rewritten";
@@ -44,16 +37,8 @@ type TagEventType = "tags:updated" | "tags:rewritten";
  * useSessionSync's WS message handler.
  */
 export function dispatchTagEvent(
-  // event type is received from WS envelope; kept as a parameter so callers
-  // can pass tags:updated or tags:rewritten without branching logic here.
-  // The distinction between the two event types doesn't change behavior
-  // (both trigger a full refetch) — the parameter is part of the public API
-  // contract for caller clarity.
   event: TagEventType,
 ): void {
-  // Suppress unused-var lint: the event type is part of the public contract
-  // so callers can pass it explicitly; we don't branch on it here since both
-  // event types trigger the same refetch action.
   void event;
   const snapshot = Array.from(tagEventSubscribers);
   for (const fn of snapshot) {
@@ -73,8 +58,6 @@ export function useTagBrowser(): UseTagBrowserResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const cancelled = useRef(false);
-  // Keep a stable ref to the previous tags so we can preserve them on error
-  // (per U6 / useFileTree precedent — don't clear on error).
   const tagsRef = useRef<TagWithCount[]>([]);
 
   const fetchTags = useCallback(async () => {
@@ -89,7 +72,6 @@ export function useTagBrowser(): UseTagBrowserResult {
     } catch (e) {
       if (cancelled.current) return;
       setError(e instanceof Error ? e : new Error(String(e)));
-      // Preserve previous data on error (per useFileTree precedent)
       setTags(tagsRef.current);
       setLoading(false);
     }
@@ -99,8 +81,6 @@ export function useTagBrowser(): UseTagBrowserResult {
     cancelled.current = false;
     void fetchTags();
 
-    // Register this instance's refresh callback in the module-level subscriber
-    // set so WS events from App.tsx reach this hook instance.
     const subscriber = () => {
       void fetchTags();
     };
@@ -120,10 +100,7 @@ export function useTagBrowser(): UseTagBrowserResult {
   return { tags, loading, error, refresh };
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Test helpers — exported under __testing__ namespace, not part of the
-// public surface. Consumers should use refresh() from useTagBrowser().
-// ────────────────────────────────────────────────────────────────────────────
+
 export const __testing__ = {
   simulateEvent: (event: TagEventType) => {
     dispatchTagEvent(event);

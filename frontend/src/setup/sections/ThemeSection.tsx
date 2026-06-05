@@ -24,9 +24,6 @@ interface ThemeSectionProps {
 }
 
 function applyThemeNow(theme: "dark" | "light"): void {
-  // Mirrors useTheme.ts applyTheme. We don't import useTheme here because
-  // the wizard runs BEFORE the steady-state app boots and useTheme depends
-  // on useConfig (which talks to /api/v1/config — a post-setup endpoint).
   document.documentElement.setAttribute("data-theme", theme);
 }
 
@@ -61,9 +58,6 @@ function ThemeRow({
         onChange={onSelect}
         aria-label={label}
         style={{
-          // Hide the native radio — we render our own ring/dot so the
-          // styling matches the rest of the wizard (UI-SPEC §Surface 1).
-          // appearance:none keeps the input focusable / keyboard-accessible.
           appearance: "none",
           margin: 0,
           width: 16,
@@ -84,8 +78,6 @@ function ThemeRow({
         <span
           aria-hidden
           style={{
-            // Inner filled dot — drawn as a sibling so it sits over the
-            // hidden native radio without fighting its layout box.
             position: "absolute",
             width: 8,
             height: 8,

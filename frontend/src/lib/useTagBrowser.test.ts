@@ -10,10 +10,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 
-// We need to track event handlers registered via useSessionSync-like mechanism.
-// The useTagBrowser hook registers handlers via a module-level set or via
-// a callback that gets invoked when WS events arrive. We'll mock tagsApi
-// and expose a way to simulate WS events.
 
 const listTagsMock = vi.fn();
 
@@ -24,12 +20,6 @@ vi.mock("./tagsApi", () => ({
   deleteTag: vi.fn(),
 }));
 
-// We need to simulate the WS event dispatch. The useTagBrowser hook should
-// register a handler for tags:updated and tags:rewritten events. The exact
-// mechanism will be determined during implementation — but we need to expose
-// a way for tests to trigger the refresh.
-// The hook exports a way to register its refresh as a subscriber to tag events.
-// For testing, we simulate this by exposing a manual dispatch mechanism.
 
 import { useTagBrowser, __testing__ } from "./useTagBrowser";
 
@@ -52,7 +42,6 @@ describe("useTagBrowser", () => {
 
     const { result } = renderHook(() => useTagBrowser());
 
-    // Initially loading
     expect(result.current.loading).toBe(true);
 
     await waitFor(() => {
@@ -91,7 +80,6 @@ describe("useTagBrowser", () => {
     const updatedTags = [{ name: "alpha", count: 5 }];
     listTagsMock.mockResolvedValue(updatedTags);
 
-    // Simulate the WS event via the test helper
     act(() => {
       __testing__.simulateEvent("tags:updated");
     });
@@ -134,17 +122,12 @@ describe("useTagBrowser", () => {
     const { result, unmount } = renderHook(() => useTagBrowser());
     expect(result.current.loading).toBe(true);
 
-    // Unmount before the fetch resolves
     unmount();
 
-    // Now resolve the promise — the hook should ignore this since it was unmounted
     act(() => {
       resolvePromise(fakeTags);
     });
 
-    // If the hook didn't guard against unmount, this would cause a React
-    // "setState on unmounted component" warning / error. The test passes if
-    // no such error is thrown and the hook remains in loading=true state.
     expect(result.current.loading).toBe(true);
     expect(result.current.tags).toEqual([]);
   });
@@ -155,7 +138,6 @@ describe("useTagBrowser", () => {
     const { result } = renderHook(() => useTagBrowser());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    // Second fetch fails
     listTagsMock.mockRejectedValue(new Error("network error"));
 
     await act(async () => {
@@ -165,7 +147,6 @@ describe("useTagBrowser", () => {
     expect(result.current.error).toBeInstanceOf(Error);
     expect(result.current.error?.message).toBe("network error");
     expect(result.current.loading).toBe(false);
-    // Previous data is preserved (don't clear on error per useFileTree precedent)
     expect(result.current.tags).toEqual(fakeTags);
   });
 });

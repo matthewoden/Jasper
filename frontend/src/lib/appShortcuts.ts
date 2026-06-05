@@ -14,14 +14,7 @@
  */
 import { useTreeStore } from "./useTreeStore";
 
-// ────────────────────────────────────────────────────────────────────────────
-// Phase 7 (Plan 07-12) — Global keymap module-level event bus.
-//
-// Window event listeners run outside the React render cycle, so they can't
-// call hooks directly. This tiny pub/sub bridges the gap: handlers dispatch
-// events; AppInner subscribes in a useEffect to call the actual hook methods.
-// Pattern mirrors dispatchTagEvent from useTagBrowser.ts.
-// ────────────────────────────────────────────────────────────────────────────
+
 export type Phase7DispatchEvent = "openToday";
 
 const phase7Subscribers = new Set<(ev: Phase7DispatchEvent) => void>();
@@ -67,7 +60,6 @@ export function handleAppF2KeyDown(e: KeyboardEvent): void {
     return;
   }
   const state = useTreeStore.getState();
-  // If a rename is already in progress, defer to its own handlers.
   if (state.pendingRename !== null) return;
   const sr = state.selectedRow;
   if (sr === null) return;

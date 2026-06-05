@@ -153,12 +153,10 @@ describe("useFileTree", () => {
       kind: "folder",
       path: "added",
     });
-    // No additional fetch.
     expect(getTreeMock.mock.calls.length).toBe(callCountBeforeMutate);
   });
 
   it("TestUseFileTree_PrunesStaleTreeState: expanded paths absent in fresh tree are dropped", async () => {
-    // Pre-seed the store with stale entries.
     useTreeStore.setState({
       expanded: new Set(["old-folder", "projects"]),
       activeNoteId: "stale-uuid",
@@ -169,10 +167,8 @@ describe("useFileTree", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     const s = useTreeStore.getState();
-    // "projects" is in tinyTree → kept; "old-folder" → dropped.
     expect(s.expanded.has("projects")).toBe(true);
     expect(s.expanded.has("old-folder")).toBe(false);
-    // "stale-uuid" not present → cleared.
     expect(s.activeNoteId).toBeNull();
   });
 
@@ -189,28 +185,15 @@ describe("useFileTree", () => {
     const second = renderHook(() => useFileTree());
     await waitFor(() => expect(second.result.current.loading).toBe(false));
 
-    // The second mount's resolution lands; the first is cancelled.
     expect(second.result.current.error).toBeNull();
     expect(second.result.current.tree).toEqual(tinyTree);
-    // resolveCount may be 1 or 2 depending on timing — what matters is no error escapes.
     expect(resolveCount).toBeGreaterThanOrEqual(1);
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UFT-eager-boot — tree fetch fires on module import (UAT-2 R1-2/R1-3)
-// ─────────────────────────────────────────────────────────────────────────────
+
 describe("UFT-eager-boot — tree fetch fires on module import (UAT-2 R1-2/R1-3)", () => {
   it("useFileTree fires boot fetch on app start", async () => {
-    // This test verifies that GET /tree is called at module import time
-    // (boot fetch), BEFORE any useFileTree hook instance mounts.
-    //
-    // Approach: use vi.resetModules() + vi.doMock() to freshly re-import
-    // useFileTree in a clean module scope. When the module loads, the
-    // boot-fetch trigger should fire getTree() automatically.
-    //
-    // The boot-fetch must fire exactly once (no duplicate calls) even when
-    // the module is imported multiple times within the same app lifecycle.
     const getTreeForBoot = vi.fn().mockResolvedValue({ data: tinyTree });
 
     vi.resetModules();
@@ -222,16 +205,12 @@ describe("UFT-eager-boot — tree fetch fires on module import (UAT-2 R1-2/R1-3)
       useTreeStore: vi.fn(),
     }));
 
-    // Re-import the module — the boot fetch should fire synchronously during module init
     await import("./useFileTree");
 
-    // Give the micro-task queue a tick so the async boot fetch can start
     await new Promise((r) => setTimeout(r, 0));
 
-    // Assert: getTree was called once at module import (boot fetch), before any hook mounts
     expect(getTreeForBoot).toHaveBeenCalledTimes(1);
 
-    // Cleanup: restore real mocks for subsequent tests
     vi.doUnmock("./treeApi");
     vi.doUnmock("./useTreeStore");
     vi.resetModules();
@@ -241,24 +220,16 @@ describe("UFT-eager-boot — tree fetch fires on module import (UAT-2 R1-2/R1-3)
 describe("UX-14 single-flight", () => {
   beforeEach(() => {
     getTreeMock.mockReset();
-    // Clear module-level coalescer state so each test starts cold —
-    // the trailing-window state from a prior test in the file would
-    // otherwise route the first concurrent call into the
-    // trailing-debounce branch instead of firing immediately.
     __resetCoalescer();
   });
 
   it("coalesces concurrent fetchTree calls into one network request", async () => {
-    // Mock getTree to return a delayed promise so we can fire concurrent
-    // calls into the still-in-flight slot.
     let resolveDelayed!: (v: { data: Tree }) => void;
     const delayed = new Promise<{ data: Tree }>((resolve) => {
       resolveDelayed = resolve;
     });
     getTreeMock.mockImplementation(() => delayed);
 
-    // Three concurrent invocations — single-flight should collapse all
-    // three into a single underlying getTree() call.
     const calls = [coalescedGetTree(), coalescedGetTree(), coalescedGetTree()];
     expect(getTreeMock).toHaveBeenCalledTimes(1);
 
@@ -274,8 +245,6 @@ describe("UX-14 single-flight", () => {
       .mockResolvedValueOnce({ data: tinyTree });
 
     await expect(coalescedGetTree()).rejects.toThrow("network");
-    // Slot cleared in .finally — second call goes through, getTree
-    // is invoked a second time rather than re-serving the rejection.
     const second = await coalescedGetTree();
     expect(second.data?.root).toEqual(tinyTree.root);
     expect(getTreeMock).toHaveBeenCalledTimes(2);

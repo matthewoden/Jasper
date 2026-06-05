@@ -8,7 +8,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { RenameRewriteErrorBanner } from "./RenameRewriteErrorBanner";
 
-// ─── EB1: hidden by default ───────────────────────────────────────────────────
 
 describe("EB1: hidden when state is null", () => {
   it("renders nothing when state is null", () => {
@@ -19,7 +18,6 @@ describe("EB1: hidden when state is null", () => {
   });
 });
 
-// ─── EB2: kind="rename" renders correct copy ─────────────────────────────────
 
 describe("EB2: kind='rename' shows Rename failed title and body", () => {
   it("renders title 'Rename failed' and body with missedCount", () => {
@@ -57,7 +55,6 @@ describe("EB2: kind='rename' shows Rename failed title and body", () => {
   });
 });
 
-// ─── EB3: kind="tag-rewrite" renders correct copy ────────────────────────────
 
 describe("EB3: kind='tag-rewrite' shows Tag rewrite failed title with tag interpolation", () => {
   it("renders title 'Tag rewrite failed' and body with targetName", () => {
@@ -77,7 +74,6 @@ describe("EB3: kind='tag-rewrite' shows Tag rewrite failed title with tag interp
   });
 });
 
-// ─── EB4: Dismiss button clears banner ───────────────────────────────────────
 
 describe("EB4: clicking Dismiss calls onDismiss", () => {
   it("calls onDismiss when the X button is clicked", () => {
@@ -94,7 +90,6 @@ describe("EB4: clicking Dismiss calls onDismiss", () => {
   });
 });
 
-// ─── EB5: role="alert" ───────────────────────────────────────────────────────
 
 describe("EB5: role='alert' for screen reader announcement", () => {
   it("has role='alert' when showing an error", () => {

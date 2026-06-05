@@ -49,9 +49,6 @@ import type { EditorState, Transaction, Extension } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { FRONTMATTER_NODE_NAME, FRONTMATTER_LINE_CLASS } from "./frontmatterPlugin";
 
-// ---------------------------------------------------------------------------
-// StateEffect — toggle signal
-// ---------------------------------------------------------------------------
 
 /**
  * Dispatching this effect from anywhere (keymap, button click) toggles
@@ -62,9 +59,6 @@ import { FRONTMATTER_NODE_NAME, FRONTMATTER_LINE_CLASS } from "./frontmatterPlug
  */
 export const toggleFrontmatterVisibility = StateEffect.define<void>();
 
-// ---------------------------------------------------------------------------
-// Tag count helper
-// ---------------------------------------------------------------------------
 
 /**
  * Counts the number of tags in a YAML frontmatter text block.
@@ -79,7 +73,6 @@ export const toggleFrontmatterVisibility = StateEffect.define<void>();
  * @returns number of tags (0 if no tags key found or empty array)
  */
 export function countTagsInFrontmatter(text: string): number {
-  // Try flow-sequence: tags: [foo, bar, baz]
   const flowMatch = text.match(/\btags\s*:\s*\[([^\]]*)\]/);
   if (flowMatch) {
     const inner = flowMatch[1].trim();
@@ -90,7 +83,6 @@ export function countTagsInFrontmatter(text: string): number {
       .filter((s) => s.length > 0).length;
   }
 
-  // Try block-sequence: tags:\n  - tagname
   const blockMatch = text.match(/\btags\s*:\s*\n((?:[ \t]*-[ \t]+[^\n]+\n?)*)/);
   if (blockMatch) {
     const block = blockMatch[1];
@@ -100,9 +92,6 @@ export function countTagsInFrontmatter(text: string): number {
   return 0;
 }
 
-// ---------------------------------------------------------------------------
-// WidgetType — empty invisible widget (D-16/D-18)
-// ---------------------------------------------------------------------------
 
 /**
  * FrontmatterEmptyWidget renders an invisible <span> that takes zero visual
@@ -132,9 +121,6 @@ class FrontmatterEmptyWidget extends WidgetType {
   }
 }
 
-// ---------------------------------------------------------------------------
-// StateField value type
-// ---------------------------------------------------------------------------
 
 interface FrontmatterFieldState {
   /** Whether the frontmatter is currently hidden (affordance shown). */
@@ -143,9 +129,6 @@ interface FrontmatterFieldState {
   decos: DecorationSet;
 }
 
-// ---------------------------------------------------------------------------
-// Decoration builders
-// ---------------------------------------------------------------------------
 
 const frontmatterLineDeco = Decoration.line({ class: FRONTMATTER_LINE_CLASS });
 
@@ -158,7 +141,6 @@ function buildDecorations(state: EditorState, hidden: boolean): DecorationSet {
       if (node.name !== FRONTMATTER_NODE_NAME) return;
 
       if (hidden) {
-        // block: true is permitted in StateField decorations (not in ViewPlugin)
         builder.add(
           node.from,
           node.to,
@@ -168,7 +150,6 @@ function buildDecorations(state: EditorState, hidden: boolean): DecorationSet {
           }),
         );
       } else {
-        // Raw view: line decoration per frontmatter line (Phase 5 behavior)
         let pos = node.from;
         while (pos < node.to) {
           const line = state.doc.lineAt(pos);
@@ -183,9 +164,6 @@ function buildDecorations(state: EditorState, hidden: boolean): DecorationSet {
   return builder.finish();
 }
 
-// ---------------------------------------------------------------------------
-// StateField — holds hidden state + decorations (required for block decos)
-// ---------------------------------------------------------------------------
 
 /**
  * frontmatterDecoField — StateField holding `{ hidden, decos }`.
@@ -198,7 +176,7 @@ function buildDecorations(state: EditorState, hidden: boolean): DecorationSet {
  */
 const frontmatterDecoField = StateField.define<FrontmatterFieldState>({
   create(state) {
-    const decos = buildDecorations(state, true /* hidden by default */);
+    const decos = buildDecorations(state, true);
     return { hidden: true, decos };
   },
   update(prev, tr: Transaction) {
@@ -210,15 +188,11 @@ const frontmatterDecoField = StateField.define<FrontmatterFieldState>({
     if (tr.docChanged) {
       return { hidden: prev.hidden, decos: buildDecorations(tr.state, prev.hidden) };
     }
-    // Map decos through changes (covers position shifts from unrelated edits)
     return { hidden: prev.hidden, decos: prev.decos.map(tr.changes) };
   },
   provide: (f) => EditorView.decorations.from(f, (v) => v.decos),
 });
 
-// ---------------------------------------------------------------------------
-// ViewPlugin — shim for test introspection + D-13 mount reset
-// ---------------------------------------------------------------------------
 
 /**
  * frontmatterHidePlugin — thin ViewPlugin shim.
@@ -239,9 +213,6 @@ export const frontmatterHidePlugin = ViewPlugin.fromClass(
     decorations: DecorationSet;
 
     constructor(view: EditorView) {
-      // Read current decorations from the StateField.
-      // StateField.create() initializes to hidden=true (D-13 default).
-      // Each new EditorView gets a fresh EditorState, so hidden=true on every mount.
       this.decorations = view.state.field(frontmatterDecoField).decos;
     }
 
@@ -256,9 +227,6 @@ export const frontmatterHidePlugin = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 );
 
-// ---------------------------------------------------------------------------
-// Combined extension export
-// ---------------------------------------------------------------------------
 
 /**
  * frontmatterHideExtension — the full extension set to add to MarkdownEditor.
@@ -270,9 +238,6 @@ export const frontmatterHidePlugin = ViewPlugin.fromClass(
  */
 export const frontmatterHideExtension: Extension = [frontmatterDecoField, frontmatterHidePlugin];
 
-// ---------------------------------------------------------------------------
-// Keymap — Cmd-Shift-Y toggle
-// ---------------------------------------------------------------------------
 
 /**
  * frontmatterToggleKeymap — CM6 keymap binding for Cmd-Shift-Y (Mod-Shift-y).

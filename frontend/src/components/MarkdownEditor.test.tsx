@@ -24,8 +24,7 @@ import { EditorView } from "@codemirror/view";
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
 import { ToastProvider } from "./Toast";
 
-// Probe component — exposes the inner ref and a "rerender me" button
-// so tests can drive both ref calls AND parent re-renders.
+
 interface ProbeRef {
   ed(): MarkdownEditorRef | null;
 }
@@ -62,8 +61,7 @@ const Probe = forwardRef<
   );
 });
 
-// Phase 7 Plan 10: MarkdownEditor now uses useAttachmentUpload which calls
-// useToast(). All renders must be wrapped in <ToastProvider>.
+
 function renderWithToast(ui: ReactElement) {
   return render(<ToastProvider>{ui}</ToastProvider>);
 }
@@ -107,28 +105,21 @@ describe("<MarkdownEditor />", () => {
   });
 
   it("EDIT-01: parent re-render does NOT re-instantiate the editor (cursor stability)", () => {
-    // Reading getContent before AND after a parent re-render returns the
-    // same in-flight document — proof that the EditorView instance was
-    // not destroyed/recreated. If it had been, setContent's value would
-    // be wiped on rerender.
     const probeRef = { current: null as ProbeRef | null };
     const onChange = vi.fn();
     const { getByTestId } = renderWithToast(
       <Probe ref={probeRef} initialDoc="seed" onChange={onChange} />
     );
 
-    // Drive a setContent (mutates in-place).
     act(() => {
       probeRef.current?.ed()?.setContent("after-set");
     });
     expect(probeRef.current?.ed()?.getContent()).toBe("after-set");
 
-    // Trigger a parent re-render via the rerender button.
     act(() => {
       getByTestId("rerender").click();
     });
 
-    // The document survives — proves the EditorView was NOT recreated.
     expect(probeRef.current?.ed()?.getContent()).toBe("after-set");
   });
 
@@ -180,15 +171,10 @@ describe("<MarkdownEditor />", () => {
   });
 
   it("focusEnd ref method moves caret to end-of-doc and focuses contentDOM", () => {
-    // Phase 5.5 / UX-10: focusEnd() must (a) move the selection to
-    // doc.length AND (b) leave document.activeElement on the CM6
-    // contentDOM so subsequent typing lands at the very end of the doc.
     const probeRef = { current: null as ProbeRef | null };
     const { container } = renderWithToast(
       <Probe ref={probeRef} initialDoc="hello world" onChange={vi.fn()} />,
     );
-    // Reach into the rendered editor to introspect the EditorView state
-    // and the focused contentDOM. The contentDOM is the .cm-content node.
     const contentDOM = container.querySelector(".cm-content") as HTMLElement;
     expect(contentDOM).not.toBeNull();
 
@@ -196,8 +182,6 @@ describe("<MarkdownEditor />", () => {
       probeRef.current?.ed()?.focusEnd();
     });
 
-    // EditorView.findFromDOM(contentDOM) returns the same view; reading
-    // its state.selection.main.from confirms the caret moved to end-of-doc.
     const view = EditorView.findFromDOM(contentDOM);
     expect(view).not.toBeNull();
     const docLen = view!.state.doc.length;
@@ -207,9 +191,6 @@ describe("<MarkdownEditor />", () => {
   });
 
   it("onBlur fires when CM6 contentDOM blurs (UX-07)", () => {
-    // Phase 5.5 / UX-07: EditorView.domEventHandlers({ blur(...) }) wires a
-    // CM6-scoped blur listener. Dispatching a `blur` FocusEvent on the
-    // contentDOM (the .cm-content node) MUST invoke the onBlur prop.
     const onBlur = vi.fn();
     const { container } = renderWithToast(
       <Probe initialDoc="hello" onChange={vi.fn()} onBlur={onBlur} />,
@@ -223,9 +204,6 @@ describe("<MarkdownEditor />", () => {
   });
 
   it("onBlur is undefined-safe (UX-07)", () => {
-    // Phase 5.5 / UX-07: omitting the onBlur prop must NOT throw when CM6
-    // dispatches its blur event. The optional-chain on cbRef.current.onBlur?.()
-    // is the contract — verify by rendering without onBlur and dispatching.
     const { container } = renderWithToast(
       <Probe initialDoc="hello" onChange={vi.fn()} />,
     );
@@ -239,20 +217,12 @@ describe("<MarkdownEditor />", () => {
   });
 
   it("extensions array includes EditorView.lineWrapping (white-space: pre-wrap on .cm-content)", () => {
-    // Phase 5.5 / UX-11: EditorView.lineWrapping toggles white-space to
-    // pre-wrap on .cm-content. Reading the computed style from the
-    // rendered DOM is the runtime-checkable proof that the extension is
-    // wired into the array (vs. just imported / unused).
     const { container } = renderWithToast(
       <Probe initialDoc="just enough text" onChange={vi.fn()} />,
     );
     const contentDOM = container.querySelector(".cm-content") as HTMLElement;
     expect(contentDOM).not.toBeNull();
     const ws = window.getComputedStyle(contentDOM).whiteSpace;
-    // CM6 sets white-space: break-spaces (or pre-wrap on older versions)
-    // when EditorView.lineWrapping is in the extensions array. Without
-    // the extension, the default is `pre`. Accept either pre-wrap or
-    // break-spaces — both are wrapping modes.
     expect(["pre-wrap", "break-spaces"]).toContain(ws);
   });
 });

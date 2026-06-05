@@ -21,9 +21,7 @@ vi.mock("../lib/useDailyNote", () => ({
 
 import { NoteNotFoundView } from "./NoteNotFoundView";
 
-// jsdom's window.location.assign is non-configurable; we swap the whole
-// location object with a plain stub on each test (same pattern as
-// useDeepLink.test.ts).
+
 const originalLocation = window.location;
 let assignSpy: ReturnType<typeof vi.fn>;
 

@@ -17,7 +17,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock postAdminReindex BEFORE TopBar imports adminApi (transitively).
+
 vi.mock("../lib/adminApi", () => ({
   postAdminReindex: vi.fn().mockResolvedValue({ data: {}, response: { status: 200 } }),
 }));
@@ -25,7 +25,6 @@ vi.mock("../lib/adminApi", () => ({
 import { postAdminReindex } from "../lib/adminApi";
 import { TopBar } from "./TopBar";
 
-// ── Mock dependencies ────────────────────────────────────────────────────────
 
 vi.mock("./Breadcrumbs", () => ({
   Breadcrumbs: () => <div data-testid="mock-breadcrumbs">Breadcrumbs</div>,
@@ -37,25 +36,23 @@ vi.mock("./PanelSelectorDropdown", () => ({
   ),
 }));
 
-// Mock useTreeStore — default state and mock setters
+
 const mockSetNotesSidebarVisible = vi.fn();
 const mockSetBacklinksRailExpanded = vi.fn();
 
 let mockNotesSidebarVisible = true;
 let mockBacklinksRailExpanded = true;
-// Plan 07-37: TopBar reads useTreeStore.saveState for the SaveIndicator-button.
-// Each test can override before render via this mutable holder.
+
+
 let mockSaveState: import("../lib/saveStateMachine").SaveState = { status: "idle" };
-// Plan 07-38 (UAT-4 N3): TopBar reads useTreeStore.panelSelector to gate
-// the right-rail toggle. Default = both panels selected (matches the
-// store default `panelSelector: { tags: true, backlinks: true }`).
+
+
 let mockPanelSelector: { tags: boolean; backlinks: boolean } = {
   tags: true,
   backlinks: true,
 };
-// Plan 07-38 (UAT-4 N3): activeNoteId is now nullable in tests — when null
-// the user is looking at attachment preview / scratchpad, but panel
-// selector + rail toggle behavior should still respect panelSelector state.
+
+
 let mockActiveNoteId: string | null = "note-1";
 
 vi.mock("../lib/useTreeStore", () => ({
@@ -73,8 +70,7 @@ vi.mock("../lib/useTreeStore", () => ({
   },
 }));
 
-// Mock useTagsForNote (Plan 07-35: replaces global useTagBrowser with per-note semantics)
-// and useBacklinks for C3/N3 tests.
+
 let mockTagCount = 0;
 let mockBacklinkCount = 0;
 
@@ -95,7 +91,6 @@ vi.mock("../lib/useBacklinks", () => ({
   }),
 }));
 
-// ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("TopBar", () => {
   beforeEach(() => {
@@ -106,7 +101,6 @@ describe("TopBar", () => {
     mockBacklinkCount = 0;
   });
 
-  // Test 1: Container style — background + boxShadow + height
   it("renders a container with the correct background, boxShadow, and height styles", () => {
     render(<TopBar />);
     const container = screen.getByTestId("top-bar");
@@ -115,7 +109,6 @@ describe("TopBar", () => {
     expect(container.style.height).toBe("40px");
   });
 
-  // Test 2: Sidebar toggle aria-label when notesSidebarVisible=true
   it("shows aria-label 'Hide notes sidebar' when notesSidebarVisible is true", () => {
     mockNotesSidebarVisible = true;
     render(<TopBar />);
@@ -124,7 +117,6 @@ describe("TopBar", () => {
     ).toBeTruthy();
   });
 
-  // Test 3: Sidebar toggle aria-label when notesSidebarVisible=false
   it("shows aria-label 'Show notes sidebar' when notesSidebarVisible is false", () => {
     mockNotesSidebarVisible = false;
     render(<TopBar />);
@@ -133,7 +125,6 @@ describe("TopBar", () => {
     ).toBeTruthy();
   });
 
-  // Test 4: Clicking sidebar toggle calls setNotesSidebarVisible(!current)
   it("calls setNotesSidebarVisible(!notesSidebarVisible) when sidebar toggle clicked", () => {
     mockNotesSidebarVisible = true;
     render(<TopBar />);
@@ -148,19 +139,16 @@ describe("TopBar", () => {
     expect(mockSetNotesSidebarVisible).toHaveBeenCalledWith(true);
   });
 
-  // Test 5: Renders the Breadcrumbs component
   it("renders the Breadcrumbs component", () => {
     render(<TopBar />);
     expect(screen.getByTestId("mock-breadcrumbs")).toBeTruthy();
   });
 
-  // Test 6: Renders the PanelSelectorDropdown component
   it("renders the PanelSelectorDropdown component", () => {
     render(<TopBar />);
     expect(screen.getByTestId("mock-panel-selector-dropdown")).toBeTruthy();
   });
 
-  // Test 7: Right-rail toggle aria-label reflects backlinksRailExpanded state
   it("shows aria-label 'Hide panels' when backlinksRailExpanded is true", () => {
     mockBacklinksRailExpanded = true;
     render(<TopBar />);
@@ -173,7 +161,6 @@ describe("TopBar", () => {
     expect(screen.getByRole("button", { name: "Show panels" })).toBeTruthy();
   });
 
-  // Test 8: Clicking right-rail toggle calls setBacklinksRailExpanded(!current)
   it("calls setBacklinksRailExpanded(!backlinksRailExpanded) when right-rail toggle clicked", () => {
     mockBacklinksRailExpanded = true;
     render(<TopBar />);
@@ -188,46 +175,33 @@ describe("TopBar", () => {
     expect(mockSetBacklinksRailExpanded).toHaveBeenCalledWith(true);
   });
 
-  // Test 9: zIndex is 10
   it("has zIndex 10 on the container", () => {
     render(<TopBar />);
     const container = screen.getByTestId("top-bar");
     expect(container.style.zIndex).toBe("10");
   });
 
-  // Test 10: Optional style prop merges into root container style
   it("merges extra style props into the container (e.g. gridRow, gridColumn)", () => {
     render(<TopBar style={{ gridRow: "1", gridColumn: "2" }} />);
     const container = screen.getByTestId("top-bar");
     expect(container.style.gridRow).toBe("1");
     expect(container.style.gridColumn).toBe("2");
-    // Original styles must still be present
     expect(container.style.background).toBe("var(--color-bg)");
   });
 });
 
-// ── RR-toggle-hide: C3 (UAT-2 N3) — right-rail toggle hidden when no items ──
-//
-// SUPERSEDED by Plan 07-38 / UAT-4 N3 — the toggle is now gated on
-// `useTreeStore.panelSelector.{tags,backlinks}` (panel-selection state),
-// NOT on the active note's tag/backlink content. These tests are rewritten
-// to reflect the new gate: zero tags / backlinks no longer hides the toggle
-// when at least one panel is selected. See TBR-N3 suite below for the new
-// authoritative cases.
 
 describe("RR-toggle-hide — right-rail toggle gate (Plan 07-38 supersedes UAT-2 N3)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockNotesSidebarVisible = true;
     mockBacklinksRailExpanded = true;
-    mockPanelSelector = { tags: true, backlinks: true }; // store default
+    mockPanelSelector = { tags: true, backlinks: true };
   });
 
   it("RR-T-1 (Plan 07-38): zero tags + zero backlinks BUT default panelSelector=both-selected → toggle RENDERED", () => {
     mockTagCount = 0;
     mockBacklinkCount = 0;
-    // The previous (Plan 07-30) behavior hid the toggle here; Plan 07-38
-    // reverses that — the gate is now panelSelector, not content.
     render(<TopBar />);
     expect(screen.queryByRole("button", { name: /hide panels|show panels/i })).not.toBeNull();
   });
@@ -247,12 +221,6 @@ describe("RR-toggle-hide — right-rail toggle gate (Plan 07-38 supersedes UAT-2
   });
 });
 
-// ── TBR-FIX: SUPERSEDED — see TBR-N3 below ──────────────────────────────────
-//
-// Plan 07-35's per-note hasContent gate is reversed by Plan 07-38: the
-// panel-selector state is the authoritative gate now, NOT the active note's
-// content. We keep one positive case (panelSelector=true → toggle visible)
-// to lock that contract; the per-note-content cases are obsolete.
 
 describe("TBR-FIX (superseded by Plan 07-38) — content no longer gates", () => {
   beforeEach(() => {
@@ -270,11 +238,6 @@ describe("TBR-FIX (superseded by Plan 07-38) — content no longer gates", () =>
   });
 });
 
-// ── TBR-SI SUPERSEDED by Plan 07-38 (UAT-4 N9) — SaveIndicator back to StatusBar ──
-//
-// Plan 07-37 mounted the SaveIndicator-button in TopBar. Plan 07-38 user
-// reversal moves it back to StatusBar. TopBar must NOT render any
-// [data-save-state] element.
 
 describe("TBR-N9 — SaveIndicator removed from TopBar (Plan 07-38)", () => {
   beforeEach(() => {
@@ -304,14 +267,6 @@ describe("TBR-N9 — SaveIndicator removed from TopBar (Plan 07-38)", () => {
   });
 });
 
-// ── TBR-N3: Plan 07-38 (UAT-4 N3) — PanelSelectorDropdown always visible ──
-//
-// Per the user clarification captured in 07-HUMAN-UAT-4.md, the
-// PanelSelectorDropdown should be rendered UNCONDITIONALLY (regardless of
-// whether the active note has tags/backlinks, or even whether there is an
-// active note). The right-rail toggle should only be gated on
-// `useTreeStore.panelSelector.{tags, backlinks}` — i.e. is any panel
-// currently selected? Plan 07-35's hasContent gate is reversed.
 
 describe("TBR-N3 — PanelSelectorDropdown always visible + selection-gated rail toggle (Plan 07-38)", () => {
   beforeEach(() => {
@@ -342,8 +297,6 @@ describe("TBR-N3 — PanelSelectorDropdown always visible + selection-gated rail
 
   it("TBR-N3-3: right-rail toggle HIDDEN when panelSelector.tags=false AND panelSelector.backlinks=false", () => {
     mockPanelSelector = { tags: false, backlinks: false };
-    // Even with content in the active note, the toggle should be hidden
-    // because the user has deselected every panel.
     mockTagCount = 5;
     mockBacklinkCount = 3;
     render(<TopBar />);
@@ -354,8 +307,6 @@ describe("TBR-N3 — PanelSelectorDropdown always visible + selection-gated rail
 
   it("TBR-N3-4a: right-rail toggle VISIBLE when panelSelector.tags=true", () => {
     mockPanelSelector = { tags: true, backlinks: false };
-    // Even with no content, the toggle should be visible because the user
-    // has selected at least one panel (panel-presence gates the toggle).
     mockTagCount = 0;
     mockBacklinkCount = 0;
     render(<TopBar />);

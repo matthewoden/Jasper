@@ -35,23 +35,10 @@ import DOMPurify from "dompurify";
  */
 const SAFE_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
   USE_PROFILES: { html: true },
-  // Whitelist of attributes legitimate Phase 6+ surfaces will need:
-  //   href, title — for backlinks and inline links
-  //   alt, src    — for image rendering (paired with the editor's
-  //                 external-image widget for cross-origin URLs)
-  //   class       — for CSS hooks (cm-* classes etc.)
   ALLOWED_ATTR: ["href", "title", "alt", "src", "class"],
-  // Phase 7 SEARCH-04 — server emits <mark>...</mark> in FTS5 snippet()
-  // results; the html5 profile already includes mark, but ADD_TAGS makes
-  // the contract explicit + grep-auditable so a future tightening cannot
-  // silently strip search highlights. See sanitize.test.ts regression case.
   ADD_TAGS: ["mark"],
-  // Permit http(s), blob:, data:, relative URIs, fragments. Blocks
-  // javascript:, vbscript:, file: schemes. Pattern from DOMPurify docs.
   ALLOWED_URI_REGEXP:
     /^(?:(?:https?|blob|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
-  // Defense-in-depth: profile already excludes most of these but
-  // FORBID_TAGS makes the boundary explicit and grep-able.
   FORBID_TAGS: ["script", "iframe", "object", "embed", "form"],
   FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onfocus", "onblur"],
 };

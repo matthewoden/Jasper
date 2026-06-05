@@ -40,25 +40,10 @@ const statusBarStyle: CSSProperties = {
 };
 
 export function StatusBar() {
-  // Plan 07-38 (UAT-4 N9): subscribe to the hoisted saveState slice (still
-  // populated by the autosave + lifecycle machinery — Plan 07-28 hoist
-  // STAYS, only the mount location reverts).
   const saveState = useTreeStore((s) => s.saveState);
 
-  // Plan 08-17c: vault picker state — shows current vault display_name segment.
   const { current, open } = useVaultPicker();
 
-  // Plan 07-38 (UAT-4 N9): same handler the TopBar mount used. Manual
-  // incremental reindex on click; the SaveIndicator-as-button mode
-  // DoS-guards by disabling itself while saving (T-37-01 inside the
-  // SaveIndicator component).
-  //
-  // UAT-2 R4-2: when saveState.status === "paused" (WS is down), the
-  // click now triggers an immediate WS reconnect attempt instead of a
-  // doomed reindex POST. The reindex would always fail because the
-  // server is the same thing that owns the WS — if WS is down, the
-  // HTTP listener is too. forceWsReconnect short-circuits the backoff
-  // timer so the user doesn't have to wait up to 45s after a restart.
   const forceWsReconnect = useTreeStore((s) => s.forceWsReconnect);
   const handleRefresh = useCallback(async () => {
     if (saveState.status === "paused") {

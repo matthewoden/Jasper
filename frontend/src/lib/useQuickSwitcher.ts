@@ -56,7 +56,6 @@ function flattenTree(tree: Tree): NoteHit[] {
  */
 export function useQuickSwitcher(query: string): NoteHit[] {
   const { tree } = useFileTree();
-  // Selector returns the recentlyOpenedNoteIds array from the store
   const recentlyOpenedNoteIds = useTreeStore((s) => s.recentlyOpenedNoteIds);
 
   return useMemo(() => {
@@ -65,23 +64,16 @@ export function useQuickSwitcher(query: string): NoteHit[] {
     const all = flattenTree(tree);
 
     if (!query) {
-      // Empty query: recency-first order, then updated_at desc for un-opened notes.
-      // C2 fix (UAT #10): ISO 8601 strings sort correctly via localeCompare;
-      // descending means b.updated_at before a.updated_at (most recent first).
       const recencyIndex = new Map(recentlyOpenedNoteIds.map((id, i) => [id, i]));
       const sorted = [...all].sort((a, b) => {
         const ai = recencyIndex.get(a.id) ?? Infinity;
         const bi = recencyIndex.get(b.id) ?? Infinity;
         if (ai !== bi) return ai - bi;
-        // C2 fix (UAT #10): fall back to updated_at desc so the switcher
-        // always has the most recent notes at the top when no recency
-        // history exists. ISO 8601 strings sort correctly via localeCompare.
         return b.updated_at.localeCompare(a.updated_at);
       });
       return sorted.slice(0, 50);
     }
 
-    // Non-empty query: fuzzysort over titles, then recency tiebreaker on equal scores.
     const results = fuzzysort.go(query, all, {
       key: "title",
       limit: 50,
@@ -95,10 +87,8 @@ export function useQuickSwitcher(query: string): NoteHit[] {
         const aScore = a.score ?? -Infinity;
         const bScore = b.score ?? -Infinity;
         if (aScore !== bScore) {
-          // Higher score = better match → descending
           return bScore - aScore;
         }
-        // Equal score: recency tiebreaker (lower index = more recent = better)
         const ai = recencyIndex.get(a.id) ?? Infinity;
         const bi = recencyIndex.get(b.id) ?? Infinity;
         return ai - bi;

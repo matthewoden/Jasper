@@ -49,7 +49,6 @@ export function useAttachmentUpload(
   const dragDepthRef = useRef(0);
   const [isDropTargetActive, setIsDropTargetActive] = useState(false);
 
-  // ---- internal helpers ------------------------------------------------
 
   const insertMarkdown = useCallback(
     (view: EditorView, markdown: string, pos: number) => {
@@ -98,7 +97,6 @@ export function useAttachmentUpload(
     [noteId, insertMarkdown, toast]
   );
 
-  // ---- drag handlers ---------------------------------------------------
 
   const onDragEnter = useCallback((e: DragEvent) => {
     if (!e.dataTransfer || e.dataTransfer.types.indexOf("Files") < 0) return;
@@ -135,15 +133,12 @@ export function useAttachmentUpload(
         view.state.selection.main.head;
 
       for (const file of files) {
-        // Sequential upload — preserves drop order; each insert happens
-        // after its upload resolves (D-28 / UI-SPEC §Surface 7).
         await uploadAndInsert(file, view, dropPos);
       }
     },
     [uploadAndInsert]
   );
 
-  // ---- paste handler (images only, D-28) --------------------------------
 
   const pasteHandler = useCallback(
     async (e: ClipboardEvent, view: EditorView): Promise<void> => {
@@ -151,13 +146,12 @@ export function useAttachmentUpload(
       const imageItem = items.find(
         (i) => i.kind === "file" && i.type.startsWith("image/")
       );
-      if (!imageItem) return; // fall through to CodeMirror default text paste
+      if (!imageItem) return;
 
       e.preventDefault();
       const blob = imageItem.getAsFile();
       if (!blob) return;
 
-      // Filename: paste-YYYY-MM-DDTHH-MM-SS.{ext} (D-28 filesystem safety)
       const ext = imageItem.type.split("/")[1] ?? "png";
       const ts = new Date()
         .toISOString()

@@ -1,10 +1,6 @@
-// Spike fixtures — representative markdown the spike's vitest suites
-// run the decoration plugin against. Kept tiny and deterministic so
-// tree-iteration assertions stay readable.
-//
-// Each export targets one or two specific D-XX decisions; comments
-// tag the linkage so downstream plans (05-07, 05-08) can grow these
-// fixtures without re-deriving the intent.
+
+
+
 export const HEADING_DOC = `# Heading 1
 Body paragraph after the heading.
 
@@ -38,7 +34,6 @@ body
 body
 ### Heading C`;
 
-// Production-scope fixtures added by Plan 05-06.
 
 export const LIST_DOC = `Some text.
 

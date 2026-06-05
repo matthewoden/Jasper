@@ -28,9 +28,6 @@ export const ScratchpadUUID =
 export function getNote(id: string, options?: { signal?: AbortSignal }) {
   return client.GET("/notes/{id}", {
     params: { path: { id } },
-    // R4-13 (Plan 08-22): vault.switching aborts the in-flight fetch so
-    // the SPA does not flash a 404 for the prior vault's note. openapi-fetch
-    // forwards `signal` through to the underlying `fetch` init.
     ...(options?.signal ? { signal: options.signal } : {}),
   });
 }
@@ -107,7 +104,6 @@ export async function createNoteFromMarkdownDrop(
   notePath: string,
   body: string,
 ): Promise<{ id: string; path: string }> {
-  // Parse: split into parent_path + title-without-.md.
   const lastSlash = notePath.lastIndexOf("/");
   const parentPath = lastSlash === -1 ? "" : notePath.slice(0, lastSlash);
   const filename = lastSlash === -1 ? notePath : notePath.slice(lastSlash + 1);
@@ -115,7 +111,6 @@ export async function createNoteFromMarkdownDrop(
     ? filename.slice(0, -3)
     : filename;
 
-  // Step 1: POST /notes to create the empty note.
   const { data, error, response } = await client.POST("/notes", {
     body: { parent_path: parentPath, title },
   });
@@ -139,8 +134,6 @@ export async function createNoteFromMarkdownDrop(
 
   const note = data;
 
-  // Step 2: PUT /notes/{id} to populate the body — but only if body is non-empty.
-  // (Empty drops still create the empty note; no follow-up write needed.)
   if (body.length > 0) {
     const { error: putErr, response: putResp } = await client.PUT("/notes/{id}", {
       params: { path: { id: note.id } },

@@ -44,10 +44,6 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
     expect(searchApi.searchNotes).not.toHaveBeenCalled();
   });
 
-  // Plan 07-44 (UAT-8 follow-up): debounce REVERTED from 500ms back to 200ms.
-  // User reversed Plan 07-43's 500ms decision verbally 2026-05-17 — the
-  // activity indicator from Plan 07-43 Task 3 already covers the in-window
-  // feedback so the longer debounce was unnecessary and harmed responsiveness.
   it("debounces 200ms then returns results from searchNotes (USR-DEBOUNCE-200-1)", async () => {
     vi.spyOn(searchApi, "searchNotes").mockResolvedValue([MOCK_RESULT]);
     const { result } = renderHook(() => useSearch("hello", null));
@@ -55,19 +51,16 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
     expect(result.current.isSearching).toBe(true);
     expect(searchApi.searchNotes).not.toHaveBeenCalled();
 
-    // 100ms — partway through the 200ms window, must NOT fire yet.
     await act(async () => {
       vi.advanceTimersByTime(100);
     });
     expect(searchApi.searchNotes).not.toHaveBeenCalled();
 
-    // 199ms total — still below the threshold.
     await act(async () => {
       vi.advanceTimersByTime(99);
     });
     expect(searchApi.searchNotes).not.toHaveBeenCalled();
 
-    // Cross the 200ms boundary — fires.
     await act(async () => {
       vi.advanceTimersByTime(2);
     });
@@ -92,18 +85,15 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
       { initialProps: { q: "he" } },
     );
 
-    // advance partway through the 200ms window
     await act(async () => {
       vi.advanceTimersByTime(100);
     });
 
-    // change query — previous debounce should be cancelled
     rerender({ q: "hello" });
     await act(async () => {
       vi.advanceTimersByTime(201);
     });
 
-    // should only fire once (for final value)
     expect(searchApi.searchNotes).toHaveBeenCalledTimes(1);
     expect(searchApi.searchNotes).toHaveBeenCalledWith("hello", undefined, 50);
     void result;
@@ -114,10 +104,8 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
       ({ q }: { q: string }) => useSearch(q, null),
       { initialProps: { q: "hello" } },
     );
-    // Initially searching
     expect(result.current.isSearching).toBe(true);
 
-    // Drop below threshold
     rerender({ q: "h" });
     expect(result.current.results).toEqual([]);
     expect(result.current.isSearching).toBe(false);
@@ -144,7 +132,6 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
   });
 
   it("source file contains the D-08 INTENTIONAL DESIGN comment (WS-free contract)", async () => {
-    // This test acts as a compile-time signal that the comment block is present.
     const { useSearch: imported } = await import("./useSearch");
     expect(typeof imported).toBe("function");
     const { result } = renderHook(() => imported("", null));

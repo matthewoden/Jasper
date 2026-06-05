@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
-// Mock vaultApi before importing the hook
+
 vi.mock("./vaultApi", () => ({
   vaultApi: {
     getCurrent: vi.fn().mockResolvedValue(null),
@@ -29,9 +29,7 @@ import { vaultApi } from "./vaultApi";
 describe("useVaultPicker", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset zustand store between tests
     useTreeStore.getState().setVaultPickerOpen(false);
-    // Re-mock after clear
     vi.mocked(vaultApi.getCurrent).mockResolvedValue(null);
     vi.mocked(vaultApi.getRecent).mockResolvedValue({ vaults: [], banner: "" });
   });
@@ -39,7 +37,6 @@ describe("useVaultPicker", () => {
   it("calls getCurrent and getRecent on mount", async () => {
     const { result } = renderHook(() => useVaultPicker());
 
-    // Wait for async fetch
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
@@ -81,7 +78,6 @@ describe("useVaultPicker", () => {
   it("refresh() re-fetches getCurrent and getRecent", async () => {
     const { result } = renderHook(() => useVaultPicker());
 
-    // Wait for initial fetch
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
@@ -100,10 +96,8 @@ describe("useVaultPicker", () => {
   it("isLoading is true during fetch and false after", async () => {
     const { result } = renderHook(() => useVaultPicker());
 
-    // Initially loading
     expect(result.current.isLoading).toBe(true);
 
-    // After resolution
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });

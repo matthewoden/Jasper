@@ -24,7 +24,7 @@ import {
 import { setResolvedTitlesSnapshot } from "./wikilinkResolver";
 import { postNotes } from "../lib/treeApi";
 
-// Mock postNotes (the only API call made by createNoteFromPendingLink)
+
 vi.mock("../lib/treeApi", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/treeApi")>();
   return {
@@ -35,9 +35,6 @@ vi.mock("../lib/treeApi", async (importOriginal) => {
 
 const mockPostNotes = vi.mocked(postNotes);
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeView(doc: string, selectionPos = 0): EditorView {
   const parent = document.createElement("div");
@@ -52,9 +49,6 @@ function makeView(doc: string, selectionPos = 0): EditorView {
   });
 }
 
-// ---------------------------------------------------------------------------
-// findWikiLinkAt tests
-// ---------------------------------------------------------------------------
 
 describe("findWikiLinkAt", () => {
   const views: EditorView[] = [];
@@ -73,7 +67,6 @@ describe("findWikiLinkAt", () => {
     const doc = "some plain text\n[[Foo]] elsewhere";
     const view = makeView(doc, 0);
     views.push(view);
-    // Position 0 is on "some plain text", not on a wikilink
     const result = findWikiLinkAt(view, 0);
     expect(result).toBeNull();
   });
@@ -91,7 +84,6 @@ describe("findWikiLinkAt", () => {
     setResolvedTitlesSnapshot(new Set(["foo"]), new Map([["foo", "uuid-foo"]]));
     const view = makeView(doc, 0);
     views.push(view);
-    // Position 5 is inside "[[Foo]]"
     const result = findWikiLinkAt(view, 5);
     expect(result).not.toBeNull();
     expect(result?.rawTitle).toBe("Foo");
@@ -116,7 +108,6 @@ describe("findWikiLinkAt", () => {
     setResolvedTitlesSnapshot(new Set(["foo"]), new Map([["foo", "uuid-foo"]]));
     const view = makeView(doc, 0);
     views.push(view);
-    // Position inside [[Foo|My Alias]]
     const result = findWikiLinkAt(view, 8);
     expect(result).not.toBeNull();
     expect(result?.rawTitle).toBe("Foo");
@@ -127,15 +118,11 @@ describe("findWikiLinkAt", () => {
     setResolvedTitlesSnapshot(new Set(["foo"]), new Map());
     const view = makeView(doc, 0);
     views.push(view);
-    // Position 0 is "p" in "prefix"
     const result = findWikiLinkAt(view, 0);
     expect(result).toBeNull();
   });
 });
 
-// ---------------------------------------------------------------------------
-// createNoteFromPendingLink tests
-// ---------------------------------------------------------------------------
 
 describe("createNoteFromPendingLink", () => {
   beforeEach(() => {
@@ -167,9 +154,6 @@ describe("createNoteFromPendingLink", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// setWikilinkHandlerCallbacks tests (integration-style)
-// ---------------------------------------------------------------------------
 
 describe("setWikilinkHandlerCallbacks", () => {
   it("accepts a callbacks object without throwing", () => {
@@ -182,11 +166,6 @@ describe("setWikilinkHandlerCallbacks", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// K1..K5: click handler integration tests
-// These test the exported linkClickHandler as a CM6 extension.
-// We simulate clicks by calling the handler with mock events.
-// ---------------------------------------------------------------------------
 
 import { linkClickHandler } from "./linkClickHandler";
 import { wikilinkPlugin } from "./wikilinkPlugin";
@@ -237,44 +216,32 @@ describe("linkClickHandler — click handler integration", () => {
     });
   }
 
-  // K1: plain click is inert (no modifier)
   it("K1: plain click on a [[Foo]] span returns false (inert)", () => {
     const doc = "see [[Foo]] here\ncursor";
     setResolvedTitlesSnapshot(new Set(["foo"]), new Map([["foo", "uuid-foo"]]));
     const view = makeViewWithHandlers(doc, doc.indexOf("\ncursor") + 1);
     views.push(view);
 
-    // The handler checks isModifierClick first and returns false immediately
-    // for no-modifier clicks, so setActiveNoteId is never called.
-    // We verify by checking that no navigation was triggered.
-    void makeMouseEvent({ metaKey: false, ctrlKey: false }); // no modifier
-    // The handler function is internal to CM6's domEventHandlers extension.
-    // We test the observable effect: a plain click must NOT call setActiveNoteId.
+    void makeMouseEvent({ metaKey: false, ctrlKey: false });
     expect(mockSetActiveNoteId).not.toHaveBeenCalled();
   });
 
-  // K2/K3: Cmd+click / Ctrl+click on resolved wikilink navigates
   it("K2: Cmd+click on a resolved [[Foo]] → setActiveNoteId(targetId) called", () => {
     setResolvedTitlesSnapshot(new Set(["foo"]), new Map([["foo", "uuid-foo"]]));
-    // Test findWikiLinkAt + setActiveNoteId integration:
-    // We create a view with [[Foo]] and verify the resolution chain works.
     const doc = "see [[Foo]] for more";
     const view = makeViewWithHandlers(doc, 0);
     views.push(view);
 
-    // Position 5 is inside [[Foo]]
     const wikiLink = findWikiLinkAt(view, 5);
     expect(wikiLink?.isResolved).toBe(true);
     expect(wikiLink?.targetId).toBe("uuid-foo");
 
-    // Simulate the handler behavior (resolved branch):
     if (wikiLink?.isResolved && wikiLink.targetId) {
       mockSetActiveNoteId(wikiLink.targetId);
     }
     expect(mockSetActiveNoteId).toHaveBeenCalledWith("uuid-foo");
   });
 
-  // K4: Cmd+click on pending [[NewNote]] → createNoteFromPendingLink called
   it("K4: Cmd+click on a pending [[NewNote]] → createNoteFromPendingLink called with correct args", async () => {
     setResolvedTitlesSnapshot(new Set([]), new Map());
     mockPostNotes.mockResolvedValue({ data: { id: "new-uuid", path: "my-folder/NewNote.md", title: "NewNote", updated_at: "" } });
@@ -286,7 +253,6 @@ describe("linkClickHandler — click handler integration", () => {
     const wikiLink = findWikiLinkAt(view, 8);
     expect(wikiLink?.isResolved).toBe(false);
 
-    // Simulate the handler's pending branch:
     const newId = await createNoteFromPendingLink(wikiLink!.rawTitle, "my-folder");
     expect(mockPostNotes).toHaveBeenCalledWith({
       parent_path: "my-folder",
@@ -296,19 +262,16 @@ describe("linkClickHandler — click handler integration", () => {
     expect(mockSetActiveNoteId).toHaveBeenCalledWith("new-uuid");
   });
 
-  // K5: external link branch is unaffected (regression test)
   it("K5: Cmd+click on external link does NOT call setActiveNoteId (no regression)", () => {
     const doc = "[Visit](https://example.com)";
     const view = makeViewWithHandlers(doc, 0);
     views.push(view);
 
-    // findWikiLinkAt on the external link URL range should return null
     const wikiLink = findWikiLinkAt(view, 10);
     expect(wikiLink).toBeNull();
     expect(mockSetActiveNoteId).not.toHaveBeenCalled();
   });
 
-  // K3: Ctrl+click (same as Cmd+click but uses ctrlKey)
   it("K3: Ctrl+click resolves same way as Cmd+click (cross-platform)", () => {
     setResolvedTitlesSnapshot(new Set(["bar"]), new Map([["bar", "uuid-bar"]]));
     const doc = "see [[Bar]] here";

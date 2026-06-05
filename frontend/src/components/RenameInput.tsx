@@ -52,8 +52,7 @@ import {
 
 import { TreeMutationError } from "../lib/useTreeMutations";
 
-// validateRename + ValidateResult live in ./renameInput.utils so this file
-// only exports React components — react-refresh/only-export-components.
+
 import { validateRename } from "./renameInput.utils";
 
 export interface RenameInputProps {
@@ -103,9 +102,6 @@ const errorMessageStyle: React.CSSProperties = {
 
 export function RenameInput({
   initialValue,
-  // isFolder is reserved for future variant-specific behavior; the
-  // caller already strips .md before passing initialValue, so we don't
-  // branch on it inside this component today.
   isFolder: _isFolder,
   siblingNames,
   onCommit,
@@ -117,17 +113,13 @@ export function RenameInput({
   const [error, setError] = useState<string | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // Avoid double-firing commit when both keydown(Enter|Tab) and
-  // click-outside are observed in close succession.
   const committedOrCancelled = useRef(false);
 
-  // Mount: focus + select-all so user can immediately overtype OR press End.
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
   }, []);
 
-  // Re-validate whenever value or siblingNames change.
   useEffect(() => {
     const r = validateRename(value, siblingNames);
     setError(r.valid ? undefined : r.error);
@@ -139,25 +131,6 @@ export function RenameInput({
 
   const commit = useCallback(async () => {
     if (committedOrCancelled.current) return;
-    // Gap R2-5: same-name rename is a no-op for established files. If
-    // the user pressed Enter (or Tab, or clicked outside) without
-    // changing the value — or typed a new value and erased back to the
-    // original — close the input cleanly. The server would otherwise
-    // 409 on a case-collision against the row's own current path because
-    // Service.Move does not short-circuit oldRelPath == canonNew
-    // (research §3.4). Symmetric to Plan 03-11's drag-drop same-parent
-    // guard in computeMoveTarget.
-    //
-    // Bug D exception (isNew=true): when the node was just created and
-    // the user presses Enter/Tab/blurs without changing the placeholder
-    // name, they are accepting the auto-generated name — commit it so
-    // the file is kept. Do NOT route to onCancel, which would trigger
-    // TreeRow.handleCancelRename to delete the ephemeral node.
-    //
-    // The `value !== ""` guard prevents this short-circuit from
-    // masking the "Name cannot be empty." validation for the
-    // degenerate empty-initialValue case (which the caller never
-    // produces in normal use, but we will not regress on).
     if (value === initialValue && value !== "") {
       if (!isNew) {
         committedOrCancelled.current = true;
@@ -195,11 +168,6 @@ export function RenameInput({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
-      // Stop EVERY key from bubbling to the tree's keymap. react-arborist
-      // listens at the tree-container level for first-letter-jump
-      // (alphanumerics), Enter (open / toggle), Escape (close), and arrow
-      // keys (navigation). While the rename input is mounted, NONE of
-      // those should fire — the input is the active control. (Gap 4)
       e.stopPropagation();
       if (e.key === "Enter") {
         e.preventDefault();
@@ -223,15 +191,10 @@ export function RenameInput({
     [commit, cancel],
   );
 
-  // Some browsers' keyboard pipelines listen on keyup / keypress phases
-  // as well; trap those too so nothing escapes to the tree's keymap.
-  // (Gap 4)
   const handleKeyUpOrPress = useCallback((e: SyntheticEvent) => {
     e.stopPropagation();
   }, []);
 
-  // Click outside → commit (VS Code convention). Listens on document
-  // mousedown so it fires before focus shifts.
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       const c = containerRef.current;

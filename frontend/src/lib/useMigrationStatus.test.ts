@@ -34,7 +34,6 @@ describe("useMigrationStatus", () => {
 
     const { result } = renderHook(() => useMigrationStatus());
 
-    // Initial synchronous render: optimistic default.
     expect(result.current.state).toBe("ok");
     expect(result.current.loading).toBe(true);
 
@@ -74,7 +73,6 @@ describe("useMigrationStatus", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.state).toBe("rolled_back");
 
-    // Subsequent refresh — server now reports ok (e.g. after a reindex).
     getAdminStatusMock.mockResolvedValueOnce({
       data: { state: "ok", notes_indexed: 12 },
       error: undefined,
@@ -86,10 +84,6 @@ describe("useMigrationStatus", () => {
 
     expect(result.current.state).toBe("ok");
     expect(result.current.notesIndexed).toBe(12);
-    // failedMigration is intentionally not cleared by the hook on a state
-    // transition — UI gates on `state`, so an old value cannot leak into
-    // the banner. We assert the value is whatever the most recent payload
-    // contained (undefined here).
     expect(result.current.failedMigration).toBeUndefined();
     expect(getAdminStatusMock).toHaveBeenCalledTimes(2);
   });
@@ -128,18 +122,12 @@ describe("useMigrationStatus", () => {
       };
     });
 
-    // Render the hook then immediately unmount and re-render to simulate
-    // StrictMode's double-invocation pattern.
     const first = renderHook(() => useMigrationStatus());
     first.unmount();
 
     const second = renderHook(() => useMigrationStatus());
     await waitFor(() => expect(second.result.current.loading).toBe(false));
 
-    // The first effect's resolution is cancelled; the second one's value
-    // is the one that lands. notesIndexed therefore equals the second
-    // mock's resolveCount (>= 1), and no error escapes from the cancelled
-    // first run.
     expect(second.result.current.error).toBeNull();
     expect(second.result.current.state).toBe("ok");
   });

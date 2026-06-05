@@ -103,19 +103,9 @@ export function useSessionSync(
       setStatus(attempt === 0 ? "connecting" : "reconnecting");
       ws = new WebSocket(wsUrlFn(sessionId));
 
-      // Pitfall 9: attach all listeners SYNCHRONOUSLY before any await.
       ws.onopen = async () => {
         if (cancelled) return;
-        // WR-11: reset attempt BEFORE awaiting refreshTree so that a
-        // refreshTree throw does not leave the counter at >0. Previously
-        // attempt was reset only AFTER the await — if refreshTree threw,
-        // the `attempt = 0` line was never reached, the next ws.onclose
-        // saw attempt=N, and setStatus("reconnecting") fired even though
-        // the connection had been live. The status flicker
-        // (connecting → reconnecting → connected after a successful
-        // refresh) is suppressed by doing the reset up-front.
         attempt = 0;
-        // D-05 step (b)
         try {
           await refreshTree();
         } catch {
@@ -123,7 +113,6 @@ export function useSessionSync(
           // store; we still flip to connected so events resume.
         }
         if (cancelled) return;
-        // D-05 step (e)
         setStatus("connected");
       };
 
@@ -132,24 +121,18 @@ export function useSessionSync(
         try {
           env = JSON.parse(e.data as string) as WSEnvelope;
         } catch {
-          return; // malformed; ignore
+          return;
         }
-        // SYNC-03 origin filter (Pitfall 5: empty string = server-originated, NOT filtered)
         if (env.origin_session_id !== "" && env.origin_session_id === sessionId) {
           return;
         }
         switch (env.event) {
           case "session:assigned":
-            // Server confirms the sid. Nothing to do — we're already
-            // using `sessionId` as the source of truth (Pitfall 1).
             break;
           case "note:updated":
             handlersRef.current.onNoteUpdated(
               env.payload as WSNoteUpdatedPayload,
             );
-            // Plan 06-11 (D-31): fan-out to useBacklinks subscribers so the
-            // backlinks panel refreshes when any note is updated (a save
-            // anywhere could have added/removed a [[...]] reference).
             dispatchLinksEvent("note:updated");
             break;
           case "note:deleted":
@@ -158,16 +141,13 @@ export function useSessionSync(
             );
             break;
           case "note:created":
-            // Plan 06-11 (D-31): new note might link to the currently open one.
             dispatchLinksEvent("note:created");
-            // Fall through to tree refresh.
             void refreshTree();
             break;
           case "note:moved":
           case "folder:created":
           case "folder:deleted":
           case "folder:moved":
-            // D-07: reuse the existing tree fan-out via useFileTree.refresh.
             void refreshTree();
             break;
           case "reindex:started":
@@ -180,34 +160,17 @@ export function useSessionSync(
             break;
           case "tags:updated":
           case "tags:rewritten":
-            // Phase 6 — Plan 06-08: fan-out to useTagBrowser subscribers so the
-            // sidebar tag list refreshes when another session modifies tags.
-            // dispatchTagEvent uses the module-level Set pattern (mirrors
-            // treeFetchSubscribers in useFileTree) — no signature change needed.
             dispatchTagEvent(env.event);
             break;
           case "links:rewritten":
-            // Plan 06-11 (D-33/D-35): fan-out to useBacklinks subscribers so the
-            // backlinks panel refreshes when a rename rewrites wiki-link text.
-            // Also refresh the file tree so sidebar labels update.
-            // Source tab is already suppressed by the top-level origin_session_id
-            // filter above (D-35 — origin_session_id !== "" && matches sessionId).
             dispatchLinksEvent("links:rewritten");
             void refreshTree();
-            // Notify optional App.tsx handler (e.g. to show error banner on partial failure).
             handlersRef.current.onLinksRewritten?.(env.payload as WSLinksRewrittenPayload);
             break;
           case "mcp:grant_changed":
-            // Plan 08-10 (D-57): fan-out to useMcpGrants subscribers so the
-            // Sparkles indicator + submenu state refresh in every connected
-            // tab. The backend broadcasts after every POST/DELETE so a
-            // grant change made in one tab propagates to every other tab.
             dispatchMcpGrantsEvent();
             break;
           case "vault.switching": {
-            // Plan 08-17d (V4): server is tearing down the current vault.
-            // Mount the overlay; the 10-second failsafe is scheduled inside
-            // the onVaultSwitching handler (via useVaultSwitch.markSwitching).
             const vaultSwitchingPayload = env.payload as {
               target_path: string;
               target_display_name: string;
@@ -216,14 +179,9 @@ export function useSessionSync(
             break;
           }
           case "vault.switched": {
-            // Plan 08-17d (V4): server has opened the new vault and is ready.
-            // Reload the SPA so it reconnects to the new hub and fetches
-            // fresh state from the new vault.
             handlersRef.current.onVaultSwitched?.();
             break;
           }
-          // migration:status: deferred to Phase 2 retro;
-          // unknown future events ignored without warning so they don't crash.
           default:
             break;
         }
@@ -233,7 +191,7 @@ export function useSessionSync(
         if (cancelled) return;
         const delay = nextDelay(attempt);
         attempt++;
-        setStatus("reconnecting"); // D-05 step (a) for the NEXT attempt
+        setStatus("reconnecting");
         reconnectTimer = window.setTimeout(connect, delay);
       };
 
@@ -242,11 +200,6 @@ export function useSessionSync(
       };
     };
 
-    // UAT-2 R4-2: short-circuit the exponential-backoff wait after a
-    // server restart. Cancels the pending reconnect timer, closes any
-    // half-open socket (without re-firing onclose's backoff schedule),
-    // resets the attempt counter, and connects immediately. Idempotent
-    // — safe to call from any connection state.
     const forceReconnect = () => {
       if (cancelled) return;
       if (reconnectTimer !== null) {
@@ -254,7 +207,7 @@ export function useSessionSync(
         reconnectTimer = null;
       }
       if (ws && ws.readyState !== WebSocket.CLOSED) {
-        ws.onclose = null; // suppress backoff re-schedule
+        ws.onclose = null;
         try {
           ws.close();
         } catch {
@@ -272,8 +225,6 @@ export function useSessionSync(
       cancelled = true;
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       ws?.close();
-      // Restore the no-op so a stale handle from an unmounted tree
-      // can't trigger a reconnect on the next mount.
       setForceWsReconnect(() => {});
     };
   }, [refreshTree, setStatus, setForceWsReconnect, wsUrlFn]);

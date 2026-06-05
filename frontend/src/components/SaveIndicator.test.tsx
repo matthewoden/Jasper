@@ -17,12 +17,6 @@ import { SaveIndicator } from "./SaveIndicator";
 
 describe("<SaveIndicator />", () => {
   it("C1: idle renders nothing (no layout space, no icon, no text)", () => {
-    // 2026-05-10 — SaveIndicator switched from a fixed 24px row to an
-    // absolute-positioned overlay. Idle now returns null so the editor
-    // pane content can flow from y=0 (closing the visible blank gap
-    // above the first content line that the user couldn't scroll past).
-    // The other states still render role="status" with aria-live=polite
-    // — covered by C2/C3/C4 + C5 below.
     const { container } = render(<SaveIndicator state={{ status: "idle" }} />);
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.querySelector("svg")).toBeNull();
@@ -39,7 +33,6 @@ describe("<SaveIndicator />", () => {
     expect(row).toHaveAttribute("title", "Saving your note");
     expect(row).toHaveAttribute("aria-live", "polite");
     expect(row).toHaveTextContent("Saving…");
-    // Loader2 lucide icon: lucide ships <svg class="lucide lucide-loader-2 ...">.
     const icon = row.querySelector("svg");
     expect(icon).not.toBeNull();
     expect(icon?.getAttribute("class") ?? "").toMatch(/animate-spin/);
@@ -75,8 +68,6 @@ describe("<SaveIndicator />", () => {
   });
 
   it("C5: every NON-IDLE state exposes role=status and aria-live=polite", () => {
-    // Idle is the no-render case (covered by C1) — only the active
-    // states (saving / saved / error) render the live region.
     const states: SaveState[] = [
       { status: "saving", startedAt: new Date() },
       { status: "saved", savedAt: new Date() },
@@ -102,17 +93,7 @@ describe("<SaveIndicator />", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Plan 07-37 (UAT-3 N9) — SaveIndicator-as-button hybrid.
-//
-// When `onClick` is provided, SaveIndicator becomes a clickable <button>:
-//   - icon-only render (no text label) sized for TopBar right cluster
-//   - state-driven icon: idle/synced=Cloud, saving=Loader2 (spin), saved=Check,
-//     error=AlertCircle, paused=CloudOff
-//   - tooltip = state copy + " — click to refresh"
-//   - disabled while a save is in flight (status === "saving") so rapid clicks
-//     don't issue overlapping reindex POSTs (T-37-01)
-// ─────────────────────────────────────────────────────────────────────────────
+
 describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", () => {
   it("SI-BTN-1: with onClick prop, renders as a <button>", () => {
     const handler = vi.fn();
@@ -126,7 +107,6 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
 
   it("SI-BTN-2: WITHOUT onClick prop, idle still returns null (legacy read-only behavior preserved)", () => {
     const { container } = render(<SaveIndicator state={{ status: "idle" }} />);
-    // Legacy behavior: no role=status, no svg.
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.querySelector("button[data-save-state]")).toBeNull();
     expect(container.querySelector("svg")).toBeNull();
@@ -140,7 +120,6 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
     expect(btn).not.toBeNull();
     const svg = btn?.querySelector("svg");
     expect(svg).not.toBeNull();
-    // lucide ships <svg class="lucide lucide-cloud ...">
     expect(svg?.getAttribute("class") ?? "").toMatch(/lucide-cloud(?!-off)/);
   });
 
@@ -184,8 +163,6 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
     expect(btn).not.toBeNull();
     const svg = btn?.querySelector("svg");
     expect(svg).not.toBeNull();
-    // lucide AlertCircle ships as `lucide-circle-alert` in modern lucide-react;
-    // accept either historical name to stay version-tolerant.
     expect(svg?.getAttribute("class") ?? "").toMatch(/lucide-(alert-circle|circle-alert)/);
   });
 
@@ -270,7 +247,6 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
     ) as HTMLButtonElement | null;
     expect(btn).not.toBeNull();
     fireEvent.click(btn!);
-    // disabled button: click handler does not fire
     expect(handler).not.toHaveBeenCalled();
   });
 });

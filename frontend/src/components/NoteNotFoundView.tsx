@@ -42,10 +42,6 @@ export function NoteNotFoundView() {
   const [searchInput, setSearchInput] = useState(queryRaw);
   const { openToday } = useDailyNote();
 
-  // Navigate to `/?search=<q>` so the main App boots and reads the
-  // ?search= param to open the palette in search mode. This is the
-  // route-boundary-safe alternative to firing a CustomEvent (a
-  // synchronous event before navigation never reaches the new page).
   const handleSearch = (): void => {
     const target = searchInput.trim();
     if (target) {
@@ -56,10 +52,6 @@ export function NoteNotFoundView() {
   };
 
   const handleToday = async (): Promise<void> => {
-    // Defer to useDailyNote (mirrors the toolbar / Cmd+Shift+D paths).
-    // openToday() is async; on success we navigate to / so the SPA
-    // shows the daily note. Failure cases are handled by useDailyNote's
-    // own toast — we still navigate so the user isn't stranded.
     try {
       await openToday();
     } finally {
@@ -78,7 +70,6 @@ export function NoteNotFoundView() {
     }
   };
 
-  // Subtitle copy with inline-quoted query (LOCKED per UI-SPEC).
   const subtitle = queryRaw
     ? `Jasper couldn't find a note matching "${queryRaw}". It may have been moved, renamed, or never existed.`
     : `Jasper couldn't find that note. It may have been moved, renamed, or never existed.`;

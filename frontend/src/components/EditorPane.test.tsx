@@ -25,35 +25,20 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "../api/schema";
 
-// Type-safe window extension for the Cmd+S test hook exposed by the
-// MarkdownEditor mock. Using a declare to avoid @typescript-eslint/no-explicit-any.
+
 declare global {
     interface Window {
         __jasperMockEditorSave?: () => void;
-        // Plan 05.5-01 / UX-10: focusEnd spy exposed by the MarkdownEditor mock
-        // so tests can assert the click-host wrapper invoked the ref method.
         __jasperMockEditorFocusEnd?: ReturnType<typeof vi.fn>;
-        // Plan 05.5-03 / UX-07: blur trigger exposed by the MarkdownEditor mock
-        // so tests can fire the onBlur prop without a real CM6 view.
         __jasperMockEditorBlur?: () => void;
     }
 }
 
-// Amendment 2 — schema-typed WS payload type aliases.
-// Adding a non-optional field to openapi.yaml MUST cause `tsc --noEmit` to
-// fail on these type annotations — that's the compile-time drift guard.
+
 type WSNoteUpdatedPayload = components["schemas"]["WSNoteUpdatedPayload"];
 type WSNoteDeletedPayload = components["schemas"]["WSNoteDeletedPayload"];
 
-// Plan 05-11 D-28: mock MarkdownEditor so the EditorPane test suite keeps
-// focusing on banner / save-state / WS-handler logic without importing the
-// heavyweight CM6 EditorView. The mock:
-//   - Renders <textarea aria-label="Note content"> so existing test queries work
-//   - Implements the full MarkdownEditorRef API via useImperativeHandle
-//   - Calls props.onChange on textarea change AND on setContent
-//   - applyServerUpdate updates content WITHOUT calling onChange (silent, D-10)
-//   - Exposes props.onSaveRequested via window.__jasperMockEditorSave for
-//     tests that previously fired keyDown on the textarea to trigger Cmd+S
+
 vi.mock("./MarkdownEditor", async () => {
     const React = await import("react");
 
@@ -74,8 +59,6 @@ vi.mock("./MarkdownEditor", async () => {
         }
     >(function MockMarkdownEditor(props, ref) {
         const [value, setValue] = React.useState(props.initialDoc ?? "");
-        // Keep a stable ref to the latest props so imperative methods below
-        // always call the freshest callbacks without stale closure.
         const propsRef = React.useRef(props);
         propsRef.current = props;
 
@@ -92,28 +75,20 @@ vi.mock("./MarkdownEditor", async () => {
                 return value;
             },
             applyServerUpdate(s: string) {
-                // Silent reload — update display but do NOT call onChange.
                 setValue(s);
             },
             focus() {
                 // no-op in test
             },
             focusEnd() {
-                // Plan 05.5-01 / UX-10: tests can assert this via the
-                // window.__jasperMockEditorFocusEnd spy installed below.
                 window.__jasperMockEditorFocusEnd?.();
             },
         }), [value]);
 
-        // Expose save shortcut for tests that previously fired keyDown Cmd+S
-        // on the textarea. Tests call window.__jasperMockEditorSave() instead.
         React.useEffect(() => {
             window.__jasperMockEditorSave = () => {
                 propsRef.current.onSaveRequested?.();
             };
-            // Plan 05.5-03 / UX-07: tests trigger the onBlur prop via this hook.
-            // The real MarkdownEditor wires onBlur through CM6's
-            // domEventHandlers({ blur }); the mock exposes a direct callable.
             window.__jasperMockEditorBlur = () => {
                 propsRef.current.onBlur?.();
             };
@@ -127,9 +102,6 @@ vi.mock("./MarkdownEditor", async () => {
             "aria-label": "Note content",
             "data-testid": "markdown-editor-mock",
             value,
-            // Expose readOnly so tests can still assert disabled-like state
-            // via aria-label presence. The real MarkdownEditor doesn't have
-            // disabled — loading state is tracked internally by EditorPane.
             readOnly: false,
             onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => {
                 const next = e.target.value;
@@ -149,26 +121,16 @@ vi.mock("./MarkdownEditor", async () => {
     };
 });
 
-// Mocked at module-load time so the EditorPane import below picks up the
-// mocked exports. vi.mock is hoisted above the imports by Vitest.
+
 vi.mock("../lib/notesApi", () => ({
     ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
     getNote: vi.fn(),
     updateNote: vi.fn(),
 }));
 
-// Plan 03-22 (Gap R2-6) — performSave dispatches a move BEFORE updateNote
-// when the H1 changes. The H1 detection branch routes through treeApi's
-// postNoteMove wrapper; mock it here at module-load time so the EditorPane
-// import below picks up the mock.
+
 vi.mock("../lib/treeApi", () => ({
     postNoteMove: vi.fn(),
-    // CR-02 regression — useFileTree calls getTree(); EditorPane reads
-    // tree from useFileTree() to derive the active note's live path.
-    // Mock returns a Tree that lists the active note at path
-    // "scratchpad.md" by default; individual tests reassign the mock to
-    // simulate a tree-side rename (path mutates while noteId stays the
-    // same).
     getTree: vi.fn(),
 }));
 
@@ -208,9 +170,7 @@ function okTree(notePath: string): GetTreeReturn {
     } as GetTreeReturn;
 }
 
-// Shapes that match the openapi-fetch return contract closely enough for the
-// component's destructure (`{ data, error }`). The exact `response` field is
-// not consulted, but openapi-fetch returns it on success.
+
 type GetReturn = Awaited<ReturnType<typeof getNote>>;
 type PutReturn = Awaited<ReturnType<typeof updateNote>>;
 
@@ -260,20 +220,9 @@ beforeEach(() => {
     updateNoteMock.mockReset();
     postNoteMoveMock.mockReset();
     getTreeMock.mockReset();
-    // Reset the useFileTree coalescer's module-level state so
-    // lastResolvedAt / pending-trailing slot from a prior test don't
-    // route this test's first fetch through the trailing-debounce
-    // branch (which never flushes under fake timers, leaving tree=null).
     fileTreeTesting.__resetCoalescer();
-    // Default tree mirrors the default getNote path so EditorPane's
-    // CR-02 effect sees a live path matching its load-effect seed.
     getTreeMock.mockResolvedValue(okTree("scratchpad.md"));
-    // Phase 4: ensure connectionStatus is "connected" so existing autosave
-    // tests are not gated by the D-06 connection guard.
     useTreeStore.setState({ connectionStatus: "connected" });
-    // shouldAdvanceTime: true keeps real-time microtasks flowing so
-    // @testing-library's waitFor() retries make progress; manual
-    // advanceTimersByTimeAsync calls still drive the 2s debounce + sticky window.
     vi.useFakeTimers({ shouldAdvanceTime: true });
 });
 
@@ -283,8 +232,6 @@ afterEach(() => {
 });
 
 async function flushMicrotasks() {
-    // Give pending microtasks (the load `await`, the focus Promise.resolve)
-    // a chance to settle.
     await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
@@ -294,9 +241,6 @@ async function flushMicrotasks() {
 
 describe("<EditorPane />", () => {
     it("E1: loads content into the editor after GET resolves", async () => {
-        // Plan 05-11: MarkdownEditor is uncontrolled — no disabled/placeholder.
-        // The loading state is tracked internally; the editor renders empty
-        // until content arrives via applyServerUpdate from the load effect.
         let resolveGet: (v: GetReturn) => void = () => {};
         getNoteMock.mockReturnValue(
             new Promise<GetReturn>((r) => {
@@ -306,7 +250,6 @@ describe("<EditorPane />", () => {
 
         render(<EditorPane noteId={ScratchpadUUID} />);
 
-        // Before load resolves, the editor is present but empty.
         const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
         expect(editor.value).toBe("");
 
@@ -316,7 +259,6 @@ describe("<EditorPane />", () => {
             await Promise.resolve();
         });
 
-        // After load resolves, editor shows the loaded content.
         await waitFor(() => expect(editor.value).toBe("abc"));
     });
 
@@ -332,7 +274,6 @@ describe("<EditorPane />", () => {
             ),
         ).toBeInTheDocument();
 
-        // Editor is present but content is empty on error.
         const editor = screen.getByLabelText(
             "Note content",
         ) as HTMLTextAreaElement;
@@ -353,13 +294,8 @@ describe("<EditorPane />", () => {
 
         fireEvent.change(editor, { target: { value: "hello world" } });
 
-        // Idle for the first 2s (debounce window). 2026-05-10:
-        // SaveIndicator now returns null in the idle state (it became
-        // an absolute-positioned overlay) — assert the role="status"
-        // element is absent rather than empty.
         expect(screen.queryByRole("status")).toBeNull();
 
-        // Advance the debounce timer; saving fires.
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
         });
@@ -370,11 +306,8 @@ describe("<EditorPane />", () => {
         );
 
         await flushMicrotasks();
-        // Plan 07-28 (UAT-2 N9): SaveIndicator now lives in StatusBar via
-        // useTreeStore.saveState — check the store instead of the DOM.
         expect(useTreeStore.getState().saveState.status).toBe("saved");
 
-        // Saved-sticky window expires → idle (no status element).
         await act(async () => {
             await vi.advanceTimersByTimeAsync(SAVED_STICKY_MS + 10);
         });
@@ -382,8 +315,6 @@ describe("<EditorPane />", () => {
     });
 
     it("E4: Cmd+S immediately saves (collapses pending debounce)", async () => {
-        // Plan 05-11: Cmd+S is now handled by saveKeymap inside MarkdownEditor.
-        // The mock exposes onSaveRequested via window.__jasperMockEditorSave.
         getNoteMock.mockResolvedValue(okGet("hi"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -397,7 +328,6 @@ describe("<EditorPane />", () => {
 
         fireEvent.change(editor, { target: { value: "edited" } });
 
-        // Don't wait the full debounce — trigger Cmd+S via the mock hook.
         await act(async () => {
             window.__jasperMockEditorSave?.();
             await Promise.resolve();
@@ -406,7 +336,6 @@ describe("<EditorPane />", () => {
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
         expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited");
 
-        // Even if 2s passes now, the debounce was cleared — no second PUT.
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
         });
@@ -414,7 +343,6 @@ describe("<EditorPane />", () => {
     });
 
     it("E4b: Ctrl+S also triggers an immediate save (non-Mac platforms)", async () => {
-        // Plan 05-11: both Cmd+S and Ctrl+S route through saveKeymap/onSaveRequested.
         getNoteMock.mockResolvedValue(okGet("hi"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -455,11 +383,8 @@ describe("<EditorPane />", () => {
         });
         await flushMicrotasks();
 
-        // Plan 07-28 (UAT-2 N9): SaveIndicator now lives in StatusBar via
-        // useTreeStore.saveState — check the store instead of the DOM.
         expect(useTreeStore.getState().saveState.status).toBe("error");
 
-        // Recovery: next edit + debounce → saving again.
         updateNoteMock.mockResolvedValue(okPut());
         fireEvent.change(editor, { target: { value: "boom!" } });
         await act(async () => {
@@ -497,15 +422,12 @@ describe("<EditorPane />", () => {
         ) as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("start"));
 
-        // First PUT kicks off via debounce.
         fireEvent.change(editor, { target: { value: "edit1" } });
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
         });
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
 
-        // While the first PUT is in flight, fire many more edits + saves. They
-        // should all collapse into exactly ONE queued trailing save.
         fireEvent.change(editor, { target: { value: "edit2" } });
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
@@ -514,16 +436,12 @@ describe("<EditorPane />", () => {
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
         });
-        // Plan 05-11: Cmd+S via mock hook instead of keyDown on textarea
         window.__jasperMockEditorSave?.();
         window.__jasperMockEditorSave?.();
         await flushMicrotasks();
 
-        // Still only one PUT — the rest are queued (collapsed).
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
 
-        // Resolve the first PUT; the queued trailing save fires with the freshest
-        // content ("edit3").
         await act(async () => {
             resolveFirst(okPut());
             await Promise.resolve();
@@ -536,7 +454,6 @@ describe("<EditorPane />", () => {
             "edit3",
         );
 
-        // Resolve the second PUT so we don't leak a pending promise.
         await act(async () => {
             resolveSecond(okPut());
             await Promise.resolve();
@@ -564,7 +481,6 @@ describe("<EditorPane />", () => {
         await flushMicrotasks();
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
 
-        // We're in saved state now (within the sticky window). Cmd+S again.
         await act(async () => {
             window.__jasperMockEditorSave?.();
             await Promise.resolve();
@@ -574,10 +490,6 @@ describe("<EditorPane />", () => {
     });
 
     it("ignores plain 's' and other non-save keys (verified via autosave non-trigger)", async () => {
-        // Plan 05-11: key filtering now lives inside CM6 saveKeymap (jasperKeymap.ts).
-        // In the test environment with the mock, we verify that NOT calling
-        // __jasperMockEditorSave means updateNote is NOT called — the save
-        // only fires when the debounce completes or the save hook is called.
         getNoteMock.mockResolvedValue(okGet("a"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -589,28 +501,22 @@ describe("<EditorPane />", () => {
         ) as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("a"));
 
-        // No save triggered (neither debounce nor Cmd+S hook).
         await flushMicrotasks();
         expect(updateNoteMock).not.toHaveBeenCalled();
     });
 
     it("Phase 2: when reindexing=true, performSave is blocked (reindexingRef guard)", async () => {
-        // Plan 05-11: the textarea's disabled/placeholder behavior is gone.
-        // The reindexing guard still prevents saves via reindexingRef.current.
         getNoteMock.mockResolvedValue(okGet("a"));
         updateNoteMock.mockResolvedValue(okPut());
 
         render(<EditorPane noteId={ScratchpadUUID} reindexing={true} />);
         await flushMicrotasks();
 
-        // The editor is present — content may be empty since reindexing=true
-        // causes initialDoc="" (EditorPane guards the initialDoc prop).
         const editor = screen.getByLabelText(
             "Note content",
         ) as HTMLTextAreaElement;
         expect(editor).toBeInTheDocument();
 
-        // Even if we trigger a save, it's blocked by reindexingRef.
         fireEvent.change(editor, { target: { value: "typed during reindex" } });
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
@@ -625,17 +531,10 @@ describe("<EditorPane />", () => {
         expect(
             screen.getByText("Select a note to start editing."),
         ).toBeInTheDocument();
-        // No editor / no API call when noteId is null.
         expect(screen.queryByLabelText("Note content")).toBeNull();
         expect(getNoteMock).not.toHaveBeenCalled();
     });
 
-    // Plan 07-32b (UAT-3 R7): when useTreeStore.activeFilePath is non-null,
-    // EditorPane renders FilePreviewView in the middle pane INSTEAD of the
-    // markdown editor or the null-noteId placeholder. The new branch must
-    // sit BEFORE the `if (noteId === null)` placeholder branch so it fires
-    // even when noteId is null (the typical case: user has no note selected
-    // and clicks a non-markdown file).
     it("EP-FPV-1: when activeFilePath is set, renders FilePreviewView (not placeholder, not editor)", async () => {
         useTreeStore.setState({
             activeFilePath: "gallery/attachments/photo.png",
@@ -644,18 +543,13 @@ describe("<EditorPane />", () => {
         try {
             render(<EditorPane noteId={null} />);
             await flushMicrotasks();
-            // FilePreviewView mounts — its data-testid is "file-preview-view".
             expect(screen.getByTestId("file-preview-view")).toBeInTheDocument();
-            // Placeholder text MUST NOT be present.
             expect(
                 screen.queryByText("Select a note to start editing."),
             ).toBeNull();
-            // Markdown editor MUST NOT be mounted.
             expect(screen.queryByLabelText("Note content")).toBeNull();
-            // No note GET fired because we never entered the noteId branch.
             expect(getNoteMock).not.toHaveBeenCalled();
         } finally {
-            // Reset so other tests are not contaminated.
             useTreeStore.setState({ activeFilePath: null });
         }
     });
@@ -679,13 +573,8 @@ describe("<EditorPane />", () => {
             ),
         );
 
-        // Re-render with a different noteId; the load effect should re-fire
-        // and getNote should be called with the new id.
         rerender(<EditorPane noteId="other-id" />);
         await flushMicrotasks();
-        // R4-13 (Plan 08-22): getNote now receives an AbortController
-        // signal as a second argument; assert on the id + presence of a
-        // signal rather than positional equality.
         expect(getNoteMock).toHaveBeenCalledWith(
             "other-id",
             expect.objectContaining({ signal: expect.any(Object) }),
@@ -720,14 +609,6 @@ describe("generic load-error copy (Gap 6b)", () => {
     });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Plan 03-22 (Gap R2-6) — H1 → filename binding (Direction A).
-//
-// performSave detects an H1 delta vs lastH1Sent and dispatches
-// moveNote BEFORE updateNote. Loop prevention via isRenameInProgress.
-// Sanitization rejects illegal H1s with an inline editor banner;
-// case_collision aborts the save with a different banner.
-// ────────────────────────────────────────────────────────────────────
 
 type MoveReturn = Awaited<ReturnType<typeof postNoteMove>>;
 
@@ -771,20 +652,16 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         });
         await flushMicrotasks();
 
-        // moveNote called with sanitized basename + .md (root parent → no slash).
         expect(postNoteMoveMock).toHaveBeenCalledTimes(1);
         expect(postNoteMoveMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "new title.md",
         );
-        // updateNote called once after moveNote with the new content.
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "# new title\n\nbody",
         );
-        // Order: moveNote BEFORE updateNote (the move semantics: collision
-        // must abort cleanly before content commits).
         expect(postNoteMoveMock.mock.invocationCallOrder[0]).toBeLessThan(
             updateNoteMock.mock.invocationCallOrder[0]!,
         );
@@ -841,14 +718,11 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         await flushMicrotasks();
 
         expect(postNoteMoveMock).not.toHaveBeenCalled();
-        // Content save still goes through (soft error — research §2.3
-        // recommended treatment).
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "# my/note\n\nbody",
         );
-        // Inline banner mentions filename / characters language.
         expect(
             screen.getByText(/aren't allowed in filenames/i),
         ).toBeInTheDocument();
@@ -873,7 +747,6 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         ) as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("# Original\n\nbody"));
 
-        // First H1 change → first moveNote dispatched (in flight).
         fireEvent.change(editor, {
             target: { value: "# first\n\nbody" },
         });
@@ -883,24 +756,17 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         await flushMicrotasks();
         expect(postNoteMoveMock).toHaveBeenCalledTimes(1);
 
-        // Second H1 change while the first move is still in flight. The
-        // existing autosave coalesces saves via inFlight; isRenameInProgress
-        // separately guards the H1 detector. No second moveNote should
-        // fire while the first is unresolved.
         fireEvent.change(editor, {
             target: { value: "# second\n\nbody" },
         });
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
         });
-        // Plan 05-11: Cmd+S via mock hook
         window.__jasperMockEditorSave?.();
         await flushMicrotasks();
 
-        // Still only one moveNote call.
         expect(postNoteMoveMock).toHaveBeenCalledTimes(1);
 
-        // Resolve the in-flight move; the trailing autosave fires.
         await act(async () => {
             resolveMove(okMove("first.md"));
             await Promise.resolve();
@@ -933,7 +799,6 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         await flushMicrotasks();
 
         expect(postNoteMoveMock).toHaveBeenCalledTimes(1);
-        // Bail early — content save does NOT run on rename failure.
         expect(updateNoteMock).not.toHaveBeenCalled();
         expect(
             screen.getByText(/that filename is already taken/i),
@@ -952,7 +817,6 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         ) as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("# Original\n\nbody"));
 
-        // User erases the heading line entirely.
         fireEvent.change(editor, {
             target: { value: "\n\nbody only" },
         });
@@ -962,22 +826,13 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         });
         await flushMicrotasks();
 
-        // Empty H1 (extractH1FromContent returns null) is a no-op — the
-        // file keeps its current filename until the user types an H1.
-        // Research §2.1: "filename does NOT auto-bind when H1 is empty."
         expect(postNoteMoveMock).not.toHaveBeenCalled();
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
     });
 
     it("CR-01: case-only H1 change → ZERO moveNote (would have 409'd as case_collision); updateNote still runs", async () => {
-        // Server canonicalizes paths to lowercase per DATA-11; a case-only
-        // H1 change against a file whose canonical name already matches
-        // lowercase would be dispatched as a move that the server rejects
-        // with case_collision 409. The H1-driven path needs the same
-        // same-name guard Plan 03-19 added to RenameInput.commit.
         getNoteMock.mockResolvedValue(okGet("# my plan\n\nbody"));
         updateNoteMock.mockResolvedValue(okPut());
-        // Override the default tree to put the note at the canonical path.
         getTreeMock.mockResolvedValue(okTree("my plan.md"));
 
         render(<EditorPane noteId={ScratchpadUUID} />);
@@ -988,7 +843,6 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         ) as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("# my plan\n\nbody"));
 
-        // User changes ONLY the case of the H1.
         fireEvent.change(editor, {
             target: { value: "# MY PLAN\n\nbody" },
         });
@@ -998,15 +852,12 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         });
         await flushMicrotasks();
 
-        // No spurious moveNote — case-only delta should short-circuit.
         expect(postNoteMoveMock).not.toHaveBeenCalled();
-        // Content save still runs.
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "# MY PLAN\n\nbody",
         );
-        // No banner — case-only is a clean no-op for the rename pipeline.
         expect(
             screen.queryByText(/aren't allowed in filenames/i),
         ).not.toBeInTheDocument();
@@ -1016,22 +867,6 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
     });
 
     it("CR-02: live tree path overrides the load-effect seed; H1 edit composes new path against the LIVE parent dir", async () => {
-        // EditorPane previously cached lastNotePath in a ref that was only
-        // refreshed on noteId change or after EditorPane's own move. After
-        // a tree-side rename (FileTree.handleCommitRename → moveNote), the
-        // cached path was stale; the next H1 edit composed against the OLD
-        // parent dir, silently relocating the file. The CR-02 fix derives
-        // currentPath from the live tree (useFileTree().tree).
-        //
-        // To exercise the fix without simulating a real broadcast, this
-        // test sets the load-effect seed (getNote.path) and the tree path
-        // to DIFFERENT values — the disagreement that exists in production
-        // immediately after a tree-side rename. The CR-02 effect must
-        // override the seed with the live tree value so the H1-driven move
-        // dispatches against the LIVE parent.
-        //
-        // Stale seed: getNote returns path "untitled.md" (root).
-        // Live tree: note appears at "projects/manual.md" (subfolder).
         getNoteMock.mockResolvedValue({
             data: {
                 id: ScratchpadUUID,
@@ -1058,7 +893,6 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
             expect(editor.value).toBe("# Original\n\nbody"),
         );
 
-        // User types a new H1.
         fireEvent.change(editor, {
             target: { value: "# renamed by editor\n\nbody" },
         });
@@ -1068,10 +902,6 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         });
         await flushMicrotasks();
 
-        // The dispatched move must respect the LIVE parent ("projects/"),
-        // not the stale seed (root). If CR-02 regresses, postNoteMove
-        // would be called with "renamed by editor.md" (no projects/
-        // prefix), silently re-promoting the note to root.
         expect(postNoteMoveMock).toHaveBeenCalledTimes(1);
         expect(postNoteMoveMock).toHaveBeenCalledWith(
             ScratchpadUUID,
@@ -1080,9 +910,6 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
     });
 
     it("R2-6 T7: pre-existing autosave behavior stays green when the H1 hook is dormant", async () => {
-        // Repeat E3's debounce → saving → saved → idle path with the new
-        // hook installed but no H1 change. The new branch must not perturb
-        // the SaveIndicator state machine or the timer cadence.
         getNoteMock.mockResolvedValue(okGet("# Title\n\nhello"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -1098,8 +925,6 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
             target: { value: "# Title\n\nhello world" },
         });
 
-        // 2026-05-10 — SaveIndicator returns null when idle (overlay
-        // refactor); assert role="status" is absent rather than empty.
         expect(screen.queryByRole("status")).toBeNull();
 
         await act(async () => {
@@ -1112,8 +937,6 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
             ScratchpadUUID,
             "# Title\n\nhello world",
         );
-        // Plan 07-28 (UAT-2 N9): SaveIndicator now lives in StatusBar via
-        // useTreeStore.saveState — check the store instead of the DOM.
         expect(useTreeStore.getState().saveState.status).toBe("saved");
 
         await act(async () => {
@@ -1123,12 +946,6 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
     });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Phase 4 (Plan 04-05) — EditorPane WebSocket handler integration.
-//
-// Amendment 2: every synthetic WS payload is type-annotated via
-// components["schemas"][...] aliases. No `as unknown as Foo` bypass casts.
-// ────────────────────────────────────────────────────────────────────
 
 describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
     function renderEditorWithHandlers(noteId: string | null = ScratchpadUUID) {
@@ -1147,10 +964,8 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("initial content"));
 
-        // Simulate user edit — sets userHasEdited.current = true.
         fireEvent.change(editor, { target: { value: "edited content" } });
 
-        // Dispatch a synthetic note:updated WS event (schema-typed, no as-cast).
         const updatedPayload: WSNoteUpdatedPayload = {
             id: ScratchpadUUID,
             path: "scratchpad.md",
@@ -1174,7 +989,6 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("original content"));
 
-        // Create conflict: user edits, then note:updated arrives.
         fireEvent.change(editor, { target: { value: "edited" } });
         const updatedPayload: WSNoteUpdatedPayload = {
             id: ScratchpadUUID,
@@ -1186,20 +1000,16 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         });
         await waitFor(() => expect(screen.getByTestId("conflict-banner")).toBeInTheDocument());
 
-        // Mock a successful save.
         updateNoteMock.mockClear();
         updateNoteMock.mockResolvedValue(okPut());
 
-        // Click Save anyway.
         fireEvent.click(screen.getByRole("button", { name: /Save anyway/i }));
         await waitFor(() => expect(updateNoteMock).toHaveBeenCalled());
-        // Verify the If-Match (current_updated_at) was passed.
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "edited",
             "2026-05-06T13:00:00Z",
         );
-        // Banner clears on success.
         await waitFor(() =>
             expect(screen.queryByTestId("conflict-banner")).not.toBeInTheDocument(),
         );
@@ -1213,7 +1023,6 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("original content"));
 
-        // Create conflict.
         fireEvent.change(editor, { target: { value: "user edits" } });
         const updatedPayload: WSNoteUpdatedPayload = {
             id: ScratchpadUUID,
@@ -1225,7 +1034,6 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         });
         await waitFor(() => expect(screen.getByTestId("conflict-banner")).toBeInTheDocument());
 
-        // Server has newer content.
         getNoteMock.mockClear();
         getNoteMock.mockResolvedValue(okGet("server content"));
 
@@ -1246,8 +1054,6 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("initial"));
 
-        // No user edit — userHasEdited.current is still false.
-        // Server has fresh content.
         getNoteMock.mockClear();
         getNoteMock.mockResolvedValue(okGet("fresh from server"));
 
@@ -1274,7 +1080,6 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("user typed work"));
 
-        // User typed something.
         fireEvent.change(editor, { target: { value: "user typed work" } });
 
         const deletedPayload: WSNoteDeletedPayload = {
@@ -1289,7 +1094,6 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         expect(
             screen.getByText("This note was deleted in another session"),
         ).toBeInTheDocument();
-        // D-03: content NOT cleared.
         expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
             "user typed work",
         );
@@ -1318,7 +1122,6 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        // Set connection status to reconnecting BEFORE render.
         useTreeStore.setState({ connectionStatus: "reconnecting" });
 
         renderEditorWithHandlers();
@@ -1339,7 +1142,6 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        // Start connected.
         useTreeStore.setState({ connectionStatus: "connected" });
 
         renderEditorWithHandlers();
@@ -1347,12 +1149,10 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("hello"));
 
-        // Flip to reconnecting — autosave paused.
         act(() => {
             useTreeStore.setState({ connectionStatus: "reconnecting" });
         });
 
-        // Edit while disconnected.
         fireEvent.change(editor, { target: { value: "edit during disconnect" } });
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 50);
@@ -1360,12 +1160,10 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         await flushMicrotasks();
         expect(updateNoteMock).not.toHaveBeenCalled();
 
-        // Flip back to connected.
         act(() => {
             useTreeStore.setState({ connectionStatus: "connected" });
         });
 
-        // New edit after reconnect should trigger autosave.
         fireEvent.change(editor, { target: { value: "edit after reconnect" } });
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 50);
@@ -1375,18 +1173,10 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
     });
 
     afterEach(() => {
-        // Reset connection status to connected (default for most tests).
         useTreeStore.setState({ connectionStatus: "connected" });
     });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Phase 5.5 / Plan 01 (UX-10) — click-anywhere-to-type host wrapper.
-// EditorPane wraps <MarkdownEditor> in a `cm-host-shell` div whose
-// onClick forwards empty-area clicks (target NOT inside .cm-content)
-// to editorRef.current.focusEnd(). Clicks inside .cm-content are no-ops
-// (CM6 owns focus + caret placement on text-region clicks).
-// ────────────────────────────────────────────────────────────────────
 
 describe("<EditorPane /> — UX-10 click-anywhere-to-type host (Plan 05.5-01)", () => {
     it("clicking the host shell outside .cm-content focuses the editor and moves caret to end (UX-10)", async () => {
@@ -1403,10 +1193,6 @@ describe("<EditorPane /> — UX-10 click-anywhere-to-type host (Plan 05.5-01)", 
         );
 
         const host = screen.getByTestId("cm-host-shell");
-        // Click directly on the host element — `e.target` is the host itself,
-        // which has no `.cm-content` ancestor (the mock editor renders a
-        // <textarea>, not a `.cm-content` node), so the onClick MUST forward
-        // to editorRef.current.focusEnd().
         fireEvent.click(host, { bubbles: true });
 
         expect(focusEndSpy).toHaveBeenCalledTimes(1);
@@ -1426,11 +1212,6 @@ describe("<EditorPane /> — UX-10 click-anywhere-to-type host (Plan 05.5-01)", 
             ).toBe("hello"),
         );
 
-        // Build a synthetic target that has a `.cm-content` ancestor and
-        // dispatch a click whose `target` property points at it. The host's
-        // onClick uses `e.target.closest(".cm-content")` to short-circuit;
-        // appending the synthetic content node to the host shell makes it
-        // a real DOM descendant so closest() walks the tree correctly.
         const host = screen.getByTestId("cm-host-shell");
         const fakeContent = document.createElement("div");
         fakeContent.className = "cm-content";
@@ -1444,25 +1225,13 @@ describe("<EditorPane /> — UX-10 click-anywhere-to-type host (Plan 05.5-01)", 
 
         host.removeChild(fakeContent);
         delete window.__jasperMockEditorFocusEnd;
-        // Silence unused-var warning for `container` while keeping the
-        // render() destructure consistent with the rest of the suite.
         void container;
     });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Phase 5.5 / Plan 04 (UX-08) — live H1 → sidebar label sync.
-// handleEditorH1Change writes through to useTreeStore.liveLabels[noteId]
-// so TreeRow can render the in-flight title pre-save. Cleared on null
-// /empty H1 and on note switch with unsaved edits (Pitfall 6).
-//
-// The MarkdownEditor mock fires onH1Change automatically when the
-// textarea's value matches /^# (.+)$/m; tests drive H1 changes by
-// firing change events with `# title` content.
-// ────────────────────────────────────────────────────────────────────
+
 describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", () => {
     beforeEach(() => {
-        // Reset liveLabels between cases — the slice is global state.
         useTreeStore.setState({ liveLabels: {} });
     });
 
@@ -1477,7 +1246,6 @@ describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", ()
         ) as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("body only"));
 
-        // Type an H1; the mock auto-fires onH1Change("My Title").
         fireEvent.change(editor, {
             target: { value: "# My Title\n\nbody only" },
         });
@@ -1492,7 +1260,6 @@ describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", ()
         getNoteMock.mockResolvedValue(okGet("# Original\n\nbody"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        // Pre-seed the label so we can prove clear actually removes it.
         useTreeStore.setState({
             liveLabels: { [ScratchpadUUID]: "Original" },
         });
@@ -1504,7 +1271,6 @@ describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", ()
         ) as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("# Original\n\nbody"));
 
-        // Erase the H1 entirely → mock fires onH1Change(null).
         fireEvent.change(editor, { target: { value: "body" } });
         await flushMicrotasks();
 
@@ -1514,7 +1280,6 @@ describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", ()
     });
 
     it("UX-08: switching to a new note clears the previous note's liveLabel when userHasEdited is true (Pitfall 6)", async () => {
-        // First note: load, type to set userHasEdited + a live label.
         getNoteMock.mockImplementation((id: string) =>
             Promise.resolve(okGet(`# Title for ${id}\n\nbody`)),
         );
@@ -1529,17 +1294,12 @@ describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", ()
             expect(editor.value).toBe("# Title for note-a\n\nbody"),
         );
 
-        // Type a new H1 → setLiveLabel("note-a", "Edited A") AND
-        // userHasEdited.current becomes true (handleEditorChange path).
         fireEvent.change(editor, {
             target: { value: "# Edited A\n\nbody" },
         });
         await flushMicrotasks();
         expect(useTreeStore.getState().liveLabels["note-a"]).toBe("Edited A");
 
-        // Switch notes WITHOUT waiting for the debounced save — the
-        // previous live label must be cleared because userHasEdited=true
-        // means no canonical save has flushed the title to the wire tree.
         rerender(<EditorPane noteId="note-b" />);
         await flushMicrotasks();
 
@@ -1553,16 +1313,7 @@ describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", ()
     });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Phase 5.5 / Plan 03 (UX-07) — save-on-blur lifecycle.
-// Three new save triggers wired through the existing pipelines:
-//   (1) editor blur (handleEditorBlur)            → performSave
-//   (2) document.visibilitychange → "hidden"      → performSave
-//   (3) window.beforeunload                       → fetch keepalive PUT
-// All three honor the Phase 4 paused gate (connectionStatus !== "connected")
-// and the existing inFlight + trailingPending dedup refs. The MarkdownEditor
-// mock exposes window.__jasperMockEditorBlur to invoke the onBlur prop.
-// ────────────────────────────────────────────────────────────────────
+
 describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () => {
     it("UX-07: handleEditorBlur clears pending debounce and calls performSave", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
@@ -1575,11 +1326,9 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
         ) as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("hello"));
 
-        // Edit → starts the 2s debounce timer; updateNote NOT yet called.
         fireEvent.change(editor, { target: { value: "edited content" } });
         expect(updateNoteMock).not.toHaveBeenCalled();
 
-        // Fire blur via the mock hook → must collapse debounce + save NOW.
         await act(async () => {
             window.__jasperMockEditorBlur?.();
             await Promise.resolve();
@@ -1591,8 +1340,6 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
             "edited content",
         );
 
-        // The debounced save was canceled — advancing the timer must NOT
-        // produce a second PUT.
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
         });
@@ -1600,11 +1347,6 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
     });
 
     it("UX-07 / BL-04: visibilitychange→hidden fires a keepalive fetch (Plan 05.5-12)", async () => {
-        // BL-04 (Phase 5.5 gap-closure Plan 12): the visibilitychange→hidden
-        // path used to call performSave (a non-keepalive openapi-fetch PUT)
-        // which the browser aborts on real tab close. Plan 12 flips the
-        // default to a `keepalive: true` raw fetch so the bytes survive
-        // tab close even when the page is being torn down.
         getNoteMock.mockResolvedValue(okGet("hi"));
         updateNoteMock.mockResolvedValue(okPut());
         const fetchMock = vi.fn().mockResolvedValue(new Response());
@@ -1621,9 +1363,6 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
 
             fireEvent.change(editor, { target: { value: "tab-switch save" } });
 
-            // Monkey-patch document.visibilityState to "hidden" then dispatch
-            // the visibilitychange event. The handler must collapse debounce
-            // and fire a keepalive PUT (NOT performSave / updateNote).
             const originalDescriptor = Object.getOwnPropertyDescriptor(
                 Document.prototype,
                 "visibilityState",
@@ -1647,9 +1386,6 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
                         body: JSON.stringify({ content: "tab-switch save" }),
                     }),
                 );
-                // The keepalive path must NOT also dispatch the typed
-                // openapi-fetch performSave wrapper; otherwise the browser
-                // races two PUTs with one being aborted on unload.
                 expect(updateNoteMock).not.toHaveBeenCalled();
             } finally {
                 if (originalDescriptor) {
@@ -1668,8 +1404,6 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
     it("UX-07: beforeunload fires keepalive PUT when conditions met", async () => {
         getNoteMock.mockResolvedValue(okGet("baseline"));
         updateNoteMock.mockResolvedValue(okPut());
-        // Mock global.fetch — beforeunload uses raw fetch (not the typed
-        // openapi-fetch wrapper) to issue the keepalive PUT.
         const fetchMock = vi.fn().mockResolvedValue(new Response());
         const originalFetch = global.fetch;
         global.fetch = fetchMock as unknown as typeof fetch;
@@ -1684,8 +1418,6 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
 
             fireEvent.change(editor, { target: { value: "exit save" } });
 
-            // connectionStatus is "connected" by default; inFlight is false;
-            // trailingPending is false. Fire beforeunload → keepalive PUT.
             act(() => {
                 window.dispatchEvent(new Event("beforeunload"));
             });
@@ -1711,7 +1443,6 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
     it("UX-07: beforeunload skips when paused (connectionStatus !== connected)", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
-        // Set connection to reconnecting BEFORE render so the ref captures it.
         useTreeStore.setState({ connectionStatus: "reconnecting" });
         const fetchMock = vi.fn().mockResolvedValue(new Response());
         const originalFetch = global.fetch;
@@ -1725,7 +1456,6 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
             ) as HTMLTextAreaElement;
             await waitFor(() => expect(editor.value).toBe("hello"));
 
-            // beforeunload while paused → MUST NOT issue the keepalive PUT.
             act(() => {
                 window.dispatchEvent(new Event("beforeunload"));
             });
@@ -1733,7 +1463,6 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
             expect(fetchMock).not.toHaveBeenCalled();
         } finally {
             global.fetch = originalFetch;
-            // Restore default connection status so subsequent tests don't fail.
             useTreeStore.setState({ connectionStatus: "connected" });
         }
     });
@@ -1743,10 +1472,6 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
     });
 });
 
-// ────────────────────────────────────────────────────────────────────
-// Phase 5.5 / Plan 12 — gap-closure for the BL-04 / WR-02 / WR-04 /
-// WR-05 / WR-06 review findings. All five edits live in EditorPane.tsx.
-// ────────────────────────────────────────────────────────────────────
 
 /**
  * Helper: monkey-patch document.visibilityState. Returns a restore fn the
@@ -1841,7 +1566,6 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
                     document.dispatchEvent(new Event("visibilitychange"));
                     await Promise.resolve();
                 });
-                // Paused — no keepalive fetch. (No updateNote either.)
                 expect(fetchMock).not.toHaveBeenCalled();
                 expect(updateNoteMock).not.toHaveBeenCalled();
             } finally {
@@ -1878,8 +1602,6 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
                 });
                 expect(fetchMock).toHaveBeenCalledTimes(1);
 
-                // beforeunload after visibilitychange already issued the
-                // keepalive PUT — must be a no-op (the one-shot ref dedups).
                 act(() => {
                     window.dispatchEvent(new Event("beforeunload"));
                 });
@@ -1907,7 +1629,6 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
             ) as HTMLTextAreaElement;
             await waitFor(() => expect(editor.value).toBe("hello"));
 
-            // Edit kicks off the 2s debounce timer.
             fireEvent.change(editor, { target: { value: "buffered edit" } });
 
             const restore = setVisibilityState("hidden");
@@ -1916,11 +1637,8 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
                     document.dispatchEvent(new Event("visibilitychange"));
                     await Promise.resolve();
                 });
-                // keepalive PUT fired exactly once.
                 expect(fetchMock).toHaveBeenCalledTimes(1);
 
-                // Advancing the clock past the debounce window must NOT
-                // produce a second updateNote call (debounce was cleared).
                 await act(async () => {
                     await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
                 });
@@ -1934,9 +1652,6 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
     });
 
     it("BL-04: beforeunload still fires keepalive when visibilitychange did NOT fire first", async () => {
-        // Some browsers (synchronous window.close from within the page)
-        // skip visibilitychange and only fire beforeunload. The fallback
-        // path must still issue the keepalive PUT.
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
         const fetchMock = vi.fn().mockResolvedValue(new Response());
@@ -1953,7 +1668,6 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
 
             fireEvent.change(editor, { target: { value: "fallback path" } });
 
-            // No visibilitychange — go straight to beforeunload.
             act(() => {
                 window.dispatchEvent(new Event("beforeunload"));
             });
@@ -1982,7 +1696,6 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
 
             fireEvent.change(editor, { target: { value: "first hide" } });
 
-            // First hide → fires keepalive once.
             const restoreHidden1 = setVisibilityState("hidden");
             try {
                 await act(async () => {
@@ -1994,7 +1707,6 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
                 restoreHidden1();
             }
 
-            // Re-show the tab — the one-shot dedup ref should reset.
             const restoreVisible = setVisibilityState("visible");
             try {
                 await act(async () => {
@@ -2005,7 +1717,6 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
                 restoreVisible();
             }
 
-            // Second hide → must fire keepalive again (count goes to 2).
             fireEvent.change(editor, { target: { value: "second hide" } });
             const restoreHidden2 = setVisibilityState("hidden");
             try {
@@ -2023,15 +1734,6 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
     });
 
     it("G3 fix: visibilitychange to hidden does NOT fire keepalive when user has not edited (vault-switch contamination guard)", async () => {
-        // Root cause of G3 (debug session vault-switch-not-taking):
-        // when window.location.reload() runs (triggered by vault.switched WS
-        // event), the browser fires visibilitychange to hidden BEFORE the
-        // navigation, which dispatched a keepalive PUT carrying the
-        // editor's in-memory bytes. If the user never edited, those bytes
-        // are an exact copy of what the server already has -- a no-op at
-        // best, and ACTIVELY HARMFUL if the receiver vault has been swapped
-        // (vault A bytes overwriting vault B's same-UUID file).
-        // Fix: gate the keepalive PUT on userHasEdited.current.
         getNoteMock.mockResolvedValue(okGet("untouched"));
         const fetchMock = vi.fn().mockResolvedValue(new Response());
         const originalFetch = global.fetch;
@@ -2045,14 +1747,12 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
             ) as HTMLTextAreaElement;
             await waitFor(() => expect(editor.value).toBe("untouched"));
 
-            // User never types -- userHasEdited.current stays false.
             const restore = setVisibilityState("hidden");
             try {
                 await act(async () => {
                     document.dispatchEvent(new Event("visibilitychange"));
                     await Promise.resolve();
                 });
-                // The keepalive PUT must NOT fire.
                 expect(fetchMock).not.toHaveBeenCalled();
             } finally {
                 restore();
@@ -2063,11 +1763,6 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
     });
 
     it("G3 fix: visibilitychange to hidden does NOT fire keepalive while a vault switch is active (even after editing)", async () => {
-        // Second G3 guard: even if the user has unsaved edits, a vault swap
-        // in flight means the target vault's notes service is being rebuilt.
-        // A keepalive PUT in that window could land in the wrong vault's
-        // namespace. Losing unsaved bytes here is strictly better than
-        // writing them into the wrong vault's same-UUID file.
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
         const fetchMock = vi.fn().mockResolvedValue(new Response());
@@ -2082,11 +1777,8 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
             ) as HTMLTextAreaElement;
             await waitFor(() => expect(editor.value).toBe("hello"));
 
-            // Type to set userHasEdited.current = true.
             fireEvent.change(editor, { target: { value: "my unsaved edit" } });
 
-            // Simulate a vault switch in progress via the same store path
-            // that useSessionSync's vault.switching handler uses.
             act(() => {
                 useTreeStore
                     .getState()
@@ -2099,11 +1791,9 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
                     document.dispatchEvent(new Event("visibilitychange"));
                     await Promise.resolve();
                 });
-                // The keepalive PUT must NOT fire while vaultSwitching.active.
                 expect(fetchMock).not.toHaveBeenCalled();
             } finally {
                 restore();
-                // Reset the store so other tests don't see stale state.
                 act(() => {
                     useTreeStore
                         .getState()
@@ -2116,9 +1806,6 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
     });
 
     it("G3 fix: beforeunload also gates on userHasEdited (parity with visibilitychange)", async () => {
-        // The same gate applies to beforeunload so the fallback path
-        // (browsers that fire beforeunload without a prior visibilitychange)
-        // does not regress G3.
         getNoteMock.mockResolvedValue(okGet("untouched"));
         const fetchMock = vi.fn().mockResolvedValue(new Response());
         const originalFetch = global.fetch;
@@ -2132,7 +1819,6 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
             ) as HTMLTextAreaElement;
             await waitFor(() => expect(editor.value).toBe("untouched"));
 
-            // No edit. Fire beforeunload directly.
             act(() => {
                 window.dispatchEvent(new Event("beforeunload"));
             });
@@ -2167,10 +1853,8 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
         const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("original"));
 
-        // User edit → userHasEdited.current = true.
         fireEvent.change(editor, { target: { value: "user edits" } });
 
-        // Trigger conflict banner via WS event.
         const updatedPayload: WSNoteUpdatedPayload = {
             id: ScratchpadUUID,
             path: "scratchpad.md",
@@ -2186,21 +1870,6 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
     }
 
     it("WR-05: Save-anyway click is a null-guarded no-op when noteIdRef.current is null", async () => {
-        // Render with a real note, mount the conflict banner, then re-render
-        // with noteId=null. The banner instance from the previous render is
-        // unmounted alongside the editor, so we use a different approach:
-        // verify the local-id capture by inspecting the SOURCE of the
-        // Save-anyway click handler. The acceptance grep already enforces
-        // the absence of `noteIdRef.current!` in the file; this runtime
-        // test confirms the behavior with a banner that has a stale id.
-        //
-        // The cleanest runtime check: render the banner, then call
-        // updateNote.mockClear and verify that clicking Save-anyway does
-        // call updateNote (so the local id capture is reading the right
-        // value). The non-null-assertion removal is a safety net that
-        // keeps future refactors honest; we exercise it by confirming the
-        // happy path stays green and the comment + `if (id === null)
-        // return` line are present in the source.
         getNoteMock.mockResolvedValue(okGet("original"));
         updateNoteMock.mockResolvedValue(okPut());
         await setupConflictBanner();
@@ -2208,8 +1877,6 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
         updateNoteMock.mockClear();
         fireEvent.click(screen.getByRole("button", { name: /Save anyway/i }));
 
-        // The click handler captures `const id = noteIdRef.current` and
-        // calls updateNote with that local id (NOT noteIdRef.current!).
         await waitFor(() => expect(updateNoteMock).toHaveBeenCalledTimes(1));
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
@@ -2223,9 +1890,6 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
         updateNoteMock.mockResolvedValue(okPut());
         await setupConflictBanner();
 
-        // First Save-anyway click fails with a non-stale error. The
-        // recovery path should fetch the latest note and refresh the
-        // banner's currentUpdatedAt to "2026-05-09T11:00:00Z".
         updateNoteMock.mockReset();
         updateNoteMock.mockResolvedValueOnce(
             errPut("disk full") as PutReturn,
@@ -2241,22 +1905,17 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
             error: undefined,
             response: new Response(),
         } as GetReturn);
-        // Subsequent Save-anyway click succeeds — proves the banner's
-        // updated_at was refreshed.
         updateNoteMock.mockResolvedValue(okPut());
 
         fireEvent.click(screen.getByRole("button", { name: /Save anyway/i }));
         await waitFor(() => expect(updateNoteMock).toHaveBeenCalledTimes(1));
 
-        // Inline error must mention "Save failed" and a recovery path.
         await waitFor(() => {
             const alerts = screen.getAllByRole("alert");
             const text = alerts.map((a) => a.textContent ?? "").join(" ");
             expect(text).toMatch(/Save failed|retry|Discard/);
         });
 
-        // Banner must still be visible with refreshed updated_at — re-issue
-        // Save-anyway and verify it was called with the NEW comparator.
         expect(screen.getByTestId("conflict-banner")).toBeInTheDocument();
         fireEvent.click(screen.getByRole("button", { name: /Save anyway/i }));
         await waitFor(() => expect(updateNoteMock).toHaveBeenCalledTimes(2));
@@ -2272,7 +1931,6 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
         updateNoteMock.mockResolvedValue(okPut());
         await setupConflictBanner();
 
-        // updateNote fails non-stale; getNote then ALSO fails (network out).
         updateNoteMock.mockReset();
         updateNoteMock.mockResolvedValueOnce(
             errPut("network down") as PutReturn,
@@ -2283,16 +1941,12 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
         fireEvent.click(screen.getByRole("button", { name: /Save anyway/i }));
         await waitFor(() => expect(updateNoteMock).toHaveBeenCalledTimes(1));
 
-        // Inline error must surface a recovery hint mentioning either
-        // "retry on next sync" or "Discard".
         await waitFor(() => {
             const alerts = screen.getAllByRole("alert");
             const text = alerts.map((a) => a.textContent ?? "").join(" ");
             expect(text).toMatch(/retry on next sync|Discard|retry/i);
         });
 
-        // Banner stays visible — user can still Discard or wait for next
-        // WS push to refresh the comparator.
         expect(screen.getByTestId("conflict-banner")).toBeInTheDocument();
     });
 
@@ -2311,9 +1965,6 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
         fireEvent.click(screen.getByRole("button", { name: /Save anyway/i }));
         await waitFor(() => expect(updateNoteMock).toHaveBeenCalledTimes(1));
 
-        // BL-03: SaveIndicator must reflect the failure (saveFailed dispatched).
-        // Plan 07-28 (UAT-2 N9): SaveIndicator now lives in StatusBar via
-        // useTreeStore.saveState — check the store instead of the DOM.
         await waitFor(() =>
             expect(useTreeStore.getState().saveState.status).toBe("error"),
         );
@@ -2321,26 +1972,9 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
 });
 
 describe("WR-04 findNotePathInTree exhaustiveness (Phase 5.5 gap-closure Plan 12)", () => {
-    // The helper is module-private inside EditorPane.tsx, so we can only
-    // exercise it via integration: the tree-side rename test path that
-    // already lives in the H1→filename describe block walks
-    // findNotePathInTree on a folder + note tree. Adding a dedicated test
-    // here that proves the switch path returns null for non-matching
-    // ids in nested folders catches the WR-04 fix at runtime.
-    //
-    // The compile-time exhaustiveness assertion (`const _exhaust: never =
-    // node`) cannot be unit-tested without exporting the helper; the
-    // grep-based acceptance criterion in the plan covers that surface.
     it("WR-04: live-tree path lookup returns the correct path for a note nested in a folder (exhaustive switch happy path)", async () => {
-        // Build a tree where the active note lives under projects/jasper/.
-        // EditorPane's CR-02 effect calls findNotePathInTree on every
-        // tree change; if the switch's exhaustiveness fix accidentally
-        // dropped the folder recursion, the active note's path would
-        // never resolve and the H1-rename pipeline (which uses
-        // lastNotePath) would fall back to the stale load-effect seed.
         getNoteMock.mockResolvedValue(okGet("original"));
         updateNoteMock.mockResolvedValue(okPut());
-        // Tree shape: a folder containing the active note.
         getTreeMock.mockResolvedValue({
             data: {
                 root: [
@@ -2376,10 +2010,6 @@ describe("WR-04 findNotePathInTree exhaustiveness (Phase 5.5 gap-closure Plan 12
         const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("original"));
 
-        // The CR-02 effect must have walked into the nested folders and
-        // matched the note. We can't read lastNotePath directly, but the
-        // happy-path render proves the visit recursed correctly: no error
-        // banner, no crash, editor mounts.
         expect(screen.queryByText(/Could not load note/)).not.toBeInTheDocument();
     });
 });
@@ -2389,7 +2019,6 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        // Start connected so the load + initial state settle cleanly.
         useTreeStore.setState({ connectionStatus: "connected" });
 
         render(<EditorPane noteId={ScratchpadUUID} />);
@@ -2399,13 +2028,10 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         ) as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("hello"));
 
-        // Drop into reconnecting — autosave is paused.
         act(() => {
             useTreeStore.setState({ connectionStatus: "reconnecting" });
         });
 
-        // Type during the disconnect — sets userHasEdited.current = true and
-        // updates latestContentRef. updateNote MUST NOT be called yet.
         fireEvent.change(editor, {
             target: { value: "edits during disconnect" },
         });
@@ -2415,8 +2041,6 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         await flushMicrotasks();
         expect(updateNoteMock).not.toHaveBeenCalled();
 
-        // Flip back to connected — the connectionRestored branch must
-        // dispatch performSave(latestContentRef.current).
         await act(async () => {
             useTreeStore.setState({ connectionStatus: "connected" });
             await Promise.resolve();
@@ -2434,7 +2058,6 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        // Render while reconnecting — userHasEdited.current is false (no typing).
         useTreeStore.setState({ connectionStatus: "reconnecting" });
 
         render(<EditorPane noteId={ScratchpadUUID} />);
@@ -2444,7 +2067,6 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         ) as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("hello"));
 
-        // No typing happens — flip to connected.
         await act(async () => {
             useTreeStore.setState({ connectionStatus: "connected" });
             await Promise.resolve();
@@ -2452,7 +2074,6 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         });
 
         await flushMicrotasks();
-        // No buffered edits → no spurious save round-trip on reconnect.
         expect(updateNoteMock).not.toHaveBeenCalled();
     });
 
@@ -2460,17 +2081,11 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        // Render with noteId=null — placeholder branch, no editor.
         useTreeStore.setState({ connectionStatus: "reconnecting" });
 
         const { rerender } = render(<EditorPane noteId={null} />);
         await flushMicrotasks();
 
-        // Without an editor we can't simulate userHasEdited, but the guard
-        // requires noteId !== null. Even if userHasEdited were latched
-        // (it isn't, no typing happened), the noteIdRef.current === null
-        // branch must short-circuit. Verify by transitioning to connected
-        // and confirming no updateNote call.
         await act(async () => {
             useTreeStore.setState({ connectionStatus: "connected" });
             await Promise.resolve();
@@ -2478,8 +2093,6 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         await flushMicrotasks();
         expect(updateNoteMock).not.toHaveBeenCalled();
 
-        // Sanity: re-rendering with a real noteId in connected state should
-        // load it normally without firing an extra save.
         rerender(<EditorPane noteId={ScratchpadUUID} />);
         await flushMicrotasks();
         expect(updateNoteMock).not.toHaveBeenCalled();
@@ -2489,7 +2102,6 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        // Start connected.
         useTreeStore.setState({ connectionStatus: "connected" });
 
         render(<EditorPane noteId={ScratchpadUUID} />);
@@ -2499,12 +2111,10 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         ) as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("hello"));
 
-        // Drop to reconnecting BEFORE any typing — connectionLost dispatched.
         act(() => {
             useTreeStore.setState({ connectionStatus: "reconnecting" });
         });
 
-        // Type during the disconnect — autosave gated.
         fireEvent.change(editor, {
             target: { value: "buffered while reconnecting" },
         });
@@ -2513,7 +2123,6 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         });
         expect(updateNoteMock).not.toHaveBeenCalled();
 
-        // Reconnect — the connectionRestored flush dispatches performSave.
         await act(async () => {
             useTreeStore.setState({ connectionStatus: "connected" });
             await Promise.resolve();
@@ -2532,10 +2141,6 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
     });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BUG-01 regression suite — saving tab dispatches tags:updated locally
-// despite WS origin-session suppression (Phase 6.5 Plan 08).
-// ─────────────────────────────────────────────────────────────────────────────
 
 vi.mock("../lib/useTagBrowser", () => ({
     dispatchTagEvent: vi.fn(),
@@ -2560,10 +2165,6 @@ describe("<EditorPane /> — BUG-01: saving tab dispatches tags:updated locally"
     });
 
     it("BUG-01: dispatchTagEvent('tags:updated') is called after a successful save", async () => {
-        // BUG-01 regression-proof: the WS EventTagsUpdated broadcast uses
-        // origin_session_id = this session, so SYNC-03 in useSessionSync
-        // suppresses it for the saving tab. EditorPane must dispatch locally
-        // so useTagBrowser refreshes immediately after every save.
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -2573,7 +2174,6 @@ describe("<EditorPane /> — BUG-01: saving tab dispatches tags:updated locally"
         const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("hello"));
 
-        // Type to set userHasEdited, then debounce → save
         fireEvent.change(editor, { target: { value: "updated content" } });
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
@@ -2581,12 +2181,10 @@ describe("<EditorPane /> — BUG-01: saving tab dispatches tags:updated locally"
         await flushMicrotasks();
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        // BUG-01 fix: dispatchTagEvent must have been called with "tags:updated"
         expect(dispatchTagEventMock).toHaveBeenCalledWith("tags:updated");
     });
 
     it("BUG-01: dispatchTagEvent is NOT called when save fails", async () => {
-        // Defensive: only dispatch on success, not on error.
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(errPut("disk full"));
 
@@ -2607,15 +2205,9 @@ describe("<EditorPane /> — BUG-01: saving tab dispatches tags:updated locally"
     });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BUG-03 regression suite — handleEditorBlur must not save when user
-// has not typed anything (Phase 6.5 Plan 08).
-// ─────────────────────────────────────────────────────────────────────────────
 
 describe("<EditorPane /> — BUG-03: handleEditorBlur no-op when userHasEdited is false", () => {
     it("BUG-03: handleEditorBlur is a no-op when userHasEdited is false (no typing since note open)", async () => {
-        // BUG-03 regression-proof: opening a note and clicking elsewhere (focus
-        // leaves editor) must NOT trigger a save round-trip or show "Saved" toast.
         getNoteMock.mockResolvedValue(okGet("original content"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -2625,21 +2217,16 @@ describe("<EditorPane /> — BUG-03: handleEditorBlur no-op when userHasEdited i
         const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("original content"));
 
-        // Do NOT type anything — userHasEdited.current stays false.
-        // Trigger blur directly via the mock hook.
         await act(async () => {
             window.__jasperMockEditorBlur?.();
             await Promise.resolve();
         });
 
-        // Must not have issued a PUT.
         expect(updateNoteMock).not.toHaveBeenCalled();
-        // Must not show "Saved" indicator.
         expect(screen.queryByRole("status")).toBeNull();
     });
 
     it("BUG-03 (positive case): handleEditorBlur DOES save when userHasEdited is true", async () => {
-        // UX-07 preservation: if the user HAS typed, blur-triggered save must fire.
         getNoteMock.mockResolvedValue(okGet("original content"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -2649,11 +2236,9 @@ describe("<EditorPane /> — BUG-03: handleEditorBlur no-op when userHasEdited i
         const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("original content"));
 
-        // Type to set userHasEdited.current = true.
         fireEvent.change(editor, { target: { value: "edited content" } });
         expect(updateNoteMock).not.toHaveBeenCalled();
 
-        // Trigger blur — must collapse debounce + save.
         await act(async () => {
             window.__jasperMockEditorBlur?.();
             await Promise.resolve();
@@ -2664,19 +2249,7 @@ describe("<EditorPane /> — BUG-03: handleEditorBlur no-op when userHasEdited i
     });
 });
 
-// Plan 07-27: EditorPane.openFindPanel delegation test REMOVED.
-// EditorPaneHandlers.openFindPanel was removed in Plan 07-27.
-// Browser native Cmd+F fires instead — no imperative panel open needed.
 
-// ──────────────────────────────────────────────────────────────────────────────
-// EP-keepalive-session — keepalive PUTs carry X-Session-ID (UAT-2 N8)
-//
-// The visibilitychange and beforeunload keepalive fetch calls use raw fetch()
-// (required for keepalive: true which openapi-fetch doesn't support). Without
-// explicitly setting X-Session-ID, the backend broadcasts note:updated with
-// empty originSessionID, which the WS filter (useSessionSync Pitfall 5) does
-// NOT suppress, causing the conflict banner to fire in the originating tab.
-// ──────────────────────────────────────────────────────────────────────────────
 describe("EP-keepalive-session — keepalive PUT carries X-Session-ID (UAT-2 N8)", () => {
     it("visibilitychange keepalive PUT includes X-Session-ID header", async () => {
         getNoteMock.mockResolvedValue(okGet("original content"));
@@ -2693,10 +2266,8 @@ describe("EP-keepalive-session — keepalive PUT carries X-Session-ID (UAT-2 N8)
             ) as HTMLTextAreaElement;
             await waitFor(() => expect(editor.value).toBe("original content"));
 
-            // Type content so latestContentRef is updated.
             fireEvent.change(editor, { target: { value: "edited content" } });
 
-            // Monkey-patch visibilityState then fire the event.
             const restoreHidden = setVisibilityState("hidden");
             try {
                 await act(async () => {
@@ -2711,7 +2282,7 @@ describe("EP-keepalive-session — keepalive PUT carries X-Session-ID (UAT-2 N8)
                         ? headers.get("X-Session-ID")
                         : (headers as Record<string, string> | undefined)?.["X-Session-ID"];
                 expect(sid).toBeTruthy();
-                expect(sid).toMatch(/^[0-9a-f-]{36}$/i); // UUID shape
+                expect(sid).toMatch(/^[0-9a-f-]{36}$/i);
             } finally {
                 restoreHidden();
             }
@@ -2735,10 +2306,8 @@ describe("EP-keepalive-session — keepalive PUT carries X-Session-ID (UAT-2 N8)
             ) as HTMLTextAreaElement;
             await waitFor(() => expect(editor.value).toBe("initial"));
 
-            // Type content so latestContentRef is updated.
             fireEvent.change(editor, { target: { value: "exit save content" } });
 
-            // Fire beforeunload (the secondary keepalive path).
             act(() => {
                 window.dispatchEvent(new Event("beforeunload"));
             });
@@ -2751,7 +2320,7 @@ describe("EP-keepalive-session — keepalive PUT carries X-Session-ID (UAT-2 N8)
                     ? headers.get("X-Session-ID")
                     : (headers as Record<string, string> | undefined)?.["X-Session-ID"];
             expect(sid).toBeTruthy();
-            expect(sid).toMatch(/^[0-9a-f-]{36}$/i); // UUID shape
+            expect(sid).toMatch(/^[0-9a-f-]{36}$/i);
         } finally {
             global.fetch = originalFetch;
         }

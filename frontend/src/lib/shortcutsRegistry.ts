@@ -1,7 +1,5 @@
-// shortcutsRegistry.ts — single source of truth for keyboard shortcuts (D-21, D-15, D-50).
-// Powers both the Cmd+P command palette (Plan 07-11) and the Cmd+/ cheat-sheet
-// dialog (Plan 07-12). Per UI-SPEC §Forward-Compat #2, NEVER re-implement shortcut
-// glyph rendering — import from this file.
+
+
 
 export type ShortcutGroup =
   | "File"
@@ -36,7 +34,7 @@ export interface Shortcut {
   inCheatSheet: boolean;
 }
 
-// Platform detection (D-50) — once at module load.
+
 export const isMac =
   typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
 export const mod = isMac ? "⌘" : "Ctrl ";
@@ -47,7 +45,6 @@ export const shift = isMac ? "⇧" : "Shift ";
  * §Cheat-sheet rows. The label strings are the contract — checker greps for them.
  */
 export const SHORTCUTS_REGISTRY: Shortcut[] = [
-  // File group
   {
     id: "new-note",
     label: "New note",
@@ -64,8 +61,6 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: true,
     inCheatSheet: true,
   },
-  // Editor group
-  // Note: "Find in note" (Cmd+F) removed in Plan 07-27 — browser native Cmd+F fires instead.
   {
     id: "bold",
     label: "Bold",
@@ -82,7 +77,6 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: false,
     inCheatSheet: true,
   },
-  // Plan 07-36 (UAT-3 N7): underline removed — markdown editor cannot render HTML inline so <u> tags are invisible.
   {
     id: "frontmatter",
     label: "Toggle raw frontmatter view",
@@ -91,7 +85,6 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: false,
     inCheatSheet: true,
   },
-  // Navigation group
   {
     id: "today",
     label: "Today",
@@ -116,9 +109,6 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: false,
     inCheatSheet: true,
   },
-  // Palette group (Plan 07-40 UAT-6) — Cmd+Shift+F now opens a search
-  // modal (CommandMenu mode='search'), not a Sidebar input. Label updated
-  // from "Focus search" to "Search notes" to reflect the modal semantics.
   {
     id: "focus-search",
     label: "Search notes",
@@ -127,7 +117,6 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: false,
     inCheatSheet: true,
   },
-  // View group
   {
     id: "toggle-theme",
     label: "Toggle theme",
@@ -135,8 +124,6 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: true,
     inCheatSheet: true,
   },
-  // Vault group (Plan 08-17c V7) — vault switching command.
-  // NOTE: Cmd-Shift-V hotkey is intentionally ABSENT (Chrome paste collision).
   {
     id: "vault.switch",
     label: "Switch vault…",
@@ -144,9 +131,6 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: true,
     inCheatSheet: false,
   },
-  // Share group (Plan 08-06 UAT, SHARE-01 / D-26 Mount C) — opens the host OS
-  // file manager focused on the current note. Disabled (palette-side) when no
-  // note is active. No keybinding in v1.
   {
     id: "share-reveal-current-note",
     label: "Show current note in file manager",
@@ -154,7 +138,6 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: true,
     inCheatSheet: false,
   },
-  // Index group
   {
     id: "refresh-index",
     label: "Refresh index",
@@ -169,7 +152,6 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: true,
     inCheatSheet: false,
   },
-  // Help group
   {
     id: "show-shortcuts",
     label: "Show keyboard shortcuts",
@@ -184,9 +166,8 @@ export const COMMAND_PALETTE_ENTRIES = SHORTCUTS_REGISTRY.filter((s) => s.inPale
 export const CHEAT_SHEET_ENTRIES = SHORTCUTS_REGISTRY.filter((s) => s.inCheatSheet);
 
 /** Group order used by both palette + cheat-sheet (UI-SPEC §Group order). */
-// Plan 07-40 (UAT-6): "Palette" inserted after "Sidebar" to host the
-// Cmd+Shift+F search-modal entry (label "Search notes"). "Sidebar" stays
-// in the union/order in case a future v1 entry needs it; currently empty.
+
+
 export const GROUP_ORDER: ShortcutGroup[] = [
   "File",
   "Editor",
@@ -194,12 +175,8 @@ export const GROUP_ORDER: ShortcutGroup[] = [
   "Sidebar",
   "Palette",
   "View",
-  // Plan 08-06 (UI-SPEC §Surface 4 Mount C): "Share" sits between "View"
-  // and "Index" — the leave-app-context cluster sits with view-affecting
-  // commands rather than index-rebuild commands.
   "Share",
   "Index",
   "Help",
-  // Plan 08-17c (V7): "Vault" group — vault-switching command.
   "Vault",
 ];

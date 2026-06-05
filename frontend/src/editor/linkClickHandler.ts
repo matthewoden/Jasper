@@ -42,9 +42,6 @@ import { getResolvedTitlesSnapshot } from "./wikilinkResolver";
 import { WIKILINK_RE } from "./wikilinkPlugin";
 import { postNotes } from "../lib/treeApi";
 
-// ---------------------------------------------------------------------------
-// Module-level callbacks — set by MarkdownEditor.tsx via useEffect.
-// ---------------------------------------------------------------------------
 
 interface WikilinkCallbacks {
   setActiveNoteId: (id: string) => void;
@@ -62,9 +59,6 @@ export function setWikilinkHandlerCallbacks(cbs: WikilinkCallbacks): void {
   _callbacks = cbs;
 }
 
-// ---------------------------------------------------------------------------
-// External-link helpers (unchanged from Phase 5)
-// ---------------------------------------------------------------------------
 
 function findLinkAt(view: EditorView, pos: number): SyntaxNode | null {
   let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(pos);
@@ -84,20 +78,9 @@ function readUrl(view: EditorView, link: SyntaxNode): string | null {
 }
 
 function isModifierClick(event: MouseEvent): boolean {
-  // Open-link gesture: Cmd-click on Mac, Ctrl-click on
-  // Windows/Linux. We accept EITHER modifier rather than gating on
-  // navigator.platform — Playwright (and Electron, and remote-desktop
-  // setups) routinely report "Win32" even on macOS, so a strict
-  // platform branch silently dropped Mac users' Cmd-clicks. The cost
-  // of accepting both is negligible (no platform-specific binding
-  // collides with this gesture in CM6's default keymap or any of our
-  // extensions).
   return event.metaKey || event.ctrlKey;
 }
 
-// ---------------------------------------------------------------------------
-// Wiki-link helpers (Phase 6 addition)
-// ---------------------------------------------------------------------------
 
 export interface WikiLinkAtPos {
   rawTitle: string;
@@ -120,8 +103,6 @@ export function findWikiLinkAt(
   const lineText = view.state.doc.sliceString(line.from, line.to);
   const offset = pos - line.from;
 
-  // Reset regex state for each search (the module-level WIKILINK_RE has
-  // 'g' flag, so we must create a fresh regex or reset its lastIndex).
   const re = new RegExp(WIKILINK_RE.source, "g");
   let m: RegExpExecArray | null;
   while ((m = re.exec(lineText)) !== null) {
@@ -172,9 +153,6 @@ export async function createNoteFromPendingLink(
   return data.id;
 }
 
-// ---------------------------------------------------------------------------
-// CM6 click handler
-// ---------------------------------------------------------------------------
 
 export const linkClickHandler = EditorView.domEventHandlers({
   click(event, view) {
@@ -182,7 +160,6 @@ export const linkClickHandler = EditorView.domEventHandlers({
     const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
     if (pos === null) return false;
 
-    // --- Phase 5: external-link branch (unchanged) ---
     const link = findLinkAt(view, pos);
     if (link) {
       const url = readUrl(view, link);
@@ -190,37 +167,27 @@ export const linkClickHandler = EditorView.domEventHandlers({
       if (!isExternalLikeUrl(url)) {
         // Not external — fall through to wiki-link branch below.
       } else {
-        // External — open in a new tab. noopener strips window.opener so
-        // the popup can't manipulate the editor; noreferrer also strips
-        // the Referer header. Bare-domain URLs (e.g. "test.com") get an
-        // https:// prefix on open so the browser navigates correctly.
         window.open(ensureProtocol(url), "_blank", "noopener,noreferrer");
         event.preventDefault();
         return true;
       }
     }
 
-    // --- Phase 6: wiki-link branch (Plan 06-09) ---
     const wikiLink = findWikiLinkAt(view, pos);
     if (!wikiLink) return false;
 
     const cbs = _callbacks;
     if (!cbs) {
-      // Callbacks not wired yet (MarkdownEditor not mounted) — inert
       return false;
     }
 
     if (wikiLink.isResolved && wikiLink.targetId) {
-      // Resolved: navigate to the target note
       cbs.setActiveNoteId(wikiLink.targetId);
       event.preventDefault();
       return true;
     }
 
     if (!wikiLink.isResolved) {
-      // Pending: create the note in the source's folder, then navigate.
-      // The create is async; we preventDefault immediately so CM6 doesn't
-      // interpret the click as caret placement on a non-text position.
       const sourceFolder = cbs.getCurrentSourceFolder();
       void createNoteFromPendingLink(wikiLink.rawTitle, sourceFolder)
         .then((newId) => cbs.setActiveNoteId(newId))

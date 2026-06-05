@@ -31,24 +31,10 @@ export function useVaultSwitch() {
      * Sets the overlay state and schedules the V4 10-second failsafe reload.
      */
     markSwitching: (name: string) => {
-      // R4-13 (Plan 08-22): clear the active-note state BEFORE mounting
-      // the overlay. Two effects:
-      //   1. EditorPane's load effect re-runs with noteId=null, which
-      //      runs the AbortController cleanup on the in-flight
-      //      getNote(<prior-vault-uuid>) call. The server response is
-      //      never delivered → no 404 flash.
-      //   2. The debounced LS subscriber clears
-      //      `jasper.tree.activeNoteId` within 250ms so a post-reload
-      //      hydration in vault B does NOT refetch vault A's note.
-      //
-      // setActiveFilePath(null) handles the file-preview reciprocal so
-      // a non-markdown file open in vault A doesn't survive into B.
       useTreeStore.getState().setActiveNote(null);
       useTreeStore.getState().setActiveFilePath(null);
 
       setSwitching({ active: true, targetName: name });
-      // V4: 10-second client-side failsafe — reload even if vault.switched
-      // WS event never arrives (e.g. WS drops during server teardown).
       setTimeout(() => {
         window.location.reload();
       }, 10000);

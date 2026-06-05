@@ -40,10 +40,6 @@ import type { EditorState } from "@codemirror/state";
 import type { SyntaxNode } from "@lezer/common";
 import { FRONTMATTER_NODE_NAME } from "./frontmatterPlugin";
 
-// ---------------------------------------------------------------------------
-// Module-level tag-click callback — populated by MarkdownEditor.tsx.
-// Mirrors the wikilinkResolver module-level snapshot pattern.
-// ---------------------------------------------------------------------------
 
 let _onTagClick: ((tag: string) => void) | null = null;
 
@@ -56,25 +52,9 @@ export function setTagClickHandler(fn: (tag: string) => void): void {
   _onTagClick = fn;
 }
 
-// ---------------------------------------------------------------------------
-// Decoration instance (shared; Decoration.mark is immutable and cacheable)
-// ---------------------------------------------------------------------------
 
 const TAG_DECO = Decoration.mark({ class: "cm-tag-clickable" });
 
-// ---------------------------------------------------------------------------
-// isInsideTagsPair — checks that a Literal node is inside the tags: [...] array.
-//
-// From SPIKE-FINDINGS.md (Plan 06-01):
-//   Walk ancestors of the Literal node upward:
-//     1. FlowSequence — confirms we're inside [...]
-//     2. Pair above FlowSequence — the key-value entry
-//     3. Pair's first child (key) text === "tags"
-//
-// Returns false if:
-//   - No FlowSequence ancestor found (e.g. block-sequence, scalar value)
-//   - Pair key is not "tags" (different YAML key)
-// ---------------------------------------------------------------------------
 
 function isInsideTagsPair(node: SyntaxNode, state: EditorState): boolean {
   let cur: SyntaxNode | null = node.parent;
@@ -85,25 +65,18 @@ function isInsideTagsPair(node: SyntaxNode, state: EditorState): boolean {
       foundFlowSequence = true;
     }
     if (cur.name === "Pair" && foundFlowSequence) {
-      // The Pair's first child is the key node.
       const key = cur.firstChild;
       if (key && state.doc.sliceString(key.from, key.to) === "tags") {
         return true;
       }
-      // Found a Pair but key is not "tags" — not our target.
       return false;
     }
-    // Stop walking up once we leave the Frontmatter node.
     if (cur.name === FRONTMATTER_NODE_NAME) break;
     cur = cur.parent;
   }
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// buildTagDecorations — iterates the Frontmatter subtree, emitting
-// Decoration.mark for every Literal node that passes isInsideTagsPair.
-// ---------------------------------------------------------------------------
 
 function buildTagDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
@@ -111,10 +84,8 @@ function buildTagDecorations(view: EditorView): DecorationSet {
 
   tree.iterate({
     enter(node) {
-      // Only descend into Frontmatter; skip all other top-level nodes.
       if (node.name !== FRONTMATTER_NODE_NAME) return;
 
-      // Walk the entire Frontmatter subtree looking for Literal nodes.
       const cursor = node.node.cursor();
       do {
         if (cursor.name === "Literal") {
@@ -129,9 +100,6 @@ function buildTagDecorations(view: EditorView): DecorationSet {
   return builder.finish();
 }
 
-// ---------------------------------------------------------------------------
-// ViewPlugin + event handler
-// ---------------------------------------------------------------------------
 
 /**
  * tagClickPlugin — the CM6 extension to add to MarkdownEditor's extensions array.
@@ -151,8 +119,6 @@ export const tagClickPlugin = ViewPlugin.fromClass(
 
     update(u: ViewUpdate) {
       if (u.view.composing) {
-        // IME gate (D-07/D-31 pattern): map existing decorations through
-        // document changes instead of rebuilding during IME composition.
         this.decorations = this.decorations.map(u.changes);
         return;
       }
@@ -169,15 +135,13 @@ export const tagClickPlugin = ViewPlugin.fromClass(
     decorations: (v) => v.decorations,
     eventHandlers: {
       click(event: MouseEvent, view: EditorView) {
-        void view; // view available if needed for future enhancements
+        void view;
         const target = event.target as HTMLElement | null;
         if (!target?.classList.contains("cm-tag-clickable")) return false;
 
         const tag = target.textContent?.trim();
         if (!tag) return false;
 
-        // D-08: plain click model — no modifier key required.
-        // This deliberately diverges from wiki-links' Cmd-click model (D-15).
         _onTagClick?.(tag);
         event.preventDefault();
         return true;

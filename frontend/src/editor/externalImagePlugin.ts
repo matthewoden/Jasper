@@ -39,9 +39,9 @@ import {
 import { syntaxTree } from "@codemirror/language";
 import { RangeSetBuilder } from "@codemirror/state";
 
-export const ALLOWLIST_KEY = "jasper:img-allowlist"; // D-43 LOCKED
+export const ALLOWLIST_KEY = "jasper:img-allowlist";
 
-// UI-SPEC §Copywriting Contract LOCKED strings.
+
 const COPY_ALLOW_BUTTON = "Allow this image";
 const copyAllowAria = (host: string): string => `Allow image from ${host}`;
 const copyFetchFailed = (host: string): string =>
@@ -87,13 +87,13 @@ export function writeAllowlist(s: Set<string>): void {
  * (no widget injected).
  */
 export function isExternalUrl(url: string): boolean {
-  if (!/^https?:\/\//i.test(url)) return false; // relative / non-http
+  if (!/^https?:\/\//i.test(url)) return false;
   try {
     const u = new URL(url);
     if (u.hostname === window.location.hostname) return false;
     return true;
   } catch {
-    return false; // malformed → don't widget-replace; let CM6 render as text
+    return false;
   }
 }
 
@@ -135,7 +135,6 @@ export class ExternalImageWidget extends WidgetType {
     const host = this.safeHost();
     const path = this.safePath();
 
-    // Visually hidden description for screen readers (UI-SPEC line 495).
     const desc = document.createElement("span");
     desc.className = "cm-img-description sr-only";
     desc.textContent = copyDescription(host);
@@ -174,10 +173,10 @@ export class ExternalImageWidget extends WidgetType {
     const host = this.safeHost();
     try {
       const resp = await fetch(this.url, { mode: "cors" });
-      if (this.destroyed) return; // widget was destroyed during fetch — bail out
+      if (this.destroyed) return;
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const blob = await resp.blob();
-      if (this.destroyed) return; // widget was destroyed during blob conversion — bail out
+      if (this.destroyed) return;
       this.blobUrl = URL.createObjectURL(blob);
       const img = document.createElement("img");
       img.src = this.blobUrl;
@@ -195,14 +194,13 @@ export class ExternalImageWidget extends WidgetType {
   }
 
   destroy(): void {
-    this.destroyed = true; // signal to in-flight renderLoaded
+    this.destroyed = true;
     if (this.blobUrl) {
       URL.revokeObjectURL(this.blobUrl);
       this.blobUrl = null;
     }
   }
 
-  // Allow widget-internal events (button click) to reach the DOM.
   ignoreEvent(): boolean {
     return false;
   }
@@ -250,7 +248,7 @@ export function buildImageDecorations(view: EditorView): DecorationSet {
         const m = text.match(IMAGE_RE);
         if (!m) return;
         const [, alt, url] = m;
-        if (!isExternalUrl(url)) return; // D-23 internal bypass
+        if (!isExternalUrl(url)) return;
         builder.add(
           node.from,
           node.to,
@@ -274,8 +272,6 @@ export const externalImagePlugin = ViewPlugin.fromClass(
       this.decorations = buildImageDecorations(view);
     }
     update(u: ViewUpdate) {
-      // Image widgets do NOT depend on selectionSet — only doc / viewport
-      // changes (and tree parse change). IME-safe by inheritance.
       if (u.view.composing) {
         this.decorations = this.decorations.map(u.changes);
         return;

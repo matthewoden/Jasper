@@ -7,18 +7,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resolveWikilinkTitle, getResolvedTitlesSnapshot, setResolvedTitlesSnapshot } from "./wikilinkResolver";
 
-// We need to mock useFileTree (a React hook) and React's useMemo for
-// the hook-based tests. The pure functions (resolveWikilinkTitle,
-// setResolvedTitlesSnapshot, getResolvedTitlesSnapshot) can be tested
-// without React.
 
 vi.mock("../lib/useFileTree", () => ({
   useFileTree: vi.fn(),
 }));
 
-// ---------------------------------------------------------------------------
-// Tests for the pure resolveWikilinkTitle function (R4, R5)
-// ---------------------------------------------------------------------------
 
 describe("resolveWikilinkTitle", () => {
   it("R4: returns resolved=true if the lowercase title is in the set", () => {
@@ -62,7 +55,6 @@ describe("resolveWikilinkTitle", () => {
   });
 
   it("NFC normalizes the input title before lookup", () => {
-    // precomposed "ñ" (U+00F1) vs decomposed "n" + combining-tilde (U+006E U+0303)
     const precomposed = "ñote";
     const decomposed = "ñote";
     const set = new Set([precomposed.normalize("NFC").toLowerCase()]);
@@ -71,9 +63,6 @@ describe("resolveWikilinkTitle", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tests for module-level snapshot setters/getters
-// ---------------------------------------------------------------------------
 
 describe("setResolvedTitlesSnapshot / getResolvedTitlesSnapshot", () => {
   it("getResolvedTitlesSnapshot returns the set that was passed to setResolvedTitlesSnapshot", () => {
@@ -99,10 +88,6 @@ describe("setResolvedTitlesSnapshot / getResolvedTitlesSnapshot", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tests for useResolvedTitleSet hook (R1, R2, R3)
-// These tests mock useFileTree and renderHook to test the hook logic.
-// ---------------------------------------------------------------------------
 
 import { renderHook } from "@testing-library/react";
 import { useResolvedTitleSet } from "./wikilinkResolver";
@@ -218,7 +203,7 @@ describe("useResolvedTitleSet", () => {
     const { result, rerender } = renderHook(() => useResolvedTitleSet());
     const firstSet = result.current.titleSet;
     rerender();
-    expect(result.current.titleSet).toBe(firstSet); // identity preserved (memoized)
+    expect(result.current.titleSet).toBe(firstSet);
   });
 
   it("R2: tree identity change triggers new Set", () => {
@@ -242,7 +227,6 @@ describe("useResolvedTitleSet", () => {
     const firstSet = result.current.titleSet;
     expect(firstSet.size).toBe(1);
 
-    // Update to tree2 (new object identity — same as a WS-triggered refresh)
     mockUseFileTree.mockReturnValue({
       tree: tree2,
       loading: false,
@@ -252,6 +236,6 @@ describe("useResolvedTitleSet", () => {
     });
     rerender();
     expect(result.current.titleSet.size).toBe(2);
-    expect(result.current.titleSet).not.toBe(firstSet); // new Set identity
+    expect(result.current.titleSet).not.toBe(firstSet);
   });
 });

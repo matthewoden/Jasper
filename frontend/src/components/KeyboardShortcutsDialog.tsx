@@ -22,7 +22,6 @@ interface Props {
 }
 
 export function KeyboardShortcutsDialog({ open, onOpenChange }: Props) {
-  // Group entries by group field, in GROUP_ORDER; omit empty groups.
   const grouped = GROUP_ORDER.map((g) => ({
     group: g,
     entries: CHEAT_SHEET_ENTRIES.filter((e) => e.group === g),

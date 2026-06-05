@@ -55,31 +55,16 @@ export const codeblockExpand = keymap.of([
     key: "Enter",
     run: (view) => {
       const sel = view.state.selection.main;
-      // Only act on a single-cursor (no selection range).
       if (sel.from !== sel.to) return false;
       const line = view.state.doc.lineAt(sel.from);
-      // Cursor must be at end of line.
       if (sel.from !== line.to) return false;
-      // Line must be a bare opening fence (optionally with language).
       if (!FENCE_LINE_RE.test(line.text)) return false;
-      // If we're inside an already-open block, this line is the
-      // CLOSING fence — let Enter pass through. Even fence count
-      // above means we're outside any block; odd means inside.
       const above = countFencesAbove(view.state.doc, line.number);
       if (above % 2 === 1) return false;
-      // Even count above (we're outside a block) AND a fence already
-      // exists below means the doc is already balanced; this Enter
-      // is navigating an existing block, not opening a new one.
       if (hasFenceBelow(view.state.doc, line.number)) return false;
 
-      // Insert: \n[cursor]\n```
-      // Cursor lands on the empty middle line between the two fences.
-      // No extra trailing newline — the user can press Enter once
-      // more to break out (and that Enter will pass through because
-      // the closing-fence line we just inserted produces an odd count
-      // above for THAT next Enter).
       const insert = "\n\n```";
-      const cursorAt = line.to + 1; // start of the empty middle line
+      const cursorAt = line.to + 1;
       view.dispatch({
         changes: { from: line.to, insert },
         selection: { anchor: cursorAt },

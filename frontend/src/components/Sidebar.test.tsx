@@ -26,9 +26,8 @@ vi.mock("../lib/useFileTree", () => ({
 vi.mock("../lib/adminApi", () => ({
   postAdminReindex: vi.fn(),
 }));
-// Plan 07-39 (UAT-5 N11): Sidebar now consumes useSearch as the driver for the
-// Sidebar search UI (SearchInputBar + SearchResultsList). Mock it so tests
-// don't fire real backend GET /api/v1/search calls.
+
+
 vi.mock("../lib/useSearch", () => ({
   useSearch: vi.fn(() => ({ results: [], isSearching: false })),
 }));
@@ -41,10 +40,8 @@ vi.mock("../lib/useTreeMutations", async () => {
     useTreeMutations: vi.fn(),
   };
 });
-// Phase 5 — SidebarToolbar now renders SettingsMenu, which uses
-// useTheme → useConfig → real openapi-fetch GET. jsdom + undici can't
-// parse the relative URL, so we stub the hook to keep these tests
-// focused on tree/sidebar concerns rather than config-fetch plumbing.
+
+
 vi.mock("../lib/useTheme", () => ({
   useTheme: () => ({
     theme: "dark",
@@ -53,10 +50,7 @@ vi.mock("../lib/useTheme", () => ({
   THEME_BOOTSTRAP_KEY: "jasper:theme-bootstrap",
 }));
 
-// Phase 6 — Plan 06-08: mock useTagBrowser so Sidebar tests don't spin up
-// real tag-fetch infra. TagBrowserSection is tested separately in
-// TagBrowserSection.test.tsx. These tests only verify that the section is
-// mounted in the correct slot of the sidebar layout.
+
 vi.mock("../lib/useTagBrowser", () => ({
   useTagBrowser: vi.fn(() => ({
     tags: [{ name: "alpha", count: 3 }],
@@ -65,7 +59,7 @@ vi.mock("../lib/useTagBrowser", () => ({
     refresh: vi.fn().mockResolvedValue(undefined),
   })),
 }));
-// tagsApi must also be mocked since TagBrowserSection imports it directly.
+
 vi.mock("../lib/tagsApi", () => ({
   listTags: vi.fn(),
   listTagNotes: vi.fn(),
@@ -96,7 +90,6 @@ function defaultMutsResult() {
     createFolder: vi.fn(),
     deleteFolder: vi.fn(),
     moveFolder: vi.fn(),
-    // Plan 07-39 (UAT-5 N2-sub-B): internal file drag mutator.
     moveFile: vi.fn(),
   };
 }
@@ -110,14 +103,7 @@ beforeEach(() => {
   mockedPostAdminReindex.mockReset();
   mockedUseTreeMutations.mockReset();
   mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
-  // UX-09: reset persistent sidebar width slice so each test starts at
-  // the default and isn't polluted by a sibling test that pre-set a
-  // larger width.
   useTreeStore.setState({ sidebarWidth: SIDEBAR_WIDTH_DEFAULT });
-  // UX-12: reset selectedRow so the create-target derivation tests below
-  // start from a known "no selection" baseline. selectedRow is transient
-  // (never persisted), but it is module-level state that survives between
-  // tests within a single Vitest worker.
   useTreeStore.setState({ selectedRow: null });
 });
 
@@ -167,7 +153,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     expect(
       screen.getByRole("button", { name: "New folder" }),
     ).toBeInTheDocument();
-    // Phase 6.6 (D-08): Refresh moved to StatusBar; no longer in SidebarToolbar
     expect(
       screen.queryByRole("button", { name: "Refresh" }),
     ).toBeNull();
@@ -194,14 +179,10 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       refresh: () => Promise.resolve(),
       mutate: noopMutate,
     });
-    // Pre-set the store to a non-default width before render so we can
-    // distinguish "store-driven" from "literal 260".
     useTreeStore.setState({ sidebarWidth: 380 });
     renderWithProvider(<Sidebar />);
     const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
     expect(nav.style.width).toBe("380px");
-    // The parent must also be position:relative so the absolute-
-    // positioned resize handle anchors to the right edge.
     expect(nav.style.position).toBe("relative");
   });
 
@@ -232,8 +213,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
   });
 
   it("TestSidebar_RefreshNotInSidebar — Phase 6.6: Refresh moved to StatusBar (D-08)", () => {
-    // Refresh was moved out of Sidebar to StatusBar in Phase 6.6.
-    // Sidebar no longer renders a Refresh button or calls postAdminReindex.
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -242,9 +221,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
-    // No Refresh button in the sidebar anymore
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
-    // postAdminReindex should never be called from Sidebar
     expect(mockedPostAdminReindex).not.toHaveBeenCalled();
   });
 
@@ -273,11 +250,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
   });
 
   it("TestSidebar_NewNoteAndNewFolder_Click — buttons render and click without crashing", async () => {
-    // Gap R2-2: the in-flight guard now serializes create clicks so a
-    // synchronous double-click of New Note → New Folder no longer fires
-    // both mutators in the same tick. We click New Note, await its
-    // mutator settling, THEN click New Folder. Both still trigger their
-    // respective mutators — they just can't race.
     const muts = defaultMutsResult();
     muts.createNote.mockResolvedValue({
       id: "n-new",
@@ -309,9 +281,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     });
   });
 
-  // Phase 6.5 — Plan 06.5-04: TagBrowserSection REMOVED from Sidebar.
-  // Left sidebar is file-tree-only. Tag browser relocated to right-rail
-  // RightRailTagsPanel. These tests lock in the ABSENCE of the tag section.
   describe("Phase 6.5 — TagBrowserSection removed from sidebar (D-04)", () => {
     it("SI-REMOVED: TagBrowserSection is NOT present inside the nav (removed in Phase 6.5)", () => {
       mockedUseFileTree.mockReturnValue({
@@ -322,7 +291,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         mutate: noopMutate,
       });
       renderWithProvider(<Sidebar />);
-      // The Phase 6 uppercase "TAGS (N)" header must be absent
       expect(screen.queryByText(/^TAGS \(/)).toBeNull();
     });
 
@@ -335,7 +303,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         mutate: noopMutate,
       });
       renderWithProvider(<Sidebar />);
-      // No uppercase TAGS section in the left sidebar
       expect(screen.queryByText(/TAGS \(\d+\)/)).toBeNull();
     });
 
@@ -350,18 +317,10 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       renderWithProvider(<Sidebar />);
       const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
       const resizeHandle = screen.getByTestId("sidebar-resize-handle");
-      // Resize handle is still inside the nav
       expect(nav.contains(resizeHandle)).toBe(true);
     });
   });
 
-  // UX-12 — toolbar create paths target the parent of the currently-
-  // selected row (or inside the selected folder), not always the root.
-  // selectedRow is populated by every TreeRow click (TreeRow.tsx ~line
-  // 199); the toolbar's handleNewNote / handleNewFolder read it via
-  // useTreeStore.getState() at click time and resolve to the right
-  // parent. createNoteAt / createFolderAt forward that parent through
-  // useTreeMutations.createNote / .createFolder unchanged.
   describe("UX-12 — create-at-current-level (toolbar path)", () => {
     it("UX-12: toolbar New note with no selection creates at root", async () => {
       const muts = defaultMutsResult();
@@ -379,8 +338,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         refresh: () => Promise.resolve(),
         mutate: noopMutate,
       });
-      // Default beforeEach already cleared selectedRow; assert it's null
-      // so the test's intent is self-documenting.
       expect(useTreeStore.getState().selectedRow).toBeNull();
 
       renderWithProvider(<Sidebar />);
@@ -531,9 +488,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────
-// Phase 6.6 (Plan 06.6-11) — Floating-panel card aesthetic + visibility gating
-// ──────────────────────────────────────────────────────────────────────
+
 describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.6-11)", () => {
   beforeEach(() => {
     mockedUseFileTree.mockReturnValue({
@@ -555,14 +510,12 @@ describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.
   it("6.6-S2: outer nav does NOT have borderRight", () => {
     renderWithProvider(<Sidebar />);
     const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
-    // The outer nav should not have a borderRight (the inner card carries the boundary)
     expect(nav.style.borderRight).toBeFalsy();
   });
 
   it("6.6-S3: inner card div has margin 8px, --color-surface bg, 1px border, borderRadius 8px", () => {
     renderWithProvider(<Sidebar />);
     const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
-    // Look for the inner card element (direct child of nav that has margin)
     const card = nav.querySelector('div[style*="margin"]') as HTMLElement | null;
     expect(card).not.toBeNull();
     expect(card!.style.margin).toBe("8px");
@@ -575,7 +528,6 @@ describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.
   it("6.6-S4: when notesSidebarVisible=false, Sidebar returns null", () => {
     useTreeStore.setState({ notesSidebarVisible: false });
     renderWithProvider(<Sidebar />);
-    // The nav should not be in the document
     expect(screen.queryByLabelText("Notes navigation")).toBeNull();
   });
 
@@ -583,12 +535,9 @@ describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.
     renderWithProvider(<Sidebar />);
     const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
     const handle = screen.getByTestId("sidebar-resize-handle");
-    // Handle is inside nav
     expect(nav.contains(handle)).toBe(true);
-    // Handle should be a direct child of nav (not inside the inner card)
     const card = nav.querySelector('div[style*="margin"]') as HTMLElement | null;
     if (card) {
-      // Handle should NOT be inside the card
       expect(card.contains(handle)).toBe(false);
     }
   });
@@ -601,13 +550,7 @@ describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────
-// SBR-UAT6-UNMOUNT — Plan 07-40 (UAT-6) REVERSES Plan 07-39 Task 1's sidebar
-// search wiring. Search now lives in a CommandMenu mode='search' modal
-// invoked by Cmd+Shift+F (see Plan 07-40 Task 2). Sidebar.tsx no longer
-// mounts SearchInputBar or SearchResultsList, and the useSearch driver
-// effects are gone. FileTree is the unconditional sidebar surface.
-// ──────────────────────────────────────────────────────────────────────────
+
 describe("<Sidebar /> — Plan 07-40 reversal of Sidebar Search UI (UAT-6)", () => {
   beforeEach(() => {
     mockedUseFileTree.mockReturnValue({
@@ -627,7 +570,6 @@ describe("<Sidebar /> — Plan 07-40 reversal of Sidebar Search UI (UAT-6)", () 
   });
 
   it("SBR-UAT6-UNMOUNT-1: SearchInputBar is NOT mounted in the sidebar (any tree state)", () => {
-    // Empty tree
     renderWithProvider(<Sidebar />);
     expect(screen.queryByPlaceholderText("Search notes…")).toBeNull();
   });
@@ -649,7 +591,6 @@ describe("<Sidebar /> — Plan 07-40 reversal of Sidebar Search UI (UAT-6)", () 
       searchResults: [],
     });
     renderWithProvider(<Sidebar />);
-    // SearchResultsList's empty-state copy MUST NOT appear in the sidebar.
     expect(screen.queryByText('No matches for "hello"')).toBeNull();
   });
 
@@ -659,7 +600,6 @@ describe("<Sidebar /> — Plan 07-40 reversal of Sidebar Search UI (UAT-6)", () 
       searchQuery: "hello",
       searchResults: [],
     });
-    // Populate the tree so the FileTree mounts the [role='tree'] arborist surface.
     mockedUseFileTree.mockReturnValue({
       tree: {
         root: [
@@ -678,15 +618,10 @@ describe("<Sidebar /> — Plan 07-40 reversal of Sidebar Search UI (UAT-6)", () 
       mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
-    // FileTree's [role='tree'] container MUST be present even with
-    // searchActive=true (Plan 07-40 removed the conditional swap).
     expect(document.querySelector('[role="tree"]')).not.toBeNull();
   });
 
   it("SBR-UAT6-UNMOUNT-4: useSearch driver effects do NOT run (no store writes from Sidebar)", async () => {
-    // useSearch returning hits would, under the Plan 07-39 wiring, flow
-    // into store.searchResults + flip searchActive. Plan 07-40 removed those
-    // effects — the store should stay at its initial values after render.
     const HIT = {
       id: "abc",
       title: "Hello",
@@ -704,7 +639,6 @@ describe("<Sidebar /> — Plan 07-40 reversal of Sidebar Search UI (UAT-6)", () 
     });
 
     renderWithProvider(<Sidebar />);
-    // Give any leftover effects a tick to flush — none should run.
     await new Promise((r) => setTimeout(r, 20));
     expect(useTreeStore.getState().searchResults).toEqual([]);
     expect(useTreeStore.getState().searchActive).toBe(false);

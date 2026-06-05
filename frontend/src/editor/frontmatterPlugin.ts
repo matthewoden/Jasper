@@ -23,10 +23,7 @@ import {
 import { syntaxTree } from "@codemirror/language";
 import { RangeSetBuilder } from "@codemirror/state";
 
-// "Frontmatter" (lowercase 'm') is the actual node name produced by
-// @codemirror/lang-yaml's yamlFrontmatter() wrapper — verified empirically
-// by frontmatterPlugin.test.ts's "Assumption A2" test case. The RESEARCH.md
-// assumed "FrontMatter" (capital M); the spike corrected this.
+
 export const FRONTMATTER_NODE_NAME = "Frontmatter";
 export const FRONTMATTER_LINE_CLASS = "cm-frontmatter";
 
@@ -38,9 +35,6 @@ export function buildFrontmatterDecorations(view: EditorView): DecorationSet {
   tree.iterate({
     enter(node) {
       if (node.name !== FRONTMATTER_NODE_NAME) return;
-      // Iterate lines within the Frontmatter node range. Use strict < so
-      // we don't process a line that merely starts at node.to (the character
-      // after the closing ---\n is already the next block, not frontmatter).
       let pos = node.from;
       while (pos < node.to) {
         const line = view.state.doc.lineAt(pos);
@@ -61,8 +55,6 @@ export const frontmatterPlugin = ViewPlugin.fromClass(
     }
     update(u: ViewUpdate) {
       if (u.view.composing) {
-        // D-07/D-31: do not rebuild during IME composition; just map old
-        // decorations through the document changes to keep positions valid.
         this.decorations = this.decorations.map(u.changes);
         return;
       }

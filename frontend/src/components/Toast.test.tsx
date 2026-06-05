@@ -30,7 +30,6 @@ describe("<ToastProvider /> + useToast", () => {
       useToast();
       return null;
     }
-    // Suppress the expected error log noise.
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect(() => render(<Bad />)).toThrow(
       /useToast must be used inside <ToastProvider>/,

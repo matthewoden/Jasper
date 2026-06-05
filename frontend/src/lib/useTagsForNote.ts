@@ -22,9 +22,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { getNote } from "./notesApi";
 import { linksEventSubscribers } from "./useBacklinks";
 
-// ────────────────────────────────────────────────────────────────────────────
-// Tag parsing helpers — mirrors backend markdown.ExtractTags + ExtractBodyTags
-// ────────────────────────────────────────────────────────────────────────────
 
 /**
  * Parse YAML frontmatter tags from a markdown string.
@@ -35,12 +32,10 @@ import { linksEventSubscribers } from "./useBacklinks";
  *     - bar
  */
 function parseFrontmatterTags(content: string): string[] {
-  // Extract the YAML frontmatter block (between the first two --- fences).
   const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
   if (!fmMatch) return [];
   const fm = fmMatch[1];
 
-  // Form 1: tags: [foo, bar, baz]
   const inlineMatch = fm.match(/^tags:\s*\[([^\]]*)\]/m);
   if (inlineMatch) {
     return inlineMatch[1]
@@ -49,10 +44,6 @@ function parseFrontmatterTags(content: string): string[] {
       .filter((t) => /^[a-z0-9_-]+$/.test(t));
   }
 
-  // Form 2: block sequence
-  //   tags:
-  //     - foo
-  //     - bar
   const blockMatch = fm.match(/^tags:\s*\n((?:\s*-\s*.+\n?)*)/m);
   if (blockMatch) {
     return blockMatch[1]
@@ -69,7 +60,6 @@ function parseFrontmatterTags(content: string): string[] {
  * Charset: [a-z0-9_-]+ (matches backend D-22 rule).
  */
 function parseBodyTags(content: string): string[] {
-  // Strip frontmatter before scanning for inline tags.
   const body = content.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, "");
   const matches = body.matchAll(/#([a-z0-9_-]+)/g);
   return Array.from(matches, (m) => m[1]);
@@ -86,9 +76,6 @@ function extractTags(content: string): string[] {
   return union.sort();
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Hook
-// ────────────────────────────────────────────────────────────────────────────
 
 export interface UseTagsForNoteResult {
   tags: string[];
@@ -109,7 +96,6 @@ export function useTagsForNote(noteId: string | null): UseTagsForNoteResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  // Keep noteId in a ref so the subscriber closure always reads the current value.
   const noteIdRef = useRef(noteId);
   noteIdRef.current = noteId;
 
@@ -138,7 +124,7 @@ export function useTagsForNote(noteId: string | null): UseTagsForNoteResult {
       setError(e instanceof Error ? e : new Error(String(e)));
       setLoading(false);
     }
-  }, []); // stable — reads noteIdRef.current at call time.
+  }, []);
 
   useEffect(() => {
     if (noteId === null) {
@@ -150,9 +136,6 @@ export function useTagsForNote(noteId: string | null): UseTagsForNoteResult {
 
     void fetchTags();
 
-    // Subscribe to WS events that signal the note's tags may have changed.
-    // Reuse the linksEventSubscribers set from useBacklinks (same events:
-    // note:updated, note:created, links:rewritten). Zero new infrastructure.
     const subscriber = () => {
       if (noteIdRef.current) void fetchTags();
     };

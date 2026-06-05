@@ -38,18 +38,12 @@ interface Props {
 
 export function BacklinksRail({ noteId }: Props) {
   const setActiveNoteId = useTreeStore((s) => s.setActiveNote);
-  // UAT 2026-05-12 (Phase 6.6 follow-up): × close button hides panel via panelSelector.
-  // The rail-level collapse button was removed — the rail auto-collapses when all panels
-  // are deselected (handled by RightRail's useEffect).
   const setPanelSelector = useTreeStore((s) => s.setPanelSelector);
   const { backlinks, loading, error } = useBacklinks(noteId);
 
-  // D-34: include count badge in header for symmetry with Tags panel.
-  // Uses backlinks?.length — null/undefined maps to 0 safely.
   const backlinksCount = backlinks?.length ?? 0;
 
   return (
-    // Phase 6.5 panel card shell — wraps the Phase 6 body unchanged inside.
     <div
       style={{
         background: "var(--color-surface)",
@@ -114,7 +108,6 @@ export function BacklinksRail({ noteId }: Props) {
         </header>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
           {noteId === null ? (
-            // D-30: no note open — show empty state.
             <div
               style={{
                 padding: "24px 16px",
@@ -146,7 +139,6 @@ export function BacklinksRail({ noteId }: Props) {
               {error.message}
             </div>
           ) : backlinks && backlinks.length === 0 ? (
-            // D-30: note is open but has no inbound links.
             <div
               style={{
                 padding: "24px 16px",
@@ -211,7 +203,6 @@ export function BacklinksRail({ noteId }: Props) {
                       color: "var(--color-muted)",
                       lineHeight: 1.5,
                     }}
-                    // T-06-11-01: server-built HTML MUST go through sanitize.ts.
                     dangerouslySetInnerHTML={{ __html: sanitizeHtml(row.excerpt) }}
                   />
                 </li>

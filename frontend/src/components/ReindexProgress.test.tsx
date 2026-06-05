@@ -98,7 +98,6 @@ describe("<ReindexProgress />", () => {
     act(() => {
       vi.advanceTimersByTime(1500);
     });
-    // Re-rendering with idle clears the timer effect cleanly.
     expect(onClose).not.toHaveBeenCalled();
   });
 });

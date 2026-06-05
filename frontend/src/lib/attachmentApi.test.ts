@@ -46,7 +46,6 @@ describe("attachmentApi / uploadAttachment", () => {
 
     expect(result).toEqual(mockResult);
 
-    // Verify the URL and method
     const fetchMock = vi.mocked(globalThis.fetch);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, opts] = fetchMock.mock.calls[0];
@@ -163,7 +162,7 @@ describe("UA-session-header — uploadAttachment includes X-Session-ID (UAT-2 N8
         ? headers.get("X-Session-ID")
         : (headers as Record<string, string> | undefined)?.["X-Session-ID"];
     expect(sid).toBeTruthy();
-    expect(sid).toMatch(/^[0-9a-f-]{36}$/i); // UUID shape
+    expect(sid).toMatch(/^[0-9a-f-]{36}$/i);
     fetchSpy.mockRestore();
   });
 });

@@ -34,7 +34,6 @@ vi.mock("../lib/useTreeStore", () => {
     const store = buildStore();
     return selector ? selector(store) : store;
   };
-  // Zustand stores expose .getState() — the dropdown calls it on click.
   (useTreeStore as unknown as { getState: () => unknown }).getState = buildStore;
   return { useTreeStore };
 });
@@ -81,7 +80,6 @@ describe("<PanelSelectorDropdown />", () => {
     await user.click(screen.getByRole("button", { name: /open panel/i }));
     await waitFor(() => {
       const tagsItem = screen.getByRole("menuitem", { name: /tags/i });
-      // No checkbox role — UAT 2026-05-12 removed the indicator pattern.
       expect(tagsItem.getAttribute("aria-checked")).toBeNull();
       expect(screen.queryAllByRole("menuitemcheckbox").length).toBe(0);
     });

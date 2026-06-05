@@ -46,10 +46,6 @@ export function ReindexProgress({
   onClose,
   style,
 }: ReindexProgressProps) {
-  // Auto-dismiss after the success transient. The component still owns
-  // ZERO state; this effect is a side-effect timer that calls back into
-  // the parent's onClose. The parent decides what to do (typically:
-  // setReindexPhase("idle") + status.refresh()).
   useEffect(() => {
     if (phase !== "completing") return;
     const t = window.setTimeout(() => {
@@ -184,8 +180,6 @@ function IndeterminateBar() {
           width: "30%",
           height: "100%",
           background: "var(--color-accent)",
-          // Keyframes defined in theme.css; reserved exclusively for this
-          // surface's indeterminate bar.
           animation: "jasper-progress-stripe 1.4s linear infinite",
         }}
       />

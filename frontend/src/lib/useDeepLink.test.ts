@@ -32,11 +32,7 @@ import { useDeepLink } from "./useDeepLink";
 
 const NOTE_ID = "00000000-0000-4000-a000-000000000001";
 
-// jsdom's window.location.assign is a non-configurable own property; the
-// reliable cross-version intercept is to replace the entire location object
-// with a fresh plain object whose properties mirror the URL we want to read.
-// We rebuild it on each setUrl call so the hook's `new URL(window.location.href)`
-// returns the post-setUrl query string.
+
 const originalLocation = window.location;
 let assignSpy: ReturnType<typeof vi.fn>;
 let replaceStateSpy: ReturnType<typeof vi.spyOn>;
@@ -103,7 +99,6 @@ describe("useDeepLink", () => {
     expect(getMock).toHaveBeenCalledWith("/notes/{id}", {
       params: { path: { id: NOTE_ID } },
     });
-    // URL cleaned via history.replaceState (the note= param stripped).
     await waitFor(() => expect(replaceStateSpy).toHaveBeenCalled());
     const lastCallUrl = replaceStateSpy.mock.calls[0]?.[2] as string;
     expect(lastCallUrl).not.toMatch(/note=/);
@@ -166,7 +161,6 @@ describe("useDeepLink", () => {
     renderHook(() => useDeepLink(true));
 
     await waitFor(() => expect(getMock).toHaveBeenCalled());
-    // The first (and only) GET should be /notes/{id}, not /notes/by-path.
     expect(getMock).toHaveBeenCalledWith("/notes/{id}", {
       params: { path: { id: NOTE_ID } },
     });

@@ -10,7 +10,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-// Mock useTreeStore so tests control state directly.
+
 const mockSetExpanded = vi.fn();
 const mockSetWidth = vi.fn();
 
@@ -36,7 +36,7 @@ vi.mock("../lib/useTreeStore", () => ({
   RAIL_COLLAPSED_WIDTH: 32,
 }));
 
-// Mock child components to isolate RightRail tests.
+
 vi.mock("./RightRailTagsPanel", () => ({
   RightRailTagsPanel: () => <div data-testid="mock-tags-panel">Tags Panel</div>,
 }));
@@ -58,7 +58,7 @@ vi.mock("./InterPanelDivider", () => ({
   ),
 }));
 
-// Import after mock setup.
+
 import { RightRail } from "./RightRail";
 
 describe("RightRail — Phase 6.6: collapsed returns null (D-36)", () => {
@@ -72,14 +72,12 @@ describe("RightRail — Phase 6.6: collapsed returns null (D-36)", () => {
 
   it("RR-1: when backlinksRailExpanded=false, RightRail renders null (no aside)", () => {
     const { container } = render(<RightRail activeNoteId={null} />);
-    // Should render nothing — no aside, no toggle button
     expect(container.firstChild).toBeNull();
   });
 
   it("RR-6: no 'Show panels' button inside RightRail anymore (rail-level toggle gone, D-36)", () => {
     render(<RightRail activeNoteId={null} />);
     expect(screen.queryByRole("button", { name: /show panels/i })).toBeNull();
-    // Also no old 'Show backlinks panel' toggle
     expect(screen.queryByRole("button", { name: /show backlinks panel/i })).toBeNull();
   });
 });
@@ -106,7 +104,6 @@ describe("RightRail — Phase 6.6: expanded state + panelSelector gating", () =>
     mockPanelSelector = { tags: false, backlinks: true };
     render(<RightRail activeNoteId={null} />);
     expect(screen.queryByTestId("mock-tags-panel")).toBeNull();
-    // BacklinksRail still renders
     expect(screen.getByTestId("mock-backlinks-rail")).toBeInTheDocument();
   });
 
@@ -114,7 +111,6 @@ describe("RightRail — Phase 6.6: expanded state + panelSelector gating", () =>
     mockPanelSelector = { tags: true, backlinks: false };
     render(<RightRail activeNoteId={null} />);
     expect(screen.queryByTestId("mock-backlinks-rail")).toBeNull();
-    // TagsPanel still renders
     expect(screen.getByTestId("mock-tags-panel")).toBeInTheDocument();
   });
 
@@ -165,7 +161,6 @@ describe("RightRail — Phase 6.6: expanded state + panelSelector gating", () =>
     );
     expect(handle).toBeDefined();
 
-    // Mock window.innerWidth
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       writable: true,
@@ -173,7 +168,6 @@ describe("RightRail — Phase 6.6: expanded state + panelSelector gating", () =>
     });
 
     fireEvent.pointerDown(handle!, { clientX: 0 });
-    // clientX = 1200 → width = 1440 - 1200 = 240 (clamped to [220, 480])
     document.dispatchEvent(new MouseEvent("pointermove", { clientX: 1200, bubbles: true }));
     expect(mockSetWidth).toHaveBeenCalledWith(240);
     document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));

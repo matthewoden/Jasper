@@ -15,9 +15,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useTreeStore } from "../lib/useTreeStore";
 import { ToastProvider } from "./Toast";
 
-// ────────────────────────────────────────────────────────────────────────────
-// Module-level mocks (must be declared before any imports that use them)
-// ────────────────────────────────────────────────────────────────────────────
 
 vi.mock("../lib/useFileTree", () => ({
   useFileTree: vi.fn(),
@@ -48,8 +45,7 @@ vi.mock("../lib/tagsApi", () => ({
   deleteTag: vi.fn(),
 }));
 
-// Mock useTagBrowser since TagBrowserSection (imported via Sidebar context) uses it
-// but FileTree itself is standalone in these tests
+
 vi.mock("../lib/useTagBrowser", () => ({
   useTagBrowser: vi.fn(() => ({
     tags: [],
@@ -82,7 +78,6 @@ function defaultMuts() {
     createFolder: vi.fn(),
     deleteFolder: vi.fn(),
     moveFolder: vi.fn(),
-    // Plan 07-39 (UAT-5 N2-sub-B): internal file drag mutator.
     moveFile: vi.fn(),
   };
 }
@@ -142,11 +137,8 @@ describe("FileTree — flat-list mode (Phase 6 activeTagFilter branch)", () => {
     useTreeStore.setState({ activeTagFilter: null });
     renderFileTree();
 
-    // Normal tree renders — no flat list
-    // ActiveTagFilterChip is not shown
     expect(screen.queryByRole("button", { name: /Remove tag filter/i })).toBeNull();
 
-    // Tree renders (check that arborist is mounted by looking for the tree role)
     await waitFor(() => {
       expect(screen.getByRole("tree")).toBeInTheDocument();
     });
@@ -162,7 +154,6 @@ describe("FileTree — flat-list mode (Phase 6 activeTagFilter branch)", () => {
 
     renderFileTree();
 
-    // Notes from flat list should appear
     await waitFor(() => {
       expect(screen.getByText("Alpha Note")).toBeInTheDocument();
       expect(screen.getByText("Beta Note")).toBeInTheDocument();
@@ -184,7 +175,6 @@ describe("FileTree — flat-list mode (Phase 6 activeTagFilter branch)", () => {
       expect(screen.getByText("Alpha Note")).toBeInTheDocument();
     });
 
-    // The active row should have data-active-note="true"
     const activeRow = document.querySelector('[data-active-note="true"]');
     expect(activeRow).toBeInTheDocument();
   });

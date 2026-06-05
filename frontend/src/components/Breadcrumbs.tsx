@@ -24,9 +24,6 @@ import { useReveal } from "../lib/useReveal";
 import { expandAndScrollToFolder } from "./fileTree.utils";
 import type { TreeNode } from "../lib/treeApi";
 
-// ──────────────────────────────────────────────────────────────────────
-// Internal types
-// ──────────────────────────────────────────────────────────────────────
 
 interface Segment {
   /** Display label for this segment. */
@@ -37,9 +34,6 @@ interface Segment {
   isTitle?: boolean;
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Pure helpers
-// ──────────────────────────────────────────────────────────────────────
 
 /**
  * Walk the wire tree (Tree.root) to find the note matching `id`.
@@ -82,13 +76,11 @@ function buildSegments(notePath: string, displayTitle: string): Segment[] {
   const parts = notePath.split("/").filter(Boolean);
   const segments: Segment[] = [];
 
-  // Folder segments — every part except the last (the filename).
   for (let i = 0; i < parts.length - 1; i++) {
     const folderPath = parts.slice(0, i + 1).join("/");
     segments.push({ label: parts[i], path: folderPath });
   }
 
-  // Final title segment — use the live/static display title, not the raw filename.
   const titleLabel =
     displayTitle ||
     parts[parts.length - 1]?.replace(/\.md$/i, "") ||
@@ -98,9 +90,6 @@ function buildSegments(notePath: string, displayTitle: string): Segment[] {
   return segments;
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Styles (inline — consistent with the rest of the project's style approach)
-// ──────────────────────────────────────────────────────────────────────
 
 const containerStyle: CSSProperties = {
   display: "flex",
@@ -140,12 +129,7 @@ const titleSpanStyle: CSSProperties = {
   minWidth: 0,
 };
 
-// Plan 08-06 (D-26 / SHARE-01 Mount B): "Show in file manager" context
-// menu for each folder segment. Style values mirror TreeRowMenu.tsx
-// (menuContainerStyle + itemStyle around lines 59-83) so the visual
-// language stays consistent across the four reveal mount points. We
-// duplicate rather than import to avoid an unwanted style export
-// surface on TreeRowMenu.tsx.
+
 const menuContainerStyle: CSSProperties = {
   background: "var(--color-surface)",
   border: "1px solid var(--color-border)",
@@ -172,9 +156,6 @@ const menuItemStyle: CSSProperties = {
   userSelect: "none",
 };
 
-// ──────────────────────────────────────────────────────────────────────
-// Component
-// ──────────────────────────────────────────────────────────────────────
 
 export function Breadcrumbs(): React.ReactElement | null {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
@@ -182,8 +163,6 @@ export function Breadcrumbs(): React.ReactElement | null {
     activeNoteId ? (s.liveLabels?.[activeNoteId] ?? "") : "",
   );
   const { tree } = useFileTree();
-  // Plan 08-06 (D-26 / SHARE-01 Mount B): shared reveal hook for the
-  // folder-segment context menu. Single dispatch, LOCKED toast copy.
   const { reveal } = useReveal();
 
   if (!activeNoteId) return null;
@@ -211,14 +190,6 @@ export function Breadcrumbs(): React.ReactElement | null {
           {seg.isTitle ? (
             <span style={titleSpanStyle}>{seg.label}</span>
           ) : (
-            // Plan 08-06 (D-26 / SHARE-01 Mount B): each folder-segment
-            // <button> becomes a Radix ContextMenu.Trigger. Right-click
-            // surfaces a 1-item menu "Show in file manager"; left-click
-            // still expands/scrolls the tree (existing behavior). The
-            // menu items use the same visual treatment as TreeRowMenu's
-            // itemStyle (32px row, 14px regular, --color-fg) per UI-SPEC
-            // §Surface 4 — researcher pinned the icon-included variant
-            // for visual scan.
             <ContextMenu.Root>
               <ContextMenu.Trigger asChild>
                 <button
@@ -226,7 +197,6 @@ export function Breadcrumbs(): React.ReactElement | null {
                   aria-label={`Navigate to folder: ${seg.label}`}
                   onClick={() => {
                     expandAndScrollToFolder(seg.path!);
-                    // UAT follow-up 2026-05-12: brief pulse on the target row.
                     useTreeStore
                       .getState()
                       .setPulseTarget({ kind: "folder", target: seg.path! });

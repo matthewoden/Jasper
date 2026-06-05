@@ -123,8 +123,6 @@ export function siblingNamesForCreate(
   const out: string[] = [];
   for (const n of nodes) {
     if (kind === "note" && n.kind === "note") {
-      // The schema says NoteNode.title is "filename without `.md`",
-      // but strip defensively to survive any drift.
       out.push(n.title.endsWith(".md") ? n.title.slice(0, -3) : n.title);
     } else if (kind === "folder" && n.kind === "folder") {
       out.push(n.name);
@@ -137,9 +135,6 @@ export function useTreeCreateActions(): UseTreeCreateActions {
   const muts = useTreeMutations();
   const { tree } = useFileTree();
   const { toast } = useToast();
-  // Gap R2-2 — in-flight guard. A single boolean covers BOTH create
-  // actions so a rapid New Note → New Folder combo (or vice versa) is
-  // also serialized.
   const [isCreating, setIsCreating] = useState(false);
 
   const handleErr = useCallback(
@@ -176,19 +171,12 @@ export function useTreeCreateActions(): UseTreeCreateActions {
 
   const createNoteAt = useCallback(
     async (parentPath: string) => {
-      // Gap R2-2: while a create is in flight, ignore additional clicks.
-      // The button is also visibly disabled in SidebarToolbar so this is
-      // defense-in-depth; the early-return covers per-row create paths
-      // (FileTree's context-menu / kebab "New note") which don't have
-      // their own disable-while-creating affordance yet.
       if (isCreating) return;
       setIsCreating(true);
       try {
         const siblings = siblingNamesForCreate(tree, parentPath, "note");
         const title = nextUntitledName(siblings, "untitled");
         const s = await muts.createNote(parentPath, title);
-        // Bug D fix: pass isNew=true so that Escape / same-name-blur
-        // deletes this ephemeral node instead of leaving "untitled" on disk.
         useTreeStore.getState().startRename("note", s.id, true);
       } catch (e) {
         handleErr(e);
@@ -201,17 +189,12 @@ export function useTreeCreateActions(): UseTreeCreateActions {
 
   const createFolderAt = useCallback(
     async (parentPath: string) => {
-      // Gap R2-2: same in-flight guard semantics as createNoteAt — a New
-      // Folder click while New Note is in flight (or vice versa) is also
-      // short-circuited.
       if (isCreating) return;
       setIsCreating(true);
       try {
         const siblings = siblingNamesForCreate(tree, parentPath, "folder");
         const name = nextUntitledName(siblings, "untitled");
         const f = await muts.createFolder(parentPath, name);
-        // Bug D fix: pass isNew=true so that Escape / same-name-blur
-        // deletes this ephemeral node instead of leaving "untitled" on disk.
         useTreeStore.getState().startRename("folder", f.path, true);
       } catch (e) {
         handleErr(e);

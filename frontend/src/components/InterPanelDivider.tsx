@@ -43,7 +43,6 @@ export function InterPanelDivider({ railRef }: Props) {
       const railHeight =
         railRef.current?.getBoundingClientRect().height ?? 1;
       if (railHeight <= 0) return;
-      // Read fresh ratio every move so the drag accumulates correctly.
       const { tagsPanelHeightRatio, setTagsPanelHeightRatio } =
         useTreeStore.getState();
       setTagsPanelHeightRatio(tagsPanelHeightRatio + delta / railHeight);

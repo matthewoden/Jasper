@@ -29,9 +29,7 @@ vi.mock("./mcpGrantsApi", () => ({
   deleteGrant: (...args: unknown[]) => deleteGrantMock(...args),
 }));
 
-// Spy on the toast API by capturing every enqueued toast through a
-// ToastProvider wrapper. We mock useToast directly so we can read the
-// toast() calls without depending on Radix's portal rendering.
+
 const toastSpy = vi.fn();
 vi.mock("../components/toast.utils", () => ({
   useToast: () => ({ toast: toastSpy }),
@@ -126,7 +124,6 @@ describe("useMcpGrants", () => {
     const { result } = renderHook(() => useMcpGrants(), { wrapper });
     await waitFor(() => expect(result.current.grants).toEqual([]));
 
-    // First grant — Tier 1 → "AI access granted"
     postGrantMock.mockResolvedValueOnce(grantProjects);
     await act(async () => {
       await result.current.grant("projects", 1);
@@ -140,7 +137,6 @@ describe("useMcpGrants", () => {
       }),
     );
 
-    // Upgrade — Tier 2 → "AI access upgraded"
     postGrantMock.mockResolvedValueOnce(grantProjectsUpgraded);
     await act(async () => {
       await result.current.grant("projects", 2);
@@ -176,7 +172,6 @@ describe("useMcpGrants", () => {
   });
 
   it("M6: downgrade Tier 2 → Tier 1 fires 'AI access changed'", async () => {
-    // Pre-seed the store with a Tier 2 grant so the BEFORE state is 2.
     listGrantsMock.mockResolvedValue([grantProjectsUpgraded]);
 
     const { result } = renderHook(() => useMcpGrants(), { wrapper });

@@ -54,9 +54,6 @@ import {
 import { syntaxTree } from "@codemirror/language";
 import { useTreeStore } from "../lib/useTreeStore";
 
-// ---------------------------------------------------------------------------
-// Regex
-// ---------------------------------------------------------------------------
 
 /**
  * Matches #tagname where tagname = [a-z0-9_-]+.
@@ -69,9 +66,6 @@ import { useTreeStore } from "../lib/useTreeStore";
  */
 const INLINE_TAG_RE = /#([a-z0-9_-]+)/g;
 
-// ---------------------------------------------------------------------------
-// D-19 code-context guard (copied verbatim from wikilinkPlugin.ts)
-// ---------------------------------------------------------------------------
 
 /**
  * Returns true if the position is inside any code or frontmatter context
@@ -105,9 +99,6 @@ function isInsideCodeOrFrontmatter(view: EditorView, from: number): boolean {
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// Heading-line guard (Pitfall 5 from RESEARCH.md)
-// ---------------------------------------------------------------------------
 
 /**
  * Returns true if the position is on a markdown heading line.
@@ -125,20 +116,14 @@ function isHeadingLine(view: EditorView, from: number): boolean {
   const line = view.state.doc.lineAt(from);
   const text = line.text;
   if (text.length === 0 || text[0] !== "#") return false;
-  // Heading marker: # followed by space OR another #
   return text[1] === " " || text[1] === "#";
 }
 
-// ---------------------------------------------------------------------------
-// MatchDecorator instance
-// ---------------------------------------------------------------------------
 
 const inlineTagMatcher = new MatchDecorator({
   regexp: INLINE_TAG_RE,
   decorate(add, from, to, match, view) {
-    // D-19: skip matches inside code / frontmatter context
     if (isInsideCodeOrFrontmatter(view, from)) return;
-    // Pitfall 5: skip heading lines (## todo, # Heading, etc.)
     if (isHeadingLine(view, from)) return;
 
     const tagName = match[1];
@@ -153,9 +138,6 @@ const inlineTagMatcher = new MatchDecorator({
   },
 });
 
-// ---------------------------------------------------------------------------
-// ViewPlugin
-// ---------------------------------------------------------------------------
 
 /**
  * The exported CM6 extension. Slot into MarkdownEditor's extensions array
@@ -179,8 +161,6 @@ export const inlineTagPlugin = ViewPlugin.fromClass(
 
     update(u: ViewUpdate) {
       if (u.view.composing) {
-        // IME gate — map existing decorations through document changes to
-        // keep positions valid without a full rebuild.
         this.decorations = this.decorations.map(u.changes);
         return;
       }
@@ -200,7 +180,6 @@ export const inlineTagPlugin = ViewPlugin.fromClass(
         const target = e.target as HTMLElement | null;
         if (!target || !target.classList.contains("cm-inline-tag")) return false;
 
-        // Prefer data-tag attribute (set by decorate callback — avoids text parsing)
         const tagName =
           target.getAttribute("data-tag") ??
           (target.textContent?.startsWith("#")
