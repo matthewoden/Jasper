@@ -282,7 +282,7 @@ func TestPostSetup_HappyPath(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(target, "storage", "config.json")); err != nil {
 		t.Fatalf("config.json missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(target, "storage", "app.db")); err != nil {
+	if _, err := os.Stat(filepath.Join(target, ".jasper", "app.db")); err != nil {
 		t.Fatalf("app.db missing: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(target, "notes")); err != nil {

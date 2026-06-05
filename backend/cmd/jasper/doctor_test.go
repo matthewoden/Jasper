@@ -19,6 +19,7 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/vault"
+	"github.com/matthewoden/jasper/backend/migrations"
 )
 
 // TestDoctor_JSONFlag_EmitsParseableArray pins the --json contract:
@@ -250,12 +251,27 @@ func TestCheckMigrationState_Ok(t *testing.T) {
 
 	if _, err := db.ExecContext(context.Background(), `
 		CREATE TABLE schema_migrations (
-			version INTEGER PRIMARY KEY,
-			dirty INTEGER NOT NULL DEFAULT 0
-		);
-		INSERT INTO schema_migrations (version) VALUES (999);
+			version    TEXT    PRIMARY KEY,
+			applied_at INTEGER NOT NULL
+		) WITHOUT ROWID;
 	`); err != nil {
 		t.Fatalf("seed: %v", err)
+	}
+	entries, err := migrations.FS.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read embedded migrations: %v", err)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".sql") {
+			continue
+		}
+		if _, err := db.ExecContext(context.Background(),
+			`INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)`,
+			name, time.Now().Unix(),
+		); err != nil {
+			t.Fatalf("seed %s: %v", name, err)
+		}
 	}
 	_ = db.Close()
 
