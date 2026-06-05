@@ -43,15 +43,6 @@ import {
   activateTagFilterChip,
 } from "./helpers/phase7Helpers";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S1 — Search: type query in the Sidebar SearchInputBar, FTS5 results
-// appear with mark highlight; clicking the result opens the note.
-//
-// Plan 07-39 (UAT-5 N11) UPDATE: search moved OUT of Cmd+O palette and back
-// to the Sidebar surface (resurrecting the Plan 07-08 design). The Cmd+O
-// palette is now title-fuzzy only. S1 drives the Sidebar SearchInputBar
-// + SearchResultsList instead.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
   let jasper: JasperHandle;
@@ -68,11 +59,9 @@ test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Seed two notes; alpha.md has the searchable phrase, beta.md does not.
     await apiCreateNote(page, jasper.baseURL, "alpha-s1.md", "", "this contains a searchable phrase here");
     await apiCreateNote(page, jasper.baseURL, "beta-s1.md", "", "no relevant text at all");
 
-    // Trigger a full reindex to populate the FTS5 body_fts column.
     const reindexResp = await page.request.post(
       `${jasper.baseURL}/api/v1/admin/reindex`,
       { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
@@ -83,26 +72,19 @@ test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
     await waitForConnected(page);
     await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
 
-    // Sidebar SearchInputBar is mounted unconditionally (Plan 07-39).
     const searchInput = page.getByPlaceholder("Search notes…");
     await expect(searchInput).toBeVisible({ timeout: 3_000 });
     await searchInput.fill("searchable");
 
-    // Wait for debounce (200ms) + backend roundtrip (conservative).
     await page.waitForTimeout(600);
 
-    // SearchResultsList renders SearchResultRow with title + path + excerpt.
-    // The alpha-s1 title (sans .md) must appear at least once.
     const alphaResult = page.getByText(/alpha-s1/i).first();
     await expect(alphaResult).toBeVisible({ timeout: 5_000 });
 
-    // <mark> in the excerpt confirms snippet highlighting (Plan 07-39 N11
-    // legibility: mark color/weight tweaked, but the element still exists).
     await expect(page.locator(".search-result-excerpt mark").first()).toBeVisible({
       timeout: 3_000,
     });
 
-    // Click the result → opens alpha-s1.md.
     await alphaResult.click();
     await expect(page.locator(".cm-content")).toContainText("searchable phrase", {
       timeout: 5_000,
@@ -110,10 +92,6 @@ test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S2 — Search + tag filter AND combination in Cmd+O palette
-// UAT #11 / Plans 07-18 + 07-04 (FTS5 AND-combines with activeTagFilter)
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Cmd+O palette search AND-combines with active tag filter (S2 / UAT #11)", () => {
   let jasper: JasperHandle;
@@ -130,8 +108,6 @@ test.describe("Phase 7 — Cmd+O palette search AND-combines with active tag fil
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Seed two notes. hello-s2.md has tag "project" and body containing "world".
-    // world-s2.md has body "world" but NO project tag.
     await apiCreateNote(
       page, jasper.baseURL, "hello-s2.md", "",
       "---\ntags: [project]\n---\n\nworld lives here\n",
@@ -141,9 +117,6 @@ test.describe("Phase 7 — Cmd+O palette search AND-combines with active tag fil
       "world lives here too — but no tag\n",
     );
 
-    // Trigger a full reindex to populate FTS5 body_fts + tag_names_fts columns.
-    // service.Update does NOT populate these columns — only reconcile.go does.
-    // Also needed so the Tags panel shows the "project" tag.
     const reindexResp = await page.request.post(
       `${jasper.baseURL}/api/v1/admin/reindex`,
       { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
@@ -152,37 +125,22 @@ test.describe("Phase 7 — Cmd+O palette search AND-combines with active tag fil
 
     await page.reload();
     await waitForConnected(page);
-    // Wait for reindex progress overlay to clear (if it mounted).
     await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
 
-    // Activate the tag filter for "project" via the right-rail Tags panel.
-    // The activateTagFilterChip helper expands the panel if collapsed,
-    // clicks the tag row (data-testid="tag-row-project"), and waits for the
-    // ActiveTagFilterChip chip (role="status", aria-label="Active filter: #project").
     await activateTagFilterChip(page, "project");
 
-    // Open palette in notes mode and type "world" (>= 2 chars → FTS5).
     await openCommandMenuAndType(page, "switch", "world");
-    // Wait for debounce (200ms) + backend roundtrip.
     await page.waitForTimeout(600);
 
-    // Only hello-s2.md should appear (it has BOTH the text "world" AND tag "project").
-    // world-s2.md is filtered out by the AND tag gate.
-    // SearchResultRow renders title + path — use .first() to avoid strict mode violation.
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog.getByText(/hello-s2/i).first()).toBeVisible({ timeout: 5_000 });
-    // world-s2.md must NOT appear. The path div also contains "world-s2" so count 0 means absent.
     await expect(dialog.getByText(/world-s2/i)).toHaveCount(0);
 
-    // Close palette.
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S3 — Today button creates daily/YYYY-MM-DD.md; second click opens same file
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Today button creates daily note (S3)", () => {
   let jasper: JasperHandle;
@@ -199,19 +157,14 @@ test.describe("Phase 7 — Today button creates daily note (S3)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Today button is in the sidebar toolbar: aria-label="Open today's daily note"
     const todayBtn = page.getByRole("button", { name: "Open today's daily note" });
     await expect(todayBtn).toBeVisible({ timeout: 8_000 });
 
-    // Click the Today button — get-or-create
     await todayBtn.click();
 
-    // Today's date in YYYY-MM-DD format
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    // Verify the daily note file exists on disk
     const dailyPath = path.join(jasper.dataDir, "notes", "daily", `${todayStr}.md`);
-    // Wait for up to 5s for the file to appear (server creates it async)
     let fileExists = false;
     for (let i = 0; i < 50; i++) {
       if (fs.existsSync(dailyPath)) { fileExists = true; break; }
@@ -219,32 +172,23 @@ test.describe("Phase 7 — Today button creates daily note (S3)", () => {
     }
     expect(fileExists, `Daily note not created at ${dailyPath}`).toBe(true);
 
-    // Editor should open with the daily note
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
     await page.waitForTimeout(300);
 
-    // The daily note file on disk should contain the date
-    // (the default template writes "# YYYY-MM-DD\n\n")
     const fileContent = fs.readFileSync(dailyPath, "utf-8");
     expect(fileContent).toContain(todayStr);
 
-    // Second click — opens the same file (no duplicate created)
     await todayBtn.click();
     await page.waitForTimeout(500);
 
-    // Editor should still show (not error)
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
 
-    // File on disk is still the same single file
     const files = fs.readdirSync(path.join(jasper.dataDir, "notes", "daily"));
     const todayFiles = files.filter((f) => f.startsWith(todayStr));
     expect(todayFiles).toHaveLength(1);
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S4 — Today shortcut Cmd+Shift+D opens daily note
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Today shortcut Cmd+Shift+D (S4)", () => {
   let jasper: JasperHandle;
@@ -263,10 +207,8 @@ test.describe("Phase 7 — Today shortcut Cmd+Shift+D (S4)", () => {
 
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    // Press Cmd+Shift+D
     await pressShortcut(page, "CmdShiftD");
 
-    // Wait for the daily note file to appear on disk
     const dailyPath = path.join(jasper.dataDir, "notes", "daily", `${todayStr}.md`);
     let fileExists = false;
     for (let i = 0; i < 50; i++) {
@@ -275,14 +217,10 @@ test.describe("Phase 7 — Today shortcut Cmd+Shift+D (S4)", () => {
     }
     expect(fileExists, `Daily note not created at ${dailyPath}`).toBe(true);
 
-    // Editor should open
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S5 — Cmd+O quick switcher: open, ArrowDown selects next, Enter opens
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Cmd+O quick switcher (S5)", () => {
   let jasper: JasperHandle;
@@ -299,52 +237,32 @@ test.describe("Phase 7 — Cmd+O quick switcher (S5)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Seed two notes so the switcher has options
     await apiCreateNote(page, jasper.baseURL, "alpha-switcher.md", "", "# Alpha Switcher\n\nAlpha content");
     await apiCreateNote(page, jasper.baseURL, "beta-switcher.md", "", "# Beta Switcher\n\nBeta content");
     await page.reload();
     await waitForConnected(page);
 
-    // Open Cmd+O quick switcher
     await openCommandMenu(page, "notes");
 
-    // The dialog should appear with aria-label "Quick switcher"
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    // Input should be present with the correct placeholder
     const input = dialog.getByRole("textbox", { name: "Quick switcher" });
     await expect(input).toBeVisible({ timeout: 3_000 });
 
-    // With empty query, "Start typing to switch notes" should appear OR a note list
-    // (depends on whether there are recency entries)
-    // Either way, just verify the dialog opened properly.
 
-    // Type part of a note title to filter. Use "a" (1 char) to stay in
-    // fuzzysort/quick-switcher mode (Plan 07-18: query < 2 chars keeps
-    // fuzzysort; query >= 2 chars switches to FTS5 which is async+debounced).
-    // Using a single char avoids the FTS5 debounce race that caused S5 to
-    // fail after the Plan 07-18 pivot. [Rule 1 - Bug] regression fix.
     await input.type("a");
     await page.waitForTimeout(300);
 
-    // Should see alpha-switcher in results (click it).
-    // Scope to dialog to avoid clicking the sidebar tree element (which is
-    // blocked by the Radix Dialog overlay when the dialog is open).
     const alphaResult = dialog.getByText("Alpha Switcher", { exact: false });
     await expect(alphaResult.first()).toBeVisible({ timeout: 5_000 });
 
-    // Click the result directly (more reliable than ArrowDown+Enter with
-    // virtualized list where index may vary).
     await alphaResult.first().click();
 
-    // Dialog should close
     await expect(dialog).not.toBeVisible({ timeout: 5_000 });
 
-    // Editor should open
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
 
-    // Esc should close the dialog if re-opened
     await openCommandMenu(page, "notes");
     await expect(page.getByRole("dialog", { name: "Quick switcher" })).toBeVisible({ timeout: 3_000 });
     await page.keyboard.press("Escape");
@@ -352,9 +270,6 @@ test.describe("Phase 7 — Cmd+O quick switcher (S5)", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S6 — Cmd+P palette: open, type "tod", Enter on Today opens daily
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Cmd+P command palette (S6)", () => {
   let jasper: JasperHandle;
@@ -373,34 +288,26 @@ test.describe("Phase 7 — Cmd+P command palette (S6)", () => {
 
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    // Open Cmd+P command palette
     await openCommandMenu(page, "commands");
 
     const dialog = page.getByRole("dialog", { name: "Command palette" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    // Input placeholder: "Type a command…"
     const input = dialog.getByRole("textbox", { name: "Command palette" });
     await expect(input).toBeVisible({ timeout: 3_000 });
 
-    // Type "tod" to filter to "Today" command
     await input.type("tod");
     await page.waitForTimeout(300);
 
-    // "Today" command should appear in the list
     const todayCmd = page.getByText("Today", { exact: true }).first();
     await expect(todayCmd).toBeVisible({ timeout: 5_000 });
 
-    // Press Enter to activate the first (selected) result
-    // ArrowDown to select Today if it's not first
     await page.keyboard.press("ArrowDown");
     await page.waitForTimeout(100);
     await page.keyboard.press("Enter");
 
-    // Dialog should close
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
 
-    // Today's daily note should be created
     const dailyPath = path.join(jasper.dataDir, "notes", "daily", `${todayStr}.md`);
     let fileExists = false;
     for (let i = 0; i < 50; i++) {
@@ -409,14 +316,10 @@ test.describe("Phase 7 — Cmd+P command palette (S6)", () => {
     }
     expect(fileExists, `Daily note not created at ${dailyPath}`).toBe(true);
 
-    // Editor should open with content
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S7 — Cmd+/: cheat-sheet opens; Esc closes; close button closes; click outside closes
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Cmd+/ cheat-sheet (S7)", () => {
   let jasper: JasperHandle;
@@ -433,67 +336,47 @@ test.describe("Phase 7 — Cmd+/ cheat-sheet (S7)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Open cheat-sheet via Cmd+/
     await pressShortcut(page, "CmdSlash");
 
-    // The dialog should have aria-label "Keyboard shortcuts"
     const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    // Dialog title should say "Keyboard shortcuts" (16px/600)
     await expect(dialog.getByText("Keyboard shortcuts").first()).toBeVisible({ timeout: 3_000 });
 
-    // Check that some keyboard shortcut entries are present (e.g., "New note")
     await expect(dialog.getByText("New note")).toBeVisible({ timeout: 3_000 });
 
-    // Check footer copy (locked verbatim per UI-SPEC)
     const footerTip = dialog.getByText(/intercepted by Jasper/);
     await expect(footerTip).toBeVisible({ timeout: 3_000 });
 
-    // Esc closes
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
 
-    // Re-open via Cmd+/
     await pressShortcut(page, "CmdSlash");
     await expect(dialog).toBeVisible({ timeout: 3_000 });
 
-    // Close button closes
     const closeBtn = dialog.getByRole("button", { name: "Close" });
     await expect(closeBtn).toBeVisible({ timeout: 3_000 });
     await closeBtn.click();
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
 
-    // Re-open and verify click outside closes the dialog.
-    // Radix Dialog closes on Escape or pointer-down outside the dialog content.
-    // We use keyboard Escape as the "click outside" proxy since Radix treats
-    // pointer-down on the overlay identically — both dispatch `onInteractOutside`.
     await pressShortcut(page, "CmdSlash");
     await expect(dialog).toBeVisible({ timeout: 3_000 });
-    // Click outside by clicking the Radix overlay element with Playwright's click.
-    // The overlay has data-state="open" while the dialog is visible.
     const overlay = page.locator('[data-radix-dialog-overlay]');
     const overlayCount = await overlay.count();
     if (overlayCount > 0) {
-      // Click at the very top-left of the overlay (outside the dialog center)
       const overlayBox = await overlay.first().boundingBox();
       if (overlayBox) {
-        // Click near the top-left corner (far from the centered dialog)
         await page.mouse.click(overlayBox.x + 5, overlayBox.y + 5);
       } else {
         await page.keyboard.press("Escape");
       }
     } else {
-      // Fallback: Esc closes the dialog (Radix default)
       await page.keyboard.press("Escape");
     }
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S8 — Drag-drop attachment: drag .png over editor, drop-zone ring + hint, drop inserts markdown
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Drag-drop attachment (S8)", () => {
   let jasper: JasperHandle;
@@ -501,7 +384,6 @@ test.describe("Phase 7 — Drag-drop attachment (S8)", () => {
 
   test.beforeAll(async () => {
     jasper = await spawnJasper();
-    // Create a minimal valid PNG in a temp file (1x1 pixel PNG)
     const pngBytes = Buffer.from(
       "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a4944415478016360000000020001e221bc330000000049454e44ae426082",
       "hex"
@@ -519,7 +401,6 @@ test.describe("Phase 7 — Drag-drop attachment (S8)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create and open a note first (need an active note for attachments)
     const noteId = await apiCreateNote(
       page, jasper.baseURL,
       "drag-drop-test.md", "",
@@ -530,7 +411,6 @@ test.describe("Phase 7 — Drag-drop attachment (S8)", () => {
     await page.reload();
     await waitForConnected(page);
 
-    // Open the note by clicking it in the tree
     const noteRow = page
       .locator('[data-tree-row-kind="note"]')
       .filter({ hasText: /Drag Drop Test/i });
@@ -539,22 +419,15 @@ test.describe("Phase 7 — Drag-drop attachment (S8)", () => {
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
     await page.waitForTimeout(300);
 
-    // Locate the drop zone
     const dropZone = page.getByTestId("attachment-drop-zone");
     await expect(dropZone).toBeVisible({ timeout: 5_000 });
 
-    // Use Playwright's drag/drop API via dispatching DragEvent
-    // We simulate a file drag-over to trigger the drop-zone ring
     const dropZoneBox = await dropZone.boundingBox();
     expect(dropZoneBox).not.toBeNull();
 
     if (dropZoneBox) {
-      // Read PNG as buffer for the data transfer simulation
       const pngBuffer = fs.readFileSync(tmpPng);
 
-      // Dispatch dragenter to activate the drop zone ring + hint.
-      // DataTransfer.types is a readonly getter — we must use a real DataTransfer
-      // and call dt.items.add() to populate the types list.
       await page.evaluate(
         ({ buf }) => {
           const arr = new Uint8Array(buf as number[]);
@@ -575,16 +448,10 @@ test.describe("Phase 7 — Drag-drop attachment (S8)", () => {
 
       await page.waitForTimeout(200);
 
-      // Check either the hint OR the class (depending on depth counter vs dragenter)
       const isActive = await dropZone.evaluate((el) =>
         el.classList.contains("cm-drop-target-active")
       );
-      // Note: the dragenter mock may or may not set depth=1 perfectly in jsdom.
-      // We assert the implementation code is wired; the actual visual is captured by screenshot.
-      // Primary S8 assertion: drag-drop API wired to upload endpoint (tested via drop simulation).
 
-      // Now simulate drop with a real File via fetch to the API directly
-      // (This is the pragmatic approach: we test the backend endpoint is wired)
       const response = await page.request.post(
         `${jasper.baseURL}/api/v1/attachments/${noteId}`,
         {
@@ -598,7 +465,6 @@ test.describe("Phase 7 — Drag-drop attachment (S8)", () => {
         }
       );
 
-      // 200 = attachment created (CreateAttachment returns 200 per OpenAPI spec)
       expect(response.status()).toBe(200);
       const body = (await response.json()) as {
         filename: string;
@@ -608,14 +474,11 @@ test.describe("Phase 7 — Drag-drop attachment (S8)", () => {
       };
       expect(body.is_image).toBe(true);
       expect(body.path).toContain("attachments");
-      void isActive; // suppress unused-var lint
+      void isActive;
     }
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S9 — Paste image: focus editor, paste clipboard image, file uploads, markdown inserted
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Paste image attachment (S9)", () => {
   let jasper: JasperHandle;
@@ -632,7 +495,6 @@ test.describe("Phase 7 — Paste image attachment (S9)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create and open a note
     const noteId = await apiCreateNote(
       page, jasper.baseURL,
       "paste-test.md", "",
@@ -653,11 +515,7 @@ test.describe("Phase 7 — Paste image attachment (S9)", () => {
     const dropZone = page.getByTestId("attachment-drop-zone");
     await expect(dropZone).toBeVisible({ timeout: 5_000 });
 
-    // Dispatch a synthetic paste event with an image ClipboardItem
-    // (Playwright doesn't natively support clipboard image paste via page.keyboard,
-    //  so we dispatch the event via page.evaluate)
     const result = await page.evaluate(async (nid) => {
-      // Minimal 1x1 PNG
       const pngHex =
         "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a4944415478016360000000020001e221bc330000000049454e44ae426082";
       const bytes = new Uint8Array(pngHex.length / 2);
@@ -667,7 +525,6 @@ test.describe("Phase 7 — Paste image attachment (S9)", () => {
       const blob = new Blob([bytes], { type: "image/png" });
       const file = new File([blob], "paste-test.png", { type: "image/png" });
 
-      // Create a DataTransfer with the image file
       const dt = new DataTransfer();
       dt.items.add(file);
 
@@ -681,30 +538,19 @@ test.describe("Phase 7 — Paste image attachment (S9)", () => {
       });
       target.dispatchEvent(pasteEvt);
 
-      // Wait briefly for the async upload to fire
       await new Promise((r) => setTimeout(r, 300));
       return { dispatched: true, noteId: nid };
     }, noteId);
 
     expect(result.dispatched).toBe(true);
 
-    // Verify via API that the attachment was uploaded (the paste handler calls uploadAttachment)
-    // Wait a moment for the upload to complete
     await page.waitForTimeout(2_000);
 
-    // Check the attachments dir was created on disk
     const attachmentsDir = path.join(jasper.dataDir, "notes", "attachments");
-    // Note: root-level note attachments land in notes/attachments/ per D-25
-    // Check if any paste-*.png file was created
     const attachmentExists = fs.existsSync(attachmentsDir) &&
       fs.readdirSync(attachmentsDir).some((f) => f.startsWith("paste-") && f.endsWith(".png"));
 
-    // If the paste event fired and the upload succeeded, the file should exist.
-    // In a real Chromium browser the ClipboardEvent/DataTransfer API is restricted —
-    // the synthetic dispatch may not reach the handler's e.clipboardData.items check.
-    // We document this as a known limitation and assert what we can.
     if (!attachmentExists) {
-      // Fallback: verify the endpoint works directly via API
       const pngBytes = Buffer.from(
         "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a4944415478016360000000020001e221bc330000000049454e44ae426082",
         "hex"
@@ -731,9 +577,6 @@ test.describe("Phase 7 — Paste image attachment (S9)", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S10 — Oversize upload >100MB: toast "File too large"
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Oversize upload >100MB (S10)", () => {
   let jasper: JasperHandle;
@@ -750,33 +593,12 @@ test.describe("Phase 7 — Oversize upload >100MB (S10)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create a note to attach to
     const noteId = await apiCreateNote(
       page, jasper.baseURL,
       "oversize-test.md", "",
       "# Oversize Test\n\nTest oversize attachment rejection.\n"
     );
 
-    // Simulate a >100MB upload by sending a large buffer via the API
-    // (We use 101MB of zeros — just beyond the 100MB cap)
-    // NOTE: generating 101MB in a test is expensive; instead we rely on
-    // the backend's response to a Content-Length that exceeds the cap.
-    // The backend reads the body until it exceeds the limit then returns 413.
-    // We only need to send enough to trigger the rejection.
-    //
-    // Strategy: POST with a fake large Content-Length header.
-    // openapi-fetch / native fetch doesn't allow spoofing Content-Length,
-    // so we use page.request which can set custom headers.
-    //
-    // Simpler approach: use a 1-byte buffer but explicitly test that a 101MB
-    // buffer would trigger 413 by checking the backend cap value via a known
-    // constraint. Since we can't efficiently create 101MB in E2E, we verify:
-    // 1. A normal-sized upload returns 201.
-    // 2. The backend has the cap wired (confirmed by 07-06 unit tests).
-    // 3. The toast copy is wired in useAttachmentUpload.ts (grep-verifiable).
-    //
-    // For the E2E: we POST a tiny file and verify 201, then confirm the toast
-    // copy strings are present in the source (locked contract).
 
     const smallPng = Buffer.from(
       "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a4944415478016360000000020001e221bc330000000049454e44ae426082",
@@ -794,16 +616,10 @@ test.describe("Phase 7 — Oversize upload >100MB (S10)", () => {
         },
       }
     );
-    // 201 = created new; 200 = uploaded (some backends return 200 on re-upload with collision rename)
     expect([200, 201]).toContain(okResponse.status());
 
-    // Verify the 413 cap is enforced by the backend.
-    // We construct a FormData with a large body. To avoid allocating 101MB in
-    // the test process we use a streaming approach via fetch with a ReadableStream.
     const capResponse = await page.evaluate(async ({ url, nid }) => {
-      // Create a 101MB Blob (zeros) — done inside the browser context
-      // so it doesn't stress the Node.js test process.
-      const chunk = new Uint8Array(1024 * 1024); // 1 MB chunk
+      const chunk = new Uint8Array(1024 * 1024);
       const parts: Uint8Array[] = [];
       for (let i = 0; i < 101; i++) parts.push(chunk);
       const bigBlob = new Blob(parts, { type: "image/png" });
@@ -816,14 +632,10 @@ test.describe("Phase 7 — Oversize upload >100MB (S10)", () => {
       return resp.status;
     }, { url: jasper.baseURL, nid: noteId });
 
-    // Backend returns 413 for files exceeding 100 MB
     expect(capResponse).toBe(413);
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S11 — Daily folder calendar icon: daily/ row renders CalendarDays in accent; sub-paths do not
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Daily folder calendar icon (S11)", () => {
   let jasper: JasperHandle;
@@ -840,15 +652,12 @@ test.describe("Phase 7 — Daily folder calendar icon (S11)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create today's daily note to ensure the daily/ folder exists
     const todayStr = new Date().toISOString().slice(0, 10);
     const dailyNoteResp = await page.request.get(
       `${jasper.baseURL}/api/v1/daily-notes/${todayStr}`
     );
-    // 200 = existed, 201 = created — both are fine
     expect([200, 201]).toContain(dailyNoteResp.status());
 
-    // Also create a sub-folder named "daily" under another folder (to verify non-root daily/ is NOT special)
     const subFolderResp = await page.request.post(`${jasper.baseURL}/api/v1/folders`, {
       data: { parent_path: "", name: "archive-s11" },
     });
@@ -856,7 +665,6 @@ test.describe("Phase 7 — Daily folder calendar icon (S11)", () => {
       const body = await subFolderResp.text().catch(() => "(no body)");
       throw new Error(`S11: POST /folders returned ${String(subFolderResp.status())}: ${body}`);
     }
-    // Create archive-s11/daily/ sub-folder
     const subDailyResp = await page.request.post(`${jasper.baseURL}/api/v1/folders`, {
       data: { parent_path: "archive-s11", name: "daily" },
     });
@@ -865,35 +673,23 @@ test.describe("Phase 7 — Daily folder calendar icon (S11)", () => {
       throw new Error(`S11: POST /folders for sub-daily returned ${String(subDailyResp.status())}: ${body}`);
     }
 
-    // Reload to reflect the new folder structure
     await page.reload();
     await waitForConnected(page);
 
-    // Find the root-level daily/ folder row
-    // data-tree-row="daily" and data-tree-row-kind="folder"
     const dailyFolderRow = page.locator(
       '[data-tree-row="daily"][data-tree-row-kind="folder"]'
     );
     await expect(dailyFolderRow).toBeVisible({ timeout: 8_000 });
 
-    // The row should have title="Daily notes" per UI-SPEC §Surface 5
     const title = await dailyFolderRow.getAttribute("title");
     expect(title).toBe("Daily notes");
 
-    // The row should contain a CalendarDays SVG in accent color.
-    // TreeRow layout: chevron SVG + spacer + CalendarDays SVG (for daily/ only).
-    // The CalendarDays SVG has inline style color: var(--color-accent).
-    // We select SVGs with that inline style rather than the first SVG (which is the chevron).
     const calendarSvg = dailyFolderRow.locator("svg[style*='var(--color-accent)']").first();
     await expect(calendarSvg).toBeVisible({ timeout: 3_000 });
 
-    // Verify the inline style contains the accent token
     const inlineStyle = await calendarSvg.getAttribute("style");
     expect(inlineStyle ?? "").toContain("var(--color-accent)");
 
-    // Verify the archive-s11/daily sub-folder does NOT get the calendar icon treatment
-    // It should use the default Folder icon (no accent color)
-    // First expand the archive-s11 folder
     const archiveRow = page.locator(
       '[data-tree-row="archive-s11"][data-tree-row-kind="folder"]'
     );
@@ -901,18 +697,15 @@ test.describe("Phase 7 — Daily folder calendar icon (S11)", () => {
       await archiveRow.click();
       await page.waitForTimeout(300);
 
-      // Find the archive-s11/daily subfolder row
       const subDailyRow = page.locator(
         '[data-tree-row="archive-s11/daily"][data-tree-row-kind="folder"]'
       );
       if ((await subDailyRow.count()) > 0) {
         await expect(subDailyRow).toBeVisible({ timeout: 5_000 });
 
-        // The sub-folder's title should NOT be "Daily notes"
         const subTitle = await subDailyRow.getAttribute("title");
         expect(subTitle ?? "").not.toBe("Daily notes");
 
-        // No accent-colored SVG should be present in the sub-daily row
         const subAccentSvg = subDailyRow.locator("svg[style*='var(--color-accent)']");
         expect(await subAccentSvg.count()).toBe(0);
       }
@@ -920,11 +713,6 @@ test.describe("Phase 7 — Daily folder calendar icon (S11)", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S12 — Daily note registry hydration (UAT #1, #6 / Plan 07-14)
-// Fix: GetDailyNote registers UUID in notes.Service.Registry in both create
-// (201) and get-existing (200) branches, preventing "Could not load note" toast.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Daily note registry hydration (S12 / UAT #1, #6)", () => {
   let jasper: JasperHandle;
@@ -944,49 +732,31 @@ test.describe("Phase 7 — Daily note registry hydration (S12 / UAT #1, #6)", ()
     const todayBtn = page.getByRole("button", { name: "Open today's daily note" });
     await expect(todayBtn).toBeVisible({ timeout: 8_000 });
 
-    // First click — creates the daily note (GetDailyNote 201 branch).
     await todayBtn.click();
 
-    // Editor opens without "Could not load note" toast (Plan 07-14 fix: registry.Add in 201 branch).
     await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 4_000 });
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
 
-    // The daily note date should appear in the editor content.
     const todayStr = new Date().toISOString().slice(0, 10);
     await expect(page.locator(".cm-content")).toContainText(todayStr, { timeout: 5_000 });
 
-    // Second click — get-existing path (GetDailyNote 200 branch).
     await todayBtn.click();
-    // Still no "Could not load note" toast.
     await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 3_000 });
 
-    // Trigger a full reindex to simulate post-rebuild stale registry (UAT #6).
-    // PostAdminReindex runs synchronously and returns 202 only after the index
-    // is fully rebuilt — awaiting the HTTP response IS the settle signal (no sleep needed).
     const reindexResp = await page.request.post(
       `${jasper.baseURL}/api/v1/admin/reindex`,
       { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
     );
-    // 202 = rebuild complete; 409 = concurrent reindex (would be a test bug).
     expect([200, 202]).toContain(reindexResp.status());
 
-    // Wait for the WS-driven ReindexProgress overlay to clear if it mounted.
-    // The overlay disappears when the reindex:complete WS event fires.
     await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
 
-    // Click Today again post-reindex — Plan 07-14 fix: 200 branch also calls registry.Add.
     await todayBtn.click();
     await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 4_000 });
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S13 — Command palette commands (UAT #2, #3, #5 / Plans 07-16, 07-17, 07-27)
-// Fix: CommandMenu's mode prop and command action wiring corrected so all 8
-// palette commands render and execute correctly.
-// Note: S13c (Find in note) removed in Plan 07-27 — browser native Cmd+F fires.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#3,#5)", () => {
   let jasper: JasperHandle;
@@ -1003,30 +773,22 @@ test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#3,#5)", () 
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Strategy: type short filters to verify multiple commands are present.
-    // The virtualizer renders only visible items — we filter to subsets to confirm wiring.
-    // Plan 07-17 fix: paletteMode="commands" propagates to CommandMenu.mode,
-    // cmd.filtered("") returns COMMAND_PALETTE_ENTRIES (8 items after Plan 07-27).
 
-    // Verify "note" filter produces "New note" (Find in note removed in Plan 07-27).
     await openCommandMenuAndType(page, "command", "note");
     await expect(page.getByText("New note", { exact: false }).first()).toBeVisible({ timeout: 5_000 });
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
 
-    // Verify "today" filter shows Today command.
     await openCommandMenuAndType(page, "command", "today");
     await expect(page.getByText("Today", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
 
-    // Verify "theme" filter shows Toggle theme command.
     await openCommandMenuAndType(page, "command", "theme");
     await expect(page.getByText("Toggle theme", { exact: false }).first()).toBeVisible({ timeout: 5_000 });
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
 
-    // Verify "shortcut" filter shows Show keyboard shortcuts command.
     await openCommandMenuAndType(page, "command", "shortcut");
     await expect(page.getByText("Show keyboard shortcuts", { exact: false }).first()).toBeVisible({ timeout: 5_000 });
     await page.keyboard.press("Escape");
@@ -1036,83 +798,51 @@ test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#3,#5)", () 
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Type "new" to filter to "New note" — ensures it's in the viewport.
     await openCommandMenuAndType(page, "command", "new");
     const dialog = page.getByRole("dialog", { name: "Command palette" });
     await expect(dialog).toBeVisible({ timeout: 3_000 });
 
-    // Click "New note" command via page-level locator (more reliable with virtualized list).
     const newNoteCmd = page.getByText("New note", { exact: true }).first();
     await expect(newNoteCmd).toBeVisible({ timeout: 5_000 });
     await newNoteCmd.click();
 
-    // Dialog should close
     await expect(dialog).not.toBeVisible({ timeout: 5_000 });
 
-    // After createNoteAt(""), the note is created and immediately enters inline-rename
-    // mode (startRename called in useTreeCreateActions). The rename input field appears
-    // in the tree with value="untitled" (or "untitled 1", etc.).
-    // We confirm the note exists by checking for a note row OR a rename input in the tree.
     const renameInput = page.locator('input[value*="untitled"]').first();
     const noteRow = page.locator('[data-tree-row-kind="note"]').first();
 
-    // Wait for EITHER the rename input OR a note row to appear (note was created).
     await Promise.race([
       renameInput.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {}),
       noteRow.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {}),
     ]);
 
-    // Confirm at least one note row exists.
     await expect(page.locator('[data-tree-row-kind="note"]').first()).toBeVisible({ timeout: 5_000 });
   });
 
-  // S13c — "Find in note" via Cmd+P — DELETED in Plan 07-27.
-  // "Find in note" command removed from palette; browser native Cmd+F fires instead.
-  // Replacement coverage: S23a (new in Plan 07-27) verifies Cmd+F does NOT open CM6 panel.
 
   test("S13d — Cmd+P → Switch / search notes → palette stays open, mode flips to notes (UAT #5)", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Type "switch" to filter to "Switch / search notes" — ensures it renders.
     await openCommandMenuAndType(page, "command", "switch");
     const commandDialog = page.getByRole("dialog", { name: "Command palette" });
     await expect(commandDialog).toBeVisible({ timeout: 3_000 });
 
-    // Click "Switch / search notes" via page-level locator.
-    // This should flip the palette to notes mode WITHOUT closing it
-    // (Plan 07-17 fix: closeOnExecute=false for switch-note).
     const switchCmd = page.getByText("Switch / search notes", { exact: true }).first();
     await expect(switchCmd).toBeVisible({ timeout: 5_000 });
     await switchCmd.click();
 
-    // The palette stays open but now in notes mode — dialog switches aria-label.
-    // After mode flip the dialog becomes aria-label="Quick switcher".
     const switcherDialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(switcherDialog).toBeVisible({ timeout: 3_000 });
 
-    // The placeholder should be "Switch to note…" (notes mode placeholder).
     const input = switcherDialog.getByRole("textbox");
     await expect(input).toHaveAttribute("placeholder", "Switch to note…", { timeout: 3_000 });
 
-    // Close
     await page.keyboard.press("Escape");
     await expect(switcherDialog).not.toBeVisible({ timeout: 3_000 });
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S14 — Cmd+B / Cmd+I bold/italic in editor (UAT #8, #9 / Plan 07-16)
-// Fix: window capture-phase preventDefault stops Brave Leo / OS font panel from
-// consuming Cmd+B/I before CM6. In Chromium (headless), CM6 should handle them.
-// Brave-specific behavior cannot be E2E-tested in headless Chromium; see
-// Plan 07-16 SUMMARY for manual cross-browser smoke note.
-//
-// S14 (Brave-specific Cmd+B Leo + Cmd+I OS font panel) remains test.skip.
-// Plan 07-24 / S20 verifies the CM6 wrap behavior in headless Chromium.
-// Manual UAT in real Brave is required to confirm the Plan 07-16
-// window-capture preventDefault still suppresses Leo / font panel.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Cmd+B/I bold/italic in editor (S14 / UAT #8, #9)", () => {
   let jasper: JasperHandle;
@@ -1125,19 +855,10 @@ test.describe("Phase 7 — Cmd+B/I bold/italic in editor (S14 / UAT #8, #9)", ()
     if (jasper) await jasper.kill();
   });
 
-  // TODO(S14): CM6's defaultKeymap and @codemirror/lang-markdown do NOT include
-  // Mod-b → bold toggle or Mod-i → italic toggle out of the box. Plan 07-16 added
-  // window capture-phase e.preventDefault() to block Brave Leo/OS font panel, but
-  // does NOT add a CM6 bold/italic keymap extension. To pass this test, a custom
-  // keymap extension (e.g., toggleMark from @codemirror/lang-markdown or a custom
-  // one) must be added to MarkdownEditor.tsx's extensions array. Tracked as
-  // EDITOR-BOLD-ITALIC-KEYMAP deferred item.
-  // HALT-IF-INCONCLUSIVE: skipping rather than lowering the assertion.
   test.skip("Cmd+B wraps selected text in **bold**; Cmd+I wraps in *italic* (Chromium only)", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create and open a note
     await apiCreateNote(page, jasper.baseURL, "bold-test-s14.md", "", "# Bold Test\n\ntest\n");
     await page.reload();
     await waitForConnected(page);
@@ -1148,30 +869,19 @@ test.describe("Phase 7 — Cmd+B/I bold/italic in editor (S14 / UAT #8, #9)", ()
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
     await page.waitForTimeout(400);
 
-    // Click the editor to ensure focus and place cursor.
     const editor = page.locator(".cm-content");
     await editor.click();
     await page.waitForTimeout(200);
 
-    // Type content into CM6 (click focused it).
     await page.keyboard.type("boldtest");
     await page.waitForTimeout(100);
 
-    // Select all text in the CM6 editor.
     await page.keyboard.press("Meta+a");
     await page.waitForTimeout(100);
 
-    // Cmd+B — should wrap selected "boldtest" in ** markers.
-    // window capture-phase handler (Plan 07-16) calls e.preventDefault() only
-    // (not stopPropagation), so CM6's handler still fires on cm-content.
     await page.keyboard.press("Meta+b");
     await page.waitForTimeout(500);
 
-    // Check the editor's inner HTML for bold markers. CM6 Live Preview may render
-    // ** as styled spans rather than raw text in the DOM. We check for EITHER:
-    // 1. The raw "**" text in the content area's textContent
-    // 2. A <strong> element wrapping the text (CM6 decoration replaces ** with HTML)
-    // 3. A .cm-strong class (CM6 adds this for bold spans)
     const hasBold = await page.evaluate(() => {
       const content = document.querySelector(".cm-content");
       if (!content) return false;
@@ -1183,7 +893,6 @@ test.describe("Phase 7 — Cmd+B/I bold/italic in editor (S14 / UAT #8, #9)", ()
     });
     expect(hasBold, "Cmd+B should add bold formatting (** markers or <strong>)").toBe(true);
 
-    // Now test Cmd+I — type fresh content, select all, press Cmd+I.
     await editor.click();
     await page.keyboard.press("Meta+a");
     await page.keyboard.type("italictest");
@@ -1204,10 +913,6 @@ test.describe("Phase 7 — Cmd+B/I bold/italic in editor (S14 / UAT #8, #9)", ()
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S15 — Cmd+O updated_at fallback sort (UAT #10 / Plan 07-20 C2)
-// Fix: useQuickSwitcher now sorts by updated_at desc when recency list is empty.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Cmd+O updated_at fallback sort (S15 / UAT #10)", () => {
   let jasper: JasperHandle;
@@ -1224,21 +929,6 @@ test.describe("Phase 7 — Cmd+O updated_at fallback sort (S15 / UAT #10)", () =
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Seed 3 notes via API. Their updated_at in the DB is the indexing time.
-    // We create them in sequence; the sort order by updated_at desc is effectively
-    // creation-order reversed (newest created = most recently indexed = first).
-    // The C2 fix (Plan 07-20) ensures the empty-query fallback is updated_at desc,
-    // not alphabetical. Both create and verify the notes appear.
-    //
-    // IMPORTANT: Use H1 titles that EXACTLY match the filename stem so that
-    // the regex locators below match the text rendered in the dialog.
-    // ExtractTitle() returns the H1 content; the tree and switcher display it.
-    // Filenames with dashes produce H1s with dashes (not spaces) here.
-    //
-    // Sleep 1.1s between creates so the backend's nowUnix() produces distinct
-    // updated_at timestamps for each note. Without the sleep, all three notes
-    // get the same second and the sort order is undefined (falls back to
-    // fuzzysort score order = alphabetical within same score).
     await apiCreateNote(page, jasper.baseURL, "aardvark-s15.md", "", "# aardvark-s15\n\nA note.\n");
     await page.waitForTimeout(1_100);
     await apiCreateNote(page, jasper.baseURL, "zebra-s15.md", "", "# zebra-s15\n\nZ note.\n");
@@ -1247,41 +937,23 @@ test.describe("Phase 7 — Cmd+O updated_at fallback sort (S15 / UAT #10)", () =
     await page.reload();
     await waitForConnected(page);
 
-    // Wait for the tree to load and render the notes.
-    // This ensures the quick-switcher's useQuickSwitcher("") has data to show.
     await expect(page.locator('[data-tree-row-kind="note"]').first()).toBeVisible({ timeout: 8_000 });
 
-    // Open Cmd+O switcher with EMPTY query (no FTS5 → quick-switcher path).
-    // Empty query → recency list empty (no notes opened) → updated_at desc fallback
-    // (C2 fix in Plan 07-20: useQuickSwitcher.ts updated_at desc sort).
     await openCommandMenuAndType(page, "switch", "");
 
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 3_000 });
 
-    // Wait for notes to appear in the dialog. The dialog renders rows from
-    // useQuickSwitcher which calls useFileTree(). On first mount useFileTree
-    // returns tree=null; we wait for the tree fetch to complete.
-    //
-    // Fallback: if empty state, type "a" to hydrate tree then clear.
     const input = dialog.getByRole("textbox");
 
-    // The virtualizer renders items as divs with inline transform style.
-    // Wait for at least one note row to appear in the dialog.
-    // We use `getByText("mango-s15")` scoped to the dialog as the wait signal —
-    // mango is the LAST note created (highest updated_at) so it should be
-    // rendered first by the virtualizer.
     let dialogHasNotes = false;
     try {
       await expect(dialog.getByText("mango-s15").first()).toBeVisible({ timeout: 8_000 });
       dialogHasNotes = true;
     } catch {
-      // Dialog showed empty state — tree not loaded yet. Use fallback.
       await input.fill("m");
       await page.waitForTimeout(300);
-      // With "m" query, fuzzysort returns mango-s15 quickly (tree is now loaded).
       await expect(dialog.getByText("mango-s15").first()).toBeVisible({ timeout: 5_000 });
-      // Clear the query to return to empty-query recency view.
       await input.fill("");
       await page.waitForTimeout(300);
       await expect(dialog.getByText("mango-s15").first()).toBeVisible({ timeout: 5_000 });
@@ -1289,22 +961,14 @@ test.describe("Phase 7 — Cmd+O updated_at fallback sort (S15 / UAT #10)", () =
     }
     expect(dialogHasNotes, "mango-s15 should appear in dialog").toBe(true);
 
-    // Verify the sort order: mango (last created) should appear BEFORE aardvark.
-    // Strategy: compare boundingBox.y within the DIALOG (not page-level, which
-    // would pick up sidebar elements that are always alphabetical).
-    //
-    // The virtualizer renders ALL 4 notes (4 × 36px = 144px fits within 50vh)
-    // so both mango and aardvark should be in the DOM simultaneously.
     const mangoEl = dialog.getByText("mango-s15").first();
     const aardvarkEl = dialog.getByText("aardvark-s15").first();
     const mangoBox = await mangoEl.boundingBox();
     const aardvarkBox = await aardvarkEl.boundingBox();
 
     if (mangoBox && aardvarkBox) {
-      // mango was created last → highest updated_at → appears first (smaller y).
       expect(mangoBox.y, "mango-s15 should appear above aardvark-s15 (updated_at desc sort)").toBeLessThan(aardvarkBox.y);
     } else {
-      // If virtualizer hasn't rendered both, at least verify mango is visible.
       expect(mangoBox, "mango-s15 bounding box must be defined").not.toBeNull();
     }
 
@@ -1312,11 +976,6 @@ test.describe("Phase 7 — Cmd+O updated_at fallback sort (S15 / UAT #10)", () =
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S16 — Drag-drop visual indicator in editor (UAT #12 / Plan 07-20 C3)
-// Fix: dropIndicatorPlugin renders a blinking .cm-drop-indicator span at the
-// cursor position during file dragover; clears on dragleave.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Drag-drop visual indicator (S16 / UAT #12)", () => {
   let jasper: JasperHandle;
@@ -1333,7 +992,6 @@ test.describe("Phase 7 — Drag-drop visual indicator (S16 / UAT #12)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create and open a note so the editor is active.
     await apiCreateNote(page, jasper.baseURL, "drag-s16.md", "", "# Drag Test S16\n\nLine one.\nLine two.\n");
     await page.reload();
     await waitForConnected(page);
@@ -1344,22 +1002,17 @@ test.describe("Phase 7 — Drag-drop visual indicator (S16 / UAT #12)", () => {
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
     await page.waitForTimeout(400);
 
-    // Get the bounding box of the editor to pick a reasonable coordinate.
     const editorBox = await page.locator(".cm-editor").first().boundingBox();
     expect(editorBox).not.toBeNull();
     const cx = editorBox ? Math.round(editorBox.x + editorBox.width / 2) : 300;
     const cy = editorBox ? Math.round(editorBox.y + editorBox.height / 2) : 300;
 
-    // Dispatch a synthetic dragover event on .cm-editor (where the plugin listens).
-    // dropIndicatorPlugin listens on view.dom (.cm-editor root, not .cm-content).
     await dispatchSyntheticDragOver(page, ".cm-editor", cx, cy);
     await page.waitForTimeout(200);
 
-    // .cm-drop-indicator should now be visible in the editor.
     const indicator = page.locator(".cm-drop-indicator");
     await expect(indicator).toBeVisible({ timeout: 3_000 });
 
-    // Dispatch dragleave — indicator should clear.
     await dispatchSyntheticDragLeave(page, ".cm-editor");
     await page.waitForTimeout(200);
 
@@ -1367,19 +1020,6 @@ test.describe("Phase 7 — Drag-drop visual indicator (S16 / UAT #12)", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S17 — Attachments folder visible in tree (UAT #13 / Plan 07-20 C4)
-// Fix: backend tree.go no longer SkipDir on "attachments"; frontend TreeRow
-// renders Paperclip icon for folders named "attachments".
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────────────────
-// S19 — Cmd+P/Cmd+O cold-open + switch-note input clear (UAT-2 R1-2, R1-3)
-// Plan 07-23 gap closure:
-//   S19a: cold Cmd+P shows 8 commands immediately (no empty palette frame; Plan 07-27: Find removed)
-//   S19b: cold Cmd+O shows notes immediately (no empty switcher due to null tree)
-//   S19c: switch-note via palette clears stale input query
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 / UAT-2 R1-2,R1-3)", () => {
   let jasper: JasperHandle;
@@ -1393,67 +1033,41 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
   });
 
   test("S19a — cold Cmd+P shows all 8 commands immediately on first open (Plan 07-27: Find removed)", async ({ page }) => {
-    // Navigate to a fresh page — no prior interaction (cold open).
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Press Cmd+P ONCE on a fresh page — the palette MUST show all 8 commands
-    // without the user typing a character. Fix A (eager boot fetch) + the atomic
-    // openPalette() store action ensure the commands are populated on first render.
     await pressShortcut(page, "CmdP");
     const dialog = page.getByRole("dialog", { name: "Command palette" });
     await expect(dialog).toBeVisible({ timeout: 3_000 });
 
-    // Assert all 8 commands are visible (Plan 07-27: Find in note removed).
-    // The virtualizer renders items after ResizeObserver measures the container.
-    // The failure mode (UAT-2 R1-2) was empty even after 3+ seconds WITH user
-    // input — the openPalette() atomic fix ensures paletteMode and paletteOpen
-    // are committed in one React render so the virtualizer starts with count=8.
-    // We use a 5-second timeout to give the virtualizer time to measure.
     await expect(page.getByText("New note", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
 
-    // Use the helper from Plan 07-21 which asserts all 8 palette commands.
-    await expectPaletteVisibleWithNCommands(page, 8); // Plan 07-27: 8 commands (Find removed)
+    await expectPaletteVisibleWithNCommands(page, 8);
 
-    // Close
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
   });
 
   test("S19b — cold Cmd+O shows notes immediately (no empty list due to null tree)", async ({ page }) => {
-    // Pre-create 3 notes so the switcher has items to show.
     await apiCreateNote(page, jasper.baseURL, "cold-note-1.md", "", "# Cold Note 1\n");
     await apiCreateNote(page, jasper.baseURL, "cold-note-2.md", "", "# Cold Note 2\n");
     await apiCreateNote(page, jasper.baseURL, "cold-note-3.md", "", "# Cold Note 3\n");
 
-    // Navigate to a fresh page — no prior interaction (cold open).
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Press Cmd+O ONCE on a fresh page — the quick-switcher MUST show at least
-    // one note immediately, without requiring a user input or waiting for tree fetch.
-    // Fix A (eager boot fetch) ensures GET /tree completes before the user can
-    // realistically press Cmd+O after page load.
     await pressShortcut(page, "CmdO");
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 3_000 });
 
-    // Wait up to 500ms for the tree to be warm — the boot fetch fires on module
-    // import so by the time waitForConnected returns (WS connected), the fetch
-    // is already in-flight or complete. 500ms is generous.
     await expect(
       dialog.getByRole("option").first().or(dialog.getByText(/cold-note/i).first()),
     ).toBeVisible({ timeout: 500 });
 
-    // Alternative assertion: at least one note row is rendered (not "Start typing").
-    // If the quick-switcher shows notes, there are rows with note data.
-    // Using a soft assertion to handle virtualizer layout differences.
     const noteRows = dialog.locator('[style*="translateY"]');
     const rowCount = await noteRows.count();
-    // The tree has at least 3 notes; at least 1 should be in the list.
     expect(rowCount).toBeGreaterThan(0);
 
-    // Close
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
   });
@@ -1462,32 +1076,21 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Step 1: open Cmd+P (commands mode) and type "sw" — matches "Switch / search notes"
-    // so the row stays visible. (Plan 07-36 fix: the original "fi" matched "Find in note"
-    // which Plan 07-27 removed; with no matches the Switch row was filtered out and the
-    // selector failed. "sw" preserves the test intent — non-empty stale query that
-    // must clear on mode flip — while keeping the click target in the DOM.)
     await pressShortcut(page, "CmdP");
     const commandDialog = page.getByRole("dialog", { name: "Command palette" });
     await expect(commandDialog).toBeVisible({ timeout: 3_000 });
 
     const cmdInput = commandDialog.getByRole("textbox");
     await cmdInput.fill("sw");
-    // Verify "sw" is in the input.
     await expect(cmdInput).toHaveValue("sw");
 
-    // Step 2: click "Switch / search notes" — the palette stays open (closeOnExecute=false)
-    // and flips to notes mode. Fix B (mode dep in useEffect) must clear the input.
     const switchCmd = page.getByText("Switch / search notes", { exact: true }).first();
     await expect(switchCmd).toBeVisible({ timeout: 3_000 });
     await switchCmd.click();
 
-    // Step 3: palette is now in notes mode — dialog aria-label flips.
     const switcherDialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(switcherDialog).toBeVisible({ timeout: 3_000 });
 
-    // Step 4: input must be empty — Fix B clears the query on mode flip.
-    // Use waitForFunction for React 18 batching timing in headless browser.
     const switcherInput = switcherDialog.getByRole("textbox");
     await page.waitForFunction(
       () => {
@@ -1498,7 +1101,6 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
     );
     await expect(switcherInput).toHaveValue("");
 
-    // Close
     await page.keyboard.press("Escape");
     await expect(switcherDialog).not.toBeVisible({ timeout: 3_000 });
   });
@@ -1516,21 +1118,14 @@ test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", 
   });
 
   test("pre-created notes/attachments/ folder appears in tree with Paperclip icon", async ({ page }) => {
-    // Pre-create the attachments folder and a placeholder file on disk
-    // BEFORE spawning Jasper (Jasper was already spawned in beforeAll, so
-    // we write to disk and trigger a reindex to get the tree updated).
     const attachmentsDir = path.join(jasper.dataDir, "notes", "attachments");
     fs.mkdirSync(attachmentsDir, { recursive: true });
-    // Write a placeholder PNG so the folder is non-empty on disk.
-    // (The backend walk skips files inside attachments/ but the folder itself
-    // will appear as a FolderNode since the SkipDir guard was removed in Plan 07-20.)
     const fooPng = path.join(attachmentsDir, "foo.png");
     fs.writeFileSync(fooPng, Buffer.from("placeholder"));
 
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Trigger a reindex so the tree picks up the new folder.
     const reindexResp = await page.request.post(
       `${jasper.baseURL}/api/v1/admin/reindex`,
       { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
@@ -1538,44 +1133,25 @@ test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", 
     expect([200, 202]).toContain(reindexResp.status());
     await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
 
-    // Reload to get the fresh tree response.
     await page.reload();
     await waitForConnected(page);
 
-    // The "attachments" folder should appear in the tree.
-    // TreeRow renders data-tree-row="attachments" data-tree-row-kind="folder".
     const attachmentsRow = page.locator(
       '[data-tree-row="attachments"][data-tree-row-kind="folder"]',
     );
     await expect(attachmentsRow).toBeVisible({ timeout: 8_000 });
 
-    // The row should contain a Paperclip SVG (Plan 07-20 C4 / TreeRow.tsx).
-    // Lucide Paperclip renders as an SVG with class "lucide-paperclip" OR
-    // a data-lucide attribute. Look for svg within the attachments row.
     const paperclipSvg = attachmentsRow.locator("svg");
     await expect(paperclipSvg.first()).toBeVisible({ timeout: 3_000 });
 
-    // Confirm the Paperclip icon is specifically the lucide-paperclip variant
-    // by checking for its known path data (d attribute starts with "M21.44").
-    // This is more brittle than class-based check; we use a softer assertion:
     const svgCount = await paperclipSvg.count();
     expect(svgCount).toBeGreaterThan(0);
 
-    // Additionally verify the folder has the correct "attachments" title or name.
-    // TreeRow sets data-tree-row to the folder path (relative to notes/).
     const rowAttr = await attachmentsRow.getAttribute("data-tree-row");
     expect(rowAttr).toBe("attachments");
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S22 — All files visible in sidebar tree (UAT-2 R1-7 / Plan 07-26)
-//   S22a: non-markdown files appear as kind="file" rows with type-specific icons
-//   S22b: file rows are NOT draggable (disableDrag via react-arborist)
-//   S22c: clicking a file inside attachments/ renders FilePreviewView in the
-//         middle pane (Plan 07-32b — SUPERSEDES the original popup contract;
-//         backend at GET /api/v1/files?path=<encoded> per Plan 07-32a).
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT-2 R1-7)", () => {
   let jasper: JasperHandle;
@@ -1595,7 +1171,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
    */
   test("S22a — non-markdown files appear in tree with type-specific icons", async ({ page }) => {
     const notesDir = path.join(jasper.dataDir, "notes");
-    // Write three files directly to the notes root — img.png, doc.pdf, blob.bin.
     fs.writeFileSync(path.join(notesDir, "img.png"), Buffer.from("\x89PNG\r\n\x1a\n"));
     fs.writeFileSync(path.join(notesDir, "doc.pdf"), Buffer.from("%PDF-1.4"));
     fs.writeFileSync(path.join(notesDir, "blob.bin"), Buffer.from("\x00\x01\x02"));
@@ -1603,34 +1178,28 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Trigger a full reindex so the tree builder picks up the new files.
     const reindexResp = await page.request.post(
       `${jasper.baseURL}/api/v1/admin/reindex`,
       { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
     );
     expect([200, 202]).toContain(reindexResp.status());
-    // Wait for reindex progress indicator to disappear (server done).
     await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
 
-    // Reload to get the fresh tree from GET /api/v1/tree.
     await page.reload();
     await waitForConnected(page);
 
-    // img.png — expect an Image icon (lucide-image SVG class).
     const imgRow = page.locator('[data-tree-row="img.png"][data-tree-row-kind="file"]');
     await expect(imgRow).toBeVisible({ timeout: 8_000 });
     const imgSvg = imgRow.locator("svg");
     const imgClasses = await imgSvg.first().getAttribute("class");
     expect(imgClasses ?? "").toContain("lucide-image");
 
-    // doc.pdf — expect a FileText icon (lucide-file-text SVG class).
     const pdfRow = page.locator('[data-tree-row="doc.pdf"][data-tree-row-kind="file"]');
     await expect(pdfRow).toBeVisible({ timeout: 8_000 });
     const pdfSvg = pdfRow.locator("svg");
     const pdfClasses = await pdfSvg.first().getAttribute("class");
     expect(pdfClasses ?? "").toContain("lucide-file-text");
 
-    // blob.bin — expect the generic File icon (lucide-file, NOT lucide-file-text or lucide-image).
     const binRow = page.locator('[data-tree-row="blob.bin"][data-tree-row-kind="file"]');
     await expect(binRow).toBeVisible({ timeout: 8_000 });
     const binSvg = binRow.locator("svg");
@@ -1651,7 +1220,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
    */
   test("S22b — file rows render with kind='file' (drag policy moved to S33)", async ({ page }) => {
     const notesDir = path.join(jasper.dataDir, "notes");
-    // Ensure the file exists (may already be there from S22a in the same jasper instance).
     if (!fs.existsSync(path.join(notesDir, "img.png"))) {
       fs.writeFileSync(path.join(notesDir, "img.png"), Buffer.from("\x89PNG\r\n\x1a\n"));
     }
@@ -1659,7 +1227,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Trigger reindex if needed to ensure file is in the tree.
     const reindexResp = await page.request.post(
       `${jasper.baseURL}/api/v1/admin/reindex`,
       { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
@@ -1673,7 +1240,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
     const imgRow = page.locator('[data-tree-row="img.png"][data-tree-row-kind="file"]');
     await expect(imgRow).toBeVisible({ timeout: 8_000 });
 
-    // Verify the row has kind="file" attribute.
     const rowKind = await imgRow.getAttribute("data-tree-row-kind");
     expect(rowKind).toBe("file");
   });
@@ -1699,7 +1265,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
    * derivation is involved.
    */
   test("S22c — clicking attachment file renders FilePreviewView in middle pane (popup contract obviated)", async ({ page }) => {
-    // Spawn a dedicated jasper with a clean vault for this test.
     const j22c = await spawnJasper();
     try {
       const notesDir = path.join(j22c.dataDir, "notes");
@@ -1708,7 +1273,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
 
       await apiCreateNote(page, j22c.baseURL, "note.md", "gallery", "# Gallery Note\n\nA note inside gallery/.\n");
 
-      // Write photo.png to the gallery/attachments/ dir on disk.
       const attachDir = path.join(galleryDir, "attachments");
       fs.mkdirSync(attachDir, { recursive: true });
       fs.writeFileSync(path.join(attachDir, "photo.png"), Buffer.from("\x89PNG\r\n\x1a\n"));
@@ -1716,7 +1280,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
       await page.goto(j22c.baseURL);
       await waitForConnected(page);
 
-      // Trigger full reindex so tree builder picks up the new directory + file.
       const reindexResp = await page.request.post(
         `${j22c.baseURL}/api/v1/admin/reindex`,
         { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
@@ -1727,8 +1290,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
       await page.reload();
       await waitForConnected(page);
 
-      // Expand gallery/ by clicking the folder row (the TreeRow click handler
-      // calls node.toggle() for folder rows). Same pattern as user interaction.
       const galleryFolder = page.locator('[data-tree-row="gallery"][data-tree-row-kind="folder"]');
       await expect(galleryFolder).toBeVisible({ timeout: 8_000 });
       await galleryFolder.click();
@@ -1739,9 +1300,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
       await attachmentsFolder.click();
       await expect(attachmentsFolder).toHaveAttribute("aria-expanded", "true", { timeout: 3_000 });
 
-      // Spy on window.open BEFORE the click so we can assert it was NOT called.
-      // Plan 07-32b supersedes the Plan 07-26 popup contract; clicking now
-      // sets useTreeStore.activeFilePath and renders FilePreviewView inline.
       await page.evaluate(() => {
         (window as Window & { __openWasCalled?: boolean }).__openWasCalled = false;
         const orig = window.open.bind(window);
@@ -1755,8 +1313,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
       await expect(photoRow).toBeVisible({ timeout: 5_000 });
       await photoRow.click();
 
-      // The FilePreviewView mounts in the middle pane with the canonical
-      // /api/v1/files?path=<encoded> URL on its <img src>.
       const preview = page.getByTestId("file-preview-view");
       await expect(preview).toBeVisible({ timeout: 5_000 });
       await expect(preview).toHaveAttribute("data-file-preview-kind", "image");
@@ -1764,7 +1320,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
       const expectedUrl = `/api/v1/files?path=${encodeURIComponent("gallery/attachments/photo.png")}`;
       await expect(img).toHaveAttribute("src", expectedUrl);
 
-      // Crucially: no popup was opened. The popup-based contract is obviated.
       const openWasCalled = await page.evaluate(
         () => (window as Window & { __openWasCalled?: boolean }).__openWasCalled,
       );
@@ -1775,11 +1330,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S27 / S27b — File-preview view for non-markdown files (Plan 07-32b / UAT-3 R7)
-//   S27:  image attachment → middle pane shows <img> via /api/v1/files?path=<encoded>
-//   S27b: non-image file → middle pane shows metadata panel (filename + type + path)
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Image attachment file-preview in middle pane (S27 / UAT-3 R7)", () => {
   let jasper: JasperHandle;
@@ -1793,16 +1343,12 @@ test.describe("Phase 7 — Image attachment file-preview in middle pane (S27 / U
   });
 
   test("S27 — clicking image file in tree renders <img> in middle pane via /api/v1/files?path=<encoded>", async ({ page }) => {
-    // Seed gallery/note.md + gallery/attachments/photo.png on disk; reindex.
     const notesDir = path.join(jasper.dataDir, "notes");
     const galleryDir = path.join(notesDir, "gallery");
     fs.mkdirSync(galleryDir, { recursive: true });
     await apiCreateNote(page, jasper.baseURL, "note.md", "gallery", "# Gallery\n");
     const attachDir = path.join(galleryDir, "attachments");
     fs.mkdirSync(attachDir, { recursive: true });
-    // Real PNG header so the backend can serve real bytes (the streaming
-    // layer doesn't sniff, but having the magic bytes lets browsers attempt
-    // to decode if a future test wants to verify naturalWidth).
     fs.writeFileSync(
       path.join(attachDir, "photo.png"),
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -1819,10 +1365,6 @@ test.describe("Phase 7 — Image attachment file-preview in middle pane (S27 / U
     await page.reload();
     await waitForConnected(page);
 
-    // Expand gallery/ then gallery/attachments/ by clicking each folder row.
-    // (TreeRow.handleClick calls node.toggle() for folder rows; this matches
-    // the user gesture and is more reliable than ArrowRight which depends on
-    // react-arborist receiving focus at the tree level.)
     const galleryFolder = page.locator('[data-tree-row="gallery"][data-tree-row-kind="folder"]');
     await expect(galleryFolder).toBeVisible({ timeout: 8_000 });
     await galleryFolder.click();
@@ -1832,12 +1374,10 @@ test.describe("Phase 7 — Image attachment file-preview in middle pane (S27 / U
     await attachmentsFolder.click();
     await expect(attachmentsFolder).toHaveAttribute("aria-expanded", "true", { timeout: 3_000 });
 
-    // Click the photo.png file row.
     const photoRow = page.locator('[data-tree-row="gallery/attachments/photo.png"][data-tree-row-kind="file"]');
     await expect(photoRow).toBeVisible({ timeout: 5_000 });
     await photoRow.click();
 
-    // The file-preview view appears in the middle pane with image branch.
     const preview = page.getByTestId("file-preview-view");
     await expect(preview).toBeVisible({ timeout: 3_000 });
     await expect(preview).toHaveAttribute("data-file-preview-kind", "image");
@@ -1845,7 +1385,6 @@ test.describe("Phase 7 — Image attachment file-preview in middle pane (S27 / U
     const expectedUrl = `/api/v1/files?path=${encodeURIComponent("gallery/attachments/photo.png")}`;
     await expect(img).toHaveAttribute("src", expectedUrl);
 
-    // Verify the image bytes load (HTTP 200 from the new generic endpoint).
     const imgResp = await page.request.get(`${jasper.baseURL}${expectedUrl}`);
     expect(imgResp.status()).toBe(200);
   });
@@ -1863,7 +1402,6 @@ test.describe("Phase 7 — Non-image file metadata preview in middle pane (S27b 
   });
 
   test("S27b — clicking non-image file in tree renders metadata panel with filename + type + path", async ({ page }) => {
-    // Seed gallery/note.md + gallery/attachments/spec.pdf on disk; reindex.
     const notesDir = path.join(jasper.dataDir, "notes");
     const galleryDir = path.join(notesDir, "gallery");
     fs.mkdirSync(galleryDir, { recursive: true });
@@ -1883,7 +1421,6 @@ test.describe("Phase 7 — Non-image file metadata preview in middle pane (S27b 
     await page.reload();
     await waitForConnected(page);
 
-    // Expand gallery/ then gallery/attachments/ via clicks (same pattern as S27).
     const galleryFolder = page.locator('[data-tree-row="gallery"][data-tree-row-kind="folder"]');
     await expect(galleryFolder).toBeVisible({ timeout: 8_000 });
     await galleryFolder.click();
@@ -1893,31 +1430,20 @@ test.describe("Phase 7 — Non-image file metadata preview in middle pane (S27b 
     await attachmentsFolder.click();
     await expect(attachmentsFolder).toHaveAttribute("aria-expanded", "true", { timeout: 3_000 });
 
-    // Click the spec.pdf file row.
     const pdfRow = page.locator('[data-tree-row="gallery/attachments/spec.pdf"][data-tree-row-kind="file"]');
     await expect(pdfRow).toBeVisible({ timeout: 5_000 });
     await pdfRow.click();
 
-    // The file-preview view appears in the middle pane with metadata branch.
     const preview = page.getByTestId("file-preview-view");
     await expect(preview).toBeVisible({ timeout: 3_000 });
     await expect(preview).toHaveAttribute("data-file-preview-kind", "metadata");
-    // Filename, type label (uppercased extension), and full path are all rendered.
     await expect(preview).toContainText("spec.pdf");
     await expect(preview).toContainText("PDF");
     await expect(preview).toContainText("gallery/attachments/spec.pdf");
-    // No <img> in metadata mode.
     await expect(preview.locator("img")).toHaveCount(0);
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S18 — Daily-note rename keeps tree consistent (UAT-2 R1-1 / Plan 07-22)
-// Fix: useDailyNote.openToday() now calls broadcastRefresh() after setActiveNote
-// so a newly-created daily note (after H1-rename moved the old daily file) is
-// visible in the sidebar tree. Previously the tree showed only the renamed file
-// and the new daily/YYYY-MM-DD.md was invisible until a full page reload.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 R1-1)", () => {
   let jasper: JasperHandle;
@@ -1934,7 +1460,6 @@ test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Step 1 — Open today's daily note via Today button (creates it if missing).
     const todayBtn = page.getByRole("button", { name: "Open today's daily note" });
     await expect(todayBtn).toBeVisible({ timeout: 8_000 });
     await todayBtn.click();
@@ -1944,9 +1469,6 @@ test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 
     const originalDailyPath = `daily/${todayStr}.md`;
     const renamedPath = `daily/${todayStr}-standup.md`;
 
-    // Step 2 — Get the note's UUID from GET /api/v1/tree so we can call move directly.
-    // Note: data-tree-row for notes uses the UUID (not path); for folders it uses path.
-    // We call the API directly to find the note UUID.
     const noteId = await page.evaluate(
       async ({ baseURL, originalPath }: { baseURL: string; originalPath: string }) => {
         const treeResp = await fetch(`${baseURL}/api/v1/tree`);
@@ -1981,14 +1503,8 @@ test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 
 
     expect(noteId, `daily note not found in tree at ${originalDailyPath}`).not.toBeNull();
 
-    // Plan 07-36 fix: Plan 07-29 (D-52) made folders default-CLOSED, so the daily/
-    // folder must be explicitly expanded before its child notes render in react-arborist.
-    // Click the folder row to expand it (idempotent — if already open, this collapses
-    // then re-opens; for first-load it just opens). Wait for the folder row first.
     const dailyFolderForOpen = page.locator('[data-tree-row="daily"][data-tree-row-kind="folder"]');
     await expect(dailyFolderForOpen).toBeVisible({ timeout: 5_000 });
-    // Only click if the chevron indicates closed; safer: just verify note row by retry.
-    // Strategy: try to find the note row; if not visible within 1s, click the folder to open.
     const originalNoteRow = page.locator(`[data-tree-row="${noteId}"][data-tree-row-kind="note"]`);
     const visibleQuick = await originalNoteRow.isVisible().catch(() => false);
     if (!visibleQuick) {
@@ -1996,10 +1512,6 @@ test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 
     }
     await expect(originalNoteRow).toBeVisible({ timeout: 5_000 });
 
-    // Step 3 — Simulate the H1-rename by calling POST /notes/{id}/move directly.
-    // This is equivalent to the H1-rename pipeline (Service.Move), which is what
-    // the investigation confirmed is NOT the bug — the bug is useDailyNote.ts missing
-    // broadcastRefresh() after setActiveNote().
     const moveResult = await page.evaluate(
       async ({ baseURL, id, newPath }: { baseURL: string; id: string; newPath: string }) => {
         const moveResp = await fetch(`${baseURL}/api/v1/notes/${id}/move`, {
@@ -2018,52 +1530,25 @@ test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 
 
     expect(moveResult.ok, `move failed: ${JSON.stringify(moveResult)}`).toBe(true);
 
-    // Step 4 — Wait for the tree to reflect the rename. The WS note:moved event fires and
-    // the browser's useSessionSync.ts refreshes the tree (different session from API call).
-    // The renamed note keeps the same UUID, so the row stays at data-tree-row="{noteId}".
-    // We verify this by checking the note row is still visible (same id, new path).
-    // Also verify the daily folder still shows its child.
     const dailyFolder = page.locator('[data-tree-row="daily"][data-tree-row-kind="folder"]');
     await expect(dailyFolder).toBeVisible({ timeout: 5_000 });
 
-    // Step 5 — Click Today again. This fires GetDailyNote("YYYY-MM-DD") which will NOT find
-    // the renamed note (index path changed) and will create a NEW daily note (201 response).
-    // The fix (UAT-2 R1-1): useDailyNote.openToday() calls broadcastRefresh() after
-    // setActiveNote(), so the tree refreshes and shows the new note.
     await todayBtn.click();
-    // Editor loads the new daily note content (no "Could not load note" toast).
     await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 4_000 });
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
 
-    // Step 6 — Wait for the tree to show BOTH notes: the renamed one and the newly-created one.
-    // broadcastRefresh() fires a GET /tree re-fetch that includes the newly-upserted note.
-    // The daily folder should now contain two notes:
-    //   - The renamed note (original UUID, new path "daily/YYYY-MM-DD-standup.md")
-    //   - The new note (new UUID, path "daily/YYYY-MM-DD.md")
-    // Wait for the tree to show the todayStr date text in a note row that is NOT
-    // the renamed "-standup" note — that is the newly-created daily note.
-    // The note title should be the date string since GetDailyNote templates "# YYYY-MM-DD".
     const newNoteByTitle = page.locator('[data-tree-row-kind="note"]').filter({ hasText: todayStr });
 
-    // Allow up to 4 s for the tree refresh (broadcastRefresh GET /tree + React re-render).
     await expect(newNoteByTitle.first()).toBeVisible({ timeout: 4_000 });
 
-    // The daily folder row remains present (not just the renamed file).
     await expect(dailyFolder).toBeVisible({ timeout: 2_000 });
 
-    // Step 7 — Click the new daily note row in the tree; confirm editor loads it without error.
     await newNoteByTitle.first().click();
     await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 4_000 });
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S20 — Cmd+B / Cmd+I CM6 wrap toggle (UAT-2 R1-4 / Plan 07-24)
-// Fix: jasperKeymap.ts exports toggleBold + toggleItalic; wired into
-// MarkdownEditor.tsx's keymap.of([...]). This test verifies the CM6 wrap
-// behavior in headless Chromium.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Cmd+B/I CM6 wrap toggle (S20 / UAT-2 R1-4)", () => {
   let jasper: JasperHandle;
@@ -2080,48 +1565,32 @@ test.describe("Phase 7 — Cmd+B/I CM6 wrap toggle (S20 / UAT-2 R1-4)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create a note via API (gets frontmatter injected by server on first run)
     const noteId = await apiCreateNote(page, jasper.baseURL, "bold-test-s20.md", "", "");
     await page.reload();
     await waitForConnected(page);
 
-    // Open the note via tree click
     const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /bold-test-s20/i });
     await expect(noteRow).toBeVisible({ timeout: 8_000 });
     await noteRow.click();
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
     await page.waitForTimeout(500);
 
-    // Click the editor to ensure focus
     const editor = page.locator(".cm-content");
     await editor.click();
     await page.waitForTimeout(300);
 
-    // Type known text at the end of the editor (cursor at end after click)
-    // Using End key to ensure we're past any frontmatter
     await page.keyboard.press("End");
     await page.keyboard.press("End");
     await page.keyboard.type("boldword");
     await page.waitForTimeout(200);
 
-    // Now select the just-typed text using Shift+Home+End equivalent:
-    // Use Shift+ArrowLeft 8 times to select "boldword" (8 chars)
     for (let i = 0; i < 8; i++) {
       await page.keyboard.press("Shift+ArrowLeft");
     }
     await page.waitForTimeout(100);
 
-    // Cmd+B — jasperKeymap toggleBold wraps selection with **
-    // Note: Playwright headless Chromium presents navigator.platform="Win32",
-    // so CM6 maps "Mod-b" to Ctrl+b (not Meta+b). We use Control+b.
-    // App.tsx handleAppCmdB was fixed (Plan 07-24 Rule 1) to NOT call
-    // e.preventDefault() inside the CM6 editor — previously it broke CM6's
-    // eventBelongsToEditor() check which returns false on defaultPrevented.
     await page.keyboard.press("Control+b");
     await page.waitForTimeout(500);
-    // livePreviewPlugin uses "cm-strong" class for bold spans.
-    // The ** markers may be hidden by Decoration.replace (off-cursor lines),
-    // but the "cm-strong" class remains on the span.
     const hasBold = await page.evaluate(() => {
       const content = document.querySelector(".cm-content");
       if (!content) return false;
@@ -2130,7 +1599,6 @@ test.describe("Phase 7 — Cmd+B/I CM6 wrap toggle (S20 / UAT-2 R1-4)", () => {
     });
     expect(hasBold, "Cmd+B should wrap text with ** (bold markers or .cm-strong)").toBe(true);
 
-    // Suppress unused-variable warning for noteId (used to confirm note was created)
     void noteId;
   });
 
@@ -2138,40 +1606,32 @@ test.describe("Phase 7 — Cmd+B/I CM6 wrap toggle (S20 / UAT-2 R1-4)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create a note via API
     const noteId = await apiCreateNote(page, jasper.baseURL, "italic-test-s20.md", "", "");
     await page.reload();
     await waitForConnected(page);
 
-    // Open the note via tree click
     const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /italic-test-s20/i });
     await expect(noteRow).toBeVisible({ timeout: 8_000 });
     await noteRow.click();
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
     await page.waitForTimeout(500);
 
-    // Click the editor to ensure focus
     const editor = page.locator(".cm-content");
     await editor.click();
     await page.waitForTimeout(300);
 
-    // Type known text at end of editor (past any frontmatter)
     await page.keyboard.press("End");
     await page.keyboard.press("End");
     await page.keyboard.type("italicword");
     await page.waitForTimeout(200);
 
-    // Select the just-typed text (10 chars: "italicword")
     for (let i = 0; i < 10; i++) {
       await page.keyboard.press("Shift+ArrowLeft");
     }
     await page.waitForTimeout(100);
 
-    // Cmd+I — jasperKeymap toggleItalic wraps selection with *
-    // Note: same Ctrl+i approach as S20a (Win32 platform in headless Chromium).
     await page.keyboard.press("Control+i");
     await page.waitForTimeout(500);
-    // livePreviewPlugin uses "cm-emphasis" class (EM_MARK_CLASS) for italic spans.
     const hasItalic = await page.evaluate(() => {
       const content = document.querySelector(".cm-content");
       if (!content) return false;
@@ -2180,25 +1640,10 @@ test.describe("Phase 7 — Cmd+B/I CM6 wrap toggle (S20 / UAT-2 R1-4)", () => {
     });
     expect(hasItalic, "Cmd+I should wrap text with * (italic markers or .cm-emphasis)").toBe(true);
 
-    // Suppress unused-variable warning for noteId (used to confirm note was created)
     void noteId;
   });
 });
 
-// S21 — Single-session edit/save produces NO phantom conflict banner (UAT-2 N8)
-//
-// Root cause: raw fetch() sites (attachmentApi.ts, EditorPane keepalive)
-// bypassed the X-Session-ID header. Backend broadcast note:updated with
-// empty originSessionID; WS filter (Pitfall 5) did NOT suppress; originating
-// tab received its own event → conflict banner fired.
-//
-// Fix: Plan 07-25 added X-Session-ID to all three raw fetch() call sites.
-// These E2E tests confirm the banner does NOT appear after a single-session
-// autosave (S21a) and attachment upload (S21b).
-//
-// Conflict banner selector: data-testid="conflict-banner" + role="alert"
-// (EditorPane.tsx line ~906).
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Single-session edit produces NO phantom conflict banner (S21 / UAT-2 N8)", () => {
   let jasper: JasperHandle;
@@ -2215,7 +1660,6 @@ test.describe("Phase 7 — Single-session edit produces NO phantom conflict bann
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Seed a note with known content.
     const noteId = await apiCreateNote(
       page,
       jasper.baseURL,
@@ -2227,44 +1671,35 @@ test.describe("Phase 7 — Single-session edit produces NO phantom conflict bann
     await page.reload();
     await waitForConnected(page);
 
-    // Open the note by clicking its tree row.
     const noteRow = page
       .locator('[data-tree-row-kind="note"]')
       .filter({ hasText: /S21a Test/i });
     await expect(noteRow).toBeVisible({ timeout: 8_000 });
     await noteRow.click();
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
-    await page.waitForTimeout(400); // allow load effect to settle
+    await page.waitForTimeout(400);
 
-    // Type into the editor to trigger a pending autosave.
     const editor = page.locator(".cm-content");
     await editor.click();
     await page.keyboard.type(" edited by single session");
 
-    // Wait for the 2s autosave debounce to fire + WS broadcast to arrive (~3.5s total).
-    // The autosave PUT now carries X-Session-ID → backend broadcasts with the
-    // correct originSessionID → WS filter suppresses the originator's own event →
-    // NO conflict banner should appear.
     await page.waitForTimeout(3_500);
 
-    // Assert: conflict banner must NOT be visible.
     const conflictBanner = page.getByTestId("conflict-banner");
     await expect(conflictBanner).toHaveCount(0, { timeout: 1_000 });
 
-    // Defensive: type a second edit and wait for another autosave cycle.
     await editor.click();
     await page.keyboard.type(" second edit");
     await page.waitForTimeout(3_500);
     await expect(conflictBanner).toHaveCount(0, { timeout: 1_000 });
 
-    void noteId; // used above implicitly via tree row click
+    void noteId;
   });
 
   test("S21b — single-session attachment upload → no conflict banner appears", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Seed a note.
     const noteId = await apiCreateNote(
       page,
       jasper.baseURL,
@@ -2277,7 +1712,6 @@ test.describe("Phase 7 — Single-session edit produces NO phantom conflict bann
     await page.reload();
     await waitForConnected(page);
 
-    // Open the note.
     const noteRow = page
       .locator('[data-tree-row-kind="note"]')
       .filter({ hasText: /S21b Attach Test/i });
@@ -2289,8 +1723,6 @@ test.describe("Phase 7 — Single-session edit produces NO phantom conflict bann
     const dropZone = page.getByTestId("attachment-drop-zone");
     await expect(dropZone).toBeVisible({ timeout: 5_000 });
 
-    // Dispatch a synthetic drop with a minimal 1×1 PNG to trigger the
-    // attachment upload path (POST /attachments/{noteId} with X-Session-ID).
     const uploadResult = await page.evaluate(async () => {
       const pngHex =
         "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a4944415478016360000000020001e221bc330000000049454e44ae426082";
@@ -2317,25 +1749,13 @@ test.describe("Phase 7 — Single-session edit produces NO phantom conflict bann
 
     expect(uploadResult.dispatched).toBe(true);
 
-    // Wait for the upload + any autosave cycle to complete and WS events to arrive
-    // (~4s: upload + 2s autosave debounce + WS round-trip).
-    // The upload now carries X-Session-ID → backend broadcasts with correct
-    // originSessionID → WS filter suppresses self → NO conflict banner.
     await page.waitForTimeout(4_500);
 
-    // Assert: conflict banner must NOT be visible.
     const conflictBanner = page.getByTestId("conflict-banner");
     await expect(conflictBanner).toHaveCount(0, { timeout: 1_000 });
   });
 });
 
-// S24 — SaveIndicator-button in TopBar + Search icon + drop indicator snap
-// Plan 07-37 (UAT-3 N9 / D-55): SaveIndicator + standalone refresh button
-// were unified into a SaveIndicator-as-refresh-button hybrid mounted in
-// TopBar's right cluster. Pre-Plan-07-37 home was StatusBar (Plan 07-28 B3).
-// S24a now asserts the new TopBar location; the StatusBar negatives live
-// in S31 below.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop snap (S24 / UAT-3 N9, R1-5, R1-6)", () => {
   let jasper: JasperHandle;
@@ -2352,88 +1772,53 @@ test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop s
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create a note and open it in the editor.
     const noteId = await apiCreateNote(page, jasper.baseURL, "s24a-save.md", "", "# S24a Test\n\nInitial content.");
     await page.reload();
     await waitForConnected(page);
 
-    // Click the note in the tree to open it.
     const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /S24a Test/i });
     await expect(noteRow).toBeVisible({ timeout: 8_000 });
     await noteRow.click();
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
-    await page.waitForTimeout(500); // let editor settle
+    await page.waitForTimeout(500);
 
-    // The SaveIndicator-button lives in TopBar's right cluster — assert it's
-    // present and starts in idle (or already saved from the apiCreateNote).
     const topBar = page.locator("[data-testid='top-bar']");
     const saveBtn = topBar.locator("button[data-save-state]");
     await expect(saveBtn).toBeVisible({ timeout: 5_000 });
 
-    // Type in the editor to trigger a save.
     await page.locator(".cm-content").click();
     await page.keyboard.type(" more text");
 
-    // Wait for the data-save-state attribute to flip to "saved" (autosave: 2s
-    // debounce + network round-trip). The button transitions
-    // idle/saved → saving → saved within the autosave window.
     await expect(saveBtn).toHaveAttribute("data-save-state", "saved", { timeout: 8_000 });
 
-    // Negative assertion: the SaveIndicator is NOT mounted inside the editor
-    // pane chrome (legacy overlay) NOR inside the StatusBar (Plan 07-28 mount,
-    // removed by Plan 07-37). Only the TopBar mount exists.
     const statusBarSaveBtn = page.locator("[data-testid='status-bar'] button[data-save-state]");
     expect(await statusBarSaveBtn.count()).toBe(0);
     const editorSavedEl = page.locator("section").filter({ hasText: /cm-editor/ }).getByRole("status");
     expect(await editorSavedEl.count()).toBe(0);
 
-    void noteId; // suppress unused var warning
+    void noteId;
   });
 
   test("S24b — clicking Search icon in SidebarToolbar opens Cmd+O quick switcher palette", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Click the Search icon button in the sidebar toolbar.
-    // The button has aria-label="Search notes" (SidebarToolbar.tsx).
     const searchBtn = page.getByLabel("Search notes");
     await expect(searchBtn).toBeVisible({ timeout: 5_000 });
     await searchBtn.click();
 
-    // The Cmd+O quick switcher dialog should appear.
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    // Close it and verify it closes.
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
   });
 
   test.skip("S24c — drop indicator snaps to line boundary (pixel-level flakiness risk; covered by DI-snap unit tests)", async ({ page }) => {
-    // This scenario would verify that the cm-drop-indicator DOM element
-    // aligns with a line boundary (start or end) rather than mid-word.
-    // The pixel-level measurement (comparing element top to line metrics)
-    // is inherently fragile in headless Playwright when CM6 doesn't
-    // lay out text the same way as the real browser.
-    //
-    // The snap-to-line LOGIC is covered by DI-snap-1/2/3 unit tests in
-    // dropIndicatorWidget.test.ts which test snapDropPos() directly.
-    // Those tests confirm: pos in first half → line.from, second half → line.to.
-    //
-    // If pixel-level verification is needed in the future, run S16 with
-    // two dragover events and measure indicator top === cm-line top vs bottom.
     void page;
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S26 — Right-rail polish + alignment (UAT-2 N3, N4, N5)
-// Plan 07-30 gap closure:
-//   S26a: right-rail toggle hidden when active note has no tags + no backlinks
-//   S26b: tags panel header has no chevron (.lucide-chevron-down/right absent)
-//   S26c: sidebar toggle does NOT overlap editor's .cm-content left edge
-//         (concrete Playwright bounding-box assertion: toggleRight <= editorLeft + 4)
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5)", () => {
   let jasper: JasperHandle;
@@ -2450,7 +1835,6 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create a note with NO tags and NO wiki-links
     const noteId = await apiCreateNote(
       page,
       jasper.baseURL,
@@ -2459,39 +1843,28 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
       "# No Tags Note\n\nThis note has no tags and no backlinks.",
     );
 
-    // Open the note by clicking its tree row
     await page.reload();
     await waitForConnected(page);
     const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /s26a-no-tags|No Tags Note/i });
     await expect(noteRow).toBeVisible({ timeout: 8_000 });
     await noteRow.click();
 
-    // Wait for the editor to load the note
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
 
-    // Assert: the right-rail toggle (Hide panels / Show panels) is NOT visible.
-    // C3 (UAT-2 N3): when tags.length === 0 AND backlinks === 0, the toggle is hidden.
     await expect(
       page.getByRole("button", { name: /hide panels|show panels/i }),
     ).toHaveCount(0, { timeout: 3_000 });
 
-    // Now add a tag by typing in the editor
     await page.locator(".cm-content").click();
-    // Move to end of document and add a tag
     await page.keyboard.press("End");
     await page.keyboard.type("\n\n#testtag-s26a");
 
-    // Wait for autosave (2s debounce + server round-trip)
     await page.waitForTimeout(3_500);
 
-    // The right-rail toggle should now appear (there's 1 global tag)
-    // useTagBrowser() fetches all global tags. The save triggers a tag refetch.
-    // Allow extra time for WS event + tag refetch cycle.
     await expect(
       page.getByRole("button", { name: /hide panels|show panels/i }),
     ).toBeVisible({ timeout: 8_000 });
 
-    // Suppress unused variable warning
     void noteId;
   });
 
@@ -2499,7 +1872,6 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create a note with a tag so the right-rail toggle is visible
     await apiCreateNote(
       page,
       jasper.baseURL,
@@ -2510,38 +1882,24 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     await page.reload();
     await waitForConnected(page);
 
-    // Wait for note to appear in tree and click it
     const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /s26b-has-tag|Has Tag/i });
     await expect(noteRow).toBeVisible({ timeout: 8_000 });
     await noteRow.click();
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
 
-    // Wait for right-rail toggle to appear (tags loaded via useTagBrowser)
     const railToggle = page.getByRole("button", { name: /hide panels|show panels/i });
     await expect(railToggle).toBeVisible({ timeout: 8_000 });
 
-    // Open the right rail if not already open
     const toggleLabel = await railToggle.getAttribute("aria-label");
     if (toggleLabel && /show panels/i.test(toggleLabel)) {
       await railToggle.click();
     }
 
-    // Wait for the tags panel to render
     await page.waitForTimeout(500);
 
-    // S26b assertion: The tags panel's close button (×) is visible, confirming the panel
-    // is open. Then verify NO chevron button exists inside the tags panel header.
-    // C4 (UAT-2 N4): the expand/collapse chevron was removed from RightRailTagsPanel.
-    //
-    // Scope: look inside the tags panel header only — other parts of the UI
-    // (TopBar navigation ">", sidebar folder chevrons) legitimately use ChevronRight.
-    // The tags panel header is the <header> element that contains the close button.
     const closeBtn = page.getByRole("button", { name: /close tags panel/i });
     await expect(closeBtn).toBeVisible({ timeout: 3_000 });
 
-    // Scope to the tags panel header: the <header> element enclosing the close button.
-    // RightRailTagsPanel renders: <header style={headerStyle}><span>Tags (N)</span><button>×</button></header>
-    // The close button's parent is the <header>. Check no chevron inside that header.
     const tagsPanelHeader = page.locator("header").filter({ has: closeBtn });
     const chevronDownInHeader = tagsPanelHeader.locator(".lucide-chevron-down");
     const chevronRightInHeader = tagsPanelHeader.locator(".lucide-chevron-right");
@@ -2553,7 +1911,6 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Create and open a note so the editor is visible
     await apiCreateNote(
       page,
       jasper.baseURL,
@@ -2564,15 +1921,12 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     await page.reload();
     await waitForConnected(page);
 
-    // Open the note
     const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /s26c-alignment|Alignment Test/i });
     await expect(noteRow).toBeVisible({ timeout: 8_000 });
     await noteRow.click();
 
-    // Wait for the editor to fully load
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
 
-    // Sidebar toggle in TopBar: aria-label "Hide notes sidebar" (open) or "Show notes sidebar" (closed)
     const toggleLocator = page.getByRole("button", { name: /hide notes sidebar|show notes sidebar/i });
     await expect(toggleLocator).toBeVisible({ timeout: 3_000 });
 
@@ -2582,17 +1936,10 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     expect(toggleBox).not.toBeNull();
     expect(editorBox).not.toBeNull();
 
-    // S26c bounding-box assertion (UAT-2 N5 C5 acceptance gate — NO test.skip):
-    // The sidebar toggle's right edge must NOT exceed .cm-content's left edge + 4px.
-    // C5 fix: cm-host-shell paddingLeft: 36px → editorLeft = columnLeft + 36px.
-    // Toggle right = columnLeft + 8px (topbar-pad) + 24px (button) = columnLeft + 32px.
-    // Assertion: 32 <= 36 + 4 = 40 ✓ (passes with 4px to spare before the tolerance boundary).
     const toggleRight = toggleBox!.x + toggleBox!.width;
     const editorLeft = editorBox!.x;
     expect(toggleRight).toBeLessThanOrEqual(editorLeft + 4);
 
-    // Secondary check: sidebar closed state. Column collapses to 0px; both toggle
-    // and editor move to x=0 column. The assertion must still hold.
     const openToggle = page.getByRole("button", { name: "Hide notes sidebar" });
     if (await openToggle.isVisible()) {
       await openToggle.click();
@@ -2605,25 +1952,13 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
       if (toggleBoxClosed && editorBoxClosed) {
         const toggleRightClosed = toggleBoxClosed.x + toggleBoxClosed.width;
         const editorLeftClosed = editorBoxClosed.x;
-        // Same constraint in closed state: editor's left boundary clears toggle's right edge.
         expect(toggleRightClosed).toBeLessThanOrEqual(editorLeftClosed + 4);
       }
     }
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S28 / S28b — Switcher merges title-fuzzy + FTS5 (UAT-3 N10 + N11, Plan 07-33)
-//
-// S28:  Typing 2+ chars still shows title-substring matches (regression fix N10).
-// S28b: Title-only hit AND content-only hit BOTH visible in two sections (N11).
-// ─────────────────────────────────────────────────────────────────────────────
 
-// Plan 07-39 (UAT-5 N11) UPDATE: S28 / S28b previously tested the Plan 07-33
-// dual-section merge inside Cmd+O. Plan 07-39 reverses that — the switcher
-// is title-fuzzy only; body matches live on the Sidebar search surface.
-// S28 is now a single-section title-only assertion; S28b is replaced by S32
-// (Plan 07-39 rewrite above) which exercises both surfaces of the split.
 test.describe("Phase 7 — Switcher title-fuzzy only (S28 / UAT-5 N11 split)", () => {
   let jasper: JasperHandle;
   test.beforeAll(async () => { jasper = await spawnJasper(); });
@@ -2633,11 +1968,8 @@ test.describe("Phase 7 — Switcher title-fuzzy only (S28 / UAT-5 N11 split)", (
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Pre-create a note titled "test" with body that does NOT contain "te" so the hit
-    // can ONLY come via title-fuzzy (proves title-only path still works post-split).
     await apiCreateNote(page, jasper.baseURL, "s28-test.md", "", "# test\n\nbody xyz only.\n");
 
-    // Open Cmd+O.
     await pressShortcut(page, "CmdO");
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -2645,15 +1977,11 @@ test.describe("Phase 7 — Switcher title-fuzzy only (S28 / UAT-5 N11 split)", (
     const input = dialog.getByRole("textbox");
     await input.fill("te");
 
-    // Title-fuzzy is synchronous; small settle.
     await page.waitForTimeout(200);
 
-    // The note "test" must be visible.
     const testRow = dialog.getByText("test", { exact: false });
     await expect(testRow.first()).toBeVisible({ timeout: 3_000 });
 
-    // Plan 07-39 split: NO group eyebrows in notes mode (single-section
-    // list). And no 'Search results' section anywhere.
     await expect(
       dialog.locator('[data-row-kind="group"][data-group-id="group:notes"]'),
     ).toHaveCount(0);
@@ -2666,25 +1994,6 @@ test.describe("Phase 7 — Switcher title-fuzzy only (S28 / UAT-5 N11 split)", (
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S29 — Sidebar OS-file drop target (UAT-3 N2 / Plan 07-34)
-//
-// End-to-end coverage: synthesize a `drop` DragEvent carrying a single File
-// onto a folder row → POST /api/v1/files?path=<folder> fires inside the
-// page → broadcastRefresh() re-fetches the tree → the new file row appears
-// under the target folder. The bonus assertion confirms the file is on disk
-// via GET /api/v1/files?path=<folder>/dropped.png.
-//
-// Synthetic-drop note: Playwright cannot deliver an OS file drop via its API
-// (no native DataTransfer plumbing). page.evaluate constructs a
-// DataTransfer + File client-side, dispatches a real DragEvent on the row,
-// and our onDropCapture handler runs the same code path it would for a
-// real OS drop. This validates the JS pipeline (handler resolves target dir
-// → calls filesApi.uploadFile → backend writes the file → broadcastRefresh
-// re-fetches the tree). The OS-level browser drop plumbing (i.e. the OS
-// surfacing files into the browser's DataTransfer) is exercised by manual
-// human UAT — same fallback documented in the plan.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Sidebar OS-file drop target (S29 / UAT-3 N2 / Plan 07-34)", () => {
   let jasper: JasperHandle;
@@ -2698,7 +2007,6 @@ test.describe("Phase 7 — Sidebar OS-file drop target (S29 / UAT-3 N2 / Plan 07
   });
 
   test("S29: dropping OS file on folder row uploads to that folder via POST /files", async ({ page }) => {
-    // Capture network so we can assert POST /files actually fired.
     const requests: { method: string; url: string }[] = [];
     page.on("request", (req) => {
       const u = req.url();
@@ -2707,7 +2015,6 @@ test.describe("Phase 7 — Sidebar OS-file drop target (S29 / UAT-3 N2 / Plan 07
       }
     });
 
-    // 1. Pre-create a target folder via POST /folders.
     const folderResp = await page.request.post(
       `${jasper.baseURL}/api/v1/folders`,
       {
@@ -2720,29 +2027,20 @@ test.describe("Phase 7 — Sidebar OS-file drop target (S29 / UAT-3 N2 / Plan 07
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // 2. Wait for the folder row to render. Then EXPAND it so dropped files
-    //    are visible (folders default closed per D-52 / Plan 07-29).
     const folderRow = page.locator(
       '[data-tree-row="drop-target-s29"][data-tree-row-kind="folder"]',
     );
     await expect(folderRow).toBeVisible({ timeout: 10_000 });
-    // Click the chevron / row header to expand. The TreeRow chevron is a
-    // child of the row; clicking the row toggles open. Use a single click
-    // (NOT double-click — double-click selects).
     await folderRow.click();
-    // Wait for arborist to mark the folder as expanded.
     await expect(folderRow).toHaveAttribute("aria-expanded", "true", {
       timeout: 3_000,
     });
 
-    // 3. Dispatch a synthetic drop with a real File object onto the row.
-    //    The browser-side handler runs the same code as a real OS drop.
     const dispatched = await page.evaluate(
       async ({ targetSel }) => {
         const target = document.querySelector(targetSel);
         if (!target) return { ok: false, reason: "no target" };
         const dt = new DataTransfer();
-        // Minimal valid PNG header so http.DetectContentType returns image/png.
         const file = new File(
           [
             new Uint8Array([
@@ -2753,9 +2051,6 @@ test.describe("Phase 7 — Sidebar OS-file drop target (S29 / UAT-3 N2 / Plan 07
           { type: "image/png" },
         );
         dt.items.add(file);
-        // Dragover first so handleSidebarDragOver gets a chance to call
-        // preventDefault (matches real browser semantics — drop only fires
-        // if the matching dragover preventDefaulted).
         target.dispatchEvent(
           new DragEvent("dragover", {
             bubbles: true,
@@ -2779,7 +2074,6 @@ test.describe("Phase 7 — Sidebar OS-file drop target (S29 / UAT-3 N2 / Plan 07
     );
     expect(dispatched.ok).toBe(true);
 
-    // Confirm POST /api/v1/files fired exactly once via the drop handler.
     await expect
       .poll(
         () =>
@@ -2790,19 +2084,15 @@ test.describe("Phase 7 — Sidebar OS-file drop target (S29 / UAT-3 N2 / Plan 07
       )
       .toBeGreaterThan(0);
 
-    // 4. Wait for the new file row to appear under drop-target-s29.
-    //    TreeRow renders file nodes with data-tree-row=<path>, kind=file.
     const droppedRow = page.locator(
       '[data-tree-row="drop-target-s29/dropped-s29.png"][data-tree-row-kind="file"]',
     );
     await expect(droppedRow).toBeVisible({ timeout: 10_000 });
 
-    // 5. Bonus: confirm the file exists on disk via GET /files.
     const onDiskResp = await page.request.get(
       `${jasper.baseURL}/api/v1/files?path=${encodeURIComponent("drop-target-s29/dropped-s29.png")}`,
     );
     expect(onDiskResp.status()).toBe(200);
-    // Disk content should match the PNG header bytes we sent.
     const buf = await onDiskResp.body();
     expect(buf.length).toBe(8);
     expect(buf[0]).toBe(0x89);
@@ -2812,11 +2102,6 @@ test.describe("Phase 7 — Sidebar OS-file drop target (S29 / UAT-3 N2 / Plan 07
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S31 — SaveIndicator-button click triggers reindex (UAT-3 N9 / Plan 07-37)
-// Pairs with S24a above; S31 covers the click-as-refresh behavior + the
-// StatusBar negative (no standalone refresh button anymore).
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UAT-3 N9 → UAT-4 N9 / D-55 partial-revert)", () => {
   let jasper: JasperHandle;
@@ -2833,9 +2118,6 @@ test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UA
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Plan 07-38 N9: SaveIndicator-button is in StatusBar (reverted from
-    // TopBar back to its Plan 07-28 location). D-55's "click = manual
-    // reindex" behavior is preserved.
     const statusBar = page.locator("[data-testid='status-bar']");
     const saveBtn = statusBar.locator("button[data-save-state]");
     await expect(saveBtn).toBeVisible({ timeout: 5_000 });
@@ -2857,19 +2139,15 @@ test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UA
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // TopBar no longer mounts the SaveIndicator (reverted to StatusBar).
     const topBar = page.locator("[data-testid='top-bar']");
     const topBarSaveBtn = topBar.locator("button[data-save-state]");
     await expect(topBarSaveBtn).toHaveCount(0);
 
-    // The pre-Plan-07-37 standalone "Reindex notes" button stays REMOVED
-    // — D-55's merge behavior is preserved.
     const oldRefreshBtn = page.locator(
       "[data-testid='status-bar'] button[aria-label='Reindex notes']",
     );
     await expect(oldRefreshBtn).toHaveCount(0);
 
-    // Sanity: the StatusBar SaveIndicator-button IS present.
     const statusBarSaveBtn = page.locator(
       "[data-testid='status-bar'] button[data-save-state]",
     );
@@ -2877,17 +2155,6 @@ test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UA
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S32 — Switcher snippet section always renders when FTS5 returns hits
-//       (Plan 07-38 / UAT-4 N11)
-//
-// Plan 07-39 (UAT-5 N11) UPDATE: the prior S32 ("both sections visible") tested
-// the Plan 07-38 dedupe-removal merge that Plan 07-39 EXPLICITLY REVERSES. The
-// user wants two surfaces with two mental models:
-//   - Cmd+O switcher: title-fuzzy ONLY (no 'Search results' section).
-//   - Sidebar search: FTS5 body search with snippet excerpts (mark highlight).
-// S32 now exercises the new split surface — both sides of D-57.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Switcher/Search split (S32 / UAT-5 N11 / D-57)", () => {
   let jasper: JasperHandle;
@@ -2898,13 +2165,10 @@ test.describe("Phase 7 — Switcher/Search split (S32 / UAT-5 N11 / D-57)", () =
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Seed: a note whose title is generic but whose body contains an exotic
-    // token "uat5n11needle" so FTS5 lights up while title-fuzzy does not.
     await apiCreateNote(
       page, jasper.baseURL, "s32-notes.md", "",
       "# Plain title\n\nThe word uat5n11needle appears only in the body.\n",
     );
-    // Plus a note whose title contains the token (title-fuzzy will match this one).
     await apiCreateNote(
       page, jasper.baseURL, "s32-uat5n11needle.md", "",
       "# uat5n11needle\n\nbody.\n",
@@ -2917,7 +2181,6 @@ test.describe("Phase 7 — Switcher/Search split (S32 / UAT-5 N11 / D-57)", () =
     expect([200, 202]).toContain(reindexResp.status());
     await page.waitForTimeout(800);
 
-    // ── Side A: Cmd+O switcher renders ONLY the title match (single section) ──
     await pressShortcut(page, "CmdO");
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -2926,54 +2189,26 @@ test.describe("Phase 7 — Switcher/Search split (S32 / UAT-5 N11 / D-57)", () =
     await switcherInput.fill("uat5n11needle");
     await page.waitForTimeout(300);
 
-    // The 'Search results' group eyebrow MUST NOT be present (Plan 07-39 split).
     await expect(
       dialog.locator('[data-row-kind="group"][data-group-id="group:search"]'),
     ).toHaveCount(0);
-    // The search-result row kind MUST NOT be present in the switcher.
     await expect(
       dialog.locator('[data-row-kind="search-result"]'),
     ).toHaveCount(0);
-    // The title-fuzzy hit must be visible.
     await expect(dialog.locator('[data-row-kind="note"]')).toHaveCount(1);
 
     await page.keyboard.press("Escape");
 
-    // ── Side B: Sidebar search renders the FTS5 hit with <mark> ─────────────
-    // The SearchInputBar lives in the sidebar; type the same token and expect
-    // a SearchResultRow with a <mark> in the excerpt.
     const sidebarSearchInput = page.getByPlaceholder("Search notes…");
     await expect(sidebarSearchInput).toBeVisible({ timeout: 3_000 });
     await sidebarSearchInput.fill("uat5n11needle");
-    // 200ms debounce in useSearch + render time.
     await page.waitForTimeout(500);
 
-    // Sidebar SearchResultsList renders one or more SearchResultRow elements;
-    // at least one must include a <mark> on the body excerpt.
     const sidebarMark = page.locator(".search-result-excerpt mark").first();
     await expect(sidebarMark).toBeVisible({ timeout: 5_000 });
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S33 — Internal file drag-and-drop within the sidebar tree (Plan 07-39 N2-sub-B)
-//
-// Plan 07-39 wires useTreeMutations.moveFile + FileTree.handleMove's file
-// branch. The user can now drag a non-markdown file row onto a folder row
-// and the file moves to that folder via POST /api/v1/files/move. The Plan
-// 07-26 disableDrag={kind === "file"} guard was removed.
-//
-// E2E strategy: arborist's react-dnd HTML5 backend is notoriously hard to
-// drive from Playwright's synthetic mouse events because dnd-event lifecycle
-// is browser-specific. We assert the OBSERVABLE BEHAVIOR through the
-// network — when a user-driven internal drag completes, the frontend POSTs
-// to /api/v1/files/move. To exercise that contract without flaky drag
-// simulation, S33 directly invokes muts.moveFile from the page context
-// (the new mutator the plan adds), and confirms the file lands at the
-// new location on the next tree refresh. The shipped contract surface
-// (filesApi.moveFile → backend POST /api/v1/files/move) is what users
-// hit; verifying it via that surface IS the integration test.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Internal file drag via useTreeMutations.moveFile (S33 / UAT-5 N2-sub-B)", () => {
   let jasper: JasperHandle;
@@ -2981,7 +2216,6 @@ test.describe("Phase 7 — Internal file drag via useTreeMutations.moveFile (S33
   test.afterAll(async () => { if (jasper) await jasper.kill(); });
 
   test("S33: a file at vault root moves into a folder via POST /api/v1/files/move", async ({ page }) => {
-    // Seed: write a non-markdown file at the vault root + create a folder.
     const notesDir = path.join(jasper.dataDir, "notes");
     const srcFile = path.join(notesDir, "s33-doc.pdf");
     fs.writeFileSync(srcFile, Buffer.from("%PDF-1.4 fake pdf"));
@@ -2990,7 +2224,6 @@ test.describe("Phase 7 — Internal file drag via useTreeMutations.moveFile (S33
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Reindex so the file + folder appear in the tree.
     const reindexResp = await page.request.post(
       `${jasper.baseURL}/api/v1/admin/reindex`,
       { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
@@ -3003,11 +2236,9 @@ test.describe("Phase 7 — Internal file drag via useTreeMutations.moveFile (S33
     const fileRow = page.locator('[data-tree-row="s33-doc.pdf"][data-tree-row-kind="file"]');
     await expect(fileRow).toBeVisible({ timeout: 8_000 });
 
-    // Confirm folder is in the tree.
     const folderRow = page.locator('[data-tree-row="s33-folder"][data-tree-row-kind="folder"]');
     await expect(folderRow).toBeVisible();
 
-    // Listen for the POST /api/v1/files/move that the moveFile mutator fires.
     let moveRequested = false;
     let moveBody: { src_path?: string; dst_path?: string } | null = null;
     page.on("request", async (req) => {
@@ -3021,33 +2252,22 @@ test.describe("Phase 7 — Internal file drag via useTreeMutations.moveFile (S33
       }
     });
 
-    // Drive the move via the page's fetch API at the same wire shape the
-    // mutator uses. This validates the contract end-to-end (frontend body
-    // shape + backend handler) without the brittleness of synthetic
-    // arborist drag events.
     const moveResp = await page.request.post(`${jasper.baseURL}/api/v1/files/move`, {
       data: { src_path: "s33-doc.pdf", dst_path: "s33-folder/s33-doc.pdf" },
       headers: { "Content-Type": "application/json" },
     });
     expect(moveResp.status()).toBe(200);
 
-    // Server-side verification: file moved on disk.
     expect(fs.existsSync(srcFile)).toBe(false);
     expect(fs.existsSync(path.join(notesDir, "s33-folder", "s33-doc.pdf"))).toBe(true);
 
-    // The direct POST above bypassed the frontend mutator (and therefore
-    // useFileTree.broadcastRefresh). Reload to pick up the new tree state
-    // from GET /api/v1/tree — the move semantics live server-side.
     await page.reload();
     await waitForConnected(page);
 
-    // Source row is gone from vault root.
     await expect(
       page.locator('[data-tree-row="s33-doc.pdf"][data-tree-row-kind="file"]'),
     ).toHaveCount(0, { timeout: 8_000 });
 
-    // Folder is collapsed by default per Plan 07-29; click to expand so
-    // the moved row renders inside it.
     const folderRow2 = page.locator(
       '[data-tree-row="s33-folder"][data-tree-row-kind="folder"]',
     );
@@ -3059,25 +2279,11 @@ test.describe("Phase 7 — Internal file drag via useTreeMutations.moveFile (S33
     );
     await expect(movedRow).toBeVisible({ timeout: 8_000 });
 
-    // The directly-fired POST above proves the wire contract. The mutator
-    // wrapper (useTreeMutations.moveFile) just calls filesApi.moveFile which
-    // POSTs the same body — covered by UTM-MOVEFILE-1..3 vitest at the
-    // unit level. moveRequested + moveBody asserts here would only catch
-    // a regression to our direct request above, so we keep them as
-    // soft-checks (the direct POST proves the surface works).
     void moveRequested;
     void moveBody;
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S34 — Plan 07-40 (UAT-6): Cmd+Shift+F opens CommandMenu mode='search';
-// typing a query renders SearchResultRow rows with <mark> highlighting;
-// pressing Enter selects the first result and closes the modal.
-//
-// REVERSES Plan 07-39's Cmd+Shift+F → focus-Sidebar-input flow. Search now
-// lives in its own palette mode alongside Cmd+O (notes) and Cmd+P (commands).
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 7 — Cmd+Shift+F opens search modal (S34 / UAT-6 / Plan 07-40)", () => {
   let jasper: JasperHandle;
@@ -3085,9 +2291,6 @@ test.describe("Phase 7 — Cmd+Shift+F opens search modal (S34 / UAT-6 / Plan 07
   test.afterAll(async () => { if (jasper) await jasper.kill(); });
 
   test("S34: Cmd+Shift+F opens the search modal; typing a query renders FTS5 results; Enter activates the first hit", async ({ page }) => {
-    // Seed a note whose body contains an obvious search target. The title is
-    // intentionally NOT a substring of the body query so the result only comes
-    // out of the FTS5 body index (proving we're not falling back to title-fuzzy).
     const noteId = await apiCreateNote(
       page,
       jasper.baseURL,
@@ -3099,7 +2302,6 @@ test.describe("Phase 7 — Cmd+Shift+F opens search modal (S34 / UAT-6 / Plan 07
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    // Reindex so the body is in the FTS5 table.
     const reindexResp = await page.request.post(
       `${jasper.baseURL}/api/v1/admin/reindex`,
       { data: { mode: "full" }, headers: { "Content-Type": "application/json" } },
@@ -3107,40 +2309,28 @@ test.describe("Phase 7 — Cmd+Shift+F opens search modal (S34 / UAT-6 / Plan 07
     expect([200, 202]).toContain(reindexResp.status());
     await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
 
-    // Press Cmd+Shift+F → CommandMenu mode='search' should open.
     await page.keyboard.press("Meta+Shift+f");
 
-    // Modal opens with aria-label "Search notes" (Plan 07-40 — distinct from
-    // "Quick switcher" / "Command palette" labels for the other modes).
     await page.getByRole("dialog", { name: "Search notes" }).waitFor({ state: "visible", timeout: 5_000 });
 
-    // Placeholder copy is "Search notes…" (NOT "Switch to note…" / "Type a command…").
     await expect(page.getByPlaceholder("Search notes…")).toBeVisible();
 
-    // Plan 07-43 (UAT-8) updated the empty-state copy. On open with an
-    // empty query, the "Type to search notes" one-liner is visible (the
-    // prescriptive "at least 2 characters" copy is gone everywhere).
     await expect(page.getByText("Type to search notes")).toBeVisible();
 
-    // Type a body-only query. "narwhal" only appears in the body, not the title.
     await page.keyboard.type("narwhal");
 
-    // SearchResultRow renders the title row + a <mark>-wrapped excerpt match.
     await expect(page.getByText("starship-log")).toBeVisible({ timeout: 5_000 });
     const mark = page.locator('[data-row-kind="search-result"] mark').first();
     await expect(mark).toBeVisible();
     await expect(mark).toHaveText(/narwhal/i);
 
-    // Press Enter → modal closes + the seeded note becomes active.
     await page.keyboard.press("Enter");
     await expect(
       page.getByRole("dialog", { name: "Search notes" }),
     ).toBeHidden();
 
-    // EditorPane mounts the textarea for the now-active note.
     await expect(page.getByLabel("Note content")).toBeVisible({ timeout: 5_000 });
 
-    // Sanity: noteId variable is the same note we seeded.
     void noteId;
   });
 });

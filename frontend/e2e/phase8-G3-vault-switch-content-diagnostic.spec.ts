@@ -154,7 +154,6 @@ test.describe("G3 — vault switch content swap diagnostic", () => {
     const vaultB = fs.mkdtempSync(path.join(os.tmpdir(), "g3-B-"));
     let handle: VaultHandle | undefined;
 
-    // diagnostic buffers
     const wsFrames: Array<{ t: number; dir: "in" | "out"; event?: string; preview: string }> = [];
     const consoleEvents: Array<{ t: number; type: string; text: string }> = [];
     const navigations: Array<{ t: number; url: string; type: string }> = [];
@@ -166,11 +165,9 @@ test.describe("G3 — vault switch content swap diagnostic", () => {
     try {
       handle = await spawnVaultJasper(appHome);
 
-      // Set up vaults A and B.
       await bootstrapVault(handle.baseURL, vaultA);
       await bootstrapVault(handle.baseURL, vaultB);
 
-      // Pre-seed distinct scratchpad content so a content swap is observable.
       const sentinelA = `# Vault A scratchpad\n\nUNIQUE_SENTINEL_AAAAA_${Date.now()}\n`;
       const sentinelB = `# Vault B scratchpad\n\nUNIQUE_SENTINEL_BBBBB_${Date.now()}\n`;
       fs.mkdirSync(path.join(vaultA, "notes"), { recursive: true });
@@ -180,7 +177,6 @@ test.describe("G3 — vault switch content swap diagnostic", () => {
 
       await openVault(handle.baseURL, vaultA);
 
-      // ---- Wire diagnostic listeners BEFORE goto ----
       page.on("console", (msg) => {
         consoleEvents.push({ t: ts(), type: msg.type(), text: msg.text() });
       });
@@ -237,35 +233,23 @@ test.describe("G3 — vault switch content swap diagnostic", () => {
         });
       });
 
-      // ---- Open SPA ----
       await page.goto(handle.baseURL + "/");
       await expect(page.getByTestId("status-bar-vault")).toBeVisible({ timeout: 10_000 });
 
-      // Click the scratchpad node in the tree to open it (no auto-open behavior).
       await page.getByText("scratchpad").first().click({ timeout: 5_000 });
 
-      // Wait for the editor to render some content so we know A's scratchpad
-      // is loaded.
       await page.waitForFunction(
         (sentinel) => document.body.textContent?.includes(sentinel) === true,
         "UNIQUE_SENTINEL_AAAAA_",
         { timeout: 10_000 },
       );
 
-      // Snapshot editor content before switch.
       const editorContentBefore = await page.evaluate(() => {
         const cm = document.querySelector(".cm-content");
         return cm?.textContent ?? "";
       });
       consoleEvents.push({ t: ts(), type: "info", text: `[diag] editor content BEFORE switch length=${editorContentBefore.length} contains_A=${editorContentBefore.includes("UNIQUE_SENTINEL_AAAAA_")} contains_B=${editorContentBefore.includes("UNIQUE_SENTINEL_BBBBB_")}` });
 
-      // Inject a marker to detect a reload — set a sessionStorage key with a
-      // unique value. After reload, sessionStorage survives (it persists per
-      // tab) so we can prove the page DID reload by comparing window-load
-      // counters, OR by checking whether a `window.__g3PreReloadMark` we set
-      // is still there (it survives reload because it's just a string on a
-      // global object that gets destroyed) — wait, that's the OPPOSITE: a
-      // global on `window` does NOT survive reload. Use that.
       await page.evaluate(() => {
         (window as unknown as { __g3PreReloadMark?: number }).__g3PreReloadMark = Date.now();
       });
@@ -274,7 +258,6 @@ test.describe("G3 — vault switch content swap diagnostic", () => {
       );
       consoleEvents.push({ t: ts(), type: "info", text: `[diag] set window.__g3PreReloadMark=${preReloadMark}` });
 
-      // ---- Trigger the switch ----
       consoleEvents.push({ t: ts(), type: "info", text: `[diag] clicking StatusBar to open switch picker` });
       await page.getByTestId("status-bar-vault").click();
       await expect(page.getByRole("dialog", { name: /vault/i })).toBeVisible({ timeout: 5_000 });
@@ -282,42 +265,24 @@ test.describe("G3 — vault switch content swap diagnostic", () => {
       await page.getByRole("tab", { name: /recent/i }).click();
       consoleEvents.push({ t: ts(), type: "info", text: `[diag] clicked Recent tab; about to click vault B row` });
 
-      // Click B row.
       const switchClickTime = ts();
-      // G2 Test 5 confirmed: vault-row-${path} testid is missing in switch-mode (only present in boot-mode). Click by display name text instead.
       await page.getByText(path.basename(vaultB)).first().click({ timeout: 5_000 });
       consoleEvents.push({ t: ts(), type: "info", text: `[diag] clicked vault-row-${vaultB} at t=${switchClickTime}` });
 
-      // ---- Wait ~6s to observe whether the SPA reloads ----
       await page.waitForTimeout(6000);
 
-      // After the wait, check whether the global marker survived (= NO reload).
       const postWaitMark = await page.evaluate(
         () => (window as unknown as { __g3PreReloadMark?: number }).__g3PreReloadMark,
       );
       const reloadOccurred = postWaitMark === undefined;
       consoleEvents.push({ t: ts(), type: "info", text: `[diag] post-wait window.__g3PreReloadMark=${postWaitMark}; reloadOccurred=${reloadOccurred}` });
 
-      // Snapshot editor content after the wait.
       const editorContentAfter = await page.evaluate(() => {
         const cm = document.querySelector(".cm-content");
         return cm?.textContent ?? "";
       });
       consoleEvents.push({ t: ts(), type: "info", text: `[diag] editor content AFTER switch length=${editorContentAfter.length} contains_A=${editorContentAfter.includes("UNIQUE_SENTINEL_AAAAA_")} contains_B=${editorContentAfter.includes("UNIQUE_SENTINEL_BBBBB_")}` });
 
-      // ---- G3 regression: vault B scratchpad on-disk content ----
-      //
-      // Root cause of G3 (debug session vault-switch-not-taking):
-      // window.location.reload() triggered visibilitychange to hidden,
-      // which fired a keepalive PUT carrying vault A's in-memory editor
-      // bytes; that PUT arrived at the backend AFTER the swap had
-      // completed and overwrote vault B's scratchpad with vault A's text.
-      // The fix (EditorPane.tsx) gates the keepalive PUT on
-      // userHasEdited.current AND !vaultSwitching.active so the PUT
-      // never fires in this scenario.
-      //
-      // Regression assertion: vault B's scratchpad on disk must still
-      // be the original sentinelB content -- no contamination from A.
       const vaultBScratchpad = path.join(vaultB, "notes", "scratchpad.md");
       const vaultBContent = fs.readFileSync(vaultBScratchpad, "utf8");
       consoleEvents.push({
@@ -325,11 +290,9 @@ test.describe("G3 — vault switch content swap diagnostic", () => {
         type: "info",
         text: `[diag] vault B scratchpad on disk: length=${vaultBContent.length} contains_A=${vaultBContent.includes("UNIQUE_SENTINEL_AAAAA_")} contains_B=${vaultBContent.includes("UNIQUE_SENTINEL_BBBBB_")}`,
       });
-      // Hard assertions (must hold after the G3 fix):
       expect(vaultBContent).toContain("UNIQUE_SENTINEL_BBBBB_");
       expect(vaultBContent).not.toContain("UNIQUE_SENTINEL_AAAAA_");
 
-      // ---- Dump diagnostics ----
       const dumpPath = path.join(repoRoot, "test-results", "g3-diagnostic.json");
       fs.mkdirSync(path.dirname(dumpPath), { recursive: true });
       fs.writeFileSync(
@@ -363,9 +326,6 @@ test.describe("G3 — vault switch content swap diagnostic", () => {
       console.log(`  navigations: ${JSON.stringify(navigations)}`);
       console.log(`  request failures: ${JSON.stringify(responseEvents.filter(r => r.failure || r.status >= 400))}`);
 
-      // Soft assertions — surface results in test output but don't gate on
-      // them (we want the diagnostic to always finish + dump regardless).
-      // The hard assertion is just "we got *some* observation."
       expect(wsFrames.length).toBeGreaterThan(0);
     } finally {
       handle?.kill();

@@ -64,7 +64,7 @@ async function waitForVaultEndpoint(baseURL: string, deadlineMs: number): Promis
   while (Date.now() - start < deadlineMs) {
     try {
       const r = await fetch(`${baseURL}/api/v1/vault/current`);
-      if (r.ok || r.status === 404) return; // either response = server is up
+      if (r.ok || r.status === 404) return;
     } catch {
       // not yet listening
     }
@@ -81,7 +81,6 @@ interface VaultHandle {
 }
 
 async function spawnVaultJasper(appHome: string): Promise<VaultHandle> {
-  // Fail-fast guard
   if (!fs.existsSync(JASPER_BIN)) {
     throw new Error(
       `bin/jasper missing — run \`make build\` first (CLAUDE.md §Build & embed pipeline). ` +
@@ -117,19 +116,12 @@ async function spawnVaultJasper(appHome: string): Promise<VaultHandle> {
   };
 }
 
-// ─── Helper: mirror backend's vault.Canonicalize() output ────────────────────
-//
-// Backend's vault.Canonicalize (backend/internal/vault/canonical.go) does:
-//   filepath.Abs → filepath.EvalSymlinks → filepath.Clean → strings.ToLower (darwin)
-//
-// app.json + the picker testid use this canonical form. Tests must mirror it
-// so [data-testid="vault-row-<path>"] selectors match (UAT-2 R3 F3a/b).
+
 function canonVaultPath(p: string): string {
   const real = fs.realpathSync(p);
   return process.platform === "darwin" ? real.toLowerCase() : real;
 }
 
-// ─── Helper: bootstrap a vault via /vault/create (used by 17d switch tests) ──
 
 async function bootstrapVault(
   baseURL: string,
@@ -201,10 +193,6 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
       handle = await spawnVaultJasper(appHome);
       await page.goto(handle.baseURL + "/");
 
-      // The picker dialog should be visible AND actually painted (not just an
-      // unstyled div passing toBeVisible with a tiny text-only bounding box).
-      // UAT-2 #1c — without these size assertions, the missing-CSS regression
-      // would have shipped to UAT again.
       const picker = page.getByRole("dialog", { name: /vault/i });
       await expectActuallyPainted(picker, {
         minWidth: 400,
@@ -212,8 +200,6 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
         description: "vault picker modal",
       });
 
-      // The backdrop overlay must cover the viewport — assert it's at least
-      // most of the screen so a missing position:fixed / inset:0 fails the gate.
       const viewport = page.viewportSize();
       const minOverlayW = viewport ? Math.floor(viewport.width * 0.9) : 800;
       const minOverlayH = viewport ? Math.floor(viewport.height * 0.9) : 600;
@@ -223,47 +209,33 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
         description: "vault picker overlay backdrop",
       });
 
-      // Strong header — title "Choose a vault" with a subtitle, not just "Vault".
       await expect(page.getByRole("heading", { name: /choose a vault/i })).toBeVisible();
 
-      // Tab labels — no ellipses per UAT-2 #1d.
       await expect(page.getByRole("tab", { name: "Open existing", exact: true })).toBeVisible();
       await expect(page.getByRole("tab", { name: "Create new", exact: true })).toBeVisible();
 
-      // No recents on first boot → default tab is "create new"
       await expect(page.getByRole("tab", { name: "Create new", exact: true })).toHaveAttribute("aria-selected", "true");
 
-      // MCP must NOT appear in vault creation per UAT-2 #1d ("new vault is always empty").
       await expect(page.getByRole("checkbox", { name: /enable mcp/i })).toHaveCount(0);
       await expect(page.getByText(/edit only \(create \+ update\)/i)).toHaveCount(0);
 
-      // Path input must be full-width and visually styled (border + background).
-      // Width ≥ 400 catches the "no CSS, default browser width" regression.
       await expectActuallyPainted(page.getByTestId("vault-create-path-input"), {
         minWidth: 400,
         minHeight: 28,
         description: "vault path input",
       });
 
-      // Daily template textarea must be pre-filled with the backend default and
-      // be a fully styled, multi-line surface (catches "invisible textarea" regression).
       const ta = page.getByRole("textbox", { name: /daily note template/i });
       await expect(ta).toHaveValue("# {{date}}\n\n");
       await expectActuallyPainted(ta, { minWidth: 400, minHeight: 80, description: "daily template textarea" });
 
-      // Submit button must be present, visible, and styled as a real button
-      // (catches "no submit button" UAT-2 #1d blocker).
       const submitBtn = page.getByTestId("vault-create-submit");
       await expectActuallyPainted(submitBtn, { minWidth: 100, minHeight: 32, description: "Create vault button" });
       await expect(submitBtn).toHaveText(/create vault/i);
-      // Disabled while path is empty.
       await expect(submitBtn).toBeDisabled();
-      // Typing a valid absolute path enables it.
       await page.getByTestId("vault-create-path-input").fill("/tmp/jasper-uat-2-1d-smoke");
       await expect(submitBtn).toBeEnabled();
-      // Don't actually submit here — that's covered by the next test.
 
-      // Theme picker live-applies. Pick light, html should flip; pick dark, flip back.
       await page.getByRole("radio", { name: /light/i }).check();
       await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
       await page.getByRole("radio", { name: /dark/i }).check();
@@ -276,8 +248,6 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
 
   test("folder picker — browse, click into a subfolder, select returns that path", async ({ page }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-fs-pick-app-"));
-    // Build a known directory tree under the OS tmp dir so we can navigate
-    // to a deterministic subfolder name regardless of $HOME's contents.
     const browseRoot = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-fs-pick-root-"));
     const targetSub = "uat-picker-target";
     fs.mkdirSync(path.join(browseRoot, targetSub));
@@ -288,12 +258,9 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
       handle = await spawnVaultJasper(appHome);
       await page.goto(handle.baseURL + "/");
 
-      // Pre-fill the input with the deterministic tmp root so Browse opens there
-      // (the picker uses the input as its initial path when non-empty).
       await page.getByTestId("vault-create-path-input").fill(browseRoot);
       await page.getByTestId("vault-create-browse").click();
 
-      // FolderPicker modal mounts above the vault picker.
       const folderPicker = page.getByTestId("folder-picker");
       await expectActuallyPainted(folderPicker, {
         minWidth: 400,
@@ -301,24 +268,18 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
         description: "folder picker modal",
       });
 
-      // Current path shows the canonical root we started from. macOS resolves
-      // /var/folders/... to /private/var/folders/..., so accept either prefix.
       await expect(page.getByTestId("folder-picker-current-path")).toContainText(
         new RegExp(path.basename(browseRoot)),
       );
 
-      // Entries list contains our two seeded subdirs alphabetically.
       const entries = page.getByTestId("folder-picker-entries");
       await expect(entries.locator("button")).toHaveCount(2);
       await expect(entries.locator("button").first()).toContainText("another-sibling");
 
-      // Click into the target subfolder.
       await page.getByTestId(`folder-picker-entry-${targetSub}`).click();
       await expect(page.getByTestId("folder-picker-current-path")).toContainText(targetSub);
 
-      // Select returns the absolute path to the create form's input.
       await page.getByTestId("folder-picker-select").click();
-      // FolderPicker closes; vault picker still open with input populated.
       await expect(folderPicker).toHaveCount(0);
       const inputValue = await page.getByTestId("vault-create-path-input").inputValue();
       expect(inputValue).toContain(targetSub);
@@ -344,32 +305,26 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
       handle = await spawnVaultJasper(appHome);
       await page.goto(handle.baseURL + "/");
 
-      // Open the folder picker via the create form's Browse… button.
       await page.getByTestId("vault-create-path-input").fill(browseRoot);
       await page.getByTestId("vault-create-browse").click();
       await expect(page.getByTestId("folder-picker")).toBeVisible();
 
-      // Double-click the breadcrumb bar (not on a segment button).
       const crumb = page.getByTestId("folder-picker-breadcrumb");
       await crumb.dblclick();
 
-      // Input appears, pre-filled with the current canonical path.
       const pathInput = page.getByTestId("folder-picker-path-input");
       await expect(pathInput).toBeVisible();
       const prefilled = await pathInput.inputValue();
       expect(path.isAbsolute(prefilled)).toBe(true);
 
-      // Type the deep target and submit with Enter.
       await pathInput.fill(jumpTarget);
       await pathInput.press("Enter");
 
-      // Edit mode exits on success → breadcrumb back, current path reflects the jump.
       await expect(page.getByTestId("folder-picker-path-input")).toHaveCount(0);
       await expect(page.getByTestId("folder-picker-current-path")).toContainText(
         path.basename(jumpTarget),
       );
 
-      // Select propagates the absolute path back to the create form.
       await page.getByTestId("folder-picker-select").click();
       const inputValue = await page.getByTestId("vault-create-path-input").inputValue();
       expect(inputValue).toContain(path.basename(jumpTarget));
@@ -387,7 +342,6 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
     const browseRoot = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-pick-detect-root-"));
     const existingVault = path.join(browseRoot, "ExistingVault");
     fs.mkdirSync(existingVault);
-    // Seed a .jasper/ so the backend reports is_vault: true for this folder.
     fs.mkdirSync(path.join(existingVault, ".jasper"));
     fs.mkdirSync(path.join(browseRoot, "PlainFolder"));
 
@@ -396,19 +350,15 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
       handle = await spawnVaultJasper(appHome);
       await page.goto(handle.baseURL + "/");
 
-      // Open the picker via the create form's Browse… button.
       await page.getByTestId("vault-create-path-input").fill(browseRoot);
       await page.getByTestId("vault-create-browse").click();
       await expect(page.getByTestId("folder-picker")).toBeVisible();
 
-      // No vault detected at the browseRoot itself.
       await expect(page.getByTestId("folder-picker-vault-banner")).toHaveCount(0);
       await expect(page.getByTestId("folder-picker-select")).toBeVisible();
 
-      // Click into the seeded vault folder.
       await page.getByTestId("folder-picker-entry-ExistingVault").click();
 
-      // Banner appears + footer flips.
       await expect(page.getByTestId("folder-picker-vault-banner")).toContainText(
         /already a Jasper vault/i,
       );
@@ -416,13 +366,11 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
       await expect(page.getByTestId("folder-picker-go-up")).toBeVisible();
       await expect(page.getByTestId("folder-picker-select")).toHaveCount(0);
 
-      // Go up navigates the picker to the parent — banner clears.
       await page.getByTestId("folder-picker-go-up").click();
       await expect(page.getByTestId("folder-picker-vault-banner")).toHaveCount(0);
       await expect(page.getByTestId("folder-picker-current-path-primary")).toContainText(
         path.basename(browseRoot),
       );
-      // Picker is still open — Cancel did NOT close it.
       await expect(page.getByTestId("folder-picker")).toBeVisible();
     } finally {
       handle?.kill();
@@ -446,25 +394,18 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
       await page.getByTestId("vault-create-browse").click();
       await expect(page.getByTestId("folder-picker")).toBeVisible();
 
-      // Open the inline new-folder input.
       await page.getByTestId("folder-picker-new-folder-button").click();
       const nameInput = page.getByTestId("folder-picker-new-folder-input");
       await expect(nameInput).toBeVisible();
 
-      // Type a name with mixed case + spaces so the test also covers
-      // the case-preservation fix on darwin (the backend would otherwise
-      // lowercase via vault.Canonicalize).
       const targetName = "Brand New Vault";
       await nameInput.fill(targetName);
       await nameInput.press("Enter");
 
-      // Inline input closes on success.
       await expect(nameInput).toHaveCount(0);
-      // The new folder is now in the listing.
       await expect(
         page.getByTestId(`folder-picker-entry-${targetName}`),
       ).toBeVisible({ timeout: 5_000 });
-      // And on disk, with the case preserved.
       expect(fs.existsSync(path.join(browseRoot, targetName))).toBe(true);
     } finally {
       handle?.kill();
@@ -481,23 +422,17 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
       handle = await spawnVaultJasper(appHome);
       await page.goto(handle.baseURL + "/");
 
-      // Fill in the vault path
       await page.getByTestId("vault-create-path-input").fill(vaultDir);
 
-      // Submit (daily template and other defaults are acceptable for smoke)
       await page.getByRole("button", { name: /create vault/i }).click();
 
-      // SPA reloads after create — wait for the page to settle
       await page.waitForURL(handle.baseURL + "/");
 
-      // After reload, the main shell mounts — StatusBar shows the vault name
       await expect(page.getByTestId("status-bar-vault")).toBeVisible({ timeout: 10_000 });
 
-      // The display name should match the folder base name (or a slug of it)
       const displayName = await page.getByTestId("status-bar-vault").textContent();
       expect(displayName?.toLowerCase()).toContain(path.basename(vaultDir).toLowerCase().substring(0, 10));
 
-      // app.json on disk has the entry
       const appJSONPath = path.join(appHome, "app.json");
       expect(fs.existsSync(appJSONPath)).toBe(true);
       const appJSON = JSON.parse(fs.readFileSync(appJSONPath, "utf8")) as {
@@ -519,13 +454,10 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
       handle = await spawnVaultJasper(appHome);
       await page.goto(handle.baseURL + "/");
 
-      // Type a path with a non-ASCII character
       await page.getByTestId("vault-create-path-input").fill("/tmp/café-vault");
 
-      // Inline validation error should appear
       await expect(page.getByText(/Path must be ASCII/i)).toBeVisible();
 
-      // Submit button should be disabled
       await expect(page.getByRole("button", { name: /create vault/i })).toBeDisabled();
     } finally {
       handle?.kill();
@@ -537,8 +469,6 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-vault-e2e-app-"));
     const missingPath = path.join(os.tmpdir(), "never-existed-jasper-vault-e2e");
 
-    // Pre-populate app.json with a "missing" vault entry
-    // Server will probe the path on Load and mark it missing
     const appJSON = {
       current_vault: "",
       recent_vaults: [
@@ -558,13 +488,10 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
       handle = await spawnVaultJasper(appHome);
       await page.goto(handle.baseURL + "/");
 
-      // Navigate to the Recent tab
       await page.getByRole("tab", { name: /recent/i }).click();
 
-      // The V11 "Folder not found" caption should be visible
       await expect(page.getByText("Folder not found")).toBeVisible();
 
-      // Reconnect and Remove buttons
       await expect(page.getByRole("button", { name: /reconnect/i })).toBeVisible();
       await expect(page.getByRole("button", { name: /remove/i })).toBeVisible();
     } finally {
@@ -574,7 +501,6 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
   });
 });
 
-// ─── Plan 08-17d: vault switch flow E2E tests ────────────────────────────────
 
 test.describe("Phase 8 vault switch — make-build smoke (Plan 08-17d)", () => {
   /**
@@ -594,44 +520,29 @@ test.describe("Phase 8 vault switch — make-build smoke (Plan 08-17d)", () => {
    */
   test("switch from vault A to vault B — SPA reloads to new vault, StatusBar shows B", async ({ page }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-app-"));
-    // UAT-2 R3 F3a: match backend's vault.Canonicalize() output. On macOS:
-    //   /var/folders/... → realpath → /private/var/folders/...
-    //   THEN strings.ToLower (darwin branch in canonical.go)
-    // app.json + the picker testid use this canonical form. Without the
-    // toLowerCase the selector silently never matches the mixed-case
-    // mkdtemp suffix.
     const vaultA = canonVaultPath(fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-A-")));
     const vaultB = canonVaultPath(fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-B-")));
     let handle: VaultHandle | undefined;
     try {
       handle = await spawnVaultJasper(appHome);
 
-      // Bootstrap both vaults and open A as current.
       await bootstrapVault(handle.baseURL, vaultA);
       await bootstrapVault(handle.baseURL, vaultB);
       await openVault(handle.baseURL, vaultA);
 
-      // Navigate to the app — should see main shell with A open.
       await page.goto(handle.baseURL + "/");
       await expect(page.getByTestId("status-bar-vault")).toBeVisible({ timeout: 10_000 });
 
-      // StatusBar shows A's display_name (base of tmpdir path).
       const nameA = path.basename(vaultA);
       await expect(page.getByTestId("status-bar-vault")).toContainText(nameA.substring(0, 8), { timeout: 5_000 });
 
-      // Click StatusBar to open vault picker in switch mode.
       await page.getByTestId("status-bar-vault").click();
       await expect(page.getByRole("dialog", { name: /vault/i })).toBeVisible({ timeout: 5_000 });
 
-      // Navigate to Recent tab and click vault B's row.
       await page.getByRole("tab", { name: /recent/i }).click();
       const nameB = path.basename(vaultB);
-      // Find and click vault B row — the row has data-testid=vault-row-<path>
-      // where <path> is the canonical (EvalSymlinks-resolved) form.
       await page.getByTestId(`vault-row-${vaultB}`).click({ timeout: 5_000 });
 
-      // After the SPA reloads, StatusBar should show B's display_name.
-      // Generous timeout: teardown + reopen + page reload takes a few seconds.
       await page.waitForFunction(
         (name) => {
           const el = document.querySelector('[data-testid="status-bar-vault"]');
@@ -660,10 +571,6 @@ test.describe("Phase 8 vault switch — make-build smoke (Plan 08-17d)", () => {
    */
   test("concurrent switch returns 409 with vault_switch_in_progress", async ({ request }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-app-"));
-    // UAT-2 R3 F3b: see canonVaultPath() — matches backend's
-    // vault.Canonicalize (realpath + darwin toLowerCase) so the test's
-    // path strings match what the swap mutex + app.json see after
-    // canonicalization.
     const vaultA = canonVaultPath(fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-A-")));
     const vaultB1 = canonVaultPath(fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-B1-")));
     const vaultB2 = canonVaultPath(fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-B2-")));
@@ -671,13 +578,11 @@ test.describe("Phase 8 vault switch — make-build smoke (Plan 08-17d)", () => {
     try {
       handle = await spawnVaultJasper(appHome);
 
-      // Bootstrap all vaults; open A as current.
       await bootstrapVault(handle.baseURL, vaultA);
       await bootstrapVault(handle.baseURL, vaultB1);
       await bootstrapVault(handle.baseURL, vaultB2);
       await openVault(handle.baseURL, vaultA);
 
-      // Fire two switch requests simultaneously.
       const [r1, r2] = await Promise.all([
         request.post(`${handle.baseURL}/api/v1/vault/switch`, {
           data: { path: vaultB1 },
@@ -690,7 +595,6 @@ test.describe("Phase 8 vault switch — make-build smoke (Plan 08-17d)", () => {
       const statuses = [r1.status(), r2.status()].sort((a, b) => a - b);
       expect(statuses).toEqual([200, 409]);
 
-      // The 409 body must name the error code.
       const conflictResp = r1.status() === 409 ? r1 : r2;
       const body = (await conflictResp.json()) as { error?: string; current_target?: string };
       expect(body.error).toBe("vault_switch_in_progress");

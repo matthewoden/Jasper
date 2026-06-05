@@ -63,66 +63,31 @@ test.afterEach(async () => {
   if (jasper) await jasper.kill();
 });
 
-// ─────────────────────────────────────────────────────────────────────
-// Test cases — each scenario is named so a future failure is self-
-// describing in CI logs ("Scenario A: …" not just "test 1").
-// ─────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 3 UAT regression suite", () => {
   test("Scenario A: CRUD without manual reload + auto-increment (drag covered manually)", async ({
     page,
   }) => {
     await page.goto(jasper.baseURL);
-    // Sidebar should mount and show the seeded scratchpad note as a tree row
-    // BEFORE any user interaction. Plan 03-09 broadcast-refresh requires
-    // the tree to load on mount.
     await waitForTreeRowCount(page, "note", 1);
 
-    // A.1: click the toolbar `+` (New note). Plan 03-09's auto-refresh
-    // contract means the new row appears WITHOUT a manual reload.
     await page.getByRole("button", { name: /new note/i }).click();
-    // Note count goes from 1 (scratchpad) → 2 (scratchpad + new untitled).
     await waitForTreeRowCount(page, "note", 2);
-    // The new note enters inline-rename mode immediately (Plan 03-07 +
-    // 03-13 contract). Post-Bug-D (2026-05-07) we MUST commit the
-    // rename — pressing Escape on a brand-new row deletes the
-    // underlying file and would silently regress the count assertion
-    // below to 2 instead of 3 (see 05.5-14-INVESTIGATION.md). Use
-    // commitRenameWith to type a unique name and persist the row.
     await commitRenameWith(page, "scenario-a-note-1");
 
-    // A.2: click `+` again. Plan 03-13's nextUntitledName produces
-    // `untitled` (the slot freed by A.1's commit; A.1 took the
-    // `scenario-a-note-1` name) — the server must NOT 409. Note
-    // count → 3.
     await page.getByRole("button", { name: /new note/i }).click();
     await waitForTreeRowCount(page, "note", 3);
     await commitRenameWith(page, "scenario-a-note-2");
 
-    // A.3: GET /api/v1/tree directly to verify the server agrees with
-    // the UI count (no UI optimism deceiving us).
     const treeResp = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
     expect(treeResp.status()).toBe(200);
     const treeJson = await treeResp.json();
     expect(countNotes(treeJson)).toBe(3);
 
-    // A.4: create a folder via the toolbar. This exercises Plan 03-13's
-    // nextUntitledName for the FOLDER kind (separate from the NOTE-kind
-    // path tested in A.2): a fresh folder named "untitled" must be
-    // auto-allocated, and the create must re-render the tree without
-    // reload (Plan 03-09 broadcast-refresh).
-    //
-    // Bug D's ephemeral-delete contract applies to folders too — see
-    // useTreeCreateActions.ts:215 (`startRename("folder", f.path, true)`)
-    // and TreeRow.tsx:158-160 (handleCancelRename calls
-    // muts.deleteFolder when pendingRename.isNew). We commit the
-    // folder rename to keep the row.
     await page.getByRole("button", { name: /new folder/i }).click();
     await commitRenameWith(page, "scenario-a-folder-1");
     await waitForTreeRowCount(page, "folder", 1);
 
-    // The server agrees on the folder count without us issuing a
-    // refresh — Plan 03-09's contract.
     const treeWithFolderResp = await page.request.get(
       `${jasper.baseURL}/api/v1/tree`,
     );
@@ -156,10 +121,6 @@ test.describe("Phase 3 UAT regression suite", () => {
     await page.goto(jasper.baseURL);
     await waitForTreeRowCount(page, "note", 1);
 
-    // D.1: write a new file directly to the data dir's notes/ subdir,
-    // outside the server's mutation pipeline. Plan 03-10 ensures the
-    // subsequent /admin/reindex re-hydrates the Registry so the freshly-
-    // minted UUID is reachable via GET /notes/{id}.
     const notesDir = path.join(jasper.dataDir, "notes");
     await fs.mkdir(notesDir, { recursive: true });
     await fs.writeFile(
@@ -167,13 +128,8 @@ test.describe("Phase 3 UAT regression suite", () => {
       "# External\n\nHello from outside the server.\n",
     );
 
-    // D.2: click the Refresh button → Sidebar.handleRefresh →
-    // POST /admin/reindex (incremental) + useFileTree.refresh().
     await page.getByRole("button", { name: /refresh/i }).click();
 
-    // D.3: external.md should appear in the tree. We match by label
-    // since data-tree-row carries the UUID, not the filename. The
-    // server's H1 → title extraction yields "External" from "# External".
     await expect
       .poll(
         async () => findTreeRowByLabelText(page, /external/i, "note"),
@@ -181,33 +137,19 @@ test.describe("Phase 3 UAT regression suite", () => {
       )
       .toBeTruthy();
 
-    // D.4: click external.md to open it. Plan 03-10 ensures the
-    // registry was re-hydrated, so this should NOT produce the 404
-    // that the UAT D.2 surfaced. The textarea should populate.
     const externalRow = await findTreeRowLocatorByLabel(page, /external/i, "note");
     if (!externalRow) {
       throw new Error("external row vanished between poll and click");
     }
     await externalRow.click();
 
-    // The error alert from EditorPane (LOAD_ERROR_COPY) MUST NOT appear.
-    // Wait for the load to complete by waiting for the textarea to
-    // become enabled (loadStatus="loaded" disables the disabled prop).
     const textarea = page.getByRole("textbox", { name: /note content/i });
     await expect(textarea).toBeEnabled({ timeout: 5_000 });
 
-    // No load-error alert anywhere on the page.
     await expect(
       page.getByRole("alert").filter({ hasText: /Could not load note/i }),
     ).toHaveCount(0);
 
-    // The textarea should contain the file's content.
-    // CM6 refactor (Phase 5.5 plan 09 Task 1): the editor is now a
-    // CodeMirror 6 contenteditable div, not a real <textarea>. The
-    // role="textbox" locator above still resolves (CM6 sets role on
-    // .cm-content), but inputValue() returns "" because the underlying
-    // node has no `value` property. Read .cm-content's textContent
-    // instead — that is the editor's plain text.
     const textareaValue =
       (await page.locator(".cm-content").textContent()) ?? "";
     expect(textareaValue).toContain("# External");
@@ -218,87 +160,36 @@ test.describe("Phase 3 UAT regression suite", () => {
   }) => {
     await page.goto(jasper.baseURL);
 
-    // To test F2 + key trap on a note, create one (the seeded
-    // scratchpad's name is fine for renaming, but using a freshly-
-    // created note avoids depending on the seed name).
     await page.getByRole("button", { name: /new note/i }).click();
-    // The new note enters rename immediately. Post-Bug-D
-    // (2026-05-07) we MUST commit (not Escape) — pressing Escape on
-    // a brand-new row deletes the underlying file. Commit with a
-    // distinctive name so we can locate the row by label below; the
-    // F2 path is exercised explicitly afterward.
     await commitRenameWith(page, "scenario-f-setup");
 
-    // Locate the freshly-created row by its committed name.
     await waitForTreeRowCount(page, "note", 2);
     const untitledRow = await findTreeRowLocatorByLabel(page, /scenario-f-setup/i, "note");
     if (!untitledRow) {
       throw new Error("scenario-f-setup row not present after toolbar create + commit");
     }
 
-    // F.1: focus the row + press F2. Plan 03-12 ensures F2 reaches the
-    // row's onKeyDown without arborist swallowing it.
-    //
-    // The row div carries `tabIndex={0}` and `role="treeitem"`; we use
-    // locator-scoped `.press()` so the keystroke lands on the row's
-    // own DOM node rather than wherever document.activeElement happens
-    // to be after `click()`. Without this, Playwright sometimes
-    // dispatches the F2 to the document body (or to react-arborist's
-    // outer tree container), which the row never sees.
     await untitledRow.click();
     await untitledRow.focus();
     await untitledRow.press("F2");
 
-    // The inline-rename input mounts inside the row.
     const renameInput = untitledRow.locator('input[type="text"]');
     await expect(renameInput).toBeVisible({ timeout: 2_000 });
 
-    // F.2: typing alphanumeric must INSERT into the input — NOT
-    // navigate the tree. Pre-fix, typing "T" or any letter jumped to a
-    // folder (first-letter-jump). With Plan 03-12's stopPropagation,
-    // the input owns the keystroke.
-    //
-    // Why we explicitly click the input first: when the new note enters
-    // rename via F2, react re-renders the row to swap label → input;
-    // RenameInput.useEffect calls inputRef.current.focus()+.select() on
-    // mount, but the EditorPane loads the active note in parallel and
-    // its own useEffect re-focuses the textarea once loadStatus flips
-    // to "loaded". Whichever effect runs last wins. We click the input
-    // directly so DOM focus is unambiguous before page.keyboard.type
-    // dispatches keys to document.activeElement.
     await renameInput.click();
-    await renameInput.fill(""); // clear current value
+    await renameInput.fill("");
     await page.keyboard.type("renamed");
     await expect(renameInput).toHaveValue("renamed");
 
-    // F.3: Enter commits. Plan 03-12 ensures Enter does not bubble to
-    // arborist's tree-Enter handler. Send Enter scoped to the input so
-    // it is unambiguous which element receives the key.
     await renameInput.press("Enter");
 
-    // After the commit, the rename input must be gone (RenameInput
-    // unmounts when useTreeStore.endRename() runs in handleCommitRename's
-    // success branch). This proves the rename committed without error
-    // — a server-side failure would re-render the input with an inline
-    // error banner (RenameInput catches TreeMutationError and stays
-    // mounted).
     await expect(renameInput).toHaveCount(0, { timeout: 5_000 });
 
-    // After Plan 03-22's bidirectional binding ships, the displayed
-    // label MUST follow the rename — Direction B rewrites the H1 to
-    // match the new basename, AND Plan 03-21's server-side title
-    // refresh in Service.Move ensures GET /tree returns the fresh title.
-    // (Pre-Plan-03-22, the assertion below would have been a false
-    // positive — we asserted on the wire path, not on the user-
-    // perceived label. See 03-HUMAN-UAT-ROUND2.md line 26.)
     const r = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
     expect(r.status()).toBe(200);
     const j = await r.json();
     expect(treeContainsNoteAtPath(j, "renamed.md")).toBe(true);
 
-    // Strengthening per Plan 03-23: assert the displayed tree row label
-    // matches the new name. Pre-binding this would have failed; after
-    // Plan 03-22 + Plan 03-21 it passes.
     await expect
       .poll(
         async () => {
@@ -316,32 +207,22 @@ test.describe("Phase 3 UAT regression suite", () => {
     await page.goto(jasper.baseURL);
     await waitForTreeRowCount(page, "note", 1);
 
-    // Create a fresh note via the toolbar. Post-Bug-D (2026-05-07)
-    // we commit the rename rather than dismissing — Escape on a
-    // brand-new row now deletes the underlying file.
     await page.getByRole("button", { name: /new note/i }).click();
     await commitRenameWith(page, "scenario-g-setup");
     await waitForTreeRowCount(page, "note", 2);
 
-    // Click the new row (committed as `scenario-g-setup`) to open it
-    // in the editor.
     const untitledRow = await findTreeRowLocatorByLabel(page, /scenario-g-setup/i, "note");
     if (!untitledRow) throw new Error("scenario-g-setup row not found after create + commit");
     await untitledRow.click();
 
-    // Wait for the editor to load (textarea enabled).
     const textarea = page.getByRole("textbox", { name: /note content/i });
     await expect(textarea).toBeEnabled({ timeout: 5_000 });
 
-    // Type an H1 as the first line. This drives Direction A.
     await textarea.click();
     await page.keyboard.type("# My Plan\n\nbody text");
 
-    // Wait for the autosave debounce (2s) PLUS a margin so the move
-    // resolves and the tree refreshes.
     await page.waitForTimeout(4_000);
 
-    // The tree row label should now read "My Plan".
     await expect
       .poll(
         async () => {
@@ -352,21 +233,11 @@ test.describe("Phase 3 UAT regression suite", () => {
       )
       .toBe(true);
 
-    // The server-side wire path should reflect the new filename.
-    // Note: the EXACT path depends on server canonicalization (NFC +
-    // lowercase + spaces preserved). We accept either "my plan.md" or
-    // "my-plan.md" — match the path of any note in the tree whose
-    // title contains "my plan" (case-insensitive).
     const r = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
     const j = await r.json();
     const myPlanNote = findNoteByTitleInsensitive(j, /my plan/i);
     expect(myPlanNote).toBeTruthy();
 
-    // The original "scenario-g-setup.md" should no longer be in the
-    // tree (it was renamed away by Direction A — H1 edit drives the
-    // filename rename). Pre-Bug-D this assertion was on
-    // "untitled.md"; after the commit-the-rename refactor the seed
-    // filename is "scenario-g-setup.md".
     expect(treeContainsNoteAtPath(j, "scenario-g-setup.md")).toBe(false);
   });
 
@@ -376,32 +247,14 @@ test.describe("Phase 3 UAT regression suite", () => {
     await page.goto(jasper.baseURL);
     await waitForTreeRowCount(page, "note", 1);
 
-    // Seed a note with an H1 directly via the editor. Use the existing
-    // scratchpad row as the target; fill it with `# Old Title\n\nbody`
-    // and flush via Cmd+S so we don't need to wait on autosave.
     const scratchpadRow = page.locator('[data-tree-row-kind="note"]').first();
     await scratchpadRow.click();
     const textarea = page.getByRole("textbox", { name: /note content/i });
     await expect(textarea).toBeEnabled({ timeout: 5_000 });
-    // CM6 refactor (Phase 5.5 plan 09 Task 1): replace textarea.fill()
-    // with the canonical CM6 typing recipe — click to focus, select-all,
-    // delete, then keyboard-type. textarea.fill() is a no-op against a
-    // contenteditable surface and silently leaves the editor empty.
     await typeIntoEditor(page, "# Old Title\n\nbody");
-    // Cmd+S to flush immediately (avoid waiting on autosave).
     await page.keyboard.press("Meta+s");
-    await page.waitForTimeout(500); // let save settle
+    await page.waitForTimeout(500);
 
-    // F2 to enter rename mode. We use F2 (verified working in Scenario F)
-    // rather than right-click → context menu → "Rename" because Radix's
-    // ContextMenu role surface is finicky in synthetic events; F2 lands
-    // the same RenameInput surface and is the documented keyboard path
-    // (UI-SPEC §Surface 3 + Plan 03-12 binding).
-    //
-    // Note: we click the row again BEFORE the rename to refresh
-    // useTreeStore.selectedRow (Plan 03-20 doc-level F2 routing —
-    // selectedRow is read at F2-fire time). The intermediate Cmd+S
-    // didn't change selection, but scrolling / focus shifts may have.
     await scratchpadRow.click();
     await page.waitForTimeout(200);
     await scratchpadRow.focus();
@@ -414,10 +267,8 @@ test.describe("Phase 3 UAT regression suite", () => {
     await page.keyboard.type("New Name");
     await renameInput.press("Enter");
 
-    // Wait for the move + H1 rewrite + content update + tree refresh.
     await page.waitForTimeout(2_000);
 
-    // The tree row label is "New Name".
     await expect
       .poll(
         async () => {
@@ -428,8 +279,6 @@ test.describe("Phase 3 UAT regression suite", () => {
       )
       .toBe(true);
 
-    // The file content's first H1 has been rewritten.
-    // Re-load the note's content via the API and inspect.
     const treeResp = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
     const tree = await treeResp.json();
     const renamedNote = findNoteByTitleInsensitive(tree, /new name/i);
@@ -442,11 +291,6 @@ test.describe("Phase 3 UAT regression suite", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────
-// Helpers — DOM + JSON walkers. Kept in this file so the spec stays
-// self-contained; if future scenarios need these, lift to a sibling
-// module under e2e/helpers/.
-// ─────────────────────────────────────────────────────────────────────
 
 async function waitForTreeRowCount(
   page: Page,
@@ -525,12 +369,8 @@ async function commitRenameWith(
     .locator('[data-tree-row] input[type="text"]')
     .first();
   await renameInput.waitFor({ state: "visible", timeout: timeoutMs });
-  // Clear the auto-filled placeholder ("untitled" / "untitled 1") —
-  // fill() replaces the value, it does not append.
   await renameInput.fill(name);
   await renameInput.press("Enter");
-  // After Enter the rename input unmounts (RenameInput's
-  // handleCommitRename success path calls useTreeStore.endRename()).
   await expect(renameInput).toHaveCount(0, { timeout: timeoutMs });
 }
 
@@ -543,9 +383,6 @@ async function findTreeRowLocatorByLabel(
   const count = await rows.count();
   for (let i = 0; i < count; i++) {
     const row = rows.nth(i);
-    // A row in rename mode renders <RenameInput> instead of the static
-    // <span data-tree-row-label>. Skip those rows rather than blocking
-    // on a textContent that will never resolve.
     const labelLoc = row.locator("[data-tree-row-label]");
     if ((await labelLoc.count()) === 0) continue;
     const label = await labelLoc.textContent();
@@ -565,9 +402,6 @@ async function findTreeRowByLabelText(
   return row !== null;
 }
 
-// We deliberately avoid importing the frontend's typed Tree shape so this
-// E2E suite stays at the JSON boundary — mirroring backend/cmd/jasper/
-// smoke_test.go's "test the wire format" pattern.
 
 function countNotes(tree: unknown): number {
   let n = 0;

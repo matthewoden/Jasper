@@ -42,9 +42,6 @@ test.afterEach(async () => {
   if (jasper) await jasper.kill();
 });
 
-// ─────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────
 
 /**
  * Navigate to baseURL, wait for the WS dot to flip to "connected", then
@@ -57,7 +54,6 @@ async function openApp(page: Page): Promise<void> {
     "connected",
     { timeout: 10_000 },
   );
-  // Click the seeded scratchpad row so the editor mounts.
   const firstNote = page.locator('[data-tree-row-kind="note"]').first();
   await expect(firstNote).toBeVisible({ timeout: 8_000 });
   await firstNote.click();
@@ -86,8 +82,6 @@ async function typeIntoEditor(page: Page, text: string): Promise<void> {
  * "Saved" (fallback) so the spec compiles before / after Plan 06.
  */
 async function waitForSaved(page: Page, timeoutMs = 8_000): Promise<void> {
-  // Prefer the testid if present; fall back to text match (matches
-  // the locked copy "Saved" from SaveIndicator.tsx).
   const byId = page.locator('[data-testid="save-indicator"]');
   if ((await byId.count()) > 0) {
     await expect(byId).toContainText(/saved/i, { timeout: timeoutMs });
@@ -132,54 +126,26 @@ function uniqueName(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${__uatNameSeq}`;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Phase 5.5 scenarios
-// ─────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
-  // ───────────────────────────────────────────────────────────────────
-  // UX-07: save on blur
-  // ───────────────────────────────────────────────────────────────────
   test("UX-07: editor blur flushes pending save", async ({ page }) => {
     await openApp(page);
-    // Type a few chars; do NOT wait for the 2s autosave debounce.
     await typeIntoEditor(page, "blur-flush content");
 
-    // Click somewhere outside the editor — into the sidebar tree —
-    // BEFORE the debounce would fire. The blur handler in EditorPane
-    // calls saveNow() (Plan 03). The save indicator must transition to
-    // "Saved" within ~2s without us waiting for the debounce.
     const sidebarFirstRow = page
       .locator('[data-tree-row-kind="note"]')
       .first();
     await sidebarFirstRow.click({ force: true });
 
-    // The flush is the assertion: "Saved" appears within the timeout.
-    // If the blur handler is missing (or its hook into saveNow is wrong)
-    // this test fails — exactly the regression Plan 03 mitigates.
     await waitForSaved(page, 5_000);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-07: visibilitychange→hidden flushes pending save
-  //
-  // Plan 12 (BL-04) replaced the saveStateMachine path with a raw
-  // `fetch keepalive: true` PUT — the typed openapi-fetch wrapper does
-  // NOT honor keepalive, so on real tab close the browser aborted the
-  // PUT before bytes reached the server. The keepalive raw fetch
-  // bypasses the saveStateMachine entirely, so the SaveIndicator UI
-  // never transitions to "Saved" through this path. Asserting on the
-  // indicator is wrong for THIS event — the right observable is the
-  // PUT request itself landing.
-  // ───────────────────────────────────────────────────────────────────
   test("UX-07: visibilitychange→hidden flushes pending save", async ({
     page,
   }) => {
     await openApp(page);
     await typeIntoEditor(page, "vis-change content");
 
-    // Set up the request listener BEFORE dispatching the
-    // visibilitychange event so we don't miss the keepalive PUT.
     const putP = page.waitForRequest(
       (req) =>
         req.method() === "PUT" &&
@@ -187,10 +153,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       { timeout: 5_000 },
     );
 
-    // Dispatch a synthetic visibilitychange event — Playwright lacks a
-    // first-class API for tab visibility. The Object.defineProperty
-    // step is required because document.visibilityState is a getter;
-    // setting visibilityState directly is a no-op.
     await page.evaluate(() => {
       Object.defineProperty(document, "visibilityState", {
         configurable: true,
@@ -200,20 +162,10 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     });
 
     const put = await putP;
-    // The body must contain the typed content (proves it's the latest
-    // editor state, not a stale earlier save).
     const body = put.postDataJSON?.() as { content?: string } | null;
     expect(body?.content ?? "").toContain("vis-change content");
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-07: beforeunload keepalive — DELIBERATELY NOT TESTED here
-  // ───────────────────────────────────────────────────────────────────
-  // Playwright cannot reliably observe a request issued via
-  // `fetch(..., { keepalive: true })` from a page navigating away —
-  // the request is dispatched at the browser process level and
-  // outlives the page. The unit test in Plan 03's saveStateMachine
-  // covers this code path. Documented in 05.5-09-SUMMARY.md.
   test.fixme(
     "UX-07: beforeunload keepalive flush (covered by unit test, not E2E)",
     async () => {
@@ -221,27 +173,16 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     },
   );
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-08: live H1 → sidebar label sync
-  // ───────────────────────────────────────────────────────────────────
   test("UX-08: typing H1 updates sidebar label pre-save", async ({ page }) => {
     await openApp(page);
 
-    // Capture the initial label of the seeded scratchpad row.
     const firstRow = page.locator('[data-tree-row-kind="note"]').first();
     const labelBefore = await firstRow
       .locator("[data-tree-row-label]")
       .textContent();
 
-    // Type a fresh H1 as the very first line. Plan 04 wires
-    // editor.onH1Change → useTreeStore.setLiveLabel — the tree row's
-    // displayed label must update IMMEDIATELY (before the autosave
-    // debounce flushes the rename to disk).
     await typeIntoEditor(page, "# Live Title\n\nbody here");
 
-    // Poll the label until it reads "Live Title". This must happen
-    // BEFORE the save indicator transitions to "Saved" (i.e., before
-    // the H1→filename rename pipeline completes server-side).
     await expect
       .poll(
         async () =>
@@ -252,14 +193,9 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       )
       .toMatch(/live title/i);
 
-    // Sanity: the label DID change (catches the false positive where
-    // the seed already happened to be "Live Title").
     expect(labelBefore).not.toMatch(/live title/i);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-09: drag handle resizes sidebar; width persists across reload
-  // ───────────────────────────────────────────────────────────────────
   test("UX-09: drag handle resizes sidebar; width persists across reload", async ({
     page,
   }) => {
@@ -268,9 +204,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     const handle = page.locator('[data-testid="sidebar-resize-handle"]');
     await expect(handle).toBeVisible({ timeout: 5_000 });
 
-    // Capture nav initial width. The sidebar nav is the closest <nav>
-    // ancestor of the resize handle; Plan 05 places the handle at its
-    // right edge.
     const widthBefore = await page.evaluate(() => {
       const handleEl = document.querySelector(
         '[data-testid="sidebar-resize-handle"]',
@@ -280,15 +213,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     });
     expect(widthBefore).toBeGreaterThan(0);
 
-    // Drag the handle 80px to the right via mouse-down/move/up. CDP
-    // dispatches real mouse events here — react's pointer-down handler
-    // on the resize-handle element fires.
-    //
-    // Viewport-Y clamp: the resize handle is `top: 0; bottom: 0` on a
-    // <nav> whose intrinsic height tracks FileTree's `height={9999}`,
-    // so `handleBox.height/2` lands far below the viewport and CDP
-    // silently drops the synthetic events. Mirrors the Y-clamp from
-    // the Bug A test (added 2026-05-09 closing the same trap).
     const handleBox = await handle.boundingBox();
     if (!handleBox) {
       throw new Error("resize handle has no bounding box");
@@ -301,7 +225,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     await page.mouse.move(handleX + 80, handleY, { steps: 8 });
     await page.mouse.up();
 
-    // Wait for the resize to settle (ResizeObserver / requestAnimationFrame).
     await page.waitForTimeout(250);
 
     const widthAfter = await page.evaluate(() => {
@@ -311,10 +234,8 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       const nav = handleEl?.closest("nav");
       return nav?.getBoundingClientRect().width ?? -1;
     });
-    expect(widthAfter).toBeGreaterThan(widthBefore + 40); // grew by ~80px
+    expect(widthAfter).toBeGreaterThan(widthBefore + 40);
 
-    // Reload — Plan 05 persists the width to localStorage; the new
-    // page must restore the resized width.
     await page.reload();
     await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
       "data-status",
@@ -329,12 +250,9 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       const nav = handleEl?.closest("nav");
       return nav?.getBoundingClientRect().width ?? -1;
     });
-    expect(Math.abs(widthReloaded - widthAfter)).toBeLessThan(8); // tolerate a few px of subpixel rounding
+    expect(Math.abs(widthReloaded - widthAfter)).toBeLessThan(8);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-09: cannot shrink sidebar below default width
-  // ───────────────────────────────────────────────────────────────────
   test("UX-09: cannot shrink sidebar below the default minimum width", async ({
     page,
   }) => {
@@ -343,12 +261,8 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     const handle = page.locator('[data-testid="sidebar-resize-handle"]');
     await expect(handle).toBeVisible({ timeout: 5_000 });
 
-    // Drag the handle aggressively to the left (x=10 — well below the
-    // default 260px minimum from 05.5-RESEARCH.md). Plan 05's clamp
-    // logic must pin the width at the minimum.
     const handleBox = await handle.boundingBox();
     if (!handleBox) throw new Error("resize handle has no bounding box");
-    // Viewport-Y clamp — same pattern as UX-09 grow test above.
     const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
     const startX = handleBox.x + handleBox.width / 2;
     const startY = Math.min(handleBox.y + 80, viewport.height - 50);
@@ -365,38 +279,14 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       return h?.closest("nav")?.getBoundingClientRect().width ?? -1;
     });
 
-    // WR-10 (Phase 5.5 gap-closure Plan 11) — tighten from 252 to 260. The
-    // store clamps strictly to SIDEBAR_WIDTH_DEFAULT = 260; the only real
-    // source of slop is browser pixel rounding on `width: "260px"`, which
-    // is ≤1px on every modern engine. The previous 8px slack would have
-    // silently passed a real clamp regression.
     expect(navWidth).toBeGreaterThanOrEqual(260);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // Plan 17 Bug A — editor pane left edge tracks sidebar resize (UX-09)
-  //
-  // Surfaced by Plan 15's HUMAN-UAT walk on a fresh make build: the
-  // sidebar <nav>'s width updated when the user dragged the resize
-  // handle, BUT the editor pane stayed at x=260 because App.tsx hard-
-  // coded gridTemplateColumns: "260px 1fr 0". See 05.5-17a-INVESTIGATION.md.
-  //
-  // Asserts the editor pane's left edge shifts ≥80px to the right after
-  // a +100px drag of the sidebar handle. The previous UX-09 test only
-  // observed the <nav> width — it did NOT catch the App-level grid
-  // mismatch, which is exactly the integration boundary this Bug A
-  // scenario exists to cover.
-  // ───────────────────────────────────────────────────────────────────
   test("Bug A — editor pane left edge tracks sidebar resize (UX-09)", async ({
     page,
   }) => {
     await openApp(page);
 
-    // The editor pane's left edge is best read off the .cm-content
-    // wrapper — that's the inner editor surface inside <EditorPane>.
-    // Its `getBoundingClientRect().left` reflects the actual layout
-    // position, which is what the user perceives as "the editor pane's
-    // left edge."
     const cmContent = page.locator(".cm-content");
     await expect(cmContent).toBeVisible({ timeout: 5_000 });
 
@@ -409,16 +299,10 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     await expect(handle).toBeVisible({ timeout: 5_000 });
     const handleBox = await handle.boundingBox();
     if (!handleBox) throw new Error("resize handle has no bounding box");
-    // The sidebar handle is `position: absolute; top: 0; bottom: 0` on a
-    // <nav> whose intrinsic height grows to fit the FileTree's internal
-    // `height={9999}`, so boundingBox().height runs well past the
-    // viewport. Pick a Y inside the viewport so CDP actually dispatches
-    // pointer events at this coordinate.
     const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
     const handleX = handleBox.x + handleBox.width / 2;
     const handleY = Math.min(handleBox.y + 80, viewport.height - 50);
 
-    // Drag the handle 100px to the right.
     await page.mouse.move(handleX, handleY);
     await page.mouse.down();
     await page.mouse.move(handleX + 100, handleY, { steps: 8 });
@@ -429,26 +313,16 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       (el) => (el as HTMLElement).getBoundingClientRect().left,
     );
 
-    // The editor's left edge must have shifted right by close to 100px
-    // (subpixel rounding + interior padding can subtract ~10px). Tolerate
-    // a 20px slack: the bug we're guarding against keeps the editor at
-    // its original left, which would fail by 80–100px.
     expect(editorLeftAfter - editorLeftBefore).toBeGreaterThanOrEqual(80);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-10: full-bleed editor + click-anywhere-to-type
-  // ───────────────────────────────────────────────────────────────────
   test("UX-10: editor has no focus ring and clicking below last line places caret in editor", async ({
     page,
   }) => {
     await openApp(page);
 
-    // Focus the editor by clicking inside .cm-content.
     await page.locator(".cm-content").click();
 
-    // Plan 01 removes the focus ring. .cm-editor.cm-focused.outline
-    // must resolve to "none" or contain "none".
     const outline = await page.evaluate(() => {
       const el = document.querySelector(".cm-editor.cm-focused");
       if (!el) return null;
@@ -457,18 +331,9 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(outline).not.toBeNull();
     expect((outline as string).toLowerCase()).toMatch(/none|^0|^transparent|^rgba\(0, 0, 0, 0\)/);
 
-    // Click below the last line of the doc on the cm-host-shell. Plan
-    // 01's onClick handler must focus the editor with the caret at end
-    // of doc.
     const host = page.locator('[data-testid="cm-host-shell"]');
     const hostBox = await host.boundingBox();
     if (!hostBox) throw new Error("cm-host-shell has no bounding box");
-    // Viewport-Y clamp: cm-host-shell is `flex: 1` and CodeMirror's
-    // contenteditable surface inside it grows the host's bounding box
-    // far past the viewport (10k+ px observed on a 720px viewport).
-    // Clicking at host.bottom - 4 lands far off-screen and elementFromPoint
-    // returns null, so the click is silently dropped. Clamp to the
-    // viewport. Same trap as UX-09 (closed 2026-05-09).
     const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
     const clickX = hostBox.x + hostBox.width / 2;
     const clickY = Math.min(
@@ -477,8 +342,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     );
     await page.mouse.click(clickX, clickY);
 
-    // After the click, document.activeElement should be the .cm-content
-    // surface (CM6 sets focus on .cm-content when the editor focuses).
     const activeIsEditor = await page.evaluate(() => {
       const active = document.activeElement;
       return !!active && active.classList.contains("cm-content");
@@ -486,31 +349,21 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(activeIsEditor).toBe(true);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-11: long line wraps; no horizontal scroll
-  // ───────────────────────────────────────────────────────────────────
   test("UX-11: long line wraps inside reading width; no horizontal scroll", async ({
     page,
   }) => {
     await openApp(page);
-    // Type ~120 chars on a single line (no \n). With CM6 line wrap +
-    // Plan 02's max-width: 72ch CSS, the line must wrap rather than
-    // overflow horizontally.
     const longLine = "A".repeat(120);
     await typeIntoEditor(page, longLine);
 
-    // Assert .cm-content has no horizontal overflow.
     const overflowStat = await page.evaluate(() => {
       const cm = document.querySelector(".cm-content") as HTMLElement | null;
       if (!cm) return { sw: 0, cw: 0 };
       return { sw: cm.scrollWidth, cw: cm.clientWidth };
     });
-    expect(overflowStat.sw).toBeLessThanOrEqual(overflowStat.cw + 1); // tolerance 1px
+    expect(overflowStat.sw).toBeLessThanOrEqual(overflowStat.cw + 1);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-12: toolbar New note creates inside the selected folder
-  // ───────────────────────────────────────────────────────────────────
   test("UX-12: toolbar New note creates inside the selected folder", async ({
     page,
   }) => {
@@ -518,13 +371,9 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
 
     const folderName = uniqueName("scratch");
 
-    // Create a folder via the toolbar; commit its name with Enter
-    // (NOT Escape — Escape on isNew=true rename triggers the Bug D
-    // delete-on-cancel path).
     await page.getByRole("button", { name: /new folder/i }).click();
     await commitRenameWith(page, folderName);
 
-    // Click the new folder row to select it.
     const folderRow = page
       .locator('[data-tree-row-kind="folder"]')
       .filter({ hasText: new RegExp(folderName, "i") })
@@ -532,12 +381,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     await expect(folderRow).toBeVisible({ timeout: 3_000 });
     await folderRow.click();
 
-    // Click toolbar "New note". With UX-12, the new note must land
-    // INSIDE the selected folder (not at root). Wait for the POST
-    // to land before querying the server — the rename input may or
-    // may not have rendered (depends on how quickly the broadcast
-    // re-render flushes), so we don't depend on it. Instead we poll
-    // the server tree and assert the child appears.
     const notePostP = page.waitForResponse(
       (resp) =>
         resp.url().includes("/api/v1/notes") &&
@@ -547,9 +390,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     await page.getByRole("button", { name: /new note/i }).click();
     await notePostP;
 
-    // Poll the server tree directly — bypasses the rename-input
-    // rendering race. The note must be a child of the selected folder
-    // (path matches `<folder>/...md`).
     await expect
       .poll(
         async () => {
@@ -577,32 +417,13 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       .toBeGreaterThanOrEqual(1);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // Plan 17 Bug B — toolbar create targets selected folder (UX-12)
-  //
-  // Per 05.5-17b-INVESTIGATION.md: HUMAN-UAT reported "+ New note
-  // doesn't target the selected folder," but live-binary reproduction
-  // across four variations could NOT reproduce the failure — the code
-  // path traces cleanly. This scenario is the regression-proof codifying
-  // the working behavior so any future regression of the user-reported
-  // shape gets caught.
-  //
-  // Differs from "UX-12: toolbar New note creates inside the selected
-  // folder" above by ALSO loading a note in the editor first, then
-  // selecting the folder, then clicking + New note — exercising the
-  // editor-focus interference path the investigation walked.
-  // ───────────────────────────────────────────────────────────────────
   test("Bug B — toolbar create targets selected folder (UX-12)", async ({
     page,
   }) => {
     await openApp(page);
 
-    // Editor is loaded (openApp clicks the seeded scratchpad). Type so
-    // the editor has focus + content — exercises the focus interference
-    // angle the investigation walked.
     await typeIntoEditor(page, "editor-focus content");
 
-    // Create a folder.
     await page.getByRole("button", { name: /new folder/i }).click();
     const folderRename = page
       .locator('[data-tree-row] input[type="text"]')
@@ -611,7 +432,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     await folderRename.fill("bug-b-folder");
     await folderRename.press("Enter");
 
-    // Click the folder row.
     const folderRow = page
       .locator('[data-tree-row-kind="folder"]')
       .filter({ hasText: /bug-b-folder/i })
@@ -619,9 +439,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     await expect(folderRow).toBeVisible({ timeout: 3_000 });
     await folderRow.click();
 
-    // Click toolbar "+ New note" and wait for the POST /notes to land —
-    // without this wait, page.request.get(/tree) below can race the POST
-    // and read a tree that doesn't yet contain the new note.
     const notePostP = page.waitForResponse(
       (resp) =>
         resp.url().includes("/api/v1/notes") &&
@@ -631,7 +448,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     await page.getByRole("button", { name: /new note/i }).click();
     await notePostP;
 
-    // Dismiss any rename input.
     const noteRename = page
       .locator('[data-tree-row] input[type="text"]')
       .first();
@@ -639,7 +455,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       await noteRename.press("Escape").catch(() => {});
     }
 
-    // Assert the new note is a child of bug-b-folder, not a sibling.
     const treeResp = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
     expect(treeResp.status()).toBe(200);
     const tree = (await treeResp.json()) as {
@@ -661,21 +476,15 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     );
     expect(childNotes.length).toBeGreaterThanOrEqual(1);
 
-    // Anti-assertion: the new note is NOT at root level (would be the
-    // user-reported failure shape).
     const rootNotesAfter = tree.root.filter(
       (n) =>
         n.kind === "note" &&
         typeof n.path === "string" &&
         !n.path.includes("/"),
     );
-    // Only the seeded scratchpad should remain at root.
     expect(rootNotesAfter.length).toBe(1);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-12: right-click "New note" inside expanded folder does NOT collapse it
-  // ───────────────────────────────────────────────────────────────────
   test("UX-12: right-click 'New note' inside expanded folder does NOT collapse the folder", async ({
     page,
   }) => {
@@ -683,7 +492,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
 
     const folderName = uniqueName("scratch");
 
-    // Create a folder; commit its rename with Enter (NOT Escape).
     await page.getByRole("button", { name: /new folder/i }).click();
     await commitRenameWith(page, folderName);
 
@@ -693,13 +501,8 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       .first();
     await expect(folderRow).toBeVisible({ timeout: 3_000 });
 
-    // Expand the folder (toggle it open) — react-arborist toggles on
-    // click of the chevron. Ensure the folder is "open" before the
-    // right-click test.
     await folderRow.click();
 
-    // Right-click the folder row to open the context menu, then click
-    // "New note". Wait for the POST to land before querying the server.
     const notePostP = page.waitForResponse(
       (resp) =>
         resp.url().includes("/api/v1/notes") &&
@@ -712,12 +515,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     await newNoteMenuItem.click();
     await notePostP;
 
-    // The folder MUST still be expanded AND have its new child visible.
-    // We assert via server tree — the child note exists under the folder
-    // — and via DOM — the folder row's children are rendered (not
-    // collapsed). The page-tree count assertion catches the original
-    // collapse regression (where the menu dismiss collapsed the folder
-    // and the new child rendered, but its parent went chevron-closed).
     await expect
       .poll(
         async () => {
@@ -763,31 +560,11 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     // collapse). Filed as `folder-rename-loses-arborist-open-state`.
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // Plan 17 Bug C — Cmd-click multi-select + multi-delete (UX-13)
-  //
-  // Stacked root causes (see 05.5-17c-INVESTIGATION.md):
-  //   C.1: TreeRow's Cmd-click delegated node.handleClick(e), then
-  //        bubble fired arborist's outer DefaultRow onClick which called
-  //        node.handleClick AGAIN — selectMulti then immediate deselect.
-  //   C.2: tree.props.onDelete not wired ⇒ Backspace dead on multi-select
-  //        because focus lives on arborist's outer wrapper after
-  //        Cmd-click, NOT on TreeRow's inner role=treeitem div.
-  //   C.3: arborist's keymap only handles Backspace, not the macOS
-  //        Forward Delete key — the original UX-13 spec uses Delete.
-  //
-  // This scenario walks the user-facing flow: 3 notes, multi-select via
-  // Cmd-click, Backspace to confirm-delete, all 3 removed. Asserts on
-  // the OUTER arborist wrapper's aria-selected (the inner div doesn't
-  // carry that attribute — see investigation note about the existing
-  // UX-13 spec's authoring bug).
-  // ───────────────────────────────────────────────────────────────────
   test("Bug C — Cmd-click multi-select + multi-delete (UX-13)", async ({
     page,
   }) => {
     await openApp(page);
 
-    // Seed 2 extra notes (3 total: scratchpad + 2 untitled).
     for (let i = 0; i < 2; i++) {
       await page.getByRole("button", { name: /new note/i }).click();
       const r = page.locator('[data-tree-row] input[type="text"]').first();
@@ -799,26 +576,14 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     const noteRows = page.locator('[data-tree-row-kind="note"]');
     await expect(noteRows).toHaveCount(3, { timeout: 5_000 });
 
-    // Walk the seeded notes 2 and 3 (the two new untitled notes).
-    // Leave the seeded scratchpad (note 0) untouched as the post-delete
-    // anchor. The test asserts that exactly note 2 and note 3 get
-    // selected and removed, scratchpad survives.
     const multiKey = process.platform === "darwin" ? "Meta" : "Control";
 
-    // Click note 2 (no modifier) — establishes the selection anchor.
     await noteRows.nth(1).click();
     await page.waitForTimeout(150);
 
-    // Cmd-click note 3 — ADD to selection. Bug C.1 would manifest as
-    // the second click silently toggling note 3 right back off (the
-    // double-fire of node.handleClick from arborist's outer DefaultRow
-    // wrapper), leaving only note 2 selected.
     await noteRows.nth(2).click({ modifiers: [multiKey] });
     await page.waitForTimeout(200);
 
-    // Read aria-selected on the OUTER arborist wrapper (the parent of
-    // each [data-tree-row-kind="note"] div has role="treeitem" + the
-    // selected attribute set by react-arborist's row-container).
     const selectedNotes = await page.evaluate(() => {
       const inners = Array.from(
         document.querySelectorAll('[data-tree-row-kind="note"]'),
@@ -832,41 +597,24 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       }
       return out;
     });
-    // Notes 2 and 3 should be selected; note 1 (scratchpad) should NOT be.
     expect(selectedNotes.length).toBe(2);
 
-    // Press Backspace to trigger the multi-delete dialog. arborist's
-    // tree-level keymap fires onDelete only when we wire the prop — the
-    // Bug C.2 fix. Without it, Backspace was inert here.
     await page.keyboard.press("Backspace");
 
-    // Multi-target dialog opens with "Delete 2 items?".
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible({ timeout: 3_000 });
     await expect(dialog).toContainText(/delete 2 items/i);
 
-    // Confirm — Plan 06's multi-target dialog labels its primary action
-    // "Delete N items" (not just "Delete"), so we match by partial text.
     await dialog.getByRole("button", { name: /^delete 2 items/i }).click();
 
-    // After confirm: only the seeded scratchpad remains (note 1).
     await expect(noteRows).toHaveCount(1, { timeout: 5_000 });
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-13: Cmd+click toggles multi-selection without switching active note
-  //
-  // react-arborist marks selection on the OUTER row wrapper (the parent of
-  // our `[data-tree-row-kind="note"]` div), not the inner div itself —
-  // confirmed in 05.5-17c-INVESTIGATION.md and the Bug C scenario above.
-  // We assert against `parentElement.getAttribute("aria-selected")`.
-  // ───────────────────────────────────────────────────────────────────
   test("UX-13: Cmd+click toggles multi-selection without switching active note", async ({
     page,
   }) => {
     await openApp(page);
 
-    // Seed: create a second note so we have two to multi-select.
     await page.getByRole("button", { name: /new note/i }).click();
     const renameInput = page
       .locator('[data-tree-row] input[type="text"]')
@@ -875,7 +623,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       await renameInput.press("Escape").catch(() => {});
     }
 
-    // Capture the active note's content (note A — the seeded scratchpad).
     const noteRows = page.locator('[data-tree-row-kind="note"]');
     await expect(noteRows).toHaveCount(2, { timeout: 5_000 });
 
@@ -885,21 +632,15 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     const contentBefore =
       (await page.locator(".cm-content").textContent()) ?? "";
 
-    // Cmd+click note B to multi-select WITHOUT switching the active note.
     const noteB = noteRows.nth(1);
     const multiKey = process.platform === "darwin" ? "Meta" : "Control";
     await noteB.click({ modifiers: [multiKey] });
     await page.waitForTimeout(150);
 
-    // The active note in the editor must STILL be note A — its
-    // .cm-content textContent must match what we captured before.
     const contentAfter =
       (await page.locator(".cm-content").textContent()) ?? "";
     expect(contentAfter).toEqual(contentBefore);
 
-    // Both rows are part of the multi-selection. Selection state lives on
-    // arborist's OUTER RowContainer wrapper (parent of our inner div), so
-    // we read aria-selected from parentElement of each inner row.
     const selectedDataRows = await page.evaluate(() => {
       const inners = Array.from(
         document.querySelectorAll('[data-tree-row-kind="note"]'),
@@ -914,15 +655,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     });
     expect(selectedDataRows.length).toBe(2);
 
-    // Visual assertion — selection MUST produce a visible row tint, not
-    // just an aria attribute. Without this, the user perceives Cmd+click
-    // as broken even though the underlying state is correct (regression
-    // closed 2026-05-09: aria-selected was set but no CSS read it, so
-    // the tree showed zero feedback for a multi-select). The selected-
-    // but-not-active tint reads as `... 0.04)` in the inline style; the
-    // active-and-selected anchor reads as `... 0.08)`. Either is fine
-    // here — the assertion is "non-transparent" — but we explicitly
-    // exclude the default transparent value to lock the contract.
     const bgs = await page.evaluate(() => {
       const inners = Array.from(
         document.querySelectorAll('[data-tree-row-kind="note"]'),
@@ -937,24 +669,14 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     });
     expect(bgs.length).toBe(2);
     for (const bg of bgs) {
-      // Reject transparent / zero-alpha. Both color-mix output and
-      // legacy rgba() variants must carry a non-zero alpha component.
       expect(bg).not.toBe("rgba(0, 0, 0, 0)");
       expect(bg).not.toBe("transparent");
     }
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-13: Shift+click selects a contiguous range
-  //
-  // react-arborist's handleClick → selectContiguous() when e.shiftKey is
-  // set; TreeRow.handleClick treats Shift as a modifier-click and delegates
-  // to node.handleClick (with stopPropagation per Bug C.1 fix).
-  // ───────────────────────────────────────────────────────────────────
   test("UX-13: Shift+click selects a contiguous range", async ({ page }) => {
     await openApp(page);
 
-    // Seed 3 extra notes (4 total: scratchpad + 3 untitled).
     for (let i = 0; i < 3; i++) {
       await page.getByRole("button", { name: /new note/i }).click();
       const r = page.locator('[data-tree-row] input[type="text"]').first();
@@ -966,11 +688,9 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     const noteRows = page.locator('[data-tree-row-kind="note"]');
     await expect(noteRows).toHaveCount(4, { timeout: 5_000 });
 
-    // Click row 0 to set the selection anchor.
     await noteRows.nth(0).click();
     await page.waitForTimeout(150);
 
-    // Shift+click row 2 → arborist selectContiguous from anchor → rows 0,1,2.
     await noteRows.nth(2).click({ modifiers: ["Shift"] });
     await page.waitForTimeout(200);
 
@@ -986,20 +706,11 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(selectedCount).toBe(3);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-13: batch delete prompts once and removes all selected
-  //
-  // The multi variant of DeleteConfirmDialog renders the confirm button
-  // with the label "Delete N items" (DeleteConfirmDialog.tsx:187), so we
-  // match the full label text — the previous `/^delete$/i` only matched
-  // the single-target button label.
-  // ───────────────────────────────────────────────────────────────────
   test("UX-13: batch delete prompts once and removes all selected items", async ({
     page,
   }) => {
     await openApp(page);
 
-    // Seed two extra notes for a total of 3 (scratchpad + 2 untitled).
     for (let i = 0; i < 2; i++) {
       await page.getByRole("button", { name: /new note/i }).click();
       const renameInput = page
@@ -1012,94 +723,46 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     const noteRows = page.locator('[data-tree-row-kind="note"]');
     await expect(noteRows).toHaveCount(3, { timeout: 5_000 });
 
-    // Multi-select notes 2 and 3.
     const multiKey = process.platform === "darwin" ? "Meta" : "Control";
     await noteRows.nth(1).click();
     await noteRows.nth(2).click({ modifiers: [multiKey] });
 
-    // Press Delete to trigger the batch-delete dialog.
     await page.keyboard.press("Delete");
 
-    // The dialog title should reference 2 items.
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible({ timeout: 3_000 });
     await expect(dialog).toContainText(/delete 2 items/i);
 
-    // Confirm — multi variant button label is "Delete 2 items".
     await dialog
       .getByRole("button", { name: /^delete\s+2\s+items?$/i })
       .click();
 
-    // After confirm: only the seeded scratchpad remains.
     await expect(noteRows).toHaveCount(1, { timeout: 5_000 });
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-13: drag two folders into a third folder
-  // (RESEARCH §Open Question 2 RESOLVED — exercises the upfront-path-
-  // capture choice for folder multi-drag.)
-  // ───────────────────────────────────────────────────────────────────
   test.fixme(
     "UX-13: drag two folders into a third folder (multi-folder DnD)",
     async ({ page }) => {
-      // Fixme reason: react-arborist's multi-handle DnD pipeline runs on
-      // react-dnd's html5-backend. Synthetic Playwright drag events
-      // (page.mouse.down/move/up, locator.dragTo, programmatic
-      // DragEvent dispatch) do NOT produce a trusted DataTransfer and
-      // the html5-backend silently rejects them — the same limitation
-      // documented in phase3-uat.spec.ts §Scenario A.4.
-      //
-      // RESEARCH §Open Question 2 RESOLVED specifies that the folder-
-      // drag scenario MUST be authored in the spec so that the moment
-      // a programmatic move API or CDP-based drag helper becomes
-      // available, the scenario lights up. Until then, the human-
-      // verify checkpoint at Plan 09 Task 3 walks this path manually.
-      //
-      // The intended sequence (executed manually, not by Playwright):
-      //   1. Seed three folders /src-a, /src-b, /dest, each with at
-      //      least one child note.
-      //   2. Cmd+click /src-a then Cmd+click /src-b.
-      //   3. Drag onto /dest.
-      //   4. Assert /dest/src-a + /dest/src-b exist; /src-a and /src-b
-      //      are gone from root; their children moved with them.
-      //
-      // If the second iteration of the move emits a 404/409 in any
-      // future re-enabling of this test, that is the parent-of-source
-      // mid-batch staleness case the research called out — Plan 07
-      // would need to switch from upfront-path-capture to live-walk on
-      // the folder branch.
       await openApp(page);
       // Intentionally empty body.
     },
   );
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-14: tree-fetch coalescing
-  // ───────────────────────────────────────────────────────────────────
   test("UX-14: typical CRUD session issues ≤2 GET /api/v1/tree calls", async ({
     page,
   }) => {
-    // Register the request listener BEFORE any navigation so we count
-    // every tree fetch from page-load onward.
     const treeFetches: string[] = [];
     page.on("request", (req) => {
       const url = req.url();
-      // Match /api/v1/tree with optional query string. Note: the spec
-      // says "≤2 GET /tree per CRUD session"; we count only GETs.
       if (req.method() === "GET" && /\/api\/v1\/tree(?:\?|$)/.test(url)) {
         treeFetches.push(url);
       }
     });
 
     await openApp(page);
-    // Wait briefly for the initial load + any first-render coalesce
-    // window to flush.
     await page.waitForTimeout(500);
     const initialCount = treeFetches.length;
 
-    // Issue 5 rapid create-note clicks. Plan 08's coalescing layer
-    // (refreshTreeOnce + dedup) must collapse the resulting refresh
-    // burst.
     for (let i = 0; i < 5; i++) {
       await page.getByRole("button", { name: /new note/i }).click();
       const renameInput = page
@@ -1110,47 +773,14 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       }
     }
 
-    // Wait for any in-flight coalescer timer (Plan 08's debounce
-    // window — research recommended 50–150ms).
     await page.waitForTimeout(800);
 
     const postCRUDCount = treeFetches.length;
     const sessionDelta = postCRUDCount - initialCount;
 
-    // Acceptance criterion: each CRUD op may legitimately drive at
-    // most ONE network fetch (the post-mutation refresh — the
-    // server's WS broadcast for the SAME mutation folds into the
-    // in-flight or 100ms trailing-debounce window in coalescedGetTree).
-    // 5 awaited creates → upper bound of 5 fetches; we add 1 slack
-    // for occasional WS-vs-HTTP timing races that can land just outside
-    // the trailing window. This budget is what the architecture can
-    // actually deliver while `await refresh()` keeps the mutation
-    // contract synchronous; the previous ≤2 budget assumed temporal
-    // debouncing across the whole burst, which would require giving
-    // up await-the-refresh (changing the contract) — out of scope here.
-    //
-    // The pre-decoupling regression that prompted this test (sidebar
-    // resize triggering 30+ fetches per drag because every TreeRow's
-    // useTreeMutations subscribed to useFileTree) is locked by the
-    // companion "sidebar resize is fetch-stable" test below.
     expect(sessionDelta).toBeLessThanOrEqual(6);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-14b — sidebar resize MUST NOT trigger tree fetches.
-  //
-  // Closed 2026-05-09: useTreeMutations used to call useFileTree()
-  // internally to get its `refresh` handle. Every TreeRow → useTreeMutations
-  // mounted its own useFileTree subscriber, so the broadcast Set held
-  // 9+ entries. When the sidebar resize handle's pointermove fires
-  // setSidebarWidth, AppInner re-renders and react-arborist's row
-  // virtualization unmounts/remounts the LAST row — triggering its
-  // useTreeMutations' useFileTree useEffect cleanup + setup → triggering
-  // a fetchTree → 1 fetch per pointermove → 30+ fetches per drag.
-  // The decoupling fix replaced useTreeMutations' useFileTree() call
-  // with a direct broadcastRefresh() import, eliminating per-row
-  // subscribers entirely.
-  // ───────────────────────────────────────────────────────────────────
   test("UX-14b: sidebar resize does not trigger tree fetches", async ({
     page,
   }) => {
@@ -1177,7 +807,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
 
     await page.mouse.move(handleX, handleY);
     await page.mouse.down();
-    // 30 small steps to simulate continuous drag.
     for (let i = 1; i <= 30; i++) {
       await page.mouse.move(handleX + i * 5, handleY);
     }
@@ -1185,31 +814,14 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     await page.waitForTimeout(800);
 
     const dragDelta = treeFetches - baseline;
-    // ≤2 — a tiny slack window in case a coincidental WS event lands
-    // mid-drag. The pre-fix value was 30+; ≤2 catches any regression
-    // where re-renders re-trigger fetchTree.
     expect(dragDelta).toBeLessThanOrEqual(2);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-14c — page (document) MUST NOT scroll; sidebar + editor each
-  // scroll independently inside their own bounded shells.
-  //
-  // Pre-fix observation: the App container used `minHeight: 100vh`
-  // and the editor pane chain (section → cm-host-shell → MarkdownEditor)
-  // never set min-height: 0 on its flex columns, so CM6's content
-  // expanded the page to its intrinsic doc height (10kpx+ observed)
-  // and the user got a giant document scrollbar with mostly empty
-  // space below the editor. Lock-in: documentElement.scrollHeight
-  // <= clientHeight + 1 (subpixel slack) after typing a long doc.
-  // ───────────────────────────────────────────────────────────────────
   test("UX-14c: page does not scroll; long content scrolls inside the editor", async ({
     page,
   }) => {
     await openApp(page);
 
-    // Type a long document — many lines so CM6's content surface
-    // would, without our height clamp, push the page past viewport.
     await page.locator(".cm-content").click();
     await page.keyboard.press(
       process.platform === "darwin" ? "Meta+a" : "Control+a",
@@ -1238,18 +850,12 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       };
     });
 
-    // The page itself must not scroll.
     expect(sizes.htmlScrollH).toBeLessThanOrEqual(sizes.htmlClientH + 1);
     expect(sizes.bodyScrollH).toBeLessThanOrEqual(sizes.bodyClientH + 1);
-    // The CM6 internal scroller is bounded to viewport — it can't
-    // exceed the height of the cm-host-shell that contains it.
     expect(sizes.scrollerClientH).toBeGreaterThan(0);
     expect(sizes.scrollerClientH).toBeLessThanOrEqual(sizes.htmlClientH);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-15: H1, H2, body share the same left x-coordinate off-cursor
-  // ───────────────────────────────────────────────────────────────────
   test("UX-15: H1, H2, and body paragraph share the same left x-coordinate when off-cursor", async ({
     page,
   }) => {
@@ -1259,17 +865,11 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       "# H1 line\n## H2 line\nbody line\n\nfooter line",
     );
 
-    // Move the cursor onto the LAST line ("footer line") — off all the
-    // heading lines. Plan 02 must keep the heading line + body line
-    // anchored to the same left x-coordinate when not the cursor line.
     await page.locator(".cm-content").click();
     await page.keyboard.press(
       process.platform === "darwin" ? "Meta+End" : "Control+End",
     );
 
-    // Read the bounding box x-coordinate of each .cm-line by its
-    // text content. cm-line elements wrap each visual line; we
-    // identify them by partial text match.
     const xs = await page.evaluate(() => {
       const lines = Array.from(
         document.querySelectorAll(".cm-content .cm-line"),
@@ -1289,25 +889,17 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(xs.h2).toBeDefined();
     expect(xs.body).toBeDefined();
 
-    // All three left-edges within 1px of each other (subpixel
-    // tolerance).
     const minX = Math.min(xs.h1, xs.h2, xs.body);
     const maxX = Math.max(xs.h1, xs.h2, xs.body);
     expect(maxX - minX).toBeLessThanOrEqual(1);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // UX-16: bullet column does not shift when cursor enters/leaves
-  // ───────────────────────────────────────────────────────────────────
   test("UX-16: bullet column does NOT shift when cursor enters/leaves a list line", async ({
     page,
   }) => {
     await openApp(page);
     await typeIntoEditor(page, "- item one\n- item two\n\nfooter");
 
-    // First measurement: cursor is on the LAST line ("footer") — off
-    // both list lines. Capture the x-coordinate of the FIRST visible
-    // glyph of "item one" inside the list line.
     await page.locator(".cm-content").click();
     await page.keyboard.press(
       process.platform === "darwin" ? "Meta+End" : "Control+End",
@@ -1320,9 +912,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       for (const line of lines) {
         const txt = line.textContent ?? "";
         if (/item one/.test(txt)) {
-          // Walk to the first text node and get a Range rect for its
-          // first character — this gives the precise glyph x-coord
-          // regardless of bullet-marker geometry.
           const range = document.createRange();
           const tn = (function find(n: Node): Text | null {
             if (n.nodeType === Node.TEXT_NODE) return n as Text;
@@ -1342,13 +931,10 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     });
     expect(xCursorOff).not.toBeNull();
 
-    // Move cursor INTO the first list line ("item one") — Up arrows
-    // until we land there.
-    // Ctrl+Home → top of doc, then Down 0 (we're on "- item one").
     await page.keyboard.press(
       process.platform === "darwin" ? "Meta+Home" : "Control+Home",
     );
-    await page.keyboard.press("End"); // place cursor at end of first line
+    await page.keyboard.press("End");
 
     const xCursorOn = await page.evaluate(() => {
       const lines = Array.from(
@@ -1376,31 +962,18 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     });
     expect(xCursorOn).not.toBeNull();
 
-    // The "item" glyph x-coord must be identical (within 1px) whether
-    // the cursor is on or off the list line. Plan 02's bullet stability
-    // fix for UX-16 makes this property hold.
     expect(Math.abs((xCursorOn as number) - (xCursorOff as number))).toBeLessThanOrEqual(1);
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // 05.5-18 — editor + sidebar polish
-  //   ① Fenced code blocks render as ONE continuous rectangle
-  //   ② Markdown link gets visible style
-  //   ③ External-link cmd-click opens in a new tab; ↗ icon appears
-  //   ④ Escape clears tree multi-selection
-  // ───────────────────────────────────────────────────────────────────
 
-  // ① ────────────────────────────────────────────────────────────────
   test("05.5-18: fenced code block renders as a continuous block (first + last classes)", async ({
     page,
   }) => {
     await openApp(page);
-    // Type a 3-line fence so the middle line is neither first nor last.
     await typeIntoEditor(
       page,
       "```\nfirst line\nmiddle line\nlast line\n```\n",
     );
-    // Move cursor off the code block so live preview hides markers.
     await page.keyboard.press(
       process.platform === "darwin" ? "Meta+End" : "Control+End",
     );
@@ -1413,12 +986,9 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       return lines.map((l) => l.className);
     });
     const cbLines = classes.filter((c) => /\bcm-codeblock\b/.test(c));
-    // 5 cm-codeblock lines: opening fence, 3 content lines, closing fence
     expect(cbLines.length).toBeGreaterThanOrEqual(5);
-    // At least one cm-codeblock-first AND one cm-codeblock-last
     expect(cbLines.some((c) => /\bcm-codeblock-first\b/.test(c))).toBe(true);
     expect(cbLines.some((c) => /\bcm-codeblock-last\b/.test(c))).toBe(true);
-    // The first cm-codeblock line carries -first; the last carries -last.
     const firstIdx = cbLines.findIndex((c) => /\bcm-codeblock-first\b/.test(c));
     const lastIdx = cbLines.length - 1 -
       [...cbLines].reverse().findIndex((c) => /\bcm-codeblock-last\b/.test(c));
@@ -1426,20 +996,16 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(lastIdx).toBe(cbLines.length - 1);
   });
 
-  // ② + ③ ─────────────────────────────────────────────────────────────
   test("05.5-18: markdown link gets cm-link class; external link gets ↗ icon and opens in new tab on cmd-click", async ({
     page,
   }) => {
     await openApp(page);
     await typeIntoEditor(page, "[example](https://example.com)\n");
-    // Move cursor off the link line.
     await page.keyboard.press(
       process.platform === "darwin" ? "Meta+End" : "Control+End",
     );
     await page.waitForTimeout(100);
 
-    // Visual: the link span carries cm-link + cm-link-external; the
-    // external icon widget is mounted in the same line.
     const visual = await page.evaluate(() => {
       const linkSpan = document.querySelector(
         ".cm-content .cm-link",
@@ -1461,14 +1027,10 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(visual.linkPresent).toBe(true);
     expect(visual.externalPresent).toBe(true);
     expect(visual.iconPresent).toBe(true);
-    // The widget renders the ↗ glyph (U+2197).
     expect(visual.iconText).toContain("↗");
-    // The link color is non-default (we apply --color-accent).
     expect(visual.linkColor).not.toBe("rgb(228, 228, 231)");
-    expect(visual.linkColor).not.toBe(""); // sanity
+    expect(visual.linkColor).not.toBe("");
 
-    // Cmd-click on the link → window.open called with _blank,
-    // noopener,noreferrer. Stub window.open to capture the call.
     await page.evaluate(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__openCalls = [];
@@ -1477,15 +1039,12 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       (window as any).open = (url?: string, target?: string, features?: string) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (window as any).__openCalls.push({ url, target, features });
-        // Don't actually open a tab during the test; return null so any
-        // caller-side consumer of the WindowProxy won't crash.
         return null;
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__origOpen = origOpen;
     });
 
-    // Click the link span with the platform modifier.
     const modifier = process.platform === "darwin" ? "Meta" : "Control";
     await page.locator(".cm-content .cm-link").first().click({
       modifiers: [modifier],
@@ -1524,7 +1083,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       };
     });
 
-    // Plain click — no modifier. CM6 places the caret; no link opens.
     await page.locator(".cm-content .cm-link").first().click();
     await page.waitForTimeout(100);
 
@@ -1535,8 +1093,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(calls.length).toBe(0);
   });
 
-  // ⑤ — bare-domain link (no protocol) is treated as external and
-  //     opens with an https:// prefix.
   test("05.5-18: bare-domain link (no protocol) opens with https:// on cmd-click", async ({
     page,
   }) => {
@@ -1547,8 +1103,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     );
     await page.waitForTimeout(100);
 
-    // Visual: link span carries cm-link AND cm-link-external; ↗ icon
-    // appears even though the URL has no protocol.
     const visual = await page.evaluate(() => ({
       linkPresent: !!document.querySelector(".cm-content .cm-link"),
       externalPresent: !!document.querySelector(
@@ -1562,7 +1116,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(visual.externalPresent).toBe(true);
     expect(visual.iconPresent).toBe(true);
 
-    // Cmd-click → window.open with https:// prepended.
     await page.evaluate(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__opens = [];
@@ -1588,7 +1141,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(opens[0].target).toBe("_blank");
   });
 
-  // ⑥ — relative .md link is NOT treated as external (vault-internal).
   test("05.5-18: relative .md link is NOT styled or opened as external", async ({
     page,
   }) => {
@@ -1608,50 +1160,32 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
         ".cm-content .cm-external-link-icon",
       ),
     }));
-    // .md is a known relative-file extension — link gets the base
-    // cm-link style (so the user sees it's a link) but NOT the
-    // external classification or ↗ icon.
     expect(visual.linkPresent).toBe(true);
     expect(visual.externalPresent).toBe(false);
     expect(visual.iconPresent).toBe(false);
   });
 
-  // ⑦ — Enter on a ``` line expands to a bounded fenced block.
   test("05.5-18: Enter on a ``` line expands to a fenced block with cursor inside", async ({
     page,
   }) => {
     await openApp(page);
-    // Read line count + text via .cm-line elements (CM6 renders one
-    // <div class="cm-line"> per logical line; textContent on the
-    // parent collapses newlines).
     const readLines = async () =>
       await page.evaluate(() => {
-        // CM6 zero-width markers (U+200B / U+FEFF) can show up in
-        // cm-line textContent for empty lines; strip them before
-        // assertion. Use Unicode escapes so the source file stays
-        // ASCII-clean (no irregular-whitespace lint errors).
         const ZW = new RegExp("[\\u200B\\uFEFF]", "g");
         return Array.from(
           document.querySelectorAll(".cm-content .cm-line"),
         ).map((l) => (l.textContent ?? "").replace(ZW, ""));
       });
     await typeIntoEditor(page, "```");
-    // Press Enter — auto-expansion fires.
     await page.keyboard.press("Enter");
     await page.waitForTimeout(100);
 
     const lines = await readLines();
-    // 3 lines: opening fence, empty middle (cursor lands here),
-    // closing fence. No trailing newline — the user gets a clean
-    // closing fence; pressing Enter on the closing line breaks out
-    // (covered by the regression assertion below).
     expect(lines.length).toBeGreaterThanOrEqual(3);
     expect(lines[0]).toMatch(/^```$/);
     expect(lines[1]).toBe("");
     expect(lines[2]).toMatch(/^```$/);
 
-    // Cursor lands on the empty middle line. Type something — it
-    // appears between the fences.
     await page.keyboard.type("inside");
     await page.waitForTimeout(200);
     const lines2 = await readLines();
@@ -1659,38 +1193,22 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(lines2[1]).toBe("inside");
     expect(lines2[2]).toMatch(/^```$/);
 
-    // Move cursor down to the CLOSING fence line and press Enter.
-    // That Enter must NOT trigger another auto-expansion — the
-    // closing fence is already balanced with the opening, so default
-    // Enter should just insert a normal newline below it.
-    await page.keyboard.press("ArrowDown"); // from "inside" → closing "```"
+    await page.keyboard.press("ArrowDown");
     await page.keyboard.press("End");
     await page.keyboard.press("Enter");
     await page.waitForTimeout(150);
     const lines3 = await readLines();
-    // Expected after Enter on the closing fence:
-    //   line 0: opening ```
-    //   line 1: inside
-    //   line 2: closing ```
-    //   line 3: empty (from default Enter)
     expect(lines3[0]).toMatch(/^```$/);
     expect(lines3[1]).toBe("inside");
     expect(lines3[2]).toMatch(/^```$/);
-    // No FOURTH fence appears (regression guard — pre-fix this Enter
-    // would have inserted a new pair below the existing close).
     const fenceCount = lines3.filter((l) => /^```$/.test(l)).length;
     expect(fenceCount).toBe(2);
   });
 
-  // ⑧ — SaveIndicator stays out of layout flow when idle (no blank
-  //     gap above the first content line). Probe at initial load
-  //     before any typing, so the indicator is in idle state.
   test("05.5-18: editor first line sits at the top of the editor pane (no save-indicator gap)", async ({
     page,
   }) => {
     await openApp(page);
-    // Don't type — typing flips the indicator into saving/saved which
-    // would render the overlay. Initial load = idle.
     await page.waitForTimeout(200);
 
     const probe = await page.evaluate(() => {
@@ -1700,11 +1218,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       const firstLine = document.querySelector(
         ".cm-content .cm-line",
       ) as HTMLElement | null;
-      // Scope the SaveIndicator query to the EditorPane section so the
-      // sidebar's connection-status-dot (role="status") doesn't false-
-      // positive. SaveIndicator's pill carries titles "Saving your
-      // note" / "Saved at HH:MM:SS" / "Save failed — …", so we filter
-      // by title content.
       const saveStatus = Array.from(
         document.querySelectorAll('[role="status"]'),
       ).find((el) =>
@@ -1722,16 +1235,11 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     });
     expect(probe).not.toBeNull();
     expect(probe!.idleSaveIndicatorPresent).toBe(false);
-    // Pre-fix: SaveIndicator reserved a 24px row → gap >= 40 (24 +
-    // 16 cm-content padding). Post-fix: cm-content padding only →
-    // gap should be ~16. Slack budget at 20 to absorb subpixel.
     expect(probe!.gapTopPx).toBeLessThanOrEqual(20);
   });
 
-  // ④ ────────────────────────────────────────────────────────────────
   test("05.5-18: Escape clears tree multi-selection", async ({ page }) => {
     await openApp(page);
-    // Seed 2 extra notes so we have 3 total to multi-select.
     for (let i = 0; i < 2; i++) {
       await page.getByRole("button", { name: /new note/i }).click();
       const r = page.locator('[data-tree-row] input[type="text"]').first();
@@ -1745,13 +1253,11 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
 
     const multiKey = process.platform === "darwin" ? "Meta" : "Control";
 
-    // Build a multi-selection: click row 1, Cmd-click row 2 + 3.
     await noteRows.nth(0).click();
     await noteRows.nth(1).click({ modifiers: [multiKey] });
     await noteRows.nth(2).click({ modifiers: [multiKey] });
     await page.waitForTimeout(150);
 
-    // Confirm we have 3 selected via the OUTER arborist wrapper.
     const selectedBefore = await page.evaluate(() => {
       const inners = Array.from(
         document.querySelectorAll('[data-tree-row-kind="note"]'),
@@ -1762,7 +1268,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     });
     expect(selectedBefore).toBe(3);
 
-    // Escape — clears the multi-selection.
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);
 
@@ -1776,9 +1281,6 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     });
     expect(selectedAfter).toBe(0);
 
-    // The notes themselves still exist — Escape clears selection only,
-    // does not delete (Bug D's delete-on-cancel only fires for
-    // pendingRename.isNew=true; this Escape is on the tree container).
     await expect(noteRows).toHaveCount(3);
   });
 });

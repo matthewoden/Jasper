@@ -56,16 +56,11 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
 
-// MCP listener binds the hardcoded port 6684 (cfg.MCP.Port default per
-// D-47); playwright config pins fullyParallel=false + workers=1 so the
-// port is not contested across specs.
+
 const MCP_PORT = 6684;
 const MCP_URL = `http://127.0.0.1:${MCP_PORT}/mcp`;
 
-// JASPER_MCP_TEST_DELAY widens the create_note write window to 1500ms.
-// We trigger the switch at ~200ms offset, so the MCP write is mid-throttle
-// for ~1.3s — well above the ~50ms human race window and well below V6's
-// 2s drain cap (so the drain SUCCEEDS, not cancels).
+
 const MCP_DELAY_MS = 1500;
 const SWITCH_OFFSET_MS = 200;
 
@@ -86,8 +81,7 @@ async function findFreePort(): Promise<number> {
   });
 }
 
-// canonVaultPath mirrors backend's vault.Canonicalize() output:
-// filepath.Abs → EvalSymlinks → Clean → toLowerCase (darwin only).
+
 function canonVaultPath(p: string): string {
   const real = fs.realpathSync(p);
   return process.platform === "darwin" ? real.toLowerCase() : real;
@@ -162,11 +156,7 @@ async function spawnJasperWithEnv(
   };
 }
 
-// ─── Tiny MCP StreamableHTTP client (mirrors phase8-uat.spec.ts R4-1) ────────
-//
-// One client object per session. Stores the Mcp-Session-Id received from
-// initialize and reuses it on all subsequent calls. Returns parsed JSON-RPC
-// envelopes ({result?, error?}).
+
 class McpClient {
   private sessionID: string | null = null;
   private nextID = 1;
@@ -248,12 +238,8 @@ class McpClient {
   }
 }
 
-// ─── The scenario ───────────────────────────────────────────────────────────
 
 test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () => {
-  // The make-build smoke needs a wider per-test budget than the default
-  // because the binary boots twice (initial bring-up + post-switch bring-up
-  // against vault B), each ~3-5s on a warm laptop.
   test.setTimeout(120_000);
 
   test("R4-14 — MCP write during vault switch commits cleanly or drains, never partial", async ({
@@ -267,12 +253,10 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
 
     let handle: Handle | undefined;
     try {
-      // ── 1. Boot binary with the throttle delay env set. ──────────────────
       handle = await spawnJasperWithEnv(appHome, {
         JASPER_MCP_TEST_DELAY: String(MCP_DELAY_MS),
       });
 
-      // ── 2. Bootstrap both vaults with MCP enabled, open A. ───────────────
       for (const vault of [vaultA, vaultB]) {
         const createRes = await fetch(`${handle.baseURL}/api/v1/vault/create`, {
           method: "POST",
@@ -290,7 +274,6 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
           );
         }
       }
-      // After /vault/create, current_vault is the LAST created (B). Open A.
       const openARes = await fetch(`${handle.baseURL}/api/v1/vault/open`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -300,17 +283,9 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         throw new Error(`vault/open A failed: ${openARes.status} ${await openARes.text()}`);
       }
 
-      // Pre-create the per-vault target folders. fsstore's single-level
-      // mkdir policy requires the immediate parent to exist before a
-      // create_note targets it. Both vaults need their own folder; the
-      // grant + later assertions reference these paths.
       await fsP.mkdir(path.join(vaultA, "notes", "projects"), { recursive: true });
       await fsP.mkdir(path.join(vaultB, "notes", "research"), { recursive: true });
 
-      // ── 3. Seed grants: A:projects/ and B:research/. ─────────────────────
-      // Grant must be POSTed against the CURRENTLY-OPEN vault (A), then
-      // post-switch B's grant is seeded against B. We seed A's grant now;
-      // B's grant we seed after the switch via list_grants assertion logic.
       const grantARes = await fetch(`${handle.baseURL}/api/v1/mcp/grants`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -320,15 +295,11 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         throw new Error(`grant A POST failed: ${grantARes.status} ${await grantARes.text()}`);
       }
 
-      // Wait for the MCP listener — startMCP fires the goroutine inside
-      // a.startMCP; healthz responds once Accept() is ready.
       await waitForMCP(5_000);
 
-      // ── 4. Initialize MCP session. ───────────────────────────────────────
       const client = new McpClient();
       await client.initialize("r4-14-spec");
 
-      // ── 5. Navigate to the app — see vault A's main shell. ───────────────
       await page.goto(handle.baseURL + "/");
       await expect(page.getByTestId("status-bar-vault")).toBeVisible({ timeout: 15_000 });
       const nameA = path.basename(vaultA);
@@ -337,10 +308,6 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         { timeout: 5_000 },
       );
 
-      // ── 6. Fire the MCP create_note against A WITHOUT awaiting it. ───────
-      // The throttle keeps the write mid-flight for 1.5s. We treat the
-      // promise as a resolved-eventually channel; any error is captured
-      // and asserted below as part of the partial-file invariant.
       const expectedBody =
         "race body — first paragraph\n\n```go\nfunc main(){println(\"hello\")}\n```\n\nrace body — last paragraph\n";
       let mcpResult: {
@@ -361,24 +328,17 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
           mcpError = e instanceof Error ? e : new Error(String(e));
         });
 
-      // ── 7. ~200ms in, trigger the UI switch via StatusBar click → B. ─────
       await page.waitForTimeout(SWITCH_OFFSET_MS);
 
-      // Click StatusBar to open vault picker in switch mode.
       await page.getByTestId("status-bar-vault").click();
       await expect(page.getByRole("dialog", { name: /vault/i })).toBeVisible({
         timeout: 5_000,
       });
-      // Recent tab → vault B's row.
       await page.getByRole("tab", { name: /recent/i }).click();
       await page.getByTestId(`vault-row-${vaultB}`).click({ timeout: 5_000 });
 
-      // ── 8. Await both: the MCP RPC and the SPA settle on B. ──────────────
       await mcpPromise;
 
-      // The SPA reload reflects vault B in the StatusBar; backend has
-      // already torn down A's MCP listener and brought up B's listener on
-      // 6684 by the time the new StatusBar text is rendered.
       const nameB = path.basename(vaultB);
       await page.waitForFunction(
         (name) => {
@@ -390,17 +350,11 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         { timeout: 30_000 },
       );
 
-      // ── 9. ASSERT V-TEST-4 / R4-14 invariants. ───────────────────────────
 
-      // (a) On-disk in A: EITHER fully composed scaffold+body OR file absent.
-      //     NEVER a partial scaffold-only file (R4-1 atomic-create invariant).
       const racePath = path.join(vaultA, "notes", "projects", "race.md");
       const exists = fs.existsSync(racePath);
       if (exists) {
         const contents = await fsP.readFile(racePath, "utf8");
-        // Must contain the scaffold tags block AND the body's first + last
-        // paragraphs verbatim. Absence of the body would mean a partial
-        // (scaffold-only) file — the R4-1 regression class.
         expect(
           contents,
           "race.md exists but is missing the scaffold (---/tags) — partial write",
@@ -413,7 +367,6 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
           contents,
           "race.md exists but is missing the body last paragraph — body was truncated",
         ).toContain("race body — last paragraph");
-        // The MCP RPC must have reported success on this arm.
         expect(
           mcpError,
           `race.md committed on disk but MCP call errored: ${mcpError?.message ?? "n/a"}`,
@@ -423,14 +376,6 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
           `race.md committed on disk but MCP tool returned isError=true: ${JSON.stringify(mcpResult)}`,
         ).toBeFalsy();
       } else {
-        // Drain-cap path: V6's 2s cap engaged before the throttle returned,
-        // ctx canceled the write, file does not land. The MCP RPC may have
-        // returned a ctx-canceled error or the SDK may have surfaced a
-        // transport-level disconnect; either is acceptable on this arm.
-        // We do NOT fail on a non-null mcpError here because the test's
-        // primary invariant is "no partial file", and that is upheld by
-        // the absence of the file on disk. Document the path the run took
-        // so a future flake investigator can correlate with binary logs.
         console.warn(
           `R4-14 took the drain-cap arm — race.md absent on disk; ` +
             `mcpError=${mcpError ? mcpError.message : "null"}, ` +
@@ -438,16 +383,6 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         );
       }
 
-      // (b) MCP listener is bound to B's grants. Seed B's grant FIRST (the
-      //     /vault/switch tore down the A-vault grants set; B starts empty).
-      //
-      //     The StatusBar text flipping to B's display name does NOT prove
-      //     the post-swap bootPerVaultSubsystems has completed — the SPA
-      //     reload + new WS connect can settle BEFORE B's new MCP ACL is
-      //     wired into the API server. We poll the GET grants endpoint
-      //     until it returns 200 (it returns 500 "database is closed"
-      //     while A's pair has shut down and B's pair has not yet opened).
-      //     This is the load-bearing "post-swap readiness" gate.
       const swapReadyDeadline = Date.now() + 30_000;
       let grantsReady = false;
       while (Date.now() < swapReadyDeadline) {
@@ -476,13 +411,10 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         );
       }
 
-      // Re-initialize MCP — the post-swap listener is a new server SDK
-      // instance and the prior session-id is gone.
       const clientB = new McpClient();
       await waitForMCP(5_000);
       await clientB.initialize("r4-14-spec-post-switch");
 
-      // list_grants returns ONLY B's grants — no A leaking through.
       const listOut = await clientB.callTool("list_grants", {});
       expect(listOut.isError, `list_grants errored: ${JSON.stringify(listOut)}`).toBeFalsy();
       const grants = (listOut.structuredContent as {
@@ -494,14 +426,9 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         "list_grants must return ONLY B's research/ grant after the switch — A's projects/ MUST NOT leak",
       ).toEqual(["research"]);
 
-      // create_note against A-only path (projects/) — must be forbidden,
-      // proves the listener rebound atomically with the swap to B's ACL.
       const probeOut = await clientB.callTool("create_note", {
         path: "projects/should-not-work.md",
       });
-      // Either tool returns isError + a no_grant message in content, or
-      // the structuredContent surfaces the failure mode. Either is
-      // acceptable; the assertion is: this DID NOT succeed.
       const probeText = JSON.stringify(probeOut);
       expect(
         probeOut.isError,
@@ -512,7 +439,6 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         `expected no_grant in failure body; got: ${probeText}`,
       ).toMatch(/no_grant/);
 
-      // (c) StatusBar shows B (already asserted above by waitForFunction).
       const statusText = await page.getByTestId("status-bar-vault").textContent();
       expect(
         statusText?.toLowerCase(),

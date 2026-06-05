@@ -21,22 +21,19 @@
  */
 import type { Page } from "@playwright/test";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shortcut helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 type Shortcut =
-  | "CmdO"        // Cmd+O — quick switcher
-  | "CmdP"        // Cmd+P — command palette
-  | "CmdShiftD"   // Cmd+Shift+D — today's daily note
-  | "CmdSlash"    // Cmd+/ — keyboard shortcuts cheat-sheet
-  | "CmdN"        // Cmd+N — new note
-  | "CmdS"        // Cmd+S — save
-  | "CmdF"        // Cmd+F — native browser find (NOT CM6 panel after Plan 07-27)
-  | "CmdB"        // Cmd+B — bold
-  | "CmdI"        // Cmd+I — italic
+  | "CmdO"
+  | "CmdP"
+  | "CmdShiftD"
+  | "CmdSlash"
+  | "CmdN"
+  | "CmdS"
+  | "CmdF"
+  | "CmdB"
+  | "CmdI"
   // Plan 07-36 (UAT-3 N7): CmdU removed — underline binding reverted.
-  | "EscKey";     // Escape
+  | "EscKey";
 
 const MOD = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -50,7 +47,6 @@ const SHORTCUT_MAP: Record<Shortcut, string> = {
   CmdF: `${MOD}+f`,
   CmdB: `${MOD}+b`,
   CmdI: `${MOD}+i`,
-  // Plan 07-36 (UAT-3 N7): CmdU removed — underline binding reverted.
   EscKey: "Escape",
 };
 
@@ -65,9 +61,6 @@ export async function pressShortcut(page: Page, key: Shortcut): Promise<void> {
   await page.keyboard.press(combo);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CommandMenu helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Open the CommandMenu modal in the specified mode.
@@ -82,13 +75,9 @@ export async function openCommandMenu(
   const shortcut: Shortcut = mode === "notes" ? "CmdO" : "CmdP";
   await pressShortcut(page, shortcut);
   const ariaLabel = mode === "notes" ? "Quick switcher" : "Command palette";
-  // Wait for the dialog to appear
   await page.getByRole("dialog", { name: ariaLabel }).waitFor({ state: "visible", timeout: 5_000 });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// API helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Create a note via the Jasper REST API.
@@ -124,7 +113,6 @@ export async function apiCreateNote(
   const created = (await createResp.json()) as { id: string };
   const id = created.id;
 
-  // Write content via PUT
   const updateResp = await page.request.put(`${baseURL}/api/v1/notes/${id}`, {
     data: { content },
   });
@@ -138,9 +126,6 @@ export async function apiCreateNote(
   return id;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Connection helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Wait for the WebSocket connection-status dot to show "connected".
@@ -158,9 +143,6 @@ export async function waitForConnected(page: Page, timeoutMs = 10_000): Promise<
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Plan 07-21 helpers — ADD-ONLY (other E2E suites depend on all helpers above)
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * openCommandMenuAndType — opens the CommandMenu in the specified mode,
@@ -206,12 +188,9 @@ export async function expectPaletteVisibleWithNCommands(
   const dialog = page.getByRole("dialog", { name: "Command palette" });
   await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-  // Assert the 8 palette-visible commands by their label text (Plan 07-27: Find removed).
-  // This locks the UI-SPEC §Command Registry table strings.
   const expectedLabels = [
     "New note",
     "Save",
-    // "Find in note" removed in Plan 07-27
     "Today",
     "Switch / search notes",
     "Toggle theme",
@@ -219,16 +198,12 @@ export async function expectPaletteVisibleWithNCommands(
     "Reset and rebuild…",
     "Show keyboard shortcuts",
   ];
-  // n must match the list length for the assertion to be meaningful.
   if (n !== expectedLabels.length) {
     throw new Error(
       `expectPaletteVisibleWithNCommands: n=${n} does not match expectedLabels.length=${expectedLabels.length}`,
     );
   }
   for (const label of expectedLabels) {
-    // The virtualized list renders all items for 8 commands at 36px each (288px)
-    // which fits in the 50vh max-height. Using page-level getByText to avoid
-    // stale scoping on the dialog locator while virtualizer renders.
     await expect(page.getByText(label, { exact: false }).first()).toBeVisible({
       timeout: 5_000,
     });
@@ -281,11 +256,7 @@ export async function dispatchSyntheticDragOver(
     ({ sel, cx, cy }) => {
       const el = document.querySelector(sel);
       if (!el) throw new Error(`dispatchSyntheticDragOver: element not found: ${sel}`);
-      // We must use a DataTransfer whose .types array includes "Files" for
-      // the dropIndicatorPlugin's guard check to pass. DataTransfer.types is
-      // readonly in real events, but the browser allows it via dt.items.add().
       const dt = new DataTransfer();
-      // Create a tiny placeholder file so types includes "Files".
       const file = new File([""], "placeholder.txt", { type: "text/plain" });
       dt.items.add(file);
       const ev = new DragEvent("dragover", {
@@ -346,7 +317,6 @@ export async function seedNoteWithMtime(
   mtimeSec: number,
 ): Promise<string> {
   const id = await apiCreateNote(page, baseURL, filename, "", content);
-  // Set the file's mtime on disk.
   const path = await import("node:path");
   const fs = await import("node:fs/promises");
   const filePath = path.join(dataDir, "notes", filename);
@@ -376,34 +346,24 @@ export async function activateTagFilterChip(
 ): Promise<void> {
   const { expect } = await import("@playwright/test");
 
-  // Step 0: ensure the right rail is expanded (backlinksRailExpanded = true).
-  // When collapsed, RightRail returns null and the Tags panel is not in the DOM.
-  // TopBar renders a "Show panels" button when collapsed (aria-label="Show panels").
   const showPanelsBtn = page.getByRole("button", { name: "Show panels" });
   if ((await showPanelsBtn.count()) > 0) {
     await showPanelsBtn.click();
-    // Wait for the rail to appear (tag row testid becomes visible).
     await expect(showPanelsBtn).toHaveCount(0, { timeout: 3_000 });
   }
 
-  // Step 1: ensure the Tags panel is expanded within the right rail.
-  // The panel header button has aria-label matching "Tags panel, collapsed.*".
   const collapsedHeader = page.getByRole("button", {
     name: /^Tags panel, collapsed/,
   });
   if ((await collapsedHeader.count()) > 0) {
     await collapsedHeader.click();
-    // Wait for the panel to expand (the collapsed header disappears).
     await expect(collapsedHeader).toHaveCount(0, { timeout: 3_000 });
   }
 
-  // Step 2: click the tag row.
   const row = page.getByTestId(`tag-row-${tagName}`);
   await row.waitFor({ state: "visible", timeout: 5_000 });
   await row.click();
 
-  // Step 3: wait for ActiveTagFilterChip to render as the success signal.
-  // role="status" + aria-label="Active filter: #${tagName}" (ActiveTagFilterChip.tsx:76).
   await expect(
     page.getByRole("status", { name: `Active filter: #${tagName}` }),
   ).toBeVisible({ timeout: 3_000 });

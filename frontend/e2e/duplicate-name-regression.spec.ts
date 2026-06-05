@@ -33,9 +33,6 @@ test.afterEach(async () => {
   if (jasper) await jasper.kill();
 });
 
-// ─────────────────────────────────────────────────────────────────────
-// Helpers (mirrors dnd-regression.spec.ts conventions)
-// ─────────────────────────────────────────────────────────────────────
 
 async function openApp(page: Page): Promise<void> {
   await page.goto(jasper.baseURL);
@@ -93,9 +90,7 @@ async function fetchTree(page: Page): Promise<{
   return resp.json();
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Bug 5a: new folder when same-named note already exists
-// ─────────────────────────────────────────────────────────────────────
+
 test.describe("Bug 5a — new folder with same name as existing note", () => {
   /**
    * Scenario:
@@ -111,41 +106,29 @@ test.describe("Bug 5a — new folder with same name as existing note", () => {
   }) => {
     await openApp(page);
 
-    // Seed a note named "untitled" at root.
     await seedNote(page, "untitled");
 
-    // Wait for the tree to reflect it.
     await expect(
       page.locator('[data-tree-row-kind="note"]').filter({ hasText: "untitled" }),
     ).toBeVisible({ timeout: 8_000 });
 
-    // Click the "New folder" toolbar button.
-    // The toolbar button's aria-label is "New folder" per SidebarToolbar.tsx.
     await page.getByRole("button", { name: "New folder" }).click();
 
-    // Wait for the inline rename input to appear (the tree enters rename mode).
     const input = page.locator('input[type="text"]');
     await expect(input).toBeVisible({ timeout: 8_000 });
 
-    // Assert: placeholder is "untitled" NOT "untitled 1".
     await expect(input).toHaveValue("untitled");
 
-    // Assert: no inline "Already exists." error on mount.
     await expect(page.locator('[role="alert"]')).not.toBeVisible();
 
-    // Press Enter to accept the placeholder name.
     await input.press("Enter");
 
-    // Give the API call time to resolve.
     await page.waitForTimeout(1_000);
 
-    // Assert: no error toast appeared.
-    // The toast container renders role=status items with the error message.
     await expect(page.getByText("That name already exists.")).not.toBeVisible();
     await expect(page.getByText("Something went wrong on the server.")).not.toBeVisible();
     await expect(page.locator('[role="alert"]')).not.toBeVisible();
 
-    // Assert: tree now has BOTH "untitled.md" (note) and "untitled" (folder).
     const tree = await fetchTree(page);
     const untitledNote = tree.root.find(
       (n) => n.kind === "note" && n.title === "untitled",
@@ -158,9 +141,7 @@ test.describe("Bug 5a — new folder with same name as existing note", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────
-// Bug 5b: new note when same-named folder already exists
-// ─────────────────────────────────────────────────────────────────────
+
 test.describe("Bug 5b — new note with same name as existing folder", () => {
   /**
    * Scenario (inverse of 5a):
@@ -176,39 +157,29 @@ test.describe("Bug 5b — new note with same name as existing folder", () => {
   }) => {
     await openApp(page);
 
-    // Seed a folder named "untitled" at root.
     await seedFolder(page, "untitled");
 
-    // Wait for the tree to reflect it.
     await expect(
       page.locator('[data-tree-row-kind="folder"]').filter({ hasText: "untitled" }),
     ).toBeVisible({ timeout: 8_000 });
 
-    // Click the "New note" toolbar button.
     await page.getByRole("button", { name: "New note" }).click();
 
-    // Wait for the inline rename input.
     const input = page.locator('input[type="text"]');
     await expect(input).toBeVisible({ timeout: 8_000 });
 
-    // Assert: placeholder is "untitled" NOT "untitled 1".
     await expect(input).toHaveValue("untitled");
 
-    // Assert: no inline "Already exists." error on mount.
     await expect(page.locator('[role="alert"]')).not.toBeVisible();
 
-    // Press Enter to accept the placeholder name.
     await input.press("Enter");
 
-    // Give the API call time to resolve.
     await page.waitForTimeout(1_000);
 
-    // Assert: no error toast appeared.
     await expect(page.getByText("That name already exists.")).not.toBeVisible();
     await expect(page.getByText("Something went wrong on the server.")).not.toBeVisible();
     await expect(page.locator('[role="alert"]')).not.toBeVisible();
 
-    // Assert: tree now has BOTH "untitled" (folder) and "untitled.md" (note).
     const tree = await fetchTree(page);
     const untitledNote = tree.root.find(
       (n) => n.kind === "note" && n.title === "untitled",
@@ -221,9 +192,7 @@ test.describe("Bug 5b — new note with same name as existing folder", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────
-// Bug 5c: rename validation — folder rename should not collide with note
-// ─────────────────────────────────────────────────────────────────────
+
 test.describe("Bug 5c — rename folder to same name as sibling note does not show Already exists", () => {
   /**
    * Scenario:
@@ -239,11 +208,9 @@ test.describe("Bug 5c — rename folder to same name as sibling note does not sh
   }) => {
     await openApp(page);
 
-    // Seed note "alpha" and folder "beta".
     await seedNote(page, "alpha");
     await seedFolder(page, "beta");
 
-    // Wait for both to appear.
     await expect(
       page.locator('[data-tree-row-kind="note"]').filter({ hasText: "alpha" }),
     ).toBeVisible({ timeout: 8_000 });
@@ -251,33 +218,25 @@ test.describe("Bug 5c — rename folder to same name as sibling note does not sh
       page.locator('[data-tree-row-kind="folder"]').filter({ hasText: "beta" }),
     ).toBeVisible({ timeout: 8_000 });
 
-    // Double-click the "beta" folder row to trigger rename.
     await page
       .locator('[data-tree-row-kind="folder"]')
       .filter({ hasText: "beta" })
       .dblclick();
 
-    // Wait for the inline rename input.
     const input = page.locator('input[type="text"]');
     await expect(input).toBeVisible({ timeout: 8_000 });
 
-    // Type the new name. fill() replaces the entire input value.
     await input.fill("alpha");
 
-    // Assert: no inline "Already exists." error (alpha.md is a note, not a folder).
     await expect(page.locator('[role="alert"]')).not.toBeVisible();
 
-    // Press Enter to commit.
     await input.press("Enter");
 
-    // Give the API call time to resolve.
     await page.waitForTimeout(1_000);
 
-    // Assert: no error toast.
     await expect(page.getByText("That name already exists.")).not.toBeVisible();
     await expect(page.getByText("Something went wrong on the server.")).not.toBeVisible();
 
-    // Assert: tree has both "alpha.md" (note) and "alpha" (folder).
     const tree = await fetchTree(page);
     const alphaNote = tree.root.find(
       (n) => n.kind === "note" && n.title === "alpha",

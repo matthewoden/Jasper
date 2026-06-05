@@ -119,8 +119,6 @@ test.describe("Phase 8 R4-1 — --vault on serve", () => {
       fs.mkdtempSync(path.join(os.tmpdir(), "jasper-r4-1-vault-")),
     );
 
-    // Bootstrap the vault via a throwaway boot — --vault skips the picker
-    // and assumes .jasper/ exists.
     let bootHandle: VaultHandle | undefined;
     try {
       bootHandle = await spawnJasper(appHome);
@@ -130,7 +128,6 @@ test.describe("Phase 8 R4-1 — --vault on serve", () => {
     }
     await new Promise((r) => setTimeout(r, 200));
 
-    // SUBJECT: spawn with `serve --vault <vault>` (regression form).
     let handle: VaultHandle | undefined;
     try {
       handle = await spawnJasper(appHome, ["--vault", vault]);

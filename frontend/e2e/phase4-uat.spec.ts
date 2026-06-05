@@ -45,9 +45,6 @@ test.afterEach(async () => {
   if (jasper) await jasper.kill();
 });
 
-// ─────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────
 
 /**
  * Open a page in the given BrowserContext, navigate to baseURL, wait for the
@@ -62,8 +59,6 @@ async function openTabInContext(
 ): Promise<Page> {
   const page = await ctx.newPage();
   await page.goto(baseURL);
-  // Wait for the connection-status dot to settle at "connected" (green).
-  // useSessionSync transitions: "connecting" → "connected" on first ws.onopen.
   await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
     "data-status",
     "connected",
@@ -128,9 +123,6 @@ async function commitRenameWith(
 async function openFirstNote(page: Page): Promise<void> {
   const firstNote = page.locator('[data-tree-row-kind="note"]').first();
   await firstNote.click();
-  // Wait for the CM6 content surface to appear. Phase 5 swapped the
-  // textarea for a CodeMirror 6 contenteditable div; the canonical
-  // visibility check is the .cm-content selector.
   await page.waitForSelector(".cm-content", { timeout: 5_000 });
 }
 
@@ -166,16 +158,9 @@ async function readEditorText(page: Page): Promise<string> {
   return (await page.locator(".cm-content").textContent()) ?? "";
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Phase 4 UAT scenarios
-// ─────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 4 UAT — multi-tab session sync", () => {
 
-  // ───────────────────────────────────────────────────────────────────
-  // Scenario 1: mutate-in-A-appears-in-B for note + folder + move
-  // ROADMAP success criterion #1. Covers SYNC-01..SYNC-04.
-  // ───────────────────────────────────────────────────────────────────
   test("Scenario 1: mutate-in-A-appears-in-B for note + folder + move", async ({ browser }) => {
     const ctxA = await browser.newContext();
     const pageA = await openTabInContext(ctxA, jasper.baseURL);
@@ -183,35 +168,19 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
     const pageB = await openTabInContext(ctxB, jasper.baseURL);
 
     try {
-      // Both tabs see the seeded scratchpad note.
       await waitForNoteRowCount(pageA, 1);
       await waitForNoteRowCount(pageB, 1);
 
-      // (1a) Create a note in A; B sees it appear within ~1s (WS-driven).
-      // Post-Bug-D (2026-05-07) we MUST commit (not Escape) — pressing
-      // Escape on a brand-new row deletes the underlying file via
-      // DELETE /api/v1/notes/{id}, which silently regresses the
-      // count assertion below to 1 instead of 2. See
-      // 05.5-14-INVESTIGATION.md.
       await pageA.getByRole("button", { name: /new note/i }).click();
       await commitRenameWith(pageA, "scenario-1-note-1");
-      // Note count goes 1 → 2 in both tabs.
       await waitForNoteRowCount(pageA, 2, 5_000);
       await waitForNoteRowCount(pageB, 2, 5_000);
 
-      // (1b) Create a folder in A; B sees it appear. Bug D's
-      // ephemeral-delete contract applies to folders too —
-      // useTreeCreateActions.ts:215 sets isNew=true on the folder
-      // create, and TreeRow.tsx:158-160 deletes the folder on cancel.
       await pageA.getByRole("button", { name: /new folder/i }).click();
       await commitRenameWith(pageA, "scenario-1-folder-1");
-      // Folder count goes 0 → 1 in both tabs.
       await waitForFolderRowCount(pageA, 1, 5_000);
       await waitForFolderRowCount(pageB, 1, 5_000);
 
-      // (1c) Move a note into the folder via API — exercises note:moved broadcast.
-      // We move the scratchpad (first note) into the newly created folder.
-      // Get the tree to discover node IDs and paths.
       const treeResp = await pageA.request.get(`${jasper.baseURL}/api/v1/tree`);
       expect(treeResp.status()).toBe(200);
       const tree = await treeResp.json() as {
@@ -223,19 +192,11 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
         }>;
       };
 
-      // Find the first note and the first folder.
       const firstNote = tree.root.find((n) => n.kind === "note");
       const firstFolder = tree.root.find((n) => n.kind === "folder");
       if (!firstNote || !firstFolder) {
         throw new Error("Expected at least one note and one folder in tree");
       }
-      // WR-10: explicit precondition assertions on the discriminated
-      // TreeNode union. The TS types allow `path?` and `id?` to be
-      // undefined; without these checks, a silent fallback to
-      // "note.md" would mask a contract drift (server returns empty
-      // path) and the move would create-or-overwrite the wrong note.
-      // We want the test to fail LOUDLY on the precondition rather
-      // than pass against a wrong note.
       if (!firstNote.id || !firstNote.path) {
         throw new Error(
           `Test precondition: first note must have id+path; got id=${String(firstNote.id)}, path=${String(firstNote.path)}`,
@@ -247,7 +208,6 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
         );
       }
 
-      // POST /api/v1/notes/{id}/move to move the note inside the folder.
       const noteBasename = firstNote.path.split("/").pop();
       if (!noteBasename) {
         throw new Error(`Note path lacks a basename segment: ${firstNote.path}`);
@@ -260,12 +220,9 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       );
       expect(moveResp.status()).toBe(200);
 
-      // After move: note count stays 2 in both tabs (the note moved, not deleted).
-      // Tab B must see the updated tree (note:moved WS event → refreshTree).
       await waitForNoteRowCount(pageA, 2, 5_000);
       await waitForNoteRowCount(pageB, 2, 5_000);
 
-      // The server tree confirms the move.
       const treeAfter = await pageA.request.get(`${jasper.baseURL}/api/v1/tree`);
       expect(treeAfter.status()).toBe(200);
       const treeAfterJson = await treeAfter.json() as {
@@ -282,19 +239,6 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
     }
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // Scenario 2: stale-write conflict shows banner with Save-anyway + Discard
-  // ROADMAP success criterion #2. Covers SYNC-05, SYNC-06.
-  //
-  // Flow:
-  //   1. Both tabs open the same note.
-  //   2. Tab B types text (userHasEdited = true).
-  //   3. Tab A types text + Ctrl+S saves.
-  //   4. The WS note:updated event reaches Tab B → conflict banner appears
-  //      (because B has unsaved edits).
-  //   5. Test "Save anyway" path: banner clears.
-  //   6. Test "Discard" path: banner clears, B's textarea shows A's content.
-  // ───────────────────────────────────────────────────────────────────
   test("Scenario 2: stale-write conflict shows banner with Save-anyway and Discard wired", async ({ browser }) => {
     const ctxA = await browser.newContext();
     const pageA = await openTabInContext(ctxA, jasper.baseURL);
@@ -302,52 +246,33 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
     const pageB = await openTabInContext(ctxB, jasper.baseURL);
 
     try {
-      // Open the same note in both tabs.
       await openFirstNote(pageA);
       await openFirstNote(pageB);
 
-      // ── Sub-test A: Save-anyway ──────────────────────────────────
 
-      // B types first (sets userHasEdited = true in Tab B's EditorPane).
-      // CM6 refactor (Phase 5.5 plan 09 Task 1): typeIntoEditor drives
-      // the contenteditable surface via keyboard input — .fill() against
-      // .cm-content is a silent no-op.
       await typeIntoEditor(pageB, "Tab B work — do not overwrite");
 
-      // A types and saves immediately with Ctrl+S.
       await typeIntoEditor(pageA, "Tab A content v1");
       await pageA.keyboard.press("Control+s");
 
-      // Tab B should receive the WS note:updated event and show the conflict
-      // banner (because userHasEdited = true in B).
       const conflictBannerB = pageB.getByTestId("conflict-banner");
       await expect(conflictBannerB).toBeVisible({ timeout: 8_000 });
       await expect(pageB.getByText("This note was updated in another session. Save anyway, or discard your changes?")).toBeVisible();
 
-      // Click "Save anyway" — EditorPane re-issues PUT with the server's
-      // current_updated_at as If-Match (T-04-06 compliance).
       await pageB.getByRole("button", { name: /save anyway/i }).click();
       await expect(conflictBannerB).toBeHidden({ timeout: 5_000 });
 
-      // ── Sub-test B: Discard ──────────────────────────────────────
 
-      // A saves again with new content.
       await typeIntoEditor(pageA, "Tab A content v2");
       await pageA.keyboard.press("Control+s");
 
-      // Trigger B's unsaved-edit flag again so a second conflict banner can appear.
       await typeIntoEditor(pageB, "Tab B work v2");
 
-      // B should get another conflict banner.
       await expect(conflictBannerB).toBeVisible({ timeout: 8_000 });
 
-      // Click "Discard".
       await pageB.getByRole("button", { name: /discard/i }).click();
       await expect(conflictBannerB).toBeHidden({ timeout: 5_000 });
 
-      // After Discard, Tab B's editor should reflect Tab A's content.
-      // CM6 refactor: replace toHaveValue() (which always returns "" for
-      // contenteditable) with a poll on .cm-content's textContent.
       await expect
         .poll(() => readEditorText(pageB), { timeout: 5_000 })
         .toContain("Tab A content v2");
@@ -357,19 +282,6 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
     }
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // Scenario 3: delete-in-another-session shows UX-05 banner; editor
-  // content stays intact.
-  // ROADMAP success criterion #5. Covers UX-05.
-  //
-  // Flow:
-  //   1. Both tabs open the same note.
-  //   2. Tab B types "work-to-preserve" (sets userHasEdited).
-  //   3. Tab A deletes the note via the API (exercises WS note:deleted broadcast).
-  //   4. Tab B sees the UX-05 deletion banner.
-  //   5. Tab B's textarea content is still "work-to-preserve".
-  //   6. Dismiss banner → content still intact.
-  // ───────────────────────────────────────────────────────────────────
   test("Scenario 3: delete-in-another-session shows UX-05 banner; editor content stays intact", async ({ browser }) => {
     const ctxA = await browser.newContext();
     const pageA = await openTabInContext(ctxA, jasper.baseURL);
@@ -377,16 +289,12 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
     const pageB = await openTabInContext(ctxB, jasper.baseURL);
 
     try {
-      // Open the same note in both tabs.
       await openFirstNote(pageA);
       await openFirstNote(pageB);
 
       const userWork = "This is work the user does NOT want to lose";
-      // CM6 refactor (Phase 5.5 plan 09 Task 1): drive the editor via
-      // keyboard input. .fill() against .cm-content silently no-ops.
       await typeIntoEditor(pageB, userWork);
 
-      // Discover the note's ID from the tree API.
       const treeResp = await pageA.request.get(`${jasper.baseURL}/api/v1/tree`);
       expect(treeResp.status()).toBe(200);
       const tree = await treeResp.json() as {
@@ -397,30 +305,22 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
         throw new Error("Could not find a note in the tree to delete");
       }
 
-      // Tab A deletes the note via API. This exercises the DELETE handler →
-      // Service.Delete → Broadcaster.Broadcast("note:deleted", ...) path.
       const deleteResp = await pageA.request.delete(
         `${jasper.baseURL}/api/v1/notes/${firstNote.id}`,
       );
       expect(deleteResp.status()).toBe(204);
 
-      // Tab B sees the UX-05 deletion banner.
       const deletedBannerB = pageB.getByTestId("deleted-banner");
       await expect(deletedBannerB).toBeVisible({ timeout: 8_000 });
       await expect(pageB.getByText("This note was deleted in another session")).toBeVisible();
 
-      // CRITICAL: Tab B's editor content is still intact.
-      // CM6 refactor: read .cm-content's textContent rather than the
-      // textarea's `value` property (CM6's surface has none).
       await expect
         .poll(() => readEditorText(pageB), { timeout: 5_000 })
         .toContain(userWork);
 
-      // Dismiss the banner (× button).
       await deletedBannerB.getByRole("button", { name: /dismiss/i }).click();
       await expect(deletedBannerB).toBeHidden({ timeout: 3_000 });
 
-      // Content still intact after dismiss.
       await expect
         .poll(() => readEditorText(pageB), { timeout: 5_000 })
         .toContain(userWork);
@@ -430,33 +330,6 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
     }
   });
 
-  // ───────────────────────────────────────────────────────────────────
-  // Scenario reconnect: 5-tab disconnect/reconnect spread.
-  // ROADMAP success criterion #3. Covers SYNC-07.
-  //
-  // Strategy:
-  //   1. Open 5 independent BrowserContexts (5 independent session IDs).
-  //   2. Record the timestamp at which each tab's connection-status dot
-  //      flips BACK to "connected" after a disconnect.
-  //   3. Kill the binary → tabs see "reconnecting".
-  //   4. Restart the binary on the SAME port (see binary.ts restart()).
-  //   5. Each tab's useSessionSync reconnects via ws.onclose → nextDelay(0)
-  //      = [500, 1499]ms independently chosen. All 5 must reconnect within
-  //      the 60s window.
-  //   6. Assert the spread (max - min reconnect timestamp) is > 500ms —
-  //      proving jitter disperses reconnects, not a thundering herd.
-  //
-  // Implementation notes:
-  //   - We use page.waitForSelector (via locator.waitFor) to detect the
-  //     "connected" flip rather than page.evaluate+MutationObserver, because
-  //     Playwright's native element tracking is more reliable across page
-  //     lifecycles.
-  //   - nextDelay(0) = Math.floor(1000 × [0.5, 1.5)). With 5 tabs and
-  //     independent Math.random() calls, the span is expected to be ~500ms
-  //     (a flat distribution over [500, 1499]ms gives E[max - min] ≈ 833ms
-  //     for n=5). We assert ≥ 200ms as a practical floor that avoids flaking
-  //     on lucky-but-valid collisions while still proving dispersion.
-  // ───────────────────────────────────────────────────────────────────
   test("Scenario reconnect: 5-tab disconnect/reconnect spread (success criterion #3)", async ({ browser }) => {
     const N = 5;
     const tabs: Array<{ ctx: BrowserContext; page: Page }> = [];
@@ -468,30 +341,22 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
     }
 
     try {
-      // Kill the binary. All 5 tabs' WS connections close.
       await jasper.kill();
 
-      // Wait for all tabs to register the disconnect (status flips to reconnecting).
       for (const { page } of tabs) {
         await expect(
           page.getByTestId("connection-status-dot"),
         ).toHaveAttribute("data-status", "reconnecting", { timeout: 10_000 });
       }
 
-      // Restart on the SAME port so tabs can autonomously reconnect.
-      // binary.ts restart() kills the old proc and spawns a new one.
       jasper = await jasper.restart();
 
-      // Capture reconnect timestamps: when each tab's dot flips to "connected".
-      // We start all the waitFor in parallel (via Promise.all) so we measure
-      // concurrent reconnect timing, not sequential.
       const reconnectAt = await Promise.all(
         tabs.map(({ page }) =>
           page
             .getByTestId("connection-status-dot")
             .waitFor({ state: "attached" })
             .then(() =>
-              // Poll until data-status === "connected".
               expect
                 .poll(
                   async () => {
@@ -506,19 +371,8 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
         ),
       );
 
-      // Assert: all 5 tabs reconnected.
       expect(reconnectAt).toHaveLength(N);
 
-      // Assert spread proves jitter dispersion — NOT a tautology.
-      // WR-09: the prior `expect(span).toBeGreaterThanOrEqual(0)` was a
-      // tautology (Math.max - Math.min over a non-empty array is always
-      // ≥ 0), so the test passed even if nextDelay's `* jitter` factor
-      // was removed entirely. The deterministic property — every
-      // independent draw produces an integer in [500, 1499] — is now
-      // tested in backoff.test.ts. Here we keep the integration check
-      // narrow: 5 tabs reconnecting through real wall-clock + JS event
-      // loop will not all land on the exact same millisecond unless
-      // jitter is broken.
       const span = Math.max(...reconnectAt) - Math.min(...reconnectAt);
       if (span < 200) {
         console.warn(
@@ -528,10 +382,6 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
             "If this fails repeatedly, review nextDelay() parameters.",
         );
       }
-      // Hard floor: the spread MUST be > 0ms. If 5 independent jitter
-      // draws all produce the same delay (and thus all 5 tabs reconnect
-      // in the same Date.now() tick), nextDelay's jitter factor is
-      // broken — that's the regression this assertion guards against.
       expect(span).toBeGreaterThan(0);
     } finally {
       for (const { ctx } of tabs) {

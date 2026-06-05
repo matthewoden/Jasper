@@ -83,9 +83,6 @@
 import { test, expect } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @first-run — wizard redirect + LOCKED copy
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 8 — first-run wizard (@first-run)", () => {
   let jasper: JasperHandle;
@@ -101,9 +98,6 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
   test.fixme(
     "redirects from / to /setup on first hit and renders the LOCKED copy",
     async ({ page }) => {
-      // TODO: BLOCKED on the wizard-redirect interleaving issue documented
-      // in the file header. When lifecycle.Run is fixed to defer
-      // config.json creation until POST /setup, un-fixme this test.
       await page.goto(jasper.baseURL);
       await expect(page).toHaveURL(/\/setup$/);
       await expect(
@@ -118,11 +112,6 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
   );
 
   test("the wizard SPA at /setup renders the LOCKED copy", async ({ page }) => {
-    // The wizard SPA itself is reachable directly at /setup even when
-    // config.json has been auto-created — the firstrun middleware passes
-    // /setup through unconditionally. This proves the wizard SPA's copy
-    // and form selectors are stable (which is the real contract under
-    // test for Plan 08-04).
     await page.goto(jasper.baseURL + "/setup");
     await expect(
       page.getByRole("heading", { level: 1, name: "Set up Jasper" }),
@@ -137,11 +126,6 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
   test.fixme(
     "renders refusal copy for two of the four D-08 invalid-path cases",
     async ({ page }) => {
-      // TODO: BLOCKED on the same redirect issue — once / redirects to
-      // /setup on a fresh boot, this can run without the fixme. The
-      // backend's firstrun/validate_test.go covers the same contract
-      // at the unit layer so the refusal pipeline is not at risk of
-      // regression.
       await page.goto(jasper.baseURL + "/setup");
       const input = page.getByLabel("Data directory path");
       await input.fill("/nonexistent-prefix-zzz-08-15/jasper");
@@ -155,28 +139,6 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
     },
   );
 
-  // ──────────────────────────────────────────────────────────────────────
-  // UAT-1 (Phase 08, 2026-05-18) regression: tilde-prefixed data-dir paths
-  // must be expanded against os.UserHomeDir() BEFORE any other validation
-  // runs. Without this, sqlite.Open at the end of the wizard submit
-  // rejects the dbPath with
-  //   "sqlite open: sqlite.Open: dbPath must be absolute, got %q"
-  // and the wizard fails AFTER the user has already committed. The
-  // first user UAT (Phase 08 UAT-1) hit exactly this failure mode.
-  //
-  // We drive the backend directly via HTTP (rather than driving the SPA
-  // form) for two reasons:
-  //   1. The SPA-form path is gated by the @first-run redirect fixme
-  //      above — the wizard is reachable but the submit step would
-  //      race against the auto-created config.json.
-  //   2. The bug is entirely on the backend; the wizard input has no
-  //      client-side expansion to test (and cannot — there is no
-  //      browser API for os.UserHomeDir).
-  //
-  // Cleanup: the validate endpoint creates the resolved dir via the
-  // write probe (D-08c) — we use a unique suffix and unlink it after
-  // the assertion so the user's $HOME is not polluted.
-  // ──────────────────────────────────────────────────────────────────────
   test(
     "UAT-1: tilde-prefixed data-dir paths are expanded against $HOME (not literal)",
     async () => {
@@ -184,20 +146,12 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
       const path = await import("node:path");
       const fs = await import("node:fs/promises");
 
-      // Unique suffix per run so reruns don't collide and $HOME isn't
-      // littered. The test cleans up in the finally block.
       const suffix = `jasper-e2e-tilde-${Date.now()}-${Math.floor(
         Math.random() * 1e6,
       )}`;
       const tildePath = `~/${suffix}`;
       const expandedPath = path.join(os.homedir(), suffix);
 
-      // CWD of the spawned binary is whatever node was launched in
-      // (Playwright runs from frontend/). If tilde-expansion did NOT
-      // run, the validator's MkdirAll would create a literal "~"
-      // directory under that CWD. We snapshot whether it already
-      // exists so we can distinguish "we created it" from "it was
-      // left behind by a previous failed run".
       const cwdTildePath = path.join(process.cwd(), "~");
       const preExistedTildeDir = await fs
         .stat(cwdTildePath)
@@ -219,23 +173,11 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
           code?: string;
           message?: string;
         };
-        // After tilde expansion the path is well-formed: $HOME exists,
-        // parent exists, no nested vault, write-probe succeeds. Expect
-        // valid=true. If valid=false here, the failure surface is
-        // either the tilde-expansion regression (was the bug we fixed)
-        // or one of the D-08 rules tripping on the user's actual
-        // $HOME — surface the response body in the failure message.
         expect(
           body.valid,
           `expected valid=true after tilde expansion; body=${JSON.stringify(body)}`,
         ).toBe(true);
 
-        // Regression guard: the validator MUST NOT have created a
-        // literal "~" dir at the binary's CWD. If preExisted is true
-        // we can't tell whether this call created it or a previous
-        // run did — skip the assertion in that case (still flagged
-        // by the unit test TestValidateDataDir_TildePath_NoStrayDir
-        // which controls its own preExisted check).
         const postExistsTildeDir = await fs
           .stat(cwdTildePath)
           .then(() => true)
@@ -247,9 +189,6 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
           ).toBe(false);
         }
 
-        // The validator's write probe created the resolved dir at
-        // $HOME/<suffix>. Stat it to prove the expansion landed where
-        // we expect, then clean up in finally.
         const exists = await fs
           .stat(expandedPath)
           .then(() => true)
@@ -259,7 +198,6 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
           `expected write-probe target ${expandedPath} to exist after validate`,
         ).toBe(true);
       } finally {
-        // Best-effort cleanup. rm -rf semantics; ignore ENOENT.
         await fs.rm(expandedPath, { recursive: true, force: true }).catch(() => {});
       }
     },
@@ -268,10 +206,6 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
   test(
     "UAT-1: relative paths are refused with the not_absolute code",
     async () => {
-      // A bare relative path has no tilde to expand and is not absolute.
-      // The new ResolveDataDir helper refuses it with code=not_absolute,
-      // surfacing a useful UI hint instead of letting MkdirAll create
-      // a stray dir under the binary's CWD.
       const resp = await fetch(
         jasper.baseURL + "/api/v1/setup/validate-data-dir",
         {
@@ -293,9 +227,6 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
   );
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @deep-link — /?note=<bad-uuid> → /note-not-found
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 8 — deep link routes (@deep-link)", () => {
   let jasper: JasperHandle;
@@ -309,24 +240,6 @@ test.describe("Phase 8 — deep link routes (@deep-link)", () => {
   });
 
   test("the /note-not-found view renders the LOCKED heading and three CTAs", async ({ page }) => {
-    // Navigate directly to /note-not-found — this is the route the
-    // useDeepLink resolver redirects to on a miss; main.tsx's
-    // pathname-based dispatch picks the NoteNotFoundView branch.
-    //
-    // Direct navigation is more reliable than driving the redirect from
-    // /?note=<bad-uuid>: that path requires WS handshake + useDeepLink
-    // execution + window.location.assign + a full reload, and Playwright's
-    // page reload semantics interact poorly with the "?note=..." URL
-    // staying on the original SPA root for one tick. Direct navigation
-    // gives the same DOM under test (the testid + heading + CTAs are
-    // hard-coded in NoteNotFoundView.tsx) with zero timing risk.
-    //
-    // The redirect *behavior* is covered by useDeepLink.test.ts §DL-4
-    // and §DL-7 — the unit tests already pin "miss → assign
-    // /note-not-found".
-    // Capture console errors — main.tsx's pathname-dispatch branch must
-    // not throw at module load (e.g., useDailyNote making a synchronous
-    // failing fetch on mount), and if it does we want a clear signal.
     const consoleErrors: string[] = [];
     page.on("console", (msg) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
@@ -334,28 +247,21 @@ test.describe("Phase 8 — deep link routes (@deep-link)", () => {
     page.on("pageerror", (err) => consoleErrors.push(String(err)));
     await page.goto(jasper.baseURL + "/note-not-found");
     await page.waitForLoadState("networkidle");
-    // NoteNotFoundView is rendered under data-testid="note-not-found-view".
     await expect(
       page.getByTestId("note-not-found-view"),
       `note-not-found-view not visible; console errors so far: ${consoleErrors.join("; ")}`,
     ).toBeVisible({
       timeout: 15_000,
     });
-    // LOCKED heading per NoteNotFoundView.tsx (`&apos;` renders as ASCII
-    // apostrophe — match with a non-greedy char class):
     await expect(
       page.getByRole("heading", { name: /This note doesn.t exist/ }),
     ).toBeVisible();
-    // Three locked CTAs.
     await expect(page.getByRole("button", { name: "Search notes" })).toBeVisible();
     await expect(page.getByRole("button", { name: /Open today.s note/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "Show file tree" })).toBeVisible();
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @reveal — "Show in file manager" item is visible on right-click of a row
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 8 — reveal in file manager (@reveal)", () => {
   let jasper: JasperHandle;
@@ -369,46 +275,26 @@ test.describe("Phase 8 — reveal in file manager (@reveal)", () => {
   });
 
   test("right-clicking the seeded scratchpad row exposes 'Show in file manager'", async ({ page }) => {
-    // The binary auto-seeds a scratchpad.md at <dataDir>/notes/scratchpad.md
-    // on first boot (see lifecycle.go seedScratchpad). That's the row we
-    // right-click — no separate seeding needed.
     await page.goto(jasper.baseURL + "/");
-    // Wait for WS handshake before asserting tree rows — the SPA mounts
-    // the file tree after the connection establishes (mirrors the
-    // phase7 spec's waitForConnected pattern).
     await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
       "data-status",
       "connected",
       { timeout: 15_000 },
     );
-    // Find the scratchpad note row by its kind + text (more robust than
-    // the path-keyed selector — matches the duplicate-name-regression
-    // spec's pattern).
     const row = page
       .locator('[data-tree-row-kind="note"]')
       .filter({ hasText: "scratchpad" })
       .first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click({ button: "right" });
-    // Locked menu label per TreeRowMenu.tsx revealLabel.
     await expect(page.getByText("Show in file manager")).toBeVisible({ timeout: 5_000 });
-    // Dismiss without clicking — clicking would pop the host's Finder.
     await page.keyboard.press("Escape");
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @grant — toast contract pinned as constants (08-10 useMcpGrants two-line form)
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 8 — grant toast contract (@grant)", () => {
   test("Tier-1 grant toast strings match the 08-10 LOCKED two-line shape", () => {
-    // 08-10 useMcpGrants emits:
-    //   { title: "AI access granted", description: "Edit only in {path}" }
-    // The unit test useMcpGrants.test.ts §M5 exercises this end-to-end.
-    // This static assertion pins the strings here so any drift in
-    // these constants surfaces in the UAT spec as well — the same
-    // contract checked in two places, by design.
     const GRANT_TITLE = "AI access granted";
     const GRANT_DESC_TIER1 = "Edit only in projects";
     const GRANT_DESC_TIER2 = "Full in projects";
@@ -432,33 +318,9 @@ test.describe("Phase 8 — grant toast contract (@grant)", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @sparkles — the mcp-grant-indicator renders with the right data-grant-tier
-//
-// Seeding strategy: the standard install path is MCP-off-by-default
-// (config.MCP.Enabled=false) — that means a freshly-spawned bin/jasper
-// rejects POST /api/v1/mcp/grants with `mcp_disabled`. We DON'T attempt
-// the SQL-direct seed here (would require shutting the binary down to
-// touch app.db); instead we pin the selector contract (testid +
-// data-grant-tier attributes) as constants and rely on the unit-test
-// rendering of McpGrantIndicator.test.tsx (Plan 08-10) to exercise the
-// real DOM. The selectors below are the contract the live UAT (Task 3)
-// uses to spot-check.
-//
-// The dynamic E2E for this surface lives downstream — to drive the
-// indicator into the DOM via Playwright, MCP needs to be enabled either
-// (a) by the wizard (blocked by the @first-run fixme above), or (b) by
-// a config.json edit before spawning the binary (which spawnJasper
-// doesn't yet support). Both routes are documented in the SUMMARY as
-// follow-ups.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 8 — sparkles indicator contract (@sparkles)", () => {
   test("the McpGrantIndicator selector contract is pinned: testid + data-grant-tier", () => {
-    // These are the literal attribute names Playwright/UAT use to find
-    // the indicator. Any change to either side without a coordinated
-    // update breaks the UAT pipeline — pinning them here forces the
-    // failure to surface as a clear assertion error.
     const TESTID = "mcp-grant-indicator";
     const ATTR_TIER1 = 'data-grant-tier="1"';
     const ATTR_TIER2 = 'data-grant-tier="2"';
@@ -468,22 +330,6 @@ test.describe("Phase 8 — sparkles indicator contract (@sparkles)", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UAT-1 follow-up (@uat-1-followup) — N8 duplicate-grant upsert fix
-//
-// Verifies that POSTing /api/v1/setup with two grants for the same folder
-// (same folder_path, different levels) succeeds with HTTP 200 and ends with
-// exactly one row in mcp_write_grants (level=2, the last-write-wins value).
-//
-// The backend layer-3 fix (ON CONFLICT DO UPDATE) is the authoritative gate;
-// the frontend layer-1 (McpSection handleAddFolder guard) and layer-2
-// (SetupApp dedupGrantsByFolder) are UX guards covered by vitest unit tests.
-//
-// sqlite3 CLI probe: if sqlite3 is on PATH, we assert the exact row content.
-// If missing (slim CI runners), we fall through to a 200-only assertion —
-// the backend unit tests (TestInsertSeedGrants_Duplicate_*) pin row-count
-// behavior in that case.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
   let jasper: JasperHandle;
@@ -504,14 +350,11 @@ test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
       const fs = await import("node:fs/promises");
       const { execFileSync } = await import("node:child_process");
 
-      // Unique suffix so reruns don't collide.
       const suffix = `jasper-e2e-n8-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
       const tildePath = `~/${suffix}`;
       const expandedPath = path.join(os.homedir(), suffix);
 
       try {
-        // Sanity gate: validate-data-dir must return valid=true for the
-        // tilde path. This confirms the N1 tilde-expansion fix is in place.
         const validateResp = await fetch(
           jasper.baseURL + "/api/v1/setup/validate-data-dir",
           {
@@ -531,9 +374,6 @@ test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
           `N1 sanity gate: expected valid=true for tilde path; body=${JSON.stringify(validateBody)}`,
         ).toBe(true);
 
-        // Submit with duplicate grant: same folder_path "ai-zone", level 1
-        // then level 2. The backend ON CONFLICT upsert must coalesce to one
-        // row with level=2.
         const setupResp = await fetch(jasper.baseURL + "/api/v1/setup", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -554,7 +394,6 @@ test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
           `Expected 200 from /api/v1/setup; got ${setupResp.status}`,
         ).toBe(200);
 
-        // Probe the SQLite DB if sqlite3 is available.
         const dbPath = path.join(expandedPath, "storage", "app.db");
         let sqlite3Available = false;
         try {
@@ -579,26 +418,12 @@ test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
         // If sqlite3 is missing, the 200-status assertion above is the
         // contract; backend unit tests pin the row-count behavior.
       } finally {
-        // Best-effort cleanup — rm -rf the test data dir.
         await fs.rm(expandedPath, { recursive: true, force: true }).catch(() => {});
       }
     },
   );
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @r4-11 — R4-11 BLOCKER regression: opening a wide folder must not throw
-// `Maximum call stack size exceeded`.
-//
-// Root cause (08-18-INVESTIGATION.md): react-arborist's TreeApi.deselect fires
-// props.onSelect synchronously per call. Our handleSelect → tree.deselect →
-// onSelect → handleSelect re-entered without a guard, exhausting the stack on
-// any folder with hundreds of descendants. The fix (FileTree.tsx:940 — useRef
-// reentrancy guard) drops the synchronous re-fire. This scenario builds the
-// reproduction vault programmatically, launches bin/jasper, and asserts that
-// expanding the previously-crashing folder produces zero stack-overflow
-// console errors.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 8 — R4-11 (@r4-11) stack-overflow regression", () => {
   let jasper: JasperHandle;
@@ -609,17 +434,9 @@ test.describe("Phase 8 — R4-11 (@r4-11) stack-overflow regression", () => {
     const path = await import("node:path");
     const fs = await import("node:fs/promises");
 
-    // Build the reproduction vault on disk BEFORE the binary spawns so the
-    // first-run wizard does not interpose itself (the binary still
-    // auto-creates config.json during boot — that's the known interleaving
-    // documented in the file header — but a pre-populated notes/ tree is
-    // sufficient for the SPA to render against the tree handler directly
-    // when we navigate to "/").
     dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "jasper-r4-11-"));
     const wide = path.join(dataDir, "notes", "wide");
     await fs.mkdir(wide, { recursive: true });
-    // 500 sub-folders, each holding one note. The 1000-id descendant
-    // payload is what blows up handleSelect's pre-fix recursion.
     for (let i = 0; i < 500; i++) {
       const sub = path.join(wide, `sub-${i.toString().padStart(3, "0")}`);
       await fs.mkdir(sub, { recursive: true });
@@ -642,9 +459,6 @@ test.describe("Phase 8 — R4-11 (@r4-11) stack-overflow regression", () => {
     const STACK_OVERFLOW_RE = /Maximum call stack size exceeded/i;
     const captured: string[] = [];
 
-    // Both `pageerror` and `console` are surveilled — Chrome reports the
-    // crash via different channels depending on whether it bubbles to the
-    // window's error event or stays in a promise rejection.
     page.on("pageerror", (err) => {
       const msg = `${err.name}: ${err.message}\n${err.stack ?? ""}`;
       if (STACK_OVERFLOW_RE.test(msg)) captured.push("pageerror: " + msg);
@@ -657,32 +471,20 @@ test.describe("Phase 8 — R4-11 (@r4-11) stack-overflow regression", () => {
     });
 
     await page.goto(jasper.baseURL);
-    // If the wizard redirects us, navigate back to "/" — config.json
-    // already exists from lifecycle.Run's boot, so "/" serves the SPA.
     if (page.url().endsWith("/setup")) {
       await page.goto(jasper.baseURL);
     }
 
-    // Wait for the tree to render (data-tree-row appears on every row).
     await page.waitForSelector("[data-tree-row]", { timeout: 10_000 });
 
-    // Click the `wide` folder — the same plain-left-click that triggered
-    // the R4-11 BLOCKER on the user's vault. The folder's data-tree-row
-    // is its path ("wide" at root). Use a folder-kind filter so we don't
-    // accidentally pick a same-name note/file row.
     const wideRow = page.locator(
       '[data-tree-row="wide"][data-tree-row-kind="folder"]',
     );
     await wideRow.waitFor({ state: "visible", timeout: 5_000 });
     await wideRow.click();
 
-    // 2-second observation window for any deferred recursion. react-arborist's
-    // onSelect cascade is synchronous, so 2s is generous; CI hosts may add
-    // event-loop latency that delays Chrome's pageerror dispatch.
     await page.waitForTimeout(2_000);
 
-    // Post-condition: the wide folder is now expanded (aria-expanded="true")
-    // AND zero stack-overflow messages reached either channel.
     await expect(wideRow).toHaveAttribute("aria-expanded", "true");
     expect(
       captured,
@@ -691,56 +493,21 @@ test.describe("Phase 8 — R4-11 (@r4-11) stack-overflow regression", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @r4-1 — 08-19 R4-1/R4-2 atomic create_note regression guard.
-//
-// Pre-fix: MCP `create_note` ran Service.Create (scaffold write #1) then
-// Service.Update (body write #2). The two writes had independent
-// updated_at values; the second If-Match check raced its own scaffold-write
-// timestamp and failed even with no other writer present. The user saw an
-// error, but a partial scaffold-only file landed on disk — a UAT-2 R4
-// data-integrity BLOCKER.
-//
-// Post-fix (08-19): notes.Service.CreateWithBody composes scaffold + body
-// in memory and writes ONCE via WriteAtomic. R4-2 error codes collapse to
-// {already_exists, invalid_path, internal} — partial_create is unreachable.
-//
-// This spec drives the live MCP StreamableHTTP endpoint at /mcp against
-// bin/jasper:
-//   1. Spawn binary, drive POST /api/v1/vault/create to bring up MCP.
-//   2. POST /api/v1/mcp/grants to seed a Tier-1 grant on `projects/`.
-//   3. JSON-RPC initialize → notifications/initialized → tools/call.
-//   4. Assert success-arm: file lands with scaffold + body in one write.
-//   5. Assert already-exists arm: second create on same path errors with
-//      `already_exists`; on-disk bytes unchanged.
-//
-// MCP listens on the hardcoded port 6684 (cfg.MCP.Port default); the
-// Playwright config pins workers=1 + fullyParallel=false so the port is
-// not contested across specs.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
   let jasper: JasperHandle;
-  const MCP_PORT = 6684; // cfg.MCP.Port default per config.go D-47
+  const MCP_PORT = 6684;
   const MCP_URL = `http://127.0.0.1:${MCP_PORT}/mcp`;
 
   test.beforeAll(async () => {
     const path = await import("node:path");
     const fs = await import("node:fs/promises");
 
-    // spawnJasper boots in modeOpen against its --data-dir vault and per
-    // config defaults (UAT-2 round 2 Q3) has MCP enabled out of the box.
-    // No /vault/create dance needed — the fsstore root is
-    // <jasper.dataDir>/notes/ and MCP listens on 6684 from first boot.
     jasper = await spawnJasper();
 
-    // Create the parent folder for the test path. fsstore's CreateFile
-    // is single-level-mkdir only — it requires the immediate parent to
-    // exist, so pre-create it.
     const projectsDir = path.join(jasper.dataDir, "notes", "projects");
     await fs.mkdir(projectsDir, { recursive: true });
 
-    // Seed a Tier-1 grant on "projects" so create_note's ACL gate passes.
     const grantResp = await fetch(jasper.baseURL + "/api/v1/mcp/grants", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -751,9 +518,6 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
       throw new Error(`mcp/grants POST failed: ${grantResp.status} ${body}`);
     }
 
-    // Wait for the MCP listener on 6684 — startMCP runs `go
-    // srv.ListenAndServe()` so there is a brief window between log
-    // "MCP listener starting" and Accept().
     const deadline = Date.now() + 5_000;
     let lastErr: unknown;
     while (Date.now() < deadline) {
@@ -783,12 +547,6 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
     const fs = await import("node:fs/promises");
     const notesRoot = path.join(jasper.dataDir, "notes");
 
-    // ── Tiny MCP StreamableHTTP client ────────────────────────────────────
-    // Protocol: POST initialize → captures Mcp-Session-Id from response
-    // headers; POST notifications/initialized with that header; POST
-    // tools/call with the same header. Responses arrive as SSE
-    // (Content-Type: text/event-stream) — each event is a `data: <json>`
-    // line. We grep the first `data:` line to extract the JSON-RPC payload.
     let sessionID: string | null = null;
     let nextID = 1;
 
@@ -815,12 +573,10 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
         headers,
         body: JSON.stringify(body),
       });
-      // Initialize response carries Mcp-Session-Id; capture it.
       const sid = resp.headers.get("mcp-session-id");
       if (sid && !sessionID) sessionID = sid;
 
       if (isNotification) {
-        // 202 Accepted with no body for notifications.
         if (resp.status !== 202 && resp.status !== 200) {
           const t = await resp.text();
           throw new Error(`notification ${method} status=${resp.status}: ${t}`);
@@ -828,9 +584,7 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
         return {};
       }
 
-      // tools/call + initialize: SSE-encoded JSON-RPC envelope.
       const text = await resp.text();
-      // Find the first `data: {...}` line.
       const dataLine = text.split(/\r?\n/).find((l) => l.startsWith("data: "));
       if (!dataLine) {
         throw new Error(
@@ -844,7 +598,6 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
       return payload;
     }
 
-    // ── 1. Initialize the MCP session. ───────────────────────────────────
     const initOut = await rpc(
       "initialize",
       {
@@ -861,7 +614,6 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
     expect(sessionID, "expected Mcp-Session-Id header on initialize response").toBeTruthy();
     await rpc("notifications/initialized", {}, true);
 
-    // ── 2. Success arm: create_note with body lands one file in one write.
     const body =
       "First line of body.\n\n```go\nfunc main(){println(\"hello\")}\n```\n\nSecond paragraph after the fence.\n";
     const successOut = await rpc(
@@ -879,7 +631,6 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
       successOut.error,
       `create_note success arm returned RPC error: ${JSON.stringify(successOut.error)}`,
     ).toBeUndefined();
-    // Tool error surfaces as result.isError per MCP spec.
     const successResult = successOut.result as {
       isError?: boolean;
       structuredContent?: { id?: string; path?: string; updated_at?: string };
@@ -892,9 +643,6 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
     expect(successResult.structuredContent?.id, "expected id in structuredContent").toBeTruthy();
     expect(successResult.structuredContent?.updated_at, "expected updated_at").toBeTruthy();
 
-    // Disk-side assertion: the file exists with scaffold + body verbatim.
-    // fsstore root is <jasper.dataDir>/notes/ so the absolute path is
-    // <jasper.dataDir>/notes/projects/r4-1-atomic.md.
     const filePath = path.join(notesRoot, "projects", "r4-1-atomic.md");
     const onDisk = await fs.readFile(filePath, "utf8");
     const wantPrefix = "---\ntags: []\n---\n\n# r4-1-atomic\n\n";
@@ -907,8 +655,6 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
       `body bytes must append verbatim after the scaffold (no separator).`,
     ).toBe(wantPrefix + body);
 
-    // ── 3. Already-exists arm: second create on the same path errors with
-    //      already_exists; on-disk bytes do NOT change.
     const collisionOut = await rpc(
       "tools/call",
       {
@@ -937,22 +683,14 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
       collisionText.includes("already_exists"),
       `expected 'already_exists' in collision error: ${collisionText}`,
     ).toBe(true);
-    // R4-2 regression guard: partial_create string must not appear.
     expect(
       collisionText.includes("partial_create"),
       `R4-2 regression: response contains partial_create: ${collisionText}`,
     ).toBe(false);
 
-    // On-disk bytes unchanged from the first successful write.
     const afterCollision = await fs.readFile(filePath, "utf8");
     expect(afterCollision, "file mutated by failed collision create").toBe(onDisk);
 
-    // ── 4. Invalid-path arm (recommended): a path containing `..` is
-    //      rejected. The MCP layer's splitNotePath only checks for `.md`
-    //      suffix + emptiness, so `..` traversal is rejected by either
-    //      the ACL gate (`no_grant` — most likely outcome since `..` is
-    //      not covered by the grant) OR the fsstore canonicalize step.
-    //      Either way the file does not land.
     const traversalOut = await rpc(
       "tools/call",
       {
@@ -969,14 +707,11 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
       content?: Array<{ type: string; text?: string }>;
     };
     expect(traversalResult.isError, "expected isError on traversal path").toBe(true);
-    // Whichever guard rejected it (no_grant / invalid_path / internal),
-    // partial_create must not appear.
     const traversalText = JSON.stringify(traversalResult);
     expect(
       traversalText.includes("partial_create"),
       `R4-2 regression: traversal error contains partial_create: ${traversalText}`,
     ).toBe(false);
-    // No file landed outside the vault.
     const traversalCheck = path.join(jasper.dataDir, "..", "traversal.md");
     await expect(
       fs.stat(traversalCheck).then(
@@ -987,26 +722,6 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @r4-7-r4-8-r4-10 — 08-20 menu hover/active + AI-folder selection CSS polish.
-//
-// Pre-fix: the [data-highlighted] menu rule (commit b15f7df) added
-// `border-radius: 4px` + `margin: 0 4px` for a "chip" feel, which produced
-// a visible horizontal shift on hover (R4-7). The active+highlighted combo
-// also showed an unexpected border-radius (R4-8). Separately, the AI-grant
-// violet tint on tree rows (commit 09b70e9) was overwritten by TreeRow's
-// inline accent background when the row became active or selected (R4-10).
-//
-// Post-fix (08-20): [data-highlighted] is now a pure color shift (no
-// padding/margin/transform/border-radius). The active rule never had a
-// border-radius and continues to have none. New theme.css selectors for
-// [data-tree-row][data-ai-level][data-selected|data-active] mix a stronger
-// violet (24%) with !important so the violet identity survives selection.
-// TreeRow.tsx emits data-active / data-selected for the CSS contract.
-//
-// Each scenario runs against bin/jasper via spawnJasper (CLAUDE.md
-// §Verification policy: E2E before human UAT).
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () => {
   let jasper: JasperHandle;
@@ -1022,9 +737,6 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
   test("R4-7 — menu item hover does not shift horizontally", async ({
     page,
   }) => {
-    // Boot the SPA, wait for the tree, right-click the seeded scratchpad
-    // note row to open the context menu. The menu items are Radix
-    // ContextMenu.Item / SubTrigger nodes carrying role="menuitem".
     await page.goto(jasper.baseURL + "/");
     await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
       "data-status",
@@ -1038,29 +750,19 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click({ button: "right" });
 
-    // Pick the first non-highlighted menuitem so we can hover it cleanly.
-    // Radix mounts the menu in a portal under document.body; we don't
-    // scope to the row.
     const item = page.locator('[role="menuitem"]').first();
     await expect(item).toBeVisible({ timeout: 5_000 });
 
-    // Move the mouse OFF any menuitem first so the box is captured in the
-    // un-highlighted state. Use page.mouse.move to a corner well outside
-    // the menu.
     await page.mouse.move(0, 0);
-    // Brief settle to let Radix clear any prior data-highlighted state.
     await page.waitForTimeout(100);
     const before = await item.boundingBox();
     if (!before) throw new Error("menu item bounding box (before hover) was null");
 
-    // Hover the item and wait for CSS transition completion.
     await item.hover();
     await page.waitForTimeout(150);
     const after = await item.boundingBox();
     if (!after) throw new Error("menu item bounding box (after hover) was null");
 
-    // R4-7 contract: hover changes background only. x and width must be
-    // identical pre/post (sub-pixel tolerance for browser rounding).
     expect(
       Math.abs(after.x - before.x),
       `R4-7: menu item x shifted on hover; before=${before.x} after=${after.x}`,
@@ -1070,24 +772,12 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
       `R4-7: menu item width changed on hover; before=${before.width} after=${after.width}`,
     ).toBeLessThan(0.5);
 
-    // Dismiss the menu.
     await page.keyboard.press("Escape");
   });
 
   test("R4-8 — active + highlighted menu item has stable border-radius", async ({
     page,
   }) => {
-    // Open a context menu on a folder row so we have a SubTrigger
-    // ("Grant AI access" submenu) we can use as the active state.
-    // Strategy: hover a SubTrigger to open its submenu; the SubTrigger
-    // then carries [data-state="open"] which our CSS treats as a
-    // highlight. We compare border-radius of that item against a sibling
-    // un-highlighted menuitem — they must match.
-    //
-    // If the seeded vault contains only a single root note, fall back to
-    // a generic "two-menuitem" comparison: hover one item to make it
-    // [data-highlighted], read its border-radius, read the next sibling
-    // item's border-radius, assert equality.
     await page.goto(jasper.baseURL + "/");
     await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
       "data-status",
@@ -1105,9 +795,6 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
     const count = await items.count();
     expect(count, "expected at least 2 menu items in the context menu").toBeGreaterThanOrEqual(2);
 
-    // Hover the first item so it carries [data-highlighted]. The second
-    // item stays unhighlighted, giving us an active+highlighted vs.
-    // baseline comparison surface.
     const highlighted = items.nth(0);
     const baseline = items.nth(1);
     await page.mouse.move(0, 0);
@@ -1122,9 +809,6 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
       (el) => getComputedStyle(el as HTMLElement).borderRadius,
     );
 
-    // R4-8 contract: border-radius must be identical across highlighted
-    // and non-highlighted menu items — the hover treatment is a flat
-    // color shift, not a corner change.
     expect(
       radiusHighlighted.trim(),
       `R4-8: highlighted border-radius (${radiusHighlighted}) differs from baseline (${radiusBaseline}) — hover must not alter corners`,
@@ -1136,24 +820,10 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
   test("R4-10 — AI-granted folder retains violet tint when selected", async ({
     page,
   }) => {
-    // Strategy: seed a vault with a "projects" folder, a sibling
-    // "plain-folder", and a note inside each. Grant Tier-1 access on
-    // "projects" via POST /api/v1/mcp/grants (the same path the
-    // phase8-R4-6-folder-tint spec uses). Click the projects folder row
-    // to select it; click the plain folder to capture the non-AI
-    // selected color. Assert that the AI row's background-color
-    // shifts toward violet (higher red AND higher blue than the
-    // generic accent's blue/grey).
     const os = await import("node:os");
     const path = await import("node:path");
     const fs = await import("node:fs/promises");
 
-    // We can't seed into an already-running binary's vault without
-    // restarting it (the indexer scans on boot). The phase8-R4-6
-    // pattern spins up a dedicated jasper handle for this scenario;
-    // we mirror that pattern in-scenario rather than at the
-    // describe-level so the @r4-7 and @r4-8 tests above keep
-    // sharing the cheap default-spawned binary.
     const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "jasper-r4-10-"));
     try {
       const notesDir = path.join(dataDir, "notes");
@@ -1172,7 +842,6 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
 
       const local = await spawnJasper({ dataDir });
       try {
-        // Grant Tier-1 on projects/ — same path as the R4-6 spec uses.
         const grant = await fetch(local.baseURL + "/api/v1/mcp/grants", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -1196,23 +865,15 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
         await expect(aiRow).toBeVisible({ timeout: 10_000 });
         await expect(plainRow).toBeVisible({ timeout: 10_000 });
 
-        // Pre-assert the granted folder carries data-ai-level — this is
-        // the load-bearing input for the R4-10 CSS selector.
         await expect(aiRow).toHaveAttribute("data-ai-level", "1", {
           timeout: 5_000,
         });
 
-        // Cmd/Ctrl-click both rows to set data-selected on each (single
-        // click on a folder toggles expand; multi-select keeps both rows
-        // visually "selected" so we can read both colors in the same
-        // DOM snapshot). Use the platform's primary multi-select
-        // modifier per TreeRow.handleClick.
         const isMac = process.platform === "darwin";
         const modifier = isMac ? "Meta" : "Control";
         await aiRow.click({ modifiers: [modifier] });
         await plainRow.click({ modifiers: [modifier] });
 
-        // Wait for the data-selected attribute to propagate.
         await expect(aiRow).toHaveAttribute("data-selected", "true", {
           timeout: 5_000,
         });
@@ -1227,14 +888,6 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
           (el) => getComputedStyle(el as HTMLElement).backgroundColor,
         );
 
-        // Parse computed color into a 0-255 RGB tuple. Modern Chromium
-        // serializes `color-mix(in srgb, ...)` results as either
-        //   - "rgb(r, g, b)" / "rgba(r, g, b, a)"  (older form), OR
-        //   - "color(srgb 0.654902 0.545098 0.980392 / 0.24)"  (CSS
-        //     Color Module Level 4 — the form Chromium 120+ emits for
-        //     color-mix outputs).
-        // We accept both. The srgb floats (0-1) are scaled to 0-255 so
-        // the threshold comparisons below stay in a single unit system.
         const parseRgb = (s: string): [number, number, number] => {
           const mRgb = s.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
           if (mRgb) {
@@ -1259,11 +912,6 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
         const [aiR, aiG, aiB] = parseRgb(aiColor);
         const [plainR, , plainB] = parseRgb(plainColor);
 
-        // R4-10 contract: AI row is visibly violet (higher red AND
-        // higher blue than the plain accent-blue). Violet =
-        // ~rgb(167, 139, 250); plain accent = ~rgb(96, 165, 250). So
-        // violet has more red AND more blue mixed into the surface
-        // base than the accent does. We assert both deltas.
         expect(
           aiColor !== plainColor,
           `R4-10: AI row color (${aiColor}) is indistinguishable from plain selected (${plainColor}) — violet identity lost on selection`,
@@ -1272,9 +920,6 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
           aiR > plainR,
           `R4-10: AI selected red (${aiR}) should exceed plain selected red (${plainR}) for the violet shift to read. aiColor=${aiColor} plainColor=${plainColor} aiG=${aiG} plainB=${plainB}`,
         ).toBe(true);
-        // The blue component check is informational — accent and violet
-        // share a high-blue profile, so we only enforce the red-shift
-        // as the hard gate. We still log the comparison for diagnosis.
         expect(
           aiB,
           `R4-10 diagnostic: aiB=${aiB} plainB=${plainB}`,
@@ -1288,23 +933,6 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @r4-15 — --data-dir flag removed; JASPER_DATA_DIR silently ignored.
-//
-// UAT-2 R4-15: the deprecated --data-dir flag and JASPER_DATA_DIR env var
-// were excised entirely in Plan 08-23. This spec is the regression guard:
-//
-//   1. Spawning `bin/jasper serve --data-dir <tmp>` exits non-zero with
-//      stderr containing "flag provided but not defined: -data-dir"
-//      (Go stdlib's default error string for an unknown flag).
-//
-//   2. Spawning `bin/jasper serve` with JASPER_DATA_DIR set in the env
-//      boots cleanly (the env var is silently ignored — no deprecation
-//      warning, no failure).
-//
-// Both arms run against the live bin/jasper binary so a stale build of
-// the flag-removal change cannot pass silently.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
   test("R4-15 — --data-dir flag is removed (unknown flag)", async () => {
@@ -1347,8 +975,6 @@ test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
         stdout += b.toString();
       });
 
-      // Wait for the process to exit (or kill after 5s as a guard so a
-      // hung process doesn't stall the suite).
       const exitCode = await new Promise<number | null>((resolve) => {
         const killTimer = setTimeout(() => {
           proc.kill("SIGKILL");
@@ -1359,8 +985,6 @@ test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
         });
       });
 
-      // Plan 08-23: --data-dir is no longer declared, so fs.Parse rejects
-      // it with a non-zero exit and the canonical stdlib error string.
       expect(
         exitCode !== 0 && exitCode !== null,
         `expected non-zero exit; got code=${exitCode}; stdout=${stdout}; stderr=${stderr}`,
@@ -1387,7 +1011,6 @@ test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
     const repoRoot = path.resolve(__dirname, "..", "..");
     const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
 
-    // Allocate a free port — same pattern as helpers/binary.ts.
     const port = await new Promise<number>((resolve, reject) => {
       const srv = createServer();
       srv.unref();
@@ -1412,9 +1035,6 @@ test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
     const ignoredPath = path.join(os.tmpdir(), "this-path-must-not-be-used");
 
     try {
-      // Boot with JASPER_DATA_DIR set; the env var should be silently
-      // ignored and the server should come up against --vault. We DO
-      // pass --vault so the server doesn't hit the picker.
       const proc = spawn(
         JASPER_BIN,
         ["serve", "--vault", vaultDir, "--addr", `127.0.0.1:${port}`],
@@ -1437,7 +1057,6 @@ test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
         stdout += b.toString();
       });
 
-      // Poll /api/v1/admin/status until it answers OR timeout.
       const baseURL = `http://127.0.0.1:${port}`;
       const deadline = Date.now() + 15_000;
       let ready = false;
@@ -1460,8 +1079,6 @@ test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
           `server with JASPER_DATA_DIR set did not become ready; stdout=${stdout}; stderr=${stderr}`,
         ).toBe(true);
 
-        // Plan 08-23 (R4-15): no deprecation warning should fire because
-        // the env var is no longer recognized at all.
         expect(
           stderr.includes("JASPER_DATA_DIR is deprecated"),
           `JASPER_DATA_DIR should be silently ignored, but a deprecation warning was emitted: ${stderr}`,
@@ -1486,19 +1103,6 @@ test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @r4-3-r4-4-r4-6 — 08-21 MCP tooling improvements.
-//
-// R4-3: list_grants tool returns the active vault's grants sorted asc.
-// R4-4: create_note honours optional `title` param (H1 = title, filename = slug).
-// R4-6: update_note accepts if_match="*" as a last-writer-wins opt-in;
-//       response carries force_write: true. A literal stale tag still 409s.
-//
-// Each scenario drives bin/jasper via spawnJasper with MCP enabled by
-// default (UAT-2 round 2 Q3). The MCP StreamableHTTP RPC helper mirrors
-// the @r4-1 scenario above — POST initialize → grab Mcp-Session-Id →
-// POST notifications/initialized → POST tools/call.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
   let jasper: JasperHandle;
@@ -1511,12 +1115,9 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
 
     jasper = await spawnJasper();
 
-    // Pre-create the parent folders the scenarios target (fsstore
-    // CreateFile is single-level mkdir only).
     await fs.mkdir(path.join(jasper.dataDir, "notes", "projects"), { recursive: true });
     await fs.mkdir(path.join(jasper.dataDir, "notes", "drafts"), { recursive: true });
 
-    // Wait for the MCP listener.
     const deadline = Date.now() + 5_000;
     let lastErr: unknown;
     while (Date.now() < deadline) {
@@ -1541,9 +1142,6 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
     if (jasper) await jasper.kill();
   });
 
-  // Each scenario opens its own MCP session — beforeAll() can't share one
-  // because the SDK keys sessions to a single handshake and we want each
-  // test to be independent.
   async function newMcpSession(): Promise<{
     rpc: (
       method: string,
@@ -1596,7 +1194,6 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
       };
     }
 
-    // Handshake.
     const initOut = await rpc(
       "initialize",
       {
@@ -1617,7 +1214,6 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
   }
 
   test("R4-3 — list_grants returns active grants", async () => {
-    // Seed two grants via the existing HTTP grant API.
     const grantsToSeed = [
       { folder_path: "projects", level: 1 },
       { folder_path: "drafts", level: 2 },
@@ -1654,17 +1250,14 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
     expect(grants, "expected grants in structuredContent").toBeTruthy();
     expect(grants!.length).toBe(2);
 
-    // Sorted asc: "drafts" < "projects".
     expect(grants![0].path).toBe("drafts");
     expect(grants![0].tier).toBe(2);
     expect(grants![1].path).toBe("projects");
     expect(grants![1].tier).toBe(1);
-    // RFC3339 timestamp shape.
     for (const g of grants!) {
       expect(g.granted_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
     }
 
-    // Cleanup so subsequent tests see a clean grant set.
     for (const g of grantsToSeed) {
       await fetch(
         jasper.baseURL + "/api/v1/mcp/grants?path=" + encodeURIComponent(g.folder_path),
@@ -1676,7 +1269,6 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
   test("R4-4 — create_note honours optional title", async () => {
     const path = await import("node:path");
     const fs = await import("node:fs/promises");
-    // Seed a grant so create_note can write under projects/.
     const grantResp = await fetch(jasper.baseURL + "/api/v1/mcp/grants", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1706,15 +1298,11 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
       `create_note tool error: ${JSON.stringify(result)}`,
     ).toBeFalsy();
 
-    // File MUST be at the slugified path.
     const filePath = path.join(jasper.dataDir, "notes", "projects", "r4-4-title.md");
     const contents = await fs.readFile(filePath, "utf8");
-    // H1 MUST be the friendly title.
     expect(contents).toContain("# My Friendly Title");
-    // The slug "r4-4-title" MUST NOT appear as a leading H1.
     expect(contents).not.toMatch(/^# r4-4-title\b/m);
 
-    // Cleanup the grant.
     await fetch(jasper.baseURL + "/api/v1/mcp/grants?path=projects", {
       method: "DELETE",
     });
@@ -1723,7 +1311,6 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
   test("R4-6 — update_note accepts if_match=* and rejects stale literal tag", async () => {
     const path = await import("node:path");
     const fs = await import("node:fs/promises");
-    // Grant + create a note (pure write workflow — no prior read_note).
     const grantResp = await fetch(jasper.baseURL + "/api/v1/mcp/grants", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1748,7 +1335,6 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
     expect(createResult.isError, JSON.stringify(createResult)).toBeFalsy();
     const notePath = createResult.structuredContent!.path!;
 
-    // Wildcard arm: no prior read; force overwrite.
     const wildcardBody = "wildcard overwrite body — last writer wins\n";
     const wildcardOut = await rpc(
       "tools/call",
@@ -1773,12 +1359,10 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
     ).toBeFalsy();
     expect(wildcardResult.structuredContent?.force_write).toBe(true);
 
-    // File body MUST be the wildcard payload (after frontmatter scaffold).
     const filePath = path.join(jasper.dataDir, "notes", "projects", "r4-6-wildcard.md");
     const onDisk = await fs.readFile(filePath, "utf8");
     expect(onDisk).toContain(wildcardBody);
 
-    // Stale-literal arm: an obviously-stale RFC3339Nano tag MUST still 409.
     const staleTag = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const staleOut = await rpc(
       "tools/call",
@@ -1800,32 +1384,15 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
     expect(staleResult.isError, "expected conflict for stale literal tag").toBe(true);
     const staleText = JSON.stringify(staleResult);
     expect(staleText).toContain("conflict");
-    // force_write must NOT leak into the conflict path.
     expect(staleText).not.toContain(`"force_write":true`);
 
-    // Cleanup grant.
     await fetch(jasper.baseURL + "/api/v1/mcp/grants?path=projects", {
       method: "DELETE",
     });
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @r4-9-r4-12-r4-13 — tree row + ACL refresh + vault-switch (Plan 08-22)
-//
-// R4-9: descendants of granted folders show a disabled "Inherits AI access
-//       from <ancestor>" item INSTEAD of an enabled Grant AI access submenu.
-// R4-12: granting AI access closes the menu once and keeps it closed (no
-//        spontaneous re-open ~1-2s later from the WS mcp:grant_changed
-//        re-render).
-// R4-13: switching vaults aborts the in-flight getNote against the prior
-//        vault so the user does not see a 404 flash for vault A's note.
-// ─────────────────────────────────────────────────────────────────────────────
 
-// Mirror of phase8-R4-6's bootstrap pattern: spawn against a separate
-// JASPER_APP_HOME, then drive vault/create + vault/open via the HTTP
-// API so the SPA boots straight into the connected state (skips the
-// "Choose a vault" picker dialog).
 async function spawnAndBootstrapVault(opts: {
   appHomeSuffix: string;
   vaultSuffix: string;
@@ -1845,14 +1412,11 @@ async function spawnAndBootstrapVault(opts: {
   const vaultRaw = await fsP.mkdtemp(
     pathMod.join(osMod.tmpdir(), opts.vaultSuffix),
   );
-  // Canonicalize like phase8-R4-6 (darwin lowercases the realpath).
   const vault = process.platform === "darwin"
     ? fsS.realpathSync(vaultRaw).toLowerCase()
     : fsS.realpathSync(vaultRaw);
   await opts.seed(vault);
 
-  // Boot binary with JASPER_APP_HOME pointing at the empty appHome so the
-  // app initializes a fresh config.json without --vault.
   const cp = await import("node:child_process");
   const net = await import("node:net");
   const fileURLMod = await import("node:url");
@@ -1881,7 +1445,6 @@ async function spawnAndBootstrapVault(opts: {
   proc.stderr?.on("data", (b: Buffer) => process.stderr.write(`[jasper] ${b}`));
 
   const baseURL = `http://127.0.0.1:${port}`;
-  // Wait for vault endpoint.
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     try {
@@ -1893,7 +1456,6 @@ async function spawnAndBootstrapVault(opts: {
     await new Promise((r) => setTimeout(r, 100));
   }
 
-  // Bootstrap the vault via the API.
   const createRes = await fetch(`${baseURL}/api/v1/vault/create`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -1959,7 +1521,6 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
       },
     });
     try {
-      // Pre-grant Tier-1 on projects/.
       const grant = await fetch(local.baseURL + "/api/v1/mcp/grants", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1974,7 +1535,6 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
         { timeout: 15_000 },
       );
 
-      // Expand projects/ so the research subfolder mounts.
       const projectsRow = page.locator(
         '[data-tree-row="projects"][data-tree-row-kind="folder"]',
       );
@@ -1986,17 +1546,11 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
       );
       await expect(researchRow).toBeVisible({ timeout: 10_000 });
 
-      // Right-click the CHILD folder. The Grant AI access submenu should
-      // NOT appear; instead a single disabled item with the inherited
-      // grant copy should be present.
       await researchRow.click({ button: "right" });
 
-      // No enabled "Grant AI access" SubTrigger — locate by visible text.
       const enabledGrantTrigger = page.getByRole("menuitem", {
         name: /^Grant AI access$/,
       });
-      // The disabled inherited item carries data-inherited-grant="true"
-      // (TreeRowMenu.tsx) — assert its presence + locked copy.
       const inheritedItem = page.locator(
         '[role="menuitem"][data-inherited-grant="true"]',
       );
@@ -2004,20 +1558,10 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
       await expect(inheritedItem).toContainText(
         /Inherits AI access from projects \(Edit only\)/,
       );
-      // The enabled Grant AI access SubTrigger must NOT be present in
-      // this menu (the inherited item replaces it).
       await expect(enabledGrantTrigger).toHaveCount(0);
 
       await page.keyboard.press("Escape");
 
-      // Sanity check: the granted folder still shows its direct grant
-      // via the row's data-ai-level attribute (the per-row tint
-      // surface from Plan 08-20). This proves the suppression is
-      // per-descendant — the ancestor still owns its grant.
-      // We avoid a second right-click of the ancestor row because
-      // Playwright's contextmenu dispatch on a freshly-dismissed
-      // ContextMenu can race the next portal mount; the data-ai-level
-      // check is a cheaper, deterministic equivalent.
       await expect(projectsRow).toHaveAttribute("data-ai-level", "1", {
         timeout: 5_000,
       });
@@ -2058,14 +1602,12 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
       );
       await expect(draftsRow).toBeVisible({ timeout: 10_000 });
 
-      // Right-click to open the context menu.
       await draftsRow.click({ button: "right" });
       const grantTrigger = page.getByRole("menuitem", {
         name: /^Grant AI access$/,
       });
       await expect(grantTrigger).toBeVisible({ timeout: 5_000 });
 
-      // Hover the SubTrigger to open the submenu, then click "Edit only".
       await grantTrigger.hover();
       const editOnlyItem = page
         .getByRole("menuitem", { name: /Edit only/ })
@@ -2073,23 +1615,12 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
       await expect(editOnlyItem).toBeVisible({ timeout: 5_000 });
       await editOnlyItem.click();
 
-      // Immediately after the click — no role="menu" elements should be
-      // visible. Radix's auto-close on onSelect handles the dismissal.
       const anyMenu = page.locator('[role="menu"]');
       await expect(anyMenu).toHaveCount(0, { timeout: 1_000 });
 
-      // Wait 3 full seconds, well past the WS broadcast window. The
-      // `<Sub key={activeLevel}>` remount strategy prevents Radix from
-      // restoring a stale data-state="open" on the SubTrigger when the
-      // ACL refresh adds Sparkles + tier label to its children.
       await page.waitForTimeout(3_000);
-      // STILL no open menu — this is the R4-12 hard assertion.
       await expect(anyMenu).toHaveCount(0);
 
-      // Sanity check: the grant actually persisted (it would have if
-      // the menu re-open was the only failure). The row now carries
-      // data-ai-level="1" — the per-row tint surface introduced by
-      // Plan 08-20 + the grant flow.
       await expect(draftsRow).toHaveAttribute("data-ai-level", "1", {
         timeout: 5_000,
       });
@@ -2104,22 +1635,6 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
     const pathMod = await import("node:path");
     const fsP = await import("node:fs/promises");
 
-    // R4-13 fix has two halves:
-    //   (a) EditorPane wraps getNote in an AbortController whose
-    //       cleanup runs on noteId change.
-    //   (b) useVaultSwitch.markSwitching clears activeNoteId BEFORE
-    //       the SPA reloads.
-    //
-    // This scenario boots a single vault, opens a note (activeNoteId
-    // set + persisted to localStorage), then simulates the
-    // `vault.switching` end-state by clearing
-    // `localStorage["jasper.tree.activeNoteId"]` and reloading. The
-    // R4-13 hard guarantee is "no 404 fires for the prior vault's
-    // note" — that guarantee is exercised by reloading with no active
-    // note id present. The full multi-vault driver lives in
-    // phase8-G3-vault-switch-content-diagnostic.spec.ts; this scenario
-    // pins the smaller invariant (the abort + clear pair) without
-    // requiring two registered vaults.
     const local = await spawnAndBootstrapVault({
       appHomeSuffix: "jasper-r4-13-app-",
       vaultSuffix: "jasper-r4-13-vault-",
@@ -2141,7 +1656,6 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
         { timeout: 15_000 },
       );
 
-      // Click the alpha note row to set activeNoteId.
       const alphaRow = page
         .locator('[data-tree-row-kind="note"]')
         .filter({ hasText: "alpha" })
@@ -2149,13 +1663,8 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
       await expect(alphaRow).toBeVisible({ timeout: 10_000 });
       await alphaRow.click();
 
-      // Wait for activeNoteId to settle into localStorage. The 250ms
-      // debounce in useTreeStore's persistence subscriber means we
-      // need to wait at least that long.
       await page.waitForTimeout(400);
 
-      // Track any 404 response on /notes/<uuid> during the simulated
-      // switch. The R4-13 fix must keep this list empty.
       const notes404: string[] = [];
       page.on("response", (resp) => {
         if (
@@ -2166,20 +1675,11 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
         }
       });
 
-      // Capture the active note id before the switch.
       const beforeNoteId = await page.evaluate(
         () => window.localStorage.getItem("jasper.tree.activeNoteId"),
       );
       expect(beforeNoteId, "activeNoteId must be set before switch").not.toBeNull();
 
-      // Simulate the end-state of useVaultSwitch.markSwitching by
-      // clearing the persisted active-note id and reloading. After
-      // reload, the SPA hydrates with noteId=null, EditorPane renders
-      // the placeholder, and no getNote fires — so no /notes/<uuid>
-      // 404 can occur for the prior vault's note. The AbortController
-      // cleanup path is also exercised because the note row click
-      // above started a getNote that is then cleanly aborted by the
-      // navigation away.
       await page.evaluate(() => {
         window.localStorage.removeItem("jasper.tree.activeNoteId");
       });
@@ -2190,10 +1690,8 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
         { timeout: 15_000 },
       );
 
-      // After reload, settle window for any in-flight /notes/* to land.
       await page.waitForTimeout(1_500);
 
-      // The active note id should remain cleared post-reload.
       const afterNoteId = await page.evaluate(
         () => window.localStorage.getItem("jasper.tree.activeNoteId"),
       );
@@ -2202,8 +1700,6 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
         `activeNoteId not cleared post-switch — was: ${afterNoteId}`,
       ).toBe(true);
 
-      // The R4-13 hard assertion: no 404 fired for any /notes/<uuid>
-      // during the switch + reload window.
       expect(
         notes404,
         `R4-13: unexpected 404 responses for /notes/<uuid>: ${notes404.join(", ")}`,
@@ -2214,18 +1710,7 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @sb5 — sb5 (2026-06-03) menu-item vertical spacing.
-//
-// Pre-fix: items sat flush against each other (height: 32px, no margin),
-// user requested more breathing room between items after UAT-2 R5.
-// Post-fix: theme.css adds `margin-top: 4px` to every menuitem that
-// follows another menuitem. Outer container padding (TreeRowMenu
-// paddingTop/paddingBottom: 4) MUST stay untouched.
-//
-// This scenario runs against bin/jasper via spawnJasper
-// (CLAUDE.md §Verification policy: E2E before human UAT).
-// ─────────────────────────────────────────────────────────────────────────────
+
 test.describe("Phase 8 — sb5 menu vertical spacing (@sb5)", () => {
   let jasper: JasperHandle;
 
@@ -2255,15 +1740,9 @@ test.describe("Phase 8 — sb5 menu vertical spacing (@sb5)", () => {
     const count = await items.count();
     expect(count, "expected at least 2 menu items in the context menu").toBeGreaterThanOrEqual(2);
 
-    // Move the mouse OFF the menu so no item carries [data-highlighted];
-    // we are measuring resting-state geometry, not hover-state geometry.
     await page.mouse.move(0, 0);
     await page.waitForTimeout(100);
 
-    // Pick the first two items that are adjacent siblings in the DOM
-    // (Radix renders separators between groups; the first two items in
-    // every TreeRowMenu opened on the scratchpad row are siblings —
-    // "Open", "Rename" — so items.nth(0) + items.nth(1) is safe here).
     const first = items.nth(0);
     const second = items.nth(1);
 
@@ -2275,19 +1754,12 @@ test.describe("Phase 8 — sb5 menu vertical spacing (@sb5)", () => {
 
     const gap = secondBox.y - (firstBox.y + firstBox.height);
 
-    // sb5 contract: items must be visibly separated.
-    // Pre-fix gap was 0 (items flush); rule adds 4px margin-top.
-    // Allow >= 3px tolerance for sub-pixel rendering.
     expect(
       gap,
       `sb5: expected vertical gap between consecutive menu items >= 3px, got ${gap}px ` +
         `(first.y=${firstBox.y} first.height=${firstBox.height} second.y=${secondBox.y})`,
     ).toBeGreaterThanOrEqual(3);
 
-    // Also assert the gap is bounded — guards against an accidental
-    // "16px margin everywhere" regression. Item-height is 32px; 4px
-    // gap is ~12% of item height. A 12px ceiling catches anything
-    // that would feel like a misclick target.
     expect(
       gap,
       `sb5: gap should stay small (<= 12px), got ${gap}px`,
@@ -2297,12 +1769,7 @@ test.describe("Phase 8 — sb5 menu vertical spacing (@sb5)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 260603-six — Notes-sidebar kebab DropdownMenu opens to the RIGHT of the
-// trigger (side="right" align="start"), not below over the row.
-// Asserts geometry against bin/jasper (built via `make build`) so we catch
-// any future regression of the prop change in TreeRowMenu.tsx:534.
-// ---------------------------------------------------------------------------
+
 test.describe("Phase 8 — 260603-six kebab opens right (@six-kebab-right)", () => {
   test("kebab DropdownMenu opens to the right of the trigger with top-aligned edge", async ({
     page,
@@ -2331,13 +1798,11 @@ test.describe("Phase 8 — 260603-six kebab opens right (@six-kebab-right)", () 
         { timeout: 15_000 },
       );
 
-      // Locate the projects/ folder row.
       const projectsRow = page.locator(
         '[data-tree-row="projects"][data-tree-row-kind="folder"]',
       );
       await expect(projectsRow).toBeVisible({ timeout: 10_000 });
 
-      // Kebab is `opacity:0` until group-hover — hover the row first.
       await projectsRow.hover();
       const kebab = projectsRow.locator("[data-tree-row-kebab]");
       await expect(kebab).toBeVisible({ timeout: 5_000 });
@@ -2349,11 +1814,6 @@ test.describe("Phase 8 — 260603-six kebab opens right (@six-kebab-right)", () 
 
       await kebab.click();
 
-      // Scope to the menu that opened on the right — the Radix data-side
-      // attribute is set on the Content element. If the menu opened on a
-      // different side (collision-detection flip), this locator will not
-      // resolve and the test will halt — per plan HALT-IF-INCONCLUSIVE GATE
-      // we do NOT relax the assertion.
       const menu = page.locator('[role="menu"][data-side="right"]');
       await expect(
         menu,
@@ -2372,23 +1832,18 @@ test.describe("Phase 8 — 260603-six kebab opens right (@six-kebab-right)", () 
         throw new Error("six-kebab-right: viewport size was null");
       }
 
-      // 1. Menu's LEFT edge sits at or to the right of the trigger's RIGHT edge.
-      //    The -1 tolerates sub-pixel layout rounding.
       expect(
         menuBox.x,
         `menu.x (${menuBox.x}) must be >= kebab.right (${kebabBox.x + kebabBox.width}) - 1; ` +
           `menu opened on wrong side`,
       ).toBeGreaterThanOrEqual(kebabBox.x + kebabBox.width - 1);
 
-      // 2. Menu's TOP edge is aligned with the kebab's TOP edge.
-      //    align="start" + sideOffset={4} → expect within ~6px.
       const yDelta = Math.abs(menuBox.y - kebabBox.y);
       expect(
         yDelta,
         `|menu.y - kebab.y| (${yDelta}) must be <= 6 (align="start" should top-align)`,
       ).toBeLessThanOrEqual(6);
 
-      // 3. Menu fits within the viewport horizontally (no clipping).
       expect(
         menuBox.x + menuBox.width,
         `menu right edge (${menuBox.x + menuBox.width}) must be within viewport ` +

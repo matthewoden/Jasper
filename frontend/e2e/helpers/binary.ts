@@ -94,8 +94,7 @@ async function killProcess(proc: ChildProcess): Promise<void> {
   });
 }
 
-// Resolve repo root from this file: frontend/e2e/helpers/binary.ts -> ../../..
-// __dirname is not defined in ES module scope, so derive it from import.meta.url.
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
@@ -115,7 +114,6 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; owns
   const port = opts.port ?? await findFreePort();
   const ownsDataDir = opts.ownsDataDir;
   const binPath = path.join(repoRoot, "bin", "jasper");
-  // Plan 08-23 (R4-15): switched from removed --data-dir to canonical --vault.
   const proc = spawn(
     binPath,
     [
@@ -155,14 +153,8 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; owns
   };
 
   const restart = async (): Promise<JasperHandle> => {
-    // Kill the current process (but do NOT clean up dataDir — we reuse it).
     await killProcess(proc);
-    // Brief pause to let the OS release the port (SO_REUSEADDR is set,
-    // but a small sleep avoids a potential EADDRINUSE on heavily-loaded
-    // CI machines).
     await new Promise((r) => setTimeout(r, 200));
-    // Spawn a new instance against the same dataDir + same port.
-    // The new handle owns the dataDir cleanup (ownsDataDir: true → same as original).
     return spawnJasperInternal({ dataDir, port, ownsDataDir, env: opts.env });
   };
 
@@ -195,7 +187,6 @@ export interface SpawnOpts {
  * masking as a test failure.
  */
 export async function spawnJasper(opts: SpawnOpts = {}): Promise<JasperHandle> {
-  // Fail-fast guard: bin/jasper must exist. CLAUDE.md §Build & embed pipeline.
   const { existsSync } = await import("node:fs");
   const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
   if (!existsSync(JASPER_BIN)) {
@@ -206,8 +197,6 @@ export async function spawnJasper(opts: SpawnOpts = {}): Promise<JasperHandle> {
   }
 
   if (opts.dataDir !== undefined) {
-    // Caller-provided dataDir: caller owns cleanup (ownsDataDir=false so kill()
-    // does NOT delete it — the caller manages the directory lifecycle).
     return spawnJasperInternal({ dataDir: opts.dataDir, ownsDataDir: false, env: opts.env });
   }
   return spawnJasperInternal({ ownsDataDir: true, env: opts.env });

@@ -63,15 +63,13 @@ test.describe("Phase 8 — offline operation (PERF-04 / D-43)", () => {
       try {
         url = new URL(request.url());
       } catch {
-        // Some requests (e.g., data:/blob:/about:) don't parse as URLs —
-        // those are inherently local to the browser and never hit network.
         return route.continue();
       }
       const isLocal =
         url.hostname === "127.0.0.1" ||
         url.hostname === "localhost" ||
         url.hostname === "::1" ||
-        url.hostname === "0.0.0.0" || // some browsers map localhost binding here
+        url.hostname === "0.0.0.0" ||
         url.protocol === "data:" ||
         url.protocol === "blob:" ||
         url.protocol === "about:";
@@ -87,21 +85,14 @@ test.describe("Phase 8 — offline operation (PERF-04 / D-43)", () => {
   test("first-run wizard issues zero external network requests", async ({ context, page }) => {
     const externalRequests = installOfflineGuard(context);
 
-    // bin/jasper against an empty dataDir → firstrun middleware redirects
-    // / and any non-/setup route to /setup. We follow the redirect and
-    // exercise the wizard form (without submitting).
     await page.goto(jasper.baseURL);
     await page.waitForLoadState("networkidle");
 
-    // The wizard mounts under /setup. Verify the data-dir input is visible.
     const dataDirInput = page.locator('input[aria-label="Data directory path"]');
     await expect(dataDirInput).toBeVisible({ timeout: 10_000 });
 
-    // Type a candidate path (the validation endpoint hits POST
-    // /api/v1/setup/validate-data-dir on localhost — that MUST be allowed).
     await dataDirInput.fill("/tmp/jasper-offline-probe");
 
-    // Brief wait so any debounced validation request has time to fire.
     await page.waitForTimeout(500);
 
     expect(
@@ -113,31 +104,15 @@ test.describe("Phase 8 — offline operation (PERF-04 / D-43)", () => {
   test("post-setup SPA issues zero external network requests", async ({ context, page, request }) => {
     const externalRequests = installOfflineGuard(context);
 
-    // Provision the vault via the wizard submit endpoint. We use the
-    // request fixture (separate from the page) so the wizard's own
-    // submit traffic also passes through the offline guard.
-    //
-    // The vault path MUST be unique per test invocation to avoid
-    // colliding with the wizard test above; we use Playwright's
-    // test.info() workerIndex for uniqueness.
     const probeDir = `${jasper.dataDir}-spa-${test.info().workerIndex}`;
     const setupResp = await request.post(`${jasper.baseURL}/api/v1/setup`, {
       data: { path: probeDir },
     });
     expect(setupResp.ok(), `setup submit failed: ${await setupResp.text()}`).toBeTruthy();
 
-    // Navigate to the root SPA — after a successful setup the firstrun
-    // middleware passes through and we hit the steady-state shell.
     await page.goto(jasper.baseURL);
     await page.waitForLoadState("networkidle");
 
-    // Exercise a handful of surfaces likely to leak external fetches if
-    // a regression slipped in:
-    //   - Command palette (Cmd+P / Ctrl+P) — opens & closes
-    //   - Cheat-sheet (Cmd+/) — opens & closes
-    //
-    // The exact key bindings vary by OS; we send both and don't fail if
-    // one doesn't activate — the assertion at the end is the gate.
     await page.keyboard.press("Control+P");
     await page.waitForTimeout(200);
     await page.keyboard.press("Escape");

@@ -122,8 +122,6 @@ test.describe("Phase 8 R4-6 — violet folder tint via data-ai-level", () => {
       fs.mkdtempSync(path.join(os.tmpdir(), "jasper-r4-6-vault-")),
     );
 
-    // Seed structure: projects/note-inside.md so we have a folder + a note
-    // inside it. The grant goes on `projects/`; both rows must light up.
     const notesDir = path.join(vault, "notes");
     fs.mkdirSync(path.join(notesDir, "projects"), { recursive: true });
     fs.writeFileSync(
@@ -138,32 +136,22 @@ test.describe("Phase 8 R4-6 — violet folder tint via data-ai-level", () => {
       await bootstrapVault(handle.baseURL, vault);
       await openVault(handle.baseURL, vault);
 
-      // Open the SPA + wait for the tree to settle.
       await page.goto(handle.baseURL + "/");
       await expect(page.getByTestId("status-bar")).toBeVisible({ timeout: 10_000 });
-      // Tree row for the projects folder.
       const projectsRow = page.locator(
         '[data-tree-row="projects"][data-tree-row-kind="folder"]',
       );
       await expect(projectsRow).toBeVisible({ timeout: 5_000 });
 
-      // Pre-grant: data-ai-level must NOT be set on the projects row.
       await expect(projectsRow).not.toHaveAttribute("data-ai-level", /.+/);
 
-      // Expand projects/ so its child row mounts.
       await projectsRow.click();
-      // The note row's data-tree-row carries its id; locate by kind + the
-      // contained text. Then capture for later attribute assertion.
       const noteRow = page
         .locator('[data-tree-row-kind="note"]')
         .filter({ hasText: "note-inside" });
       await expect(noteRow).toBeVisible({ timeout: 5_000 });
       await expect(noteRow).not.toHaveAttribute("data-ai-level", /.+/);
 
-      // POST a Tier-1 grant on projects/. The frontend listens for the
-      // mcp:grant_changed WS event (broadcaster.Broadcast in
-      // mcp_grants_handler.go); the tree re-renders within a few hundred
-      // ms with data-ai-level on every affected row.
       const grant = await fetch(`${handle.baseURL}/api/v1/mcp/grants`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -171,16 +159,13 @@ test.describe("Phase 8 R4-6 — violet folder tint via data-ai-level", () => {
       });
       expect(grant.status, "grant POST status").toBe(200);
 
-      // Folder row gets data-ai-level="1".
       await expect(projectsRow).toHaveAttribute("data-ai-level", "1", {
         timeout: 5_000,
       });
-      // Descendant note row gets the same attribute (root + all subfolders).
       await expect(noteRow).toHaveAttribute("data-ai-level", "1", {
         timeout: 5_000,
       });
 
-      // Revoke → both attributes drop again.
       const revoke = await fetch(
         `${handle.baseURL}/api/v1/mcp/grants?path=projects`,
         { method: "DELETE" },

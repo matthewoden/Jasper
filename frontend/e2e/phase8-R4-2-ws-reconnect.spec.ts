@@ -149,7 +149,6 @@ test.describe("Phase 8 R4-2 — WS forceReconnect on cloud-icon click", () => {
 
     let handle: VaultHandle | undefined;
     try {
-      // Boot 1.
       handle = await spawnJasperOnPort(appHome, port);
       await bootstrapVault(handle.baseURL, vault);
       await openVault(handle.baseURL, vault);
@@ -158,38 +157,25 @@ test.describe("Phase 8 R4-2 — WS forceReconnect on cloud-icon click", () => {
       await expect(page.getByTestId("status-bar")).toBeVisible({ timeout: 10_000 });
 
       const dot = page.getByTestId("connection-status-dot");
-      // Wait for the WS to come up the first time.
       await expect(dot).toHaveAttribute("data-status", "connected", {
         timeout: 5_000,
       });
 
-      // ── Kill the server. ────────────────────────────────────────────────
       const proc = handle.proc;
       handle.kill();
       await waitForExit(proc, 5_000);
 
-      // Dot transitions to reconnecting; SaveIndicator should flip to
-      // paused (D-06: connection lost → paused) within the backoff window.
       await expect(dot).toHaveAttribute("data-status", "reconnecting", {
         timeout: 5_000,
       });
       const saveBtn = page.locator('[data-save-state="paused"]');
       await expect(saveBtn).toBeVisible({ timeout: 5_000 });
 
-      // ── Respawn the server on the SAME port. ───────────────────────────
-      // Give the kernel a beat to TIME_WAIT-clear the port.
       await new Promise((r) => setTimeout(r, 500));
       handle = await spawnJasperOnPort(appHome, port);
-      // We just want it bound; no need to re-open vault — the same appHome
-      // means current_vault from app.json is preserved.
 
-      // ── Click the cloud-off icon. Pre-fix: this did nothing (a doomed
-      // reindex POST). Post-fix: it calls forceWsReconnect which cancels
-      // the backoff and reconnects immediately.
       await saveBtn.click();
 
-      // The connection should restore within seconds (NOT the 30+s of
-      // natural backoff). Generous 8s budget.
       await expect(dot).toHaveAttribute("data-status", "connected", {
         timeout: 8_000,
       });

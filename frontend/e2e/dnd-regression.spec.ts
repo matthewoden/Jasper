@@ -30,9 +30,6 @@ test.afterEach(async () => {
   if (jasper) await jasper.kill();
 });
 
-// ─────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────
 
 /** Navigate to the app and wait for the connection-status dot to show connected. */
 async function openApp(page: Page): Promise<void> {
@@ -104,9 +101,7 @@ async function fetchTree(page: Page): Promise<{
   return resp.json();
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Bug A: drag past last row → drop at root
-// ─────────────────────────────────────────────────────────────────────
+
 test.describe("Bug A regression — drag past last row", () => {
   /**
    * Scenario: a note at root is dragged onto the empty grey area BELOW
@@ -126,35 +121,18 @@ test.describe("Bug A regression — drag past last row", () => {
   test("note dragged below last row moves to root", async ({ page }) => {
     await openApp(page);
 
-    // Seed: create a folder with a note inside it.
     await seedFolder(page, "projects");
     await seedNote(page, "my-note", "projects");
 
-    // Wait for tree to reflect: 1 folder + 2 notes (scratchpad + my-note)
-    // but my-note is inside folder so only scratchpad visible at root level.
     await waitForFolderCount(page, 1);
-    // react-arborist defaults openByDefault=true, so the projects folder is
-    // already open on load — both scratchpad and my-note are visible.
-    // (A click would CLOSE the folder, which is the opposite of what we want.)
     await waitForNoteCount(page, 2);
     await waitForFolderCount(page, 1);
 
-    // Locate my-note row.
     const myNoteRow = page.locator('[data-tree-row-kind="note"]').filter({
       hasText: "my-note",
     });
     await expect(myNoteRow).toBeVisible({ timeout: 5_000 });
 
-    // Drag my-note into the empty area of the react-arborist tree container
-    // below the last visible row. react-arborist's outer drop hook
-    // (useOuterDrop) is registered on the react-window outer container,
-    // which covers the empty area below the rows. With height=9999 on the
-    // Tree, the outer container is 9999px tall but only a small portion is
-    // visible — we target a y position well past the last row (3 rows ×
-    // 32px = 96px, so y=200 is safely in the empty area).
-    //
-    // page.dragAndDrop uses CDP Input.dispatchDragEvent which fires real
-    // HTML5 drag events compatible with react-dnd's HTML5Backend.
     await page.dragAndDrop(
       '[data-tree-row-kind="note"]:has-text("my-note")',
       '[role="tree"]',
@@ -164,10 +142,8 @@ test.describe("Bug A regression — drag past last row", () => {
       },
     );
 
-    // Give the move API call time to complete (it's async after drop).
     await page.waitForTimeout(1_000);
 
-    // Verify: my-note should now be at root (path = "my-note.md")
     const tree = await fetchTree(page);
     const noteAtRoot = tree.root.find(
       (n) => n.kind === "note" && (n.path ?? "").endsWith("my-note.md") && !(n.path ?? "").includes("/"),
@@ -176,9 +152,7 @@ test.describe("Bug A regression — drag past last row", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────
-// Bug B regression — folder drag into another folder
-// ─────────────────────────────────────────────────────────────────────
+
 test.describe("Bug B regression — folder drag into another folder", () => {
   /**
    * Scenario: two root-level folders exist: "alpha" and "beta".
@@ -192,14 +166,11 @@ test.describe("Bug B regression — folder drag into another folder", () => {
   test("folder dragged into another folder moves correctly", async ({ page }) => {
     await openApp(page);
 
-    // Seed two root-level folders.
     await seedFolder(page, "alpha");
     await seedFolder(page, "beta");
 
-    // Wait for both folders to appear in the tree.
     await waitForFolderCount(page, 2);
 
-    // Locate the folder rows.
     const alphaRow = page.locator('[data-tree-row-kind="folder"]').filter({
       hasText: "alpha",
     });
@@ -209,8 +180,6 @@ test.describe("Bug B regression — folder drag into another folder", () => {
     await expect(alphaRow).toBeVisible({ timeout: 5_000 });
     await expect(betaRow).toBeVisible({ timeout: 5_000 });
 
-    // Drag alpha ONTO beta's center (hover.inMiddle = true triggers "drop INTO folder").
-    // We use page.dragAndDrop with targetPosition pointing to the center of betaRow.
     const betaBox = await betaRow.boundingBox();
     if (!betaBox) throw new Error("Could not get beta bounding box");
 
@@ -218,17 +187,13 @@ test.describe("Bug B regression — folder drag into another folder", () => {
       '[data-tree-row-kind="folder"]:has-text("alpha")',
       '[data-tree-row-kind="folder"]:has-text("beta")',
       {
-        // Source: center of alpha row
         sourcePosition: { x: 60, y: 16 },
-        // Target: center of beta row (y=16 is middle of 32px row → hover.inMiddle)
         targetPosition: { x: 60, y: 16 },
       },
     );
 
-    // Give the move API call time to complete.
     await page.waitForTimeout(1_500);
 
-    // Verify: alpha should now be inside beta.
     const tree = await fetchTree(page);
     const betaFolder = tree.root.find((n) => n.kind === "folder" && n.name === "beta");
     expect(betaFolder).toBeTruthy();

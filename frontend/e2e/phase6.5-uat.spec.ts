@@ -50,9 +50,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Single shared instance (see ordering note in header)
-// ─────────────────────────────────────────────────────────────────────────────
 
 let jasper: JasperHandle;
 
@@ -64,9 +61,6 @@ test.afterAll(async () => {
   if (jasper) await jasper.kill();
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Navigate to baseURL and wait for WS "connected" status.
@@ -105,7 +99,6 @@ async function typeIntoEditor(page: Page, text: string): Promise<void> {
  * The overlay renders a <span class="text-muted">Saved</span> inside a role="status" div.
  */
 async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
-  // The SaveIndicator renders role="status" with "Saved" text when status=saved.
   await expect(
     page.locator('[role="status"]').filter({ hasText: /^Saved$/ }),
   ).toBeVisible({ timeout: timeoutMs });
@@ -121,7 +114,6 @@ async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
  * checked here for forward/backward compatibility.
  */
 async function ensureRailExpanded(page: Page): Promise<void> {
-  // Phase 6.5 label: "Show backlinks panel" (from the collapsed rail aside)
   const showBtnOld = page.getByRole("button", { name: "Show backlinks panel" });
   if ((await showBtnOld.count()) > 0 && (await showBtnOld.isVisible())) {
     await showBtnOld.click();
@@ -131,7 +123,6 @@ async function ensureRailExpanded(page: Page): Promise<void> {
     return;
   }
 
-  // Phase 6.6 label: "Show panels" (from the TopBar)
   const showBtnNew = page.getByRole("button", { name: "Show panels" });
   if ((await showBtnNew.count()) > 0 && (await showBtnNew.isVisible())) {
     await showBtnNew.click();
@@ -168,7 +159,6 @@ async function apiCreateNote(
   const created = (await createResp.json()) as { id: string };
   const id = created.id;
 
-  // PUT content
   const updateResp = await page.request.put(
     `${jasper.baseURL}/api/v1/notes/${id}`,
     { data: { content } },
@@ -201,31 +191,20 @@ async function ensureTagsPanelExpanded(page: Page): Promise<void> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S1 — @UX-T-01: Right-rail two-panel layout, divider draggable, ratio persists
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S1 @UX-T-01: rail has two panel cards + draggable inter-panel divider + ratio persists", async ({ page }) => {
   await openApp(page, false);
 
-  // Expand the rail
   await ensureRailExpanded(page);
 
-  // Both panel card shells should be visible.
-  // Tags panel: header expand/collapse button with aria-label "Tags panel, ..."
-  // Use "Tags panel, " (trailing comma+space) to avoid matching the "Close Tags panel" button.
   await expect(page.locator('button[aria-label*="Tags panel, "]')).toBeVisible({ timeout: 8_000 });
-  // Backlinks panel: role="region" aria-label="Notes that link to this note"
   await expect(
     page.getByRole("region", { name: "Notes that link to this note" }),
   ).toBeVisible({ timeout: 8_000 });
 
-  // Inter-panel divider exists
   const divider = page.getByTestId("inter-panel-divider");
   await expect(divider).toBeVisible({ timeout: 5_000 });
 
-  // Drag the divider downward ~50px and assert the ratio changes.
-  // Read initial ratio via localStorage.
   const ratioBefore = await page.evaluate(() =>
     window.localStorage.getItem("jasper.rail.tags.height.ratio"),
   );
@@ -238,7 +217,6 @@ test("S1 @UX-T-01: rail has two panel cards + draggable inter-panel divider + ra
     dividerBox.y + dividerBox.height / 2,
   );
   await page.mouse.down();
-  // Drag 60px downward
   await page.mouse.move(
     dividerBox.x + dividerBox.width / 2,
     dividerBox.y + dividerBox.height / 2 + 60,
@@ -246,7 +224,6 @@ test("S1 @UX-T-01: rail has two panel cards + draggable inter-panel divider + ra
   );
   await page.mouse.up();
 
-  // After drag, localStorage key must have been written (or changed)
   await expect
     .poll(
       () =>
@@ -261,9 +238,6 @@ test("S1 @UX-T-01: rail has two panel cards + draggable inter-panel divider + ra
     window.localStorage.getItem("jasper.rail.tags.height.ratio"),
   );
 
-  // Ratio should have changed from default (or stayed if drag landed on a
-  // clamped boundary). If ratioBefore was null (first run = default 0.5)
-  // or different from after, we confirm the LS was written.
   if (ratioBefore !== null) {
     // Both should be numeric strings; after drag the value may differ
     // NOTE: if the drag landed exactly on the same ratio, this isn't an error
@@ -272,7 +246,6 @@ test("S1 @UX-T-01: rail has two panel cards + draggable inter-panel divider + ra
   }
   expect(ratioAfter).not.toBeNull();
 
-  // Reload and verify the ratio is hydrated (persisted)
   await page.reload();
   await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
     "data-status",
@@ -284,52 +257,39 @@ test("S1 @UX-T-01: rail has two panel cards + draggable inter-panel divider + ra
   const ratioAfterReload = await page.evaluate(() =>
     window.localStorage.getItem("jasper.rail.tags.height.ratio"),
   );
-  // The ratio stored before reload should equal the one after reload
   expect(ratioAfterReload).toEqual(ratioAfter);
 
-  // Both panels are still visible after reload
   await expect(page.locator('button[aria-label*="Tags panel, "]')).toBeVisible({ timeout: 8_000 });
   await expect(
     page.getByRole("region", { name: "Notes that link to this note" }),
   ).toBeVisible({ timeout: 8_000 });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S2 — @UX-T-02: Inline #tagname rendering + heading disambiguation
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S2 @UX-T-02: #tagname renders as cm-inline-tag; # heading does NOT", async ({ page }) => {
   await openApp(page, true);
 
-  // Type a note with both an inline tag and a heading
   await typeIntoEditor(
     page,
     "---\ntags: []\n---\n\n# My Note\n\nSome body text with #alpha and more words.\n\n## Another heading not a tag",
   );
 
-  // Give the CM6 decoration cycle a moment to run
   await page.waitForTimeout(300);
 
-  // Assert that .cm-inline-tag exists for "#alpha"
-  // We move cursor away from the tagged line first so off-cursor decorations render
   const cm = page.locator(".cm-content");
   await cm.click();
   const gotoEndKey = process.platform === "darwin" ? "Meta+End" : "Control+End";
   await page.keyboard.press(gotoEndKey);
   await page.waitForTimeout(400);
 
-  // The cm-inline-tag decoration should appear for #alpha
   const inlineTag = page.locator(".cm-inline-tag").first();
   await expect(inlineTag).toBeVisible({ timeout: 5_000 });
   const inlineTagText = (await inlineTag.textContent()) ?? "";
   expect(inlineTagText).toContain("alpha");
 
-  // The "# My Note" heading line should NOT produce a cm-inline-tag span.
-  // We check by evaluating all cm-line elements.
   const headingHasInlineTag = await page.evaluate(() => {
     const lines = document.querySelectorAll(".cm-content .cm-line");
     for (const line of Array.from(lines)) {
-      // Find the line whose text content starts with "# My Note"
       const text = line.textContent ?? "";
       if (text.startsWith("# My Note") || text.includes("My Note")) {
         return line.querySelector(".cm-inline-tag") !== null;
@@ -340,26 +300,20 @@ test("S2 @UX-T-02: #tagname renders as cm-inline-tag; # heading does NOT", async
   expect(headingHasInlineTag).toBe(false);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S3 — @UX-T-03: Two-way binding (body → frontmatter on save)
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S3 @UX-T-03: type #twowaytest in body → save → Tags panel shows it within 2s + frontmatter updated", async ({ page }) => {
   await openApp(page, true);
   await ensureTagsPanelExpanded(page);
 
-  // Type content with a unique inline tag
   await typeIntoEditor(
     page,
     "---\ntags: []\n---\n\n# TwoWayNote\n\nTesting two-way binding with #twowaytest tag here.",
   );
 
-  // Save with Cmd+S
   const saveKey = process.platform === "darwin" ? "Meta+s" : "Control+s";
   await page.keyboard.press(saveKey);
   await waitForSaved(page, 10_000);
 
-  // Assert within 2s the Tags panel shows "twowaytest"
   await expect
     .poll(
       () => page.getByTestId("tag-row-twowaytest").isVisible(),
@@ -367,9 +321,6 @@ test("S3 @UX-T-03: type #twowaytest in body → save → Tags panel shows it wit
     )
     .toBeTruthy();
 
-  // Reload and verify frontmatter on disk contains "twowaytest"
-  // The note we edited is the "scratchpad" seeded note (first one in tree).
-  // We'll check via the API — GET the tree, find the note, GET its content.
   await page.reload();
   await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
     "data-status",
@@ -377,7 +328,6 @@ test("S3 @UX-T-03: type #twowaytest in body → save → Tags panel shows it wit
     { timeout: 10_000 },
   );
 
-  // Find the edited note via the tree API
   const treeResp = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
   expect(treeResp.status()).toBe(200);
   const tree = (await treeResp.json()) as {
@@ -391,20 +341,13 @@ test("S3 @UX-T-03: type #twowaytest in body → save → Tags panel shows it wit
   );
   expect(noteResp.status()).toBe(200);
   const noteData = (await noteResp.json()) as { content?: string };
-  // Frontmatter should contain "twowaytest" after two-way binding
   expect(noteData.content ?? "").toContain("twowaytest");
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S4 — @UX-T-04: Frontmatter hidden by default; Cmd-Shift-Y toggles raw view
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S4 @UX-T-04: frontmatter block hidden by default; Cmd-Shift-Y toggles raw view; note switch resets to hidden", async ({ page }) => {
   await openApp(page, true);
 
-  // Phase 6.6 D-16: the frontmatter affordance widget is now an empty span.
-  // There is NO visible affordance button in Phase 6.6 (it was removed per D-16).
-  // Verify: the raw frontmatter "---" lines are NOT visible by default.
   const rawFrontmatterVisible = await page.evaluate(() => {
     const lines = document.querySelectorAll(".cm-content .cm-line");
     for (const line of Array.from(lines)) {
@@ -414,28 +357,21 @@ test("S4 @UX-T-04: frontmatter block hidden by default; Cmd-Shift-Y toggles raw 
   });
   expect(rawFrontmatterVisible).toBe(false);
 
-  // Phase 6.5: affordance widget may or may not exist in Phase 6.6 (D-16 removed it).
-  // In Phase 6.5 the widget had class "cm-frontmatter-affordance" with "▸ frontmatter" text.
-  // In Phase 6.6, the widget is an empty span — no visible text.
-  // Accept either: widget absent, OR widget present but with empty/no text content.
   const affordance = page.locator(".cm-frontmatter-affordance");
   if ((await affordance.count()) > 0) {
-    // If it exists, it should NOT have visible text (Phase 6.6: empty span)
     const affordanceText = (await affordance.first().textContent()) ?? "";
     expect(affordanceText).not.toContain("▸ frontmatter");
   }
 
-  // Press Cmd-Shift-Y to toggle raw view
   const toggleKey =
     process.platform === "darwin" ? "Meta+Shift+y" : "Control+Shift+y";
   await page.locator(".cm-content").click();
   await page.waitForTimeout(200);
-  await page.keyboard.press("Home"); // ensure focus
+  await page.keyboard.press("Home");
   await page.waitForTimeout(100);
   await page.keyboard.press(toggleKey);
   await page.waitForTimeout(600);
 
-  // Now raw YAML should be visible (empty widget replaced by raw lines)
   const rawAfterToggle = await page.evaluate(() => {
     const lines = document.querySelectorAll(".cm-content .cm-line");
     for (const line of Array.from(lines)) {
@@ -443,25 +379,18 @@ test("S4 @UX-T-04: frontmatter block hidden by default; Cmd-Shift-Y toggles raw 
     }
     return false;
   });
-  // Note: Cmd-Shift-Y may not fire if focus is on a different element.
-  // If it didn't toggle, log a warning but don't fail the test.
   if (!rawAfterToggle) {
     console.warn("S4: Cmd-Shift-Y toggle did not reveal --- lines; keymap may not have fired");
   }
 
-  // Toggle back to hidden (only if we toggled to raw)
   if (rawAfterToggle) {
     await page.keyboard.press(toggleKey);
     await page.waitForTimeout(300);
   }
 
-  // Create a second note and navigate to it, then navigate back.
-  // Per D-13: state NOT persisted — defaults to hidden on every note open.
-  // First, toggle to raw so the current note is in "raw" state.
   await page.keyboard.press(toggleKey);
   await page.waitForTimeout(400);
 
-  // Create a second note via API so we can click it in the tree
   await page.request.post(`${jasper.baseURL}/api/v1/notes`, {
     data: { parent_path: "", title: "fm-switch-target" },
   });
@@ -473,15 +402,12 @@ test("S4 @UX-T-04: frontmatter block hidden by default; Cmd-Shift-Y toggles raw 
     { timeout: 10_000 },
   );
 
-  // Click the first note in the tree to open it (should open in hidden state)
   const firstNote = page.locator('[data-tree-row-kind="note"]').first();
   await expect(firstNote).toBeVisible({ timeout: 8_000 });
   await firstNote.click();
   await page.waitForSelector(".cm-content", { timeout: 8_000 });
   await page.waitForTimeout(400);
 
-  // After note open, frontmatter should be hidden again (state reset per D-13).
-  // In Phase 6.6: no visible --- lines = hidden state.
   const rawAfterNoteSwitch = await page.evaluate(() => {
     const lines = document.querySelectorAll(".cm-content .cm-line");
     for (const line of Array.from(lines)) {
@@ -492,12 +418,8 @@ test("S4 @UX-T-04: frontmatter block hidden by default; Cmd-Shift-Y toggles raw 
   expect(rawAfterNoteSwitch).toBe(false);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S5 — @UX-T-05: Tag search filter
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S5 @UX-T-05: tag search filters list by substring; Escape clears", async ({ page }) => {
-  // Create 3 notes with specific tags for search testing
   await apiCreateNote(
     page,
     "notes/search-test-project.md",
@@ -523,62 +445,48 @@ test("S5 @UX-T-05: tag search filters list by substring; Escape clears", async (
 
   await ensureTagsPanelExpanded(page);
 
-  // Wait for at least one of the "pro" tags to appear
   await expect(page.getByTestId("tag-row-project")).toBeVisible({ timeout: 8_000 });
 
-  // Focus the tag search input
   const searchInput = page.locator('input[aria-label="Filter tag list"]');
   await expect(searchInput).toBeVisible({ timeout: 5_000 });
   await searchInput.click();
   await page.keyboard.type("pro");
 
-  // All three "pro" tags should still appear (project, prototype, process)
   await expect(page.getByTestId("tag-row-project")).toBeVisible({ timeout: 3_000 });
   await expect(page.getByTestId("tag-row-prototype")).toBeVisible({ timeout: 3_000 });
   await expect(page.getByTestId("tag-row-process")).toBeVisible({ timeout: 3_000 });
 
-  // Type "j" more to narrow down to "project" (input becomes "proj")
   await page.keyboard.type("j");
 
-  // Only "project" should match; "prototype" and "process" should be hidden
   await expect(page.getByTestId("tag-row-project")).toBeVisible({ timeout: 3_000 });
-  // prototype and process should not be visible with query "proj"
   await expect(page.getByTestId("tag-row-prototype")).toHaveCount(0, { timeout: 3_000 });
   await expect(page.getByTestId("tag-row-process")).toHaveCount(0, { timeout: 3_000 });
 
-  // Press Escape — input should clear and full list should return
   await page.keyboard.press("Escape");
 
   const inputValue = await searchInput.inputValue();
   expect(inputValue).toBe("");
 
-  // After Escape, all three tags visible again
   await expect(page.getByTestId("tag-row-project")).toBeVisible({ timeout: 3_000 });
   await expect(page.getByTestId("tag-row-prototype")).toBeVisible({ timeout: 3_000 });
   await expect(page.getByTestId("tag-row-process")).toBeVisible({ timeout: 3_000 });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S6 — @BUG-01: Tags panel updates within 2s after save — no page reload needed
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("BUG-01: saving note with new tag → Tags panel updates within 2s (no WS round-trip needed)", async ({ page }) => {
   await openApp(page, true);
   await ensureTagsPanelExpanded(page);
 
-  // Type content with a unique tag unlikely to pre-exist
   const uniqueTag = `bug01tag${Date.now()}`;
   await typeIntoEditor(
     page,
     `---\ntags: []\n---\n\n# BugOneNote\n\nTesting BUG-01 fix with #${uniqueTag} inline.`,
   );
 
-  // Save
   const saveKey = process.platform === "darwin" ? "Meta+s" : "Control+s";
   await page.keyboard.press(saveKey);
   await waitForSaved(page, 10_000);
 
-  // Within 2s the Tags panel must show the new tag — NO page reload.
   await expect
     .poll(
       () =>
@@ -588,9 +496,6 @@ test("BUG-01: saving note with new tag → Tags panel updates within 2s (no WS r
     .toBeTruthy();
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S7 — @BUG-02: Backlinks panel populates within 2s on note open
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("BUG-02: open note with incoming [[...]] links → Backlinks panel shows row within 2s", async ({ page }) => {
   await page.goto(jasper.baseURL);
@@ -600,21 +505,18 @@ test("BUG-02: open note with incoming [[...]] links → Backlinks panel shows ro
     { timeout: 10_000 },
   );
 
-  // Create target note
   await apiCreateNote(
     page,
     "notes/BugTwoTarget.md",
     "---\ntags: []\n---\n\n# BugTwoTarget\n\nThis note is the backlink target.",
   );
 
-  // Create source note that links to BugTwoTarget
   await apiCreateNote(
     page,
     "notes/BugTwoSource.md",
     "---\ntags: []\n---\n\n# BugTwoSource\n\nThis references [[BugTwoTarget]] for testing BUG-02.",
   );
 
-  // Wait for backlinks to be indexed via the API
   let targetId: string | null = null;
   for (let i = 0; i < 30; i++) {
     const treeResp = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
@@ -632,7 +534,6 @@ test("BUG-02: open note with incoming [[...]] links → Backlinks panel shows ro
   }
   if (!targetId) throw new Error("BUG-02: BugTwoTarget not found in tree");
 
-  // Poll backlinks API until it returns a row
   let backlinkReady = false;
   for (let i = 0; i < 30; i++) {
     const resp = await page.request.get(
@@ -651,7 +552,6 @@ test("BUG-02: open note with incoming [[...]] links → Backlinks panel shows ro
   }
   expect(backlinkReady, "API should report backlinks before UI test").toBe(true);
 
-  // Navigate to the app and open BugTwoTarget
   await page.reload();
   await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
     "data-status",
@@ -659,10 +559,8 @@ test("BUG-02: open note with incoming [[...]] links → Backlinks panel shows ro
     { timeout: 10_000 },
   );
 
-  // Expand rail so backlinks panel is visible
   await ensureRailExpanded(page);
 
-  // Find and click BugTwoTarget in the tree
   const targetRow = page
     .locator('[data-tree-row-kind="note"]')
     .filter({ hasText: /BugTwoTarget/i });
@@ -670,7 +568,6 @@ test("BUG-02: open note with incoming [[...]] links → Backlinks panel shows ro
   await targetRow.click();
   await page.waitForSelector(".cm-content", { timeout: 8_000 });
 
-  // Within 2s, the Backlinks panel should show a row for BugTwoSource
   const rail = page.getByRole("region", { name: "Notes that link to this note" });
   await expect(rail).toBeVisible({ timeout: 5_000 });
 
@@ -685,12 +582,8 @@ test("BUG-02: open note with incoming [[...]] links → Backlinks panel shows ro
     .toBeTruthy();
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S8 — @BUG-03: No false "Saved" indicator on note switch (no edits)
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("BUG-03: switch notes without editing → save indicator stays idle; actual edit + save → 'Saved' appears", async ({ page }) => {
-  // Create two notes to switch between
   const noteAId = await apiCreateNote(
     page,
     "notes/BugThreeNoteA.md",
@@ -702,7 +595,6 @@ test("BUG-03: switch notes without editing → save indicator stays idle; actual
     "---\ntags: []\n---\n\n# BugThreeNoteB\n\nbody B",
   );
 
-  // Silence TS about unused vars — we just need the notes to exist
   void noteAId;
   void noteBId;
 
@@ -713,7 +605,6 @@ test("BUG-03: switch notes without editing → save indicator stays idle; actual
     { timeout: 10_000 },
   );
 
-  // Open note A (no edits)
   const noteARow = page
     .locator('[data-tree-row-kind="note"]')
     .filter({ hasText: /BugThreeNoteA/i });
@@ -721,10 +612,8 @@ test("BUG-03: switch notes without editing → save indicator stays idle; actual
   await noteARow.click();
   await page.waitForSelector(".cm-content", { timeout: 8_000 });
 
-  // Wait a moment for any initial mount effects
   await page.waitForTimeout(500);
 
-  // Now switch to note B WITHOUT editing
   const noteBRow = page
     .locator('[data-tree-row-kind="note"]')
     .filter({ hasText: /BugThreeNoteB/i });
@@ -732,8 +621,6 @@ test("BUG-03: switch notes without editing → save indicator stays idle; actual
   await noteBRow.click();
   await page.waitForSelector(".cm-content", { timeout: 8_000 });
 
-  // Poll for ~1s to ensure "Saved" NEVER appears during the switch
-  // (BUG-03: false save indicator on note switch)
   const savedTexts: string[] = [];
   for (let i = 0; i < 10; i++) {
     const savedCount = await page
@@ -748,7 +635,6 @@ test("BUG-03: switch notes without editing → save indicator stays idle; actual
     `BUG-03: "Saved" indicator appeared during note switch without edits: ${savedTexts.join(", ")}`,
   ).toHaveLength(0);
 
-  // Positive case: now actually edit note B and save — "Saved" SHOULD appear
   const cm = page.locator(".cm-content");
   await cm.click();
   const gotoEndKey = process.platform === "darwin" ? "Meta+End" : "Control+End";
@@ -757,18 +643,13 @@ test("BUG-03: switch notes without editing → save indicator stays idle; actual
   const saveKey = process.platform === "darwin" ? "Meta+s" : "Control+s";
   await page.keyboard.press(saveKey);
 
-  // "Saved" MUST appear now that we actually saved
   await waitForSaved(page, 10_000);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S9 — @autocomplete-polish: Autocomplete popups have border-radius + contrast
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S9 @autocomplete-polish: [[  popup and # popup have border-radius 8px + readable text", async ({ page }) => {
   await openApp(page, true);
 
-  // Create a note that will appear in autocomplete
   await apiCreateNote(
     page,
     "notes/AutocompleteTarget.md",
@@ -787,7 +668,6 @@ test("S9 @autocomplete-polish: [[  popup and # popup have border-radius 8px + re
   await firstNote.click();
   await page.waitForSelector(".cm-content", { timeout: 8_000 });
 
-  // Type into the editor to trigger [[ autocomplete
   const cm = page.locator(".cm-content");
   await cm.click();
   const selectAllKey = process.platform === "darwin" ? "Meta+a" : "Control+a";
@@ -796,11 +676,9 @@ test("S9 @autocomplete-polish: [[  popup and # popup have border-radius 8px + re
   await page.keyboard.type("---\ntags: []\n---\n\n# TestNote\n\nLink: ");
   await page.keyboard.type("[[Auto");
 
-  // Wait for autocomplete popup
   const autocomplete = page.locator(".cm-tooltip-autocomplete, .cm-tooltip");
   await expect(autocomplete.first()).toBeVisible({ timeout: 8_000 });
 
-  // Check border-radius on the popup container
   const borderRadius = await page.evaluate(() => {
     const el = document.querySelector(
       ".cm-tooltip-autocomplete, .cm-tooltip",
@@ -809,44 +687,29 @@ test("S9 @autocomplete-polish: [[  popup and # popup have border-radius 8px + re
     return window.getComputedStyle(el).borderRadius;
   });
 
-  // border-radius should be 8px (Phase 6.5 D-17 sets border-radius: 8px)
-  // We accept "8px" or values that translate to 8px
   expect(borderRadius).toBeTruthy();
-  // Parse the value — should be at least 6px (the previous default was 6px,
-  // Phase 6.5 bumps to 8px — we accept either since the exact value depends
-  // on CSS specificity)
   const radiusNum = parseFloat(borderRadius ?? "0");
   expect(radiusNum).toBeGreaterThanOrEqual(6);
 
-  // Check that text color is not pure grey (readability check — WCAG-AA)
-  // The cm-completionLabel should use --color-fg, not a dim muted colour
   const textColorOk = await page.evaluate(() => {
     const label = document.querySelector(".cm-completionLabel") as HTMLElement | null;
-    if (!label) return true; // no labels visible — not an error
+    if (!label) return true;
     const color = window.getComputedStyle(label).color;
-    // Parse RGB and check it's not a very muted grey (e.g., rgb(120,120,120) is too dim)
     const m = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
     if (!m) return true;
     const [, r, g, b] = m.map(Number);
-    // Luminance — roughly. If all channels are between 100 and 150, it's probably too muted.
-    // We accept the color if at least one channel deviates meaningfully from 128 (the grey midpoint).
     return Math.abs((r ?? 128) - 128) > 20 || Math.abs((g ?? 128) - 128) > 20 || Math.abs((b ?? 128) - 128) > 20;
   });
   expect(textColorOk, "autocomplete text should not be a fully neutral grey (WCAG-AA)").toBe(true);
 
-  // Dismiss autocomplete
   await page.keyboard.press("Escape");
 
-  // Now test the # popup — type '#' to trigger tag autocomplete
   const docEndKey = process.platform === "darwin" ? "Meta+End" : "Control+End";
   await page.keyboard.press(docEndKey);
   await page.keyboard.type("\n#pro");
 
-  // Give a moment for the # autocomplete popup
   await page.waitForTimeout(800);
   const tagAutocomplete = page.locator(".cm-tooltip-autocomplete, .cm-tooltip");
-  // The # autocomplete may or may not appear (depends on whether tags exist).
-  // If it appears, check the same border-radius property.
   if ((await tagAutocomplete.count()) > 0 && (await tagAutocomplete.first().isVisible())) {
     const tagBorderRadius = await page.evaluate(() => {
       const el = document.querySelector(

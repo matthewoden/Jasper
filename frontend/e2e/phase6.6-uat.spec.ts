@@ -62,9 +62,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Single shared instance (see ordering note in header)
-// ─────────────────────────────────────────────────────────────────────────────
 
 let jasper: JasperHandle;
 
@@ -76,9 +73,6 @@ test.afterAll(async () => {
   if (jasper) await jasper.kill();
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Navigate to baseURL and wait for WS "connected" status.
@@ -126,7 +120,6 @@ async function apiCreateNote(
   const created = (await createResp.json()) as { id: string };
   const id = created.id;
 
-  // PUT content
   const updateResp = await page.request.put(
     `${jasper.baseURL}/api/v1/notes/${id}`,
     { data: { content } },
@@ -151,7 +144,6 @@ const TAGS_PANEL_EXPAND_BTN = 'button[aria-label*="Tags panel, "]';
  * The rail starts collapsed by default; we need it expanded for rail assertions.
  */
 async function ensureRailExpanded(page: Page): Promise<void> {
-  // Check if "Show panels" button is visible (rail is collapsed)
   const showBtn = page.getByRole("button", { name: "Show panels" });
   if ((await showBtn.count()) > 0 && (await showBtn.isVisible())) {
     await showBtn.click();
@@ -159,7 +151,6 @@ async function ensureRailExpanded(page: Page): Promise<void> {
       page.locator(TAGS_PANEL_EXPAND_BTN),
     ).toBeVisible({ timeout: 5_000 });
   }
-  // Also check the old Phase 6.5 label pattern
   const showBtnOld = page.getByRole("button", { name: "Show backlinks panel" });
   if ((await showBtnOld.count()) > 0 && (await showBtnOld.isVisible())) {
     await showBtnOld.click();
@@ -180,10 +171,8 @@ async function ensureRailExpanded(page: Page): Promise<void> {
 async function ensureTagsPanelVisible(page: Page): Promise<void> {
   await ensureRailExpanded(page);
 
-  // Check if tags panel expand button is visible (look for header expand toggle)
   const tagsPanelHeader = page.locator(TAGS_PANEL_EXPAND_BTN);
   if ((await tagsPanelHeader.count()) === 0) {
-    // Tags panel hidden via panelSelector — re-enable it through the dropdown.
     const panelSelectorTrigger = page.getByRole("button", {
       name: "Open panel",
     });
@@ -197,7 +186,6 @@ async function ensureTagsPanelVisible(page: Page): Promise<void> {
     }
   }
 
-  // Ensure the panel is expanded (not just visible but collapsed)
   const headerBtn = page.locator(TAGS_PANEL_EXPAND_BTN);
   await expect(headerBtn).toBeVisible({ timeout: 5_000 });
   const label = (await headerBtn.getAttribute("aria-label")) ?? "";
@@ -218,75 +206,52 @@ async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
   ).toBeVisible({ timeout: timeoutMs });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S1 — @UX-CHROME-01: TopBar renders with sidebar toggle + breadcrumbs +
-//                     panel dropdown + right-rail toggle.
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S1 @UX-CHROME-01: TopBar renders; sidebar toggle hides/shows notes sidebar", async ({ page }) => {
   await openApp(page, true);
 
-  // TopBar must be present
   const topBar = page.getByTestId("top-bar");
   await expect(topBar).toBeVisible({ timeout: 8_000 });
 
-  // TopBar has sidebar toggle button
   const sidebarToggle = page.getByRole("button", { name: /hide notes sidebar|show notes sidebar/i });
   await expect(sidebarToggle).toBeVisible({ timeout: 5_000 });
 
-  // TopBar has PanelSelectorDropdown trigger
   const panelTrigger = page.getByRole("button", { name: "Open panel" });
   await expect(panelTrigger).toBeVisible({ timeout: 5_000 });
 
-  // TopBar has right-rail toggle
   const railToggle = page.getByRole("button", { name: /hide panels|show panels/i });
   await expect(railToggle).toBeVisible({ timeout: 5_000 });
 
-  // Breadcrumbs nav is visible (note is open from openApp)
   const breadcrumbsNav = page.getByRole("navigation", { name: "Note path" });
   await expect(breadcrumbsNav).toBeVisible({ timeout: 5_000 });
 
-  // TopBar background uses var(--color-bg) — verify data-testid is there
-  // and that the boxShadow property is non-empty (shadow-elevation-1 applied)
   const boxShadow = await topBar.evaluate((el) =>
     window.getComputedStyle(el).boxShadow,
   );
-  // Should not be "none" — shadow-elevation-1 is set
   expect(boxShadow).not.toBe("none");
 
-  // Click sidebar toggle → sidebar hides
   const hideBtn = page.getByRole("button", { name: "Hide notes sidebar" });
   await expect(hideBtn).toBeVisible({ timeout: 3_000 });
   await hideBtn.click();
   await page.waitForTimeout(300);
 
-  // Sidebar nav should disappear (Sidebar returns null when notesSidebarVisible=false)
   const sidebarNav = page.getByRole("navigation", { name: "Notes navigation" });
   await expect(sidebarNav).not.toBeVisible({ timeout: 3_000 });
 
-  // Button label toggles to "Show notes sidebar"
   const showBtn = page.getByRole("button", { name: "Show notes sidebar" });
   await expect(showBtn).toBeVisible({ timeout: 3_000 });
 
-  // Click again → sidebar reappears
   await showBtn.click();
   await page.waitForTimeout(300);
   await expect(sidebarNav).toBeVisible({ timeout: 5_000 });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S2 — @panel-selector: dropdown is an action menu — clicking an item opens
-//                       its panel; closing happens via the per-panel × button;
-//                       rail auto-collapses when no panel remains.
-//                       UAT 2026-05-12 contract change (was checkbox toggle).
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S2 @panel-selector: dropdown opens panels; × closes panels; rail auto-collapses", async ({ page }) => {
   await openApp(page, false);
   await ensureRailExpanded(page);
   await ensureTagsPanelVisible(page);
 
-  // Close Tags panel via its × button.
   const closeTagsBtn = page.getByRole("button", { name: "Close Tags panel" });
   await expect(closeTagsBtn).toBeVisible({ timeout: 5_000 });
   await closeTagsBtn.click();
@@ -294,21 +259,17 @@ test("S2 @panel-selector: dropdown opens panels; × closes panels; rail auto-col
     timeout: 3_000,
   });
 
-  // Open Tags panel back via the dropdown (action menu — single click opens).
   const panelTrigger = page.getByRole("button", { name: "Open panel" });
   await panelTrigger.click();
   await page.waitForTimeout(300);
   const tagsItem = page.getByTestId("panel-selector-tags");
   await expect(tagsItem).toBeVisible({ timeout: 3_000 });
-  // No aria-checked attribute — pure menuitem (UAT 2026-05-12).
   expect(await tagsItem.getAttribute("aria-checked")).toBeNull();
   await tagsItem.click();
-  // Radix closes the menu on item select; panel reappears.
   await expect(page.locator(TAGS_PANEL_EXPAND_BTN)).toBeVisible({
     timeout: 5_000,
   });
 
-  // Now close BOTH panels via × buttons → rail must auto-collapse.
   const closeBacklinksBtn = page.getByRole("button", {
     name: "Close Backlinks panel",
   });
@@ -316,45 +277,32 @@ test("S2 @panel-selector: dropdown opens panels; × closes panels; rail auto-col
     await closeBacklinksBtn.click();
   }
   await page.getByRole("button", { name: "Close Tags panel" }).click();
-  // Rail expanded toggle button flips back to "Show panels" — TopBar's right
-  // chevron — when rail collapses.
   await expect(
     page.getByRole("button", { name: "Show panels" }),
   ).toBeVisible({ timeout: 5_000 });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S3 — @UX-CHROME-02: StatusBar renders at bottom with connectivity, refresh, settings
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S3 @UX-CHROME-02: StatusBar visible at bottom; connectivity dot + refresh + settings present; NOT in sidebar header", async ({ page }) => {
   await openApp(page, false);
 
-  // StatusBar must be present
   const statusBar = page.getByTestId("status-bar");
   await expect(statusBar).toBeVisible({ timeout: 8_000 });
 
-  // StatusBar is a <footer> with aria-label "Status bar"
   await expect(
     page.getByRole("contentinfo", { name: "Status bar" }),
   ).toBeVisible({ timeout: 5_000 });
 
-  // Connectivity dot is present in the StatusBar
   const connDot = page.getByTestId("connection-status-dot");
   await expect(connDot).toBeVisible({ timeout: 5_000 });
 
-  // Refresh button (aria-label "Reindex notes") is present in the StatusBar
   const refreshBtn = page.getByRole("button", { name: "Reindex notes" });
   await expect(refreshBtn).toBeVisible({ timeout: 5_000 });
 
-  // At minimum, the StatusBar should have 2+ buttons (refresh + settings)
   const statusBarButtons = statusBar.locator("button");
   const btnCount = await statusBarButtons.count();
   expect(btnCount).toBeGreaterThanOrEqual(2);
 
-  // Verify connectivity dot is NOT in the sidebar header
-  // The sidebar header contains the "NOTES" label + SidebarToolbar
-  // SidebarToolbar has only new-note, new-folder buttons (no connectivity/refresh)
   const sidebarNav = page.getByRole("navigation", { name: "Notes navigation" });
   if ((await sidebarNav.count()) > 0 && (await sidebarNav.isVisible())) {
     const connDotInSidebar = sidebarNav.getByTestId("connection-status-dot");
@@ -367,24 +315,18 @@ test("S3 @UX-CHROME-02: StatusBar visible at bottom; connectivity dot + refresh 
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S4 — @UX-CHROME-02-refresh: Refresh button triggers reindex; settings opens dialog
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S4 @UX-CHROME-02-refresh: refresh button briefly disables during reindex; settings opens dialog", async ({ page }) => {
   await openApp(page, false);
 
-  // Wait for StatusBar
   await expect(page.getByTestId("status-bar")).toBeVisible({ timeout: 8_000 });
 
   const refreshBtn = page.getByRole("button", { name: "Reindex notes" });
   await expect(refreshBtn).toBeVisible({ timeout: 5_000 });
   await expect(refreshBtn).toBeEnabled({ timeout: 3_000 });
 
-  // Click refresh — should be disabled briefly or show spinner
   await refreshBtn.click();
 
-  // Poll for disabled state (may resolve very fast against a tiny data dir)
   let observedDisabled = false;
   for (let i = 0; i < 20; i++) {
     const isDisabled = await refreshBtn.isDisabled();
@@ -394,36 +336,24 @@ test("S4 @UX-CHROME-02-refresh: refresh button briefly disables during reindex; 
     }
     await page.waitForTimeout(50);
   }
-  // After reindex completes, button should be enabled again
   await expect(refreshBtn).toBeEnabled({ timeout: 10_000 });
-  // observedDisabled is a best-effort check — if the reindex resolved before we polled,
-  // that's acceptable. We just confirm it's enabled after the full cycle.
-  void observedDisabled; // suppress unused-var lint
+  void observedDisabled;
 
-  // Settings dialog: find the SettingsMenu trigger in the StatusBar
-  // SettingsMenu renders a trigger button — click it
   const statusBar = page.getByTestId("status-bar");
-  // SettingsMenu trigger is typically last button in the StatusBar
   const allStatusBarBtns = statusBar.locator("button");
   const lastBtn = allStatusBarBtns.last();
   await expect(lastBtn).toBeVisible({ timeout: 3_000 });
   await lastBtn.click();
   await page.waitForTimeout(300);
 
-  // Check if a dialog/popover opened — SettingsMenu uses a Radix DropdownMenu
-  // which renders its content in a portal. Look for a settings-related menu item.
   const settingsContent = page.locator(
     '[role="menu"], [role="dialog"], [data-radix-popper-content-wrapper]',
   );
   await expect(settingsContent.first()).toBeVisible({ timeout: 3_000 });
 
-  // Dismiss
   await page.keyboard.press("Escape");
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S5 — @UX-CHROME-03: Sidebar reads as floating panel (border + radius + inset)
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S5 @UX-CHROME-03: sidebar is floating-panel card with border-radius 8px, border, inset", async ({ page }) => {
   await openApp(page, false);
@@ -431,8 +361,6 @@ test("S5 @UX-CHROME-03: sidebar is floating-panel card with border-radius 8px, b
   const sidebarNav = page.getByRole("navigation", { name: "Notes navigation" });
   await expect(sidebarNav).toBeVisible({ timeout: 8_000 });
 
-  // The inner card (immediate child div) should have borderRadius + border
-  // Sidebar.tsx renders: <nav><div margin="8px" borderRadius="8px" border="1px solid...">
   const innerCard = sidebarNav.locator("div").first();
   await expect(innerCard).toBeVisible({ timeout: 3_000 });
 
@@ -440,50 +368,37 @@ test("S5 @UX-CHROME-03: sidebar is floating-panel card with border-radius 8px, b
     (el) => window.getComputedStyle(el).borderRadius,
   );
   const radiusNum = parseFloat(borderRadius ?? "0");
-  expect(radiusNum).toBeGreaterThanOrEqual(4); // Spec says 8px; accept >= 4px
+  expect(radiusNum).toBeGreaterThanOrEqual(4);
 
   const border = await innerCard.evaluate(
     (el) => window.getComputedStyle(el).border,
   );
-  // Should have a non-empty border (1px solid var(--color-border))
   expect(border).not.toBe("0px none rgba(0, 0, 0, 0)");
   expect(border).not.toBe("");
 
-  // Outer nav should use var(--color-bg) background (the inset gap color)
   const navBg = await sidebarNav.evaluate(
     (el) => window.getComputedStyle(el).background,
   );
-  // Just assert it's set — the exact value depends on theme
   expect(navBg).toBeTruthy();
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S6 — @UX-CHROME-04: Resize handles use cursor-only affordance; no visible band
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S6 @UX-CHROME-04: inter-panel divider has row-resize cursor; no visible background band", async ({ page }) => {
   await openApp(page, false);
 
-  // Expand the right rail (backlinksRailExpanded starts false by default)
   const railToggle = page.getByRole("button", { name: "Show panels" });
   if ((await railToggle.count()) > 0 && (await railToggle.isVisible())) {
     await railToggle.click();
     await page.waitForTimeout(400);
   }
 
-  // UAT 2026-05-12: dropdown is now an action menu (no aria-checked). Always
-  // click both items — clicking opens that panel idempotently (the store
-  // setter sets to true; re-setting true is a no-op). The divider only renders
-  // when panelSelector.tags && panelSelector.backlinks.
   const panelTrigger = page.getByRole("button", { name: "Open panel" });
   if ((await panelTrigger.count()) > 0) {
-    // Open Tags
     await panelTrigger.click();
     await page.waitForTimeout(200);
     const tagsItem = page.getByTestId("panel-selector-tags");
     if ((await tagsItem.count()) > 0) await tagsItem.click();
     await page.waitForTimeout(200);
-    // Open Backlinks (dropdown closed on previous select; re-open).
     await panelTrigger.click();
     await page.waitForTimeout(200);
     const backlinksItem = page.getByTestId("panel-selector-backlinks");
@@ -491,22 +406,17 @@ test("S6 @UX-CHROME-04: inter-panel divider has row-resize cursor; no visible ba
     await page.waitForTimeout(200);
   }
 
-  // Ensure the inter-panel divider is rendered (visible only when both panels shown).
-  // InterPanelDivider uses data-testid="inter-panel-divider" (passed to ResizeHandle).
   const divider = page.getByTestId("inter-panel-divider");
   await expect(divider).toBeVisible({ timeout: 10_000 });
 
-  // Check cursor property: row-resize (horizontal divider between tags + backlinks)
   const cursor = await divider.evaluate(
     (el) => window.getComputedStyle(el).cursor,
   );
   expect(cursor).toBe("row-resize");
 
-  // No visible background color on the divider (should be transparent)
   const bg = await divider.evaluate(
     (el) => window.getComputedStyle(el).backgroundColor,
   );
-  // Accept transparent or rgba(0,0,0,0) — no colored band
   const isTransparent =
     bg === "transparent" ||
     bg === "rgba(0, 0, 0, 0)" ||
@@ -514,8 +424,6 @@ test("S6 @UX-CHROME-04: inter-panel divider has row-resize cursor; no visible ba
     bg === "none";
   expect(isTransparent).toBe(true);
 
-  // Also verify the sidebar resize handle cursor (col-resize)
-  // SidebarResizeHandle uses role="separator" aria-label="Resize sidebar"
   const sidebarHandle = page.getByRole("separator", {
     name: "Resize sidebar",
   });
@@ -527,12 +435,8 @@ test("S6 @UX-CHROME-04: inter-panel divider has row-resize cursor; no visible ba
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S7 — @UX-CHROME-05: Frontmatter block is hidden (no affordance widget)
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S7 @UX-CHROME-05: open note with frontmatter → no affordance widget visible; editor starts at content", async ({ page }) => {
-  // Create a note with frontmatter via API
   const noteId = await apiCreateNote(
     page,
     "notes/FmHideTest.md",
@@ -547,7 +451,6 @@ test("S7 @UX-CHROME-05: open note with frontmatter → no affordance widget visi
     { timeout: 10_000 },
   );
 
-  // Find and click FmHideTest note
   const noteRow = page
     .locator('[data-tree-row-kind="note"]')
     .filter({ hasText: /FmHideTest/i });
@@ -556,20 +459,12 @@ test("S7 @UX-CHROME-05: open note with frontmatter → no affordance widget visi
   await page.waitForSelector(".cm-content", { timeout: 8_000 });
   await page.waitForTimeout(400);
 
-  // Phase 6.5 showed a ".cm-frontmatter-affordance" widget.
-  // Phase 6.6 hides frontmatter completely — the widget is an empty span.
-  // The affordance button should NOT be visible.
   const affordance = page.locator(".cm-frontmatter-affordance");
-  // D-16: affordance widget removed in Phase 6.6. Accept it may not exist OR
-  // if it exists it must not be visible/have text (empty span).
   if ((await affordance.count()) > 0) {
-    // If the element exists, it should be an empty span (not visible text)
     const affordanceText = await affordance.textContent();
-    // Should not contain the "▸ frontmatter" text from Phase 6.5
     expect(affordanceText ?? "").not.toContain("▸ frontmatter");
   }
 
-  // Raw "---" lines should NOT be visible (frontmatter is hidden)
   const rawFrontmatterVisible = await page.evaluate(() => {
     const lines = document.querySelectorAll(".cm-content .cm-line");
     for (const line of Array.from(lines)) {
@@ -579,23 +474,18 @@ test("S7 @UX-CHROME-05: open note with frontmatter → no affordance widget visi
   });
   expect(rawFrontmatterVisible).toBe(false);
 
-  // Cmd-Shift-Y keymap should still work as a power-user escape hatch
   const toggleKey =
     process.platform === "darwin" ? "Meta+Shift+y" : "Control+Shift+y";
 
-  // Click into the editor to ensure focus before dispatching the keymap
   const cmContent = page.locator(".cm-content");
   await cmContent.click();
   await page.waitForTimeout(200);
-  // Ensure the CM6 editor truly has keyboard focus
-  await page.keyboard.press("Home"); // benign key to confirm focus
+  await page.keyboard.press("Home");
   await page.waitForTimeout(100);
 
   await page.keyboard.press(toggleKey);
-  // Give the StateField update + DOM reconciliation time to run
   await page.waitForTimeout(600);
 
-  // After toggle, raw YAML lines should appear
   const rawAfterToggle = await page.evaluate(() => {
     const lines = document.querySelectorAll(".cm-content .cm-line");
     for (const line of Array.from(lines)) {
@@ -603,26 +493,18 @@ test("S7 @UX-CHROME-05: open note with frontmatter → no affordance widget visi
     }
     return false;
   });
-  // NOTE: If the Cmd-Shift-Y keymap didn't fire (e.g., focus was lost),
-  // we log a warning but don't fail — the primary assertion (no affordance)
-  // is the load-bearing requirement for UX-CHROME-05.
   if (!rawAfterToggle) {
     console.warn("S7: Cmd-Shift-Y toggle did not reveal --- lines (keymap may not have fired); skipping raw-view assertion");
   }
 
-  // If the toggle worked, toggle back to hidden
   if (rawAfterToggle) {
     await page.keyboard.press(toggleKey);
     await page.waitForTimeout(300);
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S8 — @UX-CHROME-06: Tag rows show "#tagname (count)" format; no Key icon
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S8 @UX-CHROME-06: tag rows render '#tagname' + badge count; no Key icon in panel header", async ({ page }) => {
-  // Create a note with a known tag
   await apiCreateNote(
     page,
     "notes/TagFormatTest.md",
@@ -639,37 +521,26 @@ test("S8 @UX-CHROME-06: tag rows render '#tagname' + badge count; no Key icon in
   await ensureRailExpanded(page);
   await ensureTagsPanelVisible(page);
 
-  // Wait for the tag row to appear
   const tagRow = page.getByTestId("tag-row-tagformat");
   await expect(tagRow).toBeVisible({ timeout: 8_000 });
 
-  // Tag row should contain "#tagformat" with the # prefix
   const tagRowText = await tagRow.textContent();
   expect(tagRowText).toContain("#tagformat");
 
-  // UAT 2026-05-12: count rendered as a pill badge with aria-label, NOT
-  // inline "(N)" text. Look for the badge element on the row.
   expect(tagRowText).not.toMatch(/\(\d+\)/);
   const badge = tagRow.locator('[aria-label$="notes"]');
   await expect(badge).toBeVisible({ timeout: 3_000 });
 
-  // The "#tagformat" span should have accent color (check computed color is not default fg)
   const hashSpan = tagRow.locator("span").first();
   const hashColor = await hashSpan.evaluate(
     (el) => window.getComputedStyle(el).color,
   );
-  // The color should be var(--color-accent), not the same as default --color-muted
   expect(hashColor).toBeTruthy();
 
-  // Panel header should NOT contain a "Key" icon (Lucide Key icon was removed in D-19)
-  // The header is the expand/collapse button; we check no <svg> inside the header
-  // with the key icon title (Lucide renders SVGs with a title element).
   const headerBtn = page.locator(TAGS_PANEL_EXPAND_BTN);
   await expect(headerBtn).toBeVisible({ timeout: 5_000 });
 
-  // Check: header button should not contain any element with "key" in its class/title
   const hasKeyIcon = await headerBtn.evaluate((btn) => {
-    // Look for svg elements with title "Key" or class containing "key"
     const svgs = btn.querySelectorAll("svg");
     for (const svg of Array.from(svgs)) {
       const title = svg.querySelector("title");
@@ -681,12 +552,8 @@ test("S8 @UX-CHROME-06: tag rows render '#tagname' + badge count; no Key icon in
   expect(hasKeyIcon).toBe(false);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S9 — @UX-CHROME-07: Filter chip is full-width; "Filtered by: #tagname"; × clears
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S9 @UX-CHROME-07: active tag filter chip is full-width; reads 'Filtered by: #tagname'; × clears", async ({ page }) => {
-  // Ensure a note with a known tag exists
   await apiCreateNote(
     page,
     "notes/FilterChipTest.md",
@@ -703,72 +570,53 @@ test("S9 @UX-CHROME-07: active tag filter chip is full-width; reads 'Filtered by
   await ensureRailExpanded(page);
   await ensureTagsPanelVisible(page);
 
-  // Wait for the tag row
   const tagRow = page.getByTestId("tag-row-filterchip");
   await expect(tagRow).toBeVisible({ timeout: 8_000 });
 
-  // Click the tag to activate the filter
   await tagRow.click();
   await page.waitForTimeout(300);
 
-  // Filter chip should appear (role="status" aria-label includes "Active filter")
   const filterChip = page.locator('[role="status"][aria-label*="Active filter"]');
   await expect(filterChip).toBeVisible({ timeout: 5_000 });
 
-  // Chip should contain "Filtered by:" prefix text
   const chipText = await filterChip.textContent();
   expect(chipText).toContain("Filtered by:");
 
-  // Chip should contain "#filterchip"
   expect(chipText).toContain("#filterchip");
 
-  // Chip should be full-width (width = 100% of its container)
-  // ActiveTagFilterChip sets width: "100%" in chipStyle
   const chipWidth = await filterChip.evaluate((el) => {
     const style = window.getComputedStyle(el);
     const parentWidth = el.parentElement
       ? el.parentElement.getBoundingClientRect().width
       : 0;
     const elWidth = el.getBoundingClientRect().width;
-    // Full-width = matches parent (within 4px tolerance for padding)
     return { elWidth, parentWidth, cssWidth: style.width };
   });
-  // CSS width should be "100%" or a pixel value close to parent
-  // We accept either the exact parent width match or cssWidth being 100%
   if (chipWidth.cssWidth !== "100%") {
-    // Check that the chip is at least 80% of parent width
     const ratio = chipWidth.elWidth / chipWidth.parentWidth;
     expect(ratio).toBeGreaterThan(0.8);
   }
 
-  // × dismiss button is present
   const dismissBtn = page.getByRole("button", {
     name: /Remove tag filter: #filterchip/i,
   });
   await expect(dismissBtn).toBeVisible({ timeout: 3_000 });
 
-  // Click × → filter cleared, chip gone
   await dismissBtn.click();
   await page.waitForTimeout(300);
   await expect(filterChip).not.toBeVisible({ timeout: 3_000 });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S10 — @breadcrumbs: Nested note shows path in breadcrumbs; folder click expands
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S10 @breadcrumbs: note in nested folder shows breadcrumb path; folder segment is a button", async ({ page }) => {
-  // Create the parent folder first, then create the note inside it
   const folderResp = await page.request.post(`${jasper.baseURL}/api/v1/folders`, {
     data: { parent_path: "", name: "breadcrumb-folder" },
   });
-  // Accept 201 (created) or 409 (already exists from a previous run)
   if (folderResp.status() !== 201 && folderResp.status() !== 409) {
     const body = await folderResp.text().catch(() => "(no body)");
     throw new Error(`S10: POST /folders returned ${String(folderResp.status())}: ${body}`);
   }
 
-  // Create a note inside the folder
   await apiCreateNote(
     page,
     "notes/breadcrumb-folder/nested-note.md",
@@ -782,65 +630,51 @@ test("S10 @breadcrumbs: note in nested folder shows breadcrumb path; folder segm
     { timeout: 10_000 },
   );
 
-  // Click on the nested note (may need to expand its folder first)
   const noteRow = page
     .locator('[data-tree-row-kind="note"]')
     .filter({ hasText: /NestedNote/i });
 
-  // Folder may be collapsed — expand it first if the note isn't visible
   const folderRow = page
     .locator('[data-tree-row-kind="folder"]')
     .filter({ hasText: /breadcrumb-folder/i });
 
   if ((await noteRow.count()) === 0) {
-    // Try expanding the folder
     if ((await folderRow.count()) > 0) {
       await folderRow.click();
       await page.waitForTimeout(300);
     }
   }
 
-  // Click the note
   if ((await noteRow.count()) > 0) {
     await noteRow.first().click();
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
     await page.waitForTimeout(400);
 
-    // Breadcrumbs nav should be visible
     const breadcrumbsNav = page.getByRole("navigation", { name: "Note path" });
     await expect(breadcrumbsNav).toBeVisible({ timeout: 5_000 });
 
-    // UAT 2026-05-12: the leading "notes" root segment was removed (the vault
-    // is the implicit app root, not a real section). The folder + title remain.
     const breadcrumbText = await breadcrumbsNav.textContent();
     expect(breadcrumbText).not.toMatch(/^notes/);
 
     expect(breadcrumbText).toContain("breadcrumb-folder");
     expect(breadcrumbText).toContain("NestedNote");
 
-    // Folder segment should be a button (clickable)
     const folderBtn = breadcrumbsNav.getByRole("button", {
       name: /Navigate to folder: breadcrumb-folder/i,
     });
     await expect(folderBtn).toBeVisible({ timeout: 3_000 });
 
-    // Click folder button — sidebar should remain visible (expand+scroll behavior)
-    // and the matching tree row pulses briefly (jasper-pulse-target class).
     await folderBtn.click();
-    // Pulse should attach within a frame and clear ~900ms later.
     const pulsedRow = page.locator(
       `[data-tree-row="breadcrumb-folder"].jasper-pulse-target`,
     );
     await expect(pulsedRow).toBeVisible({ timeout: 1_000 });
 
-    // Sidebar should still be visible after folder navigation click
     const sidebarNav = page.getByRole("navigation", {
       name: "Notes navigation",
     });
     await expect(sidebarNav).toBeVisible({ timeout: 3_000 });
   } else {
-    // Note not found — the folder may use a different display name
-    // Just verify the breadcrumbs nav appears when any note is opened
     const firstNote = page.locator('[data-tree-row-kind="note"]').first();
     if ((await firstNote.count()) > 0) {
       await firstNote.click();
@@ -851,12 +685,8 @@ test("S10 @breadcrumbs: note in nested folder shows breadcrumb path; folder segm
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S11 — @phase-6.5-regression: Phase 6.5 features still work
-// ─────────────────────────────────────────────────────────────────────────────
 
 test("S11 @phase-6.5-regression: inline #tag click filters; backlinks populate; no false Saved on note switch", async ({ page }) => {
-  // Create notes for regression testing
   const noteAId = await apiCreateNote(
     page,
     "notes/Reg65NoteA.md",
@@ -877,11 +707,9 @@ test("S11 @phase-6.5-regression: inline #tag click filters; backlinks populate; 
     { timeout: 10_000 },
   );
 
-  // Ensure Tags panel is visible for the inline tag filter test
   await ensureRailExpanded(page);
   await ensureTagsPanelVisible(page);
 
-  // Open note A
   const noteARow = page
     .locator('[data-tree-row-kind="note"]')
     .filter({ hasText: /Reg65NoteA/i });
@@ -889,10 +717,8 @@ test("S11 @phase-6.5-regression: inline #tag click filters; backlinks populate; 
   await noteARow.click();
   await page.waitForSelector(".cm-content", { timeout: 8_000 });
 
-  // Wait a moment for mount effects to settle
   await page.waitForTimeout(500);
 
-  // Switch to note B WITHOUT editing — save indicator should NOT appear
   const noteBRow = page
     .locator('[data-tree-row-kind="note"]')
     .filter({ hasText: /Reg65NoteB/i });
@@ -900,7 +726,6 @@ test("S11 @phase-6.5-regression: inline #tag click filters; backlinks populate; 
   await noteBRow.click();
   await page.waitForSelector(".cm-content", { timeout: 8_000 });
 
-  // Poll for ~1s — "Saved" must NOT appear during a note switch with no edits
   const savedTexts: string[] = [];
   for (let i = 0; i < 10; i++) {
     const savedCount = await page
@@ -915,7 +740,6 @@ test("S11 @phase-6.5-regression: inline #tag click filters; backlinks populate; 
     `Phase 6.5 regression BUG-03: "Saved" appeared on note switch without edits: ${savedTexts.join(", ")}`,
   ).toHaveLength(0);
 
-  // Positive case: actual edit + save → "Saved" MUST appear
   const cm = page.locator(".cm-content");
   await cm.click();
   const gotoEndKey = process.platform === "darwin" ? "Meta+End" : "Control+End";

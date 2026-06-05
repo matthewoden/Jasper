@@ -117,13 +117,6 @@ test.describe("Phase 8 R4-3 — search partial number + hyphen escape", () => {
 
     let handle: VaultHandle | undefined;
     try {
-      // Seed notes BEFORE bootstrap. vault.CreateVault triggers an
-      // in-place transition that runs the indexer's initial reconcile
-      // against notes/; if we seed first, those files land in
-      // notes_fts on the first reconcile pass. Seeding after bootstrap
-      // misses that window because /vault/open doesn't re-reconcile
-      // when the vault is already current, and /admin/reindex 503s
-      // (runner ref isn't wired post-transition — separate issue).
       const notesDir = path.join(vault, "notes");
       fs.mkdirSync(notesDir, { recursive: true });
       for (const name of ["note-00123", "note-00124", "note-00125"]) {
@@ -138,10 +131,6 @@ test.describe("Phase 8 R4-3 — search partial number + hyphen escape", () => {
       await bootstrapVault(handle.baseURL, vault);
       await openVault(handle.baseURL, vault);
 
-      // Poll the search endpoint until the reconcile finishes indexing the
-      // seeded files. The open's reconcile is async — happens after the
-      // POST returns. Up to 8s budget (5k-note vault on M-class macOS is
-      // ~1s so single-digit notes is well under a second; 8s is generous).
       const deadline = Date.now() + 8_000;
       let r123: Response;
       let r123Body: { results: Array<{ title: string; path: string }> };
@@ -154,7 +143,6 @@ test.describe("Phase 8 R4-3 — search partial number + hyphen escape", () => {
         if (Date.now() > deadline) break;
         await new Promise((r) => setTimeout(r, 200));
       }
-      // ── Direct API gate (load-bearing — catches both bugs) ──────────────
       expect(r123!.status, "search?q=123 status").toBe(200);
       const matched123 = r123Body!.results.some(
         (r) => r.title === "note-00123" || r.path === "note-00123.md",
@@ -167,12 +155,10 @@ test.describe("Phase 8 R4-3 — search partial number + hyphen escape", () => {
       const rHyphen = await fetch(
         `${handle.baseURL}/api/v1/search?q=${encodeURIComponent("note-00123")}&limit=3`,
       );
-      // Pre-fix: 500 "no such column: 00123". Hard regression gate.
       expect(rHyphen.status, "search?q=note-00123 status").toBe(200);
       const rHyphenBody = (await rHyphen.json()) as { results: Array<{ title: string }> };
       expect(rHyphenBody.results.some((r) => r.title === "note-00123")).toBe(true);
 
-      // ── Browser: search modal renders a row for '123' ───────────────────
       await page.goto(handle.baseURL + "/");
       await expect(page.getByTestId("status-bar")).toBeVisible({ timeout: 10_000 });
 
@@ -183,7 +169,6 @@ test.describe("Phase 8 R4-3 — search partial number + hyphen escape", () => {
       await expect(searchInput).toBeVisible({ timeout: 3_000 });
       await searchInput.fill("123");
 
-      // SearchResultRow renders the title; assert visible row.
       await expect(page.getByText("note-00123").first()).toBeVisible({
         timeout: 5_000,
       });
