@@ -231,17 +231,59 @@ func TestApp_UnknownUUIDReturns404(t *testing.T) {
 	}
 }
 
-func pickFreePort(t *testing.T) string {
+func pickFreeListener(t *testing.T) (net.Listener, string) {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("net.Listen: %v", err)
 	}
-	addr := l.Addr().String()
-	if err := l.Close(); err != nil {
-		t.Fatalf("close: %v", err)
+	t.Cleanup(func() { _ = l.Close() })
+	return l, l.Addr().String()
+}
+
+// httpReadyProbe returns a waitFor probe that succeeds only when the
+// full chi router is mounted and GET /api/v1/admin/status returns 200.
+// With a pre-bound listener, kernel-level TCP connect and even an HTTP
+// 503 from the disk-full handler complete the instant srv.Serve runs —
+// strictly BEFORE a.notesSvc has been set (lifecycle.go:303). Requiring
+// HTTP 200 is the only condition that guarantees the normal-boot path
+// finished wiring NotesService and the apiServer router. Use this for
+// every test that subsequently reads a.NotesService() or hits a real
+// API endpoint. For tests that intentionally take the disk-full /
+// startup-error path, use diskFullReadyProbe instead.
+func httpReadyProbe(addr string) func() error {
+	client := &http.Client{Timeout: 100 * time.Millisecond}
+	return func() error {
+		resp, err := client.Get("http://" + addr + "/api/v1/admin/status")
+		if err != nil {
+			return err
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("admin/status: got %d, want 200", resp.StatusCode)
+		}
+		return nil
 	}
-	return addr
+}
+
+// diskFullReadyProbe returns a waitFor probe that succeeds when the
+// startup-error handler is mounted and answering — i.e. lifecycle.Run
+// took one of the disk-full / boot-error paths, swapped the handler to
+// the bootErrorHandler, and started srv.Serve. The handler responds
+// 503 with a startup_failed JSON body on every /api/* path.
+func diskFullReadyProbe(addr string) func() error {
+	client := &http.Client{Timeout: 100 * time.Millisecond}
+	return func() error {
+		resp, err := client.Get("http://" + addr + "/api/v1/admin/status")
+		if err != nil {
+			return err
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusServiceUnavailable {
+			return fmt.Errorf("admin/status: got %d, want 503", resp.StatusCode)
+		}
+		return nil
+	}
 }
 
 func waitFor(t *testing.T, timeout time.Duration, httpFn func() error) error {
@@ -266,11 +308,12 @@ func waitFor(t *testing.T, timeout time.Duration, httpFn func() error) error {
 //   - GET /api/v1/admin/status returns state="ok".
 func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 	dir := t.TempDir()
-	addr := pickFreePort(t)
+	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{
 		DataDir:             dir,
 		ListenAddr:          addr,
+		ListenerOverride:    ln,
 		Logger:              logger,
 		DisableFirstRunGate: true,
 	})
@@ -282,14 +325,7 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	probe := func() error {
-		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
-		if err != nil {
-			return err
-		}
-		_ = c.Close()
-		return nil
-	}
+	probe := httpReadyProbe(addr)
 	if err := waitFor(t, 5*time.Second, probe); err != nil {
 		cancel()
 		<-runErr
@@ -400,11 +436,12 @@ func TestApp_Run_BrokenMigration_FiresPath1(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	addr := pickFreePort(t)
+	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{
 		DataDir:             dir,
 		ListenAddr:          addr,
+		ListenerOverride:    ln,
 		Logger:              logger,
 		MigrationsOverride:  override,
 		DisableFirstRunGate: true,
@@ -418,14 +455,7 @@ func TestApp_Run_BrokenMigration_FiresPath1(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	probe := func() error {
-		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
-		if err != nil {
-			return err
-		}
-		_ = c.Close()
-		return nil
-	}
+	probe := diskFullReadyProbe(addr)
 	if err := waitFor(t, 5*time.Second, probe); err != nil {
 		cancel()
 		<-runErr
@@ -507,11 +537,12 @@ func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
 	t.Setenv("JASPER_TEST_FORCE_DISK_FULL", "1")
 	defer func() { _ = os.Unsetenv("JASPER_TEST_FORCE_DISK_FULL") }()
 
-	addr := pickFreePort(t)
+	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{
 		DataDir:             dir,
 		ListenAddr:          addr,
+		ListenerOverride:    ln,
 		Logger:              logger,
 		DisableFirstRunGate: true,
 	})
@@ -524,14 +555,7 @@ func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	probe := func() error {
-		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
-		if err != nil {
-			return err
-		}
-		_ = c.Close()
-		return nil
-	}
+	probe := diskFullReadyProbe(addr)
 	if err := waitFor(t, 5*time.Second, probe); err != nil {
 		cancel()
 		<-runErr
@@ -581,11 +605,12 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 	t.Setenv("JASPER_TEST_FORCE_DISK_FULL", "1")
 	defer func() { _ = os.Unsetenv("JASPER_TEST_FORCE_DISK_FULL") }()
 
-	addr := pickFreePort(t)
+	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{
 		DataDir:             dir,
 		ListenAddr:          addr,
+		ListenerOverride:    ln,
 		Logger:              logger,
 		DisableFirstRunGate: true,
 	})
@@ -597,14 +622,7 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	probe := func() error {
-		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
-		if err != nil {
-			return err
-		}
-		_ = c.Close()
-		return nil
-	}
+	probe := diskFullReadyProbe(addr)
 	if err := waitFor(t, 5*time.Second, probe); err != nil {
 		cancel()
 		<-runErr
@@ -648,11 +666,12 @@ func TestRun_HydrateRegistry(t *testing.T) {
 		t.Fatalf("write beta.md: %v", err)
 	}
 
-	addr := pickFreePort(t)
+	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{
 		DataDir:             dir,
 		ListenAddr:          addr,
+		ListenerOverride:    ln,
 		Logger:              logger,
 		DisableFirstRunGate: true,
 	})
@@ -665,14 +684,7 @@ func TestRun_HydrateRegistry(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	probe := func() error {
-		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
-		if err != nil {
-			return err
-		}
-		_ = c.Close()
-		return nil
-	}
+	probe := httpReadyProbe(addr)
 	if err := waitFor(t, 5*time.Second, probe); err != nil {
 		cancel()
 		<-runErr
@@ -776,11 +788,12 @@ func TestApp_SecurityHeaders_OnAPIResponse(t *testing.T) {
 // on the upgrade response without pulling in a WS client dependency in tests.
 func TestApp_ListenerGated(t *testing.T) {
 	dir := t.TempDir()
-	addr := pickFreePort(t)
+	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{
 		DataDir:             dir,
 		ListenAddr:          addr,
+		ListenerOverride:    ln,
 		Logger:              logger,
 		DisableFirstRunGate: true,
 	})
@@ -793,14 +806,7 @@ func TestApp_ListenerGated(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	probe := func() error {
-		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
-		if err != nil {
-			return err
-		}
-		_ = c.Close()
-		return nil
-	}
+	probe := httpReadyProbe(addr)
 	if err := waitFor(t, 5*time.Second, probe); err != nil {
 		cancel()
 		<-runErr
@@ -855,9 +861,9 @@ func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
 		t.Fatalf("write no-FM file: %v", err)
 	}
 
-	addr := pickFreePort(t)
+	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger, DisableFirstRunGate: true})
+	a, err := New(Config{DataDir: dir, ListenAddr: addr, ListenerOverride: ln, Logger: logger, DisableFirstRunGate: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -867,14 +873,7 @@ func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	probe := func() error {
-		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
-		if err != nil {
-			return err
-		}
-		_ = c.Close()
-		return nil
-	}
+	probe := httpReadyProbe(addr)
 	if err := waitFor(t, 5*time.Second, probe); err != nil {
 		cancel()
 		<-runErr
@@ -913,23 +912,16 @@ func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 	}
 
 	{
-		addr := pickFreePort(t)
+		ln, addr := pickFreeListener(t)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger, DisableFirstRunGate: true})
+		a, err := New(Config{DataDir: dir, ListenAddr: addr, ListenerOverride: ln, Logger: logger, DisableFirstRunGate: true})
 		if err != nil {
 			t.Fatalf("New (first): %v", err)
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		runErr := make(chan error, 1)
 		go func() { runErr <- a.Run(ctx) }()
-		probe := func() error {
-			c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
-			if err != nil {
-				return err
-			}
-			_ = c.Close()
-			return nil
-		}
+		probe := httpReadyProbe(addr)
 		if err := waitFor(t, 5*time.Second, probe); err != nil {
 			cancel()
 			<-runErr
@@ -948,23 +940,16 @@ func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 	}
 
 	{
-		addr := pickFreePort(t)
+		ln, addr := pickFreeListener(t)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger, DisableFirstRunGate: true})
+		a, err := New(Config{DataDir: dir, ListenAddr: addr, ListenerOverride: ln, Logger: logger, DisableFirstRunGate: true})
 		if err != nil {
 			t.Fatalf("New (second): %v", err)
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		runErr := make(chan error, 1)
 		go func() { runErr <- a.Run(ctx) }()
-		probe := func() error {
-			c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
-			if err != nil {
-				return err
-			}
-			_ = c.Close()
-			return nil
-		}
+		probe := httpReadyProbe(addr)
 		if err := waitFor(t, 5*time.Second, probe); err != nil {
 			cancel()
 			<-runErr
@@ -999,13 +984,14 @@ func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 
 	vaultDir := t.TempDir()
 
-	addr := pickFreePort(t)
+	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	a, err := New(Config{
-		DataDir:    "",
-		ListenAddr: addr,
-		Logger:     logger,
+		DataDir:          "",
+		ListenAddr:       addr,
+		ListenerOverride: ln,
+		Logger:           logger,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

@@ -564,11 +564,19 @@ func (a *App) serveListener(ctx context.Context) error {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	ln, err := net.Listen("tcp", a.cfg.ListenAddr)
-	if err != nil {
-		return fmt.Errorf("listen %s: %w", a.cfg.ListenAddr, err)
+	var (
+		ln  net.Listener
+		err error
+	)
+	if a.cfg.ListenerOverride != nil {
+		ln = a.cfg.ListenerOverride
+	} else {
+		ln, err = net.Listen("tcp", a.cfg.ListenAddr)
+		if err != nil {
+			return fmt.Errorf("listen %s: %w", a.cfg.ListenAddr, err)
+		}
 	}
-	a.cfg.Logger.Info("jasper listening", "addr", a.cfg.ListenAddr, "data_dir", a.cfg.DataDir)
+	a.cfg.Logger.Info("jasper listening", "addr", ln.Addr().String(), "data_dir", a.cfg.DataDir)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(ln) }()

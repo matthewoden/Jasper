@@ -23,6 +23,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -106,6 +107,14 @@ type Config struct {
 	// current_vault. Set by cmd/jasper/serve.go after canonicalizing the
 	// flag value.
 	VaultOverride string
+
+	// ListenerOverride is a TEST-ONLY pre-bound listener. When non-nil,
+	// lifecycle.serveListener uses it directly instead of calling
+	// net.Listen(ListenAddr). Eliminates the TOCTOU race in test helpers
+	// that pick a free port by binding, reading addr, and closing — the
+	// OS may hand the same "free" port to another caller before the SUT
+	// rebinds. Production callers leave it nil.
+	ListenerOverride net.Listener
 }
 
 // App bundles the wired application. New constructs Phase-1-shape
