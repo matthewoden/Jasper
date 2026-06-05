@@ -11,9 +11,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/installer"
 )
 
-// uninstallCmd unregisters Jasper from launchd / systemd. Idempotent
-// per D-35: notes + SQLite index are left in place; the user must
-// delete the data dir manually to start fresh.
 var uninstallCmd = &cobra.Command{
 	Use:   "uninstall",
 	Short: "Unregister Jasper from launchd / systemd",
@@ -28,7 +25,6 @@ Notes:
     directory manually after uninstall.
   - Idempotent — safe to run even if Jasper wasn't installed.`,
 	RunE: func(_ *cobra.Command, _ []string) error {
-		// Plan 08-23 (R4-15): JASPER_DATA_DIR removed; resolve directly.
 		dataDir := config.DefaultDataDir()
 		svc, err := installer.New(dataDir)
 		if err != nil {

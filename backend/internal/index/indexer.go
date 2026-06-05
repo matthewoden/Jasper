@@ -79,22 +79,8 @@ func New(pair *sqlite.Pair, notesDir string, log *slog.Logger) *Indexer {
 	}
 }
 
-// Compile-time assertion: *Indexer satisfies notes.Index. This catches
-// any drift between the port and the implementation at build time.
-// The methods Upsert / Delete / List live in store.go; Reconcile
-// (which is NOT part of the notes.Index port) lives in reconcile.go.
 var _ notes.Index = (*Indexer)(nil)
 
-// chooseID returns the existing-row id when present; otherwise the
-// ScratchpadUUID for the seeded scratchpad path; otherwise a fresh v4
-// UUID. Plan 02-06's smoke test depends on the scratchpad keeping its
-// hard-coded UUID through Reconcile (Phase 1 frontend still calls
-// GET /api/v1/notes/{ScratchpadUUID}).
-//
-// The special-case ONLY fires when relPath == notes.ScratchpadRelPath
-// AND existingID == uuid.Nil (no row exists for that path yet) —
-// T-02-04b-07 mitigation. The constants are package-private to notes,
-// so this special-case cannot be abused to claim arbitrary UUIDs.
 func chooseID(existingID uuid.UUID, relPath string) uuid.UUID {
 	if existingID != uuid.Nil {
 		return existingID

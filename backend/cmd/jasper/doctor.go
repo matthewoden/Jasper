@@ -64,19 +64,9 @@ type DoctorCheck struct {
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
-	// V-PARK-3 / UAT-2 round 2 G4: under the vault model, per-vault state
-	// (config.json, app.db, logs/) lives under <currentVault>/storage, NOT
-	// ~/.jasper/storage. Load app.json first to find the current vault, then
-	// use that path as dataDir for all per-vault checks. --vault still
-	// overrides for support-tooling use.
-	// Plan 08-23 (R4-15): JASPER_DATA_DIR removed.
 	appJSONPath, _ := vault.AppJSONPath()
 	appState, _ := vault.LoadAppJSON(appJSONPath)
 
-	// currentVault: which vault are we diagnosing? Order:
-	//   1. --vault flag (explicit override)
-	//   2. current_vault from app.json (normal vault-model path)
-	//   3. "" when neither is set
 	currentVault := ""
 	if vaultFlag != "" {
 		if c, err := vault.Canonicalize(vaultFlag); err == nil {
@@ -88,9 +78,6 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		currentVault = appState.CurrentVault
 	}
 
-	// dataDir: where do per-vault checks (migration, vault perms,
-	// logs) look? Under the vault model this IS currentVault. If unset,
-	// fall back to the default app-home (~/.jasper).
 	dataDir := currentVault
 	if dataDir == "" {
 		dataDir = config.DefaultDataDir()
@@ -98,9 +85,6 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 
 	cfg, _ := config.Load(dataDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	// Order: pure-stat vault checks run BEFORE checkLogWritable, which
-	// MkdirAll's <dataDir>/logs/ and would mask a deleted-vault scenario
-	// under the vault model (dataDir == currentVault).
 	checks := []DoctorCheck{
 		checkWslSystemd(),
 		checkLinger(),
@@ -157,8 +141,6 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// mcpPortCheck wraps checkPortAvailable for the MCP port and short-
-// circuits to a skip when MCP is disabled in config.
 func mcpPortCheck(cfg config.Config) DoctorCheck {
 	if !cfg.MCP.Enabled {
 		return DoctorCheck{Name: "mcp.port", Status: "skip", Hint: "MCP disabled in config"}
@@ -166,8 +148,6 @@ func mcpPortCheck(cfg config.Config) DoctorCheck {
 	return checkPortAvailable("mcp.port", cfg.MCP.Port)
 }
 
-// checkWslSystemd reads /etc/wsl.conf and verifies the [boot]/systemd=true block.
-// On macOS or non-WSL Linux, skip (the unit isn't applicable).
 func checkWslSystemd() DoctorCheck {
 	if runtime.GOOS != "linux" {
 		return DoctorCheck{Name: "wsl.conf systemd", Status: "skip", Hint: "macOS — N/A"}
@@ -203,8 +183,6 @@ func checkWslSystemd() DoctorCheck {
 	}
 }
 
-// checkLinger uses loginctl to verify the current user has linger enabled.
-// On macOS, skip — no analog.
 func checkLinger() DoctorCheck {
 	if runtime.GOOS != "linux" {
 		return DoctorCheck{Name: "loginctl linger", Status: "skip", Hint: "macOS — N/A"}
@@ -231,8 +209,6 @@ func checkLinger() DoctorCheck {
 	}
 }
 
-// checkPortAvailable tries to bind 127.0.0.1:<port> and immediately closes.
-// If bind fails, the port is in use (or the binary lacks permission).
 func checkPortAvailable(label string, port int) DoctorCheck {
 	if port <= 0 || port > 65535 {
 		return DoctorCheck{Name: label, Status: "fail", Hint: "invalid port " + strconv.Itoa(port) + " in config.json"}
@@ -249,12 +225,6 @@ func checkPortAvailable(label string, port int) DoctorCheck {
 	return DoctorCheck{Name: label, Status: "ok"}
 }
 
-// checkDataDirPerms ensures Jasper's private state directory has mode 0700.
-// Under the vault model the user picks the vault root (often a user-managed
-// dir like ~/Documents/vault-name that inherits 0755) — so we check the
-// <vault>/.jasper/ subdir Jasper itself creates with 0o700, not the root.
-// Legacy installs fall back to checking the root (~/.jasper) for parity
-// with the pre-vault behavior. UAT-2 round 3 F1.
 func checkDataDirPerms(dir string) DoctorCheck {
 	checkDir := dir
 	if jasperDir := filepath.Join(dir, ".jasper"); pathIsDir(jasperDir) {
@@ -289,18 +259,11 @@ func checkDataDirPerms(dir string) DoctorCheck {
 	return DoctorCheck{Name: "data-dir perms", Status: "ok"}
 }
 
-// pathIsDir returns true when p exists and is a directory. Used to
-// distinguish vault-model (.jasper/ present) from legacy installs.
 func pathIsDir(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.IsDir()
 }
 
-// checkMigrationState verifies every embedded migration filename is recorded
-// in schema_migrations. The version column is TEXT (e.g. '001_initial.sql'),
-// not an int — the previous implementation scanned MAX(version) into an int
-// which always failed and produced a misleading "table missing" error
-// (UAT-2 round 3 M2).
 func checkMigrationState(dir string) DoctorCheck {
 	dbPath := filepath.Join(dir, "storage", "app.db")
 	if _, err := os.Stat(dbPath); err != nil {
@@ -316,12 +279,9 @@ func checkMigrationState(dir string) DoctorCheck {
 	}
 	defer func() { _ = db.Close() }()
 
-	// Collect applied migrations (TEXT versions — filename or sentinel rows).
 	applied := map[string]bool{}
 	rows, queryErr := db.Query(`SELECT version FROM schema_migrations`)
 	if queryErr != nil {
-		// Distinguish "table missing" from other query errors so the hint
-		// matches reality.
 		msg := queryErr.Error()
 		if strings.Contains(msg, "no such table") {
 			return DoctorCheck{
@@ -349,7 +309,6 @@ func checkMigrationState(dir string) DoctorCheck {
 	}
 	_ = rows.Close()
 
-	// Enumerate embedded migrations; missing entries are pending migrations.
 	entries, err := migrations.FS.ReadDir(".")
 	if err != nil {
 		return DoctorCheck{Name: "migration state", Status: "fail", Hint: "could not enumerate embedded migrations"}
@@ -374,16 +333,6 @@ func checkMigrationState(dir string) DoctorCheck {
 	return DoctorCheck{Name: "migration state", Status: "ok"}
 }
 
-// checkLogWritable probes write-permission against the logs directory WITHOUT
-// touching jasper.log itself (Plan 08-12 revision 2 Blocker 3 — appending a
-// probe byte to the real log corrupts the slog JSON stream; downstream log
-// readers expect one valid JSON record per line, and a bare newline is not
-// valid JSON).
-//
-// Strategy: open a SEPARATE probe file <logsDir>/.write-probe-<pid> with
-// O_CREATE|O_WRONLY|O_EXCL (exclusive create — fails if a stale probe lingers
-// from a crashed prior run; on EEXIST we fall back to O_TRUNC). Write one
-// byte, close, os.Remove. Never touch jasper.log.
 func checkLogWritable(dir string) DoctorCheck {
 	logsDir := filepath.Join(dir, "logs")
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
@@ -392,7 +341,6 @@ func checkLogWritable(dir string) DoctorCheck {
 	probePath := filepath.Join(logsDir, fmt.Sprintf(".write-probe-%d", os.Getpid()))
 	f, err := os.OpenFile(probePath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
 	if err != nil {
-		// Fallback: O_TRUNC overwrites a stale probe from a crashed prior run.
 		f, err = os.OpenFile(probePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 		if err != nil {
 			return DoctorCheck{
@@ -420,8 +368,6 @@ func checkLogWritable(dir string) DoctorCheck {
 		}
 	}
 	if rerr := os.Remove(probePath); rerr != nil {
-		// Cleanup failure — the probe is benign on disk, but flag it so
-		// the user can manually clean up if they care.
 		return DoctorCheck{
 			Name:   "log writable",
 			Status: "ok",
@@ -431,8 +377,6 @@ func checkLogWritable(dir string) DoctorCheck {
 	return DoctorCheck{Name: "log writable", Status: "ok"}
 }
 
-// checkFrontendEmbed opens dist/index.html from the embedded static.FS.
-// If the bundle is missing (binary built without `make build`), fail.
 func checkFrontendEmbed() DoctorCheck {
 	f, err := static.FS().Open("index.html")
 	if err != nil {
@@ -455,10 +399,6 @@ func checkFrontendEmbed() DoctorCheck {
 	return DoctorCheck{Name: "frontend embed", Status: "ok"}
 }
 
-// checkAppJSONReadable probes whether app.json is readable and parseable
-// (V-PARK-3). This is informational — the corrupt-backup-reset semantics
-// of LoadAppJSON mean a corrupt file auto-recovers; we surface the outcome.
-// JSON key: "app_json_readable"
 func checkAppJSONReadable(appJSONPath string) DoctorCheck {
 	_, err := vault.LoadAppJSON(appJSONPath)
 	if err != nil {
@@ -471,9 +411,6 @@ func checkAppJSONReadable(appJSONPath string) DoctorCheck {
 	return DoctorCheck{Name: "app_json_readable", Status: "ok"}
 }
 
-// checkCurrentVaultExists verifies that the current_vault path exists on disk.
-// If no vault is selected, the check is skipped.
-// JSON key: "current_vault_exists"
 func checkCurrentVaultExists(currentVault string) DoctorCheck {
 	if currentVault == "" {
 		return DoctorCheck{Name: "current_vault_exists", Status: "skip", Hint: "no current_vault set"}
@@ -488,10 +425,6 @@ func checkCurrentVaultExists(currentVault string) DoctorCheck {
 	return DoctorCheck{Name: "current_vault_exists", Status: "ok"}
 }
 
-// checkCurrentVaultHasJasperDir verifies that the current vault's .jasper/
-// directory exists. Missing → the vault needs to be (re)opened via the picker
-// to initialize the .jasper/ skeleton.
-// JSON key: "current_vault_has_jasper_dir"
 func checkCurrentVaultHasJasperDir(currentVault string) DoctorCheck {
 	if currentVault == "" {
 		return DoctorCheck{Name: "current_vault_has_jasper_dir", Status: "skip", Hint: "no current_vault set"}

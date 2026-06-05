@@ -46,11 +46,6 @@ type StatusProvider interface {
 	Status(ctx context.Context) Status
 }
 
-// statusStore is the runner's internal mutable state. The api.Server
-// reader and the Runner background mutator race on this; the RWMutex
-// serializes them. Writers acquire the write lock; readers acquire the
-// read lock — the api/status read path is "frequent + cheap" so the
-// RWMutex pays off over a plain sync.Mutex.
 type statusStore struct {
 	mu  sync.RWMutex
 	cur Status
@@ -64,9 +59,6 @@ func (s *statusStore) Status(_ context.Context) Status {
 	return s.cur
 }
 
-// set replaces the current state. Called only from inside the runner
-// (on Run / RebuildAndReindex). Holding the write lock for the duration
-// of a Status struct copy is microsecond-scale.
 func (s *statusStore) set(next Status) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

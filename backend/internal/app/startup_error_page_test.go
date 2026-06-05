@@ -39,8 +39,8 @@ func TestStartupErrorHandler_RootPath_ReturnsHTMLWithCopy(t *testing.T) {
 	}
 	body := rr.Body.String()
 	wantSubs := []string{
-		"Jasper couldn", // headline (apostrophe may be escaped to &#39; or kept literal — substring match avoids brittleness)
-		"start",         // tail of headline
+		"Jasper couldn",
+		"start",
 		"Migration 004_mcp_grants.sql",
 		"syntax error near GRANTS",
 		"Run jasper doctor",
@@ -108,13 +108,11 @@ func TestStartupErrorHandler_XSSGuard(t *testing.T) {
 	h.ServeHTTP(rr, req)
 
 	body := rr.Body.String()
-	// The escaped form MUST be present.
+
 	if !strings.Contains(body, "&lt;script&gt;") {
 		t.Errorf("body did not contain escaped &lt;script&gt;; got:\n%s", body)
 	}
-	// A literal <script> tag with a payload-looking attribute or content
-	// MUST NOT be present. (The template itself contains zero <script>
-	// tags — see TestStartupErrorHandler_NoScriptTags.)
+
 	if strings.Contains(body, "<script>alert(1)") || strings.Contains(body, "<script>steal()") {
 		t.Errorf("XSS guard breached: literal <script> payload appeared in body:\n%s", body)
 	}
@@ -234,7 +232,7 @@ func TestTailLog_LastNLines(t *testing.T) {
 func TestTailLog_HugeFile_Capped(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "huge.log")
-	// 65536 bytes of "ab\n" lines (3 bytes each) = ~21845 lines.
+
 	var sb strings.Builder
 	for sb.Len() < 64*1024 {
 		sb.WriteString("ab\n")

@@ -1,28 +1,3 @@
-// Phase 8 Plan 08-09 (D-16 / D-21 / D-56 / D-57): MCP tool registrations.
-//
-// Tool surface (D-16):
-//
-//	read tools (no ACL check):
-//	  - list_notes
-//	  - read_note
-//	  - search_notes
-//	  - read_attachment
-//	tier-1 write tools (acl.CanCreate / CanUpdate):
-//	  - create_note
-//	  - update_note
-//	tier-2 write tools (acl.CanMove / CanDelete):
-//	  - move_note
-//	  - delete_note
-//
-// Every write tool:
-//  1. Runs the ACL check BEFORE invoking notes.Service.
-//  2. On denial, returns an MCP error containing "no_grant".
-//  3. On success, logs `mcp.write tool=<name> path=<path> level=<int>`
-//     per D-21.
-//
-// notes.Service emits the matching note:* WS event itself (D-57), so the
-// MCP layer never broadcasts directly.
-
 package mcp
 
 import (
@@ -43,8 +18,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
-
-// ---------- Argument / result shapes (D-16) ----------
 
 // ListNotesArgs — list_notes takes no arguments.
 type ListNotesArgs struct{}
@@ -187,8 +160,6 @@ type DeleteNoteResult struct {
 	Deleted bool `json:"deleted"`
 }
 
-// ---------- Tool registration ----------
-
 func (s *Server) registerTools() {
 	s.registerListNotes()
 	s.registerReadNote()
@@ -201,17 +172,6 @@ func (s *Server) registerTools() {
 	s.registerDeleteNote()
 }
 
-// list_grants — metadata read. Returns every explicit folder grant currently
-// authorizing AI writes in the active vault, sorted alphabetically by path.
-//
-// R4-3 / 08-21: AI clients previously had no way to discover writable folders
-// without trial-and-error writes. list_grants surfaces the explicit grant set
-// directly. Per D-17/D-18 grants are recursive — a grant on parents/ covers
-// parents/child/draft.md — but list_grants returns only EXPLICIT rows from
-// mcp_write_grants. Callers compute inheritance themselves.
-//
-// No ACL check is required to call this tool. Listing grants is metadata,
-// not a write; reads are global per D-12.
 func (s *Server) registerListGrants() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name: "list_grants",
@@ -238,7 +198,6 @@ func (s *Server) registerListGrants() {
 	})
 }
 
-// list_notes — global read. Returns every indexed note.
 func (s *Server) registerListNotes() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name:        "list_notes",
@@ -259,7 +218,6 @@ func (s *Server) registerListNotes() {
 	})
 }
 
-// read_note — global read. Returns body + metadata.
 func (s *Server) registerReadNote() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name:        "read_note",
@@ -284,7 +242,6 @@ func (s *Server) registerReadNote() {
 	})
 }
 
-// search_notes — global read. FTS5 query against the index.
 func (s *Server) registerSearchNotes() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name:        "search_notes",
@@ -311,8 +268,6 @@ func (s *Server) registerSearchNotes() {
 	})
 }
 
-// read_attachment — global read. Resolves <dataDir>/notes/<parent>/attachments/<filename>
-// via the AttachmentProvider, returns base64-encoded bytes + mime.
 func (s *Server) registerReadAttachment() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name:        "read_attachment",
@@ -332,7 +287,6 @@ func (s *Server) registerReadAttachment() {
 	})
 }
 
-// create_note — Tier-1 write. ACL.CanCreate gate.
 func (s *Server) registerCreateNote() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name: "create_note",
@@ -345,26 +299,14 @@ func (s *Server) registerCreateNote() {
 		}
 		parent, title, err := splitNotePath(args.Path)
 		if err != nil {
-			// splitNotePath only rejects empty paths and non-.md suffixes —
-			// both are caller-supplied invariant violations, surface as
-			// invalid_path so the four-code surface stays clean (R4-2).
 			return nil, CreateNoteResult{}, fmt.Errorf("invalid_path: %w", err)
 		}
-		// R4-4 (08-21): sanitize the optional human-friendly title for
-		// embedding in the H1. Strip control chars + newlines, collapse
-		// internal whitespace, trim. Reject empty post-sanitization with
-		// invalid_path so the four-code surface stays consistent.
+
 		displayTitle, sanErr := sanitizeCreateTitle(args.Title)
 		if sanErr != nil {
 			return nil, CreateNoteResult{}, fmt.Errorf("invalid_path: %w", sanErr)
 		}
-		// 08-24 R4-14 test hook: when JASPER_MCP_TEST_DELAY is set to a
-		// non-zero integer milliseconds (1..9999), sleep that long BEFORE
-		// the atomic write to widen the race window for the deterministic-
-		// timing phase8-mcp-vault-switch.spec.ts test. The sleep respects
-		// the request context so V6's drain-cap (2s) can still cancel an
-		// in-flight write when the vault swap times out. NEVER enabled in
-		// production builds; the env var is undocumented and unsupported.
+
 		if d := os.Getenv("JASPER_MCP_TEST_DELAY"); d != "" {
 			if ms, err := strconv.Atoi(d); err == nil && ms > 0 && ms < 10000 {
 				select {
@@ -374,11 +316,7 @@ func (s *Server) registerCreateNote() {
 				}
 			}
 		}
-		// 08-19 R4-1 atomic create: notes.Service.CreateWithBody composes
-		// (scaffold + body) in memory and writes it via a SINGLE atomic
-		// WriteAtomic. No follow-up Service.Update call, no second
-		// If-Match check, no partial scaffold-only file on failure.
-		// Service broadcasts note:created itself (D-57).
+
 		summary, err := s.notesSvc.CreateWithBodyAndTitle(ctx, parent, title, args.Body, displayTitle)
 		if err != nil {
 			return nil, CreateNoteResult{}, mapCreateNoteErr(args.Path, err)
@@ -393,11 +331,6 @@ func (s *Server) registerCreateNote() {
 	})
 }
 
-// mapCreateNoteErr classifies a CreateWithBody error into the distinct
-// R4-2 error-code surface: already_exists, invalid_path, internal. The
-// no_grant case is handled by the ACL gate above this call site; the
-// legacy partial_create code is UNREACHABLE from the atomic path and
-// is not emitted by this mapper.
 func mapCreateNoteErr(p string, err error) error {
 	switch {
 	case errors.Is(err, fs.ErrExist),
@@ -411,7 +344,6 @@ func mapCreateNoteErr(p string, err error) error {
 	}
 }
 
-// update_note — Tier-1 write. ACL.CanUpdate gate. SYNC-06 If-Match propagation.
 func (s *Server) registerUpdateNote() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name: "update_note",
@@ -423,7 +355,6 @@ func (s *Server) registerUpdateNote() {
 	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args UpdateNoteArgs) (*mcpsdk.CallToolResult, UpdateNoteResult, error) {
 		notePath := args.Path
 		if notePath == "" && args.ID != "" {
-			// Resolve path via the service registry for the ACL check.
 			id, err := uuid.Parse(args.ID)
 			if err != nil {
 				return nil, UpdateNoteResult{}, fmt.Errorf("update_note: invalid id: %w", err)
@@ -441,11 +372,7 @@ func (s *Server) registerUpdateNote() {
 		if err != nil {
 			return nil, UpdateNoteResult{}, fmt.Errorf("update_note: %w", err)
 		}
-		// R4-6 (08-21): if_match="*" is an explicit last-writer-wins opt-in.
-		// Pass "" to notes.Service.Update (permissive — no stale-write check)
-		// and surface force_write=true in the result so the caller's logs
-		// make the bypass explicit. Any other if_match value (including the
-		// empty string) falls through to the legacy SYNC-06 behaviour.
+
 		forceWrite := args.IfMatch == "*"
 		effectiveIfMatch := args.IfMatch
 		if forceWrite {
@@ -453,10 +380,6 @@ func (s *Server) registerUpdateNote() {
 		}
 		n, err := s.notesSvc.Update(ctx, id, args.Body, effectiveIfMatch)
 		if err != nil {
-			// SYNC-06: surface a structured conflict error with the
-			// current updated_at so the caller can retry. The notes
-			// service wraps ErrStaleWrite in a *StaleWriteInfo that
-			// carries the current mtime.
 			var swInfo *notes.StaleWriteInfo
 			if errors.As(err, &swInfo) {
 				return nil, UpdateNoteResult{}, fmt.Errorf(
@@ -476,7 +399,6 @@ func (s *Server) registerUpdateNote() {
 	})
 }
 
-// move_note — Tier-2 write. ACL.CanMove gate.
 func (s *Server) registerMoveNote() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name:        "move_note",
@@ -506,7 +428,6 @@ func (s *Server) registerMoveNote() {
 	})
 }
 
-// delete_note — Tier-2 write. ACL.CanDelete gate.
 func (s *Server) registerDeleteNote() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name:        "delete_note",
@@ -528,13 +449,6 @@ func (s *Server) registerDeleteNote() {
 	})
 }
 
-// ---------- helpers ----------
-
-// resolveNoteID returns the note UUID given either an id string (preferred)
-// or a path. If both are empty, returns an error. id is parsed strictly;
-// path is matched against notes.Service.LookupSummary via a linear scan of
-// the NotesProvider.List result (the Phase 1 contract — no LookupByPath on
-// the registry yet, mirroring api.lookupNoteByStringID's pattern).
 func (s *Server) resolveNoteID(ctx context.Context, idStr, notePath string) (uuid.UUID, error) {
 	if idStr != "" {
 		id, err := uuid.Parse(idStr)
@@ -562,9 +476,6 @@ func (s *Server) resolveNoteID(ctx context.Context, idStr, notePath string) (uui
 	return uuid.Nil, fmt.Errorf("note not found at path %q", notePath)
 }
 
-// splitNotePath splits a notes/-relative path like "projects/foo.md" into
-// the parent folder ("projects") and the title without extension ("foo").
-// Returns an error if the path is empty or doesn't end in .md.
 func splitNotePath(rel string) (parent, title string, err error) {
 	rel = strings.TrimSpace(rel)
 	if rel == "" {
@@ -586,14 +497,6 @@ func splitNotePath(rel string) (parent, title string, err error) {
 	return parent, title, nil
 }
 
-// sanitizeCreateTitle prepares an MCP-supplied create_note title for
-// embedding in the scaffold H1 (R4-4 / 08-21). Strips control chars +
-// newlines + tabs, collapses runs of whitespace to a single space, trims
-// surrounding whitespace. Returns ("", nil) for an empty input (caller
-// falls back to filename-derived title). Returns ("", err) when the
-// post-sanitization title is empty after originally containing characters
-// (means the input was nothing but control chars) — surfaced as
-// invalid_path so the four-code R4-2 surface stays clean.
 func sanitizeCreateTitle(in string) (string, error) {
 	if in == "" {
 		return "", nil
@@ -603,7 +506,6 @@ func sanitizeCreateTitle(in string) (string, error) {
 	lastSpace := false
 	for _, r := range in {
 		if r == '\n' || r == '\r' || r == '\t' || r < 0x20 || r == 0x7f {
-			// Control char or newline → collapse to single space.
 			if !lastSpace {
 				b.WriteRune(' ')
 				lastSpace = true
@@ -627,9 +529,6 @@ func sanitizeCreateTitle(in string) (string, error) {
 	return out, nil
 }
 
-// canonNotePath lowercases + forward-slashes a path so registry lookups
-// match the canonical form used by notes.Service. Mirrors the helper in
-// internal/notes/service.go (canonicalRelPath) without re-exporting it.
 func canonNotePath(rel string) string {
 	rel = strings.TrimSpace(rel)
 	rel = strings.TrimPrefix(rel, "/")

@@ -14,7 +14,6 @@ import (
 //
 // RESEARCH.md Pitfall 1 mitigation.
 func TestLaunchdTemplateKeepAliveCrashedDict(t *testing.T) {
-	// MUST contain the dict form with Crashed=true.
 	if !strings.Contains(launchdPlist, "<key>KeepAlive</key>\n    <dict>") {
 		t.Errorf("launchdPlist missing dict-form KeepAlive (got bool-form or missing entirely)")
 	}
@@ -24,8 +23,7 @@ func TestLaunchdTemplateKeepAliveCrashedDict(t *testing.T) {
 	if !strings.Contains(launchdPlist, "<key>SuccessfulExit</key>\n        <false/>") {
 		t.Errorf("launchdPlist missing <key>SuccessfulExit</key> with <false/> body")
 	}
-	// MUST NOT contain the bool form (an immediate <true/> after KeepAlive).
-	// This would indicate someone reverted to the kardianos default.
+
 	bad := "<key>KeepAlive</key>\n    <true/>"
 	if strings.Contains(launchdPlist, bad) {
 		t.Errorf("launchdPlist contains bool-form KeepAlive (Pitfall 1 regression!): %q", bad)
@@ -72,7 +70,7 @@ func TestSystemdTemplateRestartOnFailure(t *testing.T) {
 	if !strings.Contains(systemdUnit, "Restart=on-failure") {
 		t.Errorf("systemdUnit missing Restart=on-failure (kardianos default `always` would silently respawn after SIGTERM)")
 	}
-	// Don't allow a regression to Restart=always.
+
 	if strings.Contains(systemdUnit, "Restart=always") {
 		t.Errorf("systemdUnit contains Restart=always — must be on-failure (D-35)")
 	}
@@ -138,11 +136,6 @@ func TestNewReturnsService(t *testing.T) {
 // This test runs the code path (so the package compiles + New executes)
 // and validates the EnvVars contract.
 func TestNewWiresEnvVars(t *testing.T) {
-	// This is a runtime exercise — if installer.go ever drops
-	// JASPER_DATA_DIR from the EnvVars map, the install path silently
-	// breaks. The strongest assertion we have without kardianos
-	// exposing Config back is "the call returns without error" plus
-	// the grep done in TestInstallerSourceContainsOverrideWiring.
 	svc, err := New("/var/jasper/notes")
 	if err != nil {
 		t.Fatalf("New: unexpected err: %v", err)
@@ -202,6 +195,4 @@ func TestEnableLingerLinuxNoOpOffLinux(t *testing.T) {
 // not here. The unit tests above pin the template content and the
 // no-op behavior on the wrong OS — that's the contract for 08-11.
 func TestPlatformHelpersUnitTestOnly(_ *testing.T) {
-	// Marker test — no assertions. See package doc and 08-14 plan for
-	// the actual integration test surface.
 }

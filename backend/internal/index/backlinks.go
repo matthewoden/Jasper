@@ -1,14 +1,5 @@
 package index
 
-// backlinks.go — Plan 06-04 Task 3: SyncBacklinks, GetBacklinks, buildExcerpt.
-//
-// SyncBacklinks resolves [[Title]] references via the registry (D-20), writes
-// one backlinks row per unique (source_id, target_title) (D-29), and builds a
-// sanitized HTML excerpt per the UI-SPEC §Surface 2 contract.
-//
-// GetBacklinks returns resolved backlinks for a target note sorted by source
-// recency (D-28). Pending rows (target_id IS NULL) are excluded (D-32).
-
 import (
 	"bytes"
 	"context"
@@ -35,10 +26,6 @@ import (
 // Deprecated: use notes.BacklinkRow directly.
 type BacklinkRow = notes.BacklinkRow
 
-// ---------------------------------------------------------------------------
-// SyncBacklinks
-// ---------------------------------------------------------------------------
-
 // SyncBacklinks resolves every WikiLinkRef in refs, groups them by target
 // title (D-29 one row per unique source+title), and rewrites all backlinks
 // rows for sourceID in a single BEGIN IMMEDIATE transaction.
@@ -63,23 +50,20 @@ func (x *Indexer) SyncBacklinks(
 ) error {
 	sourceFolder := filepath.Dir(sourcePath)
 
-	// Group refs by lowercase target title (D-29: one row per source+title).
 	type pendingRow struct {
-		targetTitle string // verbatim Target from first ref with this lowercase key
+		targetTitle string
 		targetID    *uuid.UUID
 		excerpt     string
 	}
 	grouped := make(map[string]*pendingRow, len(refs))
-	order := make([]string, 0, len(refs)) // preserve insertion order for determinism
+	order := make([]string, 0, len(refs))
 
 	for _, r := range refs {
 		key := strings.ToLower(r.Target)
 		if _, ok := grouped[key]; ok {
-			// Already have a row for this target — D-29 collapse.
 			continue
 		}
 
-		// Resolve via registry (D-20 same-folder-then-alphabetical).
 		var tid *uuid.UUID
 		if registry != nil {
 			candidates := registry.FindByTitle(key, sourceFolder)
@@ -90,7 +74,7 @@ func (x *Indexer) SyncBacklinks(
 		}
 
 		row := &pendingRow{
-			targetTitle: r.Target, // verbatim title from source
+			targetTitle: r.Target,
 			targetID:    tid,
 			excerpt:     buildExcerpt(content, r.Target),
 		}
@@ -104,13 +88,11 @@ func (x *Indexer) SyncBacklinks(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Delete every backlinks row for this source (we rewrite the full set).
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM backlinks WHERE source_id = ?`, sourceID.String()); err != nil {
 		return fmt.Errorf("syncbacklinks clear: %w", err)
 	}
 
-	// Insert each grouped row.
 	for _, key := range order {
 		row := grouped[key]
 		var tidStr any
@@ -130,10 +112,6 @@ func (x *Indexer) SyncBacklinks(
 	}
 	return nil
 }
-
-// ---------------------------------------------------------------------------
-// GetBacklinks
-// ---------------------------------------------------------------------------
 
 // GetBacklinks returns the resolved backlinks for targetID, sorted by source
 // note recency (mtime_unix DESC) per D-28.
@@ -155,7 +133,7 @@ func (x *Indexer) GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]Backl
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := []BacklinkRow{} // non-nil empty slice per contract
+	out := []BacklinkRow{}
 	for rows.Next() {
 		var sourceIDStr, title, path, excerpt string
 		if err := rows.Scan(&sourceIDStr, &title, &path, &excerpt); err != nil {
@@ -170,7 +148,7 @@ func (x *Indexer) GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]Backl
 			SourceTitle: title,
 			SourcePath:  path,
 			Excerpt:     excerpt,
-			Count:       1, // D-claude-04: v1 ships count=1; multi-occurrence badge is follow-on
+			Count:       1,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -179,10 +157,6 @@ func (x *Indexer) GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]Backl
 	return out, nil
 }
 
-// ---------------------------------------------------------------------------
-// SourcesByBacklinkTitle
-// ---------------------------------------------------------------------------
-
 // SourcesByBacklinkTitle returns a NoteSummary for every source note that
 // contains a backlink row where target_title = title (case-sensitive, as
 // stored by SyncBacklinks). Used by RenameRewriteWikilinks to find all
@@ -190,13 +164,6 @@ func (x *Indexer) GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]Backl
 //
 // Returns a non-nil empty slice when no referrers exist.
 func (x *Indexer) SourcesByBacklinkTitle(ctx context.Context, title string) ([]notes.NoteSummary, error) {
-	// Case-insensitive match (COLLATE NOCASE) so that wiki-links written as
-	// [[OldTitle]] are found when SourcesByBacklinkTitle is called with
-	// "oldtitle" (the lower-cased registry path). This is required because
-	// LookupTitle returns the lowercase filename-derived title, but the
-	// backlinks table stores target_title verbatim from the [[...]] text.
-	// Rule 1 fix: the original case-sensitive = caused rewrite misses when
-	// the link text casing differed from the registry path casing.
 	rows, err := x.Pair.Reader.QueryContext(ctx,
 		`SELECT n.id, n.path, n.title, n.mtime_unix
 		 FROM backlinks b
@@ -233,10 +200,6 @@ func (x *Indexer) SourcesByBacklinkTitle(ctx context.Context, title string) ([]n
 	return out, nil
 }
 
-// ---------------------------------------------------------------------------
-// UpdateBacklinksTargetTitle
-// ---------------------------------------------------------------------------
-
 // UpdateBacklinksTargetTitle atomically updates the target_title (and
 // optionally target_id) for every backlinks row that currently has
 // target_title = oldTitle. Used by RenameRewriteWikilinks after the FS pass
@@ -271,10 +234,6 @@ func (x *Indexer) UpdateBacklinksTargetTitle(
 	return tx.Commit()
 }
 
-// ---------------------------------------------------------------------------
-// ResolvePendingBacklinks
-// ---------------------------------------------------------------------------
-
 // ResolvePendingBacklinks updates all backlinks rows where target_id IS NULL
 // by attempting to resolve target_title via the registry. Called after
 // registry hydration at startup to fix the nil-registry reconcile window
@@ -292,7 +251,6 @@ func (x *Indexer) ResolvePendingBacklinks(ctx context.Context, registry *notes.R
 		return nil
 	}
 
-	// Step 1: collect all distinct (target_title, source_path) pairs for pending rows.
 	rows, err := x.Pair.Reader.QueryContext(ctx,
 		`SELECT DISTINCT b.target_title, n.path
 		 FROM backlinks b
@@ -316,13 +274,12 @@ func (x *Indexer) ResolvePendingBacklinks(ctx context.Context, registry *notes.R
 		return fmt.Errorf("resolve pending: rows: %w", err)
 	}
 
-	// Step 2: for each pending title, attempt registry resolution and update.
 	for _, p := range pendings {
 		key := strings.ToLower(p.targetTitle)
 		sourceFolder := filepath.Dir(p.sourcePath)
 		candidates := registry.FindByTitle(key, sourceFolder)
 		if len(candidates) == 0 {
-			continue // still unresolvable — leave as pending
+			continue
 		}
 		tid := candidates[0].ID
 		if _, err := x.Pair.Writer.ExecContext(ctx,
@@ -335,73 +292,45 @@ func (x *Indexer) ResolvePendingBacklinks(ctx context.Context, registry *notes.R
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// buildExcerpt
-// ---------------------------------------------------------------------------
-
-// buildExcerpt finds the first line in content that contains [[target]]
-// (case-insensitive) and returns the UI-SPEC §Surface 2 contract HTML:
-//
-//	<span>prefix </span><mark class="backlink-ref">[[Title]]</mark><span> suffix</span>
-//
-// Where prefix and suffix are HTML-escaped (T-06-04-01 mitigation) and
-// [[Title]] is the verbatim matched text from the source line (as-is inside
-// <mark> — DOMPurify whitelists span+mark+class per the UI-SPEC contract).
-//
-// Truncation: prefix is capped at 80 runes (leading "…" if truncated);
-// suffix is capped at 80 runes (trailing "…" if truncated). The excerpt
-// total is ≤ ~200 chars.
-//
-// If no line containing [[target]] is found, returns an empty string.
 func buildExcerpt(content []byte, target string) string {
 	targetLower := strings.ToLower(target)
-	// We search for [[target]] (any case) by scanning lines.
+
 	needle := "[[" + targetLower + "]]"
-	// Also accept aliases: [[target|alias]] — needle is still [[target]].
 
 	scanner := bytes.Split(content, []byte("\n"))
 	for _, lineBytes := range scanner {
 		line := string(lineBytes)
 		lineLower := strings.ToLower(line)
 
-		// Look for [[target in the line (catches [[target]] and [[target|alias]]).
 		searchFor := "[[" + targetLower
 		idx := strings.Index(lineLower, searchFor)
 		if idx < 0 {
-			// Not in this line.
 			continue
 		}
 
-		// Find the closing ]] after the match start.
 		closeIdx := strings.Index(line[idx:], "]]")
 		if closeIdx < 0 {
-			// Malformed — skip.
 			continue
 		}
-		// The matched wikilink span in the original-case line.
-		matchEnd := idx + closeIdx + 2 // +2 for "]]"
+
+		matchEnd := idx + closeIdx + 2
 		matchedText := line[idx:matchEnd]
 
-		// Prefix: text before the match.
 		prefix := strings.TrimSpace(line[:idx])
-		// Suffix: text after the match.
+
 		suffix := strings.TrimSpace(line[matchEnd:])
 
-		// Truncate prefix (keep the END so context is near the link).
 		const maxChunk = 80
 		if utf8.RuneCountInString(prefix) > maxChunk {
 			runes := []rune(prefix)
 			prefix = "…" + string(runes[len(runes)-maxChunk:])
 		}
-		// Truncate suffix (keep the START so context is near the link).
+
 		if utf8.RuneCountInString(suffix) > maxChunk {
 			runes := []rune(suffix)
 			suffix = string(runes[:maxChunk]) + "…"
 		}
 
-		// Build the HTML — HTML-escape prefix and suffix (T-06-04-01).
-		// The [[Title]] inside <mark> is emitted verbatim; DOMPurify
-		// whitelists mark + class per UI-SPEC §Surface 2 contract.
 		var sb strings.Builder
 		if prefix != "" {
 			sb.WriteString(`<span>`)
@@ -409,7 +338,7 @@ func buildExcerpt(content []byte, target string) string {
 			sb.WriteString(` </span>`)
 		}
 		sb.WriteString(`<mark class="backlink-ref">`)
-		sb.WriteString(matchedText) // verbatim — no HTML in wikilink syntax
+		sb.WriteString(matchedText)
 		sb.WriteString(`</mark>`)
 		if suffix != "" {
 			sb.WriteString(`<span> `)
@@ -417,9 +346,7 @@ func buildExcerpt(content []byte, target string) string {
 			sb.WriteString(`</span>`)
 		}
 
-		// Verify the needle was for a real match (not just [[targetprefix]]).
-		// This is enforced by the close bracket check above.
-		_ = needle // used for documentation — actual check is idx+closeIdx logic
+		_ = needle
 
 		return sb.String()
 	}

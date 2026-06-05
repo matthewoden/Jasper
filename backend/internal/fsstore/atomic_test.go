@@ -72,7 +72,6 @@ func TestAtomicWrite_Overwrite(t *testing.T) {
 		t.Fatalf("content not replaced: got %q", got)
 	}
 
-	// Test F (overlapping check): no .tmp.* leftovers in the directory.
 	leftovers, _ := filepath.Glob(filepath.Join(dir, "*.tmp.*"))
 	if len(leftovers) != 0 {
 		t.Fatalf("temp files leaked: %v", leftovers)

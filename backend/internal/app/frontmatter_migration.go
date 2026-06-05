@@ -1,27 +1,5 @@
 package app
 
-// frontmatter_migration.go — Plan 06-06 Task 1.
-//
-// InjectFrontmatterScaffoldMigration is the D-11 one-time startup step that
-// walks every .md file under notesDir and atomically prepends the
-// frontmatter scaffold (`---\ntags: []\n---\n\n# {Title}\n\n`) to any file
-// lacking a frontmatter block.
-//
-// Idempotency + resumability contract (D-11, D-39):
-//  1. If schema_migrations already contains the marker row, return
-//     immediately (no walk).
-//  2. Per-file: markdown.HasFrontmatter short-circuits files that are
-//     already migrated; a partial previous run resumes seamlessly.
-//  3. The marker row is inserted ONLY after the entire walk completes
-//     without error. A mid-walk crash leaves the marker absent so the
-//     next start retries the remaining files.
-//
-// Lifecycle placement (DESIGN.md §6.1 listener gating):
-//
-//	AFTER the SQL migration runner (so schema_migrations exists)
-//	BEFORE Indexer.Reconcile (so every .md file has frontmatter when the
-//	indexer first parses it).
-
 import (
 	"context"
 	"database/sql"
@@ -57,16 +35,12 @@ var (
 // strings lack a file extension.
 const FrontmatterScaffoldMarker = "006_frontmatter_scaffold_complete"
 
-// doAtomicWrite calls fsstore.AtomicWrite by default. In tests, the
-// package-level atomicWriteHook variable can be set to simulate mid-walk
-// failures for the D-39 resumability test.
 func doAtomicWrite(path string, data []byte) error {
 	atomicWriteHookMu.Lock()
 	hook := atomicWriteHook
 	atomicWriteHookMu.Unlock()
 
 	if hook != nil {
-		// Hook is set — use it (test-only path).
 		return hook(path, data)
 	}
 	return fsstore.AtomicWrite(path, data)
@@ -89,7 +63,6 @@ func InjectFrontmatterScaffoldMigration(
 	notesDir string,
 	log *slog.Logger,
 ) error {
-	// 1. Check marker — if present, the migration is already complete.
 	var dummy string
 	err := writerDB.QueryRowContext(ctx,
 		`SELECT version FROM schema_migrations WHERE version = ?`,
@@ -103,7 +76,6 @@ func InjectFrontmatterScaffoldMigration(
 		return fmt.Errorf("frontmatter migration: check marker: %w", err)
 	}
 
-	// 2. Walk the vault.
 	log.Info("frontmatter scaffold migration: starting walk", "dir", notesDir)
 	injected, skipped := 0, 0
 
@@ -113,23 +85,20 @@ func InjectFrontmatterScaffoldMigration(
 		}
 
 		if d.IsDir() {
-			// Skip dot-directories (.trash, .git, etc.) except the root itself.
 			if strings.HasPrefix(d.Name(), ".") && path != notesDir {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		// Skip non-.md files.
 		if !strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
 			return nil
 		}
-		// Skip dot-files (.hidden.md).
+
 		if strings.HasPrefix(d.Name(), ".") {
 			return nil
 		}
 
-		// Read file content.
 		content, readErr := os.ReadFile(path)
 		if readErr != nil {
 			log.Warn("frontmatter migration: read failed; skipping file",
@@ -138,19 +107,13 @@ func InjectFrontmatterScaffoldMigration(
 			return nil
 		}
 
-		// Skip files that already have frontmatter (per-file idempotency).
 		if markdown.HasFrontmatter(content) {
 			skipped++
 			return nil
 		}
 
-		// Derive title from filename (strip .md extension).
 		title := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
 
-		// Build injected content. markdown.InjectFrontmatterScaffold is
-		// idempotent — it short-circuits if content already has frontmatter,
-		// so this call is safe even if HasFrontmatter was wrong (regression
-		// guard from Plan 06-03 Test 10).
 		newContent := markdown.InjectFrontmatterScaffold(content, title)
 
 		if err := doAtomicWrite(path, newContent); err != nil {
@@ -166,7 +129,6 @@ func InjectFrontmatterScaffoldMigration(
 		return walkErr
 	}
 
-	// 3. Record marker after the full walk succeeds.
 	if _, err := writerDB.ExecContext(ctx,
 		`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
 		FrontmatterScaffoldMarker, time.Now().Unix(),

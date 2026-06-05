@@ -9,9 +9,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// Compile-time assertion: Hub satisfies the notes.Broadcaster port.
-// The assertion lives here so the generated-types boundary is verified
-// in the concrete implementation file (Plan 04-04 — Pitfall 6).
 var _ notes.Broadcaster = (*Hub)(nil)
 
 // Hub is the registry of connected WebSocket clients and the broadcast
@@ -39,7 +36,7 @@ type Hub struct {
 	log             *slog.Logger
 	mu              sync.RWMutex
 	clients         map[*client]struct{}
-	marshalFailures uint64 // bumped via atomic.AddUint64
+	marshalFailures uint64
 }
 
 // New constructs an empty Hub. Logger fallback mirrors notes.NewService
@@ -68,9 +65,6 @@ func New(log *slog.Logger) *Hub {
 func (h *Hub) Broadcast(eventType string, payload any, originSessionID string) {
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
-		// WR-05: bump the failure counter so silent drops are
-		// observable via MarshalFailureCount(). The log line on its
-		// own is easy to lose in production.
 		atomic.AddUint64(&h.marshalFailures, 1)
 		h.log.Error("hub.Broadcast: marshal payload", "event", eventType, "err", err)
 		return
@@ -90,31 +84,23 @@ func (h *Hub) Broadcast(eventType string, payload any, originSessionID string) {
 	defer h.mu.RUnlock()
 	for c := range h.clients {
 		if c.sid == originSessionID {
-			continue // SYNC-03 origin filter
+			continue
 		}
 		select {
 		case c.send <- env:
 		default:
-			// SYNC-08: slow client; drop without blocking the broadcast
-			// goroutine. closeSlow runs in a goroutine so it can acquire
-			// the unregister Lock without deadlocking on our held RLock
-			// (Pitfall 6). WR-03: closeOnce gates the call so a 100-event
-			// burst does not spawn 100 redundant closeSlow goroutines on
-			// the same already-closing connection.
+
 			go c.closeOnce.Do(c.closeSlow)
 		}
 	}
 }
 
-// register adds c to the registry. Holds Lock.
 func (h *Hub) register(c *client) {
 	h.mu.Lock()
 	h.clients[c] = struct{}{}
 	h.mu.Unlock()
 }
 
-// unregister removes c from the registry and closes its send channel.
-// Holds Lock. Idempotent — safe to call from defers + closeSlow paths.
 func (h *Hub) unregister(c *client) {
 	h.mu.Lock()
 	if _, ok := h.clients[c]; ok {

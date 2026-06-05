@@ -54,7 +54,6 @@ func TestStatusStore_RWMutex_RaceCheck(t *testing.T) {
 	const N = 50
 	const iters = 200
 
-	// Writer.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -63,7 +62,6 @@ func TestStatusStore_RWMutex_RaceCheck(t *testing.T) {
 		}
 	}()
 
-	// Readers.
 	for i := 0; i < N; i++ {
 		wg.Add(1)
 		go func() {
@@ -76,12 +74,11 @@ func TestStatusStore_RWMutex_RaceCheck(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Final state should be from the last writer iteration.
 	final := s.Status(context.Background())
 	if final.State != StateOK {
 		t.Errorf("final state: got %q, want %q", final.State, StateOK)
 	}
-	// NotesIndexed should be a valid iteration value (0..iters-1).
+
 	if final.NotesIndexed < 0 || final.NotesIndexed >= iters {
 		t.Errorf("final NotesIndexed out of range: got %d", final.NotesIndexed)
 	}

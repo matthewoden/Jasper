@@ -21,18 +21,6 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// ----------------------------------------------------------------------
-// Plan 03-04 Task 3 — Tree handler tests.
-//
-// GetTree calls *Indexer.BuildTree, which depends on the SQLite-backed
-// indexer + the notes/ directory. The harness builds a real *Indexer
-// over a tempdir-rooted SQLite DB and a real fsstore, mirroring the
-// composition root in lifecycle.Run.
-// ----------------------------------------------------------------------
-
-// setupTreeServer builds a *Server with a real *index.Indexer + a real
-// fsstore.Store rooted at t.TempDir(). The notes/ directory is created
-// at <tempdir>/notes; the SQLite DB at <tempdir>/storage/app.db.
 func setupTreeServer(t *testing.T) (*httptest.Server, *index.Indexer, string, *notes.Service) {
 	t.Helper()
 	root := t.TempDir()
@@ -52,8 +40,6 @@ func setupTreeServer(t *testing.T) (*httptest.Server, *index.Indexer, string, *n
 	}
 	t.Cleanup(func() { _ = pair.Close() })
 
-	// Apply migrations directly via the embedded init schema. The
-	// indexer needs a notes table to query/insert.
 	if err := applyTestMigrations(pair); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
@@ -73,10 +59,6 @@ func setupTreeServer(t *testing.T) (*httptest.Server, *index.Indexer, string, *n
 	return ts, idx, notesDir, svc
 }
 
-// applyTestMigrations applies all three embedded migration SQL files to the
-// test pair. Migration 003_fts.sql (Plan 07-02/07-03) adds body_fts and
-// tag_names_fts columns to notes and the notes_fts FTS5 virtual table.
-// All three must be applied because Upsert now writes body_fts/tag_names_fts.
 func applyTestMigrations(pair *sqlite.Pair) error {
 	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql"} {
 		data, err := migrations.FS.ReadFile(name)
@@ -104,7 +86,7 @@ func TestGetTree_EmptyVault_200(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("status: got %d, want 200; body=%s", resp.StatusCode, body)
 	}
-	// JSON-decode as raw map to assert root is `[]` not `null`.
+
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
 		t.Fatalf("unmarshal: %v; body=%s", err, body)

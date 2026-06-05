@@ -1,12 +1,5 @@
 package api
 
-// TestSearchHandler — Plan 07-04 lands the SearchNotes handler. Covers:
-// - happy path with bm25 + recency sort and <mark> excerpt
-// - tag-filter AND combination (D-05)
-// - FTS5 syntax error → 400 (Pitfall 2, T-7-10)
-// - short query (< 2 chars) → 200 empty results
-// - nil index fast path → 200 empty results
-
 import (
 	"context"
 	"io"
@@ -23,16 +16,11 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// seedNote describes a single note to write into the temp vault.
 type seedNote struct {
 	Path string // relative to notesDir, e.g. "hello.md"
 	Body string // full file content (may include YAML frontmatter)
 }
 
-// newSearchTestServer creates a *Server backed by a real SQLite indexer and a
-// real fsstore populated with the given seed notes. After writing the files it
-// runs a full reconcile so body_fts / tag_names_fts are populated and
-// notes_fts is queryable.
 func newSearchTestServer(t *testing.T, seeds []seedNote) *Server {
 	t.Helper()
 
@@ -53,8 +41,6 @@ func newSearchTestServer(t *testing.T, seeds []seedNote) *Server {
 	}
 	t.Cleanup(func() { _ = pair.Close() })
 
-	// Apply all migrations (001 + 002 + 003) so body_fts / tag_names_fts
-	// columns and the notes_fts FTS5 virtual table exist.
 	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql"} {
 		data, err := migrations.FS.ReadFile(name)
 		if err != nil {
@@ -70,7 +56,6 @@ func newSearchTestServer(t *testing.T, seeds []seedNote) *Server {
 	store := fsstore.NewStore(notesDir)
 	svc := notes.NewService(store, idx, nil, logger)
 
-	// Write seed files to disk.
 	for _, s := range seeds {
 		full := filepath.Join(notesDir, s.Path)
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
@@ -81,7 +66,6 @@ func newSearchTestServer(t *testing.T, seeds []seedNote) *Server {
 		}
 	}
 
-	// Full reconcile: walks disk, upserts notes + tags + FTS columns.
 	if _, err := idx.Reconcile(context.Background(), index.ModeFull); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
@@ -92,17 +76,14 @@ func newSearchTestServer(t *testing.T, seeds []seedNote) *Server {
 func TestSearchHandler(t *testing.T) {
 	seeds := []seedNote{
 		{
-			// Note carrying tag "project" and body text with "hello"
 			Path: "hello.md",
 			Body: "---\ntags: [project]\n---\n# Hello\n\nhello searchable world",
 		},
 		{
-			// Note with "world" in body but NO project tag
 			Path: "world.md",
 			Body: "# World\n\nanother world document here",
 		},
 		{
-			// Note carrying tag "project" but body has "different"
 			Path: "notes/foo.md",
 			Body: "---\ntags: [project]\n---\n# Foo\n\ncompletely different content",
 		},
@@ -138,10 +119,6 @@ func TestSearchHandler(t *testing.T) {
 	})
 
 	t.Run("tag filter AND combination", func(t *testing.T) {
-		// q='world' matches "hello.md" (body: "searchable world") and "world.md"
-		// but tag='project' filters to only notes with that tag.
-		// "hello.md" has tag "project" → included.
-		// "world.md" has no tags → excluded.
 		tag := "project"
 		limit := 50
 		resp, err := srv.SearchNotes(ctx, SearchNotesRequestObject{

@@ -1,19 +1,5 @@
 package api
 
-// tags_handler.go — Plan 06-05 Task 4: real GetTags, GetTagNotes, PutTag,
-// DeleteTag handlers replacing the four stubs in handlers_phase6_stubs.go.
-//
-// Design: handlers read/write tags via s.index (the notes.Index held by
-// Server, NOT the nopIndex embedded in notes.Service). This decoupling
-// lets tests use tagFakeIndex without needing a fully-wired notes.Service.
-//
-// FS rewriting (updating note files) is handled by notes.Service methods
-// (RenameTagAcrossVault / DeleteTagAcrossVault) when the composition root
-// (Plan 06-06) wires a real index into the Service. In this plan, the
-// handler performs the SQL rename/delete and broadcasts the WS event; the
-// file-level rewrite is the Service responsibility and is tested separately
-// in service_test.go.
-
 import (
 	"context"
 	"errors"
@@ -24,9 +10,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// tagNameRE matches the D-22 charset: lowercase letters, digits, hyphens,
-// underscores only. Used in all four tag handlers for validation (D-22
-// defense-in-depth per T-06-02-01).
 var tagNameRE = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 func isValidTagNameStr(s string) bool { return tagNameRE.MatchString(s) }
@@ -103,7 +86,6 @@ func (s *Server) PutTag(
 	oldName := string(req.Name)
 	newName := req.Body.NewName
 
-	// D-22 charset validation (defense-in-depth; also enforced by index layer).
 	if !isValidTagNameStr(oldName) {
 		return PutTag400JSONResponse(newError("invalid_request", "tag name contains invalid characters (allowed: [a-z0-9_-]+)")), nil
 	}
@@ -115,8 +97,6 @@ func (s *Server) PutTag(
 		return PutTag404JSONResponse(newError("not_found", "tag not found")), nil
 	}
 
-	// Call the Service method which rewrites disk files first, then updates SQL.
-	// (Rule 1 fix: the index-only path only updated SQL, leaving disk files stale.)
 	touchedIDs, err := s.notes.RenameTagAcrossVault(ctx, oldName, newName)
 	if err != nil {
 		switch {
@@ -132,7 +112,6 @@ func (s *Server) PutTag(
 		}
 	}
 
-	// Broadcast tags:rewritten with origin_session_id for D-35 self-suppression.
 	if s.broadcaster != nil {
 		sessionID := notes.SessionIDFromContext(ctx)
 		ids := make([]string, len(touchedIDs))
@@ -146,7 +125,6 @@ func (s *Server) PutTag(
 		}, sessionID)
 	}
 
-	// Build response with touched_note_ids as openapi_types.UUID slice.
 	touchedUUIDs := make([]openapi_types.UUID, len(touchedIDs))
 	for i, id := range touchedIDs {
 		touchedUUIDs[i] = openapi_types.UUID(id)
@@ -176,8 +154,6 @@ func (s *Server) DeleteTag(
 		return DeleteTag404JSONResponse(newError("not_found", "tag not found")), nil
 	}
 
-	// Call the Service method which rewrites disk files first, then updates SQL.
-	// (Rule 1 fix: the index-only path only updated SQL, leaving disk files stale.)
 	touchedIDs, err := s.notes.DeleteTagAcrossVault(ctx, name)
 	if err != nil {
 		switch {
@@ -189,7 +165,6 @@ func (s *Server) DeleteTag(
 		}
 	}
 
-	// Broadcast tags:rewritten with new_name=null per D-24.
 	if s.broadcaster != nil {
 		sessionID := notes.SessionIDFromContext(ctx)
 		ids := make([]string, len(touchedIDs))

@@ -17,19 +17,13 @@ import (
 	"time"
 )
 
-// nowFunc is the package-level clock seam so tests can drive rotation
-// across a day boundary without sleeping. Production callers leave it
-// at time.Now.
 var nowFunc = time.Now
 
-// fileSink is the io.Writer that backs the slog JSON handler. It owns
-// the open jasper.log file, performs daily rotation, and serializes
-// writes via the embedded mutex.
 type fileSink struct {
 	mu       sync.Mutex
 	dir      string
 	f        *os.File
-	openedOn time.Time // YYYY-MM-DD of currently-open file
+	openedOn time.Time
 	closed   bool
 }
 
@@ -55,9 +49,6 @@ func NewFileLogger(dataDir string) (*slog.Logger, io.Closer, error) {
 	return slog.New(h), sink, nil
 }
 
-// open (re)opens jasper.log in append mode and records today's date as
-// openedOn. Caller must hold mu (or be inside the constructor before
-// the sink escapes).
 func (s *fileSink) open() error {
 	path := filepath.Join(s.dir, "jasper.log")
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
@@ -79,7 +70,6 @@ func (s *fileSink) Write(p []byte) (int, error) {
 		return 0, os.ErrClosed
 	}
 	if today := todayDate(); !sameDay(today, s.openedOn) {
-		// Rotate: close current, rename, open fresh.
 		_ = s.f.Close()
 		oldPath := filepath.Join(s.dir, "jasper.log")
 		rotatedPath := filepath.Join(s.dir, "jasper-"+s.openedOn.Format("2006-01-02")+".log")
@@ -105,14 +95,11 @@ func (s *fileSink) Close() error {
 	return err
 }
 
-// todayDate returns midnight of today in local time. The rotation gate
-// only looks at Y/M/D so the time component is normalized.
 func todayDate() time.Time {
 	t := nowFunc()
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
 
-// sameDay returns true when two times share Y/M/D.
 func sameDay(a, b time.Time) bool {
 	return a.Year() == b.Year() && a.Month() == b.Month() && a.Day() == b.Day()
 }

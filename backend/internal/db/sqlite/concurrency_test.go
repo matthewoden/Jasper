@@ -40,8 +40,6 @@ func TestConcurrentWrites_5000Notes_NoBusy(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "stress.db")
 
-	// 60s hard deadline — generous for the worst CI we'd hit; on a
-	// modern M-series the test should finish in well under 30s.
 	deadline := time.Now().Add(60 * time.Second)
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
@@ -56,9 +54,6 @@ func TestConcurrentWrites_5000Notes_NoBusy(t *testing.T) {
 		}
 	}()
 
-	// Bootstrap the schema by reading 001_initial.sql directly. This
-	// avoids a circular dependency on Plan 02-03's runner — the
-	// runner exercises the same file once it ships.
 	schemaPath := filepath.Join("..", "..", "..", "migrations", "001_initial.sql")
 	schemaBytes, err := os.ReadFile(schemaPath)
 	if err != nil {
@@ -73,8 +68,7 @@ func TestConcurrentWrites_5000Notes_NoBusy(t *testing.T) {
 		cpus = 1
 	}
 	perCPU := totalNotes / cpus
-	// Distribute the remainder onto the first few goroutines so we
-	// always insert exactly totalNotes rows across all goroutines.
+
 	remainder := totalNotes - (perCPU * cpus)
 
 	var (
@@ -86,16 +80,13 @@ func TestConcurrentWrites_5000Notes_NoBusy(t *testing.T) {
 	now := time.Now().Unix()
 	startedAt := time.Now()
 
-	// Writer goroutines.
 	for c := 0; c < cpus; c++ {
 		writerWG.Add(1)
 		count := perCPU
 		if c < remainder {
 			count++
 		}
-		// Per-goroutine path-prefix offset to keep paths globally
-		// unique (notes.path is UNIQUE; collisions would surface as
-		// constraint violations).
+
 		offset := c * 10000
 		go func(start, n int) {
 			defer writerWG.Done()
@@ -125,8 +116,6 @@ func TestConcurrentWrites_5000Notes_NoBusy(t *testing.T) {
 		}(offset, count)
 	}
 
-	// Reader goroutines — proves WAL gives readers their own
-	// snapshot; readers should never block on the active writer.
 	readerCtx, readerCancel := context.WithCancel(ctx)
 	var readerWG sync.WaitGroup
 	for r := 0; r < 4; r++ {
@@ -145,16 +134,12 @@ func TestConcurrentWrites_5000Notes_NoBusy(t *testing.T) {
 					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 						return
 					}
-					// Reader-side errors that match the SQLITE_BUSY
-					// or "database is locked" patterns are still test
-					// failures — push them onto errCh.
+
 					if isBusyErr(err) {
 						errCh <- fmt.Errorf("reader busy: %w", err)
 						return
 					}
-					// Other reader errors (e.g. closed) are tolerated
-					// during shutdown; surface them as test errors only
-					// if they happen mid-run.
+
 					select {
 					case <-readerCtx.Done():
 						return
@@ -172,8 +157,6 @@ func TestConcurrentWrites_5000Notes_NoBusy(t *testing.T) {
 	readerWG.Wait()
 	close(errCh)
 
-	// Drain errCh; any error fails the test, with extra detail when
-	// the error message mentions SQLITE_BUSY or "database is locked".
 	var errs []error
 	for err := range errCh {
 		errs = append(errs, err)
@@ -236,7 +219,6 @@ func TestConcurrentWrites_BeginImmediateDoesNotDeadlockReaders(t *testing.T) {
 		t.Fatalf("apply schema: %v", err)
 	}
 
-	// Seed one row so SELECT COUNT(*) doesn't return 0 on the snapshot.
 	now := time.Now().Unix()
 	if _, err := pair.Writer.ExecContext(ctx,
 		`INSERT INTO notes(id,path,title,mtime_unix,size_bytes,checksum_sha256,created_at,updated_at)
@@ -246,7 +228,6 @@ func TestConcurrentWrites_BeginImmediateDoesNotDeadlockReaders(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	// Long writer txn.
 	writerStarted := make(chan struct{})
 	writerDone := make(chan error, 1)
 	go func() {
@@ -266,7 +247,7 @@ func TestConcurrentWrites_BeginImmediateDoesNotDeadlockReaders(t *testing.T) {
 			close(writerStarted)
 			return
 		}
-		close(writerStarted) // signal writer has acquired RESERVED
+		close(writerStarted)
 		time.Sleep(100 * time.Millisecond)
 		if err := tx.Commit(); err != nil {
 			writerDone <- fmt.Errorf("commit: %w", err)
@@ -277,7 +258,6 @@ func TestConcurrentWrites_BeginImmediateDoesNotDeadlockReaders(t *testing.T) {
 
 	<-writerStarted
 
-	// Readers.
 	const readerCount = 50
 	readerErrs := make(chan error, readerCount)
 	readerDone := make(chan struct{}, readerCount)
@@ -299,7 +279,6 @@ func TestConcurrentWrites_BeginImmediateDoesNotDeadlockReaders(t *testing.T) {
 		}()
 	}
 
-	// Wait for all readers within a generous overall budget.
 	for i := 0; i < readerCount; i++ {
 		select {
 		case <-readerDone:
@@ -317,9 +296,6 @@ func TestConcurrentWrites_BeginImmediateDoesNotDeadlockReaders(t *testing.T) {
 	}
 }
 
-// isBusyErr reports whether err's message mentions SQLITE_BUSY or
-// "database is locked" — the two strings the modernc.org/sqlite
-// driver surfaces when contention exceeds busy_timeout=5000ms.
 func isBusyErr(err error) bool {
 	if err == nil {
 		return false

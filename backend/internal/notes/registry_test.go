@@ -7,8 +7,6 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// newTestRegistry returns a fresh empty *Registry (no scratchpad seed —
-// test isolation).
 func newTestRegistry() *Registry {
 	return &Registry{
 		byID:    make(map[uuid.UUID]string),
@@ -74,11 +72,10 @@ func TestRegistryFindByTitle_NFCNormalization(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
 	id := uuid.New()
-	// Register with NFC title.
+
 	nfcTitle := norm.NFC.String("café")
 	r.AddRecord(id, "notes/Café.md", nfcTitle)
 
-	// Look up with NFD form — should still resolve via titleKey normalization.
 	nfdTitle := norm.NFD.String("café")
 	got := r.FindByTitle(nfdTitle, "")
 	if len(got) != 1 {
@@ -96,15 +93,14 @@ func TestRegistryFindByTitle_NFCNormalization(t *testing.T) {
 func TestRegistryFindByTitle_SameFolderBias(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
-	idA := uuid.New() // notes/a/foo.md
-	idB := uuid.New() // notes/b/foo.md — same folder as source
-	idC := uuid.New() // notes/foo.md
+	idA := uuid.New()
+	idB := uuid.New()
+	idC := uuid.New()
 
 	r.AddRecord(idA, "notes/a/foo.md", "foo")
 	r.AddRecord(idB, "notes/b/foo.md", "foo")
 	r.AddRecord(idC, "notes/foo.md", "foo")
 
-	// Source is in "notes/b" — expect: notes/b/foo.md first, then alphabetical.
 	got := r.FindByTitle("foo", "notes/b")
 	if len(got) != 3 {
 		t.Fatalf("FindByTitle: got %d records, want 3", len(got))
@@ -119,7 +115,6 @@ func TestRegistryFindByTitle_SameFolderBias(t *testing.T) {
 		}
 	})
 	t.Run("alphabetical after same-folder", func(t *testing.T) {
-		// Remaining order: notes/a/foo.md < notes/foo.md alphabetically.
 		if got[1].Path != "notes/a/foo.md" {
 			t.Errorf("got[1].Path=%q, want notes/a/foo.md", got[1].Path)
 		}
@@ -138,7 +133,6 @@ func TestRegistryFindByTitle_AlphabeticalNoSourceFolder(t *testing.T) {
 	idB := uuid.New()
 	idC := uuid.New()
 
-	// Insert in non-alphabetical order to verify sort is applied.
 	r.AddRecord(idC, "notes/z/foo.md", "foo")
 	r.AddRecord(idA, "notes/a/foo.md", "foo")
 	r.AddRecord(idB, "notes/m/foo.md", "foo")
@@ -168,13 +162,11 @@ func TestRegistryAddRecord_RemoveUpdatesTitle(t *testing.T) {
 	id := uuid.New()
 	r.AddRecord(id, "notes/Foo.md", "foo")
 
-	// Should find it.
 	got := r.FindByTitle("foo", "")
 	if len(got) != 1 {
 		t.Fatalf("before remove: got %d records, want 1", len(got))
 	}
 
-	// Remove and verify it's gone from title map.
 	r.Remove(id)
 	got = r.FindByTitle("foo", "")
 	if got == nil {
@@ -197,7 +189,6 @@ func TestRegistryHydrateRecords(t *testing.T) {
 		{ID: id2, Path: "notes/bar.md", Title: "bar"},
 	})
 
-	// Both should be findable by title.
 	got1 := r.FindByTitle("foo", "")
 	if len(got1) != 1 || got1[0].ID != id1 {
 		t.Errorf("HydrateRecords foo: got %v", got1)
@@ -207,7 +198,6 @@ func TestRegistryHydrateRecords(t *testing.T) {
 		t.Errorf("HydrateRecords bar: got %v", got2)
 	}
 
-	// id→path map should also be populated.
 	path, ok := r.Lookup(id1)
 	if !ok || path != "notes/foo.md" {
 		t.Errorf("Lookup id1: got %q, %v; want notes/foo.md, true", path, ok)

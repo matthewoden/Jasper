@@ -1,21 +1,5 @@
 package api
 
-// Phase 8 Plan 08-08 MCP folder-grant handlers.
-//
-// GET    /api/v1/mcp/grants            — list all grants (ordered).
-// POST   /api/v1/mcp/grants            — UPSERT a grant on folder_path.
-// DELETE /api/v1/mcp/grants?path=...   — revoke a grant (idempotent).
-//
-// All three handlers degrade to "mcp_disabled" when s.mcpACL is nil
-// (the lifecycle leaves it nil when cfg.MCP.Enabled is false).
-//
-// On every successful mutation the handler broadcasts
-// wshub.EventMcpGrantChanged with origin_session_id = "" so every
-// connected tab refreshes its grant slice (D-57). The empty origin
-// sidesteps the per-session origin filter in
-// frontend/src/lib/useSessionSync.ts:65 — server-originated changes
-// MUST land in every tab, including the one that issued the POST.
-
 import (
 	"context"
 	"errors"
@@ -102,8 +86,6 @@ func (s *Server) PostMcpGrant(
 		return PostMcpGrant400JSONResponse(newError("invalid_path", err.Error())), nil
 	}
 
-	// D-57: broadcast WS event so other tabs refresh their grant slice.
-	// origin_session_id = "" → every connected tab receives.
 	if s.broadcaster != nil {
 		s.broadcaster.Broadcast(EventMcpGrantChanged, map[string]any{
 			"folder_path": g.FolderPath,

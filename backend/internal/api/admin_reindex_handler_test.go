@@ -26,8 +26,6 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// adminReindexFixture builds a Server with the supplied runner + index
-// and mounts it under /api/v1.
 func adminReindexFixture(t *testing.T, runner *migrate.Runner, idx notes.Index) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -59,8 +57,6 @@ func mustReindexPost(t *testing.T, ts *httptest.Server, body string) (*http.Resp
 	return resp, respBody
 }
 
-// newRealRunner opens a real sqlite.Pair and a runner against a tempdir
-// pre-seeded with the canonical 001_initial.sql.
 func newRealRunner(t *testing.T) (*migrate.Runner, *sqlite.Pair, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -173,17 +169,14 @@ func TestPostAdminReindex_Concurrent_Returns409(t *testing.T) {
 	ts := adminReindexFixture(t, r, nil)
 	defer ts.Close()
 
-	// Fire the first request in a goroutine; it will block inside
-	// Path2Rebuild while still holding reindexBusy.
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		_, _ = mustReindexPost(t, ts, `{"mode":"full"}`)
 	}()
-	<-rebuildDone // first call has acquired the mutex
+	<-rebuildDone
 
-	// Second call should observe the held mutex and return 409.
 	resp, body := mustReindexPost(t, ts, `{"mode":"full"}`)
 	if resp.StatusCode != 409 {
 		t.Fatalf("status: got %d, want 409; body=%s", resp.StatusCode, body)
@@ -196,7 +189,6 @@ func TestPostAdminReindex_Concurrent_Returns409(t *testing.T) {
 		t.Errorf("code: got %q, want %q", got.Code, "reindex_in_progress")
 	}
 
-	// Release the first request and wait for it.
 	close(rebuildBlocker)
 	wg.Wait()
 }
@@ -206,10 +198,9 @@ func TestPostAdminReindex_Concurrent_Returns409(t *testing.T) {
 // a generic wire message.
 func TestPostAdminReindex_RunnerUnrecoverable_Returns503(t *testing.T) {
 	t.Parallel()
-	// Build a runner whose RebuildAndReindex fails on Path 3 (no
-	// Path2Rebuild) — produces ErrUnrecoverable end-to-end.
+
 	r, _, _ := newRealRunner(t)
-	// r.Path2Rebuild left nil → Path 3 fires inside the runner.
+
 	ts := adminReindexFixture(t, r, nil)
 	defer ts.Close()
 	resp, body := mustReindexPost(t, ts, `{"mode":"full"}`)
@@ -223,8 +214,7 @@ func TestPostAdminReindex_RunnerUnrecoverable_Returns503(t *testing.T) {
 	if got.Code != "unrecoverable" {
 		t.Errorf("code: got %q, want %q", got.Code, "unrecoverable")
 	}
-	// Generic wire message — must NOT leak the wrapped chain
-	// (T-02-04b-02).
+
 	if strings.Contains(got.Message, "Path2Rebuild") {
 		t.Errorf("message leaked internal name: %q", got.Message)
 	}
@@ -237,20 +227,7 @@ func TestPostAdminReindex_InvalidMode_Returns409(t *testing.T) {
 	r, _, _ := newRealRunner(t)
 	ts := adminReindexFixture(t, r, nil)
 	defer ts.Close()
-	// The openapi-spec validator on the server side will reject any
-	// mode value that's not in the enum BEFORE reaching our handler,
-	// so this test sends a body without `mode` field — wait, actually
-	// per the contract, mode is optional and defaults to "full" on
-	// the server. To exercise the "invalid_mode" branch we POST with
-	// the mode field omitted from the spec entirely (raw map
-	// serialization).
-	//
-	// Since the openapi-codegen-generated middleware enforces the enum,
-	// we can't send a literal `{"mode":"bogus"}` through the strict
-	// handler — the request decoder will reject it as a 400 first.
-	// This branch is therefore reachable only via direct method
-	// invocation; we verify it via a unit-level call rather than
-	// through the HTTP layer.
+
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
 	svc := notes.NewService(files, nil, nil, logger)
@@ -290,8 +267,6 @@ func TestPostAdminReindex_IncrementalMode_NoIndex_Returns503(t *testing.T) {
 	}
 }
 
-// writeFixtureNotes writes a map of relpath→content under notesDir
-// with a fixed mtime, creating intermediate dirs as needed.
 func writeFixtureNotes(notesDir string, files map[string]string) error {
 	mtime := time.Unix(1700000000, 0)
 	for rel, body := range files {
@@ -309,23 +284,6 @@ func writeFixtureNotes(notesDir string, files map[string]string) error {
 	return nil
 }
 
-// ----------------------------------------------------------------------
-// Plan 03-10 Gap 6a tests — POST /admin/reindex MUST hydrate the in-memory
-// notes Registry from the post-rebuild SQLite state. Without this, every
-// note that gets a fresh UUID during the rebuild walk (i.e., any externally-
-// created file the rebuild discovers) is unreachable via GET /notes/{id}
-// (404) until the server restarts. Diagnosed in
-// .planning/debug/scratchpad-vanishes-self-move.md Evidence C.
-// ----------------------------------------------------------------------
-
-// adminReindexHydrateFixture wires a full-strength stack against a real
-// SQLite Pair, real *index.Indexer, real fsstore.Store, real notes.Service
-// (with empty Registry), and a real *migrate.Runner whose Path2Rebuild
-// invokes idx.Reconcile(ModeFull) — exactly mirroring lifecycle.Run's
-// production wiring. Returns the httptest.Server, the notes.Service so
-// tests can inspect the Registry, the notesDir so tests can seed external
-// files BEFORE the reindex, and the *index.Indexer so tests can enumerate
-// post-rebuild SQLite state.
 func adminReindexHydrateFixture(t *testing.T) (*httptest.Server, *notes.Service, string, *index.Indexer) {
 	t.Helper()
 	r, pair, dir := newRealRunner(t)
@@ -335,8 +293,7 @@ func adminReindexHydrateFixture(t *testing.T) (*httptest.Server, *notes.Service,
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	idx := index.New(pair, notesDir, logger)
-	// Mirror lifecycle.go Path2Rebuild wiring so RebuildAndReindex's
-	// rebuild walk goes through reconcileFull (which mints fresh UUIDs).
+
 	r.Path2Rebuild = func(ctx context.Context) (int, error) {
 		return idx.Reconcile(ctx, index.ModeFull)
 	}
@@ -365,27 +322,18 @@ func TestPostAdminReindex_HydratesRegistryAfterFullRebuild(t *testing.T) {
 	t.Parallel()
 	ts, svc, notesDir, idx := adminReindexHydrateFixture(t)
 
-	// Seed an externally-created file before the rebuild. reconcileFull
-	// will discover this and mint a fresh UUID for it. Pre-fix, that UUID
-	// will never make it into the in-memory Registry; post-fix, Hydrate
-	// pulls every (id,path) from SQLite into the Registry.
 	if err := writeFixtureNotes(notesDir, map[string]string{
 		"external.md": "# External\n",
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	// POST /admin/reindex with mode=full.
 	resp, body := mustReindexPost(t, ts, `{"mode":"full"}`)
 	if resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("POST /admin/reindex: status=%d, want 202; body=%s",
 			resp.StatusCode, body)
 	}
 
-	// Post-condition: enumerate the post-rebuild SQLite state via the
-	// indexer's List, and assert that every (id, path) it returns is
-	// reachable via the in-memory Registry. Pre-fix, the fresh UUID for
-	// external.md is in SQLite but NOT in the Registry → Lookup fails.
 	summaries, err := idx.List(context.Background())
 	if err != nil {
 		t.Fatalf("indexer.List: %v", err)
@@ -399,9 +347,7 @@ func TestPostAdminReindex_HydratesRegistryAfterFullRebuild(t *testing.T) {
 		if s.Path == "external.md" {
 			externalSummary = s
 		}
-		// Every UUID in SQLite MUST be in the Registry post-rebuild.
-		// Pre-fix this assertion fails for the fresh UUIDs reconcileFull
-		// mints.
+
 		if relPath, ok := svc.Registry().Lookup(s.ID); !ok || relPath != s.Path {
 			t.Errorf("Gap 6a regression: Registry does not know UUID %s after reindex; SQLite says path=%q, Registry.Lookup → (%q, %v)",
 				s.ID, s.Path, relPath, ok)
@@ -411,9 +357,6 @@ func TestPostAdminReindex_HydratesRegistryAfterFullRebuild(t *testing.T) {
 		t.Fatalf("post-rebuild: indexer.List did not include external.md; rows=%v", summaries)
 	}
 
-	// Sanity: GET /notes/{externalID} returns 200 — proves the registry
-	// → service lookup chain is correct end-to-end. Pre-fix this is 404
-	// because the registry doesn't know the freshly-minted UUID.
 	resp2, body2 := mustGetReindex(t, ts, "/api/v1/notes/"+externalSummary.ID.String())
 	if resp2.StatusCode != http.StatusOK {
 		t.Errorf("Gap 6a regression: GET /notes/%s: status=%d, want 200; body=%s",
@@ -430,8 +373,6 @@ func TestPostAdminReindex_HydratesRegistryAfterIncremental(t *testing.T) {
 	t.Parallel()
 	ts, svc, notesDir, idx := adminReindexHydrateFixture(t)
 
-	// Seed an externally-created file. Incremental reconcile will pick
-	// it up and mint a fresh UUID.
 	if err := writeFixtureNotes(notesDir, map[string]string{
 		"external.md": "# External\n",
 	}); err != nil {
@@ -444,10 +385,6 @@ func TestPostAdminReindex_HydratesRegistryAfterIncremental(t *testing.T) {
 			resp.StatusCode, body)
 	}
 
-	// Post-condition: every (id, path) in SQLite MUST be reachable via the
-	// Registry. Same enumerate-from-SQLite-then-Lookup pattern as the full
-	// case. Pre-fix this fails for the fresh UUID reconcileIncremental
-	// minted for external.md.
 	summaries, err := idx.List(context.Background())
 	if err != nil {
 		t.Fatalf("indexer.List: %v", err)
@@ -478,9 +415,7 @@ func TestPostAdminReindex_HydratesRegistryAfterIncremental(t *testing.T) {
 // (the failure path returns early, before the new Hydrate call).
 func TestPostAdminReindex_DoesNotHydrateWhenRebuildFails(t *testing.T) {
 	t.Parallel()
-	// Build the stack inline so we have full control: the fixture wires
-	// Path2Rebuild for success-path tests, but here we want it nil so
-	// RebuildAndReindex fires Path 3 (ErrUnrecoverable).
+
 	r, pair, dir := newRealRunner(t)
 	notesDir := filepath.Join(dir, "notes")
 	if err := os.MkdirAll(notesDir, 0o755); err != nil {
@@ -488,13 +423,10 @@ func TestPostAdminReindex_DoesNotHydrateWhenRebuildFails(t *testing.T) {
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	idx := index.New(pair, notesDir, logger)
-	// r.Path2Rebuild left nil → RebuildAndReindex fires Path 3
-	// (ErrUnrecoverable). Handler maps to 503 "unrecoverable".
+
 	store := fsstore.NewStore(notesDir)
 	failSvc := notes.NewService(store, idx, nil, logger)
 
-	// Seed a known stale entry into the Registry so we can detect any
-	// accidental Hydrate-on-failure (which would replace the map).
 	stale := uuid.New()
 	failSvc.Registry().Add(stale, "stale-marker.md")
 
@@ -520,20 +452,12 @@ func TestPostAdminReindex_DoesNotHydrateWhenRebuildFails(t *testing.T) {
 		t.Errorf("code: got %q, want %q", got.Code, "unrecoverable")
 	}
 
-	// Post-condition: the stale entry is STILL in the Registry. If Hydrate
-	// had run on the failure path, it would have replaced the map and
-	// cleared this entry. (This test passes both pre- and post-fix; it's
-	// a regression-prevention guard against accidentally calling Hydrate
-	// outside the success branch.)
 	if relPath, ok := failSvc.Registry().Lookup(stale); !ok || relPath != "stale-marker.md" {
 		t.Errorf("Hydrate ran on failure path (or stale entry was lost): Lookup(%s) = (%q, %v), want (%q, true)",
 			stale, relPath, ok, "stale-marker.md")
 	}
 }
 
-// mustGetReindex is a GET helper local to this file (handlers_test.go's
-// mustGet uses a different signature pattern; we keep test functions self-
-// contained for clarity).
 func mustGetReindex(t *testing.T, ts *httptest.Server, path string) (*http.Response, []byte) {
 	t.Helper()
 	resp, err := http.Get(ts.URL + path)
@@ -548,8 +472,6 @@ func mustGetReindex(t *testing.T, ts *httptest.Server, path string) (*http.Respo
 	return resp, respBody
 }
 
-// reindexEventSpy is a minimal Broadcaster used by the WR-07 regression
-// test. Captures (event, payload) tuples in append order.
 type reindexEventSpy struct {
 	mu     sync.Mutex
 	events []string
@@ -569,9 +491,6 @@ func (s *reindexEventSpy) snapshot() []string {
 	return out
 }
 
-// adminReindexFixtureWithBroadcaster is a variant of adminReindexFixture
-// that wires a broadcaster spy so callers can assert reindex:started /
-// reindex:complete event ordering.
 func adminReindexFixtureWithBroadcaster(t *testing.T, runner *migrate.Runner, idx notes.Index, bc notes.Broadcaster) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -595,7 +514,7 @@ func adminReindexFixtureWithBroadcaster(t *testing.T, runner *migrate.Runner, id
 func TestPostAdminReindex_WR07_EmitsCompleteOnRebuildError(t *testing.T) {
 	t.Parallel()
 	r, _, _ := newRealRunner(t)
-	// Path2Rebuild left nil → Path 3 fires → ErrUnrecoverable from runner.
+
 	bc := &reindexEventSpy{}
 	ts := adminReindexFixtureWithBroadcaster(t, r, nil, bc)
 	defer ts.Close()
@@ -604,8 +523,7 @@ func TestPostAdminReindex_WR07_EmitsCompleteOnRebuildError(t *testing.T) {
 		t.Fatalf("status: got %d, want 503", resp.StatusCode)
 	}
 	got := bc.snapshot()
-	// Expect reindex:started, then reindex:complete (the deferred
-	// completion event regardless of rebuild outcome).
+
 	want := []string{"reindex:started", "reindex:complete"}
 	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("event sequence: got %v, want %v", got, want)
@@ -622,8 +540,7 @@ func TestPostAdminReindex_WR07_InvalidModeNoStartedEvent(t *testing.T) {
 	bc := &reindexEventSpy{}
 	ts := adminReindexFixtureWithBroadcaster(t, r, nil, bc)
 	defer ts.Close()
-	// "bogus" is not in the enum {full,incremental} — handler returns
-	// 409 invalid_mode without emitting any reindex event.
+
 	bogus := ReindexRequestMode("bogus")
 	srv := NewServerWithIndex(
 		notes.NewService(&fakeFileStore{}, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil))),

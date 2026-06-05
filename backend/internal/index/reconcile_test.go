@@ -10,10 +10,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// newReconcileFixture sets up a fresh tempdir with a notes/ directory,
-// a real sqlite.Pair with the schema applied, and an *Indexer pointed
-// at notes/. The fixture is the same shape as newTestIndexer in
-// store_test.go but ALSO creates the notes directory on disk.
 func newReconcileFixture(t *testing.T) (*Indexer, string) {
 	t.Helper()
 	idx, notesDir := newTestIndexer(t)
@@ -23,8 +19,6 @@ func newReconcileFixture(t *testing.T) (*Indexer, string) {
 	return idx, notesDir
 }
 
-// writeNote writes content to <notesDir>/<rel> with mtime set to a
-// fixed value so tests can pin "before" / "after" comparisons.
 func writeNote(t *testing.T, notesDir, rel, content string, mtime time.Time) {
 	t.Helper()
 	full := filepath.Join(notesDir, rel)
@@ -61,7 +55,7 @@ func TestReconcileFull_PopulatesAllFiles(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("list len: got %d, want 3", len(got))
 	}
-	// Titles extracted from the H1 lines (paths sorted).
+
 	wantTitles := map[string]string{
 		"a.md":     "Alpha",
 		"b.md":     "Bravo",
@@ -86,7 +80,6 @@ func TestReconcileIncremental_NewFile(t *testing.T) {
 		t.Fatalf("seed Reconcile: %v", err)
 	}
 
-	// Add b.md.
 	writeNote(t, notesDir, "b.md", "# Bravo", mtime)
 	n, err := idx.Reconcile(context.Background(), ModeIncremental)
 	if err != nil {
@@ -109,7 +102,6 @@ func TestReconcileIncremental_DeletedFile(t *testing.T) {
 		t.Fatalf("seed Reconcile: %v", err)
 	}
 
-	// Remove the file.
 	if err := os.Remove(filepath.Join(notesDir, "a.md")); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +132,6 @@ func TestReconcileIncremental_MTimeUnchanged_Skipped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Read original updated_at_unix.
 	var orig int64
 	if err := idx.Pair.Reader.QueryRowContext(context.Background(),
 		`SELECT updated_at FROM notes WHERE path = ?`, "a.md").Scan(&orig); err != nil {
@@ -150,14 +141,11 @@ func TestReconcileIncremental_MTimeUnchanged_Skipped(t *testing.T) {
 		t.Fatalf("seed updated_at: got %d, want 1730000000", orig)
 	}
 
-	// Re-run incremental — clock advances but mtime is unchanged.
 	idx.nowUnix = func() int64 { return 1740000000 }
 	if _, err := idx.Reconcile(context.Background(), ModeIncremental); err != nil {
 		t.Fatal(err)
 	}
 
-	// updated_at must be unchanged because the file's mtime did not
-	// move forward — the fast path is taken.
 	var after int64
 	if err := idx.Pair.Reader.QueryRowContext(context.Background(),
 		`SELECT updated_at FROM notes WHERE path = ?`, "a.md").Scan(&after); err != nil {
@@ -243,7 +231,6 @@ func TestReconcileIncremental_MTimeAdvanced_Reupserts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Advance mtime + change content.
 	mtimeNew := time.Unix(1700001000, 0)
 	writeNote(t, notesDir, "a.md", "# New", mtimeNew)
 	idx.nowUnix = func() int64 { return 1740000000 }
@@ -251,8 +238,6 @@ func TestReconcileIncremental_MTimeAdvanced_Reupserts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Title should be re-extracted from the new content; updated_at
-	// should now be 1740000000.
 	var title string
 	var updatedAt int64
 	if err := idx.Pair.Reader.QueryRowContext(context.Background(),

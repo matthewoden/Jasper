@@ -48,7 +48,7 @@ const ScratchpadWelcome = "# Welcome to Jasper\n" +
 type Registry struct {
 	mu      sync.RWMutex
 	byID    map[uuid.UUID]string
-	byTitle map[string][]NoteRecord // Phase 6: lowercase+NFC title → records
+	byTitle map[string][]NoteRecord
 }
 
 // NewRegistry returns a Registry seeded with the Phase 1 scratchpad mapping.
@@ -92,14 +92,10 @@ func (r *Registry) AddRecord(id uuid.UUID, relPath, titleNormalized string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Update id→path map.
 	r.byID[id] = relPath
 
-	// Remove any existing entry for this id from the title map (the title
-	// may have changed on a rename/update).
 	r.removeTitleEntryLocked(id)
 
-	// Add the new entry.
 	key := titleKey(titleNormalized)
 	rec := NoteRecord{ID: id, Path: relPath, Title: titleNormalized}
 	r.byTitle[key] = append(r.byTitle[key], rec)
@@ -130,7 +126,7 @@ func (r *Registry) Rename(id uuid.UUID, newRelPath string) {
 	defer r.mu.Unlock()
 	if _, ok := r.byID[id]; ok {
 		r.byID[id] = newRelPath
-		// Update path in title map entries for this id.
+
 		for key, recs := range r.byTitle {
 			for i := range recs {
 				if recs[i].ID == id {
@@ -157,7 +153,7 @@ func (r *Registry) Hydrate(summaries []NoteSummary) {
 	for _, s := range summaries {
 		r.byID[s.ID] = s.Path
 	}
-	// Clear title map since Hydrate replaces everything.
+
 	r.byTitle = make(map[string][]NoteRecord)
 }
 
@@ -197,31 +193,24 @@ func (r *Registry) FindByTitle(titleLower, sourceFolder string) []NoteRecord {
 
 	r.mu.RLock()
 	candidates := r.byTitle[key]
-	// Copy the slice so callers cannot mutate the registry's internal state.
+
 	out := make([]NoteRecord, len(candidates))
 	copy(out, candidates)
 	r.mu.RUnlock()
 
-	// Sort: same-folder records first (alphabetical by path),
-	// then other records (alphabetical by path).
 	sort.SliceStable(out, func(i, j int) bool {
 		iSame := sourceFolder != "" && isSameFolder(out[i].Path, sourceFolder)
 		jSame := sourceFolder != "" && isSameFolder(out[j].Path, sourceFolder)
 		if iSame != jSame {
-			// Same-folder entries win.
 			return iSame
 		}
-		// Both in same group — alphabetical by path.
+
 		return out[i].Path < out[j].Path
 	})
 
 	return out
 }
 
-// idsUnder returns the ids of every entry whose relPath is the bare
-// folder path or starts with `<folderPath>/`. Used by Service.DeleteFolder
-// to remove every doomed registry entry after a recursive FS rmtree.
-// Package-private — exposed only to Service.
 func (r *Registry) idsUnder(folderPath string) []uuid.UUID {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -235,10 +224,6 @@ func (r *Registry) idsUnder(folderPath string) []uuid.UUID {
 	return out
 }
 
-// renamePrefix re-prefixes every entry whose relPath starts with
-// oldPrefix to start with newPrefix. Both prefixes MUST end with "/"
-// (or be empty). Used by Service.MoveFolder after a successful FS+index
-// move. Package-private.
 func (r *Registry) renamePrefix(oldPrefix, newPrefix string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -247,7 +232,7 @@ func (r *Registry) renamePrefix(oldPrefix, newPrefix string) {
 			r.byID[id] = newPrefix + strings.TrimPrefix(p, oldPrefix)
 		}
 	}
-	// Update title map paths as well.
+
 	for key, recs := range r.byTitle {
 		for i := range recs {
 			if strings.HasPrefix(recs[i].Path, oldPrefix) {
@@ -257,25 +242,14 @@ func (r *Registry) renamePrefix(oldPrefix, newPrefix string) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-// titleKey normalizes a title string to the canonical key used in byTitle:
-// NFC-normalized, lowercased.
 func titleKey(s string) string {
 	return strings.ToLower(norm.NFC.String(s))
 }
 
-// isSameFolder reports whether the given note path's directory equals
-// sourceFolder. Both path and sourceFolder are assumed to be canonical
-// (NFC + lowercase per DATA-11).
 func isSameFolder(notePath, sourceFolder string) bool {
 	return filepath.Dir(notePath) == sourceFolder
 }
 
-// removeTitleEntryLocked removes all byTitle entries for id. The caller
-// must hold r.mu exclusively.
 func (r *Registry) removeTitleEntryLocked(id uuid.UUID) {
 	for key, recs := range r.byTitle {
 		newRecs := recs[:0]

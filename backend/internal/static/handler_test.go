@@ -9,11 +9,6 @@ import (
 	"testing/fstest"
 )
 
-// fakeDist returns a synthetic dist/ FS suitable for testing handlerFor.
-// Mirrors the shape Vite produces: index.html at root, JS bundle under
-// assets/. The fs.FS is rooted at the dist/ directory itself (no "dist/"
-// prefix in keys) — handlerFor sees the same view that fs.Sub(distFS,
-// "dist") returns in production.
 func fakeDist() fstest.MapFS {
 	return fstest.MapFS{
 		"index.html": &fstest.MapFile{
@@ -28,7 +23,6 @@ func fakeDist() fstest.MapFS {
 	}
 }
 
-// drainBody reads and closes the response body, returning the bytes.
 func drainBody(t *testing.T, resp *http.Response) []byte {
 	t.Helper()
 	body, err := io.ReadAll(resp.Body)
@@ -152,8 +146,4 @@ func TestStaticHandler_ProductionFSWires(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/some-route", nil)
 	h.ServeHTTP(rr, req)
-	// We don't assert status — on a fresh clone with only .gitkeep,
-	// http.FileServer may emit 404 for the missing index.html. The
-	// only invariant under test here is "handler is callable without
-	// panicking".
 }

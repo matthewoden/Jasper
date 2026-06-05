@@ -11,9 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// maxSessionIDLen caps the size of the session_id query param to
-// reject header-bomb attacks (T-04-03). UUIDs are 36 chars; 128 is
-// plenty for any legitimate value while rejecting the obvious abuse.
 const maxSessionIDLen = 128
 
 // ServeHTTP upgrades the request and runs read+write pumps until
@@ -48,16 +45,8 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.CloseNow() //nolint:errcheck
 
-	// Pitfall 1: client-as-authoritative session_id. The frontend
-	// generates the UUID once per tab into sessionStorage and sends it
-	// BOTH as ?session_id=<sid> on the WS upgrade AND as the
-	// X-Session-ID header on every mutating HTTP request. The server
-	// adopts whatever the client sent. If absent (curl probe, test
-	// without the param), mint a fallback UUID so origin filtering
-	// still works (the client just can't filter its own broadcasts).
 	sid := r.URL.Query().Get("session_id")
 	if sid == "" || len(sid) > maxSessionIDLen {
-		// Empty OR too long → mint fallback. Length cap mitigates T-04-03.
 		sid = uuid.NewString()
 	}
 
@@ -66,8 +55,6 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		conn: conn,
 		send: make(chan []byte, sendBufferSize),
 		closeSlow: func() {
-			// Best-effort close with a policy-violation status. On
-			// failure (already-closed conn) the close is silent — fine.
 			_ = conn.Close(websocket.StatusPolicyViolation,
 				"connection too slow to keep up with messages")
 		},
@@ -75,24 +62,6 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.register(c)
 	defer h.unregister(c)
 
-	// SYNC-01: server confirms the session_id with a handshake message
-	// BEFORE entering the read/write pumps so the client always knows
-	// its sid before any mutation event arrives.
-	//
-	// Wire shape: Envelope{event: "session:assigned", origin_session_id: "",
-	// payload: {"session_id": "<sid>"}}. The origin_session_id is empty
-	// here because this is a server-originated (not mutation-originated) event.
-	//
-	// WR-04: use context.Background as the parent of the handshake
-	// timeout, NOT r.Context(). After Hijack the request context's
-	// Done channel is no longer guaranteed to fire on client disconnect
-	// (the relationship between r.Context() and the hijacked TCP conn
-	// is fuzzy in net/http). The timeout itself bounds wallet-of-time
-	// the goroutine spends on a half-open client. Drop from 5s to 1s —
-	// for a 36-byte handshake on localhost, 1s is generous; rejecting
-	// faster shrinks the per-attempt goroutine-time pinned by attackers
-	// flooding the upgrade endpoint (combined with localhost-bind in
-	// cmd/jasper, this is defense in depth).
 	payloadBytes, _ := json.Marshal(map[string]string{"session_id": sid})
 	handshakeCtx, hsCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	err = wsjson.Write(handshakeCtx, conn, Envelope{
@@ -110,5 +79,5 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancelAll()
 
 	go h.writePump(ctx, c)
-	h.readPump(ctx, c) // blocks; returns on conn error or ctx cancel
+	h.readPump(ctx, c)
 }

@@ -20,8 +20,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
 
-// fakeFileStore is the in-test impl of FileStore. Only the fields a given
-// test needs are populated; defaults zero out cleanly.
 type fakeFileStore struct {
 	readBytes     []byte
 	readErr       error
@@ -31,9 +29,7 @@ type fakeFileStore struct {
 	lastWritePath string
 	lastWriteData []byte
 	writeErr      error
-	// observedSeq, when non-nil, is appended with "write" on each
-	// WriteAtomic call. Paired with fakeIndex.upsertObservedSeq (the
-	// SAME slice pointer) it lets tests assert file-FIRST ordering.
+
 	observedSeq *[]string
 }
 
@@ -44,7 +40,7 @@ func (f *fakeFileStore) Read(_ string) ([]byte, error) {
 func (f *fakeFileStore) WriteAtomic(relPath string, data []byte) error {
 	f.writeCalls++
 	f.lastWritePath = relPath
-	// Copy into a new slice so callers can't tamper through the buffer.
+
 	cp := make([]byte, len(data))
 	copy(cp, data)
 	f.lastWriteData = cp
@@ -69,16 +65,11 @@ func (f *fakeFileStore) CreateDir(_ string) error         { return nil }
 func (f *fakeFileStore) DeleteDir(_ string, _ bool) error { return nil }
 func (f *fakeFileStore) MoveDir(_, _ string) error        { return nil }
 
-// fakeIndex is the in-test Index spy. Captures Upsert/Delete/List
-// calls so tests can assert ordering (file-FIRST), call counts, and
-// the NoteRecord shape Service constructs from the on-disk metadata.
 type fakeIndex struct {
 	upsertCalls      int
 	lastUpsertRecord NoteRecord
 	upsertErr        error
-	// observedSeq, when non-nil, is appended with "upsert" on each
-	// Upsert call. Paired with fakeFileStore.observedSeq (the SAME
-	// slice pointer) it lets tests assert file-FIRST ordering.
+
 	observedSeq  *[]string
 	deleteCalls  int
 	lastDeleteID uuid.UUID
@@ -160,20 +151,12 @@ func (f *fakeIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]S
 	return []SearchHit{}, nil
 }
 
-// --------------------------------------------------------------------------
-// Plan 04-04 Task 1: fakeBroadcaster + 5 new If-Match / broadcast tests
-// --------------------------------------------------------------------------
-
-// broadcastCall records a single Broadcast invocation for test assertions.
 type broadcastCall struct {
 	event           string
 	payload         any
 	originSessionID string
 }
 
-// fakeBroadcaster is the in-test Broadcaster spy. Captures all Broadcast
-// calls. observedSeq, when non-nil, appends "broadcast" to support
-// file→upsert→broadcast ordering assertions (same pattern as fakeIndex).
 type fakeBroadcaster struct {
 	calls       []broadcastCall
 	observedSeq *[]string
@@ -186,7 +169,6 @@ func (f *fakeBroadcaster) Broadcast(event string, payload any, sid string) {
 	}
 }
 
-// newSvcWithBroadcaster constructs a Service with index + broadcaster.
 func newSvcWithBroadcaster(t *testing.T, files FileStore, idx Index, bc Broadcaster) *Service {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -195,13 +177,11 @@ func newSvcWithBroadcaster(t *testing.T, files FileStore, idx Index, bc Broadcas
 
 func newSvc(t *testing.T, files FileStore) *Service {
 	t.Helper()
-	// Discard logs — tests assert on returned values, not log output.
+
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return NewService(files, nil, nil, logger)
 }
 
-// newSvcWithIndex constructs a Service with a real fakeIndex for tests
-// that assert on Index.Upsert call shape / ordering.
 func newSvcWithIndex(t *testing.T, files FileStore, idx Index) *Service {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -359,7 +339,7 @@ func TestScratchpadWelcome_HasRequiredContent(t *testing.T) {
 			t.Errorf("ScratchpadWelcome missing %q", want)
 		}
 	}
-	// Trailing newline at end of file (UI-SPEC).
+
 	if len(ScratchpadWelcome) == 0 || ScratchpadWelcome[len(ScratchpadWelcome)-1] != '\n' {
 		t.Errorf("ScratchpadWelcome missing trailing newline")
 	}
@@ -377,10 +357,6 @@ func contains(haystack, needle string) bool {
 	return false
 }
 
-// ----------------------------------------------------------------------
-// Plan 02-04a Task 2: Index.Upsert wiring tests
-// ----------------------------------------------------------------------
-
 // TestService_Update_CallsIndexUpsertAfterWrite asserts the file-FIRST
 // contract: Update calls WriteAtomic AND THEN Index.Upsert with a
 // NoteRecord whose path/mtime/size match the on-disk metadata.
@@ -391,8 +367,6 @@ func TestService_Update_CallsIndexUpsertAfterWrite(t *testing.T) {
 	idx := &fakeIndex{observedSeq: &seq}
 	svc := newSvcWithIndex(t, files, idx)
 
-	// Content with frontmatter so D-10 auto-restore does not trigger and
-	// the written bytes are exactly what we supply (no prefix injection).
 	const content = "---\ntags: []\n---\n\nnew content"
 	note, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
 	if err != nil {
@@ -405,13 +379,10 @@ func TestService_Update_CallsIndexUpsertAfterWrite(t *testing.T) {
 		t.Fatalf("upsertCalls: got %d, want 1", idx.upsertCalls)
 	}
 
-	// File FIRST, Index SECOND — locked by ARCHITECTURE §11.1.
 	if len(seq) != 2 || seq[0] != "write" || seq[1] != "upsert" {
 		t.Fatalf("call sequence: got %v, want [write upsert]", seq)
 	}
 
-	// NoteRecord shape: ID + Path match the registry; MTimeUnix + size
-	// reflect the file metadata; Checksum stays empty (Phase 7 only).
 	rec := idx.lastUpsertRecord
 	if rec.ID != ScratchpadUUID {
 		t.Errorf("rec.ID: got %v, want %v", rec.ID, ScratchpadUUID)
@@ -432,7 +403,6 @@ func TestService_Update_CallsIndexUpsertAfterWrite(t *testing.T) {
 		t.Errorf("rec.UpdatedAtUnix: got %d, want %d", rec.UpdatedAtUnix, now.Unix())
 	}
 
-	// Returned Note is unaffected by the index call.
 	if !note.UpdatedAt.Equal(now) {
 		t.Errorf("note.UpdatedAt: got %v, want %v", note.UpdatedAt, now)
 	}
@@ -455,7 +425,7 @@ func TestService_Update_CaseCollision_PropagatesError(t *testing.T) {
 	if !errors.Is(err, ErrCaseCollision) {
 		t.Fatalf("expected wrapped ErrCaseCollision, got %v", err)
 	}
-	// File-FIRST: WriteAtomic ran exactly once even though Upsert failed.
+
 	if files.writeCalls != 1 {
 		t.Errorf("writeCalls: got %d, want 1 (file-FIRST contract)", files.writeCalls)
 	}
@@ -495,9 +465,8 @@ func TestService_NewService_NilIndex_FallsBackToNopIndex(t *testing.T) {
 	files := &fakeFileStore{statTime: now}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewService(files, nil, nil, logger) // nil Index, nil Broadcaster
+	svc := NewService(files, nil, nil, logger)
 
-	// Should not panic; should not error.
 	if _, err := svc.Update(context.Background(), ScratchpadUUID, "content", ""); err != nil {
 		t.Fatalf("nil Index path failed: %v", err)
 	}
@@ -506,23 +475,12 @@ func TestService_NewService_NilIndex_FallsBackToNopIndex(t *testing.T) {
 	}
 }
 
-// ----------------------------------------------------------------------
-// Plan 03-03 Task 2: Service mutations + Registry dynamic ops tests
-// ----------------------------------------------------------------------
-
-// stubIndex is a richer in-memory Index spy for the Phase 3 mutation
-// tests. Maintains a path → NoteRecord map plus per-method failure
-// injection. Concurrent-safe via a single RWMutex (the Service does
-// NOT issue concurrent calls in any production path, but the test
-// harness builds them up sequentially under the same lock to keep the
-// race detector quiet).
 type stubIndex struct {
 	mu sync.RWMutex
 
 	byPath map[string]NoteRecord
 	byID   map[uuid.UUID]NoteRecord
 
-	// Failure injection
 	upsertErr             error
 	deleteErr             error
 	lookupErr             error
@@ -543,11 +501,11 @@ func (s *stubIndex) Upsert(_ context.Context, rec NoteRecord) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Detect case-insensitive path collisions with a different id (DATA-12).
+
 	if existing, ok := s.byPath[rec.Path]; ok && existing.ID != rec.ID {
 		return ErrCaseCollision
 	}
-	// Replace any old path mapping for this id.
+
 	if old, ok := s.byID[rec.ID]; ok && old.Path != rec.Path {
 		delete(s.byPath, old.Path)
 	}
@@ -603,15 +561,12 @@ func (s *stubIndex) MovePathPrefix(_ context.Context, oldPrefix, newPrefix strin
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Collision pre-check: any existing row under newPrefix that is not
-	// already under oldPrefix is a foreign collision.
 	for p := range s.byPath {
 		if strings.HasPrefix(p, newPrefix) && !strings.HasPrefix(p, oldPrefix) {
 			return 0, ErrCaseCollision
 		}
 	}
 
-	// Collect rows to move.
 	moves := []NoteRecord{}
 	for p, rec := range s.byPath {
 		if strings.HasPrefix(p, oldPrefix) {
@@ -693,7 +648,6 @@ func (s *stubIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]S
 	return []SearchHit{}, nil
 }
 
-// recByID returns the in-memory record for assertions. Test-only.
 func (s *stubIndex) recByID(id uuid.UUID) (NoteRecord, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -714,10 +668,6 @@ func (s *stubIndex) count() int {
 	return len(s.byID)
 }
 
-// newRealFSSvc constructs a Service backed by a real fsstore.Store
-// rooted at a freshly-allocated tempdir + a stubIndex for SQLite-like
-// behavior. Returns the service, the store root, and the stub for
-// assertions.
 func newRealFSSvc(t *testing.T) (*Service, string, *stubIndex) {
 	t.Helper()
 	root := t.TempDir()
@@ -728,7 +678,6 @@ func newRealFSSvc(t *testing.T) (*Service, string, *stubIndex) {
 	return svc, root, idx
 }
 
-// fileExists reports whether a file (not a dir) exists at root/relPath.
 func fileExists(t *testing.T, root, relPath string) bool {
 	t.Helper()
 	info, err := os.Stat(filepath.Join(root, relPath))
@@ -738,7 +687,6 @@ func fileExists(t *testing.T, root, relPath string) bool {
 	return !info.IsDir()
 }
 
-// dirExists reports whether a directory exists at root/relPath.
 func dirExists(t *testing.T, root, relPath string) bool {
 	t.Helper()
 	info, err := os.Stat(filepath.Join(root, relPath))
@@ -747,8 +695,6 @@ func dirExists(t *testing.T, root, relPath string) bool {
 	}
 	return info.IsDir()
 }
-
-// --- Service.Create ---
 
 func TestService_Create_HappyPath(t *testing.T) {
 	t.Parallel()
@@ -776,7 +722,6 @@ func TestService_Create_InFolder(t *testing.T) {
 	t.Parallel()
 	svc, root, idx := newRealFSSvc(t)
 
-	// Need to mkdir parent first per single-level mkdir policy
 	if _, err := svc.CreateFolder(context.Background(), "", "projects"); err != nil {
 		t.Fatalf("CreateFolder: %v", err)
 	}
@@ -881,8 +826,6 @@ func TestService_Create_IndexUpsertFailureRollsBackFile(t *testing.T) {
 	}
 }
 
-// --- Service.Delete ---
-
 func TestService_Delete_HappyPath(t *testing.T) {
 	t.Parallel()
 	svc, root, idx := newRealFSSvc(t)
@@ -924,11 +867,7 @@ func TestService_Delete_FSFailure_RollsBackIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	// Inject FS failure by making the path unwritable: out-of-band remove
-	// the underlying file so DeleteFile sees fs.ErrNotExist. This
-	// simulates a race where the file was already gone — the service
-	// should detect the FS error AFTER the index delete and re-Upsert
-	// the row to maintain consistency.
+
 	if err := os.Remove(filepath.Join(root, "alpha.md")); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
@@ -936,17 +875,15 @@ func TestService_Delete_FSFailure_RollsBackIndex(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
-	// Index row was index-FIRST deleted, then re-Upserted on FS failure.
+
 	if _, ok := idx.recByID(summary.ID); !ok {
 		t.Errorf("index row not rolled back on FS failure (reconciler-heals OK, but best-effort rollback expected)")
 	}
-	// Registry was never removed (we removed AFTER FS success).
+
 	if _, ok := svc.registry.Lookup(summary.ID); !ok {
 		t.Errorf("registry entry missing despite FS-delete failure")
 	}
 }
-
-// --- Service.Move ---
 
 func TestService_Move_HappyPath(t *testing.T) {
 	t.Parallel()
@@ -999,7 +936,7 @@ func TestService_Move_Collision(t *testing.T) {
 	if !errors.Is(err, fsstore.ErrCaseCollision) {
 		t.Fatalf("err: got %v, want fsstore.ErrCaseCollision", err)
 	}
-	// Both notes survive at original paths.
+
 	if !fileExists(t, root, "alpha.md") || !fileExists(t, root, "beta.md") {
 		t.Errorf("survivors missing")
 	}
@@ -1010,8 +947,6 @@ func TestService_Move_Collision(t *testing.T) {
 		t.Errorf("registry B: got %q, want beta.md", relPathB)
 	}
 }
-
-// --- Plan 03-21 Gap R2-6: Move refreshes title from renamed-file content ---
 
 // TestService_Move_RefreshesTitle proves the contract introduced by Plan
 // 03-21 Task 2: after Service.Move renames a file, the index row's
@@ -1026,9 +961,7 @@ func TestService_Move_RefreshesTitle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	// Write H1 content into the file via Update (file-FIRST contract;
-	// the index Title field after Update is still empty per the
-	// service.go convention — the indexer is the source of truth).
+
 	if _, err := svc.Update(context.Background(), summary.ID, "# Alpha Title\n\nbody", ""); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -1061,7 +994,7 @@ func TestService_Move_RefreshesTitle_NoH1_FallsBackToFilename(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	// Write content with NO H1 at all.
+
 	if _, err := svc.Update(context.Background(), summary.ID, "body without heading", ""); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -1115,10 +1048,6 @@ func TestService_Move_RefreshesTitle_AfterContentChange(t *testing.T) {
 	}
 }
 
-// readFailingFileStore wraps a real FileStore and returns fs.ErrNotExist
-// from Read for a single canonical path AFTER MoveFile has succeeded —
-// simulating a contrived race where the filesystem watcher / external
-// process deletes the file between rename and read.
 type readFailingFileStore struct {
 	FileStore
 	failReadFor string
@@ -1153,8 +1082,6 @@ func TestService_Move_RefreshesTitle_ReadFailureFallsBackGracefully(t *testing.T
 		t.Fatalf("Update: %v", err)
 	}
 
-	// MoveFile succeeds (real FileStore handles it), but the subsequent
-	// Read("beta.md") returns fs.ErrNotExist due to our wrapper.
 	moved, err := svc.Move(context.Background(), summary.ID, "beta.md")
 	if err != nil {
 		t.Fatalf("Move must NOT fail on post-rename read failure; got: %v", err)
@@ -1162,8 +1089,7 @@ func TestService_Move_RefreshesTitle_ReadFailureFallsBackGracefully(t *testing.T
 	if moved.Path != "beta.md" {
 		t.Errorf("Path: got %q, want %q", moved.Path, "beta.md")
 	}
-	// On read failure the title falls back to the filename-derived
-	// value via markdown.ExtractTitle(nil, "beta.md") = "beta".
+
 	if moved.Title != "beta" {
 		t.Errorf("Title fallback: got %q, want %q (filename fallback on read failure)", moved.Title, "beta")
 	}
@@ -1175,8 +1101,6 @@ func TestService_Move_RefreshesTitle_ReadFailureFallsBackGracefully(t *testing.T
 		t.Errorf("index Title fallback: got %q, want %q", rec.Title, "beta")
 	}
 }
-
-// --- Service.CreateFolder ---
 
 func TestService_CreateFolder_HappyPath(t *testing.T) {
 	t.Parallel()
@@ -1210,8 +1134,6 @@ func TestService_CreateFolder_RejectsSlash(t *testing.T) {
 		t.Fatalf("expected error, got nil")
 	}
 }
-
-// --- Service.DeleteFolder ---
 
 func TestService_DeleteFolder_NotEmpty_NoRecursive(t *testing.T) {
 	t.Parallel()
@@ -1267,8 +1189,6 @@ func TestService_DeleteFolder_Recursive_BatchDeletesIndex(t *testing.T) {
 	}
 }
 
-// --- Service.MoveFolder ---
-
 func TestService_MoveFolder_HappyPath(t *testing.T) {
 	t.Parallel()
 	svc, root, idx := newRealFSSvc(t)
@@ -1308,7 +1228,7 @@ func TestService_MoveFolder_HappyPath(t *testing.T) {
 func TestService_MoveFolder_NestedSubtree(t *testing.T) {
 	t.Parallel()
 	svc, root, idx := newRealFSSvc(t)
-	// Build old/a.md, old/b/c.md, old/d/e/f.md
+
 	_, _ = svc.CreateFolder(context.Background(), "", "old")
 	_, _ = svc.CreateFolder(context.Background(), "old", "b")
 	_, _ = svc.CreateFolder(context.Background(), "old", "d")
@@ -1362,8 +1282,6 @@ func TestService_MoveFolder_Cycle(t *testing.T) {
 	}
 }
 
-// --- Registry dynamic ops ---
-
 func TestRegistry_Add_AndLookup(t *testing.T) {
 	t.Parallel()
 	r := NewRegistry()
@@ -1384,7 +1302,7 @@ func TestRegistry_Remove_Idempotent(t *testing.T) {
 	id := uuid.New()
 	r.Add(id, "foo.md")
 	r.Remove(id)
-	r.Remove(id) // idempotent
+	r.Remove(id)
 	if _, ok := r.Lookup(id); ok {
 		t.Errorf("entry still present")
 	}
@@ -1394,7 +1312,7 @@ func TestRegistry_Rename_OnlyIfPresent(t *testing.T) {
 	t.Parallel()
 	r := NewRegistry()
 	id := uuid.New()
-	r.Rename(id, "new.md") // no-op for unknown id
+	r.Rename(id, "new.md")
 	if _, ok := r.Lookup(id); ok {
 		t.Errorf("Rename should not insert for unknown id")
 	}
@@ -1417,7 +1335,7 @@ func TestRegistry_Hydrate_ReplacesAll(t *testing.T) {
 		{ID: id1, Path: "a.md"},
 		{ID: id2, Path: "b.md"},
 	})
-	// pre-existing entry removed unless in summaries
+
 	if _, ok := r.Lookup(preExistingID); ok {
 		t.Errorf("pre-existing entry should have been replaced")
 	}
@@ -1448,17 +1366,13 @@ func TestRegistry_AddRemoveRename_Concurrency(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	// All entries removed at the end (last write was Remove).
+
 	for _, id := range ids {
 		if _, ok := r.Lookup(id); ok {
 			t.Errorf("entry %v still present after concurrent Remove", id)
 		}
 	}
 }
-
-// --------------------------------------------------------------------------
-// Plan 04-04 Task 1: 5 new If-Match / broadcast tests (TDD GREEN)
-// --------------------------------------------------------------------------
 
 // TestService_Update_IfMatch_Mismatch_ReturnsErrStaleWrite: when the
 // client-supplied If-Match does not match the current file mtime, Update
@@ -1470,16 +1384,15 @@ func TestService_Update_IfMatch_Mismatch_ReturnsErrStaleWrite(t *testing.T) {
 	bc := &fakeBroadcaster{}
 	svc := newSvcWithBroadcaster(t, files, idx, bc)
 
-	// ifMatch does NOT match now.UTC().Format(time.RFC3339Nano)
 	_, err := svc.Update(context.Background(), ScratchpadUUID, "new content", "wrong-ifmatch-value")
 	if !errors.Is(err, ErrStaleWrite) {
 		t.Fatalf("expected ErrStaleWrite, got %v", err)
 	}
-	// File must NOT be written on rejected stale write.
+
 	if files.writeCalls != 0 {
 		t.Errorf("WriteAtomic must not be called on stale write; got %d calls", files.writeCalls)
 	}
-	// No broadcast on rejected write.
+
 	if len(bc.calls) != 0 {
 		t.Errorf("no broadcast expected on rejected stale write; got %v", bc.calls)
 	}
@@ -1495,7 +1408,6 @@ func TestService_Update_IfMatch_Empty_SkipsValidation(t *testing.T) {
 	bc := &fakeBroadcaster{}
 	svc := newSvcWithBroadcaster(t, files, idx, bc)
 
-	// Empty ifMatch → permissive, no validation step.
 	note, err := svc.Update(context.Background(), ScratchpadUUID, "content", "")
 	if err != nil {
 		t.Fatalf("empty ifMatch should be permissive; got error: %v", err)
@@ -1517,7 +1429,6 @@ func TestService_Update_IfMatch_Match_ProceedsAsNormal(t *testing.T) {
 	bc := &fakeBroadcaster{}
 	svc := newSvcWithBroadcaster(t, files, idx, bc)
 
-	// Format mtime as RFC3339Nano UTC — same as Service.Update does.
 	ifMatch := now.UTC().Format(time.RFC3339Nano)
 	note, err := svc.Update(context.Background(), ScratchpadUUID, "content", ifMatch)
 	if err != nil {
@@ -1529,7 +1440,7 @@ func TestService_Update_IfMatch_Match_ProceedsAsNormal(t *testing.T) {
 	if note.UpdatedAt.IsZero() {
 		t.Errorf("UpdatedAt is zero")
 	}
-	// Successful match → both EventNoteUpdated and EventTagsUpdated fire (Phase 6).
+
 	if len(bc.calls) != 2 {
 		t.Errorf("expected 2 broadcasts (EventNoteUpdated + EventTagsUpdated); got %d", len(bc.calls))
 	}
@@ -1551,14 +1462,11 @@ func TestService_Update_BroadcastsAfterIndexUpsert(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Ordering: write → upsert → broadcast → broadcast (Phase 6: EventNoteUpdated + EventTagsUpdated).
 	want := []string{"write", "upsert", "broadcast", "broadcast"}
 	if len(seq) != 4 || seq[0] != want[0] || seq[1] != want[1] || seq[2] != want[2] || seq[3] != want[3] {
 		t.Fatalf("ordering: got %v, want %v", seq, want)
 	}
 
-	// T-04-04: payload must not include note content.
-	// Check the first broadcast (EventNoteUpdated) has required metadata.
 	if len(bc.calls) != 2 {
 		t.Fatalf("expected 2 broadcast calls (EventNoteUpdated + EventTagsUpdated); got %d", len(bc.calls))
 	}
@@ -1569,7 +1477,7 @@ func TestService_Update_BroadcastsAfterIndexUpsert(t *testing.T) {
 	if _, hasContent := payload["content"]; hasContent {
 		t.Fatal("T-04-04 violation: broadcast payload must not include note content")
 	}
-	// Verify metadata fields present in EventNoteUpdated payload.
+
 	for _, key := range []string{"id", "path", "updated_at"} {
 		if _, ok := payload[key]; !ok {
 			t.Errorf("broadcast payload missing key %q", key)
@@ -1587,8 +1495,6 @@ func TestService_Update_NoBroadcastOnTransientIndexError(t *testing.T) {
 	bc := &fakeBroadcaster{}
 	svc := newSvcWithBroadcaster(t, files, idx, bc)
 
-	// Update returns success (file-FIRST contract: transient index errors
-	// are logged+swallowed). But broadcast must NOT have fired.
 	_, err := svc.Update(context.Background(), ScratchpadUUID, "content", "")
 	if err != nil {
 		t.Fatalf("transient index error must not propagate; got %v", err)
@@ -1597,10 +1503,6 @@ func TestService_Update_NoBroadcastOnTransientIndexError(t *testing.T) {
 		t.Errorf("no broadcast expected on transient index error; got %v", bc.calls)
 	}
 }
-
-// --------------------------------------------------------------------------
-// Phase 6 Plan 06-05 Task 1: Service.Update Phase 6 extensions
-// --------------------------------------------------------------------------
 
 // TestService_Update_AutoRestoresMissingFrontmatter (D-10 / TAGS-EXT-02):
 // when content has no frontmatter block, Update should inject the scaffold
@@ -1616,12 +1518,12 @@ func TestService_Update_AutoRestoresMissingFrontmatter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Written bytes must start with frontmatter scaffold.
+
 	written := string(files.lastWriteData)
 	if !strings.HasPrefix(written, "---\ntags: []\n---\n") {
 		t.Errorf("D-10: file written without frontmatter scaffold; got: %q", written[:min(80, len(written))])
 	}
-	// Original content must still be present.
+
 	if !strings.Contains(written, "# Just a Heading") {
 		t.Errorf("original heading not preserved in written content")
 	}
@@ -1661,12 +1563,11 @@ func TestService_Update_BroadcastsEventTagsUpdated(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify EventTagsUpdated was broadcast.
 	found := false
 	for _, c := range bc.calls {
 		if c.event == EventTagsUpdated {
 			found = true
-			// Payload must contain note_id.
+
 			payload, ok := c.payload.(map[string]any)
 			if !ok {
 				t.Fatalf("EventTagsUpdated payload is not map[string]any: %T", c.payload)
@@ -1681,42 +1582,23 @@ func TestService_Update_BroadcastsEventTagsUpdated(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Task 3: cross-vault index double — tagStubIndex
-//
-// tagStubIndex embeds stubIndex and adds in-memory tag + backlink tracking
-// so Task 3 tests can assert on NotesByTag / RenameTag / DeleteTag /
-// SourcesByBacklinkTitle / UpdateBacklinksTargetTitle without importing the
-// index package (which imports notes, creating a test-time cycle).
-// ---------------------------------------------------------------------------
-
-// tagStubIndex is a richer Index spy that supports tag + backlink operations
-// in memory. Embeds stubIndex for the base Upsert / Delete / List / etc.
-// methods. Tag and backlink state is managed separately.
 type tagStubIndex struct {
-	*stubIndex // base Upsert/Delete/List/LookupByPath/etc.
+	*stubIndex
 
 	mu sync.RWMutex
 
-	// tags: tag name → set of note IDs carrying it.
 	tags map[string]map[uuid.UUID]bool
 
-	// backlinks: target title → set of source note IDs.
 	backlinks map[string]map[uuid.UUID]bool
 
-	// byID index for NoteSummary lookups.
-	// Populated by overriding Upsert.
 	summaries map[uuid.UUID]NoteSummary
 
-	// Failure injection for RenameTag / DeleteTag.
 	renameTagErr error
 	deleteTagErr error
 
-	// renameTagCalled / deleteTagCalled record the call arguments.
-	renameTagCalled []string // [old, new]
-	deleteTagCalled []string // [name]
+	renameTagCalled []string
+	deleteTagCalled []string
 
-	// updateBacklinksCalled records calls.
 	updateBacklinksCalled bool
 }
 
@@ -1740,7 +1622,6 @@ func (t *tagStubIndex) Upsert(ctx context.Context, rec NoteRecord) error {
 	return nil
 }
 
-// setTag adds noteID as a carrier of tagName.
 func (t *tagStubIndex) setTag(tagName string, noteID uuid.UUID) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -1750,7 +1631,6 @@ func (t *tagStubIndex) setTag(tagName string, noteID uuid.UUID) {
 	t.tags[tagName][noteID] = true
 }
 
-// setBacklink records that sourceID contains [[targetTitle]].
 func (t *tagStubIndex) setBacklink(targetTitle string, sourceID uuid.UUID) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -1784,7 +1664,7 @@ func (t *tagStubIndex) RenameTag(_ context.Context, oldName, newName string) ([]
 	if len(carriers) == 0 {
 		return nil, nil
 	}
-	// Move the tag set to the new name.
+
 	t.tags[newName] = carriers
 	delete(t.tags, oldName)
 	ids := make([]uuid.UUID, 0, len(carriers))
@@ -1843,10 +1723,6 @@ func (t *tagStubIndex) SearchTitles(_ context.Context, _ string, _ int) ([]Searc
 	return []SearchResult{}, nil
 }
 
-// newCrossVaultSvc constructs a Service backed by a real fsstore.Store
-// rooted at a freshly-allocated tempdir + a tagStubIndex for cross-vault
-// rewrite tests. Returns the service, the store root, the tag index spy,
-// and a fakeBroadcaster.
 func newCrossVaultSvc(t *testing.T) (*Service, string, *tagStubIndex, *fakeBroadcaster) {
 	t.Helper()
 	root := t.TempDir()
@@ -1858,8 +1734,6 @@ func newCrossVaultSvc(t *testing.T) (*Service, string, *tagStubIndex, *fakeBroad
 	return svc, root, idx, bc
 }
 
-// createTestNote writes a note file and registers it in the service registry.
-// Returns the note's UUID.
 func createTestNote(t *testing.T, svc *Service, root, relPath, content string) uuid.UUID {
 	t.Helper()
 	fullPath := filepath.Join(root, relPath)
@@ -1874,10 +1748,6 @@ func createTestNote(t *testing.T, svc *Service, root, relPath, content string) u
 	return id
 }
 
-// ---------------------------------------------------------------------------
-// Task 3 RED tests: RenameTagAcrossVault
-// ---------------------------------------------------------------------------
-
 // PT1: 3 notes carry "foo"; rename to "feature"; returns 3 ids; on-disk tags
 // arrays now contain "feature".
 func TestService_RenameTagAcrossVault_PT1_BasicRename(t *testing.T) {
@@ -1888,12 +1758,10 @@ func TestService_RenameTagAcrossVault_PT1_BasicRename(t *testing.T) {
 	const oldTag = "foo"
 	const newTag = "feature"
 
-	// Set up 3 carrier notes with the tag in their frontmatter.
 	idA := createTestNote(t, svc, root, "a.md", "---\ntags: [foo, bar]\n---\n\nbody A")
 	idB := createTestNote(t, svc, root, "b.md", "---\ntags: [foo]\n---\n\nbody B")
 	idC := createTestNote(t, svc, root, "c.md", "---\ntags: [foo, baz]\n---\n\nbody C")
 
-	// Register NoteRecords in the tag stub so NotesByTag returns them.
 	_ = idx.Upsert(ctx, NoteRecord{ID: idA, Path: "a.md", Title: "a"})
 	_ = idx.Upsert(ctx, NoteRecord{ID: idB, Path: "b.md", Title: "b"})
 	_ = idx.Upsert(ctx, NoteRecord{ID: idC, Path: "c.md", Title: "c"})
@@ -1909,7 +1777,6 @@ func TestService_RenameTagAcrossVault_PT1_BasicRename(t *testing.T) {
 		t.Errorf("touched: got %d, want 3", len(touched))
 	}
 
-	// On-disk tags arrays should now contain "feature".
 	for _, relPath := range []string{"a.md", "b.md", "c.md"} {
 		data, err := os.ReadFile(filepath.Join(root, relPath))
 		if err != nil {
@@ -1924,12 +1791,10 @@ func TestService_RenameTagAcrossVault_PT1_BasicRename(t *testing.T) {
 		}
 	}
 
-	// SQL rename called.
 	if idx.renameTagCalled == nil || idx.renameTagCalled[0] != oldTag || idx.renameTagCalled[1] != newTag {
 		t.Errorf("RenameTag not called with correct args; got %v", idx.renameTagCalled)
 	}
 
-	// Broadcast fires once with EventTagsRewritten.
 	var found bool
 	for _, c := range bc.calls {
 		if c.event == EventTagsRewritten {
@@ -1951,7 +1816,7 @@ func TestService_RenameTagAcrossVault_PT2_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	// The error should indicate not found (either ErrTagNotFound or a wrapped version).
+
 	if !strings.Contains(err.Error(), "not found") && !strings.Contains(err.Error(), "tag") {
 		t.Errorf("expected tag-not-found error; got: %v", err)
 	}
@@ -1972,7 +1837,7 @@ func TestService_RenameTagAcrossVault_PT3_InvalidNewName(t *testing.T) {
 // first file to its pre-state; no broadcast.
 func TestService_RenameTagAcrossVault_PT5_Rollback(t *testing.T) {
 	t.Parallel()
-	// Use a wrapping FileStore that fails on the Nth WriteAtomic call.
+
 	root := t.TempDir()
 
 	callCount := 0
@@ -2000,7 +1865,6 @@ func TestService_RenameTagAcrossVault_PT5_Rollback(t *testing.T) {
 		t.Fatal("expected error from failed write, got nil")
 	}
 
-	// The first file must be restored to pre-state.
 	data, readErr := os.ReadFile(filepath.Join(root, "a.md"))
 	if readErr != nil {
 		t.Fatalf("ReadFile a.md: %v", readErr)
@@ -2012,17 +1876,12 @@ func TestService_RenameTagAcrossVault_PT5_Rollback(t *testing.T) {
 		t.Errorf("a.md was NOT rolled back; missing %q", oldTag)
 	}
 
-	// No broadcast on failure.
 	for _, c := range bc.calls {
 		if c.event == EventTagsRewritten {
 			t.Errorf("EventTagsRewritten broadcast despite rollback")
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Task 3 RED tests: DeleteTagAcrossVault
-// ---------------------------------------------------------------------------
 
 // DT1: 3 carriers → returns 3 ids; on-disk tags arrays no longer contain tag.
 func TestService_DeleteTagAcrossVault_DT1_BasicDelete(t *testing.T) {
@@ -2060,7 +1919,6 @@ func TestService_DeleteTagAcrossVault_DT1_BasicDelete(t *testing.T) {
 		}
 	}
 
-	// Broadcast fires with new_name=null.
 	var found bool
 	for _, c := range bc.calls {
 		if c.event == EventTagsRewritten {
@@ -2088,10 +1946,6 @@ func TestService_DeleteTagAcrossVault_DT2_NotFound(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Task 3 RED tests: RenameRewriteWikilinks
-// ---------------------------------------------------------------------------
-
 // RW1: 3 referrers contain [[Foo]]; rename to "Bar"; on-disk files contain [[Bar]].
 func TestService_RenameRewriteWikilinks_RW1_BasicRename(t *testing.T) {
 	t.Parallel()
@@ -2115,7 +1969,6 @@ func TestService_RenameRewriteWikilinks_RW1_BasicRename(t *testing.T) {
 		t.Errorf("touched: got %d, want 2", len(touched))
 	}
 
-	// a.md: [[Foo]] → [[Bar]], [[Foo|alias]] → [[Bar|alias]]
 	dataA, err := os.ReadFile(filepath.Join(root, "a.md"))
 	if err != nil {
 		t.Fatalf("ReadFile a.md: %v", err)
@@ -2131,7 +1984,6 @@ func TestService_RenameRewriteWikilinks_RW1_BasicRename(t *testing.T) {
 		t.Errorf("a.md: still contains [[Foo]]; got: %q", sA)
 	}
 
-	// b.md: [[Foo]] → [[Bar]]
 	dataB, err := os.ReadFile(filepath.Join(root, "b.md"))
 	if err != nil {
 		t.Fatalf("ReadFile b.md: %v", err)
@@ -2140,7 +1992,6 @@ func TestService_RenameRewriteWikilinks_RW1_BasicRename(t *testing.T) {
 		t.Errorf("b.md: expected [[Bar]]; got: %q", string(dataB))
 	}
 
-	// c.md: unchanged
 	dataC, err := os.ReadFile(filepath.Join(root, "c.md"))
 	if err != nil {
 		t.Fatalf("ReadFile c.md: %v", err)
@@ -2149,7 +2000,6 @@ func TestService_RenameRewriteWikilinks_RW1_BasicRename(t *testing.T) {
 		t.Errorf("c.md should be unchanged; got: %q", string(dataC))
 	}
 
-	// Broadcast fires.
 	var found bool
 	for _, c := range bc.calls {
 		if c.event == EventLinksRewritten {
@@ -2207,7 +2057,6 @@ func TestService_RenameRewriteWikilinks_RW3_Rollback(t *testing.T) {
 		t.Fatal("expected error from failed write, got nil")
 	}
 
-	// First file must be restored.
 	data, readErr := os.ReadFile(filepath.Join(root, "a.md"))
 	if readErr != nil {
 		t.Fatalf("ReadFile a.md: %v", readErr)
@@ -2219,7 +2068,6 @@ func TestService_RenameRewriteWikilinks_RW3_Rollback(t *testing.T) {
 		t.Errorf("a.md not rolled back; missing [[Foo]]")
 	}
 
-	// No broadcast on failure.
 	for _, c := range bc.calls {
 		if c.event == EventLinksRewritten {
 			t.Errorf("EventLinksRewritten broadcast despite rollback")
@@ -2273,11 +2121,6 @@ func TestService_RenameRewriteWikilinks_RW6_BroadcastOnce(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// countingFileStore — wraps a FileStore; fails WriteAtomic on the Nth call.
-// Used for D-36/D-37 rollback tests.
-// ---------------------------------------------------------------------------
-
 type countingFileStore struct {
 	inner  FileStore
 	failAt int
@@ -2320,7 +2163,7 @@ func TestService_Create_UsesNewNoteContentScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	// Read the written file.
+
 	data, err := os.ReadFile(filepath.Join(root, summary.Path))
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
@@ -2334,14 +2177,12 @@ func TestService_Create_UsesNewNoteContentScaffold(t *testing.T) {
 	}
 }
 
-// --- Phase 6.5 D-10 body-tag + frontmatter rewriteback tests ---
-
 // TestService_Update_BodyTagsAddedToFrontmatter verifies that when a note body
 // contains "#newtag" and the frontmatter only has "tags: [oldtag]", the save
 // produces a file whose frontmatter contains both tags (D-10 union).
 func TestService_Update_BodyTagsAddedToFrontmatter(t *testing.T) {
 	now := time.Now()
-	// lastWriteData tracks the LAST write call (the rewrite call if it happens).
+
 	files := &fakeFileStore{statTime: now}
 	svc := newSvc(t, files)
 
@@ -2350,12 +2191,11 @@ func TestService_Update_BodyTagsAddedToFrontmatter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	// Should have called WriteAtomic twice: once for the user content, once
-	// for the frontmatter rewriteback.
+
 	if files.writeCalls != 2 {
 		t.Errorf("writeCalls: got %d, want 2 (original write + frontmatter rewriteback)", files.writeCalls)
 	}
-	// The last write should contain both tags in the frontmatter.
+
 	last := string(files.lastWriteData)
 	if !strings.Contains(last, "newtag") {
 		t.Errorf("rewritten file missing newtag; got: %q", last[:min(200, len(last))])
@@ -2363,9 +2203,9 @@ func TestService_Update_BodyTagsAddedToFrontmatter(t *testing.T) {
 	if !strings.Contains(last, "oldtag") {
 		t.Errorf("rewritten file missing oldtag; got: %q", last[:min(200, len(last))])
 	}
-	// Both tags should be in the frontmatter tags array.
+
 	gotTags := markdown.ExtractTags(files.lastWriteData)
-	wantTags := []string{"newtag", "oldtag"} // sorted alphabetically
+	wantTags := []string{"newtag", "oldtag"}
 	if len(gotTags) != len(wantTags) {
 		t.Errorf("tags len: got %v (%d), want %v (%d)", gotTags, len(gotTags), wantTags, len(wantTags))
 	} else {
@@ -2385,18 +2225,17 @@ func TestService_Update_BodyTagsNoChange(t *testing.T) {
 	files := &fakeFileStore{statTime: now}
 	svc := newSvc(t, files)
 
-	// Frontmatter already has "existing"; body also has #existing.
 	content := "---\ntags: [existing]\n---\n\nThis note is about #existing concepts."
 	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	// canonical == frontmatterTags (both ["existing"]) → no second write.
+
 	if files.writeCalls != 1 {
 		t.Errorf("writeCalls: got %d, want 1 (Pitfall 6: no second WriteAtomic when canonical == frontmatter tags)",
 			files.writeCalls)
 	}
-	// File content should be unchanged.
+
 	if string(files.lastWriteData) != content {
 		t.Errorf("file content was changed unexpectedly:\n  want: %q\n   got: %q",
 			content, string(files.lastWriteData))
@@ -2410,18 +2249,17 @@ func TestService_Update_BodyTagInsideCodeFenceNotExtracted(t *testing.T) {
 	files := &fakeFileStore{statTime: now}
 	svc := newSvc(t, files)
 
-	// #shouldskip is inside a fenced code block — must NOT become a tag.
 	content := "---\ntags: []\n---\n\n```\n#shouldskip\n```\n"
 	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	// canonical == frontmatterTags (both empty) → no second write.
+
 	if files.writeCalls != 1 {
 		t.Errorf("writeCalls: got %d, want 1 (no rewrite — fenced code tag must not be extracted)",
 			files.writeCalls)
 	}
-	// Verify no "shouldskip" in the tags.
+
 	gotTags := markdown.ExtractTags(files.lastWriteData)
 	for _, tag := range gotTags {
 		if tag == "shouldskip" {
@@ -2441,7 +2279,7 @@ func TestService_Create_ScaffoldEmptyBodyTagsAreNoOp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	// Read the created file; it should still have tags: [] (no rewrite needed).
+
 	data, readErr := os.ReadFile(filepath.Join(root, summary.Path))
 	if readErr != nil {
 		t.Fatalf("ReadFile: %v", readErr)
@@ -2450,7 +2288,7 @@ func TestService_Create_ScaffoldEmptyBodyTagsAreNoOp(t *testing.T) {
 	if len(gotTags) != 0 {
 		t.Errorf("scaffold should have empty tags, got %v", gotTags)
 	}
-	// Body tags from scaffold should be nil (no inline tags in the scaffold body).
+
 	bodyTags := markdown.ExtractBodyTags(data)
 	if len(bodyTags) != 0 {
 		t.Errorf("scaffold body should have no inline tags, got %v", bodyTags)

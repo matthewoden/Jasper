@@ -61,9 +61,7 @@ import (
 // directly (Plan 03-21, Gap R2-6 server-side closure).
 func ExtractTitle(content []byte, fallbackPath string) string {
 	scanner := bufio.NewScanner(bytes.NewReader(content))
-	// Bump the scanner buffer so a single >64 KB line does not bail
-	// out with bufio.ErrTooLong. 1 MiB is generous; titles live on
-	// the first few lines.
+
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	inFrontmatter := false
@@ -73,9 +71,6 @@ func ExtractTitle(content []byte, fallbackPath string) string {
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 
-		// Detect frontmatter open on the first non-empty line. Markdown
-		// frontmatter must be at the very top; we tolerate leading blank
-		// lines for forgiveness but the spec is "first line".
 		if !firstSignificantLineSeen {
 			if trimmed == "" {
 				continue
@@ -96,17 +91,11 @@ func ExtractTitle(content []byte, fallbackPath string) string {
 			return strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
 		}
 
-		// First non-blank, non-heading content line: bail out and fall
-		// through to filename. (Phase 6 may walk further for an H2
-		// fallback; Phase 2 deliberately stops here.)
 		if trimmed != "" {
 			break
 		}
 	}
 
-	// Filename fallback. filepath.Base handles "/" and OS separators;
-	// then strip a trailing ".md" (case-sensitive — canonicalized
-	// upstream by fsstore.Canonicalize).
 	name := filepath.Base(fallbackPath)
 	name = strings.TrimSuffix(name, ".md")
 	return name

@@ -31,8 +31,6 @@ import (
 //	})
 func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Only intercept PUT /config (or any path ending in /config).
-		// All other routes pass through without body inspection.
 		if r.Method != http.MethodPut || !strings.HasSuffix(r.URL.Path, "/config") {
 			next.ServeHTTP(w, r)
 			return
@@ -45,13 +43,9 @@ func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"could not read request body"}`))
 			return
 		}
-		// Restore body for downstream handlers.
+
 		r.Body = io.NopCloser(bytes.NewReader(raw))
 
-		// Strict decode with DisallowUnknownFields (D-40).
-		// We decode into a custom validator struct that mirrors the Config
-		// shape so we can check the enum without importing generated types
-		// (this file is in the same package, so we use Config directly).
 		var tmp strictConfigValidator
 		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.DisallowUnknownFields()
@@ -62,7 +56,6 @@ func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Enum check for theme (D-40, T-05-03-03).
 		if tmp.Theme != "dark" && tmp.Theme != "light" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
@@ -70,10 +63,6 @@ func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Range and length checks that enforce OpenAPI schema constraints
-		// (minLength / maxLength / minimum / maximum) which oapi-codegen's
-		// strict-server does NOT automatically validate (no openapi3filter
-		// request-validation call in this deployment).
 		if len(tmp.AppName) < 1 || len(tmp.AppName) > 64 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
@@ -109,19 +98,6 @@ func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// strictConfigValidator mirrors the Config schema for strict decoding.
-// Fields must match api.Config's JSON tags exactly — any drift here is
-// caught at test time (TestPutConfig_RoundTrip decodes the echoed body
-// back into api.Config, ensuring field alignment).
-//
-// DailyNotes, Editor, Server, and Mcp are inline structs to match the
-// generated anonymous-struct shapes in openapi_gen.go.
-//
-// Phase 8 Plan 08-01 Task 4: the Server and Mcp blocks are POINTER
-// types so PUT /config bodies that omit them (pre-Phase-8 clients)
-// still pass strict-decode. With DisallowUnknownFields the inline
-// fields catch typos; with the pointer wrapper, total absence is
-// tolerated.
 type strictConfigValidator struct {
 	AppName    string `json:"appName"`
 	Theme      string `json:"theme"`

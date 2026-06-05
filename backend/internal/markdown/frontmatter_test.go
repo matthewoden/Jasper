@@ -27,7 +27,6 @@ func TestHasFrontmatter(t *testing.T) {
 		input string
 		want  bool
 	}{
-		// ── HAPPY PATH ────────────────────────────────────────────────
 		{
 			name:  "canonical happy path — tags array + body",
 			input: "---\ntags: []\n---\n# title\n",
@@ -48,7 +47,7 @@ func TestHasFrontmatter(t *testing.T) {
 			input: "---\ntags: [a]\n---\nbody",
 			want:  true,
 		},
-		// ── REJECTION AXES ────────────────────────────────────────────
+
 		{
 			name:  "empty file",
 			input: "",
@@ -165,29 +164,24 @@ func TestInjectFrontmatterScaffold(t *testing.T) {
 		want  string
 	}{
 		{
-			// Scaffold is prepended; existing H1 is preserved.
 			name:  "body without frontmatter gets scaffold prepended",
 			input: "# Foo\nbody",
 			title: "Foo",
 			want:  "---\ntags: []\n---\n\n# Foo\n\n# Foo\nbody",
 		},
 		{
-			// Empty content: scaffold + trailing blank line.
 			name:  "empty input gets scaffold with title",
 			input: "",
 			title: "NewNote",
 			want:  "---\ntags: []\n---\n\n# NewNote\n\n",
 		},
 		{
-			// Idempotency: content with frontmatter is returned unchanged (byte-identical).
 			name:  "already has frontmatter — no-op idempotent",
 			input: "---\ntags: [x]\n---\nbody",
 			title: "X",
 			want:  "---\ntags: [x]\n---\nbody",
 		},
 		{
-			// Title with special characters — no escaping, caller's responsibility.
-			// The apostrophe must round-trip into the H1.
 			name:  "title with apostrophe round-trips into H1",
 			input: "body text",
 			title: "O'Hara",

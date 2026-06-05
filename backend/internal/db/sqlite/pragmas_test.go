@@ -13,9 +13,6 @@ import (
 func TestApplyConnectionPragmas_AllSucceed(t *testing.T) {
 	t.Parallel()
 
-	// Use a real on-disk database (not :memory:) so journal_mode=WAL
-	// can succeed — WAL on :memory: silently falls back to MEMORY
-	// because there is no on-disk file to host the WAL log.
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "pragmas.db")
 
@@ -36,7 +33,6 @@ func TestApplyConnectionPragmas_AllSucceed(t *testing.T) {
 		t.Fatalf("applyConnectionPragmas: %v", err)
 	}
 
-	// Verify each pragma landed.
 	checks := []struct {
 		name string
 		want any

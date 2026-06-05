@@ -45,10 +45,6 @@ func ExtractWikilinks(content []byte) []WikiLinkRef {
 		return nil
 	}
 
-	// Use both extensions together: frontmatter keeps the YAML block out of
-	// the body parse; wikilink detects [[Title]] and [[Title|Alias]] nodes.
-	// Important: do NOT attach a Resolver here. The Resolver is for HTML
-	// rendering (RESEARCH.md Pitfall 3). Extraction only needs AST walking.
 	md := goldmark.New(
 		goldmark.WithExtensions(
 			&frontmatter.Extender{},

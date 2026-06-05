@@ -1,12 +1,5 @@
 package mcp_test
 
-// Plan 08-09 — server_test.go covers the SDK composition:
-//
-//   - NewServer returns a non-nil *Server
-//   - All 8 tools (D-16) are registered and discoverable via the
-//     SDK's ListTools introspection (over an in-memory transport).
-//   - Tool names match the D-16 list exactly.
-
 import (
 	"context"
 	"io"
@@ -19,8 +12,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/mcp"
 )
 
-// expectedToolNames is the D-16 canonical tool name list.
-// list_grants added in Plan 08-21 (R4-3): metadata read, no ACL check.
 var expectedToolNames = []string{
 	"create_note",
 	"delete_note",
@@ -89,8 +80,6 @@ func TestNewServer_All8ToolsRegistered(t *testing.T) {
 	}
 }
 
-// newTestMCPServer constructs a Server with a real notes.Service + a
-// fake NotesProvider so the test setup never touches SQLite.
 func newTestMCPServer(t *testing.T) *mcp.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

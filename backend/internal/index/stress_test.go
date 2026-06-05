@@ -43,8 +43,6 @@ func TestStress_5000Note_FullReconcile_NoBusy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 1. Build 5,000 synthetic .md files. Distribute across a few
-	// sub-folders so the walker exercises directory recursion.
 	const N = 5000
 	for i := 0; i < N; i++ {
 		bucket := fmt.Sprintf("b%02d", i%50)
@@ -59,7 +57,6 @@ func TestStress_5000Note_FullReconcile_NoBusy(t *testing.T) {
 		}
 	}
 
-	// 2. Open Pair + bootstrap schema via runner Path 0 (fresh boot).
 	dbPath := filepath.Join(dataDir, "app.db")
 	pair, err := sqlite.Open(ctx, dbPath)
 	if err != nil {
@@ -78,10 +75,8 @@ func TestStress_5000Note_FullReconcile_NoBusy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 3. Build the indexer.
 	idx := index.New(pair, notesDir, silentTestLogger())
 
-	// 4. Concurrent reconcile + writers.
 	errCh := make(chan error, 100)
 	var wg sync.WaitGroup
 	for w := 0; w < 4; w++ {
@@ -93,7 +88,7 @@ func TestStress_5000Note_FullReconcile_NoBusy(t *testing.T) {
 			}
 		}()
 	}
-	// Concurrent writers updating mtimes / content on a few files.
+
 	for w := 0; w < 4; w++ {
 		wg.Add(1)
 		go func(seed int) {
@@ -111,7 +106,6 @@ func TestStress_5000Note_FullReconcile_NoBusy(t *testing.T) {
 	wg.Wait()
 	close(errCh)
 
-	// 5. Assert: zero SQLITE_BUSY / database is locked.
 	for err := range errCh {
 		if err == nil {
 			continue
@@ -123,7 +117,6 @@ func TestStress_5000Note_FullReconcile_NoBusy(t *testing.T) {
 		t.Fatalf("reconcile error: %v", err)
 	}
 
-	// 6. Final settle reconcile, then assert COUNT == 5000.
 	if _, err := idx.Reconcile(ctx, index.ModeIncremental); err != nil {
 		t.Fatalf("final settle reconcile: %v", err)
 	}
@@ -136,16 +129,10 @@ func TestStress_5000Note_FullReconcile_NoBusy(t *testing.T) {
 	}
 }
 
-// silentTestLogger returns a slog.Logger that discards everything; the
-// stress test runs millions of log lines under load and we don't want
-// to drown the test output.
 func silentTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(nopWriter{}, nil))
 }
 
-// nopWriter is an io.Writer that discards everything. (We use it
-// instead of io.Discard purely so this file has a tiny zero-import
-// surface — io.Discard is fine, just style.)
 type nopWriter struct{}
 
 func (nopWriter) Write(p []byte) (int, error) { return len(p), nil }

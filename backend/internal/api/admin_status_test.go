@@ -16,18 +16,14 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// fakeStatus is a test-only StatusProvider that returns a fixed Status.
 type fakeStatus struct{ s migrate.Status }
 
 func (f fakeStatus) Status(_ context.Context) migrate.Status { return f.s }
 
-// setupAdminStatusServer mounts the strict-server bridge under
-// `/api/v1` so the test URL matches the production routes (Pitfall 13).
-// Accepts an explicit StatusProvider so tests can pin specific states.
 func setupAdminStatusServer(t *testing.T, status migrate.StatusProvider) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	files := &fakeFileStore{} // re-use the helper from handlers_test.go
+	files := &fakeFileStore{}
 	svc := notes.NewService(files, nil, nil, logger)
 
 	srv := NewServerWithIndex(svc, status, nil, nil, nil, logger, "")
@@ -115,10 +111,7 @@ func TestGetAdminStatus_RolledBack_IncludesFailedMigration(t *testing.T) {
 	if got.LogsPath == nil || *got.LogsPath != "/tmp/jasper.log" {
 		t.Errorf("LogsPath: got %v, want %q", got.LogsPath, "/tmp/jasper.log")
 	}
-	// Voice rule (T-02-03-03): no SQL leaked. The body should not
-	// contain "INVALID SQL", "INSERT", "CREATE", etc. We only check
-	// the body bytes here — the handler maps from migrate.Status which
-	// doesn't carry SQL anyway, so this is belt-and-braces.
+
 	if strings.Contains(string(body), "INVALID SQL") {
 		t.Errorf("body leaked SQL fragment: %s", body)
 	}
@@ -132,7 +125,7 @@ func TestGetAdminStatus_NilProvider_FallsBackToOK(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
 	svc := notes.NewService(files, nil, nil, logger)
-	srv := NewServer(svc, logger) // 2-arg form — no status provider passed
+	srv := NewServer(svc, logger)
 	si := NewStrictHandler(srv, nil)
 
 	r := chi.NewRouter()
@@ -181,7 +174,6 @@ func TestGetAdminStatus_OmitsEmptyOptionalFields(t *testing.T) {
 		t.Fatalf("status: got %d, want 200; body=%s", resp.StatusCode, body)
 	}
 
-	// Decode into a generic map so we can inspect key presence.
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
 		t.Fatalf("unmarshal: %v; body=%s", err, body)

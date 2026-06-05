@@ -12,11 +12,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/installer"
 )
 
-// installCmd registers Jasper as a per-user OS service. Wires the
-// installer package's BootstrapMacOS / EnableLingerLinux helpers atop
-// the kardianos service.Install path so D-35 launchd plist + systemd
-// unit overrides land correctly and the modern launchctl bootstrap form
-// is used (Pitfall 2). See 08-12-PLAN.md.
 var installCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Register Jasper as a per-user OS service",
@@ -45,13 +40,6 @@ fast and idempotent.`,
 	RunE: runInstall,
 }
 
-// runInstall is the cobra RunE — resolves the app home directory (used by
-// the kardianos service config for the working dir + plist arguments),
-// calls Install (idempotent), then finalizes via the platform-specific
-// bootstrap/linger steps.
-//
-// Plan 08-23 (R4-15): JASPER_DATA_DIR was removed; this falls back
-// directly to ~/.jasper (DefaultDataDir's canonical app-home location).
 func runInstall(_ *cobra.Command, _ []string) error {
 	dataDir := config.DefaultDataDir()
 
@@ -60,7 +48,6 @@ func runInstall(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("create service config: %w", err)
 	}
 
-	// Write the plist (macOS) / unit (linux) via kardianos.
 	if err := svc.Install(); err != nil {
 		if !isAlreadyInstalled(err) {
 			return fmt.Errorf("install service: %w", err)
@@ -68,7 +55,6 @@ func runInstall(_ *cobra.Command, _ []string) error {
 		fmt.Fprintln(os.Stderr, "(service file already exists — continuing)")
 	}
 
-	// Platform-specific finalization.
 	switch runtime.GOOS {
 	case "darwin":
 		plistPath, err := installer.PlistPathMacOS()
@@ -97,9 +83,6 @@ func runInstall(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-// isAlreadyInstalled does a case-insensitive substring check on the
-// error message for "already installed" or "exists" — kardianos doesn't
-// export a sentinel error for the duplicate-install case.
 func isAlreadyInstalled(err error) bool {
 	if err == nil {
 		return false

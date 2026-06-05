@@ -1,11 +1,5 @@
 package api
 
-// backlinks_handler_test.go — Plan 06-11 Task 1 TDD tests (BH1..BH5)
-// for GetNoteBacklinks and (ST1..ST6) for GetNotesSearchTitles.
-//
-// Uses blIdx (a standalone notes.Index implementation) to control behavior
-// without any SQLite or real file I/O.
-
 import (
 	"context"
 	"encoding/json"
@@ -24,21 +18,12 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// ---------------------------------------------------------------------------
-// blIdx — minimal notes.Index for backlinks + search handler tests
-// ---------------------------------------------------------------------------
-
-// blIdx implements notes.Index. All methods we don't test are no-ops;
-// GetBacklinks and SearchTitles are controllable; List() drives 404 detection.
 type blIdx struct {
-	// existing notes (UUID → NoteSummary); drives List() for 404 detection.
 	existing map[uuid.UUID]notes.NoteSummary
 
-	// backlinks: targetID → rows returned by GetBacklinks.
 	backlinks    map[uuid.UUID][]notes.BacklinkRow
 	backlinksErr error
 
-	// search: results returned by SearchTitles.
 	searchResults []notes.SearchResult
 	searchErr     error
 }
@@ -118,10 +103,6 @@ func (f *blIdx) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes
 	return []notes.SearchHit{}, nil
 }
 
-// ---------------------------------------------------------------------------
-// setupBLServer — httptest.Server for backlinks + search handler tests
-// ---------------------------------------------------------------------------
-
 func setupBLServer(t *testing.T, idx notes.Index) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -135,10 +116,6 @@ func setupBLServer(t *testing.T, idx notes.Index) *httptest.Server {
 	})
 	return httptest.NewServer(r)
 }
-
-// ---------------------------------------------------------------------------
-// GetNoteBacklinks tests: BH1..BH5
-// ---------------------------------------------------------------------------
 
 // BH1: target note has 3 backlinks; returns 200 with 3-element array.
 func TestGetNoteBacklinks_BH1_ThreeBacklinks(t *testing.T) {
@@ -244,7 +221,6 @@ func TestGetNoteBacklinks_BH3_InvalidUUID_Returns400(t *testing.T) {
 func TestGetNoteBacklinks_BH4_NoteNotFound_Returns404(t *testing.T) {
 	unknownID := uuid.New()
 	idx := newBlIdx()
-	// Note NOT added to idx.existing → 404 path.
 
 	ts := setupBLServer(t, idx)
 	defer ts.Close()
@@ -291,12 +267,6 @@ func TestGetNoteBacklinks_BH5_ExcerptContainsMarkClass(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// GetNotesSearchTitles tests: ST1..ST6
-// ---------------------------------------------------------------------------
-
-// buildSearchServer creates a test server with a blIdx whose SearchTitles
-// returns the given results.
 func buildSearchServer(t *testing.T, results []notes.SearchResult, err error) *httptest.Server {
 	t.Helper()
 	idx := newBlIdx()
@@ -413,16 +383,6 @@ func TestGetNotesSearchTitles_ST3_ResultsHaveRecencyScore(t *testing.T) {
 
 // ST4: limit param caps result count.
 func TestGetNotesSearchTitles_ST4_LimitCapCount(t *testing.T) {
-	// The limit is applied inside the handler before calling SearchTitles.
-	// SearchTitles returns 3 results; limit=2 → handler passes limit=2 to SearchTitles.
-	// Since our blIdx.SearchTitles always returns the full searchResults,
-	// we need to set searchResults to 2 items to test the capping behavior.
-	// Actually the test is: handler passes the capped limit to SearchTitles, which
-	// returns up to `limit` results. Our blIdx ignores the limit param.
-	// So we seed 3 results but request limit=2: the handler passes 2 to SearchTitles.
-	// blIdx ignores the limit and returns all 3. The test validates the HTTP machinery
-	// more than the limit enforcement. For a unit test, we just check that limit param
-	// is accepted without error.
 	ts := buildSearchServer(t, []notes.SearchResult{
 		{ID: uuid.New(), Title: "A", Path: "a.md", MtimeUnix: 3},
 		{ID: uuid.New(), Title: "B", Path: "b.md", MtimeUnix: 2},
@@ -452,7 +412,6 @@ func TestGetNotesSearchTitles_ST5_LimitOver50_ClampsTo50(t *testing.T) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Should return 200 (not 400) because limit is clamped, not rejected.
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Errorf("ST5: expected 200 for limit=100 (clamped to 50), got %d: %s", resp.StatusCode, body)
@@ -461,7 +420,6 @@ func TestGetNotesSearchTitles_ST5_LimitOver50_ClampsTo50(t *testing.T) {
 
 // ST6: results are present (sort is handled by the index; handler passes them through).
 func TestGetNotesSearchTitles_ST6_ResultsSortedByRecency(t *testing.T) {
-	// Index returns results ordered by mtime DESC. Handler preserves order.
 	results := []notes.SearchResult{
 		{ID: uuid.New(), Title: "Recent", Path: "r.md", MtimeUnix: 2000},
 		{ID: uuid.New(), Title: "Old", Path: "o.md", MtimeUnix: 1000},

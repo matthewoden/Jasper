@@ -14,7 +14,7 @@ import (
 // Plan 04's main.go constructs Store with the resolved --data-dir /
 // $JASPER_DATA_DIR / default-`~/.jasper/notes` value (CONTEXT.md D-07).
 type Store struct {
-	root string // absolute path to the notes/ directory
+	root string
 }
 
 // NewStore returns a Store rooted at notesDir. The directory MUST exist;
@@ -33,7 +33,7 @@ func (s *Store) Read(relPath string) ([]byte, error) {
 	}
 	data, err := os.ReadFile(abs)
 	if err != nil {
-		return nil, err // os.ReadFile returns errors that wrap fs.ErrNotExist already
+		return nil, err
 	}
 	return data, nil
 }

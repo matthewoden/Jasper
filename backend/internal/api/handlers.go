@@ -15,15 +15,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// nilStatusProvider is a no-op StatusProvider used when callers (Phase 1
-// tests, fresh-boot paths) construct a Server without wiring the
-// migration runner. Always reports StateOK — safe for tests, never
-// reached in production because Plan 02-06's composition root always
-// passes a real runner.
-//
-// Lives in handlers.go (next to the Server constructors) so the
-// fallback is co-located with its only callers — both NewServer and
-// NewServerWithIndex substitute it when the status arg is nil.
 type nilStatusProvider struct{}
 
 // Status returns Status{State: ok} so the wire format never carries
@@ -59,58 +50,18 @@ type Server struct {
 	broadcaster notes.Broadcaster
 	log         *slog.Logger
 
-	// dataDir is the absolute path under which <dataDir>/storage/config.json
-	// lives (Plan 05-02 / 05-03). Phase 5 introduces this field so the new
-	// GetConfig + PutConfig handlers can reach the config package without
-	// a new constructor variant.
-	//
-	// Zero-value-safe: if NewServer (the legacy 2-arg form) is used, dataDir
-	// is "" and the GetConfig/PutConfig handlers return defaults rather than
-	// touching the filesystem. Only NewServerWithIndex (the 7-arg form below)
-	// wires a real path.
 	dataDir string
 
-	// migrationsFS is the embedded migrations fs.FS used by the wizard
-	// submit pipeline (firstrun.RunSetup) to apply schema migrations
-	// against the user-chosen <DataDir>/storage/app.db. Plumbed through
-	// from app.New (which sources it from cfg.MigrationsOverride or
-	// migrations.FS) so the api package doesn't take a direct import
-	// dependency on backend/migrations (kept loose for testability).
-	//
-	// nil-safe: setup_handler.go's PostSetup returns 500 if the field
-	// is empty — guards against test-only constructors that didn't
-	// wire it.
 	migrationsFS fs.FS
 
-	// reindexBusy serializes /admin/reindex calls per-Server.
-	// admin_reindex_handler.go uses TryLock to return 409
-	// "reindex_in_progress" when busy.
 	reindexBusy sync.Mutex
 
-	// vaultSwitcher is the hot-swap entry point wired by lifecycle.Run
-	// after the full per-vault subsystem stack is up. nil in no-vault mode
-	// and in Phase-1-shape tests. SetVaultSwitcher wires the production value.
 	vaultSwitcher VaultSwitcher
 
-	// vaultOpener is the no-vault → open transition entry point wired by
-	// lifecycle.Run for the no-vault picker-shell server. nil in tests
-	// that don't exercise the create/open lifecycle. SetVaultOpener wires
-	// the production value (always *app.App).
 	vaultOpener VaultOpener
 
-	// inFlightWrites is the WaitGroup from *app.App that SwitchVault drains
-	// before tearing down per-vault subsystems (V6). Write handlers call
-	// Add(1) at entry and Done() in defer. nil-safe: if not set (Phase-1-shape
-	// tests, no-vault mode), the WG calls are no-ops.
 	inFlightWrites *sync.WaitGroup
 
-	// mcpACL is the Phase 8 Plan 08-08 folder-grant ACL backing
-	// /api/v1/mcp/grants. nil-safe: when MCP is disabled in config
-	// (cfg.MCP.Enabled == false) the lifecycle never calls SetMcpACL
-	// and the handlers degrade to "mcp_disabled" 400s. The setter
-	// pattern (mirrors SetMigrationsFS) lets the composition root
-	// inject a real ACL after sqlite.Open + migrate.Run succeed
-	// without bloating NewServerWithIndex's signature.
 	mcpACL *mcp.ACL
 }
 
@@ -191,9 +142,6 @@ func (s *Server) SetInFlightWrites(wg *sync.WaitGroup) {
 	s.inFlightWrites = wg
 }
 
-// trackWrite increments the inFlightWrites counter (V6 drain) if wired.
-// Returns a Done function the caller must defer. Safe to call when
-// inFlightWrites is nil (no-op).
 func (s *Server) trackWrite() func() {
 	if s.inFlightWrites == nil {
 		return func() {}
@@ -202,21 +150,6 @@ func (s *Server) trackWrite() func() {
 	return s.inFlightWrites.Done
 }
 
-// StrictServerInterface compile-time assertion (Plan 08-12 final
-// integration — restored after the Wave 1-4 partial-handler period).
-// Plans 08-02 / 08-05 / 08-07 / 08-08 / 08-09 each contributed handler
-// methods on *Server in their own dedicated files (setup_handler.go,
-// reveal_handler.go, notes_by_path_handler.go, mcp_grants_handler.go,
-// plus MCP server wiring). This line verifies every spec method on
-// StrictServerInterface has a corresponding *Server method. If `make
-// gen` emits a new method signature without a matching method on
-// *Server, the build fails here with a clear "missing method" error
-// — a much sharper signal than the implicit type-check at the
-// NewStrictHandler call site in app.go.
-//
-// Plan 08-01 deleted the pre-existing assertion so each downstream
-// wave could build with a partial handler set; 08-12 (this line)
-// restores it now that every Phase 8 handler exists.
 var _ StrictServerInterface = (*Server)(nil)
 
 // GetNoteById implements GET /api/v1/notes/{id}.
@@ -238,11 +171,7 @@ func (s *Server) GetNoteById(
 		if errors.Is(err, notes.ErrNotFound) {
 			return GetNoteById404JSONResponse(newError("not_found", err.Error())), nil
 		}
-		// Any other error is a 500. The OpenAPI spec for GET does not
-		// declare a typed 500 response, so we return through the
-		// strict-server's default error path — but with a deliberately
-		// generic message. The wrapped chain (which includes filesystem
-		// paths) is logged server-side only.
+
 		s.log.Error("GetNoteById: domain error",
 			"id", uuid.UUID(request.Id).String(),
 			"err", err,
@@ -264,13 +193,11 @@ func (s *Server) PutNoteById(
 	ctx context.Context,
 	request PutNoteByIdRequestObject,
 ) (PutNoteByIdResponseObject, error) {
-	// V6 drain: signal to SwitchVault that a write is in progress.
 	defer s.trackWrite()()
 	if request.Body == nil {
 		return PutNoteById400JSONResponse(newError("invalid_request", "request body required")), nil
 	}
 
-	// SYNC-06: extract If-Match header (oapi-codegen emits *string).
 	ifMatch := ""
 	if request.Params.IfMatch != nil {
 		ifMatch = *request.Params.IfMatch
@@ -281,16 +208,7 @@ func (s *Server) PutNoteById(
 		if errors.Is(err, notes.ErrNotFound) {
 			return PutNoteById404JSONResponse(newError("not_found", err.Error())), nil
 		}
-		// SYNC-06: stale-write 409 with current_updated_at so the
-		// client can surface the SYNC-05 conflict banner.
-		//
-		// BL-02: extract the comparator from the typed *notes.StaleWriteInfo
-		// (same Stat result that produced the mismatch verdict) instead of
-		// issuing a second s.notes.Get — that follow-up read raced a third
-		// writer between Service.Update's Stat and the handler's Get, so the
-		// returned current_updated_at could be tied to a write the client
-		// never knew about. It also avoided pointless I/O reading the entire
-		// file content just to drop everything but the mtime.
+
 		if errors.Is(err, notes.ErrStaleWrite) {
 			s.log.Error("PutNoteById: stale write detected",
 				"id", uuid.UUID(request.Id).String(),
@@ -298,9 +216,6 @@ func (s *Server) PutNoteById(
 			)
 			var swInfo *notes.StaleWriteInfo
 			if !errors.As(err, &swInfo) || swInfo == nil {
-				// Defensive: any code path that wraps ErrStaleWrite
-				// without the typed payload is a bug — surface a 500
-				// rather than re-introducing the second-Get race.
 				return nil, errors.New("stale write: missing typed payload for conflict response")
 			}
 			return PutNoteById409JSONResponse(StaleWriteError{
@@ -309,12 +224,7 @@ func (s *Server) PutNoteById(
 				CurrentUpdatedAt: swInfo.Current,
 			}), nil
 		}
-		// Any other error from the domain layer (Canonicalize escape,
-		// AtomicWrite IO, Stat, etc.) maps to a 500 with code
-		// "write_failed". The wire-format message is intentionally
-		// generic — the wrapped chain contains absolute filesystem
-		// paths that should not leave the process. We log the full
-		// error server-side so an operator can correlate by request ID.
+
 		s.log.Error("PutNoteById: domain error",
 			"id", uuid.UUID(request.Id).String(),
 			"err", err,

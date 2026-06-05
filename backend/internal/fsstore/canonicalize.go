@@ -48,17 +48,10 @@ func Canonicalize(rootDir, relPath string) (string, error) {
 		return "", ErrAbsolutePath
 	}
 
-	// NFC normalize + lowercase BEFORE path cleaning so collision detection
-	// works even when the input mixes Unicode forms (e.g. "café" with NFD
-	// combining acute vs NFC precomposed é).
 	normalized := strings.ToLower(norm.NFC.String(relPath))
 
-	// Clean to collapse "a/b/../c" -> "a/c". Then check the result still
-	// lives under root by construction (no leading ".." segment after clean).
 	cleaned := filepath.Clean(normalized)
 	if cleaned == ".." || cleaned == "." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
-		// "." is also rejected because it points at the root directory itself,
-		// not a note. Empty-ish paths are not valid notes.
 		if cleaned == "." {
 			return "", ErrEmptyPath
 		}
@@ -70,12 +63,6 @@ func Canonicalize(rootDir, relPath string) (string, error) {
 
 	joined := filepath.Join(rootDir, cleaned)
 
-	// Symlink-escape protection: resolve any symlinks under the joined
-	// path against the root. If the resolved real path does not start
-	// with the (also-resolved) root, reject. EvalSymlinks fails for paths
-	// whose leaf does not exist — for a write to a brand-new file we must
-	// walk back to the first existing ancestor, resolve THAT, then re-join
-	// the suffix. Implemented in evalSymlinksTolerant below.
 	rootResolved, err := evalSymlinksTolerant(rootDir)
 	if err != nil {
 		return "", fmt.Errorf("canonicalize: resolve root: %w", err)
@@ -91,16 +78,6 @@ func Canonicalize(rootDir, relPath string) (string, error) {
 	return joined, nil
 }
 
-// evalSymlinksTolerant resolves symlinks for paths that may not yet exist
-// by walking up to the first ancestor that exists, calling EvalSymlinks
-// on it, then re-joining the suffix that did not exist. Required because
-// AtomicWrite is allowed to be called for a target file that has never
-// existed before — but we still need to check that no ANCESTOR symlink
-// would redirect the eventual write outside the root.
-//
-// On a successful EvalSymlinks call the resolved absolute path is returned.
-// Any error other than "not exist" is propagated unchanged so callers see
-// permission errors, IO errors, etc.
 func evalSymlinksTolerant(path string) (string, error) {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err == nil {
@@ -109,13 +86,10 @@ func evalSymlinksTolerant(path string) (string, error) {
 	if !os.IsNotExist(err) {
 		return "", err
 	}
-	// path doesn't exist — walk up to find the first ancestor that does.
+
 	parent := filepath.Dir(path)
-	// Guard against infinite recursion at the filesystem root.
+
 	if parent == path {
-		// We've reached the root and nothing exists — return the path as-is,
-		// cleaned. The caller is calling against a non-existent root, which
-		// will surface as a write error later.
 		return filepath.Clean(path), nil
 	}
 	parentResolved, err := evalSymlinksTolerant(parent)
@@ -125,10 +99,6 @@ func evalSymlinksTolerant(path string) (string, error) {
 	return filepath.Join(parentResolved, filepath.Base(path)), nil
 }
 
-// isUnder reports whether child is the same as parent or a descendant of it,
-// based on the relative path between them. Both arguments must be absolute
-// (post-EvalSymlinks). The "rel == \".\"" case (child equals parent) returns
-// true — useful when the caller passes the root itself.
 func isUnder(child, parent string) bool {
 	rel, err := filepath.Rel(parent, child)
 	if err != nil {

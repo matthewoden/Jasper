@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-// newTreeFixture mirrors newReconcileFixture: tempdir, notes/ dir, real
-// sqlite.Pair, *Indexer pointed at notes/.
 func newTreeFixture(t *testing.T) (*Indexer, string) {
 	t.Helper()
 	idx, notesDir := newTestIndexer(t)
@@ -19,9 +17,6 @@ func newTreeFixture(t *testing.T) (*Indexer, string) {
 	return idx, notesDir
 }
 
-// writeFileForTree is a tiny helper to materialize a file under
-// notesDir at relPath. We don't bother with mtime control — BuildTree
-// derives UpdatedAt from the index, not the FS.
 func writeFileForTree(t *testing.T, notesDir, rel, content string) {
 	t.Helper()
 	full := filepath.Join(notesDir, rel)
@@ -294,7 +289,7 @@ func TestBuildTree_SkipsDotDirs(t *testing.T) {
 			}
 		}
 	}
-	// Should only have one entry: the real.md note.
+
 	if len(tree.Root) != 1 {
 		t.Errorf("tree root len: got %d, want 1 (only real.md)", len(tree.Root))
 	}
@@ -321,7 +316,7 @@ func TestBuildTree_AttachmentsFolderVisible(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTree: %v", err)
 	}
-	// Walk to projects/jasper and verify children: note.md AND attachments folder.
+
 	if len(tree.Root) != 1 || tree.Root[0].Folder == nil {
 		t.Fatalf("expected projects folder at root")
 	}
@@ -359,7 +354,7 @@ func TestBuildTree_AttachmentsFolderVisibleAtRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTree: %v", err)
 	}
-	// Root should contain: attachments/ folder + regular.md note.
+
 	var foundAttachments bool
 	for _, n := range tree.Root {
 		if n.Folder != nil && n.Folder.Name == "attachments" {
@@ -405,8 +400,6 @@ func TestBuildTree_FilesVisible(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newTreeFixture(t)
 
-	// Seed: notes/foo.md (note), notes/img.png (file), notes/sub/doc.pdf (file),
-	// notes/sub/attachments/x.png (file inside attachments/).
 	writeFileForTree(t, notesDir, "foo.md", "# Foo\n")
 	writeFileForTree(t, notesDir, "img.png", "fake-png")
 	writeFileForTree(t, notesDir, "sub/doc.pdf", "fake-pdf")
@@ -421,7 +414,6 @@ func TestBuildTree_FilesVisible(t *testing.T) {
 		t.Fatalf("BuildTree: %v", err)
 	}
 
-	// Helper: find a TreeFile with the given path in a slice.
 	findFile := func(nodes []TreeNode, path string) *TreeFile {
 		for _, n := range nodes {
 			if n.File != nil && n.File.Path == path {
@@ -431,7 +423,6 @@ func TestBuildTree_FilesVisible(t *testing.T) {
 		return nil
 	}
 
-	// Root should contain: img.png (file), sub/ (folder), foo.md (note).
 	imgFile := findFile(tree.Root, "img.png")
 	if imgFile == nil {
 		t.Errorf("img.png NOT in root tree (expected as TreeFile)")
@@ -441,7 +432,6 @@ func TestBuildTree_FilesVisible(t *testing.T) {
 		}
 	}
 
-	// foo.md still appears as a note.
 	var foundFooNote bool
 	for _, n := range tree.Root {
 		if n.Note != nil && n.Note.Path == "foo.md" {
@@ -452,7 +442,6 @@ func TestBuildTree_FilesVisible(t *testing.T) {
 		t.Errorf("foo.md note NOT in root tree")
 	}
 
-	// sub/ folder should exist in root.
 	var subFolder *TreeFolder
 	for _, n := range tree.Root {
 		if n.Folder != nil && n.Folder.Name == "sub" {
@@ -463,7 +452,6 @@ func TestBuildTree_FilesVisible(t *testing.T) {
 		t.Fatalf("sub/ folder NOT in root tree")
 	}
 
-	// sub/ should contain: doc.pdf (file), attachments/ (folder).
 	docFile := findFile(subFolder.Children, "sub/doc.pdf")
 	if docFile == nil {
 		t.Errorf("sub/doc.pdf NOT in sub/ folder (expected as TreeFile)")
@@ -473,7 +461,6 @@ func TestBuildTree_FilesVisible(t *testing.T) {
 		}
 	}
 
-	// sub/attachments/ folder.
 	var attachFolder *TreeFolder
 	for _, n := range subFolder.Children {
 		if n.Folder != nil && n.Folder.Name == "attachments" {
@@ -484,7 +471,6 @@ func TestBuildTree_FilesVisible(t *testing.T) {
 		t.Fatalf("sub/attachments/ folder NOT in sub/ folder")
 	}
 
-	// sub/attachments/ should contain: x.png (file).
 	xFile := findFile(attachFolder.Children, "sub/attachments/x.png")
 	if xFile == nil {
 		t.Errorf("sub/attachments/x.png NOT in attachments/ folder (expected as TreeFile)")

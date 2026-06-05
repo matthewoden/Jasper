@@ -99,25 +99,19 @@ type SetupGrantSeed struct {
 // migrationsFS is the embedded migrations.FS plumbed through from
 // app.New's caller (Server.migrationsFS).
 func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
-	// Step 1: validate theme up front (cheap, no syscall).
 	if req.Theme != "dark" && req.Theme != "light" {
 		return fmt.Errorf("theme must be 'dark' or 'light'")
 	}
 
-	// Step 2: resolve the data-dir.
 	dataDir, refusalCode, refusalMsg := ResolveDataDir(req.DataDir)
 	if refusalCode != "" {
 		return fmt.Errorf("%s", refusalMsg)
 	}
 
-	// Step 3: re-validate the resolved data-dir.
 	if v := ValidateDataDir(dataDir); !v.Valid {
 		return fmt.Errorf("%s", v.Message)
 	}
 
-	// Step 4: delegate vault initialization to vault.CreateVault.
-	// This creates <dataDir>/.jasper/{config.json,app.db}, runs migrations,
-	// and registers the vault in app.json as the current_vault.
 	canonical, err := vault.Canonicalize(dataDir)
 	if err != nil {
 		return fmt.Errorf("canonicalize data dir: %w", err)
@@ -131,10 +125,6 @@ func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
 		return fmt.Errorf("create vault: %w", err)
 	}
 
-	// Step 5 (legacy compat): write <DataDir>/storage/config.json so
-	// pre-vault-model lifecycle code that reads this file still finds it.
-	// Also ensure the legacy directory layout exists so any downstream
-	// code that assumes notes/ + storage/ subdirs doesn't race.
 	notesDir := filepath.Join(dataDir, "notes")
 	if err := os.MkdirAll(notesDir, 0o700); err != nil {
 		return fmt.Errorf("create notes dir: %w", err)
@@ -154,13 +144,11 @@ func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
 		return fmt.Errorf("save legacy config: %w", err)
 	}
 
-	// Step 6: seed MCP grants in the vault DB.
 	dbPath := filepath.Join(dataDir, ".jasper", "app.db")
 	if err := insertSeedGrants(ctx, dbPath, req.McpGrants); err != nil {
 		return fmt.Errorf("seed grants: %w", err)
 	}
 
-	// Step 7 (optional): create today's daily note.
 	if req.CreateTodayDailyNote {
 		today := time.Now().Format("2006-01-02")
 		dailyDir := filepath.Join(notesDir, "daily")
@@ -176,40 +164,6 @@ func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
 	return nil
 }
 
-// insertSeedGrants opens a short-lived sql.DB on dbPath, upserts each
-// grant row via ON CONFLICT(folder_path) DO UPDATE, and closes.
-// Granted_via is hard-coded "wizard" so 08-08's telemetry surface can
-// attribute the row to the first-run wizard rather than the
-// tree-context-menu / dropdown-menu paths. now is captured once at the
-// top so all rows share the same granted_at — useful for "show me
-// everything seeded by the wizard" queries later.
-//
-// UAT-1 N8 (2026-05-19): the wizard's McpSection.handleAddFolder had no
-// duplicate guard so a user could add the same folder twice before
-// submitting. The previous plain INSERT hit SQLite extended error 2067
-// (SQLITE_CONSTRAINT_UNIQUE) on the second row and failed the whole
-// submit. Fixed via defense-in-depth at three layers:
-//  1. Frontend McpSection.handleAddFolder: inline error on re-add.
-//  2. Frontend SetupApp.handleSubmit: dedupGrantsByFolder before POST.
-//  3. This function (layer 3): ON CONFLICT upsert — idempotent for
-//     any caller that passes duplicate folder paths. Last-write-wins
-//     on level. granted_via stays "wizard" on conflict (the row was
-//     originally seeded by the wizard; conflicts only happen during
-//     the same submit batch).
-//
-// Errors here are FATAL to the submit (caller wraps and returns 500).
-// We could survive a partial insert by ignoring per-row failures, but
-// the wizard's UX guarantees the user that the grants they picked WILL
-// be in force after the redirect — a silent drop would violate that
-// contract. The seed list is bounded by the wizard UI (a handful of
-// folders at most), so the worst case is a few rows of work to retry.
-//
-// modernc.org/sqlite is the pure-Go driver locked in PROJECT — no CGo
-// burden, single static binary on every target. The driver name is
-// "sqlite" (NOT "sqlite3"); the file:<path> DSN suppresses the auto-
-// created "$home/test.db" surprise.
-//
-// errors.Is + sql.ErrNoRows is not relevant here — we're upsert-only.
 func insertSeedGrants(ctx context.Context, dbPath string, grants []SetupGrantSeed) error {
 	if len(grants) == 0 {
 		return nil

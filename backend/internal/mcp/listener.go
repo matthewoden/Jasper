@@ -1,15 +1,3 @@
-// Phase 8 Plan 08-09 Task 2 — MCP HTTP listener.
-//
-// Implements the lifecycle-gated second HTTP listener that serves the
-// MCP StreamableHTTP endpoint at /mcp on a SECOND loopback port
-// (default 6684 per D-47). Gated behind lifecycle.Ready() (D-23) — the
-// caller invokes StartMCPListener AFTER migrations + reindex complete.
-//
-// Per D-15 + D-45: bind is enforced loopback-only via the shared
-// netbind.RequireLoopbackBind from Plan 08-01 Task 3. A non-loopback
-// addr causes StartMCPListener to refuse to bind and return an error
-// rather than silently exposing the listener to the LAN.
-
 package mcp
 
 import (

@@ -31,9 +31,6 @@ func NewNoteContent(title string) []byte {
 	return scaffoldFor(title)
 }
 
-// frontmatterPrefix is the bare YAML frontmatter scaffold without any H1 heading.
-// Used by NewDailyNoteContent so the body template (which includes its own heading
-// via {{date}} substitution) is appended after the frontmatter block.
 const frontmatterPrefix = "---\ntags: []\n---\n\n"
 
 // NewDailyNoteContent constructs the content for a new daily note (DAILY-02 / D-43).

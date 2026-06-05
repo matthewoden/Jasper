@@ -35,10 +35,6 @@ import (
 	"github.com/kardianos/service"
 )
 
-// serviceName is the launchd Label / systemd unit name. Pinned because
-// the install/uninstall path looks it up by literal name on both
-// platforms (~/Library/LaunchAgents/com.jasper.server.plist on macOS,
-// ~/.config/systemd/user/com.jasper.server.service on Linux).
 const serviceName = "com.jasper.server"
 
 // New returns a configured service.Service for Jasper. The caller
@@ -64,13 +60,10 @@ func New(dataDir string) (service.Service, error) {
 		Description: "Jasper local markdown notes server",
 		Arguments:   []string{"serve"},
 		Option: service.KeyValue{
-			// UserService=true selects ~/Library/LaunchAgents (macOS) and
-			// ~/.config/systemd/user (linux). RunAtLoad=true tells launchd
-			// to start the agent at login.
 			"UserService":   true,
 			"RunAtLoad":     true,
-			"LaunchdConfig": launchdPlist, // D-35 override (Pitfall 1 mitigation)
-			"SystemdScript": systemdUnit,  // D-35 override
+			"LaunchdConfig": launchdPlist,
+			"SystemdScript": systemdUnit,
 			"LogDirectory":  filepath.Join(dataDir, "logs"),
 		},
 		EnvVars: map[string]string{
@@ -124,7 +117,7 @@ func BootoutMacOS(plistPath string) error {
 	if err != nil {
 		return fmt.Errorf("user.Current: %w", err)
 	}
-	// Ignore the error — idempotency over precision for uninstall.
+
 	_ = exec.Command("launchctl", "bootout", "gui/"+u.Uid, plistPath).Run()
 	return nil
 }

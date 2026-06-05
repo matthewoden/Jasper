@@ -17,17 +17,10 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// ─── Fake index for attachment tests ───────────────────────────────────────
-
-// fakeIndexForAttachments is a configurable in-memory notes.Index used
-// exclusively by the attachment handler tests. It returns a pre-seeded
-// []NoteSummary from List() so that lookupNoteByStringID can find notes
-// without touching a real SQLite store.
 type fakeIndexForAttachments struct {
 	summaries []notes.NoteSummary
 }
 
-// Ensure the interface is satisfied at compile time.
 var _ notes.Index = (*fakeIndexForAttachments)(nil)
 
 func (f *fakeIndexForAttachments) Upsert(_ context.Context, _ notes.NoteRecord) error { return nil }
@@ -95,13 +88,6 @@ func (f *fakeIndexForAttachments) SearchFTS(_ context.Context, _ string, _ strin
 	return nil, nil
 }
 
-// ─── Test server constructor ────────────────────────────────────────────────
-
-// newAttachmentTestServer creates a *Server with:
-//   - a real temp dataDir (with notes/ subdirectory pre-created)
-//   - a fakeIndexForAttachments pre-seeded with the given summaries
-//
-// The *Server.dataDir is set to dir, matching production wiring.
 func newAttachmentTestServer(t *testing.T, summaries []notes.NoteSummary) (*Server, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -118,8 +104,6 @@ func newAttachmentTestServer(t *testing.T, summaries []notes.NoteSummary) (*Serv
 	return srv, dir
 }
 
-// buildMultipartRequest constructs a *multipart.Reader with a single 'file'
-// part containing the given filename and data bytes.
 func buildMultipartRequest(t *testing.T, filename string, data []byte) *multipart.Reader {
 	t.Helper()
 	var buf bytes.Buffer
@@ -137,7 +121,6 @@ func buildMultipartRequest(t *testing.T, filename string, data []byte) *multipar
 	return multipart.NewReader(&buf, mw.Boundary())
 }
 
-// callCreateAttachment invokes the CreateAttachment handler directly.
 func callCreateAttachment(
 	t *testing.T,
 	srv *Server,
@@ -157,8 +140,6 @@ func callCreateAttachment(
 	return resp
 }
 
-// ─── TestAttachmentsUploadStorage ──────────────────────────────────────────
-
 // TestAttachmentsUploadStorage verifies the D-25 storage-layout rules:
 //   - Root-level note  → notes/attachments/
 //   - Sub-folder note  → notes/sub/attachments/
@@ -166,7 +147,6 @@ func callCreateAttachment(
 func TestAttachmentsUploadStorage(t *testing.T) {
 	t.Parallel()
 
-	// PNG magic bytes (minimal valid signal for http.DetectContentType).
 	pngHeader := []byte("\x89PNG\r\n\x1a\n")
 
 	rootID := uuid.New()
@@ -197,7 +177,6 @@ func TestAttachmentsUploadStorage(t *testing.T) {
 			t.Errorf("category: got %q, want %q", got200.Category, Image)
 		}
 
-		// File must exist at <dataDir>/notes/attachments/hello.png.
 		want := filepath.Join(dataDir, "notes", "attachments", "hello.png")
 		if _, err := os.Stat(want); err != nil {
 			t.Errorf("file not found at expected path %q: %v", want, err)
@@ -215,7 +194,6 @@ func TestAttachmentsUploadStorage(t *testing.T) {
 			t.Errorf("path: got %q, want %q", got200.Path, "attachments/doc.png")
 		}
 
-		// File must be under notes/sub/attachments/ (not notes/attachments/).
 		want := filepath.Join(dataDir, "notes", "sub", "attachments", "doc.png")
 		if _, err := os.Stat(want); err != nil {
 			t.Errorf("file not found at %q: %v", want, err)
@@ -227,7 +205,6 @@ func TestAttachmentsUploadStorage(t *testing.T) {
 	})
 
 	t.Run("oversize upload returns 413", func(t *testing.T) {
-		// Build data just over the 100MB cap.
 		big := make([]byte, maxAttachmentBytes+1)
 		resp := callCreateAttachment(t, srv, rootID.String(), "huge.bin", big)
 
@@ -241,19 +218,15 @@ func TestAttachmentsUploadStorage(t *testing.T) {
 	})
 }
 
-// ─── TestUniqueAttachmentName ───────────────────────────────────────────────
-
 // TestUniqueAttachmentName verifies the ATTACH-04 collision auto-rename logic.
 func TestUniqueAttachmentName(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
-	// No collision: filename returned as-is.
 	if got := generateUniqueFilename(dir, "image.png"); got != "image.png" {
 		t.Errorf("no collision: got %q, want %q", got, "image.png")
 	}
 
-	// Create image.png → should return image-1.png.
 	if err := os.WriteFile(filepath.Join(dir, "image.png"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +234,6 @@ func TestUniqueAttachmentName(t *testing.T) {
 		t.Errorf("one collision: got %q, want %q", got, "image-1.png")
 	}
 
-	// Create image-1.png → should return image-2.png.
 	if err := os.WriteFile(filepath.Join(dir, "image-1.png"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +241,6 @@ func TestUniqueAttachmentName(t *testing.T) {
 		t.Errorf("two collisions: got %q, want %q", got, "image-2.png")
 	}
 
-	// No extension: README stays README, then README-1 on collision.
 	if got := generateUniqueFilename(dir, "README"); got != "README" {
 		t.Errorf("no-ext first: got %q, want %q", got, "README")
 	}
@@ -280,8 +251,6 @@ func TestUniqueAttachmentName(t *testing.T) {
 		t.Errorf("no-ext collision: got %q, want %q", got, "README-1")
 	}
 }
-
-// ─── TestAttachmentsSecurity ────────────────────────────────────────────────
 
 // TestAttachmentsSecurity exercises the 5-rule path-traversal hardening on
 // GetAttachment (RESEARCH §Thread 4 §Path Traversal Hardening, D-34, SECURITY-06).
@@ -294,7 +263,6 @@ func TestAttachmentsSecurity(t *testing.T) {
 	}
 	srv, dataDir := newAttachmentTestServer(t, summaries)
 
-	// Ensure the attachments dir and a real file exist for the "success" path.
 	attachDir := filepath.Join(dataDir, "notes", "attachments")
 	if err := os.MkdirAll(attachDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -328,12 +296,11 @@ func TestAttachmentsSecurity(t *testing.T) {
 	})
 
 	t.Run("symlink rejected (rule 5)", func(t *testing.T) {
-		// Create a file outside the attachments directory.
 		outside := filepath.Join(t.TempDir(), "secret.txt")
 		if err := os.WriteFile(outside, []byte("secret data"), 0o600); err != nil {
 			t.Fatalf("write outside file: %v", err)
 		}
-		// Symlink it into the attachments directory as "evil.txt".
+
 		symlinkPath := filepath.Join(attachDir, "evil.txt")
 		if err := os.Symlink(outside, symlinkPath); err != nil {
 			t.Skipf("symlinks not supported on this platform: %v", err)

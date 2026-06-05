@@ -43,7 +43,6 @@ func TestDailyNotesHandler(t *testing.T) {
 			t.Errorf("path: got %q, want %q", got201.Path, "daily/2026-05-13.md")
 		}
 
-		// File must exist on disk.
 		absPath := filepath.Join(dataDir, "notes", "daily", "2026-05-13.md")
 		data, err := os.ReadFile(absPath)
 		if err != nil {
@@ -51,15 +50,14 @@ func TestDailyNotesHandler(t *testing.T) {
 		}
 		content := string(data)
 
-		// Frontmatter scaffold (D-43).
 		if !strings.HasPrefix(content, "---\ntags: []") {
 			t.Errorf("missing frontmatter scaffold; content: %q", content)
 		}
-		// Default template substitution: date appears in content.
+
 		if !strings.Contains(content, "2026-05-13") {
 			t.Errorf("date not substituted in content; content: %q", content)
 		}
-		// NoteDetail.Content matches disk.
+
 		if got201.Content != content {
 			t.Errorf("NoteDetail.Content differs from disk content\n  got:  %q\n  want: %q",
 				got201.Content, content)
@@ -71,7 +69,6 @@ func TestDailyNotesHandler(t *testing.T) {
 		srv, dataDir := newDailyTestServer(t, "")
 		_ = dataDir
 
-		// First call — create (201).
 		resp1, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-14"})
 		if err != nil {
 			t.Fatalf("first call error: %v", err)
@@ -81,7 +78,6 @@ func TestDailyNotesHandler(t *testing.T) {
 			t.Fatalf("first call: expected 201, got %T", resp1)
 		}
 
-		// Second call — get (200), must return same id.
 		resp2, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-14"})
 		if err != nil {
 			t.Fatalf("second call error: %v", err)
@@ -104,11 +100,11 @@ func TestDailyNotesHandler(t *testing.T) {
 
 		badDates := []string{
 			"foo",
-			"2026-5-13",            // month not zero-padded
-			"2026-05-13T00:00:00Z", // ISO 8601 datetime (extra chars after date)
-			"2026/05/13",           // wrong delimiter
-			"",                     // empty
-			"2026-05-1",            // day not zero-padded
+			"2026-5-13",
+			"2026-05-13T00:00:00Z",
+			"2026/05/13",
+			"",
+			"2026-05-1",
 		}
 		for _, bad := range badDates {
 			resp, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: bad})
@@ -140,7 +136,6 @@ func TestDailyNotesHandler(t *testing.T) {
 			t.Fatalf("expected 201, got %T", resp)
 		}
 
-		// Read file from disk and verify substitution.
 		absPath := filepath.Join(dataDir, "notes", "daily", "2026-05-15.md")
 		data, err := os.ReadFile(absPath)
 		if err != nil {
@@ -163,14 +158,11 @@ func TestDailyNotesHandler(t *testing.T) {
 		t.Parallel()
 		srv, dataDir := newDailyTestServer(t, "")
 
-		// Verify daily/ does not exist yet.
 		dailyDir := filepath.Join(dataDir, "notes", "daily")
 		if _, err := os.Stat(dailyDir); !os.IsNotExist(err) {
-			// Some test setup may pre-create it; pre-remove for a clean slate.
 			_ = os.RemoveAll(dailyDir)
 		}
 
-		// First call must create the daily/ directory.
 		_, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-16"})
 		if err != nil {
 			t.Fatalf("error on first call: %v", err)
@@ -179,7 +171,6 @@ func TestDailyNotesHandler(t *testing.T) {
 			t.Errorf("daily/ directory not created: %v", err)
 		}
 
-		// Second call must not error even though daily/ already exists.
 		_, err = srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-17"})
 		if err != nil {
 			t.Fatalf("error on second call (idempotent mkdir): %v", err)
@@ -233,10 +224,6 @@ func TestDailyNotesHandler_HTTP(t *testing.T) {
 	})
 }
 
-// ---- test helpers ----
-
-// fakeIndexForDaily is a minimal notes.Index implementation that stores
-// NoteRecords by path — sufficient for the get-or-create round-trip test.
 type fakeIndexForDaily struct {
 	byPath map[string]notes.NoteRecord
 }
@@ -325,24 +312,20 @@ func (f *fakeIndexForDaily) SearchFTS(_ context.Context, _ string, _ string, _ i
 	return nil, nil
 }
 
-// newDailyTestServer creates a Server with a real temp dataDir and a fake in-memory
-// index. The dailyNotesTemplate is written into config.json if non-empty; otherwise
-// config.json is absent (so DefaultConfig applies).
 func newDailyTestServer(t *testing.T, dailyNotesTemplate string) (*Server, string) {
 	t.Helper()
 	dir := t.TempDir()
 
-	// Create <dataDir>/notes/daily structure.
 	notesDir := filepath.Join(dir, "notes")
 	if err := os.MkdirAll(notesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Create <dataDir>/storage for config.json.
+
 	storageDir := filepath.Join(dir, "storage")
 	if err := os.MkdirAll(storageDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// If a custom template is provided, write it to config.json.
+
 	if dailyNotesTemplate != "" {
 		cfgJSON := `{"appName":"Jasper","theme":"dark","dailyNotes":{"folder":"daily","template":"` +
 			strings.ReplaceAll(dailyNotesTemplate, "\n", `\n`) +
@@ -359,7 +342,6 @@ func newDailyTestServer(t *testing.T, dailyNotesTemplate string) (*Server, strin
 	return srv, dir
 }
 
-// newDailyHTTPServer mounts the server on an httptest.Server for HTTP-level tests.
 func newDailyHTTPServer(t *testing.T, dailyNotesTemplate string) (*Server, *httptest.Server, string) {
 	t.Helper()
 	srv, dir := newDailyTestServer(t, dailyNotesTemplate)
@@ -391,12 +373,8 @@ func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
 			t.Fatalf("expected GetDailyNote201JSONResponse, got %T", resp)
 		}
 
-		// Convert openapi_types.UUID → uuid.UUID for registry lookup.
 		id := uuid.UUID(got201.Id)
 
-		// UAT #1 fix: the registry MUST know about this UUID immediately after
-		// GetDailyNote returns 201. Without the fix, Lookup returns ok=false and
-		// Service.Get returns ErrNotFound → EditorPane shows "Could not load note".
 		relPath, ok := srv.notes.Registry().Lookup(id)
 		if !ok {
 			t.Errorf("Registry().Lookup(%s) returned ok=false; want relPath=%q, ok=true\n"+
@@ -412,7 +390,6 @@ func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
 		t.Parallel()
 		srv, _ := newDailyTestServer(t, "")
 
-		// First call: creates the note (201), seeds index + registry normally.
 		resp1, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-22"})
 		if err != nil {
 			t.Fatalf("first GetDailyNote error: %v", err)
@@ -423,19 +400,12 @@ func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
 		}
 		id := uuid.UUID(got201.Id)
 
-		// Simulate post-restart stale registry: delete the id→relPath mapping.
-		// This mirrors the UAT #6 scenario where admin/reindex was run but the
-		// daily note was added AFTER the last full reconcile, so the registry
-		// is empty for this UUID until the server is rebuilt.
 		srv.notes.Registry().Remove(id)
 
-		// Confirm the entry is gone (precondition for the test to be meaningful).
 		if _, stillOk := srv.notes.Registry().Lookup(id); stillOk {
 			t.Fatal("test setup: Registry.Remove did not remove the entry — precondition failed")
 		}
 
-		// Second call: the note already exists in the index (fakeIndexForDaily
-		// stored it from the first call), so GetDailyNote takes the 200 branch.
 		resp2, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-22"})
 		if err != nil {
 			t.Fatalf("second GetDailyNote error: %v", err)
@@ -444,10 +414,6 @@ func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
 			t.Fatalf("second call: expected 200, got %T", resp2)
 		}
 
-		// UAT #6 fix: registry MUST be re-populated by the 200 branch.
-		// Without this, the "rebuild" path leaves the registry empty until a
-		// full hydrateRegistryFromIndex runs — so the first Today click after
-		// rebuild shows "Could not load note".
 		relPath, ok := srv.notes.Registry().Lookup(id)
 		if !ok {
 			t.Errorf("Registry().Lookup(%s) returned ok=false after 200 response; want relPath=%q, ok=true\n"+
@@ -469,7 +435,6 @@ func TestDailyNotesHandler_TagPassthrough(t *testing.T) {
 		t.Parallel()
 		srv, dir := newDailyTestServer(t, "")
 
-		// Pre-create the daily note file on disk with tags in frontmatter.
 		notesDir := filepath.Join(dir, "notes", "daily")
 		if err := os.MkdirAll(notesDir, 0o755); err != nil {
 			t.Fatalf("mkdir daily: %v", err)
@@ -479,8 +444,6 @@ func TestDailyNotesHandler_TagPassthrough(t *testing.T) {
 			t.Fatalf("write file: %v", err)
 		}
 
-		// Pre-seed the fake index so LookupByPath returns a real record.
-		// The fakeIndexForDaily in this file supports direct byPath seeding.
 		recID := uuid.New()
 		fakeIdx := newFakeIndexForDaily()
 		fakeIdx.byPath["daily/2026-04-01.md"] = notes.NoteRecord{
@@ -506,10 +469,7 @@ func TestDailyNotesHandler_TagPassthrough(t *testing.T) {
 			t.Fatal("expected non-nil Tags in 200 response")
 		}
 		got := *got200.Tags
-		// ExtractTags preserves first-occurrence order (dedupeTags, not sort.Strings).
-		// The frontmatter is "tags: [project, jasper]" so the canonical order is
-		// [project, jasper].  Only ExtractBodyTags (inline #tag syntax) sorts;
-		// ExtractTags (frontmatter) does not.
+
 		want := []string{"project", "jasper"}
 		if len(got) != len(want) {
 			t.Fatalf("Tags: got %v (len=%d), want %v (len=%d)", got, len(got), want, len(want))
@@ -522,5 +482,4 @@ func TestDailyNotesHandler_TagPassthrough(t *testing.T) {
 	})
 }
 
-// ensure fakeIndexForDaily satisfies notes.Index at compile time.
 var _ notes.Index = (*fakeIndexForDaily)(nil)

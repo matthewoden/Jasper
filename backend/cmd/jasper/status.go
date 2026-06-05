@@ -20,22 +20,14 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
-// statusProvider is the read-side of kardianos's service.Service that
-// status uses. Defining it as a local interface lets tests inject a
-// fake instead of constructing a real launchd / systemd handle.
 type statusProvider interface {
 	Status() (service.Status, error)
 }
 
-// statusFactory is the injectable seam for tests. Production wiring
-// returns installer.New(dataDir); tests replace it with a fake that
-// returns whatever service.Status the test wants to assert on.
 var statusFactory = func(dataDir string) (statusProvider, error) {
 	return installer.New(dataDir)
 }
 
-// statusCmd prints the running service's state in plain English per
-// D-36. Multi-line, human-readable; the JSON form lives on `doctor`.
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show the running service's state and configuration",
@@ -55,12 +47,9 @@ This is read-only; it does not modify any service files.`,
 func runStatus(cmd *cobra.Command, _ []string) error {
 	out := cmd.OutOrStdout()
 
-	// Resolve app.json path for vault registry.
 	appJSONPath, appJSONErr := vault.AppJSONPath()
 	appHome, appHomeErr := vault.AppHomePath()
 
-	// Load current vault info from app.json. On any error, fall through to
-	// the default app-home path for backward compat.
 	var appState *vault.AppState
 	if appJSONErr == nil {
 		if state, err := vault.LoadAppJSON(appJSONPath); err == nil {
@@ -68,10 +57,6 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Resolve the data directory for config + service status.
-	// With the vault model, this is either the vault from --vault flag,
-	// the current_vault from app.json, or the default app home (~/.jasper).
-	// Plan 08-23 (R4-15): JASPER_DATA_DIR removed as fallback.
 	var dataDir string
 	if vaultFlag != "" {
 		if c, err := vault.Canonicalize(vaultFlag); err == nil {
@@ -85,14 +70,12 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		dataDir = config.DefaultDataDir()
 	}
 
-	// Print vault section (V-PARK-3 update).
 	if vaultFlag != "" {
 		canonical := dataDir
 		if _, err := fmt.Fprintf(out, "Vault:          (overridden via --vault) %s\n", canonical); err != nil {
 			return err
 		}
 	} else if appState != nil && appState.CurrentVault != "" {
-		// Find the matching recent_vaults entry for display_name.
 		name := filepath.Base(appState.CurrentVault)
 		for _, e := range appState.RecentVaults {
 			if e.Path == appState.CurrentVault {
@@ -116,8 +99,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	if _, err := fmt.Fprintf(out, "Recent Vaults:  %d entries\n", recentCount); err != nil {
 		return err
 	}
-	// UAT-2 G5: enumerate each entry instead of just the count. RecentVaults
-	// is sorted newest-first (LRU). Missing entries get a "(missing)" tag.
+
 	if appState != nil {
 		for _, e := range appState.RecentVaults {
 			name := e.DisplayName
@@ -145,10 +127,6 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Probe for an existing config.json. If absent (or unreadable), tell
-	// the user to run the first-run wizard instead of attempting to read
-	// service state — without a config there's no port to report and no
-	// MCP flag to summarize.
 	const setupHint = "Jasper is not yet set up — open http://127.0.0.1:6683/ to run the first-run wizard."
 	if !configExists(dataDir) {
 		_, err := fmt.Fprintln(out, setupHint)
@@ -201,10 +179,6 @@ func humanState(s service.Status) string {
 	}
 }
 
-// summarizeGrants opens the DB read-only and lists grants for the
-// status line. Returns the count and a human-readable summary like
-// "2 grants (Tier 1 in projects/; Tier 2 in scratch/)". Empty body
-// when MCP is on but no grants have been issued yet.
 func summarizeGrants(dataDir string) (int, string) {
 	dbPath := filepath.Join(dataDir, "storage", "app.db")
 	db, err := sql.Open("sqlite", dbPath+"?mode=ro")

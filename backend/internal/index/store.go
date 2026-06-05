@@ -14,10 +14,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// fts5OperatorKeywordRE matches the FTS5 boolean/proximity operators which
-// are case-sensitive uppercase in the FTS5 spec. If the user has typed any
-// of these as a word-boundary token, prefixWrap treats the input as a
-// syntax-aware query and passes it through unchanged.
 var fts5OperatorKeywordRE = regexp.MustCompile(`\b(AND|OR|NOT|NEAR)\b`)
 
 // Upsert inserts or updates a row in `notes`.
@@ -45,10 +41,8 @@ func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
 	if err != nil {
 		return fmt.Errorf("upsert begin: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }() // no-op after Commit
+	defer func() { _ = tx.Rollback() }()
 
-	// Pre-check: another row with the same canonical path but a
-	// different id?
 	var existingID string
 	err = tx.QueryRowContext(ctx,
 		`SELECT id FROM notes WHERE path = ? AND id != ?`,
@@ -60,13 +54,6 @@ func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
 		return fmt.Errorf("upsert collision check: %w", err)
 	}
 
-	// INSERT … ON CONFLICT(id) DO UPDATE — idempotent upsert keyed on
-	// the v4 UUID. The unique-path constraint covers different-id same-
-	// path collisions which surface as a UNIQUE constraint failure
-	// (caught below).
-	// body_fts and tag_names_fts are the FTS5 index columns added in
-	// migration 003_fts.sql (Plan 07-02). The notes_fts_ai/au triggers
-	// propagate these values into the notes_fts virtual table automatically.
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO notes(id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at, body_fts, tag_names_fts)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -83,10 +70,6 @@ func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
 		rec.SizeBytes, rec.Checksum, rec.UpdatedAtUnix, rec.UpdatedAtUnix,
 		rec.BodyFTS, rec.TagNamesFTS)
 	if err != nil {
-		// SQLite's UNIQUE-constraint message format is stable:
-		//   "UNIQUE constraint failed: notes.path"
-		// Catch it here for the race-window case (concurrent inserts
-		// landing the same path between our SELECT and INSERT).
 		if strings.Contains(err.Error(), "UNIQUE constraint failed: notes.path") {
 			return fmt.Errorf("upsert: %w (path=%s)", notes.ErrCaseCollision, rec.Path)
 		}
@@ -212,15 +195,11 @@ func (x *Indexer) MovePathPrefix(ctx context.Context, oldPrefix, newPrefix strin
 	if err != nil {
 		return 0, fmt.Errorf("MovePathPrefix begin: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }() // no-op after Commit
+	defer func() { _ = tx.Rollback() }()
 
 	escapedOld := escapeLike(oldPrefix)
 	escapedNew := escapeLike(newPrefix)
 
-	// Collision precheck: any row whose path starts with newPrefix BUT
-	// does not also start with oldPrefix is a foreign collision.
-	// (If newPrefix == oldPrefix, every row matches both filters, so n=0
-	// and no collision is reported — the move becomes a no-op.)
 	var collisions int
 	err = tx.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM notes WHERE path LIKE ? || '%' ESCAPE '\' AND path NOT LIKE ? || '%' ESCAPE '\'`,
@@ -232,7 +211,6 @@ func (x *Indexer) MovePathPrefix(ctx context.Context, oldPrefix, newPrefix strin
 		return 0, fmt.Errorf("MovePathPrefix(%q→%q): %w", oldPrefix, newPrefix, notes.ErrCaseCollision)
 	}
 
-	// Honor cancellation between SQL ops.
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
@@ -342,59 +320,22 @@ func (x *Indexer) SearchTitles(ctx context.Context, q string, limit int) ([]note
 	return out, nil
 }
 
-// prefixWrap rewrites a bare-text user query so FTS5 MATCH returns prefix
-// matches for incremental typing ("te" → "te*" matches "test", "team",
-// "testing"). When the query already contains FTS5 syntax — quoted phrases,
-// AND/OR/NOT/NEAR operators (uppercase, case-sensitive per the FTS5 spec),
-// parentheses, or column-filter colons — the input is returned unchanged so
-// the user's intentional FTS5 query is not second-guessed.
-//
-// Plan 07-43 (UAT-8). Examples:
-//
-//	"te"              → "te*"
-//	"test driven"     → "test* driven*"
-//	`"exact phrase"`  → `"exact phrase"`   (quoted; pass through)
-//	"foo AND bar"     → "foo AND bar"      (operator; pass through)
-//	"(foo bar)"       → "(foo bar)"        (parens; pass through)
-//	"title:foo"       → "title:foo"        (column filter; pass through)
-//	"te*"             → "te*"              (already prefixed)
-//	""                → ""
-//
-// Threat-mitigation invariant (T-7-08): prefixWrap rewrites a STRING that is
-// bound positionally to ?1 in SearchFTS. It does NOT construct SQL. The
-// positional-bind invariant required by the threat model is unchanged.
 func prefixWrap(q string) string {
 	trimmed := strings.TrimSpace(q)
 	if trimmed == "" {
 		return ""
 	}
-	// Conservative pass-through: any FTS5-syntax marker present → return
-	// original (including surrounding whitespace) so the user's intent is
-	// preserved byte-for-byte.
+
 	if strings.ContainsAny(trimmed, `"():`) {
 		return q
 	}
 	if fts5OperatorKeywordRE.MatchString(trimmed) {
 		return q
 	}
-	// Bare-text path: split on whitespace, append '*' to each token that
-	// does not already end in '*', rejoin with a single space. This also
-	// normalizes runs of whitespace — fine for FTS5 (whitespace is the
-	// token separator).
-	//
-	// UAT-2 R4-3: tokens containing '-' or '_' MUST be wrapped in double
-	// quotes to escape FTS5's column-filter / negation operators. The
-	// `tokenize = "unicode61 tokenchars '_-'"` index config treats those
-	// chars as part of tokens, but the FTS5 QUERY grammar still parses '-'
-	// as a binary operator outside quotes — `note-00123*` errors with
-	// "no such column: 00123". Quoted phrases can't carry a prefix
-	// wildcard, so we fall back to exact-token match; the title-LIKE
-	// fallback in SearchFTS catches substring intent (e.g. "note-001"
-	// matching "note-00123" by path).
+
 	tokens := strings.Fields(trimmed)
 	for i, tok := range tokens {
 		if strings.ContainsAny(tok, "-_") {
-			// Strip any pre-existing wildcard the user typed; quote.
 			tokens[i] = `"` + strings.TrimSuffix(tok, "*") + `"`
 			continue
 		}
@@ -423,14 +364,6 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 		limit = 100
 	}
 
-	// Positional bind parameters required here because ?2 appears twice in
-	// the WHERE subquery (gate: ?2 IS NULL OR EXISTS tag-match).
-	//
-	// bm25() and snippet() are FTS5 auxiliary functions that require a
-	// simple FTS5 query context (MATCH in the WHERE clause of the same
-	// SELECT). GROUP BY breaks the FTS5 context, so the tag filter uses
-	// an EXISTS subquery instead — this avoids GROUP BY while still
-	// AND-combining the text search with the tag filter.
 	const sqlText = `
 		SELECT
 			n.id,
@@ -460,11 +393,6 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 		tagBind = tag
 	}
 
-	// Plan 07-43 (UAT-8): rewrite bare-text user queries to enable FTS5
-	// prefix matching ("te" → "te*" matches "test", "team", "testing").
-	// The rewrite is a pure string-to-string transform; the value is still
-	// bound positionally to ?1 — T-7-08 mitigation (positional bind, no
-	// SQL string-concat) is unchanged.
 	matchQuery := prefixWrap(q)
 
 	rows, err := x.Pair.Reader.QueryContext(ctx, sqlText, matchQuery, tagBind, limit+1)
@@ -490,17 +418,6 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 		return nil, fmt.Errorf("searchfts iter: %w", err)
 	}
 
-	// UAT-2 R4-3: title/path substring fallback. FTS5's unicode61 tokenizer
-	// with tokenchars '_-' indexes "note-00123" as ONE token, so the user's
-	// "123" query rewritten to "123*" never matches via prefix (the token
-	// starts with "n"). Run a parallel LIKE search over title + path and
-	// merge in any IDs not already returned by FTS. FTS hits keep their
-	// bm25 rank + snippet; LIKE-only hits append with rank=999 (lowest)
-	// and a synthesized excerpt-less row.
-	//
-	// Only fires for bare-text queries (no FTS5 syntax) so power users with
-	// quoted phrases / column filters / boolean operators get pure FTS
-	// semantics. Same gate prefixWrap uses.
 	trimmed := strings.TrimSpace(q)
 	if trimmed != "" && !strings.ContainsAny(trimmed, `"():`) && !fts5OperatorKeywordRE.MatchString(trimmed) && len(hits) <= limit {
 		existing := make(map[string]bool, len(hits))
@@ -518,7 +435,6 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 		}
 	}
 
-	// Populate MatchingTags via per-hit lookup. Cheap because limit ≤ 100.
 	for i := range hits {
 		tagNames, terr := x.tagNamesForNote(ctx, hits[i].ID)
 		if terr != nil {
@@ -530,14 +446,6 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 	return hits, nil
 }
 
-// searchTitlePathLike runs a substring search over notes.title + notes.path
-// to backstop FTS5's prefix-only matching (UAT-2 R4-3). Exclude IDs already
-// in `existing` to avoid duplicating FTS hits. Returns up to `limit` hits
-// with rank=999 so the merge ranks them after every FTS hit.
-//
-// Security: q is bound positionally via ?1 → "%" || ?1 || "%" runs entirely
-// in SQL with no string concat — same T-7-08 invariant SearchFTS holds.
-// Tag filter parallels SearchFTS's EXISTS form.
 func (x *Indexer) searchTitlePathLike(
 	ctx context.Context,
 	q, tag string,
@@ -563,7 +471,7 @@ func (x *Indexer) searchTitlePathLike(
 	if tag != "" {
 		tagBind = tag
 	}
-	// Over-fetch to absorb post-filter dedup against `existing`.
+
 	overFetch := limit + len(existing) + 10
 	rows, err := x.Pair.Reader.QueryContext(ctx, sqlText, q, tagBind, overFetch)
 	if err != nil {
@@ -585,7 +493,7 @@ func (x *Indexer) searchTitlePathLike(
 			continue
 		}
 		h.ModifiedAt = time.Unix(updatedAt, 0).UTC()
-		h.Rank = 999 // sentinel: rank LIKE-only matches after every FTS hit
+		h.Rank = 999
 		hits = append(hits, h)
 	}
 	if err := rows.Err(); err != nil {
@@ -594,8 +502,6 @@ func (x *Indexer) searchTitlePathLike(
 	return hits, nil
 }
 
-// tagNamesForNote returns the sorted tag names for noteID. Used by SearchFTS
-// to populate SearchHit.MatchingTags after the FTS query.
 func (x *Indexer) tagNamesForNote(ctx context.Context, noteID string) ([]string, error) {
 	rows, err := x.Pair.Reader.QueryContext(ctx,
 		`SELECT t.name FROM tags t JOIN note_tags nt ON t.id = nt.tag_id WHERE nt.note_id = ? ORDER BY t.name`,
@@ -615,15 +521,7 @@ func (x *Indexer) tagNamesForNote(ctx context.Context, noteID string) ([]string,
 	return names, rows.Err()
 }
 
-// escapeLike escapes the SQLite LIKE wildcards `%` and `_` (and the
-// escape character itself, `\`) so the supplied prefix binds as a
-// literal substring under `LIKE ? ESCAPE '\'`. Without this, an
-// underscore in a path segment (a valid filename character) would
-// silently match any single character, and a literal `%` would match
-// any substring. T-03-03-03 mitigation.
 func escapeLike(s string) string {
-	// Order matters: escape the escape character first, then the wildcards,
-	// otherwise we'd double-escape the backslashes we just inserted.
 	r := strings.NewReplacer(
 		`\`, `\\`,
 		`%`, `\%`,
@@ -632,16 +530,11 @@ func escapeLike(s string) string {
 	return r.Replace(s)
 }
 
-// existingRow is the per-row projection used by reconcile to decide
-// whether a freshly-walked file is new / unchanged / dirty.
 type existingRow struct {
 	ID    uuid.UUID
 	MTime int64
 }
 
-// existing returns a map of canonical path → (id, mtime_unix) for every
-// row in `notes`. Used by Reconcile to compute the disk-vs-index delta
-// in O(N) without round-tripping per-file SELECTs.
 func (x *Indexer) existing(ctx context.Context) (map[string]existingRow, error) {
 	rows, err := x.Pair.Reader.QueryContext(ctx, `SELECT id, path, mtime_unix FROM notes`)
 	if err != nil {

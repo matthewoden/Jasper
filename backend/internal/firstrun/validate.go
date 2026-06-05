@@ -12,13 +12,6 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// maxDataDirPathLen caps the wizard's data-dir input at 4096 bytes
-// BEFORE any os.Stat / NFC walk runs. Threat T-08-07 (RESEARCH §Security
-// row "Wizard data-dir DoS via huge path probe"): a hostile or
-// accidentally-pasted path of MB-scale length would otherwise drive
-// the unicode walk and norm.NFC.IsNormalString through O(len) work
-// per request. 4096 is comfortably above any plausible legitimate
-// path (PATH_MAX on macOS is 1024; Linux is 4096).
 const maxDataDirPathLen = 4096
 
 // RefusalCode names one of the five D-08 refusal cases or "" when
@@ -49,21 +42,13 @@ const (
 	RefusalNotAbsolute   RefusalCode = "not_absolute"
 )
 
-// LOCKED refusal messages (UI-SPEC §Copywriting Contract lines 134-143).
-// Do NOT paraphrase — the wizard frontend (08-04) renders these
-// verbatim and the ui-checker plan flags any drift.
 const (
 	msgParentMissing = "The parent folder doesn't exist. Create it first, then pick this path."
 	msgNestedVault   = "This path is inside an existing Jasper vault. Pick a different folder."
 	msgNonASCII      = "Path contains characters that don't survive cross-platform sync. Use plain ASCII letters, digits, dashes, and forward slashes."
-	// unwritable format string: "Jasper can't write here: %s. Check folder permissions."
-	// — the %s is the underlying os error per UI-SPEC.
+
 	msgUnwritableFmt = "Jasper can't write here: %s. Check folder permissions."
-	// not_absolute: surfaced when the user enters a relative path that
-	// can't be tilde-expanded. The placeholder copy in the wizard input
-	// (DataDirSection.tsx) is `~/Documents/Jasper` so the typical happy
-	// path is "user types `~`-prefixed → backend resolves → validates".
-	// This message points the user at the same shape.
+
 	msgNotAbsolute = "Pick an absolute path (starts with `/`) or a path beginning with `~/`."
 )
 
@@ -103,24 +88,15 @@ type ValidateResult struct {
 // This function does NO filesystem I/O. It is safe to call from any
 // goroutine, and ValidateDataDir + RunSetup both call it.
 func ResolveDataDir(raw string) (string, RefusalCode, string) {
-	// Tilde expansion. Allowed forms: "~", "~/", "~/anything".
-	// Disallowed: "~user", "~user/...". The disallowed forms fall
-	// through unchanged and the absolute-path check below catches them.
 	expanded := raw
 	if raw == "~" || strings.HasPrefix(raw, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil || home == "" {
-			// Very rare on macOS / WSL; the runtime has no notion of
-			// $HOME for some reason. Surface as not_absolute so the UI
-			// renders a useful hint rather than failing silently.
 			return "", RefusalNotAbsolute, msgNotAbsolute
 		}
 		if raw == "~" {
 			expanded = home
 		} else {
-			// "~/<rest>": join home with the rest. filepath.Join
-			// normalises duplicate slashes and trailing dots so the
-			// result is clean.
 			expanded = filepath.Join(home, raw[2:])
 		}
 	}
@@ -128,9 +104,7 @@ func ResolveDataDir(raw string) (string, RefusalCode, string) {
 	if !filepath.IsAbs(expanded) {
 		return "", RefusalNotAbsolute, msgNotAbsolute
 	}
-	// filepath.Clean tidies up things like "/tmp//foo/./bar" into
-	// "/tmp/foo/bar" so the rest of the pipeline (and the persisted
-	// config.json) sees a canonical form.
+
 	return filepath.Clean(expanded), "", ""
 }
 
@@ -159,34 +133,16 @@ func ResolveDataDir(raw string) (string, RefusalCode, string) {
 //     actionable remediation. The user is local-host and already
 //     controls the filesystem; risk accepted.
 func ValidateDataDir(path string) ValidateResult {
-	// T-08-07 mitigation: path-length cap. Returns the non-ASCII refusal
-	// code because oversized paths usually carry junk; the locked copy
-	// is the closest match to "your path is bad, fix it" without adding
-	// a new refusal code (which would require an openapi.yaml change).
 	if len(path) > maxDataDirPathLen {
 		return ValidateResult{Code: RefusalNonASCII, Message: msgNonASCII}
 	}
 
-	// D-08e (UAT-1 fix): tilde-expand and refuse non-absolute paths
-	// BEFORE any filesystem syscall. This must come before the write
-	// probe — otherwise a relative path like "~/Documents/Jasper" would
-	// be MkdirAll'd verbatim under the binary's launch CWD, creating
-	// a literal "~" tree (the symptom motivating this rule).
 	resolved, refusalCode, refusalMsg := ResolveDataDir(path)
 	if refusalCode != "" {
 		return ValidateResult{Code: refusalCode, Message: refusalMsg}
 	}
 	path = resolved
 
-	// D-08d: non-ASCII / non-NFC chars. Run this FIRST among the
-	// "examine the path string" checks — pure-in-memory work, no
-	// syscall, so a hostile client can't cause filesystem load with
-	// a deliberately-bad path.
-	//
-	// Two checks: norm.NFC.IsNormalString catches decomposed forms
-	// (e.g. NFD "é" rendered as "e" + U+0301) that survive a casual
-	// ASCII-only scan; the unicode.MaxASCII range loop catches any
-	// codepoint outside 0x00..0x7F.
 	if !norm.NFC.IsNormalString(path) {
 		return ValidateResult{Code: RefusalNonASCII, Message: msgNonASCII}
 	}
@@ -196,28 +152,15 @@ func ValidateDataDir(path string) ValidateResult {
 		}
 	}
 
-	// D-08a: parent directory must exist. We require the user to create
-	// the parent themselves (D-08 design: never silently create more
-	// than one level — that hides typos like /Documnets/Jasper).
 	parent := filepath.Dir(path)
 	if _, err := os.Stat(parent); errors.Is(err, fs.ErrNotExist) {
 		return ValidateResult{Code: RefusalParentMissing, Message: msgParentMissing}
 	}
 
-	// D-08b: nested-vault detection. Walk parents looking for an existing
-	// Jasper layout (a sibling pair of `notes/` and `storage/app.db`).
-	// If any ancestor matches AND we are strictly nested under it,
-	// refuse — preventing the user from accidentally turning a vault
-	// inside another vault.
 	if isInsideExistingVault(path) {
 		return ValidateResult{Code: RefusalNestedVault, Message: msgNestedVault}
 	}
 
-	// D-08c: write probe. We create the dir if missing (the wizard is
-	// allowed to materialize a path the user picked); then we open and
-	// remove a tempfile. Both steps must succeed — mkdir alone isn't
-	// sufficient (a folder can be mkdir-able but immutable on some
-	// hostile mount configurations).
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return ValidateResult{Code: RefusalUnwritable, Message: fmt.Sprintf(msgUnwritableFmt, err.Error())}
 	}
@@ -231,23 +174,11 @@ func ValidateDataDir(path string) ValidateResult {
 	return ValidateResult{Valid: true}
 }
 
-// isInsideExistingVault walks parents of path; if any STRICT ancestor
-// contains both `notes/` (dir) AND `storage/app.db` (file), the input
-// path is inside an existing Jasper vault and must be rejected.
-//
-// Strict-ancestor semantics: a vault's own root is NOT "inside itself".
-// We exit the walk at the filesystem root (when filepath.Dir(p) == p).
 func isInsideExistingVault(path string) bool {
-	// Start the walk one level above the input — checking only strict
-	// ancestors. If path itself happens to look like a vault root we
-	// don't refuse it here (the write probe + first-run wizard owns
-	// that case via "this folder already has notes" UX in a later
-	// plan; D-08b is specifically the nesting rule).
 	cur := filepath.Dir(path)
 	for {
 		parent := filepath.Dir(cur)
 		if parent == cur {
-			// reached filesystem root with no vault found
 			return false
 		}
 		if isDir(filepath.Join(parent, "notes")) && fileExists(filepath.Join(parent, "storage", "app.db")) {
@@ -257,18 +188,11 @@ func isInsideExistingVault(path string) bool {
 	}
 }
 
-// isDir reports whether p exists and is a directory. Returns false on
-// any stat error (not-exist, permission, I/O) — the caller treats
-// "can't tell" as "not a vault" because the write-probe rule below
-// will catch genuine permission problems with a more useful refusal
-// code.
 func isDir(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.IsDir()
 }
 
-// fileExists reports whether p exists and is accessible. Returns false
-// for any stat error (same rationale as isDir).
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil

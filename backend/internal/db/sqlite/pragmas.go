@@ -36,10 +36,6 @@ var Pragmas = []string{
 	"PRAGMA foreign_keys=ON",
 }
 
-// applyConnectionPragmas runs each Pragmas statement against conn,
-// returning the first error wrapped with context. Used as
-// defense-in-depth after Open's Ping in case the DSN-level _pragma=
-// alias was silently ignored by an older driver build.
 func applyConnectionPragmas(ctx context.Context, conn *sql.Conn) error {
 	for _, p := range Pragmas {
 		if _, err := conn.ExecContext(ctx, p); err != nil {

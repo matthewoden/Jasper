@@ -40,13 +40,6 @@ func IsWSL() bool {
 	return strings.Contains(strings.ToLower(string(b)), "microsoft")
 }
 
-// mntDrive matches WSL's /mnt/<drive-letter>(/...) prefix that maps to a
-// Windows drive. Drive letters are normalized to lowercase in /mnt/ regardless
-// of how the user types them, so the pattern is [a-z] (single character).
-//
-// The (?:/(.*))? captures the rest after /mnt/<drive>, including the empty
-// case (path is exactly "/mnt/c" or "/mnt/c/"). filepath.Clean is the caller's
-// responsibility — this regex matches both clean and trailing-slash inputs.
 var mntDrive = regexp.MustCompile(`^/mnt/([a-z])(?:/(.*))?/?$`)
 
 // WslToWindows converts a WSL absolute path under /mnt/<drive>/... to its
@@ -72,9 +65,7 @@ func WslToWindows(wslPath string) string {
 		return ""
 	}
 	drive := strings.ToUpper(m[1])
-	// `(.*)` in mntDrive is greedy and swallows any trailing slash even with
-	// the outer `/?` optional separator. Strip it so the output never ends
-	// with a stray backslash.
+
 	rest := strings.TrimRight(m[2], "/")
 	if rest == "" {
 		return drive + `:\`

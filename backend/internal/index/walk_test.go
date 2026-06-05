@@ -12,8 +12,6 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// collectWalk runs WalkVault against dir and returns the sorted slice
-// of yielded CanonicalRelPaths. Any error from yield is propagated.
 func collectWalk(t *testing.T, dir string) ([]string, error) {
 	t.Helper()
 	var got []string
@@ -102,9 +100,7 @@ func TestWalkVault_SkipsAttachmentsDir(t *testing.T) {
 func TestWalkVault_NFC_Canonicalization(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	// "café" — write the file with NFD form (e + U+0301) so the OS
-	// stores it that way (or, on macOS APFS, the OS may normalize it
-	// itself; either way the walk's CanonicalRelPath should be NFC).
+
 	nfd := norm.NFD.String("café.md")
 	writeFile(t, filepath.Join(dir, nfd), "")
 
@@ -115,7 +111,7 @@ func TestWalkVault_NFC_Canonicalization(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("got %v, want 1 entry", got)
 	}
-	// Must be NFC + lowercase.
+
 	want := norm.NFC.String("café.md")
 	if got[0] != want {
 		t.Errorf("got %q (NFC bytes %x), want %q (NFC bytes %x)",
@@ -195,7 +191,7 @@ func TestWalkVault_ContextCanceled(t *testing.T) {
 		writeFile(t, filepath.Join(dir, "n", "f"+itoa(i)+".md"), "")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // pre-canceled
+	cancel()
 
 	err := WalkVault(ctx, dir, func(_ FileMeta) error { return nil })
 	if err == nil {
@@ -206,8 +202,6 @@ func TestWalkVault_ContextCanceled(t *testing.T) {
 	}
 }
 
-// itoa is a tiny stdlib-free integer-to-string helper for test file
-// naming (avoids importing strconv just for tests).
 func itoa(n int) string {
 	if n == 0 {
 		return "0"

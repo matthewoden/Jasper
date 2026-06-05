@@ -20,13 +20,6 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// setupSetupTestServer builds a chi router with the strict-server
-// mounted at /api/v1, scoped to a per-test data dir. The server is
-// wired with the embedded migrations.FS so PostSetup can apply real
-// schema migrations during HappyPath tests.
-//
-// dataDir is returned so tests can assert disk state (config.json,
-// app.db) directly.
 func setupSetupTestServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	dataDir := t.TempDir()
@@ -42,10 +35,6 @@ func setupSetupTestServer(t *testing.T) (*httptest.Server, string) {
 	})
 	return httptest.NewServer(r), dataDir
 }
-
-// ---------------------------------------------------------------------------
-// GetSetupStatus
-// ---------------------------------------------------------------------------
 
 // SH1: no config.json on disk → FirstRun:true.
 func TestGetSetupStatus_NoConfigJSON_FirstRunTrue(t *testing.T) {
@@ -99,10 +88,6 @@ func TestGetSetupStatus_ConfigJSONPresent_FirstRunFalse(t *testing.T) {
 		t.Fatalf("FirstRun: got true want false")
 	}
 }
-
-// ---------------------------------------------------------------------------
-// PostSetupValidateDataDir
-// ---------------------------------------------------------------------------
 
 func postValidate(t *testing.T, ts *httptest.Server, path string) (int, struct {
 	Valid   bool    `json:"valid"`
@@ -251,19 +236,11 @@ func TestPostSetupValidateDataDir_EmptyBody(t *testing.T) {
 		t.Fatalf("POST: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	// strict-server treats EOF as a missing body; req.Body is nil and
-	// we render valid:false with the "Pick a data-dir path." hint.
-	// Acceptable also: a 400 from the framework — both shapes give the
-	// SPA actionable info. We accept either here so the test isn't
-	// brittle against future framework changes.
+
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status: got %d want 200 or 400", resp.StatusCode)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// PostSetup
-// ---------------------------------------------------------------------------
 
 // SH6: happy path — request body submitted, full pipeline runs,
 // returns 200 + ok:true, on-disk state matches.
@@ -301,7 +278,7 @@ func TestPostSetup_HappyPath(t *testing.T) {
 	if !out.Ok {
 		t.Fatalf("Ok: got false want true")
 	}
-	// Side effects on disk.
+
 	if _, err := os.Stat(filepath.Join(target, "storage", "config.json")); err != nil {
 		t.Fatalf("config.json missing: %v", err)
 	}
@@ -377,7 +354,7 @@ func TestPostSetup_MissingMigrationsFS_500(t *testing.T) {
 	files := &fakeFileStore{}
 	svc := notes.NewService(files, nil, nil, logger)
 	srv := NewServerWithIndex(svc, nil, nil, nil, nil, logger, dataDir)
-	// Deliberately DO NOT call SetMigrationsFS — exercise the guard.
+
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
@@ -408,5 +385,4 @@ func TestPostSetup_MissingMigrationsFS_500(t *testing.T) {
 	}
 }
 
-// Silence unused-import linter warnings when the helper isn't called.
 var _ = context.Background

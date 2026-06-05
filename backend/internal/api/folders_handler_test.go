@@ -9,14 +9,6 @@ import (
 	"testing"
 )
 
-// ----------------------------------------------------------------------
-// Plan 03-04 Task 2 — Folder handler tests.
-//
-// Pattern follows Task 1: real fsstore.Store + realIndex via
-// setupRealFSServer (defined in notes_handlers_test.go). Each test
-// exercises the strict-server bridge → notes.Service → FS+Index path.
-// ----------------------------------------------------------------------
-
 // TestPostFolders_HappyPath_201 — root-level folder creation.
 func TestPostFolders_HappyPath_201(t *testing.T) {
 	t.Parallel()
@@ -41,14 +33,13 @@ func TestPostFolders_HappyPath_201(t *testing.T) {
 	if got.Name != "projects" {
 		t.Errorf("Name: got %q, want %q", got.Name, "projects")
 	}
-	// Children MUST be present and an empty (non-nil) slice for the
-	// standalone POST response — Plan 03-01 wire shape.
+
 	if got.Children == nil {
 		t.Errorf("Children: nil, want []TreeNode{}")
 	} else if len(*got.Children) != 0 {
 		t.Errorf("Children len: got %d, want 0", len(*got.Children))
 	}
-	// Folder exists on disk.
+
 	info, err := os.Stat(filepath.Join(root, "projects"))
 	if err != nil {
 		t.Fatalf("dir missing: %v", err)
@@ -129,8 +120,7 @@ func TestDeleteFolder_HappyPath_Empty_204(t *testing.T) {
 	t.Parallel()
 	ts, _, root, _ := setupRealFSServer(t)
 	defer ts.Close()
-	// Create folder via the API to make sure the canonical path matches
-	// what DELETE will use.
+
 	resp, body := mustPostJSON(t, ts, "/api/v1/folders",
 		`{"parent_path":"","name":"projects"}`)
 	if resp.StatusCode != 201 {
@@ -152,7 +142,7 @@ func TestDeleteFolder_NotEmpty_NoRecursive_409(t *testing.T) {
 	t.Parallel()
 	ts, _, _, _ := setupRealFSServer(t)
 	defer ts.Close()
-	// Create folder + note inside.
+
 	if resp, body := mustPostJSON(t, ts, "/api/v1/folders",
 		`{"parent_path":"","name":"projects"}`); resp.StatusCode != 201 {
 		t.Fatalf("create folder: %d; body=%s", resp.StatusCode, body)
@@ -179,7 +169,7 @@ func TestDeleteFolder_Recursive_204(t *testing.T) {
 	t.Parallel()
 	ts, _, root, idx := setupRealFSServer(t)
 	defer ts.Close()
-	// Create folder + note inside.
+
 	if resp, body := mustPostJSON(t, ts, "/api/v1/folders",
 		`{"parent_path":"","name":"projects"}`); resp.StatusCode != 201 {
 		t.Fatalf("create folder: %d; body=%s", resp.StatusCode, body)
@@ -208,22 +198,7 @@ func TestDeleteFolder_NotFound_404(t *testing.T) {
 	defer ts.Close()
 
 	resp, body := mustDelete(t, ts, "/api/v1/folders?path=nope")
-	// Underlying os.Remove returns fs.ErrNotExist, which fsstore wraps.
-	// Plan 03-04 mapping: ErrNotExist isn't a known sentinel — surface
-	// as 404 not_found per the locked table (notes.ErrNotFound aliases
-	// any "missing" error class) OR a 500 if not mapped. Either is
-	// acceptable as long as the body is JSON, but the locked table
-	// says 404 — service.DeleteFolder returns the wrapped fs.ErrNotExist
-	// which the handler maps via the "not_found" sentinel only when the
-	// service surfaces ErrNotFound. Without that, the wire response is
-	// a generic 500. This test asserts the locked behavior: a missing
-	// path on DELETE returns a 4xx (404 preferred), NOT a leaky 500.
-	//
-	// Implementation note: fsstore.DeleteDir wraps the os.Remove error
-	// raw; service does not translate fs.ErrNotExist → notes.ErrNotFound
-	// for folders. The cleanest fix lives in the service layer; for now
-	// the test accepts either 404 (preferred) or 4xx with a generic
-	// invalid_path code.
+
 	if resp.StatusCode == 500 {
 		t.Errorf("unexpected 500 on missing folder: body=%s", body)
 	}
@@ -254,7 +229,7 @@ func TestPostFolderMove_HappyPath_200(t *testing.T) {
 	t.Parallel()
 	ts, _, root, idx := setupRealFSServer(t)
 	defer ts.Close()
-	// Create folder + note inside.
+
 	if resp, body := mustPostJSON(t, ts, "/api/v1/folders",
 		`{"parent_path":"","name":"old"}`); resp.StatusCode != 201 {
 		t.Fatalf("create folder: %d; body=%s", resp.StatusCode, body)
@@ -280,7 +255,7 @@ func TestPostFolderMove_HappyPath_200(t *testing.T) {
 	if string(got.Kind) != "folder" {
 		t.Errorf("Kind: got %q, want %q", got.Kind, "folder")
 	}
-	// On-disk dir moved; index row re-prefixed.
+
 	if _, err := os.Stat(filepath.Join(root, "new", "alpha.md")); err != nil {
 		t.Errorf("file not at new path: %v", err)
 	}
@@ -338,5 +313,4 @@ func TestPostFolderMove_Collision_409(t *testing.T) {
 	}
 }
 
-// Ensure imports don't fall idle.
 var _ = http.StatusOK

@@ -33,8 +33,7 @@ func RequireLoopbackBind(addr string) error {
 	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
 		return nil
 	}
-	// Reject anything else, including 0.0.0.0 and the empty host
-	// shorthand (":3000") which net.Listen interprets as all-interfaces.
+
 	return errors.New(
 		"phase 1 only allows binding to loopback (localhost / 127.0.0.1 / ::1); " +
 			"0.0.0.0 will be revisited in phase 8",

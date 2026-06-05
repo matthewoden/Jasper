@@ -11,10 +11,6 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// ============================================================================
-// File primitive tests (Plan 03-02 Task 1)
-// ============================================================================
-
 // TestCreateFile_HappyPath: After CreateFile, the file exists with zero bytes
 // and a non-zero ModTime.
 func TestCreateFile_HappyPath(t *testing.T) {
@@ -59,7 +55,7 @@ func TestCreateFile_Collision(t *testing.T) {
 // NFC form returns ErrCaseCollision (DATA-11 + DATA-12).
 func TestCreateFile_NFCCollision(t *testing.T) {
 	root := t.TempDir()
-	// NFC: precomposed é (U+00E9). NFD: e + combining acute (U+0065 U+0301).
+
 	nfc := norm.NFC.String("café.md")
 	nfd := norm.NFD.String("café.md")
 	if nfc == nfd {
@@ -249,11 +245,11 @@ func TestMoveFile_RejectsEscape_Either(t *testing.T) {
 	if err := CreateFile(root, "src.md"); err != nil {
 		t.Fatalf("create src: %v", err)
 	}
-	// Escape on old.
+
 	if err := MoveFile(root, "../escape.md", "ok.md"); !errors.Is(err, ErrPathEscape) {
 		t.Fatalf("expected ErrPathEscape on old, got %v", err)
 	}
-	// Escape on new.
+
 	if err := MoveFile(root, "src.md", "../escape.md"); !errors.Is(err, ErrPathEscape) {
 		t.Fatalf("expected ErrPathEscape on new, got %v", err)
 	}
@@ -273,16 +269,16 @@ func TestMoveFile_FsyncParent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat sub before: %v", err)
 	}
-	// Sleep a hair past Darwin's directory mtime granularity (1s).
+
 	time.Sleep(1100 * time.Millisecond)
 	if err := MoveFile(root, "src.md", filepath.Join("sub", "moved.md")); err != nil {
 		t.Fatalf("MoveFile: %v", err)
 	}
-	// Primary durability assertion: file IS at new location.
+
 	if _, err := os.Stat(filepath.Join(root, "sub", "moved.md")); err != nil {
 		t.Fatalf("file should exist at new path: %v", err)
 	}
-	// Secondary (informational) assertion: parent mtime advanced.
+
 	subAfter, err := os.Stat(filepath.Join(root, "sub"))
 	if err != nil {
 		t.Fatalf("stat sub after: %v", err)
@@ -291,10 +287,6 @@ func TestMoveFile_FsyncParent(t *testing.T) {
 		t.Logf("parent dir mtime did not advance (before=%v, after=%v) — accepted as platform-dependent", subBefore.ModTime(), subAfter.ModTime())
 	}
 }
-
-// ============================================================================
-// Directory primitive tests (Plan 03-02 Task 2)
-// ============================================================================
 
 // TestCreateDir_HappyPath: mkdir; the dir exists with mode 0o755.
 func TestCreateDir_HappyPath(t *testing.T) {
@@ -309,7 +301,7 @@ func TestCreateDir_HappyPath(t *testing.T) {
 	if !info.IsDir() {
 		t.Fatalf("expected directory, got mode %v", info.Mode())
 	}
-	// Mode bits sans type — compare just the permission bits.
+
 	if info.Mode().Perm() != 0o755 {
 		t.Fatalf("perm: got %v, want 0o755", info.Mode().Perm())
 	}
@@ -326,7 +318,7 @@ func TestCreateDir_Collision_FileExists(t *testing.T) {
 	if !errors.Is(err, ErrCaseCollision) {
 		t.Fatalf("expected ErrCaseCollision (dir-exists), got %v", err)
 	}
-	// Also: a file at that name collides.
+
 	if err := CreateFile(root, "bar.md"); err != nil {
 		t.Fatalf("CreateFile bar.md: %v", err)
 	}
@@ -547,8 +539,6 @@ func TestMoveDir_OldIsFile(t *testing.T) {
 	}
 }
 
-// contains is a tiny helper to avoid pulling strings into a test where it's
-// only used once.
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {

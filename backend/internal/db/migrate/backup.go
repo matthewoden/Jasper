@@ -29,7 +29,7 @@ import (
 func BackupBeforeMigration(dbPath, backupPath string) error {
 	if _, err := os.Stat(dbPath); err != nil {
 		if os.IsNotExist(err) {
-			return nil // nothing to back up; fresh DB
+			return nil
 		}
 		return fmt.Errorf("backup stat: %w", err)
 	}
@@ -37,9 +37,7 @@ func BackupBeforeMigration(dbPath, backupPath string) error {
 	if err != nil {
 		return fmt.Errorf("backup read: %w", err)
 	}
-	// Caller is responsible for ensuring backupPath's parent directory
-	// exists; the runner's composition root (Plan 02-06) mkdirs the
-	// storage root before opening the DB pair.
+
 	if err := fsstore.AtomicWrite(backupPath, data); err != nil {
 		return fmt.Errorf("backup write: %w", err)
 	}
@@ -94,9 +92,7 @@ func RestoreBackup(backupPath, dbPath string) error {
 		cleanup()
 		return fmt.Errorf("restore rename: %w", err)
 	}
-	// fsync the parent directory so the rename's directory-entry change
-	// is durable across power loss. Skipping this step is the most-
-	// common atomicity bug.
+
 	dirf, err := os.Open(dir)
 	if err != nil {
 		return fmt.Errorf("restore open parent: %w", err)

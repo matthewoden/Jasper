@@ -10,8 +10,5 @@ import "context"
 //
 //nolint:revive // generated interface name — must match StrictServerInterface.GetApiV1Ws
 func (s *Server) GetApiV1Ws(ctx context.Context, req GetApiV1WsRequestObject) (GetApiV1WsResponseObject, error) {
-	// This handler is unreachable in production because lifecycle.go
-	// overrides the /ws route by calling r.Get("/ws", hub.ServeHTTP)
-	// after api.HandlerFromMux — chi uses last-registration-wins.
 	return GetApiV1Ws400Response{}, nil
 }

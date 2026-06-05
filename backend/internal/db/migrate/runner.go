@@ -18,13 +18,6 @@ import (
 // the static error page instead. Callers detect with errors.Is.
 var ErrUnrecoverable = errors.New("migrate: unrecoverable schema state — manual intervention required")
 
-// migrationFilenamePattern enforces the migration-naming convention:
-//
-//	^[0-9]{3}_[a-z0-9_]+\.sql$
-//
-// e.g. "001_initial.sql", "002_add_tags.sql". Files in migrations.FS
-// that don't match are an error — the runner refuses to silently skip
-// them because that would mask a misconfigured migrations directory.
 var migrationFilenamePattern = regexp.MustCompile(`^[0-9]{3}_[a-z0-9_]+\.sql$`)
 
 // RunnerOptions is the constructor input for NewRunner. All fields are
@@ -87,10 +80,6 @@ func NewRunner(opts RunnerOptions) *Runner {
 		opts.NowUnix = func() int64 { return time.Now().Unix() }
 	}
 	if opts.DiskFreeFn == nil {
-		// Default to the package-level freeBytes so production reaches
-		// syscall.Statfs (and the JASPER_TEST_FORCE_DISK_FULL hook stays
-		// active) without an extra layer of indirection. Tests inject
-		// their own mock by passing DiskFreeFn explicitly.
 		opts.DiskFreeFn = freeBytes
 	}
 	if opts.Log == nil {
@@ -129,21 +118,13 @@ func (r *Runner) Status(ctx context.Context) Status {
 //     pre-flight aborts. The composition root serves the static
 //     disk-full.html page.
 func (r *Runner) Run(ctx context.Context) (Status, error) {
-	// 1. preflight (DATA-07)
 	if err := r.preflight(); err != nil {
-		// disk-full halt: surface the error so the composition root
-		// serves the static disk-full.html page in response.
 		r.Log.Error("migrate preflight failed", "err", err)
 		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
 		r.store.set(out)
 		return out, err
 	}
 
-	// 2. discover pending. We also remember whether ANY migrations were
-	// applied before this Run started — the "prior-schema-exists" gate
-	// for Path 1. If schema_migrations was empty (or didn't exist), a
-	// failed migration cannot "roll back to a previous schema" because
-	// there isn't one; that scenario is Path 3 directly.
 	applied, err := r.appliedMigrations(ctx)
 	if err != nil {
 		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
@@ -163,12 +144,6 @@ func (r *Runner) Run(ctx context.Context) (Status, error) {
 		return r.store.Status(ctx), nil
 	}
 
-	// 4. backup (no-op on fresh DB).
-	//
-	// We back up unconditionally here because even an "empty" sqlite
-	// file contains state we'd rather preserve (the WAL header, future
-	// connection-level pragma side effects). The Path-1-vs-Path-3
-	// decision is keyed on hadPriorSchema, NOT on backup-file presence.
 	if err := BackupBeforeMigration(r.DBPath, r.BackupPath); err != nil {
 		r.Log.Error("migrate backup failed", "err", err)
 		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
@@ -176,15 +151,7 @@ func (r *Runner) Run(ctx context.Context) (Status, error) {
 		return out, fmt.Errorf("backup: %w", err)
 	}
 
-	// 5. apply each pending migration
 	if failed := r.applyAll(ctx, pending); failed != "" {
-		// Path 1 — restore backup. Two outcomes:
-		//   (a) the backup file exists, schema_migrations had at least
-		//       one row before this Run started, and restore succeeds
-		//       → state RolledBack, app continues on the prior schema.
-		//   (b) no prior-schema exists (hadPriorSchema=false), OR
-		//       the backup file is missing, OR restore itself fails
-		//       → Path 3, state Unrecoverable.
 		if !hadPriorSchema {
 			r.Log.Error(
 				"Path 1 unavailable: no prior-applied schema to roll back to",
@@ -215,7 +182,6 @@ func (r *Runner) Run(ctx context.Context) (Status, error) {
 			return out, fmt.Errorf("%w: %s failed and no backup available", ErrUnrecoverable, failed)
 		}
 		if err := RestoreBackup(r.BackupPath, r.DBPath); err != nil {
-			// backup-restore itself failed → Path 3.
 			r.Log.Error(
 				"Path 1 restore failed; entering unrecoverable",
 				"failed_migration", failed,
@@ -241,10 +207,9 @@ func (r *Runner) Run(ctx context.Context) (Status, error) {
 			LogsPath:        r.LogsPath,
 		})
 		r.refreshNoteCount(ctx)
-		return r.store.Status(ctx), nil // app keeps running on prior schema
+		return r.store.Status(ctx), nil
 	}
 
-	// 6a. success: delete backup, status OK
 	if err := DeleteBackup(r.BackupPath); err != nil {
 		r.Log.Warn("post-success backup delete failed (non-fatal)", "err", err)
 	}
@@ -253,20 +218,11 @@ func (r *Runner) Run(ctx context.Context) (Status, error) {
 	return r.store.Status(ctx), nil
 }
 
-// preflight wraps PreflightFreeSpace using the injected diskFreeBytes
-// function so tests can force ErrDiskFull. The package-level
-// PreflightFreeSpace reads the unmocked freeBytes by default; this
-// helper redirects through r.diskFreeBytes for tests.
 func (r *Runner) preflight() error {
-	// We re-implement the PreflightFreeSpace shape here so the disk-free
-	// callable can be injected. PreflightFreeSpace itself is the
-	// production path — the runner uses it indirectly when DiskFreeFn
-	// was left at its default (freeBytes), but tests pass a different
-	// DiskFreeFn and need that to flow.
 	info, err := osStatPath(r.DBPath)
 	if err != nil {
 		if isNotExistErr(err) {
-			return nil // fresh DB; nothing to back up
+			return nil
 		}
 		return fmt.Errorf("preflight stat %q: %w", r.DBPath, err)
 	}
@@ -285,17 +241,6 @@ func (r *Runner) preflight() error {
 	return nil
 }
 
-// discoverPending reads r.Migrations, sorts entries lex, and returns
-// those whose filename is NOT in schema_migrations.version. Filenames
-// must match migrationFilenamePattern; non-matching entries are an
-// error (don't silently skip — that masks a misconfigured directory).
-//
-// schema_migrations may not exist on a fresh DB. In that case, every
-// migration in r.Migrations is pending.
-//
-// Kept as a package-internal helper for the discoverPending unit tests;
-// Runner.Run uses pendingFromApplied so it can hold onto the applied
-// set for the Path-1-vs-Path-3 decision.
 func (r *Runner) discoverPending(ctx context.Context) ([]string, error) {
 	applied, err := r.appliedMigrations(ctx)
 	if err != nil {
@@ -304,9 +249,6 @@ func (r *Runner) discoverPending(ctx context.Context) ([]string, error) {
 	return r.pendingFromApplied(ctx, applied)
 }
 
-// pendingFromApplied is discoverPending's second half: given the set of
-// already-applied versions, walk r.Migrations in lex order and return
-// the names that aren't in `applied`.
 func (r *Runner) pendingFromApplied(_ context.Context, applied map[string]struct{}) ([]string, error) {
 	entries, err := fs.ReadDir(r.Migrations, ".")
 	if err != nil {
@@ -335,20 +277,13 @@ func (r *Runner) pendingFromApplied(_ context.Context, applied map[string]struct
 	return pending, nil
 }
 
-// appliedMigrations returns the set of versions present in
-// schema_migrations. If the table doesn't exist yet (fresh DB), returns
-// an empty set.
 func (r *Runner) appliedMigrations(ctx context.Context) (map[string]struct{}, error) {
 	out := make(map[string]struct{})
-	// Existence check first so we don't return SQL-level errors on a
-	// fresh DB. modernc.org/sqlite returns "no such table" wrapped as
-	// a Go error; rather than match the message, query sqlite_master.
+
 	var tableName string
 	row := r.Pair.Reader.QueryRowContext(ctx,
 		`SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'`)
 	if err := row.Scan(&tableName); err != nil {
-		// Distinguish "no row" (fresh DB, table doesn't exist) from a
-		// real error. database/sql returns sql.ErrNoRows on no-row.
 		if errors.Is(err, sqlNoRows()) {
 			return out, nil
 		}
@@ -373,11 +308,6 @@ func (r *Runner) appliedMigrations(ctx context.Context) (map[string]struct{}, er
 	return out, nil
 }
 
-// applyAll runs each pending migration in its own BEGIN IMMEDIATE
-// transaction. Returns the filename of the first failure (or "" on
-// success). The full SQL exec error is logged server-side; the wire
-// format only carries the filename (UI-SPEC §Surface 1 voice rules /
-// threat T-02-03-03 — no PII / SQL leak to the client).
 func (r *Runner) applyAll(ctx context.Context, pending []string) string {
 	for _, name := range pending {
 		content, err := fs.ReadFile(r.Migrations, name)
@@ -412,10 +342,6 @@ func (r *Runner) applyAll(ctx context.Context, pending []string) string {
 	return ""
 }
 
-// refreshNoteCount populates Status.NotesIndexed from
-// SELECT COUNT(*) FROM notes. The notes table may not exist yet during
-// Path 1 (the failed migration could be 001_initial.sql itself), so any
-// query error sets NotesIndexed = 0 rather than failing the runner.
 func (r *Runner) refreshNoteCount(ctx context.Context) {
 	var n int
 	row := r.Pair.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM notes`)
@@ -468,10 +394,6 @@ func (r *Runner) refreshNoteCount(ctx context.Context) {
 func (r *Runner) RebuildAndReindex(ctx context.Context) (Status, error) {
 	r.store.set(Status{State: StateRebuilding, LogsPath: r.LogsPath})
 
-	// 1. Derive drop list from the embedded migrations and drop every
-	// derived table so applyAll can re-create them from a clean slate.
-	// Order (newest migration first, schema_migrations last) is handled
-	// inside deriveDropStatements.
 	dropStatements, err := deriveDropStatements(r.Migrations)
 	if err != nil {
 		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
@@ -499,8 +421,6 @@ func (r *Runner) RebuildAndReindex(ctx context.Context) (Status, error) {
 		return out, fmt.Errorf("%w: drop commit: %v", ErrUnrecoverable, err)
 	}
 
-	// 2. Re-discover pending (now ALL migrations are pending again)
-	// and re-apply.
 	pending, err := r.discoverPending(ctx)
 	if err != nil {
 		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
@@ -508,7 +428,6 @@ func (r *Runner) RebuildAndReindex(ctx context.Context) (Status, error) {
 		return out, fmt.Errorf("%w: discover: %v", ErrUnrecoverable, err)
 	}
 	if failed := r.applyAll(ctx, pending); failed != "" {
-		// Migrations broke on a clean schema → Path 3.
 		out := Status{
 			State:           StateUnrecoverable,
 			FailedMigration: failed,
@@ -518,7 +437,6 @@ func (r *Runner) RebuildAndReindex(ctx context.Context) (Status, error) {
 		return out, fmt.Errorf("%w: migration %s broken on clean schema", ErrUnrecoverable, failed)
 	}
 
-	// 3. Path2Rebuild = full re-index; wired by app.New (Plan 02-06).
 	if r.Path2Rebuild == nil {
 		out := Status{State: StateUnrecoverable, LogsPath: r.LogsPath}
 		r.store.set(out)

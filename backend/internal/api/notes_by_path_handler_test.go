@@ -17,10 +17,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// byPathIndex is a test-only notes.Index that returns a canned record
-// for a known canonical path and ErrNotFound otherwise. Embeds the
-// fakeIndex no-op stubs so the port stays satisfied as new methods
-// are added.
 type byPathIndex struct {
 	fakeIndex
 	wantPath string

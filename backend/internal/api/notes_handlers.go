@@ -37,16 +37,12 @@ func (s *Server) GetNotes(
 	_ GetNotesRequestObject,
 ) (GetNotesResponseObject, error) {
 	if s.index == nil {
-		// Phase 1 compatibility: return an empty list rather than 503.
-		// The wire format is `{notes: []}` — never null per
-		// TestGetNotes_Empty_ReturnsEmptyArray.
 		return GetNotes200JSONResponse{Notes: []NoteSummary{}}, nil
 	}
 	summaries, err := s.index.List(ctx)
 	if err != nil {
 		s.log.Error("GetNotes: list failed", "err", err)
-		// Voice rule (T-02-04b-02): never leak the wrapped chain to the
-		// wire. Strict-server returns a generic 500 from a bare error.
+
 		return nil, errors.New("could not load notes")
 	}
 	out := GetNotes200JSONResponse{Notes: make([]NoteSummary, 0, len(summaries))}
@@ -73,7 +69,6 @@ func (s *Server) PostNotes(
 	ctx context.Context,
 	req PostNotesRequestObject,
 ) (PostNotesResponseObject, error) {
-	// V6 drain: signal to SwitchVault that a write is in progress.
 	defer s.trackWrite()()
 	if req.Body == nil {
 		return PostNotes400JSONResponse(newError("invalid_request", "request body required")), nil
@@ -93,7 +88,7 @@ func (s *Server) PostNotes(
 				return PostNotes400JSONResponse(newError(code, msg)), nil
 			}
 		}
-		// Bare error → strict-server emits 500 with a generic message.
+
 		return nil, errors.New("could not create note")
 	}
 	return PostNotes201JSONResponse{
@@ -111,7 +106,6 @@ func (s *Server) DeleteNoteById(
 	ctx context.Context,
 	req DeleteNoteByIdRequestObject,
 ) (DeleteNoteByIdResponseObject, error) {
-	// V6 drain: signal to SwitchVault that a write is in progress.
 	defer s.trackWrite()()
 	if err := s.notes.Delete(ctx, uuid.UUID(req.Id)); err != nil {
 		s.log.Error("DeleteNoteById: domain error",
@@ -123,7 +117,7 @@ func (s *Server) DeleteNoteById(
 				return DeleteNoteById404JSONResponse(newError(code, msg)), nil
 			}
 		}
-		// Any other error: 500 via bare error.
+
 		return nil, errors.New("could not delete note")
 	}
 	return DeleteNoteById204Response{}, nil
@@ -146,7 +140,6 @@ func (s *Server) PostNoteMove(
 	ctx context.Context,
 	req PostNoteMoveRequestObject,
 ) (PostNoteMoveResponseObject, error) {
-	// V6 drain: signal to SwitchVault that a write is in progress.
 	defer s.trackWrite()()
 	if req.Body == nil {
 		return PostNoteMove400JSONResponse(newError("invalid_request", "request body required")), nil
@@ -154,20 +147,6 @@ func (s *Server) PostNoteMove(
 
 	id := uuid.UUID(req.Id)
 
-	// LINKS-07 / D-36: capture pre-move title and path BEFORE Move() so we
-	// can detect a title change and roll back if the rewrite fails.
-	//
-	// Rule 1 fix: LookupTitle derives the title from the lowercase canonical
-	// path (e.g. "oldtitle" for "OldTitle.md"). The post-move summary.Title
-	// comes from markdown.ExtractTitle which returns the verbatim H1 (e.g.
-	// "OldTitle"). EqualFold("oldtitle", "OldTitle") = true even when the
-	// filename changed from oldtitle.md → newtitle.md, suppressing the
-	// wiki-link rewrite.
-	//
-	// Fix: read the note content before the move and extract the verbatim
-	// H1 title so both oldTitle and newTitle are sourced from the same
-	// extraction logic (markdown.ExtractTitle). If the Get fails, fall back
-	// to the registry-derived lowercase title.
 	var oldTitle string
 	oldSummary, _ := s.notes.LookupSummary(id)
 	oldPath := oldSummary.Path
@@ -199,12 +178,9 @@ func (s *Server) PostNoteMove(
 
 	newTitle := summary.Title
 
-	// LINKS-07 / D-36: if the title changed, rewrite inbound [[OldTitle]]
-	// references vault-wide. The comparison is case-insensitive per D-20.
 	if oldTitle != "" && newTitle != "" && !strings.EqualFold(oldTitle, newTitle) {
 		touched, rwErr := s.notes.RenameRewriteWikilinks(ctx, oldTitle, newTitle)
 		if rwErr != nil {
-			// D-36 all-or-nothing: roll back the move so the vault stays consistent.
 			if oldPath != "" {
 				if _, rbErr := s.notes.Move(ctx, id, oldPath); rbErr != nil {
 					s.log.Error("PostNoteMove: rename-rewrite rollback failed",
@@ -214,8 +190,7 @@ func (s *Server) PostNoteMove(
 					)
 				}
 			}
-			// Surface the rename-failed banner via WS event (D-36 error banner).
-			// The wire response is still 200 — failure is signalled via WS only.
+
 			if s.broadcaster != nil {
 				ids := make([]string, len(touched))
 				for i, tid := range touched {
@@ -228,7 +203,7 @@ func (s *Server) PostNoteMove(
 					"error":            true,
 				}, notes.SessionIDFromContext(ctx))
 			}
-			// Return the rolled-back (original) summary.
+
 			rolledBack, _ := s.notes.LookupSummary(id)
 			rolledAt := time.Now().UTC()
 			return PostNoteMove200JSONResponse{
@@ -238,13 +213,10 @@ func (s *Server) PostNoteMove(
 				UpdatedAt: rolledAt,
 			}, nil
 		}
-		// Success path: RenameRewriteWikilinks broadcasts EventLinksRewritten
-		// itself (Task 3 RW6). Handler does NOT re-broadcast.
+
 		_ = touched
 	}
 
-	// Service.Move returns NoteSummary with UpdatedAt synthesized from
-	// the index mtime. Wire that through unchanged.
 	updatedAt := summary.UpdatedAt
 	if updatedAt.IsZero() {
 		updatedAt = time.Now().UTC()

@@ -4,12 +4,6 @@ import (
 	"context"
 )
 
-// nilStatusProvider lives in handlers.go (next to the Server
-// constructors) — this file does not redeclare it. The compile-time
-// assertion `var _ StrictServerInterface = (*Server)(nil)` in
-// handlers.go is satisfied because GetAdminStatus is implemented
-// below and the previous stub in handlers_stubs.go has been removed.
-
 // GetAdminStatus implements GET /api/v1/admin/status. Returns the
 // current migration runner state for the migration banner (UX-03).
 //

@@ -18,9 +18,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// fakeFileStore — same shape as the one in notes/service_test.go, copied
-// here so the api package's tests do not have a test-only dependency on
-// the notes package's test helpers.
 type fakeFileStore struct {
 	readBytes     []byte
 	readErr       error
@@ -60,9 +57,6 @@ func (f *fakeFileStore) CreateDir(_ string) error         { return nil }
 func (f *fakeFileStore) DeleteDir(_ string, _ bool) error { return nil }
 func (f *fakeFileStore) MoveDir(_, _ string) error        { return nil }
 
-// setupTestServer mounts the StrictServerInterface bridge under
-// `r.Route("/api/v1", ...)` so the test URLs match the production
-// routes from Plan 04 (Pitfall 13).
 func setupTestServer(t *testing.T, files notes.FileStore) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -187,8 +181,6 @@ func TestPutNoteById_OK(t *testing.T) {
 	ts := setupTestServer(t, files)
 	defer ts.Close()
 
-	// Content includes frontmatter so D-10 auto-restore (Phase 6) does not
-	// trigger; the written bytes are verbatim what the client sent.
 	const content = "---\ntags: []\n---\n\n# changed"
 	body, _ := json.Marshal(map[string]string{"content": content})
 	resp, respBody := mustPut(t, ts, "/api/v1/notes/"+notes.ScratchpadUUID.String(), body)
@@ -284,9 +276,7 @@ func TestPutNoteById_WriteFailure(t *testing.T) {
 	if got.Code != "write_failed" {
 		t.Errorf("Code: got %q, want %q", got.Code, "write_failed")
 	}
-	// CR-02: the wire-format message MUST be generic — the wrapped
-	// error chain (which can include absolute filesystem paths like
-	// the temp file in the data root) is logged server-side only.
+
 	if strings.Contains(got.Message, "disk full") {
 		t.Errorf("Message leaked underlying error sentinel: %q", got.Message)
 	}

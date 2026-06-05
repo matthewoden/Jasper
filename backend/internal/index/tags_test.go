@@ -1,13 +1,5 @@
 package index
 
-// Tags store tests for Plan 06-04 Task 2.
-//
-// Tests exercise SyncTags, ListTags, NotesByTag, RenameTag, DeleteTag and
-// the ReconcileWithRegistry (tag side) extension.
-//
-// Helper functions writeNote and newReconcileFixture are defined in
-// reconcile_test.go (same package).
-
 import (
 	"context"
 	"os"
@@ -17,19 +9,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// newTagTestIndexer returns an Indexer with all three migrations applied
-// (001_initial, 002_tags_backlinks, 003_fts). As of Plan 07-03, newTestIndexer
-// applies all three migrations — this helper exists for backward compatibility
-// with tests that need the tags/backlinks tables.
 func newTagTestIndexer(t *testing.T) (*Indexer, string) {
 	t.Helper()
-	// newTestIndexer now applies 001, 002, and 003 — no additional migration
-	// application needed here.
+
 	return newTestIndexer(t)
 }
 
-// insertNote is a lower-level helper that inserts a notes row directly via
-// SQL (bypassing Upsert's title extraction) so tests can control mtime values.
 func insertNote(t *testing.T, idx *Indexer, id uuid.UUID, path string, mtimeUnix int64) {
 	t.Helper()
 	_, err := idx.Pair.Writer.ExecContext(context.Background(),
@@ -41,17 +26,12 @@ func insertNote(t *testing.T, idx *Indexer, id uuid.UUID, path string, mtimeUnix
 	}
 }
 
-// newNoteID mints a fresh UUID, inserts a notes row, and returns the UUID.
 func newNoteID(t *testing.T, idx *Indexer, path string, mtimeUnix int64) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
 	insertNote(t, idx, id, path, mtimeUnix)
 	return id
 }
-
-// ---------------------------------------------------------------------------
-// SyncTags
-// ---------------------------------------------------------------------------
 
 // TestSyncTags_NewTags — note has no prior tags; sync ["foo", "bar"];
 // note_tags has 2 rows; tags table has rows for "foo" and "bar" (A1).
@@ -103,7 +83,7 @@ func TestSyncTags_Replace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTags: %v", err)
 	}
-	// "foo" should be gone (orphan); "bar" and "baz" should remain.
+
 	tagNames := make(map[string]bool, len(tags))
 	for _, tg := range tags {
 		tagNames[tg.Name] = true
@@ -185,7 +165,6 @@ func TestSyncTags_OrphanCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Remove from note1 — tag should still exist (note2 carries it).
 	if err := idx.SyncTags(ctx, note1, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +173,6 @@ func TestSyncTags_OrphanCleanup(t *testing.T) {
 		t.Error("tag 'shared' removed too early (note2 still carries it)")
 	}
 
-	// Remove from note2 — tag should now be gone (orphan).
 	if err := idx.SyncTags(ctx, note2, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -229,10 +207,6 @@ func TestSyncTags_Idempotency(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// ListTags
-// ---------------------------------------------------------------------------
-
 // TestListTags_Empty — empty DB returns non-nil empty slice (B1).
 func TestListTags_Empty(t *testing.T) {
 	t.Parallel()
@@ -256,7 +230,6 @@ func TestListTags_AlphabeticalWithCounts(t *testing.T) {
 	idx, _ := newTagTestIndexer(t)
 	ctx := context.Background()
 
-	// foo=2, bar=5, baz=1
 	paths := []string{"a.md", "b.md", "c.md", "d.md", "e.md", "f.md", "g.md", "h.md"}
 	tagsets := [][]string{
 		{"foo"},
@@ -282,7 +255,7 @@ func TestListTags_AlphabeticalWithCounts(t *testing.T) {
 	if len(tags) != 3 {
 		t.Fatalf("ListTags count: got %d, want 3", len(tags))
 	}
-	// Alphabetical: bar, baz, foo.
+
 	wantOrder := []struct {
 		name  string
 		count int
@@ -300,10 +273,6 @@ func TestListTags_AlphabeticalWithCounts(t *testing.T) {
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// NotesByTag
-// ---------------------------------------------------------------------------
 
 // TestNotesByTag_ReturnsMatchingNotes — tag "foo" carried by 3 notes;
 // returns 3 NoteSummary entries ordered by mtime desc (C1).
@@ -333,7 +302,7 @@ func TestNotesByTag_ReturnsMatchingNotes(t *testing.T) {
 	if len(notes) != 3 {
 		t.Fatalf("NotesByTag: got %d, want 3", len(notes))
 	}
-	// Order should be mtime desc: b.md(3) > c.md(2) > a.md(1).
+
 	wantOrder := []uuid.UUID{n2, n3, n1}
 	for i, w := range wantOrder {
 		if notes[i].ID != w {
@@ -359,10 +328,6 @@ func TestNotesByTag_NotFound(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// RenameTag
-// ---------------------------------------------------------------------------
-
 // TestRenameTag_HappyPath — 4 notes carry "foo"; RenameTag returns 4 IDs;
 // tag renamed to "feature"; note_tags still reference correct tag (D1).
 func TestRenameTag_HappyPath(t *testing.T) {
@@ -386,7 +351,6 @@ func TestRenameTag_HappyPath(t *testing.T) {
 		t.Errorf("RenameTag affected: got %d, want 4", len(affected))
 	}
 
-	// "foo" should no longer exist; "feature" should.
 	tags, _ := idx.ListTags(ctx)
 	tagNames := make(map[string]bool, len(tags))
 	for _, tg := range tags {
@@ -399,7 +363,6 @@ func TestRenameTag_HappyPath(t *testing.T) {
 		t.Error("'feature' not found after rename")
 	}
 
-	// All 4 notes should now carry "feature".
 	notes, err := idx.NotesByTag(ctx, "feature")
 	if err != nil {
 		t.Fatal(err)
@@ -458,7 +421,6 @@ func TestRenameTag_InvalidName(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Name with space is invalid per D-22.
 	_, err := idx.RenameTag(ctx, "foo", "bad name")
 	if err == nil {
 		t.Fatal("expected ErrInvalidTagName, got nil")
@@ -467,10 +429,6 @@ func TestRenameTag_InvalidName(t *testing.T) {
 		t.Errorf("err: got %v, want ErrInvalidTagName", err)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// DeleteTag
-// ---------------------------------------------------------------------------
 
 // TestDeleteTag_HappyPath — 3 notes carry "foo"; DeleteTag returns 3 IDs;
 // tag row gone; note_tags cascade deleted (E1).
@@ -515,15 +473,11 @@ func TestDeleteTag_NotFound(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// ReconcileWithRegistry — tag side (Task 2 portion)
-// ---------------------------------------------------------------------------
-
 // TestReconcileWithTags_FullReindex — full reindex over .md files with
 // frontmatter tags populates the tags + note_tags tables (H1 subset).
 func TestReconcileWithTags_FullReindex(t *testing.T) {
 	t.Parallel()
-	// Create fixture with notes dir on disk.
+
 	idx, notesDir := newTagTestIndexer(t)
 	if err := os.MkdirAll(notesDir, 0o755); err != nil {
 		t.Fatalf("mkdir notes: %v", err)
@@ -546,7 +500,7 @@ func TestReconcileWithTags_FullReindex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTags: %v", err)
 	}
-	// Expect: alpha(1), beta(2)
+
 	tagMap := make(map[string]int)
 	for _, tg := range tags {
 		tagMap[tg.Name] = tg.Count
@@ -572,12 +526,10 @@ func TestReconcileWithTags_TAGS05_WipeAndRebuild(t *testing.T) {
 	writeNote(t, notesDir, "x.md",
 		"---\ntags: [project, work]\n---\n\n# X\n", mtime)
 
-	// First reconcile.
 	if _, err := idx.ReconcileWithRegistry(context.Background(), ModeFull, nil); err != nil {
 		t.Fatal(err)
 	}
 
-	// Wipe notes + tags + note_tags + backlinks tables.
 	ctx := context.Background()
 	if _, err := idx.Pair.Writer.ExecContext(ctx, `DELETE FROM backlinks`); err != nil {
 		t.Fatal(err)
@@ -592,7 +544,6 @@ func TestReconcileWithTags_TAGS05_WipeAndRebuild(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Second reconcile — should restore all tables.
 	if _, err := idx.ReconcileWithRegistry(ctx, ModeFull, nil); err != nil {
 		t.Fatal(err)
 	}

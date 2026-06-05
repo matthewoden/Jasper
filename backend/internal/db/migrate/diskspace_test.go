@@ -89,8 +89,7 @@ func TestPreflightFreeSpace_StatError_Propagated(t *testing.T) {
 	if err := os.WriteFile(dbPath, []byte("x"), 0o600); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	// Strip read+execute from the dir so Stat on dbPath fails with
-	// EACCES; restore in cleanup so t.TempDir's cleanup can run.
+
 	if err := os.Chmod(sub, 0o000); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
@@ -100,8 +99,7 @@ func TestPreflightFreeSpace_StatError_Propagated(t *testing.T) {
 	if err == nil {
 		t.Fatalf("PreflightFreeSpace(no-perm): got nil, want wrapped permission error")
 	}
-	// We don't check the exact errno; just that it isn't ErrDiskFull
-	// and that the error mentions "preflight stat".
+
 	if errors.Is(err, ErrDiskFull) {
 		t.Errorf("PreflightFreeSpace surfaced ErrDiskFull on a permission error: %v", err)
 	}
@@ -125,8 +123,6 @@ func TestFreeBytes_EnvHookForcesZero(t *testing.T) {
 		t.Fatalf("freeBytes(env=1): got %d, want 0", got)
 	}
 
-	// Sanity: the literal string "1" is the only trigger; "0" or empty
-	// passes through to the real syscall.
 	t.Setenv("JASPER_TEST_FORCE_DISK_FULL", "0")
 	got, err = freeBytes(dir)
 	if err != nil {

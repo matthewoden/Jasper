@@ -106,10 +106,6 @@ func TestStore_Stat_Missing(t *testing.T) {
 	}
 }
 
-// ============================================================================
-// Store wrapper tests (Plan 03-02 Task 2)
-// ============================================================================
-
 // TestStore_CreateFile_DelegatesAndCanonicalizes: s.CreateFile("FOO.md")
 // creates the file at <root>/foo.md (lowercase canonicalization applied).
 func TestStore_CreateFile_DelegatesAndCanonicalizes(t *testing.T) {
@@ -118,7 +114,7 @@ func TestStore_CreateFile_DelegatesAndCanonicalizes(t *testing.T) {
 	if err := s.CreateFile("FOO.md"); err != nil {
 		t.Fatalf("CreateFile: %v", err)
 	}
-	// Created at the lowercase path.
+
 	if _, err := os.Stat(filepath.Join(dir, "foo.md")); err != nil {
 		t.Fatalf("expected lowercase file, stat err = %v", err)
 	}
@@ -147,7 +143,7 @@ func TestStore_DeleteDir_Recursive(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "top")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("top should be gone, err = %v", err)
 	}
-	// Root itself should be untouched.
+
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("root should still exist: %v", err)
 	}
@@ -191,7 +187,6 @@ func TestStore_MoveDir_PreservesSubtree(t *testing.T) {
 		t.Fatalf("write b: %v", err)
 	}
 
-	// Snapshot subtree before.
 	before := walkRel(t, filepath.Join(dir, "src"))
 
 	if err := s.MoveDir("src", "dst"); err != nil {
@@ -208,7 +203,6 @@ func TestStore_MoveDir_PreservesSubtree(t *testing.T) {
 		}
 	}
 
-	// Read content via the store at the new path.
 	got, err := s.Read(filepath.Join("dst", "a.md"))
 	if err != nil {
 		t.Fatalf("Read moved a: %v", err)
@@ -218,7 +212,6 @@ func TestStore_MoveDir_PreservesSubtree(t *testing.T) {
 	}
 }
 
-// walkRel collects (relPath → isDir) pairs under root for subtree comparison.
 func walkRel(t *testing.T, root string) map[string]bool {
 	t.Helper()
 	out := map[string]bool{}

@@ -22,15 +22,14 @@ func TestDeriveDropStatements_ProductionMigrations(t *testing.T) {
 		t.Fatalf("expected at least one DROP TABLE statement, got 0")
 	}
 
-	// Tables we know exist in v1.0 migrations 001–004.
 	mustContain := []string{
-		"notes",             // 001_initial.sql
-		"schema_migrations", // 001_initial.sql
-		"tags",              // 002_tags_backlinks.sql
-		"note_tags",         // 002_tags_backlinks.sql
-		"backlinks",         // 002_tags_backlinks.sql
-		"notes_fts",         // 003_fts.sql
-		"mcp_write_grants",  // 004_mcp_grants.sql
+		"notes",
+		"schema_migrations",
+		"tags",
+		"note_tags",
+		"backlinks",
+		"notes_fts",
+		"mcp_write_grants",
 	}
 	for _, want := range mustContain {
 		found := false
@@ -45,9 +44,6 @@ func TestDeriveDropStatements_ProductionMigrations(t *testing.T) {
 		}
 	}
 
-	// schema_migrations MUST be last — 001_initial.sql creates it, so
-	// re-running 001 against a kept-but-truncated schema_migrations
-	// would fail on a duplicate CREATE TABLE.
 	if last := stmts[len(stmts)-1]; last != "DROP TABLE IF EXISTS schema_migrations" {
 		t.Errorf("schema_migrations must drop last; got last=%q", last)
 	}
@@ -68,7 +64,6 @@ CREATE TABLE parent_table (id INTEGER PRIMARY KEY);`)},
 		t.Fatalf("deriveDropStatements: %v", err)
 	}
 
-	// child_table (from 002) must appear before parent_table (from 001).
 	posChild := indexOf(stmts, "DROP TABLE IF EXISTS child_table")
 	posParent := indexOf(stmts, "DROP TABLE IF EXISTS parent_table")
 	posSchema := indexOf(stmts, "DROP TABLE IF EXISTS schema_migrations")
@@ -99,7 +94,7 @@ CREATE TABLE notes (id TEXT PRIMARY KEY);`)},
 	if !contains(stmts, "DROP TABLE IF EXISTS notes_fts") {
 		t.Errorf("expected DROP of virtual table notes_fts; got: %v", stmts)
 	}
-	// notes_fts (002) must drop before notes (001) — FTS5 content= bind.
+
 	if indexOf(stmts, "DROP TABLE IF EXISTS notes_fts") >= indexOf(stmts, "DROP TABLE IF EXISTS notes") {
 		t.Errorf("notes_fts must drop before notes; got: %v", stmts)
 	}
@@ -148,7 +143,6 @@ CREATE TABLE schema_migrations (version TEXT PRIMARY KEY);`)},
 // to surface than to silently no-op and let applyAll fail later.
 func TestDeriveDropStatements_EmptyMigrationsReturnsError(t *testing.T) {
 	mock := fstest.MapFS{
-		// A migration file with no CREATE TABLE statements at all.
 		"001_pragmas_only.sql": {Data: []byte(`PRAGMA foreign_keys=ON;`)},
 	}
 	_, err := deriveDropStatements(mock)

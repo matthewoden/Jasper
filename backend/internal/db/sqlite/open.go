@@ -63,26 +63,11 @@ func Open(ctx context.Context, dbPath string) (*Pair, error) {
 		return nil, fmt.Errorf("sqlite.Open: dbPath must be absolute, got %q", dbPath)
 	}
 
-	// Build the DSN. The _pragma= parameters survive the driver's lower-
-	// cased pragma alias bugs that older modernc.org/sqlite versions
-	// occasionally exhibit. _txlock=immediate forces BEGIN IMMEDIATE
-	// for every implicit transaction (the literal string "BEGIN
-	// IMMEDIATE" is the SQL the driver emits internally — see DATA-03).
-	//
-	// T-02-01-03 (information disclosure): the DSN includes the
-	// absolute database path, so any sql.Open / Ping error wrapping
-	// the DSN string can leak the path into logs. Risk is low for a
-	// single-user self-host app where the user owns the path; logs do
-	// not leave the user's machine (PROJECT.md "no telemetry").
 	dsn := fmt.Sprintf(
 		"file:%s?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=wal_autocheckpoint(1000)&_pragma=foreign_keys(ON)&_txlock=immediate",
 		dbPath,
 	)
 
-	// Open writer first. MaxOpenConns(1) serializes all writes onto a
-	// single connection — DATA-03's mitigation for T-02-01-02 (writer
-	// flooding cannot starve the reader pool because reader is a
-	// separate *sql.DB).
 	writer, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite.Open: open writer: %w", err)
@@ -95,9 +80,6 @@ func Open(ctx context.Context, dbPath string) (*Pair, error) {
 		return nil, fmt.Errorf("sqlite.Open: ping writer: %w", err)
 	}
 
-	// Open reader. The reader pool is sized for moderate concurrency
-	// (8 readers cover the websocket fan-out + REST handlers +
-	// indexer scans without contention).
 	reader, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		_ = writer.Close()
@@ -112,10 +94,6 @@ func Open(ctx context.Context, dbPath string) (*Pair, error) {
 		return nil, fmt.Errorf("sqlite.Open: ping reader: %w", err)
 	}
 
-	// Defense-in-depth pragma re-application. Acquire one connection
-	// from each pool, run PRAGMAs against it, then verify journal_mode
-	// is WAL. If WAL is not active, the stress test in Plan 02-04 will
-	// fail under load — fail fast at Open instead.
 	if err := verifyAndApplyPragmas(ctx, writer); err != nil {
 		_ = writer.Close()
 		_ = reader.Close()
@@ -130,10 +108,6 @@ func Open(ctx context.Context, dbPath string) (*Pair, error) {
 	return &Pair{Writer: writer, Reader: reader}, nil
 }
 
-// verifyAndApplyPragmas runs applyConnectionPragmas against a single
-// connection drawn from db, then queries PRAGMA journal_mode and
-// returns an error if it is not "wal" (case-insensitive). The
-// connection is returned to the pool on exit.
 func verifyAndApplyPragmas(ctx context.Context, db *sql.DB) error {
 	conn, err := db.Conn(ctx)
 	if err != nil {

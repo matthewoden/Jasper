@@ -15,14 +15,6 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// newTestIndexer opens a real sqlite.Pair against a tempdir, applies all
-// three schema migrations (001_initial, 002_tags_backlinks, 003_fts), and
-// returns an *Indexer wired against a notesDir. All cleanup is registered
-// with t.Cleanup.
-//
-// Migration 003_fts.sql (Plan 07-02/07-03) adds body_fts and tag_names_fts
-// columns to notes and creates the notes_fts FTS5 virtual table. The Upsert
-// SQL now includes these columns, so all three migrations are required.
 func newTestIndexer(t *testing.T) (*Indexer, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -35,8 +27,6 @@ func newTestIndexer(t *testing.T) (*Indexer, string) {
 	}
 	t.Cleanup(func() { _ = pair.Close() })
 
-	// Apply all migrations in order so the full schema (including body_fts
-	// and tag_names_fts from 003_fts.sql) is available.
 	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql"} {
 		data, err := migrations.FS.ReadFile(name)
 		if err != nil {
@@ -48,12 +38,11 @@ func newTestIndexer(t *testing.T) (*Indexer, string) {
 	}
 
 	idx := New(pair, notesDir, slog.Default())
-	// Pin the clock for deterministic UpdatedAtUnix in tests.
+
 	idx.nowUnix = func() int64 { return 1730000000 }
 	return idx, notesDir
 }
 
-// rec1 returns a NoteRecord with stable values for path "a.md".
 func rec1(id uuid.UUID) notes.NoteRecord {
 	return notes.NoteRecord{
 		ID:            id,
@@ -61,7 +50,7 @@ func rec1(id uuid.UUID) notes.NoteRecord {
 		Title:         "First",
 		MTimeUnix:     1700000000,
 		SizeBytes:     42,
-		Checksum:      "", // Phase 2: ALWAYS empty
+		Checksum:      "",
 		UpdatedAtUnix: 1730000000,
 	}
 }
@@ -131,7 +120,7 @@ func TestUpsert_CaseCollision_DifferentID(t *testing.T) {
 	}
 
 	idB := uuid.New()
-	r := rec1(idB) // same path, different id
+	r := rec1(idB)
 	err := idx.Upsert(context.Background(), r)
 	if err == nil {
 		t.Fatalf("upsert B: got nil, want ErrCaseCollision")
@@ -201,7 +190,6 @@ func TestList_OrderedByPathASC(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
 
-	// Insert in reverse-alphabetical order.
 	r := rec1(uuid.New())
 	r.Path = "z.md"
 	if err := idx.Upsert(context.Background(), r); err != nil {
@@ -262,16 +250,12 @@ func TestList_TitleAndUpdatedAtPopulated(t *testing.T) {
 	if got[0].Title != "First" {
 		t.Errorf("Title: got %q, want %q", got[0].Title, "First")
 	}
-	// UpdatedAt is mtime_unix -> time.Time, NOT index-touch time.
+
 	if got[0].UpdatedAt.Unix() != r.MTimeUnix {
 		t.Errorf("UpdatedAt: got %d, want %d (file mtime, NOT index-touch %d)",
 			got[0].UpdatedAt.Unix(), r.MTimeUnix, r.UpdatedAtUnix)
 	}
 }
-
-// ----------------------------------------------------------------------
-// Plan 03-03 Task 1: Index extensions for tree projection + folder ops
-// ----------------------------------------------------------------------
 
 // TestLookupByPath_Hit — Insert a row via Upsert, then LookupByPath
 // returns the same NoteRecord (every field round-trips).
@@ -320,7 +304,6 @@ func TestLookupByPath_Miss(t *testing.T) {
 	}
 }
 
-// upsertAt is a helper that inserts a row with a given path + fresh UUID.
 func upsertAt(t *testing.T, idx *Indexer, path string) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
@@ -417,7 +400,7 @@ func TestMovePathPrefix_CollisionWithForeignRow(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("len: got %d, want 2", len(got))
 	}
-	// Both rows survive at their original paths.
+
 	paths := map[string]bool{}
 	for _, s := range got {
 		paths[s.Path] = true
@@ -460,7 +443,7 @@ func TestMovePathPrefix_LikeEscape_Underscore(t *testing.T) {
 	idx, _ := newTestIndexer(t)
 
 	upsertAt(t, idx, "old_actual/note.md")
-	upsertAt(t, idx, "olda/note.md") // would match if `_` works as LIKE wildcard
+	upsertAt(t, idx, "olda/note.md")
 
 	n, err := idx.MovePathPrefix(context.Background(), "old_actual/", "new/")
 	if err != nil {
@@ -540,11 +523,8 @@ func TestDeleteByPathPrefix_LikeEscape(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
 
-	// Note: a literal % in a stored path is unusual but legal as raw
-	// bytes in SQLite — the canonical relpath layer accepts it (it's
-	// not a path separator). The LIKE-escape is what protects us.
 	upsertAt(t, idx, "evidence%/note.md")
-	upsertAt(t, idx, "evidencex/note.md") // would match if `%` works as LIKE wildcard
+	upsertAt(t, idx, "evidencex/note.md")
 
 	n, err := idx.DeleteByPathPrefix(context.Background(), "evidence%")
 	if err != nil {
@@ -559,7 +539,6 @@ func TestDeleteByPathPrefix_LikeEscape(t *testing.T) {
 	}
 }
 
-// startsWith is a tiny helper to keep test reads clean.
 func startsWith(s, prefix string) bool {
 	if len(prefix) > len(s) {
 		return false
@@ -585,13 +564,11 @@ func TestUpsert_NFC_Equivalence(t *testing.T) {
 
 	idA := uuid.New()
 	r := rec1(idA)
-	r.Path = norm.NFC.String("café.md") // canonical form
+	r.Path = norm.NFC.String("café.md")
 	if err := idx.Upsert(context.Background(), r); err != nil {
 		t.Fatalf("upsert A: %v", err)
 	}
 
-	// Caller passes a different id with the SAME canonical path bytes —
-	// expected to collide because (path, id) row already exists.
 	idB := uuid.New()
 	r = rec1(idB)
 	r.Path = norm.NFC.String("café.md")
@@ -604,20 +581,6 @@ func TestUpsert_NFC_Equivalence(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Plan 07-43 (UAT-8): FTS5 prefix-match query rewriter
-//
-// prefixWrap auto-appends '*' to bare-text tokens so FTS5 MATCH returns
-// prefix matches for incremental typing ("te" → "te*" matches "test"). When
-// the user has typed FTS5 syntax (quoted phrases, AND/OR/NOT/NEAR, parens,
-// colons), the query passes through unchanged so we don't second-guess
-// intentional FTS5 queries.
-//
-// Threat invariant (T-7-08): prefixWrap rewrites the STRING value bound
-// positionally to ?1 — it does NOT construct SQL. The positional bind in
-// SearchFTS is preserved. No SQL string-concatenation is introduced.
-// ──────────────────────────────────────────────────────────────────────────────
-
 // TestPrefixWrap covers SFT-PREFIX-1..5: the pure string-to-string rewriter.
 func TestPrefixWrap(t *testing.T) {
 	t.Parallel()
@@ -626,17 +589,16 @@ func TestPrefixWrap(t *testing.T) {
 		in   string
 		want string
 	}{
-		// SFT-PREFIX-1
 		{"single bare token gets *", "te", "te*"},
-		// SFT-PREFIX-2
+
 		{"two bare tokens each get *", "test driven", "test* driven*"},
-		// SFT-PREFIX-3
+
 		{"quoted phrase passes through", `"exact phrase"`, `"exact phrase"`},
-		// SFT-PREFIX-4
+
 		{"AND operator passes through", "foo AND bar", "foo AND bar"},
-		// SFT-PREFIX-5
+
 		{"empty stays empty", "", ""},
-		// Additional safety coverage
+
 		{"OR operator passes through", "foo OR bar", "foo OR bar"},
 		{"NOT operator passes through", "foo NOT bar", "foo NOT bar"},
 		{"NEAR operator passes through", "foo NEAR bar", "foo NEAR bar"},
@@ -646,7 +608,7 @@ func TestPrefixWrap(t *testing.T) {
 		{"mixed prefixed + bare tokens normalized", "te* bar", "te* bar*"},
 		{"surrounding whitespace trimmed", "  hello  ", "hello*"},
 		{"internal multiple spaces collapsed to single", "foo   bar", "foo* bar*"},
-		// Lowercase 'and' is NOT an FTS5 operator — must be rewritten.
+
 		{"lowercase and is not an operator", "and then", "and* then*"},
 	}
 	for _, tc := range cases {

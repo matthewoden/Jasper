@@ -20,8 +20,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
-// fakeStatusProvider lets tests inject a deterministic service.Status
-// without constructing a real kardianos service handle.
 type fakeStatusProvider struct {
 	state service.Status
 	err   error
@@ -29,8 +27,6 @@ type fakeStatusProvider struct {
 
 func (f *fakeStatusProvider) Status() (service.Status, error) { return f.state, f.err }
 
-// withStatusFactory temporarily swaps the package-level factory for the
-// fake. Returns a teardown closure (test calls via t.Cleanup).
 func withStatusFactory(t *testing.T, prov statusProvider) {
 	t.Helper()
 	orig := statusFactory
@@ -38,8 +34,6 @@ func withStatusFactory(t *testing.T, prov statusProvider) {
 	t.Cleanup(func() { statusFactory = orig })
 }
 
-// writeMinimalConfig creates <dataDir>/storage/config.json with the
-// given Server.Port / MCP block so config.Load resolves cleanly.
 func writeMinimalConfig(t *testing.T, dataDir string, cfg config.Config) {
 	t.Helper()
 	storageDir := filepath.Join(dataDir, "storage")
@@ -104,9 +98,7 @@ func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 		t.Fatalf("runStatus: %v", err)
 	}
 	out := buf.String()
-	// Plan 08-23 (R4-15): Path comes through vault.Canonicalize which
-	// EvalSymlinks (turning /var/... into /private/var/... on macOS) and
-	// lowercases on darwin. Compute expected dir the same way.
+
 	canon, err := vault.Canonicalize(dir)
 	if err != nil {
 		t.Fatalf("canonicalize: %v", err)
@@ -140,7 +132,6 @@ func TestRunStatus_McpEnabledWithGrants(t *testing.T) {
 	})
 	withStatusFactory(t, &fakeStatusProvider{state: service.StatusRunning})
 
-	// Seed an app.db with two grants.
 	storageDir := filepath.Join(dir, "storage")
 	if err := os.MkdirAll(storageDir, 0o755); err != nil {
 		t.Fatalf("mkdir storage: %v", err)
@@ -231,8 +222,6 @@ func TestStatusCmd_Registered(t *testing.T) {
 	}
 }
 
-// writeAppJSON writes a vault.AppState to JASPER_APP_HOME/app.json and
-// returns the path to the app.json file.
 func writeAppJSON(t *testing.T, appHome string, state *vault.AppState) string {
 	t.Helper()
 	if err := os.MkdirAll(appHome, 0o700); err != nil {
@@ -251,12 +240,11 @@ func TestStatus_PrintsVaultFromAppJSON(t *testing.T) {
 	dir := t.TempDir()
 	appHome := filepath.Join(dir, "appHome")
 	t.Setenv("JASPER_APP_HOME", appHome)
-	// Clear vault flag so app.json is the source.
+
 	orig := vaultFlag
 	vaultFlag = ""
 	t.Cleanup(func() { vaultFlag = orig })
 
-	// Create a temp "vault" dir.
 	vaultDir := filepath.Join(dir, "myvault")
 	if err := os.MkdirAll(vaultDir, 0o700); err != nil {
 		t.Fatalf("mkdir vault: %v", err)
@@ -274,7 +262,6 @@ func TestStatus_PrintsVaultFromAppJSON(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.SetOut(&buf)
 
-	// Ignore errors (e.g. "not yet set up") since we didn't write a config.json.
 	_ = runStatus(cmd, nil)
 	out := buf.String()
 	if !strings.Contains(out, "Vault:") {
@@ -294,12 +281,11 @@ func TestStatus_NoVaultSelectedShowsPickerMessage(t *testing.T) {
 	dir := t.TempDir()
 	appHome := filepath.Join(dir, "appHome")
 	t.Setenv("JASPER_APP_HOME", appHome)
-	// Plan 08-23 (R4-15): no JASPER_DATA_DIR fallback exists post-removal.
+
 	orig := vaultFlag
 	vaultFlag = ""
 	t.Cleanup(func() { vaultFlag = orig })
 
-	// Write empty app.json.
 	state := &vault.AppState{RecentVaults: []vault.RecentVaultEntry{}}
 	writeAppJSON(t, appHome, state)
 

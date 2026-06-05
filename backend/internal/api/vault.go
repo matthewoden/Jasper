@@ -1,20 +1,5 @@
 package api
 
-// vault.go — Plan 08-17b Task 1: /vault/* handler implementations.
-//
-// Five strict-server methods implementing the vault registry surface
-// declared in api/openapi.yaml:
-//
-//   - GetVaultCurrent     GET  /api/v1/vault/current
-//   - GetVaultRecent      GET  /api/v1/vault/recent
-//   - PostVaultOpen       POST /api/v1/vault/open
-//   - PostVaultCreate     POST /api/v1/vault/create
-//   - PostVaultForget     POST /api/v1/vault/forget
-//
-// All handlers read/write via vault.LoadAppJSON + vault.SaveAppJSON —
-// no direct disk I/O except in PostVaultCreate's mkdir + migrations step.
-// None panics on missing app.json (loader auto-creates).
-
 import (
 	"context"
 	"fmt"
@@ -46,9 +31,6 @@ type VaultSwitcher interface {
 	CurrentVaultPath() string
 }
 
-// switchInProgressMsg is the error message returned by app.ErrSwitchInProgress.
-// The handler compares on this string to detect concurrent-switch 409s without
-// needing to import the app package (import cycle: app → api → app).
 const switchInProgressMsg = "vault switch already in progress"
 
 // SetVaultSwitcher wires the hot-swap entry point into the Server so the
@@ -117,11 +99,9 @@ func (s *Server) GetVaultCurrent(
 	}
 
 	if state.CurrentVault == "" {
-		// No vault open — return {vault: null}.
 		return GetVaultCurrent200JSONResponse{Vault: nil}, nil
 	}
 
-	// Find the matching entry in recent_vaults.
 	for _, e := range state.RecentVaults {
 		if e.Path == state.CurrentVault {
 			entry := toWireRecentVaultEntry(e)
@@ -129,8 +109,6 @@ func (s *Server) GetVaultCurrent(
 		}
 	}
 
-	// current_vault set but not in recent_vaults — shouldn't happen,
-	// but be safe: return null so the picker renders.
 	return GetVaultCurrent200JSONResponse{Vault: nil}, nil
 }
 
@@ -193,13 +171,6 @@ func (s *Server) PostVaultOpen(
 		return PostVaultOpen400JSONResponse(newError("invalid_path", err.Error())), nil
 	}
 
-	// Refuse opening a folder whose .jasper/ IS the app registry. Catches
-	// the inverse of the create-handler footgun: picking $HOME and clicking
-	// "Open" would otherwise treat $HOME/.jasper as a vault marker and run
-	// migrations against the directory that holds app.json — corrupting
-	// the registry. Comparison goes through Canonicalize on both sides so
-	// the symlink-resolved + darwin-lowercased `canonical` matches a
-	// canonicalized AppHomePath.
 	if rawAppHome, appHomeErr := vault.AppHomePath(); appHomeErr == nil {
 		appHomeCanonical, cErr := vault.Canonicalize(rawAppHome)
 		if cErr != nil {
@@ -213,7 +184,6 @@ func (s *Server) PostVaultOpen(
 		}
 	}
 
-	// Verify .jasper/ exists (V14 invariant — missing .jasper is an error, not auto-rebuild).
 	jasperDir := filepath.Join(canonical, ".jasper")
 	info, statErr := os.Stat(jasperDir)
 	if statErr != nil || !info.IsDir() {
@@ -221,7 +191,6 @@ func (s *Server) PostVaultOpen(
 			"the folder exists but does not contain a .jasper/ directory; create a vault here first")), nil
 	}
 
-	// Update app.json: register/refresh the vault entry.
 	appJSONPath, err := vault.AppJSONPath()
 	if err != nil {
 		return nil, fmt.Errorf("PostVaultOpen: resolve app home: %w", err)
@@ -231,7 +200,6 @@ func (s *Server) PostVaultOpen(
 		return nil, fmt.Errorf("PostVaultOpen: load app.json: %w", err)
 	}
 
-	// Determine display name from existing entry if present.
 	displayName := filepath.Base(canonical)
 	for _, e := range state.RecentVaults {
 		if e.Path == canonical {
@@ -244,27 +212,21 @@ func (s *Server) PostVaultOpen(
 	if err := vault.SaveAppJSON(appJSONPath, state); err != nil {
 		return nil, fmt.Errorf("PostVaultOpen: save app.json: %w", err)
 	}
-	BootBanner = "" // V13/V14 banner cleared on successful open.
+	BootBanner = ""
 
-	// In-place transition: bring up the per-vault subsystems against the
-	// just-registered vault so the running listener serves /notes etc.
-	// without a process restart. When the opener isn't wired (Phase-1-shape
-	// tests, older code paths) skip — app.json is already updated, and the
-	// next process boot will pick it up via lifecycle.Run.
 	if s.vaultOpener != nil {
 		if err := s.vaultOpener.OpenVault(ctx, canonical); err != nil {
 			return nil, fmt.Errorf("PostVaultOpen: open in place: %w", err)
 		}
 	}
 
-	// Find the entry we just touched.
 	for _, e := range state.RecentVaults {
 		if e.Path == canonical {
 			wire := toWireRecentVaultEntry(e)
 			return PostVaultOpen200JSONResponse(wire), nil
 		}
 	}
-	// Shouldn't be reachable — TouchOpened guarantees the entry is in the list.
+
 	return nil, fmt.Errorf("PostVaultOpen: entry not found after TouchOpened")
 }
 
@@ -305,18 +267,6 @@ func (s *Server) PostVaultCreate(
 		return PostVaultCreate400JSONResponse(newError("invalid_path", err.Error())), nil
 	}
 
-	// Resolve the app home (e.g. ~/.jasper) so the "already a vault" and
-	// "nested vault" checks below can distinguish vault data dirs from the
-	// app registry. Without this guard, picking $HOME (or any ancestor of
-	// $HOME/.jasper) as a vault location trips on the app registry that
-	// boot itself creates — the "vault model first-boot blocks the user
-	// from creating their first vault under $HOME" bug.
-	//
-	// Both sides of every equality test need to be in the same canonical
-	// form (symlinks resolved, darwin-lowercased) since `canonical` above
-	// went through vault.Canonicalize. We push the raw AppHomePath through
-	// Canonicalize too — falling back to the raw form if Canonicalize fails
-	// (e.g. app home doesn't exist yet on a fresh first boot).
 	appHomeCanonical := ""
 	if raw, err := vault.AppHomePath(); err == nil {
 		if c, cErr := vault.Canonicalize(raw); cErr == nil {
@@ -326,29 +276,18 @@ func (s *Server) PostVaultCreate(
 		}
 	}
 
-	// Refuse picking the app home itself as a vault — it would mix per-vault
-	// data (DBs, indexer state) into the same directory as app.json and the
-	// app-level logs, and any subsequent boot would not be able to tell what
-	// to load. Catches the "user picks ~/.jasper as a vault" footgun.
 	if appHomeCanonical != "" && canonical == appHomeCanonical {
 		return PostVaultCreate400JSONResponse(newError("invalid_path",
 			"cannot create a vault at the Jasper app home directory ("+appHomeCanonical+
 				"); choose a different folder")), nil
 	}
 
-	// Parent directory must exist.
 	parent := filepath.Dir(canonical)
 	if _, parentErr := os.Stat(parent); os.IsNotExist(parentErr) {
 		return PostVaultCreate400JSONResponse(newError("parent_missing",
 			"the parent folder doesn't exist; create it first")), nil
 	}
 
-	// Already a vault? The candidate's <path>/.jasper/ is treated as a vault
-	// marker UNLESS it IS the app home registry itself (canonical == $HOME
-	// and jasperDir == ~/.jasper). Same logic, two-way: equal app home →
-	// it's the registry, not a vault. jasperDir is canonicalized before
-	// comparison so the symlink-resolved + darwin-lowercased `appHomeCanonical`
-	// has something equivalent to match against.
 	jasperDir := filepath.Join(canonical, ".jasper")
 	if _, jasperErr := os.Stat(jasperDir); jasperErr == nil {
 		if jasperDirCanon, cErr := vault.Canonicalize(jasperDir); cErr != nil ||
@@ -358,11 +297,6 @@ func (s *Server) PostVaultCreate(
 		}
 	}
 
-	// Nested-vault detection (T-17b-02): walk ancestors for any .jasper/
-	// directory. Skip ancestor matches that ARE the app home — finding
-	// ~/.jasper while creating a vault at ~/anything is expected (the
-	// app home lives next to the user's vaults, not above them in the
-	// nesting sense).
 	cur := canonical
 	for {
 		anc := filepath.Dir(cur)
@@ -380,7 +314,6 @@ func (s *Server) PostVaultCreate(
 		cur = anc
 	}
 
-	// Determine display name and optional per-vault settings.
 	displayName := filepath.Base(canonical)
 	if req.Body.DisplayName != nil && *req.Body.DisplayName != "" {
 		displayName = *req.Body.DisplayName
@@ -398,9 +331,6 @@ func (s *Server) PostVaultCreate(
 		mcpEnabled = *req.Body.McpEnabled
 	}
 
-	// Delegate the actual vault creation to vault.CreateVault which is also
-	// called by the /setup legacy alias (firstrun.RunSetup). This avoids
-	// duplicating the mkdir→config→migrations→app.json pipeline.
 	appState, createErr := vault.CreateVault(ctx, canonical, vault.CreateOpts{
 		DisplayName:   displayName,
 		Theme:         theme,
@@ -413,13 +343,6 @@ func (s *Server) PostVaultCreate(
 	}
 	BootBanner = ""
 
-	// In-place transition: bring up the per-vault subsystems against the
-	// just-created vault so the running listener serves /notes etc.
-	// without a process restart. vault.CreateVault already wrote .jasper/
-	// + ran migrations + registered the vault as current_vault; OpenVault
-	// re-runs TouchOpened (idempotent) and brings the DB / indexer / API
-	// router online. When the opener isn't wired (Phase-1-shape tests),
-	// skip — disk state is correct, next process boot picks it up.
 	if s.vaultOpener != nil {
 		if err := s.vaultOpener.OpenVault(ctx, canonical); err != nil {
 			return nil, fmt.Errorf("PostVaultCreate: open in place: %w", err)
@@ -453,7 +376,6 @@ func (s *Server) PostVaultSwitch(
 	}
 
 	if s.vaultSwitcher == nil {
-		// No vault is currently open; cannot switch.
 		return PostVaultSwitch400JSONResponse(newError("no_vault_open",
 			"no vault is currently open; use /vault/open to open a vault first")), nil
 	}
@@ -468,8 +390,6 @@ func (s *Server) PostVaultSwitch(
 
 	entry, err := s.vaultSwitcher.SwitchVault(ctx, rawPath)
 	if err != nil {
-		// V5: concurrent switch in progress — return 409 with current_target.
-		// We match on message string to avoid an import cycle (app → api → app).
 		if err.Error() == switchInProgressMsg {
 			currentTarget := s.vaultSwitcher.CurrentVaultPath()
 			return PostVaultSwitch409JSONResponse{
@@ -493,14 +413,11 @@ func (s *Server) PostVaultForget(
 	req PostVaultForgetRequestObject,
 ) (PostVaultForgetResponseObject, error) {
 	if req.Body == nil {
-		return PostVaultForget200Response{}, nil // idempotent — nothing to do
+		return PostVaultForget200Response{}, nil
 	}
 
 	rawPath := req.Body.Path
-	// Canonicalize if possible; if it fails just use the raw path so
-	// the forget is still attempted (the entry was registered with a
-	// canonical path, so a non-canonical input won't match — that's
-	// the idempotent "wasn't in the list" case).
+
 	canonical := rawPath
 	if filepath.IsAbs(rawPath) {
 		if c, canErr := vault.Canonicalize(rawPath); canErr == nil {
@@ -523,10 +440,6 @@ func (s *Server) PostVaultForget(
 	return PostVaultForget200Response{}, nil
 }
 
-// --- helpers ---
-
-// toWireRecentVaultEntry maps a vault.RecentVaultEntry to the generated
-// api.RecentVaultEntry wire type.
 func toWireRecentVaultEntry(e vault.RecentVaultEntry) RecentVaultEntry {
 	return RecentVaultEntry{
 		Path:         e.Path,
@@ -537,9 +450,6 @@ func toWireRecentVaultEntry(e vault.RecentVaultEntry) RecentVaultEntry {
 	}
 }
 
-// validateVaultPath applies the ASCII+NFC constraint (V-PARK-1) shared
-// between PostVaultOpen and PostVaultCreate. Path must already be absolute
-// (caller checks this before calling validateVaultPath).
 func validateVaultPath(p string) error {
 	if !norm.NFC.IsNormalString(p) {
 		return fmt.Errorf("path must be NFC-normalized")
@@ -552,10 +462,6 @@ func validateVaultPath(p string) error {
 	return nil
 }
 
-// vaultMigrationsFS returns the migrations fs.FS to use for vault creation.
-// Production: the Server's migrationsFS (wired by app.New/lifecycle.Run),
-// falling back to the embedded migrations.FS. Test override: migrationsFS
-// is wired via SetMigrationsFS (same pattern as firstrun.RunSetup).
 func vaultMigrationsFS(s *Server) fs.FS {
 	if s.migrationsFS != nil {
 		return s.migrationsFS

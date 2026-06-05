@@ -55,21 +55,15 @@ func TestExtractTags(t *testing.T) {
 		{
 			name:  "uppercase and non-ASCII stripped",
 			input: "---\ntags: [\"PrøJect\"]\n---",
-			// P→p, r→r, ø stripped (non-ASCII), J→j, e→e, c→c, t→t = "prject"
+
 			want: []string{"prject"},
 		},
 		{
-			// TOML frontmatter — goldmark/frontmatter DOES support TOML (+++ fences).
-			// Asserting the actual behavior: tags returned as expected.
 			name:  "TOML frontmatter",
 			input: "+++\ntags = [\"foo\"]\n+++\nbody",
 			want:  []string{"foo"},
 		},
 		{
-			// Duplicate tags collapse after normalization (D-22).
-			// Tags: [foo, foo, FOO] — after normalize: [foo, foo, foo]; dedupe → [foo].
-			// Comment in code explains why we dedupe AFTER normalization: if we deduped
-			// before normalizing, "FOO" would slip through as a distinct key.
 			name:  "duplicate tags collapse",
 			input: "---\ntags: [foo, foo, FOO]\n---",
 			want:  []string{"foo"},
@@ -216,7 +210,7 @@ func TestExtractBodyTags(t *testing.T) {
 		},
 		{
 			name: "tag inside inline code span - IS extracted (server-side behavior pinned)",
-			// Server does not skip inline code spans; editor plugin handles visual suppression
+
 			input: "text `#foo` text",
 			want:  []string{"foo"},
 		},
@@ -285,9 +279,9 @@ func TestRewriteFrontmatterTags(t *testing.T) {
 		name      string
 		input     string
 		canonical []string
-		wantSame  bool // true if we expect content unchanged
+		wantSame  bool
 		wantErr   bool
-		checkTags []string // if non-nil, parse the result and verify tags
+		checkTags []string
 	}{
 		{
 			name:      "no frontmatter - content unchanged",
@@ -296,10 +290,6 @@ func TestRewriteFrontmatterTags(t *testing.T) {
 			wantSame:  true,
 		},
 		{
-			// Note: the caller (Service.Update) checks slices.Equal(canonical, tags) before
-			// calling RewriteFrontmatterTags, skipping the call when canonical==tags.
-			// This function always rewrites when called. "wantSame: false" here is correct.
-			// We verify the result has the right tags via checkTags.
 			name:      "canonical same tags different order - result has canonical order",
 			input:     "---\ntags: [foo, bar]\n---\nbody",
 			canonical: []string{"bar", "foo"},
@@ -340,7 +330,6 @@ func TestRewriteFrontmatterTags(t *testing.T) {
 				t.Errorf("expected content unchanged, got different:\n  want: %q\n   got: %q", tc.input, string(got))
 			}
 			if tc.checkTags != nil {
-				// Parse the result and verify tags via ExtractTags
 				parsed := ExtractTags(got)
 				if len(parsed) != len(tc.checkTags) {
 					t.Errorf("tag count mismatch: got %v (%d), want %v (%d)", parsed, len(parsed), tc.checkTags, len(tc.checkTags))

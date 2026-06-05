@@ -17,10 +17,6 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// openTestDB opens a fresh on-disk SQLite database in t.TempDir() with
-// foreign-key enforcement enabled, applies all provided SQL bytes in
-// order, and returns the open *sql.DB. The caller must not close it —
-// t.Cleanup handles that.
 func openTestDB(t *testing.T, sqls ...string) *sql.DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -31,7 +27,6 @@ func openTestDB(t *testing.T, sqls ...string) *sql.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	// Apply each SQL block in order (mimicking the migration runner).
 	for i, s := range sqls {
 		if _, err := db.ExecContext(context.Background(), s); err != nil {
 			t.Fatalf("exec sql[%d]: %v", i, err)
@@ -40,7 +35,6 @@ func openTestDB(t *testing.T, sqls ...string) *sql.DB {
 	return db
 }
 
-// readMigration reads a named file from migrations.FS and returns its contents.
 func readMigration(t *testing.T, name string) string {
 	t.Helper()
 	data, err := migrations.FS.ReadFile(name)
@@ -135,7 +129,6 @@ func TestMigration002_NoteTagsCascadeDelete(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Insert a note row.
 	const noteID = "00000000-0000-4000-a000-000000000001"
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO notes(id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at)
@@ -144,7 +137,6 @@ func TestMigration002_NoteTagsCascadeDelete(t *testing.T) {
 		t.Fatalf("insert note: %v", err)
 	}
 
-	// Insert a tag and a note_tags join row.
 	res, err := db.ExecContext(ctx, `INSERT INTO tags(name) VALUES('mytest')`)
 	if err != nil {
 		t.Fatalf("insert tag: %v", err)
@@ -157,7 +149,6 @@ func TestMigration002_NoteTagsCascadeDelete(t *testing.T) {
 		t.Fatalf("insert note_tags: %v", err)
 	}
 
-	// Delete the note — note_tags row should cascade.
 	if _, err := db.ExecContext(ctx, `DELETE FROM notes WHERE id=?`, noteID); err != nil {
 		t.Fatalf("delete note: %v", err)
 	}
@@ -192,9 +183,6 @@ func TestMigration002_EmbeddedFSListsFile(t *testing.T) {
 	}
 }
 
-// applyAllMigrations replays every embedded *.sql file in
-// lexicographic order against the test DB so Phase 8 assertions can
-// rely on the full migration chain (001+002+003+004).
 func applyAllMigrations(t *testing.T) *sql.DB {
 	t.Helper()
 	entries, err := fs.ReadDir(migrations.FS, ".")
@@ -285,8 +273,6 @@ VALUES('projects/x', 2, 1700000001, 'tree-context-menu')`)
 	}
 }
 
-// contains is a local helper that avoids pulling in strings just for
-// the error-message sniffs above (keeps the imports list lean).
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {

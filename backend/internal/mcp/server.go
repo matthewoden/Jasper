@@ -1,27 +1,3 @@
-// Phase 8 Plan 08-09 (D-14 / D-16 / D-46): MCP server wiring using the
-// official modelcontextprotocol/go-sdk. The server is embedded in
-// jasper serve as a SECOND HTTP listener (D-15), gated behind the same
-// lifecycle.Ready() signal that gates the primary API (D-23). The
-// listener wiring lives in listener.go; this file owns the SDK
-// composition + tool registration.
-//
-// The tool surface (D-16) is split into:
-//
-//   - 4 read tools (no ACL check): list_notes, read_note, search_notes,
-//     read_attachment.
-//   - 2 Tier-1 write tools (ACL.CanCreate / CanUpdate): create_note,
-//     update_note.
-//   - 2 Tier-2 write tools (ACL.CanMove / CanDelete): move_note,
-//     delete_note.
-//
-// Each write tool funnels through notes.Service so atomic-write +
-// frontmatter scaffold + SYNC-06 If-Match propagate transparently
-// (D-56). The WS event is broadcast by notes.Service itself (D-57), so
-// the MCP layer never emits a duplicate event.
-//
-// Per D-21 every successful write tool logs an INFO line of the form
-// `mcp.write tool=<name> path=<path> level=<int>` for audit.
-
 package mcp
 
 import (

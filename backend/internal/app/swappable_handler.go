@@ -5,35 +5,10 @@ import (
 	"sync/atomic"
 )
 
-// swappableHandler is an http.Handler that delegates to an inner Handler
-// read atomically on every request. Replaces the previous pattern of
-// setting http.Server.Handler at construction time — that captured the
-// initial picker-shell handler in no-vault mode, so a later transition
-// to vault-open (via the create or open flow) had no way to swap the
-// router on the running listener without rebinding the port.
-//
-// Use:
-//
-//	sh := newSwappableHandler(initialHandler)
-//	srv := &http.Server{Addr: addr, Handler: sh}
-//	// Later, from any goroutine:
-//	sh.Swap(newRouter)  // every subsequent request uses newRouter
-//
-// Concurrency: Swap is lock-free via atomic.Pointer. Concurrent
-// ServeHTTP reads pick up either the old or new handler in a
-// happens-before ordering — a request that started ServeHTTP before
-// Swap may finish against the old handler, which is fine; new
-// requests after Swap use the new handler.
-//
-// Nil-safety: if the handler is nil at request time (only possible
-// pre-construction via the zero value), respond 503 with a plain-text
-// "no handler" so the failure is loud rather than a panic.
 type swappableHandler struct {
 	inner atomic.Pointer[http.Handler]
 }
 
-// newSwappableHandler returns a swappableHandler initialized with the
-// given Handler. Callers can swap later via Swap.
 func newSwappableHandler(initial http.Handler) *swappableHandler {
 	sh := &swappableHandler{}
 	sh.Swap(initial)

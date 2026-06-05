@@ -1,11 +1,5 @@
 package fsstore
 
-// File-level documentation: package-level docs live in canonicalize.go.
-// This file owns the higher-level CRUD primitives (Create/Delete/Move for
-// files and directories). Each primitive routes through Canonicalize FIRST
-// so the data-root invariant from Phase 1 (Pitfall 2) holds for every
-// entry point.
-
 import (
 	"errors"
 	"fmt"
@@ -151,7 +145,7 @@ func CreateDir(rootDir, relPath string) error {
 	if err := os.Mkdir(abs, 0o755); err != nil {
 		return fmt.Errorf("fsstore.CreateDir(%q): mkdir: %w", relPath, err)
 	}
-	// Fsync the parent so the new directory entry is durable across power loss.
+
 	dirf, err := os.Open(parent)
 	if err != nil {
 		return fmt.Errorf("fsstore.CreateDir(%q): open parent for fsync: %w", relPath, err)
@@ -179,8 +173,6 @@ func DeleteDir(rootDir, relPath string, recursive bool) error {
 		return fmt.Errorf("fsstore.DeleteDir(%q): %w", relPath, err)
 	}
 	if !recursive {
-		// Open + Readdirnames(1) — cheaper than ReadDir which slurps the whole
-		// list. If the dir doesn't exist, os.Open returns fs.ErrNotExist.
 		df, err := os.Open(abs)
 		if err != nil {
 			return fmt.Errorf("fsstore.DeleteDir(%q): %w", relPath, err)
@@ -188,8 +180,6 @@ func DeleteDir(rootDir, relPath string, recursive bool) error {
 		names, readErr := df.Readdirnames(1)
 		closeErr := df.Close()
 		if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) && readErr.Error() != "EOF" {
-			// Note: an empty directory returns io.EOF from Readdirnames — that's
-			// the success path here. Any other error propagates.
 			return fmt.Errorf("fsstore.DeleteDir(%q): readdir: %w", relPath, readErr)
 		}
 		if closeErr != nil {
@@ -203,9 +193,7 @@ func DeleteDir(rootDir, relPath string, recursive bool) error {
 		}
 		return nil
 	}
-	// Recursive path. Defense in depth: re-stat that the path actually exists
-	// and IS a directory (RemoveAll on a missing path is a no-op-success, but
-	// the API layer wants ErrNotExist surfaced for 404 mapping).
+
 	info, err := os.Lstat(abs)
 	if err != nil {
 		return fmt.Errorf("fsstore.DeleteDir(%q): %w", relPath, err)
@@ -234,14 +222,10 @@ func MoveDir(rootDir, oldRelPath, newRelPath string) error {
 		return fmt.Errorf("fsstore.MoveDir(new=%q): %w", newRelPath, err)
 	}
 
-	// Cycle prevention BEFORE any FS work — same-path or descendant-of-source
-	// is rejected up-front. Both paths have already been NFC+lowercase
-	// canonicalized so a simple prefix check is sufficient.
 	if isPathInside(newAbs, oldAbs) {
 		return fmt.Errorf("fsstore.MoveDir(%q→%q): %w", oldRelPath, newRelPath, ErrCycle)
 	}
 
-	// Source must exist AND be a directory.
 	oldInfo, err := os.Lstat(oldAbs)
 	if err != nil {
 		return fmt.Errorf("fsstore.MoveDir(%q→%q): stat old: %w", oldRelPath, newRelPath, err)
@@ -250,14 +234,12 @@ func MoveDir(rootDir, oldRelPath, newRelPath string) error {
 		return fmt.Errorf("fsstore.MoveDir(%q→%q): source is not a directory", oldRelPath, newRelPath)
 	}
 
-	// Target must not exist.
 	if _, statErr := os.Stat(newAbs); statErr == nil {
 		return fmt.Errorf("fsstore.MoveDir(%q→%q): %w", oldRelPath, newRelPath, ErrCaseCollision)
 	} else if !errors.Is(statErr, fs.ErrNotExist) {
 		return fmt.Errorf("fsstore.MoveDir(%q→%q): stat new: %w", oldRelPath, newRelPath, statErr)
 	}
 
-	// Target's immediate parent must exist.
 	newParent := filepath.Dir(newAbs)
 	if _, err := os.Stat(newParent); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -270,7 +252,6 @@ func MoveDir(rootDir, oldRelPath, newRelPath string) error {
 		return fmt.Errorf("fsstore.MoveDir(%q→%q): rename: %w", oldRelPath, newRelPath, err)
 	}
 
-	// Fsync new parent so the directory-entry change is durable.
 	dirf, err := os.Open(newParent)
 	if err != nil {
 		return fmt.Errorf("fsstore.MoveDir(%q→%q): open parent for fsync: %w", oldRelPath, newRelPath, err)
@@ -285,9 +266,6 @@ func MoveDir(rootDir, oldRelPath, newRelPath string) error {
 	return nil
 }
 
-// isPathInside returns true if child is the same as parent or a descendant.
-// Both arguments must be already-Canonicalized absolute paths. Used by
-// MoveDir to reject cycles (moving a folder into its own subtree).
 func isPathInside(child, parent string) bool {
 	if child == parent {
 		return true

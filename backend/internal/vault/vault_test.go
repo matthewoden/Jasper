@@ -12,10 +12,6 @@ import (
 	"time"
 )
 
-// ──────────────────────────────────────────────────────────────────────────
-// Canonicalize tests
-// ──────────────────────────────────────────────────────────────────────────
-
 // TestCanonicalize_AbsRequired verifies that a relative path returns an error.
 func TestCanonicalize_AbsRequired(t *testing.T) {
 	_, err := Canonicalize("relative/path")
@@ -35,7 +31,6 @@ func TestCanonicalize_EmptyPath(t *testing.T) {
 // TestCanonicalize_TrailingSlashCollapses verifies that "/x/y/" and "/x/y"
 // canonicalize to the same value.
 func TestCanonicalize_TrailingSlashCollapses(t *testing.T) {
-	// Use TempDir so the paths exist (for EvalSymlinks to run).
 	dir := t.TempDir()
 	withSlash := dir + "/"
 	withoutSlash := dir
@@ -59,8 +54,7 @@ func TestCanonicalize_DarwinLowercase(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("darwin-only test")
 	}
-	// Build an abs path that contains uppercase letters.
-	// We use filepath.ToSlash so the test is readable on darwin.
+
 	input := "/Users/Me/Vault"
 	got, err := Canonicalize(input)
 	if err != nil {
@@ -105,10 +99,6 @@ func TestCanonicalize_NonexistentPathStillCleans(t *testing.T) {
 		t.Errorf("Canonicalize(%q) returned empty string", p)
 	}
 }
-
-// ──────────────────────────────────────────────────────────────────────────
-// LoadAppJSON tests
-// ──────────────────────────────────────────────────────────────────────────
 
 // TestLoadAppJSON_FileMissingCreatesEmpty verifies that calling LoadAppJSON
 // against a missing path returns an empty state AND creates the file.
@@ -159,7 +149,7 @@ func TestLoadAppJSON_ValidJSONRoundTrip(t *testing.T) {
 	if len(loaded.RecentVaults) != 3 {
 		t.Fatalf("want 3 entries, got %d", len(loaded.RecentVaults))
 	}
-	// Should be sorted newest-first: c (now), a (now-1h), b (now-2h)
+
 	if loaded.RecentVaults[0].Path != "/vault/c" {
 		t.Errorf("want newest first (/vault/c), got %q", loaded.RecentVaults[0].Path)
 	}
@@ -175,7 +165,6 @@ func TestLoadAppJSON_CorruptBackupAndReset(t *testing.T) {
 	t.Setenv("JASPER_APP_HOME", dir)
 	path := filepath.Join(dir, "app.json")
 
-	// Write garbage JSON.
 	if err := os.WriteFile(path, []byte(`{"current_vault": "/x", "recent_vaults": [`), 0o600); err != nil {
 		t.Fatalf("write corrupt: %v", err)
 	}
@@ -191,7 +180,6 @@ func TestLoadAppJSON_CorruptBackupAndReset(t *testing.T) {
 		t.Errorf("want empty after corrupt-reset, got %d entries", len(state.RecentVaults))
 	}
 
-	// The corrupt file should be backed up as app.json.corrupt.<ts>.
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("readdir: %v", err)
@@ -208,7 +196,6 @@ func TestLoadAppJSON_CorruptBackupAndReset(t *testing.T) {
 		t.Errorf("no app.json.corrupt.* backup file found in %s", dir)
 	}
 
-	// The new app.json should contain empty state.
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read fresh app.json: %v", err)
@@ -229,7 +216,6 @@ func TestLoadAppJSON_MissingFolderMarkedNotDropped(t *testing.T) {
 	t.Setenv("JASPER_APP_HOME", dir)
 	path := filepath.Join(dir, "app.json")
 
-	// Create a vault directory, register it, then delete it.
 	vaultDir := filepath.Join(t.TempDir(), "my-vault")
 	if err := os.Mkdir(vaultDir, 0o700); err != nil {
 		t.Fatalf("mkdir vault: %v", err)
@@ -245,12 +231,10 @@ func TestLoadAppJSON_MissingFolderMarkedNotDropped(t *testing.T) {
 		t.Fatalf("SaveAppJSON: %v", err)
 	}
 
-	// Remove the vault directory.
 	if err := os.Remove(vaultDir); err != nil {
 		t.Fatalf("remove vault: %v", err)
 	}
 
-	// Reload: entry should still be there, but Missing=true.
 	loaded, err := LoadAppJSON(path)
 	if err != nil {
 		t.Fatalf("LoadAppJSON: %v", err)
@@ -275,7 +259,6 @@ func TestSaveAppJSON_AtomicWrite(t *testing.T) {
 		t.Fatalf("SaveAppJSON: %v", err)
 	}
 
-	// No *.tmp.* files should remain.
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("readdir: %v", err)
@@ -284,13 +267,12 @@ func TestSaveAppJSON_AtomicWrite(t *testing.T) {
 		if len(e.Name()) > 4 && e.Name()[len(e.Name())-4:] == ".tmp" {
 			t.Errorf("temp file left behind: %q", e.Name())
 		}
-		// AtomicWrite pattern: base + ".tmp." + random
+
 		if filepath.Ext(e.Name()) == ".tmp" {
 			t.Errorf("temp file left behind: %q", e.Name())
 		}
 	}
 
-	// The file's bytes should be valid JSON.
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read app.json: %v", err)
@@ -300,10 +282,6 @@ func TestSaveAppJSON_AtomicWrite(t *testing.T) {
 		t.Fatalf("parse app.json: %v", err)
 	}
 }
-
-// ──────────────────────────────────────────────────────────────────────────
-// TouchOpened + Forget + SaveAppJSON tests (Task 2)
-// ──────────────────────────────────────────────────────────────────────────
 
 // TestTouchOpened_NewEntryAdded verifies that touching a new path adds it
 // and sets CurrentVault.
@@ -351,7 +329,7 @@ func TestTouchOpened_LRUEvictsAt11thEntry(t *testing.T) {
 	if len(state.RecentVaults) != RecentVaultsCap {
 		t.Errorf("want %d entries (LRU cap), got %d", RecentVaultsCap, len(state.RecentVaults))
 	}
-	// The first entry (/canonical/0) should have been evicted.
+
 	for _, e := range state.RecentVaults {
 		if e.Path == firstPath {
 			t.Errorf("first entry %q should have been evicted by LRU", firstPath)
@@ -378,7 +356,7 @@ func TestForget_RemovesMatchingPath(t *testing.T) {
 			t.Errorf("/b should have been removed")
 		}
 	}
-	// Non-existent path should be a no-op.
+
 	Forget(state, "/nonexistent")
 	if len(state.RecentVaults) != 2 {
 		t.Errorf("want 2 entries after no-op Forget, got %d", len(state.RecentVaults))

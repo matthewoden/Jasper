@@ -25,12 +25,11 @@ import (
 // stdout is a single JSON array, each element shaped like DoctorCheck.
 func TestDoctor_JSONFlag_EmitsParseableArray(t *testing.T) {
 	dir := t.TempDir()
-	// Plan 08-23 (R4-15): JASPER_DATA_DIR removed; use --vault (vaultFlag).
+
 	orig := vaultFlag
 	vaultFlag = dir
 	t.Cleanup(func() { vaultFlag = orig })
-	// Pre-seed the data dir with mode 0700 so checkDataDirPerms doesn't
-	// fail noisily.
+
 	_ = os.Chmod(dir, 0o700)
 	t.Cleanup(func() { doctorJSON = false })
 	doctorJSON = true
@@ -47,7 +46,7 @@ func TestDoctor_JSONFlag_EmitsParseableArray(t *testing.T) {
 	if len(arr) != 11 {
 		t.Errorf("want 11 checks (8 original + 3 vault checks), got %d", len(arr))
 	}
-	// Every entry must have a name and a status field.
+
 	for i, c := range arr {
 		if c.Name == "" {
 			t.Errorf("check[%d] missing name", i)
@@ -83,7 +82,6 @@ func TestDoctor_TextOutput_HasMarkers(t *testing.T) {
 
 // TestCheckPortAvailable_FreePort returns ok when the port is free.
 func TestCheckPortAvailable_FreePort(t *testing.T) {
-	// Bind ephemeral port, capture it, release, then probe.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -205,13 +203,11 @@ func TestCheckLogWritable_OKAndProbeCleanup(t *testing.T) {
 	if r.Status != "ok" {
 		t.Fatalf("want ok, got %+v", r)
 	}
-	// jasper.log MUST NOT have been created — the probe uses a separate
-	// file. This is the Blocker 3 invariant (probe must not corrupt the
-	// JSON slog stream by appending a stray byte).
+
 	if _, err := os.Stat(filepath.Join(dir, "logs", "jasper.log")); err == nil {
 		t.Errorf("jasper.log was created by probe — Blocker 3 regression!")
 	}
-	// .write-probe-* MUST have been removed.
+
 	entries, err := os.ReadDir(filepath.Join(dir, "logs"))
 	if err != nil {
 		t.Fatalf("readdir: %v", err)
@@ -251,8 +247,7 @@ func TestCheckMigrationState_Ok(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	defer func() { _ = db.Close() }()
-	// Apply a schema_migrations table with a version higher than any
-	// embedded migration. The embedded set tops out at 004; we use 999.
+
 	if _, err := db.ExecContext(context.Background(), `
 		CREATE TABLE schema_migrations (
 			version INTEGER PRIMARY KEY,
@@ -331,8 +326,6 @@ func TestDoctorCmd_Registered(t *testing.T) {
 // a fail by pointing the data dir at a nonexistent path (data-dir perms
 // + migration state + log writable will all fail).
 func TestRunDoctor_FailingChecks_ReturnsError(t *testing.T) {
-	// Use a path that resolves to a parent that's a regular file so even
-	// log-writable's mkdir fails.
 	dir := t.TempDir()
 	blocker := filepath.Join(dir, "blocker")
 	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
@@ -353,7 +346,6 @@ func TestRunDoctor_FailingChecks_ReturnsError(t *testing.T) {
 	}
 }
 
-// writeTestAppJSON writes an app.json to JASPER_APP_HOME for doctor tests.
 func writeTestAppJSON(t *testing.T, appHome string, state *vault.AppState) {
 	t.Helper()
 	if err := os.MkdirAll(appHome, 0o700); err != nil {
@@ -388,8 +380,7 @@ func TestDoctor_AppJSONReadableCheck_PassesOnValidFile(t *testing.T) {
 	if !strings.Contains(buf.String(), "app_json_readable") {
 		t.Errorf("want 'app_json_readable' check in output:\n%s", buf.String())
 	}
-	// The app_json_readable check should pass (✓).
-	// Scan for the line containing app_json_readable and verify no ✗ marker.
+
 	for _, line := range strings.Split(buf.String(), "\n") {
 		if strings.Contains(line, "app_json_readable") {
 			if strings.HasPrefix(line, "✗") {
@@ -409,13 +400,11 @@ func TestDoctor_CurrentVaultMissingCheck_FailsAfterDeletion(t *testing.T) {
 	_ = os.Chmod(dir, 0o700)
 	t.Cleanup(func() { doctorJSON = false })
 	doctorJSON = false
-	// Plan 08-23: --vault is the only override now; clear it so app.json
-	// is the source of currentVault for this test.
+
 	orig := vaultFlag
 	vaultFlag = ""
 	t.Cleanup(func() { vaultFlag = orig })
 
-	// Create a vault dir, write app.json pointing at it, then delete the dir.
 	vaultDir := filepath.Join(dir, "vault-to-delete")
 	if err := os.Mkdir(vaultDir, 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -437,7 +426,6 @@ func TestDoctor_CurrentVaultMissingCheck_FailsAfterDeletion(t *testing.T) {
 	cmd.SetOut(&buf)
 	_ = runDoctor(cmd, nil)
 
-	// Look for the ✗ current_vault_exists line.
 	found := false
 	for _, line := range strings.Split(buf.String(), "\n") {
 		if strings.Contains(line, "current_vault_exists") && strings.HasPrefix(line, "✗") {
@@ -459,7 +447,7 @@ func TestDoctor_JSONMode_IncludesNewChecks(t *testing.T) {
 	_ = os.Chmod(dir, 0o700)
 	t.Cleanup(func() { doctorJSON = false })
 	doctorJSON = true
-	// Plan 08-23: clear vaultFlag so app.json drives currentVault.
+
 	orig := vaultFlag
 	vaultFlag = ""
 	t.Cleanup(func() { vaultFlag = orig })
@@ -492,7 +480,6 @@ func TestDoctor_JSONMode_IncludesNewChecks(t *testing.T) {
 	}
 }
 
-// checkNames extracts the Name field from a slice of DoctorCheck.
 func checkNames(arr []DoctorCheck) []string {
 	names := make([]string, len(arr))
 	for i, c := range arr {

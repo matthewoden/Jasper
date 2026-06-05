@@ -1,27 +1,3 @@
-// Package main / smoke_test.go drives the jasper binary end-to-end —
-// builds the production executable in TestMain, then spawns it with
-// unique data dirs and ports to assert each Phase 2 ROADMAP success
-// criterion at the real binary level.
-//
-// Plan 02-06 / Task 3:
-//   - TestSmoke_HappyPath_FreshDB                  (criterion 1)
-//   - TestSmoke_BrokenMigration_FiresPath1_Banner  (criterion 2)
-//   - TestSmoke_DiskFull_ServesStaticPage          (criterion 4)
-//   - TestSmoke_ConcurrentSaves_NoSQLITE_BUSY      (criterion 5)
-//   - TestSmoke_HTTPListenerGatedByMigration       (DESIGN §6.1)
-//   - TestSmoke_ResetAndRebuild_FullPath2Flow      (criterion 3)
-//   - TestSmoke_CaseCollisionRejection             (criterion 6)
-//
-// All tests use:
-//   - JASPER_TEST_MIGRATIONS_DIR to swap migrations FS for an on-disk
-//     dir (Task 3 step 1 wires this through serve.go).
-//   - JASPER_TEST_FORCE_DISK_FULL to force the runner pre-flight to
-//     return ErrDiskFull (Plan 02-03 wired this in
-//     backend/internal/db/migrate/diskspace.go).
-//
-// All tests pre-pick a free port so we know which URL to dial; the
-// jasper binary's --addr flag accepts any loopback host:port pair.
-
 package main
 
 import (
@@ -46,8 +22,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// jasperBin is the path to the built jasper binary. Populated by
-// TestMain at process start.
 var jasperBin string
 
 // TestMain builds the binary once for the whole package run.
@@ -69,9 +43,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// pickFreePort returns a free port the kernel just freed up. Used so
-// the smoke test can spawn the binary on a known port without racing
-// any other process.
 func pickFreePort(t *testing.T) string {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -85,12 +56,6 @@ func pickFreePort(t *testing.T) string {
 	return addr
 }
 
-// spawn starts the jasper binary with the given vault directory, addr, and
-// extra env vars. Returns the *exec.Cmd so the caller can SIGTERM it.
-// stderr/stdout are captured into the returned bytes.Buffer for
-// post-mortem on failure.
-//
-// Plan 08-23 (R4-15): switched from removed `--data-dir` to canonical `--vault`.
 func spawn(t *testing.T, dataDir, addr string, env []string) (*exec.Cmd, *bytes.Buffer) {
 	t.Helper()
 	cmd := exec.Command(jasperBin, "serve", "--vault", dataDir, "--addr", addr)
@@ -104,8 +69,6 @@ func spawn(t *testing.T, dataDir, addr string, env []string) (*exec.Cmd, *bytes.
 	return cmd, &buf
 }
 
-// killAndWait sends SIGTERM, waits up to 6s for the process to exit,
-// and SIGKILLs if it doesn't. Always called via defer.
 func killAndWait(t *testing.T, cmd *exec.Cmd, log *bytes.Buffer) {
 	t.Helper()
 	if cmd.Process == nil {
@@ -116,7 +79,7 @@ func killAndWait(t *testing.T, cmd *exec.Cmd, log *bytes.Buffer) {
 	go func() { done <- cmd.Wait() }()
 	select {
 	case <-done:
-		// graceful exit; ok
+
 	case <-time.After(6 * time.Second):
 		_ = cmd.Process.Kill()
 		<-done
@@ -126,8 +89,6 @@ func killAndWait(t *testing.T, cmd *exec.Cmd, log *bytes.Buffer) {
 	}
 }
 
-// waitForListener probes addr at 50ms intervals until the kernel
-// returns success or the timeout elapses.
 func waitForListener(t *testing.T, addr string, timeout time.Duration) error {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -142,9 +103,6 @@ func waitForListener(t *testing.T, addr string, timeout time.Duration) error {
 	return errors.New("waitForListener: timed out")
 }
 
-// httpGet is a thin wrapper around http.Get that returns status +
-// body. Used for the smoke assertions; we don't bother with a typed
-// client since we're testing wire format directly.
 func httpGet(t *testing.T, url string) (int, []byte) {
 	t.Helper()
 	resp, err := http.Get(url)
@@ -159,7 +117,6 @@ func httpGet(t *testing.T, url string) (int, []byte) {
 	return resp.StatusCode, body
 }
 
-// httpPut sends a PUT with a JSON body.
 func httpPut(t *testing.T, url string, body []byte) (int, []byte) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(body))
@@ -179,7 +136,6 @@ func httpPut(t *testing.T, url string, body []byte) (int, []byte) {
 	return resp.StatusCode, respBody
 }
 
-// httpPost sends a POST with a JSON body.
 func httpPost(t *testing.T, url string, body []byte) (int, []byte) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
@@ -199,7 +155,6 @@ func httpPost(t *testing.T, url string, body []byte) (int, []byte) {
 	return resp.StatusCode, respBody
 }
 
-// copyFile is a small helper used to build the migrations override dir.
 func copyFile(t *testing.T, src, dst string) {
 	t.Helper()
 	data, err := os.ReadFile(src)
@@ -210,10 +165,6 @@ func copyFile(t *testing.T, src, dst string) {
 		t.Fatalf("write %s: %v", dst, err)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// TestSmoke_HappyPath_FreshDB — criterion 1.
-// ---------------------------------------------------------------------------
 
 func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 	dataDir := t.TempDir()
@@ -227,7 +178,6 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 
 	base := "http://" + addr
 
-	// GET /api/v1/notes → 200 with at least 1 entry (scratchpad)
 	status, body := httpGet(t, base+"/api/v1/notes")
 	if status != 200 {
 		t.Fatalf("GET /api/v1/notes status: got %d; body=%s", status, body)
@@ -254,7 +204,6 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 		t.Fatalf("scratchpad.md not in /api/v1/notes; body=%s", body)
 	}
 
-	// GET /api/v1/notes/{ScratchpadUUID} → 200 + welcome content (Phase 1 compat)
 	status, body = httpGet(t, base+"/api/v1/notes/"+notes.ScratchpadUUID.String())
 	if status != 200 {
 		t.Fatalf("GET scratchpad-by-UUID status: got %d; body=%s", status, body)
@@ -263,7 +212,6 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 		t.Errorf("scratchpad body did not contain welcome marker: %s", body)
 	}
 
-	// GET /api/v1/admin/status → 200, state=ok
 	status, body = httpGet(t, base+"/api/v1/admin/status")
 	if status != 200 {
 		t.Fatalf("GET /admin/status status: got %d; body=%s", status, body)
@@ -279,13 +227,12 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 		t.Errorf("admin/status state: got %q, want ok", statusOut.State)
 	}
 
-	// PUT scratchpad → 200; content updated on disk.
 	putBody, _ := json.Marshal(map[string]string{"content": "# Phase 2 smoke"})
 	status, body = httpPut(t, base+"/api/v1/notes/"+notes.ScratchpadUUID.String(), putBody)
 	if status != 200 {
 		t.Fatalf("PUT scratchpad status: got %d; body=%s", status, body)
 	}
-	// Re-GET, confirm
+
 	status, body = httpGet(t, base+"/api/v1/notes/"+notes.ScratchpadUUID.String())
 	if status != 200 {
 		t.Fatalf("re-GET scratchpad status: got %d; body=%s", status, body)
@@ -295,32 +242,13 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// TestSmoke_BrokenMigration_FiresPath1_Banner — criterion 2.
-//
-// Note the runner returns ErrUnrecoverable on a fresh DB whose ONLY
-// migration breaks (no prior schema to roll back to → Path 3, not Path
-// 1). For Path 1 to fire we need a successful first migration and a
-// failing second migration — which is what we set up here: 001_initial
-// applies, 002_break breaks, runner restores backup → state=rolled_back.
-// On a TRULY fresh DB the `BackupBeforeMigration` step is a no-op (no
-// pre-existing app.db), so even with two migrations the runner cannot
-// Path-1-restore. We work around that by spawning the binary twice:
-// first with only 001, then add 002_break and restart.
-// ---------------------------------------------------------------------------
-
 func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 	dataDir := t.TempDir()
 	addr := pickFreePort(t)
 
-	// Set up the override migrations dir with 001_initial.sql copied
-	// from backend/migrations/.
 	overrideDir := t.TempDir()
 	copyFile(t, "../../migrations/001_initial.sql", filepath.Join(overrideDir, "001_initial.sql"))
 
-	// First spawn: only 001 is in the override dir → migrations apply
-	// cleanly → state=ok. This is what creates a "prior schema" so the
-	// next spawn's 002_break failure can roll back to it.
 	env1 := []string{"JASPER_TEST_MIGRATIONS_DIR=" + overrideDir}
 	cmd, log := spawn(t, dataDir, addr, env1)
 
@@ -328,7 +256,7 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 		killAndWait(t, cmd, log)
 		t.Fatalf("first listener never came up; output:\n%s", log.String())
 	}
-	// Sanity check — state is ok.
+
 	status, body := httpGet(t, "http://"+addr+"/api/v1/admin/status")
 	if status != 200 {
 		killAndWait(t, cmd, log)
@@ -336,13 +264,11 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 	}
 	killAndWait(t, cmd, log)
 
-	// Inject the broken migration.
 	if err := os.WriteFile(filepath.Join(overrideDir, "002_break.sql"),
 		[]byte("THIS IS NOT VALID SQL;"), 0o644); err != nil {
 		t.Fatalf("write 002_break.sql: %v", err)
 	}
 
-	// Second spawn: 002_break fails → Path 1 restores → state=rolled_back.
 	addr2 := pickFreePort(t)
 	cmd2, log2 := spawn(t, dataDir, addr2, env1)
 	defer killAndWait(t, cmd2, log2)
@@ -373,36 +299,16 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 		t.Errorf("logs_path empty; want a path under data dir")
 	}
 
-	// GET /api/v1/notes still works on the prior schema.
 	status, body = httpGet(t, "http://"+addr2+"/api/v1/notes")
 	if status != 200 {
 		t.Errorf("GET /api/v1/notes after rollback: got %d; body=%s", status, body)
 	}
-
-	// Note on backup-file persistence after Path 1: the plan text
-	// suggested asserting `app.db.backup` is removed after restore,
-	// but the production RestoreBackup implementation preserves the
-	// backup file (it copies via temp+rename of the live DB, NOT a
-	// rename of the backup itself). This is actually safer for
-	// retry — the backup remains available for a second restore
-	// attempt if the first leaves the DB in a transient bad state.
-	// The DeleteBackup call lives on the success path only. The
-	// smoke test therefore only asserts the rolled_back state +
-	// /notes reachability, and intentionally does NOT assert
-	// backup-file deletion.
 }
-
-// ---------------------------------------------------------------------------
-// TestSmoke_DiskFull_ServesStaticPage — criterion 4.
-// ---------------------------------------------------------------------------
 
 func TestSmoke_DiskFull_ServesStaticPage(t *testing.T) {
 	dataDir := t.TempDir()
 	addr := pickFreePort(t)
 
-	// Step 1: spawn binary normally (no force-disk-full) so a real
-	// SQLite app.db is created with size > 0. This gives the runner
-	// preflight something to size against on the next spawn.
 	cmd, log := spawn(t, dataDir, addr, nil)
 	if err := waitForListener(t, addr, 10*time.Second); err != nil {
 		killAndWait(t, cmd, log)
@@ -410,10 +316,6 @@ func TestSmoke_DiskFull_ServesStaticPage(t *testing.T) {
 	}
 	killAndWait(t, cmd, log)
 
-	// Step 2: spawn again with JASPER_TEST_FORCE_DISK_FULL=1 — the
-	// runner's preflight now sees free=0 + currentSize>0 and aborts
-	// with ErrDiskFull. lifecycle.Run installs the disk-full handler
-	// and serves it on the listener.
 	addr2 := pickFreePort(t)
 	cmd2, log2 := spawn(t, dataDir, addr2, []string{"JASPER_TEST_FORCE_DISK_FULL=1"})
 	defer killAndWait(t, cmd2, log2)
@@ -422,7 +324,6 @@ func TestSmoke_DiskFull_ServesStaticPage(t *testing.T) {
 		t.Fatalf("disk-full listener never came up; output:\n%s", log2.String())
 	}
 
-	// GET / → 503 + locked headline.
 	status, body := httpGet(t, "http://"+addr2+"/")
 	if status != http.StatusServiceUnavailable {
 		t.Errorf("GET / status: got %d, want 503; body=%s", status, body)
@@ -431,7 +332,6 @@ func TestSmoke_DiskFull_ServesStaticPage(t *testing.T) {
 		t.Errorf("body missing locked headline; got:\n%s", body)
 	}
 
-	// GET /api/v1/notes → 503 + JSON unrecoverable.
 	status, body = httpGet(t, "http://"+addr2+"/api/v1/notes")
 	if status != http.StatusServiceUnavailable {
 		t.Errorf("GET /api/v1/notes status: got %d, want 503; body=%s", status, body)
@@ -440,10 +340,6 @@ func TestSmoke_DiskFull_ServesStaticPage(t *testing.T) {
 		t.Errorf("API body missing code=unrecoverable; got: %s", body)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// TestSmoke_ConcurrentSaves_NoSQLITE_BUSY — criterion 5.
-// ---------------------------------------------------------------------------
 
 func TestSmoke_ConcurrentSaves_NoSQLITE_BUSY(t *testing.T) {
 	dataDir := t.TempDir()
@@ -497,22 +393,12 @@ func TestSmoke_ConcurrentSaves_NoSQLITE_BUSY(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// TestSmoke_HTTPListenerGatedByMigration — DESIGN §6.1.
-// ---------------------------------------------------------------------------
-
 func TestSmoke_HTTPListenerGatedByMigration(t *testing.T) {
 	dataDir := t.TempDir()
 	addr := pickFreePort(t)
 	cmd, log := spawn(t, dataDir, addr, nil)
 	defer killAndWait(t, cmd, log)
 
-	// Probe in a tight loop. Before the listener accepts, the kernel
-	// returns ECONNREFUSED. After it accepts, GET /api/v1/admin/status
-	// returns 200. We assert: every connection attempt before the first
-	// success was a clean refusal — never a 502/503/HTML/empty body
-	// (which would indicate the listener accepted before migrations
-	// finished).
 	url := "http://" + addr + "/api/v1/admin/status"
 	deadline := time.Now().Add(10 * time.Second)
 	sawSuccess := false
@@ -523,10 +409,6 @@ func TestSmoke_HTTPListenerGatedByMigration(t *testing.T) {
 			if isConnRefused(err) {
 				preSuccessRefusals++
 			} else {
-				// Some other transport error — connection reset, EOF,
-				// etc. We accept these as "listener not yet ready" too,
-				// since they don't represent the gating failure mode
-				// (an accepted listener returning a partial response).
 				preSuccessRefusals++
 			}
 			time.Sleep(10 * time.Millisecond)
@@ -538,9 +420,7 @@ func TestSmoke_HTTPListenerGatedByMigration(t *testing.T) {
 			sawSuccess = true
 			break
 		}
-		// If we got here, the listener accepted but returned something
-		// that isn't the steady-state /admin/status JSON. That's a
-		// gating failure.
+
 		t.Errorf(
 			"listener accepted before migrations finished: status=%d body=%s",
 			resp.StatusCode, body)
@@ -552,8 +432,6 @@ func TestSmoke_HTTPListenerGatedByMigration(t *testing.T) {
 	}
 }
 
-// isConnRefused returns true for the kernel-level "connection refused"
-// shape across the std http transport's wrapping layers.
 func isConnRefused(err error) bool {
 	if err == nil {
 		return false
@@ -562,17 +440,9 @@ func isConnRefused(err error) bool {
 	return strings.Contains(s, "connection refused") || strings.Contains(s, "ECONNREFUSED")
 }
 
-// ---------------------------------------------------------------------------
-// TestSmoke_ResetAndRebuild_FullPath2Flow — criterion 3.
-// ---------------------------------------------------------------------------
-
 func TestSmoke_ResetAndRebuild_FullPath2Flow(t *testing.T) {
 	dataDir := t.TempDir()
 
-	// First spawn: all three real migrations in override dir → state=ok
-	// (establishes the full schema as the "prior state" to roll back to).
-	// Plan 07-03: the indexer Upsert now writes body_fts/tag_names_fts,
-	// so the base state must include migrations 001+002+003.
 	overrideDir := t.TempDir()
 	copyFile(t, "../../migrations/001_initial.sql", filepath.Join(overrideDir, "001_initial.sql"))
 	copyFile(t, "../../migrations/002_tags_backlinks.sql", filepath.Join(overrideDir, "002_tags_backlinks.sql"))
@@ -585,8 +455,6 @@ func TestSmoke_ResetAndRebuild_FullPath2Flow(t *testing.T) {
 	}
 	killAndWait(t, cmd, log)
 
-	// Inject 004_break.sql and re-spawn → state=rolled_back.
-	// (004_ prefix ensures it sorts after the 3 real migrations.)
 	if err := os.WriteFile(filepath.Join(overrideDir, "004_break.sql"),
 		[]byte("THIS IS NOT VALID SQL;"), 0o644); err != nil {
 		t.Fatalf("write 004_break.sql: %v", err)
@@ -598,7 +466,6 @@ func TestSmoke_ResetAndRebuild_FullPath2Flow(t *testing.T) {
 		t.Fatalf("second listener never came up; output:\n%s", log2.String())
 	}
 
-	// Sanity: state is rolled_back.
 	_, body := httpGet(t, "http://"+addr2+"/api/v1/admin/status")
 	var st struct {
 		State           string `json:"state"`
@@ -611,20 +478,16 @@ func TestSmoke_ResetAndRebuild_FullPath2Flow(t *testing.T) {
 		t.Fatalf("expected rolled_back before reset, got %q; body=%s", st.State, body)
 	}
 
-	// Remove 004_break.sql from the override dir — the runner re-reads
-	// the FS on each RebuildAndReindex call.
 	if err := os.Remove(filepath.Join(overrideDir, "004_break.sql")); err != nil {
 		t.Fatalf("remove 004_break.sql: %v", err)
 	}
 
-	// POST /admin/reindex (mode=full triggers Path 2).
 	postBody, _ := json.Marshal(map[string]string{"mode": "full"})
 	status, body := httpPost(t, "http://"+addr2+"/api/v1/admin/reindex", postBody)
 	if status != 202 {
 		t.Fatalf("POST /admin/reindex status: got %d, want 202; body=%s", status, body)
 	}
 
-	// GET /admin/status → state=ok now.
 	_, body = httpGet(t, "http://"+addr2+"/api/v1/admin/status")
 	if err := json.Unmarshal(body, &st); err != nil {
 		t.Fatalf("unmarshal: %v; body=%s", err, body)
@@ -633,22 +496,11 @@ func TestSmoke_ResetAndRebuild_FullPath2Flow(t *testing.T) {
 		t.Errorf("after reset: state got %q, want ok; body=%s", st.State, body)
 	}
 
-	// GET /api/v1/notes → 200 with at least 1 entry.
 	status, body = httpGet(t, "http://"+addr2+"/api/v1/notes")
 	if status != 200 {
 		t.Errorf("after reset: GET /notes status got %d; body=%s", status, body)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// TestSmoke_CaseCollisionRejection — criterion 6.
-//
-// On macOS APFS the filesystem is case-insensitive by default, so we
-// can't write Foo.md and foo.md as separate files; we'd just overwrite
-// one with the other. Skip this scenario on darwin and run only on
-// Linux / WSL where the case-collision path through the indexer is
-// observable end-to-end.
-// ---------------------------------------------------------------------------
 
 func TestSmoke_CaseCollisionRejection(t *testing.T) {
 	if runtime.GOOS == "darwin" {
@@ -675,13 +527,8 @@ func TestSmoke_CaseCollisionRejection(t *testing.T) {
 		t.Fatalf("listener never came up; output:\n%s", log.String())
 	}
 
-	// Wait a moment for the startup reindex log line to flush.
 	time.Sleep(500 * time.Millisecond)
 
-	// GET /api/v1/notes — only one of {Foo.md, foo.md} is indexed
-	// (the other is logged as a collision and skipped). The scratchpad
-	// is also indexed, so we expect exactly 2 entries (1 of the foo
-	// pair + the scratchpad).
 	status, body := httpGet(t, "http://"+addr+"/api/v1/notes")
 	if status != 200 {
 		t.Fatalf("GET /api/v1/notes status: got %d; body=%s", status, body)
@@ -695,7 +542,6 @@ func TestSmoke_CaseCollisionRejection(t *testing.T) {
 		t.Fatalf("unmarshal: %v; body=%s", err, body)
 	}
 
-	// Count entries whose path canonicalizes to "foo.md".
 	fooCount := 0
 	for _, n := range listOut.Notes {
 		if strings.EqualFold(n.Path, "foo.md") {
@@ -706,8 +552,6 @@ func TestSmoke_CaseCollisionRejection(t *testing.T) {
 		t.Errorf("foo* entry count: got %d, want 1 (collision should drop the duplicate); list=%v", fooCount, listOut.Notes)
 	}
 
-	// The collision log line is emitted at indexer level; we confirm
-	// it surfaced in the binary's stderr buffer.
 	if !strings.Contains(log.String(), "case collision") &&
 		!strings.Contains(log.String(), "case-collision") &&
 		!strings.Contains(log.String(), "collision") {
@@ -715,24 +559,11 @@ func TestSmoke_CaseCollisionRejection(t *testing.T) {
 	}
 }
 
-// silence unused-import warnings if any platform omits a function.
 var (
 	_ = context.TODO
 	_ = filepath.Join
 )
 
-// ---------------------------------------------------------------------------
-// Phase 3 smoke scenarios — append per Plan 03-08 Task 2.
-//
-// Each scenario spawns the production binary against a fresh data dir +
-// ephemeral port, exercises every Phase 3 endpoint end-to-end, and
-// asserts the on-disk filesystem agrees with the API responses. The
-// existing Phase 2 helpers (spawn / waitForListener / pickFreePort /
-// killAndWait / httpGet / httpPost) are reused verbatim; one new helper
-// (httpDelete) is added below.
-// ---------------------------------------------------------------------------
-
-// httpDelete sends a DELETE to url and returns (status, body).
 func httpDelete(t *testing.T, url string) (int, []byte) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
@@ -751,9 +582,6 @@ func httpDelete(t *testing.T, url string) (int, []byte) {
 	return resp.StatusCode, respBody
 }
 
-// treeContainsNoteID returns true if the wire tree (Root + nested
-// children) contains a note with the given UUID. Used by the Phase 3
-// smoke scenarios to confirm GET /tree reflects mutations.
 func treeContainsNoteID(nodes []map[string]any, id string) bool {
 	for _, n := range nodes {
 		if k, _ := n["kind"].(string); k == "note" {
@@ -761,7 +589,7 @@ func treeContainsNoteID(nodes []map[string]any, id string) bool {
 				return true
 			}
 		}
-		// Folder node — recurse into children if present.
+
 		if children, ok := n["children"].([]any); ok {
 			converted := make([]map[string]any, 0, len(children))
 			for _, c := range children {
@@ -777,8 +605,6 @@ func treeContainsNoteID(nodes []map[string]any, id string) bool {
 	return false
 }
 
-// findFolderNode returns the folder node at the named top-level path
-// (e.g., "projects" or "work"). Returns nil if not found.
 func findFolderNode(nodes []map[string]any, folderPath string) map[string]any {
 	for _, n := range nodes {
 		if k, _ := n["kind"].(string); k == "folder" {
@@ -789,12 +615,6 @@ func findFolderNode(nodes []map[string]any, folderPath string) map[string]any {
 	}
 	return nil
 }
-
-// ---------------------------------------------------------------------------
-// TestSmoke_Phase3_NoteCRUD — exercises POST /notes, GET /notes/{id},
-// GET /tree, POST /notes/{id}/move, DELETE /notes/{id} with on-disk
-// verification at every step.
-// ---------------------------------------------------------------------------
 
 func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 	dataDir := t.TempDir()
@@ -809,7 +629,6 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 	base := "http://" + addr + "/api/v1"
 	notesDir := filepath.Join(dataDir, "notes")
 
-	// 1. POST /notes — create at root.
 	createBody, _ := json.Marshal(map[string]string{"parent_path": "", "title": "smoke-alpha"})
 	status, body := httpPost(t, base+"/notes", createBody)
 	if status != 201 {
@@ -832,10 +651,6 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 	}
 	id := summary.ID
 
-	// 2. GET /notes/{id} — content is the TAGS-EXT-01 frontmatter scaffold
-	// (Phase 6 requirement: new notes ship with "---\ntags: []\n---\n\n# {Title}\n").
-	// Phase 3 smoke test originally expected "" (empty) but that was written
-	// before TAGS-EXT-01 landed; the correct expectation is the scaffold.
 	status, body = httpGet(t, base+"/notes/"+id)
 	if status != 200 {
 		t.Fatalf("GET /notes/{id} status: got %d, want 200; body=%s", status, body)
@@ -848,15 +663,12 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 	if err := json.Unmarshal(body, &note); err != nil {
 		t.Fatalf("unmarshal note: %v; body=%s", err, body)
 	}
-	// Phase 6 TAGS-EXT-01: new notes are created with the frontmatter scaffold.
-	// The scaffold format is "---\ntags: []\n---\n\n# {Title}\n\n" where {Title}
-	// is deriveTitleFromFilename(title) (verbatim title arg from POST /notes).
+
 	wantScaffoldPrefix := "---\ntags: []\n---"
 	if !strings.HasPrefix(note.Content, wantScaffoldPrefix) {
 		t.Errorf("new note content: got %q, want prefix %q (TAGS-EXT-01 scaffold)", note.Content, wantScaffoldPrefix)
 	}
 
-	// 3. GET /tree — contains the new note id.
 	status, body = httpGet(t, base+"/tree")
 	if status != 200 {
 		t.Fatalf("GET /tree status: got %d, want 200; body=%s", status, body)
@@ -871,7 +683,6 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 		t.Errorf("GET /tree did not contain note id %s; body=%s", id, body)
 	}
 
-	// 4. POST /notes/{id}/move — rename to smoke-beta.md.
 	moveBody, _ := json.Marshal(map[string]string{"new_path": "smoke-beta.md"})
 	status, body = httpPost(t, base+"/notes/"+id+"/move", moveBody)
 	if status != 200 {
@@ -888,7 +699,6 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 		t.Errorf("move path: got %q, want %q", moved.Path, "smoke-beta.md")
 	}
 
-	// 5. Disk verification — old path gone, new path present.
 	if _, err := os.Stat(filepath.Join(notesDir, "smoke-alpha.md")); !os.IsNotExist(err) {
 		t.Errorf("expected smoke-alpha.md gone after move, stat err=%v", err)
 	}
@@ -896,29 +706,20 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 		t.Errorf("expected smoke-beta.md to exist after move, stat err=%v", err)
 	}
 
-	// 6. DELETE /notes/{id} → 204.
 	status, body = httpDelete(t, base+"/notes/"+id)
 	if status != 204 {
 		t.Fatalf("DELETE /notes/{id} status: got %d, want 204; body=%s", status, body)
 	}
 
-	// 7. GET /notes/{id} after delete → 404.
 	status, body = httpGet(t, base+"/notes/"+id)
 	if status != 404 {
 		t.Errorf("GET /notes/{id} after delete: got %d, want 404; body=%s", status, body)
 	}
 
-	// 8. Disk verification — file is gone.
 	if _, err := os.Stat(filepath.Join(notesDir, "smoke-beta.md")); !os.IsNotExist(err) {
 		t.Errorf("expected smoke-beta.md gone post-delete, stat err=%v", err)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// TestSmoke_Phase3_FolderCRUD — exercises POST /folders, POST /folders/move,
-// DELETE /folders (recursive=false → 409, recursive=true → 204) with on-disk
-// + SQLite verification.
-// ---------------------------------------------------------------------------
 
 func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 	dataDir := t.TempDir()
@@ -933,7 +734,6 @@ func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 	base := "http://" + addr + "/api/v1"
 	notesDir := filepath.Join(dataDir, "notes")
 
-	// 1. POST /folders — create "projects".
 	createFolder, _ := json.Marshal(map[string]string{"parent_path": "", "name": "projects"})
 	status, body := httpPost(t, base+"/folders", createFolder)
 	if status != 201 {
@@ -954,7 +754,6 @@ func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 		t.Errorf("folder kind: got %q, want %q", folder.Kind, "folder")
 	}
 
-	// 2. POST /notes — create "design" note inside projects/.
 	createNote, _ := json.Marshal(map[string]string{"parent_path": "projects", "title": "design"})
 	status, body = httpPost(t, base+"/notes", createNote)
 	if status != 201 {
@@ -971,7 +770,6 @@ func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 		t.Errorf("nested note path: got %q, want %q", noteSummary.Path, "projects/design.md")
 	}
 
-	// 3. POST /folders/move — projects → work.
 	moveFolder, _ := json.Marshal(map[string]string{"old_path": "projects", "new_path": "work"})
 	status, body = httpPost(t, base+"/folders/move", moveFolder)
 	if status != 200 {
@@ -987,7 +785,6 @@ func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 		t.Errorf("moved folder path: got %q, want %q", moved.Path, "work")
 	}
 
-	// 4. GET /tree — work folder present with the design note re-prefixed.
 	status, body = httpGet(t, base+"/tree")
 	if status != 200 {
 		t.Fatalf("GET /tree after folder-move status: got %d; body=%s", status, body)
@@ -1002,7 +799,7 @@ func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 	if work == nil {
 		t.Fatalf("GET /tree missing 'work' folder after move; body=%s", body)
 	}
-	// Find the design note inside work/ and assert its path.
+
 	children, _ := work["children"].([]any)
 	foundDesign := false
 	for _, c := range children {
@@ -1021,7 +818,6 @@ func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 		t.Errorf("'work/design.md' missing from /tree work folder children; body=%s", body)
 	}
 
-	// 5. Disk — projects/ gone, work/design.md present.
 	if _, err := os.Stat(filepath.Join(notesDir, "projects")); !os.IsNotExist(err) {
 		t.Errorf("expected projects/ gone after move, stat err=%v", err)
 	}
@@ -1029,7 +825,6 @@ func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 		t.Errorf("expected work/design.md after move, stat err=%v", err)
 	}
 
-	// 6. DELETE /folders?path=work&recursive=false → 409 folder_not_empty.
 	status, body = httpDelete(t, base+"/folders?path=work&recursive=false")
 	if status != 409 {
 		t.Errorf("DELETE non-empty folder without recursive: got %d, want 409; body=%s",
@@ -1039,16 +834,11 @@ func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 		t.Errorf("expected folder_not_empty code in 409 body; got: %s", body)
 	}
 
-	// 7. DELETE /folders?path=work&recursive=true → 204.
 	status, body = httpDelete(t, base+"/folders?path=work&recursive=true")
 	if status != 204 {
 		t.Fatalf("DELETE recursive folder: got %d, want 204; body=%s", status, body)
 	}
 
-	// 8. Disk + index verification — work/ gone; GET /notes returns no
-	//    entries under work/ (we don't open SQLite directly to keep the
-	//    smoke layer at the public API surface; the API list reflects the
-	//    `notes` table via the indexer).
 	if _, err := os.Stat(filepath.Join(notesDir, "work")); !os.IsNotExist(err) {
 		t.Errorf("expected work/ gone after recursive delete, stat err=%v", err)
 	}
@@ -1071,18 +861,6 @@ func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// TestSmoke_Phase3_TreeProjection — POSTs 5 notes across 2 folders +
-// the root, fetches GET /tree, and asserts the wire shape:
-//
-//   - Top-level: 2 folder entries (alpha, beta) AND any expected root
-//     notes (the seeded scratchpad + 1 root note we created).
-//   - Folders before notes at every level.
-//   - Each folder has kind="folder" + path/name; each note has
-//     kind="note" + id/path/title/updated_at.
-//   - Folders alphabetical; notes alphabetical within each level.
-// ---------------------------------------------------------------------------
-
 func TestSmoke_Phase3_TreeProjection(t *testing.T) {
 	dataDir := t.TempDir()
 	addr := pickFreePort(t)
@@ -1095,8 +873,7 @@ func TestSmoke_Phase3_TreeProjection(t *testing.T) {
 
 	base := "http://" + addr + "/api/v1"
 
-	// Create folders alpha and beta.
-	for _, name := range []string{"beta", "alpha"} { // intentionally out of order
+	for _, name := range []string{"beta", "alpha"} {
 		body, _ := json.Marshal(map[string]string{"parent_path": "", "name": name})
 		status, respBody := httpPost(t, base+"/folders", body)
 		if status != 201 {
@@ -1104,7 +881,6 @@ func TestSmoke_Phase3_TreeProjection(t *testing.T) {
 		}
 	}
 
-	// Create 5 notes — 2 in alpha, 2 in beta, 1 at root.
 	type seed struct {
 		parent string
 		title  string
@@ -1125,7 +901,6 @@ func TestSmoke_Phase3_TreeProjection(t *testing.T) {
 		}
 	}
 
-	// GET /tree.
 	status, body := httpGet(t, base+"/tree")
 	if status != 200 {
 		t.Fatalf("GET /tree status: got %d; body=%s", status, body)
@@ -1137,8 +912,6 @@ func TestSmoke_Phase3_TreeProjection(t *testing.T) {
 		t.Fatalf("unmarshal tree: %v; body=%s", err, body)
 	}
 
-	// Assert we have at least 2 folders + 2 root-level notes (the
-	// scratchpad seeded by the binary on first boot + our root-note).
 	folderNames := []string{}
 	noteCount := 0
 	rootKindOrder := []string{}
@@ -1149,13 +922,13 @@ func TestSmoke_Phase3_TreeProjection(t *testing.T) {
 		case "folder":
 			name, _ := n["name"].(string)
 			folderNames = append(folderNames, name)
-			// Locked field set: path + name + kind + (children ok).
+
 			if _, hasPath := n["path"].(string); !hasPath {
 				t.Errorf("folder node missing path: %v", n)
 			}
 		case "note":
 			noteCount++
-			// Locked field set: id, path, title, updated_at, kind.
+
 			if _, hasID := n["id"].(string); !hasID {
 				t.Errorf("note node missing id: %v", n)
 			}
@@ -1173,7 +946,6 @@ func TestSmoke_Phase3_TreeProjection(t *testing.T) {
 		}
 	}
 
-	// Folders before notes at the root level.
 	sawNote := false
 	for _, k := range rootKindOrder {
 		if k == "note" {
@@ -1184,7 +956,6 @@ func TestSmoke_Phase3_TreeProjection(t *testing.T) {
 		}
 	}
 
-	// Folder names alphabetical (alpha, beta).
 	if len(folderNames) < 2 {
 		t.Fatalf("expected ≥ 2 root folders, got %v", folderNames)
 	}
@@ -1192,12 +963,10 @@ func TestSmoke_Phase3_TreeProjection(t *testing.T) {
 		t.Errorf("folder ordering: got %v, want alpha,beta first", folderNames)
 	}
 
-	// At root level: scratchpad + root-note → note count should be ≥ 2.
 	if noteCount < 2 {
 		t.Errorf("expected ≥ 2 root-level notes (scratchpad + root-note), got %d", noteCount)
 	}
 
-	// Drill into alpha — should contain 2 notes (first, second) sorted alphabetically.
 	alpha := findFolderNode(tree.Root, "alpha")
 	if alpha == nil {
 		t.Fatalf("alpha folder not found in /tree root")

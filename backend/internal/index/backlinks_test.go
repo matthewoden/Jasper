@@ -1,10 +1,5 @@
 package index
 
-// backlinks_test.go — Plan 06-04 Task 3: SyncBacklinks, GetBacklinks,
-// buildExcerpt, and reconcile.ReconcileWithRegistry (backlinks side).
-//
-// Tests F1–F8 for SyncBacklinks, G1–G3 for GetBacklinks, H1–H3 for reconcile.
-
 import (
 	"context"
 	"os"
@@ -17,10 +12,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// ---------------------------------------------------------------------------
-// SyncBacklinks (F1–F8)
-// ---------------------------------------------------------------------------
-
 // TestSyncBacklinks_ResolvedTarget — source links to one resolved target (F1).
 func TestSyncBacklinks_ResolvedTarget(t *testing.T) {
 	t.Parallel()
@@ -30,7 +21,6 @@ func TestSyncBacklinks_ResolvedTarget(t *testing.T) {
 	sourceID := newNoteID(t, idx, "notes/source.md", 1700000001)
 	fooID := newNoteID(t, idx, "notes/foo.md", 1700000002)
 
-	// Build registry with fooID registered as "foo".
 	reg := &notes.Registry{}
 	reg.HydrateRecords([]notes.NoteRecord{
 		{ID: fooID, Path: "notes/foo.md", Title: "foo"},
@@ -43,7 +33,6 @@ func TestSyncBacklinks_ResolvedTarget(t *testing.T) {
 		t.Fatalf("SyncBacklinks: %v", err)
 	}
 
-	// Verify one row exists with target_id = fooID.
 	var targetIDStr string
 	var targetTitle string
 	var excerpt string
@@ -72,7 +61,6 @@ func TestSyncBacklinks_PendingTarget(t *testing.T) {
 
 	sourceID := newNoteID(t, idx, "notes/source.md", 1700000001)
 
-	// Empty registry — nothing resolves.
 	reg := &notes.Registry{}
 	reg.HydrateRecords(nil)
 
@@ -112,7 +100,6 @@ func TestSyncBacklinks_MultipleOccurrencesCollapse(t *testing.T) {
 	reg := &notes.Registry{}
 	reg.HydrateRecords([]notes.NoteRecord{{ID: fooID, Path: "notes/foo.md", Title: "foo"}})
 
-	// Three refs to the same target.
 	refs := []markdown.WikiLinkRef{
 		{Target: "Foo"},
 		{Target: "Foo"},
@@ -146,21 +133,18 @@ func TestSyncBacklinks_Replacement(t *testing.T) {
 	reg := &notes.Registry{}
 	reg.HydrateRecords(nil)
 
-	// First sync: A, B.
 	refs1 := []markdown.WikiLinkRef{{Target: "A"}, {Target: "B"}}
 	content1 := []byte("[[A]] and [[B]]\n")
 	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs1, reg, content1); err != nil {
 		t.Fatal(err)
 	}
 
-	// Second sync: B, C.
 	refs2 := []markdown.WikiLinkRef{{Target: "B"}, {Target: "C"}}
 	content2 := []byte("[[B]] and [[C]]\n")
 	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs2, reg, content2); err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify: A gone, B and C present.
 	rows, err := idx.Pair.Reader.QueryContext(ctx,
 		`SELECT target_title FROM backlinks WHERE source_id = ? ORDER BY target_title`,
 		sourceID.String())
@@ -194,13 +178,11 @@ func TestSyncBacklinks_EmptyRefs(t *testing.T) {
 	reg := &notes.Registry{}
 	reg.HydrateRecords(nil)
 
-	// First sync with refs.
 	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md",
 		[]markdown.WikiLinkRef{{Target: "X"}}, reg, []byte("[[X]]\n")); err != nil {
 		t.Fatal(err)
 	}
 
-	// Second sync with empty refs.
 	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", nil, reg, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +207,7 @@ func TestSyncBacklinks_AmbiguousResolution(t *testing.T) {
 
 	sourceID := newNoteID(t, idx, "notes/b/source.md", 1700000001)
 	fooA := newNoteID(t, idx, "notes/a/foo.md", 1700000002)
-	fooB := newNoteID(t, idx, "notes/b/foo.md", 1700000003) // same folder
+	fooB := newNoteID(t, idx, "notes/b/foo.md", 1700000003)
 
 	reg := &notes.Registry{}
 	reg.HydrateRecords([]notes.NoteRecord{
@@ -276,19 +258,18 @@ func TestSyncBacklinks_ExcerptHTML(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Must contain the backlink-ref class (UI-SPEC §Surface 2 contract).
 	if !strings.Contains(excerpt, `class="backlink-ref"`) {
 		t.Errorf("excerpt missing backlink-ref class: %q", excerpt)
 	}
-	// Must contain the wikilink text.
+
 	if !strings.Contains(excerpt, "[[Foo]]") {
 		t.Errorf("excerpt missing [[Foo]]: %q", excerpt)
 	}
-	// Must contain HTML-escaped surrounding text in span tags.
+
 	if !strings.Contains(excerpt, "<span>") {
 		t.Errorf("excerpt missing <span> wrapper: %q", excerpt)
 	}
-	// HTML in prefix/suffix must be escaped.
+
 	content2 := []byte(`<script>alert("xss")</script> [[Foo]] </script>` + "\n")
 	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content2); err != nil {
 		t.Fatal(err)
@@ -303,10 +284,6 @@ func TestSyncBacklinks_ExcerptHTML(t *testing.T) {
 		t.Errorf("XSS not escaped in excerpt: %q", excerpt2)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// GetBacklinks (G1–G3)
-// ---------------------------------------------------------------------------
 
 // TestGetBacklinks_Empty — 0 backlinks returns non-nil empty slice (G1).
 func TestGetBacklinks_Empty(t *testing.T) {
@@ -334,9 +311,9 @@ func TestGetBacklinks_ReturnsRowsSortedByRecency(t *testing.T) {
 	ctx := context.Background()
 
 	targetID := newNoteID(t, idx, "notes/target.md", 1700000010)
-	src1 := newNoteID(t, idx, "notes/src1.md", 1700000001) // oldest
-	src2 := newNoteID(t, idx, "notes/src2.md", 1700000003) // newest
-	src3 := newNoteID(t, idx, "notes/src3.md", 1700000002) // middle
+	src1 := newNoteID(t, idx, "notes/src1.md", 1700000001)
+	src2 := newNoteID(t, idx, "notes/src2.md", 1700000003)
+	src3 := newNoteID(t, idx, "notes/src3.md", 1700000002)
 
 	reg := &notes.Registry{}
 	reg.HydrateRecords([]notes.NoteRecord{
@@ -358,7 +335,7 @@ func TestGetBacklinks_ReturnsRowsSortedByRecency(t *testing.T) {
 	if len(rows) != 3 {
 		t.Fatalf("GetBacklinks: got %d, want 3", len(rows))
 	}
-	// Order: src2 (mtime=3), src3 (mtime=2), src1 (mtime=1).
+
 	wantOrder := []uuid.UUID{src2, src3, src1}
 	for i, w := range wantOrder {
 		if rows[i].SourceID != w {
@@ -377,7 +354,6 @@ func TestGetBacklinks_PendingExcluded(t *testing.T) {
 	targetID := newNoteID(t, idx, "notes/target.md", 1700000010)
 	sourceID := newNoteID(t, idx, "notes/source.md", 1700000001)
 
-	// Sync with empty registry → pending row (target_id IS NULL).
 	reg := &notes.Registry{}
 	reg.HydrateRecords(nil)
 
@@ -387,7 +363,6 @@ func TestGetBacklinks_PendingExcluded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// GetBacklinks should NOT return the pending row.
 	rows, err := idx.GetBacklinks(ctx, targetID)
 	if err != nil {
 		t.Fatalf("GetBacklinks: %v", err)
@@ -396,10 +371,6 @@ func TestGetBacklinks_PendingExcluded(t *testing.T) {
 		t.Errorf("D-32: pending row returned by GetBacklinks — got %d rows, want 0", len(rows))
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Reconcile with backlinks (H1–H3)
-// ---------------------------------------------------------------------------
 
 // TestReconcileBacklinks_FullReindex — full reindex populates backlinks
 // from wiki-links in .md files (H1).
@@ -419,7 +390,6 @@ func TestReconcileBacklinks_FullReindex(t *testing.T) {
 		t.Fatalf("ReconcileWithRegistry: %v", err)
 	}
 
-	// There should be one backlinks row (pending since registry=nil).
 	ctx := context.Background()
 	var cnt int
 	if err := idx.Pair.Reader.QueryRowContext(ctx,
@@ -447,7 +417,6 @@ func TestReconcileBacklinks_IncrementalSingleFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Initial state: no backlinks.
 	ctx := context.Background()
 	var cnt int
 	if err := idx.Pair.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM backlinks`).Scan(&cnt); err != nil {
@@ -457,7 +426,6 @@ func TestReconcileBacklinks_IncrementalSingleFile(t *testing.T) {
 		t.Errorf("initial backlinks: got %d, want 0", cnt)
 	}
 
-	// Update file with a wiki-link reference.
 	mtime2 := time.Unix(1700001000, 0)
 	writeNote(t, notesDir, "source.md",
 		"# Source\n\nSee [[Target]].\n", mtime2)
@@ -489,7 +457,6 @@ func TestReconcileBacklinks_TAGS05_WipeAndRebuildBacklinks(t *testing.T) {
 		"---\ntags: [work]\n---\n\n# Source\n\n[[Foo]].\n", mtime)
 	writeNote(t, notesDir, "foo.md", "# Foo\n", mtime)
 
-	// First reconcile.
 	if _, err := idx.ReconcileWithRegistry(context.Background(), ModeFull, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -503,14 +470,12 @@ func TestReconcileBacklinks_TAGS05_WipeAndRebuildBacklinks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Wipe all tables.
 	for _, tbl := range []string{"backlinks", "note_tags", "tags", "notes"} {
 		if _, err := idx.Pair.Writer.ExecContext(ctx, `DELETE FROM `+tbl); err != nil {
 			t.Fatalf("wipe %s: %v", tbl, err)
 		}
 	}
 
-	// Second reconcile — must restore.
 	if _, err := idx.ReconcileWithRegistry(ctx, ModeFull, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -530,10 +495,6 @@ func TestReconcileBacklinks_TAGS05_WipeAndRebuildBacklinks(t *testing.T) {
 		t.Errorf("TAGS-05: tags count: before=%d after=%d", tagCnt, tagCnt2)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// buildExcerpt unit tests
-// ---------------------------------------------------------------------------
 
 // TestBuildExcerpt_BasicContract verifies the UI-SPEC HTML contract.
 func TestBuildExcerpt_BasicContract(t *testing.T) {
@@ -589,10 +550,6 @@ func TestBuildExcerpt_CaseInsensitive(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// ResolvePendingBacklinks (BUG-02 regression tests)
-// ---------------------------------------------------------------------------
-
 // TestResolvePendingBacklinks_Basic — BUG-02 regression: after startup reconcile
 // with nil registry leaves backlinks as pending (target_id = NULL),
 // ResolvePendingBacklinks resolves them using the now-populated registry.
@@ -601,19 +558,15 @@ func TestResolvePendingBacklinks_Basic(t *testing.T) {
 	idx, _ := newTagTestIndexer(t)
 	ctx := context.Background()
 
-	// Insert source note (A) and target note (B) directly.
 	sourceID := newNoteID(t, idx, "notes/a.md", 1700000001)
 	targetID := newNoteID(t, idx, "notes/b.md", 1700000002)
 
-	// Simulate what startup reconcile does with nil registry:
-	// SyncBacklinks writes a pending row (target_id = NULL).
 	refs := []markdown.WikiLinkRef{{Target: "Note B"}}
 	content := []byte("# Note A\nThis note links to [[Note B]].\n")
 	if err := idx.SyncBacklinks(ctx, sourceID, "notes/a.md", refs, nil, content); err != nil {
 		t.Fatalf("SyncBacklinks with nil registry: %v", err)
 	}
 
-	// Verify row is pending (target_id = NULL).
 	var isNull bool
 	if err := idx.Pair.Reader.QueryRowContext(ctx,
 		`SELECT target_id IS NULL FROM backlinks WHERE source_id = ?`,
@@ -625,18 +578,15 @@ func TestResolvePendingBacklinks_Basic(t *testing.T) {
 		t.Fatal("pre-condition failed: expected target_id IS NULL after nil-registry SyncBacklinks")
 	}
 
-	// Hydrate the registry with the target note.
 	reg := &notes.Registry{}
 	reg.HydrateRecords([]notes.NoteRecord{
 		{ID: targetID, Path: "notes/b.md", Title: "Note B"},
 	})
 
-	// Run ResolvePendingBacklinks — should update target_id = targetID.
 	if err := idx.ResolvePendingBacklinks(ctx, reg); err != nil {
 		t.Fatalf("ResolvePendingBacklinks: %v", err)
 	}
 
-	// Verify target_id is now set.
 	var gotTargetID string
 	if err := idx.Pair.Reader.QueryRowContext(ctx,
 		`SELECT COALESCE(target_id, '') FROM backlinks WHERE source_id = ?`,
@@ -648,7 +598,6 @@ func TestResolvePendingBacklinks_Basic(t *testing.T) {
 		t.Errorf("target_id: got %q, want %q", gotTargetID, targetID.String())
 	}
 
-	// Verify GetBacklinks now returns the row.
 	rows, err := idx.GetBacklinks(ctx, targetID)
 	if err != nil {
 		t.Fatalf("GetBacklinks: %v", err)
@@ -671,12 +620,10 @@ func TestResolvePendingBacklinks_NilRegistry(t *testing.T) {
 		t.Fatalf("SyncBacklinks: %v", err)
 	}
 
-	// nil registry is a documented no-op.
 	if err := idx.ResolvePendingBacklinks(ctx, nil); err != nil {
 		t.Fatalf("ResolvePendingBacklinks(nil): %v", err)
 	}
 
-	// Row must still be pending.
 	var isNull bool
 	if err := idx.Pair.Reader.QueryRowContext(ctx,
 		`SELECT target_id IS NULL FROM backlinks WHERE source_id = ?`,
@@ -703,7 +650,6 @@ func TestResolvePendingBacklinks_UnresolvableStaysPending(t *testing.T) {
 		t.Fatalf("SyncBacklinks: %v", err)
 	}
 
-	// Registry has no match for "Nonexistent Note".
 	reg := &notes.Registry{}
 	reg.HydrateRecords([]notes.NoteRecord{
 		{ID: uuid.New(), Path: "notes/other.md", Title: "Other Note"},
@@ -713,7 +659,6 @@ func TestResolvePendingBacklinks_UnresolvableStaysPending(t *testing.T) {
 		t.Fatalf("ResolvePendingBacklinks: %v", err)
 	}
 
-	// Row must still be pending (no match).
 	var isNull bool
 	if err := idx.Pair.Reader.QueryRowContext(ctx,
 		`SELECT target_id IS NULL FROM backlinks WHERE source_id = ?`,

@@ -37,12 +37,6 @@ func (s *Server) GetTree(
 	}
 	idx, ok := s.index.(*index.Indexer)
 	if !ok || idx == nil {
-		// The Server.index field is the notes.Index port; in production
-		// it's always a *index.Indexer (lifecycle.Run wires it). Phase
-		// 1 nil-falls-through above; tests that pass a fake notes.Index
-		// land here. Return empty tree rather than 500 — BuildTree is
-		// not part of the port contract, only the *Indexer concrete
-		// implementation has it.
 		return GetTree200JSONResponse{Root: []TreeNode{}}, nil
 	}
 	t, err := idx.BuildTree(ctx)
@@ -53,11 +47,6 @@ func (s *Server) GetTree(
 	return GetTree200JSONResponse(translateTreeToWire(t)), nil
 }
 
-// translateTreeToWire converts the package-internal *index.Tree into
-// the api.Tree wire shape declared in Plan 03-01's openapi.yaml. The
-// discriminated TreeNode is built via oapi-codegen-generated
-// FromFolderNode / FromNoteNode — they set the `kind` discriminator
-// for us so the JSON shape matches the spec.
 func translateTreeToWire(t *index.Tree) Tree {
 	if t == nil {
 		return Tree{Root: []TreeNode{}}
@@ -69,9 +58,6 @@ func translateTreeToWire(t *index.Tree) Tree {
 	return out
 }
 
-// translateNodeToWire converts a single index.TreeNode tagged-union
-// into the wire's TreeNode discriminated union. Exactly one of
-// n.Folder / n.Note / n.File is non-nil per the *index.TreeNode contract.
 func translateNodeToWire(n index.TreeNode) TreeNode {
 	if n.Folder != nil {
 		kids := make([]TreeNode, 0, len(n.Folder.Children))
@@ -101,8 +87,6 @@ func translateNodeToWire(n index.TreeNode) TreeNode {
 		return wire
 	}
 	if n.File != nil {
-		// Plan 07-26 / UAT-2 R1-7: translate TreeFile → wire-shape FileNode.
-		// SizeBytes and ContentType are deferred to v2 (0/"" in v1 for perf).
 		file := FileNode{
 			Kind: FileNodeKind("file"),
 			Path: n.File.Path,

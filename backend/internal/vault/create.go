@@ -1,34 +1,5 @@
 package vault
 
-// create.go — Plan 08-17b Task 3: shared vault-creation helper.
-//
-// CreateVault encapsulates the minimal per-vault initialization sequence:
-//
-//  1. mkdir <canonical>/.jasper/ with 0o700 perms.
-//  2. Write <canonical>/.jasper/config.json with the supplied options.
-//  3. Open an sqlite pair on <canonical>/.jasper/app.db.
-//  4. Run the supplied migrations.FS against the DB.
-//  5. Close the pair.
-//  6. Register the vault in app.json via vault.TouchOpened + SaveAppJSON.
-//
-// Called by:
-//   - api.(*Server).PostVaultCreate (/vault/create handler — vault model)
-//   - firstrun.RunSetup (/setup legacy alias — delegates here as of 17b)
-//
-// Step 6 (app.json registration) is separated from vault-folder creation
-// so callers that produce the vault folder through other means (e.g.
-// restoring from backup) can still register via TouchOpened + SaveAppJSON
-// directly.
-//
-// KNOWN ORPHAN (UAT-2 R3 F2 — see .planning/notes/F2-two-db-assessment.md):
-// Steps 3–5 write a fully-migrated DB at <canonical>/.jasper/app.db, but
-// the running server opens its DB at <canonical>/storage/app.db
-// (lifecycle.go storageDBPath). The .jasper/app.db is therefore never
-// read after creation. Per ADR-001 §6 the canonical location IS .jasper/
-// — the server side was not updated to match. The mismatch wastes a
-// few seconds of CPU + a few MB of disk per vault but is functionally
-// benign. Consolidation is a future-phase plan, not a session fix.
-
 import (
 	"context"
 	"encoding/json"
@@ -87,13 +58,11 @@ func CreateVault(ctx context.Context, canonical string, opts CreateOpts) (*AppSt
 		theme = "dark"
 	}
 
-	// 1. Create .jasper/ with 0o700.
 	jasperDir := filepath.Join(canonical, ".jasper")
 	if err := os.MkdirAll(jasperDir, 0o700); err != nil {
 		return nil, fmt.Errorf("CreateVault: mkdir .jasper/: %w", err)
 	}
 
-	// 2. Write minimal per-vault config.json atomically.
 	type dailyNotesCfg struct {
 		Template string `json:"template"`
 	}
@@ -123,7 +92,6 @@ func CreateVault(ctx context.Context, canonical string, opts CreateOpts) (*AppSt
 		return nil, fmt.Errorf("CreateVault: write config.json: %w", err)
 	}
 
-	// 3–5. Open sqlite + run migrations + close.
 	dbPath := filepath.Join(jasperDir, "app.db")
 	backupPath := dbPath + ".backup"
 	logsDir := filepath.Join(jasperDir, "logs")
@@ -154,7 +122,6 @@ func CreateVault(ctx context.Context, canonical string, opts CreateOpts) (*AppSt
 		return nil, fmt.Errorf("CreateVault: unrecoverable migration state")
 	}
 
-	// 6. Register in app.json.
 	appJSONPath, err := AppJSONPath()
 	if err != nil {
 		return nil, fmt.Errorf("CreateVault: resolve app home: %w", err)

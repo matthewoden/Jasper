@@ -23,7 +23,7 @@ func TestRunSetup_InvalidTheme(t *testing.T) {
 	target := filepath.Join(base, "Jasper")
 	req := SetupRequest{
 		DataDir: target,
-		Theme:   "darkmode", // invalid
+		Theme:   "darkmode",
 	}
 	err := RunSetup(t.Context(), req, migrations.FS)
 	if err == nil {
@@ -32,7 +32,7 @@ func TestRunSetup_InvalidTheme(t *testing.T) {
 	if !strings.Contains(err.Error(), "theme must be") {
 		t.Fatalf("unexpected error message: %v", err)
 	}
-	// No config.json should have been written.
+
 	if _, err := os.Stat(filepath.Join(target, "storage", "config.json")); err == nil {
 		t.Fatalf("config.json should not exist on theme-rejection path")
 	}
@@ -43,8 +43,7 @@ func TestRunSetup_InvalidTheme(t *testing.T) {
 // bypassing the debounced /validate-data-dir endpoint).
 func TestRunSetup_InvalidPath(t *testing.T) {
 	t.Parallel()
-	// A non-ASCII path — ValidateDataDir's first rule. The locked-
-	// copy message from validate.go is the error body.
+
 	req := SetupRequest{
 		DataDir: "/tmp/Jasper-é",
 		Theme:   "dark",
@@ -68,8 +67,6 @@ func TestRunSetup_InvalidPath(t *testing.T) {
 //     populated by migration 004 (vault model — plan 08-17b moved DB here)
 //   - today's daily note exists when CreateTodayDailyNote=true
 func TestRunSetup_HappyPath(t *testing.T) {
-	// Cannot use t.Parallel() because t.Setenv requires non-parallel execution.
-	// Redirect app.json writes so this test doesn't touch ~/.jasper.
 	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
@@ -84,7 +81,6 @@ func TestRunSetup_HappyPath(t *testing.T) {
 		t.Fatalf("RunSetup: %v", err)
 	}
 
-	// notes/ and storage/ exist with 0o700.
 	for _, sub := range []string{"notes", "storage"} {
 		st, err := os.Stat(filepath.Join(target, sub))
 		if err != nil {
@@ -93,16 +89,12 @@ func TestRunSetup_HappyPath(t *testing.T) {
 		if !st.IsDir() {
 			t.Fatalf("%s is not a directory", sub)
 		}
-		// On macOS umask may alter perm bits; we just verify owner can
-		// read/write (0700 satisfies that). A stricter equality check
-		// would fail on a default-umask 0o022 system if a future change
-		// switched to MkdirAll(..., 0o777).
+
 		if st.Mode().Perm()&0o700 != 0o700 {
 			t.Fatalf("%s perms 0o%o lack owner rwx", sub, st.Mode().Perm())
 		}
 	}
 
-	// config.json exists with the wizard's overlays.
 	cfg, err := config.Load(target, slog.Default())
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
@@ -129,7 +121,6 @@ func TestRunSetup_HappyPath(t *testing.T) {
 		t.Fatalf("DailyNotes.Template: got %q want template-override", cfg.DailyNotes.Template)
 	}
 
-	// app.db exists (plan 08-17b: vault model places DB at .jasper/app.db).
 	dbPath := filepath.Join(target, ".jasper", "app.db")
 	if _, err := os.Stat(dbPath); err != nil {
 		t.Fatalf("missing app.db: %v", err)
@@ -147,8 +138,6 @@ func TestRunSetup_HappyPath(t *testing.T) {
 		t.Fatalf("mcp_write_grants count: got %d want 0", count)
 	}
 
-	// Today's daily note exists. Don't pin to wall-clock date — the
-	// daily/<YYYY-MM-DD>.md file is the only .md under daily/.
 	dailyDir := filepath.Join(target, "notes", "daily")
 	entries, err := os.ReadDir(dailyDir)
 	if err != nil {
@@ -170,7 +159,6 @@ func TestRunSetup_HappyPath(t *testing.T) {
 // cfg.MCP.Enabled on disk so 08-09's listener sees the user's choice
 // at next boot.
 func TestRunSetup_McpEnabledRoundTrips(t *testing.T) {
-	// Cannot use t.Parallel() because subtests use t.Setenv.
 	cases := []struct {
 		name string
 		req  SetupRequest
@@ -195,8 +183,6 @@ func TestRunSetup_McpEnabledRoundTrips(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Cannot use t.Parallel() because t.Setenv requires non-parallel execution.
-			// Redirect app.json writes so this test doesn't touch ~/.jasper.
 			t.Setenv("JASPER_APP_HOME", t.TempDir())
 			base := t.TempDir()
 			target := filepath.Join(base, "Jasper")
@@ -219,8 +205,6 @@ func TestRunSetup_McpEnabledRoundTrips(t *testing.T) {
 // rows must land in mcp_write_grants with granted_via='wizard' and
 // the user's chosen level (1 or 2).
 func TestRunSetup_SeedGrants(t *testing.T) {
-	// Cannot use t.Parallel() because t.Setenv requires non-parallel execution.
-	// Redirect app.json writes so this test doesn't touch ~/.jasper.
 	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
@@ -235,7 +219,7 @@ func TestRunSetup_SeedGrants(t *testing.T) {
 	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
 		t.Fatalf("RunSetup: %v", err)
 	}
-	// Plan 08-17b: vault model places DB at .jasper/app.db.
+
 	dbPath := filepath.Join(target, ".jasper", "app.db")
 	db, err := sql.Open("sqlite", "file:"+dbPath)
 	if err != nil {
@@ -287,8 +271,6 @@ func TestRunSetup_SeedGrants(t *testing.T) {
 //	"seed grants: insert grant "ai-zone": constraint failed: UNIQUE
 //	 constraint failed: mcp_write_grants.folder_path (2067)"
 func TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel(t *testing.T) {
-	// Cannot use t.Parallel() because t.Setenv requires non-parallel execution.
-	// Redirect app.json writes so this test doesn't touch ~/.jasper.
 	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
@@ -297,13 +279,13 @@ func TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel(t *testing.T) {
 		Theme:   "dark",
 		McpGrants: []SetupGrantSeed{
 			{Folder: "ai-zone", Level: 1},
-			{Folder: "ai-zone", Level: 2}, // duplicate — upsert must win
+			{Folder: "ai-zone", Level: 2},
 		},
 	}
 	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
 		t.Fatalf("RunSetup with duplicate grant: %v", err)
 	}
-	// Plan 08-17b: vault model places DB at .jasper/app.db.
+
 	dbPath := filepath.Join(target, ".jasper", "app.db")
 	db, err := sql.Open("sqlite", "file:"+dbPath)
 	if err != nil {
@@ -333,8 +315,6 @@ func TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel(t *testing.T) {
 // result must be exactly 2 rows: A at the last-seen level, B at its
 // original level. Nil error is required.
 func TestInsertSeedGrants_MixedDuplicates(t *testing.T) {
-	// Cannot use t.Parallel() because t.Setenv requires non-parallel execution.
-	// Redirect app.json writes so this test doesn't touch ~/.jasper.
 	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
@@ -344,13 +324,13 @@ func TestInsertSeedGrants_MixedDuplicates(t *testing.T) {
 		McpGrants: []SetupGrantSeed{
 			{Folder: "projects", Level: 1},
 			{Folder: "inbox", Level: 1},
-			{Folder: "projects", Level: 2}, // duplicate — upsert overwrites level
+			{Folder: "projects", Level: 2},
 		},
 	}
 	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
 		t.Fatalf("RunSetup with mixed duplicates: %v", err)
 	}
-	// Plan 08-17b: vault model places DB at .jasper/app.db.
+
 	dbPath := filepath.Join(target, ".jasper", "app.db")
 	db, err := sql.Open("sqlite", "file:"+dbPath)
 	if err != nil {
@@ -386,7 +366,7 @@ func TestInsertSeedGrants_MixedDuplicates(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatalf("rows err: %v", err)
 	}
-	// After ORDER BY folder_path: inbox=1, projects=2 (last-write-wins)
+
 	if got[0] != (row{folder: "inbox", level: 1}) {
 		t.Errorf("row[0]: got %+v want {inbox, 1}", got[0])
 	}
@@ -398,8 +378,6 @@ func TestInsertSeedGrants_MixedDuplicates(t *testing.T) {
 // TestRunSetup_NoDailyNoteWhenOptedOut: omitting CreateTodayDailyNote
 // MUST NOT touch the daily folder.
 func TestRunSetup_NoDailyNoteWhenOptedOut(t *testing.T) {
-	// Cannot use t.Parallel() because t.Setenv requires non-parallel execution.
-	// Redirect app.json writes so this test doesn't touch ~/.jasper.
 	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
@@ -412,8 +390,6 @@ func TestRunSetup_NoDailyNoteWhenOptedOut(t *testing.T) {
 		t.Fatalf("RunSetup: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(target, "notes", "daily")); !os.IsNotExist(err) {
-		// Acceptable for daily/ to not exist; if it does exist (it
-		// shouldn't), then daily/<date>.md MUST NOT be there.
 		entries, _ := os.ReadDir(filepath.Join(target, "notes", "daily"))
 		for _, e := range entries {
 			if strings.HasSuffix(e.Name(), ".md") {

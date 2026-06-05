@@ -1,12 +1,5 @@
 package index
 
-// tags.go — Plan 06-04 Task 2: SyncTags, ListTags, NotesByTag, RenameTag,
-// DeleteTag and their associated exported types + sentinel errors.
-//
-// All write methods use BEGIN IMMEDIATE transactions per DATA-03 single-writer
-// constraint (matches the existing Upsert + Delete + MovePathPrefix pattern in
-// store.go).
-
 import (
 	"context"
 	"database/sql"
@@ -20,23 +13,9 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// ---------------------------------------------------------------------------
-// Wire-shape types
-// ---------------------------------------------------------------------------
-
 // TagWithCount is an alias of notes.TagWithCount. Kept here for backward
 // compatibility; callers can use either index.TagWithCount or notes.TagWithCount.
 type TagWithCount = notes.TagWithCount
-
-// ---------------------------------------------------------------------------
-// Sentinel errors
-// ---------------------------------------------------------------------------
-//
-// These are re-exported aliases of the canonical notes.Err* sentinels so that
-// callers can use either `errors.Is(err, notes.ErrTagNotFound)` or
-// `errors.Is(err, index.ErrTagNotFound)` interchangeably. Defined here for
-// backward compatibility and for import convenience in the API handler layer
-// (which can import index but not notes → api cycle).
 
 var (
 	// ErrTagNotFound is an alias for notes.ErrTagNotFound.
@@ -49,14 +28,7 @@ var (
 	ErrInvalidTagName = notes.ErrInvalidTagName
 )
 
-// validTagRE matches the D-22 charset: lowercase letters, digits, hyphens,
-// underscores only. The RenameTag store layer enforces this even though the
-// handler validates first (defense-in-depth per T-06-04-02).
 var validTagRE = regexp.MustCompile(`^[a-z0-9_-]+$`)
-
-// ---------------------------------------------------------------------------
-// SyncTags
-// ---------------------------------------------------------------------------
 
 // SyncTags upserts the tag vocabulary and replaces every note_tags row for
 // noteID in a single BEGIN IMMEDIATE transaction. Orphan tags (tags whose
@@ -77,14 +49,11 @@ func (x *Indexer) SyncTags(ctx context.Context, noteID uuid.UUID, tags []string)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// 1. Delete all existing note_tags for this note (we rewrite the full set).
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM note_tags WHERE note_id = ?`, noteID.String()); err != nil {
 		return fmt.Errorf("synctags clear: %w", err)
 	}
 
-	// 2. Upsert each tag and re-insert the note_tags row.
-	// De-duplicate the input to avoid PRIMARY KEY violation.
 	seen := make(map[string]bool, len(tags))
 	for _, tag := range tags {
 		if tag == "" || seen[tag] {
@@ -92,12 +61,11 @@ func (x *Indexer) SyncTags(ctx context.Context, noteID uuid.UUID, tags []string)
 		}
 		seen[tag] = true
 
-		// Upsert the tag — ON CONFLICT(name) DO NOTHING keeps existing id.
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO tags(name) VALUES(?) ON CONFLICT(name) DO NOTHING`, tag); err != nil {
 			return fmt.Errorf("synctags upsert tag %q: %w", tag, err)
 		}
-		// Insert the join row via SELECT to get the canonical tag_id.
+
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO note_tags(note_id, tag_id)
 			 SELECT ?, id FROM tags WHERE name = ?`,
@@ -106,7 +74,6 @@ func (x *Indexer) SyncTags(ctx context.Context, noteID uuid.UUID, tags []string)
 		}
 	}
 
-	// 3. Orphan cleanup (D-05): delete tags with zero note_tags referrers.
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags)`); err != nil {
 		return fmt.Errorf("synctags orphan cleanup: %w", err)
@@ -117,10 +84,6 @@ func (x *Indexer) SyncTags(ctx context.Context, noteID uuid.UUID, tags []string)
 	}
 	return nil
 }
-
-// ---------------------------------------------------------------------------
-// ListTags
-// ---------------------------------------------------------------------------
 
 // ListTags returns all tags that have at least one carrier note, sorted
 // alphabetically by name (D-03). The count reflects how many notes carry
@@ -139,7 +102,7 @@ func (x *Indexer) ListTags(ctx context.Context) ([]notes.TagWithCount, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := []notes.TagWithCount{} // non-nil empty slice per contract
+	out := []notes.TagWithCount{}
 	for rows.Next() {
 		var tw notes.TagWithCount
 		if err := rows.Scan(&tw.Name, &tw.Count); err != nil {
@@ -152,10 +115,6 @@ func (x *Indexer) ListTags(ctx context.Context) ([]notes.TagWithCount, error) {
 	}
 	return out, nil
 }
-
-// ---------------------------------------------------------------------------
-// NotesByTag
-// ---------------------------------------------------------------------------
 
 // NotesByTag returns a NoteSummary for every note carrying the named tag,
 // ordered by mtime descending (D-28 recency sort). Returns a non-nil empty
@@ -175,7 +134,7 @@ func (x *Indexer) NotesByTag(ctx context.Context, name string) ([]notes.NoteSumm
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := []notes.NoteSummary{} // non-nil empty slice per contract
+	out := []notes.NoteSummary{}
 	for rows.Next() {
 		var idStr, path, title string
 		var mtime int64
@@ -199,10 +158,6 @@ func (x *Indexer) NotesByTag(ctx context.Context, name string) ([]notes.NoteSumm
 	return out, nil
 }
 
-// ---------------------------------------------------------------------------
-// RenameTag
-// ---------------------------------------------------------------------------
-
 // RenameTag atomically renames a tag from oldName to newName and returns the
 // UUIDs of all notes that carried the tag (so callers can build the
 // tags:rewritten WS payload). The tag_id is NOT changed — only tags.name is
@@ -223,7 +178,6 @@ func (x *Indexer) RenameTag(ctx context.Context, oldName, newName string) ([]uui
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Look up oldName → tag_id.
 	var tagID int64
 	err = tx.QueryRowContext(ctx,
 		`SELECT id FROM tags WHERE name = ?`, oldName).Scan(&tagID)
@@ -234,25 +188,21 @@ func (x *Indexer) RenameTag(ctx context.Context, oldName, newName string) ([]uui
 		return nil, fmt.Errorf("renametag lookup old: %w", err)
 	}
 
-	// Check for collision: does newName already exist?
 	var existingID int64
 	err = tx.QueryRowContext(ctx,
 		`SELECT id FROM tags WHERE name = ?`, newName).Scan(&existingID)
 	if err == nil {
-		// newName exists — collision.
 		return nil, ErrTagCollision
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("renametag collision check: %w", err)
 	}
 
-	// Collect referrer note_ids BEFORE renaming.
 	noteIDs, err := tagNoteIDs(ctx, tx, tagID)
 	if err != nil {
 		return nil, fmt.Errorf("renametag collect ids: %w", err)
 	}
 
-	// Rename the tag.
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE tags SET name = ? WHERE id = ?`, newName, tagID); err != nil {
 		return nil, fmt.Errorf("renametag update: %w", err)
@@ -263,10 +213,6 @@ func (x *Indexer) RenameTag(ctx context.Context, oldName, newName string) ([]uui
 	}
 	return noteIDs, nil
 }
-
-// ---------------------------------------------------------------------------
-// DeleteTag
-// ---------------------------------------------------------------------------
 
 // DeleteTag atomically removes a tag and all its note_tags rows (via ON
 // DELETE CASCADE in the schema) and returns the UUIDs of the notes that
@@ -280,7 +226,6 @@ func (x *Indexer) DeleteTag(ctx context.Context, name string) ([]uuid.UUID, erro
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Look up name → tag_id.
 	var tagID int64
 	err = tx.QueryRowContext(ctx,
 		`SELECT id FROM tags WHERE name = ?`, name).Scan(&tagID)
@@ -291,13 +236,11 @@ func (x *Indexer) DeleteTag(ctx context.Context, name string) ([]uuid.UUID, erro
 		return nil, fmt.Errorf("deletetag lookup: %w", err)
 	}
 
-	// Collect referrer note_ids BEFORE delete (CASCADE will drop note_tags).
 	noteIDs, err := tagNoteIDs(ctx, tx, tagID)
 	if err != nil {
 		return nil, fmt.Errorf("deletetag collect ids: %w", err)
 	}
 
-	// Delete the tag — CASCADE handles note_tags rows automatically.
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM tags WHERE id = ?`, tagID); err != nil {
 		return nil, fmt.Errorf("deletetag delete: %w", err)
@@ -309,12 +252,6 @@ func (x *Indexer) DeleteTag(ctx context.Context, name string) ([]uuid.UUID, erro
 	return noteIDs, nil
 }
 
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-// tagNoteIDs queries note_tags for all note IDs that carry tagID inside an
-// open transaction. Returns the parsed UUIDs.
 func tagNoteIDs(ctx context.Context, tx *sql.Tx, tagID int64) ([]uuid.UUID, error) {
 	rows, err := tx.QueryContext(ctx,
 		`SELECT note_id FROM note_tags WHERE tag_id = ?`, tagID)

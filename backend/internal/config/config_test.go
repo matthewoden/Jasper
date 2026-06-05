@@ -10,15 +10,10 @@ import (
 	"testing"
 )
 
-// newTestLogger returns a logger that discards all output — keeps test
-// logs clean. Mirrors backend/internal/api/admin_status_test.go.
 func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// mkdirStorage creates <dir>/storage with 0o755 perms — Save's caller
-// contract per the package docstring. lifecycle.go does this in
-// production via EnsureDataDir.
 func mkdirStorage(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(dir, "storage"), 0o755); err != nil {
@@ -53,7 +48,6 @@ func TestLoad_DefaultsOnMissing(t *testing.T) {
 			cfg.DailyNotes.Folder, want.DailyNotes.Folder)
 	}
 
-	// Defaults must have been emitted to disk on first read.
 	path := filepath.Join(dir, "storage", "config.json")
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("expected config.json on disk after first Load, got %v", err)
@@ -67,8 +61,6 @@ func TestLoad_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	mkdirStorage(t, dir)
 
-	// Phase 8 Plan 08-01: round-trip carries Server + MCP blocks so
-	// the test catches drift between Defaults() and Save/Load.
 	in := Config{
 		AppName:    "Jasper",
 		DailyNotes: DailyNotes{Folder: "journal", Template: "## {{date}}"},
@@ -112,7 +104,7 @@ func TestLoad_MalformedFallsBackToDefaults(t *testing.T) {
 	if cfg != want {
 		t.Errorf("got %+v, want defaults %+v", cfg, want)
 	}
-	// Bad file MUST be preserved (no overwrite on malformed).
+
 	got, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read after Load: %v", err)

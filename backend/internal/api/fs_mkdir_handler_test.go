@@ -1,8 +1,5 @@
 package api
 
-// fs_mkdir_handler_test.go — exercises POST /api/v1/fs/mkdir, the
-// "New folder" affordance for the vault picker.
-
 import (
 	"context"
 	"os"
@@ -26,9 +23,7 @@ func TestPostFsMkdir_HappyPath_CreatesAndReturnsCanonicalPath(t *testing.T) {
 	if !isOk {
 		t.Fatalf("want 200, got %T", resp)
 	}
-	// Canonicalize the expected path the same way the handler does so the
-	// macOS /var → /private/var symlink + darwin lowercase don't trip
-	// equality on case-insensitive APFS.
+
 	if info, statErr := os.Stat(target); statErr != nil || !info.IsDir() {
 		t.Errorf("expected %s to exist as a directory after mkdir; got stat err %v", target, statErr)
 	}
@@ -51,8 +46,7 @@ func TestPostFsMkdir_PreservesCaseOfLeafName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Look at the actual directory entry under the (case-insensitive on
-	// APFS) parent — confirm the name reads back with the case as typed.
+
 	entries, readErr := os.ReadDir(root)
 	if readErr != nil {
 		t.Fatalf("readdir: %v", readErr)
@@ -150,7 +144,7 @@ func TestPostFsMkdir_ExistsAsFile_Returns400(t *testing.T) {
 
 func TestPostFsMkdir_NonASCII_RejectedByVaultPathValidator(t *testing.T) {
 	root := t.TempDir()
-	target := filepath.Join(root, "café") // non-ASCII
+	target := filepath.Join(root, "café")
 	s := newFsListServer(t)
 	resp, err := s.PostFsMkdir(context.Background(), PostFsMkdirRequestObject{
 		Body: &PostFsMkdirJSONRequestBody{Path: target},

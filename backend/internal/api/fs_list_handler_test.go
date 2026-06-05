@@ -1,12 +1,5 @@
 package api
 
-// fs_list_handler_test.go — UAT-2 #1d folder picker backend coverage.
-//
-// Exercises the handler against the real filesystem under t.TempDir(). The
-// happy path lists subdirectories alphabetically, drops dotfile dirs, and
-// reports the parent. The error paths cover non-absolute input, missing path,
-// not-a-directory, and (where the OS supports it) a permission denial.
-
 import (
 	"context"
 	"os"
@@ -25,7 +18,7 @@ func ptr(s string) *string { return &s }
 
 func TestGetFsList_HappyPath_AlphabeticalSubdirs(t *testing.T) {
 	root := t.TempDir()
-	// Mix dotfile, file, and three real subdirs (intentionally out of order).
+
 	for _, sub := range []string{"Charlie", "alpha", "Bravo", ".cache"} {
 		if err := os.MkdirAll(filepath.Join(root, sub), 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", sub, err)
@@ -141,9 +134,6 @@ func TestGetFsList_NotADirectory_Returns400(t *testing.T) {
 }
 
 func TestGetFsList_PermissionDenied_Returns403(t *testing.T) {
-	// chmod 000 only behaves the same on Linux/macOS. Skip on Windows where
-	// permissions don't map the same way, and when running as root (CI in
-	// docker often does) — root can read anything regardless of mode bits.
 	if runtime.GOOS == "windows" || os.Getuid() == 0 {
 		t.Skip("permission denial test requires POSIX permissions + non-root")
 	}
@@ -152,12 +142,11 @@ func TestGetFsList_PermissionDenied_Returns403(t *testing.T) {
 	if err := os.MkdirAll(locked, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	// Strip read+execute from the directory so ReadDir fails with EACCES.
+
 	if err := os.Chmod(locked, 0o000); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
 	t.Cleanup(func() {
-		// Restore so t.TempDir cleanup can remove it.
 		_ = os.Chmod(locked, 0o755)
 	})
 
@@ -209,8 +198,7 @@ func TestGetFsList_IsVault_TrueForFolderContainingDotJasper(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, ".jasper"), 0o700); err != nil {
 		t.Fatalf("seed .jasper: %v", err)
 	}
-	// Isolate JASPER_APP_HOME to a separate tmpdir so the .jasper under
-	// `root` is unambiguously a vault marker, not the registry.
+
 	t.Setenv("JASPER_APP_HOME", t.TempDir())
 
 	s := newFsListServer(t)
@@ -227,9 +215,6 @@ func TestGetFsList_IsVault_TrueForFolderContainingDotJasper(t *testing.T) {
 }
 
 func TestGetFsList_IsVault_FalseForFolderContainingAppRegistry(t *testing.T) {
-	// fakeHome/.jasper IS the app registry. Listing fakeHome must NOT
-	// flip is_vault — same canonicalize-and-compare-to-app-home logic
-	// as PostVaultCreate's already_a_vault exemption.
 	fakeHome := t.TempDir()
 	appHome := filepath.Join(fakeHome, ".jasper")
 	if err := os.MkdirAll(appHome, 0o700); err != nil {
@@ -245,11 +230,7 @@ func TestGetFsList_IsVault_FalseForFolderContainingAppRegistry(t *testing.T) {
 	if !isOk {
 		t.Fatalf("want 200, got %T", resp)
 	}
-	// IsVault must be present + false. nil would mean "no .jasper found"
-	// which is technically incorrect (there IS a .jasper, it's just the
-	// registry); we explicitly emit false so the picker can know "this
-	// is the user's home with the registry sitting next to it" if it
-	// wants to.
+
 	if ok.IsVault == nil || *ok.IsVault {
 		t.Errorf("IsVault: got %v, want pointer to false (it's the registry)", ok.IsVault)
 	}
@@ -272,8 +253,6 @@ func TestGetFsList_IsVault_NilWhenNoDotJasper(t *testing.T) {
 }
 
 func TestGetFsList_WindowsPath_OmittedOnNonWSL(t *testing.T) {
-	// Default isWSLProbe (platform.IsWSL) returns false on macOS CI / native
-	// Linux. Sanity-check that the field stays nil so the JSON omits it.
 	root := t.TempDir()
 	s := newFsListServer(t)
 	resp, _ := s.GetFsList(context.Background(), GetFsListRequestObject{
@@ -289,24 +268,11 @@ func TestGetFsList_WindowsPath_OmittedOnNonWSL(t *testing.T) {
 }
 
 func TestGetFsList_WindowsPath_PopulatedUnderMntWhenWSL(t *testing.T) {
-	// Force the WSL branch even though the test box may not be WSL. The
-	// /mnt/c path doesn't have to exist on disk — we override the probe AND
-	// short-circuit the stat by chrooting the test via a real tmp dir that
-	// LOOKS like /mnt/c via a symlink. Simpler: stub the os.Stat path by
-	// creating /mnt/c-style directory layout under t.TempDir() and letting
-	// the regex handle the rest.
-	//
-	// Since the WslToWindows arithmetic is pure and tested in the platform
-	// package, this test just confirms the handler WIRES it in: probe true,
-	// path matches /mnt/<drive>/... → WindowsPath populated.
-	t.Setenv("HOME", t.TempDir()) // belt-and-braces; not actually consulted here
+	t.Setenv("HOME", t.TempDir())
 	orig := isWSLProbe
 	isWSLProbe = func() bool { return true }
 	t.Cleanup(func() { isWSLProbe = orig })
 
-	// Build a real directory whose canonical absolute path is under /mnt/c
-	// → not possible on macOS CI. So we test the wiring by listing a /mnt/c
-	// path on disk if one exists, otherwise the test is a no-op (skipped).
 	if _, err := os.Stat("/mnt/c"); err != nil {
 		t.Skip("no /mnt/c on this host — handler wiring covered indirectly by TestWslToWindows in the platform package")
 	}
@@ -327,12 +293,11 @@ func TestGetFsList_WindowsPath_PopulatedUnderMntWhenWSL(t *testing.T) {
 }
 
 func TestGetFsList_WindowsPath_OmittedForHomeUnderWSL(t *testing.T) {
-	// WSL host + a path that has no Windows equivalent → field stays nil.
 	orig := isWSLProbe
 	isWSLProbe = func() bool { return true }
 	t.Cleanup(func() { isWSLProbe = orig })
 
-	root := t.TempDir() // /tmp/... or /var/... — outside /mnt/<drive>/
+	root := t.TempDir()
 	s := newFsListServer(t)
 	resp, _ := s.GetFsList(context.Background(), GetFsListRequestObject{
 		Params: GetFsListParams{Path: ptr(root)},
@@ -348,8 +313,7 @@ func TestGetFsList_WindowsPath_OmittedForHomeUnderWSL(t *testing.T) {
 
 func TestGetFsList_RootHasEmptyParent(t *testing.T) {
 	s := newFsListServer(t)
-	// "/" is the POSIX root; on Windows the closest equivalent is the drive
-	// letter which doesn't behave the same. Skip on Windows.
+
 	if runtime.GOOS == "windows" {
 		t.Skip("filesystem-root parent semantics differ on Windows")
 	}
@@ -366,9 +330,8 @@ func TestGetFsList_RootHasEmptyParent(t *testing.T) {
 	if ok.Parent != "" {
 		t.Errorf("root parent: got %q, want \"\" (empty so the picker hides the up-affordance)", ok.Parent)
 	}
-	// Sanity: real systems have at least one visible subdir under root.
+
 	if len(ok.Entries) == 0 && !strings.Contains(runtime.GOOS, "darwin") && runtime.GOOS != "linux" {
-		// On exotic CI envs this could legitimately be empty; only assert on common platforms.
 		t.Skip("no entries under /, skipping on non-darwin/linux env")
 	}
 }

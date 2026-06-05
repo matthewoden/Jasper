@@ -44,29 +44,21 @@ func TestExtractWikilinks(t *testing.T) {
 			},
 		},
 		{
-			// A1 assumption verification: inline code suppresses wiki-link parsing.
-			// D-19: literal inside ANY code context.
-			// RESEARCH.md MEDIUM-confidence assumption — this test PROVES A1 empirically.
 			name: "inline code — wiki-links not extracted",
 			body: "this is `[[Foo]]` literal",
 			want: nil,
 		},
 		{
-			// A1 assumption verification: fenced code blocks suppress wiki-link parsing.
-			// D-19: fenced ``` code blocks are code context.
 			name: "fenced code block — wiki-links not extracted",
 			body: "```\nlots of [[Foo]] here\n```",
 			want: nil,
 		},
 		{
 			name: "nil input",
-			body: "", // represents nil via []byte(tc.body) == nil check below
+			body: "",
 			want: nil,
 		},
 		{
-			// Frontmatter values are not parsed for wiki-links (D-19).
-			// goldmark/frontmatter excludes the YAML block from the body parse;
-			// the wikilink extension sees body-only content.
 			name: "links inside frontmatter not extracted",
 			body: "---\ntags: [foo]\nother: [[Foo]]\n---\nbody text",
 			want: nil,
@@ -79,7 +71,7 @@ func TestExtractWikilinks(t *testing.T) {
 			if tc.body != "" || tc.name == "nil input" {
 				input = []byte(tc.body)
 			}
-			// nil input case is handled here:
+
 			if tc.name == "nil input" {
 				input = nil
 			}
@@ -87,7 +79,6 @@ func TestExtractWikilinks(t *testing.T) {
 			got := ExtractWikilinks(input)
 
 			if len(tc.want) == 0 && len(got) == 0 {
-				// Both nil or both empty — pass.
 				return
 			}
 			if len(got) != len(tc.want) {
@@ -118,13 +109,11 @@ func TestExtractWikilinks_NilInput(t *testing.T) {
 // that goldmark/wikilink respects CommonMark code-context rules.
 // This test is the empirical proof that Plan 06-03 committed to provide.
 func TestExtractWikilinks_A1Assumption(t *testing.T) {
-	// Inline code span
 	inlineCode := "text `[[InCode]]` more text"
 	if got := ExtractWikilinks([]byte(inlineCode)); len(got) != 0 {
 		t.Errorf("A1 FAILED: [[InCode]] inside backtick code span was extracted: %v", got)
 	}
 
-	// Fenced code block
 	fencedCode := "```go\nfmt.Println(\"[[InFence]]\")\n```"
 	if got := ExtractWikilinks([]byte(fencedCode)); len(got) != 0 {
 		t.Errorf("A1 FAILED: [[InFence]] inside fenced code block was extracted: %v", got)

@@ -1,26 +1,5 @@
 package api
 
-// setup_handler.go — Phase 8 Plan 08-02 final implementation.
-//
-// Three strict-server methods implementing the wizard surface
-// declared in api/openapi.yaml (Plan 08-01 Task 1):
-//
-//   - GetSetupStatus            GET  /api/v1/setup/status
-//   - PostSetupValidateDataDir  POST /api/v1/setup/validate-data-dir
-//   - PostSetup                 POST /api/v1/setup
-//
-// All three are thin shims — the side-effecting work lives in
-// internal/firstrun (validate.go for the refusal pipeline, submit.go
-// for the mkdir+config+migrate+grants pipeline). Keeping the handler
-// thin matches ARCHITECTURE.md §13 anti-pattern 1 ("handler should be
-// translate-call-translate").
-//
-// File layout (per Plan 08-01 revision): NO `phase8_stubs.go`.
-// Each downstream wave owns a dedicated handler file. 08-01 landed a
-// placeholder version of THIS file (3 stub methods returning
-// "not implemented"); this plan REPLACES that file with the real
-// methods.
-
 import (
 	"context"
 	"errors"
@@ -72,12 +51,6 @@ func (s *Server) PostSetupValidateDataDir(
 	req PostSetupValidateDataDirRequestObject,
 ) (PostSetupValidateDataDirResponseObject, error) {
 	if req.Body == nil {
-		// Wire envelope is fixed: SetupValidateResponse.valid (bool) +
-		// optional code/message. A truly malformed body lands in the
-		// strict-server's own 400 path; we surface a structured 200
-		// with valid=false for an empty payload so the SPA's form
-		// validation can render a clear "path is required" hint
-		// without a separate error channel.
 		emptyCode := SetupValidateResponseCode(firstrun.RefusalParentMissing)
 		emptyMsg := "Pick a data-dir path."
 		return PostSetupValidateDataDir200JSONResponse{

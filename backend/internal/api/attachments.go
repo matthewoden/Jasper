@@ -1,19 +1,5 @@
 package api
 
-// attachments.go — POST /api/v1/attachments/{noteId} (CreateAttachment)
-//                  GET  /api/v1/attachments/{noteId}/{filename} (GetAttachment)
-//
-// Plan 07-06: multipart upload + file streaming for Phase 7 attachment feature.
-//
-// Multipart strategy: oapi-codegen v2 generates CreateAttachmentRequestObject
-// with Body *multipart.Reader — exactly the standard library multipart.Reader.
-// NextPart() is therefore available directly; no raw http.HandlerFunc fallback
-// is needed. The generated strictHandler calls r.MultipartReader() and places
-// the result in request.Body before invoking this handler.
-//
-// Path traversal hardening on GET: 5-rule pipeline per RESEARCH.md §Thread 4
-// §Path Traversal Hardening (D-34, SECURITY-06).
-
 import (
 	"bytes"
 	"context"
@@ -31,8 +17,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// maxAttachmentBytes is the 100 MB upload cap (D-29 / T-7-15).
-const maxAttachmentBytes int64 = 100 << 20 // 100 MB
+const maxAttachmentBytes int64 = 100 << 20
 
 // CreateAttachment implements POST /api/v1/attachments/{noteId} (ATTACH-01..04).
 //
@@ -47,14 +32,11 @@ func (s *Server) CreateAttachment(
 	ctx context.Context,
 	req CreateAttachmentRequestObject,
 ) (CreateAttachmentResponseObject, error) {
-	// Step 1: validate note exists and retrieve its path.
 	note, err := s.lookupNoteByStringID(ctx, req.NoteId)
 	if err != nil {
 		return CreateAttachment404JSONResponse(newError("not_found", "note not found")), nil
 	}
 
-	// Step 2: read the uploaded file from the multipart body.
-	// req.Body is *multipart.Reader (oapi-codegen v2 multipart convention).
 	if req.Body == nil {
 		return CreateAttachment404JSONResponse(newError("invalid_request", "missing multipart body")), nil
 	}
@@ -70,8 +52,6 @@ func (s *Server) CreateAttachment(
 		return CreateAttachment404JSONResponse(newError("invalid_request", "expected form field named 'file'")), nil
 	}
 
-	// Read bytes with a hard cap. LimitReader+1 lets us detect overflow:
-	// if we read maxAttachmentBytes+1 bytes, the upload is too large.
 	capped := io.LimitReader(part, maxAttachmentBytes+1)
 	data, readErr := io.ReadAll(capped)
 	if readErr != nil {
@@ -82,20 +62,16 @@ func (s *Server) CreateAttachment(
 		return CreateAttachment413JSONResponse(newError("file_too_large", "Maximum upload size is 100 MB.")), nil
 	}
 
-	// Step 3: sanitize the client-supplied filename (defense in depth — T-7-16).
 	originalFilename := part.FileName()
 	if originalFilename == "" {
 		return CreateAttachment404JSONResponse(newError("invalid_request", "upload part missing filename")), nil
 	}
-	// filepath.Base(filepath.Clean(...)) strips any path components the client sneaks in.
+
 	originalFilename = filepath.Base(filepath.Clean(originalFilename))
 	if originalFilename == "." || originalFilename == "/" || originalFilename == "" {
 		return CreateAttachment404JSONResponse(newError("invalid_request", "invalid upload filename")), nil
 	}
 
-	// Step 4: compute target attachments directory per D-25.
-	//   - Root-level note (path = "root.md"): attachDir = <dataDir>/notes/attachments/
-	//   - Sub-folder note (path = "sub/bar.md"): attachDir = <dataDir>/notes/sub/attachments/
 	notesRoot := filepath.Join(s.dataDir, "notes")
 	noteParentDir := filepath.Dir(filepath.Join(notesRoot, note.Path))
 	attachDir := filepath.Join(noteParentDir, "attachments")
@@ -104,24 +80,20 @@ func (s *Server) CreateAttachment(
 		return nil, fmt.Errorf("create attachments dir: %w", mkErr)
 	}
 
-	// Step 5: generate unique filename, avoiding collisions (ATTACH-04).
 	finalName := generateUniqueFilename(attachDir, originalFilename)
 	absPath := filepath.Join(attachDir, finalName)
 
-	// Step 6: atomic write (DATA-13).
 	if writeErr := fsstore.AtomicWrite(absPath, data); writeErr != nil {
 		s.log.Error("CreateAttachment: AtomicWrite", "path", absPath, "err", writeErr)
 		return nil, fmt.Errorf("write attachment: %w", writeErr)
 	}
 
-	// Step 7: MIME sniff for content_type (D-27).
 	sniffEnd := 512
 	if len(data) < sniffEnd {
 		sniffEnd = len(data)
 	}
 	contentType := http.DetectContentType(data[:sniffEnd])
-	// Supplement: narrow application/octet-stream using file extension
-	// for well-known types that DetectContentType misses (e.g. PDF).
+
 	if contentType == "application/octet-stream" {
 		switch strings.ToLower(filepath.Ext(finalName)) {
 		case ".pdf":
@@ -169,7 +141,6 @@ func (s *Server) GetAttachment(
 	ctx context.Context,
 	req GetAttachmentRequestObject,
 ) (GetAttachmentResponseObject, error) {
-	// Step 1: validate note exists.
 	note, err := s.lookupNoteByStringID(ctx, req.NoteId)
 	if err != nil {
 		return GetAttachment404JSONResponse(newError("not_found", "note not found")), nil
@@ -177,24 +148,20 @@ func (s *Server) GetAttachment(
 
 	filename := req.Filename
 
-	// Rule 1: reject filenames containing path separators or parent-directory refs.
 	if strings.ContainsAny(filename, `/\`) || strings.Contains(filename, "..") {
 		return GetAttachment400JSONResponse(newError("invalid_filename",
 			"filename must not contain path separators or '..'")), nil
 	}
 
-	// Rule 2: extract base name only — defense in depth against any edge cases.
 	filename = filepath.Base(filepath.Clean(filename))
 	if filename == "." || filename == "/" || filename == "" {
 		return GetAttachment400JSONResponse(newError("invalid_filename", "invalid filename after clean")), nil
 	}
 
-	// Rule 3: compute attachments directory (same formula as CreateAttachment).
 	notesRoot := filepath.Join(s.dataDir, "notes")
 	noteParentDir := filepath.Dir(filepath.Join(notesRoot, note.Path))
 	attachDir := filepath.Join(noteParentDir, "attachments")
 
-	// Rule 4: prefix-check the final path to ensure it cannot escape attachDir.
 	finalPath := filepath.Join(attachDir, filename)
 	cleanFinal := filepath.Clean(finalPath)
 	cleanAttach := filepath.Clean(attachDir) + string(os.PathSeparator)
@@ -203,7 +170,6 @@ func (s *Server) GetAttachment(
 			"filename escapes attachments directory")), nil
 	}
 
-	// Rule 5: use os.Lstat (NOT Stat) to reject symlinks without following them.
 	fi, lstatErr := os.Lstat(cleanFinal)
 	if lstatErr != nil {
 		if os.IsNotExist(lstatErr) {
@@ -217,7 +183,6 @@ func (s *Server) GetAttachment(
 			"symlinked attachments are not served")), nil
 	}
 
-	// Read file bytes.
 	fileData, readErr := os.ReadFile(cleanFinal)
 	if readErr != nil {
 		s.log.Error("GetAttachment: ReadFile", "path", cleanFinal, "err", readErr)
@@ -230,12 +195,6 @@ func (s *Server) GetAttachment(
 	}, nil
 }
 
-// lookupNoteByStringID parses the string noteID as a UUID and returns the
-// matching NoteSummary from the index. Returns an error when the index is nil,
-// the string is not a valid UUID, or no note with that ID is indexed.
-//
-// This reuses the O(n) List()-based lookup pattern from backlinks_handler.go.
-// A dedicated LookupByID on the Index interface is a future improvement.
 func (s *Server) lookupNoteByStringID(ctx context.Context, noteID string) (notes.NoteSummary, error) {
 	if s.index == nil {
 		return notes.NoteSummary{}, errors.New("no index")
@@ -259,18 +218,14 @@ func (s *Server) lookupNoteByStringID(ctx context.Context, noteID string) (notes
 	return notes.NoteSummary{}, notes.ErrNotFound
 }
 
-// generateUniqueFilename returns a filename that does not exist in dir.
-// Collision avoidance: image.png → image-1.png → image-2.png (ATTACH-04).
 func generateUniqueFilename(dir, filename string) string {
 	ext := filepath.Ext(filename)
 	base := strings.TrimSuffix(filename, ext)
 
-	// First: try the original name.
 	if _, err := os.Stat(filepath.Join(dir, filename)); os.IsNotExist(err) {
 		return filename
 	}
 
-	// Collision: try suffixes -1, -2, ... up to 999.
 	for i := 1; i < 1000; i++ {
 		candidate := fmt.Sprintf("%s-%d%s", base, i, ext)
 		if _, err := os.Stat(filepath.Join(dir, candidate)); os.IsNotExist(err) {
@@ -278,12 +233,9 @@ func generateUniqueFilename(dir, filename string) string {
 		}
 	}
 
-	// Safety bound — should never be reached in practice.
 	return fmt.Sprintf("%s-%d%s", base, 999, ext)
 }
 
-// mimeToCategory maps a MIME content type to the AttachmentUploadResult category
-// enum (D-27): image | pdf | video | audio | archive | other.
 func mimeToCategory(mimeType, _ string) string {
 	switch {
 	case strings.HasPrefix(mimeType, "image/"):

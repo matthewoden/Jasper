@@ -1,19 +1,5 @@
 package mcp_test
 
-// Plan 08-08 Task 1 — ACL package tests. Cover:
-//
-//  1. Set / List round-trip
-//  2. Upsert upgrade (re-grant Tier 2 over Tier 1)
-//  3. Revoke (existent + non-existent → idempotent)
-//  4. Validation (level out of range, empty path, "..", absolute)
-//  5. Path normalization (case + slashes)
-//  6. Resolve recursive (D-18 most-specific-wins)
-//  7. CanCreate / CanUpdate / CanMove / CanDelete tier semantics
-//  8. D-24 next-call revocation
-//
-// Each test opens a fresh on-disk SQLite under t.TempDir() and applies
-// every embedded migration so the schema matches production exactly.
-
 import (
 	"context"
 	"database/sql"
@@ -27,9 +13,6 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// openTestDB returns a fresh on-disk SQLite *sql.DB with every embedded
-// migration applied. Mirrors backend/migrations/migrations_test.go's
-// helper so the test setup is identical.
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -69,8 +52,6 @@ func newACL(t *testing.T) *mcp.ACL {
 	return mcp.NewACL(openTestDB(t))
 }
 
-// 1. Set / List round-trip ---------------------------------------------------
-
 func TestACL_Set_ListRoundTrip(t *testing.T) {
 	a := newACL(t)
 	ctx := context.Background()
@@ -101,8 +82,6 @@ func TestACL_Set_ListRoundTrip(t *testing.T) {
 	}
 }
 
-// 2. Upsert upgrade ----------------------------------------------------------
-
 func TestACL_Set_UpsertUpgradesTier(t *testing.T) {
 	a := newACL(t)
 	ctx := context.Background()
@@ -129,8 +108,6 @@ func TestACL_Set_UpsertUpgradesTier(t *testing.T) {
 	}
 }
 
-// 3. Revoke ------------------------------------------------------------------
-
 func TestACL_Revoke(t *testing.T) {
 	a := newACL(t)
 	ctx := context.Background()
@@ -149,23 +126,15 @@ func TestACL_Revoke(t *testing.T) {
 		t.Errorf("expected 0 rows after revoke, got %d", len(list))
 	}
 
-	// Revoke non-existent → nil error (idempotent).
 	if err := a.Revoke(ctx, "never-existed"); err != nil {
 		t.Errorf("Revoke missing path returned err: %v", err)
 	}
 }
 
-// 4. Validation --------------------------------------------------------------
-
 func TestACL_Set_RejectsInvalidInput(t *testing.T) {
 	a := newACL(t)
 	ctx := context.Background()
 
-	// "absolute path" intentionally absent: the plan's Set example
-	// (interfaces block) strips a leading "/" during normalization
-	// ("/foo" → "foo") because the grant table stores rel paths under
-	// notes/. We rely on the ".." check + filepath.IsAbs(norm) for any
-	// truly-absolute form (e.g., Windows "C:\..." which survives strip).
 	cases := []struct {
 		name  string
 		path  string
@@ -186,8 +155,6 @@ func TestACL_Set_RejectsInvalidInput(t *testing.T) {
 		})
 	}
 }
-
-// 5. Path normalization ------------------------------------------------------
 
 func TestACL_Set_NormalizesPath(t *testing.T) {
 	a := newACL(t)
@@ -210,13 +177,10 @@ func TestACL_Set_NormalizesPath(t *testing.T) {
 	}
 }
 
-// 6. Resolve recursive (D-18) -----------------------------------------------
-
 func TestACL_Resolve_RecursiveMostSpecificWins(t *testing.T) {
 	a := newACL(t)
 	ctx := context.Background()
 
-	// Grant on "projects" → any descendant resolves Tier 1.
 	if _, err := a.Set(ctx, "projects", mcp.TierEditOnly, "x"); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
@@ -225,7 +189,6 @@ func TestACL_Resolve_RecursiveMostSpecificWins(t *testing.T) {
 		t.Errorf("Resolve under projects = (%d, %v), want (1, true)", lvl, ok)
 	}
 
-	// Add a deeper Tier 2 grant on "projects/ai" → most-specific wins.
 	if _, err := a.Set(ctx, "projects/ai", mcp.TierFull, "x"); err != nil {
 		t.Fatalf("Set deeper: %v", err)
 	}
@@ -234,7 +197,6 @@ func TestACL_Resolve_RecursiveMostSpecificWins(t *testing.T) {
 		t.Errorf("most-specific = (%d, %v), want (2, true)", lvl, ok)
 	}
 
-	// Note in a SIBLING subtree → no grant.
 	lvl, ok = a.Resolve(ctx, "daily/2026-05-17.md")
 	if ok || lvl != 0 {
 		t.Errorf("unrelated subtree = (%d, %v), want (0, false)", lvl, ok)
@@ -248,8 +210,6 @@ func TestACL_Resolve_NoGrants(t *testing.T) {
 		t.Errorf("empty table Resolve = (%d, %v), want (0, false)", lvl, ok)
 	}
 }
-
-// 7. Can{Create,Update,Move,Delete} tier semantics --------------------------
 
 func TestACL_Capabilities_TierEditOnly(t *testing.T) {
 	a := newACL(t)
@@ -311,8 +271,6 @@ func TestACL_Capabilities_NoGrant(t *testing.T) {
 	}
 }
 
-// 8. D-24 next-call revocation -----------------------------------------------
-
 func TestACL_NextCallRevocation(t *testing.T) {
 	a := newACL(t)
 	ctx := context.Background()
@@ -327,7 +285,7 @@ func TestACL_NextCallRevocation(t *testing.T) {
 	if err := a.Revoke(ctx, "projects"); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
-	// The next call MUST observe the revocation immediately (D-24).
+
 	if a.CanCreate(ctx, notePath) {
 		t.Error("post-revoke CanCreate should be FALSE (D-24)")
 	}

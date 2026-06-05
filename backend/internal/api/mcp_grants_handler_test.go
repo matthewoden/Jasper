@@ -1,10 +1,5 @@
 package api
 
-// mcp_grants_handler_test.go — Plan 08-08 Task 2 unit tests for the
-// three /mcp/grants strict-server handlers. Builds a *Server with a
-// real *mcp.ACL backed by an in-memory SQLite DB (full migration
-// chain applied) and a recording broadcaster spy.
-
 import (
 	"context"
 	"database/sql"
@@ -21,10 +16,6 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// recordingBroadcaster is a tiny broadcaster spy. Implements
-// notes.Broadcaster (Broadcast(eventType, payload, sessionID)) so it
-// can be assigned to Server.broadcaster directly via the
-// struct-literal constructor below.
 type recordingBroadcaster struct {
 	mu     sync.Mutex
 	events []recordedEvent
@@ -65,10 +56,6 @@ func (b *recordingBroadcaster) lastByType(eventType string) (recordedEvent, bool
 	return recordedEvent{}, false
 }
 
-// openTestDBForGrants opens a fresh on-disk SQLite, applies every
-// embedded migration, and returns the *sql.DB. Mirrors
-// internal/mcp/acl_test.go's helper (intentionally duplicated; the
-// helpers don't justify a shared testutil package yet).
 func openTestDBForGrants(t *testing.T) *sql.DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -103,10 +90,6 @@ func openTestDBForGrants(t *testing.T) *sql.DB {
 	return db
 }
 
-// newGrantServer builds a *Server with mcpACL + broadcaster wired,
-// matching the production composition root for MCP-enabled configs.
-// Returns both the server and the broadcaster so tests can assert
-// against the spy.
 func newGrantServer(t *testing.T) (*Server, *recordingBroadcaster) {
 	t.Helper()
 	db := openTestDBForGrants(t)
@@ -119,8 +102,6 @@ func newGrantServer(t *testing.T) (*Server, *recordingBroadcaster) {
 	return s, br
 }
 
-// newDisabledGrantServer builds a *Server with mcpACL == nil so the
-// handlers exercise the "MCP disabled" branch.
 func newDisabledGrantServer(t *testing.T) *Server {
 	t.Helper()
 	return &Server{
@@ -128,10 +109,6 @@ func newDisabledGrantServer(t *testing.T) *Server {
 		broadcaster: &recordingBroadcaster{},
 	}
 }
-
-// ---------------------------------------------------------------------------
-// GET /mcp/grants
-// ---------------------------------------------------------------------------
 
 func TestGetMcpGrants_Empty(t *testing.T) {
 	s, _ := newGrantServer(t)
@@ -163,10 +140,6 @@ func TestGetMcpGrants_McpDisabled_StillReturnsEmptyList(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// POST /mcp/grants — happy path + tier upgrade + broadcast
-// ---------------------------------------------------------------------------
-
 func TestMcpGrants_PostThenGet_RoundTrip(t *testing.T) {
 	s, br := newGrantServer(t)
 	ctx := context.Background()
@@ -184,7 +157,6 @@ func TestMcpGrants_PostThenGet_RoundTrip(t *testing.T) {
 		t.Errorf("got %+v, want folder=projects level=1", r200)
 	}
 
-	// Broadcast spy: exactly one EventMcpGrantChanged event, action=set.
 	if got := br.countByType(EventMcpGrantChanged); got != 1 {
 		t.Errorf("broadcaster: got %d EventMcpGrantChanged events, want 1", got)
 	}
@@ -200,7 +172,6 @@ func TestMcpGrants_PostThenGet_RoundTrip(t *testing.T) {
 		t.Errorf("payload action = %v, want set", payload["action"])
 	}
 
-	// GET shows the new grant.
 	gResp, err := s.GetMcpGrants(ctx, GetMcpGrantsRequestObject{})
 	if err != nil {
 		t.Fatalf("GetMcpGrants: %v", err)
@@ -242,10 +213,6 @@ func TestPostMcpGrant_UpgradesTier_KeepsSingleRow(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// POST /mcp/grants — validation & disabled
-// ---------------------------------------------------------------------------
-
 func TestPostMcpGrant_InvalidPath_Returns400(t *testing.T) {
 	s, _ := newGrantServer(t)
 	body := &McpGrantRequest{FolderPath: "../etc", Level: 1}
@@ -264,11 +231,7 @@ func TestPostMcpGrant_InvalidPath_Returns400(t *testing.T) {
 
 func TestPostMcpGrant_InvalidLevel_Returns400(t *testing.T) {
 	s, _ := newGrantServer(t)
-	// Level=3 is rejected by the OpenAPI enum *upstream*; the strict
-	// server will normally return 400 before reaching this handler.
-	// Here we simulate the case where some non-strict caller sneaks
-	// past — ACL.Set is the last line of defense. The handler maps
-	// the resulting err to 400 invalid_path.
+
 	body := &McpGrantRequest{FolderPath: "projects", Level: 3}
 	resp, err := s.PostMcpGrant(context.Background(), PostMcpGrantRequestObject{Body: body})
 	if err != nil {
@@ -314,20 +277,15 @@ func TestPostMcpGrant_McpDisabled_Returns400(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// DELETE /mcp/grants
-// ---------------------------------------------------------------------------
-
 func TestDeleteMcpGrant_Existing_Returns204_AndBroadcasts(t *testing.T) {
 	s, br := newGrantServer(t)
 	ctx := context.Background()
 
-	// Seed a grant first.
 	body := &McpGrantRequest{FolderPath: "projects", Level: 1}
 	if _, err := s.PostMcpGrant(ctx, PostMcpGrantRequestObject{Body: body}); err != nil {
 		t.Fatalf("seed PostMcpGrant: %v", err)
 	}
-	// Reset broadcast counter expectations: we'll assert revoke = +1.
+
 	setCount := br.countByType(EventMcpGrantChanged)
 
 	resp, err := s.DeleteMcpGrant(ctx, DeleteMcpGrantRequestObject{
@@ -340,8 +298,6 @@ func TestDeleteMcpGrant_Existing_Returns204_AndBroadcasts(t *testing.T) {
 		t.Fatalf("expected DeleteMcpGrant204Response, got %T", resp)
 	}
 
-	// Broadcast asserted: one more EventMcpGrantChanged event with
-	// action=revoked.
 	if got := br.countByType(EventMcpGrantChanged); got != setCount+1 {
 		t.Errorf("broadcaster: got %d total events, want %d (one new revoke)", got, setCount+1)
 	}
@@ -357,7 +313,6 @@ func TestDeleteMcpGrant_Existing_Returns204_AndBroadcasts(t *testing.T) {
 		t.Errorf("sessionID = %q, want empty", ev.sessionID)
 	}
 
-	// GET shows 0 rows.
 	gResp, _ := s.GetMcpGrants(ctx, GetMcpGrantsRequestObject{})
 	if len(gResp.(GetMcpGrants200JSONResponse).Grants) != 0 {
 		t.Errorf("expected 0 grants after revoke, got %d",

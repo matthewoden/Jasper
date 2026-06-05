@@ -47,23 +47,13 @@ func RedirectMiddleware(dataDir string) func(http.Handler) http.Handler {
 	cfgPath := filepath.Join(dataDir, "storage", "config.json")
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Pass-through rules. Order: exact match first (fast), then
-			// the prefix checks. The /assets prefix catches both Vite's
-			// hashed bundle filenames (/assets/index-DEADBEEF.js) and
-			// the wizard SPA's static bundle once 08-04 lands.
 			if r.URL.Path == "/setup" ||
 				strings.HasPrefix(r.URL.Path, "/api/v1/setup") ||
 				strings.HasPrefix(r.URL.Path, "/assets") {
 				next.ServeHTTP(w, r)
 				return
 			}
-			// Existence check. Using errors.Is(err, fs.ErrNotExist) (NOT
-			// os.IsNotExist) so the check works through any wrapping a
-			// future filesystem abstraction might add. A non-not-exist
-			// error from os.Stat (permission denied, I/O error) falls
-			// through to next.ServeHTTP — the request continues and the
-			// downstream code path (config.Load) surfaces the underlying
-			// problem with a proper error, not a misleading redirect.
+
 			if _, err := os.Stat(cfgPath); errors.Is(err, fs.ErrNotExist) {
 				http.Redirect(w, r, "/setup", http.StatusFound)
 				return

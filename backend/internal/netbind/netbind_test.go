@@ -9,7 +9,7 @@ func TestRequireLoopbackBind_AcceptsLoopback(t *testing.T) {
 	cases := []string{
 		"127.0.0.1:6683",
 		"127.0.0.1:0",
-		"127.0.0.1:3001", // arbitrary port accepted by the loopback gate (port-agnostic)
+		"127.0.0.1:3001",
 		"localhost:6683",
 		"[::1]:6683",
 	}
@@ -26,7 +26,7 @@ func TestRequireLoopbackBind_RejectsExternal(t *testing.T) {
 		"192.168.1.1:6683": "192.168.1.1:6683",
 		"10.0.0.5:6683":    "10.0.0.5:6683",
 		"example.com:6683": "example.com:6683",
-		":6683":            ":6683", // empty host = all interfaces; reject
+		":6683":            ":6683",
 	}
 	for addr := range cases {
 		err := RequireLoopbackBind(addr)

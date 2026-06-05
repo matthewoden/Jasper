@@ -1,11 +1,5 @@
 package api
 
-// tags_handler_test.go — Plan 06-05 Task 4: tests for GetTags, GetTagNotes,
-// PutTag, DeleteTag handlers.
-//
-// Test coverage: GT1, GT2, GN1, GN2, PT1, PT2, PT3, PT4, DT1, DT2 per the plan.
-// Uses tagFakeIndex (in-memory, no SQLite) + httptest + fakeBroadcaster.
-
 import (
 	"context"
 	"encoding/json"
@@ -24,23 +18,13 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// ---------------------------------------------------------------------------
-// tagFakeIndex — in-memory notes.Index supporting tag operations
-// ---------------------------------------------------------------------------
-
-// tagFakeIndex is a notes.Index implementation that stores tags + summaries
-// in memory. Supports NotesByTag, ListTags, RenameTag, DeleteTag with the
-// same error semantics as the real index.
 type tagFakeIndex struct {
 	mu sync.RWMutex
 
-	// summaries: uuid → NoteSummary
 	summaries map[uuid.UUID]notes.NoteSummary
 
-	// tags: tag name → set of note IDs
 	tags map[string]map[uuid.UUID]bool
 
-	// failure injection
 	listTagsErr   error
 	notesByTagErr error
 	renameTagErr  error
@@ -70,8 +54,6 @@ func (f *tagFakeIndex) addTag(tagName string, ids ...uuid.UUID) {
 		f.tags[tagName][id] = true
 	}
 }
-
-// Implement notes.Index interface.
 
 func (f *tagFakeIndex) Upsert(_ context.Context, _ notes.NoteRecord) error { return nil }
 func (f *tagFakeIndex) Delete(_ context.Context, _ uuid.UUID) error        { return nil }
@@ -129,7 +111,7 @@ func (f *tagFakeIndex) ListTags(_ context.Context) ([]notes.TagWithCount, error)
 	for name, carriers := range f.tags {
 		out = append(out, notes.TagWithCount{Name: name, Count: len(carriers)})
 	}
-	// Sort alphabetically per D-03.
+
 	for i := 0; i < len(out); i++ {
 		for j := i + 1; j < len(out); j++ {
 			if out[i].Name > out[j].Name {
@@ -196,23 +178,11 @@ func (f *tagFakeIndex) DeleteTag(_ context.Context, name string) ([]uuid.UUID, e
 	return ids, nil
 }
 
-// ---------------------------------------------------------------------------
-// Tag handler test wiring
-// ---------------------------------------------------------------------------
-
-// setupTagServer builds a Server wired with a tagFakeIndex + a tagFakeFileStore
-// so the notes.Service reads/writes files.
-//
-// Rule 1 fix (tags_handler.go PutTag/DeleteTag): the handler now calls
-// s.notes.RenameTagAcrossVault / DeleteTagAcrossVault (FS + SQL), so the
-// same index must be wired into BOTH notes.NewService AND NewServerWithIndex —
-// mirroring the real composition root in lifecycle.go line 266+298.
 func setupTagServer(t *testing.T, idx *tagFakeIndex) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &tagFakeFileStore{}
-	// Wire idx into the Service so RenameTagAcrossVault / DeleteTagAcrossVault
-	// use the same in-memory store as the handler's s.index.
+
 	svc := notes.NewService(files, idx, nil, logger)
 	srv := NewServerWithIndex(svc, nil, nil, idx, nil, logger, "")
 	si := NewStrictHandler(srv, nil)
@@ -223,11 +193,6 @@ func setupTagServer(t *testing.T, idx *tagFakeIndex) *httptest.Server {
 	return httptest.NewServer(r)
 }
 
-// tagFakeFileStore is a minimal FileStore for tag handler tests. File rewrites
-// in RenameTagAcrossVault / DeleteTagAcrossVault call Read then WriteAtomic;
-// both operations are no-ops here (nil bytes → rewriteTagsArray returns nil →
-// WriteAtomic is called with nil, which succeeds). The tags SQL update is
-// exercised via tagFakeIndex.
 type tagFakeFileStore struct{}
 
 func (f *tagFakeFileStore) Read(_ string) ([]byte, error)        { return nil, nil }
@@ -239,10 +204,6 @@ func (f *tagFakeFileStore) MoveFile(_, _ string) error           { return nil }
 func (f *tagFakeFileStore) CreateDir(_ string) error             { return nil }
 func (f *tagFakeFileStore) DeleteDir(_ string, _ bool) error     { return nil }
 func (f *tagFakeFileStore) MoveDir(_, _ string) error            { return nil }
-
-// ---------------------------------------------------------------------------
-// GET /api/v1/tags
-// ---------------------------------------------------------------------------
 
 // GT1: empty vault returns 200 with `{tags: []}`.
 func TestGetTags_GT1_Empty(t *testing.T) {
@@ -299,11 +260,11 @@ func TestGetTags_GT2_Alphabetical(t *testing.T) {
 	if len(got.Tags) != 3 {
 		t.Fatalf("tags len: got %d, want 3", len(got.Tags))
 	}
-	// alphabetical: alpha, mango, zebra
+
 	if got.Tags[0].Name != "alpha" || got.Tags[1].Name != "mango" || got.Tags[2].Name != "zebra" {
 		t.Errorf("tags order: got %v, want [alpha mango zebra]", tagNames(got.Tags))
 	}
-	// counts
+
 	if got.Tags[0].Count != 2 {
 		t.Errorf("alpha count: got %d, want 2", got.Tags[0].Count)
 	}
@@ -316,10 +277,6 @@ func tagNames(tags []TagWithCount) []string {
 	}
 	return names
 }
-
-// ---------------------------------------------------------------------------
-// GET /api/v1/tags/{name}/notes
-// ---------------------------------------------------------------------------
 
 // GN1: existing tag with 2 carriers returns 200.
 func TestGetTagNotes_GN1_Carriers(t *testing.T) {
@@ -365,10 +322,6 @@ func TestGetTagNotes_GN2_NotFound(t *testing.T) {
 		t.Errorf("code: got %q, want not_found", got.Code)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// PUT /api/v1/tags/{name}
-// ---------------------------------------------------------------------------
 
 // PT1: rename foo to feature returns 200.
 func TestPutTag_PT1_Rename(t *testing.T) {
@@ -444,7 +397,7 @@ func TestPutTag_PT4_Collision(t *testing.T) {
 	idA := uuid.New()
 	idx.addNote(idA, "a.md", "A")
 	idx.addTag("foo", idA)
-	idx.addTag("feature", idA) // collision
+	idx.addTag("feature", idA)
 	ts := setupTagServer(t, idx)
 	defer ts.Close()
 
@@ -461,10 +414,6 @@ func TestPutTag_PT4_Collision(t *testing.T) {
 		t.Errorf("code: got %q, want conflict", got.Code)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// DELETE /api/v1/tags/{name}
-// ---------------------------------------------------------------------------
 
 // DT1: delete foo with 3 carriers returns 200.
 func TestDeleteTag_DT1_Delete(t *testing.T) {
@@ -523,7 +472,6 @@ func TestPutTag_PT5_NilBody(t *testing.T) {
 	ts := setupTagServer(t, idx)
 	defer ts.Close()
 
-	// Malformed JSON → strict-server returns 400.
 	resp, body := mustPut(t, ts, "/api/v1/tags/foo", []byte(`{not json`))
 	if resp.StatusCode != 400 {
 		t.Fatalf("status: got %d, want 400; body=%s", resp.StatusCode, body)
@@ -539,7 +487,7 @@ func TestPutTag_PT2b_InvalidOldName(t *testing.T) {
 
 	payload, _ := json.Marshal(map[string]string{"new_name": "valid"})
 	resp, body := mustPut(t, ts, "/api/v1/tags/INVALID-NAME", payload)
-	// Either 400 (invalid old name) or 404 (not found) is acceptable.
+
 	if resp.StatusCode != 400 && resp.StatusCode != 404 {
 		t.Fatalf("status: got %d, want 400 or 404; body=%s", resp.StatusCode, body)
 	}
@@ -559,7 +507,7 @@ func TestGetTagNotes_NilVsEmpty(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("status: got %d, want 200; body=%s", resp.StatusCode, body)
 	}
-	// Verify JSON shape has "notes" key as an array.
+
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
 		t.Fatalf("unmarshal: %v; body=%s", err, body)

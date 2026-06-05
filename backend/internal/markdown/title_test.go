@@ -57,8 +57,6 @@ func TestExtractTitle_OnlyFrontmatter_NoH1_ReturnsFilename(t *testing.T) {
 }
 
 func TestExtractTitle_LongFirstLine(t *testing.T) {
-	// A 100 KB single line that is not an H1 — should not crash; should
-	// fall through to filename.
 	long := strings.Repeat("x", 100*1024)
 	got := ExtractTitle([]byte(long), "notes/huge.md")
 	if got != "huge" {
@@ -67,8 +65,6 @@ func TestExtractTitle_LongFirstLine(t *testing.T) {
 }
 
 func TestExtractTitle_HashWithoutSpace_NotAHeading(t *testing.T) {
-	// CommonMark §4.2 ATX heading requires "# " (the space). "#tag"
-	// is not a heading. Filename fallback applies.
 	got := ExtractTitle([]byte("#tag\nbody"), "notes/hashtag.md")
 	if got != "hashtag" {
 		t.Errorf("got %q, want %q", got, "hashtag")
@@ -76,7 +72,6 @@ func TestExtractTitle_HashWithoutSpace_NotAHeading(t *testing.T) {
 }
 
 func TestExtractTitle_H2NotMatched_FallsBackToFilename(t *testing.T) {
-	// Phase 2 only matches H1. H2 fallback is reserved for Phase 6.
 	got := ExtractTitle([]byte("## H2 Heading\nbody"), "notes/h2only.md")
 	if got != "h2only" {
 		t.Errorf("got %q, want %q", got, "h2only")
@@ -84,8 +79,6 @@ func TestExtractTitle_H2NotMatched_FallsBackToFilename(t *testing.T) {
 }
 
 func TestExtractTitle_LeadingBlankLines_StillFindsH1(t *testing.T) {
-	// Tolerance: a couple of blank lines before the H1 should still
-	// resolve to the heading.
 	got := ExtractTitle([]byte("\n\n# Tolerant Title\n\nbody"), "notes/tolerant.md")
 	if got != "Tolerant Title" {
 		t.Errorf("got %q, want %q", got, "Tolerant Title")
@@ -93,8 +86,6 @@ func TestExtractTitle_LeadingBlankLines_StillFindsH1(t *testing.T) {
 }
 
 func TestExtractTitle_FrontmatterUnclosed_FallsBackToFilename(t *testing.T) {
-	// Pathological: "---" opens frontmatter but never closes. The
-	// scanner consumes to EOF; filename fallback applies.
 	content := "---\ntags: [a]\nstill-in-fm\n# would-be-title-but-stuck-in-frontmatter\n"
 	got := ExtractTitle([]byte(content), "notes/unclosed.md")
 	if got != "unclosed" {
@@ -110,9 +101,6 @@ func TestExtractTitle_TrailingWhitespaceTrimmed(t *testing.T) {
 }
 
 func TestExtractTitle_FilenameFallback_BasePathStripped(t *testing.T) {
-	// filepath.Base + TrimSuffix(".md") — the rel path under notes/
-	// is canonicalized upstream by fsstore.Canonicalize, so we just
-	// verify the leaf-strip behavior here.
 	got := ExtractTitle([]byte("body without heading"), "deep/nested/folder/leaf.md")
 	if got != "leaf" {
 		t.Errorf("got %q, want %q", got, "leaf")

@@ -122,80 +122,33 @@ type Config struct {
 // a.handler and serves it on the listener instead of the API + SPA.
 type App struct {
 	cfg Config
-	// handler is a swappable wrapper installed as http.Server.Handler in
-	// serveListener. Subsystem transitions (no-vault → open, hot-swap)
-	// call handler.Swap(newRouter) so the running listener picks up
-	// the new router without rebinding the port. Pre-08-17e this was a
-	// raw http.Handler captured at server construction; that captured
-	// the picker-shell router so a vault-create transition couldn't
-	// expose /notes etc. against the same listener.
+
 	handler *swappableHandler
 
 	pair    *sqlite.Pair
 	runner  *migrate.Runner
 	indexer *index.Indexer
 
-	// notesSvc is populated by lifecycle.Run during Phase 2/3 startup
-	// (step 8 — rebuild api.Server with full wiring). Plan 03-04 adds
-	// a NotesService() accessor so app_test.go can verify that the
-	// composition root hydrated the registry from indexer.List
-	// before the listener accepted connections.
-	//
-	// Access is synchronized via mu — Run writes notesSvc on the
-	// goroutine that runs the lifecycle, and the test reads it from
-	// the testing goroutine; the network listener boundary is not a
-	// Go memory-model happens-before edge, so we must serialize
-	// explicitly.
 	mu       sync.RWMutex
 	notesSvc *notes.Service
 
-	// hub is the WebSocket broadcast hub. Populated by lifecycle.Run
-	// step 8 (Phase 4 Plan 04-04). Nil between New and Run. Guarded
-	// by mu (same mutex as notesSvc for simplicity).
 	hub *wshub.Hub
 
-	// diskFullHandler is the static error page handler installed
-	// when migrate.Run returns ErrDiskFull or ErrUnrecoverable.
-	// nil during normal operation.
 	diskFullHandler http.Handler
 
-	// fileLogCloser is the io.Closer returned by jlog.NewFileLogger when
-	// lifecycle.Run instantiates the file logger (production path where
-	// cfg.Logger is nil — Plan 08-12 / D-39 / PERF-03). On graceful
-	// shutdown the listener path closes this so the JSON log file is
-	// fsync'd and the OS handle released. nil when cfg.Logger was
-	// provided by the caller (tests).
 	fileLogCloser io.Closer
 
-	// swapMu serializes hot-swap operations (V5 from ADR-001 §4).
-	// TryLock returns false immediately when a switch is in progress.
-	// Distinct from mu (which guards notesSvc + hub) to avoid lock
-	// ordering issues.
 	swapMu sync.Mutex
 
-	// inFlightWrites tracks writes from both the SPA (chi handlers) and
-	// the MCP tools so SwitchVault can drain them before teardown (V6).
-	// Each write handler calls Add(1) at entry and Done() in defer.
-	// SwitchVault calls Wait() with a 2-second cap before closing pair.
 	inFlightWrites sync.WaitGroup
 
-	// currentVaultPath mirrors app.json's current_vault for the running
-	// open-mode App; used by the /vault/switch handler to report the
-	// in-progress target on 409 responses.
 	currentVaultPath atomic.Pointer[string]
 
-	// mcpServer is the *http.Server for the MCP listener. nil when MCP
-	// is disabled for the current vault. Stored so tearDownPerVaultSubsystems
-	// can Shutdown() it to release port 6684 (V-TEST-1).
 	mcpServer *http.Server
 
-	// mcpShutdown is the Shutdown func for mcpServer. nil when mcpServer is nil.
 	mcpShutdown func(ctx context.Context) error
 }
 
-// storageDBPath returns <dataDir>/storage/app.db — the canonical
-// location of the SQLite derived index. Centralized so app.New,
-// lifecycle.Run, and tests agree.
 func storageDBPath(dataDir string) string {
 	return filepath.Join(dataDir, "storage", "app.db")
 }
@@ -223,17 +176,10 @@ func storageDBPath(dataDir string) string {
 func New(cfg Config) (*App, error) {
 	notesDir := notesDirFor(cfg.DataDir)
 	files := fsstore.NewStore(notesDir)
-	// Phase-1-shape: nil Index → Service substitutes nopIndex.
-	// lifecycle.Run rebuilds the Service with a real *index.Indexer
-	// after sqlite.Open + migrate.Run succeed.
+
 	notesSvc := notes.NewService(files, nil, nil, cfg.Logger)
 	apiServer := api.NewServerWithIndex(notesSvc, nil, nil, nil, nil, cfg.Logger, cfg.DataDir)
-	// Plan 08-02: wire the embedded migrations FS into the api.Server
-	// so PostSetup (firstrun.RunSetup) can apply migrations against
-	// the user-chosen <DataDir>/storage/app.db. The Phase-1-shape
-	// server (this one, mounted in New) serves /api/v1/setup* until
-	// lifecycle.Run rebuilds the Server in step 8; the wizard runs
-	// against the Phase-1 server, so it MUST have migrationsFS wired.
+
 	var migrationsFS fs.FS = migrations.FS
 	if cfg.MigrationsOverride != nil {
 		migrationsFS = cfg.MigrationsOverride
@@ -243,40 +189,23 @@ func New(cfg Config) (*App, error) {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
-	r.Use(securityHeadersMiddleware) // Plan 05-04 — SECURITY-01, SECURITY-04, D-35: BEFORE requestLogger so 500-via-Recoverer responses carry the headers.
-	// Plan 08-17b: firstrun.RedirectMiddleware REMOVED. The no-vault
-	// lifecycle branch (vaultMode) now gates per-vault subsystems and
-	// serves the picker SPA shell directly. No server-side redirect needed.
-	// DisableFirstRunGate retained as a no-op field for backward compat.
+	r.Use(securityHeadersMiddleware)
+
 	r.Use(requestLogger(cfg.Logger))
 
-	// ORDER MATTERS — Pitfall 13.
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
-		// Body cap: 200 MiB middleware limit (above the handler's 100 MiB LimitReader
-		// cap) so that large attachment uploads reach the handler intact and get a
-		// proper HTTP 413 response rather than HTTP 500 from MaxBytesReader.
-		// The handler (attachments.go) enforces the actual 100 MiB cap via
-		// io.LimitReader and returns CreateAttachment413JSONResponse.
-		// See maxAttachmentBodyBytes in middleware.go for the full rationale.
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
-		r.Use(api.ConfigStrictBodyMiddleware) // D-40: strict JSON for PUT /config
+		r.Use(api.ConfigStrictBodyMiddleware)
 		api.HandlerFromMux(si, r)
-		// Plan 07-38 (UAT-4 R7a): override GET /files with ServeFile so
-		// Content-Type is dynamic (image/svg+xml etc.). Same
-		// last-registration-wins pattern as /ws in lifecycle.go.
+
 		r.Get("/files", apiServer.ServeFile)
 	})
 
-	// SPA fallback LAST.
 	r.Mount("/", static.Handler())
 
 	a := &App{cfg: cfg, handler: newSwappableHandler(r)}
-	// Wire the no-vault → open transition. The Phase-1-shape api.Server
-	// built above is the one mounted on the picker-shell router that
-	// serves no-vault boots; PostVaultCreate + PostVaultOpen call into
-	// a.OpenVault via this VaultOpener interface to flip the listener
-	// over to vault-open mode without a process restart.
+
 	apiServer.SetVaultOpener(a)
 	return a, nil
 }
@@ -300,7 +229,6 @@ func (a *App) CurrentVaultPath() string {
 	return ""
 }
 
-// setCurrentVaultPath updates the stored vault path atomically.
 func (a *App) setCurrentVaultPath(p string) {
 	a.currentVaultPath.Store(&p)
 }

@@ -29,8 +29,7 @@ func Canonicalize(p string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("abs: %w", err)
 	}
-	// EvalSymlinks only if the path exists. ENOENT is a legitimate
-	// create-new-vault flow; bubble up other errors.
+
 	if _, statErr := os.Stat(abs); statErr == nil {
 		resolved, err := filepath.EvalSymlinks(abs)
 		if err == nil {

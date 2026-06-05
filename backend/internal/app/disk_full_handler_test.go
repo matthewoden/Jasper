@@ -119,7 +119,7 @@ func TestUnrecoverableHandler_RootPath_ReturnsHTMLWithCopy(t *testing.T) {
 		t.Errorf("status: got %d, want 503", rr.Code)
 	}
 	body := rr.Body.String()
-	// "couldn&apos;t" — the apostrophe is HTML-escaped in the source.
+
 	wantSubs := []string{
 		"Migration couldn",
 		"complete safely",
@@ -160,7 +160,7 @@ func TestBuildDiskFullData_MissingPaths(t *testing.T) {
 	if got.DataDir != "/nonexistent/dir" {
 		t.Errorf("DataDir: got %q, want passthrough", got.DataDir)
 	}
-	// RequiredMB should be 0 (file doesn't exist → no size).
+
 	if got.RequiredMB != 0 {
 		t.Errorf("RequiredMB: got %d, want 0", got.RequiredMB)
 	}

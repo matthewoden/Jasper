@@ -22,9 +22,6 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// newTestApp returns a *App rooted at a fresh temp directory with the
-// notes/ + storage/ subdirs already created. We seed scratchpad.md
-// here too so the API tests have a real file to read.
 func newTestApp(t *testing.T) (*App, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -39,7 +36,7 @@ func newTestApp(t *testing.T) (*App, string) {
 		DataDir:             dir,
 		ListenAddr:          "127.0.0.1:0",
 		Logger:              logger,
-		DisableFirstRunGate: true, // Phase 8 Plan 08-02: pre-wizard API tests bypass the firstrun gate
+		DisableFirstRunGate: true,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -112,9 +109,6 @@ func TestApp_UnknownAPIRouteIsNotHTML(t *testing.T) {
 	if strings.Contains(strings.ToLower(string(body)), "<html") {
 		t.Errorf("Pitfall 13 regression: /api/v1/* returned HTML: %s", body)
 	}
-	// chi's default 404 returns plain text "404 page not found\n" —
-	// any non-HTML response is acceptable here. We do NOT assert
-	// status==404 because the test's only invariant is "no HTML".
 }
 
 // Test AP1c — GET / returns the embedded SPA's index.html. Under
@@ -134,7 +128,6 @@ func TestApp_RootDoesNotHitAPI(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 
-	// Should NOT be a json error envelope from the API stack.
 	if strings.HasPrefix(strings.TrimSpace(string(body)), `{"code":`) {
 		t.Errorf("root path leaked into API stack: %s", body)
 	}
@@ -238,14 +231,6 @@ func TestApp_UnknownUUIDReturns404(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Phase 2 / Plan 02-06 tests — composition root + lifecycle gating.
-// ---------------------------------------------------------------------------
-
-// pickFreePort returns a port the kernel just freed up. Tests use this
-// instead of :0 because the lifecycle Run() code path needs a known
-// port to dial — :0 would return a random port that we cannot dial back
-// without intercepting the listener via net.Listen.
 func pickFreePort(t *testing.T) string {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -259,8 +244,6 @@ func pickFreePort(t *testing.T) string {
 	return addr
 }
 
-// waitFor probes httpFn at 10ms intervals until it returns nil or the
-// timeout elapses. Used to wait for the listener to come up.
 func waitFor(t *testing.T, timeout time.Duration, httpFn func() error) error {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -289,7 +272,7 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 		DataDir:             dir,
 		ListenAddr:          addr,
 		Logger:              logger,
-		DisableFirstRunGate: true, // Phase 8 Plan 08-02
+		DisableFirstRunGate: true,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -299,7 +282,6 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	// Wait for the listener.
 	probe := func() error {
 		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 		if err != nil {
@@ -314,7 +296,6 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 		t.Fatalf("listener did not come up: %v", err)
 	}
 
-	// GET /api/v1/notes
 	resp, err := http.Get("http://" + addr + "/api/v1/notes")
 	if err != nil {
 		cancel()
@@ -357,7 +338,6 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 		t.Errorf("scratchpad.md not in notes list; body=%s", body)
 	}
 
-	// GET /api/v1/admin/status
 	resp2, err := http.Get("http://" + addr + "/api/v1/admin/status")
 	if err != nil {
 		cancel()
@@ -385,8 +365,6 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 		t.Fatalf("admin/status state: got %q, want ok; body=%s", statusOut.State, body2)
 	}
 
-	// Phase 1 ScratchpadUUID compatibility — the old hardcoded UUID
-	// still resolves 200 even after Phase 2 ships.
 	resp3, err := http.Get("http://" + addr + "/api/v1/notes/" + notes.ScratchpadUUID.String())
 	if err != nil {
 		cancel()
@@ -412,8 +390,6 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 //   - GET /api/v1/admin/status returns state="rolled_back" with
 //     failed_migration="002_break.sql".
 func TestApp_Run_BrokenMigration_FiresPath1(t *testing.T) {
-	// Build the broken migrations FS: copy 001_initial.sql verbatim
-	// from the embedded migrations + add a nonsense 002_break.sql.
 	initialBytes, err := migrations.FS.ReadFile("001_initial.sql")
 	if err != nil {
 		t.Fatalf("read embedded 001_initial.sql: %v", err)
@@ -431,7 +407,7 @@ func TestApp_Run_BrokenMigration_FiresPath1(t *testing.T) {
 		ListenAddr:          addr,
 		Logger:              logger,
 		MigrationsOverride:  override,
-		DisableFirstRunGate: true, // Phase 8 Plan 08-02
+		DisableFirstRunGate: true,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -442,12 +418,6 @@ func TestApp_Run_BrokenMigration_FiresPath1(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	// First boot: 001 applies, 002 fails. With no prior schema this
-	// is Path 3 (no backup to restore to). The runner returns
-	// ErrUnrecoverable, lifecycle.Run installs the unrecoverable
-	// boot-error handler, and the listener serves it. Test that the
-	// /api/v1/admin/status behavior matches the unrecoverable wire
-	// shape (the error handler returns 503 + JSON for /api/ paths).
 	probe := func() error {
 		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 		if err != nil {
@@ -462,9 +432,6 @@ func TestApp_Run_BrokenMigration_FiresPath1(t *testing.T) {
 		t.Fatalf("listener did not come up: %v", err)
 	}
 
-	// On a fresh DB the runner cannot Path-1-restore (no prior
-	// schema). It returns ErrUnrecoverable and the unrecoverable
-	// boot-error handler is mounted. /api/ paths return 503 JSON.
 	resp, err := http.Get("http://" + addr + "/api/v1/admin/status")
 	if err != nil {
 		cancel()
@@ -490,39 +457,27 @@ func TestApp_Run_BrokenMigration_FiresPath1(t *testing.T) {
 	}
 }
 
-// seedRealSQLiteDB opens a sqlite Pair at <dir>/storage/app.db, applies
-// 001_initial.sql to give the file non-zero size + a valid SQLite
-// header, and closes the pair. The resulting file on disk is a valid
-// SQLite DB the runner.preflight can stat (size > 0) and sqlite.Open
-// can subsequently ping. Used by the disk-full tests to set up the
-// preflight-aborts-on-empty-disk scenario.
 func seedRealSQLiteDB(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(dir, "storage"), 0o755); err != nil {
 		t.Fatalf("mkdir storage: %v", err)
 	}
 	dbPath := filepath.Join(dir, "storage", "app.db")
-	// Use a fresh app.New + Run cycle to apply the embedded
-	// migrations.FS once; that gives us a real SQLite file. We can't
-	// just call sqlite.Open here because the test package can't easily
-	// reach into the migration runner; instead spawn a tiny in-process
-	// boot and shut it down immediately.
+
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a, err := New(Config{DataDir: dir, ListenAddr: "127.0.0.1:0", Logger: logger, DisableFirstRunGate: true}) // Phase 8 Plan 08-02
+	a, err := New(Config{DataDir: dir, ListenAddr: "127.0.0.1:0", Logger: logger, DisableFirstRunGate: true})
 	if err != nil {
 		t.Fatalf("New (seed): %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
-	// Wait until the listener is up — that means migrations applied
-	// and the file is committed to disk.
+
 	probe := func() error {
 		c, derr := net.DialTimeout("tcp", a.cfg.ListenAddr, 50*time.Millisecond)
 		_ = c
 		_ = derr
-		// We don't actually know which port :0 picked. Instead poll
-		// for the db file appearing with a non-zero size.
+
 		info, statErr := os.Stat(dbPath)
 		if statErr != nil {
 			return statErr
@@ -546,9 +501,6 @@ func seedRealSQLiteDB(t *testing.T, dir string) {
 // Asserts the listener serves a 503 HTML page on /, with no SPA shell
 // returned.
 func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
-	// Seed a real SQLite DB so the runner.preflight has something to
-	// size against (currentSize > 0 is required for the 2× heuristic
-	// to actually exceed `free=0`).
 	dir := t.TempDir()
 	seedRealSQLiteDB(t, dir)
 
@@ -561,7 +513,7 @@ func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
 		DataDir:             dir,
 		ListenAddr:          addr,
 		Logger:              logger,
-		DisableFirstRunGate: true, // Phase 8 Plan 08-02
+		DisableFirstRunGate: true,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -623,9 +575,7 @@ func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
 // free disk space.
 func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 	dir := t.TempDir()
-	// Seed a real SQLite DB (size > 0) so PreflightFreeSpace computes
-	// a non-zero `required` and the 0-free env-var hook actually trips
-	// ErrDiskFull (vs. silent fresh-DB skip when the file doesn't exist).
+
 	seedRealSQLiteDB(t, dir)
 
 	t.Setenv("JASPER_TEST_FORCE_DISK_FULL", "1")
@@ -637,7 +587,7 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 		DataDir:             dir,
 		ListenAddr:          addr,
 		Logger:              logger,
-		DisableFirstRunGate: true, // Phase 8 Plan 08-02
+		DisableFirstRunGate: true,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -647,8 +597,6 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	// Wait for listener so we know boot reached serveListener via the
-	// disk-full static-page path (not via successful migration).
 	probe := func() error {
 		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 		if err != nil {
@@ -663,19 +611,9 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 		t.Fatalf("listener did not come up: %v", err)
 	}
 
-	// Listener is up via the disk-full handler. Cancel + wait for Run
-	// to return BEFORE inspecting unexported fields — the channel-receive
-	// on runErr is the Go memory-model happens-before edge from the Run
-	// goroutine's writes to the test goroutine's reads (Plan 03-04 Rule 3
-	// auto-fix; addresses the pre-existing race documented in
-	// .planning/phases/03-file-tree-folder-crud/deferred-items.md).
 	cancel()
 	<-runErr
 
-	// Pair MUST still be nil — the preflight ran before sqlite.Open, so
-	// no connection was ever opened. This is a stronger invariant than
-	// the previous "pair was opened, then closed via defer": now there
-	// is no connection to leak in the first place.
 	if a.pair != nil {
 		t.Fatalf("a.pair is non-nil after disk-full preflight; expected nil (sqlite.Open should not have run)")
 	}
@@ -696,8 +634,6 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 func TestRun_HydrateRegistry(t *testing.T) {
 	dir := t.TempDir()
 
-	// Pre-seed the notes/ tree with two files BEFORE Run, so the
-	// incremental reindex picks them up at startup.
 	if err := EnsureDataDir(dir); err != nil {
 		t.Fatalf("EnsureDataDir: %v", err)
 	}
@@ -718,7 +654,7 @@ func TestRun_HydrateRegistry(t *testing.T) {
 		DataDir:             dir,
 		ListenAddr:          addr,
 		Logger:              logger,
-		DisableFirstRunGate: true, // Phase 8 Plan 08-02
+		DisableFirstRunGate: true,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -729,7 +665,6 @@ func TestRun_HydrateRegistry(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	// Wait for the listener.
 	probe := func() error {
 		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 		if err != nil {
@@ -744,7 +679,6 @@ func TestRun_HydrateRegistry(t *testing.T) {
 		t.Fatalf("listener did not come up: %v", err)
 	}
 
-	// 1. NotesService accessor must be wired.
 	svc := a.NotesService()
 	if svc == nil {
 		cancel()
@@ -752,10 +686,6 @@ func TestRun_HydrateRegistry(t *testing.T) {
 		t.Fatalf("NotesService(): nil after Run set up listener")
 	}
 
-	// 2. The registry must contain at least 3 entries: scratchpad +
-	//    alpha.md + projects/beta.md. We probe by issuing a GET /notes
-	//    over the live listener and asserting Service.Get resolves on
-	//    the returned UUIDs.
 	resp, err := http.Get("http://" + addr + "/api/v1/notes")
 	if err != nil {
 		cancel()
@@ -787,9 +717,6 @@ func TestRun_HydrateRegistry(t *testing.T) {
 			len(listOut.Notes), body)
 	}
 
-	// 3. For every UUID surfaced by GET /notes, Service.Get must
-	//    resolve — proving the registry was hydrated, not just the
-	//    scratchpad.
 	for _, n := range listOut.Notes {
 		id, perr := uuid.Parse(n.ID)
 		if perr != nil {
@@ -855,7 +782,7 @@ func TestApp_ListenerGated(t *testing.T) {
 		DataDir:             dir,
 		ListenAddr:          addr,
 		Logger:              logger,
-		DisableFirstRunGate: true, // Phase 8 Plan 08-02
+		DisableFirstRunGate: true,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -866,7 +793,6 @@ func TestApp_ListenerGated(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	// Wait for the listener to come up.
 	probe := func() error {
 		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 		if err != nil {
@@ -881,18 +807,14 @@ func TestApp_ListenerGated(t *testing.T) {
 		t.Fatalf("listener did not come up: %v", err)
 	}
 
-	// Issue a WS upgrade request. The server must respond 101. If the hub
-	// is not wired yet (SYNC-09 violation) we'd get 404.
-	// Route is /api/v1/ws (mounted inside r.Route("/api/v1", ...)).
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+"/api/v1/ws", nil)
 	req.Header.Set("Upgrade", "websocket")
 	req.Header.Set("Connection", "Upgrade")
 	req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
 	req.Header.Set("Sec-WebSocket-Version", "13")
-	// Origin required by wshub handler's OriginPatterns (T-04-01).
+
 	req.Header.Set("Origin", "http://"+addr)
 
-	// Use a transport that does NOT follow redirects so we see the raw 101.
 	tr := &http.Transport{}
 	resp, err := tr.RoundTrip(req)
 	if err != nil {
@@ -914,10 +836,6 @@ func TestApp_ListenerGated(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Phase 6 Plan 06-06 tests — lifecycle wiring of D-11 frontmatter migration
-// ---------------------------------------------------------------------------
-
 // TestRun_FrontmatterMigrationRuns_BeforeReconcile — D-11 / TAGS-EXT-03:
 // a vault with a .md file that lacks frontmatter boots cleanly and
 // the file has frontmatter after Run completes. The listener must open
@@ -931,7 +849,7 @@ func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
 		t.Fatalf("EnsureDataDir: %v", err)
 	}
 	notesDir := notesDirFor(dir)
-	// Write a .md file WITHOUT frontmatter.
+
 	noFMPath := filepath.Join(notesDir, "needs-fm.md")
 	if err := os.WriteFile(noFMPath, []byte("# Needs FM\n\nBody here.\n"), 0o644); err != nil {
 		t.Fatalf("write no-FM file: %v", err)
@@ -939,7 +857,7 @@ func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
 
 	addr := pickFreePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger, DisableFirstRunGate: true}) // Phase 8 Plan 08-02
+	a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger, DisableFirstRunGate: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -963,7 +881,6 @@ func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
 		t.Fatalf("listener did not come up: %v", err)
 	}
 
-	// File must now have frontmatter.
 	got, err := os.ReadFile(noFMPath)
 	if err != nil {
 		cancel()
@@ -995,11 +912,10 @@ func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	// --- First boot ---
 	{
 		addr := pickFreePort(t)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger, DisableFirstRunGate: true}) // Phase 8 Plan 08-02
+		a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger, DisableFirstRunGate: true})
 		if err != nil {
 			t.Fatalf("New (first): %v", err)
 		}
@@ -1023,7 +939,6 @@ func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 		<-runErr
 	}
 
-	// Read file content after first boot.
 	afterFirst, err := os.ReadFile(noFMPath)
 	if err != nil {
 		t.Fatalf("readFile after first boot: %v", err)
@@ -1032,11 +947,10 @@ func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 		t.Fatalf("file did not get frontmatter on first boot: %q", afterFirst)
 	}
 
-	// --- Second boot ---
 	{
 		addr := pickFreePort(t)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger, DisableFirstRunGate: true}) // Phase 8 Plan 08-02
+		a, err := New(Config{DataDir: dir, ListenAddr: addr, Logger: logger, DisableFirstRunGate: true})
 		if err != nil {
 			t.Fatalf("New (second): %v", err)
 		}
@@ -1060,7 +974,6 @@ func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 		<-runErr
 	}
 
-	// File content must be byte-identical after second boot.
 	afterSecond, err := os.ReadFile(noFMPath)
 	if err != nil {
 		t.Fatalf("readFile after second boot: %v", err)
@@ -1081,18 +994,14 @@ func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 // initVaultSubsystemsOnly + a.handler.Swap) must flip the listener over to
 // the full per-vault router so /api/v1/tree returns 200.
 func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
-	// Isolate ~/.jasper so we don't read the dev's real registry.
 	appHome := filepath.Join(t.TempDir(), ".jasper")
 	t.Setenv("JASPER_APP_HOME", appHome)
 
-	// Vault target lives outside the app home so the create handler doesn't
-	// trip its "already a vault" / app-home checks.
 	vaultDir := t.TempDir()
 
 	addr := pickFreePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	// DataDir intentionally empty so the legacy fallback at lifecycle.Run
-	// doesn't kick in — we want the real no-vault path.
+
 	a, err := New(Config{
 		DataDir:    "",
 		ListenAddr: addr,
@@ -1124,7 +1033,6 @@ func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 		t.Fatalf("listener did not come up: %v", err)
 	}
 
-	// Sanity 1: no-vault mode — /vault/current returns empty wrapper.
 	{
 		resp, err := http.Get("http://" + addr + "/api/v1/vault/current")
 		if err != nil {
@@ -1135,13 +1043,12 @@ func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 		if resp.StatusCode != 200 {
 			t.Fatalf("pre-create /vault/current status: got %d, want 200; body=%s", resp.StatusCode, body)
 		}
-		// Wrapper has vault either omitted or null; either way no path field.
+
 		if strings.Contains(string(body), `"path":`) {
 			t.Errorf("pre-create /vault/current should not name a path; body=%s", body)
 		}
 	}
 
-	// Create the vault. Mirrors what the frontend's VaultCreatePane POSTs.
 	createReq := fmt.Sprintf(`{"path":%q,"theme":"dark","mcp_enabled":false,"daily_template":"# {{date}}\n\n"}`, vaultDir)
 	createResp, err := http.Post("http://"+addr+"/api/v1/vault/create", "application/json", strings.NewReader(createReq))
 	if err != nil {
@@ -1153,8 +1060,6 @@ func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 		t.Fatalf("POST /vault/create status: got %d, want 200; body=%s", createResp.StatusCode, createBody)
 	}
 
-	// Disk-side assertions: .jasper/ exists with a config.json + app.db inside;
-	// app.json on the app home now has current_vault set.
 	if _, statErr := os.Stat(filepath.Join(vaultDir, ".jasper")); statErr != nil {
 		t.Fatalf("expected %s/.jasper to exist after create: %v", vaultDir, statErr)
 	}
@@ -1172,11 +1077,6 @@ func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 		t.Errorf("app.json should have current_vault set; got %s", appJSON)
 	}
 
-	// Critical: per-vault endpoints reachable on the SAME listener without
-	// restart. /tree and /admin/status are not served by the no-vault
-	// picker-shell router. If a.handler.Swap is broken these will hang or
-	// return whatever the no-vault router exposes — neither is a healthy
-	// per-vault response.
 	{
 		resp, err := http.Get("http://" + addr + "/api/v1/tree")
 		if err != nil {
@@ -1203,7 +1103,6 @@ func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 		}
 	}
 
-	// /vault/current now points at the new vault.
 	{
 		resp, err := http.Get("http://" + addr + "/api/v1/vault/current")
 		if err != nil {
@@ -1211,8 +1110,7 @@ func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 		}
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		// vaultDir gets darwin-lowercased + symlink-resolved by Canonicalize.
-		// Use the basename as a stable substring (t.TempDir's last segment).
+
 		base := filepath.Base(vaultDir)
 		if !strings.Contains(strings.ToLower(string(body)), strings.ToLower(base)) {
 			t.Errorf("post-create /vault/current should name %q; body=%s", base, body)

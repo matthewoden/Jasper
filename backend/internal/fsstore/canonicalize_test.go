@@ -8,10 +8,6 @@ import (
 	"testing"
 )
 
-// Helper: resolve a path through EvalSymlinks for comparison. macOS prefixes
-// /var paths with /private/var, so any "expected" we build by hand-joining
-// rootDir + relPath needs the same resolution to compare equal. All tests
-// use t.TempDir() so this is the right comparison strategy.
 func resolved(t *testing.T, p string) string {
 	t.Helper()
 	r, err := filepath.EvalSymlinks(p)
@@ -55,9 +51,9 @@ func TestCanonicalize_CaseEquivalence(t *testing.T) {
 // must collapse to identical bytes after Canonicalize.
 func TestCanonicalize_NFDvsNFCEquivalence(t *testing.T) {
 	root := t.TempDir()
-	// NFD: 'c', 'a', 'f', 'e', U+0301 combining acute, '.', 'm', 'd'
+
 	nfd := "café.md"
-	// NFC: 'c', 'a', 'f', U+00E9 precomposed é, '.', 'm', 'd'
+
 	nfc := "café.md"
 	if nfd == nfc {
 		t.Fatalf("test inputs are byte-equal; setup error")
@@ -118,10 +114,8 @@ func TestCanonicalize_PreservesSubdir(t *testing.T) {
 // Test 8: a symlink that points outside the root is rejected with ErrNotInRoot.
 func TestCanonicalize_RejectsSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
-	outside := t.TempDir() // separate temp, definitely not under root.
-	// Create root/evil -> outside (a directory symlink). Then ask
-	// Canonicalize for root/evil/passwd; the resolution must land
-	// inside `outside` and fail isUnder(rootResolved).
+	outside := t.TempDir()
+
 	if err := os.Symlink(outside, filepath.Join(root, "evil")); err != nil {
 		t.Skipf("symlink unsupported on this platform: %v", err)
 	}
@@ -213,8 +207,7 @@ func TestCanonicalize_AcceptsNonExistentTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// The returned path is the unresolved join (not the EvalSymlinks form)
-	// so callers can use it directly with os.Create / os.Open.
+
 	wantUnderlying := filepath.Join(resolved(t, root), "brand-new-file.md")
 	if resolved(t, filepath.Dir(got))+string(filepath.Separator)+filepath.Base(got) != wantUnderlying {
 		t.Fatalf("got %q, want under %q", got, wantUnderlying)

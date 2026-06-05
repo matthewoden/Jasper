@@ -59,22 +59,7 @@ func (s *Server) PutConfig(
 	return PutConfig200JSONResponse(toWireConfig(cfg)), nil
 }
 
-// toWireConfig maps the internal config.Config to the generated wire type
-// (api.Config from openapi_gen.go). The two structs are structurally
-// isomorphic by design; the generated Config.DailyNotes and Config.Editor
-// are anonymous structs so we initialize them with struct literals.
-//
-// NOTE: config.Editor.LineHeight is float64; the generated Config.Editor.LineHeight
-// is float32 (oapi-codegen maps OpenAPI `number` to float32 by default when
-// no format qualifier is specified). The cast preserves the value within
-// the precision of float32 — which is adequate for a 1.0–3.0 range with
-// 1-decimal-place resolution.
 func toWireConfig(c config.Config) Config {
-	// Phase 8 Plan 08-01: Mcp + Server are pointer fields with
-	// omitempty in the generated wire type so existing clients (Phase
-	// 5–7) that ignored these blocks still see the same shape. We
-	// always emit them server-side so the wizard + the listener can
-	// rely on the values being present on round-trip.
 	server := struct {
 		DataDir string `json:"dataDir"`
 		Port    int    `json:"port"`
@@ -116,11 +101,6 @@ func toWireConfig(c config.Config) Config {
 }
 
 func fromWireConfig(w Config) config.Config {
-	// Phase 8 Plan 08-01: pull Server / MCP off the optional wire
-	// blocks; fall back to package defaults so a PUT body that omits
-	// either block doesn't zero the stored values. Plan 08-02's
-	// wizard submit ALWAYS sends both blocks; pre-Phase-8 clients
-	// (which omit them) keep working.
 	out := config.Config{
 		AppName: w.AppName,
 		Theme:   string(w.Theme),
@@ -133,7 +113,7 @@ func fromWireConfig(w Config) config.Config {
 			LineHeight: float64(w.Editor.LineHeight),
 			VimMode:    w.Editor.VimMode,
 		},
-		Server: config.ServerConfig{Port: 6683, DataDir: ""}, // D-50 default
+		Server: config.ServerConfig{Port: 6683, DataDir: ""},
 		MCP:    config.MCPConfig{Enabled: false, Port: 6684, Bind: "127.0.0.1"},
 	}
 	if w.Server != nil {

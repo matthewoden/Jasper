@@ -11,10 +11,6 @@ import (
 	"path/filepath"
 )
 
-// configPath returns <dataDir>/storage/config.json — same convention as
-// <dataDir>/storage/app.db (Phase 2). Caller is responsible for ensuring
-// the storage subdir exists before Save runs (lifecycle.go EnsureDataDir
-// creates it in step 1).
 func configPath(dataDir string) string {
 	return filepath.Join(dataDir, "storage", "config.json")
 }
@@ -49,24 +45,16 @@ func Load(dataDir string, log *slog.Logger) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("config read: %w", err)
 	}
-	// Phase 8 Plan 08-01 Task 4: start from Defaults() so old config
-	// files (written before Phase 8 added the `server` / `mcp` blocks)
-	// retain the canonical defaults for any nested struct field that
-	// is missing on disk. json.Decoder leaves unmentioned struct
-	// fields untouched, so this preserves Server.Port=6683 and
-	// MCP.Port=6684 when the old config has neither block.
+
 	cfg := DefaultConfig()
 	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields() // D-40 strict
+	dec.DisallowUnknownFields()
 	if err := dec.Decode(&cfg); err != nil {
 		log.Warn("config: malformed; falling back to defaults",
 			"path", path, "err", err)
 		return DefaultConfig(), nil
 	}
-	// Belt-and-suspenders defaults for nested zero-values that survived
-	// a Decode where the block was present but partial (e.g. `"server":
-	// {"dataDir": "/x"}` would leave Server.Port=0 because the JSON
-	// overwrites the whole struct).
+
 	if cfg.Server.Port == 0 {
 		cfg.Server.Port = 6683
 	}

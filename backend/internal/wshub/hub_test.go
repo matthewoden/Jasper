@@ -23,13 +23,6 @@ func newTestHub(t *testing.T) *wshub.Hub {
 	return wshub.New(slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
-// dialClient opens a WS to srv.URL with `?session_id=<sid>`, reads the
-// first message which is the handshake envelope, and returns the
-// connection + the confirmed session_id from the handshake.
-//
-// WR-01: ServeHTTP rejects empty Origin headers as defense-in-depth
-// against the coder/websocket authenticateOrigin no-op-on-empty path,
-// so the dial sets an explicit localhost Origin matching OriginPatterns.
 func dialClient(t *testing.T, srvURL, sid string) (*websocket.Conn, string) {
 	t.Helper()
 	wsURL := strings.Replace(srvURL, "http://", "ws://", 1)
@@ -45,8 +38,6 @@ func dialClient(t *testing.T, srvURL, sid string) (*websocket.Conn, string) {
 		t.Fatalf("dialClient: websocket.Dial: %v", err)
 	}
 
-	// Read handshake — the server sends a session:assigned message first.
-	// Amendment 2: decode into apigen.WSEnvelope to bind to the generated type.
 	var env apigen.WSEnvelope
 	readCtx, readCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer readCancel()
@@ -57,9 +48,6 @@ func dialClient(t *testing.T, srvURL, sid string) (*websocket.Conn, string) {
 		t.Fatalf("dialClient: expected event %q, got %q", wshub.EventSessionAssigned, env.Event)
 	}
 
-	// Extract session_id from the payload map.
-	// apigen.WSEnvelope.Payload is interface{}; after JSON decode it's
-	// map[string]interface{} — re-marshal and unmarshal to get string values.
 	rawPayload, err := json.Marshal(env.Payload)
 	if err != nil {
 		t.Fatalf("dialClient: marshal payload: %v", err)
@@ -101,7 +89,6 @@ func TestHub_BroadcastFanOutExceptOrigin(t *testing.T) {
 	connB, sidB := dialClient(t, srv.URL, "sid-B")
 	defer connB.CloseNow() //nolint:errcheck
 
-	// Sanity: confirm both sids are as expected.
 	if sidA != "sid-A" {
 		t.Fatalf("sidA mismatch: %q", sidA)
 	}
@@ -109,11 +96,8 @@ func TestHub_BroadcastFanOutExceptOrigin(t *testing.T) {
 		t.Fatalf("sidB mismatch: %q", sidB)
 	}
 
-	// Broadcast originating from sidA — sidB MUST receive it; sidA MUST NOT.
 	hub.Broadcast(wshub.EventNoteUpdated, map[string]string{"id": "n1"}, sidA)
 
-	// sidB should receive the broadcast within 1s.
-	// Amendment 2: decode into apigen.WSEnvelope for type safety.
 	recvCtx, recvCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer recvCancel()
 	var envB apigen.WSEnvelope
@@ -124,8 +108,6 @@ func TestHub_BroadcastFanOutExceptOrigin(t *testing.T) {
 		t.Errorf("sidB event: got %q, want %q", envB.Event, wshub.EventNoteUpdated)
 	}
 
-	// sidA should NOT receive the broadcast (origin filtered).
-	// 200ms timeout is correct for a negative assertion.
 	noRecvCtx, noRecvCancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer noRecvCancel()
 	var envA apigen.WSEnvelope
@@ -146,24 +128,19 @@ func TestHub_SlowClientDropped(t *testing.T) {
 		close(dropped)
 	}
 
-	// bufSize=0: channel is full from the start. Any broadcast will hit
-	// the default: branch immediately.
 	wshub.RegisterFake(hub, "slow-client", 0, closeSlow)
 
 	start := time.Now()
 	hub.Broadcast(wshub.EventNoteUpdated, map[string]string{"id": "n1"}, "other-origin")
 	elapsed := time.Since(start)
 
-	// Broadcast must return quickly — the non-blocking select must not
-	// block waiting for the slow client.
 	if elapsed > 10*time.Millisecond {
 		t.Errorf("Broadcast blocked for %v; expected < 10ms (slow-client drop must be non-blocking)", elapsed)
 	}
 
-	// closeSlow must be invoked (in a goroutine) within 1s.
 	select {
 	case <-dropped:
-		// OK — closeSlow was invoked.
+
 	case <-time.After(1 * time.Second):
 		t.Error("closeSlow was not invoked within 1s")
 	}
@@ -181,15 +158,12 @@ func TestHub_DisconnectCleanup(t *testing.T) {
 		t.Fatalf("expected 1 client after connect, got %d", hub.ClientCount())
 	}
 
-	// Close the client connection.
 	conn.Close(websocket.StatusNormalClosure, "bye") //nolint:errcheck
 
-	// Poll until the hub removes the client (the readPump exits and
-	// triggers unregister via defer). Should happen well within 500ms.
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for time.Now().Before(deadline) {
 		if hub.ClientCount() == 0 {
-			return // test passes
+			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -205,13 +179,13 @@ func TestHub_BroadcastMarshalFailureBumpsCounter(t *testing.T) {
 	if got := hub.MarshalFailureCount(); got != 0 {
 		t.Fatalf("initial counter: got %d, want 0", got)
 	}
-	// channels are not JSON-marshalable — guaranteed Marshal error.
+
 	bad := make(chan int)
 	hub.Broadcast("test:event", bad, "")
 	if got := hub.MarshalFailureCount(); got != 1 {
 		t.Errorf("after one bad broadcast: got %d, want 1", got)
 	}
-	// A second failure increments again — counter is cumulative.
+
 	hub.Broadcast("test:event", bad, "")
 	if got := hub.MarshalFailureCount(); got != 2 {
 		t.Errorf("after two bad broadcasts: got %d, want 2", got)
@@ -230,14 +204,11 @@ func TestHub_RejectsEmptyOrigin(t *testing.T) {
 	srv := httptest.NewServer(hub)
 	defer srv.Close()
 
-	// Issue a non-WebSocket plain GET with no Origin header — exercises
-	// the early-return before the upgrade attempt. The actual upgrade
-	// would also fail, but this is the cheapest assertion.
 	req, err := http.NewRequest(http.MethodGet, srv.URL+"/?session_id=sid-noorigin", nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
-	// Explicitly do NOT set Origin.
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("Do: %v", err)
@@ -248,5 +219,4 @@ func TestHub_RejectsEmptyOrigin(t *testing.T) {
 	}
 }
 
-// Verify that the hub satisfies http.Handler (ServeHTTP).
 var _ http.Handler = (*wshub.Hub)(nil)

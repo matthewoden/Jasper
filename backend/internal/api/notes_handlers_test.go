@@ -24,7 +24,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// fakeIndex is a test-only notes.Index implementation.
 type fakeIndex struct {
 	listResult []notes.NoteSummary
 	listErr    error
@@ -94,8 +93,6 @@ func (f *fakeIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]n
 	return []notes.SearchHit{}, nil
 }
 
-// setupGetNotesServer builds a Server wired with the given index and
-// mounts the strict-server bridge under /api/v1.
 func setupGetNotesServer(t *testing.T, idx notes.Index) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -127,8 +124,7 @@ func TestGetNotes_Empty_ReturnsEmptyArray(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("status: got %d, want 200; body=%s", resp.StatusCode, body)
 	}
-	// Decode as a map so we can verify the JSON shape (notes key is
-	// `[]` not `null`).
+
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
 		t.Fatalf("unmarshal: %v; body=%s", err, body)
@@ -194,7 +190,7 @@ func TestGetNotes_NilIndex_FallsBackToEmpty(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
 	svc := notes.NewService(files, nil, nil, logger)
-	srv := NewServer(svc, logger) // 2-arg form — no index passed
+	srv := NewServer(svc, logger)
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
@@ -268,34 +264,17 @@ func TestGetNotes_IndexErr_Returns500_GenericMessage(t *testing.T) {
 	if resp.StatusCode != 500 {
 		t.Fatalf("status: got %d, want 500; body=%s", resp.StatusCode, body)
 	}
-	// The generic message — NOT the absolute path that the underlying
-	// error contained.
+
 	if string(body) == "" {
 		t.Errorf("body empty")
 	}
 }
 
-// ----------------------------------------------------------------------
-// Plan 03-04 Task 1 — Notes mutation handler tests.
-//
-// The harness wires a real fsstore.Store rooted at t.TempDir() plus a
-// realIndex spy (in-memory map of NoteRecords) so the strict-server
-// bridge → notes.Service → FS+Index path is exercised end-to-end. The
-// fakeIndex above is reused but extended via realIndex below where path
-// lookups / batch operations are needed.
-// ----------------------------------------------------------------------
-
-// realIndex is the in-memory Index spy used by Plan 03-04 mutation
-// handler tests. Mirrors the stubIndex shape from
-// notes/service_test.go but lives in the api test package because the
-// notes test package's stubIndex is unexported.
 type realIndex struct {
 	byPath    map[string]notes.NoteRecord
 	byID      map[uuid.UUID]notes.NoteRecord
 	upsertErr error
 
-	// backlinks: target title → list of source summaries. Set via setBacklink()
-	// for tests that need SourcesByBacklinkTitle to return real results.
 	backlinks map[string][]notes.NoteSummary
 }
 
@@ -307,8 +286,6 @@ func newRealIndex() *realIndex {
 	}
 }
 
-// setBacklink seeds the index with a source note that refers to targetTitle.
-// Used by Task 5 tests to simulate a backlink without real SQL.
 func (r *realIndex) setBacklink(targetTitle string, source notes.NoteSummary) {
 	r.backlinks[targetTitle] = append(r.backlinks[targetTitle], source)
 }
@@ -440,8 +417,6 @@ func (r *realIndex) DeleteByPathPrefix(_ context.Context, prefix string) (int, e
 	return len(matched), nil
 }
 
-// setupRealFSServer mounts the strict-server bridge with a real
-// fsstore.Store rooted at t.TempDir() and a realIndex.
 func setupRealFSServer(t *testing.T) (*httptest.Server, *notes.Service, string, *realIndex) {
 	t.Helper()
 	root := t.TempDir()
@@ -524,11 +499,11 @@ func TestPostNotes_HappyPath_201(t *testing.T) {
 	if got.UpdatedAt.IsZero() {
 		t.Errorf("UpdatedAt: zero")
 	}
-	// File exists on disk.
+
 	if _, err := os.Stat(filepath.Join(root, "alpha.md")); err != nil {
 		t.Errorf("file not on disk: %v", err)
 	}
-	// Index has the row.
+
 	if _, ok := idx.byPath["alpha.md"]; !ok {
 		t.Errorf("index does not have alpha.md row")
 	}
@@ -539,7 +514,7 @@ func TestPostNotes_InFolder_201(t *testing.T) {
 	t.Parallel()
 	ts, _, root, _ := setupRealFSServer(t)
 	defer ts.Close()
-	// Create the parent folder first.
+
 	if err := os.Mkdir(filepath.Join(root, "projects"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -562,9 +537,7 @@ func TestPostNotes_NilBody_400(t *testing.T) {
 	t.Parallel()
 	ts, _, _, _ := setupRealFSServer(t)
 	defer ts.Close()
-	// Send a valid POST but with empty body — strict-server should still
-	// invoke the handler with Body=nil (no Content-Type means decoder
-	// short-circuits without populating Body).
+
 	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/notes", nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
@@ -575,9 +548,7 @@ func TestPostNotes_NilBody_400(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	// Either the strict-server middleware rejects with 400 (no
-	// Content-Type / empty body) OR our handler does — either way we
-	// expect a 4xx, NOT a 500.
+
 	if resp.StatusCode < 400 || resp.StatusCode >= 500 {
 		t.Fatalf("status: got %d, want 4xx; body=%s", resp.StatusCode, body)
 	}
@@ -666,9 +637,7 @@ func TestPostNotes_PathEscape_400(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("unmarshal: %v; body=%s", err, body)
 	}
-	// Either invalid_path (Canonicalize) or parent_not_found (joined path
-	// resolves to a real path that doesn't exist) — both are 400 with a
-	// structured Error.
+
 	if got.Code != "invalid_path" && got.Code != "parent_not_found" {
 		t.Errorf("Code: got %q, want invalid_path or parent_not_found", got.Code)
 	}
@@ -768,7 +737,6 @@ func TestPostNoteMove_Collision_409(t *testing.T) {
 	ts, _, _, _ := setupRealFSServer(t)
 	defer ts.Close()
 
-	// Create two notes; move the first onto the second's path.
 	resp, body := mustPostJSON(t, ts, "/api/v1/notes",
 		`{"parent_path":"","title":"alpha"}`)
 	if resp.StatusCode != 201 {
@@ -823,7 +791,6 @@ func TestPostNoteMove_PathEscape_400(t *testing.T) {
 	ts, _, _, _ := setupRealFSServer(t)
 	defer ts.Close()
 
-	// Create a note to move.
 	resp, body := mustPostJSON(t, ts, "/api/v1/notes",
 		`{"parent_path":"","title":"alpha"}`)
 	if resp.StatusCode != 201 {
@@ -841,7 +808,7 @@ func TestPostNoteMove_PathEscape_400(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatal(err)
 	}
-	// Either invalid_path (canonicalize escape) or parent_not_found.
+
 	if got.Code != "invalid_path" && got.Code != "parent_not_found" {
 		t.Errorf("Code: got %q, want invalid_path or parent_not_found", got.Code)
 	}
@@ -872,14 +839,12 @@ func TestPostNotes_DoesNotLeakInternalErrors(t *testing.T) {
 	if resp.StatusCode != 500 {
 		t.Fatalf("status: got %d, want 500; body=%s", resp.StatusCode, body)
 	}
-	// The wire body MUST NOT contain the leaked absolute path.
+
 	if strings.Contains(string(body), "/abs/path/to/db") {
 		t.Errorf("wire body leaked internal path: %s", body)
 	}
 }
 
-// leakyFileStore is a FileStore that synthesizes errors. Only Create*
-// is overridden; Read/WriteAtomic/Stat default to working zero values.
 type leakyFileStore struct {
 	createErr error
 }
@@ -894,12 +859,6 @@ func (l *leakyFileStore) CreateDir(_ string) error             { return nil }
 func (l *leakyFileStore) DeleteDir(_ string, _ bool) error     { return nil }
 func (l *leakyFileStore) MoveDir(_, _ string) error            { return nil }
 
-// ---------------------------------------------------------------------------
-// Task 5: PostNoteMove wikilink-rewrite tests (M1-M5)
-// ---------------------------------------------------------------------------
-
-// apiBroadcaster is a test broadcaster spy for the api-package move handler
-// tests. Records all Broadcast calls for assertion.
 type apiBroadcaster struct {
 	mu     sync.Mutex
 	events []apiEvent
@@ -940,9 +899,6 @@ func (b *apiBroadcaster) firstByType(eventType string) (apiEvent, bool) {
 	return apiEvent{}, false
 }
 
-// setupRealFSServerWithBroadcaster is like setupRealFSServer but wires a
-// real apiBroadcaster into notes.Service and Server so WS events can be
-// asserted in tests.
 func setupRealFSServerWithBroadcaster(t *testing.T) (*httptest.Server, *notes.Service, string, *realIndex, *apiBroadcaster) {
 	t.Helper()
 	root := t.TempDir()
@@ -972,7 +928,6 @@ func TestPostNoteMove_M1_TitleChangeTriggerRewrite(t *testing.T) {
 	ts, _, root, idx, bc := setupRealFSServerWithBroadcaster(t)
 	defer ts.Close()
 
-	// Create note A via API (gets scaffold with # foo heading).
 	resp, body := mustPostJSON(t, ts, "/api/v1/notes", `{"parent_path":"","title":"foo"}`)
 	if resp.StatusCode != 201 {
 		t.Fatalf("create A: %d; body=%s", resp.StatusCode, body)
@@ -983,16 +938,11 @@ func TestPostNoteMove_M1_TitleChangeTriggerRewrite(t *testing.T) {
 	}
 	aID := uuid.UUID(aSummary.Id)
 
-	// Overwrite A's file with content that has NO H1 heading so that
-	// ExtractTitle falls back to the filename for the title. This means:
-	//   - Before move: title = "foo" (from foo.md filename)
-	//   - After move to bar.md: title = "bar" (from bar.md filename)
 	aPath := filepath.Join(root, "foo.md")
 	if err := os.WriteFile(aPath, []byte("---\ntags: []\n---\n\nno heading here\n"), 0o600); err != nil {
 		t.Fatalf("write A: %v", err)
 	}
 
-	// Create note B at b.md with body containing [[foo]].
 	resp, body = mustPostJSON(t, ts, "/api/v1/notes", `{"parent_path":"","title":"b"}`)
 	if resp.StatusCode != 201 {
 		t.Fatalf("create B: %d; body=%s", resp.StatusCode, body)
@@ -1003,23 +953,20 @@ func TestPostNoteMove_M1_TitleChangeTriggerRewrite(t *testing.T) {
 	}
 	bID := uuid.UUID(bSummary.Id)
 	bPath := filepath.Join(root, "b.md")
-	// Write [[foo]] reference into B's file.
+
 	if err := os.WriteFile(bPath, []byte("---\ntags: []\n---\n\nsee [[foo]]\n"), 0o600); err != nil {
 		t.Fatalf("write B: %v", err)
 	}
 
-	// Wire the backlink: B refers to title "foo".
 	bRec := idx.byID[bID]
 	idx.setBacklink("foo", notes.NoteSummary{ID: bID, Path: bRec.Path, Title: "b"})
 
-	// Move A from foo.md to bar.md. oldTitle="foo" (filename) → newTitle="bar" (filename fallback).
 	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+aID.String()+"/move",
 		`{"new_path":"bar.md"}`)
 	if resp.StatusCode != 200 {
 		t.Fatalf("move: %d; body=%s", resp.StatusCode, body)
 	}
 
-	// Assert B's on-disk content was rewritten.
 	bContent, err := os.ReadFile(bPath)
 	if err != nil {
 		t.Fatalf("read B: %v", err)
@@ -1031,7 +978,6 @@ func TestPostNoteMove_M1_TitleChangeTriggerRewrite(t *testing.T) {
 		t.Errorf("B still has [[foo]]: body=%s", bContent)
 	}
 
-	// Assert EventLinksRewritten broadcast was emitted.
 	if n := bc.countByType(notes.EventLinksRewritten); n != 1 {
 		t.Errorf("EventLinksRewritten count: got %d, want 1", n)
 	}
@@ -1060,7 +1006,6 @@ func TestPostNoteMove_M2_NoRewrite_WhenTitleUnchanged(t *testing.T) {
 	ts, _, root, idx, bc := setupRealFSServerWithBroadcaster(t)
 	defer ts.Close()
 
-	// Create sub-folder so we can move foo.md → sub/foo.md.
 	if err := os.MkdirAll(filepath.Join(root, "sub"), 0o755); err != nil {
 		t.Fatalf("mkdir sub: %v", err)
 	}
@@ -1075,18 +1020,15 @@ func TestPostNoteMove_M2_NoRewrite_WhenTitleUnchanged(t *testing.T) {
 	}
 	aID := uuid.UUID(aSummary.Id)
 
-	// Seed a backlink so if rewrite ran it would touch something.
 	otherID := uuid.New()
 	idx.setBacklink("foo", notes.NoteSummary{ID: otherID, Path: "b.md", Title: "b"})
 
-	// Move foo.md → sub/foo.md (title stem "foo" unchanged).
 	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+aID.String()+"/move",
 		`{"new_path":"sub/foo.md"}`)
 	if resp.StatusCode != 200 {
 		t.Fatalf("move: %d; body=%s", resp.StatusCode, body)
 	}
 
-	// EventLinksRewritten must NOT be emitted.
 	if n := bc.countByType(notes.EventLinksRewritten); n != 0 {
 		t.Errorf("EventLinksRewritten count: got %d, want 0", n)
 	}
@@ -1110,18 +1052,15 @@ func TestPostNoteMove_M4_NoBroadcast_WhenNoReferrers(t *testing.T) {
 	}
 	aID := uuid.UUID(created.Id)
 
-	// Remove H1 from solo.md so title = filename (forces title change on move).
 	soloPath := filepath.Join(root, "solo.md")
 	_ = os.WriteFile(soloPath, []byte("---\ntags: []\n---\n\nno heading\n"), 0o600)
 
-	// Move with title change; idx.SourcesByBacklinkTitle("solo") returns [].
 	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+aID.String()+"/move",
 		`{"new_path":"renamed.md"}`)
 	if resp.StatusCode != 200 {
 		t.Fatalf("move: %d; body=%s", resp.StatusCode, body)
 	}
 
-	// No referrers → no EventLinksRewritten (per RW2: empty touched → no broadcast).
 	if n := bc.countByType(notes.EventLinksRewritten); n != 0 {
 		t.Errorf("EventLinksRewritten count: got %d, want 0", n)
 	}
@@ -1148,11 +1087,9 @@ func TestPostNoteMove_M5_OldTitleCapturedBeforeMove(t *testing.T) {
 	}
 	aID := uuid.UUID(created.Id)
 
-	// Remove H1 from alpha.md so title = filename.
 	aPath := filepath.Join(root, "alpha.md")
 	_ = os.WriteFile(aPath, []byte("---\ntags: []\n---\n\nno heading\n"), 0o600)
 
-	// Create referrer B and wire backlink.
 	resp, body = mustPostJSON(t, ts, "/api/v1/notes", `{"parent_path":"","title":"b"}`)
 	if resp.StatusCode != 201 {
 		t.Fatalf("create B: %d; body=%s", resp.StatusCode, body)
@@ -1164,14 +1101,12 @@ func TestPostNoteMove_M5_OldTitleCapturedBeforeMove(t *testing.T) {
 	_ = os.WriteFile(bPath, []byte("---\ntags: []\n---\n\nsee [[alpha]]\n"), 0o600)
 	idx.setBacklink("alpha", notes.NoteSummary{ID: bID, Path: "b.md", Title: "b"})
 
-	// Move alpha.md → beta.md.
 	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+aID.String()+"/move",
 		`{"new_path":"beta.md"}`)
 	if resp.StatusCode != 200 {
 		t.Fatalf("move: %d; body=%s", resp.StatusCode, body)
 	}
 
-	// Assert: old_title in EventLinksRewritten = "alpha" (pre-move), new_title = "beta".
 	ev, ok := bc.firstByType(notes.EventLinksRewritten)
 	if !ok {
 		t.Fatal("no EventLinksRewritten event emitted")

@@ -1,16 +1,5 @@
 package app
 
-// lifecycle_vault_test.go — Plan 08-17b Task 2 TDD tests for resolveVaultMode
-// and OpenVault.
-//
-// Tests cover the four cases documented in the V-spec and ADR-001:
-//   - Empty app.json → modeNoVault, no banner
-//   - current_vault exists with .jasper/ → modeOpen
-//   - V13: current_vault folder missing → modeNoVault + banner + side effects
-//   - V14: current_vault folder exists but .jasper/ missing → modeNoVault + banner + side effects
-//   - VaultOverride bypasses app.json's current_vault
-//   - OpenVault touches app.json (CurrentVault + LastOpenedAt)
-
 import (
 	"context"
 	"io"
@@ -24,7 +13,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
-// writeAppJSON writes an AppState to path/app.json, creating the directory as needed.
 func writeAppJSON(t *testing.T, dir string, state *vault.AppState) string {
 	t.Helper()
 	path := filepath.Join(dir, "app.json")
@@ -58,7 +46,6 @@ func TestResolveVaultMode_EmptyAppJSON_NoVault(t *testing.T) {
 func TestResolveVaultMode_CurrentVaultExists_Open(t *testing.T) {
 	dir := t.TempDir()
 
-	// Create a vault folder with .jasper/.
 	vaultDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(vaultDir, ".jasper"), 0o700); err != nil {
 		t.Fatal(err)
@@ -93,7 +80,6 @@ func TestResolveVaultMode_CurrentVaultExists_Open(t *testing.T) {
 func TestResolveVaultMode_V13_CurrentVaultMissing(t *testing.T) {
 	dir := t.TempDir()
 
-	// A path that doesn't exist.
 	missingPath := filepath.Join(t.TempDir(), "nonexistent-vault")
 	appJSONPath := writeAppJSON(t, dir, &vault.AppState{
 		CurrentVault: missingPath,
@@ -113,7 +99,6 @@ func TestResolveVaultMode_V13_CurrentVaultMissing(t *testing.T) {
 		t.Errorf("banner: want 'is no longer accessible', got %q", banner)
 	}
 
-	// Verify side effect: app.json has CurrentVault="" and the entry has Missing=true.
 	state, loadErr := vault.LoadAppJSON(appJSONPath)
 	if loadErr != nil {
 		t.Fatalf("reload app.json: %v", loadErr)
@@ -138,7 +123,6 @@ func TestResolveVaultMode_V13_CurrentVaultMissing(t *testing.T) {
 func TestResolveVaultMode_V14_DotJasperMissing(t *testing.T) {
 	dir := t.TempDir()
 
-	// A real folder but no .jasper/ inside.
 	vaultDir := t.TempDir()
 	canonical, err := vault.Canonicalize(vaultDir)
 	if err != nil {
@@ -163,7 +147,6 @@ func TestResolveVaultMode_V14_DotJasperMissing(t *testing.T) {
 		t.Errorf("banner: want 'missing or corrupt', got %q", banner)
 	}
 
-	// Verify side effects.
 	state, loadErr := vault.LoadAppJSON(appJSONPath)
 	if loadErr != nil {
 		t.Fatalf("reload app.json: %v", loadErr)
@@ -181,7 +164,6 @@ func TestResolveVaultMode_V14_DotJasperMissing(t *testing.T) {
 func TestResolveVaultMode_VaultOverride_BypassesAppJSON(t *testing.T) {
 	dir := t.TempDir()
 
-	// app.json says vaultA; --vault points at vaultB (both have .jasper/).
 	vaultA := t.TempDir()
 	vaultB := t.TempDir()
 	for _, d := range []string{vaultA, vaultB} {
@@ -210,8 +192,6 @@ func TestResolveVaultMode_VaultOverride_BypassesAppJSON(t *testing.T) {
 		t.Errorf("openPath: want %q (override), got %q", canB, openPath)
 	}
 
-	// app.json's CurrentVault should NOT be updated by resolveVaultMode
-	// (only OpenVault touches app.json for the open path).
 	state, loadErr := vault.LoadAppJSON(appJSONPath)
 	if loadErr != nil {
 		t.Fatalf("reload app.json: %v", loadErr)
@@ -225,12 +205,9 @@ func TestResolveVaultMode_VaultOverride_BypassesAppJSON(t *testing.T) {
 // CurrentVault is set to the canonical vault path, and a RecentVaults entry
 // is created (or updated) with the vault's path + a fresh LastOpenedAt.
 func TestApp_OpenVault_TouchesAppJSON(t *testing.T) {
-	// Redirect the vault loader so this test does not touch ~/.jasper.
 	appHome := t.TempDir()
 	t.Setenv("JASPER_APP_HOME", appHome)
 
-	// Vault directory: a real folder with .jasper/ so the loader is happy
-	// and bootPerVaultSubsystems can set up the full data dir.
 	vaultDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(vaultDir, ".jasper"), 0o700); err != nil {
 		t.Fatal(err)
@@ -240,7 +217,6 @@ func TestApp_OpenVault_TouchesAppJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Seed an empty app.json in appHome (no current_vault).
 	appJSONPath := filepath.Join(appHome, "app.json")
 	if err := vault.SaveAppJSON(appJSONPath, &vault.AppState{
 		RecentVaults: []vault.RecentVaultEntry{},
@@ -259,17 +235,12 @@ func TestApp_OpenVault_TouchesAppJSON(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	// OpenVault must update app.json BEFORE calling bootPerVaultSubsystems.
-	// Use a cancel context so the server loop shuts down promptly (allowing
-	// sqlite.Close to run, which lets the temp-dir cleanup succeed).
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	openErr := make(chan error, 1)
 	go func() { openErr <- a.OpenVault(ctx, canonical) }()
 
-	// Poll until app.json has the expected CurrentVault, then cancel the
-	// context so the server goroutine exits cleanly.
 	deadline := time.Now().Add(5 * time.Second)
 	var state *vault.AppState
 	for time.Now().Before(deadline) {
@@ -283,9 +254,8 @@ func TestApp_OpenVault_TouchesAppJSON(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	cancel() // stop the server + trigger DB close via defer in serveListener
-	// Wait for the goroutine to return so the sqlite pair is closed before
-	// the test's deferred TempDir removal runs.
+	cancel()
+
 	select {
 	case <-openErr:
 	case <-time.After(10 * time.Second):

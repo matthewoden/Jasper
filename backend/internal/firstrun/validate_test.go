@@ -10,9 +10,7 @@ import (
 
 func TestValidateDataDir_Valid(t *testing.T) {
 	t.Parallel()
-	// A fresh sub-path under t.TempDir() — parent exists, no nested
-	// vault, writable. ValidateDataDir will mkdir it via os.MkdirAll
-	// (D-08c write probe) as a side effect; that's expected.
+
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
 	res := ValidateDataDir(target)
@@ -26,7 +24,7 @@ func TestValidateDataDir_Valid(t *testing.T) {
 
 func TestValidateDataDir_ParentMissing(t *testing.T) {
 	t.Parallel()
-	// Parent directory is itself a not-yet-created path.
+
 	base := t.TempDir()
 	target := filepath.Join(base, "no-such-parent-12345", "Jasper")
 	res := ValidateDataDir(target)
@@ -39,7 +37,7 @@ func TestValidateDataDir_ParentMissing(t *testing.T) {
 	if !strings.Contains(res.Message, "parent folder doesn't exist") {
 		t.Fatalf("Message missing locked phrase: got %q", res.Message)
 	}
-	// Locked-copy regression: exact UI-SPEC string.
+
 	if res.Message != msgParentMissing {
 		t.Fatalf("Message drift from locked copy:\n got: %q\nwant: %q", res.Message, msgParentMissing)
 	}
@@ -47,8 +45,7 @@ func TestValidateDataDir_ParentMissing(t *testing.T) {
 
 func TestValidateDataDir_NestedVault(t *testing.T) {
 	t.Parallel()
-	// Build a fake vault at base/vault/{notes/, storage/app.db} and
-	// validate a path one level deeper.
+
 	base := t.TempDir()
 	vault := filepath.Join(base, "vault")
 	if err := os.MkdirAll(filepath.Join(vault, "notes"), 0o755); err != nil {
@@ -61,12 +58,6 @@ func TestValidateDataDir_NestedVault(t *testing.T) {
 		t.Fatalf("write app.db: %v", err)
 	}
 
-	// Target: a path strictly nested under the vault. isInsideExistingVault
-	// walks parents of `target`, so the nesting check is against ancestors
-	// of `target` — `target`'s grandparent is the vault root, which carries
-	// the notes+app.db pair. The parent dir (vault/subfolder) MUST exist
-	// so the parent_missing rule (which runs before nested_vault) doesn't
-	// short-circuit on us.
 	subfolder := filepath.Join(vault, "subfolder")
 	if err := os.MkdirAll(subfolder, 0o755); err != nil {
 		t.Fatalf("mkdir subfolder: %v", err)
@@ -88,9 +79,6 @@ func TestValidateDataDir_NestedVault(t *testing.T) {
 }
 
 func TestValidateDataDir_Unwritable(t *testing.T) {
-	// Windows file permission semantics are different (the 0o000 trick
-	// doesn't reliably reject writes); skip there. Linux/macOS root would
-	// also bypass the test — gate on euid != 0.
 	if runtime.GOOS == "windows" {
 		t.Skip("skipping unwritable check on windows")
 	}
@@ -104,9 +92,7 @@ func TestValidateDataDir_Unwritable(t *testing.T) {
 	if err := os.MkdirAll(unwritableParent, 0o755); err != nil {
 		t.Fatalf("mkdir ro: %v", err)
 	}
-	// Chmod to 0o500 (read+execute only) so MkdirAll on a child path
-	// fails with EACCES. Restore perms in cleanup so t.TempDir() can
-	// remove the directory tree.
+
 	if err := os.Chmod(unwritableParent, 0o500); err != nil {
 		t.Fatalf("chmod 0500: %v", err)
 	}
@@ -132,8 +118,7 @@ func TestValidateDataDir_Unwritable(t *testing.T) {
 
 func TestValidateDataDir_NonASCII(t *testing.T) {
 	t.Parallel()
-	// Composed (NFC) é falls into the unicode.MaxASCII check, decomposed
-	// (NFD) "é" fails the NFC normalization check first. Cover both.
+
 	cases := []struct {
 		name string
 		path string
@@ -251,12 +236,12 @@ func TestResolveDataDir_AbsolutePassthrough(t *testing.T) {
 func TestResolveDataDir_NotAbsolute(t *testing.T) {
 	t.Parallel()
 	cases := []string{
-		"Documents/Jasper", // bare relative
-		"./Jasper",         // dot-relative
-		"../Jasper",        // parent-relative
-		"~someuser/Jasper", // ~user form — unsupported, treated as relative
-		"~someuser",        // unsupported bare ~user
-		"",                 // empty
+		"Documents/Jasper",
+		"./Jasper",
+		"../Jasper",
+		"~someuser/Jasper",
+		"~someuser",
+		"",
 	}
 	for _, in := range cases {
 		in := in
@@ -283,7 +268,6 @@ func TestResolveDataDir_NotAbsolute(t *testing.T) {
 // we don't false-positive on leftover artifacts), call ValidateDataDir
 // on a tilded path, and then assert that no stray "./~" appeared.
 func TestValidateDataDir_TildePath_NoStrayDir(t *testing.T) {
-	// Cannot Parallel — checks cwd-relative filesystem state.
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Getwd: %v", err)
@@ -295,14 +279,10 @@ func TestValidateDataDir_TildePath_NoStrayDir(t *testing.T) {
 		preExists = true
 	}
 
-	// Pick an arbitrary subdir under a tilded path. Whatever the
-	// result of ValidateDataDir, the literal "~" dir must not appear.
 	_ = ValidateDataDir("~/jasper-tilde-test-zzz-08-uat1")
 
 	if !preExists {
 		if _, err := os.Stat(strayPath); err == nil {
-			// Clean it up so the bug repro doesn't leave artifacts
-			// behind, then fail loudly.
 			_ = os.RemoveAll(strayPath)
 			t.Fatalf("ValidateDataDir created stray literal-tilde dir at %q — tilde expansion did not run", strayPath)
 		}

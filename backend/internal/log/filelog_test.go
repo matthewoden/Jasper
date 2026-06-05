@@ -86,7 +86,6 @@ func TestNewFileLogger_DailyRotation(t *testing.T) {
 
 	logger.Info("day-one")
 
-	// Flip the clock; next Write should trigger rotation.
 	nowFunc = func() time.Time { return day2 }
 	logger.Info("day-two")
 	if err := closer.Close(); err != nil {
@@ -133,11 +132,11 @@ func TestFileSink_CloseIsIdempotent_AndPostCloseWriteErrors(t *testing.T) {
 	if err := closer.Close(); err != nil {
 		t.Fatalf("first close: %v", err)
 	}
-	// Second close: no error.
+
 	if err := closer.Close(); err != nil {
 		t.Errorf("second close should be nil, got %v", err)
 	}
-	// Direct write on the sink after close errors.
+
 	sink, ok := closer.(*fileSink)
 	if !ok {
 		t.Fatalf("closer not *fileSink: %T", closer)
@@ -154,8 +153,7 @@ func TestNewFileLogger_MkdirFails(t *testing.T) {
 	t.Cleanup(func() { nowFunc = time.Now })
 
 	dir := t.TempDir()
-	// Create a regular file then point the logger at a path that treats
-	// it as a parent dir — MkdirAll fails because the parent is not a dir.
+
 	blocker := filepath.Join(dir, "blocker")
 	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
 		t.Fatalf("setup: %v", err)

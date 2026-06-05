@@ -49,7 +49,7 @@ func PreflightFreeSpace(dbPath string) error {
 	info, err := os.Stat(dbPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil // fresh DB; nothing to back up
+			return nil
 		}
 		return fmt.Errorf("preflight stat %q: %w", dbPath, err)
 	}
@@ -68,35 +68,15 @@ func PreflightFreeSpace(dbPath string) error {
 	return nil
 }
 
-// freeBytes returns the available disk space on the volume containing
-// path. Implementation uses syscall.Statfs which is supported on macOS,
-// Linux, and WSL2 — Windows-native is not v1 (PROJECT.md).
-//
-// Declared as a package-level variable so tests can swap in a mock
-// without modifying production code paths. Production callers (the
-// Runner) reach freeBytes through PreflightFreeSpace.
-//
-// BLOCKER 3 (Plan 02-03) — the smoke test in Plan 02-06 forces a
-// disk-full condition from outside the process by setting
-// JASPER_TEST_FORCE_DISK_FULL=1 before launching the server binary.
-// The env-var guard at the top of this function returns "0 bytes free"
-// so the runner's pre-flight aborts with ErrDiskFull. Production
-// deployments don't set this env var, so the guard is a no-op there.
-// See Plan 02-06 Task 3 + threat T-02-03-04 / T-02-06-01.
 var freeBytes = func(path string) (uint64, error) {
-	// Test hook: forcing disk-full from outside the process (used by the
-	// smoke test in Plan 02-06 — JASPER_TEST_FORCE_DISK_FULL=1).
-	// Production deployments don't set this var so the guard is a no-op.
 	if os.Getenv("JASPER_TEST_FORCE_DISK_FULL") == "1" {
 		return 0, nil
 	}
-	// Default: real-syscall path.
+
 	var stat syscall.Statfs_t
 	if err := syscall.Statfs(path, &stat); err != nil {
 		return 0, err
 	}
-	// Statfs.Bavail is "blocks available to non-superuser"; multiply by
-	// block size to get bytes. Bsize is int32 on Darwin / int64 on Linux
-	// — cast both sides to uint64 to avoid overflow on Linux.
+
 	return uint64(stat.Bavail) * uint64(stat.Bsize), nil
 }

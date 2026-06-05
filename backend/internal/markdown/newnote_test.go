@@ -61,7 +61,7 @@ func TestNewDailyNoteContent(t *testing.T) {
 					t.Errorf("should not contain %q; got: %q", dont, got)
 				}
 			}
-			// Idempotency: two calls with same args must produce byte-identical output.
+
 			got2 := string(NewDailyNoteContent(tc.date, tc.template))
 			if got != got2 {
 				t.Errorf("not idempotent:\n  first:  %q\n  second: %q", got, got2)
@@ -88,16 +88,11 @@ func TestNewNoteContent(t *testing.T) {
 			want:  "---\ntags: []\n---\n\n# Hello\n\n",
 		},
 		{
-			// Empty title becomes empty H1. Caller's responsibility to pass
-			// a sensible title; NewNoteContent does not validate.
 			name:  "empty title becomes empty H1",
 			title: "",
 			want:  "---\ntags: []\n---\n\n# \n\n",
 		},
 		{
-			// Title with special characters — not escaped; caller handles escaping
-			// if needed (e.g., for filesystem safety). The scaffold simply embeds
-			// the title verbatim after "# ".
 			name:  "title with special characters",
 			title: "Meeting: Q1 2026",
 			want:  "---\ntags: []\n---\n\n# Meeting: Q1 2026\n\n",

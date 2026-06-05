@@ -45,15 +45,11 @@ func HasFrontmatter(content []byte) bool {
 	if len(content) < 4 {
 		return false
 	}
-	// Strict byte-0 open fence: exactly "---\n", LF only. No leading
-	// whitespace, no BOM, no CR.
+
 	if !bytes.HasPrefix(content, []byte("---\n")) {
 		return false
 	}
-	// Walk lines after the open fence looking for an exact "---" line
-	// (terminated by LF or by EOF). The scanner's Text() strips the
-	// terminating "\n" but NOT a preceding "\r" — so "---\r" indicates a
-	// CRLF close fence and must be rejected.
+
 	rest := content[len("---\n"):]
 	sc := bufio.NewScanner(bytes.NewReader(rest))
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -62,9 +58,6 @@ func HasFrontmatter(content []byte) bool {
 		if line == "---" {
 			return true
 		}
-		// Anything that looks like a CRLF-encoded close fence ("---\r")
-		// is explicitly OUT of contract (LF-canonical vault files only).
-		// Other lines are interior YAML content — keep scanning.
 	}
 	return false
 }
@@ -96,12 +89,7 @@ func InjectFrontmatterScaffold(content []byte, title string) []byte {
 	return append(scaffoldFor(title), content...)
 }
 
-// scaffoldFor returns the canonical frontmatter + H1 scaffold for the given
-// title. Used internally by both InjectFrontmatterScaffold and NewNoteContent
-// to guarantee byte-identical output for the empty-content case.
 func scaffoldFor(title string) []byte {
-	// Pre-allocate: "---\ntags: []\n---\n\n# " + title + "\n\n"
-	// that is 22 + len(title) + 2 bytes.
 	b := make([]byte, 0, 24+len(title))
 	b = append(b, "---\ntags: []\n---\n\n# "...)
 	b = append(b, title...)

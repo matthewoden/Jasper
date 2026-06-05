@@ -2,8 +2,6 @@ package notes
 
 import "context"
 
-// ctxKey is a private type for context keys in the notes package.
-// Using a named type prevents collisions with other packages' context keys.
 type ctxKey int
 
 const sessionIDKey ctxKey = 0

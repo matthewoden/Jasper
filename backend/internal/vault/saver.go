@@ -24,7 +24,7 @@ func SaveAppJSON(path string, state *AppState) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("mkdir app home: %w", err)
 	}
-	// Newest-first before write so on-disk order matches load-time sort.
+
 	sort.SliceStable(state.RecentVaults, func(i, j int) bool {
 		return state.RecentVaults[i].LastOpenedAt.After(state.RecentVaults[j].LastOpenedAt)
 	})
@@ -35,7 +35,7 @@ func SaveAppJSON(path string, state *AppState) error {
 	if err := fsstore.AtomicWrite(path, b); err != nil {
 		return fmt.Errorf("atomic write app.json: %w", err)
 	}
-	// Chmod after rename (AtomicWrite may inherit umask).
+
 	_ = os.Chmod(path, 0o600)
 	return nil
 }
@@ -47,7 +47,7 @@ func SaveAppJSON(path string, state *AppState) error {
 // Also sets state.CurrentVault to path (caller may later clear it).
 func TouchOpened(state *AppState, canonical, displayName string) {
 	now := time.Now().UTC()
-	// Canonical-match update path.
+
 	for i := range state.RecentVaults {
 		if state.RecentVaults[i].Path == canonical {
 			state.RecentVaults[i].LastOpenedAt = now
@@ -56,14 +56,14 @@ func TouchOpened(state *AppState, canonical, displayName string) {
 			return
 		}
 	}
-	// New entry.
+
 	state.RecentVaults = append(state.RecentVaults, RecentVaultEntry{
 		Path:         canonical,
 		DisplayName:  displayName,
 		LastOpenedAt: now,
 		CreatedAt:    now,
 	})
-	// LRU eviction (V8): sort newest-first, truncate to cap.
+
 	sort.SliceStable(state.RecentVaults, func(i, j int) bool {
 		return state.RecentVaults[i].LastOpenedAt.After(state.RecentVaults[j].LastOpenedAt)
 	})

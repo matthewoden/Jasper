@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// next is a sentinel handler that flips a bool when invoked. Used to
-// distinguish "middleware passed through" from "middleware redirected".
 func nextHandler(called *bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		*called = true
@@ -24,7 +22,7 @@ func TestRedirectMiddleware(t *testing.T) {
 		name           string
 		path           string
 		seedConfigJSON bool
-		wantStatus     int // 0 means "expect next.ServeHTTP called"
+		wantStatus     int
 		wantLocation   string
 	}{
 		{name: "exact /setup passes through (no config)", path: "/setup"},
@@ -71,7 +69,7 @@ func TestRedirectMiddleware(t *testing.T) {
 				}
 				return
 			}
-			// pass-through expectation
+
 			if !called {
 				t.Fatalf("next.ServeHTTP NOT called for path %q (status=%d location=%q)",
 					tc.path, rec.Code, rec.Header().Get("Location"))

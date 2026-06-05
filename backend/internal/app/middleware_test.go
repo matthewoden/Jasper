@@ -42,7 +42,7 @@ func TestSessionIDMiddleware_EmptyHeaderStillPropagates(t *testing.T) {
 	})
 	h := sessionIDMiddleware(inner)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notes", nil)
-	// No X-Session-ID header set.
+
 	h.ServeHTTP(httptest.NewRecorder(), req)
 	if captured != "" {
 		t.Errorf("got %q, want empty string", captured)
@@ -58,7 +58,7 @@ func TestSessionIDMiddleware_RejectsOverCap(t *testing.T) {
 	})
 	h := sessionIDMiddleware(inner)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("X-Session-ID", strings.Repeat("a", maxSessionIDHeaderLen+1)) // 129 chars
+	req.Header.Set("X-Session-ID", strings.Repeat("a", maxSessionIDHeaderLen+1))
 	h.ServeHTTP(httptest.NewRecorder(), req)
 	if captured != "" {
 		t.Errorf("over-cap value should coerce to empty; got %q", captured)
@@ -75,7 +75,7 @@ func TestSessionIDMiddleware_RejectsControlChars(t *testing.T) {
 	})
 	h := sessionIDMiddleware(inner)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("X-Session-ID", "abc\x00def") // null byte injection
+	req.Header.Set("X-Session-ID", "abc\x00def")
 	h.ServeHTTP(httptest.NewRecorder(), req)
 	if captured != "" {
 		t.Errorf("control-char value should coerce to empty; got %q", captured)
@@ -113,8 +113,6 @@ func TestSessionIDMiddleware_RejectsC1Controls(t *testing.T) {
 	}
 }
 
-// Tests for securityHeadersMiddleware (Plan 05-04 — SECURITY-01, SECURITY-04, D-33..D-35).
-
 // TestSecurityHeadersMiddleware_SetsHeadersOnEveryResponse — happy
 // path: every response carries CSP + Referrer-Policy + the defensive
 // trio. Verbatim header value match for CSP (D-33 LOCKED).
@@ -151,9 +149,7 @@ func TestSecurityHeadersMiddleware_HeadersPresentOn500(t *testing.T) {
 	inner := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("boom")
 	})
-	// Stack: securityHeaders → middleware.Recoverer → inner-that-panics.
-	// Recoverer wraps the panic and emits a 500. The response must still
-	// have the security headers since we set them BEFORE next.ServeHTTP.
+
 	recovered := middleware.Recoverer(inner)
 	h := securityHeadersMiddleware(recovered)
 
@@ -189,7 +185,7 @@ func TestSecurityHeadersMiddleware_CSPDirectives(t *testing.T) {
 			t.Errorf("cspHeaderValue missing directive %q\n got %q", d, cspHeaderValue)
 		}
 	}
-	// Negative: no 'unsafe-eval' anywhere.
+
 	if strings.Contains(cspHeaderValue, "'unsafe-eval'") {
 		t.Errorf("cspHeaderValue must NOT contain 'unsafe-eval'")
 	}
@@ -200,7 +196,6 @@ func TestSecurityHeadersMiddleware_CSPDirectives(t *testing.T) {
 // replaced, not duplicated. Pitfall: Header().Add accumulates.
 func TestSecurityHeadersMiddleware_UsesSetNotAdd(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// Downstream handler attempts to set Referrer-Policy again.
 		w.Header().Set("Referrer-Policy", "strict-origin")
 		w.WriteHeader(200)
 	})
@@ -210,8 +205,6 @@ func TestSecurityHeadersMiddleware_UsesSetNotAdd(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	h.ServeHTTP(rec, req)
 
-	// Downstream Set wins (last writer); but there should be NO
-	// duplicate values for the same header — Header().Values length 1.
 	if got := rec.Header().Values("Referrer-Policy"); len(got) != 1 {
 		t.Errorf("Referrer-Policy values: got %d, want 1; values=%v", len(got), got)
 	}

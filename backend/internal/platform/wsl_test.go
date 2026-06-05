@@ -52,7 +52,6 @@ func TestWslToWindows(t *testing.T) {
 		in   string
 		want string
 	}{
-		// /mnt/<drive> cases — happy path.
 		{"/mnt/c", `C:\`},
 		{"/mnt/c/", `C:\`},
 		{"/mnt/c/Users", `C:\Users`},
@@ -61,16 +60,15 @@ func TestWslToWindows(t *testing.T) {
 		{"/mnt/c/Users/you/Documents/", `C:\Users\you\Documents`},
 		{"/mnt/d/Code/Jasper", `D:\Code\Jasper`},
 
-		// No Windows equivalent — these correctly return "".
 		{"/home/me/Documents", ""},
 		{"/root", ""},
 		{"/", ""},
 		{"", ""},
 		{"relative/path", ""},
-		// /mnt itself isn't a drive — not a Windows path.
+
 		{"/mnt", ""},
 		{"/mnt/", ""},
-		// Multi-character "drive" shouldn't match — WSL uses single-letter mounts.
+
 		{"/mnt/usbdrive/x", ""},
 	}
 	for _, tt := range tests {

@@ -159,10 +159,6 @@ type Index interface {
 	// of deleted rows. Phase 3 Plan 03-03 addition.
 	DeleteByPathPrefix(ctx context.Context, prefix string) (int, error)
 
-	// Phase 6 Plan 06-05: tag + backlink sync methods.
-	// These are called by Service.Update after WriteAtomic + Upsert succeed.
-	// Non-fatal: callers log errors and continue (file-FIRST contract).
-
 	// ListTags returns all tags that have at least one carrier note, sorted
 	// alphabetically by name (D-03). Returns a non-nil empty slice when no
 	// tags exist.
@@ -176,10 +172,6 @@ type Index interface {
 	// rewrites all backlinks rows for sourceID atomically.
 	SyncBacklinks(ctx context.Context, sourceID uuid.UUID, sourcePath string,
 		refs []markdown.WikiLinkRef, registry *Registry, content []byte) error
-
-	// Phase 6 Plan 06-05 Task 3: cross-vault tag + backlink rewrite methods.
-	// Used by Service.RenameTagAcrossVault, Service.DeleteTagAcrossVault, and
-	// Service.RenameRewriteWikilinks.
 
 	// NotesByTag returns one NoteSummary per note carrying the named tag,
 	// sorted by mtime descending (D-28). Returns a non-nil empty slice when
@@ -206,8 +198,6 @@ type Index interface {
 	// on error — filesystem is truth; next Reconcile heals.
 	UpdateBacklinksTargetTitle(ctx context.Context, oldTitle, newTitle string, newTargetID *uuid.UUID) error
 
-	// Plan 06-11: backlinks retrieval + title search for the API handlers.
-
 	// GetBacklinks returns the resolved backlinks for targetID sorted by
 	// source note recency (mtime_unix DESC) per D-28. Pending rows are
 	// excluded per D-32. Returns a non-nil empty slice when there are none.
@@ -217,8 +207,6 @@ type Index interface {
 	// (case-insensitive LIKE match), ordered by mtime DESC. When q is
 	// empty, returns the most-recent notes up to limit. Max limit = 50.
 	SearchTitles(ctx context.Context, q string, limit int) ([]SearchResult, error)
-
-	// Plan 07-04: full-text search via FTS5 MATCH + bm25 + recency blend.
 
 	// SearchFTS runs an FTS5 query against notes body+tag_names with an
 	// optional AND-combined tag filter (D-05). Sort = bm25 + recency blend

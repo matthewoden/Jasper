@@ -4,10 +4,6 @@ import (
 	"testing"
 )
 
-// ---------------------------------------------------------------------------
-// rewriteTagsArray tests (T1–T7)
-// ---------------------------------------------------------------------------
-
 // T1: basic rename in flow sequence.
 func TestRewriteTagsArray_T1_BasicRename(t *testing.T) {
 	in := []byte("---\ntags: [foo, bar]\n---\nbody")
@@ -82,7 +78,7 @@ func TestRewriteTagsArray_T6_DeleteLastTag(t *testing.T) {
 	if !strContains(s, "tags") {
 		t.Errorf("T6: 'tags' key should remain; got: %q", s)
 	}
-	// Should still have a tags entry (empty), not remove the key entirely.
+
 	if !strContains(s, "---") {
 		t.Errorf("T6: frontmatter fences should remain; got: %q", s)
 	}
@@ -101,28 +97,24 @@ func TestRewriteTagsArray_T7_OnlyTagsArray(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// RewriteWikilinksAST tests (W1–W6)
-// ---------------------------------------------------------------------------
-
 // W1: basic rename + aliased rewrite.
 func TestRewriteWikilinksAST_W1_BasicAndAlias(t *testing.T) {
 	in := []byte("see [[Foo]] and [[Foo|alias]] and [[Bar]]")
 	got := RewriteWikilinksAST(in, "Foo", "Baz")
 	s := string(got)
-	// Plain reference updated
+
 	if !strContains(s, "[[Baz]]") {
 		t.Errorf("W1: expected '[[Baz]]'; got: %q", s)
 	}
-	// Aliased reference: target changes, alias preserved (D-21)
+
 	if !strContains(s, "[[Baz|alias]]") {
 		t.Errorf("W1: expected '[[Baz|alias]]'; got: %q", s)
 	}
-	// Unrelated reference untouched
+
 	if !strContains(s, "[[Bar]]") {
 		t.Errorf("W1: '[[Bar]]' should be preserved; got: %q", s)
 	}
-	// Old target removed
+
 	if strContains(s, "[[Foo]]") {
 		t.Errorf("W1: '[[Foo]]' should be replaced; got: %q", s)
 	}
@@ -133,11 +125,11 @@ func TestRewriteWikilinksAST_W2_FencedCodeBlock(t *testing.T) {
 	in := []byte("```\n[[Foo]] inside code\n```\n[[Foo]] outside")
 	got := RewriteWikilinksAST(in, "Foo", "Baz")
 	s := string(got)
-	// Inside fence: literal, untouched
+
 	if !strContains(s, "[[Foo]] inside code") {
 		t.Errorf("W2: fenced reference should be preserved; got: %q", s)
 	}
-	// Outside fence: replaced
+
 	if !strContains(s, "[[Baz]] outside") {
 		t.Errorf("W2: reference outside code block should be replaced; got: %q", s)
 	}
@@ -148,11 +140,11 @@ func TestRewriteWikilinksAST_W3_InlineCodeSpan(t *testing.T) {
 	in := []byte("see `[[Foo]]` inline and [[Foo]] outside")
 	got := RewriteWikilinksAST(in, "Foo", "Baz")
 	s := string(got)
-	// Inline code: literal
+
 	if !strContains(s, "`[[Foo]]`") {
 		t.Errorf("W3: inline code reference should be preserved; got: %q", s)
 	}
-	// Outside code: replaced
+
 	if !strContains(s, "[[Baz]] outside") {
 		t.Errorf("W3: reference outside code span should be replaced; got: %q", s)
 	}
@@ -172,11 +164,11 @@ func TestRewriteWikilinksAST_W5_CaseInsensitive(t *testing.T) {
 	in := []byte("see [[FOO]] and [[Foo]] and [[foo]]")
 	got := RewriteWikilinksAST(in, "foo", "Bar")
 	s := string(got)
-	// All three variants replaced
+
 	if strContains(s, "[[FOO]]") || strContains(s, "[[Foo]]") || strContains(s, "[[foo]]") {
 		t.Errorf("W5: all case variants should be replaced; got: %q", s)
 	}
-	// Three occurrences of [[Bar]]
+
 	count := countOccurrences(s, "[[Bar]]")
 	if count != 3 {
 		t.Errorf("W5: expected 3 [[Bar]] occurrences, got %d; output: %q", count, s)
@@ -195,15 +187,11 @@ func TestRewriteWikilinksAST_W6_MultiOccurrence(t *testing.T) {
 	if count != 3 {
 		t.Errorf("W6: expected 3 [[LongNewTitle]] occurrences, got %d; output: %q", count, s)
 	}
-	// Ensure surrounding text is intact
+
 	if !strContains(s, "a ") || !strContains(s, " b ") || !strContains(s, " c ") || !strContains(s, " d") {
 		t.Errorf("W6: surrounding text corrupted; got: %q", s)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
 
 func strContains(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(sub) == 0 || strIndex(s, sub) >= 0)

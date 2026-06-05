@@ -14,16 +14,14 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// setupConfigServer spins up an httptest.Server whose Server has a real
-// dataDir under t.TempDir(). Mirrors admin_status_test.go's setup.
-func setupConfigServer(t *testing.T) (*httptest.Server, string /* dataDir */) {
+func setupConfigServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "storage"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	// notesSvc is nil — the config handlers don't touch it.
+
 	srv := NewServerWithIndex(nil, nil, nil, nil, nil, logger, dir)
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
@@ -88,7 +86,6 @@ func TestPutConfig_RoundTrip(t *testing.T) {
 		t.Errorf("Theme: got %q, want %q", echoed.Theme, "light")
 	}
 
-	// GET reflects the persisted change.
 	resp2, err := http.Get(ts.URL + "/api/v1/config")
 	if err != nil {
 		t.Fatal(err)

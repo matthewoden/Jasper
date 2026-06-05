@@ -15,14 +15,10 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// silentLogger returns a slog.Logger that discards everything; keeps
-// test output clean while still exercising the runner's log calls.
 func silentLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// newTestPair opens a sqlite.Pair against a fresh tempdir-rooted file
-// and registers a Cleanup to close it.
 func newTestPair(t *testing.T, dir string) *sqlite.Pair {
 	t.Helper()
 	dbPath := filepath.Join(dir, "app.db")
@@ -34,10 +30,6 @@ func newTestPair(t *testing.T, dir string) *sqlite.Pair {
 	return pair
 }
 
-// realMigrationsFS returns an fs.FS containing the production
-// 001_initial.sql migration. We re-read the embedded FS rather than
-// pasting the SQL inline so the runner test stays in sync with the
-// canonical schema.
 func realMigrationsFS(t *testing.T) fstest.MapFS {
 	t.Helper()
 	data, err := migrations.FS.ReadFile("001_initial.sql")
@@ -79,7 +71,6 @@ func TestRun_FreshDB_AppliesInitial(t *testing.T) {
 		t.Errorf("LogsPath: got empty")
 	}
 
-	// schema_migrations has 001_initial.sql.
 	var v string
 	row := pair.Reader.QueryRowContext(context.Background(),
 		`SELECT version FROM schema_migrations`)
@@ -90,7 +81,6 @@ func TestRun_FreshDB_AppliesInitial(t *testing.T) {
 		t.Errorf("version: got %q, want %q", v, "001_initial.sql")
 	}
 
-	// Backup file is deleted on success.
 	if _, err := os.Stat(filepath.Join(dir, "app.db.backup")); !os.IsNotExist(err) {
 		t.Errorf("backup file should be deleted after success; stat err=%v", err)
 	}
@@ -103,7 +93,6 @@ func TestRun_NoPending_NoOp(t *testing.T) {
 	dir := t.TempDir()
 	pair := newTestPair(t, dir)
 
-	// Apply the schema first via a direct exec, then mark it applied.
 	ctx := context.Background()
 	initialSQL, err := migrations.FS.ReadFile("001_initial.sql")
 	if err != nil {
@@ -159,8 +148,6 @@ func TestRun_BrokenMigration_FiresPath1(t *testing.T) {
 		t.Fatalf("read embedded: %v", err)
 	}
 
-	// Pre-apply 001 + record it in schema_migrations so the prior-
-	// schema gate in Run treats this as Path 1 territory.
 	ctx := context.Background()
 	if _, err := pair.Writer.ExecContext(ctx, string(initialSQL)); err != nil {
 		t.Fatalf("seed 001 schema: %v", err)
@@ -200,10 +187,6 @@ func TestRun_BrokenMigration_FiresPath1(t *testing.T) {
 		t.Errorf("LogsPath: got empty after Path 1")
 	}
 
-	// schema_migrations should still have exactly 1 row (001_initial).
-	// We re-open the pair after restore because RestoreBackup replaced
-	// the file on disk; the existing *sql.DB connections may have
-	// stale page caches.
 	_ = pair.Close()
 	pair2, err := sqlite.Open(ctx, dbPath)
 	if err != nil {
@@ -269,8 +252,6 @@ func TestRun_DiskFullPreflight_AbortsBeforeBackup(t *testing.T) {
 	dir := t.TempDir()
 	pair := newTestPair(t, dir)
 
-	// Seed the live DB by applying 001 directly so there's a non-empty
-	// app.db for the preflight to compute size against.
 	initialSQL, err := migrations.FS.ReadFile("001_initial.sql")
 	if err != nil {
 		t.Fatalf("read embedded: %v", err)
@@ -286,9 +267,6 @@ func TestRun_DiskFullPreflight_AbortsBeforeBackup(t *testing.T) {
 	}
 
 	mfs := fstest.MapFS{
-		// A second migration so there'd be something to apply if the
-		// preflight passed; but the preflight should abort before any
-		// backup or apply runs.
 		"001_initial.sql": &fstest.MapFile{Data: initialSQL},
 		"002_other.sql":   &fstest.MapFile{Data: []byte("CREATE TABLE _other (x INTEGER);")},
 	}
@@ -313,11 +291,10 @@ func TestRun_DiskFullPreflight_AbortsBeforeBackup(t *testing.T) {
 		t.Errorf("State: got %q, want %q", st.State, StateUnrecoverable)
 	}
 
-	// Backup file does NOT exist.
 	if _, err := os.Stat(filepath.Join(dir, "app.db.backup")); !os.IsNotExist(err) {
 		t.Errorf("backup file should NOT exist after disk-full preflight; stat err=%v", err)
 	}
-	// app.db on disk is unchanged.
+
 	postBytes, err := os.ReadFile(dbPath)
 	if err != nil {
 		t.Fatalf("read post-state: %v", err)
@@ -341,10 +318,6 @@ func TestRun_RestoreFailureDuringPath1_FiresPath3(t *testing.T) {
 	dir := t.TempDir()
 	pair := newTestPair(t, dir)
 
-	// Apply 001 and mark it applied so the runner doesn't attempt
-	// to apply it again. Then queue a broken 002 — Path 1 should
-	// fire after 002 fails, but the restore step will fail because
-	// the dir is read-only.
 	ctx := context.Background()
 	initialSQL, err := migrations.FS.ReadFile("001_initial.sql")
 	if err != nil {
@@ -359,8 +332,7 @@ func TestRun_RestoreFailureDuringPath1_FiresPath3(t *testing.T) {
 	); err != nil {
 		t.Fatalf("seed migrations: %v", err)
 	}
-	// Close the pair so we can chmod the dir (open file descriptors
-	// would prevent a clean read-only state for SQLite's WAL files).
+
 	_ = pair.Close()
 
 	dbPath := filepath.Join(dir, "app.db")
@@ -369,32 +341,17 @@ func TestRun_RestoreFailureDuringPath1_FiresPath3(t *testing.T) {
 		"002_break.sql":   &fstest.MapFile{Data: []byte("INVALID SQL;")},
 	}
 
-	// Re-open and pre-create the backup so RestoreBackup has something
-	// to read; then strip permissions on the dir so the restore-rename
-	// fails. We bypass Run's BackupBeforeMigration step by writing the
-	// backup ourselves and crafting a Runner whose preflight passes
-	// trivially.
 	pair2, err := sqlite.Open(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("re-open: %v", err)
 	}
 	t.Cleanup(func() { _ = pair2.Close() })
 
-	// Take a manual backup so Run's BackupBeforeMigration is a
-	// rewrite (it will overwrite our backup with the current contents,
-	// which is fine).
 	backupPath := filepath.Join(dir, "app.db.backup")
 	if err := BackupBeforeMigration(dbPath, backupPath); err != nil {
 		t.Fatalf("seed backup: %v", err)
 	}
 
-	// Build the runner; we'll run it and then race the chmod between
-	// backup and restore. Easier: hand-roll the Path 1 condition by
-	// stripping perms now; backup already exists from our manual call,
-	// but Run will try to overwrite it with another AtomicWrite which
-	// will also fail under chmod 0500 — that's fine, the test gates
-	// on the FINAL state being Unrecoverable, not the specific failure
-	// reason.
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
@@ -441,7 +398,6 @@ func TestRun_RecordsNotesIndexedAfterSuccess(t *testing.T) {
 		t.Errorf("NotesIndexed: got %d, want 0", st.NotesIndexed)
 	}
 
-	// Insert a fake row, refresh, and assert NotesIndexed == 1.
 	if _, err := pair.Writer.ExecContext(context.Background(),
 		`INSERT INTO notes(id,path,title,mtime_unix,size_bytes,checksum_sha256,created_at,updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -484,7 +440,7 @@ func TestNewRunner_DefaultsApplied(t *testing.T) {
 	if r.store == nil {
 		t.Errorf("store defaulted to nil")
 	}
-	// Smoke-run the defaults end-to-end.
+
 	st, err := r.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run with defaults: %v", err)
@@ -535,11 +491,11 @@ func TestRebuildAndReindex_NoPath2Rebuild_FiresPath3(t *testing.T) {
 		Pair:       pair,
 		Log:        silentLogger(),
 	})
-	// Pre-apply 001 so the drop + re-apply has something to work on.
+
 	if _, err := r.Run(context.Background()); err != nil {
 		t.Fatalf("seed Run: %v", err)
 	}
-	// Path2Rebuild left nil — rebuild has no callable.
+
 	st, err := r.RebuildAndReindex(context.Background())
 	if err == nil {
 		t.Fatalf("RebuildAndReindex: got nil err, want ErrUnrecoverable (no Path2Rebuild)")
@@ -568,7 +524,7 @@ func TestRebuildAndReindex_HappyPath(t *testing.T) {
 		Pair:       pair,
 		Log:        silentLogger(),
 	})
-	// Seed the schema so the drop has something to drop.
+
 	if _, err := r.Run(context.Background()); err != nil {
 		t.Fatalf("seed Run: %v", err)
 	}
@@ -590,7 +546,7 @@ func TestRebuildAndReindex_HappyPath(t *testing.T) {
 	if rebuildCalls != 1 {
 		t.Errorf("Path2Rebuild calls: got %d, want 1", rebuildCalls)
 	}
-	// schema_migrations should have exactly one row again (re-applied).
+
 	var n int
 	if err := pair.Reader.QueryRowContext(context.Background(),
 		`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {

@@ -71,9 +71,6 @@ func ExtractTags(content []byte) []string {
 	return dedupeTags(normalizeTagList(data.Tags))
 }
 
-// normalizeTag applies the D-22 charset rule: lowercase, trim whitespace,
-// then strip every character that is not [a-z0-9_-]. Returns the empty
-// string if nothing survives (caller should drop the result).
 func normalizeTag(raw string) string {
 	raw = strings.ToLower(strings.TrimSpace(raw))
 	var b strings.Builder
@@ -85,8 +82,6 @@ func normalizeTag(raw string) string {
 	return b.String()
 }
 
-// normalizeTagList applies normalizeTag to every element and drops any
-// that reduce to the empty string.
 func normalizeTagList(raw []string) []string {
 	out := make([]string, 0, len(raw))
 	for _, t := range raw {
@@ -97,8 +92,6 @@ func normalizeTagList(raw []string) []string {
 	return out
 }
 
-// dedupeTags removes duplicates from a normalized tag list, preserving
-// first-occurrence order.
 func dedupeTags(in []string) []string {
 	seen := make(map[string]struct{}, len(in))
 	out := make([]string, 0, len(in))
@@ -112,17 +105,6 @@ func dedupeTags(in []string) []string {
 	return out
 }
 
-// bodyTagRE matches "#tagname" where "#" is preceded by whitespace, start of
-// string, or common punctuation (not another word character). This avoids
-// matching "## heading" as a tag — heading lines are also skipped at the
-// line level below.
-//
-// Go's regexp package uses RE2 — no lookbehind support (Pitfall 5 from
-// RESEARCH.md). The preceding-char constraint is encoded as a non-capturing
-// alternation of permitted preceding characters.
-//
-// submatch[1] is the tagname (without "#"); tagname charset includes uppercase
-// because normalizeTag will lowercase it.
 var bodyTagRE = regexp.MustCompile("(?:^|[\\s(`\\[,;:!?.'\"—–-])#([a-zA-Z0-9_-]+)")
 
 // ExtractBodyTags walks the body (everything after the frontmatter block)
@@ -152,7 +134,7 @@ func ExtractBodyTags(content []byte) []string {
 	var raw []string
 	for _, line := range lines {
 		trimmed := bytes.TrimSpace(line)
-		// Toggle fenced code block state on ``` marker lines.
+
 		if bytes.HasPrefix(trimmed, []byte("```")) {
 			inFence = !inFence
 			continue
@@ -160,10 +142,7 @@ func ExtractBodyTags(content []byte) []string {
 		if inFence {
 			continue
 		}
-		// Skip heading lines: "# text", "## text", "### text", etc.
-		// A heading line starts with one or more "#" characters followed by a
-		// space. Also skip lines that start with "##" (no space needed — any
-		// line beginning with two consecutive "#" is a heading prefix).
+
 		if len(trimmed) >= 2 && trimmed[0] == '#' &&
 			(trimmed[1] == ' ' || trimmed[1] == '#') {
 			continue
@@ -183,25 +162,22 @@ func ExtractBodyTags(content []byte) []string {
 	return result
 }
 
-// stripFrontmatterBlock returns content without the leading ---...--- YAML
-// frontmatter block. Returns content unchanged if no frontmatter is detected.
 func stripFrontmatterBlock(content []byte) []byte {
 	openFence := []byte("---\n")
 	if !bytes.HasPrefix(content, openFence) {
-		// Also allow "---" followed immediately by EOF (degenerate case)
 		if !bytes.HasPrefix(content, []byte("---")) {
 			return content
 		}
 	}
-	// Skip the opening "---\n"
+
 	rest := content[len(openFence):]
-	// Find the closing "\n---" (may be followed by "\n" or EOF)
+
 	closeFence := []byte("\n---")
 	idx := bytes.Index(rest, closeFence)
 	if idx < 0 {
-		return content // no closing fence — not valid frontmatter
+		return content
 	}
-	// Advance past "\n---"; then skip optional trailing newline
+
 	after := rest[idx+len(closeFence):]
 	if len(after) > 0 && after[0] == '\n' {
 		after = after[1:]
@@ -226,20 +202,18 @@ func stripFrontmatterBlock(content []byte) []byte {
 // helper in notes/rewriter.go is NOT imported here; this function implements
 // its own equivalent range extraction (Option A — markdown remains a leaf).
 func RewriteFrontmatterTags(content []byte, canonical []string) ([]byte, error) {
-	// Locate the frontmatter block.
 	openFence := []byte("---\n")
 	if !bytes.HasPrefix(content, openFence) {
-		return content, nil // no frontmatter
+		return content, nil
 	}
 	rest := content[len(openFence):]
 	closeFence := []byte("\n---")
 	idx := bytes.Index(rest, closeFence)
 	if idx < 0 {
-		return content, nil // no closing fence
+		return content, nil
 	}
 	yamlBody := rest[:idx]
 
-	// Parse the YAML into a generic node tree.
 	var node yaml.Node
 	if err := yaml.Unmarshal(yamlBody, &node); err != nil || node.Kind == 0 {
 		return content, &rewriteError{msg: "RewriteFrontmatterTags: malformed YAML", cause: err}
@@ -252,7 +226,6 @@ func RewriteFrontmatterTags(content []byte, canonical []string) ([]byte, error) 
 		return content, &rewriteError{msg: "RewriteFrontmatterTags: YAML root is not a mapping"}
 	}
 
-	// Find and update the "tags" key. YAML mapping stores [key, val, key, val, ...].
 	tagsFound := false
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
 		keyNode := mapping.Content[i]
@@ -261,7 +234,7 @@ func RewriteFrontmatterTags(content []byte, canonical []string) ([]byte, error) 
 			continue
 		}
 		tagsFound = true
-		// Build new sequence nodes from canonical list.
+
 		newItems := make([]*yaml.Node, 0, len(canonical))
 		for _, tag := range canonical {
 			newItems = append(newItems, &yaml.Node{
@@ -279,7 +252,6 @@ func RewriteFrontmatterTags(content []byte, canonical []string) ([]byte, error) 
 	}
 
 	if !tagsFound {
-		// No "tags:" key in frontmatter — add it.
 		keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: "tags", Tag: "!!str"}
 		seqItems := make([]*yaml.Node, 0, len(canonical))
 		for _, tag := range canonical {
@@ -298,14 +270,12 @@ func RewriteFrontmatterTags(content []byte, canonical []string) ([]byte, error) 
 		mapping.Content = append(mapping.Content, keyNode, valNode)
 	}
 
-	// Marshal back to YAML.
 	newYAML, err := yaml.Marshal(&node)
 	if err != nil {
 		return content, &rewriteError{msg: "RewriteFrontmatterTags: marshal failed", cause: err}
 	}
 	newYAML = bytes.TrimRight(newYAML, "\n")
 
-	// Splice: ---\n + newYAML + \n--- + rest-of-content
 	fmEnd := len(openFence) + idx + len(closeFence)
 	var out bytes.Buffer
 	out.WriteString("---\n")
@@ -315,7 +285,6 @@ func RewriteFrontmatterTags(content []byte, canonical []string) ([]byte, error) 
 	return out.Bytes(), nil
 }
 
-// rewriteError is a simple error type for RewriteFrontmatterTags.
 type rewriteError struct {
 	msg   string
 	cause error

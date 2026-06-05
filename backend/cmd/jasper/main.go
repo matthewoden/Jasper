@@ -16,8 +16,6 @@ import (
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		// cobra has already printed the error message to stderr.
-		// Just set the non-zero exit code.
 		os.Exit(1)
 	}
 }

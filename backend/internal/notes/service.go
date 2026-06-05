@@ -71,8 +71,6 @@ func NewService(files FileStore, index Index, broadcaster Broadcaster, log *slog
 	}
 }
 
-// nopBroadcaster mirrors nopIndex. Used when callers pass nil — Phase
-// 1/2/3 tests don't wire the hub and continue to compile + pass.
 type nopBroadcaster struct{}
 
 func (nopBroadcaster) Broadcast(_ string, _ any, _ string) {}
@@ -156,7 +154,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 		return Note{}, fmt.Errorf("notes.Update(%s): %w", id, ErrNotFound)
 	}
 
-	// SYNC-06 If-Match validation. Empty == permissive (curl/automation).
 	if ifMatch != "" {
 		currentMTime, statErr := s.files.Stat(relPath)
 		if statErr != nil {
@@ -165,29 +162,15 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 		currentMTimeUTC := currentMTime.UTC()
 		currentTag := currentMTimeUTC.Format(time.RFC3339Nano)
 		if ifMatch != currentTag {
-			// BL-02: surface the same Stat result that produced the
-			// mismatch verdict via a typed error so the API handler can
-			// build current_updated_at without a second filesystem Stat
-			// (which would race a third writer between the two calls).
-			// errors.Is(err, ErrStaleWrite) keeps working via Unwrap.
 			return Note{}, fmt.Errorf("notes.Update(%s): %w (current=%s, if-match=%s)",
 				id, &StaleWriteInfo{Current: currentMTimeUTC}, currentTag, ifMatch)
 		}
 	}
 
-	// D-10 (TAGS-EXT-02): auto-restore frontmatter scaffold when missing.
-	// This is the only system-side mutation of user content during normal
-	// operation (D-11 one-time migration is a separate startup step).
-	// Per D-10: prepend ONLY the YAML block ("---\ntags: []\n---\n\n"),
-	// NOT the H1 — the user's body content (which may already have an H1)
-	// is left intact. InjectFrontmatterScaffold includes the H1, which is
-	// for new notes (D-09). Here we want the minimal YAML fence only.
-	// Empty content gets no injection (empty markdown is a legal state).
 	if content != "" && !markdown.HasFrontmatter([]byte(content)) {
 		content = "---\ntags: []\n---\n\n" + content
 	}
 
-	// File FIRST per ARCHITECTURE §11.1.
 	if err := s.files.WriteAtomic(relPath, []byte(content)); err != nil {
 		return Note{}, fmt.Errorf("notes.Update(%s): write: %w", id, err)
 	}
@@ -195,18 +178,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 	if err != nil {
 		return Note{}, fmt.Errorf("notes.Update(%s): stat after write: %w", id, err)
 	}
-	// Index SECOND. ALWAYS runs AFTER WriteAtomic. nopIndex is a no-op
-	// for callers that didn't wire the real indexer.
-	//
-	// Plan 03-23 (Gap R2-6 closure cohort): re-extract the title from the
-	// just-written content so the index row's Title field reflects the
-	// CURRENT H1 (or filename fallback for files without an H1). Mirrors
-	// Plan 03-21's Service.Move title-refresh — the same property
-	// (Title-current-after-write) is required of Service.Update for
-	// Direction A of the filename↔H1 binding (PROJECT.md 2026-05-03):
-	// without this, after a Move-then-Update sequence the Move-derived
-	// title would be clobbered by Title="" on the subsequent Update,
-	// leaving the tree label stale until the next Reconcile pass.
+
 	freshTitle := markdown.ExtractTitle([]byte(content), relPath)
 	rec := NoteRecord{
 		ID:            id,
@@ -214,19 +186,15 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 		Title:         freshTitle,
 		MTimeUnix:     modTime.UTC().Unix(),
 		SizeBytes:     int64(len(content)),
-		Checksum:      "", // Phase 7 only
+		Checksum:      "",
 		UpdatedAtUnix: modTime.UTC().Unix(),
 	}
 	indexSucceeded := false
 	if err := s.index.Upsert(ctx, rec); err != nil {
 		if errors.Is(err, ErrCaseCollision) {
-			// DATA-12: API layer maps to 409. The file is on disk
-			// (file-FIRST); next Reconcile re-converges the index.
 			return Note{}, fmt.Errorf("notes.Update(%s): %w", id, err)
 		}
-		// File-FIRST contract: a transient index error must not fail
-		// the save. Log and return success — the user's content is
-		// durably on disk; Reconcile recovers the index.
+
 		s.log.Error("notes.Update: index upsert failed (file is on disk; recoverable via Reconcile)",
 			"id", id.String(),
 			"path", relPath,
@@ -236,39 +204,22 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 		indexSucceeded = true
 	}
 
-	// Phase 6 Step A: parse frontmatter tags (non-fatal per D-12).
-	// File-FIRST: even if tag sync fails, the user's content is on disk.
 	tags := markdown.ExtractTags([]byte(content))
 
-	// Phase 6.5 Step A2: extract body inline #tags and compute canonical union.
-	// D-10 LOCKED choice (a): canonical = sort(dedupe(frontmatterTags ∪ bodyTags)).
-	// Conservative model: tags only in frontmatter survive (manually-pinned via
-	// raw-view); tags only in body are added; tags removed from body but still
-	// in frontmatter STAY until the user also removes them from frontmatter.
-	// If this union semantics proves insufficient, D-11 halt-if-inconclusive gate
-	// escalates to a body-authoritative model in a follow-up plan.
 	bodyTags := markdown.ExtractBodyTags([]byte(content))
 	canonical := unionTags(tags, bodyTags)
 
-	// Phase 6.5 Step A3: rewrite frontmatter tags: array if canonical differs.
-	// PITFALL 6 GUARD: only call WriteAtomic a second time when the canonical
-	// set actually differs from the frontmatter set. Uses slices.Equal on the
-	// sorted canonical vs. the sorted frontmatter tags returned by ExtractTags
-	// (which preserves first-occurrence order, not sorted — but unionTags always
-	// returns a sorted result, so we must sort tags for the comparison too).
 	sortedTags := append([]string(nil), tags...)
 	sort.Strings(sortedTags)
 	if !slices.Equal(canonical, sortedTags) {
 		rewritten, rwErr := markdown.RewriteFrontmatterTags([]byte(content), canonical)
 		if rwErr != nil {
-			// D-26: log + continue; index uses canonical, file keeps original content.
 			s.log.Warn("notes.Update: frontmatter rewriteback parse error (index uses canonical; file unchanged)",
 				"id", id.String(), "err", rwErr)
 		} else if wErr := s.files.WriteAtomic(relPath, rewritten); wErr != nil {
 			s.log.Warn("notes.Update: frontmatter rewriteback write failed (index uses canonical; file may be stale, reconcile heals)",
 				"id", id.String(), "err", wErr)
 		} else {
-			// Rewrite succeeded — update content and re-stat for updated modTime.
 			content = string(rewritten)
 			if newMTime, statErr := s.files.Stat(relPath); statErr == nil {
 				modTime = newMTime
@@ -276,33 +227,24 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 		}
 	}
 
-	// Phase 6 Step B: sync canonical tag set in a single transaction. Non-fatal
-	// — file is truth. Uses canonical (union) instead of raw frontmatter tags.
-	// If the index is a nopIndex this is also a no-op.
 	if err := s.index.SyncTags(ctx, id, canonical); err != nil {
 		s.log.Error("notes.Update: tags sync failed (file safe; index heals on reconcile)",
 			"id", id.String(), "err", err)
 	}
 
-	// Phase 6 Step C: parse wiki-links and sync backlinks in a single TX.
 	refs := markdown.ExtractWikilinks([]byte(content))
 	if err := s.index.SyncBacklinks(ctx, id, relPath, refs, s.registry, []byte(content)); err != nil {
 		s.log.Error("notes.Update: backlinks sync failed (file safe; index heals on reconcile)",
 			"id", id.String(), "err", err)
 	}
 
-	// BROADCAST — THIRD step per ARCHITECTURE.md §11.1. Only after
-	// Index.Upsert succeeded. Pitfall 2: if Index.Upsert returned a
-	// transient error (logged-and-swallowed above), do NOT broadcast.
-	// T-04-04: payload contains ONLY metadata — no content field.
 	if indexSucceeded {
 		s.broadcaster.Broadcast(EventNoteUpdated, map[string]any{
 			"id":         id.String(),
 			"path":       relPath,
 			"updated_at": modTime.UTC().Format(time.RFC3339Nano),
 		}, SessionIDFromContext(ctx))
-		// Phase 6 Step D: also broadcast EventTagsUpdated so the tag browser
-		// can refresh reactively (D-34). Fired alongside EventNoteUpdated.
+
 		s.broadcaster.Broadcast(EventTagsUpdated, map[string]any{
 			"note_id": id.String(),
 		}, SessionIDFromContext(ctx))
@@ -315,17 +257,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 		UpdatedAt: modTime.UTC(),
 	}, nil
 }
-
-// ----------------------------------------------------------------------
-// Plan 03-03: Service mutations (Create / Delete / Move + Folder ops)
-// ----------------------------------------------------------------------
-//
-// Each mutation is one logical atomic FS+SQLite operation. The atomicity
-// contract is documented per-method below; the load-bearing rule is that
-// neither the FS nor the index is left in a half-written state when the
-// operation returns. Best-effort rollback paths are explicitly noted —
-// the reconciler (DESIGN.md §4.4) is the safety net for any window we
-// cannot close transactionally.
 
 // Create creates a new note at <parentPath>/<title>.md. The path is
 // canonicalized inside FileStore.CreateFile (DATA-11); collision
@@ -382,11 +313,6 @@ func (s *Service) CreateWithBody(ctx context.Context, parentPath, title, body st
 	return s.createInternal(ctx, parentPath, title, body, "")
 }
 
-// createInternal is the shared implementation for CreateWithBody and
-// CreateWithBodyAndTitle. When displayTitleOverride is non-empty, the
-// scaffold's H1 is `# {displayTitleOverride}`; otherwise it falls back to
-// the filename-derived title (legacy behaviour). The filename itself is
-// always derived from `title` — the override only affects the H1.
 func (s *Service) createInternal(ctx context.Context, parentPath, title, body, displayTitleOverride string) (NoteSummary, error) {
 	if err := validateNoteTitle(title); err != nil {
 		return NoteSummary{}, fmt.Errorf("notes.Create: %w", err)
@@ -397,16 +323,6 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 		return NoteSummary{}, fmt.Errorf("notes.Create(%s): %w", relPath, err)
 	}
 
-	// D-09 (TAGS-EXT-01): write the canonical frontmatter scaffold so the
-	// new note ships with `---\ntags: []\n---\n\n# {Title}\n`. Every create
-	// path MUST call this so the scaffold is uniform vault-wide. The title
-	// is derived from the filename (without .md) per Phase 3 R2, unless an
-	// explicit display title is supplied (R4-4 / 08-21 — MCP create_note).
-	//
-	// 08-19 (R4-1): compose scaffold + body IN MEMORY before the single
-	// WriteAtomic. The scaffold already terminates with a trailing blank
-	// line (NewNoteContent format), so the body bytes append directly
-	// without an injected separator.
 	displayTitle := deriveTitleFromFilename(title)
 	if displayTitleOverride != "" {
 		displayTitle = displayTitleOverride
@@ -422,7 +338,6 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 	}
 	canonPath := canonicalRelPath(relPath)
 	if err := s.files.WriteAtomic(canonPath, scaffoldContent); err != nil {
-		// Best-effort rollback on scaffold write failure.
 		if delErr := s.files.DeleteFile(relPath); delErr != nil {
 			s.log.Warn("notes.Create: rollback DeleteFile failed after scaffold write error (reconciler will heal)",
 				"path", relPath, "err", delErr)
@@ -442,32 +357,19 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 		UpdatedAtUnix: now.Unix(),
 	}
 	if err := s.index.Upsert(ctx, rec); err != nil {
-		// Best-effort rollback. If this fails, the reconciler heals.
 		if delErr := s.files.DeleteFile(relPath); delErr != nil {
 			s.log.Warn("notes.Create: rollback DeleteFile failed (reconciler will heal)",
 				"path", relPath, "err", delErr)
 		}
 		return NoteSummary{}, fmt.Errorf("notes.Create(%s): index upsert: %w", relPath, err)
 	}
-	// AddRecord populates both byID and byTitle so LookupTitle returns the
-	// human-readable title immediately after Create (not just the lowercase
-	// filename fallback). titleKey(rec.Title) produces the NFC+lowercase key
-	// expected by AddRecord. Rule 1 fix: Add() only populated byID, causing
-	// LookupTitle to return a lowercase path-derived value; wiki-link rewrites
-	// triggered by PostNoteMove used this lowercase value in
-	// SourcesByBacklinkTitle, which would miss links written as [[OldTitle]].
+
 	s.registry.AddRecord(id, rec.Path, strings.ToLower(rec.Title))
 
-	// Phase 6.5 Step A: sync canonical tags for the new note. For a fresh
-	// scaffold (tags: [], empty body), bodyTags is nil and canonical == tags
-	// (both empty), so the rewriteback guard slices.Equal skips WriteAtomic
-	// — making this a no-op on Create. Wired here to mirror Service.Update's
-	// canonical sync so the index is consistent from the first save.
 	scaffoldTags := markdown.ExtractTags(scaffoldContent)
 	scaffoldBodyTags := markdown.ExtractBodyTags(scaffoldContent)
 	createCanonical := unionTags(scaffoldTags, scaffoldBodyTags)
 
-	// Pitfall 6 guard: only rewrite if canonical differs from frontmatter tags.
 	sortedScaffoldTags := append([]string(nil), scaffoldTags...)
 	sort.Strings(sortedScaffoldTags)
 	if !slices.Equal(createCanonical, sortedScaffoldTags) {
@@ -486,7 +388,6 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 			"path", canonPath, "err", err)
 	}
 
-	// BROADCAST — THIRD step. Only after successful Upsert. T-04-04: no content.
 	s.broadcaster.Broadcast(EventNoteCreated, map[string]any{
 		"id":         id.String(),
 		"path":       rec.Path,
@@ -516,19 +417,14 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("notes.Delete(%s): %w", id, ErrNotFound)
 	}
 
-	// Capture the existing record for rollback purposes BEFORE we touch
-	// the index. LookupByPath returns ErrNotFound if the index has no row
-	// — that's fine; we proceed with the FS delete and skip the rollback.
 	prior, lookupErr := s.index.LookupByPath(ctx, relPath)
 	priorKnown := lookupErr == nil
 
-	// Index FIRST (per "<objective>" Delete-note inversion).
 	if err := s.index.Delete(ctx, id); err != nil {
 		return fmt.Errorf("notes.Delete(%s): index delete: %w", id, err)
 	}
 
 	if err := s.files.DeleteFile(relPath); err != nil {
-		// Best-effort rollback — re-Upsert the row so the user can retry.
 		if priorKnown {
 			if upsertErr := s.index.Upsert(ctx, prior); upsertErr != nil {
 				s.log.Warn("notes.Delete: rollback Upsert failed (reconciler will heal)",
@@ -542,8 +438,6 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	s.registry.Remove(id)
 
-	// BROADCAST — THIRD step. After successful FS-delete + registry remove.
-	// Path captured BEFORE deletion (relPath snapshot). T-04-04: no content.
 	s.broadcaster.Broadcast(EventNoteDeleted, map[string]any{
 		"id":   id.String(),
 		"path": relPath,
@@ -581,18 +475,8 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 		return NoteSummary{}, fmt.Errorf("notes.Move(%s): %w", id, err)
 	}
 
-	// BL-01 — stat the file AFTER rename so the broadcast `updated_at`
-	// reflects the post-rename mtime (nanosecond precision) rather than
-	// the stale mtime captured at index time. The fresh modTime is the
-	// single source of truth for both rec.MTimeUnix and the wire payload;
-	// per the OpenAPI spec (api/openapi.yaml WSNoteMovedPayload) the
-	// `updated_at` field is the post-move file mtime.
 	modTime, statErr := s.files.Stat(canonNew)
 	if statErr != nil {
-		// Best-effort rollback — the rename succeeded but we cannot
-		// observe the new mtime, so the broadcast/index would carry an
-		// inconsistent timestamp. Surface to the caller; the reconciler
-		// heals on the next pass.
 		if mvErr := s.files.MoveFile(canonNew, oldRelPath); mvErr != nil {
 			s.log.Warn("notes.Move: rollback MoveFile failed after stat error (reconciler will heal)",
 				"id", id.String(), "oldPath", oldRelPath, "newPath", canonNew, "err", mvErr)
@@ -601,27 +485,16 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 	}
 	postMoveMTime := modTime.UTC()
 
-	// Gap R2-6 — re-extract title from the renamed file's content so
-	// the tree row label refreshes on the next GET /tree. Read failure
-	// is non-fatal: surface a warn log + use the filename fallback so
-	// the reconciler can heal at its next pass.
 	content, readErr := s.files.Read(canonNew)
 	if readErr != nil {
 		s.log.Warn("notes.Move: post-rename Read failed; using filename fallback for title (reconciler will heal)",
 			"id", id.String(), "newPath", canonNew, "err", readErr)
-		content = nil // markdown.ExtractTitle handles nil → filename fallback
+		content = nil
 	}
 	freshTitle := markdown.ExtractTitle(content, canonNew)
 
-	// Capture existing record from the index so we preserve size while
-	// updating the path + title + mtime. LookupByPath uses the OLD path
-	// (the row hasn't been touched yet).
 	rec, err := s.index.LookupByPath(ctx, oldRelPath)
 	if err != nil {
-		// The FS rename succeeded but the index has no row — most
-		// likely a transient state during reconcile. Mint a fresh
-		// minimal record so the index gets re-populated; the
-		// reconciler will heal size later.
 		rec = NoteRecord{
 			ID:            id,
 			Path:          canonNew,
@@ -637,7 +510,6 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 	}
 
 	if err := s.index.Upsert(ctx, rec); err != nil {
-		// Best-effort rollback — move the file back to the old path.
 		if mvErr := s.files.MoveFile(canonNew, oldRelPath); mvErr != nil {
 			s.log.Warn("notes.Move: rollback MoveFile failed (reconciler will heal)",
 				"id", id.String(), "oldPath", oldRelPath, "newPath", canonNew, "err", mvErr)
@@ -646,13 +518,6 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 	}
 	s.registry.Rename(id, canonNew)
 
-	// BROADCAST — THIRD step. After successful index upsert + registry rename.
-	// T-04-04: no content. BL-01: use the post-rename Stat result so the
-	// wire payload's nanosecond-precision mtime matches the file's actual
-	// mtime — receivers comparing this against their cached `updated_at`
-	// must see a fresh value. WR-06: include title so receiving tabs can
-	// refresh the tree-row label without a follow-up GET /tree round-trip
-	// (the schema marks title required as of WR-06).
 	s.broadcaster.Broadcast(EventNoteMoved, map[string]any{
 		"id":         id.String(),
 		"old_path":   oldRelPath,
@@ -683,9 +548,6 @@ func (s *Service) CreateFolder(ctx context.Context, parentPath, name string) (st
 	}
 	canon := canonicalRelPath(relPath)
 
-	// BROADCAST — after successful FS create. Folders have no index row so
-	// "THIRD" here means "after the only operation (FS create)".
-	// T-04-04: no content.
 	s.broadcaster.Broadcast(EventFolderCreated, map[string]any{
 		"path": canon,
 		"name": name,
@@ -711,7 +573,6 @@ func (s *Service) DeleteFolder(ctx context.Context, folderPath string, recursive
 			return fmt.Errorf("notes.DeleteFolder(%s): %w", canon, err)
 		}
 
-		// BROADCAST — after successful empty-dir delete.
 		s.broadcaster.Broadcast(EventFolderDeleted, map[string]any{
 			"path":      canon,
 			"recursive": false,
@@ -720,17 +581,12 @@ func (s *Service) DeleteFolder(ctx context.Context, folderPath string, recursive
 		return nil
 	}
 
-	// Recursive: collect the set of doomed ids BEFORE the FS delete so
-	// we know what to remove from the registry afterward.
 	doomedIDs := s.registry.idsUnder(canon)
 
 	if err := s.files.DeleteDir(folderPath, true); err != nil {
 		return fmt.Errorf("notes.DeleteFolder(%s): %w", canon, err)
 	}
 	if _, err := s.index.DeleteByPathPrefix(ctx, canon); err != nil {
-		// FS is already gone — surface the error AND log loudly. The
-		// reconciler will eventually heal stale index rows on next
-		// startup / admin/reindex.
 		s.log.Warn("notes.DeleteFolder: index batch-delete failed (RECONCILER WILL HEAL on next startup)",
 			"path", canon, "err", err)
 		return fmt.Errorf("notes.DeleteFolder(%s): index delete: %w", canon, err)
@@ -739,7 +595,6 @@ func (s *Service) DeleteFolder(ctx context.Context, folderPath string, recursive
 		s.registry.Remove(id)
 	}
 
-	// BROADCAST — after successful recursive delete + index cleanup.
 	s.broadcaster.Broadcast(EventFolderDeleted, map[string]any{
 		"path":      canon,
 		"recursive": true,
@@ -764,7 +619,6 @@ func (s *Service) MoveFolder(ctx context.Context, oldPath, newPath string) (stri
 	}
 
 	if _, err := s.index.MovePathPrefix(ctx, canonOld+"/", canonNew+"/"); err != nil {
-		// Best-effort FS rollback.
 		if mvErr := s.files.MoveDir(newPath, oldPath); mvErr != nil {
 			s.log.Warn("notes.MoveFolder: rollback MoveDir failed (reconciler will heal)",
 				"oldPath", canonOld, "newPath", canonNew, "err", mvErr)
@@ -772,11 +626,8 @@ func (s *Service) MoveFolder(ctx context.Context, oldPath, newPath string) (stri
 		return "", fmt.Errorf("notes.MoveFolder(%s→%s): index batch update: %w", canonOld, canonNew, err)
 	}
 
-	// Walk the registry and re-prefix every entry under oldPath/.
 	s.registry.renamePrefix(canonOld+"/", canonNew+"/")
 
-	// BROADCAST — THIRD step. After successful index batch update + registry rename.
-	// T-04-04: no content.
 	s.broadcaster.Broadcast(EventFolderMoved, map[string]any{
 		"old_path": canonOld,
 		"new_path": canonNew,
@@ -785,18 +636,6 @@ func (s *Service) MoveFolder(ctx context.Context, oldPath, newPath string) (stri
 	return canonNew, nil
 }
 
-// ----------------------------------------------------------------------
-// Validation helpers (private to package notes).
-// ----------------------------------------------------------------------
-
-// validateNoteTitle rejects empty titles, slash characters, control
-// characters, leading dots, the literal "..", and the ".md" suffix
-// (which the server appends; re-appending would yield "foo.md.md").
-// Threat T-03-03-01 mitigation.
-//
-// Returned errors wrap ErrInvalidContent so the API layer (Plan 03-04)
-// can map every validation failure to 400 invalid_request via
-// errors.Is, keeping validation errors distinct from internal 500s.
 func validateNoteTitle(title string) error {
 	if title == "" {
 		return fmt.Errorf("title is empty: %w", ErrInvalidContent)
@@ -807,12 +646,6 @@ func validateNoteTitle(title string) error {
 	return validateBareName(title)
 }
 
-// validateFolderName rejects the same set as validateNoteTitle minus
-// the .md-suffix rule. Folders may legitimately be named "notes.md" if
-// the user wanted, but we keep the conservative rule and reject any
-// dot-prefix to avoid hidden directories.
-//
-// Returned errors wrap ErrInvalidContent so callers can use errors.Is.
 func validateFolderName(name string) error {
 	if name == "" {
 		return fmt.Errorf("folder name is empty: %w", ErrInvalidContent)
@@ -841,9 +674,6 @@ func validateBareName(name string) error {
 	return nil
 }
 
-// buildNotePath joins parentPath + title, appending ".md" and forcing
-// forward slashes. parentPath may be empty (root) or may contain nested
-// segments.
 func buildNotePath(parentPath, title string) string {
 	parent := strings.Trim(parentPath, "/")
 	if parent == "" {
@@ -852,7 +682,6 @@ func buildNotePath(parentPath, title string) string {
 	return path.Join(parent, title+".md")
 }
 
-// buildFolderPath joins parentPath + name (no extension).
 func buildFolderPath(parentPath, name string) string {
 	parent := strings.Trim(parentPath, "/")
 	if parent == "" {
@@ -861,24 +690,11 @@ func buildFolderPath(parentPath, name string) string {
 	return path.Join(parent, name)
 }
 
-// canonicalRelPath normalizes the rel path to the lower-cased forward-
-// slash form used throughout the index. Intentionally a thin wrapper
-// over strings.ToLower + ToSlash — the heavy lifting (NFC normalization
-// + symlink-escape resolution) happens inside fsstore.Canonicalize at
-// every FileStore boundary call. This helper is for pieces of code
-// that need the canonical key WITHOUT touching the FS (e.g. the index
-// upsert path right after a successful CreateFile).
 func canonicalRelPath(relPath string) string {
 	cleaned := path.Clean(strings.Trim(relPath, "/"))
 	return strings.ToLower(cleaned)
 }
 
-// deriveTitleFromFilename returns the user-supplied title verbatim. We
-// could prettify (replace dashes with spaces, title-case) but the
-// project's convention (UI-SPEC + index/title.go) is to use the
-// filename minus .md as-is until the user adds an H1. The Phase 2
-// extractTitle already returns "filename without .md" as the fallback;
-// we mirror that so display is consistent before the user types.
 func deriveTitleFromFilename(title string) string {
 	return title
 }
@@ -909,18 +725,10 @@ func (s *Service) LookupSummary(id uuid.UUID) (NoteSummary, bool) {
 	}, true
 }
 
-// ---------------------------------------------------------------------------
-// Phase 6 Plan 06-05 Task 3: cross-vault rewrite methods
-// ---------------------------------------------------------------------------
-
-// validTagRE defines the D-22 charset for tag names: lowercase letters,
-// digits, hyphens, underscores only.
 var validTagRE = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
-// isValidTagName reports whether s satisfies the D-22 charset rule.
 func isValidTagName(s string) bool { return validTagRE.MatchString(s) }
 
-// uuidsToStrings converts a UUID slice to a string slice for WS payloads.
 func uuidsToStrings(ids []uuid.UUID) []string {
 	out := make([]string, len(ids))
 	for i, id := range ids {
@@ -947,7 +755,6 @@ func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName str
 		return nil, fmt.Errorf("notes.RenameTagAcrossVault: %w", ErrInvalidTagName)
 	}
 
-	// 1. Find carrier notes via the index.
 	carriers, err := s.index.NotesByTag(ctx, oldName)
 	if err != nil {
 		return nil, fmt.Errorf("notes.RenameTagAcrossVault: NotesByTag: %w", err)
@@ -956,7 +763,6 @@ func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName str
 		return nil, fmt.Errorf("notes.RenameTagAcrossVault: %w", ErrTagNotFound)
 	}
 
-	// 2. Capture pre-state for all carrier notes.
 	type fileState struct {
 		path    string
 		before  []byte
@@ -972,12 +778,9 @@ func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName str
 		states = append(states, fileState{path: c.Path, before: before, rewrite: rewrite})
 	}
 
-	// 3. FS pass — write each rewritten file atomically. On any failure,
-	// restore all already-written files (D-37 rollback).
 	written := make([]int, 0, len(states))
 	for i, st := range states {
 		if err := s.files.WriteAtomic(st.path, st.rewrite); err != nil {
-			// Rollback: restore all files written so far.
 			for _, wi := range written {
 				if rbErr := s.files.WriteAtomic(states[wi].path, states[wi].before); rbErr != nil {
 					s.log.Error("RenameTagAcrossVault: rollback WriteAtomic failed (reconciler will heal)",
@@ -989,9 +792,7 @@ func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName str
 		written = append(written, i)
 	}
 
-	// 4. SQL pass — single-transaction rename. Non-fatal: FS is truth.
 	if _, sqlErr := s.index.RenameTag(ctx, oldName, newName); sqlErr != nil {
-		// Check for semantic errors that the caller cares about.
 		if errors.Is(sqlErr, ErrTagCollision) || errors.Is(sqlErr, ErrTagNotFound) {
 			return nil, fmt.Errorf("notes.RenameTagAcrossVault: index rename: %w", sqlErr)
 		}
@@ -999,7 +800,6 @@ func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName str
 			"old", oldName, "new", newName, "err", sqlErr)
 	}
 
-	// 5. Build the touched IDs slice (deterministic order for broadcast).
 	touchedIDs := make([]uuid.UUID, len(carriers))
 	for i, c := range carriers {
 		touchedIDs[i] = c.ID
@@ -1008,7 +808,6 @@ func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName str
 		return touchedIDs[i].String() < touchedIDs[j].String()
 	})
 
-	// 6. Broadcast (D-34): EventTagsRewritten with origin session ID.
 	s.broadcaster.Broadcast(EventTagsRewritten, map[string]any{
 		"old_name":         oldName,
 		"new_name":         newName,
@@ -1023,7 +822,6 @@ func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName str
 // (rewriteTagsArray with newName="") and step 4 calls index.DeleteTag.
 // The broadcast payload uses new_name=nil (D-34 delete semantics).
 func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid.UUID, error) {
-	// 1. Find carrier notes.
 	carriers, err := s.index.NotesByTag(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("notes.DeleteTagAcrossVault: NotesByTag: %w", err)
@@ -1032,7 +830,6 @@ func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid
 		return nil, fmt.Errorf("notes.DeleteTagAcrossVault: %w", ErrTagNotFound)
 	}
 
-	// 2. Capture pre-state and build rewrites (newName="" = delete).
 	type fileState struct {
 		path    string
 		before  []byte
@@ -1048,7 +845,6 @@ func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid
 		states = append(states, fileState{path: c.Path, before: before, rewrite: rewrite})
 	}
 
-	// 3. FS pass with D-37 rollback on failure.
 	written := make([]int, 0, len(states))
 	for i, st := range states {
 		if err := s.files.WriteAtomic(st.path, st.rewrite); err != nil {
@@ -1063,13 +859,11 @@ func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid
 		written = append(written, i)
 	}
 
-	// 4. SQL pass — non-fatal. ErrTagNotFound is a race (already deleted); treat as success.
 	if _, sqlErr := s.index.DeleteTag(ctx, name); sqlErr != nil && !errors.Is(sqlErr, ErrTagNotFound) {
 		s.log.Error("DeleteTagAcrossVault: SQL pass failed (FS is truth; reconcile heals)",
 			"name", name, "err", sqlErr)
 	}
 
-	// 5. Touched IDs (deterministic order).
 	touchedIDs := make([]uuid.UUID, len(carriers))
 	for i, c := range carriers {
 		touchedIDs[i] = c.ID
@@ -1078,7 +872,6 @@ func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid
 		return touchedIDs[i].String() < touchedIDs[j].String()
 	})
 
-	// 6. Broadcast — new_name is nil for delete semantics (D-34).
 	s.broadcaster.Broadcast(EventTagsRewritten, map[string]any{
 		"old_name":         name,
 		"new_name":         nil,
@@ -1100,16 +893,14 @@ func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid
 //
 // Rollback on FS failure (D-36): every already-written file is restored.
 func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle string) ([]uuid.UUID, error) {
-	// 1. Find referrer notes that contain [[OldTitle]].
 	referrers, err := s.index.SourcesByBacklinkTitle(ctx, oldTitle)
 	if err != nil {
 		return nil, fmt.Errorf("notes.RenameRewriteWikilinks: SourcesByBacklinkTitle: %w", err)
 	}
 	if len(referrers) == 0 {
-		return []uuid.UUID{}, nil // nothing to do; no broadcast
+		return []uuid.UUID{}, nil
 	}
 
-	// 2. Capture pre-state and build rewrites via the AST-based rewriter.
 	type fileState struct {
 		id      uuid.UUID
 		path    string
@@ -1126,7 +917,6 @@ func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle
 		states = append(states, fileState{id: r.ID, path: r.Path, before: before, rewrite: rewrite})
 	}
 
-	// 3. FS pass with D-36 rollback on failure.
 	written := make([]int, 0, len(states))
 	for i, st := range states {
 		if err := s.files.WriteAtomic(st.path, st.rewrite); err != nil {
@@ -1141,15 +931,11 @@ func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle
 		written = append(written, i)
 	}
 
-	// 4. SQL pass — update backlinks table. Non-fatal: FS is truth.
-	// Direct UPDATE is simpler and atomic; the next save of any referrer
-	// re-syncs backlinks fully via SyncBacklinks.
 	if sqlErr := s.index.UpdateBacklinksTargetTitle(ctx, oldTitle, newTitle, nil); sqlErr != nil {
 		s.log.Error("RenameRewriteWikilinks: SQL backlinks update failed (FS is truth; reconcile heals)",
 			"old", oldTitle, "new", newTitle, "err", sqlErr)
 	}
 
-	// 5. Collect touched IDs (deterministic order).
 	touchedIDs := make([]uuid.UUID, len(states))
 	for i, st := range states {
 		touchedIDs[i] = st.id
@@ -1158,7 +944,6 @@ func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle
 		return touchedIDs[i].String() < touchedIDs[j].String()
 	})
 
-	// 6. Broadcast EventLinksRewritten (D-33) — only when touched is non-empty.
 	s.broadcaster.Broadcast(EventLinksRewritten, map[string]any{
 		"old_title":        oldTitle,
 		"new_title":        newTitle,
@@ -1168,16 +953,6 @@ func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle
 	return touchedIDs, nil
 }
 
-// nopIndex is the no-op fallback used when callers pass nil to
-// NewService. Lives in service.go (next to the only constructor that
-// substitutes it) so the fallback wiring is co-located with its
-// callers — same layout pattern as api.nilStatusProvider in handlers.go.
-//
-// This is intentionally a private type: production callers (Plan 02-06's
-// composition root) always wire a real *index.Indexer, and Phase 1
-// tests pass nil for backwards compatibility. Threat T-02-04a-03 is
-// accepted at the code-review gate: the smoke test in Plan 02-06
-// exercises the real wiring path end-to-end.
 type nopIndex struct{}
 
 func (nopIndex) Upsert(_ context.Context, _ NoteRecord) error  { return nil }
@@ -1235,12 +1010,6 @@ func (nopIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]Searc
 	return []SearchHit{}, nil
 }
 
-// unionTags returns the deduplicated, sorted union of tag slices a and b.
-// Both inputs are expected to already be normalized per D-22 (lowercase,
-// [a-z0-9_-] charset). Sorting guarantees deterministic order so that
-// slices.Equal comparisons with the prior frontmatter set are stable.
-//
-// Phase 6.5 D-10: canonical = sort(dedupe(frontmatterTags ∪ bodyTags)).
 func unionTags(a, b []string) []string {
 	seen := make(map[string]struct{}, len(a)+len(b))
 	out := make([]string, 0, len(a)+len(b))

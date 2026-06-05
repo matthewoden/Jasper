@@ -1,29 +1,5 @@
 package api
 
-// files.go — GET + POST /api/v1/files?path=... (Plans 07-32a + 07-34).
-//
-// GetFile (Plan 07-32a, UAT-3 R7) — generic file streamer for non-markdown
-// files under <dataDir>/notes/. Path-traversal hardened with the same 5-rule
-// pipeline as GetAttachment in attachments.go (RESEARCH §Thread 4 §Path
-// Traversal Hardening — D-34, SECURITY-06). Refuses .md files (those are
-// served via /notes/{id} which has the lookup-by-UUID + ETag model — Plan
-// 07-31 INVESTIGATION "Why option (a) generic /files is preferred").
-//
-// CreateFile (Plan 07-34, UAT-3 N2) — multipart upload for the sidebar
-// tree's OS-file drop target. Lands the upload at <dataDir>/notes/<path>/
-// <unique-filename>. Reuses generateUniqueFilename (Plan 07-06) for
-// collision-safe naming. Refuses .md uploads (those go through POST
-// /notes). Same 5-rule path-traversal pipeline as GetFile, plus a Lstat
-// that ensures the target is a directory (NO auto-mkdir — the user
-// creates folders via the existing tree UI before dropping). 100MB cap
-// (D-29).
-//
-// `path` is bound from the `path` URL query parameter (req.Params.Path)
-// for BOTH verbs per the OpenAPI contract. The query-parameter approach
-// mirrors DELETE /folders and avoids OpenAPI 3.1's missing multi-segment-
-// path wildcard syntax + the lack of chi `*` catch-all emission in
-// oapi-codegen (see Plan 07-32a SUMMARY for the full rationale).
-
 import (
 	"bytes"
 	"context"
@@ -45,9 +21,6 @@ func (s *Server) GetFile(
 ) (GetFileResponseObject, error) {
 	rawPath := req.Params.Path
 
-	// Rule 1: reject `..` and absolute paths (POSIX `/` and Windows `\`) in
-	// the input. Defense-in-depth before filepath.Join could re-anchor on a
-	// leading separator.
 	if strings.Contains(rawPath, "..") ||
 		strings.HasPrefix(rawPath, "/") ||
 		strings.HasPrefix(rawPath, `\`) {
@@ -55,30 +28,19 @@ func (s *Server) GetFile(
 			"path must not contain '..' or be absolute")), nil
 	}
 
-	// Rule 2: clean. An empty / "."/ "/" residue means the input was
-	// effectively empty after Clean; refuse rather than serve the dir root.
 	cleanRel := filepath.Clean(rawPath)
 	if cleanRel == "." || cleanRel == "/" || cleanRel == "" {
 		return GetFile400JSONResponse(newError("invalid_path",
 			"invalid path after clean")), nil
 	}
 
-	// Rule 2b: refuse .md files (case-insensitive). Markdown bodies are
-	// served via /notes/{id} which has lookup-by-UUID + ETag semantics.
-	// Returning 404 here keeps the surface coherent: a generic file
-	// streamer that says "this thing doesn't live here, use the other
-	// endpoint" rather than leaking that the file exists.
 	if strings.HasSuffix(strings.ToLower(cleanRel), ".md") {
 		return GetFile404JSONResponse(newError("not_found",
 			"markdown files are served via /notes/{id}")), nil
 	}
 
-	// Rule 3: compute the bounding directory (notesRoot for /files; same
-	// formula as attachments.go GetAttachment line 193 except we anchor at
-	// the vault root rather than a per-note attachments/ subdir).
 	notesRoot := filepath.Join(s.dataDir, "notes")
 
-	// Rule 4: prefix-check the cleaned final path stays within notesRoot.
 	finalPath := filepath.Join(notesRoot, cleanRel)
 	cleanFinal := filepath.Clean(finalPath)
 	cleanRoot := filepath.Clean(notesRoot) + string(os.PathSeparator)
@@ -87,8 +49,6 @@ func (s *Server) GetFile(
 			"path escapes notes directory")), nil
 	}
 
-	// Rule 5: os.Lstat (NOT Stat) to reject symlinks without following
-	// them. Mirrors attachments.go GetAttachment lines 207–218.
 	fi, lstatErr := os.Lstat(cleanFinal)
 	if lstatErr != nil {
 		if os.IsNotExist(lstatErr) {
@@ -107,9 +67,6 @@ func (s *Server) GetFile(
 			"path is a directory")), nil
 	}
 
-	// Read file bytes — single-user self-host model; the 100MB upload cap
-	// (D-29) bounds the typical file size. Pre-existing >100MB files are
-	// the user's choice (T-32a-04 accepted).
 	fileData, readErr := os.ReadFile(cleanFinal)
 	if readErr != nil {
 		s.log.Error("GetFile: ReadFile", "path", cleanFinal, "err", readErr)
@@ -153,7 +110,6 @@ func (s *Server) CreateFile(
 ) (CreateFileResponseObject, error) {
 	rawTargetDir := req.Params.Path
 
-	// 1. Path-traversal hardening on the target dir.
 	if strings.Contains(rawTargetDir, "..") ||
 		strings.HasPrefix(rawTargetDir, "/") ||
 		strings.HasPrefix(rawTargetDir, `\`) {
@@ -161,8 +117,6 @@ func (s *Server) CreateFile(
 			"path must not contain '..' or be absolute")), nil
 	}
 
-	// Clean. Unlike GetFile, "" / "." / "/" are accepted here — they
-	// represent the vault root.
 	cleanRel := filepath.Clean(rawTargetDir)
 	if cleanRel == "." || cleanRel == "/" {
 		cleanRel = ""
@@ -173,17 +127,12 @@ func (s *Server) CreateFile(
 	cleanTarget := filepath.Clean(targetDir)
 	cleanNotesRoot := filepath.Clean(notesRoot)
 
-	// Prefix check: target must equal notesRoot OR live under it.
 	if cleanTarget != cleanNotesRoot &&
 		!strings.HasPrefix(cleanTarget, cleanNotesRoot+string(os.PathSeparator)) {
 		return CreateFile400JSONResponse(newError("invalid_path",
 			"target dir escapes notes directory")), nil
 	}
 
-	// 2. Target dir must exist AND be a directory. NO auto-mkdir for safety
-	// (T-34-06): the user creates folders via the existing tree UI before
-	// dropping. This also avoids the case where a typo in the wire format
-	// silently creates an empty directory.
 	fi, lstatErr := os.Lstat(cleanTarget)
 	if lstatErr != nil {
 		if os.IsNotExist(lstatErr) {
@@ -202,8 +151,6 @@ func (s *Server) CreateFile(
 			"target is not a directory")), nil
 	}
 
-	// 3. Read multipart body — req.Body is *multipart.Reader (oapi-codegen
-	// v2 multipart convention; CreateAttachment uses the same pattern).
 	if req.Body == nil {
 		return CreateFile400JSONResponse(newError("invalid_request",
 			"missing multipart body")), nil
@@ -220,9 +167,6 @@ func (s *Server) CreateFile(
 			"expected form field named 'file'")), nil
 	}
 
-	// 4. Cap at 100 MB (D-29 / maxAttachmentBytes). LimitReader+1 detects
-	// overflow: if we read maxAttachmentBytes+1 bytes, the upload is too
-	// large.
 	capped := io.LimitReader(part, maxAttachmentBytes+1)
 	data, readErr := io.ReadAll(capped)
 	if readErr != nil {
@@ -234,7 +178,6 @@ func (s *Server) CreateFile(
 			"Maximum upload size is 100 MB.")), nil
 	}
 
-	// 5. Sanitize the client-supplied filename (defense in depth).
 	originalFilename := part.FileName()
 	if originalFilename == "" {
 		return CreateFile400JSONResponse(newError("invalid_request",
@@ -246,33 +189,25 @@ func (s *Server) CreateFile(
 			"invalid upload filename")), nil
 	}
 
-	// 6. Refuse .md files (case-insensitive). Markdown bodies must be
-	// created via POST /notes which has the path-canonicalization +
-	// case-collision (DATA-12) semantics. Mirrors GetFile Rule 2b.
 	if strings.HasSuffix(strings.ToLower(originalFilename), ".md") {
 		return CreateFile400JSONResponse(newError("invalid_filename",
 			"markdown files must be created via POST /notes")), nil
 	}
 
-	// 7. Collision-safe rename (Plan 07-06 helper).
 	finalName := generateUniqueFilename(cleanTarget, originalFilename)
 	absPath := filepath.Join(cleanTarget, finalName)
 
-	// 8. Atomic write (DATA-13).
 	if writeErr := fsstore.AtomicWrite(absPath, data); writeErr != nil {
 		s.log.Error("CreateFile: AtomicWrite", "path", absPath, "err", writeErr)
 		return nil, fmt.Errorf("write file: %w", writeErr)
 	}
 
-	// 9. MIME sniff for content_type (D-27 pattern).
 	sniffEnd := 512
 	if len(data) < sniffEnd {
 		sniffEnd = len(data)
 	}
 	contentType := http.DetectContentType(data[:sniffEnd])
 
-	// Build response path — relative under notes/, forward-slashes for
-	// wire format regardless of OS.
 	relPath := finalName
 	if cleanRel != "" {
 		relPath = filepath.ToSlash(filepath.Join(cleanRel, finalName))
@@ -286,16 +221,6 @@ func (s *Server) CreateFile(
 	}, nil
 }
 
-// resolveFileUnderNotes runs the 5-rule path-traversal pipeline (mirrors
-// GetFile) and returns the resolved absolute path plus the os.FileInfo from
-// the Lstat. The boolean ok=false response signals "rejected — write the
-// matching JSON error to w and return"; the caller decides which typed
-// response wrapper to use, since DeleteFile/MoveFile/ServeFile each have a
-// different envelope.
-//
-// errCode / errMsg are returned for the caller to lift into their typed
-// response. status is the HTTP status code; for the manual ServeFile this
-// drives the json error write directly.
 type fileResolveResult struct {
 	abs      string
 	fi       os.FileInfo
@@ -303,8 +228,8 @@ type fileResolveResult struct {
 	status   int
 	errCode  string
 	errMsg   string
-	isMd     bool // helper flag so callers can decide whether 400 vs 404 for .md
-	notFound bool // distinguishes "lstat said no such file" from other errors
+	isMd     bool
+	notFound bool
 }
 
 func (s *Server) resolveFileUnderNotes(rawPath string) fileResolveResult {
@@ -395,8 +320,6 @@ func (s *Server) PostFileMove(
 
 	srcRes := s.resolveFileUnderNotes(req.Body.SrcPath)
 
-	// 400 / 403 src-validation failures short-circuit immediately — they
-	// don't depend on dst at all (and the dst is potentially also garbage).
 	if !srcRes.ok && (srcRes.status == 400 || srcRes.status == 403) {
 		switch srcRes.status {
 		case 400:
@@ -406,19 +329,9 @@ func (s *Server) PostFileMove(
 		}
 	}
 	if !srcRes.ok && !srcRes.notFound && srcRes.status != 400 && srcRes.status != 403 {
-		// Some other I/O error from Lstat(src) — propagate as 500.
 		return nil, errors.New("could not stat src file")
 	}
 
-	// Dst: same 5-rule pipeline + .md refusal, BUT must NOT exist
-	// (overwrite-refusal). We can't reuse resolveFileUnderNotes verbatim
-	// because that requires existence — instead we run the validation half
-	// and then explicitly Lstat to confirm the dst is absent.
-	//
-	// NOTE: dst validation runs even when src is missing (404), because the
-	// Plan 07-41 idempotent path needs a validated dstAbs to perform the
-	// "is the file already at dst with matching basename?" check before
-	// returning 404.
 	dstRaw := req.Body.DstPath
 	if strings.Contains(dstRaw, "..") ||
 		strings.HasPrefix(dstRaw, "/") ||
@@ -442,25 +355,7 @@ func (s *Server) PostFileMove(
 			"dst escapes notes directory")), nil
 	}
 
-	// Plan 07-41 (UAT-6 N2 close-out) — src-missing race-repeat idempotent path.
-	//
-	// Race shape (user repro 2026-05-16): user drags file OUT of attachments,
-	// then immediately drags it BACK; arborist dispatches the second move
-	// using a snapshot of the post-first-move tree, but the second POST
-	// arrives at the server while the file is mid-second-move on disk —
-	// resulting in Lstat(src)=ENOENT + Lstat(dst)=OK with matching basename.
-	// The OLD behavior (Plan 07-38) was a 404; the NEW behavior treats this
-	// as the noop it actually is and returns 200.
-	//
-	// Boundary: idempotent ONLY when basenames match. A real rename
-	// against stale state (e.g. user moved foo.png and a stale dispatch
-	// asks to rename bar.png → foo.png with bar missing) is NOT a coincident
-	// noop — basenames differ, so we still 404.
-	//
-	// Real disappearance (src AND dst both missing): still 404.
 	if srcRes.notFound {
-		// Compute the source abs path the same way resolveFileUnderNotes
-		// would have, for the idempotent basename comparison + the 404 log.
 		srcAbsForCmp := filepath.Clean(filepath.Join(notesRoot, filepath.Clean(req.Body.SrcPath)))
 		dstFi, dstErr := os.Lstat(dstAbs)
 		if dstErr == nil && !dstFi.IsDir() &&
@@ -479,15 +374,11 @@ func (s *Server) PostFileMove(
 		return PostFileMove404JSONResponse(newError(srcRes.errCode, srcRes.errMsg)), nil
 	}
 
-	// At this point srcRes.ok must be true — early-return paths above
-	// covered every !ok case. The directory-check is unreachable when src
-	// resolution failed, so it lives here.
 	if srcRes.fi.IsDir() {
 		return PostFileMove400JSONResponse(newError("invalid_path",
 			"src is a directory (use POST /folders/move)")), nil
 	}
 
-	// Overwrite refusal (T-38-04): pre-Lstat dst; refuse if it exists.
 	if _, err := os.Lstat(dstAbs); err == nil {
 		return PostFileMove409JSONResponse(newError("already_exists",
 			"destination already exists")), nil
@@ -496,9 +387,6 @@ func (s *Server) PostFileMove(
 		return nil, errors.New("could not stat dst file")
 	}
 
-	// Ensure parent dir of dst exists. We do NOT auto-mkdir; the user
-	// creates folders via the tree UI before renaming/moving (same posture
-	// as CreateFile T-34-06).
 	parent := filepath.Dir(dstAbs)
 	if pi, perr := os.Lstat(parent); perr != nil {
 		if os.IsNotExist(perr) {
@@ -512,7 +400,6 @@ func (s *Server) PostFileMove(
 			"dst parent is not a directory")), nil
 	}
 
-	// Atomic on POSIX same-fs.
 	if err := os.Rename(srcRes.abs, dstAbs); err != nil {
 		s.log.Error("PostFileMove: os.Rename", "src", srcRes.abs, "dst", dstAbs, "err", err)
 		return nil, errors.New("could not move file")
@@ -541,11 +428,6 @@ func (s *Server) ServeFile(w http.ResponseWriter, r *http.Request) {
 
 	res := s.resolveFileUnderNotes(rawPath)
 	if !res.ok {
-		// Special-case: when isMd, the strict handler returns 404 (file
-		// hidden behind /notes/{id}), but resolveFileUnderNotes marks it
-		// 400 (a single helper for delete + move + serve has different
-		// preferred semantics — Delete/Move want 400 since "this isn't
-		// the right endpoint"; Get wants 404 since "this file isn't here").
 		status := res.status
 		code := res.errCode
 		msg := res.errMsg
@@ -569,8 +451,6 @@ func (s *Server) ServeFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Dynamic Content-Type detection + .svg override (T-38-03 accepted:
-	// browsers do NOT execute SVG scripts in <img>; same-origin only).
 	sniffEnd := 512
 	if len(data) < sniffEnd {
 		sniffEnd = len(data)
@@ -588,9 +468,6 @@ func (s *Server) ServeFile(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writeJSONError mirrors the JSON envelope the generated wrappers emit so
-// the manual ServeFile route stays wire-compatible with the rest of the
-// API surface.
 func (s *Server) writeJSONError(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

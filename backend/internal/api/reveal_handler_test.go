@@ -1,20 +1,5 @@
 package api
 
-// reveal_handler_test.go — Plan 08-05 unit tests for PostReveal.
-//
-// Two layers of coverage:
-//
-//   1. Path-validation cases (independent of runtime.GOOS) — exercise the
-//      5-rule pipeline via the resolveRevealPath helper. These run on every
-//      platform because they never reach the platform dispatch.
-//   2. Platform dispatch — fake revealDarwinFn / revealWSL2Fn via the package
-//      vars so we can verify the right helper is called with the right abs
-//      path WITHOUT shelling out (CI safety — never pop a Finder/Explorer
-//      window during `go test`).
-//
-// isWSL() is exercised via the osreleasePath package var pointing at a
-// tmp file with controlled content.
-
 import (
 	"context"
 	"errors"
@@ -27,9 +12,6 @@ import (
 	"testing"
 )
 
-// newRevealServer builds a *Server with dataDir pointed at a tmpdir whose
-// notes/ subfolder is pre-created. Returns the dataDir for tests that need
-// to write fixture files.
 func newRevealServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	tmp := t.TempDir()
@@ -43,9 +25,6 @@ func newRevealServer(t *testing.T) (*Server, string) {
 	return s, tmp
 }
 
-// stubDispatchers replaces revealDarwinFn / revealWSL2Fn with fakes that
-// record the abs path they received and return the configured err. Returns
-// a cleanup that restores the originals.
 type dispatchCall struct {
 	called bool
 	abs    string
@@ -73,9 +52,6 @@ func stubDispatchers(t *testing.T, darwinErr, wslErr error) (*dispatchCall, *dis
 	}
 }
 
-// stubLinuxDispatcher replaces revealLinuxFn with a fake that records the
-// abs path it received and returns the configured err. Returns a cleanup
-// that restores the original.
 func stubLinuxDispatcher(t *testing.T, linuxErr error) (*dispatchCall, func()) {
 	t.Helper()
 	call := &dispatchCall{}
@@ -90,13 +66,10 @@ func stubLinuxDispatcher(t *testing.T, linuxErr error) (*dispatchCall, func()) {
 	}
 }
 
-// stubOsrelease overrides osreleasePath to point at a tmp file with the
-// supplied content (use empty string to simulate "file does not exist").
 func stubOsrelease(t *testing.T, content string) func() {
 	t.Helper()
 	orig := osreleasePath
 	if content == "" {
-		// Point at a path that does not exist so os.ReadFile returns an error.
 		osreleasePath = filepath.Join(t.TempDir(), "does-not-exist")
 		return func() { osreleasePath = orig }
 	}
@@ -108,26 +81,21 @@ func stubOsrelease(t *testing.T, content string) func() {
 	return func() { osreleasePath = orig }
 }
 
-// ----------------------------------------------------------------------------
-// Path validation (platform-independent)
-// ----------------------------------------------------------------------------
-
 func TestPostReveal_PathValidation_RejectsBadPaths(t *testing.T) {
 	s, dataDir := newRevealServer(t)
-	// Seed one legit file so "exists" path is differentiable.
+
 	legit := filepath.Join(dataDir, "notes", "legit.md")
 	if err := os.WriteFile(legit, []byte("# legit"), 0o600); err != nil {
 		t.Fatalf("seed legit.md: %v", err)
 	}
 
-	// Stub dispatchers — none should fire on the validation-rejection cases.
 	darwinCall, wslCall, restore := stubDispatchers(t, nil, nil)
 	defer restore()
 
 	cases := []struct {
 		name    string
 		path    string
-		wantMsg string // substring of returned Error.Message
+		wantMsg string
 	}{
 		{"dot-dot", "..", "path must not contain"},
 		{"parent-escape", "../etc/passwd", "path must not contain"},
@@ -188,7 +156,6 @@ func TestPostReveal_PathValidation_SymlinkRejected(t *testing.T) {
 	s, dataDir := newRevealServer(t)
 	notesDir := filepath.Join(dataDir, "notes")
 
-	// Create the legit note inside the vault and the symlink target outside.
 	outside := filepath.Join(t.TempDir(), "outside.md")
 	if err := os.WriteFile(outside, []byte("# outside"), 0o600); err != nil {
 		t.Fatalf("seed outside.md: %v", err)
@@ -217,10 +184,6 @@ func TestPostReveal_PathValidation_SymlinkRejected(t *testing.T) {
 		t.Fatalf("symlink rejection must short-circuit BEFORE dispatch")
 	}
 }
-
-// ----------------------------------------------------------------------------
-// Platform dispatch — fakes so we never shell out in CI.
-// ----------------------------------------------------------------------------
 
 func TestPostReveal_DarwinDispatch_HappyPath(t *testing.T) {
 	if runtime.GOOS != "darwin" {
@@ -279,7 +242,7 @@ func TestPostReveal_DarwinDispatch_ExecFailure_Returns500(t *testing.T) {
 	if r500.Code != "exec_failed" {
 		t.Fatalf("Code=%q, want exec_failed", r500.Code)
 	}
-	// T-08-22: message must NOT leak the raw exec stderr.
+
 	if strings.Contains(strings.ToLower(r500.Message), "boom") {
 		t.Fatalf("Message=%q leaks underlying exec error", r500.Message)
 	}
@@ -289,7 +252,7 @@ func TestPostReveal_DarwinDispatch_FolderPath(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("darwin-only dispatch")
 	}
-	// D-26: reveal accepts folders (4 mount points include folder rows).
+
 	s, dataDir := newRevealServer(t)
 	folder := filepath.Join(dataDir, "notes", "myfolder")
 	if err := os.MkdirAll(folder, 0o755); err != nil {
@@ -324,7 +287,7 @@ func TestPostReveal_LinuxNative_HappyPath(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("linux-only check (PostReveal switches on runtime.GOOS)")
 	}
-	// Force isWSL() to return false (point osreleasePath at non-existent file).
+
 	restore := stubOsrelease(t, "")
 	defer restore()
 
@@ -419,16 +382,9 @@ func TestRevealOnLinux_OpensParentForFile_OrSelfForDir(t *testing.T) {
 		t.Fatalf("seed dir: %v", err)
 	}
 
-	// The helper uses exec.CommandContext("xdg-open", target); if xdg-open
-	// is missing (typical for CI), Run() returns "exec: xdg-open: executable
-	// file not found". We only care that revealOnLinux gets PAST the Lstat
-	// branch with the right target choice — assert no panic / no Lstat
-	// error, then accept any exec error from CommandContext.
 	ctxFile := context.Background()
 	errFile := revealOnLinux(ctxFile, fileTarget)
-	// Accept either "executable not found" (CI without xdg-open) OR a
-	// successful spawn (developer desktop). The point is: the Lstat
-	// branch didn't panic.
+
 	_ = errFile
 
 	ctxDir := context.Background()
@@ -440,7 +396,7 @@ func TestPostReveal_WSL2Dispatch_HappyPath(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("linux-only dispatch")
 	}
-	// Force isWSL() to return true.
+
 	restore := stubOsrelease(t, "5.15.90.1-microsoft-standard-WSL2")
 	defer restore()
 
@@ -473,14 +429,10 @@ func TestPostReveal_WSL2Dispatch_HappyPath(t *testing.T) {
 	}
 }
 
-// ----------------------------------------------------------------------------
-// isWSL — direct unit test via the package-var osrelease path.
-// ----------------------------------------------------------------------------
-
 func TestIsWSL(t *testing.T) {
 	cases := []struct {
 		name    string
-		content string // "" → file does not exist
+		content string
 		want    bool
 	}{
 		{"missing-file", "", false},

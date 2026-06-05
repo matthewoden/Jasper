@@ -39,8 +39,6 @@ func TestBackupBeforeMigration_Roundtrip(t *testing.T) {
 		t.Fatalf("backup contents differ (len got=%d want=%d)", len(got), len(payload))
 	}
 
-	// Verify no .tmp.* leftovers in the directory (AtomicWrite cleans
-	// up on success).
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("readdir: %v", err)
@@ -160,9 +158,6 @@ func TestRestoreBackup_RenameFailure_DoesNotCorrupt(t *testing.T) {
 		t.Fatalf("seed backup: %v", err)
 	}
 
-	// Strip write permission from the parent dir; the temp-file
-	// creation will fail with EACCES (rename can't run because temp
-	// can't be created), proving RestoreBackup fails-closed.
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
@@ -172,7 +167,6 @@ func TestRestoreBackup_RenameFailure_DoesNotCorrupt(t *testing.T) {
 		t.Fatalf("RestoreBackup(read-only-dir): got nil, want error")
 	}
 
-	// Restore dir perms so we can read the file back.
 	_ = os.Chmod(dir, 0o700)
 	got, err := os.ReadFile(dbPath)
 	if err != nil {
@@ -194,7 +188,6 @@ func TestDeleteBackup_Idempotent(t *testing.T) {
 		t.Fatalf("DeleteBackup(missing): got %v, want nil", err)
 	}
 
-	// And the success path: write a file, delete, assert gone.
 	present := filepath.Join(dir, "app.db.backup")
 	if err := os.WriteFile(present, []byte("x"), 0o600); err != nil {
 		t.Fatalf("seed: %v", err)

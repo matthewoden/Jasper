@@ -10,42 +10,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// Server.reindexBusy is the per-Server mutex preventing concurrent
-// /admin/reindex calls (declared on the Server struct in handlers.go).
-// In production there is exactly one Server per process so this is
-// effectively process-level; per-Server scoping lets tests run in
-// parallel without spurious 409s.
-//
-// The mutex is held for the entire RebuildAndReindex / Reconcile
-// call. Combined with sqlite.Pair.Writer.SetMaxOpenConns(1), this
-// ensures a Service.Update cannot interleave with the rebuild's DROP
-// (T-02-04b-08 mitigation).
-
-// hydrateRegistryFromIndex re-hydrates the in-memory Registry from the
-// post-rebuild SQLite notes table. Mirrors lifecycle.go:249-257 — same
-// idempotent pattern, same warning-on-List-failure fallback.
-//
-// Without this call, /admin/reindex (mode=full or mode=incremental)
-// leaves the Registry holding pre-rebuild UUIDs; any UUID minted by
-// reconcileFull / reconcileIncremental — including any UUID for an
-// externally-created file the rebuild discovers — is unreachable via
-// Service.Get (404) until the server restarts. Gap 6a from
-// 03-HUMAN-UAT.md, diagnosed in
-// .planning/debug/scratchpad-vanishes-self-move.md (Resolution).
-//
-// Concurrency contract: the caller (PostAdminReindex) holds
-// s.reindexBusy.Lock() across the entire rebuild. This helper runs
-// inside that critical section, AFTER RebuildAndReindex / Reconcile
-// succeed and BEFORE the JSON 202 response is returned, so a client
-// receiving the 202 is guaranteed the Registry is consistent. The
-// Registry has its own write-lock around Hydrate (registry.go:97);
-// notes.Service.Get takes a Registry read-lock, so concurrent reads
-// serialize correctly against this write. T-03-10-01 mitigation.
-//
-// Failure path: if List itself fails (transient SQLite error), we log
-// and return WITHOUT touching the Registry. The pre-rebuild Registry
-// state is preserved. The user can re-issue /admin/reindex; the next
-// startup will re-hydrate from the canonical lifecycle path either way.
 func (s *Server) hydrateRegistryFromIndex(ctx context.Context) {
 	if s.notes == nil || s.index == nil {
 		return
@@ -96,7 +60,6 @@ func (s *Server) PostAdminReindex(
 			newError("no_runner", "migration runner not available")), nil
 	}
 
-	// Try-lock: if another reindex is in flight, return 409 immediately.
 	if !s.reindexBusy.TryLock() {
 		return PostAdminReindex409JSONResponse(
 			newError("reindex_in_progress", "another reindex is already running")), nil
@@ -105,36 +68,20 @@ func (s *Server) PostAdminReindex(
 
 	started := time.Now().UTC()
 
-	// Default mode = "full" (per openapi.yaml ReindexRequest.mode).
 	mode := "full"
 	if req.Body != nil && req.Body.Mode != nil {
 		mode = string(*req.Body.Mode)
 	}
 
-	// "invalid_mode" is detected BEFORE we emit reindex:started so the
-	// completion-defer below stays paired with a real start event.
-	// Without this short-circuit we would broadcast started for a mode
-	// the server is about to reject — confusing to listening tabs.
 	if mode != "full" && mode != "incremental" {
 		return PostAdminReindex409JSONResponse(
 			newError("invalid_mode", "mode must be 'full' or 'incremental'")), nil
 	}
 
-	// UX-04: emit reindex:started so connected tabs can show a spinner.
-	// originSessionID="" — server-originated, reaches all clients.
 	if s.broadcaster != nil {
 		s.broadcaster.Broadcast(notes.EventReindexStarted, map[string]any{"mode": mode}, "")
 	}
 
-	// WR-07: ALWAYS emit reindex:complete after reindex:started, even
-	// on the error paths (rebuild failure, ErrUnrecoverable, incremental
-	// reconcile failure). The frontend's useSessionSync.onReindexStarted
-	// flips the ReindexProgress overlay to "running"; without a matching
-	// completion event the overlay stays mounted forever and locks the
-	// editor pane behind it. notes_indexed is the success count (set
-	// inside the success branches before this defer fires); on error
-	// paths it stays 0 — which is fine, the listening tabs only need
-	// the event itself to dismiss the overlay.
 	notesIndexed := 0
 	defer func() {
 		if s.broadcaster != nil {
@@ -158,11 +105,7 @@ func (s *Server) PostAdminReindex(
 			s.log.Error("PostAdminReindex: rebuild failed", "err", err)
 			return nil, errors.New("could not rebuild index")
 		}
-		// Plan 03-10 Gap 6a fix: rebuild dropped+rebuilt the SQLite notes
-		// table with freshly-minted UUIDs; re-hydrate the in-memory
-		// Registry so Service.Get / GET /notes/{id} can resolve them
-		// before the 202 response goes out. Mirrors the canonical
-		// pattern at lifecycle.go:249-257.
+
 		s.hydrateRegistryFromIndex(ctx)
 		notesIndexed = status.NotesIndexed
 		n := notesIndexed
@@ -172,10 +115,7 @@ func (s *Server) PostAdminReindex(
 		}, nil
 
 	case "incremental":
-		// W-1: incremental dispatches to Indexer.Reconcile(ModeIncremental).
-		// We need the *Indexer concrete type for Reconcile (it's not on
-		// the notes.Index port — Reconcile is the indexer's lifecycle
-		// API, not a per-row CRUD). Type-assert.
+
 		idx, ok := s.index.(*index.Indexer)
 		if !ok || idx == nil {
 			return PostAdminReindex503JSONResponse(
@@ -186,10 +126,7 @@ func (s *Server) PostAdminReindex(
 			s.log.Error("PostAdminReindex: incremental reconcile failed", "err", err)
 			return nil, errors.New("could not run incremental reindex")
 		}
-		// Plan 03-10 Gap 6a fix: incremental reconcile may have minted
-		// fresh UUIDs for newly-discovered files; re-hydrate the
-		// in-memory Registry so any new UUID is reachable via
-		// Service.Get before the 202 response goes out.
+
 		s.hydrateRegistryFromIndex(ctx)
 		notesIndexed = n
 		return PostAdminReindex202JSONResponse{
@@ -198,8 +135,7 @@ func (s *Server) PostAdminReindex(
 		}, nil
 
 	default:
-		// Unreachable — invalid_mode is short-circuited above so the
-		// completion-defer stays paired. Kept as a defensive fallback.
+
 		return PostAdminReindex409JSONResponse(
 			newError("invalid_mode", "mode must be 'full' or 'incremental'")), nil
 	}

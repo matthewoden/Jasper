@@ -1,17 +1,5 @@
 package api
 
-// files_test.go — tests for GET + POST /api/v1/files?path=... (Plans 07-32a + 07-34).
-//
-// Mirrors attachments_handler_test.go's TestAttachmentsSecurity layout: each test
-// constructs an isolated *Server via newAttachmentTestServer (re-used here because
-// the helper sets up a temp dataDir with notes/ pre-created and a fake index),
-// then invokes srv.GetFile / srv.CreateFile directly with a synthesized
-// {Get,Create}FileRequestObject.
-//
-// Path-traversal pipeline mirrors GetAttachment (5 rules) — the only addition is
-// .md refusal (Rule 2b for GetFile / Rule 6 for CreateFile), which keeps note
-// bodies on /notes/{id} where the lookup-by-UUID model lives.
-
 import (
 	"bytes"
 	"context"
@@ -26,8 +14,6 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// callGetFile invokes the GetFile handler with the given relative path as the
-// query-parameter value. Returns the typed response object.
 func callGetFile(t *testing.T, srv *Server, relPath string) GetFileResponseObject {
 	t.Helper()
 	resp, err := srv.GetFile(context.Background(), GetFileRequestObject{
@@ -48,7 +34,6 @@ func TestGetFile_HappyPath(t *testing.T) {
 
 	srv, dataDir := newAttachmentTestServer(t, nil)
 
-	// Create notes/sub/photo.png.
 	subDir := filepath.Join(dataDir, "notes", "sub")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
 		t.Fatalf("mkdir sub: %v", err)
@@ -125,13 +110,11 @@ func TestGetFile_Symlink(t *testing.T) {
 	t.Parallel()
 	srv, dataDir := newAttachmentTestServer(t, nil)
 
-	// File outside the vault holding the secret.
 	outside := filepath.Join(t.TempDir(), "secret.txt")
 	if err := os.WriteFile(outside, []byte("secret data"), 0o600); err != nil {
 		t.Fatalf("write outside: %v", err)
 	}
 
-	// Symlink it INTO notes/ as evil.bin.
 	notesDir := filepath.Join(dataDir, "notes")
 	symlinkPath := filepath.Join(notesDir, "evil.bin")
 	if err := os.Symlink(outside, symlinkPath); err != nil {
@@ -171,7 +154,6 @@ func TestGetFile_RootMd_Rejected(t *testing.T) {
 	t.Parallel()
 	srv, dataDir := newAttachmentTestServer(t, nil)
 
-	// Create a real .md file so the test would succeed if the .md guard were missing.
 	if err := os.WriteFile(filepath.Join(dataDir, "notes", "leak.md"), []byte("secret note"), 0o644); err != nil {
 		t.Fatalf("write md: %v", err)
 	}
@@ -189,22 +171,6 @@ func TestGetFile_RootMd_Rejected(t *testing.T) {
 	}
 }
 
-// ─── POST /api/v1/files?path=... (Plan 07-34) ─────────────────────────────────
-//
-// Per CLAUDE.md "plan-vs-investigation contract drift" guidance and the
-// 07-32a SUMMARY: POST mirrors GET on /files in using the QUERY-PARAMETER
-// pattern (req.Params.Path), NOT a chi catch-all `{path}`. The plan's
-// example YAML shows path-segment style — that is rejected for the same
-// two reasons that the GET endpoint dropped it: (1) OpenAPI 3.1 has no
-// multi-segment path-wildcard syntax, (2) oapi-codegen does not emit chi
-// `*` catch-all routes. Co-locating GET + POST under /files keeps the
-// surface coherent and lets the frontend hit the same query-param wire
-// shape for both.
-
-// buildMultipartBody constructs a *multipart.Reader with one 'file' part
-// containing the given filename and bytes. Mirrors buildMultipartRequest
-// from attachments_handler_test.go but lives next to the CreateFile tests
-// for locality of reasoning.
 func buildMultipartBody(t *testing.T, filename string, data []byte) *multipart.Reader {
 	t.Helper()
 	var buf bytes.Buffer
@@ -222,8 +188,6 @@ func buildMultipartBody(t *testing.T, filename string, data []byte) *multipart.R
 	return multipart.NewReader(&buf, mw.Boundary())
 }
 
-// callCreateFile invokes the CreateFile handler with the given target dir
-// (query-parameter binding) and a multipart body holding {filename,data}.
 func callCreateFile(t *testing.T, srv *Server, targetDir, filename string, data []byte) CreateFileResponseObject {
 	t.Helper()
 	mr := buildMultipartBody(t, filename, data)
@@ -318,7 +282,7 @@ func TestCreateFile_CollisionRename(t *testing.T) {
 	if got201.Path != "gallery/photo-1.png" {
 		t.Errorf("path: got %q, want %q", got201.Path, "gallery/photo-1.png")
 	}
-	// Original must be intact.
+
 	orig, _ := os.ReadFile(filepath.Join(galleryDir, "photo.png"))
 	if string(orig) != "original" {
 		t.Errorf("original file overwritten: got %q", orig)
@@ -412,8 +376,6 @@ func TestCreateFile_TargetIsFile(t *testing.T) {
 	t.Parallel()
 	srv, dataDir := newAttachmentTestServer(t, nil)
 
-	// Pre-create a file at notes/existing-file.png — the test then attempts
-	// to upload using that file's path as the target dir.
 	if err := os.WriteFile(filepath.Join(dataDir, "notes", "existing-file.png"), []byte("old"), 0o644); err != nil {
 		t.Fatalf("write existing: %v", err)
 	}
@@ -428,22 +390,10 @@ func TestCreateFile_TargetIsFile(t *testing.T) {
 	}
 }
 
-// ─── R7a: SVG / PNG Content-Type detection (Plan 07-38) ───────────────────────
-//
-// These tests exercise the HTTP layer (not the strict-handler method directly)
-// because the Content-Type header is the property under test, and the
-// generated wrapper hard-codes "application/octet-stream". The fix is a
-// manual chi route override registered in app/lifecycle.go that calls
-// s.ServeFile(w, r); these tests hit that route via httptest.
-
-// newFilesTestRouter wires a chi router with the manual ServeFile override
-// on GET /api/v1/files, mirroring the production lifecycle.go pattern.
 func newFilesTestRouter(t *testing.T, srv *Server) *chi.Mux {
 	t.Helper()
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		// Plan 07-38 R7a: same last-registration-wins pattern as /ws — manual
-		// handler overrides the generated wrapper so Content-Type is dynamic.
 		r.Get("/files", srv.ServeFile)
 	})
 	return r
@@ -453,9 +403,6 @@ func TestGetFile_SvgContentType(t *testing.T) {
 	t.Parallel()
 	srv, dataDir := newAttachmentTestServer(t, nil)
 
-	// A minimal valid SVG. http.DetectContentType on this returns
-	// "text/xml; charset=utf-8" — which browsers refuse for <img>. The
-	// fix is an extension-based override.
 	svg := []byte(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>`)
 	if err := os.WriteFile(filepath.Join(dataDir, "notes", "icon.svg"), svg, 0o644); err != nil {
 		t.Fatalf("write svg: %v", err)
@@ -486,7 +433,6 @@ func TestGetFile_PngContentType(t *testing.T) {
 	t.Parallel()
 	srv, dataDir := newAttachmentTestServer(t, nil)
 
-	// PNG magic bytes — http.DetectContentType returns "image/png" for these.
 	png := []byte("\x89PNG\r\n\x1a\nrest-of-the-png-bytes-which-do-not-matter")
 	if err := os.WriteFile(filepath.Join(dataDir, "notes", "photo.png"), png, 0o644); err != nil {
 		t.Fatalf("write png: %v", err)
@@ -510,9 +456,6 @@ func TestGetFile_PngContentType(t *testing.T) {
 }
 
 func TestGetFile_HttpRoute_PathTraversal(t *testing.T) {
-	// HTTP-level smoke test: traversal still rejected through the manual
-	// route (defense-in-depth check that the manual handler runs the same
-	// 5-rule pipeline as the strict handler).
 	t.Parallel()
 	srv, _ := newAttachmentTestServer(t, nil)
 	r := newFilesTestRouter(t, srv)
@@ -528,8 +471,6 @@ func TestGetFile_HttpRoute_PathTraversal(t *testing.T) {
 		t.Errorf("status: got %d, want 400", resp.StatusCode)
 	}
 }
-
-// ─── R7b: DELETE /api/v1/files + POST /api/v1/files/move ──────────────────────
 
 func callDeleteFile(t *testing.T, srv *Server, relPath string) DeleteFileResponseObject {
 	t.Helper()
@@ -575,8 +516,7 @@ func TestDeleteFile_RefusesMd(t *testing.T) {
 			t.Errorf("path=%q: expected DeleteFile400JSONResponse, got %T", p, resp)
 			continue
 		}
-		// Either "invalid_path" (for md refusal) is acceptable as long as
-		// it's a 400 — the contract just says "no md files".
+
 		if got400.Code == "" {
 			t.Errorf("path=%q: empty error code", p)
 		}
@@ -689,7 +629,7 @@ func TestMoveFile_RefusesOverwrite(t *testing.T) {
 	if got409.Code != "already_exists" {
 		t.Errorf("code: got %q, want %q", got409.Code, "already_exists")
 	}
-	// Both files intact.
+
 	if got, _ := os.ReadFile(filepath.Join(dataDir, "notes", "a.png")); string(got) != "a-bytes" {
 		t.Errorf("a.png mutated: %s", got)
 	}
@@ -765,14 +705,6 @@ func TestMoveFile_RaceRepeatIdempotent(t *testing.T) {
 	t.Parallel()
 	srv, dataDir := newAttachmentTestServer(t, nil)
 
-	// Race shape: user dragged foo.png OUT of attachments/, then immediately
-	// dragged it BACK. The first dispatch (attachments/foo.png → foo.png)
-	// succeeded server-side. The second dispatch (attachments/foo.png →
-	// attachments/foo.png — arborist's stale snapshot) reached the server AFTER
-	// the first move completed and after a subsequent re-snapshot dispatched
-	// foo.png → attachments/foo.png. By the time the SECOND dispatch's POST
-	// arrives, the file is already at attachments/foo.png — Lstat(src)=ENOENT
-	// + Lstat(dst)=OK with matching basename "foo.png" — the move is a noop.
 	if err := os.MkdirAll(filepath.Join(dataDir, "notes", "attachments"), 0o755); err != nil {
 		t.Fatalf("mkdir attachments: %v", err)
 	}
@@ -780,9 +712,6 @@ func TestMoveFile_RaceRepeatIdempotent(t *testing.T) {
 	if err := os.WriteFile(dstAbs, []byte("foo-bytes"), 0o644); err != nil {
 		t.Fatalf("write dst: %v", err)
 	}
-	// Note: foo.png at the vault root is intentionally NOT created — it's
-	// the "src" the client believes still exists but the first move already
-	// shuffled to attachments/.
 
 	resp := callMoveFile(t, srv, "foo.png", "attachments/foo.png")
 	got200, ok := resp.(PostFileMove200JSONResponse)
@@ -796,12 +725,10 @@ func TestMoveFile_RaceRepeatIdempotent(t *testing.T) {
 		t.Errorf("name: got %q, want %q", got200.Name, "foo.png")
 	}
 
-	// Idempotent — dst must be untouched.
 	if got, _ := os.ReadFile(dstAbs); string(got) != "foo-bytes" {
 		t.Errorf("dst mutated by idempotent path: %q", got)
 	}
-	// Src must still NOT exist (the "first dispatch" already shuffled it
-	// away; the idempotent repeat is a noop, not a recreate).
+
 	srcAbs := filepath.Join(dataDir, "notes", "foo.png")
 	if _, err := os.Stat(srcAbs); !os.IsNotExist(err) {
 		t.Errorf("src still / again exists at %q: err=%v", srcAbs, err)
@@ -818,8 +745,6 @@ func TestMoveFile_SrcMissingDifferentBasename(t *testing.T) {
 	t.Parallel()
 	srv, dataDir := newAttachmentTestServer(t, nil)
 
-	// Create dst (bar.png) only; src ("foo.png") is missing AND basenames
-	// differ from dst — must still 404, NOT swallowed by the idempotent path.
 	if err := os.WriteFile(filepath.Join(dataDir, "notes", "bar.png"), []byte("bar"), 0o644); err != nil {
 		t.Fatalf("write dst: %v", err)
 	}

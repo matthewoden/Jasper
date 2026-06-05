@@ -107,8 +107,7 @@ func (a *ACL) Set(ctx context.Context, folderPath string, level GrantLevel, via 
 	if level != TierEditOnly && level != TierFull {
 		return Grant{}, errors.New("invalid level: must be 1 or 2")
 	}
-	// ".." check must run on the RAW input — normalize would collapse
-	// "projects/../etc" before we got the chance to reject it.
+
 	if strings.Contains(folderPath, "..") {
 		return Grant{}, errors.New(`folder_path must not contain ".." segments`)
 	}
@@ -116,10 +115,7 @@ func (a *ACL) Set(ctx context.Context, folderPath string, level GrantLevel, via 
 	if norm == "" || norm == "." {
 		return Grant{}, errors.New("folder_path required")
 	}
-	// Post-normalize absolute-path check. normalizeGrantPath strips a
-	// single leading slash (treating "/Projects" as "rooted at notes/"),
-	// so any remaining absolute form on disk-os-specific paths
-	// (e.g., Windows "C:\foo" → after Clean+ToSlash) is rejected here.
+
 	if filepath.IsAbs(norm) {
 		return Grant{}, errors.New("folder_path must be relative")
 	}
@@ -215,20 +211,6 @@ func (a *ACL) CanDelete(ctx context.Context, notePath string) bool {
 	return a.CanMove(ctx, notePath)
 }
 
-// normalizeGrantPath canonicalizes a user-supplied folder path to the
-// DATA-11 NFC+lowercase form stored in mcp_write_grants. Steps:
-//
-//  1. Trim surrounding whitespace.
-//  2. Strip leading and trailing slashes (the grant table stores rel
-//     paths under notes/ without anchors).
-//  3. filepath.Clean to collapse "./" and "//" segments.
-//  4. Convert to forward slashes (Windows tolerance, future-proofing).
-//  5. Lowercase per DATA-11.
-//
-// NB: we do NOT NFC-fold here because Go's stdlib doesn't include a
-// pure-Go NFC normalizer in the import path-fold; callers that need
-// strict NFC should pre-normalize. For ASCII paths (the overwhelming
-// common case) lowercase is equivalent to NFC+lowercase.
 func normalizeGrantPath(p string) string {
 	p = strings.TrimSpace(p)
 	p = strings.TrimPrefix(p, "/")
