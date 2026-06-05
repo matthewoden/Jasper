@@ -260,7 +260,7 @@ func buildPreserveSet(file *ast.File, fset *token.FileSet, src []byte) map[*ast.
 				preserve[d.Doc] = true
 			}
 		case *ast.GenDecl:
-			handleGenDecl(d, preserve, fset, src)
+			handleGenDecl(d, preserve, fset, src, file)
 		}
 	}
 
@@ -309,8 +309,9 @@ func isExportedFuncDecl(fd *ast.FuncDecl) bool {
 	return ast.IsExported(fd.Name.Name)
 }
 
-func handleGenDecl(d *ast.GenDecl, preserve map[*ast.CommentGroup]bool, fset *token.FileSet, src []byte) {
-	// Detect cgo: `import "C"` with optional preceding /* */ preamble.
+func handleGenDecl(d *ast.GenDecl, preserve map[*ast.CommentGroup]bool, fset *token.FileSet, src []byte, file *ast.File) {
+	// IMPORT block: handle cgo preamble + blank-import justification
+	// comments (revive's `blank-imports` rule).
 	if d.Tok == token.IMPORT {
 		for _, spec := range d.Specs {
 			is, ok := spec.(*ast.ImportSpec)
@@ -319,6 +320,15 @@ func handleGenDecl(d *ast.GenDecl, preserve map[*ast.CommentGroup]bool, fset *to
 			}
 			if is.Path != nil && is.Path.Value == `"C"` && d.Doc != nil {
 				preserve[d.Doc] = true
+			}
+			if is.Name != nil && is.Name.Name == "_" {
+				if is.Doc != nil {
+					preserve[is.Doc] = true
+				}
+				if is.Comment != nil {
+					preserve[is.Comment] = true
+				}
+				preservePrecedingGroup(is.Pos(), file, preserve, fset)
 			}
 		}
 		return
@@ -478,8 +488,43 @@ func clearDocCommentFields(file *ast.File, preserve map[*ast.CommentGroup]bool) 
 	})
 }
 
-var manyBlanksRe = regexp.MustCompile(`\n{4,}`)
+var (
+	manyBlanksRe            = regexp.MustCompile(`\n{4,}`)
+	blankAfterOpenBraceRe   = regexp.MustCompile(`\{\n(?:[ \t]*\n)+`)
+	blankBeforeCloseBraceRe = regexp.MustCompile(`\n(?:[ \t]*\n)+([ \t]*\})`)
+)
 
 func collapseBlankLines(b []byte) []byte {
-	return manyBlanksRe.ReplaceAll(b, []byte("\n\n\n"))
+	out := manyBlanksRe.ReplaceAll(b, []byte("\n\n\n"))
+	// gofumpt: no blank line directly after `{` opening a block.
+	for {
+		next := blankAfterOpenBraceRe.ReplaceAll(out, []byte("{\n"))
+		if bytes.Equal(next, out) {
+			break
+		}
+		out = next
+	}
+	// gofumpt: no blank line directly before `}` closing a block.
+	out = blankBeforeCloseBraceRe.ReplaceAllFunc(out, func(m []byte) []byte {
+		i := bytes.LastIndexByte(m, '}')
+		j := i - 1
+		for j >= 0 && (m[j] == ' ' || m[j] == '\t') {
+			j--
+		}
+		return append([]byte{'\n'}, m[j+1:]...)
+	})
+	return out
+}
+
+// preservePrecedingGroup preserves the comment group, if any, whose End()
+// is on the line immediately preceding `pos`. Used to keep comments that
+// justify a blank `_ "pkg"` import for revive's blank-imports rule.
+func preservePrecedingGroup(pos token.Pos, file *ast.File, preserve map[*ast.CommentGroup]bool, fset *token.FileSet) {
+	posLine := fset.Position(pos).Line
+	for _, g := range file.Comments {
+		endLine := fset.Position(g.End()).Line
+		if endLine == posLine-1 || endLine == posLine {
+			preserve[g] = true
+		}
+	}
 }
