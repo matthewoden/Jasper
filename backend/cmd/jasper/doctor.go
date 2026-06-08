@@ -218,7 +218,7 @@ func checkPortAvailable(label string, port int) DoctorCheck {
 		return DoctorCheck{
 			Name:   label,
 			Status: "fail",
-			Hint:   "port " + strconv.Itoa(port) + " in use — change " + label + " in ~/.jasper/storage/config.json and restart",
+			Hint:   "port " + strconv.Itoa(port) + " in use — change " + label + " in <vault>/.jasper/config.json and restart",
 		}
 	}
 	_ = ln.Close()
@@ -227,7 +227,7 @@ func checkPortAvailable(label string, port int) DoctorCheck {
 
 func checkDataDirPerms(dir string) DoctorCheck {
 	checkDir := dir
-	if jasperDir := filepath.Join(dir, ".jasper"); pathIsDir(jasperDir) {
+	if jasperDir := filepath.Join(dir, vault.SubdirName); pathIsDir(jasperDir) {
 		checkDir = jasperDir
 	}
 	fi, err := os.Stat(checkDir)
@@ -265,7 +265,7 @@ func pathIsDir(p string) bool {
 }
 
 func checkMigrationState(dir string) DoctorCheck {
-	dbPath := filepath.Join(dir, "storage", "app.db")
+	dbPath := vault.AppDBPath(dir)
 	if _, err := os.Stat(dbPath); err != nil {
 		return DoctorCheck{
 			Name:   "migration state",
@@ -429,7 +429,7 @@ func checkCurrentVaultHasJasperDir(currentVault string) DoctorCheck {
 	if currentVault == "" {
 		return DoctorCheck{Name: "current_vault_has_jasper_dir", Status: "skip", Hint: "no current_vault set"}
 	}
-	jasperDir := filepath.Join(currentVault, ".jasper")
+	jasperDir := filepath.Join(currentVault, vault.SubdirName)
 	if _, err := os.Stat(jasperDir); err != nil {
 		return DoctorCheck{
 			Name:   "current_vault_has_jasper_dir",
