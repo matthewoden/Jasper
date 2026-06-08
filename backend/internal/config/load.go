@@ -8,11 +8,12 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"path/filepath"
+
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 func configPath(dataDir string) string {
-	return filepath.Join(dataDir, "storage", "config.json")
+	return vault.ConfigPath(dataDir)
 }
 
 // Load reads the persisted config. Behavior on edge cases (D-10 graceful

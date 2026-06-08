@@ -25,7 +25,7 @@ func DefaultDataDir() string {
 // Defaults returns a Config populated with the DESIGN.md §11 + Phase 8
 // D-50 / D-47 default values for every field. Used by:
 //
-//   - load.go when storage/config.json is missing (the file is then
+//   - load.go when .jasper/config.json is missing (the file is then
 //     written so subsequent reads succeed with the canonical shape).
 //   - load.go to seed missing nested-struct fields when an old config
 //     (without `server` / `mcp` blocks) is loaded — see the start-from-

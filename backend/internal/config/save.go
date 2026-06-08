@@ -7,11 +7,11 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 )
 
-// Save writes c to <dataDir>/storage/config.json atomically via
+// Save writes c to <dataDir>/.jasper/config.json atomically via
 // fsstore.AtomicWrite (DATA-13 — temp+rename+fsync(parent)).
 // Indented JSON so a human can `cat` the file and read it.
 //
-// Caller is responsible for ensuring <dataDir>/storage exists.
+// Caller is responsible for ensuring <dataDir>/.jasper exists.
 // lifecycle.EnsureDataDir creates it during boot.
 func Save(dataDir string, c Config) error {
 	data, err := json.MarshalIndent(c, "", "  ")
