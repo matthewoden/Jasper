@@ -8,12 +8,20 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-
-	"github.com/matthewoden/jasper/backend/internal/vault"
+	"path/filepath"
 )
 
+// configPath returns <dataDir>/.jasper/config.json — the on-disk location of
+// the per-vault config file. MUST stay byte-for-byte aligned with the result
+// of vault.ConfigPath(dataDir); Plan 02 originally delegated to that helper,
+// but Plan 03a inlines the literal here to break the
+// vault → config → vault import cycle introduced when CreateVault began
+// calling config.Save. The ".jasper" literal here is therefore an authorized
+// Phase-9 exception alongside vault/paths.go (per-vault helpers),
+// vault/types.go (app-home), and config/defaults.go (app-home). Plan 03c's
+// grep gate MUST be calibrated to allow this fourth file.
 func configPath(dataDir string) string {
-	return vault.ConfigPath(dataDir)
+	return filepath.Join(dataDir, ".jasper", "config.json")
 }
 
 // Load reads the persisted config. Behavior on edge cases (D-10 graceful
