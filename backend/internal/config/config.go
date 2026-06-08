@@ -33,12 +33,18 @@ package config
 // (Plan 05-03 / 08-01). Drift here breaks GET /config + PUT /config
 // round-trips.
 type Config struct {
-	AppName    string       `json:"appName"`
-	DailyNotes DailyNotes   `json:"dailyNotes"`
-	Editor     Editor       `json:"editor"`
-	Theme      string       `json:"theme"`  // "dark" | "light" (enum-validated by openapi)
-	Server     ServerConfig `json:"server"` // Phase 8 D-50: port (6683) + dataDir source of truth
-	MCP        MCPConfig    `json:"mcp"`    // Phase 8 D-47: optional MCP listener (revision 2 consolidation from 08-09)
+	AppName string `json:"appName"`
+	// DisplayName is the human-readable vault name (Phase 9 D-04). Optional on disk
+	// (`omitempty`) — legacy configs written before Phase 9 still parse cleanly under
+	// the strict decoder. CreateVault populates it from CreateOpts.DisplayName (or
+	// filepath.Base(canonical)); readers fall back to filepath.Base at display time
+	// when the field is "".
+	DisplayName string       `json:"display_name,omitempty"`
+	DailyNotes  DailyNotes   `json:"dailyNotes"`
+	Editor      Editor       `json:"editor"`
+	Theme       string       `json:"theme"`  // "dark" | "light" (enum-validated by openapi)
+	Server      ServerConfig `json:"server"` // Phase 8 D-50: port (6683) + dataDir source of truth
+	MCP         MCPConfig    `json:"mcp"`    // Phase 8 D-47: optional MCP listener (revision 2 consolidation from 08-09)
 }
 
 // DailyNotes — DESIGN.md §11 dailyNotes block. Phase 5 ships defaults;
