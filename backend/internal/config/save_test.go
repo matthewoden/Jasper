@@ -3,10 +3,13 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
-
-	"github.com/matthewoden/jasper/backend/internal/vault"
 )
+
+// .jasper literal allowed in this in-package test file: importing
+// internal/vault here would create a test-only import cycle because
+// vault.CreateVault depends on this config package.
 
 // TestSave_AtomicWrite — D-39 atomic write contract. Save writes via
 // fsstore.AtomicWrite which means a temp file is created in the same
@@ -23,7 +26,7 @@ func TestSave_AtomicWrite(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 
-	path := vault.ConfigPath(dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read: %v", err)
@@ -55,7 +58,7 @@ func TestSave_OverwritesExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path := vault.ConfigPath(dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

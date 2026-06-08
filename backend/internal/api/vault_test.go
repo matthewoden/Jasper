@@ -432,9 +432,12 @@ func TestPostVaultCreate_HappyPath_CreatesDotJasper(t *testing.T) {
 		t.Fatalf(".jasper/config.json not created: %v", err)
 	}
 
+	// app.db is intentionally NOT created by CreateVault — D-04 contract
+	// from Plan 09-03a. The migration runner creates it on first server
+	// boot. CreateVault is mkdir + config.Save + app.json register only.
 	dbPath := filepath.Join(jasperDir, "app.db")
-	if _, err := os.Stat(dbPath); err != nil {
-		t.Fatalf(".jasper/app.db not created: %v", err)
+	if _, err := os.Stat(dbPath); err == nil {
+		t.Fatalf("CreateVault should NOT create app.db (D-04); got file at %s", dbPath)
 	}
 }
 

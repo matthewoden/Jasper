@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/matthewoden/jasper/backend/internal/vault"
 )
+
+// .jasper literal allowed in this in-package test file: importing
+// internal/vault here would create a test-only import cycle because
+// vault.CreateVault depends on this config package.
 
 func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -21,7 +23,7 @@ func newTestLogger() *slog.Logger {
 // the body. Perms 0o755 match production EnsureDataDir.
 func mkdirStorage(t *testing.T, dir string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(dir, vault.SubdirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".jasper"), 0o755); err != nil {
 		t.Fatalf("mkdir .jasper: %v", err)
 	}
 }
@@ -53,7 +55,7 @@ func TestLoad_DefaultsOnMissing(t *testing.T) {
 			cfg.DailyNotes.Folder, want.DailyNotes.Folder)
 	}
 
-	path := vault.ConfigPath(dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("expected config.json on disk after first Load, got %v", err)
 	}
@@ -95,7 +97,7 @@ func TestLoad_MalformedFallsBackToDefaults(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	mkdirStorage(t, dir)
-	path := vault.ConfigPath(dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
 	bad := []byte("not-json{{{")
 	if err := os.WriteFile(path, bad, 0o644); err != nil {
 		t.Fatal(err)
@@ -209,7 +211,7 @@ func TestLoad_OldConfigWithoutServerOrMCP_BackCompat(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	mkdirStorage(t, dir)
-	path := vault.ConfigPath(dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
 	old := []byte(`{
 		"appName":"Jasper","theme":"dark",
 		"dailyNotes":{"folder":"daily","template":""},
@@ -242,7 +244,7 @@ func TestLoad_UnknownFieldsFallBackToDefaults(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	mkdirStorage(t, dir)
-	path := vault.ConfigPath(dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
 	bad := []byte(`{"appName":"Jasper","theme":"dark","unknownKey":42,` +
 		`"dailyNotes":{"folder":"daily","template":""},` +
 		`"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false}}`)

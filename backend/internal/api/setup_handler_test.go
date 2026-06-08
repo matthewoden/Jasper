@@ -283,8 +283,10 @@ func TestPostSetup_HappyPath(t *testing.T) {
 	if _, err := os.Stat(vault.ConfigPath(target)); err != nil {
 		t.Fatalf("config.json missing: %v", err)
 	}
-	if _, err := os.Stat(vault.AppDBPath(target)); err != nil {
-		t.Fatalf("app.db missing: %v", err)
+	// app.db is created by the migration runner on first server boot,
+	// not by setup/RunSetup/CreateVault (D-04 contract, Plan 09-03a).
+	if _, err := os.Stat(vault.AppDBPath(target)); err == nil {
+		t.Fatalf("setup should NOT create app.db (D-04); got file at %s", vault.AppDBPath(target))
 	}
 	if _, err := os.Stat(filepath.Join(target, "notes")); err != nil {
 		t.Fatalf("notes/ missing: %v", err)

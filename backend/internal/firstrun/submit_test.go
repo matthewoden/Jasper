@@ -1,14 +1,12 @@
 package firstrun
 
 import (
-	"database/sql"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	_ "modernc.org/sqlite"
 
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/vault"
@@ -100,8 +98,12 @@ func TestRunSetup_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	if cfg.Server.DataDir != target {
-		t.Fatalf("Server.DataDir: got %q want %q", cfg.Server.DataDir, target)
+	// CreateVault canonicalizes DataDir (V10 contract: filepath.Abs →
+	// EvalSymlinks → Clean → ToLower on darwin) so the stored value
+	// differs from the raw target on case-insensitive filesystems.
+	wantDataDir, _ := vault.Canonicalize(target)
+	if cfg.Server.DataDir != wantDataDir {
+		t.Fatalf("Server.DataDir: got %q want %q", cfg.Server.DataDir, wantDataDir)
 	}
 	if cfg.Theme != "light" {
 		t.Fatalf("Theme: got %q want %q", cfg.Theme, "light")
@@ -122,21 +124,19 @@ func TestRunSetup_HappyPath(t *testing.T) {
 		t.Fatalf("DailyNotes.Template: got %q want template-override", cfg.DailyNotes.Template)
 	}
 
-	dbPath := vault.AppDBPath(target)
-	if _, err := os.Stat(dbPath); err != nil {
-		t.Fatalf("missing app.db: %v", err)
+	// app.db is intentionally NOT created by RunSetup (Plan 09-03a D-04):
+	// the migration runner creates it on first server boot. With no
+	// wizard grants, the seed_grants.json queue file is also absent
+	// (writeSeedGrants short-circuits on empty input — Plan 09-03b).
+	if _, err := os.Stat(vault.AppDBPath(target)); err == nil {
+		t.Fatalf("RunSetup should NOT create app.db (D-04); got file at %s", vault.AppDBPath(target))
 	}
-	db, err := sql.Open("sqlite", "file:"+dbPath)
+	canonical, err := vault.Canonicalize(target)
 	if err != nil {
-		t.Fatalf("open db: %v", err)
+		t.Fatalf("Canonicalize: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	var count int
-	if err := db.QueryRow(`SELECT count(*) FROM mcp_write_grants`).Scan(&count); err != nil {
-		t.Fatalf("query grants table: %v", err)
-	}
-	if count != 0 {
-		t.Fatalf("mcp_write_grants count: got %d want 0", count)
+	if _, err := os.Stat(vault.SeedGrantsPath(canonical)); err == nil {
+		t.Fatalf("seed_grants.json should not exist when wizard submits no grants")
 	}
 
 	dailyDir := filepath.Join(target, "notes", "daily")
@@ -202,9 +202,9 @@ func TestRunSetup_McpEnabledRoundTrips(t *testing.T) {
 	}
 }
 
-// TestRunSetup_SeedGrants exercises the wizard MCP-grants seeding —
-// rows must land in mcp_write_grants with granted_via='wizard' and
-// the user's chosen level (1 or 2).
+// TestRunSetup_SeedGrants — wizard MCP-grants seeding writes a queue
+// file at <vault>/.jasper/seed_grants.json (Plan 09-03b). Drain side
+// of the contract is covered by apply_seed_grants_test.go.
 func TestRunSetup_SeedGrants(t *testing.T) {
 	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
@@ -221,57 +221,34 @@ func TestRunSetup_SeedGrants(t *testing.T) {
 		t.Fatalf("RunSetup: %v", err)
 	}
 
-	dbPath := vault.AppDBPath(target)
-	db, err := sql.Open("sqlite", "file:"+dbPath)
+	canonical, err := vault.Canonicalize(target)
 	if err != nil {
-		t.Fatalf("open db: %v", err)
+		t.Fatalf("Canonicalize: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	rows, err := db.Query(`SELECT folder_path, level, granted_via FROM mcp_write_grants ORDER BY folder_path`)
+	raw, err := os.ReadFile(vault.SeedGrantsPath(canonical))
 	if err != nil {
-		t.Fatalf("query grants: %v", err)
+		t.Fatalf("read seed_grants.json: %v", err)
 	}
-	defer func() { _ = rows.Close() }()
-	type row struct {
-		folder string
-		level  int
-		via    string
-	}
-	var got []row
-	for rows.Next() {
-		var r row
-		if err := rows.Scan(&r.folder, &r.level, &r.via); err != nil {
-			t.Fatalf("scan: %v", err)
-		}
-		got = append(got, r)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("rows: %v", err)
+	var got []SetupGrantSeed
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal seed_grants.json: %v", err)
 	}
 	if len(got) != 2 {
-		t.Fatalf("grants count: got %d want 2; rows=%+v", len(got), got)
+		t.Fatalf("grants count: got %d want 2; queue=%+v", len(got), got)
 	}
-	if got[0] != (row{folder: "inbox", level: 1, via: "wizard"}) {
-		t.Errorf("row[0]: got %+v", got[0])
+	if got[0] != (SetupGrantSeed{Folder: "inbox", Level: 1}) {
+		t.Errorf("grant[0]: got %+v", got[0])
 	}
-	if got[1] != (row{folder: "projects/foo", level: 2, via: "wizard"}) {
-		t.Errorf("row[1]: got %+v", got[1])
+	if got[1] != (SetupGrantSeed{Folder: "projects/foo", Level: 2}) {
+		t.Errorf("grant[1]: got %+v", got[1])
 	}
 }
 
-// TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel exercises the
-// ON CONFLICT(folder_path) DO UPDATE upsert semantics of insertSeedGrants
-// (UAT-1 N8 layer 3). Two rows with the same Folder ("ai-zone") but
-// Level=1 then Level=2 must: (a) return nil error, (b) leave exactly
-// one row in mcp_write_grants, (c) with level=2 (last-write-wins).
-//
-// Before the ON CONFLICT fix, the second INSERT hit SQLite extended error
-// 2067 (SQLITE_CONSTRAINT_UNIQUE) and returned a non-nil error — the
-// whole wizard submit failed with:
-//
-//	"seed grants: insert grant "ai-zone": constraint failed: UNIQUE
-//	 constraint failed: mcp_write_grants.folder_path (2067)"
-func TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel(t *testing.T) {
+// TestRunSetup_SeedGrants_Duplicate — submit accepts a duplicated
+// folder without error; the queue file preserves the wizard's raw
+// list verbatim. The upsert/last-write-wins logic now lives in
+// ApplySeedGrants (apply_seed_grants_test.go covers that side).
+func TestRunSetup_SeedGrants_Duplicate(t *testing.T) {
 	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
@@ -287,27 +264,24 @@ func TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel(t *testing.T) {
 		t.Fatalf("RunSetup with duplicate grant: %v", err)
 	}
 
-	dbPath := vault.AppDBPath(target)
-	db, err := sql.Open("sqlite", "file:"+dbPath)
+	canonical, err := vault.Canonicalize(target)
 	if err != nil {
-		t.Fatalf("open db: %v", err)
+		t.Fatalf("Canonicalize: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	var count int
-	if err := db.QueryRow(`SELECT count(*) FROM mcp_write_grants`).Scan(&count); err != nil {
-		t.Fatalf("query count: %v", err)
+	raw, err := os.ReadFile(vault.SeedGrantsPath(canonical))
+	if err != nil {
+		t.Fatalf("read seed_grants.json: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("expected exactly 1 row after duplicate upsert; got %d", count)
+	var got []SetupGrantSeed
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal seed_grants.json: %v", err)
 	}
-
-	var level int
-	if err := db.QueryRow(`SELECT level FROM mcp_write_grants WHERE folder_path = 'ai-zone'`).Scan(&level); err != nil {
-		t.Fatalf("query level: %v", err)
+	if len(got) != 2 {
+		t.Fatalf("queue should preserve duplicate; got %d entries: %+v", len(got), got)
 	}
-	if level != 2 {
-		t.Fatalf("expected level=2 (last-write-wins); got %d", level)
+	if got[0] != (SetupGrantSeed{Folder: "ai-zone", Level: 1}) ||
+		got[1] != (SetupGrantSeed{Folder: "ai-zone", Level: 2}) {
+		t.Errorf("queue order/content unexpected: %+v", got)
 	}
 }
 
@@ -315,7 +289,7 @@ func TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel(t *testing.T) {
 // duplicate (A appears twice) and one unique row (B appears once). The
 // result must be exactly 2 rows: A at the last-seen level, B at its
 // original level. Nil error is required.
-func TestInsertSeedGrants_MixedDuplicates(t *testing.T) {
+func TestRunSetup_SeedGrants_MixedDuplicates(t *testing.T) {
 	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()
 	target := filepath.Join(base, "Jasper")
@@ -332,47 +306,27 @@ func TestInsertSeedGrants_MixedDuplicates(t *testing.T) {
 		t.Fatalf("RunSetup with mixed duplicates: %v", err)
 	}
 
-	dbPath := vault.AppDBPath(target)
-	db, err := sql.Open("sqlite", "file:"+dbPath)
+	canonical, err := vault.Canonicalize(target)
 	if err != nil {
-		t.Fatalf("open db: %v", err)
+		t.Fatalf("Canonicalize: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	var count int
-	if err := db.QueryRow(`SELECT count(*) FROM mcp_write_grants`).Scan(&count); err != nil {
-		t.Fatalf("query count: %v", err)
-	}
-	if count != 2 {
-		t.Fatalf("expected exactly 2 rows after mixed-duplicate upsert; got %d", count)
-	}
-
-	rows, err := db.Query(`SELECT folder_path, level FROM mcp_write_grants ORDER BY folder_path`)
+	raw, err := os.ReadFile(vault.SeedGrantsPath(canonical))
 	if err != nil {
-		t.Fatalf("query rows: %v", err)
+		t.Fatalf("read seed_grants.json: %v", err)
 	}
-	defer func() { _ = rows.Close() }()
-	type row struct {
-		folder string
-		level  int
+	var got []SetupGrantSeed
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal seed_grants.json: %v", err)
 	}
-	var got []row
-	for rows.Next() {
-		var r row
-		if err := rows.Scan(&r.folder, &r.level); err != nil {
-			t.Fatalf("scan: %v", err)
-		}
-		got = append(got, r)
+	// Queue preserves the wizard's submission order verbatim — the
+	// dedup/upsert work lives in ApplySeedGrants.
+	if len(got) != 3 {
+		t.Fatalf("expected 3 raw entries in queue; got %d: %+v", len(got), got)
 	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("rows err: %v", err)
-	}
-
-	if got[0] != (row{folder: "inbox", level: 1}) {
-		t.Errorf("row[0]: got %+v want {inbox, 1}", got[0])
-	}
-	if got[1] != (row{folder: "projects", level: 2}) {
-		t.Errorf("row[1]: got %+v want {projects, 2}", got[1])
+	if got[0] != (SetupGrantSeed{Folder: "projects", Level: 1}) ||
+		got[1] != (SetupGrantSeed{Folder: "inbox", Level: 1}) ||
+		got[2] != (SetupGrantSeed{Folder: "projects", Level: 2}) {
+		t.Errorf("queue order/content unexpected: %+v", got)
 	}
 }
 
