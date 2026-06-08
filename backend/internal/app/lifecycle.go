@@ -18,6 +18,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
+	"github.com/matthewoden/jasper/backend/internal/firstrun"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/index"
 	jlog "github.com/matthewoden/jasper/backend/internal/log"
@@ -268,6 +269,16 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	}
 
 	if status.State != migrate.StateUnrecoverable {
+		// Drain any seed grants queued by firstrun.RunSetup (Phase 9 D-04).
+		// Non-fatal on error: a corrupt seed_grants.json should not brick
+		// boot; operator can inspect <vault>/.jasper/seed_grants.json and
+		// retry. ON CONFLICT DO UPDATE makes a repeat-apply safe.
+		if err := firstrun.ApplySeedGrants(ctx, pair.Writer, a.cfg.DataDir); err != nil {
+			a.cfg.Logger.Warn("apply seed grants failed (non-fatal)", "err", err)
+		}
+	}
+
+	if status.State != migrate.StateUnrecoverable {
 		n, err := a.indexer.ReconcileWithRegistry(ctx, index.ModeIncremental, nil)
 		if err != nil {
 			a.cfg.Logger.Warn("startup incremental reindex failed (non-fatal)", "err", err)
@@ -431,6 +442,14 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	if status.State != migrate.StateUnrecoverable {
 		if err := InjectFrontmatterScaffoldMigration(ctx, pair.Writer, notesDir, a.cfg.Logger); err != nil {
 			return fmt.Errorf("initVaultSubsystemsOnly: frontmatter scaffold: %w", err)
+		}
+	}
+
+	if status.State != migrate.StateUnrecoverable {
+		// Mirror of bootPerVaultSubsystems: drain seed grants on hot-swap
+		// into a freshly-created vault (Phase 9 D-04). Non-fatal on error.
+		if err := firstrun.ApplySeedGrants(ctx, pair.Writer, a.cfg.DataDir); err != nil {
+			a.cfg.Logger.Warn("switch: apply seed grants failed (non-fatal)", "err", err)
 		}
 	}
 

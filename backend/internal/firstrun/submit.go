@@ -2,16 +2,13 @@ package firstrun
 
 import (
 	"context"
-	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
 
-	_ "modernc.org/sqlite" // registers the "sqlite" sql driver
-
-	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/vault"
@@ -46,14 +43,15 @@ type SetupRequest struct {
 	McpEnabled bool
 
 	// McpGrants is the optional seed list of folder grants the wizard
-	// surfaced in the MCP step. Inserted directly into
-	// mcp_write_grants AFTER migrations apply migration 004.
+	// surfaced in the MCP step. Queued to <canonical>/.jasper/seed_grants.json
+	// at submit time; firstrun.ApplySeedGrants drains the queue on the
+	// first server boot of the new vault (Phase 9 D-04).
 	McpGrants []SetupGrantSeed
 
 	// DailyTemplate is the user's preferred template for new daily
 	// notes (DESIGN.md §11 dailyNotes.template). Stored in
-	// cfg.DailyNotes.Template; used by markdown.NewDailyNoteContent
-	// when CreateTodayDailyNote is true.
+	// cfg.DailyNotes.Template by vault.CreateVault; used here by
+	// markdown.NewDailyNoteContent when CreateTodayDailyNote is true.
 	DailyTemplate string
 
 	// CreateTodayDailyNote opt-in: when true, write
@@ -79,19 +77,20 @@ type SetupGrantSeed struct {
 //  1. Theme value-check (cheap, no syscall).
 //  2. ResolveDataDir: tilde-expand + absolute-path enforcement.
 //  3. ValidateDataDir against the resolved path (final gate vs T-08-06).
-//  4. vault.CreateVault: creates <DataDir>/.jasper/, config.json, app.db,
-//     runs migrations, and registers the vault in app.json.
-//  5. config.Save (legacy compatibility): also writes the old-style
-//     <DataDir>/storage/config.json so pre-vault-model lifecycle code
-//     that reads this file continues to work until fully removed.
-//  6. Seed MCP grants in the new vault's app.db.
-//  7. (optional) Write <DataDir>/notes/daily/<today>.md from the template.
-//
-// Plan 08-17b: steps 4+ now delegate vault initialization to
-// vault.CreateVault (which handles .jasper/ + app.db + app.json). The
-// legacy config.Save in step 5 is retained for backward compatibility
-// with any code that still reads <DataDir>/storage/config.json; it will
-// be removed when the old lifecycle path is fully retired.
+//  4. vault.Canonicalize: resolve symlinks + NFC-normalize ONCE; every
+//     subsequent path computation uses the canonical value. This is the
+//     single canonicalization invariant that mitigates the writer/reader
+//     TOCTOU between writeSeedGrants and firstrun.ApplySeedGrants
+//     (Phase 9 Plan 03b threat T-09-03b-06).
+//  5. vault.CreateVault: creates <canonical>/.jasper/, config.json, and
+//     registers the vault in app.json. Per Phase 9 D-04, CreateVault does
+//     NOT open SQLite — the per-vault DB is opened by lifecycle on first
+//     boot of the vault.
+//  6. Queue MCP seed grants via writeSeedGrants to
+//     <canonical>/.jasper/seed_grants.json — drained on first boot by
+//     firstrun.ApplySeedGrants after migrations succeed.
+//  7. (optional) Write <canonical>/notes/daily/<today>.md from the
+//     template.
 //
 // Errors are wrapped with a UI-friendly prefix; the handler maps the
 // resulting error to a 500 with the wrapped message in the body.
@@ -125,28 +124,13 @@ func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
 		return fmt.Errorf("create vault: %w", err)
 	}
 
-	notesDir := filepath.Join(dataDir, "notes")
+	notesDir := filepath.Join(canonical, "notes")
 	if err := os.MkdirAll(notesDir, 0o700); err != nil {
 		return fmt.Errorf("create notes dir: %w", err)
 	}
-	storageDir := filepath.Join(dataDir, "storage")
-	if err := os.MkdirAll(storageDir, 0o700); err != nil {
-		return fmt.Errorf("create storage dir: %w", err)
-	}
-	cfg := config.Defaults()
-	cfg.Server.DataDir = dataDir
-	cfg.Theme = req.Theme
-	cfg.MCP.Enabled = req.McpEnabled
-	if req.DailyTemplate != "" {
-		cfg.DailyNotes.Template = req.DailyTemplate
-	}
-	if err := config.Save(dataDir, cfg); err != nil {
-		return fmt.Errorf("save legacy config: %w", err)
-	}
 
-	dbPath := filepath.Join(dataDir, ".jasper", "app.db")
-	if err := insertSeedGrants(ctx, dbPath, req.McpGrants); err != nil {
-		return fmt.Errorf("seed grants: %w", err)
+	if err := writeSeedGrants(canonical, req.McpGrants); err != nil {
+		return fmt.Errorf("write seed grants: %w", err)
 	}
 
 	if req.CreateTodayDailyNote {
@@ -156,7 +140,7 @@ func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
 			return fmt.Errorf("create daily dir: %w", err)
 		}
 		absPath := filepath.Join(dailyDir, today+".md")
-		content := markdown.NewDailyNoteContent(today, cfg.DailyNotes.Template)
+		content := markdown.NewDailyNoteContent(today, req.DailyTemplate)
 		if err := fsstore.AtomicWrite(absPath, content); err != nil {
 			return fmt.Errorf("write today's daily note: %w", err)
 		}
@@ -164,34 +148,31 @@ func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
 	return nil
 }
 
-func insertSeedGrants(ctx context.Context, dbPath string, grants []SetupGrantSeed) error {
+// writeSeedGrants queues mcp_write_grants for first-boot apply. Writes
+// <canonical>/.jasper/seed_grants.json atomically. firstrun.ApplySeedGrants
+// drains the queue after migrations on first server boot of the vault.
+//
+// canonical MUST be the canonicalized vault root — see RunSetup's single
+// canonicalization invariant. Mismatched canonicalization between writer
+// and reader would silently drop the grants (handoff-TOCTOU; Plan 03b
+// threat T-09-03b-06).
+//
+// Returns nil if len(grants) == 0 (no queue file written — the common
+// path when the user did not seed any grants in the wizard).
+//
+// Parent <canonical>/.jasper/ is created by vault.CreateVault earlier in
+// RunSetup, so fsstore.AtomicWrite's parent-exists precondition is met.
+func writeSeedGrants(canonical string, grants []SetupGrantSeed) error {
 	if len(grants) == 0 {
 		return nil
 	}
-	db, err := sql.Open("sqlite", "file:"+dbPath)
+	raw, err := json.MarshalIndent(grants, "", "  ")
 	if err != nil {
-		return fmt.Errorf("open db: %w", err)
+		return fmt.Errorf("writeSeedGrants: marshal: %w", err)
 	}
-	defer func() { _ = db.Close() }()
-	if err := db.PingContext(ctx); err != nil {
-		return fmt.Errorf("ping db: %w", err)
-	}
-	now := time.Now().Unix()
-	stmt, err := db.PrepareContext(ctx,
-		`INSERT INTO mcp_write_grants (folder_path, level, granted_at, granted_via)
-		 VALUES (?, ?, ?, 'wizard')
-		 ON CONFLICT(folder_path) DO UPDATE SET
-		   level = excluded.level,
-		   granted_at = excluded.granted_at,
-		   granted_via = 'wizard'`)
-	if err != nil {
-		return fmt.Errorf("prepare insert: %w", err)
-	}
-	defer func() { _ = stmt.Close() }()
-	for _, g := range grants {
-		if _, err := stmt.ExecContext(ctx, g.Folder, g.Level, now); err != nil {
-			return fmt.Errorf("insert grant %q: %w", g.Folder, err)
-		}
+	path := vault.SeedGrantsPath(canonical)
+	if err := fsstore.AtomicWrite(path, raw); err != nil {
+		return fmt.Errorf("writeSeedGrants: atomic-write %s: %w", path, err)
 	}
 	return nil
 }
