@@ -2,16 +2,12 @@ package vault
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"time"
 
-	"github.com/matthewoden/jasper/backend/internal/db/migrate"
-	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
-	"github.com/matthewoden/jasper/backend/internal/fsstore"
+	"github.com/matthewoden/jasper/backend/internal/config"
 )
 
 // CreateOpts holds the per-vault configuration fields populated by the
@@ -31,24 +27,31 @@ type CreateOpts struct {
 	// MCPEnabled persists the per-vault MCP toggle.
 	MCPEnabled bool
 
-	// MigrationsFS is the migrations filesystem to run against the new vault DB.
-	// Must be non-nil; callers typically pass migrations.FS (embedded) or a test
-	// override.
+	// Deprecated: ignored as of Phase 9 (D-04). CreateVault no longer runs
+	// migrations — the first time the server boots into the new vault it
+	// runs the migration runner against <canonical>/.jasper/app.db itself
+	// (lifecycle.bootPerVaultSubsystems). Kept on the struct for one minor
+	// version so existing callers compile; safe to pass nil. Will be
+	// removed in a follow-up phase.
 	MigrationsFS fs.FS
 }
 
-// CreateVault initializes a new Jasper vault at canonical, running migrations
-// and registering the vault in app.json.
+// CreateVault initializes a new Jasper vault at canonical and registers it in
+// app.json. Per Phase 9 D-04 it does NOT run migrations or open SQLite — the
+// first time the server boots into this vault it runs the migration runner
+// against <canonical>/.jasper/app.db itself (lifecycle.bootPerVaultSubsystems).
 //
 // canonical MUST already be canonicalized (via vault.Canonicalize). The vault
 // directory itself need not exist yet; CreateVault creates .jasper/ inside it.
 //
+// The per-vault config.json is written in the full server-config shape (the
+// `config.Config` JSON) so the new-vault writer here and the in-place updater
+// in package config produce byte-equivalent files — single shape, single
+// reader (config.Load). Plan 9-03a contract Option 1.
+//
 // Returns the loaded *AppState after the registration so callers can inspect
 // the new entry without re-reading app.json.
 func CreateVault(ctx context.Context, canonical string, opts CreateOpts) (*AppState, error) {
-	if opts.MigrationsFS == nil {
-		return nil, fmt.Errorf("CreateVault: opts.MigrationsFS must be non-nil")
-	}
 	displayName := opts.DisplayName
 	if displayName == "" {
 		displayName = filepath.Base(canonical)
@@ -58,68 +61,22 @@ func CreateVault(ctx context.Context, canonical string, opts CreateOpts) (*AppSt
 		theme = "dark"
 	}
 
-	jasperDir := filepath.Join(canonical, ".jasper")
+	jasperDir := filepath.Join(canonical, SubdirName)
 	if err := os.MkdirAll(jasperDir, 0o700); err != nil {
 		return nil, fmt.Errorf("CreateVault: mkdir .jasper/: %w", err)
 	}
 
-	type dailyNotesCfg struct {
-		Template string `json:"template"`
+	cfg := config.Defaults()
+	cfg.Server.DataDir = canonical
+	cfg.Theme = theme
+	cfg.DisplayName = displayName
+	if opts.DailyTemplate != "" {
+		cfg.DailyNotes.Template = opts.DailyTemplate
 	}
-	type mcpCfg struct {
-		Enabled bool `json:"enabled"`
-	}
-	type perVaultConfig struct {
-		DisplayName string        `json:"display_name"`
-		CreatedAt   string        `json:"created_at"`
-		Theme       string        `json:"theme"`
-		DailyNotes  dailyNotesCfg `json:"daily_notes"`
-		MCP         mcpCfg        `json:"mcp"`
-	}
-	cfgData := perVaultConfig{
-		DisplayName: displayName,
-		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
-		Theme:       theme,
-		DailyNotes:  dailyNotesCfg{Template: opts.DailyTemplate},
-		MCP:         mcpCfg{Enabled: opts.MCPEnabled},
-	}
-	cfgBytes, err := json.MarshalIndent(cfgData, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("CreateVault: marshal config: %w", err)
-	}
-	cfgPath := filepath.Join(jasperDir, "config.json")
-	if err := fsstore.AtomicWrite(cfgPath, cfgBytes); err != nil {
+	cfg.MCP.Enabled = opts.MCPEnabled
+
+	if err := config.Save(canonical, cfg); err != nil {
 		return nil, fmt.Errorf("CreateVault: write config.json: %w", err)
-	}
-
-	dbPath := filepath.Join(jasperDir, "app.db")
-	backupPath := dbPath + ".backup"
-	logsDir := filepath.Join(jasperDir, "logs")
-	if err := os.MkdirAll(logsDir, 0o700); err != nil {
-		return nil, fmt.Errorf("CreateVault: ensure logs dir: %w", err)
-	}
-	logsPath := filepath.Join(logsDir, "jasper.log")
-
-	pair, err := sqlite.Open(ctx, dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("CreateVault: sqlite open: %w", err)
-	}
-	runner := migrate.NewRunner(migrate.RunnerOptions{
-		DBPath:     dbPath,
-		BackupPath: backupPath,
-		LogsPath:   logsPath,
-		Migrations: opts.MigrationsFS,
-		Pair:       pair,
-	})
-	status, runErr := runner.Run(ctx)
-	if cerr := pair.Close(); cerr != nil && runErr == nil {
-		runErr = cerr
-	}
-	if runErr != nil {
-		return nil, fmt.Errorf("CreateVault: run migrations: %w", runErr)
-	}
-	if status.State == migrate.StateUnrecoverable {
-		return nil, fmt.Errorf("CreateVault: unrecoverable migration state")
 	}
 
 	appJSONPath, err := AppJSONPath()
@@ -134,5 +91,6 @@ func CreateVault(ctx context.Context, canonical string, opts CreateOpts) (*AppSt
 	if err := SaveAppJSON(appJSONPath, appState); err != nil {
 		return nil, fmt.Errorf("CreateVault: save app.json: %w", err)
 	}
+	_ = ctx // reserved for future cancellation hooks; current implementation does no blocking I/O that requires cancellation
 	return appState, nil
 }
