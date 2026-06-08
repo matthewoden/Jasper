@@ -8,7 +8,7 @@ import (
 )
 
 // GetConfig implements GET /api/v1/config. Returns the persisted config
-// from <dataDir>/storage/config.json, or DefaultConfig() if the file
+// from <vault>/.jasper/config.json, or DefaultConfig() if the file
 // is missing or malformed (config.Load handles fallback per D-10).
 //
 // Wire-format errors NEVER leak filesystem paths or stack traces

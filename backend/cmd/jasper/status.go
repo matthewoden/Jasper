@@ -156,7 +156,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		humanState(state),
 		cfg.Server.Port,
 		dataDir,
-		filepath.Join(dataDir, "logs", "jasper.log"),
+		vault.LogsPath(dataDir),
 		mcpLine,
 	)
 	_, werr := fmt.Fprint(out, body)
@@ -164,7 +164,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 }
 
 func configExists(dataDir string) bool {
-	_, err := os.Stat(filepath.Join(dataDir, "storage", "config.json"))
+	_, err := os.Stat(vault.ConfigPath(dataDir))
 	return err == nil
 }
 
@@ -180,7 +180,7 @@ func humanState(s service.Status) string {
 }
 
 func summarizeGrants(dataDir string) (int, string) {
-	dbPath := filepath.Join(dataDir, "storage", "app.db")
+	dbPath := vault.AppDBPath(dataDir)
 	db, err := sql.Open("sqlite", dbPath+"?mode=ro")
 	if err != nil {
 		return 0, "could not read grants"

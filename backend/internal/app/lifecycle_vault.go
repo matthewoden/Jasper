@@ -62,7 +62,7 @@ func resolveVaultMode(appJSONPath, vaultOverride string) (mode vaultMode, banner
 		return modeNoVault, banner, "", nil
 	}
 
-	jasperDir := filepath.Join(target, ".jasper")
+	jasperDir := filepath.Join(target, vault.SubdirName)
 	info, sErr := os.Stat(jasperDir)
 	if sErr != nil || !info.IsDir() {
 		name := filepath.Base(target)

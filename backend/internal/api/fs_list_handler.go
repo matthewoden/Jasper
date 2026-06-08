@@ -115,7 +115,7 @@ func (s *Server) GetFsList(
 		}
 	}
 
-	isVaultPtr := isVaultMarker(filepath.Join(abs, ".jasper"))
+	isVaultPtr := isVaultMarker(filepath.Join(abs, vault.SubdirName))
 
 	return GetFsList200JSONResponse(FsListResponse{
 		Path:        abs,

@@ -70,7 +70,7 @@ func LoadAppJSON(path string) (*AppState, error) {
 		p := state.RecentVaults[i].Path
 		if _, sErr := os.Stat(p); sErr != nil {
 			state.RecentVaults[i].Missing = true
-		} else if _, jsErr := os.Stat(filepath.Join(p, ".jasper")); jsErr != nil {
+		} else if _, jsErr := os.Stat(filepath.Join(p, SubdirName)); jsErr != nil {
 			state.RecentVaults[i].Missing = true
 		} else {
 			state.RecentVaults[i].Missing = false

@@ -10,6 +10,8 @@ import (
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 const maxDataDirPathLen = 4096
@@ -181,7 +183,7 @@ func isInsideExistingVault(path string) bool {
 		if parent == cur {
 			return false
 		}
-		if isDir(filepath.Join(parent, "notes")) && fileExists(filepath.Join(parent, "storage", "app.db")) {
+		if isDir(filepath.Join(parent, "notes")) && fileExists(vault.AppDBPath(parent)) {
 			return true
 		}
 		cur = parent

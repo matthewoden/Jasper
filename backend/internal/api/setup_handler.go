@@ -5,15 +5,15 @@ import (
 	"errors"
 	"io/fs"
 	"os"
-	"path/filepath"
 
 	"github.com/matthewoden/jasper/backend/internal/firstrun"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 // GetSetupStatus reports whether the first-run wizard has completed.
 // The contract (D-04 / openapi.yaml SetupStatus.firstRun):
 //
-//   - true  when <dataDir>/storage/config.json does NOT exist
+//   - true  when <vault>/.jasper/config.json does NOT exist
 //   - false when it does
 //
 // The SPA polls this on initial load so it can render either the
@@ -27,7 +27,7 @@ func (s *Server) GetSetupStatus(
 	_ context.Context,
 	_ GetSetupStatusRequestObject,
 ) (GetSetupStatusResponseObject, error) {
-	cfgPath := filepath.Join(s.dataDir, "storage", "config.json")
+	cfgPath := vault.ConfigPath(s.dataDir)
 	_, err := os.Stat(cfgPath)
 	firstRun := errors.Is(err, fs.ErrNotExist)
 	return GetSetupStatus200JSONResponse{FirstRun: firstRun}, nil
