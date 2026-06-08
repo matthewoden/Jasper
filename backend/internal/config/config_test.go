@@ -8,16 +8,21 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+// mkdirStorage creates <dir>/.jasper (the per-vault data subdir; Phase 9
+// D-06). Function name retained for git-diff readability — sweep is in
+// the body. Perms 0o755 match production EnsureDataDir.
 func mkdirStorage(t *testing.T, dir string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(dir, "storage"), 0o755); err != nil {
-		t.Fatalf("mkdir storage: %v", err)
+	if err := os.MkdirAll(filepath.Join(dir, vault.SubdirName), 0o755); err != nil {
+		t.Fatalf("mkdir .jasper: %v", err)
 	}
 }
 
@@ -48,7 +53,7 @@ func TestLoad_DefaultsOnMissing(t *testing.T) {
 			cfg.DailyNotes.Folder, want.DailyNotes.Folder)
 	}
 
-	path := filepath.Join(dir, "storage", "config.json")
+	path := vault.ConfigPath(dir)
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("expected config.json on disk after first Load, got %v", err)
 	}
@@ -90,7 +95,7 @@ func TestLoad_MalformedFallsBackToDefaults(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	mkdirStorage(t, dir)
-	path := filepath.Join(dir, "storage", "config.json")
+	path := vault.ConfigPath(dir)
 	bad := []byte("not-json{{{")
 	if err := os.WriteFile(path, bad, 0o644); err != nil {
 		t.Fatal(err)
@@ -204,7 +209,7 @@ func TestLoad_OldConfigWithoutServerOrMCP_BackCompat(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	mkdirStorage(t, dir)
-	path := filepath.Join(dir, "storage", "config.json")
+	path := vault.ConfigPath(dir)
 	old := []byte(`{
 		"appName":"Jasper","theme":"dark",
 		"dailyNotes":{"folder":"daily","template":""},
@@ -237,7 +242,7 @@ func TestLoad_UnknownFieldsFallBackToDefaults(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	mkdirStorage(t, dir)
-	path := filepath.Join(dir, "storage", "config.json")
+	path := vault.ConfigPath(dir)
 	bad := []byte(`{"appName":"Jasper","theme":"dark","unknownKey":42,` +
 		`"dailyNotes":{"folder":"daily","template":""},` +
 		`"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false}}`)

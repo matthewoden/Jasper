@@ -238,11 +238,11 @@ func TestCheckLogWritable_UnwritableParent(t *testing.T) {
 // schema_migrations row matches the highest embedded migration.
 func TestCheckMigrationState_Ok(t *testing.T) {
 	dir := t.TempDir()
-	storageDir := filepath.Join(dir, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
+	jasperDir := filepath.Join(dir, vault.SubdirName)
+	if err := os.MkdirAll(jasperDir, 0o755); err != nil {
+		t.Fatalf("mkdir .jasper: %v", err)
 	}
-	dbPath := filepath.Join(storageDir, "app.db")
+	dbPath := vault.AppDBPath(dir)
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -285,11 +285,11 @@ func TestCheckMigrationState_Ok(t *testing.T) {
 // schema_migrations isn't on the DB.
 func TestCheckMigrationState_MissingSchemaMigrations(t *testing.T) {
 	dir := t.TempDir()
-	storageDir := filepath.Join(dir, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
+	jasperDir := filepath.Join(dir, vault.SubdirName)
+	if err := os.MkdirAll(jasperDir, 0o755); err != nil {
+		t.Fatalf("mkdir .jasper: %v", err)
 	}
-	dbPath := filepath.Join(storageDir, "app.db")
+	dbPath := vault.AppDBPath(dir)
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatalf("open: %v", err)

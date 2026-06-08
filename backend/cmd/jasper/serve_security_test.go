@@ -53,7 +53,7 @@ func TestRequireLoopbackBind_OnlyLoopback(t *testing.T) {
 //
 // Phase 8 ships WITHOUT an env-var or build-tag opt-in to RequireLoopbackBind:
 // users who need LAN access on WSL2 must explicitly edit
-// ~/.jasper/storage/config.json server.bind to `0.0.0.0:6683` and the
+// <vault>/.jasper/config.json server.bind to `0.0.0.0:6683` and the
 // loopback gate will refuse the binary's startup. The install-validation
 // docker-compose suite (compose/install-validation/) exercises that
 // real-WSL2-distro path end-to-end (D-45 / INSTALL-09).

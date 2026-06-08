@@ -24,7 +24,7 @@ func setupSwapVault(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("canonicalize vault dir: %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(canonical, ".jasper"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(canonical, vault.SubdirName), 0o755); err != nil {
 		t.Fatalf("mkdir .jasper: %v", err)
 	}
 	return canonical
@@ -32,9 +32,9 @@ func setupSwapVault(t *testing.T) string {
 
 func writeVaultMCPConfig(t *testing.T, vaultDir string, enabled bool) {
 	t.Helper()
-	storageDir := filepath.Join(vaultDir, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatalf("mkdir storage: %v", err)
+	jasperDir := filepath.Join(vaultDir, vault.SubdirName)
+	if err := os.MkdirAll(jasperDir, 0o755); err != nil {
+		t.Fatalf("mkdir .jasper: %v", err)
 	}
 	cfg := config.DefaultConfig()
 	cfg.MCP.Enabled = enabled

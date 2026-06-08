@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 func TestValidateDataDir_Valid(t *testing.T) {
@@ -47,18 +49,18 @@ func TestValidateDataDir_NestedVault(t *testing.T) {
 	t.Parallel()
 
 	base := t.TempDir()
-	vault := filepath.Join(base, "vault")
-	if err := os.MkdirAll(filepath.Join(vault, "notes"), 0o755); err != nil {
+	vaultDir := filepath.Join(base, "vault")
+	if err := os.MkdirAll(filepath.Join(vaultDir, "notes"), 0o755); err != nil {
 		t.Fatalf("mkdir notes: %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(vault, "storage"), 0o755); err != nil {
-		t.Fatalf("mkdir storage: %v", err)
+	if err := os.MkdirAll(filepath.Join(vaultDir, vault.SubdirName), 0o755); err != nil {
+		t.Fatalf("mkdir .jasper: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(vault, "storage", "app.db"), []byte("fake"), 0o600); err != nil {
+	if err := os.WriteFile(vault.AppDBPath(vaultDir), []byte("fake"), 0o600); err != nil {
 		t.Fatalf("write app.db: %v", err)
 	}
 
-	subfolder := filepath.Join(vault, "subfolder")
+	subfolder := filepath.Join(vaultDir, "subfolder")
 	if err := os.MkdirAll(subfolder, 0o755); err != nil {
 		t.Fatalf("mkdir subfolder: %v", err)
 	}

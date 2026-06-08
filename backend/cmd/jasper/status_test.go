@@ -36,15 +36,15 @@ func withStatusFactory(t *testing.T, prov statusProvider) {
 
 func writeMinimalConfig(t *testing.T, dataDir string, cfg config.Config) {
 	t.Helper()
-	storageDir := filepath.Join(dataDir, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatalf("mkdir storage: %v", err)
+	jasperDir := filepath.Join(dataDir, vault.SubdirName)
+	if err := os.MkdirAll(jasperDir, 0o755); err != nil {
+		t.Fatalf("mkdir .jasper: %v", err)
 	}
 	body, err := json.Marshal(cfg)
 	if err != nil {
 		t.Fatalf("marshal cfg: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(storageDir, "config.json"), body, 0o644); err != nil {
+	if err := os.WriteFile(vault.ConfigPath(dataDir), body, 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 }
@@ -107,7 +107,7 @@ func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 		"Jasper service: running",
 		"Bound on:       127.0.0.1:6683",
 		"Data directory: " + canon,
-		filepath.Join(canon, "logs", "jasper.log"),
+		vault.LogsPath(canon),
 		"MCP enabled:    no",
 	} {
 		if !strings.Contains(out, want) {
@@ -132,11 +132,11 @@ func TestRunStatus_McpEnabledWithGrants(t *testing.T) {
 	})
 	withStatusFactory(t, &fakeStatusProvider{state: service.StatusRunning})
 
-	storageDir := filepath.Join(dir, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatalf("mkdir storage: %v", err)
+	jasperDir := filepath.Join(dir, vault.SubdirName)
+	if err := os.MkdirAll(jasperDir, 0o755); err != nil {
+		t.Fatalf("mkdir .jasper: %v", err)
 	}
-	dbPath := filepath.Join(storageDir, "app.db")
+	dbPath := vault.AppDBPath(dir)
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)

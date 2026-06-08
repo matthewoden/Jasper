@@ -11,6 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/matthewoden/jasper/backend/internal/config"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
@@ -33,7 +34,7 @@ func TestRunSetup_InvalidTheme(t *testing.T) {
 		t.Fatalf("unexpected error message: %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(target, "storage", "config.json")); err == nil {
+	if _, err := os.Stat(vault.ConfigPath(target)); err == nil {
 		t.Fatalf("config.json should not exist on theme-rejection path")
 	}
 }
@@ -59,10 +60,10 @@ func TestRunSetup_InvalidPath(t *testing.T) {
 
 // TestRunSetup_HappyPath drives a fresh data-dir through the full
 // submit pipeline and asserts every side effect lands correctly:
-//   - <DataDir>/notes/   exists (0o700)
-//   - <DataDir>/storage/ exists (0o700)
-//   - <DataDir>/storage/config.json exists with the locked defaults
-//     overlaid by the wizard's choices (legacy compat — plan 08-17b keeps this)
+//   - <DataDir>/notes/   exists
+//   - <DataDir>/.jasper/ exists (per-vault data subdir; Phase 9 D-06)
+//   - <DataDir>/.jasper/config.json exists with the locked defaults
+//     overlaid by the wizard's choices
 //   - <DataDir>/.jasper/app.db exists with the mcp_write_grants table
 //     populated by migration 004 (vault model — plan 08-17b moved DB here)
 //   - today's daily note exists when CreateTodayDailyNote=true
@@ -81,7 +82,7 @@ func TestRunSetup_HappyPath(t *testing.T) {
 		t.Fatalf("RunSetup: %v", err)
 	}
 
-	for _, sub := range []string{"notes", "storage"} {
+	for _, sub := range []string{"notes", vault.SubdirName} {
 		st, err := os.Stat(filepath.Join(target, sub))
 		if err != nil {
 			t.Fatalf("missing %s: %v", sub, err)
@@ -121,7 +122,7 @@ func TestRunSetup_HappyPath(t *testing.T) {
 		t.Fatalf("DailyNotes.Template: got %q want template-override", cfg.DailyNotes.Template)
 	}
 
-	dbPath := filepath.Join(target, ".jasper", "app.db")
+	dbPath := vault.AppDBPath(target)
 	if _, err := os.Stat(dbPath); err != nil {
 		t.Fatalf("missing app.db: %v", err)
 	}
@@ -220,7 +221,7 @@ func TestRunSetup_SeedGrants(t *testing.T) {
 		t.Fatalf("RunSetup: %v", err)
 	}
 
-	dbPath := filepath.Join(target, ".jasper", "app.db")
+	dbPath := vault.AppDBPath(target)
 	db, err := sql.Open("sqlite", "file:"+dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -286,7 +287,7 @@ func TestInsertSeedGrants_Duplicate_LastWriteWinsOnLevel(t *testing.T) {
 		t.Fatalf("RunSetup with duplicate grant: %v", err)
 	}
 
-	dbPath := filepath.Join(target, ".jasper", "app.db")
+	dbPath := vault.AppDBPath(target)
 	db, err := sql.Open("sqlite", "file:"+dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -331,7 +332,7 @@ func TestInsertSeedGrants_MixedDuplicates(t *testing.T) {
 		t.Fatalf("RunSetup with mixed duplicates: %v", err)
 	}
 
-	dbPath := filepath.Join(target, ".jasper", "app.db")
+	dbPath := vault.AppDBPath(target)
 	db, err := sql.Open("sqlite", "file:"+dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)

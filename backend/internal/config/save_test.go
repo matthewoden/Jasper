@@ -3,8 +3,9 @@ package config
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"testing"
+
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 // TestSave_AtomicWrite — D-39 atomic write contract. Save writes via
@@ -22,7 +23,7 @@ func TestSave_AtomicWrite(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 
-	path := filepath.Join(dir, "storage", "config.json")
+	path := vault.ConfigPath(dir)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read: %v", err)
@@ -54,7 +55,7 @@ func TestSave_OverwritesExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path := filepath.Join(dir, "storage", "config.json")
+	path := vault.ConfigPath(dir)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/notes"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
@@ -182,14 +183,15 @@ func TestSeedScratchpadIfMissing_IdempotentOnExisting(t *testing.T) {
 	}
 }
 
-// Test AP4 — EnsureDataDir creates both notes/ and storage/.
+// Test AP4 — EnsureDataDir creates both notes/ and .jasper/ (per-vault
+// data subdir; Phase 9 D-06).
 func TestEnsureDataDir_CreatesNotesAndStorage(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, "fresh")
 	if err := EnsureDataDir(root); err != nil {
 		t.Fatalf("EnsureDataDir: %v", err)
 	}
-	for _, sub := range []string{"notes", "storage"} {
+	for _, sub := range []string{"notes", vault.SubdirName} {
 		info, err := os.Stat(filepath.Join(root, sub))
 		if err != nil {
 			t.Errorf("expected %s to exist: %v", sub, err)
@@ -489,10 +491,10 @@ func TestApp_Run_BrokenMigration_FiresPath1(t *testing.T) {
 
 func seedRealSQLiteDB(t *testing.T, dir string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(dir, "storage"), 0o755); err != nil {
-		t.Fatalf("mkdir storage: %v", err)
+	if err := os.MkdirAll(filepath.Join(dir, vault.SubdirName), 0o755); err != nil {
+		t.Fatalf("mkdir .jasper: %v", err)
 	}
-	dbPath := filepath.Join(dir, "storage", "app.db")
+	dbPath := vault.AppDBPath(dir)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := New(Config{DataDir: dir, ListenAddr: "127.0.0.1:0", Logger: logger, DisableFirstRunGate: true})

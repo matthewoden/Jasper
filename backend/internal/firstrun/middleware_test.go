@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 func nextHandler(called *bool) http.Handler {
@@ -42,11 +44,11 @@ func TestRedirectMiddleware(t *testing.T) {
 			t.Parallel()
 			dataDir := t.TempDir()
 			if tc.seedConfigJSON {
-				storageDir := filepath.Join(dataDir, "storage")
-				if err := os.MkdirAll(storageDir, 0o700); err != nil {
-					t.Fatalf("mkdir storage: %v", err)
+				jasperDir := filepath.Join(dataDir, vault.SubdirName)
+				if err := os.MkdirAll(jasperDir, 0o755); err != nil {
+					t.Fatalf("mkdir .jasper: %v", err)
 				}
-				if err := os.WriteFile(filepath.Join(storageDir, "config.json"), []byte("{}"), 0o600); err != nil {
+				if err := os.WriteFile(vault.ConfigPath(dataDir), []byte("{}"), 0o600); err != nil {
 					t.Fatalf("write config.json: %v", err)
 				}
 			}
@@ -89,10 +91,10 @@ func TestRedirectMiddleware(t *testing.T) {
 func TestRedirectMiddleware_ConfigPresent_NoRedirect(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dataDir, "storage"), 0o700); err != nil {
-		t.Fatalf("mkdir storage: %v", err)
+	if err := os.MkdirAll(filepath.Join(dataDir, vault.SubdirName), 0o755); err != nil {
+		t.Fatalf("mkdir .jasper: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dataDir, "storage", "config.json"), []byte("{}"), 0o600); err != nil {
+	if err := os.WriteFile(vault.ConfigPath(dataDir), []byte("{}"), 0o600); err != nil {
 		t.Fatalf("write config.json: %v", err)
 	}
 	called := false
