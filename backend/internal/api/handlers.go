@@ -113,12 +113,13 @@ func NewServerWithIndex(
 }
 
 // SetMigrationsFS wires the embedded migrations.FS into the Server so
-// the wizard submit pipeline (firstrun.RunSetup) can apply schema
-// migrations against the chosen <DataDir>/storage/app.db. Called by
-// the composition root (app.New / lifecycle.Run) after construction
-// so we don't have to evolve NewServerWithIndex's signature for every
-// new Phase 8 dependency. nil-safe — passing nil leaves the field
-// empty and PostSetup will short-circuit with a 500.
+// the server's first boot of a newly-created vault can apply schema
+// migrations against <vault>/.jasper/app.db (D-04 — CreateVault no
+// longer runs migrations; lifecycle does). Called by the composition
+// root (app.New / lifecycle.Run) after construction so we don't have
+// to evolve NewServerWithIndex's signature for every new Phase 8
+// dependency. nil-safe — passing nil leaves the field empty and
+// PostSetup will short-circuit with a 500.
 func (s *Server) SetMigrationsFS(f fs.FS) {
 	s.migrationsFS = f
 }
