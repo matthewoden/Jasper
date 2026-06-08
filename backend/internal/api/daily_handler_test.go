@@ -17,6 +17,7 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 // TestDailyNotesHandler exercises GET /api/v1/daily-notes/{date}.
@@ -321,8 +322,8 @@ func newDailyTestServer(t *testing.T, dailyNotesTemplate string) (*Server, strin
 		t.Fatal(err)
 	}
 
-	storageDir := filepath.Join(dir, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+	jasperDir := filepath.Join(dir, vault.SubdirName)
+	if err := os.MkdirAll(jasperDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -330,7 +331,7 @@ func newDailyTestServer(t *testing.T, dailyNotesTemplate string) (*Server, strin
 		cfgJSON := `{"appName":"Jasper","theme":"dark","dailyNotes":{"folder":"daily","template":"` +
 			strings.ReplaceAll(dailyNotesTemplate, "\n", `\n`) +
 			`"},"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false}}`
-		if err := os.WriteFile(filepath.Join(storageDir, "config.json"), []byte(cfgJSON), 0o644); err != nil {
+		if err := os.WriteFile(vault.ConfigPath(dir), []byte(cfgJSON), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

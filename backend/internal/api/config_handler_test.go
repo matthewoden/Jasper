@@ -12,12 +12,14 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 func setupConfigServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "storage"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, vault.SubdirName), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

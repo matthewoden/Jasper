@@ -13,6 +13,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/notes"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
@@ -29,11 +30,11 @@ func newSearchTestServer(t *testing.T, seeds []seedNote) *Server {
 	if err := os.MkdirAll(notesDir, 0o755); err != nil {
 		t.Fatalf("mkdir notes: %v", err)
 	}
-	storageDir := filepath.Join(root, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatalf("mkdir storage: %v", err)
+	jasperDir := filepath.Join(root, vault.SubdirName)
+	if err := os.MkdirAll(jasperDir, 0o755); err != nil {
+		t.Fatalf("mkdir .jasper: %v", err)
 	}
-	dbPath := filepath.Join(storageDir, "app.db")
+	dbPath := vault.AppDBPath(root)
 
 	pair, err := sqlite.Open(context.Background(), dbPath)
 	if err != nil {

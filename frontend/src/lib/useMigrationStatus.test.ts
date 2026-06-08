@@ -48,7 +48,7 @@ describe("useMigrationStatus", () => {
       data: {
         state: "rolled_back",
         failed_migration: "003_tags.sql",
-        logs_path: "/Users/me/.jasper/storage/logs/jasper.log",
+        logs_path: "/Users/me/.jasper/.jasper/logs/jasper.log",
       },
       error: undefined,
     });
@@ -59,7 +59,7 @@ describe("useMigrationStatus", () => {
     expect(result.current.state).toBe("rolled_back");
     expect(result.current.failedMigration).toBe("003_tags.sql");
     expect(result.current.logsPath).toBe(
-      "/Users/me/.jasper/storage/logs/jasper.log",
+      "/Users/me/.jasper/.jasper/logs/jasper.log",
     );
   });
 

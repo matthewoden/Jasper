@@ -17,6 +17,7 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/notes"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
@@ -67,10 +68,10 @@ func TestGetSetupStatus_ConfigJSONPresent_FirstRunFalse(t *testing.T) {
 	ts, dataDir := setupSetupTestServer(t)
 	defer ts.Close()
 
-	if err := os.MkdirAll(filepath.Join(dataDir, "storage"), 0o700); err != nil {
-		t.Fatalf("mkdir storage: %v", err)
+	if err := os.MkdirAll(filepath.Join(dataDir, vault.SubdirName), 0o755); err != nil {
+		t.Fatalf("mkdir .jasper: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dataDir, "storage", "config.json"), []byte("{}"), 0o600); err != nil {
+	if err := os.WriteFile(vault.ConfigPath(dataDir), []byte("{}"), 0o600); err != nil {
 		t.Fatalf("write config.json: %v", err)
 	}
 	resp, err := http.Get(ts.URL + "/api/v1/setup/status")
@@ -172,17 +173,17 @@ func TestPostSetupValidateDataDir_RefusalCases(t *testing.T) {
 	t.Run("nested_vault", func(t *testing.T) {
 		t.Parallel()
 		base := t.TempDir()
-		vault := filepath.Join(base, "vault")
-		if err := os.MkdirAll(filepath.Join(vault, "notes"), 0o755); err != nil {
+		vaultDir := filepath.Join(base, "vault")
+		if err := os.MkdirAll(filepath.Join(vaultDir, "notes"), 0o755); err != nil {
 			t.Fatalf("mkdir notes: %v", err)
 		}
-		if err := os.MkdirAll(filepath.Join(vault, "storage"), 0o755); err != nil {
-			t.Fatalf("mkdir storage: %v", err)
+		if err := os.MkdirAll(filepath.Join(vaultDir, vault.SubdirName), 0o755); err != nil {
+			t.Fatalf("mkdir .jasper: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(vault, "storage", "app.db"), []byte{0}, 0o600); err != nil {
+		if err := os.WriteFile(vault.AppDBPath(vaultDir), []byte{0}, 0o600); err != nil {
 			t.Fatalf("write app.db: %v", err)
 		}
-		sub := filepath.Join(vault, "sub")
+		sub := filepath.Join(vaultDir, "sub")
 		if err := os.MkdirAll(sub, 0o755); err != nil {
 			t.Fatalf("mkdir sub: %v", err)
 		}
@@ -279,10 +280,10 @@ func TestPostSetup_HappyPath(t *testing.T) {
 		t.Fatalf("Ok: got false want true")
 	}
 
-	if _, err := os.Stat(filepath.Join(target, "storage", "config.json")); err != nil {
+	if _, err := os.Stat(vault.ConfigPath(target)); err != nil {
 		t.Fatalf("config.json missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(target, ".jasper", "app.db")); err != nil {
+	if _, err := os.Stat(vault.AppDBPath(target)); err != nil {
 		t.Fatalf("app.db missing: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(target, "notes")); err != nil {

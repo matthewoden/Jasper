@@ -83,7 +83,7 @@ describe("<MigrationBanner />", () => {
         status={makeStatus({
           state: "rolled_back",
           failedMigration: "003_tags.sql",
-          logsPath: "/Users/me/.jasper/storage/logs/jasper.log",
+          logsPath: "/Users/me/.jasper/.jasper/logs/jasper.log",
         })}
       />,
     );
@@ -96,7 +96,7 @@ describe("<MigrationBanner />", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/View logs:/)).toBeInTheDocument();
     expect(
-      screen.getByText("/Users/me/.jasper/storage/logs/jasper.log"),
+      screen.getByText("/Users/me/.jasper/.jasper/logs/jasper.log"),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Reset and rebuild database" }),
