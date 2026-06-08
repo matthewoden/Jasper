@@ -1,9 +1,9 @@
 .PHONY: gen gen-check build test lint dev gen-go gen-ts print-port perf-check perf-vault
 
 # Phase 8 D-40: canonical port resolver. Returns server.port from
-# ~/.jasper/storage/config.json (or $JASPER_CONFIG), or 6683 if no
-# config exists. Used by .air.toml, vite.config.ts, Playwright, and
-# perf-check.
+# the active vault's <vault>/.jasper/config.json (or $JASPER_CONFIG),
+# or 6683 if no config exists. Used by .air.toml, vite.config.ts,
+# Playwright, and perf-check.
 print-port:
 	@./scripts/port.sh
 
@@ -20,6 +20,7 @@ perf-check:
 # Full pipeline: `make build && make perf-vault && make perf-check`.
 # _perf-vault/ is .gitignored — local-only artifact.
 perf-vault:
+	@rm -rf _perf-vault
 	@bash scripts/generate-perf-vault.sh _perf-vault 5000
 
 gen: gen-go gen-ts

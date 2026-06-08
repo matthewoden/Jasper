@@ -79,10 +79,8 @@ Inside your data directory:
 
 - `notes/` — your `.md` files. **This is the source of truth.** Back this
   up and you've backed up Jasper.
-- `storage/` — SQLite index + config.json. **Regenerable from `notes/`** —
+- `.jasper/` — SQLite index + config.json + logs. **Regenerable from `notes/`** —
   delete this folder anytime and Jasper will rebuild on next start.
-- `logs/` — `jasper.log` with daily rotation (`jasper-YYYY-MM-DD.log` for
-  previous days). Surfaced by `jasper status` and `jasper doctor`.
 
 ## Backup
 
@@ -108,7 +106,7 @@ side effects.
 
 ### Claude Desktop (MCP)
 
-1. In Jasper's first-run wizard (or in `~/.jasper/storage/config.json`),
+1. In Jasper's first-run wizard (or in your vault's `.jasper/config.json`),
    enable MCP:
    ```json
    {

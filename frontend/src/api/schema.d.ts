@@ -701,7 +701,7 @@ export interface paths {
         put?: never;
         /**
          * Submit the first-run wizard (INSTALL-07, D-10)
-         * @description Persists the wizard payload: writes <data_dir>/storage/config.json
+         * @description Persists the wizard payload: writes <vault>/.jasper/config.json
          *     with the wizard-supplied theme, MCP enabled flag, MCP grants,
          *     and daily-notes template, then runs migrations against the new
          *     data dir. On success the frontend redirects to /. Only callable
@@ -1042,7 +1042,7 @@ export interface components {
             failed_migration?: string;
             /**
              * @description Absolute path to the structured log file (only set when state in {rolled_back, unrecoverable})
-             * @example /Users/me/.jasper/storage/logs/jasper.log
+             * @example /Users/me/.jasper/.jasper/logs/jasper.log
              */
             logs_path?: string;
             /**
@@ -1190,6 +1190,13 @@ export interface components {
         Config: {
             /** @default Jasper */
             appName: string;
+            /**
+             * @description Optional display name for this vault (defaults to base name of the
+             *     vault path). Persisted in <vault>/.jasper/config.json per
+             *     Phase 9 D-04. Optional on the wire — `omitempty` on the Go side
+             *     means legacy configs without the key decode cleanly.
+             */
+            display_name?: string;
             /**
              * @default dark
              * @enum {string}
