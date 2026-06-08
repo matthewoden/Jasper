@@ -36,7 +36,7 @@ var ErrAlreadyOpen = errors.New("a vault is already open; hot-swap not yet suppo
 
 func notesDirFor(dataDir string) string { return filepath.Join(dataDir, "notes") }
 
-// EnsureDataDir creates <dataDir>/{notes,storage} with 0o755 perms if
+// EnsureDataDir creates <dataDir>/{notes,.jasper} with 0o755 perms if
 // missing. 0o755 (not 0o700) is intentional per CONTEXT.md / threat
 // model T-01-04-07: Jasper runs as the user, the data dir lives under
 // the user's home, and 0o755 matches the prevailing convention for
@@ -44,7 +44,7 @@ func notesDirFor(dataDir string) string { return filepath.Join(dataDir, "notes")
 // would surprise external sync tools (Syncthing, iCloud, git) that
 // expect to walk the tree.
 func EnsureDataDir(dataDir string) error {
-	for _, sub := range []string{"notes", "storage"} {
+	for _, sub := range []string{"notes", vault.SubdirName} {
 		if err := os.MkdirAll(filepath.Join(dataDir, sub), 0o755); err != nil {
 			return fmt.Errorf("ensure %s: %w", sub, err)
 		}
@@ -75,7 +75,7 @@ func SeedScratchpadIfMissing(dataDir string, log *slog.Logger) error {
 }
 
 func (a *App) serveStartupError(ctx context.Context, phaseName string, initErr error) error {
-	logsPath := filepath.Join(a.cfg.DataDir, "storage", "logs", "jasper.log")
+	logsPath := vault.LogsPath(a.cfg.DataDir)
 	data := StartupErrorData{
 		PhaseName:       phaseName,
 		ErrorSummary:    initErr.Error(),
@@ -101,9 +101,9 @@ func (a *App) serveStartupError(ctx context.Context, phaseName string, initErr e
 //
 // Per-vault steps (only when modeOpen):
 //
-//  1. EnsureDataDir — mkdir <DataDir>/{notes,storage}.
+//  1. EnsureDataDir — mkdir <DataDir>/{notes,.jasper}.
 //  2. SeedScratchpadIfMissing — write the welcome template if absent.
-//  3. mkdir <DataDir>/storage and <DataDir>/storage/logs (the migration
+//  3. mkdir <DataDir>/.jasper and <DataDir>/.jasper/logs (the migration
 //     runner expects them).
 //  4. sqlite.Open — open the writer/reader Pair on app.db.
 //     pair is opened before runner.Run regardless of outcome; Close on
@@ -180,17 +180,17 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 		return a.serveStartupError(ctx, "Scratchpad seed", err)
 	}
 
-	dbPath := storageDBPath(a.cfg.DataDir)
+	dbPath := vault.AppDBPath(a.cfg.DataDir)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		return a.serveStartupError(ctx, "Storage dir", fmt.Errorf("ensure storage dir: %w", err))
+		return a.serveStartupError(ctx, "Storage dir", fmt.Errorf("ensure .jasper dir: %w", err))
 	}
-	logsDir := filepath.Join(a.cfg.DataDir, "storage", "logs")
+	logsDir := vault.LogsDir(a.cfg.DataDir)
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		return a.serveStartupError(ctx, "Logs dir", fmt.Errorf("ensure logs dir: %w", err))
 	}
 
-	backupPath := dbPath + ".backup"
-	logsPath := filepath.Join(logsDir, "jasper.log")
+	backupPath := vault.BackupPath(a.cfg.DataDir)
+	logsPath := vault.LogsPath(a.cfg.DataDir)
 
 	if err := migrate.PreflightFreeSpace(dbPath); err != nil {
 		if errors.Is(err, migrate.ErrDiskFull) {
@@ -379,17 +379,17 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 		return fmt.Errorf("initVaultSubsystemsOnly: scratchpad seed: %w", err)
 	}
 
-	dbPath := storageDBPath(a.cfg.DataDir)
+	dbPath := vault.AppDBPath(a.cfg.DataDir)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		return fmt.Errorf("initVaultSubsystemsOnly: storage dir: %w", err)
+		return fmt.Errorf("initVaultSubsystemsOnly: .jasper dir: %w", err)
 	}
-	logsDir := filepath.Join(a.cfg.DataDir, "storage", "logs")
+	logsDir := vault.LogsDir(a.cfg.DataDir)
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		return fmt.Errorf("initVaultSubsystemsOnly: logs dir: %w", err)
 	}
 
-	backupPath := dbPath + ".backup"
-	logsPath := filepath.Join(logsDir, "jasper.log")
+	backupPath := vault.BackupPath(a.cfg.DataDir)
+	logsPath := vault.LogsPath(a.cfg.DataDir)
 
 	if err := migrate.PreflightFreeSpace(dbPath); err != nil {
 		return fmt.Errorf("initVaultSubsystemsOnly: disk preflight: %w", err)

@@ -24,9 +24,9 @@ var migrationFilenamePattern = regexp.MustCompile(`^[0-9]{3}_[a-z0-9_]+\.sql$`)
 // required EXCEPT NowUnix / DiskFreeFn / Log which default to production
 // implementations when nil.
 type RunnerOptions struct {
-	DBPath     string       // <dataDir>/storage/app.db (absolute)
-	BackupPath string       // <dataDir>/storage/app.db.backup (absolute)
-	LogsPath   string       // <dataDir>/storage/logs/jasper.log (surfaced via MigrationStatus.LogsPath)
+	DBPath     string       // <dataDir>/.jasper/app.db (absolute)
+	BackupPath string       // <dataDir>/.jasper/app.db.backup (absolute)
+	LogsPath   string       // <dataDir>/.jasper/logs/jasper.log (surfaced via MigrationStatus.LogsPath)
 	Migrations fs.FS        // migrations.FS from backend/migrations
 	Pair       *sqlite.Pair // writer/reader pair from internal/db/sqlite
 	Log        *slog.Logger

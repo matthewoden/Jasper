@@ -25,7 +25,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 
@@ -49,7 +48,7 @@ import (
 // flag → env → default precedence chain (D-07).
 type Config struct {
 	// DataDir is the resolved absolute path under which <DataDir>/notes/
-	// holds .md files and <DataDir>/storage/ holds Phase 2's SQLite
+	// holds .md files and <DataDir>/.jasper/ holds Phase 2's SQLite
 	// database (app.db) and logs. Caller passes an absolute path;
 	// lifecycle.go creates the subdirs on Run.
 	//
@@ -156,10 +155,6 @@ type App struct {
 	mcpServer *http.Server
 
 	mcpShutdown func(ctx context.Context) error
-}
-
-func storageDBPath(dataDir string) string {
-	return filepath.Join(dataDir, "storage", "app.db")
 }
 
 // New builds a Phase-1-compatible composition for `jasper serve`. The
