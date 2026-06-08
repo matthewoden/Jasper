@@ -42,7 +42,7 @@ func (a *App) SwitchVault(ctx context.Context, targetPath string) (vault.RecentV
 	if err != nil {
 		return vault.RecentVaultEntry{}, fmt.Errorf("SwitchVault: canonicalize target: %w", err)
 	}
-	jasperDir := filepath.Join(canonical, ".jasper")
+	jasperDir := filepath.Join(canonical, vault.SubdirName)
 	info, statErr := os.Stat(jasperDir)
 	if statErr != nil || !info.IsDir() {
 		return vault.RecentVaultEntry{}, fmt.Errorf("SwitchVault: target vault missing .jasper/ directory: %s", canonical)

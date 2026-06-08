@@ -176,7 +176,7 @@ func (s *Server) PostVaultOpen(
 		if cErr != nil {
 			appHomeCanonical = rawAppHome
 		}
-		candidateJasper := filepath.Join(canonical, ".jasper")
+		candidateJasper := filepath.Join(canonical, vault.SubdirName)
 		if candJasperCanon, cErr := vault.Canonicalize(candidateJasper); cErr == nil &&
 			candJasperCanon == appHomeCanonical {
 			return PostVaultOpen400JSONResponse(newError("missing_jasper_dir",
@@ -184,7 +184,7 @@ func (s *Server) PostVaultOpen(
 		}
 	}
 
-	jasperDir := filepath.Join(canonical, ".jasper")
+	jasperDir := filepath.Join(canonical, vault.SubdirName)
 	info, statErr := os.Stat(jasperDir)
 	if statErr != nil || !info.IsDir() {
 		return PostVaultOpen400JSONResponse(newError("missing_jasper_dir",
@@ -288,7 +288,7 @@ func (s *Server) PostVaultCreate(
 			"the parent folder doesn't exist; create it first")), nil
 	}
 
-	jasperDir := filepath.Join(canonical, ".jasper")
+	jasperDir := filepath.Join(canonical, vault.SubdirName)
 	if _, jasperErr := os.Stat(jasperDir); jasperErr == nil {
 		if jasperDirCanon, cErr := vault.Canonicalize(jasperDir); cErr != nil ||
 			jasperDirCanon != appHomeCanonical {
@@ -303,7 +303,7 @@ func (s *Server) PostVaultCreate(
 		if anc == cur {
 			break
 		}
-		ancJasper := filepath.Join(anc, ".jasper")
+		ancJasper := filepath.Join(anc, vault.SubdirName)
 		if _, statErr := os.Stat(ancJasper); statErr == nil {
 			ancJasperCanon, cErr := vault.Canonicalize(ancJasper)
 			if cErr != nil || ancJasperCanon != appHomeCanonical {
