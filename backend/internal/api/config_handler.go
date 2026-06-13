@@ -95,12 +95,12 @@ func toWireConfig(c config.Config) Config {
 		Editor: struct {
 			AutosaveMs int     `json:"autosaveMs"`
 			FontSize   int     `json:"fontSize"`
-			LineHeight float32 `json:"lineHeight"`
+			LineHeight float64 `json:"lineHeight"`
 			VimMode    bool    `json:"vimMode"`
 		}{
 			AutosaveMs: c.Editor.AutosaveMs,
 			FontSize:   c.Editor.FontSize,
-			LineHeight: float32(c.Editor.LineHeight),
+			LineHeight: c.Editor.LineHeight,
 			VimMode:    c.Editor.VimMode,
 		},
 		Server: &server,
@@ -124,7 +124,7 @@ func fromWireConfig(w Config) config.Config {
 		Editor: config.Editor{
 			AutosaveMs: w.Editor.AutosaveMs,
 			FontSize:   w.Editor.FontSize,
-			LineHeight: float64(w.Editor.LineHeight),
+			LineHeight: w.Editor.LineHeight,
 			VimMode:    w.Editor.VimMode,
 		},
 		Server: config.ServerConfig{Port: 6683, DataDir: ""},

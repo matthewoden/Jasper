@@ -192,6 +192,52 @@ func TestPutConfig_DisplayName(t *testing.T) {
 	}
 }
 
+// TestLineHeightRoundTrip_Precision — CR-01 regression. toWireConfig /
+// fromWireConfig must preserve float64 precision for lineHeight: 1.6 must
+// come back as exactly 1.6, not the float32-truncated 1.5999999046325684.
+func TestLineHeightRoundTrip_Precision(t *testing.T) {
+	t.Parallel()
+	ts, _ := setupConfigServer(t)
+	defer ts.Close()
+
+	body := []byte(`{
+		"appName": "Jasper",
+		"theme": "dark",
+		"dailyNotes": {"folder": "daily", "template": ""},
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000}
+	}`)
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("PUT status: got %d, want 200; body: %s", resp.StatusCode, putBody)
+	}
+
+	// GET after PUT — lineHeight must be exactly 1.6 (float64 precision)
+	resp2, err := http.Get(ts.URL + "/api/v1/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	getBody, _ := io.ReadAll(resp2.Body)
+	_ = resp2.Body.Close()
+
+	// Decode into a generic map to inspect the raw JSON number without struct
+	// truncation — this is what the wire actually sends.
+	var got Config
+	if err := json.Unmarshal(getBody, &got); err != nil {
+		t.Fatalf("GET response unmarshal: %v", err)
+	}
+	const want = 1.6
+	if got.Editor.LineHeight != want {
+		t.Errorf("lineHeight round-trip precision: got %v, want %v (CR-01 float32 truncation)", got.Editor.LineHeight, want)
+	}
+}
+
 // TestPutConfig_PreservesUnknownFields — SET-05 / D-09 merge-on-write.
 // A PUT must preserve an unmanaged key that was already on disk.
 func TestPutConfig_PreservesUnknownFields(t *testing.T) {

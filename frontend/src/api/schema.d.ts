@@ -1211,7 +1211,10 @@ export interface components {
             editor: {
                 /** @default 15 */
                 fontSize: number;
-                /** @default 1.6 */
+                /**
+                 * Format: double
+                 * @default 1.6
+                 */
                 lineHeight: number;
                 /** @default false */
                 vimMode: boolean;
