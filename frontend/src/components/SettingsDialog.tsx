@@ -220,6 +220,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [dailyTemplate, setDailyTemplate] = useState("");
   const [displayName, setDisplayName] = useState("");
 
+  // ── Save error banner (WR-04 / CR-03b): shown when PUT /config fails ──
+  // Cleared automatically on any new successful save or when dismissed.
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   // ── Seed local state when config loads ──────────────────────────────
   useEffect(() => {
     if (!config) return;
@@ -247,8 +251,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }, [config?.editor.fontSize, config?.editor.lineHeight]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Commit helpers ───────────────────────────────────────────────────
+  // All handlers await saveConfig and surface errors (WR-04 / CR-03b).
+  // On save failure, useConfig.saveConfig rolls back to the last persisted
+  // value (CR-02 fix) so the local input reverts in the next config sync.
 
-  const handleFontSizeCommit = useCallback(() => {
+  const handleFontSizeCommit = useCallback(async () => {
     if (!config) return;
     const value = Number(fontSizeInput);
     if (!Number.isFinite(value) || value < 10 || value > 24) {
@@ -260,25 +267,40 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
     setFontSizeError(null);
     document.documentElement.style.setProperty("--editor-font-size", `${value}px`);
-    void saveConfig({ ...config, editor: { ...config.editor, fontSize: value } });
+    const { error } = await saveConfig({ ...config, editor: { ...config.editor, fontSize: value } });
+    if (error) {
+      setFontSizeError(`Save failed: ${error.message}. Reverted.`);
+      setFontSizeInput(String(config.editor.fontSize));
+      setSaveError(error.message);
+    } else {
+      setSaveError(null);
+    }
   }, [config, fontSizeInput, saveConfig]);
 
-  const handleLineHeightCommit = useCallback(() => {
+  const handleLineHeightCommit = useCallback(async () => {
     if (!config) return;
     const value = Number(lineHeightInput);
-    if (!Number.isFinite(value) || value < 1.0 || value > 2.5) {
+    // CR-03a: align upper bound with server (config_validate.go allows up to 3.0)
+    if (!Number.isFinite(value) || value < 1.0 || value > 3.0) {
       setLineHeightError(
-        "Must be between 1.0 and 2.5. Reverted to previous value.",
+        "Must be between 1.0 and 3.0. Reverted to previous value.",
       );
       setLineHeightInput(String(config.editor.lineHeight));
       return;
     }
     setLineHeightError(null);
     document.documentElement.style.setProperty("--editor-line-height", `${value}`);
-    void saveConfig({ ...config, editor: { ...config.editor, lineHeight: value } });
+    const { error } = await saveConfig({ ...config, editor: { ...config.editor, lineHeight: value } });
+    if (error) {
+      setLineHeightError(`Save failed: ${error.message}. Reverted.`);
+      setLineHeightInput(String(config.editor.lineHeight));
+      setSaveError(error.message);
+    } else {
+      setSaveError(null);
+    }
   }, [config, lineHeightInput, saveConfig]);
 
-  const handleAutosaveMsCommit = useCallback(() => {
+  const handleAutosaveMsCommit = useCallback(async () => {
     if (!config) return;
     const value = Number(autosaveMsInput);
     if (!Number.isFinite(value) || value < 250 || value > 10000) {
@@ -289,43 +311,75 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       return;
     }
     setAutosaveMsError(null);
-    void saveConfig({ ...config, editor: { ...config.editor, autosaveMs: value } });
+    const { error } = await saveConfig({ ...config, editor: { ...config.editor, autosaveMs: value } });
+    if (error) {
+      setAutosaveMsError(`Save failed: ${error.message}. Reverted.`);
+      setAutosaveMsInput(String(config.editor.autosaveMs));
+      setSaveError(error.message);
+    } else {
+      setSaveError(null);
+    }
   }, [config, autosaveMsInput, saveConfig]);
 
-  const handleDailyFolderCommit = useCallback(() => {
+  const handleDailyFolderCommit = useCallback(async () => {
     if (!config) return;
-    void saveConfig({
+    const { error } = await saveConfig({
       ...config,
       dailyNotes: { ...config.dailyNotes, folder: dailyFolder },
     });
+    if (error) {
+      setSaveError(error.message);
+    } else {
+      setSaveError(null);
+    }
   }, [config, dailyFolder, saveConfig]);
 
-  const handleDailyTemplateCommit = useCallback(() => {
+  const handleDailyTemplateCommit = useCallback(async () => {
     if (!config) return;
-    void saveConfig({
+    const { error } = await saveConfig({
       ...config,
       dailyNotes: { ...config.dailyNotes, template: dailyTemplate },
     });
+    if (error) {
+      setSaveError(error.message);
+    } else {
+      setSaveError(null);
+    }
   }, [config, dailyTemplate, saveConfig]);
 
-  const handleDisplayNameCommit = useCallback(() => {
+  const handleDisplayNameCommit = useCallback(async () => {
     if (!config) return;
-    void saveConfig({ ...config, display_name: displayName });
+    const { error } = await saveConfig({ ...config, display_name: displayName });
+    if (error) {
+      setSaveError(error.message);
+    } else {
+      setSaveError(null);
+    }
   }, [config, displayName, saveConfig]);
 
   const handleThemeChange = useCallback(
-    (t: "dark" | "light") => {
+    async (t: "dark" | "light") => {
       if (!config) return;
       applyTheme(t);
-      void saveConfig({ ...config, theme: t });
+      const { error } = await saveConfig({ ...config, theme: t });
+      if (error) {
+        setSaveError(error.message);
+      } else {
+        setSaveError(null);
+      }
     },
     [config, saveConfig],
   );
 
   const handleVimModeChange = useCallback(
-    (checked: boolean) => {
+    async (checked: boolean) => {
       if (!config) return;
-      void saveConfig({ ...config, editor: { ...config.editor, vimMode: checked } });
+      const { error } = await saveConfig({ ...config, editor: { ...config.editor, vimMode: checked } });
+      if (error) {
+        setSaveError(error.message);
+      } else {
+        setSaveError(null);
+      }
     },
     [config, saveConfig],
   );
@@ -393,6 +447,45 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             Change application settings — appearance, editor, daily notes, and general preferences.
           </Dialog.Description>
 
+          {/* ── Save error banner (WR-04 / CR-03b) ──────────────────────── */}
+          {saveError && (
+            <div
+              role="alert"
+              style={{
+                marginTop: 12,
+                padding: "8px 12px",
+                background: "color-mix(in srgb, var(--color-destructive) 10%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--color-destructive) 40%, transparent)",
+                borderRadius: 6,
+                fontSize: 13,
+                color: "var(--color-destructive)",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <AlertCircle size={14} aria-hidden="true" />
+              <span>Settings could not be saved: {saveError}</span>
+              <button
+                type="button"
+                onClick={() => setSaveError(null)}
+                aria-label="Dismiss error"
+                style={{
+                  marginLeft: "auto",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--color-destructive)",
+                  cursor: "pointer",
+                  padding: 0,
+                  fontSize: 12,
+                  fontFamily: "inherit",
+                }}
+              >
+                ×
+              </button>
+            </div>
+          )}
+
           {/* ── APPEARANCE ─────────────────────────────────────────────── */}
           <SectionDivider />
           <section>
@@ -410,13 +503,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   label="Dark"
                   value="dark"
                   selected={currentTheme === "dark"}
-                  onSelect={() => handleThemeChange("dark")}
+                  onSelect={() => { void handleThemeChange("dark"); }}
                 />
                 <ThemeRadioRow
                   label="Light"
                   value="light"
                   selected={currentTheme === "light"}
-                  onSelect={() => handleThemeChange("light")}
+                  onSelect={() => { void handleThemeChange("light"); }}
                 />
               </div>
             </div>
@@ -436,9 +529,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     setFontSizeInput(e.target.value);
                     setFontSizeError(null);
                   }}
-                  onBlur={handleFontSizeCommit}
+                  onBlur={() => { void handleFontSizeCommit(); }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleFontSizeCommit();
+                    if (e.key === "Enter") void handleFontSizeCommit();
                   }}
                   style={{ ...inputStyle, width: 72 }}
                 />
@@ -473,13 +566,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             </ControlRow>
 
             {/* Editor line height */}
+            {/* CR-03a: max aligned with server (config_validate.go: 1.0–3.0) */}
             <ControlRow label="Editor line height" htmlFor="settings-line-height">
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <input
                   id="settings-line-height"
                   type="number"
                   min={1.0}
-                  max={2.5}
+                  max={3.0}
                   step={0.1}
                   aria-label="Editor line height"
                   aria-describedby="settings-line-height-helper"
@@ -488,9 +582,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     setLineHeightInput(e.target.value);
                     setLineHeightError(null);
                   }}
-                  onBlur={handleLineHeightCommit}
+                  onBlur={() => { void handleLineHeightCommit(); }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleLineHeightCommit();
+                    if (e.key === "Enter") void handleLineHeightCommit();
                   }}
                   style={{ ...inputStyle, width: 72 }}
                 />
@@ -507,7 +601,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   marginTop: 4,
                 }}
               >
-                1.0–2.5
+                1.0–3.0
               </span>
               {lineHeightError && (
                 <span
@@ -549,9 +643,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     setAutosaveMsInput(e.target.value);
                     setAutosaveMsError(null);
                   }}
-                  onBlur={handleAutosaveMsCommit}
+                  onBlur={() => { void handleAutosaveMsCommit(); }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleAutosaveMsCommit();
+                    if (e.key === "Enter") void handleAutosaveMsCommit();
                   }}
                   style={{ ...inputStyle, width: 80 }}
                 />
@@ -598,7 +692,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               >
                 <Switch.Root
                   checked={vimMode}
-                  onCheckedChange={handleVimModeChange}
+                  onCheckedChange={(checked) => { void handleVimModeChange(checked); }}
                   aria-label="Vim mode"
                   aria-describedby="vim-mode-helper"
                   style={{
@@ -666,9 +760,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 aria-label="Daily notes folder"
                 value={dailyFolder}
                 onChange={(e) => setDailyFolder(e.target.value)}
-                onBlur={handleDailyFolderCommit}
+                onBlur={() => { void handleDailyFolderCommit(); }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleDailyFolderCommit();
+                  if (e.key === "Enter") void handleDailyFolderCommit();
                 }}
                 style={{ ...inputStyle, width: "100%" }}
               />
@@ -691,7 +785,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 id="settings-daily-template"
                 value={dailyTemplate}
                 onChange={(e) => setDailyTemplate(e.target.value)}
-                onBlur={handleDailyTemplateCommit}
+                onBlur={() => { void handleDailyTemplateCommit(); }}
                 rows={4}
                 spellCheck={false}
                 aria-label="Daily note template"
@@ -729,6 +823,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     void saveConfig({
                       ...config,
                       dailyNotes: { ...config.dailyNotes, template: t },
+                    }).then(({ error }) => {
+                      if (error) setSaveError(error.message);
+                      else setSaveError(null);
                     });
                   }}
                   style={{
@@ -763,9 +860,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 aria-describedby="settings-display-name-helper"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                onBlur={handleDisplayNameCommit}
+                onBlur={() => { void handleDisplayNameCommit(); }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleDisplayNameCommit();
+                  if (e.key === "Enter") void handleDisplayNameCommit();
                 }}
                 style={{ ...inputStyle, width: "100%" }}
               />

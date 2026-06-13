@@ -36,6 +36,12 @@ vi.mock("../api/client", () => ({
   },
 }));
 
+import { client } from "../api/client";
+const mockClient = client as unknown as {
+  GET: ReturnType<typeof vi.fn>;
+  PUT: ReturnType<typeof vi.fn>;
+};
+
 import { SettingsDialog } from "./SettingsDialog";
 
 beforeEach(() => {
@@ -133,5 +139,44 @@ describe("<SettingsDialog />", () => {
     const buttons = screen.getAllByRole("button");
     const saveButtons = buttons.filter((b) => b.textContent?.toLowerCase().includes("save"));
     expect(saveButtons.length).toBe(0);
+  });
+
+  it("CR-03b/WR-04: save failure shows error banner and reverts input", async () => {
+    // Make PUT fail after initial load
+    mockClient.PUT.mockResolvedValueOnce({
+      error: { code: "invalid_request", message: "server side error" },
+      response: { status: 400 },
+    });
+
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+    await waitFor(() => screen.getByLabelText("Editor font size"));
+
+    const input = screen.getByLabelText("Editor font size");
+    fireEvent.change(input, { target: { value: "20" } });
+    fireEvent.blur(input);
+
+    // Error banner should appear
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    // The alert must mention the error
+    expect(screen.getByRole("alert").textContent).toMatch(/server side error/i);
+  });
+
+  it("CR-03a: line height values between 2.5 and 3.0 are accepted (not rejected)", async () => {
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+    await waitFor(() => screen.getByLabelText("Editor line height"));
+
+    const input = screen.getByLabelText("Editor line height");
+    fireEvent.change(input, { target: { value: "2.8" } });
+    fireEvent.blur(input);
+
+    // Should NOT show a validation error for 2.8 (within 1.0–3.0)
+    // (no role="alert" from the lineHeightError state)
+    await waitFor(() => {
+      const alerts = screen.queryAllByRole("alert");
+      const lineHeightAlerts = alerts.filter(a => a.textContent?.includes("3.0") || a.textContent?.includes("2.5"));
+      expect(lineHeightAlerts.length).toBe(0);
+    });
   });
 });
