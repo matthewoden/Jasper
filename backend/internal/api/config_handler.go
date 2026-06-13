@@ -93,10 +93,12 @@ func toWireConfig(c config.Config) Config {
 			Template: c.DailyNotes.Template,
 		},
 		Editor: struct {
+			AutosaveMs int     `json:"autosaveMs"`
 			FontSize   int     `json:"fontSize"`
 			LineHeight float32 `json:"lineHeight"`
 			VimMode    bool    `json:"vimMode"`
 		}{
+			AutosaveMs: c.Editor.AutosaveMs,
 			FontSize:   c.Editor.FontSize,
 			LineHeight: float32(c.Editor.LineHeight),
 			VimMode:    c.Editor.VimMode,
@@ -120,6 +122,7 @@ func fromWireConfig(w Config) config.Config {
 			Template: w.DailyNotes.Template,
 		},
 		Editor: config.Editor{
+			AutosaveMs: w.Editor.AutosaveMs,
 			FontSize:   w.Editor.FontSize,
 			LineHeight: float64(w.Editor.LineHeight),
 			VimMode:    w.Editor.VimMode,

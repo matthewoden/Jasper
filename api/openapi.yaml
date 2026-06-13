@@ -1906,7 +1906,7 @@ components:
               default: ""
         editor:
           type: object
-          required: [fontSize, lineHeight, vimMode]
+          required: [fontSize, lineHeight, vimMode, autosaveMs]
           additionalProperties: false
           properties:
             fontSize:
@@ -1922,6 +1922,15 @@ components:
             vimMode:
               type: boolean
               default: false
+            autosaveMs:
+              type: integer
+              minimum: 250
+              maximum: 10000
+              default: 2000
+              description: |
+                Autosave debounce interval in milliseconds. Replaces the
+                hard-coded 2000ms constant in EditorPane.tsx (Phase 11 D-08).
+                Read at mount; requires reload to apply (D-07).
         server:
           # Phase 8 D-50 / D-40: HTTP listener port + resolved data
           # directory. Port pinned at 6683 (T9 spelling of "NOTE");

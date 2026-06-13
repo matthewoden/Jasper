@@ -26,7 +26,7 @@ const sampleConfig = {
   appName: "Jasper",
   theme: "dark" as const,
   dailyNotes: { folder: "daily", template: "" },
-  editor: { fontSize: 15, lineHeight: 1.6, vimMode: false },
+  editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
 };
 
 beforeEach(() => {

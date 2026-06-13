@@ -1215,6 +1215,13 @@ export interface components {
                 lineHeight: number;
                 /** @default false */
                 vimMode: boolean;
+                /**
+                 * @description Autosave debounce interval in milliseconds. Replaces the
+                 *     hard-coded 2000ms constant in EditorPane.tsx (Phase 11 D-08).
+                 *     Read at mount; requires reload to apply (D-07).
+                 * @default 2000
+                 */
+                autosaveMs: number;
             };
             server?: {
                 /** @default 6683 */
