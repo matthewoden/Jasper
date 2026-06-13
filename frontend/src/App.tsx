@@ -55,6 +55,7 @@ import {
 } from "./lib/appShortcuts";
 import { useTreeCreateActions } from "./lib/useTreeCreateActions";
 import { useFileTree } from "./lib/useFileTree";
+import { useConfig } from "./lib/useConfig";
 import type { CommandActions } from "./lib/useCommandPalette";
 import type { TreeNode } from "./lib/treeApi";
 
@@ -153,6 +154,20 @@ export function AppInner() {
   const setCheatSheetOpen = useTreeStore((s) => s.setCheatSheetOpen);
 
   const editorHandlersRef = useRef<EditorPaneHandlers | null>(null);
+
+  const { config } = useConfig();
+
+  useEffect(() => {
+    if (!config) return;
+    document.documentElement.style.setProperty(
+      "--editor-font-size",
+      `${config.editor.fontSize}px`,
+    );
+    document.documentElement.style.setProperty(
+      "--editor-line-height",
+      `${config.editor.lineHeight}`,
+    );
+  }, [config?.editor.fontSize, config?.editor.lineHeight]);
 
   const { markSwitching, markSwitched, switching: vaultSwitching, targetName: vaultSwitchTargetName } = useVaultSwitch();
 
@@ -433,6 +448,7 @@ export function AppInner() {
             noteId={activeNoteId}
             reindexing={false}
             editorHandlersRef={editorHandlersRef}
+            autosaveMs={config?.editor.autosaveMs ?? 2000}
           />
         )}
 

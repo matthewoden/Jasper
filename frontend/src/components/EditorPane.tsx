@@ -110,6 +110,13 @@ interface EditorPaneProps {
    * App.tsx passes gridRow/gridColumn here; merged onto the root section.
    */
   style?: React.CSSProperties;
+  /**
+   * Phase 11 (D-07 / SET-03): autosave debounce interval in ms, read from
+   * config.editor.autosaveMs at mount. Defaults to AUTOSAVE_DEBOUNCE_MS
+   * (2000) when absent. Captured to a ref at mount so the debounce interval
+   * does not change mid-session (D-07 "restart to apply" label).
+   */
+  autosaveMs?: number;
 }
 
 
@@ -152,7 +159,9 @@ function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
   return null;
 }
 
-export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style }: EditorPaneProps) {
+export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style, autosaveMs }: EditorPaneProps) {
+  const autosaveMsRef = useRef(autosaveMs ?? AUTOSAVE_DEBOUNCE_MS);
+
   const [content, setContent] = useState("");
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const [saveState, dispatch] = useReducer(
@@ -393,7 +402,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       debounceTimer.current = window.setTimeout(() => {
         debounceTimer.current = null;
         void performSave(latestContentRef.current);
-      }, AUTOSAVE_DEBOUNCE_MS);
+      }, autosaveMsRef.current);
     },
     [performSave],
   );
