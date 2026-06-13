@@ -14,7 +14,6 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/vault"
-	"github.com/matthewoden/jasper/backend/migrations"
 )
 
 func setupSwapVault(t *testing.T) string {
@@ -153,10 +152,9 @@ func TestSwap_McpBoundOnSwitch(t *testing.T) {
 
 	ctx := context.Background()
 	if _, err := vault.CreateVault(ctx, vaultB, vault.CreateOpts{
-		DisplayName:  "VaultB",
-		Theme:        "dark",
-		MCPEnabled:   true,
-		MigrationsFS: migrations.FS,
+		DisplayName: "VaultB",
+		Theme:       "dark",
+		MCPEnabled:  true,
 	}); err != nil {
 		t.Fatalf("pre-seed vaultB: %v", err)
 	}

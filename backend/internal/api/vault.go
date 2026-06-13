@@ -3,14 +3,11 @@ package api
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
-
-	"github.com/matthewoden/jasper/backend/migrations"
 
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
@@ -336,7 +333,6 @@ func (s *Server) PostVaultCreate(
 		Theme:         theme,
 		DailyTemplate: dailyTemplate,
 		MCPEnabled:    mcpEnabled,
-		MigrationsFS:  vaultMigrationsFS(s),
 	})
 	if createErr != nil {
 		return nil, fmt.Errorf("PostVaultCreate: %w", createErr)
@@ -460,11 +456,4 @@ func validateVaultPath(p string) error {
 		}
 	}
 	return nil
-}
-
-func vaultMigrationsFS(s *Server) fs.FS {
-	if s.migrationsFS != nil {
-		return s.migrationsFS
-	}
-	return migrations.FS
 }

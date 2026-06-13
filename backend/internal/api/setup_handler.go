@@ -79,9 +79,8 @@ func (s *Server) PostSetupValidateDataDir(
 // underlying problem fixed (e.g. free up disk space, choose a
 // different path).
 //
-// migrationsFS is REQUIRED for RunSetup to apply schema migrations
-// against the new data-dir. It's plumbed in via Server.SetMigrationsFS
-// at app.New / lifecycle.Run; missing it is a programmer error so we
+// migrationsFS is checked for nil as a startup-config guard: if
+// SetMigrationsFS was never called the server is misconfigured, so we
 // 500 with a clear "not configured" message rather than silently
 // proceeding.
 //
@@ -112,7 +111,7 @@ func (s *Server) PostSetup(
 			Level:  int(g.Level),
 		})
 	}
-	if err := firstrun.RunSetup(ctx, sr, s.migrationsFS); err != nil {
+	if err := firstrun.RunSetup(ctx, sr); err != nil {
 		s.log.Error("PostSetup: setup failed",
 			"err", err,
 			"data_dir", req.Body.DataDir,

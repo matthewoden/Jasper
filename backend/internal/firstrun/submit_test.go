@@ -10,7 +10,6 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/vault"
-	"github.com/matthewoden/jasper/backend/migrations"
 )
 
 // TestRunSetup_InvalidTheme exercises the up-front theme check —
@@ -24,7 +23,7 @@ func TestRunSetup_InvalidTheme(t *testing.T) {
 		DataDir: target,
 		Theme:   "darkmode",
 	}
-	err := RunSetup(t.Context(), req, migrations.FS)
+	err := RunSetup(t.Context(), req)
 	if err == nil {
 		t.Fatalf("expected error for invalid theme; got nil")
 	}
@@ -47,7 +46,7 @@ func TestRunSetup_InvalidPath(t *testing.T) {
 		DataDir: "/tmp/Jasper-é",
 		Theme:   "dark",
 	}
-	err := RunSetup(t.Context(), req, migrations.FS)
+	err := RunSetup(t.Context(), req)
 	if err == nil {
 		t.Fatalf("expected error for non-ASCII path; got nil")
 	}
@@ -76,7 +75,7 @@ func TestRunSetup_HappyPath(t *testing.T) {
 		DailyTemplate:        "# {{date}}\n\n- ",
 		CreateTodayDailyNote: true,
 	}
-	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
+	if err := RunSetup(t.Context(), req); err != nil {
 		t.Fatalf("RunSetup: %v", err)
 	}
 
@@ -188,7 +187,7 @@ func TestRunSetup_McpEnabledRoundTrips(t *testing.T) {
 			base := t.TempDir()
 			target := filepath.Join(base, "Jasper")
 			tc.req.DataDir = target
-			if err := RunSetup(t.Context(), tc.req, migrations.FS); err != nil {
+			if err := RunSetup(t.Context(), tc.req); err != nil {
 				t.Fatalf("RunSetup: %v", err)
 			}
 			cfg, err := config.Load(target, slog.Default())
@@ -217,7 +216,7 @@ func TestRunSetup_SeedGrants(t *testing.T) {
 			{Folder: "projects/foo", Level: 2},
 		},
 	}
-	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
+	if err := RunSetup(t.Context(), req); err != nil {
 		t.Fatalf("RunSetup: %v", err)
 	}
 
@@ -260,7 +259,7 @@ func TestRunSetup_SeedGrants_Duplicate(t *testing.T) {
 			{Folder: "ai-zone", Level: 2},
 		},
 	}
-	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
+	if err := RunSetup(t.Context(), req); err != nil {
 		t.Fatalf("RunSetup with duplicate grant: %v", err)
 	}
 
@@ -302,7 +301,7 @@ func TestRunSetup_SeedGrants_MixedDuplicates(t *testing.T) {
 			{Folder: "projects", Level: 2},
 		},
 	}
-	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
+	if err := RunSetup(t.Context(), req); err != nil {
 		t.Fatalf("RunSetup with mixed duplicates: %v", err)
 	}
 
@@ -341,7 +340,7 @@ func TestRunSetup_NoDailyNoteWhenOptedOut(t *testing.T) {
 		Theme:                "dark",
 		CreateTodayDailyNote: false,
 	}
-	if err := RunSetup(t.Context(), req, migrations.FS); err != nil {
+	if err := RunSetup(t.Context(), req); err != nil {
 		t.Fatalf("RunSetup: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(target, "notes", "daily")); !os.IsNotExist(err) {

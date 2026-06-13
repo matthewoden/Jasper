@@ -3,7 +3,6 @@ package vault
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -26,14 +25,6 @@ type CreateOpts struct {
 
 	// MCPEnabled persists the per-vault MCP toggle.
 	MCPEnabled bool
-
-	// Deprecated: ignored as of Phase 9 (D-04). CreateVault no longer runs
-	// migrations — the first time the server boots into the new vault it
-	// runs the migration runner against <canonical>/.jasper/app.db itself
-	// (lifecycle.bootPerVaultSubsystems). Kept on the struct for one minor
-	// version so existing callers compile; safe to pass nil. Will be
-	// removed in a follow-up phase.
-	MigrationsFS fs.FS
 }
 
 // CreateVault initializes a new Jasper vault at canonical and registers it in

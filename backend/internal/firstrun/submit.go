@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -94,10 +93,7 @@ type SetupGrantSeed struct {
 //
 // Errors are wrapped with a UI-friendly prefix; the handler maps the
 // resulting error to a 500 with the wrapped message in the body.
-//
-// migrationsFS is the embedded migrations.FS plumbed through from
-// app.New's caller (Server.migrationsFS).
-func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
+func RunSetup(ctx context.Context, req SetupRequest) error {
 	if req.Theme != "dark" && req.Theme != "light" {
 		return fmt.Errorf("theme must be 'dark' or 'light'")
 	}
@@ -119,7 +115,6 @@ func RunSetup(ctx context.Context, req SetupRequest, migrationsFS fs.FS) error {
 		Theme:         req.Theme,
 		DailyTemplate: req.DailyTemplate,
 		MCPEnabled:    req.McpEnabled,
-		MigrationsFS:  migrationsFS,
 	}); err != nil {
 		return fmt.Errorf("create vault: %w", err)
 	}
