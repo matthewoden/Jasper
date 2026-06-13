@@ -601,6 +601,38 @@ describe("<App /> — Phase 4 session sync (Plan 04-05)", () => {
       expect(screen.queryByText(/Rebuilding/i)).not.toBeInTheDocument();
     });
   });
+
+  it("A-Phase4-4: onLinksRewritten with error:true shows RenameRewriteErrorBanner", async () => {
+    render(<AppShell />);
+    await waitFor(() => expect(capturedSessionSyncHandlers).not.toBeNull());
+    act(() => {
+      capturedSessionSyncHandlers!.onLinksRewritten!({
+        old_title: "OldTitle",
+        new_title: "NewTitle",
+        touched_note_ids: ["id1"],
+        error: true,
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByText(/Rename failed/i)).toBeInTheDocument();
+    });
+  });
+
+  it("A-Phase4-5: onLinksRewritten without error does NOT show banner", async () => {
+    render(<AppShell />);
+    await waitFor(() => expect(capturedSessionSyncHandlers).not.toBeNull());
+    act(() => {
+      capturedSessionSyncHandlers!.onLinksRewritten!({
+        old_title: "OldTitle",
+        new_title: "NewTitle",
+        touched_note_ids: ["id1"],
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+  });
 });
 
 

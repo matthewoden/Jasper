@@ -170,8 +170,10 @@ export function AppInner() {
       onReindexComplete: () => {
         setReindexPhase("idle");
       },
-      onLinksRewritten: (_p) => {
-        void _p;
+      onLinksRewritten: (p) => {
+        if (p.error) {
+          setRewriteError({ kind: "rename", missedCount: p.touched_note_ids?.length });
+        }
       },
       onVaultSwitching: (p) => {
         markSwitching(p.target_display_name);
