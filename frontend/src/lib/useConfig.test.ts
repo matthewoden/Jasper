@@ -70,6 +70,39 @@ describe("useConfig", () => {
     });
     expect(saveResult?.error?.code).toBe("invalid_request");
   });
+
+  it("CR-02: failed save rolls back to last persisted config, not an optimistic intermediate", async () => {
+    // Setup: GET returns the original sampleConfig (theme: dark).
+    mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
+    // First PUT succeeds (changes fontSize to 18).
+    const afterFirstSave = { ...sampleConfig, editor: { ...sampleConfig.editor, fontSize: 18 } };
+    // Second PUT fails.
+    mockClient.PUT.mockResolvedValueOnce({ data: afterFirstSave, response: { status: 200 } })
+                  .mockResolvedValueOnce({
+                    error: { code: "invalid_request", message: "out of range" },
+                    response: { status: 400 },
+                  });
+
+    const { result } = renderHook(() => useConfig());
+    await waitFor(() => expect(result.current.config).not.toBeNull());
+
+    // First save succeeds: config becomes afterFirstSave.
+    await act(async () => {
+      await result.current.saveConfig(afterFirstSave);
+    });
+    expect(result.current.config?.editor.fontSize).toBe(18);
+
+    // Second save fails: optimistic value is applied then rolled back.
+    const optimisticSecond = { ...afterFirstSave, editor: { ...afterFirstSave.editor, fontSize: 99 } };
+    await act(async () => {
+      await result.current.saveConfig(optimisticSecond);
+    });
+
+    // After rollback, config must be afterFirstSave (last persisted), NOT sampleConfig.
+    // The stale-closure bug (CR-02) would have rolled back to sampleConfig (theme: dark,
+    // fontSize: 15) because prev was captured from the first optimistic update.
+    expect(result.current.config?.editor.fontSize).toBe(18);
+  });
 });
 
 describe("getConfig + putConfig wrappers", () => {

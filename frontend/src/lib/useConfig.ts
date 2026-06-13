@@ -6,7 +6,7 @@
  * (hook with cancel-on-unmount). Phase 5 only consumes from the
  * useTheme hook; future phases (UX-V2-01 settings panel) consume too.
  */
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { client } from "../api/client";
 import type { components } from "../api/schema";
 
@@ -55,6 +55,15 @@ export function useConfig(): {
   const [config, setConfig] = useState<Config | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
 
+  // Track the last server-confirmed config so that saveConfig rollback
+  // always restores the true persisted value, not an optimistic intermediate.
+  // CR-02: using a closure over `config` captured the optimistic value; a ref
+  // updated in a separate effect always holds the last committed state.
+  const persistedConfigRef = useRef<Config | null>(null);
+  useEffect(() => {
+    persistedConfigRef.current = config;
+  }, [config]);
+
   useEffect(() => {
     let cancelled = false;
     getConfig().then(({ data, error: err }) => {
@@ -67,8 +76,11 @@ export function useConfig(): {
     };
   }, []);
 
+  // saveConfig is stable (no deps) — it reads the rollback value from the
+  // ref, not from a closure, so concurrent calls roll back to the last
+  // persisted state rather than to each other's optimistic values.
   const saveConfig = useCallback(async (next: Config) => {
-    const prev = config;
+    const prev = persistedConfigRef.current;
     setConfig(next);
     const { data, error: err } = await putConfig(next);
     if (err) {
@@ -76,9 +88,12 @@ export function useConfig(): {
       setError(err);
       return { error: err };
     }
-    if (data) setConfig(data);
+    if (data) {
+      setConfig(data);
+      persistedConfigRef.current = data;
+    }
     return {};
-  }, [config]);
+  }, []); // stable — no closure over config (reads from ref instead)
 
   return { config, error, saveConfig };
 }
