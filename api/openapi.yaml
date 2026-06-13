@@ -2173,6 +2173,9 @@ components:
             type: string
             format: uuid
           description: UUIDs of notes whose content was rewritten.
+        error:
+          type: boolean
+          description: "True when the rewrite failed partway; the rename was rolled back and the client should surface the error banner."
     WSEnvelope:
       type: object
       description: |

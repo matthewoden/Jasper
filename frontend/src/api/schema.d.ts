@@ -1382,6 +1382,8 @@ export interface components {
             new_title: string;
             /** @description UUIDs of notes whose content was rewritten. */
             touched_note_ids: string[];
+            /** @description True when the rewrite failed partway; the rename was rolled back and the client should surface the error banner. */
+            error?: boolean;
         };
         /**
          * @description WebSocket event envelope (DESIGN.md §5.2). The `event` enum is
