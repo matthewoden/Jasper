@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -29,7 +31,7 @@ func setupSwapVault(t *testing.T) string {
 	return canonical
 }
 
-func writeVaultMCPConfig(t *testing.T, vaultDir string, enabled bool) {
+func writeVaultMCPConfig(t *testing.T, vaultDir string, enabled bool, port int) {
 	t.Helper()
 	jasperDir := filepath.Join(vaultDir, vault.SubdirName)
 	if err := os.MkdirAll(jasperDir, 0o755); err != nil {
@@ -37,7 +39,7 @@ func writeVaultMCPConfig(t *testing.T, vaultDir string, enabled bool) {
 	}
 	cfg := config.DefaultConfig()
 	cfg.MCP.Enabled = enabled
-	cfg.MCP.Port = 6684
+	cfg.MCP.Port = port
 	cfg.MCP.Bind = "127.0.0.1"
 	if err := config.Save(vaultDir, cfg); err != nil {
 		t.Fatalf("write vault config: %v", err)
@@ -63,11 +65,11 @@ func newSwapApp(t *testing.T, dataDir string) *App {
 }
 
 // TestSwap_McpReleased — V-TEST-1.
-// Vault A has a simulated MCP listener held on port 6684. After SwitchVault
-// to vault B (MCP disabled), port 6684 is released.
+// Vault A has a simulated MCP listener held on a free port. After SwitchVault
+// to vault B (MCP disabled), that port is released.
 func TestSwap_McpReleased(t *testing.T) {
 	if testing.Short() {
-		t.Skip("V-TEST-1: integration test; requires real net.Listen on :6684")
+		t.Skip("V-TEST-1: integration test; requires real net.Listen")
 	}
 
 	appHome := t.TempDir()
@@ -76,7 +78,7 @@ func TestSwap_McpReleased(t *testing.T) {
 	vaultA := setupSwapVault(t)
 	vaultB := setupSwapVault(t)
 
-	writeVaultMCPConfig(t, vaultB, false)
+	writeVaultMCPConfig(t, vaultB, false, 0)
 
 	appJSONPath := filepath.Join(appHome, "app.json")
 	appState := &vault.AppState{
@@ -90,9 +92,16 @@ func TestSwap_McpReleased(t *testing.T) {
 		t.Fatalf("save app.json: %v", err)
 	}
 
-	mcpLn, err := net.Listen("tcp", "127.0.0.1:6684")
+	freeLn, freeAddr := pickFreeListener(t)
+	_, portStr, _ := net.SplitHostPort(freeAddr)
+	mcpPort, err := strconv.Atoi(portStr)
 	if err != nil {
-		t.Skipf("V-TEST-1: port 6684 already in use; skipping (%v)", err)
+		t.Fatalf("parse free port: %v", err)
+	}
+	_ = freeLn.Close()
+	mcpLn, listenErr := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", mcpPort))
+	if listenErr != nil {
+		t.Fatalf("V-TEST-1: could not listen on free port %d: %v", mcpPort, listenErr)
 	}
 
 	held := true
@@ -116,28 +125,35 @@ func TestSwap_McpReleased(t *testing.T) {
 		t.Fatalf("SwitchVault to vaultB: %v", err)
 	}
 
-	ln2, listenErr := net.Listen("tcp", "127.0.0.1:6684")
-	if listenErr != nil {
-		t.Fatalf("V-TEST-1 FAIL: port 6684 still held after switch to non-MCP vault: %v", listenErr)
+	ln2, listenErr2 := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", mcpPort))
+	if listenErr2 != nil {
+		t.Fatalf("V-TEST-1 FAIL: port %d still held after switch to non-MCP vault: %v", mcpPort, listenErr2)
 	}
 	_ = ln2.Close()
 }
 
 // TestSwap_McpBoundOnSwitch — V-TEST-2.
 // Vault A has no MCP. After SwitchVault to vault B (MCP enabled),
-// the MCP listener is bound on 6684 and responds to HTTP.
+// the MCP listener is bound on a dynamic free port and responds to HTTP.
 func TestSwap_McpBoundOnSwitch(t *testing.T) {
 	if testing.Short() {
-		t.Skip("V-TEST-2: integration test; requires real net.Listen on :6684")
+		t.Skip("V-TEST-2: integration test; requires real net.Listen")
 	}
 
 	appHome := t.TempDir()
 	t.Setenv("JASPER_APP_HOME", appHome)
 
+	freeLn, freeAddr := pickFreeListener(t)
+	_, portStr, _ := net.SplitHostPort(freeAddr)
+	mcpPort, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("parse free port: %v", err)
+	}
+	_ = freeLn.Close()
+
 	vaultA := setupSwapVault(t)
 	vaultB := setupSwapVault(t)
-	writeVaultMCPConfig(t, vaultA, false)
-	writeVaultMCPConfig(t, vaultB, true)
+	writeVaultMCPConfig(t, vaultA, false, 0)
 
 	appJSONPath := filepath.Join(appHome, "app.json")
 	if err := vault.SaveAppJSON(appJSONPath, &vault.AppState{
@@ -159,6 +175,9 @@ func TestSwap_McpBoundOnSwitch(t *testing.T) {
 		t.Fatalf("pre-seed vaultB: %v", err)
 	}
 
+	// Write vault B config AFTER CreateVault so our dynamic port is not overwritten.
+	writeVaultMCPConfig(t, vaultB, true, mcpPort)
+
 	if err := vault.SaveAppJSON(appJSONPath, &vault.AppState{
 		CurrentVault: vaultA,
 		RecentVaults: []vault.RecentVaultEntry{
@@ -168,12 +187,6 @@ func TestSwap_McpBoundOnSwitch(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("restore app.json: %v", err)
 	}
-
-	ln0, err0 := net.Listen("tcp", "127.0.0.1:6684")
-	if err0 != nil {
-		t.Skipf("V-TEST-2: port 6684 already in use before test; skipping (%v)", err0)
-	}
-	_ = ln0.Close()
 
 	a := newSwapApp(t, vaultA)
 
@@ -186,9 +199,10 @@ func TestSwap_McpBoundOnSwitch(t *testing.T) {
 	}
 
 	var resp *http.Response
+	mcpURL := fmt.Sprintf("http://127.0.0.1:%d/", mcpPort)
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err = http.Get("http://127.0.0.1:6684/")
+		resp, err = http.Get(mcpURL)
 		if err == nil {
 			break
 		}
@@ -218,8 +232,8 @@ func TestSwap_GrantsAreVaultScoped(t *testing.T) {
 
 	vaultA := setupSwapVault(t)
 	vaultB := setupSwapVault(t)
-	writeVaultMCPConfig(t, vaultA, false)
-	writeVaultMCPConfig(t, vaultB, false)
+	writeVaultMCPConfig(t, vaultA, false, 0)
+	writeVaultMCPConfig(t, vaultB, false, 0)
 
 	if err := EnsureDataDir(vaultA); err != nil {
 		t.Fatalf("EnsureDataDir A: %v", err)
@@ -270,8 +284,8 @@ func TestSwap_DrainsMcpWriteInFlight(t *testing.T) {
 
 	vaultA := setupSwapVault(t)
 	vaultB := setupSwapVault(t)
-	writeVaultMCPConfig(t, vaultA, false)
-	writeVaultMCPConfig(t, vaultB, false)
+	writeVaultMCPConfig(t, vaultA, false, 0)
+	writeVaultMCPConfig(t, vaultB, false, 0)
 
 	appJSONPath := filepath.Join(appHome, "app.json")
 	if err := vault.SaveAppJSON(appJSONPath, &vault.AppState{
