@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"os"
 	"path"
 	"regexp"
 	"slices"
@@ -915,6 +916,10 @@ func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle
 		}
 		rewrite := RewriteWikilinksAST(before, oldTitle, newTitle)
 		states = append(states, fileState{id: r.ID, path: r.Path, before: before, rewrite: rewrite})
+	}
+
+	if os.Getenv("JASPER_TEST_FAIL_REWRITE") == "1" {
+		return []uuid.UUID{}, fmt.Errorf("JASPER_TEST_FAIL_REWRITE: simulated rewrite failure")
 	}
 
 	written := make([]int, 0, len(states))
