@@ -51,7 +51,7 @@ func (s *Server) PutConfig(
 			"request body required")), nil
 	}
 	cfg := fromWireConfig(*req.Body)
-	if err := config.Save(s.dataDir, cfg); err != nil {
+	if err := config.SaveMerged(s.dataDir, cfg, s.log); err != nil {
 		s.log.Error("PutConfig: save failed",
 			"dataDir", s.dataDir, "err", err)
 		return nil, errors.New("could not save config")
