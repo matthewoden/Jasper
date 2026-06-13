@@ -256,7 +256,7 @@ export const useTreeStore = create<TreeStore>((set) => ({
   tagBrowserExpanded: false,
   setTagBrowserExpanded: (v) => set({ tagBrowserExpanded: v }),
   activeTagFilter: null,
-  setActiveTagFilter: (t) => set({ activeTagFilter: t }),
+  setActiveTagFilter: (t) => set({ activeTagFilter: t !== null ? t.replace(/^#+/, "") : null }),
   backlinksRailExpanded: false,
   setBacklinksRailExpanded: (v) => set({ backlinksRailExpanded: v }),
   backlinksRailWidth: RAIL_DEFAULT_WIDTH,

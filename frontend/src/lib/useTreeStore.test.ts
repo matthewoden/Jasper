@@ -545,6 +545,42 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
 });
 
 
+describe("Phase 10 — setActiveTagFilter normalization seam (DEBT-02)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: null,
+      pendingRename: null,
+      draftCreate: null,
+      activeTagFilter: null,
+    });
+  });
+
+  it("TestStore_SetActiveTagFilter_StripsSingleLeadingHash: '#foo' stores as 'foo'", () => {
+    useTreeStore.getState().setActiveTagFilter("#foo");
+    expect(useTreeStore.getState().activeTagFilter).toBe("foo");
+  });
+
+  it("TestStore_SetActiveTagFilter_StripsRepeatedLeadingHashes: '##foo' stores as 'foo'", () => {
+    useTreeStore.getState().setActiveTagFilter("##foo");
+    expect(useTreeStore.getState().activeTagFilter).toBe("foo");
+  });
+
+  it("TestStore_SetActiveTagFilter_BareInputUnchanged: 'foo' stores as 'foo'", () => {
+    useTreeStore.getState().setActiveTagFilter("foo");
+    expect(useTreeStore.getState().activeTagFilter).toBe("foo");
+  });
+
+  it("TestStore_SetActiveTagFilter_NullClearsFilter: null stores as null (no crash)", () => {
+    useTreeStore.getState().setActiveTagFilter("foo");
+    expect(useTreeStore.getState().activeTagFilter).toBe("foo");
+    useTreeStore.getState().setActiveTagFilter(null);
+    expect(useTreeStore.getState().activeTagFilter).toBeNull();
+  });
+});
+
+
 describe("Phase 6 — useTreeStore ADD-only slices", () => {
   beforeEach(() => {
     localStorage.clear();
