@@ -1060,21 +1060,53 @@ test.describe("Phase 6 UAT — Wiki-link resolution + backlinks (LINKS-02..04, L
 
 
 test.describe("Phase 6 UAT — Rename failure banner (D-36)", () => {
-  test.fixme(
-    "S17: rename rewrite failure shows persistent banner + Dismiss (D-36)",
-    async () => {
-      // Intentionally empty.
-      // Requires JASPER_TEST_FAIL_REWRITE env var plumbed into bin/jasper to
-      // force a mid-rename 500 response on the next rewrite call.
-      // Not yet implemented — needs non-trivial changes to the Go rename code path.
-      // See 06-12-PLAN.md §Task 2 "S17 implementer's call" for context.
-      //
-      // Manual UAT path:
-      //   1. Run: bin/jasper serve --data-dir <vault>
-      //   2. Fill vault disk / chmod 000 on a carrier note to force write failure.
-      //   3. Rename a note that has carriers.
-      //   4. Observe "Rename failed — N references not updated." banner.
-      //   5. Click Dismiss. Verify banner disappears.
-    },
-  );
+  test("S17: rename rewrite failure shows persistent banner + Dismiss (D-36)", async ({ page }) => {
+    const jasper = await spawnJasper({ env: { JASPER_TEST_FAIL_REWRITE: "1" } });
+    try {
+      // Register the vault so the app bypasses the first-run picker.
+      // spawnJasper uses --vault <dataDir> which initializes the vault on disk,
+      // but since Phase 8 the vault registry is separate from the flag: the UI
+      // shows the vault picker until vault/open is called to register the path.
+      const openResp = await page.request.post(
+        `${jasper.baseURL}/api/v1/vault/open`,
+        { data: { path: jasper.dataDir } },
+      );
+      expect(openResp.status()).toBe(200);
+
+      await page.goto(jasper.baseURL);
+      await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+        "data-status",
+        "connected",
+        { timeout: 10_000 },
+      );
+
+      const idA = await apiCreateNote(
+        page,
+        jasper.baseURL,
+        "notes/OldTitle.md",
+        "---\ntags: []\n---\n\nbody of note A (no H1 heading so filename is the title)",
+      );
+
+      await apiCreateNote(
+        page,
+        jasper.baseURL,
+        "notes/NoteB.md",
+        "---\ntags: []\n---\n\nThis links to [[oldtitle]] for context.",
+      );
+
+      const moveResp = await page.request.post(
+        `${jasper.baseURL}/api/v1/notes/${idA}/move`,
+        { data: { new_path: "NewTitle.md" } },
+      );
+      expect(moveResp.status()).toBe(200);
+
+      await expect(page.getByRole("alert")).toBeVisible({ timeout: 8_000 });
+      await expect(page.getByText("Rename failed")).toBeVisible();
+
+      await page.getByRole("button", { name: "Dismiss error" }).click();
+      await expect(page.getByRole("alert")).not.toBeVisible({ timeout: 5_000 });
+    } finally {
+      await jasper.kill();
+    }
+  });
 });
