@@ -155,12 +155,15 @@ describe("<SettingsDialog />", () => {
     fireEvent.change(input, { target: { value: "20" } });
     fireEvent.blur(input);
 
-    // Error banner should appear
+    // Error banner should appear (may be multiple alerts: per-field + global save banner)
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toBeInTheDocument();
+      const alerts = screen.getAllByRole("alert");
+      expect(alerts.length).toBeGreaterThan(0);
     });
-    // The alert must mention the error
-    expect(screen.getByRole("alert").textContent).toMatch(/server side error/i);
+    // At least one alert must mention the server error
+    const alerts = screen.getAllByRole("alert");
+    const mentionsError = alerts.some(a => /server side error/i.test(a.textContent ?? ""));
+    expect(mentionsError).toBe(true);
   });
 
   it("CR-03a: line height values between 2.5 and 3.0 are accepted (not rejected)", async () => {
