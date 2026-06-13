@@ -289,15 +289,17 @@ func TestSwap_DrainsMcpWriteInFlight(t *testing.T) {
 		t.Fatalf("initVaultSubsystemsOnly(A): %v", err)
 	}
 
+	addDone := make(chan struct{})
 	writeDone := make(chan struct{})
 	go func() {
 		defer close(writeDone)
 		a.inFlightWrites.Add(1)
+		close(addDone)
 		time.Sleep(500 * time.Millisecond)
 		a.inFlightWrites.Done()
 	}()
 
-	time.Sleep(20 * time.Millisecond)
+	<-addDone
 
 	switchStart := time.Now()
 	_, switchErr := a.SwitchVault(ctx, vaultB)
