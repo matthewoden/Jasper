@@ -40,6 +40,86 @@ func TestSave_AtomicWrite(t *testing.T) {
 	}
 }
 
+// TestSaveMerged_NestedUnknownKeySurvives — WR-01 regression.
+// SaveMerged must preserve unknown keys inside nested managed objects
+// (e.g. editor.spellCheck, dailyNotes.colorTag) as required by SET-05 / D-09.
+// The fix uses deepMergeRawMaps which recurses into JSON objects instead
+// of wholesale-replacing the nested blob.
+func TestSaveMerged_NestedUnknownKeySurvives(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	log := newTestLogger()
+
+	// Write a config.json with an unknown nested key inside "editor".
+	path := filepath.Join(dir, ".jasper", "config.json")
+	initial := []byte(`{
+		"appName": "Jasper",
+		"theme": "dark",
+		"dailyNotes": {"folder": "daily", "template": ""},
+		"editor": {
+			"fontSize": 15,
+			"lineHeight": 1.6,
+			"vimMode": false,
+			"autosaveMs": 2000,
+			"spellCheck": true
+		},
+		"server": {"port": 6683, "dataDir": ""},
+		"mcp": {"enabled": false, "port": 6684, "bind": "127.0.0.1"}
+	}`)
+	if err := os.WriteFile(path, initial, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// SaveMerged with a managed update that changes editor.fontSize.
+	updates := DefaultConfig()
+	updates.Editor.FontSize = 18 // the managed change
+
+	if err := SaveMerged(dir, updates, log); err != nil {
+		t.Fatalf("SaveMerged: %v", err)
+	}
+
+	// Read back and check.
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read after SaveMerged: %v", err)
+	}
+	var onDisk map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// The nested unknown key editor.spellCheck must still be present.
+	editorRaw, ok := onDisk["editor"]
+	if !ok {
+		t.Fatal("editor key missing from on-disk JSON")
+	}
+	var editor map[string]json.RawMessage
+	if err := json.Unmarshal(editorRaw, &editor); err != nil {
+		t.Fatalf("unmarshal editor: %v", err)
+	}
+	spellCheckRaw, ok := editor["spellCheck"]
+	if !ok {
+		t.Error("WR-01: editor.spellCheck was dropped by SaveMerged (nested unknown key not preserved)")
+	} else {
+		var sc bool
+		if err := json.Unmarshal(spellCheckRaw, &sc); err != nil || !sc {
+			t.Errorf("editor.spellCheck: got %s, want true", spellCheckRaw)
+		}
+	}
+
+	// The managed editor.fontSize must reflect the update.
+	fontSizeRaw, ok := editor["fontSize"]
+	if !ok {
+		t.Error("editor.fontSize key missing")
+	} else {
+		var fs int
+		if err := json.Unmarshal(fontSizeRaw, &fs); err != nil || fs != 18 {
+			t.Errorf("editor.fontSize: got %s, want 18", fontSizeRaw)
+		}
+	}
+}
+
 // TestSave_OverwritesExisting — Save called twice writes the second
 // version cleanly (atomic rename truncates the prior file).
 func TestSave_OverwritesExisting(t *testing.T) {
