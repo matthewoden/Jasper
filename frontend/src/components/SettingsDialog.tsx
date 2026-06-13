@@ -345,7 +345,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         />
         <Dialog.Content
           aria-label="Settings"
-          aria-describedby={undefined}
+          aria-describedby="settings-dialog-desc"
           style={{
             position: "fixed",
             top: "50%",
@@ -374,6 +374,24 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           >
             Settings
           </Dialog.Title>
+
+          {/* Visually-hidden description satisfies Radix a11y (aria-describedby) */}
+          <Dialog.Description
+            id="settings-dialog-desc"
+            style={{
+              position: "absolute",
+              width: 1,
+              height: 1,
+              padding: 0,
+              margin: -1,
+              overflow: "hidden",
+              clip: "rect(0, 0, 0, 0)",
+              whiteSpace: "nowrap",
+              border: 0,
+            }}
+          >
+            Change application settings — appearance, editor, daily notes, and general preferences.
+          </Dialog.Description>
 
           {/* ── APPEARANCE ─────────────────────────────────────────────── */}
           <SectionDivider />

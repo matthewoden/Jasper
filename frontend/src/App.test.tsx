@@ -98,6 +98,18 @@ vi.mock("./lib/useTheme", () => ({
   THEME_BOOTSTRAP_KEY: "jasper:theme-bootstrap",
 }));
 
+// App now calls useConfig() (Phase 11 boot CSS-var seeding). Stub it so these
+// tests don't fire a real /config fetch (which rejects with "Invalid URL" in
+// jsdom → unhandled rejection). `config: null` is App's handled "not-loaded"
+// state (the boot effect early-returns; autosaveMs falls back to 2000).
+vi.mock("./lib/useConfig", () => ({
+  useConfig: () => ({
+    config: null,
+    error: null,
+    saveConfig: vi.fn().mockResolvedValue({}),
+  }),
+}));
+
 
 const mockOpenToday = vi.fn().mockResolvedValue(undefined);
 vi.mock("./lib/useDailyNote", () => ({
