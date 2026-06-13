@@ -51,6 +51,7 @@ func Defaults() Config {
 			FontSize:   15,
 			LineHeight: 1.6,
 			VimMode:    false,
+			AutosaveMs: 2000,
 		},
 		Theme: "dark",
 		Server: ServerConfig{

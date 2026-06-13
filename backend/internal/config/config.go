@@ -56,10 +56,13 @@ type DailyNotes struct {
 
 // Editor — DESIGN.md §11 editor block. Phase 5 ships defaults; Phase
 // UX-V2-01 surfaces in the settings panel; Phase UX-V2-02 wires vimMode.
+// Phase 11 D-08 adds AutosaveMs: replaces the hard-coded 2000ms constant
+// in EditorPane.tsx. Validated range 250–10000 ms (config_validate.go).
 type Editor struct {
 	FontSize   int     `json:"fontSize"`
 	LineHeight float64 `json:"lineHeight"`
 	VimMode    bool    `json:"vimMode"`
+	AutosaveMs int     `json:"autosaveMs"`
 }
 
 // ServerConfig — Phase 8 D-40 / D-50. The HTTP listener's port and the

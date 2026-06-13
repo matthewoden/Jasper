@@ -76,9 +76,15 @@ func toWireConfig(c config.Config) Config {
 		Enabled: c.MCP.Enabled,
 		Port:    c.MCP.Port,
 	}
+	var displayName *string
+	if c.DisplayName != "" {
+		dn := c.DisplayName
+		displayName = &dn
+	}
 	return Config{
-		AppName: c.AppName,
-		Theme:   ConfigTheme(c.Theme),
+		AppName:     c.AppName,
+		DisplayName: displayName,
+		Theme:       ConfigTheme(c.Theme),
 		DailyNotes: struct {
 			Folder   string `json:"folder"`
 			Template string `json:"template"`
@@ -101,9 +107,14 @@ func toWireConfig(c config.Config) Config {
 }
 
 func fromWireConfig(w Config) config.Config {
+	var displayName string
+	if w.DisplayName != nil {
+		displayName = *w.DisplayName
+	}
 	out := config.Config{
-		AppName: w.AppName,
-		Theme:   string(w.Theme),
+		AppName:     w.AppName,
+		DisplayName: displayName,
+		Theme:       string(w.Theme),
 		DailyNotes: config.DailyNotes{
 			Folder:   w.DailyNotes.Folder,
 			Template: w.DailyNotes.Template,

@@ -67,7 +67,7 @@ func TestPutConfig_RoundTrip(t *testing.T) {
 		"appName": "Jasper",
 		"theme": "light",
 		"dailyNotes": {"folder": "daily", "template": ""},
-		"editor": {"fontSize": 16, "lineHeight": 1.7, "vimMode": false}
+		"editor": {"fontSize": 16, "lineHeight": 1.7, "vimMode": false, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -109,7 +109,7 @@ func TestPutConfig_UnknownField_400(t *testing.T) {
 
 	body := []byte(`{
 		"appName": "Jasper", "theme": "dark", "dailyNotes": {"folder": "daily", "template": ""},
-		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false},
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000},
 		"unknownField": 42
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
@@ -132,7 +132,7 @@ func TestPutConfig_ThemeEnum_400(t *testing.T) {
 	body := []byte(`{
 		"appName": "Jasper", "theme": "neon-purple",
 		"dailyNotes": {"folder": "daily", "template": ""},
-		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false}
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -143,5 +143,120 @@ func TestPutConfig_ThemeEnum_400(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != 400 {
 		t.Fatalf("invalid enum: got %d, want 400", resp.StatusCode)
+	}
+}
+
+// TestPutConfig_DisplayName — D-10 round-trip. PUT a config with
+// display_name; the response and a subsequent GET must both return it.
+func TestPutConfig_DisplayName(t *testing.T) {
+	ts, _ := setupConfigServer(t)
+	defer ts.Close()
+
+	body := []byte(`{
+		"appName": "Jasper", "theme": "dark",
+		"display_name": "My Notes",
+		"dailyNotes": {"folder": "daily", "template": ""},
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000}
+	}`)
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("PUT status: got %d, want 200; body: %s", resp.StatusCode, putBody)
+	}
+	var echoed Config
+	if err := json.Unmarshal(putBody, &echoed); err != nil {
+		t.Fatalf("PUT response unmarshal: %v", err)
+	}
+	if echoed.DisplayName == nil || *echoed.DisplayName != "My Notes" {
+		t.Errorf("PUT response: DisplayName = %v, want \"My Notes\"", echoed.DisplayName)
+	}
+
+	resp2, err := http.Get(ts.URL + "/api/v1/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	getBody, _ := io.ReadAll(resp2.Body)
+	_ = resp2.Body.Close()
+	var got Config
+	if err := json.Unmarshal(getBody, &got); err != nil {
+		t.Fatalf("GET response unmarshal: %v", err)
+	}
+	if got.DisplayName == nil || *got.DisplayName != "My Notes" {
+		t.Errorf("GET after PUT: DisplayName = %v, want \"My Notes\"", got.DisplayName)
+	}
+}
+
+// TestPutConfig_PreservesUnknownFields — SET-05 / D-09 merge-on-write.
+// A PUT must preserve an unmanaged key that was already on disk.
+func TestPutConfig_PreservesUnknownFields(t *testing.T) {
+	ts, dir := setupConfigServer(t)
+	defer ts.Close()
+
+	// Write config.json with a hand-added unmanaged key.
+	configPath := filepath.Join(dir, ".jasper", "config.json")
+	seed := []byte(`{
+		"appName":"Jasper","theme":"dark",
+		"_jasper_unmanaged":"preserve-me",
+		"dailyNotes":{"folder":"daily","template":""},
+		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"server":{"port":6683,"dataDir":""},
+		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+	}`)
+	if err := os.WriteFile(configPath, seed, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// PUT a valid config that changes the theme but omits the unmanaged key.
+	body := []byte(`{
+		"appName": "Jasper", "theme": "light",
+		"dailyNotes": {"folder": "daily", "template": ""},
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000}
+	}`)
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("PUT status: got %d, want 200; body: %s", resp.StatusCode, respBody)
+	}
+
+	// Read the raw disk file and assert the unmanaged key is still present.
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var onDisk map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("unmarshal disk: %v", err)
+	}
+	val, ok := onDisk["_jasper_unmanaged"]
+	if !ok {
+		t.Error("unmanaged key '_jasper_unmanaged' was dropped by PUT (D-09 regression)")
+	} else {
+		var s string
+		if err := json.Unmarshal(val, &s); err != nil || s != "preserve-me" {
+			t.Errorf("unmanaged key value: got %s, want \"preserve-me\"", val)
+		}
+	}
+
+	// Also assert the managed theme field was actually updated.
+	theme, ok := onDisk["theme"]
+	if !ok {
+		t.Error("theme key missing after PUT")
+	} else {
+		var themeStr string
+		if err := json.Unmarshal(theme, &themeStr); err != nil || themeStr != "light" {
+			t.Errorf("theme: got %s, want \"light\"", theme)
+		}
 	}
 }

@@ -93,15 +93,28 @@ func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"editor.lineHeight must be 1.0–3.0"}`))
 			return
 		}
+		if tmp.Editor.AutosaveMs < 250 || tmp.Editor.AutosaveMs > 10000 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"editor.autosaveMs must be 250–10000"}`))
+			return
+		}
+		if tmp.DisplayName != nil && len(*tmp.DisplayName) > 64 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"display_name must be at most 64 chars"}`))
+			return
+		}
 
 		next.ServeHTTP(w, r)
 	})
 }
 
 type strictConfigValidator struct {
-	AppName    string `json:"appName"`
-	Theme      string `json:"theme"`
-	DailyNotes struct {
+	AppName     string  `json:"appName"`
+	DisplayName *string `json:"display_name,omitempty"`
+	Theme       string  `json:"theme"`
+	DailyNotes  struct {
 		Folder   string `json:"folder"`
 		Template string `json:"template"`
 	} `json:"dailyNotes"`
@@ -109,6 +122,7 @@ type strictConfigValidator struct {
 		FontSize   int     `json:"fontSize"`
 		LineHeight float64 `json:"lineHeight"`
 		VimMode    bool    `json:"vimMode"`
+		AutosaveMs int     `json:"autosaveMs"`
 	} `json:"editor"`
 	Server *struct {
 		Port    int    `json:"port"`
