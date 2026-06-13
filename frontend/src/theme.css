@@ -54,6 +54,13 @@
      do not reuse for other accent shades. */
   --color-ai-grant:        #a78bfa; /* violet-400 — Tier 1 (Edit only) */
   --color-ai-grant-strong: #7c3aed; /* violet-600 — Tier 2 (Full) */
+
+  /* Phase 11 (D-08 / SC2): editor font/line-height CSS-var bridge.
+     Default values match config defaults (fontSize=15, lineHeight=1.6).
+     App.tsx seeds these from config.editor on boot so persisted user
+     settings apply on reload even if Settings is never opened (SET-04). */
+  --editor-font-size:   15px;
+  --editor-line-height: 1.6;
 }
 
 @theme {
