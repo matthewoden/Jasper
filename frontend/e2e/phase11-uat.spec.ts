@@ -108,14 +108,13 @@ test.describe("Phase 11 Settings panel (@phase11)", () => {
   /**
    * SET-E2E-3: Inject an unmanaged key into config.json on disk before
    * navigating, then open the settings panel → change display name → blur →
-   * close → read config.json → assert unmanaged key still present (D-09 /
-   * SET-05 SaveMerged coverage against the live binary).
+   * close → poll config.json until updated display_name appears → assert
+   * unmanaged key still present (D-09 / SET-05 SaveMerged coverage against
+   * the live binary).
    *
-   * A small settle wait (500ms) after Close is documented below because the
-   * display-name PUT is async: the UI closes immediately, but we must wait
-   * for the server to have persisted before reading the file. An alternative
-   * would be a polling read of config.json — the 500ms settle matches the
-   * existing phase11-uat.spec.ts PATTERNS.md pattern and is minimal.
+   * CR-04: replaced waitForTimeout(500) with expect.poll() to avoid a
+   * fixed-sleep flaky pattern (CONVENTIONS §"Flaky tests are bugs").
+   * Polling reads config.json until display_name is updated, bounded at 5s.
    */
   test("SET-E2E-3: unmanaged config field survives settings round-trip @phase11", async ({
     page,
@@ -149,16 +148,32 @@ test.describe("Phase 11 Settings panel (@phase11)", () => {
     await displayInput.clear();
     await displayInput.fill("Test Vault E2E");
 
-    // Blur to persist
+    // Blur to persist (await handler — saveConfig is now awaited in SettingsDialog)
     await displayInput.blur();
 
     // Close dialog
     await page.getByRole("button", { name: "Close" }).click();
     await expect(dialog).not.toBeVisible();
 
-    // Wait for the async PUT to complete (small settle — CONVENTIONS: documented)
-    // The server must write config.json before we read it. 500ms is conservative.
-    await page.waitForTimeout(500);
+    // CR-04: poll config.json until display_name matches — no fixed sleep.
+    // The PUT is async from the server's perspective; poll until the persisted
+    // value matches what we set. Bounded at 5s to catch genuine failures.
+    await expect.poll(
+      async () => {
+        try {
+          const saved = JSON.parse(
+            await fs.readFile(configPath, "utf8"),
+          ) as Record<string, unknown>;
+          return (saved.display_name as string | undefined) ?? "";
+        } catch {
+          return "";
+        }
+      },
+      {
+        timeout: 5000,
+        message: "config.json should contain updated display_name 'Test Vault E2E'",
+      },
+    ).toBe("Test Vault E2E");
 
     // Read config.json from disk and assert the unmanaged key survived
     const saved = JSON.parse(
