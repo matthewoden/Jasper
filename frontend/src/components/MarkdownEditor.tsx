@@ -39,7 +39,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { autocompletion } from "@codemirror/autocomplete";
 import { search } from "@codemirror/search";
-import { markdown } from "@codemirror/lang-markdown";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 
 import { jasperEditorTheme, jasperSyntaxHighlighting } from "../editor/themeBridge";
@@ -61,6 +61,11 @@ import { externalImagePlugin } from "../editor/externalImagePlugin";
 import { imageAttachmentPlugin } from "../editor/imageAttachmentWidget";
 import { fileChipPlugin } from "../editor/fileChipWidget";
 import { dropPosField, dropIndicatorPlugin } from "../editor/dropIndicatorWidget";
+import {
+  CheckboxToggleAnnotation,
+  checkboxTransactionExtender,
+  taskCheckboxPlugin,
+} from "../editor/taskCheckboxPlugin";
 import { useAttachmentUpload } from "../lib/useAttachmentUpload";
 import { saveKeymap, jasperKeymap } from "../editor/jasperKeymap";
 import {
@@ -294,10 +299,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           extensions: [
             history(),
             search({ top: true }), // Plan 07-27: searchKeymap removed; browser native Cmd+F fires instead
-            yamlFrontmatter({ content: markdown({ codeLanguages }) }),
+            yamlFrontmatter({ content: markdown({ codeLanguages, base: markdownLanguage }) }),
             jasperEditorTheme,
             jasperSyntaxHighlighting,
             frontmatterHideExtension, // Phase 6.5 / Plan 06.5-06 / UX-T-04 — hide frontmatter by default
+            checkboxTransactionExtender, // Phase 12 / Plan 01 — CHK-01 toggle (no-op shim; char-flip is in taskCheckboxPlugin)
+            taskCheckboxPlugin,          // Phase 12 / Plan 01 — CHK-01..04 checkbox decorations + click handler (BEFORE livePreviewPlugin)
             livePreviewPlugin,
             wikilinkPlugin, // Phase 6 / Plan 06-09 — [[Title]] decoration
             tagClickPlugin, // Phase 6 / Plan 06-10 — clickable tag values in frontmatter (D-08)
@@ -330,6 +337,13 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
               if (cbRef.current.onH1Change) {
                 const m = doc.match(/^# (.+)$/m);
                 cbRef.current.onH1Change(m ? m[1].trim() : null);
+              }
+              // D-03: immediate flush on checkbox toggle — bypass 2s autosave debounce
+              const isToggle = u.transactions.some(
+                (tr) => tr.annotation(CheckboxToggleAnnotation),
+              );
+              if (isToggle) {
+                cbRef.current.onSaveRequested?.();
               }
             }),
           ],
