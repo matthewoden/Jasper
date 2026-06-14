@@ -31,6 +31,7 @@ declare global {
         __jasperMockEditorSave?: () => void;
         __jasperMockEditorFocusEnd?: ReturnType<typeof vi.fn>;
         __jasperMockEditorBlur?: () => void;
+        __jasperMockEditorToggle?: (doc: string) => void;
     }
 }
 
@@ -92,9 +93,15 @@ vi.mock("./MarkdownEditor", async () => {
             window.__jasperMockEditorBlur = () => {
                 propsRef.current.onBlur?.();
             };
+            window.__jasperMockEditorToggle = (doc: string) => {
+                setValue(doc);
+                propsRef.current.onChange?.(doc);
+                propsRef.current.onSaveRequested?.();
+            };
             return () => {
                 delete window.__jasperMockEditorSave;
                 delete window.__jasperMockEditorBlur;
+                delete window.__jasperMockEditorToggle;
             };
         }, []);
 
@@ -2249,6 +2256,88 @@ describe("<EditorPane /> — BUG-03: handleEditorBlur no-op when userHasEdited i
     });
 });
 
+
+describe("<EditorPane /> — Phase 12 D-03 checkbox toggle immediate flush", () => {
+    it("CHK-01 toggle → exactly one immediate save; debounce timer does not fire a second save", async () => {
+        getNoteMock.mockResolvedValue(okGet("- [ ] task"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("- [ ] task"));
+
+        await act(async () => {
+            window.__jasperMockEditorToggle?.("- [x] task");
+            await Promise.resolve();
+        });
+
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "- [x] task");
+
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
+        });
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("CHK-01 typing → debounce only; onSaveRequested NOT called synchronously", async () => {
+        getNoteMock.mockResolvedValue(okGet("- [ ] task"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("- [ ] task"));
+
+        fireEvent.change(editor, { target: { value: "- [ ] task edited" } });
+
+        await flushMicrotasks();
+        expect(updateNoteMock).not.toHaveBeenCalled();
+
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+        });
+        await flushMicrotasks();
+
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "- [ ] task edited");
+    });
+
+    it("CHK-01 multiple toggles in sequence each produce exactly one save", async () => {
+        getNoteMock.mockResolvedValue(okGet("- [ ] task\n- [ ] task2"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("- [ ] task\n- [ ] task2"));
+
+        await act(async () => {
+            window.__jasperMockEditorToggle?.("- [x] task\n- [ ] task2");
+            await Promise.resolve();
+        });
+        await flushMicrotasks();
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "- [x] task\n- [ ] task2");
+
+        await act(async () => {
+            window.__jasperMockEditorToggle?.("- [x] task\n- [x] task2");
+            await Promise.resolve();
+        });
+        await flushMicrotasks();
+        expect(updateNoteMock).toHaveBeenCalledTimes(2);
+        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "- [x] task\n- [x] task2");
+
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
+        });
+        expect(updateNoteMock).toHaveBeenCalledTimes(2);
+    });
+});
 
 describe("EP-keepalive-session — keepalive PUT carries X-Session-ID (UAT-2 N8)", () => {
     it("visibilitychange keepalive PUT includes X-Session-ID header", async () => {
