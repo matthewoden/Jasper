@@ -175,6 +175,49 @@ export const jasperEditorTheme = EditorView.theme(
       textDecorationStyle: "dotted",
       textUnderlineOffset: "2px",
     },
+    // Phase 12 / Plan 01 — CHK-01..04 checkbox widget CSS (12-UI-SPEC.md § "CSS Classes Added to themeBridge.ts")
+    ".cm-task-checkbox": {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      boxSizing: "border-box",
+      width: "0.85em",
+      height: "0.85em",
+      padding: "0",
+      margin: "0 4px 0 0",
+      verticalAlign: "-0.1em",
+      borderRadius: "3px",
+      cursor: "pointer",
+      userSelect: "none",
+      appearance: "none",
+      flexShrink: "0",
+    },
+    ".cm-task-checkbox[aria-checked='false']": {
+      border: "1.5px solid var(--color-border)",
+      background: "transparent",
+    },
+    ".cm-task-checkbox[aria-checked='true']": {
+      border: "none",
+      background: "var(--color-accent)",
+    },
+    ".cm-task-checkbox[aria-checked='false']:hover": {
+      outline: "2px solid color-mix(in srgb, var(--color-accent) 25%, transparent)",
+      outlineOffset: "1px",
+    },
+    ".cm-task-checkbox[aria-checked='true']:hover": {
+      filter: "brightness(1.1)",
+    },
+    ".cm-task-checkbox:focus-visible": {
+      outline: "2px solid var(--color-accent)",
+      outlineOffset: "2px",
+    },
+    // Phase 12 / Plan 01 — CHK-02 struck task text (Decoration.mark on text range only)
+    ".cm-task-text-checked": {
+      textDecoration: "line-through",
+      textDecorationColor: "var(--color-muted)",
+      textDecorationThickness: "1px",
+      color: "var(--color-muted)",
+    },
   },
   { dark: false }
 );
