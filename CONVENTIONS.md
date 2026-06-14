@@ -81,6 +81,17 @@ Project-level process rules. Source of truth for the `## Conventions` block in C
 - Pre-commit hooks (`gen-check` + `golangci-lint` + `eslint`) MUST pass on every commit. No `--no-verify` unless explicitly authorized for the specific commit.
 - Pre-existing test failures are tracked in `deferred-items.md`. New failures are blockers.
 
+## Comment policy: thin, why-not-what, no planning refs (2026-06-14)
+
+Applies to **code comments** (`//`, `#`, `/* */`, JSDoc). Process/planning docs under `.planning/` and this file may cite plans freely — that rule is about source.
+
+- **Comment *why*, never *what*.** The code already says what it does. A comment restating it (`// loop over notes`, `// set the addr flag`) is noise that drifts out of sync. Delete on sight.
+- **Only non-obvious decisions earn a comment.** A surprising constraint, a workaround for an upstream bug, a deliberate deviation from the obvious approach, an ordering that matters for a subtle reason. If a competent reader would not ask "why is this like this?", no comment.
+- **No planning-artifact references in code.** Strip `Phase N`, `Plan NN-NN`, `D-NN`, `ADR-NNN`, `R4-15`, `#issue`, and "see SUMMARY.md" from comments. They rot the moment the plan is archived and mean nothing to someone reading the code cold. Keep the *reason* if it is still load-bearing; drop the citation. (Counter-example done right — `.air.toml`: `# --vault requires an absolute path, hence $PWD` states the live constraint, names no plan.)
+- **Thin everywhere.** Prefer a clear name or a small refactor over a comment. When a comment is warranted, one line beats a paragraph.
+- **Stale comment = bug.** A comment that no longer matches the code is worse than none — fix or delete it the moment you notice, same as a flaky test.
+- **Functional/directive comments are exempt.** Anything the toolchain reads — `//go:generate`, `//go:embed`, `//go:build`/build tags, `// nolint`, `// eslint-disable*`, `// @ts-expect-error`, `// prettier-ignore`, codegen banners (`// Code generated ... DO NOT EDIT.`) — is code, not prose. Leave it.
+
 ## Flaky tests are bugs (2026-06-05)
 
 **A test that fails non-deterministically is a defect — either in the test or in the code under test — and must be fixed, not retried, quarantined, or skipped.**

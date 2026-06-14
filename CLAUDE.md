@@ -1,4 +1,5 @@
 <!-- GSD:project-start source:PROJECT.md -->
+
 ## Project
 
 **Jasper**
@@ -19,289 +20,509 @@ If everything else about Jasper fails, this must work: open the browser, write n
 - **Data integrity**: All writes atomic; never truncate before confirming write success. Filesystem is source of truth, SQLite is derived. **Why**: Migration resilience and "wiping SQLite is never data loss" depend on this property.
 - **Offline**: App fully functional offline once loaded; no CDN dependencies at runtime. **Why**: Self-hosted ethos; user's machine, user's data, user's network.
 - **Pace**: Weekend cadence — phases sized for sittable chunks. **Why**: Owner's available time.
+
 <!-- GSD:project-end -->
 
-<!-- GSD:stack-start source:research/STACK.md -->
+<!-- GSD:stack-start source:codebase/STACK.md -->
+
 ## Technology Stack
 
-## Recommended Stack
-### Backend Core (Go)
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| **Go** | **1.23 or 1.24** (1.22+ minimum) | Backend language | Single static binary, strong file I/O + SQLite story, Go 1.22 added pattern-based routing to `net/http` that obviates a lot of router need. 1.23/1.24 are the actively-supported releases. **HIGH** |
-| **`github.com/go-chi/chi/v5`** | **v5.2.5** (Feb 2025) | HTTP router | Composable middleware chains, route grouping (`r.Route("/api/v1", ...)`), `chi/middleware` package (Logger, Recoverer, RealIP, Compress, Timeout, RequestID) saves writing them. Internally uses Go 1.22's tree-based mux. ~Zero deps. Best fit for the ~20-route API in DESIGN.md §5.1. **HIGH** |
-| **`modernc.org/sqlite`** | **v1.50.x** (latest as of Apr 2026; track latest) | SQLite driver | Pure-Go transpiled port of SQLite — no CGo, single static binary on every target. Compiled with FTS5, JSON1, RTree extensions enabled — exactly what `DESIGN.md §9` needs for FTS search. Locked by PROJECT constraint. **HIGH** |
-| **`github.com/coder/websocket`** | **v1.8.14** (Sep 2024) | WebSocket | The official continuation of `nhooyr.io/websocket` — that import path is **deprecated** as of Aug 2024 (Coder org adopted maintenance). Tiny, idiomatic, context-first, zero deps, works directly with `net/http` upgrade. Significantly simpler API than gorilla. **HIGH** |
-| **`github.com/oapi-codegen/oapi-codegen/v2`** | **v2.7.0** (May 2025) | OpenAPI → Go server stubs | Locked by PROJECT key decision. Generates `chi-server` + `strict-server` interfaces — handlers implement a typed interface, compiler enforces all routes are covered. v2.2.0+ supports a pure Go 1.22+ `net/http` server target as well, but `chi-server` matches our router choice. **HIGH** |
-| **`github.com/yuin/goldmark`** | **v1.8.2** (Mar 2025) | Markdown parser (server-side) | Server-side parser for backlink + tag extraction. CommonMark-compliant, AST is walkable, extensible. Used by Hugo and many others; the canonical Go markdown parser. **HIGH** |
-| **`go.abhg.dev/goldmark/frontmatter`** | latest (active) | YAML/TOML frontmatter | Goldmark extension that parses the `---` block at file head. Direct fit for `DESIGN.md §7` (tags in YAML frontmatter). Returns the parsed map; the renderer skips it. **HIGH** |
-| **`go.abhg.dev/goldmark/wikilink`** | latest (active) | `[[wiki-link]]` parsing | Goldmark extension for `[[Title]]` and `[[Title\|Alias]]`. Provides a custom `Resolver` interface — exactly the hook needed for the same-folder-then-alphabetical resolution rule from PROJECT key decisions. **HIGH** |
-| **`github.com/golang-migrate/migrate/v4`** | **v4.19.1** (Nov 2025) | Migration runner | With `source/iofs` driver, embeds `migrations/*.sql` via `go:embed` directly into the Go binary — exactly what DESIGN.md §4.2 specifies. Deterministic version table (`schema_migrations`), well-supported, mature. **HIGH** |
-| **`github.com/kardianos/service`** | **v1.2.x** (active; commits through 2025) | OS-service installer | Cross-platform service registration: macOS launchd plists, systemd units, Windows services, SysV/Upstart/OpenRC. Single API across platforms. Lets us ship `jasper install` / `jasper uninstall` / `jasper start` / `jasper stop` subcommands without per-OS code paths. **MEDIUM-HIGH** (fork `k0sproject/kardianos-service` exists with more frequent releases; default to upstream). |
-### Frontend Core (Web)
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| **TypeScript** | **5.9.x** (5.8 LTS-ish acceptable) | Frontend language | TS 5.8 GA Feb 2025; 5.9 is the current `latest` on npm. Avoid the not-yet-released TS 7 (Strada/Corsa transition; first beta). Stick to 5.x for stability through v1. **HIGH** |
-| **React** | **19.2.x** | UI framework | React 19 stable since Dec 2024; 19.2 (Oct 2025) is current minor. Concurrent features, Actions, ref-as-prop are all stable. Single-user app — no SSR needed; CSR/SPA only. **HIGH** |
-| **Vite** | **8.0.x** (or 7.3 LTS-ish) | Build tool / dev server | Vite 8 GA in Dec 2025 ships Rolldown (Rust bundler) by default — much faster builds. Vite 7.3 still receives security/important fixes if you want a longer-baked tree. Either is correct; new project → 8. Vite outputs static `dist/` that the Go binary embeds via `go:embed`. **HIGH** |
-| **`@vitejs/plugin-react`** | latest (matches Vite 8) | React Fast Refresh | Standard plugin; nothing to think about. **HIGH** |
-| **CodeMirror 6** (`codemirror` meta-package or à-la-carte `@codemirror/*`) | meta v6.0.x; modules tracked individually | Markdown editor | Locked by PROJECT decision. The editor that Obsidian itself uses for Live Preview. Decoration API (`Decoration.mark`, `Decoration.replace`, `Decoration.widget`, `MatchDecorator`, `ViewPlugin`) is the right primitive for "render headings/bold/italic/blockquotes inline as you type." Modular — pull only the packages you use. **HIGH** |
-| **`@codemirror/lang-markdown`** | **v6.5.0** | Markdown grammar/parser for CM6 | GFM + emoji + smart Enter (continues lists/blockquotes), Backspace deletes markup. Provides the syntax-tree foundation our decoration plugin walks for live rendering. **HIGH** |
-| **`@codemirror/state`** | v6.x | Editor state primitives | Required for any custom CM6 extension. **HIGH** |
-| **`@codemirror/view`** | v6.x | DOM/decoration layer | Where `ViewPlugin`, `Decoration`, `WidgetType`, `MatchDecorator` live. Core of the live-render extension. **HIGH** |
-| **`@codemirror/commands`** | v6.x | Standard keymaps | History, default keys. **HIGH** |
-| **`@codemirror/search`** | v6.x | Find/replace within editor | Optional but cheap. **MEDIUM** |
-| **`@lezer/markdown`** | latest | Underlying parser used by lang-markdown | Walked by decoration plugin to know "this range is a heading," "this range is bold," etc. **HIGH** |
-| **`react-arborist`** | **v3.5.0** (Apr 2026) | File-tree sidebar | Virtualized (handles 1000+ nodes — DESIGN.md §13 NFR), built-in drag-and-drop with the kind of indent/drop-line UX a file tree needs, inline rename, keyboard nav, multi-select. The "VS Code sidebar" component for React. Actively maintained (3.5.0 only weeks old). Saves writing a custom tree (~weeks). **HIGH** |
-| **`openapi-typescript`** | **v7.x** (latest, Feb 2026) | Generates TS types from OpenAPI | Reads `api/openapi.yaml` at build time, emits a single `paths.d.ts` of the entire API surface. Zero runtime cost. **HIGH** |
-| **`openapi-fetch`** | **v0.17.0** (Feb 2026) | Typed fetch client | ~6kB; thin typed wrapper over native `fetch`. `client.GET("/notes/{id}", { params: { path: { id }}})` with full inference of body / response / errors. Pairs natively with the types `openapi-typescript` emits. No hand-written client code. **HIGH** |
-### Supporting Libraries
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| `github.com/google/uuid` | latest v1.x | UUID generation for note IDs | Per `DESIGN.md §4.3` — UUIDs for note PKs to survive renames. Stdlib has no UUIDs. **HIGH** |
-| `github.com/rs/zerolog` *or* `log/slog` (stdlib) | — | Structured logging | Prefer **`log/slog`** (stdlib, since Go 1.21) — zero-dep, structured, perfectly adequate for a single-user app. Use `samber/slog-chi` if you want chi-aware HTTP request logging out of the box. **HIGH** |
-| `github.com/spf13/cobra` | v1.x | CLI subcommands (`jasper install`, `start`, `stop`, etc.) | The native-install story needs a CLI surface around the server binary; cobra is the canonical choice and integrates cleanly with `kardianos/service`. **MEDIUM-HIGH** |
-| `github.com/spf13/viper` *or* stdlib `encoding/json` | — | Config loading | For a *single* JSON config file (`config.json`), **stdlib `encoding/json` is sufficient** — viper is overkill. Add only if env-var overrides become necessary. **HIGH** |
-| `github.com/fsnotify/fsnotify` | v1.x | Optional config-file watcher | DESIGN.md §11 mentions "reload config without restart." Tiny dep, cross-platform. **MEDIUM** |
-| `react-hotkeys-hook` *or* CodeMirror keymaps | — | Global keyboard shortcuts | Most editor shortcuts go through CM6's keymap; only top-level shortcuts (Cmd-K palette, etc.) need a hook. **MEDIUM** |
-| `zustand` | v5.x | Lightweight client state | Tabs/sidebar/active-note state. Avoid Redux — overkill. Avoid TanStack Query for this app — WebSocket is the cache invalidation mechanism, not stale-while-revalidate. Zustand stores + manual invalidation on WS events is the cleanest fit. **MEDIUM-HIGH** |
-| `@radix-ui/react-*` (primitives) | latest | Accessible headless UI | Per DESIGN.md §12 "Headless (Radix, shadcn) preferred; avoid heavy opinionated UI kits." Use individual primitives (Dialog, ContextMenu, DropdownMenu, Tooltip) — NOT a full kit. **HIGH** |
-| `tailwindcss` | v4.x | Styling | Optional; if used, Tailwind 4 + Vite plugin. Could also do CSS Modules. Implementer's call — do not pull in a heavy theme library. **MEDIUM** |
-| `js-yaml` | v4.x | Frontmatter parsing on the *frontend* | Only needed if the editor renders the frontmatter as a tag-chip UI (DESIGN.md §7); otherwise unused. **LOW** (defer; backend already parses frontmatter authoritatively). |
-| `date-fns` | v3+ | Date formatting for daily notes | Tiny, tree-shakeable. Avoid Moment. **MEDIUM** |
-| `vitest` | v2.x | Frontend tests | Vite-native; replaces Jest. **HIGH** |
-| `@testing-library/react` | latest | Component tests | Standard. **HIGH** |
-| `@playwright/test` | latest | E2E tests | Optional for v1; the install story (launchd/systemd) cries out for at least one smoke E2E. **MEDIUM** |
-### Development Tools
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| `oapi-codegen` (v2.7.0) | Backend codegen | Run via `go:generate` directive at top of `internal/api/api.go`: `//go:generate oapi-codegen --config=cfg.yaml ../../api/openapi.yaml`. Config selects `chi-server,strict-server,types`. |
-| `openapi-typescript` (v7) | Frontend codegen | Add an `npm run gen:api` script: `openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts`. Wire it into `prebuild` and into a watch in dev. |
-| `golangci-lint` | Go linting | v1.62+; keep config minimal, enable `errcheck`, `govet`, `staticcheck`, `revive`. |
-| `gofumpt` | Stricter `gofmt` | Editor-on-save; zero config. |
-| `prettier` + `eslint` (flat config) + `typescript-eslint` | Frontend formatting/linting | Standard 2026 setup. |
-| `air` *or* `wgo` | Go hot-reload during dev | Dev quality-of-life only; not in production. |
-| `make` *or* `just` | Task runner | Wire `make gen` to run both codegens, `make dev` to start backend + Vite, `make build` for the production binary. |
-| GitHub Actions | CI | Build + test on macOS, Linux, Windows. Keep it simple; this is a self-host project, not a SaaS. |
-## Installation
-### Backend (`backend/go.mod`)
-### Frontend (`frontend/package.json`)
-# Scaffold
-# Pin
-# Editor
-# Tree
-# API
-# UI primitives + state + utils
-# Dev tooling
-## Native Install Tooling (macOS launchd + WSL2 systemd)
-### macOS — launchd LaunchAgent (per-user, no sudo)
-- Plist lives at `~/Library/LaunchAgents/com.jasper.server.plist`.
-- This is the **LaunchAgent** path (not LaunchDaemon) — no admin privileges, runs at login as the user.
-- Key plist fields:
-- Loaded with `launchctl bootstrap gui/$(id -u) <plist>`; unload with `launchctl bootout`. (`launchctl load/unload` is the legacy form — bootstrap/bootout is the modern equivalent on macOS 10.10+.)
-- `kardianos/service` generates this plist for you and exposes `service.Install()` / `service.Uninstall()` / `service.Start()` / `service.Stop()` — wire each to a `jasper install` subcommand.
-### WSL2 — systemd user unit
-- WSL2 systemd support is opt-in via `/etc/wsl.conf` → `[boot]\nsystemd=true`. **Document this prereq prominently in install docs** — coworkers will hit it.
-- Unit at `~/.config/systemd/user/jasper.service`:
-- Enable lingering (`loginctl enable-linger $USER`) so the service runs even when no shell is open.
-- `systemctl --user enable --now jasper.service`
-- `kardianos/service` generates this unit too — same install command path as macOS.
-### What `kardianos/service` does NOT do
-- It does not handle the `loginctl enable-linger` step on systemd, nor the `wsl.conf` step. Both must be in install docs / a `jasper doctor` subcommand.
-- It does not handle a "first-run config wizard" — that's app-level.
-## Markdown Editor Approach (CodeMirror 6 live render)
-- HyperMD (CM5; conceptual reference for the pattern)
-- Obsidian's open Live Preview write-ups (forum posts, blog post)
-- `obsidian-codemirror-options` plugin source (CM6-era, demonstrates the decoration patterns)
-## Alternatives Considered
-| Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|-------------------------|
-| `chi/v5` | stdlib `net/http` (Go 1.22+ ServeMux) | If you want zero non-stdlib router deps and are willing to write your own middleware chaining. Perfectly viable. We pick chi for the middleware ergonomics and route grouping at our route count. |
-| `coder/websocket` | `gorilla/websocket` | Gorilla is fine and very widely used; coder's API is more idiomatic and modern. Gorilla wins if you specifically need its compression/extension hooks. |
-| `coder/websocket` | `nhooyr.io/websocket` | **Avoid** — that import path is deprecated since Aug 2024. Coder fork is the official continuation. |
-| `react-arborist` | Custom tree | If react-arborist's drag-and-drop UX doesn't match the desired feel exactly. But react-arborist's DnD is well-tuned for file trees specifically. |
-| `react-arborist` | `@dnd-kit/*` + custom virtualization | Lower-level building blocks; more work. Use only if react-arborist becomes a constraint. |
-| `react-arborist` | `react-complex-tree` | Stronger a11y story; weaker DX/styling. Acceptable alternative if a11y becomes a sharp requirement. |
-| `oapi-codegen` | `ogen` | Stricter, generates more code, steeper learning curve. PROJECT decision picked oapi-codegen for its simplicity. |
-| `openapi-fetch` + `openapi-typescript` | `@hey-api/openapi-ts` | hey-api generates a fuller SDK (services, models). Heavier than openapi-fetch's "just a typed fetch wrapper." Choose openapi-fetch for minimum runtime cost. |
-| Custom migration runner | `golang-migrate` (with non-CGo SQLite driver) | If you want a battle-tested runner and don't mind the CGo question for migrations specifically. Both are listed in DESIGN.md §2 as acceptable. Custom is recommended here because the three-path resilience strategy (§4.4) is easier to implement when you own the runner. |
-| Custom migration runner | `pressly/goose` | Goose has a slightly nicer embed story than golang-migrate. Acceptable if you want a third-party runner without CGo confusion. |
-| `kardianos/service` | Hand-written launchd plist + systemd unit templates | More transparent; no library dependency. Acceptable trade-off for ~150 lines of OS-specific code. We default to kardianos for the cross-platform install symmetry. |
-| CodeMirror 6 | ProseMirror (e.g. via Milkdown / TipTap) | True WYSIWYG (model is the rendered tree, not text). Heavier; less "markdown-first" — converts to/from markdown. Use only if "edit raw markdown" is rejected as a model. PROJECT explicitly recommends CM6. |
-| CodeMirror 6 | Lexical (Meta) | Newer; smaller ecosystem; not markdown-native. Strong React story. Skip for v1 — CM6 has more "markdown editor" prior art. |
-| CodeMirror 6 | Monaco | Designed for code editing; heavier; weaker for prose; weak markdown decoration story. **Avoid** for a notes app. |
-## What NOT to Use
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| **`mattn/go-sqlite3`** | Requires CGo + a C toolchain in any build environment, breaks the "single static binary on every target" promise, complicates cross-compilation badly. PROJECT explicitly excludes this. | `modernc.org/sqlite` |
-| **`nhooyr.io/websocket`** | Deprecated import path since Aug 2024 — repo handed off to Coder org. New code shipping under that path is just confusing. | `github.com/coder/websocket` |
-| **Monaco Editor** | Optimized for code; heavyweight (multi-MB); weak markdown live-render story; designed around discrete editor instances, not prose. Heavy bundle hit. | CodeMirror 6 |
-| **react-beautiful-dnd** | Officially deprecated by Atlassian. No React 18+/19 support guarantee. | `react-arborist` (built-in DnD) or `@dnd-kit/*` |
-| **react-dnd** | React 19 support is iffy; older API; worse DX than dnd-kit. | `react-arborist` (which uses its own DnD layer) |
-| **TipTap / Lexical / Slate / ProseMirror-based WYSIWYG (Milkdown, etc.)** | They model the doc, not the markdown text — you constantly serialize/deserialize and risk drift. The PROJECT spec says "edit raw markdown" — using a true-WYSIWYG model fights that. They also bring a *plugin/extension* runtime which is the opposite of Jasper's no-plugin posture. | CodeMirror 6 with custom decoration plugin |
-| **Editor frameworks that load remote/community plugins at runtime** (Obsidian-style plugin runtime, any sandboxed JS execution surface) | Directly violates the founding security constraint of Jasper. The whole reason this product exists. | No editor extension runtime — all UI behavior is shipped in the static frontend bundle |
-| **Server-side note rendering to HTML for the editor** | The editor is the renderer. Server only renders for export (out of scope v1) and for parsing backlinks/tags. | Goldmark on the server *only* for parsing (AST walking), CM6 on the client for rendering |
-| **`gorilla/mux`** | Larger router with regex routes; obviated by Go 1.22 mux + chi. The Gorilla project went into maintenance mode in 2022 (then revived, but momentum is gone). | `chi/v5` or stdlib `net/http` |
-| **`gorm`** for SQLite | Heavyweight ORM, complicates the FTS5 + raw-SQL story, hides the schema. We control SQL ourselves. | `database/sql` + maybe `sqlc` (typed query gen) |
-| **Docker as the install path for v1** | PROJECT pivoted explicitly to native install. Docker may live as a *secondary* artifact later, but the v1 install story is launchd + systemd. | `kardianos/service` + `jasper install` subcommand |
-| **`webpack`, `parcel`, `create-react-app`** | CRA is dead (officially deprecated). Webpack/Parcel are slower than Vite for SPAs. | Vite 8 |
-| **Heavy UI kits (MUI, Chakra, Mantine, Ant Design)** | DESIGN.md §12 explicitly says "avoid heavy opinionated UI kits." Bundle bloat. | Radix primitives + your own CSS / Tailwind |
-| **Redux / Redux Toolkit** | Overkill for a single-user single-page app where WebSocket is the cache invalidator. | Zustand |
-| **TanStack Query as the primary data layer** | Designed for stale-while-revalidate over HTTP; conflicts with WebSocket-as-truth-source model in DESIGN.md §6.1. Adds complexity. | Direct `openapi-fetch` calls + Zustand store + WS event handlers |
-| **Moment.js** | Frozen / legacy; huge. | `date-fns` |
-| **CodeMirror 5** | Superseded; CM6 has fundamentally better extension model and a real React story. | CodeMirror 6 |
-## Stack Patterns by Variant
-- Out of v1 scope per PROJECT, but `kardianos/service` *does* support Windows services natively, so the runtime path is there. The only gap is "how do they run a Go binary on Windows" — same `jasper.exe install` story.
-- Move from query-time content tokenization to a dedicated FTS5 virtual table populated on save. `modernc.org/sqlite` ships FTS5 compiled in.
-- Drop down to `@dnd-kit/core` + `@dnd-kit/sortable` + your own virtualization (e.g. `@tanstack/react-virtual`). More work but full control.
-- Phase 2 fallback: render markdown source with **only** mark decorations (bold/italic/code) and line-level styling for headings/blockquotes — skip the "hide syntax markers" effect for v1. Still feels much better than plain monospace; lower risk.
-- Switch to `pressly/goose` (best embed story among 3rd-party runners); the three-path strategy is library-agnostic — restore-from-backup happens in your wrapper, not the runner.
-## Version Compatibility
-| Package A | Compatible With | Notes |
-|-----------|-----------------|-------|
-| Go 1.23 / 1.24 | `chi/v5` ≥ v5.2.5 | chi v5.2.5 sets minimum Go to 1.22. |
-| Go 1.23 / 1.24 | `modernc.org/sqlite` ≥ v1.50 | Both stay current; check release notes when bumping Go. |
-| Go 1.23 / 1.24 | `coder/websocket` v1.8.14 | Tested through Go 1.24. |
-| `oapi-codegen/v2` v2.7 | `chi/v5` v5.2 | Generated `chi-server` interface targets the standard chi router signature. |
-| `react@19.2` | `react-arborist@3.5` | 3.5 supports React 18 and 19 (per recent releases). Verify when installing. |
-| `vite@8` | Node 22+ | Vite 8 requires Node 22.12+ (or 20.19+ on the LTS line). |
-| `openapi-typescript@7` | OpenAPI 3.0 *and* 3.1 | Per `DESIGN.md §3` we use OpenAPI 3.1 — supported. |
-| `golang-migrate/migrate/v4` `database/sqlite3` driver | **CGo required** | This is the gotcha — if using golang-migrate, prefer the community pure-Go SQLite source, or use a custom runner. Verified pitfall. |
-| CodeMirror 6 | React 19 via `@uiw/react-codemirror` *or* direct integration | The library is framework-agnostic; React wrapper exists but is optional. Direct integration via a small `useEffect`-based mount is cleaner for our deeply-customized editor. |
-## Sources
-### Context7 (HIGH confidence — authoritative library docs)
-- `/codemirror/view` — Decoration API, ViewPlugin, MatchDecorator, WidgetType (verified the live-render pattern is supported)
-- `/oapi-codegen/oapi-codegen` and `/oapi-codegen/oapi-codegen-exp` — codegen flags + chi-server target
-- `/openapi-ts/openapi-typescript` — generation patterns
-- `/go-chi/docs` — middleware + routing
-- `/coder/websocket` — confirmed as Coder-maintained continuation; idiomatic API
-- `/golang-migrate/migrate` — iofs source driver, embedded SQL
-- `/jameskerr/react-arborist` — virtualization, DnD, inline rename — 152 snippets
-- `/yuin/goldmark` — parser API
-- `/modernc-org/sqlite` and `/gitlab_cznic/sqlite` — pure-Go driver, vtable API
-- `/vitejs/vite` — versions v7.x and v8.x indexed
-- `/microsoft/typescript` — versions through 5.9 indexed
-### Official Docs (HIGH confidence)
-- https://github.com/oapi-codegen/oapi-codegen/releases — v2.7.0 confirmed (May 2025)
-- https://github.com/coder/websocket/releases — v1.8.14 confirmed (Sep 2024)
-- https://github.com/golang-migrate/migrate/releases — v4.19.1 confirmed (Nov 2025)
-- https://github.com/go-chi/chi/releases — v5.2.5 confirmed (Feb 2025)
-- https://github.com/yuin/goldmark/releases — v1.8.2 confirmed (Mar 2025)
-- https://vite.dev/releases — Vite 8.0.10 confirmed as current stable
-- https://react.dev/blog/2025/10/01/react-19-2 — React 19.2 stable
-- https://www.npmjs.com/package/openapi-fetch — v0.17.0 confirmed (Feb 2026)
-- https://www.npmjs.com/package/@codemirror/lang-markdown — v6.5.0 confirmed
-- https://learn.microsoft.com/en-us/windows/wsl/systemd — WSL2 systemd opt-in
-- https://www.launchd.info/ + Apple's LaunchAgents docs — plist structure, RunAtLoad/KeepAlive semantics
-- https://coder.com/blog/websocket — confirms nhooyr → coder transfer, August 2024
-- https://github.com/yuin/goldmark + https://pkg.go.dev/go.abhg.dev/goldmark/wikilink + https://pkg.go.dev/go.abhg.dev/goldmark/frontmatter — extension APIs
-### MEDIUM confidence
-- `kardianos/service` — actively used (1,431 importers per pkg.go.dev) but no recent tagged GitHub releases; commits continue. Acceptable risk for the install layer; falls back trivially to hand-written plist/unit templates if abandoned.
-- React-arborist React 19 support — recent v3.5.0 release (Apr 2026) plus 152 snippets in Context7 imply active alignment, but verify peerDeps at install time.
-- TypeScript 7 (Strada/Corsa rewrite) — beta-only as of Apr 2026; **stay on TS 5.x for v1**, do not chase TS 7 until well after its GA.
-### LOW confidence (call out before relying)
-- Exact "best" decoration strategy for "hide syntax markers when cursor is not on the line" — this is implementer territory; reference implementations (HyperMD, Obsidian Live Preview) exist but are different codebases. Budget exploration time.
-- Whether the kardianos/service plist defaults are exactly what we want for `KeepAlive` semantics on macOS user agents — verify by hand-inspecting the generated plist before shipping the install command to coworkers.
+## Languages
+
+- **Go** 1.25.0 - Backend language; single static binary compilation via pure-Go SQLite driver, no CGo
+- **TypeScript** 5.9.0 - Frontend language; transpiles to ES2022 with strict mode enabled
+- **React** 19.2.0 - UI framework; single-page app (SPA) only, no SSR
+- **SQL** (embedded in migrations) - Schema definitions for FTS5, tag indexes, MCP grants tables
+- **YAML/JSON** - Configuration files; frontmatter parsing in notes (YAML in markdown)
+- **Markdown** - User content; parsed server-side for backlinks/tags extraction, client-side for live rendering
+
+## Runtime
+
+- **Go 1.25.0** - Backend; requires no runtime dependencies (pure-Go SQLite)
+- **Node.js 22+** - Frontend build and test tooling only (not runtime); Vite dev server on :5173
+- **npm** (pnpm-compatible lockfile format) - Frontend
+- **go mod** - Backend
+- Lockfiles present: `frontend/package-lock.json`, `go.sum`
+
+## Frameworks
+
+- **chi/v5** v5.2.5 - HTTP router; composable middleware, route grouping (`r.Route("/api/v1", ...)`), includes Logger, Recoverer, RealIP, Compress, Timeout, RequestID middleware
+- **React** 19.2.0 - Component-based UI; CSR/SPA architecture
+- **Vite** 8.0.0 - Build tool and dev server; Rolldown (Rust bundler) enabled; emits static dist/ that Go binary embeds
+- **zustand** 5.0.12 - Lightweight client state for tabs, sidebar, active note; replaces Redux/TanStack Query
+- **CodeMirror 6** (v6.0.2+) - Markdown editor; modular packages:
+- **react-arborist** 3.5.0 - Virtualized file tree with drag-and-drop, inline rename, multi-select, keyboard nav
+- **Radix UI** (primitives) - Headless accessible components:
+- **Tailwind CSS** 4.0.0 - Utility-first styling (optional; configurable)
+- **lucide-react** 0.460.0 - Icon library
+- **@tanstack/react-virtual** 3.13.24 - Virtualization primitives (used alongside react-arborist)
+- **coder/websocket** 1.8.14 - Server: context-first, zero deps, direct net/http upgrade; Client: mock-socket 9.3.1 for tests
+- **oapi-codegen/v2** 2.7.0 - Backend codegen (generates `chi-server` + `strict-server` interfaces)
+- **openapi-typescript** 7.4.0 - Frontend codegen (emits single `paths.d.ts`)
+- **openapi-fetch** 0.17.0 - Frontend HTTP client (~6kB); thin wrapper over native fetch with type inference
+- **goldmark** 1.8.2 - Server-side markdown parser (CommonMark-compliant, AST-walkable)
+- **go.abhg.dev/goldmark/frontmatter** 0.3.0 - YAML frontmatter parsing (`---` blocks)
+- **go.abhg.dev/goldmark/wikilink** 0.6.0 - `[[wiki-link]]` parsing with custom resolver
+- **modernc.org/sqlite** 1.50.0 - Pure-Go SQLite driver (no CGo); compiled with FTS5, JSON1, RTree extensions
+- **golang-migrate/migrate/v4** (via custom wrapper, not direct) - Embedded SQL migrations via `//go:embed`; migrations are checked in as `.sql` files in `backend/migrations/`
+- **vitest** 2.1.0 - Frontend unit tests; Vite-native, jsdom environment
+- **@testing-library/react** 16.0.0 - Component testing utilities
+- **@playwright/test** 1.59.1 - E2E tests; spins up live binaries per test
+- **Go `testing`** (stdlib) - Backend unit/integration tests via `go test ./...`
+- **spf13/cobra** 1.10.1 - CLI subcommands (`serve`, `install`, `uninstall`, `status`, `doctor`)
+- **kardianos/service** 1.2.4 - Cross-platform OS service registration (launchd plist on macOS, systemd unit on WSL2)
+- **modelcontextprotocol/go-sdk** 1.6.0 - Official MCP SDK; embedded as second HTTP listener on port 6684; provides 6 tools (read: list_notes, read_note, search_notes, read_attachment; write: create_note, update_note, move_note, delete_note with ACL)
+- **google/uuid** 1.6.0 - UUID generation for note IDs
+- **fuzzysort** 3.1.0 - Fuzzy search in file tree
+- **dompurify** 3.4.2 - Sanitize HTML in rendered markdown
+- **date-fns** (not present; can be added) - Date formatting for daily notes (future use)
+- **js-yaml** (not present; can be added) - Frontmatter parsing on frontend (low priority; server already parses)
+- **log/slog** (stdlib Go 1.21+) - Structured logging (zero-dep); no external logging library
+- **@lezer/highlight** 1.2.3 - Code syntax highlighting in editor
+
+## Configuration
+
+- No `.env` file by default; all config lives in `~/.jasper/storage/config.json` (JSON structure)
+- Per-vault config at `<vault>/.jasper/config.json` (legacy format, being unified into storage)
+- Vault registry at `~/.jasper/app.json` (lists recent vaults, current vault, creation dates)
+- First-run wizard configures data directory, theme, daily notes, editor preferences, MCP opt-in
+- `frontend/vite.config.ts` - Vite config; reads canonical port from `scripts/port.sh` (resolves `~/.jasper/storage/config.json` or defaults to 6683)
+- `frontend/vitest.config.ts` - Vitest config; jsdom environment, excludes `e2e/` from unit test runs
+- `frontend/playwright.config.ts` - Playwright config; baseURL = canonical port; 1 worker (serial test execution); spawnJasper() allocates ephemeral ports per test
+- `frontend/tsconfig.json` - TypeScript config; ES2022 target, strict mode, module resolution bundler
+- `frontend/eslint.config.js` - ESLint flat config (v9+); extends @eslint/js + typescript-eslint + react-hooks + react-refresh
+- `backend/.golangci.yml` - golangci-lint config; enables errcheck, govet, staticcheck, revive; gofumpt formatter
+- `.air.toml` - Air (Go hot-reload) config; watches backend/, includes sql files, runs `go build -o ./tmp/jasper ./backend/cmd/jasper`
+- `api/openapi.yaml` - OpenAPI 3.1.0 spec; single source of truth for API surface; both oapi-codegen (backend) and openapi-typescript (frontend) consume this
+- `Makefile` - Task runner; targets: `gen` (both codegens), `gen-go`, `gen-ts`, `gen-check`, `build` (frontend + copy dist + backend go build), `test`, `lint`, `dev`, `perf-check`, `perf-vault`, `test-wsl-e2e`
+- `lefthook.yml` - Pre-commit hook runner (parallel); commands: gen-check, lint
+
+## Platform Requirements
+
+- macOS: native Go 1.25.0, Node 22+, make, [optional] air for hot-reload
+- WSL2 (Ubuntu/Debian): same as Linux below
+- Linux: Go 1.25.0, Node 22+, make
+- No Docker requirement for dev (Docker used only for fake-WSL E2E in CI)
+- **macOS**: Native Go binary + launchd plist at `~/Library/LaunchAgents/com.jasper.server.plist` (per-user agent, no sudo)
+- **WSL2**: Native Go binary + systemd unit at `~/.config/systemd/user/jasper.service` (requires `systemd=true` in `/etc/wsl.conf` + `loginctl enable-linger`); documented in install step
+- **Deployment model**: Single static Go binary (no dependencies); invoked as `jasper serve` via service manager
+- **Startup**: <5s for <5,000 notes (migrations + incremental re-index) per Phase NFRs
+
+## Key External Dependencies
+
+- **MCP Server** (optional, disabled by default): Exposes notes to Claude Desktop via Model Context Protocol; runs on port 6684 (loopback)
+- **OS file-manager reveal** (macOS + WSL2): `open` command (Finder), `explorer.exe /select` (Windows Explorer via WSL2 wslpath)
+- **Logging**: Daily-rotated logs to `<vault>/logs/jasper.log` (no external log aggregation)
+
+## Build & Embed Pipeline
+
+# Outputs: frontend/dist/ (index.html + assets/)
+
+# Copy frontend dist into Go binary source tree
+
+# Go binary embeds via //go:embed all:dist at compile time
+
+# Backend embeds SQL migrations at compile time
+
+# Files: backend/migrations/{001_initial.sql, 002_tags_backlinks.sql, 003_fts.sql, 004_mcp_grants.sql}
+
+## Development Tools
+
+| Tool | Version | Purpose |
+|------|---------|---------|
+| **go generate** | stdlib | Wires oapi-codegen via `//go:generate` directive in `backend/internal/api/api.go`; outputs `openapi_gen.go` |
+| **openapi-typescript** | v7.4.0 | Regenerates `frontend/src/api/schema.d.ts` from `api/openapi.yaml`; wired into `npm run build` |
+| **oapi-codegen** | v2.7.0 | Regenerates `backend/internal/api/openapi_gen.go`; wired into `go generate` |
+| **golangci-lint** | v1.62+ | Go linting; run via `make lint`; config: `.golangci.yml` |
+| **gofumpt** | (tool via go.mod) | Stricter gofmt; included in golangci-lint formatter section |
+| **air** | v1.62.0 (tool) | Go hot-reload during dev; config: `.air.toml`; run via `make dev` |
+| **concurrently** | 9.0.0 | Frontend package.json script; runs backend (air) + frontend (vite) in parallel for `make dev` |
+| **prettier** | (not installed; use eslint formatter) | Not used; eslint handles formatting via flat config |
+| **eslint** | 9.0.0 | Frontend linting + formatting; flat config in `frontend/eslint.config.js` |
+| **typescript** | 5.9.0 | Frontend: `npm run build` runs `tsc -b` before Vite |
+| **Vite** | 8.0.0 | Frontend build; outputs to `frontend/dist/` |
+| **Vitest** | 2.1.0 | Frontend unit tests; run via `npm test -- --run` or `npm test` (watch) |
+| **Playwright** | 1.59.1 | E2E tests; spins up binary per test; run via `npx playwright test` from `frontend/` |
+| **Make** | (system) | Task runner; Makefile at repo root |
+| **GitHub Actions** | (CI) | Build + test on macOS, Linux, Windows (Docker-based fake-WSL); kept simple for self-host project |
+
+## Version Compatibility Matrix
+
+| Constraint | Supported | Notes |
+|-----------|-----------|-------|
+| **Go 1.25.0** | chi/v5 ≥ 5.2.5, modernc.org/sqlite ≥ 1.50, coder/websocket 1.8.14 | All current; no conflicts |
+| **Node 22+** | Vite 8.0, npm 10.x, all frontend deps | Vite 8 requires 22.12+ or 20.19+ LTS |
+| **React 19.2** | react-arborist 3.5.0 | 3.5.0 supports React 18 and 19 per peerDeps |
+| **TypeScript 5.9** | @types/react 19.2, typescript-eslint 8.0 | No TS 7 (unstable beta); stay on 5.x for v1 |
+| **Vite 8.0** | @vitejs/plugin-react 6.0, vite 8.x | Rolldown bundler default; v7.3 still receives security fixes |
+| **CodeMirror 6** | React integration via useEffect mount (direct); no CM wrapper library | Framework-agnostic; custom integration in `EditorPane.tsx` |
+| **openapi-typescript 7** | OpenAPI 3.0 and 3.1 | api/openapi.yaml uses 3.1 (supported) |
+| **oapi-codegen v2.7** | chi/v5 v5.2+ | Generates chi-server interfaces; strict-server interface enforces all routes implemented |
+| **golangci-lint 1.62+** | Go 1.23+ | Keep config minimal; .golangci.yml specifies enabled linters only |
 <!-- GSD:stack-end -->
 
 <!-- GSD:conventions-start source:CONVENTIONS.md -->
+
 ## Conventions
 
-> Source: `CONVENTIONS.md`. See also `.planning/PHASE-TRANSITION-CHECKLIST.md` for the phase-boundary procedure and `.planning/RETROS/PHASE-07.md` for the originating retro that produced most of these rules.
+## Build & Embedding Pipeline
 
-### Build & embed pipeline
+## OpenAPI Contract & Code Generation
 
-- **Always use `make build` for any binary that will be tested or shipped.** The Makefile's `build` target performs `cp -R frontend/dist/. backend/internal/static/dist/` between `npm run build` and `go build`. Skipping that copy step bakes the previous frontend bundle into the binary via `//go:embed all:dist`, producing a stale UI in production. Plan 05.5-15 hit this and lost a full UAT walkthrough.
-- For any plan or task instruction that says `npm run build && go build`, treat it as a defect — replace with `make build`.
+- `api/openapi.yaml` — canonical specification (committed)
+- `backend/internal/api/openapi_gen.go` — generated (via `go generate`)
+- `frontend/src/api/schema.d.ts` — generated (via npm script)
+- **Backend:** `make gen-go` runs `cd backend && go generate ./...`, which invokes `//go:generate oapi-codegen --config=cfg.yaml ../../api/openapi.yaml` at the top of `backend/internal/api/gen.go`. Generates `openapi_gen.go` containing the `StrictServerInterface`, request/response types, and chi-server middleware.
+- **Frontend:** `make gen-ts` runs `cd frontend && npx openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts`, producing strict TypeScript types for every route's request/response shape.
+- `make gen-check` runs `make gen` then checks for drift: `git diff --exit-code -- backend/internal/api/openapi_gen.go frontend/src/api/schema.d.ts`. Blocks CI (`.github/workflows/...` or lefthook pre-commit) until the developer regenerates and commits both artifacts.
+- **When adding a route or changing request/response schemas:** update `api/openapi.yaml` first, run `make gen`, then commit both the spec and the generated code together. The two are locked in sync.
 
-### Verification policy: E2E before human UAT
+## Error Handling
 
-- **Every gap-closure plan that fixes a user-facing bug MUST include a Playwright E2E scenario that exercises the fix against `bin/jasper`** (live binary), not just a vitest unit test. The unit tests are not load-bearing for production-only regressions — Phase 5.5 had multiple bugs that passed 593 unit tests but failed in real browsers.
-- Land the E2E test BEFORE asking the user for human UAT on the affected scenario. The user's time is the most expensive thing in the loop.
-- E2E scenarios live in `frontend/e2e/phase{N}-uat.spec.ts`. Smoke run against `make build`, not `npm run build && go build`.
+- `notes.ErrCaseCollision` — case-insensitive path collision (mapped to 409 Conflict)
+- `notes.ErrNotFound` — note/folder does not exist (mapped to 404 Not Found)
+- `notes.ErrInvalidContent` — validation failure (mapped to 400 Bad Request)
+- `fsstore.ErrCycle` — move destination is inside source (mapped to 400)
+- `fsstore.ErrCaseCollision` — on-disk name collision (mapped to 409)
+- `fsstore.ErrParentNotFound` — target parent folder missing (mapped to 400)
+- `fsstore.ErrFolderNotEmpty` — non-recursive delete of non-empty dir (mapped to 409)
+- `fsstore.ErrPathEscape`, `ErrAbsolutePath`, `ErrEmptyPath`, `ErrNotInRoot` — path validation failures (mapped to 400)
 
-### Halt-if-inconclusive gate (gap-closure pattern)
+## Naming Patterns
 
-- Gap-closure plans that pair `investigate → fix` tasks should set `autonomous: true` with an explicit **HALT-IF-INCONCLUSIVE GATE** in the fix task's `<action>`: re-read the investigation file's `## Recommended Fix` section; if it does not name a single file:line + concrete change, STOP and surface for human triage rather than speculatively patching. Pattern shipped in Plans 05.5-14, 05.5-17, 07-31, 07-35.
+- **Files:** `foo_handler.go` (API handler), `foo_test.go` (colocated tests), `foo_service.go` (domain logic), `ports.go` (interface definitions)
+- **Functions:** PascalCase, unexported helpers start with lowercase (e.g., `mapServiceErrorToWire`)
+- **Types:** PascalCase for exported interfaces and structs (e.g., `FileStore`, `StrictServerInterface`)
+- **Sentinel errors:** `ErrCaseCollision`, `ErrNotFound`, `ErrCycle` — exported, all-caps with Err prefix
+- **Files:** `CamelCase.tsx` (React components, one per file), `camelCase.ts` (utilities), `foo.test.tsx` (colocated tests)
+- **Component exports:** Named exports (e.g., `export const MyComponent = () => { ... }`)
+- **Hooks:** `useHookName` (e.g., `useFileTree`, `useVaultPicker`)
+- **Module exports:** Prefer named exports; barrel files (`index.ts`) export a cohesive group (e.g., `export { useNotes, getNote } from "./notesApi"`)
+- **Files:** `phaseN-uat.spec.ts` (UAT scenarios), `phaseN-regression.spec.ts` (specific regressions)
+- **Test blocks:** Describe blocks tagged with `@tag` for selective runs (e.g., `@first-run`, `@reveal`, `@deep-link`)
 
-### Investigation-first for "behaves wrong" reports
+## Code Style & Formatting
 
-- For any UAT item phrased as "X doesn't work / shows wrong / behaves weird", **stand up the dev server (preview_start) or use `/gsd-debug` BEFORE writing the fix plan.** Backend behavior is cheap to verify (one HTTP probe); frontend behavior shows in `preview_logs` + `preview_console_logs`.
-- Plan 07-38 skipped this for N2 and burned a round shipping a "make it debuggable" patch instead of finding the real cause. The investigation can be inline (5-10 min, captured in the SUMMARY) or a dedicated `07-NN-INVESTIGATION.md` artifact.
-- Cost calibration: 15 min reproducing saves ~1 full plan-round of speculative work.
+- **Formatter:** `gofumpt` (stricter than `gofmt`, enforced via `.golangci.yml`)
+- **Linter:** `golangci-lint` with enabled rules: `errcheck`, `govet`, `staticcheck`, `revive` (`.golangci.yml`)
+- **Line length:** No hard limit; conventional Go readability norms apply
+- **Imports:** Grouped in order: stdlib, third-party, local (enforced by `goimports` if wired)
+- **Comments:** Thin and why-not-what — only non-obvious decisions earn a comment; no planning-doc references in code; functional/directive comments exempt. See CONVENTIONS.md § "Comment policy".
+- **Formatter:** (not explicitly wired; uses project-local Prettier if present, or none if not)
+- **Linter:** ESLint with flat config at `frontend/eslint.config.js`. Enables `typescript-eslint` rules, `react-hooks` plugin, `react-refresh` plugin. Ignores `dist/`, `node_modules/`, and the generated `src/api/schema.d.ts`.
+- **Line length:** Conventional (no hard limit; IDE wrap at 80–100 is normal)
+- **Imports:** Group by: React/external libraries, local components, utilities, types
 
-### AskUserQuestion before drafting for ambiguous UAT items
+## Commit Message Conventions
 
-- For any UAT item phrased without a direction ("alignment is off", "save indicator placement wrong"), **use AskUserQuestion BEFORE drafting the fix plan**, not after the fix lands. Phase 7 N5 + N9 each cost an extra plan-round because Claude made an interpretation rather than asking.
-- Cluster 2-4 ambiguities into one prompt; save the answers under a "User clarifications (AskUserQuestion)" section in the corresponding `phase-prefix-HUMAN-UAT-{N}.md`.
+- `feat(scope): description` — new feature
+- `fix(scope): description` — bug fix
+- `test(scope): description` — test additions or fixes
+- `docs(scope): description` — documentation
+- `chore(scope): description` — tooling, deps, cleanup
+- `refactor(scope): description` — code reorganization (no behavior change)
+- Phase scopes: `feat(phase-08)`, `fix(phase-07)`
+- Task scopes: `feat(08-17b)`, `test(08-22)`
+- Area scopes: `fix(notes-service)`, `test(tree-dnd)`
+- `feat(08-17b): /vault/* OpenAPI routes + handler implementations + tests`
+- `test(phase-08): close UAT-2 with hard-accept promotion`
+- `docs(08-22): complete tree row + ACL refresh plan`
 
-### Soft-accept vs hard-accept UAT discipline
+## Verification Policy: E2E Before Human UAT
 
-- A user's "accepted" in a same-day UAT walkthrough is a **soft-accept**.
-- A **hard-accept** requires the item to survive a 24-48h period of real use without being flagged in a subsequent UAT.
-- Plans that depend on a previous "accepted" item should note `soft-accept (UAT-N, YYYY-MM-DD)` in their `depends_on:` rationale. Phase 7 N10 was soft-accepted in UAT-3 and reversed in UAT-5 — the distinction would have surfaced that risk earlier.
-- Do not delete code that was reversed under a soft-accept — orphan it.
+## Gap-Closure Plan Pattern: Halt-If-Inconclusive Gate
 
-### Plan-vs-investigation consistency
+## Investigation-First for Behavioral Issues
 
-- When an investigation reaches a different conclusion than the plan's example code, **either amend the plan file or write investigation-first plans**. Plan 07-32a's example showed `/files/{path}` but the investigation chose `/files?path=` — the plan stayed stale and three downstream executors had to be briefed about the deviation each time.
-- Acceptable patterns: amend-the-plan (update `<interfaces>`/`<action>` after investigation, commit before dispatching GREEN), OR investigation-first plan (skip example code; link to investigation as single source of truth).
+## Ambiguity Resolution: AskUserQuestion Before Drafting
 
-### Orphaned code is a design signal
+## UAT Acceptance Discipline: Soft-Accept vs Hard-Accept
 
-- Before adding a new component or merging surfaces, **grep for components that already do the thing being asked for**. If they exist with no consumers, ask "why were these orphaned?" before re-deriving the original design.
-- Phase 7: `SearchInputBar.tsx` + `SearchResultsList.tsx` sat orphaned across 4 plans (07-18 → 07-39) before being remounted. If noticed earlier, Plans 07-33 + 07-38's merge-arc could have been skipped.
-- Useful greps: `grep -rL '<ComponentName' frontend/src/`, `git log --diff-filter=D -- '<file>'`.
+- Plans that depend on a previous "accepted" item should note `soft-accept (UAT-N, YYYY-MM-DD)` in their `depends_on:` rationale
+- Do NOT delete code that was reversed under a soft-accept — orphan it with a dated comment
+- Move reversed-decision code to a separate area (e.g., `frontend/src/components/orphaned/`) rather than deleting immediately
+- At the next phase's start, confirm if the reversal sticks; only then remove
 
-### Plan sizing: bundle vs split
+## Plan-vs-Investigation Consistency
 
-- **Bundle plans** (one plan, N sequenced tasks, one executor) for small, well-scoped fixes where each task is < 30 min and the failure surface is localized. Used successfully in Plans 07-36, 07-37.
-- **Split plans** (separate files, optionally separate executors) for anything with investigation, design ambiguity, or cross-cutting refactor. Bundles save planning overhead but increase resume complexity when an agent crashes mid-flight (Plan 07-38 hit a 500 mid-Task-1).
-- Rule of thumb: if any task in the bundle would benefit from its own `INVESTIGATION.md`, split it out.
+- Either amend the plan file (update `<interfaces>` / `<action>` after investigation, commit before dispatching GREEN)
+- Or write an investigation-first plan (skip example code; link to investigation as single source of truth)
 
-### Worktree vs in-main execution default
+## Orphaned Code as Design Signal
 
-- **Default to in-main (no worktree)** for sequential single-executor work. The cherry-pick overhead from worktree isolation exceeds the parallelism gain when ≤2 plans run concurrently. The "lost worktree merge" recovery commits document a recurring failure mode.
-- **Use worktree isolation** only when ≥3 plans run in parallel AND touch disjoint code surfaces, OR the work might destabilize main temporarily.
-- After worktree work completes, cherry-pick into main and run `go clean -cache && golangci-lint cache clean` to avoid stale-path lint errors from the abandoned worktree's source.
+## Plan Sizing: Bundle vs Split
 
-### Phase transitions
+- Each task is < 30 min
+- The failure surface is localized
+- No investigation or design ambiguity
+- Anything with investigation required
+- Design ambiguity across tasks
+- Cross-cutting refactor
+- Complex task chains with risk of mid-flight resumption
 
-- When closing a phase or starting the next, follow `.planning/PHASE-TRANSITION-CHECKLIST.md` (3 blocks: close current, audit drift, open next). Anti-patterns to avoid: closing on soft-accept, deleting orphaned code without a decision, carrying >5 pre-existing failures, skipping the retro.
+## Worktree vs In-Main Execution
 
-### Flaky tests are bugs (2026-06-05)
+- ≥3 plans run in parallel AND touch disjoint code surfaces
+- The work might destabilize main temporarily (e.g., large refactor)
+- Cherry-pick into main
+- Run `go clean -cache && golangci-lint cache clean` to avoid stale-path lint errors from the abandoned worktree's source
 
-- **A test that fails non-deterministically is a defect — fix it, do not retry, skip, or rationalise as "transient."** See `CONVENTIONS.md` § "Flaky tests are bugs" for the reproduction protocol, the HTTP-readiness probe pattern, and the running list of known instances awaiting fix. Originating incident: commit `491169d` (TCP-port TOCTOU in `pickFreePort` masquerading as "filesystem race / pre-existing").
+## Phase Transitions
+
+- Closing on soft-accepts (wait 24–48h for hard-accept first)
+- Deleting orphaned code without a decision (defer to next phase if unclear)
+- Carrying > 5 pre-existing failures forward (triage before opening next phase)
+- Skipping the retro (lessons feed into CONVENTIONS.md)
+
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
+
 ## Architecture
 
-Architecture not yet mapped. Follow existing patterns found in the codebase.
+## System Overview
+
+```text
+
+```
+
+## Component Responsibilities
+
+| Component | Responsibility | File |
+|-----------|----------------|------|
+| App | Composition root; chi router setup; handler registration | `backend/internal/app/app.go` |
+| Lifecycle | Startup sequence; vault resolution; migrations; incremental reindex | `backend/internal/app/lifecycle.go` |
+| VaultSwap | Orderly teardown/reopen of per-vault subsystems during hot-swap | `backend/internal/app/lifecycle_vault_swap.go` |
+| Service | Domain logic: Get, Create, Update, Delete, Move; file-FIRST save path | `backend/internal/notes/service.go` |
+| FileStore | Atomic write primitives; disk I/O contract | `backend/internal/fsstore/store.go` |
+| Index | SQLite-backed metadata index; FTS5 search; incremental reconcile | `backend/internal/index/indexer.go` |
+| Indexer Reconcile | Startup delta scan; walk filesystem, sync index | `backend/internal/index/reconcile.go` |
+| Migration Runner | Custom runner; 3-path resilience; backup-restore strategy | `backend/internal/db/migrate/runner.go` |
+| WebSocket Hub | Multi-client broadcast; origin-filtered events; slow-client drop | `backend/internal/wshub/hub.go` |
+| API Server | oapi-codegen strict-server; routes → service calls | `backend/internal/api/api.go` + generated handlers |
+| Vault Model | Current vault tracking; hot-swap state machine; app.json persistence | `backend/internal/vault/vault.go` |
+| MCP Server | Write-grant ACL; per-folder tool access; port 6684 | `backend/internal/mcp/server.go` |
+| Config Loader | Load/save .json; validation; environment override chain | `backend/internal/config/config.go` |
+| Markdown Parser | Goldmark + extensions (wikilink, frontmatter, FTS tokenizer) | `backend/internal/markdown/parser.go` |
+| SPA Root | App shell; state machines (reindex, vault-switch); global keymap | `frontend/src/App.tsx` |
+| Editor Pane | CodeMirror 6 instance; save state machine; conflict resolution | `frontend/src/components/EditorPane.tsx` |
+| File Tree | react-arborist virtualized tree; drag-drop; bidirectional H1↔filename | `frontend/src/components/FileTree.tsx` |
+| Live Preview | CodeMirror decoration plugin; AST walk; inline heading/emphasis render | `frontend/src/editor/livePreviewPlugin.ts` |
+| Session Sync | WebSocket connection; reconnect loop; event dispatch | `frontend/src/lib/useSessionSync.ts` |
+| Vault Picker | Folder browser; vault list; create/open/switch flows | `frontend/src/setup/VaultPicker.tsx` |
+| Vault Switcher | Hot-swap overlay; failsafe timer; window.location.reload | `frontend/src/lib/useVaultSwitch.ts` |
+| Tree Store | Zustand store; expanded folders, active note, pending rename | `frontend/src/lib/useTreeStore.ts` |
+| Command Palette | Cmd+P FTS search results; actions dispatcher | `frontend/src/components/CommandMenu.tsx` |
+
+## Pattern Overview
+
+- **Spec-first:** OpenAPI 3.1 (`api/openapi.yaml`) is the single source of truth; Go handler types and TS fetch types are generated from it (`oapi-codegen` v2.7, `openapi-typescript` v7).
+- **File-FIRST save path:** Every write goes `fsstore.WriteAtomic` (temp → fsync → rename → fsync parent) BEFORE `Index.Upsert` and BEFORE `wshub.Broadcast`. Filesystem is always recoverable; SQLite is regenerable via reconcile.
+- **Derived index resilience:** 3-path migration strategy with backup-first and two explicit recovery pathways. A corrupted SQLite can be wiped and reconstructed from the markdown files on disk without data loss (core PROJECT constraint).
+- **Loopback-only binding:** Both HTTP (port 6683) and MCP (port 6684) bind to 127.0.0.1 exclusively; enforced at startup via `internal/netbind.RequireLoopbackBind`.
+- **WebSocket as cache-invalidation source:** Multi-session sync via `wshub.Broadcast` with origin-session filtering (SYNC-03). No stale-while-revalidate; server truth is pushed to all connected clients (except sender).
+- **Bidirectional filename↔H1 binding:** Editing the first heading (H1) renames the file on disk; renaming the file updates the H1 in the content. Implemented via `notes.Rewriter` (walk AST, rewrite frontmatter + first H1).
+- **ADR-001 vault model:** App-level `~/.jasper/app.json` (current_vault, recent list) + per-vault `config.json` + `.jasper/` directory inside each vault. Hot-swap orchestrates ordered teardown (DB pair → indexer → MCP → logger) and reopen.
+
+## Layers
+
+- Purpose: Single-user daemon; subcommands for service install/uninstall/status/doctor.
+- Location: `backend/cmd/jasper/`
+- Contains: cobra root; subcommand implementations; launchd/systemd integration via `kardianos/service`.
+- Depends on: `internal/app`, `internal/vault`, `internal/config`, `internal/installer`.
+- Used by: User's shell; macOS launchd LaunchAgent; WSL2 systemd user unit.
+- Purpose: Wire concrete adapters (FileStore, Index, Hub, Service) into chi router; inject dependencies.
+- Location: `internal/app/app.go`
+- Contains: App struct; New() constructor; http.Handler setup; middleware chain (logger, recovery, static SPA fallback).
+- Depends on: chi, fsstore, index, notes.Service, wshub, api (generated), static.
+- Used by: `cmd/jasper/serve.go` (startup), lifecycle.Run (swap handler after migrations).
+- Purpose: Execute the 9-step boot sequence; migrations; incremental reindex; vault mode resolution (ADR-001).
+- Location: `internal/app/lifecycle.go` + vault-specific helpers (`lifecycle_vault.go`, `lifecycle_vault_swap.go`).
+- Contains: Run() method; per-step error handling; disk-full and unrecoverable guards; graceful shutdown; vault-switch coordination.
+- Depends on: sqlite, migrate, index, fsstore, notes.Service, vault, wshub, mcp, config.
+- Used by: `cmd/jasper/serve.go` (blocking call during startup).
+- Purpose: OpenAPI route → StrictServerInterface implementation; request/response marshaling.
+- Location: `internal/api/api.go` (hand-written server setup) + `internal/api/*_handler.go` (generated stub implementations + call-through to Service).
+- Contains: Server struct; handler constructors; route definitions (POST /notes, PUT /notes/{id}, DELETE /notes/{id}, POST /notes/{id}/move, GET /tree, POST /folders, GET /ws, POST /admin/reindex, GET /admin/status, etc.).
+- Depends on: chi, notes.Service, index, wshub, static (SPA fallback), config.
+- Used by: chi router mounted under /api/v1.
+- Purpose: CRUD operations; registry (UUID → relPath); file-FIRST save contract; backlink/tag extraction.
+- Location: `internal/notes/service.go`
+- Contains: Get(), Create(), Update(), Delete(), Move(), GetFolders(), ListNotes(); Event emission; Save-conflict detection (If-Match).
+- Depends on: FileStore (fsstore), Index (index), Broadcaster (wshub), Registry, markdown parser.
+- Used by: API handlers; reconcile loop.
+- Purpose: Atomic write primitive; path canonicalization (NFC + lowercase); case-collision detection.
+- Location: `internal/fsstore/store.go`
+- Contains: AtomicWrite(); path normalization; error classification (ErrCaseCollision maps to 409).
+- Depends on: os, filepath, unicode/norm.
+- Used by: notes.Service.Update(), notes.Service.Create(); Rewriter (H1↔filename).
+- Purpose: Full-text search (FTS5); metadata queries; incremental reconcile.
+- Location: `internal/index/indexer.go` + `reconcile.go`
+- Contains: Indexer struct; Open(), Close(); Upsert(), Delete(); Reconcile(ModeIncremental); Search(); writer/reader sqlite.Pair with WAL.
+- Depends on: modernc.org/sqlite v1.50 (pure-Go, no CGo); FTS5 + JSON1 compiled in.
+- Used by: Lifecycle (incremental reindex); notes.Service (Upsert after write); API handlers (search).
+- Purpose: Embed SQL migrations in binary; execute with backup-first strategy; recover from failure.
+- Location: `internal/db/migrate/runner.go`
+- Contains: Runner struct; Run() with three outcomes (StateOK, StateRolledBack, ErrUnrecoverable); Path 1 (apply migrations), Path 2 (rollback + restore backup), Path 3 (hard reset from disk).
+- Depends on: migrations.FS (embedded via //go:embed); sqlite Pair.
+- Used by: Lifecycle.Run() step 6.
+- Purpose: Broadcast cache-invalidation events to all connected clients.
+- Location: `internal/wshub/hub.go` + envelope.go + handler.go + client.go
+- Contains: Hub struct; Broadcast(eventType, payload, originSessionID); register/unregister/closeSlow.
+- Depends on: github.com/coder/websocket; log/slog.
+- Used by: API routes (GET /ws upgrade); notes.Service (Broadcast after save).
+- Purpose: Current vault tracking; hot-swap orchestration; per-vault config persistence.
+- Location: `internal/vault/vault.go`
+- Contains: CurrentVault(), SetCurrent(), LoadAppJSON(), SaveAppJSON(); hot-swap coordination.
+- Depends on: config, os, atomic operations.
+- Used by: Lifecycle (step 0 mode resolution); SwapHandler during hot-swap (step 2 teardown).
+- Purpose: Write-grant ACL; per-folder tool access; port 6684.
+- Location: `internal/mcp/server.go` + `grants.go`
+- Contains: Server struct; Tool handlers (create_note, update_note, move_note, delete_note); tier enforcement.
+- Depends on: chi, notes.Service, config (grants from app.json).
+- Used by: Lifecycle (step 8, started conditionally if vault-enabled).
+- Purpose: Extract tags, wiki-links, first heading; walk AST for rewriting.
+- Location: `internal/markdown/parser.go` + extension helpers (tags.go, wikilink.go, etc.)
+- Contains: ParseDocument(), Extract*() functions; tag/link enumerators; AST walkers.
+- Depends on: github.com/yuin/goldmark; go.abhg.dev/goldmark/wikilink, go.abhg.dev/goldmark/frontmatter.
+- Used by: notes.Service (tag extraction, link rewriting); index reconcile (FTS tokenization).
+- Purpose: Note editor; file tree; search; settings.
+- Location: `frontend/src/`
+- Contains: App.tsx (root shell); components (FileTree, EditorPane, CommandMenu, etc.); lib hooks (useSessionSync, useFileTree, useVaultSwitch); setup (VaultPicker).
+- Depends on: React 19.2, CodeMirror 6, react-arborist, Radix UI primitives, Zustand, openapi-fetch.
+- Used by: Browser; opened at http://127.0.0.1:6683.
+- Purpose: Inline rendering of markdown formatting while typing.
+- Location: `frontend/src/editor/livePreviewPlugin.ts`
+- Contains: ViewPlugin that walks @lezer/markdown AST; Decoration.mark/replace/widget for headings, emphasis, blockquotes, HR, code, frontmatter.
+- Depends on: @codemirror/view, @codemirror/state, @lezer/markdown, custom decoration renderer.
+- Used by: MarkdownEditor.tsx (mounted on editor creation).
+- Purpose: Connect to backend WebSocket; reconnect loop; event dispatch to handlers.
+- Location: `frontend/src/lib/useSessionSync.ts`
+- Contains: useSessionSync() hook; exponential backoff; origin-session filtering; inbound event routing.
+- Depends on: WebSocket API, backoff.ts, other hooks (useTreeStore, useFileTree, etc.).
+- Used by: App.tsx (mounted at root).
+
+## Data Flow
+
+### Primary Request Path: Note Update (SYNC-06 optimistic locking)
+
+### File-Tree Synchronization (TREE-01 + hot-swap)
+
+### Full-Text Search (Phase 7 Cmd+P Palette)
+
+### Incremental Reindex (Startup + Manual via Admin)
+
+### Vault Hot-Swap (ADR-001, Phase 8)
+
+## Key Abstractions
+
+- Purpose: Represents a single markdown file with metadata.
+- Examples: `internal/notes/note.go` defines the Note struct; frontend also has matching types from openapi-typescript.
+- Pattern: Struct with id (UUID), path (relative), title, content, updated_at, tags, h1 (extracted), created_at.
+- Purpose: Hierarchical file-tree projection for UI rendering.
+- Examples: Returned by GET /api/v1/tree; shaped as {kind: "note"|"folder", id, path, title, children: TreeNode[]} for folders.
+- Pattern: Recursive structure; virtualized by react-arborist.
+- Purpose: WebSocket message wrapper; schema-versioned.
+- Examples: {event: "note.updated", payload: {...}, origin_session_id: "..."}.
+- Pattern: Defined in OpenAPI schema; all inbound/outbound WS messages conform to this schema (TYPE-01).
+- Purpose: Abstract contract for cache-invalidation; allows tests to mock.
+- Examples: `internal/notes/ports.go` defines interface; `internal/wshub/hub.go` implements; `internal/notes/service_test.go` uses mock.
+- Pattern: Interface-driven; nopBroadcaster substitutes when nil.
+- Purpose: Abstract contract for disk I/O; allows tests to use in-memory substitute.
+- Examples: `internal/notes/ports.go` defines interface; `internal/fsstore/store.go` implements; tests use fstest.MapFS.
+- Pattern: Interface-driven; composition root injects concrete.
+- Purpose: Abstract contract for metadata queries and search; allows non-SQLite implementations (though Jasper locked to SQLite).
+- Examples: `internal/notes/ports.go` defines interface; `internal/index/indexer.go` implements; nopIndex substitutes in Phase 1 tests.
+- Pattern: Interface-driven; composition wires real or mock.
+
+## Entry Points
+
+- Location: `backend/cmd/jasper/main.go`
+- Triggers: User runs `jasper serve` (default), `jasper install`, `jasper uninstall`, `jasper status`, `jasper doctor`, `jasper version`.
+- Responsibilities: Parse cobra flags; dispatch to subcommand handler; exit with status code.
+- Location: `backend/cmd/jasper/serve.go:runServe() → app.New() → lifecycle.Run()`.
+- Triggers: "serve" subcommand executed.
+- Responsibilities: Resolve data-dir (flag → env → default); call app.New(); call lifecycle.Run(); block until ctx.Done or fatal error.
+- Location: `backend/internal/api/ws.go:HandleWS()` or GET /api/v1/ws handler.
+- Triggers: Browser initiates WebSocket handshake with query param `session_id`.
+- Responsibilities: Chi router routes to handler; handler calls wshub.HandleUpgrade(w, r); hub registers client; client pumps inbound/outbound messages.
+- Location: `frontend/src/main.tsx` → React.createRoot(document.getElementById('root')).render(<App />).
+- Triggers: Page load at http://127.0.0.1:6683.
+- Responsibilities: Mount React tree; load cached state from localStorage; call useSessionSync (WebSocket connect); call useFileTree (initial tree fetch); render UI.
+- Location: `frontend/src/setup/VaultPicker.tsx` or `frontend/src/setup/SetupApp.tsx`.
+- Triggers: App.tsx detects no currentVault set (ADR-001 Step 3).
+- Responsibilities: Mount picker UI at / (SPA root); list recent vaults; offer "Create new" and "Open existing"; on selection, POST /api/v1/vault/open {path} → server updates app.json → page reloads to main app.
+
+## Architectural Constraints
+
+- **Threading:** JavaScript is single-threaded event loop (browser); Go uses goroutines (backend). Migration runner and indexer reconcile both run in background goroutines without blocking the HTTP listener. WS hub reads are RWMutex-guarded; broadcasts do not hold Lock (Pitfall 6).
+- **Global state:** App.Handler is swappable (AtomicValue, app_test.go line ~350) — allows lifecycle.Run to replace the router after migrations complete without dropping in-flight requests. TreeStore is Zustand (single source, Pub/Sub); SessionSync is the WS connection (singleton per tab). No shared mutable state across components except the Zustand stores.
+- **Circular imports:** None known. Internal packages respect layering: api calls service, service calls ports (fsstore/index), ports do not call up. Frontend components import lib hooks and API clients; hooks import other hooks via dependency injection.
+- **Filesystem as source of truth:** SQLite is always regenerable from notes/. Migrations employ backup-first + three explicit recovery paths (Path 1: apply, Path 2: rollback + restore, Path 3: wipe + reconcile). This contract is non-negotiable per PROJECT §Data Integrity.
+- **Loopback-only binding:** netbind.RequireLoopbackBind enforces 127.0.0.1 for HTTP and MCP; no LAN binding without explicit (out-of-scope v1) override.
+- **WebSocket session isolation:** Each browser tab gets a unique session_id (generateOrLoadSessionId via sessionId.ts); server broadcasts exclude the origin tab (origin_session_id filter, SYNC-03).
+- **Bidirectional H1↔filename binding:** Editing H1 triggers Rewriter (notes.Service); renaming file triggers H1 rewrite in update. Both flows synchronize via the Service's internal contract. Not bidirectional across the API — only one API call initiated per user action; the other side is derived.
+
+## Anti-Patterns
+
+### Direct SQLite Queries Outside Index Package
+
+### Writing SQLite Without Filesystem First
+
+### Unfiltered WebSocket Broadcasts
+
+### Frontend State Out of Sync with Backend
+
+### Migration Runner Assuming No Concurrent Writes
+
+### Ignoring fs.FS Abstraction in Tests
+
+### Losing Origin Session ID on WS Reconnect
+
+## Error Handling
+
+- **400 Bad Request:** Malformed request body, invalid title chars, parent traversal attempt (input validation). Client retries with corrected input.
+- **409 Conflict:** Case-insensitive collision (ErrCaseCollision), stale write (If-Match mismatch), concurrent rename conflict. Client surfaces a disambiguating dialog (SaveConflictBanner, RenameRewriteErrorBanner).
+- **404 Not Found:** Unknown note UUID, missing vault path, deleted during operation. Client resets active state and refetches tree.
+- **500 Internal Server Error:** Atomic write failed, index transaction failed, WS marshal failed, disk full. Client mounts a retry banner (MigrationBanner, ResetAndRebuildDialog).
+- **503 Service Unavailable:** Server is paused (during vault hot-swap). Client mounts VaultSwitchOverlay and waits for "vault.switched" broadcast.
+
+## Cross-Cutting Concerns
+
+- **Development:** stderr (stdout from go run / air).
+- **Service:** Per-vault rotating log file (`<vault>/.jasper/logs/jasper.log`; rotated daily by `internal/log` package).
+- **Request:** OpenAPI schema validation (generated by oapi-codegen); missing fields return 400.
+- **Business logic:** notes.Service validates parent-path resolution, title canonicalization (NFC + lowercase), case-collision detection. Errors mapped to appropriate HTTP status.
+- **Filesystem:** fsstore.AtomicWrite validates path is within notes/ and does not traverse (`../../../../etc/passwd` is rejected).
+- **Writes:** Single-threaded on filesystem (atomic rename is atomic; no concurrent renames of the same file). SQLite writer mutex ensures only one write transaction at a time. Service.Update() serializes conflicting writes (If-Match guards).
+- **Reads:** Multiple concurrent readers (sqlite reader conn, WebSocket clients). Index.ListNotes() acquires RLock; wshub.Broadcast acquires RLock. No Lock held across I/O.
+
 <!-- GSD:architecture-end -->
 
 <!-- GSD:skills-start source:skills/ -->
+
 ## Project Skills
 
 No project skills found. Add skills to any of: `.claude/skills/`, `.agents/skills/`, `.cursor/skills/`, `.github/skills/`, or `.codex/skills/` with a `SKILL.md` index file.
 <!-- GSD:skills-end -->
 
 <!-- GSD:workflow-start source:GSD defaults -->
+
 ## GSD Workflow Enforcement
 
 Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
 
 Use these entry points:
-- `/gsd-quick` for small fixes, doc updates, and ad-hoc tasks
-- `/gsd-debug` for investigation and bug fixing
-- `/gsd-execute-phase` for planned phase work
+
+- `/gsd:quick` for small fixes, doc updates, and ad-hoc tasks
+- `/gsd:debug` for investigation and bug fixing
+- `/gsd:execute-phase` for planned phase work
 
 Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
 <!-- GSD:workflow-end -->
 
-
-
 <!-- GSD:profile-start -->
+
 ## Developer Profile
 
 > Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
