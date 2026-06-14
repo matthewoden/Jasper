@@ -1,25 +1,11 @@
 /**
- * StatusBar tests — Phase 6.6 Plan 10 / updated by Plan 07-37 (UAT-3 N9).
+ * StatusBar tests.
  *
- * Plan 07-37 simplifies StatusBar back to a minimal surface:
- *   ConnectionStatusDot → spacer → SettingsMenu
+ * Layout: [ConnectionStatusDot] [vault segment?] [spacer] [SaveIndicator-button] [SettingsMenu]
  *
- * The standalone "Reindex notes" refresh button (Plan 06.6) and the
- * SaveIndicator (hoisted into StatusBar by Plan 07-28 / B3) are BOTH
- * removed — they're unified as the SaveIndicator-as-refresh-button hybrid
- * in TopBar's right cluster (D-55 in 07-CONTEXT.md).
- *
- * Tests:
- *   1. Renders a <footer> with background, borderTop, height styling
- *   2. Renders ConnectionStatusDot
- *   3. Renders a flex spacer between left-side connection dot and right-side settings
- *   4. Renders SettingsMenu as the rightmost element
- *   5. Container has zIndex: 10
- *
- * Negative assertions (Plan 07-37):
- *   - SB-NO-REFRESH: NO standalone "Reindex notes" button is rendered
- *   - SB-NO-SAVE-INDICATOR: NO SaveIndicator (no [data-save-state] / no
- *     "Saving…" / "Saved" text) is rendered
+ * Positive assertions: footer styles, ConnectionStatusDot, spacer, SettingsMenu placement,
+ * zIndex, SaveIndicator-button presence and click behavior, vault segment.
+ * Negative assertions: no standalone "Reindex notes" button.
  */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";

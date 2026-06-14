@@ -76,8 +76,8 @@ func TestWalkVault_SkipsDotDirs(t *testing.T) {
 	}
 }
 
-// TestWalkVault_SkipsAttachmentsDir — Phase 7 owns `attachments/`; the
-// indexer must not yield files from it.
+// TestWalkVault_SkipsAttachmentsDir — the indexer must not yield files
+// from `attachments/` subtrees.
 func TestWalkVault_SkipsAttachmentsDir(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

@@ -1,15 +1,8 @@
 /**
- * SidebarToolbar tests — Phase 6.6 Plan 10 update + Phase 7 Today button (D-16).
+ * SidebarToolbar tests — note-navigation controls: New note, New folder,
+ * Today (CalendarDays), and Search icon.
  *
- * Global controls (ConnectionStatusDot, Refresh, SettingsMenu) have been
- * stripped per D-08. Note-navigation controls:
- *   1. New note (FilePlus)
- *   2. New folder (FolderPlus)
- *   3. Today (CalendarDays) — Phase 7 D-16
- *
- * useDailyNote is mocked so the tests don't need a ToastProvider or
- * a real network connection. The hook's openToday + isLoading are
- * controlled per test.
+ * useDailyNote is mocked so tests don't need a ToastProvider or network.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";

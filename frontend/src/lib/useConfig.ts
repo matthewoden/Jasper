@@ -1,10 +1,6 @@
 /**
- * useConfig — typed openapi-fetch wrapper around GET /config + PUT /config
- * (Plan 05-03). Phase 5 D-13.
- *
- * Pattern mirrors treeApi.ts (small typed wrapper) + useFileTree.ts
- * (hook with cancel-on-unmount). Phase 5 only consumes from the
- * useTheme hook; future phases (UX-V2-01 settings panel) consume too.
+ * useConfig — typed wrappers around GET /config + PUT /config and a hook
+ * that keeps the loaded Config in state with cancel-on-unmount safety.
  */
 import { useEffect, useState, useCallback, useRef } from "react";
 import { client } from "../api/client";
@@ -57,8 +53,8 @@ export function useConfig(): {
 
   // Track the last server-confirmed config so that saveConfig rollback
   // always restores the true persisted value, not an optimistic intermediate.
-  // CR-02: using a closure over `config` captured the optimistic value; a ref
-  // updated in a separate effect always holds the last committed state.
+  // A closure over `config` would capture the optimistic value; a ref updated
+  // in a separate effect always holds the last committed state.
   const persistedConfigRef = useRef<Config | null>(null);
   useEffect(() => {
     persistedConfigRef.current = config;
@@ -76,9 +72,8 @@ export function useConfig(): {
     };
   }, []);
 
-  // saveConfig is stable (no deps) — it reads the rollback value from the
-  // ref, not from a closure, so concurrent calls roll back to the last
-  // persisted state rather than to each other's optimistic values.
+  // saveConfig reads the rollback value from the ref, not a closure, so
+  // concurrent calls roll back to the last persisted state.
   const saveConfig = useCallback(async (next: Config) => {
     const prev = persistedConfigRef.current;
     setConfig(next);
@@ -93,7 +88,7 @@ export function useConfig(): {
       persistedConfigRef.current = data;
     }
     return {};
-  }, []); // stable — no closure over config (reads from ref instead)
+  }, []);
 
   return { config, error, saveConfig };
 }

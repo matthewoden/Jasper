@@ -1,8 +1,5 @@
 /**
  * wikilinkResolver.test.ts — Unit tests for the wiki-link title resolution module.
- *
- * TDD gate: RED → GREEN
- * Test cases R1..R5 as specified in Plan 06-09 Task 1.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resolveWikilinkTitle, getResolvedTitlesSnapshot, setResolvedTitlesSnapshot } from "./wikilinkResolver";

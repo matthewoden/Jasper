@@ -1,15 +1,11 @@
 /**
- * vaultApi — typed wrappers for the /vault/* routes (Plan 08-17c).
+ * vaultApi — typed wrappers for the /vault/* routes.
  *
- * Per CONTEXT.md API-03 / D-54: OpenAPI-first. Uses the existing `client`
- * singleton from api/client.ts which already attaches X-Session-ID middleware
- * and is typed against the generated schema.d.ts.
+ * Uses the shared `client` singleton (api/client.ts) which attaches X-Session-ID
+ * middleware and is typed against the generated schema.d.ts.
  *
- * The /vault/* routes were added to schema.d.ts by 08-17b's `make gen` step.
- *
- * SECURITY-06 (V-PARK-1): validateVaultPath runs BEFORE every network call.
- * The backend repeats these checks (defense in depth) — client-side is UX,
- * backend is security. See T-17c-01 in the threat model.
+ * validateVaultPath runs before every write call (client-side UX gate).
+ * The backend repeats all checks for defense in depth.
  */
 
 import { client } from "../api/client";
@@ -32,18 +28,17 @@ export type PathValidationError = {
 export type PathValidationResult = { ok: true } | PathValidationError;
 
 /**
- * validateVaultPath — 5-rule pipeline from 07-32a / D-44 / V-PARK-1.
+ * validateVaultPath — 6-rule validation pipeline for vault paths.
  *
- * Rules:
+ * Rules (in order):
  *   1. Non-empty
  *   2. Must start with "/" (absolute path)
  *   3. Must not contain ".." segments (traversal)
  *   4. Must not contain "//" (double slash)
  *   5. NFC-normalized (checked before ASCII to give actionable error for NFD paths)
- *   6. ASCII-only (charCode <= 0x7F) — V-PARK-1
+ *   6. ASCII-only (charCode <= 0x7F) — required for cross-platform safety
  *
- * Exported so components and tests can use the pure validator without
- * triggering a fetch.
+ * Exported so components and tests can use the pure validator without triggering a fetch.
  */
 export function validateVaultPath(path: string): PathValidationResult {
   if (!path) {
@@ -92,22 +87,16 @@ export function validateVaultPath(path: string): PathValidationResult {
 
 
 /**
- * vaultApi — typed wrappers calling /api/v1/vault/* via the shared openapi-fetch
- * client singleton (inherits X-Session-ID header middleware from api/client.ts).
- *
- * Path validation via validateVaultPath runs before every write call
- * (SECURITY-06 client-side gate). Backend repeats validation (defense in depth).
+ * vaultApi — typed wrappers for /api/v1/vault/* via the shared openapi-fetch
+ * client singleton (inherits X-Session-ID middleware).
  */
 
 export const vaultApi = {
   /**
-   * GET /api/v1/vault/current
-   * Returns the open vault's RecentVaultEntry, or null when no vault is open.
+   * GET /api/v1/vault/current — returns the open vault's entry, or null when no vault is open.
    *
-   * Wire shape per openapi.yaml VaultCurrentResponse is `{ vault?: RecentVaultEntry | null }`
-   * — the field is omitempty on the backend so an empty wrapper `{}` means "no vault open."
-   * Unwrap `data.vault` (treating absence as null) so BootGate's `current === null`
-   * check actually fires on first-run / wiped-state boots.
+   * The backend response is `{ vault?: RecentVaultEntry | null }` (omitempty), so an empty
+   * wrapper `{}` means "no vault open." Unwraps data.vault so callers get null on first-run.
    */
   getCurrent: async (): Promise<RecentVaultEntry | null> => {
     const { data, error } = await client.GET("/vault/current");
@@ -117,9 +106,8 @@ export const vaultApi = {
   },
 
   /**
-   * GET /api/v1/vault/recent
-   * Returns { vaults, banner }. Banner is non-empty when a V13/V14 condition
-   * was detected at boot.
+   * GET /api/v1/vault/recent — returns { vaults, banner }.
+   * Banner is non-empty when a previous-vault-missing condition was detected at boot.
    */
   getRecent: async (): Promise<GetVaultRecentResponse> => {
     const { data, error } = await client.GET("/vault/recent");
@@ -132,9 +120,8 @@ export const vaultApi = {
   },
 
   /**
-   * POST /api/v1/vault/open
-   * Opens an existing vault (must contain .jasper/).
-   * Validates path locally before the network call (SECURITY-06).
+   * POST /api/v1/vault/open — opens an existing vault (must contain .jasper/).
+   * Validates path before the network call.
    */
   open: async (path: string): Promise<RecentVaultEntry> => {
     const validation = validateVaultPath(path);
@@ -155,9 +142,8 @@ export const vaultApi = {
   },
 
   /**
-   * POST /api/v1/vault/create
-   * Creates a new vault in an empty folder, runs migrations, registers in
-   * recent_vaults. Validates path locally before the network call (SECURITY-06).
+   * POST /api/v1/vault/create — creates a new vault in an empty folder,
+   * runs migrations, and registers it in recent_vaults. Validates path before the network call.
    */
   create: async (req: {
     path: string;
@@ -184,11 +170,9 @@ export const vaultApi = {
   },
 
   /**
-   * POST /api/v1/vault/switch
-   * Hot-swaps from the currently open vault to the target vault path.
-   * Returns the new vault's RecentVaultEntry on success.
+   * POST /api/v1/vault/switch — hot-swaps to the target vault path.
    * Throws on 400 (bad path) or 409 (switch already in progress).
-   * Validates path locally before the network call (SECURITY-06).
+   * Validates path before the network call.
    */
   switch: async (path: string): Promise<RecentVaultEntry> => {
     const validation = validateVaultPath(path);
@@ -213,8 +197,7 @@ export const vaultApi = {
   },
 
   /**
-   * POST /api/v1/vault/forget
-   * Removes an entry from recent_vaults (idempotent, does NOT delete files).
+   * POST /api/v1/vault/forget — removes an entry from recent_vaults (idempotent, no file deletion).
    */
   forget: async (path: string): Promise<void> => {
     const { error } = await client.POST("/vault/forget", {

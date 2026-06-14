@@ -1,17 +1,10 @@
 /**
- * SearchResultRow — Phase 7 Surface 3 row anatomy.
- * UI-SPEC §Surface 3: title (14/600) → path breadcrumb (12/muted) →
- * 2-line clamped excerpt with <mark> highlighting → matching tag chips.
+ * SearchResultRow — title → path breadcrumb → 2-line clamped excerpt with
+ * <mark> highlighting → matching tag chips.
  *
- * Excerpt uses sanitizeHtml (Phase 5 D-36) — <mark> survives per Task 1
- * locked SEARCH-04 contract (ADD_TAGS: ["mark"] in sanitize.ts).
- *
- * Plan 07-39 (UAT-5 N11) legibility update: the scoped <style> block now
- * mutes the base excerpt text (var(--color-muted)) and brightens the
- * <mark>-wrapped match (var(--color-fg) + font-weight 600 + transparent
- * background). Matched terms pop via brightness + weight contrast, not
- * a yellow box fill — the previous color-mix accent fill made the
- * highlight feel like a checkbox / form field rather than emphasis.
+ * Excerpt is rendered via sanitizeHtml with <mark> allowed through — marks
+ * pop via brightness + weight contrast (muted base, fg+600 on match) rather
+ * than a fill, so they read as emphasis rather than a form control.
  */
 import { useState } from "react";
 import { sanitizeHtml } from "../lib/sanitize";
@@ -22,11 +15,7 @@ interface SearchResultRowProps {
   result: SearchResult;
 }
 
-/**
- * Render a path breadcrumb from a flat slash-separated path.
- * "notes/inbox/2026-05/note.md" → "notes / inbox / 2026-05 / note.md"
- * We drop the trailing .md from the display for clarity.
- */
+/** Format a slash-separated path as "a / b / c", stripping the trailing .md. */
 function formatPath(path: string): string {
   const parts = path.split("/");
   if (parts.length > 0) {
@@ -61,11 +50,7 @@ export function SearchResultRow({ result }: SearchResultRowProps) {
 
   return (
     <>
-      {/* Plan 07-39 (UAT-5 N11) legibility recipe.
-          Base excerpt text is muted; <mark>-wrapped match is brightened to
-          color-fg + 600 weight + transparent background. Matched terms pop
-          via brightness + weight contrast, not a yellow box.
-          Matches the backlinks-excerpt .backlink-ref recipe pattern. */}
+      {/* Scoped style: muted base excerpt; bright+bold on <mark>-wrapped matches */}
       <style>{`
         .search-result-excerpt {
           color: var(--color-muted);
@@ -99,7 +84,7 @@ export function SearchResultRow({ result }: SearchResultRowProps) {
         }}
         aria-label={`Open note: ${result.title}`}
       >
-        {/* Line 1: title (14px / 600) */}
+        {/* Title */}
         <div
           style={{
             fontSize: 14,
@@ -113,7 +98,7 @@ export function SearchResultRow({ result }: SearchResultRowProps) {
           {result.title}
         </div>
 
-        {/* Line 2: path breadcrumb (12px / muted) */}
+        {/* Path breadcrumb */}
         <div
           style={{
             fontSize: 12,
@@ -127,10 +112,7 @@ export function SearchResultRow({ result }: SearchResultRowProps) {
           {formatPath(result.path)}
         </div>
 
-        {/* Line 3: 2-line clamped excerpt with <mark> highlighting.
-            Plan 07-39 (UAT-5 N11): color is now driven by the scoped
-            .search-result-excerpt rule above (var(--color-muted)). The
-            inline color is removed so the CSS rule wins. */}
+        {/* 2-line clamped excerpt — color driven by scoped .search-result-excerpt rule so CSS wins over inline */}
         {result.excerpt_html && (
           <div
             className="search-result-excerpt"
@@ -147,7 +129,7 @@ export function SearchResultRow({ result }: SearchResultRowProps) {
           />
         )}
 
-        {/* Line 4: matching tag chips — #tagname in accent, no fill */}
+        {/* Matching tag chips */}
         {result.matching_tags && result.matching_tags.length > 0 && (
           <div
             style={{

@@ -2,12 +2,9 @@
  * useCommandPalette — filters COMMAND_PALETTE_ENTRIES by label substring
  * and dispatches execute(id) to the appropriate action callback.
  *
- * Actions are passed in at hook construction time (called from a parent
- * component that has all necessary dependencies wired — Plan 07-12 / App.tsx).
- * The hook only handles lookup + dispatch (D-47: synchronous, no inline confirmations).
- *
- * Per the plan decision: use label substring match (case-insensitive), preserving
- * the group order from GROUP_ORDER for grouping in the UI.
+ * Actions are passed in at hook construction time from the parent component
+ * that has all required dependencies wired. Filter is case-insensitive
+ * substring match; group order from GROUP_ORDER is preserved.
  */
 import { useCallback, useMemo } from "react";
 import { COMMAND_PALETTE_ENTRIES, type Shortcut } from "./shortcutsRegistry";
@@ -32,8 +29,8 @@ export interface CommandActions {
 
 /**
  * Commands that should NOT close the palette when executed.
- * UAT #5 fix: "Switch note…" flips palette mode in place; closing then
- * trying to re-render the new mode loses the modal context.
+ * "Switch note…" flips palette mode in place; closing before the new mode
+ * renders would lose the modal context.
  */
 const COMMANDS_KEEP_OPEN: ReadonlySet<string> = new Set(["switch-note"]);
 
@@ -48,10 +45,9 @@ export interface CommandPaletteResult {
    */
   execute: (id: string) => boolean;
   /**
-   * Plan 08-06 (D-26 / SHARE-01 Mount C): true when the command's
-   * underlying action is unavailable (e.g. "Show current note in file
-   * manager" with no note active). Palette uses this to render the row
-   * dimmed-and-inert without filtering it out.
+   * True when the command's underlying action is unavailable (e.g. "Show
+   * current note in file manager" with no note active). Palette renders the
+   * row dimmed-and-inert rather than filtering it out.
    */
   isDisabled: (id: string) => boolean;
 }

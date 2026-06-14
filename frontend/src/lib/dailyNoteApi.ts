@@ -1,12 +1,9 @@
 /**
  * dailyNoteApi — typed wrapper around GET /api/v1/daily-notes/{date}.
  *
- * Per CONTEXT.md API-03: the frontend NEVER hand-writes a request shape.
- * All API calls route through the typed openapi-fetch client.
- *
- * Supports DAILY-01: get-or-create today's daily note (200 on hit, 201 on create).
+ * Get-or-create today's daily note (200 on hit, 201 on create).
  * Date string format: YYYY-MM-DD. Server validates the regex and returns 400
- * on malformed input (T-7-25 mitigated by server-side guard).
+ * on malformed input (mitigated by server-side guard).
  */
 
 import { client } from "../api/client";

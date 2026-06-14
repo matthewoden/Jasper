@@ -1,7 +1,4 @@
-/**
- * Tests for TagBrowserSection component.
- * Validates TB1..TB13 behaviors from Plan 06-08 Task 2.
- */
+/** TagBrowserSection component tests — TB1..TB13 behaviors. */
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useTreeStore } from "../lib/useTreeStore";

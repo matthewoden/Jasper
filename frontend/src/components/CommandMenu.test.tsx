@@ -1,17 +1,5 @@
 /**
- * CommandMenu tests — TDD RED phase.
- *
- * Tests cover:
- * - Modal open/close via open prop
- * - mode prop switches icon/placeholder/aria-label
- * - Empty state copy for notes + commands modes
- * - ArrowDown/ArrowUp keyboard navigation changes selected item
- * - Enter activates selected item (note: setActiveNote + recordOpenedNote + close)
- * - Enter activates command (calls action + closes)
- * - Esc closes the dialog (Radix default)
- * - Input focus and query change
- * - Sanitized input doesn't break (XSS-safe)
- * - Bucket B1 (Plan 07-18): FTS5 search triggered at query.length >= 2
+ * CommandMenu tests.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
@@ -262,7 +250,7 @@ describe("CommandMenu — commands results + keyboard navigation", () => {
   });
 });
 
-describe("CommandMenu — XSS safety (threat model T-7-31)", () => {
+describe("CommandMenu — XSS safety", () => {
   it("renders query text in empty state copy without XSS (React escapes by default)", () => {
     const mockFiltered = vi.fn().mockReturnValue([]);
     mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: vi.fn() });
@@ -294,7 +282,7 @@ describe("CommandMenu — query resets on close", () => {
   });
 });
 
-describe("CommandMenu — activate closeOnExecute behavior (UAT #5)", () => {
+describe("CommandMenu — closeOnExecute behavior", () => {
   it("Switch note command does NOT call onOpenChange(false) when execute returns false", () => {
     const onOpenChange = vi.fn();
     const mockExecute = vi.fn().mockReturnValue(false);
@@ -344,7 +332,7 @@ describe("CommandMenu — activate closeOnExecute behavior (UAT #5)", () => {
 });
 
 
-describe("CMM-mode-reset — query clears on mode change while open (UAT-2 R1-3)", () => {
+describe("CMM-mode-reset — query clears on mode change while open", () => {
   it("resets local query to empty string when paletteMode flips while open", async () => {
     const mockFiltered = vi.fn().mockReturnValue([]);
     mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: vi.fn() });
@@ -367,7 +355,7 @@ describe("CMM-mode-reset — query clears on mode change while open (UAT-2 R1-3)
 });
 
 
-describe("CMM-NAV — single-section navigation (post Plan 07-39 split)", () => {
+describe("CMM-NAV — single-section navigation", () => {
   const MOCK_TITLE_HIT = { id: "n1", title: "test", path: "test.md" };
 
   it("CMM-NAV-2: ArrowUp at first selectable does not advance into a non-existent row above", () => {
@@ -393,7 +381,7 @@ describe("CMM-NAV — single-section navigation (post Plan 07-39 split)", () => 
   });
 });
 
-describe("CMM-INIT — selectedIdx starts at first selectable (post Plan 07-39 split)", () => {
+describe("CMM-INIT — selectedIdx starts at first selectable", () => {
   it("CMM-INIT-1: pressing Enter immediately without ArrowDown activates the first note row", () => {
     const MOCK_TITLE_HIT = { id: "n1", title: "test", path: "test.md" };
     mockUseQuickSwitcher.mockReturnValue([MOCK_TITLE_HIT]);
@@ -409,7 +397,7 @@ describe("CMM-INIT — selectedIdx starts at first selectable (post Plan 07-39 s
 });
 
 
-describe("CMM-N11-SPLIT — switcher is title-fuzzy only (Plan 07-39 / UAT-5 N11)", () => {
+describe("CMM-N11-SPLIT — switcher is title-fuzzy only", () => {
   const TITLE_HIT = { id: "n1", title: "alpha", path: "alpha.md" };
   const FTS5_HIT = {
     id: "n2",
@@ -472,7 +460,7 @@ describe("CMM-N11-SPLIT — switcher is title-fuzzy only (Plan 07-39 / UAT-5 N11
 });
 
 
-describe("CMM-SEARCH-MODE — Plan 07-40 (UAT-6) — CommandMenu mode='search'", () => {
+describe("CMM-SEARCH-MODE — CommandMenu mode='search'", () => {
   const defaultSearchProps = {
     open: true,
     onOpenChange: vi.fn(),
@@ -558,7 +546,7 @@ describe("CMM-SEARCH-MODE — Plan 07-40 (UAT-6) — CommandMenu mode='search'",
 });
 
 
-describe("CMM-UAT7-MEASURE — virtualizer measures search-result rows (UAT-7)", () => {
+describe("CMM-UAT7-MEASURE — virtualizer measures search-result rows", () => {
   const defaultSearchProps = {
     open: true,
     onOpenChange: vi.fn(),
@@ -601,7 +589,7 @@ describe("CMM-UAT7-MEASURE — virtualizer measures search-result rows (UAT-7)",
 });
 
 
-describe("CMM-UAT8FU — measureElement gated on search-result rows only (Plan 07-44)", () => {
+describe("CMM-UAT8FU — measureElement gated on search-result rows only", () => {
   const NOTE_HIT = { id: "n-fu-1", title: "Plain Note", path: "plain.md" };
   const CMD_ITEM = {
     id: "new-note",
@@ -691,7 +679,7 @@ describe("CMM-UAT8FU — measureElement gated on search-result rows only (Plan 0
   });
 });
 
-describe("CMM-UAT8 — activity indicator + empty-state copy (Plan 07-43, UAT-8)", () => {
+describe("CMM-UAT8 — activity indicator + empty-state copy", () => {
   const defaultSearchProps = {
     open: true,
     onOpenChange: vi.fn(),
@@ -757,7 +745,7 @@ describe("CMM-UAT8 — activity indicator + empty-state copy (Plan 07-43, UAT-8)
 });
 
 
-describe("CMM-UAT8FU2 — input-row activity indicator + stale-state preservation (Plan 07-45)", () => {
+describe("CMM-UAT8FU2 — input-row activity indicator + stale-state preservation", () => {
   const defaultSearchProps = {
     open: true,
     onOpenChange: vi.fn(),
@@ -816,7 +804,7 @@ describe("CMM-UAT8FU2 — input-row activity indicator + stale-state preservatio
     expect(spinner).toBeNull();
   });
 
-  it("CMM-UAT8FU2-4: mode='search' + isSearching=true + results.length>0 keeps the prior result list rendered (stale-state preserved; ActivityIndicator NOT shown)", () => {
+  it("CMM-UAT8FU2-4: mode='search' + isSearching=true + results.length>0 keeps the prior result list rendered (stale-state preserved)", () => {
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: true });
     render(<CommandMenu {...defaultSearchProps} />);
     const input = screen.getByRole("textbox");

@@ -1,23 +1,12 @@
 /**
  * tagAutocomplete.test.ts — TDD suite for the tag-name CompletionSource.
  *
- * Phase 6 / Plan 06-10 / Task 3.
- *
  * Requirements:
- *   D-07: Tag autocomplete inside tags: [...] array
- *   D-44: NO Create row (tags become valid on save; no pre-existence needed)
+ *   - Tag autocomplete inside tags: [...] array
+ *   - NO Create row (tags become valid on save; no pre-existence needed)
  *
- * Detection strategy (SPIKE-FINDINGS.md Plan 06-01):
- *   The cursor is "inside the tags array" when the line text before the cursor
- *   matches `^tags:\s*\[` OR the cursor is inside a FlowSequence whose parent
- *   Pair key is "tags" inside Frontmatter.
- *   For robustness, we use a two-pronged approach:
- *     1. AST walk: if the Frontmatter node is present, check the lezer-yaml tree.
- *     2. Regex fallback: match the line context if AST context is unclear.
- *
- * TDD sequence:
- *   RED  → this file (failures: tagAutocomplete.ts not yet written)
- *   GREEN → implement tagAutocomplete.ts
+ * Detection strategy: AST walk for FlowSequence whose Pair key is "tags"
+ * inside Frontmatter; regex fallback for `^tags:\s*\[` line prefix.
  */
 import { describe, expect, it, afterEach, beforeEach } from "vitest";
 import { EditorView } from "@codemirror/view";

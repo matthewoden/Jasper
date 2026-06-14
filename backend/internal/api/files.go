@@ -79,28 +79,22 @@ func (s *Server) GetFile(
 	}, nil
 }
 
-// CreateFile implements POST /api/v1/files?path=<targetDir> (Plan 07-34).
+// CreateFile implements POST /api/v1/files?path=<targetDir>.
 //
-// Pipeline (mirrors GetFile + CreateAttachment patterns):
+// Pipeline:
 //
 //  1. Path-traversal hardening on the TARGET DIRECTORY (req.Params.Path).
-//     Rules 1–4 from GetFile are applied; the difference is that Rule 2
-//     accepts the empty path (vault root) rather than rejecting it — POST
-//     to "" lands at notes/ itself.
+//     Rules 1–4 from GetFile; empty path (vault root) is accepted here.
 //  2. Lstat the cleaned target — must exist (NO auto-mkdir for safety),
 //     must NOT be a symlink (403), must be a directory (400 otherwise).
-//  3. Read multipart body's "file" part (mirrors CreateAttachment).
-//  4. 100 MB cap via io.LimitReader+1 (D-29 / maxAttachmentBytes const
-//     reused from attachments.go).
-//  5. Sanitize the client-supplied filename via filepath.Base(filepath.
-//     Clean(...)) — defense in depth against path components in the
-//     uploaded filename.
-//  6. Refuse .md uploads (case-insensitive). Markdown bodies must go
-//     through POST /notes; this endpoint is for non-markdown files only.
+//  3. Read multipart body's "file" part.
+//  4. 100 MB cap via io.LimitReader+1 (shared maxAttachmentBytes const).
+//  5. Sanitize the client-supplied filename via filepath.Base(filepath.Clean(...)).
+//  6. Refuse .md uploads (case-insensitive). Markdown must go through POST /notes.
 //     Returns 400 with code "invalid_filename".
-//  7. generateUniqueFilename (Plan 07-06) renames on collision:
+//  7. generateUniqueFilename renames on collision:
 //     photo.png → photo-1.png → photo-2.png up to 999.
-//  8. fsstore.AtomicWrite (DATA-13) for the disk write.
+//  8. fsstore.AtomicWrite for the disk write.
 //  9. http.DetectContentType for the response's content_type field.
 //
 //nolint:revive // generated interface name
@@ -267,7 +261,7 @@ func (s *Server) resolveFileUnderNotes(rawPath string) fileResolveResult {
 	return fileResolveResult{abs: cleanFinal, fi: fi, ok: true}
 }
 
-// DeleteFile implements DELETE /api/v1/files?path=... (Plan 07-38 R7b).
+// DeleteFile implements DELETE /api/v1/files?path=...
 // Mirrors GetFile's pipeline; refuses .md (those are notes); refuses
 // directories (those are folders).
 //
@@ -301,7 +295,7 @@ func (s *Server) DeleteFile(
 	return DeleteFile204Response{}, nil
 }
 
-// PostFileMove implements POST /api/v1/files/move (Plan 07-38 R7b).
+// PostFileMove implements POST /api/v1/files/move.
 // Both src_path and dst_path go through the 5-rule pipeline. Refuses .md
 // (those go through POST /notes/{id}/move which has the SQLite-side
 // path-canon update). Refuses overwrite (409 if dst exists).

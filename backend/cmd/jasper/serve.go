@@ -28,14 +28,14 @@ var serveCmd = &cobra.Command{
 	Long: `Start the Jasper server. Binds to 127.0.0.1:6683 by default (override
 via --addr; dev mode reads the same port from scripts/port.sh so the
 Vite proxy at :5173 forwards /api → the running backend).
-Phase 8 enforces loopback binding via internal/netbind.
+Loopback binding is enforced via internal/netbind.
 
 The vault directory holds:
   notes/    — your .md files (the source of truth)
   .jasper/  — per-vault SQLite index, config, app.db (regenerable from notes/)
   logs/     — jasper.log with daily rotation
 
-Vault resolution order (ADR-001):
+Vault resolution order:
   1. --vault flag (absolute path; bypasses picker)
   2. current_vault in ~/.jasper/app.json
   3. picker UI served at /
@@ -68,7 +68,7 @@ func runServe(args []string) error {
 	addrFlag := fs.String("addr", defaultListenAddr,
 		"Listen address (loopback-only by default). Dev pipeline reads the same port from scripts/port.sh.")
 
-	vaultFlagLocal := fs.String("vault", "", "Path to vault (ADR-001; bypasses picker)")
+	vaultFlagLocal := fs.String("vault", "", "Absolute path to vault directory (bypasses the picker)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -78,14 +78,10 @@ func runServe(args []string) error {
 
 	log := serveLog
 
-	// ADR-001 precedence:
+	// Vault resolution precedence:
 	//   1. --vault <abs>       (CLI override; CI/E2E; bypasses picker)
 	//   2. app.json current_vault (read by resolveVaultMode in lifecycle.Run)
 	//   3. picker UI at /
-	//
-	// Plan 08-17b: --vault is promoted to cfg.VaultOverride (consumed by
-	// resolveVaultMode). Plan 08-23: --data-dir and JASPER_DATA_DIR were
-	// the only other sources of cfg.VaultOverride; both removed.
 	var vaultOverride string
 	if vaultFlag != "" {
 		canonical, err := vault.Canonicalize(vaultFlag)

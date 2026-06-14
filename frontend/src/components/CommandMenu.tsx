@@ -1,23 +1,10 @@
 /**
- * CommandMenu — shared modal shell for three distinct palette modes:
- *   - mode="notes"    (Cmd+O) — quick switcher, title-fuzzy only
- *   - mode="commands" (Cmd+P) — command palette
- *   - mode="search"   (Cmd+Shift+F) — FTS5 body search + snippet excerpts (Plan 07-40)
+ * CommandMenu — shared modal shell for three palette modes:
+ *   - mode="notes"    (Cmd+O)         — title-fuzzy quick switcher only
+ *   - mode="commands" (Cmd+P)         — command palette
+ *   - mode="search"   (Cmd+Shift+F)  — FTS5 body search + snippet excerpts
  *
- * Uses @radix-ui/react-dialog (NOT AlertDialog — this is non-destructive per
- * UI-SPEC §Surface 1 note). Wire-up to global keymap lives in App.tsx
- * (handleAppCmdP / handleAppCmdO / handleAppCmdShiftF).
- *
- * Plan 07-40 (UAT-6) — three-mode architecture supersedes Plan 07-39's
- * Sidebar-search wiring (D-58 in 07-CONTEXT.md). Search lives in this
- * modal as a third mode; the Sidebar no longer hosts any search UI.
- *
- * Plan 07-39 (UAT-5 N11) REVERTED Plan 07-33's title-fuzzy + FTS5 merge.
- * CommandMenu is title-fuzzy ONLY in notes mode (no commingled FTS5 hits).
- *
- * Group eyebrows in commands mode: deferred v1 (see comment below).
- * Implementation uses inline styles throughout — no hex literals; all colors
- * via var(--color-*) tokens.
+ * Global keymap wiring lives in App.tsx. All colors via var(--color-*) tokens.
  */
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState } from "react";
@@ -100,8 +87,7 @@ function ActivityIndicator() {
         gap: 8,
       }}
     >
-      {/* Scoped keyframe — kept inside the component so no global CSS
-          changes are required. Tailwind/CSS-Modules-agnostic. */}
+      {/* Scoped keyframe — avoids global CSS changes. */}
       <style>
         {`@keyframes jasper-cmm-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
       </style>
@@ -373,24 +359,10 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                 fontFamily: "inherit",
               }}
             />
-            {/* Plan 07-45 (UAT-8 follow-up 2): inline activity indicator on
-                the right edge of the input row. Gated on
-                mode === "search" && isSearching so that:
-                  - notes / commands modes never see it (defensive — those
-                    modes don't fire useSearch, so isSearching is false
-                    there anyway, but the explicit mode guard keeps a future
-                    refactor from leaking a spinner into the wrong surface);
-                  - when isSearching flips to false, the spinner unmounts
-                    reactively (no manual cleanup);
-                  - flexShrink: 0 + fixed 14px size keeps the input flex
-                    layout stable (no reflow on mount/unmount; T-45-02
-                    mitigation).
-                Reuses the same jasper-cmm-spin keyframe registered by
-                ActivityIndicator (the keyframe is global once any
-                ActivityIndicator instance has mounted; we also inline the
-                animation here directly so the spinner spins even when the
-                result-area indicator isn't on screen, e.g. the
-                stale-results-during-refine case). */}
+            {/* Inline spinner on right edge of input row when mode=search +
+                isSearching. Explicit mode guard prevents leaking the spinner
+                into notes/commands modes. flexShrink:0 + fixed size keeps
+                layout stable (no reflow on mount/unmount). */}
             {mode === "search" && isSearching && (
               <>
                 <style>
@@ -409,11 +381,10 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
             )}
           </div>
 
-          {/* Result list — max-height 50vh, virtualized */}
+          {/* Result list — max-height 50vh */}
           <div ref={parentRef} style={{ maxHeight: "50vh", overflowY: "auto" }}>
-            {/* Plan 07-43 (UAT-8): search-mode surface (empty hint /
-                activity indicator / no-matches) takes precedence over the
-                generic emptyText path when mode === "search". */}
+            {/* search-mode surface (empty hint / activity indicator / no-matches)
+                takes precedence over the generic emptyText path. */}
             {searchSurfaceContent !== null && searchSurfaceContent}
 
             {/* Empty state for notes + commands modes */}
@@ -430,8 +401,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
               </div>
             )}
 
-            {/* Virtualized rows — suppressed in search mode when the
-                surfaceContent path is active (indicator/empty hint). */}
+            {/* Virtualized rows — suppressed when surfaceContent is active. */}
             {searchSurfaceContent === null && items.length > 0 && (
               <div
                 style={{ height: virtualizer.getTotalSize(), position: "relative" }}
@@ -557,7 +527,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                       ) : (
                         <>
                           <span style={{ flex: 1 }}>{item.label}</span>
-                          {/* Plan 08-06: hide shortcut hint when disabled. */}
                           {item.shortcut !== undefined && !cmdDisabled && (
                             <KeyboardChip>{item.shortcut}</KeyboardChip>
                           )}

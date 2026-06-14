@@ -1,25 +1,17 @@
 /**
- * filesApi — typed wrapper around POST /api/v1/files?path=... (Plan 07-34).
+ * filesApi — raw-fetch wrappers for OS-file operations (upload, delete, move).
+ * Used by FileTree's sidebar drop target.
  *
- * Used by FileTree's sidebar OS-file drop target. Mirrors uploadAttachment
- * (attachmentApi.ts) — multipart/form-data with field 'file', includes
- * X-Session-ID header for the WS origin filter (UAT-2 N8 pattern).
+ * Uses raw fetch + FormData rather than openapi-fetch because openapi-typescript
+ * does not generate ergonomic file-field types for multipart/form-data requests.
+ * Routes and response shapes remain contract-bound via OpenAPI.
  *
- * EXCEPTION (matches attachmentApi.ts): we use raw fetch + FormData rather
- * than openapi-fetch because openapi-typescript does not generate ergonomic
- * file-field types for multipart/form-data requests. The route + response
- * shape are still contract-bound via OpenAPI.
+ * Target directory is passed as the `path` query parameter. URLSearchParams
+ * encodes "/" as "%2F" so multi-segment paths survive the round-trip.
+ * Empty string ("") = vault root.
  *
- * WIRE FORMAT (per the 07-34 contract override + 07-32a SUMMARY): the
- * target directory is passed as the `path` QUERY PARAMETER, not a path
- * segment. URLSearchParams encodes "/" as "%2F" so multi-segment dirs
- * survive the round-trip; the server's path-traversal pipeline canonicalizes
- * back relative to notes/. Empty string ("") = vault root.
- *
- * Errors: HTTP 400 (invalid path / .md upload), 403 (symlink rejected),
- * 413 (>100MB) all surface as a generic Error with `.status` set so callers
- * can distinguish — the FileTree drop handler uses this to decide which
- * toast (if any) to show.
+ * Errors (400, 403, 413) surface as a generic Error with `.status` so callers
+ * can decide which toast to show.
  */
 import { generateOrLoadSessionId } from "./sessionId";
 
@@ -33,10 +25,8 @@ export interface UploadFileResult {
 export interface UploadFileError extends Error {
   status?: number;
   /**
-   * Plan 07-38 N2 (UAT-4 debuggability): raw response body text so the
-   * FileTree drop-toast can show the backend's actual error message
-   * ("target dir does not exist", etc.) rather than the generic
-   * "Upload failed: Could not upload [filename]" catch-all.
+   * Raw response body text so the FileTree drop-toast can show the backend's
+   * actual error message rather than a generic catch-all.
    */
   body?: string;
 }
@@ -73,13 +63,10 @@ export async function uploadFile(
 }
 
 /**
- * deleteFile — DELETE /api/v1/files?path=<rel> (Plan 07-38 R7b).
+ * deleteFile — DELETE /api/v1/files?path=<rel>.
  *
- * Server refuses .md (those are served via /notes/{id}) and directories
- * (use DELETE /folders). Returns 204 on success, 400/403/404 otherwise.
- *
- * Like uploadFile, the error carries .status + .body so callers can
- * surface the backend message in their toast.
+ * Server refuses .md files and directories; returns 204 on success.
+ * Errors carry .status + .body so callers can surface the backend message.
  */
 export async function deleteFile(path: string): Promise<void> {
   const qs = new URLSearchParams({ path }).toString();
@@ -101,7 +88,6 @@ export async function deleteFile(path: string): Promise<void> {
     err.body = text;
     throw err;
   }
-  // 204 No Content — nothing to parse.
 }
 
 export interface MoveFileResult {
@@ -110,12 +96,11 @@ export interface MoveFileResult {
 }
 
 /**
- * moveFile — POST /api/v1/files/move {src_path, dst_path} (Plan 07-38 R7b).
+ * moveFile — POST /api/v1/files/move {src_path, dst_path}.
  *
- * Both paths are relative under notes/. Server refuses .md files (those go
- * through POST /notes/{id}/move with its SQLite-side canonical-path update),
- * refuses overwrite (409), and runs the same 5-rule path-traversal pipeline
- * on both sides. Atomic via os.Rename on POSIX.
+ * Both paths are relative under notes/. Server refuses .md files, refuses
+ * overwrite (409), and validates both paths with the path-traversal pipeline.
+ * Atomic via os.Rename on POSIX.
  */
 export async function moveFile(
   srcPath: string,

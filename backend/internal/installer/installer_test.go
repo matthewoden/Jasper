@@ -6,13 +6,11 @@ import (
 	"testing"
 )
 
-// TestLaunchdTemplateKeepAliveCrashedDict pins ROADMAP success criterion #1
-// onto the launchd template. The kardianos default emits the bool form
-// `<key>KeepAlive</key><true/>` which would restart on graceful
-// `launchctl bootout` and break `jasper uninstall`. We assert the dict
-// form is present and the bool-only form is absent.
-//
-// RESEARCH.md Pitfall 1 mitigation.
+// TestLaunchdTemplateKeepAliveCrashedDict pins the dict-form KeepAlive in
+// the launchd template. The kardianos default emits the bool form
+// `<key>KeepAlive</key><true/>` which restarts on graceful `launchctl bootout`
+// and breaks `jasper uninstall`. We assert the dict form is present and the
+// bool-only form is absent.
 func TestLaunchdTemplateKeepAliveCrashedDict(t *testing.T) {
 	if !strings.Contains(launchdPlist, "<key>KeepAlive</key>\n    <dict>") {
 		t.Errorf("launchdPlist missing dict-form KeepAlive (got bool-form or missing entirely)")
@@ -30,8 +28,8 @@ func TestLaunchdTemplateKeepAliveCrashedDict(t *testing.T) {
 	}
 }
 
-// TestLaunchdTemplateThrottleInterval pins the second half of ROADMAP
-// success criterion #1: ThrottleInterval=60 must be present verbatim.
+// TestLaunchdTemplateThrottleInterval pins ThrottleInterval=60 in the
+// launchd template.
 func TestLaunchdTemplateThrottleInterval(t *testing.T) {
 	if !strings.Contains(launchdPlist, "<key>ThrottleInterval</key>") {
 		t.Errorf("launchdPlist missing <key>ThrottleInterval</key>")
@@ -64,15 +62,15 @@ func TestLaunchdTemplateRunAtLoadAndServeArg(t *testing.T) {
 	}
 }
 
-// TestSystemdTemplateRestartOnFailure pins D-35 onto the systemd template:
-// Restart=on-failure (NOT the default `Restart=always`).
+// TestSystemdTemplateRestartOnFailure pins Restart=on-failure in the systemd
+// template (NOT the kardianos default `Restart=always`).
 func TestSystemdTemplateRestartOnFailure(t *testing.T) {
 	if !strings.Contains(systemdUnit, "Restart=on-failure") {
 		t.Errorf("systemdUnit missing Restart=on-failure (kardianos default `always` would silently respawn after SIGTERM)")
 	}
 
 	if strings.Contains(systemdUnit, "Restart=always") {
-		t.Errorf("systemdUnit contains Restart=always — must be on-failure (D-35)")
+		t.Errorf("systemdUnit contains Restart=always — must be on-failure")
 	}
 }
 
@@ -113,10 +111,8 @@ func TestSystemdTemplateExecStartServe(t *testing.T) {
 }
 
 // TestNewReturnsService asserts the factory produces a non-nil
-// service.Service without error. We don't introspect kardianos's
-// internal Config — that's not part of the public API — but the call
-// path exercises the LaunchdConfig/SystemdScript wiring at construction
-// time.
+// service.Service without error, exercising the LaunchdConfig/SystemdScript
+// wiring at construction time.
 func TestNewReturnsService(t *testing.T) {
 	svc, err := New("/tmp/jasper-test-data")
 	if err != nil {
@@ -127,14 +123,9 @@ func TestNewReturnsService(t *testing.T) {
 	}
 }
 
-// TestNewWiresOverrides exercises the installer.go code that wires
-// LaunchdConfig + SystemdScript onto the kardianos service.Config.
-// We can't inspect the Config after service.New, so we rely on the
-// template-content tests above plus a grep over installer.go source
-// at build time (the grep below) to confirm both overrides are wired.
-//
-// This test runs the code path (so the package compiles + New executes)
-// and validates the EnvVars contract.
+// TestNewWiresEnvVars runs the code path (so the package compiles + New
+// executes) and validates the EnvVars contract. Template-content tests
+// above cover LaunchdConfig + SystemdScript correctness.
 func TestNewWiresEnvVars(t *testing.T) {
 	svc, err := New("/var/jasper/notes")
 	if err != nil {
@@ -160,8 +151,8 @@ func TestPlistPathMacOSShape(t *testing.T) {
 }
 
 // TestBootstrapMacOSNoOpOffDarwin pins that the modern-launchctl helpers
-// no-op cleanly off of macOS so cross-platform callers (08-12 install
-// subcommand) can call them unconditionally.
+// no-op cleanly off of macOS so cross-platform callers can invoke them
+// unconditionally.
 func TestBootstrapMacOSNoOpOffDarwin(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		t.Skip("test pins non-darwin no-op behavior; skipping on darwin")
@@ -189,10 +180,8 @@ func TestEnableLingerLinuxNoOpOffLinux(t *testing.T) {
 }
 
 // TestPlatformHelpersUnitTestOnly documents the test boundary: actually
-// invoking launchctl bootstrap or loginctl enable-linger requires a
-// matching OS + a real LaunchAgent / systemd context. Those paths are
-// covered by Plan 08-14's docker-compose / launchd integration suite,
-// not here. The unit tests above pin the template content and the
-// no-op behavior on the wrong OS — that's the contract for 08-11.
+// invoking launchctl bootstrap or loginctl enable-linger requires a real
+// OS + LaunchAgent / systemd context. The unit tests above pin template
+// content and no-op behavior on the wrong OS.
 func TestPlatformHelpersUnitTestOnly(_ *testing.T) {
 }

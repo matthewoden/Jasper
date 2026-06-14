@@ -1,21 +1,12 @@
 /**
- * VaultCreatePane — the "Create new" tab of VaultPicker.
+ * VaultCreatePane — "Create new" tab of VaultPicker.
  *
- * Three sections per UAT-2 #1d feedback:
- *   1. Vault folder path (absolute path input with validateVaultPath)
- *   2. Theme radio (dark/light; default dark per D-06) — applies live so the
- *      user sees the choice before submitting (no save round-trip).
- *   3. Daily-note template with sensible default (`# {{date}}\n\n`)
+ * Three sections: vault folder path, theme (live-applies on radio change),
+ * daily-note template. MCP grants belong on existing folders, not at creation
+ * time — wizard posts mcp_enabled: false.
  *
- * MCP grants were moved OUT of vault creation per UAT-2 #1d ("a new vault is
- * always empty; MCP grants belong on existing folders"). The wizard still
- * posts `mcp_enabled: false`; MCP is enabled and granted from the running app
- * (TreeRowMenu "Grant AI access" — Plan 08-10).
- *
- * SECURITY-06: validateVaultPath runs client-side before POST /vault/create.
- * Backend repeats every rule (defense-in-depth).
- *
- * Plan 08-17c Task 2 + UAT-2 #1d rework.
+ * validateVaultPath runs client-side before POST; backend repeats every rule
+ * (defense-in-depth).
  */
 
 import { useState } from "react";
@@ -91,7 +82,6 @@ export function VaultCreatePane({ onCreated }: VaultCreatePaneProps) {
         void handleSubmit();
       }}
     >
-      {/* Section 1: Vault folder path */}
       <section style={{ marginBottom: 24 }}>
         <div style={SECTION_EYEBROW_STYLE}>Vault folder</div>
         <p style={HELPER_STYLE}>
@@ -159,7 +149,6 @@ export function VaultCreatePane({ onCreated }: VaultCreatePaneProps) {
         />
       </section>
 
-      {/* Section 2: Theme — live preview */}
       <section style={{ marginBottom: 24 }}>
         <div style={SECTION_EYEBROW_STYLE}>Theme</div>
         <p style={HELPER_STYLE}>Preview applies immediately. You can switch any time.</p>
@@ -187,7 +176,6 @@ export function VaultCreatePane({ onCreated }: VaultCreatePaneProps) {
         </label>
       </section>
 
-      {/* Section 3: Daily note template */}
       <section style={{ marginBottom: 24 }}>
         <div style={SECTION_EYEBROW_STYLE}>Daily notes</div>
         <p style={HELPER_STYLE}>

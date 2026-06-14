@@ -43,7 +43,6 @@ func (f *blIdx) setRows(targetID uuid.UUID, rows []notes.BacklinkRow) {
 	f.backlinks[targetID] = rows
 }
 
-// notes.Index implementation — core methods.
 func (f *blIdx) Upsert(_ context.Context, _ notes.NoteRecord) error { return nil }
 func (f *blIdx) Delete(_ context.Context, _ uuid.UUID) error        { return nil }
 func (f *blIdx) List(_ context.Context) ([]notes.NoteSummary, error) {
@@ -82,7 +81,6 @@ func (f *blIdx) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uu
 	return nil
 }
 
-// notes.Index.GetBacklinks — controllable.
 func (f *blIdx) GetBacklinks(_ context.Context, targetID uuid.UUID) ([]notes.BacklinkRow, error) {
 	if f.backlinksErr != nil {
 		return nil, f.backlinksErr
@@ -93,12 +91,10 @@ func (f *blIdx) GetBacklinks(_ context.Context, targetID uuid.UUID) ([]notes.Bac
 	return []notes.BacklinkRow{}, nil
 }
 
-// notes.Index.SearchTitles — controllable.
 func (f *blIdx) SearchTitles(_ context.Context, _ string, _ int) ([]notes.SearchResult, error) {
 	return f.searchResults, f.searchErr
 }
 
-// Plan 07-04: SearchFTS no-op stub.
 func (f *blIdx) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes.SearchHit, error) {
 	return []notes.SearchHit{}, nil
 }

@@ -1,17 +1,14 @@
 /**
- * UAT-2 R4-1: --vault flag on the serve subcommand.
+ * --vault flag regression spec for the serve subcommand.
  *
- * Pre-fix regression: serveCmd has DisableFlagParsing=true so the root
- * PersistentFlag for --vault never reached runServe's local FlagSet. The
- * user's `bin/jasper serve --vault $PWD/_perf-vault` errored with
- *   "flag provided but not defined: -vault"
+ * Pre-fix: serveCmd had DisableFlagParsing=true so the --vault flag was
+ * never parsed, producing "flag provided but not defined: -vault".
  *
- * This spec spawns the binary with the new form and asserts the server
- * boots cleanly + /api/v1/admin/status returns 200. Backend-only smoke
- * (no browser).
+ * Asserts the server boots cleanly and /api/v1/admin/status returns 200.
+ * Backend-only smoke (no browser).
  *
- * NOTE: helpers inlined per file (Playwright's transformer didn't accept
- * a shared sibling .ts module — see commit message).
+ * NOTE: helpers inlined per file — Playwright's transformer did not accept
+ * a shared sibling .ts module import.
  */
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";

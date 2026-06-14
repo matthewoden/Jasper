@@ -80,7 +80,7 @@ func newRealRunner(t *testing.T) (*migrate.Runner, *sqlite.Pair, string) {
 	return r, pair, dir
 }
 
-// TestPostAdminReindex_NilRunner_503 — Phase 1 NewServer compatibility.
+// TestPostAdminReindex_NilRunner_503 — nil runner returns 503 "no_runner".
 func TestPostAdminReindex_NilRunner_503(t *testing.T) {
 	t.Parallel()
 	ts := adminReindexFixture(t, nil, nil)
@@ -125,8 +125,7 @@ func TestPostAdminReindex_HappyPath_FullMode_202(t *testing.T) {
 
 // TestPostAdminReindex_IncrementalMode_DispatchesToIndexer — pass
 // mode=incremental with a real Indexer + tempdir vault; assert 202 +
-// notes_indexed reflects the on-disk count. W-1 verification —
-// incremental no longer 503s.
+// notes_indexed reflects the on-disk count.
 func TestPostAdminReindex_IncrementalMode_DispatchesToIndexer(t *testing.T) {
 	t.Parallel()
 	r, pair, dir := newRealRunner(t)
@@ -310,14 +309,11 @@ func adminReindexHydrateFixture(t *testing.T) (*httptest.Server, *notes.Service,
 	return ts, svc, notesDir, idx
 }
 
-// TestPostAdminReindex_HydratesRegistryAfterFullRebuild proves Gap 6a from
-// 03-HUMAN-UAT.md is closed: a UUID minted by the rebuild walk MUST be
-// reachable via the in-memory Registry (and therefore via GET /notes/{id})
-// immediately after POST /admin/reindex returns 202. Pre-fix this assertion
-// fails because the in-memory Registry is never re-hydrated after the
-// rebuild — Service.Get returns 404 on the new UUID until the server
-// restarts. The reproducer is the exact scenario from
-// .planning/debug/scratchpad-vanishes-self-move.md Evidence C.
+// TestPostAdminReindex_HydratesRegistryAfterFullRebuild asserts that a UUID
+// minted by the rebuild walk is reachable via the in-memory Registry (and
+// therefore via GET /notes/{id}) immediately after POST /admin/reindex
+// returns 202. Without post-rebuild hydration, Service.Get returns 404 on
+// newly-discovered UUIDs until the server restarts.
 func TestPostAdminReindex_HydratesRegistryAfterFullRebuild(t *testing.T) {
 	t.Parallel()
 	ts, svc, notesDir, idx := adminReindexHydrateFixture(t)
@@ -364,11 +360,10 @@ func TestPostAdminReindex_HydratesRegistryAfterFullRebuild(t *testing.T) {
 	}
 }
 
-// TestPostAdminReindex_HydratesRegistryAfterIncremental proves the same
-// invariant for the mode=incremental branch. The incremental path goes
+// TestPostAdminReindex_HydratesRegistryAfterIncremental asserts the same
+// hydration invariant for the incremental branch. The incremental path goes
 // through idx.Reconcile(ModeIncremental), which mints fresh UUIDs for any
-// newly-discovered files but DOES NOT drop existing rows. Pre-fix the
-// Registry is not hydrated on success; post-fix it is.
+// newly-discovered files but does not drop existing rows.
 func TestPostAdminReindex_HydratesRegistryAfterIncremental(t *testing.T) {
 	t.Parallel()
 	ts, svc, notesDir, idx := adminReindexHydrateFixture(t)
@@ -407,12 +402,11 @@ func TestPostAdminReindex_HydratesRegistryAfterIncremental(t *testing.T) {
 	}
 }
 
-// TestPostAdminReindex_DoesNotHydrateWhenRebuildFails proves the failure
-// path leaves the Registry untouched. We seed a known stale entry into the
-// Registry, force RebuildAndReindex into ErrUnrecoverable (no Path2Rebuild
-// → Path 3), and verify the Registry still contains the seed. Hydrate
-// MUST NOT run when the rebuild errors — both before and after the fix
-// (the failure path returns early, before the new Hydrate call).
+// TestPostAdminReindex_DoesNotHydrateWhenRebuildFails asserts the failure
+// path leaves the Registry untouched. We seed a known stale entry, force
+// RebuildAndReindex into ErrUnrecoverable, and verify the seed survives.
+// Hydrate must not run when the rebuild errors — the error path returns
+// before the Hydrate call.
 func TestPostAdminReindex_DoesNotHydrateWhenRebuildFails(t *testing.T) {
 	t.Parallel()
 
@@ -505,12 +499,10 @@ func adminReindexFixtureWithBroadcaster(t *testing.T, runner *migrate.Runner, id
 	return httptest.NewServer(r)
 }
 
-// TestPostAdminReindex_WR07_EmitsCompleteOnRebuildError verifies that
-// when the rebuild path fires reindex:started, the handler ALWAYS emits
-// reindex:complete afterwards — even on error. Prior to the WR-07 fix
-// the error path returned 503 without a completion event, which left
-// connected tabs' ReindexProgress overlay stuck on "running" forever
-// and locked the editor pane behind it.
+// TestPostAdminReindex_WR07_EmitsCompleteOnRebuildError verifies that when
+// reindex:started fires, reindex:complete is always emitted afterwards —
+// even on error. Without this guarantee the error path returns 503 without
+// a completion event, leaving connected tabs' overlay stuck on "running".
 func TestPostAdminReindex_WR07_EmitsCompleteOnRebuildError(t *testing.T) {
 	t.Parallel()
 	r, _, _ := newRealRunner(t)
@@ -531,9 +523,8 @@ func TestPostAdminReindex_WR07_EmitsCompleteOnRebuildError(t *testing.T) {
 }
 
 // TestPostAdminReindex_WR07_InvalidModeNoStartedEvent verifies that
-// invalid_mode short-circuits BEFORE reindex:started fires, so the
-// completion-defer pairing stays intact (no orphan "started" emitted
-// to listening tabs that the server is about to reject).
+// invalid_mode short-circuits before reindex:started fires, so no orphan
+// "started" event is emitted to tabs before the 409 rejection.
 func TestPostAdminReindex_WR07_InvalidModeNoStartedEvent(t *testing.T) {
 	t.Parallel()
 	r, _, _ := newRealRunner(t)

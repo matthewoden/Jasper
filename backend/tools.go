@@ -7,7 +7,8 @@
 //
 // `go mod tidy` keeps these deps in go.sum so `go run` and `go generate`
 // can resolve them deterministically. Pattern documented in:
-//   https://github.com/golang/go/wiki/Modules#how-can-i-track-tool-dependencies-for-a-module
+//
+//	https://github.com/golang/go/wiki/Modules#how-can-i-track-tool-dependencies-for-a-module
 package tools
 
 import (

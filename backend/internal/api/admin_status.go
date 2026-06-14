@@ -5,10 +5,9 @@ import (
 )
 
 // GetAdminStatus implements GET /api/v1/admin/status. Returns the
-// current migration runner state for the migration banner (UX-03).
+// current migration runner state for the migration banner.
 //
-// Voice-rule notes (UI-SPEC §Surface 1, threat T-02-03-03): the wire
-// format never carries the SQL that failed or the absolute filesystem
+// The wire format never carries the SQL that failed or the absolute filesystem
 // path of the live database — only the migration filename and the log
 // file path (which the user already knows lives under their data dir).
 //

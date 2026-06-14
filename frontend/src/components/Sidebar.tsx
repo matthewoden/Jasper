@@ -1,38 +1,26 @@
 /**
- * Phase 3 sidebar — replaces the Phase 1 hardcoded single-row stub.
+ * Sidebar — layout shell: floating card with NOTES header + FileTree.
  *
- * Structure (UI-SPEC §Sidebar internal structure):
- *   <nav width=260>
- *     <header>NOTES + SidebarToolbar</header>
- *     <FileTree onSelectNote={...} />   (flex: 1; scrolls)
+ * Structure:
+ *   <nav width=sidebarWidth>
+ *     <card>
+ *       <header>NOTES + SidebarToolbar</header>
+ *       <FileTree onSelectNote={...} />   (flex: 1; scrolls)
+ *     </card>
+ *     <SidebarResizeHandle />  (outside card — overlays the column boundary)
  *   </nav>
  *
- * Plan 07-40 (UAT-6) REVERSED Plan 07-39's Sidebar search-input + result-list
- * mount. Search now lives in a CommandMenu mode='search' modal invoked by
- * Cmd+Shift+F (see App.tsx handleAppCmdShiftF + CommandMenu mode='search').
- * The standalone search-input and search-result-list component files REMAIN
- * in the codebase (orphaned again per the long-running HALT discipline) —
- * they may be useful for an inline non-modal search variant later.
+ * Search lives in CommandMenu mode='search' (Cmd+Shift+F), not in the sidebar.
+ * SearchInputBar and SearchResultsList remain in the codebase for a potential
+ * inline search variant but are currently orphaned.
  *
- * State ownership: useFileTree owns tree state; useTreeStore owns
- * activeNoteId + expanded. Sidebar itself is a layout shell with
- * toolbar wiring:
- *   - New note / New folder click → useTreeCreateActions().createNoteAt(parent)
- *     / .createFolderAt(parent), where `parent` is derived from
- *     useTreeStore.selectedRow via the parentPathForCreate() helper below
- *     (Plan 05.5-06, UX-12). Folder selection ⇒ create inside the folder;
- *     note selection ⇒ create alongside the note (in its parent folder);
- *     no selection ⇒ root (""). The new node immediately enters
- *     inline-rename mode (useTreeCreateActions calls startRename on the
- *     POST response).
- *   - Refresh click → postAdminReindex("incremental"). On error, surface
- *     the locked toast tuple per UI-SPEC §Surface 5
- *     ("Couldn't refresh the index.") AND re-throw so the toolbar's
- *     spin-disabled treatment clears.
- *   - Gap R2-2: while a create is in flight, the toolbar's New Note +
- *     New Folder buttons are visibly disabled — see
- *     `useTreeCreateActions.isCreating`. The flag is threaded straight
- *     through to `<SidebarToolbar creating=... />`.
+ * Toolbar wiring:
+ *   - New note / New folder → useTreeCreateActions().createNoteAt/FolderAt(parent),
+ *     where parent comes from useTreeStore.selectedRow via parentPathForCreate().
+ *     Folder ⇒ create inside; note ⇒ create in its parent folder; none ⇒ root ("").
+ *     The new node immediately enters inline-rename mode.
+ *   - isCreating (from useTreeCreateActions) threads through to SidebarToolbar
+ *     to visibly disable the buttons while a create is in flight.
  */
 import { useCallback } from "react";
 import type React from "react";
@@ -47,23 +35,15 @@ import { useTreeStore, type SelectedRow } from "../lib/useTreeStore";
 
 export interface SidebarProps {
   onSelectNote?: (id: string) => void;
-  /**
-   * Phase 6.6 — Plan 06.6-11: optional style for grid placement.
-   * App.tsx passes gridRow/gridColumn here; merged onto the outer nav.
-   */
+  /** Optional style for grid placement; merged onto the outer nav. */
   style?: React.CSSProperties;
 }
 
 /**
- * UX-12: derive the create target parent path from the currently selected
- * row.
- *   - folder selection → create inside that folder (target = folder.path)
- *   - note selection   → create in the note's parent folder
- *   - no selection     → root ("")
- *
- * The Tree shape uses `tree.root` (NoteNode | FolderNode array). Mirror
- * EditorPane.findNotePathInTree (EditorPane.tsx line 139) for the note →
- * path lookup.
+ * Derive the create-target parent path from the currently selected row.
+ *   - folder → create inside that folder
+ *   - note   → create in the note's parent folder
+ *   - none   → root ("")
  */
 function parentPathForCreate(
   tree: Tree | null,
@@ -177,13 +157,8 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
             creating={isCreating}
           />
         </header>
-        {/* Plan 07-40 (UAT-6): Plan 07-39's sidebar search-input + conditional
-            result-list swap are REMOVED. FileTree is the unconditional sidebar
-            surface. Search lives in CommandMenu mode='search' (Cmd+Shift+F) —
-            see App.tsx handleAppCmdShiftF. */}
         {/*
-          Tree-area shell — bounded by viewport (parent grid row is
-          minmax(0, 1fr)). overflow:hidden because react-arborist's
+          Tree-area shell — overflow:hidden because react-arborist's
           internal react-window FixedSizeList owns the scroll surface.
         */}
         <div
@@ -198,15 +173,9 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
         >
           <FileTree onSelectNote={onSelectNote} />
         </div>
-        {/*
-          Phase 6.5 — Plan 06.5-04 (D-04): the tag browser panel was relocated
-          to the right-rail (RightRailTagsPanel). Left sidebar is file-tree-only.
-          The legacy left-sidebar tag browser file is preserved as dead code (ADD-only).
-        */}
+        {/* Tag browser panel relocated to right-rail; left sidebar is file-tree-only. */}
       </div>
-      {/* Phase 5.5 — Plan 05 (UX-09): MUST be outside the card so the
-          absolute-positioned handle overlays the right edge of the outer nav
-          (the column boundary, not the card boundary). */}
+      {/* Outside the card — handle must overlay the outer nav's right edge, not the card's */}
       <SidebarResizeHandle />
     </nav>
   );

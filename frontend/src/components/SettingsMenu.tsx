@@ -1,18 +1,10 @@
 /**
- * SettingsMenu — Phase 11 Plan 03 repurpose.
+ * SettingsMenu — trigger wrapper that opens SettingsDialog on click.
  *
- * Previously: Radix DropdownMenu with theme RadioGroup (Phase 5 / Plan 05-10).
- * Now: Trigger wrapper that opens SettingsDialog on click.
- *
- * CONVENTIONS §"Orphaned code is a design signal" — file is NOT deleted,
- * it is repurposed. The trigger button contract is PRESERVED:
- *   aria-label="Settings"  title="Settings"  data-testid="settings-menu-trigger"
- *
- * Theme switching moves into the APPEARANCE section of SettingsDialog.
- * StatusBar.tsx mounts <SettingsMenu /> — no change to StatusBar needed.
- *
- * Pattern: RESEARCH.md Pattern 3 — plain button + onClick (not Dialog.Trigger
- * asChild) to keep the E2E selector stable and avoid Radix asChild subtleties.
+ * Plain button (not Dialog.Trigger asChild) to keep E2E selectors stable
+ * and avoid Radix asChild composition subtleties.
+ * Trigger contract (E2E-stable): aria-label="Settings" title="Settings"
+ * data-testid="settings-menu-trigger".
  */
 import { useState } from "react";
 import { Settings } from "lucide-react";

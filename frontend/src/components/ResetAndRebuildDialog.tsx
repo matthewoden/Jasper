@@ -1,15 +1,8 @@
 /**
- * Surface 2 — Reset-and-Rebuild Confirmation. UI-SPEC §Surface 2.
+ * Reset-and-Rebuild Confirmation dialog (Radix AlertDialog, role="alertdialog").
  *
- * Renders a Radix AlertDialog (role="alertdialog") with a hard-locked copy
- * contract. The dialog exists to slow the user down — the action itself is
- * non-destructive (filesystem is the source of truth; SQLite is rebuilt
- * from the .md files), so the voice is reassuring not alarming.
- *
- * Forward-compat:
- *   - The dialog opens/closes via controlled `open` + `onOpenChange` props.
- *     Phase 4 will reuse this exact contract; nothing about the surface
- *     changes when WebSocket events take over the migration banner upstream.
+ * The action is non-destructive — SQLite is rebuilt from .md files — so the
+ * voice is reassuring. Opens/closes via controlled `open` + `onOpenChange` props.
  */
 
 import * as AlertDialog from "@radix-ui/react-alert-dialog";

@@ -51,16 +51,10 @@ func TestRequireLoopbackBind_OnlyLoopback(t *testing.T) {
 
 // TestServeWSLBindOptIn documents the WSL2 0.0.0.0 acceptance path.
 //
-// Phase 8 ships WITHOUT an env-var or build-tag opt-in to RequireLoopbackBind:
-// users who need LAN access on WSL2 must explicitly edit
-// <vault>/.jasper/config.json server.bind to `0.0.0.0:6683` and the
-// loopback gate will refuse the binary's startup. The install-validation
-// docker-compose suite (compose/install-validation/) exercises that
-// real-WSL2-distro path end-to-end (D-45 / INSTALL-09).
-//
-// If a future plan adds JASPER_ALLOW_WSL_BIND=1 (or similar) to
-// netbind.go, this test gains a case that exercises it. Today it
-// documents the absence of any silent escape hatch.
+// There is no env-var or build-tag opt-in to RequireLoopbackBind: users who
+// need LAN access on WSL2 must explicitly edit server.bind in config.json, and
+// the loopback gate refuses startup. This test documents the absence of any
+// silent escape hatch; if one is added to netbind.go, a case can be added here.
 func TestServeWSLBindOptIn(t *testing.T) {
 	t.Setenv("JASPER_ALLOW_WSL_BIND", "1")
 	if err := netbind.RequireLoopbackBind("0.0.0.0:6683"); err == nil {

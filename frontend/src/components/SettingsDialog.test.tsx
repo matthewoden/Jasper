@@ -1,14 +1,12 @@
 /**
- * SettingsDialog component tests — Phase 11 Plan 03 (SET-01/02/04/06).
+ * SettingsDialog component tests.
  *
  * SD-1: renders Dialog.Title "Settings" when open=true
  * SD-2: dialog does NOT render when open=false
  * SD-3: Close button calls onOpenChange(false)
  * SD-4: all four section eyebrows present (APPEARANCE/EDITOR/DAILY NOTES/GENERAL)
- * SD-5 (SET-04): blurring "Editor font size" input sets --editor-font-size CSS var
- * SD-6 (SET-06): ≥2 elements with aria-label "Requires reload to apply"
- * + line height CSS var on blur
- * + out-of-range revert for font size
+ * SD-5: blurring "Editor font size" input sets --editor-font-size CSS var
+ * SD-6: ≥2 elements with aria-label "Requires reload to apply"
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -113,7 +111,6 @@ describe("<SettingsDialog />", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
-    // input should revert to config value
     expect((input as HTMLInputElement).value).toBe("15");
   });
 
@@ -135,7 +132,6 @@ describe("<SettingsDialog />", () => {
   it("no Save button rendered", async () => {
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
     await waitFor(() => screen.getByRole("button", { name: "Close" }));
-    // Only Close button, no Save
     const buttons = screen.getAllByRole("button");
     const saveButtons = buttons.filter((b) => b.textContent?.toLowerCase().includes("save"));
     expect(saveButtons.length).toBe(0);

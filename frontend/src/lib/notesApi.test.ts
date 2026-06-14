@@ -1,10 +1,5 @@
 /**
- * Tests for the typed-client wrappers. Validates that:
- *   - getNote / updateNote route through the openapi-fetch client (no
- *     hand-written fetch / URLs).
- *   - The hard-coded ScratchpadUUID matches the byte-for-byte constant used
- *     by Plan 02's backend (CONTEXT.md D-06).
- *
+ * Tests for notesApi typed-client wrappers.
  * The client module is mocked so we can spy on .GET / .PUT calls.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";

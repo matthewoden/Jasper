@@ -1,36 +1,14 @@
 /**
- * MarkdownEditor — CM6 lifecycle owner. Phase 5 D-26..D-29.
+ * MarkdownEditor — CM6 lifecycle owner (presenter half of the EditorPane split).
  *
- * Container/presenter split:
- *   EditorPane (container)  → owns banners, conflict prompts, deletion
- *                              banner, autosave + saveStateMachine,
- *                              h1Extract pipeline, editorHandlersRef,
- *                              userHasEdited ref, lastNotePath, WS
- *                              handler refs. Phase 4 wiring is intact
- *                              (D-27).
- *   MarkdownEditor (presenter) → owns the EditorView instance, all CM6
- *                                 extensions, the small ref API. Plan
- *                                 05-11 swaps EditorPane's <textarea>
- *                                 for <MarkdownEditor> in a 1:1 read-
- *                                 site mapping.
+ * EditorView is mounted ONCE on mount (useEffect with []) for cursor stability.
+ * Updates flow via view.dispatch from the ref API or via ServerUpdateAnnotation
+ * for silent WS reloads.
  *
- * EDIT-01 cursor stability: EditorView is mounted ONCE on mount via
- * useEffect with []. Never destroys/recreates on prop change. Updates
- * flow via view.dispatch from the ref API or via the silent-reload
- * annotation from EditorPane's WS handler.
+ * onChange fires on user-typed docChanged transactions only — IME composing
+ * transactions and server-update annotations are filtered.
  *
- * D-32 Save-state preservation: `onChange` fires on user-typed
- * docChanged transactions only — IME composing transactions and
- * server-update annotations are filtered. EditorPane's onChange
- * callback dispatches userTyped to saveStateMachine the same way the
- * <textarea>'s onChange did. The 2s debounce, Cmd+S, and Phase 4
- * `paused` gating all flow through unchanged.
- *
- * D-26 Ref API contract — EditorPane's call sites swap 1:1:
- *   editorRef.current.getContent()    ← textareaRef.current.value
- *   editorRef.current.setContent(s)   ← textareaRef.current.value = s
- *   editorRef.current.applyServerUpdate(s) ← Phase 4 silent reload
- *   editorRef.current.focus()         ← textareaRef.current.focus()
+ * Ref API: getContent / setContent / applyServerUpdate / focus / focusEnd.
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Annotation } from "@codemirror/state";
@@ -95,55 +73,30 @@ import { useFileTree } from "../lib/useFileTree";
 import { postNotes } from "../lib/treeApi";
 import type { TreeNode } from "../lib/treeApi";
 
-/**
- * MarkdownEditorRef — the ref API EditorPane consumes (D-26 LOCKED).
- */
 export interface MarkdownEditorRef {
   /** Replace the entire document. Triggers onChange (user-driven). */
   setContent(s: string): void;
-  /** Read the current document text. Equivalent to textarea.value. */
   getContent(): string;
-  /**
-   * Replace the entire document AS A SERVER UPDATE — annotated so the
-   * onChange callback can recognize and skip the userTyped dispatch
-   * (Phase 4 D-10 silent reload).
-   */
+  /** Replace document as a server update — annotated so onChange is NOT fired (avoids autosave loop). */
   applyServerUpdate(s: string): void;
-  /** Focus the editor caret. */
   focus(): void;
-  /**
-   * Phase 5.5 / UX-10: focusEnd — focus the editor AND move caret to
-   * end-of-doc in a single dispatch. Used by EditorPane's
-   * click-anywhere-to-type host wrapper.
-   */
+  /** Focus and move caret to end-of-doc. Used by EditorPane's click-anywhere-to-type host. */
   focusEnd(): void;
 }
 
-/**
- * ServerUpdateAnnotation — transactions carrying this annotation are
- * server-driven and MUST NOT trigger onChange in EditorPane (avoids
- * autosave loop on WS reload). Exported for future tests.
- */
+/** Transactions annotated with this are server-driven and skip the onChange callback. */
 export const ServerUpdateAnnotation = Annotation.define<true>();
 
 interface Props {
-  /** Initial document text. CAPTURED ONCE; subsequent prop changes
-   *  do NOT re-instantiate the editor. Use the ref API for updates. */
+  /** Initial document text. Captured once — use the ref API for subsequent updates. */
   initialDoc: string;
-  /** Fires after every user-typed docChanged transaction. NOT fired
-   *  during IME composition, NOT fired for server-update annotations. */
+  /** Fires after every user-typed docChanged transaction; NOT fired during IME or server-update annotations. */
   onChange: (doc: string) => void;
-  /** Fires when the first H1 line of the doc changes. Plan 05-06+ may
-   *  wire this; Plan 05-05 ships the callback shape so EditorPane can
-   *  pass through its existing h1Extract pipeline (Phase 3 R2). */
+  /** Fires when the first H1 line changes. */
   onH1Change?: (h1: string | null) => void;
-  /** Cmd+S handler. Plan 05-10 wires the keymap; Plan 05-05 reserves
-   *  the prop so EditorPane's performSave call site is unchanged. */
+  /** Cmd+S handler. */
   onSaveRequested?: () => void;
-  /** Phase 5.5 / UX-07: fires when CM6's contenteditable surface loses
-   *  focus to ANY element outside the editor. Distinct from React's
-   *  onBlur (which fires for focus moves WITHIN the editor too). Wired
-   *  via EditorView.domEventHandlers({ blur }) in the extensions array. */
+  /** Fires when CM6's contenteditable loses focus to any element OUTSIDE the editor. */
   onBlur?: () => void;
 }
 
@@ -298,28 +251,28 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           doc: initialDoc,
           extensions: [
             history(),
-            search({ top: true }), // Plan 07-27: searchKeymap removed; browser native Cmd+F fires instead
+            search({ top: true }), // searchKeymap omitted; browser native Cmd+F fires instead
             yamlFrontmatter({ content: markdown({ codeLanguages, base: markdownLanguage }) }),
             jasperEditorTheme,
             jasperSyntaxHighlighting,
-            frontmatterHideExtension, // Phase 6.5 / Plan 06.5-06 / UX-T-04 — hide frontmatter by default
-            checkboxTransactionExtender, // Phase 12 / Plan 01 — CHK-01 toggle (no-op shim; char-flip is in taskCheckboxPlugin)
-            taskCheckboxPlugin,          // Phase 12 / Plan 01 — CHK-01..04 checkbox decorations + click handler (BEFORE livePreviewPlugin)
+            frontmatterHideExtension, // hide frontmatter by default
+            checkboxTransactionExtender, // CHK-01 toggle shim (char-flip is in taskCheckboxPlugin)
+            taskCheckboxPlugin,          // checkbox decorations + click handler — must be BEFORE livePreviewPlugin
             livePreviewPlugin,
-            wikilinkPlugin, // Phase 6 / Plan 06-09 — [[Title]] decoration
-            tagClickPlugin, // Phase 6 / Plan 06-10 — clickable tag values in frontmatter (D-08)
-            inlineTagPlugin, // Phase 6.5 / Plan 06.5-05 / UX-T-02 — body inline #tagname decoration
-            linkClickHandler, // 05.5-18 — Cmd/Ctrl-click opens external links in a new tab
-            externalImagePlugin, // Plan 05-08 — SECURITY-03 external image gate
+            wikilinkPlugin,    // [[Title]] decoration
+            tagClickPlugin,    // clickable tag values in frontmatter
+            inlineTagPlugin,   // body inline #tagname decoration
+            linkClickHandler,  // Cmd/Ctrl-click opens external links in a new tab
+            externalImagePlugin, // external image security gate
             imageAttachmentPlugin(noteIdRef), // renders ![alt](attachments/…) below line
             fileChipPlugin(noteIdRef), // renders [name](attachments/…) chip below line
             dropPosField,         // StateField: current drag position (null = hidden)
-            dropIndicatorPlugin,  // ViewPlugin: attaches dragover/dragleave/drop listeners
+            dropIndicatorPlugin,  // ViewPlugin: dragover/dragleave/drop listeners
             autocompletion({ override: [wikilinkCompletionSource, tagCompletionSource, inlineTagCompletionSource] }),
-            saveKeymap(() => cbRef.current.onSaveRequested?.()), // Plan 05-11 / EDIT-10 — BEFORE defaultKeymap so Cmd+S takes precedence
-            frontmatterToggleKeymap, // Phase 6.5 / Plan 06.5-06 / UX-T-04 — Cmd-Shift-Y toggles raw frontmatter view
+            saveKeymap(() => cbRef.current.onSaveRequested?.()), // BEFORE defaultKeymap so Cmd+S takes precedence
+            frontmatterToggleKeymap, // Cmd-Shift-Y toggles raw frontmatter view
             codeblockExpand,
-            keymap.of([...jasperKeymap, ...defaultKeymap, ...historyKeymap]), // Plan 07-24: jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap's cursorCharLeft/selectParentSyntax; Plan 07-27: searchKeymap removed (browser native Cmd+F)
+            keymap.of([...jasperKeymap, ...defaultKeymap, ...historyKeymap]), // jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap
             EditorView.lineWrapping,
             EditorView.domEventHandlers({
               blur() {
@@ -338,7 +291,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
                 const m = doc.match(/^# (.+)$/m);
                 cbRef.current.onH1Change(m ? m[1].trim() : null);
               }
-              // D-03: immediate flush on checkbox toggle — bypass 2s autosave debounce
+              // immediate flush on checkbox toggle — bypass 2s autosave debounce
               const isToggle = u.transactions.some(
                 (tr) => tr.annotation(CheckboxToggleAnnotation),
               );
@@ -355,8 +308,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
         view.destroy();
         viewRef.current = null;
       };
-      // initialDoc captured ONCE — Phase 5 D-26 / EDIT-01 cursor
-      // stability. Subsequent updates flow through the ref API.
+      // initialDoc captured ONCE for cursor stability. Subsequent updates use the ref API.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 

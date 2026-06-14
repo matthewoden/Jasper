@@ -1,13 +1,5 @@
 /**
- * useDeepLink.test — boot-time `?note=` / `?path=` resolver.
- *
- * Coverage:
- *   - DL-1: ?note=<uuid> → setActiveNote called + URL cleaned
- *   - DL-2: ?path=<rel>  → setActiveNote called + URL cleaned
- *   - DL-3: no params → no API call, no navigation
- *   - DL-4: ?note=<uuid> miss → window.location.assign /note-not-found
- *   - DL-5: ?note= AND ?path= → ?note wins (D-30 preference)
- *   - DL-6: treeReady=false → no API call (gate honored)
+ * Tests for useDeepLink — boot-time ?note= / ?path= resolver.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";

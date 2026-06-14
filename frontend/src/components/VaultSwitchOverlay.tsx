@@ -1,15 +1,10 @@
 /**
- * VaultSwitchOverlay — Plan 08-17d (V4).
+ * VaultSwitchOverlay — full-screen non-dismissable overlay shown while a vault
+ * switch is in progress (vault.switching WS event). Unmounts when the SPA
+ * reloads on vault.switched (or 10-second failsafe).
  *
- * Full-screen non-dismissable overlay that mounts when the SPA receives
- * a vault.switching WS event. Unmounts automatically when the SPA reloads
- * on receipt of vault.switched (or after the 10-second V4 failsafe).
- *
- * The overlay is intentionally non-interactive — the switch is in progress
- * and the user cannot cancel it once the server-side drain has started.
- *
- * Accessibility: role="dialog" + aria-modal="true" prevents screen readers
- * from announcing background content while the switch is in progress.
+ * role="dialog" + aria-modal="true" prevents screen readers from announcing
+ * background content during the switch.
  */
 
 export interface VaultSwitchOverlayProps {

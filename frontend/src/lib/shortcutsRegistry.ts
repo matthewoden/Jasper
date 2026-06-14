@@ -8,18 +8,13 @@ export type ShortcutGroup =
   | "Sidebar"
   | "Palette"
   | "View"
-  // Plan 08-06 (D-26 / SHARE-01): "Share" group hosts the
-  // "Show current note in file manager" palette command. Position
-  // is locked between "View" and "Index" per UI-SPEC §Surface 4
-  // Mount C.
   | "Share"
   | "Index"
   | "Help"
-  // Plan 08-17c (V7): "Vault" group hosts vault-switching commands.
   | "Vault";
 
 export interface Shortcut {
-  /** Stable identifier; commands wire actions by id (Plan 07-11). */
+  /** Stable identifier; commands wire actions by id. */
   id: string;
   /** User-visible label. MUST match UI-SPEC §Command Registry table strings exactly. */
   label: string;
@@ -40,10 +35,7 @@ export const isMac =
 export const mod = isMac ? "⌘" : "Ctrl ";
 export const shift = isMac ? "⇧" : "Shift ";
 
-/**
- * SHORTCUTS_REGISTRY — locked v1 entries per UI-SPEC §Command Registry +
- * §Cheat-sheet rows. The label strings are the contract — checker greps for them.
- */
+/** SHORTCUTS_REGISTRY — all palette and cheat-sheet entries. Label strings are the contract. */
 export const SHORTCUTS_REGISTRY: Shortcut[] = [
   {
     id: "new-note",
@@ -165,7 +157,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
 export const COMMAND_PALETTE_ENTRIES = SHORTCUTS_REGISTRY.filter((s) => s.inPalette);
 export const CHEAT_SHEET_ENTRIES = SHORTCUTS_REGISTRY.filter((s) => s.inCheatSheet);
 
-/** Group order used by both palette + cheat-sheet (UI-SPEC §Group order). */
+/** Group order used by both palette + cheat-sheet. */
 
 
 export const GROUP_ORDER: ShortcutGroup[] = [

@@ -1,14 +1,11 @@
 /**
  * frontmatterHidePlugin.test.ts — vitest suite for the frontmatter hide plugin.
  *
- * UX-CHROME-05 / Phase 6.6 / Plan 06.6-03
- * Verifies that the YAML frontmatter block is hidden behind an invisible empty
- * widget (zero visible UI). Cmd-Shift-Y toggles between hidden and raw YAML view.
+ * Verifies the YAML frontmatter block is hidden behind an invisible empty widget.
+ * Cmd-Shift-Y toggles between hidden and raw YAML view.
  *
- * Updated for Plan 06.6-03 (reverses 6.5 D-12 affordance widget):
- *   - Hidden state: empty <span aria-hidden="true" style="display:none">
- *   - No button, no chevron, no label text
- *   - Cmd-Shift-Y keymap preserved (D-17)
+ * Hidden state: empty <span aria-hidden="true" style="display:none">
+ * (no button, no chevron, no label text).
  */
 import { describe, expect, it, afterEach } from "vitest";
 import { EditorView } from "@codemirror/view";

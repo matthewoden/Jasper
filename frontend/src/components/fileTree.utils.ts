@@ -1,13 +1,7 @@
 /**
- * FileTree pure helpers (Phase 3 + 5.5 + 7). Extracted from
- * FileTree.tsx so the component file only exports React components —
- * satisfies react-refresh/only-export-components and restores Fast
- * Refresh DX for the sidebar file-tree surface.
- *
- * Everything here is pure (no React hooks, no DOM dependencies other
- * than the small set used by `expandAndScrollToFolder` and
- * `resetTreeListLayout`). All functions are exercised by FileTree.test.tsx
- * directly.
+ * FileTree pure helpers. Extracted from FileTree.tsx so the component file
+ * only exports React components, satisfying react-refresh/only-export-components
+ * and restoring Fast Refresh. All functions are exercised by FileTree.test.tsx.
  */
 import type React from "react";
 import type { NodeApi, TreeApi } from "react-arborist";
@@ -56,15 +50,9 @@ export function buildNotePathMap(
 /**
  * Derive the parentNoteId for a file node at `filePath`.
  *
- * Plan 07-26 (UAT-2 R1-7) narrowed scope: only files inside an
- * `attachments/` subfolder are click-routable in v1.
- *
- * @deprecated Plan 07-32b (UAT-3 R7) — TreeRow no longer reads
- * FileNodeData.parentNoteId. The new file-click handler calls
- * `useTreeStore.setActiveFilePath(data.path)`, which drives
- * EditorPane → FilePreviewView with the generic GET /api/v1/files
- * endpoint. This function is preserved as a dead-write to satisfy D-41
- * ADD-only.
+ * @deprecated TreeRow no longer reads FileNodeData.parentNoteId; the file-click
+ * handler now calls useTreeStore.setActiveFilePath(data.path) instead. This
+ * function is preserved to avoid a breaking export change.
  */
 export function deriveParentNoteId(
   filePath: string,
@@ -171,9 +159,7 @@ export function computeMoveTarget(args: {
   return { newPath, isNoOp: newPath === sourcePath };
 }
 
-/**
- * UX-13 (Plan 07): decide which DeleteConfirmDialog variant to open.
- */
+/** Decide which DeleteConfirmDialog variant to open for a selection. */
 export function buildMultiDeleteTarget(
   d: TreeRowData,
   selectedNodes: ReadonlyArray<NodeApi<ArboristNode>>,
@@ -186,10 +172,7 @@ export function buildMultiDeleteTarget(
   return null;
 }
 
-/**
- * UX-13 (Plan 07): execute a batch delete over a captured snapshot of
- * arborist's selectedNodes. Sequential, graceful partial-completion.
- */
+/** Execute a batch delete over a snapshot of arborist's selectedNodes. Sequential, graceful partial-completion. */
 export async function executeBatchDelete(
   selectedSnapshot: ReadonlyArray<NodeApi<ArboristNode>>,
   muts: {
@@ -218,9 +201,7 @@ export async function executeBatchDelete(
   return { succeeded, total };
 }
 
-/**
- * UX-13 (Plan 07): descendant-deselect cascade for folder multi-selection.
- */
+/** Descendant-deselect cascade: when a folder is selected, deselect all its children. */
 export function deselectDescendantsOfFolders(
   nodes: ReadonlyArray<NodeApi<ArboristNode>>,
   deselect: (id: string) => void,
@@ -277,11 +258,7 @@ export function countDescendants(
   return { notes, folders };
 }
 
-/**
- * BL-02 (Phase 5.5 gap-closure Plan 10) — cycle-prevention check for the
- * native-DnD bypass. Folder cannot be dropped onto itself or its
- * descendants.
- */
+/** Cycle-prevention check for native-DnD: folder cannot drop onto itself or its descendants. */
 export function isCycleDrop(
   dragNodes: NodeApi<ArboristNode>[],
   destFolderPath: string,
@@ -295,12 +272,7 @@ export function isCycleDrop(
   return false;
 }
 
-/**
- * resetTreeListLayout — Gap R2-3 closure (Plan 03-18).
- *
- * Invalidates react-arborist's react-window FixedSizeList row-offset
- * cache after a wire-tree mutation.
- */
+/** Invalidates react-arborist's react-window FixedSizeList row-offset cache after a tree mutation. */
 export function resetTreeListLayout(
   ref: React.RefObject<TreeApi<ArboristNode> | null>,
 ): void {

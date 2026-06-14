@@ -1,21 +1,15 @@
 /**
- * attachmentApi.ts — Phase 7 Plan 10 / ATTACH-01..ATTACH-06.
- *
- * EXCEPTION: this module uses raw fetch + FormData rather than openapi-fetch,
+ * Attachment upload API. Uses raw fetch + FormData rather than openapi-fetch
  * because openapi-typescript does not generate ergonomic file-field types for
- * multipart/form-data requests (RESEARCH.md §Thread 5 §useAttachmentUpload).
- * The route + response shape are still contract-bound to api/openapi.yaml; a
- * smoke test verifies the response shape matches AttachmentUploadResult.
+ * multipart/form-data requests. The route + response shape remain
+ * contract-bound to api/openapi.yaml.
  */
 import type { components } from "../api/schema";
 import { generateOrLoadSessionId } from "./sessionId";
 
 export type AttachmentUploadResult = components["schemas"]["AttachmentUploadResult"];
 
-/**
- * AttachmentTooLargeError — thrown by uploadAttachment when the server
- * returns HTTP 413 (file exceeds the 100 MB cap, D-29).
- */
+/** Thrown by uploadAttachment when the server returns HTTP 413 (file exceeds the 100 MB cap). */
 export class AttachmentTooLargeError extends Error {
   constructor() {
     super("attachment exceeds 100 MB");
@@ -26,13 +20,9 @@ export class AttachmentTooLargeError extends Error {
 /**
  * uploadAttachment — POST /api/v1/attachments/{noteId}.
  *
- * Builds a multipart/form-data body with the file under the key "file" and
- * returns the parsed AttachmentUploadResult on 200. Throws
- * AttachmentTooLargeError on 413; throws a generic Error with the status code
- * for all other non-OK responses.
- *
- * The noteId is URL-encoded to handle UUIDs and any special characters safely
- * (T-7-29 XSS mitigate via encodeURIComponent).
+ * Throws AttachmentTooLargeError on 413; throws a generic Error with the
+ * status code for all other non-OK responses. The noteId is URL-encoded
+ * via encodeURIComponent to handle UUIDs and special characters safely.
  */
 export async function uploadAttachment(
   noteId: string,

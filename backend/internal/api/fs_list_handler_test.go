@@ -191,8 +191,7 @@ func TestGetFsList_DropsDotfileSubdirs(t *testing.T) {
 }
 
 // is_vault: present + true when the listed dir contains a .jasper/ that
-// isn't the app-home registry. Absent / false otherwise. UAT-2 follow-up
-// "detect existing vault during browse" coverage.
+// isn't the app-home registry. Absent / false otherwise.
 func TestGetFsList_IsVault_TrueForFolderContainingDotJasper(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, ".jasper"), 0o700); err != nil {

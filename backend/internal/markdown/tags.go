@@ -1,17 +1,12 @@
 // Package markdown holds markdown helpers shared between the indexer
 // (package index) and the notes service (package notes). It exists as a
 // leaf package — depends on stdlib + goldmark extensions only, no
-// project-internal imports — so that BOTH index and notes can import it
-// without creating an import cycle.
+// project-internal imports — so that both packages can import it without
+// creating an import cycle.
 //
-// Phase 6 relaxes the original "stdlib only" constraint to allow
-// go.abhg.dev/goldmark/frontmatter and go.abhg.dev/goldmark/wikilink.
-// These are still leaf-level: they depend on github.com/yuin/goldmark
-// and standard library only. No project-internal packages are imported.
-//
-// The cycle constraint is real: package index imports package notes for
-// NoteRecord, NoteSummary, and the package-level error sentinels. Keeping
-// this package as a leaf prevents that cycle from forming.
+// The cycle is real: package index imports package notes for NoteRecord,
+// NoteSummary, and the sentinel errors. Keeping this package as a leaf
+// prevents that cycle from forming.
 package markdown
 
 import (
@@ -30,24 +25,20 @@ import (
 // deduplicated tag list.
 //
 // Returns nil when:
-//   - content is nil or empty (no file to read)
+//   - content is nil or empty
 //   - the file has no frontmatter block
-//   - the YAML/TOML cannot be decoded (D-12: malformed YAML must never
-//     prevent a save from succeeding; treat tags as empty instead of
-//     returning an error that bubbles up to the user)
+//   - the YAML/TOML cannot be decoded (malformed YAML must never prevent a
+//     save; treat tags as empty rather than surfacing an error)
 //
 // Returns an empty non-nil slice when frontmatter is present and the tags
-// array is explicitly empty (`tags: []`). Callers can use this to
-// distinguish "has frontmatter but no tags" from "no frontmatter at all".
+// array is explicitly empty (`tags: []`). Callers can distinguish "has
+// frontmatter but no tags" from "no frontmatter at all".
 //
-// Normalization (D-22): each tag is lowercased, trimmed, and filtered to
-// the charset [a-z0-9_-]. Characters outside that set are stripped.
-// Tags that reduce to the empty string after filtering are dropped.
+// Normalization: each tag is lowercased, trimmed, and filtered to
+// [a-z0-9_-]. Characters outside that set are stripped; tags that reduce
+// to empty are dropped.
 //
-// Deduplication happens after normalization. Deduping before normalization
-// would allow "FOO" and "foo" to survive as distinct pre-normalized keys
-// and then collapse to duplicates after, producing surprising behavior.
-// Deduping after normalization ensures `[foo, foo, FOO]` → `["foo"]`.
+// Deduplication happens after normalization so `[foo, foo, FOO]` → `["foo"]`.
 func ExtractTags(content []byte) []string {
 	if len(content) == 0 {
 		return nil
@@ -108,22 +99,20 @@ func dedupeTags(in []string) []string {
 var bodyTagRE = regexp.MustCompile("(?:^|[\\s(`\\[,;:!?.'\"—–-])#([a-zA-Z0-9_-]+)")
 
 // ExtractBodyTags walks the body (everything after the frontmatter block)
-// and returns all inline #tagname occurrences, normalized per D-07/D-22
-// charset.
+// and returns all inline #tagname occurrences, normalized to [a-z0-9_-].
 //
-// Rules (D-07/D-08 from Phase 6.5 CONTEXT.md):
+// Rules:
 //   - "#tagname" where tagname matches [a-z0-9_-]+ after case-fold = tag
-//   - Lines that start with "#" followed by a space or another "#" = heading; skip
+//   - Lines starting with "#" + space or "#" = heading; skip
 //   - Fenced code blocks (``` ... ```) are skipped entirely
 //   - Inline code spans: NOT skipped on the server side — editor plugin handles
-//     visual suppression. The server uses a simple line-scan approach which would
-//     require full backtick-span tracking to skip inline code; the practical
-//     impact is negligible (users rarely put #tags inside `code`). This choice
+//     visual suppression. Full backtick-span tracking would add complexity for
+//     negligible benefit (users rarely put #tags inside `code`). This choice
 //     is pinned by the TestExtractBodyTags "InlineCodeTag" test case.
 //   - The leading "#" is stripped from each returned tag name
 //
 // Returns nil when content is empty or no body tags are found.
-// Never panics on malformed content (D-26).
+// Never panics on malformed content.
 func ExtractBodyTags(content []byte) []string {
 	if len(content) == 0 {
 		return nil
@@ -187,8 +176,7 @@ func stripFrontmatterBlock(content []byte) []byte {
 
 // RewriteFrontmatterTags replaces the "tags:" array in the YAML frontmatter
 // with the provided canonical tag list. Uses gopkg.in/yaml.v3 for safe,
-// structure-preserving YAML manipulation (same approach as
-// notes/rewriter.go::rewriteTagsArray).
+// structure-preserving YAML manipulation.
 //
 // Rules:
 //   - No frontmatter in content → returns content unchanged, nil error
@@ -197,10 +185,9 @@ func stripFrontmatterBlock(content []byte) []byte {
 //   - Malformed YAML → returns original content + non-nil error
 //   - Empty canonical → writes "tags: []" (NOT omitted)
 //
-// This function is in package markdown (not notes) so that Service.Update
-// can call it without creating an import cycle. The extractFrontmatterRange
-// helper in notes/rewriter.go is NOT imported here; this function implements
-// its own equivalent range extraction (Option A — markdown remains a leaf).
+// Lives in package markdown (not notes) so Service.Update can call it
+// without creating an import cycle. Implements its own range extraction
+// so markdown stays a leaf package.
 func RewriteFrontmatterTags(content []byte, canonical []string) ([]byte, error) {
 	openFence := []byte("---\n")
 	if !bytes.HasPrefix(content, openFence) {

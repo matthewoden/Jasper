@@ -1,9 +1,9 @@
 /**
- * externalImagePlugin.test.ts — vitest suite covering SECURITY-03 / D-21..D-25.
+ * externalImagePlugin.test.ts — vitest suite.
  *
  * Covers:
- *   - isExternalUrl (D-23 internal bypass — 5 cases)
- *   - Allow-list persistence round-trip (D-21, D-43 — 4 cases)
+ *   - isExternalUrl (same-origin bypass — 5 cases)
+ *   - Allow-list persistence round-trip (4 cases)
  *   - ExternalImageWidget render paths (placeholder, click, fetch success,
  *     fetch failure, destroy revoke — 6 cases)
  *   - Plugin integration: external emits widget, internal skips (3 cases)
@@ -47,7 +47,7 @@ function tick(): Promise<void> {
 }
 
 
-describe("externalImagePlugin / isExternalUrl (D-23)", () => {
+describe("externalImagePlugin / isExternalUrl", () => {
   it("https URL with foreign host is external", () => {
     expect(isExternalUrl("https://example.com/image.png")).toBe(true);
   });
@@ -72,7 +72,7 @@ describe("externalImagePlugin / isExternalUrl (D-23)", () => {
 });
 
 
-describe("externalImagePlugin / allow-list persistence (D-21, D-43)", () => {
+describe("externalImagePlugin / allow-list persistence", () => {
   beforeEach(() => {
     localStorage.removeItem(ALLOWLIST_KEY);
     vi.restoreAllMocks();
@@ -287,7 +287,7 @@ describe("externalImagePlugin / plugin integration", () => {
     expect(hasWidget).toBe(true);
   });
 
-  it("does NOT emit a widget for an internal image (D-23)", () => {
+  it("does NOT emit a widget for an internal image", () => {
     const doc = "![alt text](attachments/photo.png)";
     const view = makeView(doc);
     views.push(view);

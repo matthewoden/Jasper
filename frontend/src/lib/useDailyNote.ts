@@ -1,14 +1,10 @@
 /**
- * useDailyNote — hook that opens today's daily note in the editor.
+ * useDailyNote — opens today's daily note in the editor.
  *
- * Wraps openTodayDailyNote() from dailyNoteApi with:
- *   - Re-entrancy guard (T-7-26: concurrent rapid clicks → no-op on second)
- *   - dailyNoteLoading slice in useTreeStore (shared with SidebarToolbar)
- *   - Error toast on failure ("Couldn't open today's daily note")
- *   - activeNote set on success via useTreeStore.setActiveNote
- *   - broadcastRefresh() after success so the sidebar tree reflects any newly-created
- *     daily note (UAT-2 R1-1 fix: after an H1-rename moves the daily note to a new path,
- *     the next Today click creates a fresh daily note — the tree must refresh to show it).
+ * Re-entrancy guard: concurrent rapid clicks no-op on the second call.
+ * Calls broadcastRefresh() after success so the sidebar tree reflects any
+ * newly-created daily note (an H1-rename can move a daily note to a new path,
+ * and the next Today click must create a fresh one — the tree must update).
  *
  * Returns { openToday, isLoading } for SidebarToolbar's Today button.
  */

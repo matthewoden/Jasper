@@ -1,8 +1,7 @@
 // Package installer wraps github.com/kardianos/service with Jasper's
-// custom launchd plist + systemd user-unit templates so the OS-service
-// registration path satisfies ROADMAP success criterion #1
-// (`KeepAlive: {Crashed: true}` + `ThrottleInterval=60`) and D-35
-// (Restart=on-failure + RestartSec=60 on systemd).
+// custom launchd plist + systemd user-unit templates. It ensures
+// `KeepAlive: {Crashed: true}` + `ThrottleInterval=60` on macOS and
+// `Restart=on-failure` + `RestartSec=60` on systemd.
 //
 // Public surface:
 //
@@ -10,19 +9,15 @@
 //     Caller invokes svc.Install / Uninstall / Start / Stop / Status.
 //
 //   - BootstrapMacOS(plistPath) / BootoutMacOS(plistPath) — modern
-//     launchctl bootstrap/bootout wrappers (Pitfall 2: legacy `launchctl
-//     load/unload` is deprecated since macOS 10.10). Use these instead
-//     of svc.Start/Stop on macOS.
+//     launchctl bootstrap/bootout wrappers (legacy `launchctl load/unload`
+//     is deprecated since macOS 10.10). Use these instead of svc.Start/Stop
+//     on macOS.
 //
 //   - PlistPathMacOS() — returns ~/Library/LaunchAgents/com.jasper.server.plist.
 //
 //   - EnableLingerLinux / DisableLingerLinux — `loginctl enable-linger`
-//     wrappers (Pitfall 4: kardianos does NOT call enable-linger; without
-//     it the user unit stops the moment the WSL terminal closes).
-//
-// Plan 08-12 wires this package into the install/uninstall/status/doctor
-// subcommands. Plan 08-11 (this file) just ships the package shape and
-// the verbatim template constants.
+//     wrappers (kardianos does NOT call enable-linger; without it the user
+//     unit stops the moment the WSL terminal closes).
 package installer
 
 import (
@@ -43,16 +38,15 @@ const serviceName = "com.jasper.server"
 // The Config wires:
 //   - Name: "com.jasper.server" — launchd label + systemd unit name
 //   - UserService: true — per-user install (no sudo on macOS; user unit on Linux)
-//   - LaunchdConfig: launchdPlist (CRITICAL override per D-35)
-//   - SystemdScript: systemdUnit (CRITICAL override per D-35)
-//   - LogDirectory: <dataDir>/logs (D-39 — log path is under the data dir)
+//   - LaunchdConfig: launchdPlist (CRITICAL: overrides kardianos default template)
+//   - SystemdScript: systemdUnit (CRITICAL: overrides kardianos default template)
+//   - LogDirectory: <dataDir>/logs
 //   - EnvVars: JASPER_DATA_DIR=<dataDir>
 //
-// The Program (first arg to service.New) is nil because Plan 08-11
-// doesn't run the service control loop itself — Plan 08-12's install/
+// The Program (first arg to service.New) is nil because the install/
 // uninstall subcommands only need the registration surface. When the
-// installed service actually starts the binary, it invokes
-// `jasper serve`, which runs in its own process (Arguments below).
+// installed service starts the binary, it invokes `jasper serve` via
+// Arguments.
 func New(dataDir string) (service.Service, error) {
 	cfg := &service.Config{
 		Name:        serviceName,
@@ -76,8 +70,7 @@ func New(dataDir string) (service.Service, error) {
 // BootstrapMacOS calls `launchctl bootstrap gui/$(id -u) <plist>` after
 // service.Install() has written the plist file. Modern launchctl form
 // per Apple's launchctl(1) man page (macOS 10.10+); the legacy
-// `launchctl load` form is deprecated and will be removed in a future
-// macOS release (RESEARCH.md Pitfall 2).
+// `launchctl load` form is deprecated.
 //
 // kardianos/service still uses the legacy form internally — we work
 // around by NOT calling svc.Start() on macOS and instead invoking the

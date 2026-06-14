@@ -1,31 +1,17 @@
 /**
- * useDeepLink — SHARE-02 deep-link boot handler (Phase 8 Plan 08-07).
+ * useDeepLink — boot handler for ?note=<uuid> / ?path=<rel> deep links.
  *
- * Reads `?note=<uuid>` or `?path=<rel>` from window.location at mount
- * and resolves the target via REST (NOT WebSocket — WS may not be
- * connected at boot time; per CONTEXT.md §Bug-adjacent "Deep-link race
- * with WS hydration").
+ * Resolves via REST rather than WebSocket because WS may not be connected
+ * at boot time. Prefers ?note=<uuid> (rename-resilient) over ?path=<rel>.
  *
- *   D-30: prefer ?note=<uuid> (rename-resilient); ?path=<rel> is the
- *         fallback.
- *   D-31: focus the resolved note via setActiveNote (existing-tab focus
- *         is the same as opening a tab in a single-user SPA).
- *   D-32: on miss → window.location.assign('/note-not-found?query=<raw>')
- *         so the user sees the friendly view (handled by main.tsx route
- *         dispatch, Plan 08-07 Task 3).
+ * Gates on `treeReady` so setActiveNote runs after GET /tree resolves —
+ * hooks that consume activeNoteId assume the tree is populated.
  *
- * Pitfall 6 mitigation: gates on `treeReady` so setActiveNote runs
- * AFTER the initial GET /tree fetch resolves. The active note hooks
- * (EditorPane, breadcrumbs, sidebar selection) all assume the tree
- * is populated when they read activeNoteId.
+ * On successful resolve, strips the params via history.replaceState so a
+ * refresh doesn't re-resolve and race the daily-note-on-boot setting.
  *
- * URL hygiene: on successful resolve, the `?note=` / `?path=` params
- * are stripped via history.replaceState so a refresh doesn't re-resolve
- * (which would race the daily-note-on-boot setting if both are active).
- *
- * SECURITY (T-08-27 / T-08-30): the path string is sent to the backend
- * which re-validates with the 5-rule pipeline. The frontend does not
- * trust the param.
+ * Security: the path string is sent to the backend for re-validation;
+ * the frontend does not trust the param value.
  */
 
 import { useEffect } from "react";

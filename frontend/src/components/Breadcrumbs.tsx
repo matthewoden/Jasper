@@ -1,18 +1,9 @@
 /**
- * Breadcrumbs — Phase 06.6-07 (UX-CHROME-01)
+ * Breadcrumbs — renders the active note's path as a clickable trail.
  *
- * Renders the active note's path as a breadcrumb trail:
- *   notes / folder / subfolder / note-title
- *
- * - Root "notes" segment: informational span, muted color.
- * - Folder segments: <button> with aria-label, calls expandAndScrollToFolder
- *   on click (expands + scrolls the file tree to that folder and ensures
- *   the sidebar is visible).
- * - Final note-title segment: <span> (not clickable), bold, shows live title
- *   from useTreeStore.liveLabels[activeNoteId] (same source as the tab title
- *   and the tree row label, updated within ~500ms of an H1 edit).
- *
- * Designed for use in the TopBar (Plan 09).
+ * Folder segments expand + scroll the file tree on click. Final note-title
+ * segment uses liveLabels[activeNoteId] so it updates within ~500ms of an H1
+ * edit (same source as the tree row label).
  */
 import React from "react";
 import type { CSSProperties } from "react";
@@ -36,12 +27,8 @@ interface Segment {
 
 
 /**
- * Walk the wire tree (Tree.root) to find the note matching `id`.
+ * findNoteById walks Tree.root to find the note matching `id`.
  * Returns { path, title } or null if not found.
- *
- * Tree node shapes (from generated schema):
- *   FolderNode: { kind:"folder", path, name, children?: TreeNode[] }
- *   NoteNode:   { kind:"note", id, path, title, updated_at }
  */
 function findNoteById(
   nodes: ReadonlyArray<TreeNode>,
@@ -60,17 +47,8 @@ function findNoteById(
 }
 
 /**
- * Build the ordered segment array from a note's filesystem path.
- *
- * Example: "projects/jasper/my-note.md" → [
- *   { label: "projects", path: "projects" },
- *   { label: "jasper",   path: "projects/jasper" },
- *   { label: "my-note",  path: null, isTitle: true },  // uses displayTitle
- * ]
- *
- * UAT follow-up 2026-05-12: dropped the leading "notes" root segment — the
- * notes vault is the implicit root of the entire app, not a real section to
- * navigate to.
+ * buildSegments converts a note filesystem path to an ordered segment array.
+ * The vault root is the implicit context; no leading "notes" segment is shown.
  */
 function buildSegments(notePath: string, displayTitle: string): Segment[] {
   const parts = notePath.split("/").filter(Boolean);

@@ -1,21 +1,15 @@
 // Package markdown holds tiny stdlib-only markdown helpers shared
 // between the indexer (package index) and the notes service (package
 // notes). It exists as a leaf package — depends on stdlib only — so
-// that BOTH index and notes can import it without creating an import
-// cycle.
+// that both packages can import it without creating an import cycle.
 //
-// The cycle constraint is real: package index imports package notes
-// for NoteRecord, NoteSummary, and the package-level error sentinels
-// (notes.ErrCaseCollision, notes.ErrNotFound). When Plan 03-21 needed
-// notes.Service.Move to call the same H1 + frontmatter scanner the
-// indexer uses, putting the scanner inside index would have made
-// notes → index → notes — a cycle. Lifting the scanner to this leaf
-// package solves it without surgery on the index/notes coupling.
+// The cycle is real: package index imports package notes for NoteRecord,
+// NoteSummary, and the sentinel errors. Keeping this package as a leaf
+// prevents that cycle from forming.
 //
-// index.ExtractTitle (backend/internal/index/title.go) is preserved
-// as a thin wrapper that delegates to markdown.ExtractTitle so the
-// existing call sites inside the index package — and any tests that
-// reference the exported name — continue to compile unchanged.
+// index.ExtractTitle (backend/internal/index/title.go) is a thin wrapper
+// that delegates to markdown.ExtractTitle so existing call sites inside
+// the index package continue to compile unchanged.
 package markdown
 
 import (
@@ -29,19 +23,14 @@ import (
 // the filename without ".md" (filepath.Base + strip ".md") as fallback.
 //
 // YAML frontmatter (--- ... ---) at the top of the file is skipped
-// before scanning for headings (DESIGN.md §7). The scanner enters
-// "in-frontmatter" mode if the very first non-empty line is "---" and
-// exits when it sees the matching closing "---".
+// before scanning for headings. The scanner enters "in-frontmatter"
+// mode if the very first non-empty line is "---" and exits on the
+// matching closing "---".
 //
-// Per UI-SPEC voice rules: titles are returned VERBATIM from the file —
-// no auto-capitalization, no truncation, no Unicode normalization
-// beyond what was already in the source bytes. The UI is responsible
-// for any truncation; the indexer stores the title as-is so [[wiki-link]]
-// resolution (Phase 6) can match against it character-for-character.
-//
-// Phase 6 is expected to add an H2-fallback ("first H1, else first
-// H2"); for Phase 2 we stop at the first non-blank non-heading line
-// and fall through to filename. The plan keeps the scope tight.
+// Titles are returned VERBATIM — no auto-capitalization, no truncation,
+// no Unicode normalization. The UI is responsible for any truncation;
+// the indexer stores the title as-is so wiki-link resolution can match
+// character-for-character.
 //
 // Defensive behaviors:
 //
@@ -49,16 +38,13 @@ import (
 //   - Frontmatter without a closing "---" → consumed to EOF; filename
 //     fallback applies.
 //   - Long lines: scanner buffer is bumped to 1 MiB so a degenerate
-//     "single 100 KB line" file does not error out (the filename
-//     fallback applies because the line is not an H1).
-//   - "#" with no space (e.g. "#tag" → ATX H1 requires the space per
-//     CommonMark §4.2): treated as not-a-heading.
-//   - Multiple leading "#" before the space (e.g. "## H2"): treated
-//     as not-an-H1 (Phase 6 may extend; Phase 2 only matches "# ").
+//     "single 100 KB line" file does not error out.
+//   - "#" with no space (e.g. "#tag"): treated as not-a-heading per
+//     CommonMark §4.2.
+//   - Multiple leading "#" (e.g. "## H2"): treated as not-an-H1.
 //
-// This is the canonical implementation. index.ExtractTitle is a thin
-// re-export wrapper; notes.Service.Move calls markdown.ExtractTitle
-// directly (Plan 03-21, Gap R2-6 server-side closure).
+// index.ExtractTitle is a thin re-export wrapper; notes.Service.Move
+// calls markdown.ExtractTitle directly.
 func ExtractTitle(content []byte, fallbackPath string) string {
 	scanner := bufio.NewScanner(bytes.NewReader(content))
 

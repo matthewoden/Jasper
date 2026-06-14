@@ -1,44 +1,15 @@
 /**
- * RenameInput — UI-SPEC §Surface 3 inline rename.
+ * RenameInput — inline rename input mounted by TreeRow when pendingRename matches.
  *
- * Pure input + validation + Enter/Esc/Tab/click-outside handling. The
- * caller (TreeRow) mounts this in place of the row label when
- * useTreeStore.pendingRename matches the current row.
+ * Enter / Tab / click-outside: commit. Esc: cancel. If onCommit throws
+ * TreeMutationError, the input stays mounted and shows the server's error message.
  *
- * Validation rules (locked):
- *   - empty → "Name cannot be empty."
- *   - illegal char (/, \, :, *, ?, ", <, >, |, control chars) →
- *     "Use letters, numbers, dashes, and underscores only."
- *   - case-insensitive collision against siblingNames →
- *     "Already exists."
+ * Same-name commit is a no-op (routes to onCancel) unless isNew=true — when
+ * isNew, pressing Enter/Tab/blur without changing the placeholder commits it
+ * (keeps the file). Escape always cancels even when isNew.
  *
- * Enter / Tab / click-outside: commit (call onCommit). Esc: cancel
- * (call onCancel). If onCommit throws TreeMutationError, the input
- * stays mounted and the inline error switches to the server's
- * message — the user can edit + retry.
- *
- * Gap R2-5 — same-name commit is a no-op:
- * If the user presses Enter / Tab / clicks outside without changing
- * the value (or types a new value and erases back to the original),
- * RenameInput calls onCancel (NOT onCommit). This prevents a
- * 409 case-collision against the row's own current path — the
- * server's Service.Move does not short-circuit oldRelPath ==
- * canonNew, and FileStore's collision check then rejects the rename
- * even though it's a no-op (research §3.4). Symmetric to Plan 03-11's
- * computeMoveTarget same-parent guard for the drag path.
- *
- * Bug D / isNew exception to Gap R2-5:
- * When isNew=true (the node was just created and has an auto-generated
- * placeholder name), pressing Enter/Tab/blur without changing the
- * placeholder must COMMIT (keep the file with the placeholder name)
- * rather than cancel. The Gap R2-5 short-circuit only routes to
- * onCancel for established-file renames (isNew falsy). For isNew nodes
- * Escape still cancels (and TreeRow.handleCancelRename then deletes the
- * ephemeral node), but Enter/Tab/blur-without-change now correctly
- * commits the placeholder so the file is kept.
- *
- * The .md extension is stripped by the caller; we only render the
- * basename. Folder names render in full.
+ * Validation: empty → error; illegal chars → error; case-insensitive sibling
+ * collision → error. The .md extension is stripped by the caller.
  */
 import {
   type ChangeEvent,
@@ -61,18 +32,8 @@ export interface RenameInputProps {
   siblingNames: string[];
   onCommit: (newValue: string) => Promise<void>;
   onCancel: () => void;
-  /**
-   * Bug D fix — true when this rename was triggered by a create action
-   * (the node was just created and the placeholder name was never confirmed
-   * by the user). Affects the Gap R2-5 same-name short-circuit in commit():
-   *   - isNew=false (default): Enter/Tab/blur without change → onCancel
-   *     (the server would 409 on a same-path move anyway; this is a no-op
-   *     dismiss, not a delete).
-   *   - isNew=true: Enter/Tab/blur without change → onCommit(initialValue)
-   *     (the user accepted the auto-generated placeholder name; keep the
-   *     file). Escape still routes to onCancel (TreeRow.handleCancelRename
-   *     then deletes the ephemeral node when isNew is set).
-   */
+  /** True when triggered by a create action (placeholder name not yet confirmed).
+   *  When isNew=true, Enter/Tab/blur without change commits instead of cancelling. */
   isNew?: boolean;
 }
 
@@ -137,8 +98,7 @@ export function RenameInput({
         onCancel();
         return;
       }
-      // isNew=true: fall through to onCommit(value) below so the
-      // placeholder name is accepted and the file is kept.
+      // isNew=true: fall through to commit the placeholder name
     }
     const r = validateRename(value, siblingNames);
     if (!r.valid) {
@@ -184,9 +144,6 @@ export function RenameInput({
         cancel();
         return;
       }
-      // For all other keys (alphanumeric, etc.) we let the input's
-      // default behavior insert the character — propagation is already
-      // stopped above, so the tree's keymap never sees it.
     },
     [commit, cancel],
   );

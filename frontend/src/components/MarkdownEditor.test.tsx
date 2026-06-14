@@ -1,20 +1,12 @@
 /**
- * MarkdownEditor.test — Plan 05-05 Task 3.
+ * MarkdownEditor tests.
  *
- * Coverage:
- *   - EDIT-01 cursor stability: parent re-render does NOT re-instantiate
- *     the editor (the EditorView reference is identical before/after).
- *   - Ref API: setContent → getContent round-trip; applyServerUpdate
- *     does NOT trigger onChange (D-10 silent reload); focus() is a
- *     no-op stub safe call.
- *   - IME gate: when view.composing is true, onChange does NOT fire
- *     for the docChanged transaction (D-07/D-31). The IME gate is
- *     verified by code-presence in MarkdownEditor.tsx (see the
- *     `u.view.composing` check); behavioral testing requires real
- *     compositionstart/end events that jsdom does not dispatch natively.
+ * Coverage: EDIT-01 cursor stability (parent re-render does not re-instantiate
+ * the editor); ref API (setContent/getContent round-trip; applyServerUpdate does
+ * NOT trigger onChange); focus(); IME gate (verified by code presence — jsdom
+ * does not dispatch compositionstart/end natively).
  *
- * Test environment: jsdom (configured in vitest.config.ts;
- * RESEARCH §Open Question #4 recommends jsdom for CM6 over happy-dom).
+ * Test environment: jsdom (better CM6 compatibility than happy-dom).
  */
 import { forwardRef, useImperativeHandle, useRef, useState, type ReactElement } from "react";
 import { render, act } from "@testing-library/react";

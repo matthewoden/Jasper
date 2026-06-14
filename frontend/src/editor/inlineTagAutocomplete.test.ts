@@ -1,18 +1,12 @@
 /**
  * inlineTagAutocomplete.test.ts — TDD suite for the inline `#` autocomplete source.
  *
- * Phase 6.5 / Plan 06.5-05 / Task 2.
- *
- * Requirements (UX-T-02 / D-14):
+ * Requirements:
  *   - Trigger: `#` in body text (NOT inside code or frontmatter)
  *   - Source: module-level snapshot set via setInlineTagSnapshot
  *   - Filter: CM6 autocomplete handles filtering; `from` = match.from + 1 (after #)
- *   - No "Create new" row (D-14)
+ *   - No "Create new" row
  *   - Cursor inside code/frontmatter → returns null
- *
- * TDD sequence:
- *   RED  → this file (failures: inlineTagAutocomplete.ts not yet written)
- *   GREEN → implement inlineTagAutocomplete.ts
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { EditorView } from "@codemirror/view";

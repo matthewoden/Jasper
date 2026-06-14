@@ -1,9 +1,7 @@
 /**
- * fsApi — typed wrapper around GET /api/v1/fs/list (UAT-2 #1d folder picker).
- *
- * Errors propagate as thrown Error with a human-readable message; the picker
- * UI displays the message and offers "go up" to recover when a directory
- * becomes unreadable mid-browse.
+ * fsApi — typed wrappers for filesystem browsing endpoints.
+ * Errors propagate as thrown Error; the picker UI displays the message and
+ * offers "go up" to recover when a directory becomes unreadable mid-browse.
  */
 
 import { client } from "../api/client";

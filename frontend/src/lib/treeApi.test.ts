@@ -1,13 +1,7 @@
 /**
- * Tests for the Phase 3 typed-fetch wrappers in treeApi.ts. Validates that:
- *   - Each wrapper routes through the openapi-fetch client (no hand-written
- *     fetch / URLs / shapes).
- *   - Path / query / body parameters are passed through verbatim.
- *   - Server error responses are translated into the shared { code, message,
- *     status } shape so callers can branch on status.
- *
+ * Tests for treeApi typed-fetch wrappers.
  * The client module is mocked so we can spy on .GET / .POST / .DELETE calls
- * and synthesize responses (success + error) without touching the network.
+ * and synthesize responses without touching the network.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

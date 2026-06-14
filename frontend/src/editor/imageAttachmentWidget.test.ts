@@ -1,14 +1,12 @@
 /**
- * imageAttachmentWidget.test.ts — Phase 7 Plan 10 / ATTACH-05.
+ * imageAttachmentWidget.test.ts — vitest suite.
  *
  * Tests cover:
- *   - imageAttachmentPlugin: detects ![alt](attachments/x.png) and emits block widget
+ *   - imageAttachmentPlugin: detects ![alt](attachments/x.png) and emits widget
  *   - imageAttachmentPlugin: ignores external images (https://...)
  *   - imageAttachmentPlugin: ignores non-attachment relative images
- *   - Widget placement: block:true + side:1 (BELOW the source line, EDIT-01 preserved)
+ *   - Widget placement: side:1 (BELOW the source line, source text stays editable)
  *   - Widget resolves URL via /api/v1/attachments/{noteId}/{filename}
- *
- * Setup mirrors externalImagePlugin.test.ts.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { EditorView } from "@codemirror/view";

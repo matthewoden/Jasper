@@ -1,50 +1,36 @@
 /**
- * taskCheckboxPlugin — Phase 12 / Plan 01 (CHK-01..04).
+ * taskCheckboxPlugin — clickable, position-stable, accessible task checkboxes
+ * that coexist with livePreviewPlugin's marker hiding.
  *
- * Provides clickable, position-stable, accessible task checkboxes that
- * coexist with livePreviewPlugin's marker hiding.
- *
- * Architecture (mirrors dropIndicatorWidget.ts):
+ * Architecture:
  *   - CheckboxToggleAnnotation  — marks toggle transactions for updateListener
  *   - ToggleCheckboxEffect      — carries absolute TaskMarker.from position
- *   - checkboxTransactionExtender — exported shim (no-op in practice; see note below)
+ *   - checkboxTransactionExtender — exported no-op shim (see note below)
  *   - CheckboxWidget (WidgetType) — renders <button role="checkbox"> with SVG checkmark
  *   - taskCheckboxPlugin (ViewPlugin) — builds decorations + handles mousedown/keydown
- *                                       + dispatches the char-flip on ToggleCheckboxEffect
+ *     + dispatches the char-flip on ToggleCheckboxEffect
  *
  * Note on transactionExtender:
- *   The plan specified `EditorState.transactionExtender` for atomic char flip. However,
- *   `@codemirror/state@6.6.0`'s `transactionExtender` type signature is:
- *     `Pick<TransactionSpec, "effects" | "annotations"> | null`
- *   It can only return effects/annotations — NOT document changes. The CM6 implementation
- *   confirms this: `Transaction.create(state, tr.changes, ...)` uses the ORIGINAL tr.changes,
- *   discarding any changes returned by the extender. This is a CM6 API constraint, not a
- *   version bug. (Spike deviation — see SUMMARY.md § Deviations.)
+ *   `@codemirror/state`'s transactionExtender API (`Pick<TransactionSpec,
+ *   "effects" | "annotations">`) cannot produce document changes — only
+ *   effects and annotations. The actual char flip is therefore dispatched
+ *   from ViewPlugin.update (two transactions: effect tx → char-flip tx).
+ *   CheckboxToggleAnnotation is on the char-flip tx so the updateListener
+ *   detects it correctly. `checkboxTransactionExtender` is exported as a
+ *   no-op shim so MarkdownEditor.tsx doesn't need to change its extensions array.
  *
- *   The validated fallback (RESEARCH.md Pattern 2) is used instead: the ViewPlugin.update
- *   method detects ToggleCheckboxEffect and dispatches a second transaction with the doc
- *   change. This is two transactions (effect tx → char-flip tx) but the annotation
- *   `CheckboxToggleAnnotation` on the SECOND transaction still triggers the immediate flush
- *   in the updateListener correctly.
+ * Key decisions:
+ *   - Always-clickable widget — no on-cursor guard
+ *   - Uses Task/TaskMarker lezer nodes (GFM)
+ *   - Strikethrough on text only; checkbox glyph stays visible
+ *   - StateEffect dispatch — position resolved at transaction time
+ *   - ignoreEvent() returns false so clicks reach eventHandlers
  *
- *   `checkboxTransactionExtender` is exported as a no-op shim so callers (MarkdownEditor.tsx)
- *   don't need to change. The annotation IS added to the char-flip transaction (not the
- *   effect transaction) by the ViewPlugin — updateListener detects it there.
+ * Security: SVG built via createElementNS only (no innerHTML); data-pos
+ * parsed with parseInt + isNaN guard; '[' bracket verified before char-flip.
  *
- * Key decisions (from 12-CONTEXT.md):
- *   D-01: Always-clickable widget — no on-cursor guard
- *   D-02: Broad GFM — taskCheckboxPlugin uses Task/TaskMarker lezer nodes
- *   D-04: Strikethrough text only; glyph stays visible
- *   D-05: StateEffect dispatch — position resolved at transaction time (in ViewPlugin.update)
- *   D-06: ignoreEvent() returns false so clicks reach eventHandlers
- *
- * Threat mitigations (T-12-01, T-12-02):
- *   - SVG built via createElementNS only (no innerHTML)
- *   - data-pos parsed with parseInt + isNaN guard
- *   - ViewPlugin.update validates '[' bracket before dispatching char-flip
- *
- * Extension array order (MarkdownEditor.tsx):
- *   checkboxTransactionExtender (no-op shim) → taskCheckboxPlugin → livePreviewPlugin
+ * Extension array order: checkboxTransactionExtender → taskCheckboxPlugin
+ *   → livePreviewPlugin
  */
 import {
   Decoration,
@@ -70,14 +56,9 @@ export const ToggleCheckboxEffect = StateEffect.define<number>();
 
 
 /**
- * checkboxTransactionExtender — exported no-op shim.
- *
- * Originally intended to add doc changes via EditorState.transactionExtender, but
- * CM6's transactionExtender API (`Pick<TransactionSpec, "effects" | "annotations">`)
- * does NOT support document changes — only effects and annotations. The actual char
- * flip is dispatched from ViewPlugin.update (see taskCheckboxPlugin below).
- *
- * This shim is kept so MarkdownEditor.tsx doesn't need to change its extensions array.
+ * checkboxTransactionExtender — exported no-op shim kept so MarkdownEditor.tsx
+ * doesn't need to change its extensions array. The actual char flip is dispatched
+ * from ViewPlugin.update (see module JSDoc for why transactionExtender can't do it).
  */
 export const checkboxTransactionExtender = EditorState.transactionExtender.of(() => {
   return null;
@@ -126,7 +107,7 @@ class CheckboxWidget extends WidgetType {
   }
 
   ignoreEvent(): boolean {
-    return false; // CRITICAL — let clicks reach eventHandlers (D-06)
+    return false; // CRITICAL — let clicks reach eventHandlers
   }
 }
 
@@ -173,7 +154,7 @@ function buildCheckboxDecorations(view: EditorView): DecorationSet {
       markerTo + 1,
       Decoration.replace({ widget: new CheckboxWidget(checked, markerFrom) }),
     );
-    // Strikethrough mark: [markerTo+1 .. taskTo] — text only (D-04)
+    // Strikethrough mark: [markerTo+1 .. taskTo] — text only
     if (checked) {
       builder.add(
         markerTo + 1,
@@ -197,14 +178,14 @@ export const taskCheckboxPlugin = ViewPlugin.fromClass(
 
     update(u: ViewUpdate) {
       // Detect ToggleCheckboxEffect and dispatch the char-flip as a separate transaction.
-      // This is the ViewPlugin.update fallback pattern (RESEARCH.md Pattern 2) because
-      // transactionExtender cannot produce document changes in @codemirror/state@6.6.0.
-      // The char-flip transaction carries CheckboxToggleAnnotation for the updateListener.
+      // transactionExtender cannot produce document changes in @codemirror/state — see
+      // module JSDoc. The char-flip transaction carries CheckboxToggleAnnotation for the
+      // updateListener.
       for (const tr of u.transactions) {
         for (const e of tr.effects) {
           if (!e.is(ToggleCheckboxEffect)) continue;
           const markerFrom = e.value;
-          // Defensive guard (T-12-02, RESEARCH Pitfall 3): verify '[' bracket
+          // Defensive guard: verify '[' bracket before acting
           if (u.view.state.doc.sliceString(markerFrom, markerFrom + 1) !== "[") continue;
           // stateChar at markerFrom+1: ' ' = unchecked, any other char = checked
           const stateChar = u.view.state.doc.sliceString(markerFrom + 1, markerFrom + 2);
@@ -243,7 +224,7 @@ export const taskCheckboxPlugin = ViewPlugin.fromClass(
         const pos = parseInt(btn.getAttribute("data-pos") ?? "", 10);
         if (isNaN(pos)) return false;
         view.dispatch({ effects: ToggleCheckboxEffect.of(pos) });
-        e.preventDefault(); // prevent cursor placement (D-01)
+        e.preventDefault(); // prevent cursor placement on click
         return true;
       },
       keydown(e: KeyboardEvent, view: EditorView) {

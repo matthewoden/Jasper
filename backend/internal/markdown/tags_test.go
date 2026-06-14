@@ -4,12 +4,11 @@ import (
 	"testing"
 )
 
-// TestExtractTags verifies the tag extraction contract (TAGS-01, D-12, D-22).
+// TestExtractTags verifies the tag extraction contract.
 //
-// D-12: invalid YAML or missing frontmatter → nil, no panic.
-// D-22: tag charset is [a-z0-9_-]; all other chars are stripped; duplicates
-//
-//	collapse after normalization.
+// Invalid YAML or missing frontmatter → nil, no panic.
+// Tag charset is [a-z0-9_-]; all other chars are stripped; duplicates
+// collapse after normalization.
 func TestExtractTags(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -112,20 +111,17 @@ func TestExtractTags_EmptyTagsNonNil(t *testing.T) {
 	}
 }
 
-// TestExtractBodyTags verifies the inline #tagname extraction contract
-// (D-07/D-08/D-22 from Phase 6.5 CONTEXT.md).
+// TestExtractBodyTags verifies the inline #tagname extraction contract.
 //
 // Rules:
 //   - "#tagname" where tagname matches [a-z0-9_-]+ = inline tag
 //   - Lines starting with "# " or "## " etc. = markdown heading; skip
 //   - Fenced code blocks (``` ... ```) skipped entirely
-//   - Tags normalized per D-22 (lowercase, strip non-[a-z0-9_-] chars)
+//   - Tags normalized (lowercase, strip non-[a-z0-9_-] chars)
 //   - Inline code spans are ALLOWED to contribute tags (server-side choice;
 //     the editor plugin suppresses visual decoration inside inline code spans,
-//     but the server does not attempt to track backtick-span boundaries — doing
-//     so would require a full markdown scanner pass that adds complexity with
-//     little practical benefit, since users rarely put #tags inside `code`).
-//     This choice is pinned by the "InlineCodeTag" test case below.
+//     but tracking backtick-span boundaries server-side adds complexity for
+//     little benefit). This choice is pinned by the "InlineCodeTag" test case.
 func TestExtractBodyTags(t *testing.T) {
 	tests := []struct {
 		name    string

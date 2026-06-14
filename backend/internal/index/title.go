@@ -8,12 +8,10 @@ import (
 // the filename without ".md" (filepath.Base + strip ".md") as fallback.
 //
 // This is a thin wrapper over markdown.ExtractTitle (the canonical
-// implementation). The wrapper exists to preserve the exported
-// `index.ExtractTitle` name that Plan 03-21 Task 1 introduced and that
-// reconcile.go's two call sites depend on, while avoiding the
-// notes → index import cycle that a co-located definition would have
-// caused (package index imports package notes for NoteRecord, so
-// package notes cannot import package index).
+// implementation). The wrapper exists to avoid the notes → index import
+// cycle that a co-located definition would have caused: package index
+// imports package notes for NoteRecord, so package notes cannot import
+// package index.
 //
 // The scanner contract — empty/nil content fallback, frontmatter
 // handling, "#"-without-space tolerance, ## H2 not matched, 1 MiB

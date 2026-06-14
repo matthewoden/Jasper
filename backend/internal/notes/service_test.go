@@ -54,10 +54,9 @@ func (f *fakeFileStore) Stat(_ string) (time.Time, error) {
 	return f.statTime, f.statErr
 }
 
-// Phase 3 Plan 03-03 — extended notes.FileStore port methods. The
-// Phase 1+2 tests in this file do not exercise mutation primitives;
-// the new Plan 03-03 tests use a real fsstore.Store via newRealFSSvc.
-// Default no-ops keep the port satisfied at compile time.
+// Extended notes.FileStore port methods. The simple tests in this file
+// do not exercise mutation primitives; the integration tests use a real
+// fsstore.Store via newRealFSSvc. Default no-ops keep the port satisfied.
 func (f *fakeFileStore) CreateFile(_ string) error        { return nil }
 func (f *fakeFileStore) DeleteFile(_ string) error        { return nil }
 func (f *fakeFileStore) MoveFile(_, _ string) error       { return nil }
@@ -95,9 +94,8 @@ func (f *fakeIndex) List(_ context.Context) ([]NoteSummary, error) {
 	return f.listResult, nil
 }
 
-// Phase 3 Plan 03-03 — extended port methods. Defaults that suit the
-// Phase 1+2 tests (which never call them); the Plan 03-03 tests
-// override these via stubIndex below where richer behavior is needed.
+// Extended port methods — defaults that suit tests not exercising these;
+// override via stubIndex where richer behavior is needed.
 func (f *fakeIndex) LookupByPath(_ context.Context, _ string) (NoteRecord, error) {
 	return NoteRecord{}, ErrNotFound
 }
@@ -106,7 +104,7 @@ func (f *fakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error)
 	return 0, nil
 }
 
-// Phase 6 Plan 06-05 — nopIndex no-ops for fakeIndex.
+// nopIndex no-ops for fakeIndex.
 func (f *fakeIndex) ListTags(_ context.Context) ([]TagWithCount, error)        { return []TagWithCount{}, nil }
 func (f *fakeIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
 
@@ -116,7 +114,7 @@ func (f *fakeIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
 	return nil
 }
 
-// Phase 6 Plan 06-05 Task 3 — cross-vault rewrite stubs for fakeIndex.
+// Cross-vault rewrite stubs for fakeIndex.
 func (f *fakeIndex) NotesByTag(_ context.Context, _ string) ([]NoteSummary, error) {
 	return []NoteSummary{}, nil
 }
@@ -137,7 +135,7 @@ func (f *fakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _
 	return nil
 }
 
-// Plan 06-11: fakeIndex stubs for GetBacklinks + SearchTitles.
+// fakeIndex stubs for GetBacklinks + SearchTitles.
 func (f *fakeIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, error) {
 	return []BacklinkRow{}, nil
 }
@@ -146,7 +144,7 @@ func (f *fakeIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchRe
 	return []SearchResult{}, nil
 }
 
-// Plan 07-04: nopIndex no-op for SearchFTS.
+// fakeIndex stub for SearchFTS.
 func (f *fakeIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]SearchHit, error) {
 	return []SearchHit{}, nil
 }
@@ -227,8 +225,6 @@ func TestService_Get_Unknown(t *testing.T) {
 }
 
 // Test 2b: known UUID but file missing on disk returns ErrNotFound.
-// (Plan 04's main.go is responsible for seeding scratchpad.md; if it
-// did not, the API layer's 404 is correct rather than a 500.)
 func TestService_Get_MissingFile(t *testing.T) {
 	files := &fakeFileStore{
 		readErr: fs.ErrNotExist,
@@ -243,7 +239,7 @@ func TestService_Get_MissingFile(t *testing.T) {
 
 // Test 3: known UUID writes via WriteAtomic exactly once with the right
 // path + bytes. Content that already has a frontmatter block is written
-// verbatim (D-10 auto-restore only triggers when frontmatter is absent).
+// verbatim (auto-restore only triggers when frontmatter is absent).
 func TestService_Update_Known(t *testing.T) {
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	files := &fakeFileStore{statTime: now}
@@ -282,7 +278,7 @@ func TestService_Update_Unknown(t *testing.T) {
 	}
 }
 
-// Test 5: empty content is a legal write (Phase 1 textarea can be empty).
+// Test 5: empty content is a legal write (the textarea can be empty).
 func TestService_Update_EmptyContent(t *testing.T) {
 	files := &fakeFileStore{statTime: time.Now()}
 	svc := newSvc(t, files)
@@ -397,7 +393,7 @@ func TestService_Update_CallsIndexUpsertAfterWrite(t *testing.T) {
 		t.Errorf("rec.SizeBytes: got %d, want %d", rec.SizeBytes, len(content))
 	}
 	if rec.Checksum != "" {
-		t.Errorf("rec.Checksum: got %q, want empty (Phase 7 only)", rec.Checksum)
+		t.Errorf("rec.Checksum: got %q, want empty (reserved field)", rec.Checksum)
 	}
 	if rec.UpdatedAtUnix != now.Unix() {
 		t.Errorf("rec.UpdatedAtUnix: got %d, want %d", rec.UpdatedAtUnix, now.Unix())
@@ -434,7 +430,7 @@ func TestService_Update_CaseCollision_PropagatesError(t *testing.T) {
 // TestService_Update_OtherIndexError_DoesNotFailSave: a transient index
 // error (not ErrCaseCollision) is logged but does NOT propagate. The
 // file is on disk, the user's content is durable, and the next
-// Reconcile heals the index. File-FIRST contract per DATA-01.
+// Reconcile heals the index. File-FIRST contract.
 func TestService_Update_OtherIndexError_DoesNotFailSave(t *testing.T) {
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	transient := errors.New("transient sqlite busy")
@@ -458,8 +454,7 @@ func TestService_Update_OtherIndexError_DoesNotFailSave(t *testing.T) {
 }
 
 // TestService_NewService_NilIndex_FallsBackToNopIndex: passing nil for
-// index is allowed (Phase 1 backwards compat); Service substitutes a
-// no-op so Update succeeds without panicking.
+// index is allowed; Service substitutes a no-op so Update succeeds without panicking.
 func TestService_NewService_NilIndex_FallsBackToNopIndex(t *testing.T) {
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	files := &fakeFileStore{statTime: now}
@@ -603,7 +598,7 @@ func (s *stubIndex) DeleteByPathPrefix(_ context.Context, prefix string) (int, e
 	return len(matched), nil
 }
 
-// Phase 6 Plan 06-05 — stubIndex no-ops for tag + backlink sync.
+// stubIndex no-ops for tag + backlink sync.
 func (s *stubIndex) ListTags(_ context.Context) ([]TagWithCount, error)        { return []TagWithCount{}, nil }
 func (s *stubIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
 
@@ -613,7 +608,7 @@ func (s *stubIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
 	return nil
 }
 
-// Phase 6 Plan 06-05 Task 3 — cross-vault rewrite stubs for stubIndex.
+// stubIndex stubs for cross-vault rewrite methods.
 func (s *stubIndex) NotesByTag(_ context.Context, _ string) ([]NoteSummary, error) {
 	return []NoteSummary{}, nil
 }
@@ -634,7 +629,7 @@ func (s *stubIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _
 	return nil
 }
 
-// Plan 06-11: stubIndex stubs for GetBacklinks + SearchTitles.
+// stubIndex stubs for GetBacklinks + SearchTitles.
 func (s *stubIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, error) {
 	return []BacklinkRow{}, nil
 }
@@ -643,7 +638,7 @@ func (s *stubIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchRe
 	return []SearchResult{}, nil
 }
 
-// Plan 07-04: nopIndex no-op for SearchFTS.
+// stubIndex no-op for SearchFTS.
 func (s *stubIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]SearchHit, error) {
 	return []SearchHit{}, nil
 }
@@ -948,12 +943,9 @@ func TestService_Move_Collision(t *testing.T) {
 	}
 }
 
-// TestService_Move_RefreshesTitle proves the contract introduced by Plan
-// 03-21 Task 2: after Service.Move renames a file, the index row's
-// Title is re-extracted from the renamed file's CURRENT content via
-// markdown.ExtractTitle. The H1 wins over the filename when present;
-// the filename change does NOT change the H1, so we observe the H1 in
-// both the returned summary and the index row.
+// TestService_Move_RefreshesTitle: after Service.Move renames a file, the
+// index row's Title is re-extracted from the renamed file's CURRENT content
+// via markdown.ExtractTitle. The H1 wins over the filename when present.
 func TestService_Move_RefreshesTitle(t *testing.T) {
 	t.Parallel()
 	svc, _, idx := newRealFSSvc(t)
@@ -1400,7 +1392,7 @@ func TestService_Update_IfMatch_Mismatch_ReturnsErrStaleWrite(t *testing.T) {
 
 // TestService_Update_IfMatch_Empty_SkipsValidation: empty ifMatch is
 // permissive — the write succeeds even though the stat mtime is set.
-// This is the curl/automation-friendly path (SYNC-06).
+// This is the curl/automation-friendly path.
 func TestService_Update_IfMatch_Empty_SkipsValidation(t *testing.T) {
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	files := &fakeFileStore{statTime: now}
@@ -1447,8 +1439,8 @@ func TestService_Update_IfMatch_Match_ProceedsAsNormal(t *testing.T) {
 }
 
 // TestService_Update_BroadcastsAfterIndexUpsert: verifies the canonical
-// file-FIRST ordering (ARCHITECTURE.md §11.1): write → upsert → broadcast.
-// Also asserts T-04-04: payload must NOT contain a "content" key.
+// file-FIRST ordering: write → upsert → broadcast.
+// Also asserts the security contract: payload must NOT contain a "content" key.
 func TestService_Update_BroadcastsAfterIndexUpsert(t *testing.T) {
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	var seq []string
@@ -1487,7 +1479,7 @@ func TestService_Update_BroadcastsAfterIndexUpsert(t *testing.T) {
 
 // TestService_Update_NoBroadcastOnTransientIndexError: when Index.Upsert
 // returns a transient (non-collision) error, the file is on disk but the
-// broadcast must NOT fire (Pitfall 2 — broadcast only after index succeeds).
+// broadcast must NOT fire — broadcast only after index succeeds.
 func TestService_Update_NoBroadcastOnTransientIndexError(t *testing.T) {
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	files := &fakeFileStore{statTime: now}
@@ -1504,9 +1496,8 @@ func TestService_Update_NoBroadcastOnTransientIndexError(t *testing.T) {
 	}
 }
 
-// TestService_Update_AutoRestoresMissingFrontmatter (D-10 / TAGS-EXT-02):
-// when content has no frontmatter block, Update should inject the scaffold
-// before writing to disk.
+// TestService_Update_AutoRestoresMissingFrontmatter: when content has no
+// frontmatter block, Update should inject the scaffold before writing to disk.
 func TestService_Update_AutoRestoresMissingFrontmatter(t *testing.T) {
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	files := &fakeFileStore{statTime: now}
@@ -1521,7 +1512,7 @@ func TestService_Update_AutoRestoresMissingFrontmatter(t *testing.T) {
 
 	written := string(files.lastWriteData)
 	if !strings.HasPrefix(written, "---\ntags: []\n---\n") {
-		t.Errorf("D-10: file written without frontmatter scaffold; got: %q", written[:min(80, len(written))])
+		t.Errorf("file written without frontmatter scaffold; got: %q", written[:min(80, len(written))])
 	}
 
 	if !strings.Contains(written, "# Just a Heading") {
@@ -1714,7 +1705,7 @@ func (t *tagStubIndex) UpdateBacklinksTargetTitle(_ context.Context, oldTitle, n
 	return nil
 }
 
-// Plan 06-11: GetBacklinks + SearchTitles stubs for tagStubIndex.
+// tagStubIndex stubs for GetBacklinks + SearchTitles.
 func (t *tagStubIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, error) {
 	return []BacklinkRow{}, nil
 }
@@ -1833,8 +1824,8 @@ func TestService_RenameTagAcrossVault_PT3_InvalidNewName(t *testing.T) {
 	}
 }
 
-// PT5 (D-37 rollback): AtomicWrite failure on the second file restores the
-// first file to its pre-state; no broadcast.
+// PT5: AtomicWrite failure on the second file restores the first file to
+// its pre-state; no broadcast.
 func TestService_RenameTagAcrossVault_PT5_Rollback(t *testing.T) {
 	t.Parallel()
 
@@ -2031,7 +2022,7 @@ func TestService_RenameRewriteWikilinks_RW2_NoReferrers(t *testing.T) {
 	}
 }
 
-// RW3: D-36 rollback — AtomicWrite fails on second file; first file restored.
+// RW3: AtomicWrite fails on second file; first file restored.
 func TestService_RenameRewriteWikilinks_RW3_Rollback(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -2153,8 +2144,8 @@ func (c *countingFileStore) WriteAtomic(relPath string, data []byte) error {
 	return c.inner.WriteAtomic(relPath, data)
 }
 
-// TestService_Create_UsesNewNoteContentScaffold (Test 7 / D-09 / TAGS-EXT-01):
-// Service.Create must write the standard scaffold content.
+// TestService_Create_UsesNewNoteContentScaffold: Service.Create must write
+// the standard scaffold content.
 func TestService_Create_UsesNewNoteContentScaffold(t *testing.T) {
 	t.Parallel()
 	svc, root, _ := newRealFSSvc(t)
@@ -2170,16 +2161,16 @@ func TestService_Create_UsesNewNoteContentScaffold(t *testing.T) {
 	}
 	written := string(data)
 	if !strings.HasPrefix(written, "---\ntags: []\n---\n") {
-		t.Errorf("D-09: created file missing frontmatter scaffold; got: %q", written[:min(80, len(written))])
+		t.Errorf("created file missing frontmatter scaffold; got: %q", written[:min(80, len(written))])
 	}
 	if !strings.Contains(written, "# MyNote") {
-		t.Errorf("D-09: created file missing H1; got: %q", written)
+		t.Errorf("created file missing H1; got: %q", written)
 	}
 }
 
 // TestService_Update_BodyTagsAddedToFrontmatter verifies that when a note body
 // contains "#newtag" and the frontmatter only has "tags: [oldtag]", the save
-// produces a file whose frontmatter contains both tags (D-10 union).
+// produces a file whose frontmatter contains both tags (union semantics).
 func TestService_Update_BodyTagsAddedToFrontmatter(t *testing.T) {
 	now := time.Now()
 
@@ -2219,7 +2210,7 @@ func TestService_Update_BodyTagsAddedToFrontmatter(t *testing.T) {
 
 // TestService_Update_BodyTagsNoChange verifies that when a note body contains
 // "#existing" and the frontmatter already has "tags: [existing]", the save
-// does NOT issue a second WriteAtomic (Pitfall 6 guard).
+// does NOT issue a second WriteAtomic (no spurious rewrite when canonical == frontmatter).
 func TestService_Update_BodyTagsNoChange(t *testing.T) {
 	now := time.Now()
 	files := &fakeFileStore{statTime: now}
@@ -2232,7 +2223,7 @@ func TestService_Update_BodyTagsNoChange(t *testing.T) {
 	}
 
 	if files.writeCalls != 1 {
-		t.Errorf("writeCalls: got %d, want 1 (Pitfall 6: no second WriteAtomic when canonical == frontmatter tags)",
+		t.Errorf("writeCalls: got %d, want 1 (no second WriteAtomic when canonical == frontmatter tags)",
 			files.writeCalls)
 	}
 
@@ -2243,7 +2234,7 @@ func TestService_Update_BodyTagsNoChange(t *testing.T) {
 }
 
 // TestService_Update_BodyTagInsideCodeFenceNotExtracted verifies that #tags
-// inside fenced code blocks are NOT extracted as body tags (D-08).
+// inside fenced code blocks are NOT extracted as body tags.
 func TestService_Update_BodyTagInsideCodeFenceNotExtracted(t *testing.T) {
 	now := time.Now()
 	files := &fakeFileStore{statTime: now}
@@ -2256,7 +2247,7 @@ func TestService_Update_BodyTagInsideCodeFenceNotExtracted(t *testing.T) {
 	}
 
 	if files.writeCalls != 1 {
-		t.Errorf("writeCalls: got %d, want 1 (no rewrite — fenced code tag must not be extracted)",
+		t.Errorf("writeCalls: got %d, want 1 (fenced code tag must not be extracted)",
 			files.writeCalls)
 	}
 
@@ -2270,7 +2261,7 @@ func TestService_Update_BodyTagInsideCodeFenceNotExtracted(t *testing.T) {
 
 // TestService_Create_ScaffoldEmptyBodyTagsAreNoOp verifies that Create's scaffold
 // produces tags: [] and no body tags → canonical == frontmatterTags == empty
-// → no second WriteAtomic issued (Pitfall 6 guard applies to Create too).
+// → no second WriteAtomic issued.
 func TestService_Create_ScaffoldEmptyBodyTagsAreNoOp(t *testing.T) {
 	t.Parallel()
 	svc, root, _ := newRealFSSvc(t)

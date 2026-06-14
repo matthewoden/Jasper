@@ -1,33 +1,18 @@
 /**
- * useTreeStore — Phase 3 zustand store for the file-tree sidebar.
+ * useTreeStore — zustand store for the file-tree sidebar.
  *
- * Locked shape (UI-SPEC §Forward-compat assert #2 — Phase 4 ADDS, never modifies):
- *   {
- *     expanded:      Set<string>           // canonical folder paths that are expanded
- *     activeNoteId:  string | null         // currently active note's UUID
- *     pendingRename: { kind, target, isNew? } | null
- *     draftCreate:   { kind, parent } | null
- *     selectedRow:   { kind, target } | null  // ← Plan 03-20 (Gap R2-4)
- *   }
- *
- * Persistence (UI-SPEC §State persistence):
+ * Persistent slices (debounced 250ms, tolerates corrupted localStorage):
  *   - localStorage["jasper.tree.expanded"]      JSON Array<string>
  *   - localStorage["jasper.tree.activeNoteId"]  JSON string-or-null
- *   - Writes are debounced 250ms to avoid storage thrash on rapid expand/collapse.
- *   - Hydration (top-level side-effect) tolerates corrupted storage — bad JSON
- *     silently falls back to defaults; the user just sees their tree as it is.
- *   - `pendingRename`, `draftCreate`, and `selectedRow` are NEVER persisted
- *     (transient slots).
  *
- * `selectedRow` is consumed by App.tsx's document-level F2 listener (Plan
- * 03-20, Gap R2-4): clicking a tree row populates `selectedRow`, then F2
- * dispatched at the document level reads `selectedRow` to route rename to
- * the right row even after focus has shifted to the editor textarea.
+ * Transient slots (never persisted): pendingRename, draftCreate, selectedRow.
  *
- * pruneStaleTreeState(folderPaths, noteIds) is exported for useFileTree to call
- * after every successful tree fetch — it drops expanded entries / activeNoteId
- * that no longer exist in the freshly-fetched tree. It does NOT touch
- * transient slots.
+ * selectedRow is read by App.tsx's document-level F2 listener to route rename
+ * to the right row even after focus has shifted to the editor.
+ *
+ * pruneStaleTreeState(folderPaths, noteIds) is called by useFileTree after every
+ * successful tree fetch to drop expanded entries / activeNoteId that no longer
+ * exist. Does not touch transient slots.
  */
 import { create } from "zustand";
 
@@ -37,10 +22,7 @@ type SearchResult = components["schemas"]["SearchResult"];
 
 export const LS_KEY_EXPANDED = "jasper.tree.expanded";
 
-/**
- * Phase 4 addition (UI-SPEC §Forward-compat assert #2 — ADDS, never modifies).
- * Transient — NOT persisted via localStorage. Reconnects on every page load.
- */
+/** Transient — not persisted. Reconnects on every page load. */
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting";
 export const LS_KEY_ACTIVE_NOTE = "jasper.tree.activeNoteId";
 
@@ -81,15 +63,10 @@ export type PendingRename = {
   kind: RenameKind;
   target: string;
   /**
-   * Bug D fix — true when the rename was triggered by a create action
-   * (the file/folder was just created and the name was never confirmed by
-   * the user). Escape or same-name blur should DELETE the node instead of
-   * simply closing the input, because leaving it behind with the
-   * auto-generated placeholder name ("untitled") is surprising and
-   * pollutes the tree.
-   *
-   * Set to true by useTreeCreateActions after a successful POST.
-   * Not set (undefined / falsy) for regular F2 / double-click renames.
+   * True when the rename was triggered by a create action (name never confirmed).
+   * Escape / same-name blur should DELETE the node rather than close the input,
+   * because leaving the auto-generated placeholder name on disk is surprising.
+   * Not set for regular F2 / double-click renames.
    */
   isNew?: boolean;
 };
@@ -122,12 +99,8 @@ export interface TreeStore {
   toggleExpanded: (path: string) => void;
   setActiveNote: (id: string | null) => void;
   /**
-   * startRename — enter inline-rename mode for the node identified by
-   * `kind` + `target` (note uuid or folder path).
-   *
-   * Pass `isNew: true` when the rename is the first-time naming of a
-   * just-created node (see PendingRename.isNew for semantics). Omit or
-   * pass false for ordinary F2 / double-click renames.
+   * startRename — enter inline-rename mode for the node at kind + target.
+   * Pass isNew: true for a just-created node (see PendingRename.isNew).
    */
   startRename: (kind: RenameKind, target: string, isNew?: boolean) => void;
   endRename: () => void;
@@ -323,10 +296,9 @@ export const useTreeStore = create<TreeStore>((set) => ({
 }));
 
 /**
- * Drop expanded entries / activeNoteId not in the freshly-fetched tree.
- * Called by useFileTree after every successful GET /tree. The setState call
- * is gated on actual change so a no-op pass keeps reference identity (which
- * lets memoized consumers skip re-renders).
+ * pruneStaleTreeState — drops expanded entries / activeNoteId not present in
+ * the freshly-fetched tree. Gated on actual change so a no-op pass preserves
+ * reference identity (lets memoized consumers skip re-renders).
  */
 export function pruneStaleTreeState(
   allFolderPaths: Set<string>,

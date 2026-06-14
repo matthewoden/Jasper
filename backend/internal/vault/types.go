@@ -1,10 +1,7 @@
-// Package vault implements the app-level state registry described in ADR-001
-// (vault model, hard-accepted 2026-05-23). The on-disk format is
-// ~/.jasper/app.json (fixed location, overridable via $JASPER_APP_HOME).
-//
-// V1 — .jasper/ is the fully self-contained vault layout.
-// V9 — per-entry fields: path, display_name, last_opened_at, created_at, missing.
-// V10 — canonical dedup via filepath.Abs → EvalSymlinks → Clean → (darwin) ToLower.
+// Package vault implements the app-level state registry. The on-disk format
+// is ~/.jasper/app.json (fixed location, overridable via $JASPER_APP_HOME).
+// Per-entry fields: path, display_name, last_opened_at, created_at, missing.
+// Canonical dedup via filepath.Abs → EvalSymlinks → Clean → (darwin) ToLower.
 package vault
 
 import (
@@ -14,9 +11,8 @@ import (
 	"time"
 )
 
-// AppState is the on-disk shape of ~/.jasper/app.json (V1).
-// JSON keys are fixed; downstream plans (17b /vault/* handlers, 17c picker UI)
-// read these names verbatim.
+// AppState is the on-disk shape of ~/.jasper/app.json.
+// JSON keys are fixed; downstream handlers read these names verbatim.
 type AppState struct {
 	CurrentVault     string             `json:"current_vault,omitempty"`      // abs canonical path; empty => no vault selected
 	RecentVaults     []RecentVaultEntry `json:"recent_vaults"`                // newest first (LRU sort by LastOpenedAt desc)
@@ -25,7 +21,7 @@ type AppState struct {
 	ServerPort       int                `json:"server_port,omitempty"`        // app-level override; 0 => use 6683 default
 }
 
-// RecentVaultEntry is one entry in AppState.RecentVaults (V9).
+// RecentVaultEntry is one entry in AppState.RecentVaults.
 type RecentVaultEntry struct {
 	Path         string    `json:"path"`              // abs canonical (V10)
 	DisplayName  string    `json:"display_name"`      // defaults to filepath.Base(path) (V9)

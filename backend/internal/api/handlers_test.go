@@ -46,10 +46,8 @@ func (f *fakeFileStore) Stat(_ string) (time.Time, error) {
 	return f.statTime, f.statErr
 }
 
-// Phase 3 Plan 03-03 — extended notes.FileStore port methods. The
-// api-package tests do not exercise these mutation primitives directly
-// (those are covered by service_test.go + ops_test.go); default no-ops
-// keep the port satisfied at compile time.
+// Mutation primitives not exercised in this package (covered by
+// service_test.go + ops_test.go); default no-ops keep the port satisfied.
 func (f *fakeFileStore) CreateFile(_ string) error        { return nil }
 func (f *fakeFileStore) DeleteFile(_ string) error        { return nil }
 func (f *fakeFileStore) MoveFile(_, _ string) error       { return nil }
@@ -287,8 +285,6 @@ func TestPutNoteById_WriteFailure(t *testing.T) {
 
 // Sanity: exercise the OpenAPI-spec-loading helper exposed by the
 // generated code. Catches a regression where the embedded spec rotted.
-// (The handlers don't depend on this in production but Plan 04 may
-// want to expose /api/v1/openapi.json from the same package.)
 func TestGenerated_GetSwagger(t *testing.T) {
 	if _, err := GetSwagger(); err != nil {
 		t.Fatalf("GetSwagger: %v", err)

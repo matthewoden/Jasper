@@ -1,20 +1,12 @@
 /**
- * SettingsDialog — Phase 11 Plan 03 (SET-01/02/04/06).
+ * SettingsDialog — in-app settings panel (Radix Dialog modal).
  *
- * Full in-app settings panel: four sections, eight controls, auto-persist
- * (no Save button), live CSS-var apply for font/line height, restart badges
- * for vim mode and autosaveMs.
+ * Four sections (APPEARANCE / EDITOR / DAILY NOTES / GENERAL), auto-persist
+ * on blur/Enter (no Save button), live CSS-var apply for font/line height,
+ * restart badges for vim mode and autosaveMs.
  *
- * Chrome copies KeyboardShortcutsDialog.tsx verbatim (Radix Dialog modal).
- * Controls follow ThemeSection.tsx + DailyNoteSection.tsx patterns.
- *
- * UI-SPEC §Panel Structure & Dimensions:
- *   - maxWidth: 560px, padding: 24px, centered
- *   - Sections: APPEARANCE / EDITOR / DAILY NOTES / GENERAL
- *   - No Save/Cancel button (D-03 auto-persist)
- *
- * CRITICAL (T-11-07): Vim copy is HONEST — "not yet active — they will be
- *   enabled in a future update." The preference is saved; nothing is wired.
+ * CRITICAL: Vim copy is HONEST — "not yet active — they will be enabled in a
+ * future update." The preference is saved; key bindings are not yet wired.
  */
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Switch from "@radix-ui/react-switch";
@@ -29,8 +21,7 @@ export interface SettingsDialogProps {
 }
 
 // ─── Restart badge ─────────────────────────────────────────────────────────
-// Used on autosaveMs and vim mode controls (SET-06 / D-07).
-// aria-label ensures screen readers announce it (not color only — UI-SPEC §Accessibility).
+// aria-label ensures screen readers announce it (not color only).
 function RestartBadge() {
   return (
     <span
@@ -220,8 +211,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [dailyTemplate, setDailyTemplate] = useState("");
   const [displayName, setDisplayName] = useState("");
 
-  // ── Save error banner (WR-04 / CR-03b): shown when PUT /config fails ──
-  // Cleared automatically on any new successful save or when dismissed.
+  // ── Save error banner: shown when PUT /config fails ──
+  // Cleared on any subsequent successful save or when dismissed.
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // ── Seed local state when config loads ──────────────────────────────
@@ -236,8 +227,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }, [config]);
 
   // ── Boot seeding: keep CSS vars in sync with persisted config ───────
-  // This runs even when the panel is never opened (StatusBar → SettingsMenu
-  // always mounts SettingsDialog) so the editor always reflects persisted values.
+  // Runs on mount even when the panel has never been opened — SettingsDialog
+  // is always mounted (via SettingsMenu in StatusBar) so the editor reflects
+  // persisted values without requiring the user to open settings first.
   useEffect(() => {
     if (!config) return;
     document.documentElement.style.setProperty(
@@ -251,9 +243,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }, [config?.editor.fontSize, config?.editor.lineHeight]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Commit helpers ───────────────────────────────────────────────────
-  // All handlers await saveConfig and surface errors (WR-04 / CR-03b).
-  // On save failure, useConfig.saveConfig rolls back to the last persisted
-  // value (CR-02 fix) so the local input reverts in the next config sync.
+  // All handlers await saveConfig and surface errors in the save-error banner.
+  // On failure, useConfig.saveConfig rolls back to the last persisted value
+  // so the local input reverts in the next config sync.
 
   const handleFontSizeCommit = useCallback(async () => {
     if (!config) return;
@@ -280,7 +272,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const handleLineHeightCommit = useCallback(async () => {
     if (!config) return;
     const value = Number(lineHeightInput);
-    // CR-03a: align upper bound with server (config_validate.go allows up to 3.0)
+    // Upper bound 3.0 matches server-side validation in config_validate.go
     if (!Number.isFinite(value) || value < 1.0 || value > 3.0) {
       setLineHeightError(
         "Must be between 1.0 and 3.0. Reverted to previous value.",
@@ -416,7 +408,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             maxHeight: "calc(100vh - 48px)",
           }}
         >
-          {/* Dialog title — 16px / 600 / 1.4 */}
           <Dialog.Title
             style={{
               fontSize: 16,
@@ -447,7 +438,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             Change application settings — appearance, editor, daily notes, and general preferences.
           </Dialog.Description>
 
-          {/* ── Save error banner (WR-04 / CR-03b) ──────────────────────── */}
+          {/* ── Save error banner ────────────────────────────────────────── */}
           {saveError && (
             <div
               role="alert"
@@ -565,8 +556,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               )}
             </ControlRow>
 
-            {/* Editor line height */}
-            {/* CR-03a: max aligned with server (config_validate.go: 1.0–3.0) */}
+            {/* Editor line height — 1.0–3.0, matches server validation */}
             <ControlRow label="Editor line height" htmlFor="settings-line-height">
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <input
@@ -730,7 +720,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </span>
                 <RestartBadge />
               </div>
-              {/* CRITICAL HONEST COPY (T-11-07 / D-05): vim is NOT yet wired */}
+              {/* CRITICAL HONEST COPY: vim key bindings are NOT yet wired */}
               <p
                 id="vim-mode-helper"
                 style={{

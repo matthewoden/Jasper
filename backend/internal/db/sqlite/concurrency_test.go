@@ -16,11 +16,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// TestConcurrentWrites_5000Notes_NoBusy is the criterion-5 stress
-// floor: 5,000 INSERTs distributed across runtime.NumCPU() goroutines,
-// each running its own BEGIN IMMEDIATE writer transaction, while a
-// pool of reader goroutines hammers SELECT COUNT(*) against the
-// reader half of the Pair.
+// TestConcurrentWrites_5000Notes_NoBusy stress-tests 5,000 INSERTs
+// distributed across runtime.NumCPU() goroutines, each running its own
+// BEGIN IMMEDIATE writer transaction, while a pool of reader goroutines
+// hammers SELECT COUNT(*) against the reader half of the Pair.
 //
 // Failure modes (any of these fails the test):
 //   - any error message contains "SQLITE_BUSY"
@@ -30,10 +29,6 @@ import (
 //
 // Pass condition: zero SQLITE_BUSY, no "database is locked", final
 // count == 5000, completes well under 60s on 2024-era M-series Mac.
-//
-// This test backs ROADMAP success criterion #5 ("5,000-note
-// synthetic vault, concurrent writes, no SQLITE_BUSY") — Plan 02-04's
-// runner depends on this floor working before it ships.
 func TestConcurrentWrites_5000Notes_NoBusy(t *testing.T) {
 	const totalNotes = 5000
 
@@ -220,7 +215,8 @@ func TestConcurrentWrites_BeginImmediateDoesNotDeadlockReaders(t *testing.T) {
 	}
 
 	now := time.Now().Unix()
-	if _, err := pair.Writer.ExecContext(ctx,
+	if _, err := pair.Writer.ExecContext(
+		ctx,
 		`INSERT INTO notes(id,path,title,mtime_unix,size_bytes,checksum_sha256,created_at,updated_at)
          VALUES (?,?,?,?,?,?,?,?)`,
 		uuid.New().String(), "seed.md", "seed", now, 0, "", now, now,
@@ -237,7 +233,8 @@ func TestConcurrentWrites_BeginImmediateDoesNotDeadlockReaders(t *testing.T) {
 			close(writerStarted)
 			return
 		}
-		if _, err := tx.ExecContext(ctx,
+		if _, err := tx.ExecContext(
+			ctx,
 			`INSERT INTO notes(id,path,title,mtime_unix,size_bytes,checksum_sha256,created_at,updated_at)
              VALUES (?,?,?,?,?,?,?,?)`,
 			uuid.New().String(), "during-readers.md", "x", now, 0, "", now, now,

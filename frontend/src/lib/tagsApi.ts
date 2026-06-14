@@ -1,13 +1,7 @@
 /**
- * tagsApi — typed wrappers over the Phase 6 tag endpoints.
- *
- * All requests route through the openapi-fetch client (frontend/src/api/client.ts),
- * which is bound to the generated `paths` from Plan 06-02's spec extension.
- * ZERO hand-written request shapes — mirrors the pattern established in notesApi.ts
- * and treeApi.ts.
- *
- * Each wrapper throws an Error on non-2xx responses so callers can use
- * try/catch rather than destructuring { data, error }.
+ * tagsApi — typed wrappers over the tag endpoints.
+ * All requests route through the openapi-fetch client; no hand-written request shapes.
+ * Each wrapper throws on non-2xx so callers can use try/catch.
  *
  * Endpoints:
  *   GET    /api/v1/tags              → listTags(): TagWithCount[]
@@ -24,10 +18,7 @@ export type TagRenameResponse = components["schemas"]["TagRenameResponse"];
 export type TagDeleteResponse = components["schemas"]["TagDeleteResponse"];
 export type NoteSummary = components["schemas"]["NoteSummary"];
 
-/**
- * List all tags with note counts, sorted alphabetically.
- * Feeds the sidebar tag browser (D-01..D-03) and tag autocomplete (D-07).
- */
+/** List all tags with note counts, sorted alphabetically. */
 export async function listTags(): Promise<TagWithCount[]> {
   const { data, error } = await client.GET("/tags");
   if (error) {
@@ -41,8 +32,7 @@ export async function listTags(): Promise<TagWithCount[]> {
 }
 
 /**
- * List notes carrying a specific tag (TAGS-04 / D-02 flat list).
- * Returns 404 if the tag does not exist.
+ * List notes carrying a specific tag. Returns 404 if the tag does not exist.
  */
 export async function listTagNotes(name: string): Promise<NoteSummary[]> {
   const { data, error } = await client.GET("/tags/{name}/notes", {
@@ -59,9 +49,8 @@ export async function listTagNotes(name: string): Promise<NoteSummary[]> {
 }
 
 /**
- * Rename a tag across all notes (TAGS-06 / D-23).
- * Rewrites frontmatter in a single backend transaction.
- * Returns the list of touched note IDs so the caller can decide whether to toast.
+ * Rename a tag across all notes. Rewrites frontmatter in a single backend
+ * transaction; returns the list of touched note IDs.
  */
 export async function renameTag(
   oldName: string,
@@ -82,9 +71,8 @@ export async function renameTag(
 }
 
 /**
- * Remove a tag from all notes (TAGS-07 / D-24).
- * Drops the tag from frontmatter in a single transaction.
- * Returns the list of touched note IDs so the caller can decide whether to toast.
+ * Remove a tag from all notes. Drops the tag from frontmatter in a single
+ * transaction; returns the list of touched note IDs.
  */
 export async function deleteTag(name: string): Promise<TagDeleteResponse> {
   const { data, error } = await client.DELETE("/tags/{name}", {

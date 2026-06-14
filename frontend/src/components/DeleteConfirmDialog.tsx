@@ -1,16 +1,7 @@
 /**
- * DeleteConfirmDialog — UI-SPEC §Surface 4.
+ * DeleteConfirmDialog — Radix AlertDialog for note/folder/file/multi deletion.
  *
- * Radix AlertDialog with locked copy variants for note vs. folder
- * deletion. Reuses Phase 2's chrome (overlay 0.6 black, dialog
- * max-width 480, padding 24, etc.) but the Confirm button uses
- * bg-destructive instead of Phase 2's bg-accent (deletion is
- * irreversible — the only filled-destructive surface in Phases 1–3).
- *
- * Pluralization rules (locked):
- *   - 1 note → "1 note"; >1 → "{N} notes"; 0 → drop the clause
- *   - 1 subfolder → "1 subfolder"; >1 → "{M} subfolders"; 0 → drop
- *   - 0 of both → render the empty-folder reassurance copy instead
+ * Confirm button uses bg-destructive because deletion is irreversible.
  */
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 

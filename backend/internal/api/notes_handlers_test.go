@@ -35,9 +35,8 @@ func (f *fakeIndex) List(_ context.Context) ([]notes.NoteSummary, error) {
 	return f.listResult, f.listErr
 }
 
-// Phase 3 Plan 03-03 — extended notes.Index port methods. The api-package
-// tests do not exercise these; default no-op implementations keep the
-// port satisfied at compile time.
+// Extended notes.Index port methods not exercised in this package; no-ops keep
+// the port satisfied at compile time.
 func (f *fakeIndex) LookupByPath(_ context.Context, _ string) (notes.NoteRecord, error) {
 	return notes.NoteRecord{}, notes.ErrNotFound
 }
@@ -46,7 +45,6 @@ func (f *fakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error)
 	return 0, nil
 }
 
-// Phase 6 Plan 06-05 additions — fakeIndex no-ops for tag + backlink sync.
 func (f *fakeIndex) ListTags(_ context.Context) ([]notes.TagWithCount, error) {
 	return []notes.TagWithCount{}, nil
 }
@@ -58,7 +56,6 @@ func (f *fakeIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
 	return nil
 }
 
-// Phase 6 Plan 06-05 Task 3 — cross-vault rewrite stubs for fakeIndex.
 func (f *fakeIndex) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary, error) {
 	return []notes.NoteSummary{}, nil
 }
@@ -79,7 +76,6 @@ func (f *fakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _
 	return nil
 }
 
-// Plan 06-11: backlinks retrieval + title search stubs for fakeIndex.
 func (f *fakeIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]notes.BacklinkRow, error) {
 	return []notes.BacklinkRow{}, nil
 }
@@ -88,7 +84,6 @@ func (f *fakeIndex) SearchTitles(_ context.Context, _ string, _ int) ([]notes.Se
 	return []notes.SearchResult{}, nil
 }
 
-// Plan 07-04: SearchFTS no-op stub.
 func (f *fakeIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes.SearchHit, error) {
 	return []notes.SearchHit{}, nil
 }
@@ -183,8 +178,7 @@ func TestGetNotes_PopulatedFromIndex(t *testing.T) {
 	}
 }
 
-// TestGetNotes_NilIndex_FallsBackToEmpty — Phase 1 NewServer
-// compatibility: nil index → empty list, NOT 503.
+// TestGetNotes_NilIndex_FallsBackToEmpty — nil index → empty list, NOT 503.
 func TestGetNotes_NilIndex_FallsBackToEmpty(t *testing.T) {
 	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -246,9 +240,8 @@ func TestGetNotes_OrderedByPathASC(t *testing.T) {
 	}
 }
 
-// TestGetNotes_IndexErr_Returns500_GenericMessage — index.List returns
-// an error; the handler maps to 500 with a generic wire message
-// (T-02-04b-02 — never leak the wrapped chain).
+// TestGetNotes_IndexErr_Returns500_GenericMessage — index.List error maps to
+// 500 with a generic wire message (never leak the wrapped chain).
 func TestGetNotes_IndexErr_Returns500_GenericMessage(t *testing.T) {
 	t.Parallel()
 	idx := &fakeIndex{listErr: errors.New("internal sqlite trouble: /abs/path/to/db")}
@@ -365,7 +358,6 @@ func (r *realIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
 	return nil
 }
 
-// Phase 6 Plan 06-05 Task 3 — cross-vault rewrite stubs for realIndex.
 func (r *realIndex) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary, error) {
 	return []notes.NoteSummary{}, nil
 }
@@ -389,7 +381,6 @@ func (r *realIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _
 	return nil
 }
 
-// Plan 06-11: realIndex stubs for GetBacklinks + SearchTitles.
 func (r *realIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]notes.BacklinkRow, error) {
 	return []notes.BacklinkRow{}, nil
 }
@@ -398,7 +389,6 @@ func (r *realIndex) SearchTitles(_ context.Context, _ string, _ int) ([]notes.Se
 	return []notes.SearchResult{}, nil
 }
 
-// Plan 07-04: SearchFTS no-op stub.
 func (r *realIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes.SearchHit, error) {
 	return []notes.SearchHit{}, nil
 }

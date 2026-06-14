@@ -9,23 +9,19 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/index"
 )
 
-// GetTree implements GET /api/v1/tree (TREE-01 — file-tree endpoint).
+// GetTree implements GET /api/v1/tree.
 //
-// Calls *index.Indexer.BuildTree (the canonical projection of SQLite
-// rows + filesystem directory listing into a nested folder/note
-// hierarchy) and translates the package-internal *index.Tree into the
-// wire-shape api.Tree declared in Plan 03-01's openapi.yaml. The
-// translation goes through oapi-codegen-generated FromFolderNode /
-// FromNoteNode helpers — they're the only safe way to populate the
-// discriminated TreeNode oneOf union (T-03-04-09 mitigation).
+// Calls *index.Indexer.BuildTree (SQLite rows + filesystem directory listing
+// projected into a nested folder/note hierarchy) and translates the result
+// into wire-shape api.Tree. Translation goes through oapi-codegen-generated
+// FromFolderNode / FromNoteNode helpers — the only safe way to populate the
+// discriminated TreeNode oneOf union.
 //
-// Phase 1 compatibility: when the Server has a nil index (the 2-arg
-// NewServer constructor), GetTree returns an empty Tree so the
-// frontend can render an empty file-tree without surfacing a 503.
+// Nil index returns an empty Tree (NOT 503) so the frontend renders an empty
+// file-tree when the indexer is not wired.
 //
-// The returned Tree is a strict subset of internal NoteRecord fields
-// (T-03-04-03 / T-03-01-02 mitigation: NEVER ship checksum_sha256,
-// size_bytes, mtime_unix, or updated_at_unix to the wire).
+// The wire shape is a strict subset of NoteRecord: never ships checksum_sha256,
+// size_bytes, mtime_unix, or updated_at_unix.
 //
 //nolint:revive // generated interface name
 func (s *Server) GetTree(

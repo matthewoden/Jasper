@@ -1,33 +1,16 @@
 /**
- * dropIndicatorWidget.ts — Phase 7 Plan 20 / C3 (UAT #12).
+ * dropIndicatorWidget — CM6 ViewPlugin that renders a blinking caret at the
+ * drop position during a file dragover, so the user can see where the markdown
+ * will be inserted.
  *
- * CM6 ViewPlugin that renders a blinking vertical caret at the cursor
- * position during a file dragover event, giving the user visual feedback
- * about where the dropped markdown will be inserted.
- *
- * Architecture (standard CM6 StateField provision pattern):
- *   - dropPosField:       StateField<number | null>  — holds the current drag position.
- *   - setDropPos:         StateEffect<number | null> — dispatched by the plugin on
- *                         dragover/dragleave/drop.
- *   - dropIndicatorPlugin:ViewPlugin                 — listens for dragover/dragleave/drop
- *                         on the editor's DOM element and renders a Decoration.widget
- *                         at posAtCoords({x, y}).
- *
- * NOTE: The StateField + StateEffect are exported SEPARATELY and must be
- * listed BEFORE dropIndicatorPlugin in the MarkdownEditor extensions array:
+ * StateField + StateEffect are exported separately and must be listed BEFORE
+ * dropIndicatorPlugin in the extensions array:
  *   extensions: [ ..., dropPosField, dropIndicatorPlugin ]
  *
- * This is the standard CM6 pattern. The non-standard `provide: () => [dropPosField]`
- * ViewPlugin option is NOT used — it caused confusion in historical reviews.
+ * When posAtCoords returns null (pointer outside the document area), the
+ * indicator hides rather than rendering at a stale position.
  *
- * If posAtCoords returns null (pointer outside document range, e.g. in
- * gutter or padding areas), the indicator hides rather than crashing or
- * rendering at a stale position (HALT-IF-INCONCLUSIVE GATE: acceptable v1
- * behavior).
- *
- * The plugin coexists with useAttachmentUpload's dragHandlers — both attach
- * listeners independently. The drop semantics (file insertion) are owned by
- * useAttachmentUpload; this plugin is purely visual feedback.
+ * This plugin is purely visual; drop insertion is handled by useAttachmentUpload.
  */
 import {
   Decoration,

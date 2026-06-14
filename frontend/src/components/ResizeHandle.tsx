@@ -1,25 +1,17 @@
 /**
- * Phase 6.6 — Plan 06.6-01 (UX-CHROME-04): Generic ResizeHandle.
+ * Generic resize handle — cursor-only affordance (no visible band) shared by
+ * SidebarResizeHandle and InterPanelDivider.
  *
- * D-12: cursor-only affordance — no visible band, transparent background,
- * 8-12px hit area, cursor changes to col-resize (vertical) or row-resize
- * (horizontal) on hover.
- *
- * D-15: generic extraction — single source of truth for drag handle pointer
- * lifecycle. SidebarResizeHandle and InterPanelDivider use this component
- * (InterPanelDivider fully delegates; SidebarResizeHandle keeps its own
- * absolute-clientX clamp math per Pitfall 5 mitigation — see that file).
- *
- * Drag lifecycle (from SidebarResizeHandle.tsx + InterPanelDivider.tsx):
+ * Drag lifecycle:
  *   - pointerdown → mark draggingRef.current = true, attach document listeners
  *   - pointermove → compute delta since last position, call onDrag(delta)
  *   - pointerup → flip draggingRef off, detach both document listeners
  *   - useEffect cleanup → guard against listeners surviving a mid-drag unmount
  *
- * Anti-patterns rejected:
- *   - No visible band, no pill, no line (D-12/D-14)
- *   - No hover tint state (D-13 lean: no visual change on hover)
- *   - e.preventDefault() on pointerdown prevents native text-selection drag
+ * e.preventDefault() on pointerdown prevents native text-selection drag.
+ * SidebarResizeHandle keeps its own absolute-clientX clamp math because it
+ * must bound against the viewport width — that logic can't be expressed as
+ * a plain delta.
  */
 import { useCallback, useEffect, useRef } from "react";
 import type React from "react";
@@ -90,7 +82,7 @@ export function ResizeHandle({
       style={{
         cursor: orientation === "vertical" ? "col-resize" : "row-resize",
         userSelect: "none",
-        background: "transparent", // D-12: cursor-only, no visible band
+        background: "transparent", // cursor-only, no visible band
         ...style,
       }}
     />

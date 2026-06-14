@@ -2,24 +2,14 @@
  * Tests for SetupApp — the /setup wizard root.
  *
  * Coverage:
- *   - All 4 section headings (DATA DIRECTORY · REQUIRED, THEME, AI ACCESS (MCP), DAILY NOTES) render.
- *   - LOCKED copy strings present (Set up Jasper / Start Jasper / subtitle).
- *   - "Start Jasper" CTA is disabled until DataDirSection reports valid=true.
- *   - On a successful submit (mocked client.POST returns 200), the wizard:
- *       * calls clearDraft()
- *       * calls window.location.assign("/")
- *   - On a failed submit (mocked client.POST returns 500), the error banner
- *     renders the LOCKED prefix copy ("Couldn't finish setup:") + suffix
- *     ("Check the log file and try again.").
+ *   - All 4 section headings render.
+ *   - "Start Jasper" is disabled until DataDirSection reports valid=true.
+ *   - Successful submit: calls clearDraft() and window.location.assign("/").
+ *   - Failed submit: shows error banner with prefix and suffix copy.
  *   - Theme radio click updates <html data-theme>.
  *
- * Mocks:
- *   - ../api/client.client.{POST,GET} via vi.mock (same pattern as
- *     dailyNoteApi.test.ts) so no real network calls fly.
- *   - window.location.assign via vi.spyOn (jsdom defaults are read-only;
- *     spyOn replaces the method while keeping the rest of the object intact).
- *
- * Plan 08-04 Task 2.
+ * client.{POST,GET} mocked via vi.mock so no real network calls fly.
+ * window.location.assign spied via vi.spyOn (jsdom's location is read-only).
  */
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";

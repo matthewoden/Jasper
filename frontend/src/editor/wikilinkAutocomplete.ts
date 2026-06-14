@@ -1,29 +1,20 @@
 /**
  * wikilinkAutocomplete — `[[` CompletionSource for wiki-link autocomplete.
  *
- * Phase 6 / Plan 06-10 / Task 2.
+ * Triggers on `[[`, ranks by server (recency + proximity). Always shows
+ * "Create '{typed}'" as the last row. Suppressed inside fenced code, inline
+ * code, or frontmatter.
  *
- * D-13: Triggers on `[[`, ranked by server (recency 60% + proximity 40%)
- * D-14: ALWAYS shows "Create '{typed}'" as the LAST row
- * D-47: Suppressed inside fenced code, inline code, or frontmatter
+ * CompletionResult.from points AFTER the `[[` (trigger.from + 2) so that
+ * accepting a completion does not double up the `[[` the user already typed.
  *
- * Pitfall 9 (from RESEARCH.md): CompletionResult.from must point to
- * AFTER the `[[` trigger sequence (trigger.from + 2) so that when the
- * user accepts a completion, the inserted text does not double up the `[[`
- * markers that the user already typed.
+ * Module-level callbacks: MarkdownEditor calls setWikilinkAutocompleteCallbacks()
+ * in useEffect to wire React-layer navigation + source-folder callbacks without
+ * importing React here. Mirrors the wikilinkResolver / tagClickPlugin pattern.
  *
- * Module-level callbacks pattern (mirrors wikilinkResolver / tagClickPlugin):
- * MarkdownEditor.tsx calls setWikilinkAutocompleteCallbacks() in useEffect
- * to wire the React-layer navigation + source-folder callbacks without
- * requiring this module to import React or access the component tree.
- *
- * autocomplete strategy:
- *   override: [wikilinkCompletionSource, tagCompletionSource]
- * (Documented tradeoff: using `override` disables lang-markdown's built-in
- * completions such as emoji shortcodes. This is acceptable for v1 because
- * Jasper has no emoji shortcode requirement. If needed in future, switch
- * to language-data registration via markdown({ ...extensions }) — see
- * RESEARCH.md Pattern 3.)
+ * Autocomplete strategy: override: [wikilinkCompletionSource, tagCompletionSource].
+ * Trade-off: `override` disables lang-markdown's built-in completions (emoji
+ * shortcodes). Acceptable for v1; switch to language-data registration if needed.
  */
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
 import { syntaxTree } from "@codemirror/language";
@@ -51,11 +42,9 @@ export function setWikilinkAutocompleteCallbacks(
 
 
 /**
- * Returns true if the position is inside a code context (fenced code,
- * code block, inline code) or inside YAML frontmatter. When true, the
- * `[[` autocomplete source returns null — no popup shown.
- *
- * D-47: suppress in code contexts. D-19: suppress in frontmatter.
+ * Returns true if the position is inside a code context (fenced code, code
+ * block, inline code) or YAML frontmatter. When true, the `[[` autocomplete
+ * source returns null — no popup shown.
  */
 function isInsideCodeOrFrontmatter(ctx: CompletionContext): boolean {
   let node = syntaxTree(ctx.state).resolveInner(ctx.pos);
@@ -77,13 +66,11 @@ function isInsideCodeOrFrontmatter(ctx: CompletionContext): boolean {
 
 
 /**
- * CompletionSource for wiki-link autocomplete. Register this in
- * MarkdownEditor's autocompletion({ override: [wikilinkCompletionSource, ...] }).
- *
+ * CompletionSource for wiki-link autocomplete. Register in
+ * autocompletion({ override: [wikilinkCompletionSource, ...] }).
  * Trigger: `[[` followed by zero or more non-bracket, non-newline chars.
- * Result.from: trigger.from + 2 (after [[, Pitfall 9).
- *
- * On server error: gracefully shows only the Create row (W11).
+ * Result.from: trigger.from + 2 (after [[).
+ * On server error: gracefully shows only the Create row.
  */
 export async function wikilinkCompletionSource(
   ctx: CompletionContext,

@@ -1,13 +1,13 @@
-// Package index — Plan 07-03: FTS5 index population helpers.
+// Package index — FTS5 index population helpers.
 //
 // ExtractBodyForFTS strips YAML frontmatter from note content before
-// indexing into body_fts (D-37) so that "tags: [foo]" in frontmatter does
-// not pollute full-text body matches.
+// indexing into body_fts so that "tags: [foo]" in frontmatter does not
+// pollute full-text body matches.
 //
 // JoinTagNamesForFTS produces the space-joined list for tag_names_fts so
 // that FTS5 unicode61 tokenizer treats each tag as a distinct query token.
 //
-// checkAndRepairFTSDivergence (D-36) detects and auto-repairs notes/notes_fts
+// checkAndRepairFTSDivergence detects and auto-repairs notes/notes_fts
 // row-count divergence at startup.
 //
 // Note on frontmatter.go reuse: markdown.HasFrontmatter exists in
@@ -26,8 +26,8 @@ import (
 
 // ExtractBodyForFTS strips a leading YAML frontmatter block (--- ... ---\n)
 // from a markdown note's bytes and returns the remaining body as a string.
-// Per D-37, frontmatter content (esp. "tags: [foo]") MUST NOT pollute body
-// matches. Idempotent on already-stripped content.
+// Frontmatter content (esp. "tags: [foo]") MUST NOT pollute body matches.
+// Idempotent on already-stripped content.
 //
 // Edge cases:
 //   - No leading "---" prefix: returns full content unchanged.

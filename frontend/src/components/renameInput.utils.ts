@@ -1,5 +1,5 @@
 /**
- * RenameInput helpers (Phase 3 rename UX). Extracted from
+ * RenameInput helpers. Extracted from
  * RenameInput.tsx so the component file only exports React components —
  * satisfies react-refresh/only-export-components and restores Fast
  * Refresh DX for the inline rename input.

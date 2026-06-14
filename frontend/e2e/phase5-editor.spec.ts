@@ -49,7 +49,7 @@ async function openApp(page: Page): Promise<void> {
  * content surface (.cm-content) to become visible.
  *
  * CM6 renders .cm-content as a contenteditable div inside the host.
- * There is no <textarea> in Phase 5.
+ * There is no <textarea>.
  */
 async function openFirstNote(page: Page): Promise<void> {
   const firstNote = page.locator('[data-tree-row-kind="note"]').first();

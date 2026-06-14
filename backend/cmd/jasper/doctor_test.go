@@ -266,7 +266,8 @@ func TestCheckMigrationState_Ok(t *testing.T) {
 		if !strings.HasSuffix(name, ".sql") {
 			continue
 		}
-		if _, err := db.ExecContext(context.Background(),
+		if _, err := db.ExecContext(
+			context.Background(),
 			`INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)`,
 			name, time.Now().Unix(),
 		); err != nil {

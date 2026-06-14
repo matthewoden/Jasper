@@ -1,23 +1,8 @@
 /**
- * PanelSelectorDropdown — Phase 6.6, Plan 08 (UX-CHROME-01 / D-03 / D-34).
- *
- * UAT follow-up 2026-05-12: removed the checkbox/indicator model. The dropdown
- * is now an action menu: clicking an item opens that panel (sets the selector
- * true) AND ensures the rail is expanded. Whether a panel is open is visually
- * apparent from the rail itself, so no checkbox state is shown in the menu.
- *
- * Radix DropdownMenu with two Items (Tags, Backlinks) that write the
- * useTreeStore.panelSelector slice. Multi-select via repeated selection — each
- * item adds to the open set. Closing is done via the per-panel × button on the
- * panel header (which triggers rail auto-collapse via RightRail's useEffect
- * when no panel remains visible).
- *
- * Mounted in TopBar (Plan 09). Replaces the rail-level toggle button (Plan 11
- * removes that). Zero new npm dependencies — @radix-ui/react-dropdown-menu is
- * already in package.json from Phase 3/4 tree row menus + SettingsMenu.
- *
- * Template: SettingsMenu.tsx (RadioItem → Item variant).
- * Z-index: 100 (clears TopBar's zIndex: 10).
+ * PanelSelectorDropdown — action menu (not checkbox/toggle) that opens the
+ * Tags or Backlinks panel and ensures the rail is expanded. Each item sets
+ * the useTreeStore.panelSelector slice. Closing a panel is done via the × button
+ * on the panel header, which triggers rail auto-collapse when no panel remains visible.
  */
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Layout } from "lucide-react";

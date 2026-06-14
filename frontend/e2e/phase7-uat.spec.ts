@@ -1,10 +1,6 @@
 /**
  * Phase 7 UAT — Search, Daily Notes, Attachments, Palette & Switcher.
  *
- * Scenario list: .planning/phases/07-search-daily-notes-attachments-palette-switcher/07-UI-SPEC.md §Verification
- * CLAUDE.md verification policy: this file lands BEFORE human UAT.
- * Plan 07-13 implements all 11 scenarios against bin/jasper.
- *
  * Scenarios (S1–S11):
  *   S1  Search: type query, results replace tree, click opens, X/Esc/len<2 clears
  *   S2  Search + tag filter AND combination
@@ -17,11 +13,6 @@
  *   S9  Paste image: focus editor, paste clipboard image, markdown inserted
  *   S10 Oversize upload >100MB: toast "File too large" with locked description
  *   S11 Daily folder calendar icon: daily/ row renders CalendarDays in accent; sub-paths do not
- *
- * NOTE (S1-S2): Plan 07-08 (search UI) runs in the same wave as 07-13. The
- * SearchInputBar and SearchResultsList components introduced in 07-08 are NOT
- * present in this worktree. S1 and S2 are marked test.skip with a TODO
- * referencing 07-08 so they can be un-skipped when 07-08 merges to main.
  *
  * CM6 typing recipe: page.locator(".cm-content").click() → page.keyboard.type()
  * NOT page.fill() (editor is CodeMirror 6 contenteditable).
@@ -1210,13 +1201,8 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
   /**
    * S22b: verify that file rows render with kind="file" and a file icon.
    *
-   * Plan 07-39 (UAT-5 N2-sub-B) UPDATE: the prior no-drag assertion is GONE.
-   * Plan 07-38 shipped POST /api/v1/files/move; Plan 07-39 wires
-   * useTreeMutations.moveFile + FileTree.handleMove's file branch so files
-   * ARE draggable inside the tree (see S33 below for the positive drag-move
-   * test). This test now only verifies the row's data attribute is "file"
-   * (rendering contract from Plan 07-26 still holds — only the disableDrag
-   * gate was reversed).
+   * Files are draggable inside the tree (see S33 for the drag-move test).
+   * This test only verifies the row's data attribute is "file".
    */
   test("S22b — file rows render with kind='file' (drag policy moved to S33)", async ({ page }) => {
     const notesDir = path.join(jasper.dataDir, "notes");
@@ -1245,14 +1231,11 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
   });
 
   /**
-   * S22c (Plan 07-32b rewrite — UAT-3 R7): seed a note with an
-   * attachments/ subfolder containing photo.png, click the photo.png file
-   * row, and verify that the middle pane renders FilePreviewView (NOT a
-   * popup window.open) with src pointing at the new generic /api/v1/files
-   * endpoint (query-parameter contract per Plan 07-32a).
+   * S22c: seed a note with an attachments/ subfolder containing photo.png,
+   * click the photo.png file row, and verify that the middle pane renders
+   * FilePreviewView (not a popup) with src pointing at /api/v1/files.
    *
-   * Uses a dedicated jasper instance (separate from the shared one) so S22c
-   * starts with a clean vault and avoids file accumulation from S22a/S22b.
+   * Uses a dedicated jasper instance so S22c starts with a clean vault.
    *
    * Vault layout:
    *   notes/
@@ -1260,9 +1243,6 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
    *       note.md            ← created via API (gives gallery/ a child note)
    *       attachments/       ← attachments subfolder
    *         photo.png        ← the file we want to click
-   *
-   * The new contract is path-based, not noteId-based — no parentNoteId
-   * derivation is involved.
    */
   test("S22c — clicking attachment file renders FilePreviewView in middle pane (popup contract obviated)", async ({ page }) => {
     const j22c = await spawnJasper();

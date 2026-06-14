@@ -1,21 +1,17 @@
 /**
- * UAT-2 R4-6: AI-granted folder violet tint cascades to root + all subfolders.
+ * AI-granted folder violet tint cascades to the root + all subfolders.
  *
- * Pre-R4-6: a Sparkles icon rendered on the granted folder ROW only,
- * via directLevelFor (direct grant attached to THIS folder, no
- * ancestor walk).
+ * Pre-fix: a Sparkles icon rendered only on the directly granted folder row
+ * (directLevelFor — no ancestor walk).
  *
- * Post-R4-6 (commit 09b70e9): the Sparkles icon moved to the
- * "Grant AI access" submenu's SubTrigger; folder rows + EVERY
- * descendant row whose ancestor walk hits a grant get
- * data-ai-level={1|2} on their data-tree-row element. theme.css
- * applies a violet-400 8% (Tier 1) or violet-600 10% (Tier 2) tint.
+ * Post-fix: the Sparkles icon moved to the "Grant AI access" submenu;
+ * folder rows + EVERY descendant row whose ancestor walk hits a grant get
+ * data-ai-level={1|2} on their data-tree-row element. CSS applies a
+ * violet-400 8% (Tier 1) or violet-600 10% (Tier 2) tint.
  *
- * This spec asserts the data-ai-level attribute appears on:
- *   - the granted folder row, AND
- *   - a descendant note row inside that folder
- * after a single POST /api/v1/mcp/grants. No pixel assertions — the
- * attribute presence is the load-bearing contract; CSS handles paint.
+ * Asserts data-ai-level appears on the granted folder row AND a descendant
+ * note row after a single POST /api/v1/mcp/grants. No pixel assertions —
+ * the attribute presence is the load-bearing contract; CSS handles paint.
  */
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";

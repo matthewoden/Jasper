@@ -1,29 +1,8 @@
 /**
- * Phase 6.5 — Plan 06.5-04 (Surface 3-NEW): BacklinksRail — backlinks panel
- * with floating panel card shell.
+ * BacklinksRail — backlinks panel with floating panel card shell.
  *
- * Phase 6 body is unchanged (header, rows, excerpt sanitization, empty states).
- * Phase 6.5 wraps the entire component in the floating panel card aesthetic
- * per Surface 1-NEW panel card spec:
- *   - background: var(--color-surface)
- *   - border: 1px solid var(--color-border)
- *   - border-radius: 8px (matches dialog radius)
- *   - overflow: hidden (child content respects rounded corners)
- *
- * Count badge in header: D-34 decision — YES, add ({N}) for symmetry with
- * the Tags panel. The count comes from useBacklinks.backlinks.length which
- * is already fetched. Zero cost — no extra query needed.
- *
- * Data source: useBacklinks(noteId) fetches GET /api/v1/notes/{id}/backlinks
- * and refetches on note:updated, note:created, links:rewritten WS events.
- *
- * Security: excerpt HTML from the server is passed through sanitize.ts before
- * dangerouslySetInnerHTML (T-06-11-01 / Phase 5 D-36 SAFE_CONFIG).
- *
- * Aria contract (updated from Phase 6):
- *   - role="region" aria-label="Notes that link to this note"
- *   - Hide button: aria-label="Hide backlinks panel" aria-expanded={true}
- *   - Outer panel: aria-label updated per UI-SPEC §Surface 3-NEW
+ * Excerpt HTML from the server is passed through sanitize.ts before
+ * dangerouslySetInnerHTML to prevent XSS.
  */
 import { X } from "lucide-react";
 
@@ -79,12 +58,10 @@ export function BacklinksRail({ noteId }: Props) {
               letterSpacing: "0.05em",
             }}
           >
-            {/* D-34: show count for symmetry with Tags panel */}
             Linked from {backlinksCount > 0 ? `(${backlinksCount})` : ""}
           </span>
-          {/* Phase 6.6 (D-04): × close button — removes panel from rail via panelSelector.
-              UAT follow-up 2026-05-12: rail-level collapse button removed; rail auto-collapses
-              when all panels are deselected (RightRail useEffect). */}
+          {/* × close button — removes panel from rail via panelSelector.
+              Rail auto-collapses when all panels are deselected (RightRail useEffect). */}
           <button
             type="button"
             aria-label="Close Backlinks panel"
@@ -165,7 +142,6 @@ export function BacklinksRail({ noteId }: Props) {
                     gap: 4,
                   }}
                 >
-                  {/* D-27: source title is a button that opens the source note. */}
                   <button
                     type="button"
                     aria-label={`Open note: ${row.sourceTitle}`}
@@ -182,7 +158,6 @@ export function BacklinksRail({ noteId }: Props) {
                     }}
                   >
                     {row.sourceTitle}
-                    {/* D-29: count badge when N > 1. */}
                     {row.count > 1 && (
                       <span
                         style={{
@@ -195,7 +170,6 @@ export function BacklinksRail({ noteId }: Props) {
                       </span>
                     )}
                   </button>
-                  {/* D-27: sanitized excerpt with <mark class="backlink-ref"> highlighted. */}
                   <div
                     className="backlinks-excerpt"
                     style={{

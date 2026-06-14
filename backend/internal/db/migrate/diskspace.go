@@ -1,12 +1,12 @@
-// Package migrate implements the Phase 2 migration runner with the
-// three-path resilience strategy (DESIGN.md §4.4): Path 1 atomic
-// backup-restore on a failed migration, Path 2 drop-and-rebuild +
-// full re-index (admin/reindex), Path 3 unrecoverable halt.
+// Package migrate implements the migration runner with the three-path
+// resilience strategy: Path 1 atomic backup-restore on a failed
+// migration, Path 2 drop-and-rebuild + full re-index (admin/reindex),
+// Path 3 unrecoverable halt.
 //
-// This file owns the disk-space pre-flight (DATA-07): every Run starts
-// by verifying the data volume has at least 2× the current app.db size
-// in free bytes; if not, Run aborts with a wrapped ErrDiskFull and the
-// composition root (Plan 02-06) serves the static disk-full.html page.
+// This file owns the disk-space pre-flight: every Run starts by
+// verifying the data volume has at least 2× the current app.db size in
+// free bytes; if not, Run aborts with a wrapped ErrDiskFull and the
+// composition root serves the static disk-full.html page.
 package migrate
 
 import (
@@ -17,9 +17,9 @@ import (
 )
 
 // ErrDiskFull is returned by PreflightFreeSpace when the data volume has
-// less than 2× the current app.db size in free bytes (DATA-07). Callers
-// surface this verbatim in the static disk-full.html error page so the
-// user can free space and retry.
+// less than 2× the current app.db size in free bytes. Callers surface
+// this verbatim in the static disk-full.html error page so the user can
+// free space and retry.
 //
 // Always wrapped via fmt.Errorf("%w: ...") so callers detect with
 // errors.Is(err, ErrDiskFull).
@@ -38,13 +38,13 @@ var ErrDiskFull = errors.New("migrate: insufficient free disk space for safe mig
 // nil. The runner then proceeds to apply 001_initial.sql with no backup
 // step (Path 3 if it fails because there is nothing to restore).
 //
-// The 2× heuristic comes from DESIGN.md §4.4: the backup file is a full
-// copy of app.db, plus the migration may grow the live db (e.g. an
-// index rebuild), so 2× is the floor.
+// The 2× heuristic: the backup file is a full copy of app.db, plus the
+// migration may grow the live db (e.g. an index rebuild), so 2× is the
+// floor.
 //
-// SECURITY-05 / single-user self-host means we don't worry about the
-// disk being shared with hostile users between the check and the write
-// — the user owns their machine.
+// Single-user self-host means we don't worry about the disk being shared
+// with hostile users between the check and the write — the user owns
+// their machine.
 func PreflightFreeSpace(dbPath string) error {
 	info, err := os.Stat(dbPath)
 	if err != nil {

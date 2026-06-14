@@ -1,20 +1,9 @@
 /**
- * Typed wrappers over the Phase 3 endpoints. All requests go through the
- * openapi-fetch client (frontend/src/api/client.ts), which is bound to the
- * generated `paths` from Plan 03-01's spec extension. ZERO hand-written
- * request shapes per API-03.
+ * Typed wrappers over the tree/note/folder endpoints.
+ * All requests go through the openapi-fetch client; no hand-written request shapes.
  *
- * Each wrapper returns either { data } on success or { error } on failure.
- * The `error` shape is { code, message, status } where:
- *   - `code` and `message` come from the server's Error schema (Plan 03-04
- *     locked the wire-format codes — `case_collision`, `folder_not_empty`,
- *     `invalid_request`, `not_found`, etc.).
- *   - `status` is the HTTP response status so callers can distinguish 404
- *     from 409 from 500 without re-parsing the body.
- *
- * Phase 4 will swap individual call sites to WebSocket events for
- * server-pushed notifications, but the REST request/response shape declared
- * in api/openapi.yaml stays the source of truth — these wrappers are stable.
+ * Each wrapper returns { data } on success or { error: { code, message, status } }
+ * on failure so callers can distinguish 404 / 409 / 500 without re-parsing the body.
  */
 import { client } from "../api/client";
 import type { components } from "../api/schema";

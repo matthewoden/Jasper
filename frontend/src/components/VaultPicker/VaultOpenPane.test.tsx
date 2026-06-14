@@ -1,8 +1,4 @@
-/**
- * VaultOpenPane tests — Plan 08-17c Task 2.
- *
- * Tests path input validation, submit button state, and onOpened callback.
- */
+/** VaultOpenPane tests — path input validation, submit button state, onOpened callback. */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 

@@ -1,6 +1,4 @@
-/**
- * VaultSwitchOverlay tests — Plan 08-17d Task 3.
- */
+/** VaultSwitchOverlay tests. */
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { VaultSwitchOverlay } from "./VaultSwitchOverlay";

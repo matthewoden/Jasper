@@ -1,20 +1,18 @@
 /**
  * draft.ts — localStorage draft persistence for the first-run wizard.
  *
- * D-09 LOCKED: every field change on the /setup wizard writes to
- *   localStorage[SETUP_DRAFT_KEY = "jasper.setup.draft"]
- * so closing/refreshing the browser mid-wizard rehydrates the form.
- * D-10: after a successful POST /api/v1/setup, the SetupApp calls
- * clearDraft() BEFORE redirecting to "/", so a subsequent first-run
- * (in case the user wipes their data-dir and re-installs) starts fresh.
+ * Every field change on the /setup wizard writes to
+ * localStorage[SETUP_DRAFT_KEY] so closing/refreshing mid-wizard rehydrates
+ * the form. After a successful POST /api/v1/setup, SetupApp calls
+ * clearDraft() BEFORE redirecting to "/" so a subsequent first-run starts
+ * fresh.
  *
- * SETUP_DRAFT_KEY is intentionally distinct from THEME_BOOTSTRAP_KEY
- * (jasper:theme-bootstrap) — the bootstrap cache survives wizard runs
- * across machines; the wizard draft is scoped to the in-flight first-run.
+ * SETUP_DRAFT_KEY is distinct from THEME_BOOTSTRAP_KEY — the bootstrap cache
+ * survives wizard runs; the draft is scoped to the in-flight first-run only.
  *
- * Failure mode: localStorage throws in private/incognito sessions
- * (Safari) — every accessor swallows the throw and falls back to
- * DEFAULT_DRAFT / no-op, matching the pattern in useTheme.ts.
+ * Failure mode: localStorage throws in private/incognito sessions (Safari);
+ * every accessor swallows the throw and falls back to DEFAULT_DRAFT / no-op,
+ * matching the pattern in useTheme.ts.
  */
 
 export const SETUP_DRAFT_KEY = "jasper.setup.draft";
@@ -36,18 +34,13 @@ export interface SetupDraft {
 /**
  * DEFAULT_DRAFT — initial wizard state before any user input.
  *
- * dataDir is intentionally empty: the wizard pre-fills the input's
- * `placeholder="~/Documents/Jasper"` attribute (LOCKED copy) so the
- * user sees the recommendation without it being a committed value
- * that bypasses the D-08 validation. The default theme is "dark" —
- * matches the project's existing dark-first palette in theme.css.
+ * dataDir is empty: the wizard pre-fills the input's placeholder so the
+ * user sees the recommendation without committing a value that bypasses
+ * directory validation. Default theme is "dark" (dark-first palette).
  *
- * dailyTemplate defaults to the `{{date}}` token —
- * backend/internal/markdown/newnote.go substitutes the actual date at
- * write time per DAILY-03. The previous literal "YYYY-MM-DD" was a
- * regression that survived strings.ReplaceAll unchanged and produced
- * literal "# YYYY-MM-DD" headers in users' daily notes instead of
- * substituted dates.
+ * dailyTemplate uses the `{{date}}` token — the backend substitutes the
+ * actual date at write time. Using a literal date string was a regression
+ * that produced "# YYYY-MM-DD" headers verbatim in users' daily notes.
  */
 export const DEFAULT_DRAFT: SetupDraft = {
   dataDir: "",
@@ -96,10 +89,9 @@ export function saveDraft(patch: Partial<SetupDraft>): void {
 }
 
 /**
- * clearDraft — remove the persisted draft entirely. Called by D-10's
- * submit-success path BEFORE window.location.assign("/") so that any
- * subsequent first-run (after a wipe-and-reinstall) starts from
- * DEFAULT_DRAFT instead of a stale half-completed form.
+ * clearDraft — remove the persisted draft entirely. Called on submit-success
+ * BEFORE window.location.assign("/") so any subsequent first-run starts from
+ * DEFAULT_DRAFT rather than a stale half-completed form.
  */
 export function clearDraft(): void {
   try {

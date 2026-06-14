@@ -1,36 +1,10 @@
 /**
  * McpGrantIndicator — Sparkles icon + optional Tier-2 corner badge.
  *
- * Phase 8 Plan 08-10 (UI-SPEC §Surface 3, D-19, MCP-02).
- *
- * Renders on folder rows that carry a DIRECT MCP write grant (the grant
- * was attached to THIS folder, not inherited from an ancestor). Per
- * UI-SPEC §Surface 3 the indicator NEVER renders on descendant rows —
- * `directLevelFor` (not `levelFor`) drives the conditional (T-08-48
- * Confused Deputy mitigation).
- *
- * Visual contract (LOCKED):
- *   - 16×16 outer wrapper, inline-flex centered.
- *   - Sparkles icon (lucide-react), 16px, strokeWidth=2, stroke color
- *     `var(--color-ai-grant)` (Tier-1 default; Tier-2 keeps the same
- *     stroke because the upgrade is conveyed by the badge dot, not by
- *     re-coloring the icon).
- *   - Tier-2 badge: 6px outer circle (4px filled dot + 1px halo) at the
- *     bottom-right corner of the wrapper. Fill `--color-ai-grant-strong`,
- *     border `1px solid var(--color-surface)` (the halo so the dot stays
- *     legible against the row hover background).
- *
- * Selector contract (LOCKED — per revision Blocker 2 / 08-15 Playwright):
- *   The outer wrapper MUST carry BOTH:
- *     - data-testid="mcp-grant-indicator"
- *     - data-grant-tier={level}        (renders as "1" or "2")
- *   Both attributes ship — 08-15's tests use each independently:
- *     - page.getByTestId('mcp-grant-indicator') → locate
- *     - page.locator('[data-grant-tier="1"]')   → distinguish tier
- *
- * Accessibility: native `title` + `aria-label` carry the human-readable
- * tier ("AI access: Edit only" / "AI access: Full"). Screen readers
- * announce the role of the icon without needing a separate text span.
+ * Renders only on folder rows that carry a DIRECT MCP write grant (not inherited
+ * from an ancestor). The outer wrapper carries data-testid="mcp-grant-indicator"
+ * and data-grant-tier={level} so E2E tests can locate and distinguish tiers.
+ * title + aria-label carry the human-readable tier string.
  */
 import { Sparkles } from "lucide-react";
 import type { CSSProperties } from "react";

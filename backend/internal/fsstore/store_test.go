@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// Test S1: Read on a missing file returns an error wrapping fs.ErrNotExist
+// Read on a missing file returns an error wrapping fs.ErrNotExist
 // so notes.Service can map it to notes.ErrNotFound.
 func TestStore_Read_Missing(t *testing.T) {
 	dir := t.TempDir()
@@ -19,8 +19,6 @@ func TestStore_Read_Missing(t *testing.T) {
 	}
 }
 
-// Test S2: WriteAtomic creates the file via Canonicalize+AtomicWrite;
-// Read then returns the same bytes; Stat returns a non-zero mod time.
 func TestStore_WriteAtomic_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
@@ -43,9 +41,8 @@ func TestStore_WriteAtomic_RoundTrip(t *testing.T) {
 	}
 }
 
-// Test S2b: case-insensitive Read finds a case-different write.
-// Uses the SAME store (so canonicalization applies on both sides) so
-// "Foo.md" and "foo.md" map to the same on-disk file.
+// Case-insensitive Read finds a case-different write: "Foo.md" and "foo.md"
+// canonicalize to the same on-disk file.
 func TestStore_WriteAtomic_CaseInsensitiveRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
@@ -61,8 +58,8 @@ func TestStore_WriteAtomic_CaseInsensitiveRoundTrip(t *testing.T) {
 	}
 }
 
-// Test S3: WriteAtomic of an escape path returns ErrPathEscape — proves
-// Canonicalize is on the hot path for writes.
+// WriteAtomic of an escape path returns ErrPathEscape — Canonicalize is on
+// the hot path for writes.
 func TestStore_WriteAtomic_RejectsEscape(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
@@ -72,8 +69,8 @@ func TestStore_WriteAtomic_RejectsEscape(t *testing.T) {
 	}
 }
 
-// Test S3b: Read of an escape path returns ErrPathEscape — proves
-// Canonicalize is also on the hot path for reads.
+// Read of an escape path returns ErrPathEscape — Canonicalize is also on
+// the hot path for reads.
 func TestStore_Read_RejectsEscape(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
@@ -83,9 +80,8 @@ func TestStore_Read_RejectsEscape(t *testing.T) {
 	}
 }
 
-// Test S4: WriteAtomic to a path under a not-yet-existing subdirectory
-// returns an error (the caller is responsible for mkdir; Phase 1 only
-// writes to the root).
+// WriteAtomic to a path under a not-yet-existing subdirectory returns an
+// error — the caller is responsible for mkdir.
 func TestStore_WriteAtomic_NoAutoMkdir(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
@@ -95,8 +91,7 @@ func TestStore_WriteAtomic_NoAutoMkdir(t *testing.T) {
 	}
 }
 
-// Test S5: Stat on a missing file returns fs.ErrNotExist (callers map
-// this to notes.ErrNotFound).
+// Stat on a missing file returns fs.ErrNotExist.
 func TestStore_Stat_Missing(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
@@ -106,7 +101,7 @@ func TestStore_Stat_Missing(t *testing.T) {
 	}
 }
 
-// TestStore_CreateFile_DelegatesAndCanonicalizes: s.CreateFile("FOO.md")
+// TestStore_CreateFile_DelegatesAndCanonicalizes verifies that s.CreateFile("FOO.md")
 // creates the file at <root>/foo.md (lowercase canonicalization applied).
 func TestStore_CreateFile_DelegatesAndCanonicalizes(t *testing.T) {
 	dir := t.TempDir()

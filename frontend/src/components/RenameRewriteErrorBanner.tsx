@@ -1,25 +1,9 @@
 /**
- * RenameRewriteErrorBanner — persistent error banner for D-36 / D-37
- * rename-rewrite rollback failures.
+ * RenameRewriteErrorBanner — persistent banner shown when a note or tag rename
+ * fails to rewrite all vault-wide references and the server rolls back.
  *
- * Plan 06-11 / LINKS-07.
- *
- * Modeled after MigrationBanner (Phase 2 analog): destructive-tinted full-width
- * row, title + body, dismiss X button.
- *
- * Shows when a note rename OR tag rename fails to rewrite all references
- * vault-wide and the server rolls back. The banner persists until dismissed
- * (unlike the migration banner which is server-state-driven, this is
- * client-state-driven: the error is surfaced by the API client wrapper and
- * stored in App-level state).
- *
- * Copy (UI-SPEC Surface 6 — Error Banners):
- *   kind="rename":     title "Rename failed"
- *                      body  "{N} references could not be updated. The rename has been rolled back."
- *   kind="tag-rewrite": title "Tag rewrite failed"
- *                       body  '"{tag}" could not be updated across all notes. The change has been rolled back.'
- *
- * Aria: role="alert" for screen reader announcement on appear.
+ * Client-state-driven (stored in App-level state, not server-state), so it
+ * persists until explicitly dismissed. role="alert" for screen-reader announcement.
  */
 
 import { X } from "lucide-react";

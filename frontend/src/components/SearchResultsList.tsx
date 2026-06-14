@@ -1,13 +1,9 @@
 /**
- * SearchResultsList — Phase 7 Surface 3 virtualized results list.
- * UI-SPEC §Surface 3: @tanstack/react-virtual list that replaces FileTree
- * when searchActive=true. Shows up to 50 results (cap) with a footer line
- * when there are exactly 50 (indicating hasMore). Empty state when no matches.
+ * SearchResultsList — virtualized results list (up to 50 results, footer when capped).
  *
  * Virtualization: useVirtualizer with estimateSize=80, overscan=5.
- * The estimate of 80px is a reasonable default — rows with excerpt take ~88px
- * (12+14+42+12 content + 12+12 padding), rows without excerpt are shorter.
- * @tanstack/react-virtual dynamic measures automatically once mounted.
+ * 80px estimate is a reasonable default — rows with excerpt take ~88px
+ * (content + padding); react-virtual dynamic-measures correct it once mounted.
  */
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -59,7 +55,6 @@ export function SearchResultsList() {
         overflow: "hidden",
       }}
     >
-      {/* Scrollable container for the virtualized list */}
       <div
         ref={parentRef}
         style={{
@@ -68,7 +63,6 @@ export function SearchResultsList() {
           overflowY: "auto",
         }}
       >
-        {/* Total virtual height container */}
         <div
           style={{
             height: rowVirtualizer.getTotalSize(),

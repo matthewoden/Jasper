@@ -1,27 +1,16 @@
 /**
- * fileChipWidget.ts — Phase 7 Plan 10 / ATTACH-06 / D-26.
+ * fileChipWidget — CM6 ViewPlugin that detects markdown links whose href starts
+ * with `attachments/` (but NOT image links with a leading `!`) and renders a
+ * clickable file-chip below the source line.
  *
- * CM6 ViewPlugin that detects markdown link syntax where the href starts with
- * `attachments/` AND the link is NOT an image (no leading `!`) and renders a
- * clickable file-chip widget BELOW the source line.
+ * Widget is at `line.to` with `side: 1`. block: true is prohibited in ViewPlugin
+ * decorations; CSS display:inline-flex provides visual block appearance instead.
+ * The source `[name](attachments/…)` text stays editable.
  *
- * Key design choices (D-26, EDIT-01):
- *   - Widget at `line.to` with `side: 1` (after source line content).
- *     `block: true` is NOT used — CM6 ViewPlugin constraint forbids it.
- *     CSS `display: inline-flex` on the anchor provides visual block appearance.
- *   - The `[name](attachments/…)` text stays editable. EDIT-01 preserved.
+ * Click opens `/api/v1/attachments/{noteId}/{filename}` in a new tab.
  *
- * Click behavior: opens `/api/v1/attachments/{noteId}/{filename}` in a new tab
- * via `target="_blank" rel="noopener"`.
- *
- * Icon lookup (UI-SPEC §Surface 8, D-27):
- *   Based on file extension, using a client-side ext-to-icon category map.
- *   At upload time, the server returns `category`; at render time we only have
- *   the URL extension. The server's MIME-sniffed category and the client's
- *   extension-based category should agree for common file types.
- *
- * All colors via var(--color-*) tokens. No hex literals. T-7-29 mitigated
- * by using textContent (not innerHTML) for all user-supplied strings.
+ * Icon category is derived from the file extension. All color values use
+ * var(--color-*) tokens; user-supplied strings are set via textContent (no innerHTML).
  */
 import {
   Decoration,
@@ -37,11 +26,7 @@ import { RangeSetBuilder } from "@codemirror/state";
 
 const LINK_RE = /\[([^\]]*)\]\((attachments\/[^)]+)\)/;
 
-/**
- * Extension-to-icon-category map (D-27 / UI-SPEC §Surface 8).
- * Client-side fallback when we only have the file extension.
- * Values correspond to Lucide icon names.
- */
+/** Client-side extension → icon category map. Values correspond to Lucide icon names. */
 const EXT_ICON_CATEGORY: Record<string, string> = {
   ".pdf": "FileText",
   ".mp4": "FileVideo",
@@ -78,10 +63,7 @@ function getIconCategory(filename: string): string {
   return EXT_ICON_CATEGORY[getExtension(filename)] ?? "File";
 }
 
-/**
- * FileChipWidget — renders a clickable chip below the [name](attachments/…) line.
- * UI-SPEC §Surface 8 §File-chip widget dimensions + colors.
- */
+/** Renders a clickable chip below the [name](attachments/…) line. */
 class FileChipWidget extends WidgetType {
   constructor(
     readonly label: string,
@@ -176,10 +158,8 @@ class FileChipWidget extends WidgetType {
 
 /**
  * buildFileChipDecorations — exported for testing.
- *
- * Walks the syntax tree for Link nodes (NOT Image nodes) whose href starts
- * with "attachments/" and the file extension is NOT an image. Emits a block
- * widget at line.to with side:1 (below the source line).
+ * Walks Link nodes whose href starts with "attachments/" and is not an image.
+ * Emits a widget at line.to with side:1 (renders below the source line).
  */
 export function buildFileChipDecorations(
   view: EditorView,
@@ -228,13 +208,11 @@ export function buildFileChipDecorations(
 }
 
 /**
- * fileChipPlugin(noteIdOrRef) — factory that returns a CM6 ViewPlugin for
- * non-image attachment link chips. Mirrors imageAttachmentPlugin's shape.
+ * fileChipPlugin — factory returning a CM6 ViewPlugin for non-image attachment chips.
  *
- * Accepts either a plain string or a mutable ref ({ current: string | null })
- * so the plugin reads the current noteId at decoration-build time (same
- * pattern as imageAttachmentPlugin — handles note navigation without
- * re-creating the EditorView, preserving EDIT-01).
+ * Accepts a plain string or a mutable ref ({ current: string | null }) so the
+ * plugin reads the current noteId at each decoration-build time. This lets the
+ * same EditorView instance serve different notes without being recreated.
  */
 export function fileChipPlugin(
   noteIdOrRef: string | { current: string | null }

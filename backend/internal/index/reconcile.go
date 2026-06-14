@@ -12,31 +12,27 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// Reconcile dispatches to reconcileIncremental / reconcileFull. This is
-// the public API consumed by the lifecycle (startup re-index per
-// DATA-09) and by api.Server.PostAdminReindex (DATA-10).
+// Reconcile dispatches to reconcileIncremental / reconcileFull. Called
+// at startup re-index and by the admin reindex endpoint.
 //
 // Returns the count of indexed notes after the reconciliation completes
 // (post-deletes for incremental; total upserted for full).
 //
 // Reconcile is a thin wrapper over ReconcileWithRegistry that passes nil
 // for the registry — all wiki-link targets are treated as pending in that
-// case. Plan 06-06's composition root calls ReconcileWithRegistry directly.
+// case.
 func (x *Indexer) Reconcile(ctx context.Context, mode Mode) (int, error) {
 	return x.ReconcileWithRegistry(ctx, mode, nil)
 }
 
-// ReconcileWithRegistry extends the base Reconcile with Phase 6 derived-data
-// sync: per-file tag extraction (SyncTags) and wiki-link extraction
-// (SyncBacklinks) are called after each successful Upsert. Both operations
-// are non-fatal per the file-first contract — errors are logged and the
-// per-file walk continues.
+// ReconcileWithRegistry extends Reconcile with per-file tag extraction
+// (SyncTags) and wiki-link extraction (SyncBacklinks) after each
+// successful Upsert. Both operations are non-fatal per the file-first
+// contract — errors are logged and the per-file walk continues.
 //
-// registry is the title→note registry used for D-20 ambiguity resolution in
+// registry is the title→note registry used for ambiguity resolution in
 // SyncBacklinks. Pass nil to treat every wiki-link target as pending (safe —
 // pending rows are updated when the registry is available).
-//
-// Plan 06-06 wires the real registry at the composition root.
 func (x *Indexer) ReconcileWithRegistry(ctx context.Context, mode Mode, registry *notes.Registry) (int, error) {
 	var (
 		n   int

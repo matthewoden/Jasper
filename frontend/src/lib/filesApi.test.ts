@@ -1,14 +1,6 @@
 /**
- * filesApi.test.ts — Plan 07-34 / UAT-3 N2.
- *
- * Tests cover:
- *   - FA-1 happy path → POST /api/v1/files?path=<encoded> with multipart body
- *   - FA-2 returns the parsed FileNode-shaped response on 201
- *   - FA-3 413 from server → throws Error with .status = 413
- *
- * Note: per the 07-34 contract override + 07-32a SUMMARY, the wire format
- * is QUERY-PARAMETER (?path=) NOT path-segment (/files/{path}). Co-located
- * with GetFile (Plan 07-32a) at the same /files endpoint.
+ * Tests for filesApi — uploadFile, deleteFile, moveFile.
+ * Wire format uses ?path= query parameter, not a path segment.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {

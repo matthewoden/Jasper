@@ -1,29 +1,12 @@
 /**
- * DataDirSection — Section 1 of the first-run wizard.
+ * DataDirSection — data directory input for the first-run wizard.
  *
- * UI-SPEC §Surface 1 + §Copywriting Contract (LOCKED):
- *   eyebrow:        DATA DIRECTORY
- *   helper:         Where Jasper stores your notes and database. Pick an empty folder you already own.
- *   placeholder:    ~/Documents/Jasper
- *   aria-label:     Data directory path   ← 08-15 Playwright selector contract
+ * Debounces 300ms before calling POST /api/v1/setup/validate-data-dir.
+ * Monotonic request-id + AbortController ensure only the most recent in-flight
+ * response mutates state (rapid keystrokes cancel prior requests).
  *
- * Behavior (D-08 + UI-SPEC §Surface 1 Pitfall 5):
- *   - 300ms debounce before calling POST /api/v1/setup/validate-data-dir
- *   - Monotonic request-id race guard: only the most recent in-flight
- *     response is allowed to mutate validity state.
- *   - AbortController cancels in-flight on new keystroke so the network
- *     pane shows at most one live validation request at a time
- *     (T-08-18 mitigation).
- *   - On invalid → 1px destructive border + 12px destructive helper
- *     text BELOW the input using the LOCKED message returned by the
- *     backend (one of the four D-08 strings).
- *   - On valid → lucide Check icon in the right gutter.
- *   - Pending → small gray spinner in the gutter.
- *
- * The section reports validity outward via `onValidityChange(boolean)`
- * so the SetupApp can enable/disable the primary "Start Jasper" button.
- *
- * Plan 08-04 Task 1.
+ * Reports validity outward via onValidityChange(boolean) so SetupApp can
+ * enable/disable the "Start Jasper" button.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -203,9 +186,7 @@ export function DataDirSection({
         </div>
       )}
 
-      {/* Keyframes for the pending spinner — inline so we don't pollute
-          theme.css with a one-off animation. Phase 2 already uses the
-          `jasper-progress-stripe` pattern in theme.css; this is a sibling. */}
+      {/* Keyframes inline to avoid polluting theme.css with a one-off animation. */}
       <style>{`
         @keyframes jasper-spin {
           to { transform: rotate(360deg); }

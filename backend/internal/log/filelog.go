@@ -1,7 +1,7 @@
 // Package log provides the file-backed slog handler used by the running
 // jasper service. Logs to <dataDir>/logs/jasper.log; rotates daily by
 // renaming jasper.log → jasper-YYYY-MM-DD.log on the first write of a
-// new day (D-39 / PERF-03).
+// new day.
 //
 // The file logger is wired in app.lifecycle when cfg.Logger is nil — the
 // production path. Tests pass a stdout-backed slog.Logger via cfg.Logger

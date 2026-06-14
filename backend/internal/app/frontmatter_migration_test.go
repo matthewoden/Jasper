@@ -46,7 +46,8 @@ func newLogBuffer(t *testing.T) (*slog.Logger, *bytes.Buffer) {
 func hasMarker(t *testing.T, db *sql.DB) bool {
 	t.Helper()
 	var dummy string
-	err := db.QueryRowContext(context.Background(),
+	err := db.QueryRowContext(
+		context.Background(),
 		`SELECT version FROM schema_migrations WHERE version = ?`, FrontmatterScaffoldMarker,
 	).Scan(&dummy)
 	return err == nil

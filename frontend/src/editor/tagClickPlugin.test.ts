@@ -1,16 +1,11 @@
 /**
  * tagClickPlugin.test.ts — TDD suite for clickable tag decorations in YAML frontmatter.
  *
- * Phase 6 / Plan 06-10 / Task 1.
- *
- * Node names come from SPIKE-FINDINGS.md (Plan 06-01):
- *   - Clickable tag values are `Literal` leaf nodes.
- *   - Full chain: Frontmatter > Stream > Document > BlockMapping > Pair > FlowSequence > Item > Literal
- *   - `isInsideTagsPair`: walk up from Literal → find FlowSequence → find Pair → check Key text === "tags"
- *
- * TDD sequence:
- *   RED  → this file (failures: tagClickPlugin.ts not yet written)
- *   GREEN → implement tagClickPlugin.ts
+ * Clickable tag values are `Literal` leaf nodes.
+ * Full lezer-yaml chain: Frontmatter > Stream > Document > BlockMapping > Pair
+ *   > FlowSequence > Item > Literal
+ * `isInsideTagsPair`: walk up from Literal → find FlowSequence → find Pair
+ *   → check Key text === "tags"
  */
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { EditorView } from "@codemirror/view";

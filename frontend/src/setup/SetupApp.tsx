@@ -1,27 +1,16 @@
 /**
- * SetupApp — single-page React root mounted at `/setup` by main.tsx.
+ * SetupApp — single-page React root mounted at /setup.
  *
- * Composes the four section components from `./sections/*` over the
- * draft state, owns the submit pipeline, and reports validity outward
- * to the primary "Start Jasper" CTA.
+ * Composes the four section components over draft state and owns the submit pipeline.
  *
  * State flow:
- *   1. On mount, loadDraft() hydrates the form from localStorage (D-09).
- *   2. Every field change → updateDraft() → setState + saveDraft() so
- *      a mid-wizard reload comes back to the same form.
- *   3. DataDirSection calls onValidityChange(true|false) every time the
- *      backend validates the typed path. Submit is gated on isValid.
- *   4. Theme radio writes <html data-theme> synchronously through
- *      ThemeSection's onSelect AND through our useEffect (belt + braces)
- *      so the wizard restyles live (D-06).
- *   5. handleSubmit:
- *        - sets submitting=true (button shows "Setting up…", disabled)
- *        - POST /api/v1/setup with the assembled SetupRequest
- *        - on success → clearDraft() then window.location.assign("/")
- *          (D-10: auto-reload IS the confirmation; no toast)
- *        - on failure → setSubmitError(message); button re-enables.
- *
- * Plan 08-04 Task 2.
+ *   1. loadDraft() hydrates from localStorage on mount so mid-wizard reloads resume.
+ *   2. Every field change calls updateDraft() → setState + saveDraft().
+ *   3. DataDirSection calls onValidityChange to gate the submit button.
+ *   4. Theme radio writes <html data-theme> synchronously for live preview;
+ *      a useEffect on draft.theme also syncs it as a belt-and-braces fallback.
+ *   5. On success: clearDraft() then window.location.assign("/") (reload IS the
+ *      confirmation — no toast). On failure: surface the error message and re-enable.
  */
 
 import { useEffect, useState } from "react";

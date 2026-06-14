@@ -2,30 +2,24 @@
  * tagClickPlugin — CM6 ViewPlugin that decorates tag string values inside
  * the YAML `tags: [...]` frontmatter array as clickable spans.
  *
- * Phase 6 / Plan 06-10 / Task 1.
+ * Tag strings are clickable with a plain click (no Cmd/Ctrl) because tag
+ * values in frontmatter are not regular editing targets — clicking is an
+ * explicit browse gesture, unlike wikilinks which require Cmd-click.
  *
- * D-08: Tag strings inside `tags: [...]` are clickable. Clicking filters
- * the sidebar by that tag. Plain click (NO Cmd/Ctrl required) — this is
- * an intentional divergence from wiki-links' Cmd-click model (D-15).
- * Rationale: tag values in frontmatter are not regular editing targets
- * the way wikilink text is; clicking them is an explicit browse gesture.
- *
- * Node names from SPIKE-FINDINGS.md (Plan 06-01, empirically verified):
- *   Full chain: Frontmatter > Stream > Document > BlockMapping > Pair
- *               > FlowSequence > Item > Literal
- *   - `Literal`      — exact tag-value leaf (e.g. "alpha", "beta-tag")
+ * lezer-yaml node chain: Frontmatter > Stream > Document > BlockMapping >
+ *   Pair > FlowSequence > Item > Literal
+ *   - `Literal`      — the tag-value leaf (e.g. "alpha", "beta-tag")
  *   - `FlowSequence` — the [...] array wrapper
  *   - `Pair`         — key-value mapping entry
  *
- * `isInsideTagsPair` walks ancestors from the `Literal` node upward:
- *   1. Find a `FlowSequence` ancestor (confirms we are in an array)
- *   2. Find a `Pair` ancestor above the FlowSequence
+ * `isInsideTagsPair` walks ancestors from `Literal` upward:
+ *   1. Find a `FlowSequence` ancestor (confirms we're inside an array)
+ *   2. Find a `Pair` ancestor above it
  *   3. The Pair's first child (key) text must equal "tags"
  *
  * IME gate: u.view.composing → map existing decorations through u.changes
- * instead of rebuilding. Matches frontmatterPlugin and livePreviewPlugin patterns.
- *
- * CSS class: `cm-tag-clickable` — styled in themeBridge.ts (Plan 06-10).
+ * instead of rebuilding (same pattern as livePreviewPlugin).
+ * CSS class: `cm-tag-clickable` — styled in themeBridge.ts.
  */
 import {
   Decoration,
@@ -107,7 +101,7 @@ function buildTagDecorations(view: EditorView): DecorationSet {
  * Provides:
  *   1. Decoration.mark("cm-tag-clickable") on Literal tag values in frontmatter.
  *   2. eventHandlers.click — plain click (no Cmd/Ctrl) on the decorated span
- *      calls _onTagClick(tagName) (D-08 plain-click model).
+ *      calls _onTagClick(tagName) (plain-click model).
  */
 export const tagClickPlugin = ViewPlugin.fromClass(
   class {

@@ -1,14 +1,6 @@
 /**
- * VaultCreatePane tests — Plan 08-17c Task 2 + UAT-2 #1d rework.
- *
- * New surface (post-UAT-2 #1d):
- *   - 3 sections (vault path / theme / daily template) — MCP grants moved
- *     out of vault creation per "a new vault is always empty."
- *   - Daily template pre-filled with `# {{date}}\n\n` (sensible default).
- *   - Theme picker live-applies to <html data-theme> on radio change.
- *   - Submit button is the primary action and stays disabled until path
- *     validates.
- *   - Submit always posts mcp_enabled: false (MCP enabled post-vault).
+ * VaultCreatePane tests — 3 sections (vault path / theme / daily template).
+ * Path validation gates submit; theme radio live-applies; mcp_enabled always false on create.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";

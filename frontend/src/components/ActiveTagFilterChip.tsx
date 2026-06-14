@@ -1,16 +1,6 @@
 /**
- * ActiveTagFilterChip — UI-SPEC §Surface 7 (Phase 6.6).
- *
- * Renders only when activeTagFilter is non-null. When active, shows a
- * full-width chip with "Filtered by: #tagname ×" structure:
- *   - "Filtered by:" prefix in --color-muted
- *   - "#tagname" in --color-accent, fontWeight 600, truncated with ellipsis
- *   - × dismiss button at right edge, --color-fg normal / --color-accent hover
- *
- * Placement: pinned to the top of the notes-panel content area (above the
- * file tree or flat list). Width 100% fills the content area.
- *
- * Implements D-23, D-24, D-25, D-26.
+ * ActiveTagFilterChip — shows a full-width chip when activeTagFilter is
+ * non-null: "Filtered by: #tagname ×" with dismiss affordance.
  */
 import { useState } from "react";
 import type { CSSProperties } from "react";

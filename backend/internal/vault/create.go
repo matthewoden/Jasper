@@ -28,17 +28,16 @@ type CreateOpts struct {
 }
 
 // CreateVault initializes a new Jasper vault at canonical and registers it in
-// app.json. Per Phase 9 D-04 it does NOT run migrations or open SQLite — the
-// first time the server boots into this vault it runs the migration runner
-// against <canonical>/.jasper/app.db itself (lifecycle.bootPerVaultSubsystems).
+// app.json. It does NOT run migrations or open SQLite — the first time the
+// server boots into this vault it runs the migration runner against
+// <canonical>/.jasper/app.db (lifecycle.bootPerVaultSubsystems).
 //
 // canonical MUST already be canonicalized (via vault.Canonicalize). The vault
 // directory itself need not exist yet; CreateVault creates .jasper/ inside it.
 //
-// The per-vault config.json is written in the full server-config shape (the
-// `config.Config` JSON) so the new-vault writer here and the in-place updater
-// in package config produce byte-equivalent files — single shape, single
-// reader (config.Load). Plan 9-03a contract Option 1.
+// The per-vault config.json is written in the full server-config shape so the
+// new-vault writer here and the in-place updater in package config produce
+// byte-equivalent files — single shape, single reader (config.Load).
 //
 // Returns the loaded *AppState after the registration so callers can inspect
 // the new entry without re-reading app.json.

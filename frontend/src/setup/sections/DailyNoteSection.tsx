@@ -1,14 +1,12 @@
 /**
  * DailyNoteSection — Section 4 of the first-run wizard.
  *
- * UI-SPEC §Surface 1 + §Copywriting Contract (LOCKED):
+ * Copywriting (LOCKED):
  *   eyebrow:        DAILY NOTES
  *   helper:         Each day gets a fresh note at notes/daily/YYYY-MM-DD.md.
  *                   Customize the starter template here.
  *   textarea label: Template
  *   checkbox label: Create today's daily note now
- *
- * Plan 08-04 Task 1.
  */
 
 interface DailyNoteSectionProps {

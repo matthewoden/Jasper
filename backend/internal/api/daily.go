@@ -20,10 +20,10 @@ import (
 
 var dailyDateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
-// GetDailyNote implements GET /api/v1/daily-notes/{date} (DAILY-01..03 / D-32).
+// GetDailyNote implements GET /api/v1/daily-notes/{date}.
 //
 // Get-or-create semantics:
-//  1. Validate date regex (T-7-12); reject with 400 + code='invalid_date' on mismatch.
+//  1. Validate date regex; reject with 400 + code='invalid_date' on mismatch.
 //  2. Compute relPath = "daily/" + date + ".md".
 //  3. If the note already exists in the index: read content from disk, return 200.
 //  4. Otherwise: mkdir notes/daily/ (idempotent), build content via

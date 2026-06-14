@@ -13,31 +13,24 @@ import (
 
 // configPath returns <dataDir>/.jasper/config.json — the on-disk location of
 // the per-vault config file. MUST stay byte-for-byte aligned with the result
-// of vault.ConfigPath(dataDir); Plan 02 originally delegated to that helper,
-// but Plan 03a inlines the literal here to break the
-// vault → config → vault import cycle introduced when CreateVault began
-// calling config.Save. The ".jasper" literal here is therefore an authorized
-// Phase-9 exception alongside vault/paths.go (per-vault helpers),
-// vault/types.go (app-home), and config/defaults.go (app-home). Plan 03c's
-// grep gate MUST be calibrated to allow this fourth file.
+// of vault.ConfigPath(dataDir). The ".jasper" literal is inlined here to
+// break the vault → config → vault import cycle introduced when CreateVault
+// began calling config.Save.
 func configPath(dataDir string) string {
 	return filepath.Join(dataDir, ".jasper", "config.json")
 }
 
-// Load reads the persisted config. Behavior on edge cases (D-10 graceful
-// fallback):
+// Load reads the persisted config. Behavior on edge cases:
 //   - File missing: returns DefaultConfig() AND writes it to disk so
 //     subsequent reads succeed with the canonical shape.
-//   - File present but malformed (invalid JSON OR unknown fields per
-//     D-40 strict): logs a WARN and returns DefaultConfig() WITHOUT
-//     overwriting the bad file (preserves the user's bad-state for
-//     forensics; the .tmp.* trail in the same dir from any prior atomic
-//     write attempt is also preserved).
+//   - File present but malformed (invalid JSON OR unknown fields — strict
+//     decoding): logs a WARN and returns DefaultConfig() WITHOUT overwriting
+//     the bad file (preserves the user's state for forensics).
 //   - File present and valid: returns the parsed Config.
 //
 // Returns an error ONLY when the disk is unreadable for non-not-exist
-// reasons (permission denied, I/O error). The caller (lifecycle.go)
-// logs and continues — Phase 5 does not gate startup on config.
+// reasons (permission denied, I/O error). The caller logs and continues;
+// startup is not gated on config.
 func Load(dataDir string, log *slog.Logger) (Config, error) {
 	path := configPath(dataDir)
 	raw, err := os.ReadFile(path)

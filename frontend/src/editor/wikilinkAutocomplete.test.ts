@@ -1,17 +1,11 @@
 /**
  * wikilinkAutocomplete.test.ts — TDD suite for the [[ autocomplete CompletionSource.
  *
- * Phase 6 / Plan 06-10 / Task 2.
- *
  * Requirements:
- *   D-13: [[ triggers autocomplete, results ranked by server
- *   D-14: ALWAYS include "Create '{typed}'" as the LAST row
- *   D-47: Suppress inside fenced code, inline code, frontmatter
- *   Pitfall 9: CompletionResult.from must be AFTER [[  so insertions don't double-up
- *
- * TDD sequence:
- *   RED  → this file (failures: wikilinkAutocomplete.ts not yet written)
- *   GREEN → implement wikilinkAutocomplete.ts
+ *   - [[ triggers autocomplete, results ranked by server
+ *   - ALWAYS include "Create '{typed}'" as the LAST row
+ *   - Suppressed inside fenced code, inline code, or frontmatter
+ *   - CompletionResult.from must be AFTER [[ so insertions don't double-up
  */
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { EditorView } from "@codemirror/view";

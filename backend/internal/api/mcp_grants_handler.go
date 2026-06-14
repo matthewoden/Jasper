@@ -7,15 +7,10 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/mcp"
 )
 
-// EventMcpGrantChanged mirrors wshub.EventMcpGrantChanged. We can't
-// import wshub here because wshub already imports api (Amendment 2
-// schema-drift sentinel in wshub/envelope.go), so a redeclared
-// constant is the way we break the would-be cycle. The string MUST
-// stay in sync with wshub.EventMcpGrantChanged and api/openapi.yaml's
-// WSEnvelope.event enum — the WSEnvelopeEventMcpGrantChanged
-// generated constant in openapi_gen.go is the source of truth used by
-// hub_test.go assertions, so drift here would be caught by the
-// schema-typed fixture sentinel.
+// EventMcpGrantChanged mirrors wshub.EventMcpGrantChanged. We can't import
+// wshub here because wshub already imports api (import cycle), so a
+// redeclared constant breaks the cycle. The string MUST stay in sync with
+// wshub.EventMcpGrantChanged and api/openapi.yaml's WSEnvelope.event enum.
 const EventMcpGrantChanged = "mcp:grant_changed"
 
 // GetMcpGrants implements GET /api/v1/mcp/grants. Returns every grant
@@ -48,22 +43,16 @@ func (s *Server) GetMcpGrants(
 	return GetMcpGrants200JSONResponse{Grants: out}, nil
 }
 
-// PostMcpGrant implements POST /api/v1/mcp/grants. UPSERTs the grant
-// at req.Body.FolderPath to req.Body.Level. Re-granting at a higher
-// (or lower) level is an in-place tier change; the row count stays
-// at one per canonical folder_path (D-13 + ACL.Set's ON CONFLICT
-// clause).
+// PostMcpGrant implements POST /api/v1/mcp/grants. UPSERTs the grant at
+// req.Body.FolderPath to req.Body.Level. Re-granting at a different tier is
+// an in-place update; one row per canonical folder_path is maintained via an
+// ON CONFLICT clause.
 //
-// Validation errors from the ACL layer (".." paths, empty path,
-// invalid level) map to 400 "invalid_path". The OpenAPI enum SHOULD
-// catch invalid level values upstream, but we still propagate any
-// ACL.Set error as 400 so the wire contract is uniform.
+// Validation errors from the ACL layer (".." paths, empty path, invalid level)
+// map to 400 "invalid_path".
 //
-// granted_via defaults to "tree-menu" because the frontend
-// (Plan 08-10) hasn't yet been wired to provide an X-Granted-Via
-// telemetry header. When that lands the handler will pick up the
-// header here and the four legal values become wizard /
-// tree-context-menu / tree-dropdown-menu / tree-menu.
+// granted_via defaults to "tree-menu"; the frontend has not yet been wired to
+// supply an X-Granted-Via header.
 //
 //nolint:revive // generated interface name
 func (s *Server) PostMcpGrant(

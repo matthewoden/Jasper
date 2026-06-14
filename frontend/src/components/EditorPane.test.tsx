@@ -3,16 +3,12 @@
  * the 2s saved-sticky window deterministically.
  *
  * Mocking strategy: notesApi is the single seam — components never import the
- * raw client, so mocking notesApi is sufficient and proves the API-03 contract
- * (everything routes through the typed wrappers).
+ * raw client, so mocking notesApi is sufficient and proves the typed-wrapper contract.
  *
- * Plan 05-11 (D-28): MarkdownEditor is mocked with a ref-API-compatible fake
- * that renders a real <textarea aria-label="Note content"> so existing
- * getByLabelText / getByRole("textbox") queries and fireEvent.change calls
- * keep working. The mock's setContent/applyServerUpdate update React state so
- * re-renders reflect the new content. Cmd+S is exposed via
- * window.__jasperMockEditorSave so tests that previously fired keyDown on the
- * textarea can call the save callback directly.
+ * MarkdownEditor is mocked with a ref-API-compatible fake that renders a real
+ * <textarea aria-label="Note content"> so getByLabelText / getByRole("textbox")
+ * queries and fireEvent.change calls keep working. Cmd+S is exposed via
+ * window.__jasperMockEditorSave so tests can call the save callback directly.
  */
 import {
     act,

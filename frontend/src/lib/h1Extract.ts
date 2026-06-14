@@ -1,26 +1,19 @@
 /**
  * h1Extract — client-side mirror of backend/internal/markdown/title.go's
  * ExtractTitle scanner. Used by EditorPane to detect H1 changes during
- * autosave (Gap R2-6 — filename↔H1 bidirectional binding per PROJECT.md
- * Key Decision dated 2026-05-03 LOCKED) and by FileTree to rewrite the
- * H1 line in the renamed note's content (Direction B of the binding).
+ * autosave and by FileTree to rewrite the H1 in renamed note content.
  *
- * Source-of-truth comparison: the SERVER's markdown.ExtractTitle is
- * authoritative — what the index stores is what the tree label shows.
- * This client helper exists ONLY to detect WHETHER the H1 changed since
- * the last save (so we know to dispatch moveNote) and to compute the
- * filename basename from the H1. The actual title field on disk / in
- * the index is computed by the server's ExtractTitle on every Move
- * (Plan 03-21) and Update.
+ * The server's ExtractTitle is authoritative for what the index stores.
+ * This module exists only to detect whether the H1 changed since the last
+ * save (to decide whether to dispatch moveNote) and to derive a filename
+ * basename from the H1.
  *
  * Differences from the Go implementation:
- *   - Returns null on no-H1 (Go returns the filename fallback). Callers
- *     that want the fallback substitute it explicitly.
- *   - No 1MiB scanner buffer cap — JavaScript string ops are O(1) on
- *     length, so we don't need bufio's ErrTooLong protections.
+ *   - Returns null on no-H1 (Go returns the filename fallback).
+ *   - No 1MiB scanner buffer cap — JS string ops are O(1) on length.
  *
  * The illegal-char regex MUST agree byte-for-byte with the regex in
- * RenameInput.validateRename (which itself mirrors the backend's
+ * RenameInput.validateRename (which mirrors the backend's
  * notes.validateBareName). Drift between client validators is the bug
  * class this module is designed to prevent.
  */
@@ -79,15 +72,11 @@ export type SanitizeResult =
   | { ok: false; error: string };
 
 /**
- * Validates an H1 string for use as a filename basename. Returns:
- *   - { ok: true, value: <trimmed> } if the string is a legal basename
- *   - { ok: false, error: <message> } otherwise
+ * Validates an H1 string for use as a filename basename.
+ * Returns { ok: true, value } or { ok: false, error }.
  *
- * Uses the SAME regex as RenameInput.validateRename — matches the
- * server's notes.validateBareName rejection set (path separators,
- * control chars, empty, leading dot). Mirroring the regex prevents
- * drift between the editor's silent-fail-on-invalid-H1 and the
- * user-facing rename input.
+ * Uses the same regex as RenameInput.validateRename, mirroring the
+ * server's notes.validateBareName rejection set.
  */
 export function sanitizeH1ForFilename(h1: string): SanitizeResult {
   const trimmed = h1.trim();
@@ -111,16 +100,11 @@ export function sanitizeH1ForFilename(h1: string): SanitizeResult {
 
 /**
  * Rewrites the first H1 line in the content to match newH1. If no H1
- * is present, returns the content unchanged (do NOT auto-insert per
- * research §2.4 — explicit deviation from the Obsidian plugin's
- * optional insertHeadingIfMissing setting).
+ * is present, returns the content unchanged (no auto-insert — deliberate
+ * deviation from Obsidian's optional insertHeadingIfMissing behavior).
  *
- * Used by FileTree.handleCommitRename for the tree → H1 direction
- * (Direction B of Gap R2-6's bidirectional binding).
- *
- * Preserves leading whitespace on the heading line (CommonMark allows
- * up to 3 leading spaces before the `#` in an ATX heading); only the
- * heading text after `# ` is replaced.
+ * Preserves leading whitespace on the heading line (CommonMark allows up
+ * to 3 leading spaces before the `#` in an ATX heading).
  */
 export function rewriteH1(content: string, newH1: string): string {
   if (!content) return content;

@@ -27,17 +27,14 @@ type WikiLinkRef struct {
 // frontmatter content are excluded automatically:
 //
 //   - goldmark/wikilink respects CommonMark inline parsing rules — code
-//     context (backtick code spans, fenced code blocks) suppresses the
-//     wiki-link extension's tokenizer (RESEARCH.md A1 assumption, empirically
-//     verified by wikilinks_test.go TestExtractWikilinks_A1Assumption).
+//     context suppresses the wiki-link tokenizer (empirically verified by
+//     TestExtractWikilinks_A1Assumption).
 //   - goldmark/frontmatter excludes the YAML/TOML block from the body parse,
-//     so [[Title]] values inside frontmatter are never seen by the wikilink
-//     extension (D-19).
+//     so [[Title]] values inside frontmatter are never extracted.
 //
 // Return value ordering: source order (first occurrence first). Duplicates
-// within a single note are preserved at this layer; the caller (Plan 06-04
-// index.SyncBacklinks) deduplicates per UNIQUE (source_id, target_title) in
-// the backlinks table.
+// within a single note are preserved at this layer; the caller deduplicates
+// per UNIQUE (source_id, target_title) in the backlinks table.
 //
 // Returns nil for nil or empty input.
 func ExtractWikilinks(content []byte) []WikiLinkRef {

@@ -10,19 +10,12 @@ import (
 )
 
 // BackupBeforeMigration copies dbPath -> backupPath using a temp+rename
-// pattern (DATA-08). The destination is durable on disk before the
-// function returns; a SIGKILL between any two steps leaves either the
-// old backup intact or no backup at all — never a half-written backup.
+// pattern. The destination is durable on disk before the function
+// returns; a SIGKILL between any two steps leaves either the old backup
+// intact or no backup at all — never a half-written backup.
 //
-// Phase 2's app.db is bounded: a 5,000-note vault produces an index
-// well under 50 MiB; the in-memory ReadFile + fsstore.AtomicWrite path
-// is the ONLY path. Streaming-backup is intentionally NOT implemented
-// here — it would be dead code in Phase 2 and complicates the audit
-// surface for DATA-08 (one path, one pattern, fsstore.AtomicWrite is
-// the audited primitive).
-//
-// Streaming backup deferred to Phase 7 (attachments) when single-file
-// size could exceed the memory budget.
+// The in-memory ReadFile + fsstore.AtomicWrite path is the ONLY path;
+// streaming backup is not implemented — dead code at this vault size.
 //
 // If dbPath does not exist (fresh data dir), BackupBeforeMigration is a
 // no-op: there is nothing to back up. Returns nil.
@@ -45,9 +38,7 @@ func BackupBeforeMigration(dbPath, backupPath string) error {
 }
 
 // RestoreBackup overwrites dbPath with the contents of backupPath using
-// the same atomic temp+rename pattern. The five steps mirror
-// fsstore.AtomicWrite but stream the bytes from the backup file
-// directly so restore does not need to load the entire .db into memory:
+// the same atomic temp+rename pattern. Steps:
 //
 //  1. open backup for streaming read
 //  2. CreateTemp in dbPath's directory
@@ -57,8 +48,7 @@ func BackupBeforeMigration(dbPath, backupPath string) error {
 //
 // SIGKILL between any two steps either keeps the previous app.db intact
 // (rename has not happened yet) or installs the new one (rename has
-// happened) — never partial. Tested by
-// TestRestoreBackup_OverwritesLiveDB_Atomically.
+// happened) — never partial.
 func RestoreBackup(backupPath, dbPath string) error {
 	bf, err := os.Open(backupPath)
 	if err != nil {

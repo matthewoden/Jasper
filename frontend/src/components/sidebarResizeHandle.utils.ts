@@ -1,10 +1,7 @@
 /**
- * Phase 5.5 — Plan 05 (UX-09) sidebar-resize-handle helpers.
- *
- * Extracted from SidebarResizeHandle.tsx so the component file
- * only exports React components — satisfies the
- * react-refresh/only-export-components ESLint rule and restores
- * Fast Refresh for the resize handle UI.
+ * Sidebar resize handle helpers — extracted from SidebarResizeHandle.tsx
+ * so the component file only exports React components, satisfying the
+ * react-refresh/only-export-components ESLint rule.
  */
 import { SIDEBAR_WIDTH_DEFAULT } from "../lib/useTreeStore";
 
@@ -13,17 +10,12 @@ const SIDEBAR_WIDTH_MIN = SIDEBAR_WIDTH_DEFAULT;
 /**
  * Editor pane needs at least 320px to remain usable.
  *
- * BL-03 (Phase 5.5 gap-closure Plan 11) — narrow-viewport fix. Previously
- * `Math.max(SIDEBAR_WIDTH_MIN, innerWidth - 320)` floored to MIN whenever
- * the viewport was too narrow for both floors, which let the sidebar
- * consume editor pane area. The replacement: when the viewport can't
- * satisfy both floors, give the editor pane whatever's left
- * (`innerWidth - EDITOR_MIN`, floored at 0). The sidebar may end up
- * narrower than its preferred MIN on tiny viewports — acceptable
- * degradation for the unsupported-but-not-broken case.
+ * On narrow viewports where both MIN floors can't be satisfied simultaneously,
+ * give the editor whatever's left (innerWidth - EDITOR_MIN, floored at 0).
+ * The sidebar may shrink below its preferred MIN — acceptable degradation on
+ * very small viewports.
  *
- * Computed dynamically so a window-resize between drags (or even
- * mid-drag) reflects the new viewport's max.
+ * Computed dynamically so mid-drag window resizes take effect immediately.
  */
 export const EDITOR_MIN = 320;
 

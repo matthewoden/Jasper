@@ -1,29 +1,15 @@
 /**
- * RightRailTagsPanel — Phase 6.5 UX-T-01, UX-T-05.
+ * RightRailTagsPanel — tag browser in the right rail.
  *
- * Relocated from TagBrowserSection (left sidebar) into the right rail.
- * Wrapped in floating panel card shell with a tag-search input above the list.
+ * Differences from the legacy left-sidebar TagBrowserSection:
+ *   - Uses `rightRailTagsPanelExpanded` store slice
+ *   - Header: `Tags (N)` title-case
+ *   - Case-insensitive substring filter input; query resets on note switch
+ *   - List uses `flex: 1` to fill the panel card (no fixed maxHeight)
+ *   - Floating panel card shell: borderRadius 8px, 1px border, --color-surface bg
  *
- * Differences from TagBrowserSection:
- *   1. Uses `rightRailTagsPanelExpanded` slice (not the Phase 6 legacy slice)
- *   2. Header: `Tags (N)` title-case (not `TAGS (N)` uppercase)
- *   3. Header has bottom border separating it from content
- *   4. Tag search input (D-19 / UX-T-05): case-insensitive substring filter
- *   5. Search query resets when activeNoteId changes (D-20)
- *   6. List uses `flex: 1` (not fixed maxHeight: 240) to fill panel card
- *   7. Empty state uses body-first copy (not frontmatter-centric copy)
- *   8. Wrapped in panel card: borderRadius 8px, 1px border, --color-surface bg
- *
- * Security (T-06.5-10): filter query bound via `value=` only — never rendered
- * via dangerouslySetInnerHTML. Tag names from server pass through D-22 charset
- * normalization. (T-06.5-11): search resets on note switch via useEffect.
- *
- * Phase 6 TAGS-06/07 behaviors (rename/delete via context menu) are
- * preserved verbatim from TagBrowserSection — the relocated panel is a
- * superset of the original.
- *
- * NOTE: TagBrowserSection.tsx is left in the repo as dead code (ADD-only
- * invariant per CONTEXT D-32). This file is the active implementation.
+ * Filter query is bound via `value=` only — never via dangerouslySetInnerHTML.
+ * TagBrowserSection.tsx is left in the repo as dead code; this is the active impl.
  */
 import { useState, useEffect, useId, type CSSProperties } from "react";
 
@@ -83,7 +69,7 @@ const headerLabelStyle: CSSProperties = {
   flex: 1,
 };
 
-/** Tag list: flex-1 fills panel card height instead of Phase 6's maxHeight:240 */
+/** Tag list: flex-1 fills panel card height. */
 const listStyle: CSSProperties = {
   flex: 1,
   minHeight: 0,
@@ -271,11 +257,9 @@ export function RightRailTagsPanel() {
   return (
     <>
       <div style={panelCardStyle}>
-        {/* Panel header — flex row: label (left) + × close button (right) */}
-        {/* C4 (UAT-2 N4): removed expand/collapse chevron; only × close button remains.
-            D-19: no icon before the label; D-04: per-panel × close button */}
+        {/* Panel header — label (left) + × close button (right) */}
         <header style={headerStyle}>
-          {/* Static label — no expand/collapse button; panel visibility gated by parent */}
+          {/* Static label; panel visibility is gated by parent via panelSelector */}
           <span style={{ ...headerLabelStyle, flex: 1 }}>Tags ({tags.length})</span>
           <button
             type="button"
@@ -289,10 +273,8 @@ export function RightRailTagsPanel() {
           </button>
         </header>
 
-        {/* Tag search input + list — always visible (no expand/collapse gating) */}
-        {/* C4 (UAT-2 N4): removed {expanded && ...} wrapper. */}
         <>
-          {/* D-19 tag search input — UI-SPEC §Tag Search Input */}
+          {/* Tag search input */}
             <div style={{ padding: "8px 12px", flexShrink: 0 }}>
               <input
                 type="search"
@@ -323,7 +305,7 @@ export function RightRailTagsPanel() {
             </div>
 
             <ul id={listId} role="list" style={listStyle}>
-              {/* Empty states — two variants per UI-SPEC */}
+              {/* Empty state: "no match" vs "no tags yet" */}
               {filteredTags.length === 0 ? (
                 searchQuery !== "" ? (
                   <li>
@@ -347,7 +329,7 @@ export function RightRailTagsPanel() {
 
                   return (
                     <li key={tag.name} role="listitem">
-                      {/* D-22: onOpenChange clears soft-select when context menu closes */}
+                      {/* Clear soft-select when context menu closes */}
                       <ContextMenu.Root
                         onOpenChange={(open) => {
                           if (!open) setSoftSelected(null);
@@ -402,8 +384,7 @@ export function RightRailTagsPanel() {
                               />
                             ) : (
                               <>
-                                {/* D-20/D-21: #tagname in accent. UAT 2026-05-12:
-                                    count rendered as a pill badge (was inline "(N)"). */}
+                                {/* #tagname in accent color; count as a pill badge */}
                                 <span
                                   style={{
                                     ...(isActive
@@ -466,7 +447,7 @@ export function RightRailTagsPanel() {
         </>
       </div>
 
-      {/* Tag delete confirmation dialog (shown for N > 5) */}
+      {/* Confirmation dialog — only shown when tag count > 5 */}
       <TagDeleteConfirmDialog
         open={confirming !== null}
         onOpenChange={(open) => {

@@ -1,12 +1,12 @@
 /**
- * UAT-2 R4-2: cloud-icon click forces immediate WS reconnect.
+ * Cloud-icon click forces immediate WS reconnect.
  *
  * Pre-fix: after a server restart the SPA WS sat in jittered-exponential
- * backoff (up to ~45s/attempt). Clicking the cloud-off SaveIndicator
- * fired a doomed postAdminReindex against the dead server. Only a full
- * page refresh recovered connectivity.
+ * backoff (up to ~45s/attempt). Clicking the cloud-off SaveIndicator fired
+ * a doomed postAdminReindex against the dead server. Only a full page refresh
+ * recovered connectivity.
  *
- * Post-fix (commit 396d2e4):
+ * Post-fix:
  *   - useSessionSync publishes forceReconnect() on useTreeStore
  *   - StatusBar's handleRefresh routes saveState.status === "paused"
  *     to forceWsReconnect() instead of postAdminReindex

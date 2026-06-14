@@ -1,14 +1,6 @@
 /**
- * useAttachmentUpload.test.ts — Phase 7 Plan 10 / ATTACH-01..ATTACH-02
- *
- * Tests cover:
- *   - Drag counter pattern: nested dragenter/dragleave correctly tracked
- *   - pasteHandler: only handles image MIME items
- *   - uploadAndInsert: inserts markdown at specified position
- *   - Toast for 413 (File too large) with locked copy
- *   - Toast for generic errors (Couldn't attach file)
- *   - Image upload inserts ![filename](attachments/...) markdown
- *   - Non-image upload inserts [filename](attachments/...) markdown
+ * Tests for useAttachmentUpload — drag counter, paste handler, and
+ * upload-and-insert behavior including toast copy for error cases.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";

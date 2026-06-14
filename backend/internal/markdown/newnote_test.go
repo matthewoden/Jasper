@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestNewDailyNoteContent verifies the canonical daily-note content helper (DAILY-02 / D-43).
+// TestNewDailyNoteContent verifies the canonical daily-note content helper.
 //
 // Assertions:
 //   - Default template produces frontmatter + "# {date}\n\n"
@@ -70,11 +70,11 @@ func TestNewDailyNoteContent(t *testing.T) {
 	}
 }
 
-// TestNewNoteContent verifies the canonical new-note scaffold (TAGS-EXT-01, D-09).
+// TestNewNoteContent verifies the canonical new-note scaffold.
 //
 // Every note creation path (sidebar New Note, pending-wiki-link Cmd-click,
-// Phase 7 daily notes) must use NewNoteContent as the single source of truth
-// for initial note content. Changes to the scaffold format must go through
+// daily notes) must use NewNoteContent as the single source of truth for
+// initial note content. Changes to the scaffold format must go through
 // this function.
 func TestNewNoteContent(t *testing.T) {
 	tests := []struct {

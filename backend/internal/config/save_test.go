@@ -11,11 +11,10 @@ import (
 // internal/vault here would create a test-only import cycle because
 // vault.CreateVault depends on this config package.
 
-// TestSave_AtomicWrite — D-39 atomic write contract. Save writes via
-// fsstore.AtomicWrite which means a temp file is created in the same
-// directory and renamed; after Save returns, exactly one config.json
-// exists at the target path (no .tmp.* leftovers when Save succeeded)
-// and the bytes match what was marshaled.
+// TestSave_AtomicWrite — Save writes via fsstore.AtomicWrite: a temp file
+// is created in the same directory and renamed; after Save returns, exactly
+// one config.json exists at the target path (no .tmp.* leftovers) and the
+// bytes match what was marshaled.
 func TestSave_AtomicWrite(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -40,11 +39,10 @@ func TestSave_AtomicWrite(t *testing.T) {
 	}
 }
 
-// TestSaveMerged_NestedUnknownKeySurvives — WR-01 regression.
-// SaveMerged must preserve unknown keys inside nested managed objects
-// (e.g. editor.spellCheck, dailyNotes.colorTag) as required by SET-05 / D-09.
-// The fix uses deepMergeRawMaps which recurses into JSON objects instead
-// of wholesale-replacing the nested blob.
+// TestSaveMerged_NestedUnknownKeySurvives — SaveMerged must preserve
+// unknown keys inside nested managed objects (e.g. editor.spellCheck,
+// dailyNotes.colorTag). deepMergeRawMaps recurses into JSON objects
+// instead of wholesale-replacing the nested blob.
 func TestSaveMerged_NestedUnknownKeySurvives(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

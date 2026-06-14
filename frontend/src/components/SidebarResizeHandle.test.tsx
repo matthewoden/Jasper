@@ -1,24 +1,11 @@
 /**
- * Tests for SidebarResizeHandle (Phase 5.5 — Plan 05, UX-09).
+ * Tests for SidebarResizeHandle pointer-events drag recipe.
  *
- * The component attaches `pointermove` + `pointerup` listeners to `document`
- * inside its `onPointerDown` React handler. We exercise the recipe end-to-end:
- *
- *   1. `fireEvent.pointerDown(handle)` — React calls the bound onPointerDown,
- *      which sets `draggingRef.current = true` and registers the document
- *      listeners.
- *   2. `document.dispatchEvent(new MouseEvent("pointermove", {clientX}))` —
- *      jsdom does NOT expose a `PointerEvent` constructor (verified at the
- *      time of writing), but the addEventListener("pointermove", …) callback
- *      reads only `e.clientX`, which `MouseEvent` provides. Dispatching a
- *      `MouseEvent` whose `.type === "pointermove"` is a faithful stand-in.
- *   3. The handler calls `setSidebarWidth(clamp(MIN, clientX, MAX))`; we
- *      assert against `useTreeStore.getState().sidebarWidth`.
- *   4. `document.dispatchEvent(new MouseEvent("pointerup"))` runs the
- *      cleanup branch; subsequent pointermove dispatches are no-ops.
- *
- * Each test resets the store's `sidebarWidth` to the default before
- * dispatching events so assertions are deterministic.
+ * The component attaches pointermove + pointerup listeners to `document`
+ * inside its onPointerDown handler. jsdom has no PointerEvent constructor,
+ * but MouseEvent provides clientX, making it a faithful stand-in for the
+ * pointermove callback. Each test resets sidebarWidth before dispatching
+ * events so assertions are deterministic.
  */
 import { fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

@@ -67,7 +67,7 @@ func itoa(n int) string {
 	return string(buf[pos:])
 }
 
-// TestConfigMiddleware_AutosaveMs — SET-03 range validation.
+// TestConfigMiddleware_AutosaveMs — autosaveMs range validation:
 // 249 → 400, 250 → 200, 10000 → 200, 10001 → 400.
 func TestConfigMiddleware_AutosaveMs(t *testing.T) {
 	ts := setupValidateServer(t)
@@ -100,8 +100,7 @@ func TestConfigMiddleware_AutosaveMs(t *testing.T) {
 	}
 }
 
-// TestConfigMiddleware_DisplayName_TooLong — D-10 length guard.
-// display_name > 64 chars → 400.
+// TestConfigMiddleware_DisplayName_TooLong — display_name > 64 chars → 400.
 func TestConfigMiddleware_DisplayName_TooLong(t *testing.T) {
 	ts := setupValidateServer(t)
 	defer ts.Close()

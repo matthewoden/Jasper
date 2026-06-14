@@ -1,18 +1,8 @@
 /**
- * TopBar.test.tsx — Phase 06.6-09 (UX-CHROME-01)
+ * TopBar tests — sidebar toggle, Breadcrumbs, PanelSelectorDropdown,
+ * right-rail toggle, style tokens, aria-label state, style prop merge.
  *
- * Tests: composition (sidebar toggle, Breadcrumbs, PanelSelectorDropdown,
- * right-rail toggle), style tokens, aria-label state reflection, toggle
- * callbacks, style prop merge.
- *
- * Child components (Breadcrumbs, PanelSelectorDropdown) are mocked to keep
- * tests focused on TopBar-specific behavior only.
- *
- * Plan 07-37 (UAT-3 N9): TopBar additionally mounts the SaveIndicator-button
- * (the unified SaveIndicator + manual-refresh hybrid). The TBR-SI-* tests
- * below pin this behavior; SaveIndicator + adminApi are mocked here so the
- * test stays focused on TopBar's wiring (button mount / click → reindex /
- * state reflection).
+ * Child components are mocked to focus tests on TopBar-specific behavior.
  */
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";

@@ -1,16 +1,8 @@
 /**
- * App.tsx global keyboard-shortcut handlers + the tiny pub/sub event bus
- * that bridges window-level handlers (which run outside the React render
- * cycle) to React-side hooks consumed inside AppInner.
- *
- * Extracted from App.tsx so that file only exports React components —
- * satisfies react-refresh/only-export-components and restores Fast
- * Refresh DX for App.tsx itself. The handlers are pure functions
- * driven by KeyboardEvent + the global useTreeStore, so the extraction
- * is mechanical.
- *
- * Each handler is unit-tested directly in App.test.tsx (KC-*, F2-*,
- * Cmd+P, Cmd+O, Cmd+Shift+D, Cmd+/, Cmd+Shift+F, KC-B, KC-I).
+ * Global keyboard-shortcut handlers and the tiny pub/sub event bus that
+ * bridges window-level handlers (outside the React render cycle) to hooks
+ * inside AppInner. Extracted from App.tsx so that file exports only React
+ * components, satisfying react-refresh/only-export-components.
  */
 import { useTreeStore } from "./useTreeStore";
 
@@ -33,22 +25,15 @@ export function subscribePhase7(
 }
 
 /**
- * Plan 03-20 Gap R2-4 — document-level F2 routing.
- *
- * Clicking a tree row mounts the editor and EditorPane.useEffect focuses
- * the textarea on `loadStatus === "loaded"`. Without this handler, F2
- * dispatched by the user would arrive at the textarea (or whichever
- * element holds focus) and Plan 03-12's row-local F2 handler would
- * never see it. Routing F2 through the document level + reading the
- * most-recently-clicked row from useTreeStore.selectedRow ensures
- * rename works regardless of which element holds focus.
+ * Document-level F2 routing. Routes F2 through the document rather than
+ * relying on the focused element, so rename works regardless of which element
+ * holds focus when F2 is pressed.
  *
  * Guard order (intentional):
- *   1. e.key !== "F2"             → fast bail-out for the common case
- *   2. target is form-control     → don't hijack typing in inputs /
- *                                   textareas / contenteditable
- *   3. pendingRename != null      → defer to RenameInput's own handlers
- *   4. selectedRow == null        → nothing to rename; no-op
+ *   1. e.key !== "F2"          → fast bail-out
+ *   2. target is form-control  → don't hijack typing in inputs / textareas / contenteditable
+ *   3. pendingRename != null   → defer to RenameInput's own handlers
+ *   4. selectedRow == null     → nothing to rename; no-op
  */
 export function handleAppF2KeyDown(e: KeyboardEvent): void {
   if (e.key !== "F2") return;
@@ -68,14 +53,9 @@ export function handleAppF2KeyDown(e: KeyboardEvent): void {
 }
 
 /**
- * UAT follow-up 2026-05-12 — global panel-toggle shortcuts.
- *
- * Cmd+Alt+T (Mac) / Ctrl+Alt+T (Win/Linux) — toggle Tags panel.
- * Cmd+Alt+B (Mac) / Ctrl+Alt+B (Win/Linux) — toggle Backlinks panel.
- *
- * Modifier choice — Cmd+Alt prefix avoids the heavily-used Cmd-only
- * namespace so this never collides with built-in browser shortcuts.
- * Letters: T(ags), B(acklinks).
+ * Global panel-toggle shortcuts.
+ * Cmd+Alt+T — toggle Tags panel; Cmd+Alt+B — toggle Backlinks panel.
+ * Cmd+Alt prefix avoids collisions with the heavily-used Cmd-only namespace.
  */
 export function handleAppPanelShortcuts(e: KeyboardEvent): void {
   if (!e.altKey || !(e.metaKey || e.ctrlKey)) return;
@@ -125,8 +105,8 @@ export function handleAppCmdO(e: KeyboardEvent): void {
 
 /**
  * Cmd+Shift+D — open today's daily note.
- * Dispatches via phase7 event bus (can't call useDailyNote hook directly
- * from a window event listener — no React context available).
+ * Dispatches via event bus because useDailyNote can't be called from a
+ * window event listener (no React context available there).
  */
 export function handleAppCmdShiftD(e: KeyboardEvent): void {
   if (!(e.metaKey || e.ctrlKey)) return;
@@ -149,11 +129,8 @@ export function handleAppCmdSlash(e: KeyboardEvent): void {
 }
 
 /**
- * Plan 07-40 (UAT-6) — Cmd+Shift+F opens CommandMenu mode='search'.
- *
- * REVERSES Plan 07-39's focus-bus dispatch. Search now lives in its own
- * palette mode (third surface alongside Cmd+O switcher and Cmd+P
- * palette) rather than as a Sidebar input.
+ * Cmd+Shift+F — opens CommandMenu in search mode.
+ * Search is its own palette mode, not a sidebar input.
  */
 export function handleAppCmdShiftF(e: KeyboardEvent): void {
   if (!(e.metaKey || e.ctrlKey)) return;
@@ -169,14 +146,10 @@ export function handleAppCmdShiftF(e: KeyboardEvent): void {
 /**
  * Cmd+B — bold (CM6 owns this via jasperKeymap.ts toggleBold).
  *
- * UAT #8 fix: Brave/Chromium browsers with extensions intercept Cmd+B
- * before CM6. We register a WINDOW-level capture-phase handler that
- * blocks the browser/OS default for the font panel / Brave Leo sidebar.
- *
- * Plan 07-24 bug fix (Rule 1): only preventDefault when the event does
- * NOT originate inside the CM6 editor — unconditional preventDefault
- * sets event.defaultPrevented and CM6's eventBelongsToEditor returns
- * false, skipping toggleBold.
+ * Brave/Chromium extensions intercept Cmd+B before CM6 at the window level.
+ * Only preventDefault when the event does NOT originate inside the CM6 editor —
+ * unconditional preventDefault sets event.defaultPrevented and CM6's
+ * eventBelongsToEditor returns false, causing toggleBold to be skipped.
  */
 export function handleAppCmdB(e: KeyboardEvent): void {
   if (!(e.metaKey || e.ctrlKey)) return;
@@ -191,7 +164,7 @@ export function handleAppCmdB(e: KeyboardEvent): void {
 
 /**
  * Cmd+I — italic (CM6 owns via jasperKeymap.ts toggleItalic).
- * Same fix shape as handleAppCmdB.
+ * Same Brave/Chromium interception fix as handleAppCmdB.
  */
 export function handleAppCmdI(e: KeyboardEvent): void {
   if (!(e.metaKey || e.ctrlKey)) return;

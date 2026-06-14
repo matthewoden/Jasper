@@ -1,33 +1,18 @@
 /**
- * imageAttachmentWidget.ts — Phase 7 Plan 10 / ATTACH-05 / D-26.
+ * imageAttachmentWidget — CM6 ViewPlugin that detects markdown image syntax where
+ * the src starts with `attachments/` and renders an inline image BELOW the source line.
  *
- * CM6 ViewPlugin that detects markdown image syntax where the src starts with
- * `attachments/` and renders an inline image BELOW the source line.
+ * Widget is placed at `line.to` with `side: 1`. block: true is prohibited in ViewPlugin
+ * decorations (CM6 throws "Block decorations may not be specified via plugins"); CSS
+ * display:block on the container achieves the visual block appearance instead.
+ * The source `![alt](...)` text stays editable (additive widget, not a replace).
  *
- * Key design choices (D-26, EDIT-01):
- *   - The widget is placed at `line.to` with `side: 1` (after line end).
- *     CM6 ViewPlugin constraint: `block: true` is NOT allowed in ViewPlugin
- *     decorations (CM6 throws "Block decorations may not be specified via plugins").
- *     Instead, the widget container uses CSS `display: block` to visually render
- *     on its own line below the source text. This matches the approach used by
- *     externalImagePlugin.ts (same constraint, same workaround).
- *   - The widget DOES NOT replace the source markdown — the `![alt](...)` text
- *     stays editable. EDIT-01 is preserved because this is an additive widget.
- *   - Unlike externalImagePlugin which uses Decoration.replace (hides the source),
- *     this plugin does NOT replace — it only ADDS an inline widget at line end.
+ * Image URL: `/api/v1/attachments/${noteId}/${encodeURIComponent(filename)}`
  *
- * Image URL resolution (D-34):
- *   img.src = `/api/v1/attachments/${noteId}/${encodeURIComponent(filename)}`
- *   where filename = the part after "attachments/" in the markdown src.
+ * The container uses `aspect-ratio: 3/2` until onload fires to prevent CM6 reflow.
+ * On error, renders the filename + "(missing)".
  *
- * Loading placeholder (UI-SPEC §Surface 8, Pitfall 3 reflow mitigation):
- *   The container uses `aspect-ratio: 3 / 2` until the image's onload fires.
- *   This reserves space so CM6 doesn't reflow when the image loads.
- *
- * On error (UI-SPEC §Surface 8):
- *   Renders the filename + "(missing)" instead of the image.
- *
- * All colors via var(--color-*) tokens. No hex literals.
+ * All colors via var(--color-*) tokens.
  */
 import {
   Decoration,
@@ -43,10 +28,7 @@ import { RangeSetBuilder } from "@codemirror/state";
 
 const IMG_RE = /!\[([^\]]*)\]\((attachments\/[^)]+)\)/;
 
-/**
- * InlineImageWidget — renders a single attachment image below its source line.
- * Placed via Decoration.widget({ block: true, side: 1 }) at line.to.
- */
+/** Renders a single attachment image below its source line. */
 class InlineImageWidget extends WidgetType {
   constructor(
     readonly src: string,
@@ -128,13 +110,8 @@ class InlineImageWidget extends WidgetType {
 
 /**
  * buildImageAttachmentDecorations — exported for testing.
- *
- * Walks the syntax tree for Image nodes whose src starts with "attachments/".
- * Places a widget at the END of the line containing the image markdown
- * (side:1 = after line content → renders after the source line, EDIT-01 safe).
- * Note: block:true is NOT used (CM6 ViewPlugin constraint — would throw
- * "Block decorations may not be specified via plugins"). CSS display:block
- * on the container achieves the visual block appearance instead.
+ * Walks Image nodes whose src starts with "attachments/".
+ * Places a widget at line.to with side:1 (renders after the source line).
  */
 export function buildImageAttachmentDecorations(
   view: EditorView,
@@ -174,14 +151,11 @@ export function buildImageAttachmentDecorations(
 }
 
 /**
- * imageAttachmentPlugin(noteIdRef) — factory that returns a CM6 ViewPlugin.
+ * imageAttachmentPlugin — factory returning a CM6 ViewPlugin.
  *
- * The factory accepts a mutable ref object ({ current: string | null }) so
- * the plugin reads the current noteId at each decoration-build time rather
- * than capturing a stale value at plugin creation. This handles note
- * navigation without re-creating the EditorView (EDIT-01 stability).
- *
- * Also accepts a plain string for backward compatibility and testability.
+ * Accepts a plain string or a mutable ref ({ current: string | null }) so the
+ * plugin reads the current noteId at decoration-build time. This handles note
+ * navigation without recreating the EditorView.
  */
 export function imageAttachmentPlugin(
   noteIdOrRef: string | { current: string | null }

@@ -9,7 +9,8 @@ import (
 
 var createTablePattern = regexp.MustCompile(
 	`(?i)create\s+(?:temp(?:orary)?\s+)?(?:virtual\s+)?table\s+(?:if\s+not\s+exists\s+)?` +
-		`["` + "`" + `]?([a-z_][a-z0-9_]*)["` + "`" + `]?`)
+		`["` + "`" + `]?([a-z_][a-z0-9_]*)["` + "`" + `]?`,
+)
 
 func deriveDropStatements(migrations fs.FS) ([]string, error) {
 	entries, err := fs.ReadDir(migrations, ".")

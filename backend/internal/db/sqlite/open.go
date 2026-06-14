@@ -9,15 +9,14 @@ import (
 	"strings"
 	"time"
 
-	// modernc.org/sqlite is the ONLY acceptable SQLite driver — see
-	// CLAUDE.md "What NOT to Use" — the CGo-based alternative is
-	// forbidden because it requires CGo and breaks the
+	// modernc.org/sqlite is the ONLY acceptable SQLite driver — the
+	// CGo-based alternative requires CGo and breaks the
 	// single-static-binary promise. modernc.org/sqlite registers
 	// itself under the name "sqlite" (NOT "sqlite3") on import.
 	_ "modernc.org/sqlite"
 )
 
-// Pair holds the writer/reader split required by DATA-03.
+// Pair holds the writer/reader split for safe concurrent SQLite access.
 //
 // Writer is a *sql.DB with MaxOpenConns=1 — every write is serialized
 // onto a single connection so there is exactly one in-flight writer
@@ -28,23 +27,20 @@ import (
 //
 // Reader is a separate *sql.DB pool (MaxOpenConns=8 by default). Under
 // WAL mode, readers never block writers and writers never block readers;
-// the two halves run independently. See Task 3's
-// concurrency_test.go::TestConcurrentWrites_5000Notes_NoBusy for the
-// stress-test floor that backs ROADMAP success criterion #5.
+// the two halves run independently.
 type Pair struct {
 	Writer *sql.DB // MaxOpenConns=1, BEGIN IMMEDIATE writes
 	Reader *sql.DB // pooled reads, MaxOpenConns=8
 }
 
 // Open opens (or creates) the SQLite database at dbPath, applies the
-// DATA-04 pragmas to both halves, verifies WAL is active, and returns
+// required pragmas to both halves, verifies WAL is active, and returns
 // the writer/reader pair.
 //
-// dbPath MUST be absolute. The caller (composition root in Plan 02-06)
-// is responsible for ensuring the parent directory exists; Open does
-// not auto-mkdir for the same reason fsstore.AtomicWrite does not —
+// dbPath MUST be absolute. The caller (composition root) is responsible
+// for ensuring the parent directory exists; Open does not auto-mkdir —
 // directory creation is a startup-lifecycle concern, not an I/O
-// primitive concern (Phase 1 D-08 / Plan 01-02 pattern).
+// primitive concern.
 //
 // The DSN encodes the pragmas via modernc.org/sqlite's _pragma= query
 // parameter so each new connection (across both pools) gets the
@@ -145,13 +141,9 @@ func (p *Pair) Close() error {
 // BeginImmediate starts a writer transaction. Internally the driver
 // emits "BEGIN IMMEDIATE" as the SQL because the DSN sets
 // _txlock=immediate; this acquires the RESERVED lock before any
-// reader upgrade can race against it (DATA-03).
-//
-// The literal string "BEGIN IMMEDIATE" appears in this comment to
-// satisfy the source-grep gate in 02-01-PLAN.md — the actual SQL is
-// emitted by modernc.org/sqlite's driver code, not constructed in
-// this file, because constructing it manually via tx.Exec would
-// double-begin and break the database/sql state machine.
+// reader upgrade can race against it. The actual SQL is emitted by
+// modernc.org/sqlite's driver code — constructing it manually via
+// tx.Exec would double-begin and break the database/sql state machine.
 func (p *Pair) BeginImmediate(ctx context.Context) (*sql.Tx, error) {
 	tx, err := p.Writer.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelDefault})
 	if err != nil {

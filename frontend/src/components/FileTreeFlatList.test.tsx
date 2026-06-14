@@ -1,14 +1,9 @@
 /**
- * FileTree flat-list mode tests — Plan 06-08 Task 3 (FT1..FT7).
+ * FileTree flat-list mode tests — the activeTagFilter branch.
  *
- * These tests validate the activeTagFilter branch added to FileTree in
- * Phase 6. When activeTagFilter is non-null, FileTree fetches the flat
- * list of notes via tagsApi.listTagNotes and renders them as a simple
- * list (no arborist tree). When null, the normal tree renders.
- *
- * The tests intentionally DO NOT import from the enormous existing
- * FileTree.test.tsx to avoid merge conflicts with the wave 06-09 agent.
- * They are scoped to the flat-list branch only.
+ * When activeTagFilter is non-null, FileTree fetches via tagsApi.listTagNotes
+ * and renders a simple list (no arborist tree). When null, the normal tree renders.
+ * Scoped to the flat-list branch only.
  */
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";

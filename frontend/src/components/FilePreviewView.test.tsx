@@ -1,13 +1,9 @@
 /**
- * FilePreviewView tests — Plan 07-32b (UAT-3 R7).
+ * FilePreviewView tests.
  *
  * Renders an inline <img> for image extensions (png/jpg/jpeg/gif/webp/svg/avif/ico)
  * sourced from `/api/v1/files?path=<encoded>`. Non-image files render a metadata
  * panel with filename, type (uppercased extension), and full path.
- *
- * URL contract: query-parameter style `/api/v1/files?path=<encodedPath>` per
- * Plan 07-32a (the GET endpoint) and the canonical FilePreviewView source in
- * 07-31-INVESTIGATION.md §Item 6 lines 232-237.
  */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";

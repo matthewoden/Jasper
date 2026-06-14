@@ -34,7 +34,7 @@ func newNoteID(t *testing.T, idx *Indexer, path string, mtimeUnix int64) uuid.UU
 }
 
 // TestSyncTags_NewTags — note has no prior tags; sync ["foo", "bar"];
-// note_tags has 2 rows; tags table has rows for "foo" and "bar" (A1).
+// note_tags has 2 rows; tags table has rows for "foo" and "bar".
 func TestSyncTags_NewTags(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -46,7 +46,8 @@ func TestSyncTags_NewTags(t *testing.T) {
 
 	ctx := context.Background()
 	var cnt int
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT COUNT(*) FROM note_tags WHERE note_id = ?`, noteID.String(),
 	).Scan(&cnt); err != nil {
 		t.Fatalf("count note_tags: %v", err)
@@ -65,7 +66,7 @@ func TestSyncTags_NewTags(t *testing.T) {
 }
 
 // TestSyncTags_Replace — replace prior ["foo","bar"] with ["bar","baz"];
-// orphan "foo" removed (A2 + D-05).
+// orphan "foo" is removed.
 func TestSyncTags_Replace(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -100,7 +101,7 @@ func TestSyncTags_Replace(t *testing.T) {
 }
 
 // TestSyncTags_Empty — sync empty slice removes all tags for note and
-// orphan tags (A3).
+// orphan tags.
 func TestSyncTags_Empty(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -115,7 +116,8 @@ func TestSyncTags_Empty(t *testing.T) {
 	}
 
 	var cnt int
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT COUNT(*) FROM note_tags WHERE note_id = ?`, noteID.String(),
 	).Scan(&cnt); err != nil {
 		t.Fatalf("count: %v", err)
@@ -129,7 +131,7 @@ func TestSyncTags_Empty(t *testing.T) {
 	}
 }
 
-// TestSyncTags_Nil — nil is equivalent to empty (A4).
+// TestSyncTags_Nil — nil is equivalent to empty.
 func TestSyncTags_Nil(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -150,7 +152,7 @@ func TestSyncTags_Nil(t *testing.T) {
 }
 
 // TestSyncTags_OrphanCleanup — shared tag carried by 2 notes; removing
-// it from one does NOT delete the tag row; removing from both DOES (A6).
+// it from one does NOT delete the tag row; removing from both DOES.
 func TestSyncTags_OrphanCleanup(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -183,7 +185,7 @@ func TestSyncTags_OrphanCleanup(t *testing.T) {
 }
 
 // TestSyncTags_Idempotency — calling SyncTags twice with the same tags
-// produces the same final state (A7).
+// produces the same final state.
 func TestSyncTags_Idempotency(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -207,7 +209,7 @@ func TestSyncTags_Idempotency(t *testing.T) {
 	}
 }
 
-// TestListTags_Empty — empty DB returns non-nil empty slice (B1).
+// TestListTags_Empty — empty DB returns non-nil empty slice.
 func TestListTags_Empty(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -224,7 +226,7 @@ func TestListTags_Empty(t *testing.T) {
 }
 
 // TestListTags_AlphabeticalWithCounts — three tags with counts; returns
-// alphabetical with correct counts (B2).
+// alphabetical with correct counts.
 func TestListTags_AlphabeticalWithCounts(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -275,7 +277,7 @@ func TestListTags_AlphabeticalWithCounts(t *testing.T) {
 }
 
 // TestNotesByTag_ReturnsMatchingNotes — tag "foo" carried by 3 notes;
-// returns 3 NoteSummary entries ordered by mtime desc (C1).
+// returns 3 NoteSummary entries ordered by mtime desc.
 func TestNotesByTag_ReturnsMatchingNotes(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -311,7 +313,7 @@ func TestNotesByTag_ReturnsMatchingNotes(t *testing.T) {
 	}
 }
 
-// TestNotesByTag_NotFound — tag not found returns empty slice + nil error (C2).
+// TestNotesByTag_NotFound — tag not found returns empty slice + nil error.
 func TestNotesByTag_NotFound(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -329,7 +331,7 @@ func TestNotesByTag_NotFound(t *testing.T) {
 }
 
 // TestRenameTag_HappyPath — 4 notes carry "foo"; RenameTag returns 4 IDs;
-// tag renamed to "feature"; note_tags still reference correct tag (D1).
+// tag renamed to "feature"; note_tags still reference correct tag.
 func TestRenameTag_HappyPath(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -372,7 +374,7 @@ func TestRenameTag_HappyPath(t *testing.T) {
 	}
 }
 
-// TestRenameTag_NotFound — returns ErrTagNotFound (D2).
+// TestRenameTag_NotFound — returns ErrTagNotFound.
 func TestRenameTag_NotFound(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -386,7 +388,7 @@ func TestRenameTag_NotFound(t *testing.T) {
 	}
 }
 
-// TestRenameTag_Collision — returns ErrTagCollision when newName exists (D3).
+// TestRenameTag_Collision — returns ErrTagCollision when newName exists.
 func TestRenameTag_Collision(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -410,7 +412,7 @@ func TestRenameTag_Collision(t *testing.T) {
 	}
 }
 
-// TestRenameTag_InvalidName — returns ErrInvalidTagName for invalid charset (D5).
+// TestRenameTag_InvalidName — returns ErrInvalidTagName for invalid charset.
 func TestRenameTag_InvalidName(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -431,7 +433,7 @@ func TestRenameTag_InvalidName(t *testing.T) {
 }
 
 // TestDeleteTag_HappyPath — 3 notes carry "foo"; DeleteTag returns 3 IDs;
-// tag row gone; note_tags cascade deleted (E1).
+// tag row gone; note_tags cascade deleted.
 func TestDeleteTag_HappyPath(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -459,7 +461,7 @@ func TestDeleteTag_HappyPath(t *testing.T) {
 	}
 }
 
-// TestDeleteTag_NotFound — returns ErrTagNotFound (E2).
+// TestDeleteTag_NotFound — returns ErrTagNotFound.
 func TestDeleteTag_NotFound(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -474,7 +476,7 @@ func TestDeleteTag_NotFound(t *testing.T) {
 }
 
 // TestReconcileWithTags_FullReindex — full reindex over .md files with
-// frontmatter tags populates the tags + note_tags tables (H1 subset).
+// frontmatter tags populates the tags + note_tags tables.
 func TestReconcileWithTags_FullReindex(t *testing.T) {
 	t.Parallel()
 
@@ -514,7 +516,7 @@ func TestReconcileWithTags_FullReindex(t *testing.T) {
 }
 
 // TestReconcileWithTags_TAGS05_WipeAndRebuild — wiping the DB and rerunning
-// ReconcileWithRegistry restores the same tag state (TAGS-05).
+// ReconcileWithRegistry restores the same tag state.
 func TestReconcileWithTags_TAGS05_WipeAndRebuild(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newTagTestIndexer(t)

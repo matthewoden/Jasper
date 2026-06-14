@@ -1,12 +1,7 @@
 /**
- * frontmatterPlugin.test.ts — vitest spike suite for the FrontMatter line
- * decoration plugin. Covers Assumption A2 (verified node name from
- * yamlFrontmatter()) plus basic decoration behavior and IME composition gate.
- *
- * Phase 5 Plan 05-01 (spike). Per TDD gate sequence:
- *   RED  → this file (failing; frontmatterPlugin.ts not yet written)
- *   GREEN → implement frontmatterPlugin.ts
- *   REFACTOR → (if needed)
+ * frontmatterPlugin.test.ts — vitest suite for the FrontMatter line
+ * decoration plugin. Verifies the lezer node name from yamlFrontmatter(),
+ * basic decoration behavior, and the IME composition gate.
  */
 import { describe, expect, it, afterEach } from "vitest";
 import { EditorView } from "@codemirror/view";
@@ -129,7 +124,7 @@ describe("frontmatterPlugin", () => {
 });
 
 
-describe("spike: lezer-yaml node names inside Frontmatter > tags array (Plan 06-01 Wave 0)", () => {
+describe("spike: lezer-yaml node names inside Frontmatter > tags array", () => {
   const views: EditorView[] = [];
 
   afterEach(() => {

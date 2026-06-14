@@ -1,18 +1,13 @@
 /**
- * TagDeleteConfirmDialog — UI-SPEC §Surface 7.
+ * TagDeleteConfirmDialog — Radix AlertDialog for tag deletion.
+ * Shown only when N > 5 notes carry the tag; caller deletes silently for N ≤ 5.
  *
- * Radix AlertDialog for tag delete confirmation (D-24). Triggered only
- * when N > 5 notes carry the tag. For N ≤ 5, the caller deletes silently.
- *
- * Copy contract (verbatim from UI-SPEC Surface 7 / Copywriting Contract):
+ * Copy contract (locked):
  *   Title:    Remove tag '{tagname}'?
  *   Body L1:  This will remove "{tagname}" from {N} notes. Their frontmatter will be rewritten.
  *   Body L2:  This cannot be undone.  (destructive color)
  *   Cancel:   Keep tag
  *   Confirm:  Remove tag
- *
- * Inherits the same chrome as DeleteConfirmDialog:
- *   overlay 0.6 black, max-width 480px, radius 8px, padding 24px.
  */
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 

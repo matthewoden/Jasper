@@ -50,7 +50,7 @@ func TestSessionIDMiddleware_EmptyHeaderStillPropagates(t *testing.T) {
 }
 
 // TestSessionIDMiddleware_RejectsOverCap: a header value longer than
-// maxSessionIDHeaderLen (128) is silently coerced to "" — T-04-03.
+// maxSessionIDHeaderLen (128) is silently coerced to "".
 func TestSessionIDMiddleware_RejectsOverCap(t *testing.T) {
 	var captured string
 	inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -67,7 +67,7 @@ func TestSessionIDMiddleware_RejectsOverCap(t *testing.T) {
 
 // TestSessionIDMiddleware_RejectsControlChars: a header value containing
 // any control character (0x00..0x1F or 0x7F) is silently coerced to ""
-// — T-04-03 header injection mitigation.
+// to prevent header injection.
 func TestSessionIDMiddleware_RejectsControlChars(t *testing.T) {
 	var captured string
 	inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -82,11 +82,11 @@ func TestSessionIDMiddleware_RejectsControlChars(t *testing.T) {
 	}
 }
 
-// TestSessionIDMiddleware_RejectsC1Controls (WR-02 fix): the Unicode C1
-// control range (U+0080–U+009F) must also be rejected. Prior to the
-// unicode.IsControl switchover, the loop only filtered ASCII controls
-// (rune < 0x20 || rune == 0x7F), letting C1 controls through despite
-// the docstring claim that "control characters are rejected."
+// TestSessionIDMiddleware_RejectsC1Controls: the Unicode C1 control range
+// (U+0080–U+009F) must also be rejected. Prior to the unicode.IsControl
+// switchover, the loop only filtered ASCII controls (rune < 0x20 || rune == 0x7F),
+// letting C1 controls through despite the docstring claim that "control
+// characters are rejected."
 func TestSessionIDMiddleware_RejectsC1Controls(t *testing.T) {
 	cases := []struct {
 		name string
@@ -115,7 +115,7 @@ func TestSessionIDMiddleware_RejectsC1Controls(t *testing.T) {
 
 // TestSecurityHeadersMiddleware_SetsHeadersOnEveryResponse — happy
 // path: every response carries CSP + Referrer-Policy + the defensive
-// trio. Verbatim header value match for CSP (D-33 LOCKED).
+// trio. Verbatim header value match for CSP.
 func TestSecurityHeadersMiddleware_SetsHeadersOnEveryResponse(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
@@ -144,7 +144,7 @@ func TestSecurityHeadersMiddleware_SetsHeadersOnEveryResponse(t *testing.T) {
 // TestSecurityHeadersMiddleware_HeadersPresentOn500 — Recoverer
 // returns 500 when the inner handler panics. Headers MUST be set
 // before the panic (we set them first, THEN call next.ServeHTTP),
-// so the 500 response carries them too. D-35 verbatim.
+// so the 500 response carries them too.
 func TestSecurityHeadersMiddleware_HeadersPresentOn500(t *testing.T) {
 	inner := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("boom")

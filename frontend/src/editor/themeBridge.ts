@@ -1,22 +1,18 @@
 /**
  * themeBridge — CM6 EditorView.theme that paints every color through
  * var(--color-*) lookups. Single source of truth = the data-theme
- * attribute on <html> (D-16). One DOM mutation flips the entire app
- * AND editor — no JS-side theme dispatch.
+ * attribute on <html>. One DOM mutation flips the entire app and editor —
+ * no JS-side theme dispatch.
  *
- * Token contract (UI-SPEC §Color):
- *   --color-bg, --color-surface, --color-surface-subtle, --color-fg,
- *   --color-muted, --color-border, --color-accent, --color-success,
- *   --color-destructive, --color-warning(-surface).
+ * Token contract: --color-bg, --color-surface, --color-surface-subtle,
+ * --color-fg, --color-muted, --color-border, --color-accent, --color-success,
+ * --color-destructive, --color-warning(-surface).
  *
- * Three documented hex exceptions (UI-SPEC §"CodeMirror syntax
- * highlight palette"): keyword purple, string green, number orange.
- * These are CSS-scoped to .cm-content via the highlight style only —
- * never on chrome.
+ * Three fixed hex exceptions (syntax highlight only, scoped to .cm-content):
+ * keyword purple, string green, number orange.
  *
- * `dark: false` on EditorView.theme is correct (UI-SPEC line 663):
- * we do NOT want CM6's built-in dark/light flag — CSS variables drive
- * the flip, not CM6's mode.
+ * `dark: false` on EditorView.theme is intentional — CSS variables drive the
+ * dark/light flip, not CM6's built-in mode flag.
  */
 import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -175,7 +171,6 @@ export const jasperEditorTheme = EditorView.theme(
       textDecorationStyle: "dotted",
       textUnderlineOffset: "2px",
     },
-    // Phase 12 / Plan 01 — CHK-01..04 checkbox widget CSS (12-UI-SPEC.md § "CSS Classes Added to themeBridge.ts")
     ".cm-task-checkbox": {
       display: "inline-flex",
       alignItems: "center",
@@ -211,7 +206,6 @@ export const jasperEditorTheme = EditorView.theme(
       outline: "2px solid var(--color-accent)",
       outlineOffset: "2px",
     },
-    // Phase 12 / Plan 01 — CHK-02 struck task text (Decoration.mark on text range only)
     ".cm-task-text-checked": {
       textDecoration: "line-through",
       textDecorationColor: "var(--color-muted)",

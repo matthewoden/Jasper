@@ -1,22 +1,13 @@
 /**
  * useTagBrowser — reactive tag list hook.
  *
- * Mirrors the useFileTree pattern:
- *   - Fetches GET /api/v1/tags on mount via listTags()
- *   - Exposes refresh() to manually refetch
- *   - Reacts to `tags:updated` and `tags:rewritten` WS events by refetching
+ * Fetches GET /api/v1/tags on mount, exposes refresh() for manual refetch,
+ * and reacts to `tags:updated` / `tags:rewritten` WS events.
  *
- * WS integration strategy: module-level subscriber sets (one per event type)
- * that App.tsx populates when those events fire from useSessionSync's
- * dispatch loop. This avoids modifying useSessionSync's signature while
- * giving useTagBrowser reactive updates.
- *
- * App.tsx integration site (for Plan 06-11 reference):
- *   const { dispatchTagsUpdated, dispatchTagsRewritten } = useTagBrowserEvents();
- *   // Call these from useSessionSync's "tags:updated" / "tags:rewritten" branches.
- *
- * The same useSessionSync integration pattern will be reused by useBacklinks
- * (Plan 06-11) for `links:rewritten` and `note:updated` events.
+ * WS integration: module-level subscriber set that useSessionSync's dispatch
+ * loop populates via dispatchTagEvent(). This avoids modifying useSessionSync's
+ * signature while giving reactive updates. The same pattern is used by
+ * useBacklinks for `links:rewritten` and `note:updated` events.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -28,13 +19,8 @@ const tagEventSubscribers = new Set<() => void>();
 type TagEventType = "tags:updated" | "tags:rewritten";
 
 /**
- * Called by App.tsx (or useSessionSync integration) when a tags:updated or
- * tags:rewritten WS event arrives. Triggers all mounted useTagBrowser
- * instances to refetch.
- *
- * This is the integration site for Plan 06-11's useBacklinks pattern:
- * import { dispatchTagEvent } from "./useTagBrowser" and call it from
- * useSessionSync's WS message handler.
+ * Called by useSessionSync when a tags:updated or tags:rewritten WS event arrives.
+ * Triggers all mounted useTagBrowser instances to refetch.
  */
 export function dispatchTagEvent(
   event: TagEventType,

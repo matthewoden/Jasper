@@ -1,8 +1,6 @@
 /**
- * useVaultPicker tests — Plan 08-17c Task 1 (TDD GREEN).
- *
- * Tests that the hook:
- * - Calls getCurrent + getRecent on mount
+ * Tests for useVaultPicker — verifies:
+ * - getCurrent + getRecent called on mount
  * - open() flips isOpen to true; close() flips to false
  * - refresh() re-fetches both endpoints
  */

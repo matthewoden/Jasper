@@ -691,16 +691,11 @@ func TestMoveFile_PathTraversal(t *testing.T) {
 	}
 }
 
-// TestMoveFile_RaceRepeatIdempotent — Plan 07-41 (UAT-6 N2 close-out).
-//
-// User repro 2026-05-16: drag a file out of attachments, immediately drag it
-// back; arborist dispatches a SECOND POST /files/move whose src.path was
-// snapshot'd from a moment when the file had moved on disk but the second
-// dispatch's Lstat(src) misses the in-flight refresh window — the first move
-// already physically completed on disk, so the second move's src is gone +
-// dst exists. The OLD behavior was 404 (confusing). The NEW behavior treats
-// the repeat as idempotent: when basename(src)==basename(dst) AND dst exists
-// with that basename, the move is already done — return 200.
+// TestMoveFile_RaceRepeatIdempotent — when a rapid double-move dispatch
+// arrives (e.g. from a race between two arborist drag events), and the first
+// move already completed on disk so src is gone and dst exists with the same
+// basename, the handler treats the repeat as idempotent and returns 200
+// instead of 404.
 func TestMoveFile_RaceRepeatIdempotent(t *testing.T) {
 	t.Parallel()
 	srv, dataDir := newAttachmentTestServer(t, nil)
@@ -735,12 +730,9 @@ func TestMoveFile_RaceRepeatIdempotent(t *testing.T) {
 	}
 }
 
-// TestMoveFile_SrcMissingDifferentBasename — Plan 07-41.
-//
-// The idempotent path fires ONLY when basenames match. A user who renames
-// (basename changes) AND races into a stale dispatch should still see a real
-// 404 — the request "rename foo.png → bar.png" with foo missing and bar
-// pre-existing is NOT a coincidental noop, it's an actual mismatch.
+// TestMoveFile_SrcMissingDifferentBasename — the idempotent path fires only
+// when basenames match. A rename (different basename) with a missing src and
+// a pre-existing dst is NOT a coincidental noop — it returns a real 404.
 func TestMoveFile_SrcMissingDifferentBasename(t *testing.T) {
 	t.Parallel()
 	srv, dataDir := newAttachmentTestServer(t, nil)

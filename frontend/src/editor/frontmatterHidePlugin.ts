@@ -1,39 +1,18 @@
 /**
  * frontmatterHidePlugin — CM6 extension that hides the YAML frontmatter block
  * by default, replacing it with an invisible empty widget (zero visible UI).
+ * Cmd-Shift-Y toggles between hidden and raw YAML view.
  *
- * Phase 6.6 / UX-CHROME-05 / Plan 06.6-03
- * Reverses Phase 6.5 D-12 ("thin affordance preferred") per Phase 6.6 D-16/D-18.
- * UAT confirmed the affordance added clutter now that inline #tagname rendering
- * is the user's mental model.
+ * Block decorations must come from a StateField, not a ViewPlugin (CM6
+ * constraint: "Block decorations may not be specified via plugins"). The
+ * StateField holds `{ hidden: boolean; decos: DecorationSet }` and rebuilds
+ * on `toggleFrontmatterVisibility` effect or doc change.
  *
- * Design decisions:
- *   - D-16: Frontmatter block renders ZERO visible UI when hidden.
- *   - D-17: Cmd-Shift-Y (D-13 escape hatch) is the only way to view raw YAML.
- *   - D-18: Empty widget uses aria-hidden="true" + display:none.
+ * When hidden=false (raw view), only line decorations are applied — no
+ * Decoration.replace — to avoid cursor-position mismatch from multi-line replaces.
  *
- * Architecture — StateField for block decorations:
- *   CM6 enforces "Block decorations may not be specified via plugins"
- *   (ViewPlugin cannot emit block:true decorations). We use a StateField to
- *   hold both the `hidden` boolean and the computed DecorationSet.
- *
- *   The StateField stores `{ hidden: boolean; decos: DecorationSet }`.
- *   On `toggleFrontmatterVisibility` effect, it flips `hidden` and rebuilds.
- *   `EditorView.decorations.from(field, f => f.decos)` provides the decorations
- *   to CM6's rendering pipeline.
- *
- *   The ViewPlugin is a thin shim that:
- *     1. Resets the StateField to `hidden=true` on first mount (D-17 reset).
- *     2. Exposes `decorations` for test introspection via `view.plugin()`.
- *
- * Cursor safety (Pitfall 1): When `hidden=false` (raw view), NO
- * Decoration.replace is applied — only line decorations. This prevents
- * cursor-position mismatch artifacts from multi-line replaces.
- *
- * v1 limitation (T-06.5-19): StateField hidden state is per-EditorState —
- * each new EditorView gets its own fresh EditorState, so the reset-to-hidden
- * behavior is correctly per-mount. No shared mutable module-level state
- * for the hidden boolean in this implementation.
+ * The ViewPlugin is a thin shim that exposes `decorations` for test introspection
+ * via `view.plugin()`.
  */
 import {
   Decoration,
@@ -50,24 +29,14 @@ import { syntaxTree } from "@codemirror/language";
 import { FRONTMATTER_NODE_NAME, FRONTMATTER_LINE_CLASS } from "./frontmatterPlugin";
 
 
-/**
- * Dispatching this effect from anywhere (keymap, button click) toggles
- * the frontmatter hidden state.
- *
- * Usage:
- *   view.dispatch({ effects: toggleFrontmatterVisibility.of(undefined) });
- */
+/** Toggles the frontmatter hidden state when dispatched. */
 export const toggleFrontmatterVisibility = StateEffect.define<void>();
 
 
 /**
- * Counts the number of tags in a YAML frontmatter text block.
- *
- * Supports both flow-sequence syntax (`tags: [foo, bar]`) and
- * block-sequence syntax (`tags:\n  - foo\n  - bar`).
- *
- * This count is purely presentational — an off-by-one is acceptable.
- * Output is a Number, never a user-controlled string (T-06.5-17).
+ * countTagsInFrontmatter — counts tags in a YAML frontmatter block.
+ * Supports flow-sequence (`tags: [foo, bar]`) and block-sequence
+ * (`tags:\n  - foo`) forms. Count is presentational; off-by-one is acceptable.
  *
  * @param text - The raw frontmatter block text (from --- to ---)
  * @returns number of tags (0 if no tags key found or empty array)
@@ -94,15 +63,8 @@ export function countTagsInFrontmatter(text: string): number {
 
 
 /**
- * FrontmatterEmptyWidget renders an invisible <span> that takes zero visual
- * space. The frontmatter YAML block is fully hidden from the editor by default.
- *
- * D-16: Zero visible UI — no button, no label, no chevron.
- * D-18: aria-hidden="true" + display:none for accessibility and layout.
- *
- * Note: The `.cm-frontmatter-affordance` CSS selector in theme.css becomes
- * dead code after this change. Flag for Wave 5 cleanup (or leave in place
- * as harmless — no DOM elements will ever match it).
+ * FrontmatterEmptyWidget — invisible <span> that takes zero visual space.
+ * aria-hidden="true" + display:none keeps the frontmatter block fully hidden.
  */
 class FrontmatterEmptyWidget extends WidgetType {
   toDOM(): HTMLElement {
@@ -167,12 +129,8 @@ function buildDecorations(state: EditorState, hidden: boolean): DecorationSet {
 
 /**
  * frontmatterDecoField — StateField holding `{ hidden, decos }`.
- *
- * Block decorations MUST be provided by a StateField in CM6.
- * The field starts with `hidden: true` (D-13 default).
- * On `toggleFrontmatterVisibility` effect, flips `hidden` and rebuilds.
- *
- * `EditorView.decorations.from(field, ...)` plugs the decos into rendering.
+ * Block decorations must come from a StateField (CM6 constraint).
+ * Starts hidden=true; flips on toggleFrontmatterVisibility.
  */
 const frontmatterDecoField = StateField.define<FrontmatterFieldState>({
   create(state) {
@@ -196,17 +154,8 @@ const frontmatterDecoField = StateField.define<FrontmatterFieldState>({
 
 /**
  * frontmatterHidePlugin — thin ViewPlugin shim.
- *
- * Primary purpose 1 (D-13 reset): On every new EditorView mount (note switch),
- * dispatch the reset effect so the StateField starts with `hidden=true`.
- * Uses a `requestAnimationFrame`-deferred dispatch to avoid dispatching
- * during construction (CM6 prohibits dispatching in EditorView constructors).
- *
- * Primary purpose 2 (test introspection): exposes `decorations` property so
- * tests can inspect the current decoration set via `view.plugin(frontmatterHidePlugin)`.
- *
- * The block decorations are provided by `frontmatterDecoField` (StateField),
- * not by this ViewPlugin (CM6 constraint).
+ * Exposes `decorations` for test introspection via `view.plugin(frontmatterHidePlugin)`.
+ * Block decorations are provided by frontmatterDecoField (StateField), not here.
  */
 export const frontmatterHidePlugin = ViewPlugin.fromClass(
   class {
@@ -229,20 +178,13 @@ export const frontmatterHidePlugin = ViewPlugin.fromClass(
 
 
 /**
- * frontmatterHideExtension — the full extension set to add to MarkdownEditor.
- * Includes the StateField (block decorations) and the ViewPlugin (D-13 reset).
- *
- * Usage in MarkdownEditor.tsx:
- *   import { frontmatterHideExtension, frontmatterToggleKeymap } from "../editor/frontmatterHidePlugin";
- *   // In extensions: frontmatterHideExtension, frontmatterToggleKeymap,
+ * frontmatterHideExtension — full extension set for MarkdownEditor.
+ * Combines the StateField (block decorations) and the ViewPlugin (test introspection).
  */
 export const frontmatterHideExtension: Extension = [frontmatterDecoField, frontmatterHidePlugin];
 
 
-/**
- * frontmatterToggleKeymap — CM6 keymap binding for Cmd-Shift-Y (Mod-Shift-y).
- * Place BEFORE `defaultKeymap` in MarkdownEditor.tsx for priority.
- */
+/** CM6 keymap binding for Cmd-Shift-Y (Mod-Shift-y). Place before defaultKeymap. */
 export const frontmatterToggleKeymap = keymap.of([
   {
     key: "Mod-Shift-y",

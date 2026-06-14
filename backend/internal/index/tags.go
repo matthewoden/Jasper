@@ -32,16 +32,15 @@ var validTagRE = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 // SyncTags upserts the tag vocabulary and replaces every note_tags row for
 // noteID in a single BEGIN IMMEDIATE transaction. Orphan tags (tags whose
-// last note_tags row was removed) are deleted inside the same transaction
-// (D-05 immediate cleanup).
+// last note_tags row was removed) are deleted inside the same transaction.
 //
 // Passing nil or an empty slice is equivalent: all tags for the note are
 // removed and orphans cleaned up.
 //
-// Tags are assumed to already be normalized by the caller (lowercase, D-22
-// charset). Duplicate entries in the input slice are de-duplicated before
-// insertion; ON CONFLICT(name) DO NOTHING guards against race-window
-// re-insertion.
+// Tags are assumed to already be normalized by the caller (lowercase,
+// [a-z0-9_-] charset). Duplicate entries in the input slice are
+// de-duplicated before insertion; ON CONFLICT(name) DO NOTHING guards
+// against race-window re-insertion.
 func (x *Indexer) SyncTags(ctx context.Context, noteID uuid.UUID, tags []string) error {
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {
@@ -86,8 +85,8 @@ func (x *Indexer) SyncTags(ctx context.Context, noteID uuid.UUID, tags []string)
 }
 
 // ListTags returns all tags that have at least one carrier note, sorted
-// alphabetically by name (D-03). The count reflects how many notes carry
-// each tag at the time of the query.
+// alphabetically by name. The count reflects how many notes carry each
+// tag at the time of the query.
 //
 // Returns a non-nil empty slice (not nil) when no tags exist.
 func (x *Indexer) ListTags(ctx context.Context) ([]notes.TagWithCount, error) {
@@ -117,9 +116,9 @@ func (x *Indexer) ListTags(ctx context.Context) ([]notes.TagWithCount, error) {
 }
 
 // NotesByTag returns a NoteSummary for every note carrying the named tag,
-// ordered by mtime descending (D-28 recency sort). Returns a non-nil empty
-// slice (not nil) when the tag has no carriers — 404 logic is the handler's
-// responsibility.
+// ordered by mtime descending (recency sort). Returns a non-nil empty
+// slice (not nil) when the tag has no carriers — 404 logic is the
+// handler's responsibility.
 func (x *Indexer) NotesByTag(ctx context.Context, name string) ([]notes.NoteSummary, error) {
 	rows, err := x.Pair.Reader.QueryContext(ctx,
 		`SELECT n.id, n.path, n.title, n.mtime_unix
@@ -166,7 +165,7 @@ func (x *Indexer) NotesByTag(ctx context.Context, name string) ([]notes.NoteSumm
 // Returns:
 //   - ErrTagNotFound if oldName does not exist
 //   - ErrTagCollision if newName already exists
-//   - ErrInvalidTagName if newName violates D-22 charset
+//   - ErrInvalidTagName if newName violates the [a-z0-9_-] charset
 func (x *Indexer) RenameTag(ctx context.Context, oldName, newName string) ([]uuid.UUID, error) {
 	if !validTagRE.MatchString(newName) {
 		return nil, ErrInvalidTagName

@@ -120,7 +120,7 @@ func TestRewriteWikilinksAST_W1_BasicAndAlias(t *testing.T) {
 	}
 }
 
-// W2: fenced code block — occurrence inside fence stays literal (D-19).
+// W2: fenced code block — occurrence inside fence stays literal.
 func TestRewriteWikilinksAST_W2_FencedCodeBlock(t *testing.T) {
 	in := []byte("```\n[[Foo]] inside code\n```\n[[Foo]] outside")
 	got := RewriteWikilinksAST(in, "Foo", "Baz")

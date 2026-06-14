@@ -1,14 +1,12 @@
 /**
  * G3 diagnostic: vault switch doesn't take until SPA writes.
  *
- * Reproduces the UAT-2 round 2 G3 report:
+ * Reproduces the G3 report:
  *   1. User in vault A, modifies scratchpad.
  *   2. Switches to vault B.
  *   3. Observed: editor still shows A's scratchpad content; brief error flash.
  *
- * This spec captures the smoking gun for hypothesis discrimination
- * (see .planning/phases/08-native-install-service-sharing-first-run-polish/08-G3-INVESTIGATION.md):
- *
+ * Hypotheses under investigation:
  *   - H1: SPA never reloads (no navigation, no markSwitched fire).
  *   - H3: server-side race — request hits wrong notesService.
  *   - H4: WS broadcast cancels in-flight POST.
@@ -19,10 +17,6 @@
  *   - All page navigations (frame load events).
  *   - The editor's textContent BEFORE and AFTER the switch.
  *   - The vault.switched broadcast time vs the navigation time.
- *
- * Per CLAUDE.md §Halt-if-inconclusive: if this run does not yield a
- * single concrete root cause we stop and surface for triage rather
- * than speculatively patch.
  */
 
 import { test, expect } from "@playwright/test";

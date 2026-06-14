@@ -1,31 +1,18 @@
 /**
  * inlineTagAutocomplete — CompletionSource for inline `#tagname` body syntax.
  *
- * Phase 6.5 / Plan 06.5-05 / Task 2 — UX-T-02 / D-14.
+ * Triggers on `#` in the document body (not inside code or frontmatter).
+ * Source is a module-level snapshot set by MarkdownEditor via setInlineTagSnapshot.
  *
- * Trigger: typing `#` in the document body (NOT inside code or frontmatter).
- * Source: module-level snapshot set by MarkdownEditor via setInlineTagSnapshot.
- * Snapshot choice: SEPARATE snapshot from tagAutocomplete's _tagSnapshot.
- *   Rationale: separation of concerns — the two sources serve different
- *   contexts (frontmatter `tags: [...]` vs body `#tagname`). Both are fed
- *   the same data from MarkdownEditor's useEffect but can diverge if needed
- *   without coupling the files. Document this in SUMMARY.
+ * Separate snapshot from tagAutocomplete's _tagSnapshot: both sources serve
+ * different contexts (frontmatter `tags: [...]` vs body `#tagname`) and
+ * intentionally avoid coupling.
  *
- * Design decisions:
- *   - matchBefore on hashtag+tag-chars pattern: triggers when cursor is after
- *     a "#" followed by valid tag chars (or just "#" alone). "# " won't match.
- *   - from = match.from + 1: completion REPLACES only the tagname part after
- *     "#", so accepting "foo" from "#fo|" produces "#foo" (not "##foo").
- *   - isInsideCodeOrFrontmatter guard copied from wikilinkPlugin (same lezer
- *     nodes); suppresses the popup inside code/frontmatter contexts.
- *   - D-14: NO "Create new tag" row — tags become real on save.
- *   - If no tags match (or snapshot is empty), returns null to close the popup.
+ * from = match.from + 1 so acceptance replaces only the tagname after "#"
+ * (accepting "foo" from "#fo" produces "#foo", not "##foo").
  *
- * Integration: register as the third source in MarkdownEditor.tsx:
- *   autocompletion({ override: [wikilinkCompletionSource, tagCompletionSource, inlineTagCompletionSource] })
- *
- * Snapshot update: MarkdownEditor.tsx calls setInlineTagSnapshot(allTags) in
- * the same useEffect that calls setTagSnapshot(allTags) — same timing, same data.
+ * Never returns a "Create new tag" row — tags become valid on save.
+ * Returns null when no tags match or snapshot is empty.
  */
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
 import { syntaxTree } from "@codemirror/language";
@@ -35,10 +22,8 @@ import type { TagWithCount } from "../lib/tagsApi";
 let _inlineTagSnapshot: TagWithCount[] = [];
 
 /**
- * Update the inline-tag autocomplete snapshot.
- * Called from MarkdownEditor's useEffect whenever useTagBrowser returns new data.
- * Parallel to setTagSnapshot in tagAutocomplete.ts — separate snapshot per D-14
- * separation-of-concerns rationale (see module JSDoc above).
+ * setInlineTagSnapshot — updates the snapshot used for inline-tag autocomplete.
+ * Called from MarkdownEditor's useEffect whenever tag data changes.
  */
 export function setInlineTagSnapshot(tags: TagWithCount[]): void {
   _inlineTagSnapshot = tags;
@@ -46,12 +31,9 @@ export function setInlineTagSnapshot(tags: TagWithCount[]): void {
 
 
 /**
- * Returns true if the cursor position is inside any code or frontmatter context.
- * Deliberately copied from wikilinkPlugin.ts for independent testability.
- * Checks these lezer node names: FencedCode, CodeBlock, InlineCode, Frontmatter.
- *
- * Note: CompletionContext uses `context.state` (EditorState), not EditorView;
- * syntaxTree and resolveInner work the same on EditorState.
+ * Returns true when the cursor is inside code or frontmatter (FencedCode,
+ * CodeBlock, InlineCode, Frontmatter). Copied from wikilinkPlugin for
+ * independent testability — no shared util to avoid coupling.
  */
 function isInsideCodeOrFrontmatterForAutocomplete(
   ctx: CompletionContext,
@@ -76,15 +58,11 @@ function isInsideCodeOrFrontmatterForAutocomplete(
 
 
 /**
- * CompletionSource for inline `#tagname` body syntax.
+ * inlineTagCompletionSource — CompletionSource for body `#tagname` syntax.
  * Register in autocompletion({ override: [..., inlineTagCompletionSource] }).
  *
- * Returns null (no popup) when:
- *   - Cursor is not after a `#[a-z0-9_-]*` pattern (e.g., `# ` with space)
- *   - Cursor is inside code or frontmatter context
- *   - Snapshot is empty (no tags to suggest)
- *
- * D-14: Never returns a "Create new tag" row.
+ * Returns null when: cursor is not after `#[a-z0-9_-]*`, cursor is inside
+ * code or frontmatter, or snapshot is empty.
  */
 export async function inlineTagCompletionSource(
   ctx: CompletionContext,

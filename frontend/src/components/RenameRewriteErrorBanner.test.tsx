@@ -1,8 +1,4 @@
-/**
- * RenameRewriteErrorBanner tests — EB1..EB5
- *
- * Plan 06-11 / LINKS-07 / D-36 / D-37.
- */
+/** RenameRewriteErrorBanner tests — EB1..EB5. */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 

@@ -6,15 +6,13 @@
  * - openCommandMenu: opens Cmd+O (notes) or Cmd+P (commands) modal
  * - apiCreateNote: creates a note via POST /api/v1/notes + PUT /api/v1/notes/{id}
  * - waitForConnected: waits for the WebSocket connection-status dot to show "connected"
- *
- * Plan 07-21 additions (ADD-only; no existing helpers modified):
  * - openCommandMenuAndType: opens palette in specified mode and types a query
- * - expectPaletteVisibleWithNCommands: asserts all 9 commands visible in palette (S13a)
- * - seedDailyNoteWithTags: writes a daily note file directly to disk (S12)
- * - dispatchSyntheticDragOver: fires a synthetic DragEvent on an element (S16)
- * - dispatchSyntheticDragLeave: fires a synthetic dragleave DragEvent (S16)
- * - seedNoteWithMtime: seeds a note and sets its mtime on disk (S15)
- * - activateTagFilterChip: clicks a tag row in the right rail to set the active filter (S2)
+ * - expectPaletteVisibleWithNCommands: asserts all commands visible in palette
+ * - seedDailyNoteWithTags: writes a daily note file directly to disk
+ * - dispatchSyntheticDragOver: fires a synthetic DragEvent on an element
+ * - dispatchSyntheticDragLeave: fires a synthetic dragleave DragEvent
+ * - seedNoteWithMtime: seeds a note and sets its mtime on disk
+ * - activateTagFilterChip: clicks a tag row in the right rail to set the active filter
  *
  * Platform: macOS uses Meta modifier; WSL/Linux uses Control.
  * The E2E suite runs on macOS (CI + dev); WSL is a secondary target.
@@ -32,7 +30,7 @@ type Shortcut =
   | "CmdF"
   | "CmdB"
   | "CmdI"
-  // Plan 07-36 (UAT-3 N7): CmdU removed — underline binding reverted.
+  // CmdU removed — underline binding reverted.
   | "EscKey";
 
 const MOD = process.platform === "darwin" ? "Meta" : "Control";
@@ -129,7 +127,6 @@ export async function apiCreateNote(
 
 /**
  * Wait for the WebSocket connection-status dot to show "connected".
- * This is the canonical "app is ready" signal in Phase 4+.
  *
  * @param page      - Playwright Page
  * @param timeoutMs - Max wait in ms (default 10s)
@@ -146,7 +143,7 @@ export async function waitForConnected(page: Page, timeoutMs = 10_000): Promise<
 
 /**
  * openCommandMenuAndType — opens the CommandMenu in the specified mode,
- * waits for it to appear, then fills the query input. (S1, S2, S13, S15)
+ * waits for it to appear, then fills the query input.
  *
  * @param page  - Playwright Page
  * @param mode  - "switch" (Cmd+O, notes mode) | "command" (Cmd+P, commands mode)
@@ -169,13 +166,13 @@ export async function openCommandMenuAndType(
 
 /**
  * expectPaletteVisibleWithNCommands — asserts all 8 expected commands are
- * visible in the Command palette dialog (S13a / UAT #2).
+ * visible in the Command palette dialog.
  *
  * The 8 palette-visible commands (inPalette: true in shortcutsRegistry.ts):
  *   New note, Save, Today, Switch / search notes,
  *   Toggle theme, Refresh index, Reset and rebuild…, Show keyboard shortcuts.
  *
- * Note: "Find in note" was removed in Plan 07-27 — browser native Cmd+F fires.
+ * "Find in note" is absent — browser native Cmd+F fires instead.
  *
  * @param page - Playwright Page
  * @param n    - Expected command count (used for diagnostic reporting)
@@ -212,7 +209,7 @@ export async function expectPaletteVisibleWithNCommands(
 
 /**
  * seedDailyNoteWithTags — writes a daily note with YAML frontmatter tags
- * directly to disk under dataDir/notes/daily/. Used by S12 (registry scenario).
+ * directly to disk under dataDir/notes/daily/.
  *
  * @param dataDir - jasper.dataDir from JasperHandle
  * @param date    - ISO date string (YYYY-MM-DD) for the filename
@@ -236,7 +233,7 @@ export async function seedDailyNoteWithTags(
 
 /**
  * dispatchSyntheticDragOver — dispatches a synthetic DragEvent("dragover")
- * on the element matching selector. Used by S16 (drop indicator / UAT #12).
+ * on the element matching selector.
  *
  * Headless Playwright cannot perform real OS file drags from the filesystem;
  * synthetic events are the standard pattern for testing DOM-level DnD handlers.
@@ -274,7 +271,7 @@ export async function dispatchSyntheticDragOver(
 
 /**
  * dispatchSyntheticDragLeave — dispatches a synthetic DragEvent("dragleave")
- * on the element matching selector, clearing the drop indicator. (S16)
+ * on the element matching selector, clearing the drop indicator.
  *
  * @param page     - Playwright Page
  * @param selector - CSS selector for the target element (e.g. ".cm-editor")
@@ -293,12 +290,11 @@ export async function dispatchSyntheticDragLeave(
 
 /**
  * seedNoteWithMtime — creates a note via the API and then sets the file's
- * mtime on disk to a specific Unix epoch time. Used by S15 (updated_at
- * fallback sort / UAT #10) to create notes with deterministic sort order.
+ * mtime on disk to a specific Unix epoch time, for deterministic sort order.
  *
  * NOTE: Setting mtime changes the filesystem mtime but the SQLite index
  * stores updated_at from file stat. After seeding, trigger a reindex so the
- * modified_at value is reflected in the in-memory tree. (S15 handles this.)
+ * modified_at value is reflected in the in-memory tree.
  *
  * @param page       - Playwright Page (for page.request)
  * @param baseURL    - Jasper server base URL
@@ -328,14 +324,13 @@ export async function seedNoteWithMtime(
 /**
  * activateTagFilterChip — clicks a tag row in the right-rail Tags panel to
  * set the active tag filter, then waits for the ActiveTagFilterChip to render.
- * Used by S2 (palette search + tag AND combination / UAT #11).
  *
  * Locator chain (audited from RightRailTagsPanel.tsx + ActiveTagFilterChip.tsx):
- *   1. Each tag row exposes data-testid="tag-row-${tag.name}" (line 413).
+ *   1. Each tag row exposes data-testid="tag-row-${tag.name}".
  *   2. If the panel is collapsed (aria-label matches "Tags panel, collapsed.*"),
  *      click the header button to expand it first.
  *   3. After click, ActiveTagFilterChip renders with aria-label
- *      "Active filter: #${tagName}" (ActiveTagFilterChip.tsx:76) — wait for it.
+ *      "Active filter: #${tagName}" — wait for it.
  *
  * @param page    - Playwright Page
  * @param tagName - Tag name without leading "#"

@@ -1,24 +1,13 @@
 /**
- * Tests for InterPanelDivider (Phase 6.5 — Plan 06.5-02, UX-T-01).
+ * Tests for InterPanelDivider.
  *
- * Phase 6.6 — Plan 06.6-01 (UX-CHROME-04): Updated tests to match the new
- * ResizeHandle delegation. The component now delegates pointer lifecycle to
- * ResizeHandle (renders data-testid="resize-handle") and uses delta-based
- * ratio math instead of absolute clientY position.
- *
- * Delta-based ratio math:
+ * Delegates pointer lifecycle to ResizeHandle; uses delta-based ratio math:
  *   newRatio = currentRatio + delta / railHeight
- *   where delta = clientY_move2 - clientY_move1 (or 0 at start since lastPosRef=0)
+ *   (delta = clientY dispatched in pointermove − 0 at drag start, because
+ *    jsdom does not honor clientY in fireEvent.pointerDown)
  *
- * Note: jsdom PointerEvent does not honor clientY in fireEvent.pointerDown;
- * the initial lastPosRef is 0. Delta = clientY dispatched in pointermove - 0.
- *
- * Mocking getBoundingClientRect: tests construct a stub ref object
- * `{ current: { getBoundingClientRect: () => ({...}) } }` and pass it directly
- * as railRef — no Element.prototype patching needed.
- *
- * D-12/D-14: cursor-only affordance — no visible band, transparent background.
- * D-15: delegates to ResizeHandle — data-testid is "resize-handle" (not "inter-panel-divider").
+ * Mocking getBoundingClientRect: tests construct a stub ref object and pass
+ * it directly as railRef — no Element.prototype patching needed.
  */
 import { fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

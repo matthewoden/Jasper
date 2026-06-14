@@ -1,16 +1,9 @@
 /**
- * Tests for McpGrantIndicator (Phase 8 Plan 08-10, UI-SPEC §Surface 3).
+ * Tests for McpGrantIndicator.
  *
- * Coverage:
- *   I1: Tier 1 renders Sparkles + tooltip "AI access: Edit only"; data attrs
- *       `data-testid="mcp-grant-indicator"` and `data-grant-tier="1"`; NO badge dot
- *   I2: Tier 2 renders Sparkles + badge dot; tooltip "AI access: Full";
- *       data attrs include `data-grant-tier="2"`
- *   I3: Badge dot inline style uses `--color-ai-grant-strong` (token, not hex)
- *
- * The locked selector contract (data-testid + data-grant-tier) is what
- * 08-15's Playwright spec relies on; tests fail loudly if either attribute
- * is renamed or dropped.
+ * Coverage: Tier-1 renders Sparkles + correct tooltip/attrs, no badge dot;
+ * Tier-2 adds badge dot with --color-ai-grant-strong token; selector contract
+ * (data-testid + data-grant-tier) passes.
  */
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";

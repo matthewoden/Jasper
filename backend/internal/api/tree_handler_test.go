@@ -234,8 +234,7 @@ func TestGetTree_FoldersBeforeNotes(t *testing.T) {
 	}
 }
 
-// TestGetTree_NilIndex_ReturnsEmpty — Phase 1 compatibility: 2-arg
-// NewServer (nil index) → GetTree returns Root: [].
+// TestGetTree_NilIndex_ReturnsEmpty — nil index → GetTree returns Root: [].
 func TestGetTree_NilIndex_ReturnsEmpty(t *testing.T) {
 	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -318,10 +317,9 @@ func TestGetTree_DiscriminatorWireShape(t *testing.T) {
 	}
 }
 
-// TestGetTree_DoesNotLeakInternalFields — assert wire body does NOT
-// contain checksum_sha256 / size_bytes / mtime_unix / updated_at_unix
-// (T-03-04-03 / T-03-01-02 mitigation: wire shape is a strict subset
-// of NoteRecord).
+// TestGetTree_DoesNotLeakInternalFields — asserts wire body does NOT contain
+// checksum_sha256 / size_bytes / mtime_unix / updated_at_unix. The wire shape
+// is a strict subset of NoteRecord.
 func TestGetTree_DoesNotLeakInternalFields(t *testing.T) {
 	t.Parallel()
 	ts, _, _, svc := setupTreeServer(t)

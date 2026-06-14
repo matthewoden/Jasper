@@ -12,12 +12,12 @@ import (
 // Sentinel errors for the CRUD primitives. Callers gate via errors.Is.
 var (
 	// ErrCaseCollision is returned when a create/move target already exists
-	// at its canonicalized path. Maps to HTTP 409 in the API layer (DATA-12).
+	// at its canonicalized path. Maps to HTTP 409 in the API layer.
 	ErrCaseCollision = errors.New("fsstore: target path already exists")
 	// ErrFolderNotEmpty is returned when DeleteDir(recursive=false) sees children.
 	ErrFolderNotEmpty = errors.New("fsstore: folder is not empty")
 	// ErrParentNotFound is returned when a create/move target's parent does
-	// not exist. Callers (the API layer in Plan 03-04) typically map to 400.
+	// not exist. Callers typically map to 400.
 	ErrParentNotFound = errors.New("fsstore: parent path does not exist")
 	// ErrCycle is returned when MoveDir would land the source inside its own
 	// subtree (move-into-self or move-into-descendant).
@@ -25,8 +25,8 @@ var (
 )
 
 // CreateFile creates an empty .md file at relPath under rootDir using
-// AtomicWrite for durability. Rejects collisions (DATA-12) and propagates
-// every Canonicalize sentinel (ErrPathEscape / ErrAbsolutePath / ErrEmptyPath
+// AtomicWrite for durability. Rejects collisions and propagates every
+// Canonicalize sentinel (ErrPathEscape / ErrAbsolutePath / ErrEmptyPath
 // / ErrNotInRoot) unchanged.
 //
 // Behavior choices:
@@ -34,10 +34,7 @@ var (
 //     level missing chains return ErrParentNotFound — callers must create
 //     the chain explicitly via CreateDir or the API layer must reject the
 //     request as 400.
-//   - The file is created with zero bytes; the API handler in Plan 03-04
-//     immediately calls Service.Update to seed any initial content (or
-//     leaves empty per UI-SPEC: "creates a temp file ... immediately enters
-//     inline-rename mode").
+//   - The file is created with zero bytes.
 func CreateFile(rootDir, relPath string) error {
 	abs, err := Canonicalize(rootDir, relPath)
 	if err != nil {
@@ -62,9 +59,7 @@ func CreateFile(rootDir, relPath string) error {
 }
 
 // DeleteFile removes the file at relPath. fs.ErrNotExist is propagated so the
-// caller decides idempotency — the API layer in Plan 03-04 maps to 404
-// because the user-visible "delete a note" semantic IS not-found if the row
-// is gone.
+// caller decides idempotency.
 func DeleteFile(rootDir, relPath string) error {
 	abs, err := Canonicalize(rootDir, relPath)
 	if err != nil {
@@ -81,8 +76,7 @@ func DeleteFile(rootDir, relPath string) error {
 // only — chains require explicit CreateDir).
 //
 // The rename is followed by an fsync of the new parent directory to make the
-// directory-entry change durable across power loss — same pattern AtomicWrite
-// uses (atomic.go step 5).
+// directory-entry change durable across power loss.
 func MoveFile(rootDir, oldRelPath, newRelPath string) error {
 	oldAbs, err := Canonicalize(rootDir, oldRelPath)
 	if err != nil {

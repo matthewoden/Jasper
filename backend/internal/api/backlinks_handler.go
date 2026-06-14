@@ -7,17 +7,15 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// GetNoteBacklinks implements GET /api/v1/notes/{id}/backlinks (LINKS-08 / D-27).
+// GetNoteBacklinks implements GET /api/v1/notes/{id}/backlinks.
 //
 // Returns the resolved backlinks for the given note (source rows, sorted by
-// source mtime DESC per D-28). Pending rows (target_id IS NULL) are excluded
-// per D-32. When the note has no inbound links the response is an empty array,
-// not null.
+// source mtime DESC). Pending rows (target_id IS NULL) are excluded.
+// When the note has no inbound links the response is an empty array, not null.
 //
-// T-06-11-01 mitigation: the server builds the excerpt HTML server-side;
-// the client MUST pass it through sanitize.ts (DOMPurify). This handler
-// does not sanitize (single-user, localhost-only) but the contract is
-// documented and enforced via the client-side sanitize.ts wrapper.
+// The server builds excerpt HTML server-side; the client must pass it through
+// sanitize.ts (DOMPurify). This handler does not sanitize (single-user,
+// localhost-only) but the contract is enforced via the client-side sanitize.ts wrapper.
 //
 //nolint:revive // generated interface name
 func (s *Server) GetNoteBacklinks(

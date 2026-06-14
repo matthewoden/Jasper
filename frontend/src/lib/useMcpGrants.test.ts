@@ -1,19 +1,7 @@
 /**
- * Tests for useMcpGrants hook (Phase 8 Plan 08-10).
- *
- * Coverage:
- *   M1: mount triggers listGrants once; store populates with returned grants
- *   M2: WS event (simulateEvent) triggers refresh — listGrants called again
- *   M3: levelFor walks ancestors (grant on "projects" → level for
- *       "projects/ai/draft.md" resolves to that level)
- *   M4: directLevelFor returns null for descendants (grant on "projects"
- *       → directLevelFor("projects/ai") is null; directLevelFor("projects")
- *       returns the level)
- *   M5: grant Tier 1 then upgrade Tier 2 — toast titles "AI access granted"
- *       then "AI access upgraded"
- *   M6: downgrade Tier 2 → Tier 1 — toast title "AI access changed"
- *   M7: revoke — toast title "AI access revoked"
- *   M8: grant error — toast title "Couldn't update AI access"
+ * Tests for useMcpGrants hook.
+ * Covers mount, WS-triggered refresh, levelFor ancestor walk,
+ * directLevelFor direct-only match, toast copy for grant/upgrade/downgrade/revoke/error.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";

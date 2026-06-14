@@ -1,13 +1,11 @@
 /**
- * Tests for useTreeStore — Phase 3 zustand store with localStorage
- * persistence (debounced 250ms). Validates the locked store shape, mutators,
- * hydration tolerance for corrupted storage, and the pruneStaleTreeState
- * helper that useFileTree (Plan 03-05 Task 3) calls after every fetch.
+ * Tests for useTreeStore — zustand store with localStorage persistence (debounced 250ms).
+ * Validates store shape, mutators, hydration tolerance for corrupted storage,
+ * and the pruneStaleTreeState helper that useFileTree calls after every fetch.
  *
- * The persistence side-effects rely on `window`/`localStorage` (jsdom from
- * test-setup.ts provides both). For tests that exercise the module-load
- * hydration path we use vi.resetModules() + vi.isolateModulesAsync to force
- * a fresh import after seeding localStorage.
+ * Persistence side-effects rely on window/localStorage (jsdom). Tests that
+ * exercise the module-load hydration path use vi.resetModules() to force a
+ * fresh import after seeding localStorage.
  */
 import { act, renderHook } from "@testing-library/react";
 import {

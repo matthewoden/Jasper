@@ -1,29 +1,18 @@
 /**
- * Phase 9 UAT — vault storage path unification (F2 close-out).
+ * Phase 9 UAT — vault storage path unification.
  *
- * Per CONVENTIONS.md §"Verification policy: E2E before human UAT" + §"Flaky
- * tests are bugs" (commit 67cf41e): this spec runs against the live
- * `bin/jasper` binary (built by `make build`) and uses ONLY deterministic
- * synchronization points — no polling loops with timeouts.
+ * All synchronization uses deterministic points — no polling loops with
+ * timeouts.
  *
- * Deterministic sync points used here:
- *   - Test 1: POST /api/v1/setup returning 200 is the sync point for
- *             post-setup filesystem assertions (.jasper/ dir + config.json
- *             exist; storage/ does not exist). app.db is NOT asserted here
- *             because CreateVault no longer creates the DB at submit time
- *             (Phase 9 D-04, Plan 03a) — the DB is created on first server
- *             boot into the new vault, which a different code path triggers.
- *
- *   - Test 2: spawnJasper's `waitForReady` (HTTP probe of
- *             /api/v1/admin/status) is the sync point for post-boot
- *             assertions. After it resolves the binary has run migrations
- *             against <vault>/.jasper/app.db.
- *
- *   - Test 3 (sqlite3-gated): same sync point as Test 2; the sqlite3
- *             query is a one-shot read against the DB created during boot.
- *
- * Acceptance source: .planning/notes/F2-two-db-assessment.md and
- * .planning/phases/09-vault-storage-path-unification-f2/09-05-PLAN.md.
+ * Deterministic sync points:
+ *   - Test 1: POST /api/v1/setup returning 200 is the sync point. The DB
+ *             is NOT asserted here — it is created on first server boot into
+ *             the new vault, not inside the POST /setup handler.
+ *   - Test 2: spawnJasper's `waitForReady` (HTTP probe of /api/v1/admin/status)
+ *             is the sync point. After it resolves, migrations have run against
+ *             <vault>/.jasper/app.db.
+ *   - Test 3 (sqlite3-gated): same sync point as Test 2; sqlite3 query is a
+ *             one-shot read against the DB created during boot.
  */
 import { test, expect } from "@playwright/test";
 import * as os from "node:os";
@@ -60,9 +49,8 @@ test.describe("Phase 9 F2 — vault path unification (@phase9-f2)", () => {
     let jasper: JasperHandle;
 
     test.beforeAll(async () => {
-      // No dataDir override — vault-picker mode. spawnJasper allocates an
-      // ephemeral dataDir for the picker's own state; the test uses a
-      // separate target directory below.
+      // No dataDir override — vault-picker mode. The test POST /setup to a
+      // separate target directory created inline.
       jasper = await spawnJasper();
     });
 
@@ -95,10 +83,8 @@ test.describe("Phase 9 F2 — vault path unification (@phase9-f2)", () => {
           `Expected 200 from /api/v1/setup; got ${setupResp.status}`,
         ).toBe(200);
 
-        // DETERMINISTIC ASSERTIONS (no polling):
-        // POST /setup has completed (200). CreateVault wrote the per-vault
-        // .jasper/ directory + config.json synchronously inside that
-        // request. Filesystem state is finalized.
+        // POST /setup (200) is the sync point — CreateVault wrote .jasper/
+        // and config.json synchronously inside that request.
         expect(
           await dirExists(path.join(expandedPath, ".jasper")),
           `Expected ${expandedPath}/.jasper/ to exist after POST /setup`,
@@ -109,17 +95,14 @@ test.describe("Phase 9 F2 — vault path unification (@phase9-f2)", () => {
         ).toBe(true);
         expect(
           await dirExists(path.join(expandedPath, "storage")),
-          `Expected ${expandedPath}/storage/ to NOT exist (Phase 9 closes legacy path)`,
+          `Expected ${expandedPath}/storage/ to NOT exist (legacy path closed)`,
         ).toBe(false);
         expect(
           await fileExists(path.join(expandedPath, "storage", "config.json")),
           `Expected ${expandedPath}/storage/config.json to NOT exist`,
         ).toBe(false);
-        // NOTE: app.db is asserted in Test 2 (@phase9-f2-2), not here. The
-        // current submit pipeline creates the DB on first server boot into
-        // the new vault, not inside the POST /setup handler. Polling for
-        // app.db here would be flaky per CONVENTIONS.md "Flaky tests are
-        // bugs."
+        // app.db is asserted in Test 2 — it is created on first server boot,
+        // not inside the POST /setup handler, so polling here would be flaky.
       } finally {
         await fs.rm(expandedPath, { recursive: true, force: true }).catch(() => {});
       }
@@ -133,11 +116,10 @@ test.describe("Phase 9 F2 — vault path unification (@phase9-f2)", () => {
     test.beforeAll(async () => {
       vaultPath = await fs.mkdtemp(path.join(os.tmpdir(), "jasper-e2e-phase9-f2-2-"));
       await fs.mkdir(path.join(vaultPath, "notes"), { recursive: true });
-      // Intentionally do NOT pre-create .jasper/ — the boot path is what
-      // we're validating.
+      // Intentionally do NOT pre-create .jasper/ — the boot path creates it.
       jasper = await spawnJasper({ dataDir: vaultPath });
-      // spawnJasper resolves only after waitForReady() observes a 200 from
-      // /api/v1/admin/status — that IS the deterministic sync point.
+      // spawnJasper resolves after waitForReady() observes 200 from
+      // /api/v1/admin/status — that is the deterministic sync point.
     });
 
     test.afterAll(async () => {
@@ -164,7 +146,7 @@ test.describe("Phase 9 F2 — vault path unification (@phase9-f2)", () => {
       ).toBeGreaterThan(0);
       expect(
         await dirExists(path.join(vaultPath, "storage")),
-        `Expected ${vaultPath}/storage/ to NOT exist (Phase 9 closes legacy path)`,
+        `Expected ${vaultPath}/storage/ to NOT exist (legacy path closed)`,
       ).toBe(false);
     });
 
@@ -175,9 +157,8 @@ test.describe("Phase 9 F2 — vault path unification (@phase9-f2)", () => {
         execFileSync("sqlite3", ["--version"], { stdio: "ignore" });
         sqlite3Available = true;
       } catch {
-        // sqlite3 not on PATH — skip (the file-existence + size check in
-        // F2-2 is the structural assertion; this is a defense-in-depth
-        // assertion that migrations actually ran against the new path).
+        // sqlite3 not on PATH — skip. F2-2's file-existence + size check is
+        // the structural assertion; this is defense-in-depth only.
       }
       if (!sqlite3Available) {
         console.log("[phase9-f2-3] sqlite3 not on PATH — skipping migrations-count check");

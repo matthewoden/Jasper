@@ -1,16 +1,8 @@
 /**
- * Surface 5 chassis — Radix Toast provider + viewport + imperative helper.
+ * Radix Toast provider + viewport + imperative helper.
  *
- * UI-SPEC §Surface 5 + §Forward-Compatibility Asserts: this provider is
- * mounted EXACTLY ONCE at App.tsx root. Phase 4 (deletion-in-another-session
- * toast — UX-05) and Phase 5 (stale-write conflict — SYNC-05) reuse it
- * without re-instantiating. The imperative `toast()` helper from useToast()
- * is callable from anywhere inside the provider tree.
- *
- * Phase 2 only fires error-variant toasts (via the variant default + the
- * logs-path-copied confirmation, which is rendered as the same single line
- * with the destructive border treatment). The "info" variant is reserved
- * but unused this phase.
+ * Mount EXACTLY ONCE at App.tsx root. The imperative toast() helper from
+ * useToast() is callable from anywhere inside the provider tree.
  */
 
 import * as Toast from "@radix-ui/react-toast";

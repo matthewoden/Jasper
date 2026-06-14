@@ -1,6 +1,5 @@
 /**
  * Tests for ActiveTagFilterChip component.
- * Validates behaviors from Plan 06.6-05 Task 1 (D-23..D-26).
  */
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, beforeEach } from "vitest";

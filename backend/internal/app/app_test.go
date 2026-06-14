@@ -46,8 +46,8 @@ func newTestApp(t *testing.T) (*App, string) {
 }
 
 // Test AP1 — GET /api/v1/notes/{ScratchpadUUID} returns 200 + JSON body
-// containing the welcome content. This proves the chi mount order works
-// (Pitfall 13): the API handler runs, NOT the SPA fallback.
+// containing the welcome content. Confirms the API handler runs, not
+// the SPA fallback.
 func TestApp_GetScratchpadReturns200JSON(t *testing.T) {
 	a, _ := newTestApp(t)
 	ts := httptest.NewServer(a.Handler())
@@ -88,11 +88,9 @@ func TestApp_GetScratchpadReturns200JSON(t *testing.T) {
 	}
 }
 
-// Test AP1b — Pitfall 13 gate: GET /api/v1/no-such-route MUST return
-// JSON (chi 404), NOT HTML from the SPA fallback. This is the load-
-// bearing assertion: if the SPA fallback intercepts /api/v1/* the
-// typed openapi-fetch client breaks and the regression is silent in
-// the browser until a user hits a 404.
+// Test AP1b — GET /api/v1/no-such-route MUST return JSON (chi 404),
+// NOT HTML from the SPA fallback. If the SPA fallback intercepts
+// /api/v1/* the typed openapi-fetch client breaks silently.
 func TestApp_UnknownAPIRouteIsNotHTML(t *testing.T) {
 	a, _ := newTestApp(t)
 	ts := httptest.NewServer(a.Handler())
@@ -183,8 +181,7 @@ func TestSeedScratchpadIfMissing_IdempotentOnExisting(t *testing.T) {
 	}
 }
 
-// Test AP4 — EnsureDataDir creates both notes/ and .jasper/ (per-vault
-// data subdir; Phase 9 D-06).
+// Test AP4 — EnsureDataDir creates both notes/ and .jasper/.
 func TestEnsureDataDir_CreatesNotesAndStorage(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, "fresh")
@@ -245,14 +242,12 @@ func pickFreeListener(t *testing.T) (net.Listener, string) {
 
 // httpReadyProbe returns a waitFor probe that succeeds only when the
 // full chi router is mounted and GET /api/v1/admin/status returns 200.
-// With a pre-bound listener, kernel-level TCP connect and even an HTTP
-// 503 from the disk-full handler complete the instant srv.Serve runs —
-// strictly BEFORE a.notesSvc has been set (lifecycle.go:303). Requiring
-// HTTP 200 is the only condition that guarantees the normal-boot path
-// finished wiring NotesService and the apiServer router. Use this for
-// every test that subsequently reads a.NotesService() or hits a real
-// API endpoint. For tests that intentionally take the disk-full /
-// startup-error path, use diskFullReadyProbe instead.
+// With a pre-bound listener, a kernel-level TCP connect and even an
+// HTTP 503 from the disk-full handler complete the instant srv.Serve
+// runs — before NotesService is wired. Requiring HTTP 200 is the only
+// condition that guarantees the normal-boot path finished. Use this
+// for tests that read a.NotesService() or hit real API endpoints; use
+// diskFullReadyProbe for tests on the error path.
 func httpReadyProbe(addr string) func() error {
 	client := &http.Client{Timeout: 100 * time.Millisecond}
 	return func() error {
@@ -269,10 +264,8 @@ func httpReadyProbe(addr string) func() error {
 }
 
 // diskFullReadyProbe returns a waitFor probe that succeeds when the
-// startup-error handler is mounted and answering — i.e. lifecycle.Run
-// took one of the disk-full / boot-error paths, swapped the handler to
-// the bootErrorHandler, and started srv.Serve. The handler responds
-// 503 with a startup_failed JSON body on every /api/* path.
+// startup-error handler is mounted and answering 503. Use for tests
+// that intentionally take the disk-full / boot-error path.
 func diskFullReadyProbe(addr string) func() error {
 	client := &http.Client{Timeout: 100 * time.Millisecond}
 	return func() error {
@@ -302,11 +295,9 @@ func waitFor(t *testing.T, timeout time.Duration, httpFn func() error) error {
 	return fmt.Errorf("waitFor timed out after %s: %w", timeout, lastErr)
 }
 
-// TestApp_Run_FreshDB_BootsAndIndexesScratchpad — full happy-path
-// boot. Uses the embedded migrations.FS (no override), creates a
-// fresh temp data dir, runs the binary in-process, and asserts:
-//   - GET /api/v1/notes returns 200 with at least 1 entry (the
-//     seeded scratchpad — DATA-09 incremental at startup).
+// TestApp_Run_FreshDB_BootsAndIndexesScratchpad — full happy-path boot.
+// Uses the embedded migrations.FS (no override). Asserts:
+//   - GET /api/v1/notes returns 200 with at least 1 entry (the seeded scratchpad).
 //   - GET /api/v1/admin/status returns state="ok".
 func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 	dir := t.TempDir()
@@ -422,11 +413,9 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 	}
 }
 
-// TestApp_Run_BrokenMigration_FiresPath1 — uses fstest.MapFS to inject
-// a deliberately broken 002_break.sql. Asserts:
-//   - The listener still comes up (Path 1 keeps the app running).
-//   - GET /api/v1/admin/status returns state="rolled_back" with
-//     failed_migration="002_break.sql".
+// TestApp_Run_BrokenMigration_FiresPath1 — injects a deliberately broken
+// 002_break.sql. Asserts the listener still comes up serving 503 with
+// an "unrecoverable" body (migration failure is not fatal to the listener).
 func TestApp_Run_BrokenMigration_FiresPath1(t *testing.T) {
 	initialBytes, err := migrations.FS.ReadFile("001_initial.sql")
 	if err != nil {
@@ -590,15 +579,11 @@ func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
 	}
 }
 
-// TestRun_DiskFull_PreflightHaltsBeforeOpen — strengthens the W-3
-// invariant. Boot-time disk-full preflight (lifecycle step 4a) MUST
-// fire before sqlite.Open, so on a disk-full data volume we never
-// open a DB connection at all (a.pair stays nil) and the listener
-// still serves the static disk-full handler. This catches both
-// JASPER_TEST_FORCE_DISK_FULL=1 and the production "data volume
-// actually full" case — without this gate, sqlite.Open would crash
-// with NOTADB on a corrupt/zero-filled app.db before we ever check
-// free disk space.
+// TestRun_DiskFull_PreflightHaltsBeforeOpen — disk-full preflight MUST
+// fire before sqlite.Open: on a full data volume we never open a DB
+// connection (a.pair stays nil) and the listener still serves the
+// static disk-full handler. Without this gate, sqlite.Open would crash
+// on a corrupt/zero-filled app.db before we check free disk space.
 func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 	dir := t.TempDir()
 
@@ -642,15 +627,11 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 	}
 }
 
-// TestRun_HydrateRegistry — Plan 03-04 Task 4: verifies the
-// composition root hydrates the in-memory registry from indexer.List
-// AFTER the startup incremental reindex completes and BEFORE the
-// HTTP listener accepts connections (T-03-04-07 mitigation).
-//
-// Test setup: a tempdir vault with two .md files (alpha.md and
-// projects/beta.md). After Run sets up the listener, the registry
-// must already contain non-scratchpad UUIDs — Service.Get on a
-// freshly-indexed UUID must succeed.
+// TestRun_HydrateRegistry — verifies the composition root hydrates
+// the in-memory registry from indexer.List AFTER the startup incremental
+// reindex completes and BEFORE the HTTP listener accepts connections.
+// Service.Get on any freshly-indexed UUID must succeed once the probe
+// returns 200.
 func TestRun_HydrateRegistry(t *testing.T) {
 	dir := t.TempDir()
 
@@ -753,8 +734,8 @@ func TestRun_HydrateRegistry(t *testing.T) {
 }
 
 // TestApp_SecurityHeaders_OnAPIResponse — end-to-end through the chi chain:
-// a real GET /api/v1/notes carries Content-Security-Policy + Referrer-Policy
-// after securityHeadersMiddleware is mounted (Plan 05-04 / SECURITY-01, SECURITY-04).
+// a real GET /api/v1/notes must carry Content-Security-Policy, Referrer-Policy,
+// X-Content-Type-Options, and X-Frame-Options from securityHeadersMiddleware.
 func TestApp_SecurityHeaders_OnAPIResponse(t *testing.T) {
 	a, _ := newTestApp(t)
 	ts := httptest.NewServer(a.Handler())
@@ -780,14 +761,11 @@ func TestApp_SecurityHeaders_OnAPIResponse(t *testing.T) {
 	}
 }
 
-// TestApp_ListenerGated verifies SYNC-09: the WebSocket hub is wired BEFORE
-// the listener accepts connections. When a client can reach the TCP port, the
-// /ws endpoint must already be mounted and respond with a valid WS upgrade
-// (101 Switching Protocols). A 404 or connection-refused here means the hub
-// was constructed after the listener started — a race.
-//
-// We use a raw HTTP request rather than a WebSocket library so we can assert
-// on the upgrade response without pulling in a WS client dependency in tests.
+// TestApp_ListenerGated verifies the WebSocket hub is wired BEFORE the
+// listener accepts connections. When a client can reach the TCP port, the
+// /ws endpoint must already be mounted and respond with 101 Switching
+// Protocols. A 404 here means the hub was constructed after the listener
+// started — a race. Uses a raw HTTP request to avoid a WS client dependency.
 func TestApp_ListenerGated(t *testing.T) {
 	dir := t.TempDir()
 	ln, addr := pickFreeListener(t)
@@ -835,7 +813,7 @@ func TestApp_ListenerGated(t *testing.T) {
 	if resp.StatusCode != http.StatusSwitchingProtocols {
 		cancel()
 		<-runErr
-		t.Fatalf("expected 101 Switching Protocols from /api/v1/ws, got %d (SYNC-09: hub not wired before listener)", resp.StatusCode)
+		t.Fatalf("expected 101 Switching Protocols from /api/v1/ws, got %d (hub not wired before listener)", resp.StatusCode)
 	}
 
 	cancel()
@@ -844,13 +822,10 @@ func TestApp_ListenerGated(t *testing.T) {
 	}
 }
 
-// TestRun_FrontmatterMigrationRuns_BeforeReconcile — D-11 / TAGS-EXT-03:
-// a vault with a .md file that lacks frontmatter boots cleanly and
-// the file has frontmatter after Run completes. The listener must open
-// (proving the migration ran and succeeded before the gate opened).
-//
-// This covers plan Test L2: vault note lacking frontmatter receives
-// scaffold + backlinks path (implicit — Reconcile ran after migration).
+// TestRun_FrontmatterMigrationRuns_BeforeReconcile — a vault with a .md
+// file lacking frontmatter boots cleanly and the file has frontmatter
+// after Run completes. The listener opening proves the migration ran and
+// succeeded before the gate opened.
 func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
 	dir := t.TempDir()
 	if err := EnsureDataDir(dir); err != nil {
@@ -900,7 +875,7 @@ func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
 	}
 }
 
-// TestRun_FrontmatterMigrationIdempotent — Test L3: Run twice on same vault;
+// TestRun_FrontmatterMigrationIdempotent — Run twice on same vault;
 // second start must not modify files (marker row prevents re-walk).
 func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 	dir := t.TempDir()
@@ -970,16 +945,11 @@ func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 	}
 }
 
-// TestApp_Run_NoVault_CreateVault_InPlaceTransition — UAT regression for the
-// bug where POST /vault/create succeeded on disk but the running listener
-// stayed in no-vault mode (frozen picker-shell handler), so subsequent /tree
-// requests failed until process restart.
-//
-// Boots the app with no current_vault in app.json. The /api/v1/tree route on
-// the no-vault picker shell returns an error because notesSvc is nil. After
-// POST /api/v1/vault/create, the in-place transition (a.OpenVault →
-// initVaultSubsystemsOnly + a.handler.Swap) must flip the listener over to
-// the full per-vault router so /api/v1/tree returns 200.
+// TestApp_Run_NoVault_CreateVault_InPlaceTransition — regression: POST
+// /vault/create succeeded on disk but the running listener stayed in
+// no-vault mode (frozen picker-shell), so /tree requests failed until
+// restart. After POST /vault/create the in-place transition must flip
+// the listener to the full per-vault router so /api/v1/tree returns 200.
 func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 	appHome := filepath.Join(t.TempDir(), ".jasper")
 	t.Setenv("JASPER_APP_HOME", appHome)

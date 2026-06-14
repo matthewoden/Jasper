@@ -2,11 +2,7 @@
  * linkClickHandler.test.ts — Unit tests for the wiki-link branch of the
  * CM6 link click handler.
  *
- * TDD gate: RED → GREEN
- * Tests K1..K8 as specified in Plan 06-09 Task 3.
- *
- * External-link regression (K5) tests the existing branch still works.
- * Wiki-link tests (K1..K4, K7..K8) cover the Phase 6 addition.
+ * External-link regression (K5) verifies the existing branch still works.
  * K6 (Cmd-held cursor attribute) is wired in MarkdownEditor.tsx and tested
  * there as a DOM effect.
  */

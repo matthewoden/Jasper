@@ -14,14 +14,12 @@ import (
 //
 //   - CanonicalRelPath is the filesystem-walked relative path under
 //     notesDir, NFC-normalized + lowercased via fsstore.Canonicalize so
-//     it matches the wire-format and database column convention
-//     (DATA-11).
+//     it matches the wire-format and database column convention.
 //   - AbsPath is the resolved absolute path on disk (post-Canonicalize)
 //     suitable for direct os.ReadFile / os.Stat.
 //   - Size is the file size in bytes from fs.DirEntry.Info.
-//   - MTimeUnix is the file mtime in UNIX seconds (the partial DATA-09
-//     change-detection signal — Phase 2 uses mtime ONLY; checksum
-//     fallback is deferred to Phase 7).
+//   - MTimeUnix is the file mtime in UNIX seconds (change-detection signal;
+//     checksum fallback is not implemented).
 type FileMeta struct {
 	CanonicalRelPath string
 	AbsPath          string
@@ -29,12 +27,12 @@ type FileMeta struct {
 	MTimeUnix        int64
 }
 
-// WalkVault walks notesDir, calling yield for every .md file under it
-// (DATA-01: filesystem is the source of truth). Skip rules:
+// WalkVault walks notesDir, calling yield for every .md file under it.
+// Skip rules:
 //
 //   - Dotdirs (`.git`, `.obsidian`, etc.) are skipped via filepath.SkipDir.
-//   - The reserved `attachments/` subtree is skipped — Phase 7 owns it
-//     and the indexer must not index attachment metadata as notes.
+//   - The reserved `attachments/` subtree is skipped — the indexer must
+//     not index attachment metadata as notes.
 //   - Non-`.md` files are silently skipped.
 //   - A path that fails fsstore.Canonicalize (symlink escape, NFC error)
 //     is skipped + best-effort logged by the caller; the walk does not

@@ -128,8 +128,8 @@ func TestPostSetupValidateDataDir_Valid(t *testing.T) {
 	}
 }
 
-// SH4: each of the 4 D-08 refusal cases returns valid:false + correct
-// code + the locked-copy message.
+// SH4: each of the 4 refusal cases returns valid:false + correct code +
+// the locked-copy message.
 //
 // NOTE: the parent test is NOT marked t.Parallel() because the
 // subtests below ARE parallel; pairing parent-parallel + subtests-
@@ -284,7 +284,7 @@ func TestPostSetup_HappyPath(t *testing.T) {
 		t.Fatalf("config.json missing: %v", err)
 	}
 	// app.db is created by the migration runner on first server boot,
-	// not by setup/RunSetup/CreateVault (D-04 contract, Plan 09-03a).
+	// not by setup/RunSetup/CreateVault.
 	if _, err := os.Stat(vault.AppDBPath(target)); err == nil {
 		t.Fatalf("setup should NOT create app.db (D-04); got file at %s", vault.AppDBPath(target))
 	}
@@ -293,9 +293,8 @@ func TestPostSetup_HappyPath(t *testing.T) {
 	}
 }
 
-// SH7: revision 2 W1 fix regression — mcp_enabled:true persists to
-// cfg.MCP.Enabled on disk so 08-09's listener boots with the right
-// flag.
+// SH7: mcp_enabled:true must persist to cfg.MCP.Enabled on disk so the
+// MCP listener boots with the correct flag.
 func TestPostSetup_McpEnabledTrue_PersistsToConfigJSON(t *testing.T) {
 	t.Parallel()
 	ts, _ := setupSetupTestServer(t)

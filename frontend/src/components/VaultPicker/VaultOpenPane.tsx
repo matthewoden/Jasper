@@ -1,10 +1,6 @@
 /**
- * VaultOpenPane — type or paste a path to an existing vault folder and open it.
- *
- * Path validation runs client-side via validateVaultPath (5-rule pipeline)
- * before submitting to the backend (SECURITY-06 defense-in-depth).
- *
- * Plan 08-17c Task 2 + UAT-2 #1d input-style rework.
+ * VaultOpenPane — type or paste an absolute path to an existing vault and open it.
+ * validateVaultPath runs client-side before submitting (backend repeats for defense-in-depth).
  */
 
 import { useEffect, useState } from "react";

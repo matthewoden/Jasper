@@ -9,21 +9,20 @@ import (
 )
 
 // ConfigStrictBodyMiddleware is a chi-compatible HTTP middleware that
-// enforces strict JSON decoding (D-40) on PUT /config request bodies.
+// enforces strict JSON decoding on PUT /config request bodies.
 //
 // The oapi-codegen strict-server uses json.NewDecoder without
 // DisallowUnknownFields, so unknown keys would otherwise be silently
 // accepted. This middleware reads the raw body, validates it with a
 // strict decoder, and returns 400 if:
-//   - The JSON has unknown fields (additionalProperties: false, T-05-03-02)
-//   - The theme value is not in the enum [dark, light] (T-05-03-03)
+//   - The JSON has unknown fields (additionalProperties: false)
+//   - The theme value is not in the enum [dark, light]
 //   - A nested object (dailyNotes, editor) has unknown fields
 //
 // The raw body bytes are restored on r.Body so the downstream strict
 // handler can decode them normally.
 //
-// Usage: mount in the /api/v1 chi sub-router before HandlerFromMux (both
-// app.go Phase-1-shape and lifecycle.go full-wiring paths):
+// Usage: mount in the /api/v1 chi sub-router before HandlerFromMux:
 //
 //	r.Route("/api/v1", func(r chi.Router) {
 //	    r.Use(api.ConfigStrictBodyMiddleware)

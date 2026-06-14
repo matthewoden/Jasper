@@ -1,7 +1,7 @@
 /**
  * Phase 5.5 UAT — Sidebar & Editor Shell Polish.
  *
- * Scenarios (each maps to one or more Phase 5.5 UX-XX requirements):
+ * Scenarios:
  *   UX-07 : save on blur / visibilitychange / beforeunload
  *   UX-08 : live H1 → sidebar label sync
  *   UX-09 : resizable sidebar with localStorage persistence
@@ -13,21 +13,11 @@
  *   UX-15 : heading + body share left edge off-cursor
  *   UX-16 : bullet column stable across cursor on/off
  *
- * Authoring notes (see 05.5-09-PLAN.md):
- *   - This spec is AUTHORED in Wave 1 of Phase 5.5; its assertions are
- *     VERIFIED only after Plans 01-08 land. The TS compile gates the
- *     authoring step; the actual `npx playwright test phase5_5-uat`
- *     runs at Plan 09 Task 3 (human-verify checkpoint).
- *   - The `JasperHandle` exposed by helpers/binary.ts has no
- *     `logFilePath`. UX-14 therefore uses `page.on("request", ...)` to
- *     count `/api/v1/tree` GETs from the browser side rather than
- *     spawning `count-tree-fetches.mjs` against a captured stderr file.
- *     This is documented in 05.5-09-SUMMARY.md.
- *   - Some UX-07 paths (notably `beforeunload` keepalive) cannot be
- *     verified end-to-end via Playwright; they are covered at the unit
- *     level by Plan 03's saveStateMachine tests. See `test.fixme()`
- *     blocks below for which scenarios are deliberately skipped here
- *     and why.
+ * UX-14 uses `page.on("request", ...)` to count `/api/v1/tree` GETs from
+ * the browser side (no log file access needed).
+ *
+ * UX-07's `beforeunload` keepalive path cannot be verified end-to-end via
+ * Playwright; it is covered at the unit level. See `test.fixme()` blocks.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -62,8 +52,7 @@ async function openApp(page: Page): Promise<void> {
 
 /**
  * CM6 typing recipe: click .cm-content to focus, select-all, delete,
- * then keyboard-type. Identical to the recipe used in phase3-uat /
- * phase4-uat / phase5-editor.spec.ts.
+ * then keyboard-type. .fill() is a no-op on contenteditable.
  */
 async function typeIntoEditor(page: Page, text: string): Promise<void> {
   const cm = page.locator(".cm-content");
@@ -76,10 +65,9 @@ async function typeIntoEditor(page: Page, text: string): Promise<void> {
 }
 
 /**
- * Wait for the SaveIndicator to show "Saved". Plan 06 wires the
- * `data-testid="save-indicator"` attribute on the SaveIndicator root;
- * we tolerate either the testid (preferred) or the rendered text
- * "Saved" (fallback) so the spec compiles before / after Plan 06.
+ * Wait for the SaveIndicator to show "Saved". Tolerates both
+ * data-testid="save-indicator" (preferred) and rendered text "Saved"
+ * (fallback) for forward/backward compat.
  */
 async function waitForSaved(page: Page, timeoutMs = 8_000): Promise<void> {
   const byId = page.locator('[data-testid="save-indicator"]');
@@ -94,16 +82,8 @@ async function waitForSaved(page: Page, timeoutMs = 8_000): Promise<void> {
  * commitRenameWith — type a unique name into the just-mounted rename
  * input and press Enter to commit (NOT Escape).
  *
- * Why this exists: the "Bug D" fix in TreeRow.handleCancelRename made
- * Escape on a rename with `pendingRename.isNew=true` DELETE the
- * ephemeral node. So tests that pressed Escape to "dismiss" the
- * auto-mounted rename input after a + New note / + New folder click
- * were silently destroying the just-created entity. Phase 3/4 UAT
- * specs were migrated to this commit-pattern in Plan 05.5-16; phase
- * 5.5 was missed (closed 2026-05-09).
- *
- * Mirrors the helper of the same name in phase3-uat.spec.ts and
- * phase4-uat.spec.ts.
+ * Pressing Escape on a brand-new (never-confirmed) row fires DELETE —
+ * always use Enter to commit so the row persists.
  */
 async function commitRenameWith(
   page: Page,
@@ -545,19 +525,12 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       .toBeGreaterThanOrEqual(1);
 
     // KNOWN ISSUE — folder-rename-collapses-arborist-state:
-    // After commitRenameWith renames the folder, react-arborist treats
-    // the renamed node as a NEW node (its `id` is "folder:<path>" so
-    // a path change → new id → fresh node → defaults to closed). The
-    // user's previous "expand by clicking" state lives in
-    // useTreeStore.expanded keyed by OLD path — pruned by
-    // pruneStaleTreeState after the post-move tree refresh — so the
-    // new folder paints closed even though the test expanded it
-    // before opening the context menu. The server-side assertion
-    // above proves the create-at-folder contract; the DOM-collapse
-    // visual is a separate state-management bug to track and fix
-    // (the old "after menu dismiss" Pitfall 7 fix prevents the
-    // dismiss-driven collapse, but cannot help the rename-driven
-    // collapse). Filed as `folder-rename-loses-arborist-open-state`.
+    // After rename, react-arborist treats the node as new (id is
+    // "folder:<path>", so path change → new id → fresh node → closed by
+    // default). The expanded state keyed by OLD path is pruned after the
+    // post-move tree refresh, so the folder paints closed even though it
+    // was expanded before. The server-side assertion above proves the
+    // create-at-folder contract; the DOM-collapse is a separate bug.
   });
 
   test("Bug C — Cmd-click multi-select + multi-delete (UX-13)", async ({

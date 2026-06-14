@@ -1,21 +1,12 @@
 /**
- * ThemeSection — Section 2 of the first-run wizard.
+ * ThemeSection — theme picker for the first-run wizard (Dark / Light).
  *
- * UI-SPEC §Surface 1 + §Copywriting Contract (LOCKED):
- *   eyebrow: THEME
- *   helper:  You can switch any time. Wizard restyles live as you choose.
+ * aria-label values are "Dark" and "Light" (not "Dark theme") — Playwright
+ * selectors depend on the exact string.
  *
- * Behavior (D-06 live-preview):
- *   - Two radio rows (Dark, Light).
- *   - Each <input type="radio"> carries aria-label="Dark" / aria-label="Light"
- *     (08-15 Playwright selector contract — DO NOT rename to "Dark theme").
- *   - Selecting a radio immediately calls onChange AND sets
- *     document.documentElement.setAttribute("data-theme", theme) so the
- *     wizard restyles live. SetupApp.tsx also keeps the attribute in sync
- *     via a useEffect on draft.theme, but the local write here avoids a
- *     render-cycle delay when the user clicks.
- *
- * Plan 08-04 Task 1.
+ * Selecting a radio immediately writes data-theme to <html> for live preview.
+ * SetupApp also syncs it via useEffect on draft.theme; the local write here
+ * avoids the render-cycle delay on click.
  */
 
 interface ThemeSectionProps {
@@ -83,7 +74,7 @@ function ThemeRow({
             height: 8,
             borderRadius: "50%",
             background: "var(--color-accent)",
-            marginLeft: 4, // 16/2 - 8/2 = 4 inside the ring
+            marginLeft: 4, // center the 8px dot inside the 16px ring
             pointerEvents: "none",
           }}
         />

@@ -1,19 +1,13 @@
 /**
  * inlineTagPlugin.test.ts — TDD suite for the CM6 inline-tag decoration plugin.
  *
- * Phase 6.5 / Plan 06.5-05 / Task 1.
- *
- * Requirements (UX-T-02):
+ * Requirements:
  *   - `#tagname` in body renders with class `cm-inline-tag` (Decoration.mark)
  *   - `# heading` (hash + space) is NOT decorated
  *   - `## heading` lines are NOT decorated
  *   - `#tag` inside fenced code, inline code, or frontmatter is NOT decorated
  *   - Clicking a decorated tag calls useTreeStore.setActiveTagFilter(tagname)
  *   - IME gate: composing → map decorations, no rebuild
- *
- * TDD sequence:
- *   RED  → this file (failures: inlineTagPlugin.ts not yet written)
- *   GREEN → implement inlineTagPlugin.ts
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { EditorView } from "@codemirror/view";

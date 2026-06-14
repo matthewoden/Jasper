@@ -1,14 +1,8 @@
 /**
- * Surface 1 — Migration Error Banner. UI-SPEC §Surface 1 locks every
- * visual + copy detail; this component implements that contract verbatim.
+ * Migration Error Banner — renders when state === "rolled_back".
  *
- * Renders nothing when state !== "rolled_back". Banner is server-state-
- * driven, NOT user-state-driven — Dismiss only hides it for the current
- * browser session; the server still has the rolled-back schema, so a
- * page reload re-shows it.
- *
- * Phase 4 will replace useMigrationStatus()'s internals with a WebSocket
- * subscription; this component must not change.
+ * Banner is server-state-driven: Dismiss only hides it for the current browser
+ * session; the server still has the rolled-back schema, so a page reload re-shows it.
  */
 
 import { AlertTriangle } from "lucide-react";
@@ -35,10 +29,7 @@ export function MigrationBanner({ onResetConfirm, status }: Props) {
     try {
       await navigator.clipboard.writeText(logsPath);
     } catch {
-      // Clipboard API may be unavailable in non-secure contexts; the
-      // toast still confirms the user's intent. Native install (Phase 8)
-      // will replace this with a "Show in Finder" action that doesn't
-      // depend on the clipboard at all.
+      // Clipboard API may be unavailable in non-secure contexts; toast still confirms intent.
     }
     toast({
       title: "Log path copied to clipboard.",
@@ -85,7 +76,6 @@ export function MigrationBanner({ onResetConfirm, status }: Props) {
             color: "var(--color-warning)",
           }}
         >
-          {/* Locked copy: Migration {filename} failed. */}
           Migration {filename} failed.
         </div>
         <div style={{ fontSize: 14, color: "var(--color-fg)" }}>

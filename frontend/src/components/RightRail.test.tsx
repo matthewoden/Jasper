@@ -1,11 +1,5 @@
 /**
- * RightRail tests — Phase 6.6 Plan 06.6-11 (Task 3).
- *
- * Changes from Phase 6.5:
- *   - Collapsed-aside branch DELETED (D-36). When expanded=false → null.
- *   - Panels gated on panelSelector.tags / panelSelector.backlinks
- *   - Auto-collapse useEffect when both panelSelector booleans are false
- *   - style prop accepted for grid placement
+ * RightRail tests.
  */
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";

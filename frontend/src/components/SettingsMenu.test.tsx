@@ -1,12 +1,6 @@
 /**
- * SettingsMenu.test.tsx — Phase 11 Plan 03 update.
- *
- * After repurposing SettingsMenu.tsx from a Radix DropdownMenu to a trigger
- * wrapper for SettingsDialog:
- *   - Kept: trigger-attributes test (aria-label/title/data-testid — E2E selector contract)
- *   - Removed: dropdown-content / settings-theme-dark / settings-theme-light tests
- *     (DropdownMenu retired; theme control moved into SettingsDialog APPEARANCE section)
- *   - Added: clicking trigger opens the Settings dialog
+ * SettingsMenu tests — trigger-attributes (aria-label/title/data-testid E2E
+ * selector contract) and clicking trigger opens SettingsDialog.
  *
  * Mock covers useConfig (used by SettingsDialog → useConfig → GET /config).
  */

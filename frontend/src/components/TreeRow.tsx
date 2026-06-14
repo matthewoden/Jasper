@@ -1,45 +1,30 @@
 /**
- * TreeRow — react-arborist row renderer per UI-SPEC §Tree row anatomy.
+ * TreeRow — react-arborist row renderer.
  *
  * Two row variants:
- *   - Folder: ChevronRight/Down (collapsed/expanded) + Folder/FolderOpen
- *             icon + 14px/400/text-fg label
- *   - Note:   16px chevron-spacer + 14px/400/text-fg label (NO icon — per
- *             UI-SPEC "Notes render label only")
+ *   - Folder: ChevronRight/Down + Folder/FolderOpen icon + 14px/400 label
+ *   - Note:   16px spacer (keeps labels aligned with parent folder) + label only
  *
- * Active state (note rows only — folders cannot be active):
- *   activeNoteId from useTreeStore matches node.data.id ⇒
- *     - background: color-mix(in srgb, var(--color-accent) 8%, transparent)
- *     - 2px solid var(--color-accent) left-border absolutely positioned
- *       so the label doesn't shift
+ * Active state (note rows only): accent-tinted background + 2px accent left-border
+ * absolutely positioned so the label doesn't shift.
  *
- * Hover state (group + group-hover):
- *   - background: rgba(255, 255, 255, 0.04)  via "hover:bg-..." utility
- *   - reveals the kebab `⋯` (MoreHorizontal) button
+ * Hover: reveals the kebab (MoreHorizontal) button via group-hover.
  *
- * Plan 03-07 wires:
- *   - Right-click → <TreeRowContextMenu> wraps the row root.
- *   - Kebab click → <TreeRowDropdownMenu> with controlled open state.
- *   - Inline rename: when useTreeStore.pendingRename matches this row,
- *     the label slot renders <RenameInput> instead of the static span.
- *   - F2 / Backspace / Delete keys + double-click on the row trigger
- *     onRequestRename / onRequestDelete callbacks.
- *   - react-arborist's `dragHandle` ref is attached to the row container
- *     so the HTML5Backend registers the row as a drag source (Gap R2-1).
- *   - Gap R2-4 (Plan 03-20): handleClick sets useTreeStore.selectedRow so
- *     App.tsx's document-level F2 listener can route rename to this row
- *     even when DOM focus has shifted to the editor textarea
- *     (EditorPane.useEffect → loadStatus === "loaded" focuses the
- *     textarea on note selection). The local handleKeyDown F2 path
- *     stays as a fallback for the auto-focused-row case.
+ * Wiring:
+ *   - Right-click → TreeRowContextMenu wrapping the row.
+ *   - Kebab → TreeRowDropdownMenu (controlled open state).
+ *   - Inline rename: pendingRename match → label slot renders RenameInput.
+ *   - F2 / Backspace / Delete + double-click → onRequestRename / onRequestDelete.
+ *   - dragHandle ref makes the row a react-dnd drag source.
+ *   - handleClick sets useTreeStore.selectedRow so the document-level F2 listener
+ *     in App.tsx can route rename even when DOM focus is in the editor textarea.
  *
- * XSS hardening: this file MUST NOT use the React inner-HTML escape
- * hatch (the `dangerously...` prop). Labels are rendered as React text
- * content, which escapes by default — even a malicious title with
- * <script> renders as plain text. The vitest case
- * `TestRow_DoesNotUseDangerously...InnerHTML` enforces this — the
- * forbidden token is split across the test source so this comment can
- * mention the family of escape hatches without tripping the gate.
+ * XSS hardening: this file MUST NOT use the React inner-HTML escape hatch
+ * (the `dangerously...` prop). Labels are rendered as React text content,
+ * which escapes by default — even a malicious title with <script> renders as
+ * plain text. The vitest case `TestRow_DoesNotUseDangerously...InnerHTML`
+ * enforces this — the forbidden token is split in the test source so this
+ * comment can mention the escape-hatch family without tripping the gate.
  */
 import { useCallback, useState, type CSSProperties, type KeyboardEvent } from "react";
 import type { NodeApi } from "react-arborist";
@@ -100,13 +85,9 @@ export interface TreeRowProps {
   siblingNames?: string[];
   commitRename?: (target: TreeRowData, newValue: string) => Promise<void>;
   /**
-   * react-arborist's drag source registration callback ref. Forwarded
-   * from the <Tree> children render-prop. Attached to the row container
-   * <div> so react-dnd's HTML5Backend registers the row as a drag
-   * source. Without this attachment, drag-and-drop is silently dead in
-   * the browser (Gap R2-1 closure — 03-RESEARCH-ROUND2.md §1.2). The
-   * prop is optional so existing unit tests that omit it stay valid;
-   * react-arborist always provides it at runtime.
+   * react-arborist drag source registration ref. Attached to the row container
+   * so react-dnd's HTML5Backend can register it as a drag source. Optional so
+   * unit tests that omit it stay valid; react-arborist always provides it at runtime.
    */
   dragHandle?: (el: HTMLDivElement | null) => void;
 }
@@ -396,8 +377,7 @@ export function TreeRow({
           }}
         />
       )}
-      {/* Chevron (folders only) or 16px spacer (notes — keeps labels
-          aligned with their parent folder labels per UI-SPEC). */}
+      {/* Chevron (folders only) or 16px spacer (notes — keeps labels aligned with folder labels). */}
       {isFolder ? (
         node.isOpen ? (
           <ChevronDown size={16} style={muted} aria-hidden="true" />
@@ -407,11 +387,10 @@ export function TreeRow({
       ) : (
         <span aria-hidden="true" style={{ width: 16, flexShrink: 0 }} />
       )}
-      {/* xs (4px) gap between chevron/spacer and icon/label */}
+      {/* 4px gap between chevron/spacer and icon/label */}
       <span aria-hidden="true" style={{ width: 4, flexShrink: 0 }} />
-      {/* Folder icon — folders only; notes render label only per UI-SPEC.
-          Phase 7 D-18: root-level daily/ folder renders CalendarDays in accent color.
-          Phase 7 Plan 20 (UAT #13 C4): attachments/ folder renders Paperclip in muted color. */}
+      {/* Folder icon — folders only; notes render label only.
+          daily/ folder → CalendarDays (accent); attachments/ → Paperclip (muted). */}
       {isFolder && (
         <>
           {isDailyFolder ? (
@@ -434,8 +413,7 @@ export function TreeRow({
           <span aria-hidden="true" style={{ width: 4, flexShrink: 0 }} />
         </>
       )}
-      {/* Plan 07-26 (UAT-2 R1-7): file nodes render a type-based icon.
-          Image for images (.png/.jpg/etc), FileText for documents (.pdf/.doc/etc),
+      {/* File nodes: type-based icon — Image (.png/.jpg/etc), FileText (.pdf/.doc/etc),
           generic File for everything else. */}
       {isFile && (() => {
         const FileIco = getFileIconComponent(data.name);
@@ -446,18 +424,10 @@ export function TreeRow({
           </>
         );
       })()}
-      {/* Label OR inline-rename input. React text-content escape is
-          the XSS gate; no inner-HTML escape hatch anywhere. */}
+      {/* Label OR inline-rename input. React text-content escapes by default — XSS gate. */}
       {labelOrInput}
-      {/* UAT-2 R4-6: Sparkles indicator moved from the row to the
-          "Grant AI access" submenu's SubTrigger (TreeRowMenu.tsx).
-          The row now carries `data-ai-level` (set above) so theme.css
-          can apply a violet tint to granted folders + every descendant
-          (user choice: tint scope = root + all subfolders). */}
-      {/* Kebab — wraps a TreeRowDropdownMenu so click reveals the same
-          item set as the right-click context menu. Hidden until row
-          hover or focus-within (Plan 03-06 chassis kept the visibility
-          behavior verbatim). */}
+      {/* data-ai-level drives the violet tint on granted folders via theme.css */}
+      {/* Kebab — wraps TreeRowDropdownMenu; hidden until row hover or focus-within. */}
       <TreeRowDropdownMenu
         rowKind={isFile ? "file" : isFolder ? "folder" : "note"}
         noteId={data.kind === "note" ? data.id : undefined}

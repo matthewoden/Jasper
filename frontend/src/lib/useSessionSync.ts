@@ -20,29 +20,25 @@ export interface SessionSyncHandlers {
   onReindexStarted: () => void;
   onReindexComplete: (p: WSReindexCompletePayload) => void;
   /**
-   * Plan 06-11 (D-33/D-35): called when a note rename's wiki-link rewrite
-   * completes. Cross-tab only — source tab is suppressed by the
-   * origin_session_id filter (D-35). Optional; App.tsx may use this to
-   * surface a RenameRewriteErrorBanner on partial failure.
+   * Called when a note rename's wiki-link rewrite completes. Cross-tab only —
+   * source tab is suppressed by the origin_session_id filter.
+   * Optional; App.tsx may use this to surface a RenameRewriteErrorBanner on partial failure.
    */
   onLinksRewritten?: (p: WSLinksRewrittenPayload) => void;
   /**
-   * Plan 08-17d (V4): called when the server broadcasts vault.switching.
-   * The SPA should mount the VaultSwitchOverlay and schedule the 10s failsafe.
+   * Called when the server broadcasts vault.switching. The SPA should mount
+   * the VaultSwitchOverlay and schedule the 10s failsafe reload.
    * Payload contains target_path + target_display_name.
    */
   onVaultSwitching?: (p: { target_path: string; target_display_name: string }) => void;
   /**
-   * Plan 08-17d (V4): called when the server broadcasts vault.switched.
-   * The SPA should call window.location.reload() to reconnect to the new vault.
+   * Called when the server broadcasts vault.switched. The SPA should call
+   * window.location.reload() to reconnect to the new vault's hub.
    */
   onVaultSwitched?: () => void;
 }
 
-/**
- * Builds the ws:// or wss:// URL for the WS upgrade. Dependency-
- * injectable for tests via the `wsUrlFn` parameter on useSessionSync.
- */
+/** Builds the ws:// or wss:// URL for the WS upgrade. Dependency-injectable for tests. */
 function defaultWsUrl(sid: string): string {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${window.location.host}/api/v1/ws?session_id=${encodeURIComponent(sid)}`;
@@ -54,30 +50,21 @@ export interface UseSessionSyncOptions {
 }
 
 /**
- * SYNC-01..04, SYNC-07: WebSocket session-sync hook. Mount once at App
- * root (Plan 04-05). Owns the WS connection, the connection-status
- * state machine, the reconnect loop, and the inbound-event dispatch.
+ * WebSocket session-sync hook. Mount once at App root. Owns the WS connection,
+ * the connection-status state machine, the reconnect loop, and inbound-event dispatch.
  *
- * Reconnect order (D-05 a→e):
- *   (a) setStatus("reconnecting") (or "connecting" on first attempt)
- *   (b) await refreshTree on open
- *   (c) editor refetches its open note in response to status flip
- *       (handled by EditorPane in Plan 04-05; not here)
- *   (d) resume processing inbound events (just by virtue of being
- *       connected)
- *   (e) setStatus("connected")
+ * Reconnect sequence: setStatus("reconnecting") → await refreshTree on open →
+ * resume processing inbound events → setStatus("connected").
  *
- * SECURITY (T-04-03): inbound `origin_session_id` is treated as
- * opaque — never rendered to the DOM. Used only for equality compare
- * against own session_id (origin filter, SYNC-03).
+ * Security: inbound `origin_session_id` is treated as opaque — never rendered
+ * to the DOM. Used only for equality compare against own session_id to suppress
+ * self-originated events.
  *
- * Pitfall 9 (RESEARCH.md): all listeners attached SYNCHRONOUSLY before
- * any await between `new WebSocket(...)` and listener setup, so no
- * inbound message is lost on slow CPU.
+ * All listeners are attached SYNCHRONOUSLY before any await after `new WebSocket(...)`,
+ * so no inbound message is lost on a slow CPU between construction and listener setup.
  *
- * Pitfall 5: empty origin_session_id ("") is the protocol signal for
- * "server-originated event" (reindex:*, migration:status). These
- * events bypass the origin filter and reach every tab.
+ * Empty origin_session_id ("") is the protocol signal for server-originated events
+ * (reindex:*, migration:status) — these bypass the origin filter and reach every tab.
  */
 export function useSessionSync(
   handlers: SessionSyncHandlers,
@@ -196,7 +183,7 @@ export function useSessionSync(
       };
 
       ws.onerror = () => {
-        // onclose fires next; nothing to do here.
+        // onclose fires immediately after onerror; nothing additional to do here.
       };
     };
 
@@ -211,7 +198,7 @@ export function useSessionSync(
         try {
           ws.close();
         } catch {
-          // ignore close errors
+          // ignore
         }
       }
       attempt = 0;
@@ -228,5 +215,5 @@ export function useSessionSync(
       setForceWsReconnect(() => {});
     };
   }, [refreshTree, setStatus, setForceWsReconnect, wsUrlFn]);
-  // handlers consumed via handlersRef.current — intentionally NOT in deps.
+  // handlers consumed via handlersRef.current — stable ref avoids re-mounting the WS on every render.
 }

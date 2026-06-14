@@ -8,11 +8,11 @@ import (
 )
 
 // GetConfig implements GET /api/v1/config. Returns the persisted config
-// from <vault>/.jasper/config.json, or DefaultConfig() if the file
-// is missing or malformed (config.Load handles fallback per D-10).
+// from <vault>/.jasper/config.json, or DefaultConfig() if the file is
+// missing or malformed.
 //
-// Wire-format errors NEVER leak filesystem paths or stack traces
-// (T-05-03-04: generic 500 on Load error; full err logged server-side).
+// Wire-format errors never leak filesystem paths or stack traces:
+// generic 500 on Load error; full err logged server-side.
 //
 //nolint:revive // generated interface name
 func (s *Server) GetConfig(
@@ -28,18 +28,14 @@ func (s *Server) GetConfig(
 	return GetConfig200JSONResponse(toWireConfig(cfg)), nil
 }
 
-// PutConfig implements PUT /api/v1/config. Replaces the whole document
-// atomically (fsstore.AtomicWrite via config.Save).
+// PutConfig implements PUT /api/v1/config. Replaces the whole document atomically.
 //
 // Validation is layered:
-//   - ConfigStrictBodyMiddleware (config_validate.go) validates the body
-//     BEFORE this handler runs: unknown fields → 400, theme enum → 400,
-//     string length constraints → 400, numeric range constraints → 400.
-//     NOTE: oapi-codegen's strict-server does NOT automatically invoke
-//     openapi3filter request validation in this deployment, so explicit
-//     range/length checks in ConfigStrictBodyMiddleware are required.
-//   - Inside this handler we still nil-check req.Body for safety
-//     (mirrors PostFolders pattern).
+//   - ConfigStrictBodyMiddleware (config_validate.go) runs before this handler:
+//     unknown fields → 400, theme enum → 400, length/range constraints → 400.
+//     oapi-codegen's strict-server does not automatically invoke openapi3filter
+//     validation, so explicit checks in ConfigStrictBodyMiddleware are required.
+//   - This handler still nil-checks req.Body for safety.
 //
 //nolint:revive // generated interface name
 func (s *Server) PutConfig(

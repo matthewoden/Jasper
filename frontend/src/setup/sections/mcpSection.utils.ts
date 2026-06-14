@@ -1,15 +1,10 @@
 /**
- * MCP grant folder-path validator (Plan 08-04). Extracted from
- * McpSection.tsx so the component file only exports React components —
- * satisfies react-refresh/only-export-components and restores Fast
- * Refresh DX for the MCP setup section.
+ * isValidGrantFolderPath — client-side MCP grant folder-path validator.
+ * Extracted from McpSection.tsx so that file exports only React components
+ * (required for react-refresh Fast Refresh).
  *
- * Rejection rules (08-04 done-criteria gate the function name + each):
- *   - empty / whitespace-only string
- *   - contains `..` (path-escape attempt)
- *   - starts with `/` (POSIX absolute)
- *   - matches a Windows drive prefix (`C:\` / `c:/`)
- *   - contains non-printable / non-ASCII chars
+ * Rejects: empty/whitespace, `..` traversal, POSIX absolute (/), Windows
+ * drive-letter absolute (C:\ / c:/), and non-printable/non-ASCII chars.
  */
 export function isValidGrantFolderPath(p: string): boolean {
   const trimmed = p.trim();

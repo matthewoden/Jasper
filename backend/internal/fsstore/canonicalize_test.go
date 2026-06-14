@@ -17,7 +17,6 @@ func resolved(t *testing.T, p string) string {
 	return r
 }
 
-// Test 1: input with mixed case lowercases.
 func TestCanonicalize_LowercasesMixedCase(t *testing.T) {
 	root := t.TempDir()
 	got, err := Canonicalize(root, "Foo.md")
@@ -30,7 +29,6 @@ func TestCanonicalize_LowercasesMixedCase(t *testing.T) {
 	}
 }
 
-// Test 2: case-different inputs canonicalize to the same path.
 func TestCanonicalize_CaseEquivalence(t *testing.T) {
 	root := t.TempDir()
 	a, err := Canonicalize(root, "FOO.md")
@@ -46,7 +44,6 @@ func TestCanonicalize_CaseEquivalence(t *testing.T) {
 	}
 }
 
-// Test 3: NFD- and NFC-encoded inputs canonicalize to the same path.
 // "café.md" with U+0301 combining acute (NFD) vs U+00E9 precomposed é (NFC)
 // must collapse to identical bytes after Canonicalize.
 func TestCanonicalize_NFDvsNFCEquivalence(t *testing.T) {
@@ -71,7 +68,6 @@ func TestCanonicalize_NFDvsNFCEquivalence(t *testing.T) {
 	}
 }
 
-// Test 4: a top-level ".." escape is rejected with ErrPathEscape.
 func TestCanonicalize_RejectsParentEscape(t *testing.T) {
 	root := t.TempDir()
 	_, err := Canonicalize(root, "../escape.md")
@@ -80,7 +76,6 @@ func TestCanonicalize_RejectsParentEscape(t *testing.T) {
 	}
 }
 
-// Test 5: an absolute path is rejected with ErrAbsolutePath.
 func TestCanonicalize_RejectsAbsolutePath(t *testing.T) {
 	root := t.TempDir()
 	_, err := Canonicalize(root, "/absolute/path.md")
@@ -89,7 +84,6 @@ func TestCanonicalize_RejectsAbsolutePath(t *testing.T) {
 	}
 }
 
-// Test 6: a "valid/../../escape" path that cleans to "../escape" is rejected.
 func TestCanonicalize_RejectsCleanedEscape(t *testing.T) {
 	root := t.TempDir()
 	_, err := Canonicalize(root, "valid/../../escape.md")
@@ -98,7 +92,6 @@ func TestCanonicalize_RejectsCleanedEscape(t *testing.T) {
 	}
 }
 
-// Test 7: a sub-directory relative path canonicalizes to <root>/subdir/note.md.
 func TestCanonicalize_PreservesSubdir(t *testing.T) {
 	root := t.TempDir()
 	got, err := Canonicalize(root, "subdir/Note.md")
@@ -111,7 +104,6 @@ func TestCanonicalize_PreservesSubdir(t *testing.T) {
 	}
 }
 
-// Test 8: a symlink that points outside the root is rejected with ErrNotInRoot.
 func TestCanonicalize_RejectsSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
@@ -125,7 +117,6 @@ func TestCanonicalize_RejectsSymlinkEscape(t *testing.T) {
 	}
 }
 
-// Test 9: empty input is rejected.
 func TestCanonicalize_RejectsEmpty(t *testing.T) {
 	root := t.TempDir()
 	_, err := Canonicalize(root, "")
@@ -134,7 +125,6 @@ func TestCanonicalize_RejectsEmpty(t *testing.T) {
 	}
 }
 
-// Test 10: spaces in filenames are preserved (only the case is lowered).
 func TestCanonicalize_PreservesSpaces(t *testing.T) {
 	root := t.TempDir()
 	got, err := Canonicalize(root, "Note With Spaces.md")
@@ -190,8 +180,7 @@ func (w *wrappedErr) Unwrap() error { return w.err }
 
 // Sanity: confirm filepath.Separator is the byte we expected — guards
 // against this test's HasPrefix check working only on macOS/Linux but
-// not on Windows. (Phase 1 doesn't target Windows but this keeps the
-// test honest about its assumption.)
+// not on Windows (Windows paths not yet supported).
 func TestCanonicalize_PathSeparatorAssumption(t *testing.T) {
 	if !strings.ContainsRune("/\\", rune(filepath.Separator)) {
 		t.Fatalf("unexpected filepath.Separator: %q", filepath.Separator)

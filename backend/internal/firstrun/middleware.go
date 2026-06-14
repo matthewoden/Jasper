@@ -1,5 +1,4 @@
-// Package firstrun implements the Phase 8 first-run wizard server gate
-// (INSTALL-07, D-04, D-07, D-08, D-10).
+// Package firstrun implements the first-run wizard server gate.
 //
 // Two responsibilities live here:
 //
@@ -31,11 +30,11 @@ import (
 // RedirectMiddleware returns a chi middleware that 302-redirects every
 // request to /setup when <dataDir>/.jasper/config.json is absent.
 //
-// Deprecated: as of Plan 08-17b (vault model), the no-vault state is
-// handled by the lifecycle's vaultMode branch — not by a redirect
-// middleware. The /setup route is repurposed as a legacy alias for
-// /vault/create. This function is retained for one minor version to
-// ease testing rollback; it is NOT mounted on the live router.
+// Deprecated: the no-vault state is now handled by the lifecycle's
+// vaultMode branch — not by a redirect middleware. The /setup route is
+// repurposed as a legacy alias for /vault/create. This function is
+// retained for one minor version to ease testing rollback; it is NOT
+// mounted on the live router.
 //
 // Pass-through rules (must run before the existence check):
 //   - exact path /setup (the wizard SPA mount point)

@@ -299,9 +299,9 @@ func TestBuildTree_SkipsDotDirs(t *testing.T) {
 // notes/projects/jasper/attachments/, add a non-.md file inside; tree
 // shows projects/jasper as a folder AND includes the attachments folder node.
 //
-// Updated per Plan 07-20 (UAT #13): attachments folders are now VISIBLE
-// in the tree as browsable folder nodes. The indexer's note-walk (walk.go)
-// is UNCHANGED — attachments/ contents are NOT indexed as notes.
+// Attachments folders are visible in the tree as browsable folder nodes.
+// The indexer's note-walk (walk.go) is UNCHANGED — attachments/ contents
+// are NOT indexed as notes.
 func TestBuildTree_AttachmentsFolderVisible(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newTreeFixture(t)
@@ -332,7 +332,7 @@ func TestBuildTree_AttachmentsFolderVisible(t *testing.T) {
 		}
 	}
 	if !foundAttachments {
-		t.Errorf("attachments folder NOT in tree (Plan 07-20 UAT #13: should be visible)")
+		t.Errorf("attachments folder NOT in tree (should be visible)")
 	}
 }
 
@@ -362,7 +362,7 @@ func TestBuildTree_AttachmentsFolderVisibleAtRoot(t *testing.T) {
 		}
 	}
 	if !foundAttachments {
-		t.Errorf("root-level attachments folder NOT in tree (Plan 07-20 UAT #13: should be visible)")
+		t.Errorf("root-level attachments folder NOT in tree (should be visible)")
 	}
 }
 
@@ -394,8 +394,6 @@ func TestBuildTree_LocksFolderName(t *testing.T) {
 
 // TestBuildTree_FilesVisible — Non-markdown files inside notes/ appear as
 // TreeFile entries in the tree. Notes/folders continue to appear unchanged.
-// This test covers the UAT-2 R1-7 fix (Plan 07-26) — surfacing all files,
-// not just markdown notes, in the sidebar tree.
 func TestBuildTree_FilesVisible(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newTreeFixture(t)
@@ -481,8 +479,8 @@ func TestBuildTree_FilesVisible(t *testing.T) {
 	}
 }
 
-// TestBuildTree_NoteUpdatedAtFromIndex — The TreeNote.UpdatedAt is
-// derived from the index row's mtime (NOT a fresh file stat).
+// TestBuildTree_NoteUpdatedAtFromIndex — TreeNote.UpdatedAt is derived
+// from the index row's mtime (NOT a fresh file stat).
 func TestBuildTree_NoteUpdatedAtFromIndex(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newTreeFixture(t)

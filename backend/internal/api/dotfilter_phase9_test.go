@@ -17,24 +17,17 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
-// Phase 9 D-09 verification: the file tree, indexer, and search all
-// skip the per-vault `.jasper/` subdirectory because the existing
-// dot-prefix filter in index/walk.go + index/tree.go elides it. These
-// tests pin that behavior so a future refactor that loosens the filter
-// (e.g. switching to an explicit denylist or removing the
-// strings.HasPrefix(name, ".") guard) surfaces immediately.
+// Dot-filter tests: the file tree, indexer, and search all skip the
+// per-vault `.jasper/` subdirectory because the dot-prefix filter in
+// index/walk.go + index/tree.go elides it. These tests pin that behavior
+// so a future refactor that loosens the filter surfaces immediately.
 //
-// The tests build a fixture where notesDir CONTAINS a `.jasper/` folder
-// + a `.jasper/sentinel.md` file (worst case for the filter — in the
-// Phase 9 production layout, `.jasper/` is SIBLING to notes/ and never
-// even visited by the walker). If the filter regressed, sentinel.md
-// would appear in the tree response and in the indexer's reconciled set.
+// The fixture places `.jasper/` INSIDE notesDir (worst case — in production
+// `.jasper/` is a sibling of notes/). If the filter regresses, sentinel.md
+// appears in the tree and in the indexer's reconciled set.
 //
-// These tests do NOT spin up httptest.Server — they exercise the
-// public projection surface (Server.GetTree + Indexer.BuildTree)
-// directly via Go calls. This keeps the assertion focused on the
-// filter and avoids httptest's localhost bind in environments where
-// network sockets are restricted.
+// Tests exercise GetTree + Indexer.BuildTree directly without httptest.Server
+// to keep assertions focused on the filter.
 
 func setupDotFilterPhase9(t *testing.T) (*Server, *index.Indexer, string) {
 	t.Helper()
@@ -44,7 +37,6 @@ func setupDotFilterPhase9(t *testing.T) (*Server, *index.Indexer, string) {
 		t.Fatalf("mkdir notes: %v", err)
 	}
 
-	// Per-vault .jasper/ lives alongside notes/ in production (D-06).
 	jasperDir := filepath.Join(root, vault.SubdirName)
 	if err := os.MkdirAll(jasperDir, 0o755); err != nil {
 		t.Fatalf("mkdir .jasper: %v", err)
@@ -87,23 +79,14 @@ func setupDotFilterPhase9(t *testing.T) (*Server, *index.Indexer, string) {
 	return srv, idx, notesDir
 }
 
-// TestPhase9_TreeSkipsDotJasper asserts the GetTree handler does NOT
-// include a `.jasper/` folder OR a `.jasper/sentinel.md` file even when
-// the fixture places them inside notesDir.
-//
-// D-09 verification (Phase 9): the dot-prefix filter in
-// backend/internal/index/tree.go (listFolders + listFiles) elides every
-// path component beginning with `.`. The Plan 09 production layout
-// places `.jasper/` ALONGSIDE notes/, where the walker would never see
-// it; this test exercises the worst case (`.jasper/` inside notes/) so
-// a regression that loosens the filter surfaces here.
+// TestPhase9_TreeSkipsDotJasper asserts the GetTree handler does NOT include
+// a `.jasper/` folder or `.jasper/sentinel.md` even when the fixture places
+// them inside notesDir. The dot-prefix filter in index/tree.go elides every
+// path component beginning with `.`.
 func TestPhase9_TreeSkipsDotJasper(t *testing.T) {
 	t.Parallel()
 	srv, idx, _ := setupDotFilterPhase9(t)
 
-	// Drive a reconcile so the indexer's SQLite-side state matches the
-	// filesystem; BuildTree returns rows from SQLite plus FS walks for
-	// the folder skeleton.
 	if _, err := idx.ReconcileWithRegistry(context.Background(), index.ModeFull, nil); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
@@ -124,8 +107,6 @@ func TestPhase9_TreeSkipsDotJasper(t *testing.T) {
 		t.Fatalf("marshal tree: %v", err)
 	}
 
-	// Coarse string-level assertion: the wire body must not mention
-	// .jasper or sentinel.md anywhere.
 	bodyStr := string(body)
 	if strings.Contains(bodyStr, vault.SubdirName) {
 		t.Errorf("tree body leaks per-vault subdir name %q: %s", vault.SubdirName, bodyStr)
@@ -175,16 +156,9 @@ func TestPhase9_TreeSkipsDotJasper(t *testing.T) {
 	}
 }
 
-// TestPhase9_IndexerSkipsDotJasper asserts the index.Indexer's full
-// reconcile does NOT register any `.md` file under a `.jasper/`
-// subdirectory of notesDir. The indexer's WalkVault is the single
-// source of truth for which markdown files become rows in the notes
-// table; if the filter regressed, sentinel.md would land in the
-// indexed set.
-//
-// We probe the indexer state via the same projection the tree handler
-// uses (Indexer.BuildTree), and via a direct SQLite query against the
-// notes table.
+// TestPhase9_IndexerSkipsDotJasper asserts the full reconcile does NOT
+// register any `.md` file under a `.jasper/` subdirectory of notesDir.
+// If the filter regressed, sentinel.md would land in the indexed set.
 func TestPhase9_IndexerSkipsDotJasper(t *testing.T) {
 	t.Parallel()
 	srv, idx, _ := setupDotFilterPhase9(t)

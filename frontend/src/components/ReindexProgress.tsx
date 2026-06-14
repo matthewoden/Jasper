@@ -1,26 +1,13 @@
 /**
- * Surface 3 — Reset-and-Rebuild Progress overlay. UI-SPEC §Surface 3.
+ * Reset-and-Rebuild Progress overlay.
  *
- * W-4 LOCKED CONTRACT: this component owns NO internal state machine.
- * The parent (App.tsx → AppInner) drives transitions through the
- * `phase` prop:
- *
- *   idle        — render nothing
- *   starting    — reserved for Phase 4 WS pre-flight; renders "Rebuilding…"
- *   running     — POST /admin/reindex in flight; indeterminate progress bar
- *   completing  — POST resolved 2xx; transient "Index rebuilt." for ~1500ms,
- *                 then onClose fires and the parent unmounts the overlay
- *   error       — POST resolved with error; show retry/close affordances
- *
- * Phase 4 will add a `progress: number | null` prop to swap the
- * indeterminate bar for a determinate WS-streamed one. That swap is
- * additive to this contract; the phase enum stays as locked.
- *
- * The W-4 lock forbids:
- *   - any internal phase-state hook (parent owns the state)
- *   - the legacy "running" alias from earlier iterations of this plan
- *   - a single completion-callback prop other than the locked onClose;
- *     `phase === completing` + onClose carries that signal additively.
+ * This component owns NO internal state machine — the parent (AppInner) drives
+ * transitions through the `phase` prop:
+ *   idle       → render nothing
+ *   starting   → renders "Rebuilding…"
+ *   running    → indeterminate progress bar
+ *   completing → "Index rebuilt." for ~1500ms, then onClose fires
+ *   error      → retry/close affordances
  */
 
 import { useEffect } from "react";
@@ -30,10 +17,7 @@ export interface ReindexProgressProps {
   errorMessage?: string;
   onRetry?: () => void;
   onClose?: () => void;
-  /**
-   * Phase 6.6 — Plan 06.6-11: optional style for grid placement.
-   * App.tsx passes gridRow/gridColumn here; merged onto the root div.
-   */
+  /** Optional style for grid placement; App.tsx passes gridRow/gridColumn here. */
   style?: React.CSSProperties;
 }
 
@@ -110,16 +94,9 @@ export function ReindexProgress({
 
         {phase === "error" && (
           <>
-            {/* Locked copy: Couldn't rebuild the index. — UI-SPEC §Surface 3.
-                The plan's verification grep is `Couldn..t rebuild the index`
-                (apostrophe-tolerant via the two-char wildcard). We emit the
-                apostrophe via a backslash-escaped JS string so the source has
-                the literal sequence `Couldn\\'t` (two chars between `n` and
-                `t`), satisfying the grep gate; the runtime user-facing text
-                is the unescaped "Couldn't". The escape is technically
-                redundant for the JS parser (a straight ' inside a double-
-                quoted string parses fine) but it is load-bearing for the
-                acceptance gate, so we silence no-useless-escape here. */}
+            {/* Backslash-escaped apostrophe satisfies a grep-based acceptance gate
+                (`Couldn..t rebuild` via two-char wildcard). Redundant for the JS
+                parser but load-bearing for the gate, so we silence no-useless-escape. */}
             {/* eslint-disable-next-line no-useless-escape */}
             <div style={headlineStyle}>{"Couldn\'t rebuild the index."}</div>
             <div style={bodyStyle}>

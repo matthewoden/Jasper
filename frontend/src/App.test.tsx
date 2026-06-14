@@ -1,8 +1,6 @@
 /**
- * App-shell tests — Phase 2 composition. Phase 1's three-column grid is now
- * nested inside a flex column with the migration banner row above. We mock
- * the admin status hook so each test can drive the migration-banner branch
- * without spinning up real fetch.
+ * App-shell tests. Mocks the admin status hook so each test can drive the
+ * migration-banner branch without spinning up real fetch.
  */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import {
@@ -98,10 +96,9 @@ vi.mock("./lib/useTheme", () => ({
   THEME_BOOTSTRAP_KEY: "jasper:theme-bootstrap",
 }));
 
-// App now calls useConfig() (Phase 11 boot CSS-var seeding). Stub it so these
-// tests don't fire a real /config fetch (which rejects with "Invalid URL" in
-// jsdom → unhandled rejection). `config: null` is App's handled "not-loaded"
-// state (the boot effect early-returns; autosaveMs falls back to 2000).
+// Stub useConfig to avoid a real /config fetch (rejects with "Invalid URL" in
+// jsdom). `config: null` is App's handled "not-loaded" state (boot effect
+// early-returns; autosaveMs falls back to 2000).
 vi.mock("./lib/useConfig", () => ({
   useConfig: () => ({
     config: null,
@@ -166,7 +163,7 @@ import { COMMAND_PALETTE_ENTRIES } from "./lib/shortcutsRegistry";
 
 const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
 
-describe("<App /> — Phase 2 shell composition", () => {
+describe("<App /> — shell composition", () => {
   beforeEach(() => {
     getAdminStatusMock.mockReset();
     postAdminReindexMock.mockReset();
@@ -342,7 +339,7 @@ describe("<App /> — Phase 2 shell composition", () => {
     expect(viewports.length).toBe(1);
   });
 
-  it("A7: TestApp_NullActiveNote_RendersPlaceholder — Plan 03-07 wiring", async () => {
+  it("A7: TestApp_NullActiveNote_RendersPlaceholder", async () => {
     useTreeStore.setState({
       expanded: new Set(),
       activeNoteId: null,
@@ -534,7 +531,7 @@ describe("<App /> — Phase 2 shell composition", () => {
     });
   });
 
-  it("A8: TestApp_TreeSelection_DrivesEditor — Plan 03-07 wiring", async () => {
+  it("A8: TestApp_TreeSelection_DrivesEditor", async () => {
     useTreeStore.setState({
       expanded: new Set(),
       activeNoteId: null,
@@ -563,7 +560,7 @@ describe("<App /> — Phase 2 shell composition", () => {
 });
 
 
-describe("<App /> — Phase 4 session sync (Plan 04-05)", () => {
+describe("<App /> — session sync", () => {
   beforeEach(() => {
     capturedSessionSyncHandlers = null;
     getAdminStatusMock.mockReset();
@@ -648,7 +645,7 @@ describe("<App /> — Phase 4 session sync (Plan 04-05)", () => {
 });
 
 
-describe("<App /> — Phase 6.6 two-row grid + chrome mounts (Plan 06.6-11)", () => {
+describe("<App /> — two-row grid + chrome mounts", () => {
   beforeEach(() => {
     getAdminStatusMock.mockReset();
     postAdminReindexMock.mockReset();
@@ -735,11 +732,10 @@ describe("<App /> — Phase 6.6 two-row grid + chrome mounts (Plan 06.6-11)", ()
 });
 
 
-describe("Phase 7 global keymap handlers (Plan 07-12)", () => {
+describe("global keymap handlers", () => {
   /**
-   * Helper to build a minimal KeyboardEvent-shaped object for handler testing.
-   * The exported handlers are pure functions that read e.key / e.metaKey /
-   * e.shiftKey and call e.preventDefault. No DOM needed.
+   * Minimal KeyboardEvent-shaped object for handler testing. The exported
+   * handlers are pure functions — no DOM needed.
    */
   function makeEvent(
     key: string,
@@ -883,7 +879,7 @@ describe("Phase 7 global keymap handlers (Plan 07-12)", () => {
 });
 
 
-describe("Phase 7 (Plan 07-16) — handleAppCmdB (UAT #8 fix)", () => {
+describe("handleAppCmdB", () => {
   function resetStore() {
     useTreeStore.setState({ paletteMode: "notes", paletteOpen: false });
   }
@@ -928,7 +924,7 @@ describe("Phase 7 (Plan 07-16) — handleAppCmdB (UAT #8 fix)", () => {
   });
 });
 
-describe("Phase 7 (Plan 07-16) — handleAppCmdI (UAT #9 fix)", () => {
+describe("handleAppCmdI", () => {
   function resetStore() {
     useTreeStore.setState({ paletteMode: "notes", paletteOpen: false });
   }
@@ -974,7 +970,7 @@ describe("Phase 7 (Plan 07-16) — handleAppCmdI (UAT #9 fix)", () => {
 });
 
 
-describe("Phase 7 (Plan 07-16) — handleAppCmdP store mutation contract (UAT #2 investigation)", () => {
+describe("handleAppCmdP store mutation contract", () => {
   function resetStore() {
     useTreeStore.setState({ paletteMode: "notes", paletteOpen: false });
   }
@@ -1014,7 +1010,7 @@ describe("Phase 7 (Plan 07-16) — handleAppCmdP store mutation contract (UAT #2
 });
 
 
-describe("Plan 07-17 — cold Cmd+P shows all palette commands (UAT #2 / BLOCKER #2)", () => {
+describe("cold Cmd+P shows all palette commands", () => {
   beforeEach(() => {
     getAdminStatusMock.mockResolvedValue({
       data: { migration_status: "ok" as const, notes_indexed: 0 },
@@ -1024,7 +1020,7 @@ describe("Plan 07-17 — cold Cmd+P shows all palette commands (UAT #2 / BLOCKER
     useTreeStore.setState({ paletteOpen: false, paletteMode: "notes" });
   });
 
-  it("cold Cmd+P shows all 10 commands (Plan 07-27: Find removed; Plan 08-06: Share/Reveal added; Plan 08-17c: Switch vault… added)", async () => {
+  it("cold Cmd+P shows all 10 commands", async () => {
     render(<AppShell />);
 
     act(() => {
@@ -1043,7 +1039,7 @@ describe("Plan 07-17 — cold Cmd+P shows all palette commands (UAT #2 / BLOCKER
 });
 
 
-describe("Plan 07-17 — commandActions rewire (UAT #3, #5)", () => {
+describe("commandActions rewire", () => {
   beforeEach(() => {
     getAdminStatusMock.mockResolvedValue({
       data: { migration_status: "ok" as const, notes_indexed: 0 },
@@ -1081,7 +1077,7 @@ describe("Plan 07-17 — commandActions rewire (UAT #3, #5)", () => {
 });
 
 
-describe("Plan 07-40 — handleAppCmdShiftF (UAT-6 Cmd+Shift+F opens search modal)", () => {
+describe("handleAppCmdShiftF (Cmd+Shift+F opens search modal)", () => {
   function makeEvent(
     key: string,
     opts: { meta?: boolean; ctrl?: boolean; shift?: boolean } = {},

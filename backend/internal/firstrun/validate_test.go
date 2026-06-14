@@ -150,8 +150,8 @@ func TestValidateDataDir_NonASCII(t *testing.T) {
 	}
 }
 
-// TestValidateDataDir_PathTooLong covers T-08-07 DoS mitigation —
-// oversized paths short-circuit before any syscall runs.
+// TestValidateDataDir_PathTooLong verifies that oversized paths
+// short-circuit before any syscall runs.
 func TestValidateDataDir_PathTooLong(t *testing.T) {
 	t.Parallel()
 	huge := strings.Repeat("a", maxDataDirPathLen+1)
@@ -160,16 +160,15 @@ func TestValidateDataDir_PathTooLong(t *testing.T) {
 		t.Fatalf("expected Valid=false for oversized path; got Valid=true")
 	}
 	if res.Code != RefusalNonASCII {
-		t.Fatalf("Code: got %q want %q (oversized path mapped to NonASCII per T-08-07)", res.Code, RefusalNonASCII)
+		t.Fatalf("Code: got %q want %q (oversized path mapped to NonASCII)", res.Code, RefusalNonASCII)
 	}
 }
 
-// TestResolveDataDir_TildeExpansion covers the UAT-1 fix
-// (debug firstrun-tilde-not-expanded.md): bare "~" and "~/..." paths
-// must expand against os.UserHomeDir() into absolute paths. Without
-// this, sqlite.Open at the end of RunSetup rejects the resulting
-// dbPath with "dbPath must be absolute" and the wizard fails after
-// the user has already committed.
+// TestResolveDataDir_TildeExpansion verifies that bare "~" and "~/..."
+// paths expand against os.UserHomeDir() into absolute paths. Without
+// this, sqlite.Open at the end of RunSetup rejects the resulting dbPath
+// with "dbPath must be absolute" and the wizard fails after the user has
+// already committed.
 func TestResolveDataDir_TildeExpansion(t *testing.T) {
 	t.Parallel()
 	home, err := os.UserHomeDir()
@@ -263,8 +262,7 @@ func TestResolveDataDir_NotAbsolute(t *testing.T) {
 // TestValidateDataDir_TildePath_NoStrayDir is the integration check
 // tying ResolveDataDir into ValidateDataDir. A "~/..." path passed
 // through ValidateDataDir must NOT create a stray "~"-rooted directory
-// under the test runner's cwd — that was the original symptom of the
-// bug fixed in debug session firstrun-tilde-not-expanded.md.
+// under the test runner's cwd.
 //
 // We snapshot cwd, check whether a literal "./~" already exists (so
 // we don't false-positive on leftover artifacts), call ValidateDataDir

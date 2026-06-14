@@ -1,14 +1,6 @@
 /**
- * Sidebar tests — Phase 3 chassis + Plan 03-07 wiring.
- *
- * Plan 03-07 changes:
- *   - Sidebar's New note / New folder buttons now call
- *     useTreeCreateActions() (which itself uses useToast +
- *     useTreeMutations + useFileTree). Tests wrap Sidebar in
- *     <ToastProvider> + mock useTreeMutations.
- *   - Refresh-error path now surfaces a destructive toast with the
- *     locked title "Couldn't refresh the index." in addition to
- *     re-throwing for the toolbar's spin-clear.
+ * Sidebar tests — New note / New folder wiring and layout contracts.
+ * Tests wrap Sidebar in ToastProvider and mock useTreeMutations.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {

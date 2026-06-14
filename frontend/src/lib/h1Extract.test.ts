@@ -1,24 +1,11 @@
 /**
- * Tests for h1Extract — the client-side mirror of
- * backend/internal/markdown/title.go's ExtractTitle scanner. Used by
- * EditorPane (autosave H1 detection) + FileTree (post-rename H1
- * rewrite) to close Gap R2-6 (filename↔H1 bidirectional binding;
- * PROJECT.md Key Decision 2026-05-03 LOCKED).
- *
- * Coverage shape:
- *   - extractH1FromContent: 10 cases — happy path, no-H1, frontmatter
- *     (closed + unclosed), Unicode, leading blanks, edge whitespace.
- *   - sanitizeH1ForFilename: 9 cases — happy path, illegal chars,
- *     empty / whitespace-only, leading-dot, control chars.
- *   - rewriteH1: 6 cases — happy path, no-H1 no-op, frontmatter
- *     traversal, indented heading preservation, multi-paragraph
- *     untouched.
+ * Tests for h1Extract — the client-side mirror of ExtractTitle in
+ * backend/internal/markdown/title.go.
  *
  * The illegal-char regex MUST agree byte-for-byte with the regex in
- * RenameInput.validateRename (which itself mirrors the backend's
- * notes.validateBareName) — same set: / \ : * ? " < > | + ASCII
- * controls. Drift between client validators is the bug class this
- * module exists to prevent.
+ * RenameInput.validateRename (which mirrors the backend's
+ * notes.validateBareName). Drift between client validators is the bug class
+ * this module exists to prevent.
  */
 import { describe, expect, it } from "vitest";
 

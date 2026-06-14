@@ -1,32 +1,18 @@
 /**
- * externalImagePlugin — Plan 05-08 / SECURITY-03 / D-21..D-25.
+ * externalImagePlugin — replaces inline external images (https://...) with a
+ * click-to-load placeholder. On click, the image bytes are fetched, converted
+ * to a blob URL via URL.createObjectURL, and the placeholder swaps for an
+ * <img src="blob:...">. The strict CSP (img-src 'self' data: blob:) blocks
+ * direct external src; the blob URL is the bridge.
  *
- * Replaces inline ![alt](https://...) external images with a click-
- * to-load placeholder widget. After user click, fetch the image bytes,
- * convert to a Blob, create a blob: URL via URL.createObjectURL, and
- * swap the placeholder for <img src="blob:...">. Strict CSP
- * (img-src 'self' data: blob: — Plan 05-04) blocks direct
- * <img src="https://..."> but permits the blob: URL — the widget is
- * the bridge.
+ * Allow-list: per-URL granularity (full URL string match), stored as a JSON
+ * array in localStorage["jasper:img-allowlist"]. Survives page reloads; no
+ * UI to remove entries in v1.
  *
- * Allow-list (D-21, D-24, D-43):
- *   - Per-URL granularity (full URL string match), NOT per-host
- *   - Stored as JSON.stringify([...Set<string>]) at
- *     localStorage["jasper:img-allowlist"]
- *   - Survives page reloads; does NOT sync across browsers
- *   - No UI to remove entries in v1 (DevTools / clear localStorage)
+ * Internal images (same-origin or relative path) bypass the gate entirely.
  *
- * Internal images (D-23) — bypass the gate. An "internal" URL is:
- *   - Same-origin (hostname matches window.location.hostname)
- *   - Or a relative path NOT starting with http(s)://
- *
- * Memory hygiene (RESEARCH §Pitfall 4): the widget tracks its blob
- * URL on the instance and revokes it in destroy() — every widget
- * destroyed cleans up exactly one URL.createObjectURL allocation.
- *
- * Sibling pattern: this plugin does NOT touch livePreviewPlugin or
- * frontmatterPlugin. The MarkdownEditor extension array imports all
- * three as separate Extensions per D-29 (the integration seam).
+ * Each widget tracks its blob URL and revokes it in destroy() to avoid leaking
+ * URL.createObjectURL allocations.
  */
 import {
   Decoration,
@@ -50,10 +36,7 @@ const copyAltFallback = (host: string): string => `External image from ${host}`;
 const copyDescription = (host: string): string =>
   `External image from ${host}. Click "Allow this image" to load it.`;
 
-/**
- * readAllowlist — returns the persisted Set of URL strings. Returns
- * an empty Set on parse error or quota-exceeded scenarios.
- */
+/** Returns the persisted Set of allowed URL strings; empty Set on parse error. */
 export function readAllowlist(): Set<string> {
   try {
     const raw = localStorage.getItem(ALLOWLIST_KEY);
@@ -66,11 +49,7 @@ export function readAllowlist(): Set<string> {
   }
 }
 
-/**
- * writeAllowlist — persists the Set to localStorage. Silently no-ops
- * on quota / permission errors so the widget remains in-memory-allowed
- * for the session.
- */
+/** Persists the Set to localStorage. Silently no-ops on quota/permission errors. */
 export function writeAllowlist(s: Set<string>): void {
   try {
     localStorage.setItem(ALLOWLIST_KEY, JSON.stringify([...s]));
@@ -80,11 +59,9 @@ export function writeAllowlist(s: Set<string>): void {
 }
 
 /**
- * isExternalUrl — D-23 routing. Returns true ONLY for absolute URLs
- * with http(s) scheme whose host differs from window.location.hostname.
- * All relative paths, attachments, and same-origin absolute URLs are
- * considered internal and render via CM6's normal Image rendering
- * (no widget injected).
+ * isExternalUrl — returns true only for absolute http(s) URLs whose host
+ * differs from window.location.hostname. Relative paths and same-origin
+ * URLs are internal and skip the widget gate.
  */
 export function isExternalUrl(url: string): boolean {
   if (!/^https?:\/\//i.test(url)) return false;
@@ -97,11 +74,7 @@ export function isExternalUrl(url: string): boolean {
   }
 }
 
-/**
- * ExternalImageWidget — Decoration.replace block widget. Renders the
- * placeholder until allow-listed; on click, fetches the image bytes,
- * creates a blob URL, and renders <img src="blob:...">.
- */
+/** Decoration.replace block widget — placeholder until allowed, then <img src="blob:...">. */
 export class ExternalImageWidget extends WidgetType {
   private blobUrl: string | null = null;
   private destroyed = false;
@@ -223,16 +196,12 @@ export class ExternalImageWidget extends WidgetType {
 }
 
 /**
- * buildImageDecorations — walks lezer-markdown Image nodes; for each
- * external URL, emits Decoration.replace with the widget. Internal
- * URLs are SKIPPED so CM6 renders them via normal flow.
+ * buildImageDecorations — walks lezer-markdown Image nodes; emits
+ * Decoration.replace for external URLs, skips internal ones.
  *
- * Note: CM6 ViewPlugin decorations MUST NOT use `block: true` —
- * "Block decorations may not be specified via plugins" (CM6 constraint).
- * We use a standard inline Decoration.replace widget here; the widget's
- * container div uses CSS `display:block` to visually occupy its own line.
- * This is the correct approach for inline-positioned widgets that expand
- * to fill the line width (UI-SPEC §External-image widget).
+ * block: true is prohibited in ViewPlugin decorations (CM6 constraint:
+ * "Block decorations may not be specified via plugins"). Visual block
+ * appearance comes from CSS `display:block` on the container div instead.
  */
 export function buildImageDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
@@ -254,9 +223,7 @@ export function buildImageDecorations(view: EditorView): DecorationSet {
           node.to,
           Decoration.replace({
             widget: new ExternalImageWidget(url, alt),
-            // block: true — PROHIBITED in ViewPlugin decorations (CM6
-            // constraint). Visual block appearance is handled via CSS
-            // `.cm-external-image { display: block; }`.
+            // block: true is prohibited in ViewPlugin decorations — CSS display:block handles layout.
           })
         );
       },

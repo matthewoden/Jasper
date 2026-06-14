@@ -1,13 +1,11 @@
 // Package notes is the domain layer for note read/write operations.
 // It is the testable core of Jasper. Imports nothing project-specific
 // except its own ports (FileStore, Index — see ports.go); concrete
-// adapters live in fsstore/ (Phase 1) and (Phase 2) db/.
+// adapters live in fsstore/ and internal/index/.
 //
-// Per ARCHITECTURE.md §11.1 the canonical save path is filesystem FIRST,
-// SQLite index SECOND, broadcast THIRD. Phase 1 only does step ONE — the
-// SQLite Index port is declared but unimplemented; the broadcaster is
-// absent. Phase 2 plugs in a real Index without changing this package's
-// signatures; Phase 4 adds the broadcaster the same way.
+// Per the canonical save ordering: filesystem FIRST, SQLite index SECOND,
+// broadcast THIRD. The SQLite Index and Broadcaster ports are declared here;
+// concrete implementations are wired at the composition root.
 package notes
 
 import (
@@ -32,49 +30,46 @@ var (
 	// ErrNotFound is returned when the requested UUID is not in the
 	// registry, or the underlying file is missing on disk.
 	ErrNotFound = errors.New("notes: note not found")
-	// ErrInvalidContent is reserved for Phase 2+ validation (e.g. content
-	// too large). Phase 1 accepts any content (including empty markdown).
+	// ErrInvalidContent is returned for content that fails validation (e.g.
+	// empty title, forbidden characters). Empty markdown content is legal.
 	ErrInvalidContent = errors.New("notes: invalid content")
 	// ErrCaseCollision is returned by Index.Upsert (and propagated by
 	// Service.Update) when a note's canonical path conflicts case-
-	// insensitively with an existing different note (DATA-12). The API
-	// layer maps this to HTTP 409 Conflict; the UI surfaces a "rename
-	// would collide with an existing note" toast. The underlying SQLite
-	// UNIQUE constraint on notes.path is the enforcement point — see
-	// 001_initial.sql.
+	// insensitively with an existing different note. The API layer maps
+	// this to HTTP 409 Conflict; the UI surfaces a "rename would collide
+	// with an existing note" toast. Enforced by the SQLite UNIQUE constraint
+	// on notes.path (see 001_initial.sql).
 	ErrCaseCollision = errors.New("notes: case-insensitive path collision with existing note")
 
 	// ErrStaleWrite is returned by Service.Update when the supplied
-	// If-Match value does not match the current file's mtime (SYNC-06).
-	// The API layer maps this to HTTP 409 with `code: stale_write` and
+	// If-Match value does not match the current file's mtime. The API
+	// layer maps this to HTTP 409 with `code: stale_write` and
 	// `current_updated_at` in the body so the client can show the
-	// Save-anyway / Discard banner per SYNC-05.
+	// Save-anyway / Discard banner.
 	//
-	// BL-02: Service.Update returns a *StaleWriteInfo that wraps this
-	// sentinel — handlers should `errors.As(err, &swErr)` to obtain the
-	// already-statted mtime instead of issuing a second Get (which races
-	// against a third writer between the failed Update's Stat and the
-	// follow-up Get's Stat).
+	// Service.Update returns a *StaleWriteInfo that wraps this sentinel —
+	// handlers should `errors.As(err, &swErr)` to obtain the already-statted
+	// mtime instead of issuing a second Get (which races against a third
+	// writer between the failed Update's Stat and the follow-up Get's Stat).
 	ErrStaleWrite = errors.New("notes: stale write — If-Match mismatch")
 
 	// ErrTagNotFound is returned by Index.RenameTag and Index.DeleteTag when
-	// the named tag does not exist in the index (D-22 / TAGS-03).
+	// the named tag does not exist in the index.
 	ErrTagNotFound = errors.New("notes: tag not found")
 
 	// ErrTagCollision is returned by Index.RenameTag when newName already
-	// exists as a tag name (D-22 / TAGS-04).
+	// exists as a tag name.
 	ErrTagCollision = errors.New("notes: tag already exists")
 
-	// ErrInvalidTagName is returned when a tag name violates the D-22 charset
-	// rule ([a-z0-9_-]+). Both the service layer and the API handler check this.
+	// ErrInvalidTagName is returned when a tag name violates the allowed charset
+	// ([a-z0-9_-]+). Both the service layer and the API handler check this.
 	ErrInvalidTagName = errors.New("notes: invalid tag name (allowed: [a-z0-9_-]+)")
 )
 
 // StaleWriteInfo carries the current file mtime alongside ErrStaleWrite
 // so callers can surface a comparator without a second filesystem Stat
-// (which would race a third writer — BL-02). Implements errors.Is for
-// ErrStaleWrite so existing `errors.Is(err, ErrStaleWrite)` checks
-// continue to work.
+// (which would race a third writer). Implements errors.Is for ErrStaleWrite
+// so existing `errors.Is(err, ErrStaleWrite)` checks continue to work.
 type StaleWriteInfo struct {
 	// Current is the file's mtime at the moment Service.Update detected
 	// the If-Match mismatch — same Stat call that produced the mismatch

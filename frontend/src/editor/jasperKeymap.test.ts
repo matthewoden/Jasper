@@ -1,22 +1,10 @@
 /**
- * jasperKeymap.test — verifies Cmd+S (Mod-s) keymap calls the onSave
- * callback and prevents default browser behavior. Plan 05-11 / EDIT-10.
+ * jasperKeymap.test — verifies Cmd+S (Mod-s) keymap calls onSave and prevents
+ * default browser behavior; also verifies toggleBold / toggleItalic commands.
  *
- * NOTE on platform detection: CM6 resolves "Mod-" to metaKey on Mac
- * (navigator.platform contains "Mac") and to ctrlKey everywhere else.
- * In the vitest happy-dom environment navigator.platform is empty (and
- * the CM6 browser-detection module caches this at load time), so "Mod-"
- * maps to ctrlKey here. This is consistent with CI/Linux behavior.
- * The Mac metaKey path is exercised by the production binary running on
- * macOS and by the Playwright E2E suite (Plan 05-12).
- *
- * Three tests verify:
- *   1. Ctrl-s triggers onSave and preventsDefault (the Mod-s path in test env)
- *   2. Ctrl-s triggers onSave on a second independent EditorView
- *   3. Plain 's' without a modifier does NOT trigger onSave
- *
- * Plan 07-24: JK-bold-italic tests verify toggleBold / toggleItalic CM6
- * commands (UAT-2 R1-4 — Cmd+B / Cmd+I were never bound to CM6 keymap).
+ * Platform note: CM6 resolves "Mod-" to metaKey on Mac and ctrlKey elsewhere.
+ * In the vitest happy-dom environment (navigator.platform is empty), "Mod-"
+ * maps to ctrlKey — consistent with CI/Linux behavior.
  */
 import { describe, it, expect, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
@@ -107,7 +95,7 @@ describe("jasperKeymap / saveKeymap", () => {
 });
 
 
-describe("JK-bold-italic — toggleBold / toggleItalic commands (UAT-2 R1-4)", () => {
+describe("JK-bold-italic — toggleBold / toggleItalic commands", () => {
   function makeView(doc: string, selFrom: number, selTo: number): EditorView {
     const parent = document.createElement("div");
     document.body.appendChild(parent);

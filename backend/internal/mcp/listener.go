@@ -23,11 +23,11 @@ type Logger interface {
 // the StreamableHTTP endpoint at /mcp. Returns the *http.Server so the
 // caller can Shutdown(ctx) it during app exit.
 //
-// Per D-15 + D-45: bind is enforced loopback-only via netbind.
-// Per D-23: the caller invokes this AFTER lifecycle.Ready() returns true.
+// Bind is enforced loopback-only via netbind. Caller must invoke this
+// after lifecycle.Ready() returns true.
 //
 // The /mcp endpoint is the MCP protocol entry point; /healthz returns
-// 200 OK and is intended for liveness probes (e.g. doctor.go in 08-12).
+// 200 OK for liveness probes.
 func StartMCPListener(_ context.Context, server *Server, bindAddr string, log Logger) (*http.Server, error) {
 	if err := netbind.RequireLoopbackBind(bindAddr); err != nil {
 		return nil, fmt.Errorf("MCP listener: %w", err)

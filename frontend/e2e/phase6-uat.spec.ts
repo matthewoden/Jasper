@@ -1,57 +1,33 @@
 /**
  * Phase 6 UAT — Tags, Backlinks, Wiki-Links.
  *
- * Regression-proof Playwright coverage for every Phase 6 requirement against
- * the live `bin/jasper` binary (built via `make build` — CLAUDE.md §Build &
- * embed pipeline). This is the gate before human UAT per CLAUDE.md
- * §Verification policy.
- *
  * Scenarios:
- *   S1  : new note ships with frontmatter scaffold (TAGS-EXT-01)
- *   S2  : one-time migration injects scaffold into pre-existing no-frontmatter
- *         files on first Phase 6 startup (TAGS-EXT-03)
- *   S3  : save with frontmatter removed auto-restores scaffold (TAGS-EXT-02)
- *   S4  : tags sync to tag browser (TAGS-01, TAGS-02, TAGS-03)
- *   S5  : tag click filters file tree; chip clears filter (TAGS-04)
- *   S6  : tag rename rewrites all carrier files on disk (TAGS-06)
- *   S7  : tag delete removes from all carrier files; N≤5 skips dialog (TAGS-07)
- *   S8  : [[Foo autocomplete shows matching titles + Create row (LINKS-06, D-14)
- *   S9  : full reindex reconstructs tags + backlinks (TAGS-05, DATA-10)
- *   S10 : pending link styled with cm-wiki-link-pending class (LINKS-04)
+ *   S1  : new note ships with frontmatter scaffold
+ *   S2  : one-time migration injects scaffold into pre-existing no-frontmatter files
+ *   S3  : save with frontmatter removed auto-restores scaffold
+ *   S4  : tags sync to tag browser
+ *   S5  : tag click filters file tree; chip clears filter
+ *   S6  : tag rename rewrites all carrier files on disk
+ *   S7  : tag delete removes from all carrier files; N≤5 skips dialog
+ *   S8  : [[Foo autocomplete shows matching titles + Create row
+ *   S9  : full reindex reconstructs tags + backlinks
+ *   S10 : pending link styled with cm-wiki-link-pending class
  *   S11 : rename note rewrites [[OldTitle]] references; backlinks panel updates
- *         (LINKS-07, LINKS-08)
  *   S12 : Cmd+click on resolved [[Foo]] navigates; plain click is inert
- *         (LINKS-05, D-15)
- *   S13 : cross-tab tag rename: tab B's tag browser refreshes (D-33, D-35)
- *   S14 : ambiguous wiki-link resolves same-folder-first (LINKS-02, LINKS-03)
+ *   S13 : cross-tab tag rename: tab B's tag browser refreshes
+ *   S14 : ambiguous wiki-link resolves same-folder-first
  *   S15 : wiki-links inside fenced code blocks stay literal / not decorated
- *         (D-19)
  *   S16 : backlinks panel opens + shows referrer row with sanitized excerpt
- *         (LINKS-08, D-27, D-30)
- *   S17 : rename rewrite failure banner (D-36) — test.fixme; needs server
- *         fault injection (JASPER_TEST_FAIL_REWRITE env var, not yet plumbed)
+ *   S17 : rename rewrite failure banner — test.fixme; needs server fault injection
  *
- * Authoring notes:
- *   - CM6 typing recipe: page.locator(".cm-content").click() → keyboard.type()
- *     NOT textarea.fill() (the editor is CodeMirror 6 contenteditable).
- *   - Tree rows use data-tree-row-kind="note" / "folder".
- *   - Tag rows use data-testid="tag-row-{name}".
- *   - Tag browser header button aria-label:
- *       collapsed: "Tags section, collapsed. N tags. Click to expand."
- *       expanded:  "Tags section, expanded. N tags. Click to collapse."
- *   - Active filter chip: aria-label="Remove tag filter: {name}".
- *   - Backlinks rail: role="region" aria-label="Notes that link to this note".
- *   - Backlinks toggle (collapsed): aria-label="Show backlinks panel".
- *   - Backlinks hide (expanded): aria-label="Hide backlinks panel".
- *   - Context menu Rename item text: "Rename tag…"
- *   - Context menu Remove item: data-testid="delete-tag-{name}"
+ * Selector notes:
+ *   - CM6 editor is contenteditable — use keyboard.type(), not .fill().
+ *   - Tree rows: data-tree-row-kind="note" / "folder"
+ *   - Tag rows: data-testid="tag-row-{name}"
+ *   - Active filter chip: aria-label="Remove tag filter: {name}"
+ *   - Backlinks rail: role="region" aria-label="Notes that link to this note"
  *   - wikilink resolved: .cm-wiki-link; pending: .cm-wiki-link-pending
  *   - POST /api/v1/notes body: { parent_path: string, title: string }
- *     (NOT { path } — title = filename without .md, parent_path = folder path)
- *
- * CLAUDE.md §Verification policy: every scenario runs against bin/jasper
- * (make build). The spawnJasper() helper in binary.ts now fails fast if
- * bin/jasper is missing.
  */
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -84,8 +60,7 @@ async function openApp(
 }
 
 /**
- * CM6 typing recipe (CLAUDE.md §Verification policy gotcha):
- * .fill() on .cm-content is a silent no-op — use keyboard input.
+ * CM6 typing recipe: .fill() on .cm-content is a no-op (contenteditable).
  * Clears existing content via Cmd/Ctrl+A then Delete before typing.
  */
 async function typeIntoEditor(page: Page, text: string): Promise<void> {
@@ -1064,9 +1039,9 @@ test.describe("Phase 6 UAT — Rename failure banner (D-36)", () => {
     const jasper = await spawnJasper({ env: { JASPER_TEST_FAIL_REWRITE: "1" } });
     try {
       // Register the vault so the app bypasses the first-run picker.
-      // spawnJasper uses --vault <dataDir> which initializes the vault on disk,
-      // but since Phase 8 the vault registry is separate from the flag: the UI
-      // shows the vault picker until vault/open is called to register the path.
+      // --vault <dataDir> initializes the vault on disk but does not register
+      // it in the vault registry; the UI shows the picker until vault/open is
+      // called to register the path.
       const openResp = await page.request.post(
         `${jasper.baseURL}/api/v1/vault/open`,
         { data: { path: jasper.dataDir } },

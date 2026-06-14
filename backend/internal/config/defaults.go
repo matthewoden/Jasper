@@ -9,7 +9,7 @@ import (
 //
 //   - macOS / Linux: ~/.jasper
 //   - Windows:       %USERPROFILE%\.jasper (Windows is not a v1 target,
-//     but the helper stays portable — kardianos/service supports it).
+//     but the helper stays portable).
 //
 // Returns "" if os.UserHomeDir fails (very rare; callers must handle
 // the empty case — the first-run wizard prompts for an explicit path
@@ -22,24 +22,21 @@ func DefaultDataDir() string {
 	return filepath.Join(home, ".jasper")
 }
 
-// Defaults returns a Config populated with the DESIGN.md §11 + Phase 8
-// D-50 / D-47 default values for every field. Used by:
+// Defaults returns a Config populated with DESIGN.md §11 default values
+// for every field. Used by:
 //
 //   - load.go when .jasper/config.json is missing (the file is then
 //     written so subsequent reads succeed with the canonical shape).
 //   - load.go to seed missing nested-struct fields when an old config
-//     (without `server` / `mcp` blocks) is loaded — see the start-from-
-//     defaults pattern in Load that ensures backward compat.
-//   - The first-run wizard (Plan 08-02 PostSetup) as the baseline
-//     before overlaying user choices.
+//     (without `server` / `mcp` blocks) is loaded.
+//   - The first-run wizard as the baseline before overlaying user choices.
 //
-// Server.Port is 6683 (D-50 — T9 spelling of "NOTE"). Server.DataDir
-// is DefaultDataDir() so the binary boots into ~/.jasper without ever
-// being run through the wizard (degraded but functional).
+// Server.Port is 6683 (T9 spelling of "NOTE"). Server.DataDir is
+// DefaultDataDir() so the binary boots into ~/.jasper without a wizard run.
 //
-// MCP defaults: Enabled=true (UAT-2 round 2 Q3 — default-on so grant UI works
-// out of the box), Port=6684 (D-47), Bind="127.0.0.1" (D-15). Listener still
-// only binds loopback; user can disable via config.json or settings UI.
+// MCP defaults: Enabled=true (default-on so grant UI works out of the box),
+// Port=6684, Bind="127.0.0.1". Listener still only binds loopback; user
+// can disable via config.json or the settings UI.
 func Defaults() Config {
 	return Config{
 		AppName: "Jasper",
@@ -66,13 +63,12 @@ func Defaults() Config {
 	}
 }
 
-// DefaultConfig is the pre-Phase-8 name for Defaults(). It remains as
-// an alias so existing call sites (load.go, save_test.go, config_test.go)
-// keep compiling. New callers SHOULD prefer Defaults().
+// DefaultConfig is a deprecated alias for Defaults(). Kept so existing
+// call sites keep compiling. New callers SHOULD prefer Defaults().
 //
 // Theme defaults to "dark" because the persisted shape needs SOME value;
 // the actual first-paint follows prefers-color-scheme via the inline
-// bootstrap in frontend/index.html (D-15 — Plan 05-10 wires).
+// bootstrap in frontend/index.html.
 func DefaultConfig() Config {
 	return Defaults()
 }

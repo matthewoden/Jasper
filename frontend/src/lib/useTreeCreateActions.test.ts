@@ -1,16 +1,11 @@
 /**
- * Tests for useTreeCreateActions — the shared create-note / create-folder
- * handlers consumed by Sidebar's toolbar and FileTree's context-menu /
- * kebab callbacks.
+ * Tests for useTreeCreateActions — the shared create-note / create-folder handlers.
  *
- * Coverage focuses on the Gap 5 fix: the hook now reads the live tree
- * state and passes the lowest non-colliding name to muts.createNote /
- * muts.createFolder instead of a literal "untitled".
+ * Verifies that the hook reads live tree state and passes the lowest non-colliding
+ * name to muts.createNote / muts.createFolder via nextUntitledName.
  *
- * useFileTree and useTreeMutations are mocked — the unit under test is
- * the wiring between those two hooks and the nextUntitledName helper.
- * useToast is real (we wrap with <ToastProvider>) so error-path tests
- * could be added later without restructuring.
+ * useFileTree and useTreeMutations are mocked; useToast is real (wrapped with
+ * ToastProvider) so error-path tests can be added without restructuring.
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -185,16 +180,12 @@ describe("useTreeCreateActions — auto-increment default name (Gap 5)", () => {
 });
 
 /**
- * Gap R2-2 — in-flight guard.
+ * In-flight guard tests.
  *
- * Per `03-RESEARCH-ROUND2.md` §3.2 the auto-increment helper is correct; the
- * bug is a race condition. Rapid double-clicks of New Folder fire two
- * createFolderAt calls in the same React tick, both reading the pre-create
- * snapshot of `tree`, both computing `"untitled"`, and the second 409s.
- *
- * Fix: a useState boolean `isCreating` guards both create paths and is
- * surfaced on the hook return so SidebarToolbar can disable its New Note +
- * New Folder buttons mirroring the Refresh button's spin-disabled pattern.
+ * Rapid double-clicks fire two createFolderAt calls in the same React tick,
+ * both reading the pre-create snapshot of tree, both computing "untitled",
+ * causing the second to 409. The isCreating guard prevents the second call
+ * from reaching the mutator.
  */
 function deferred<T = void>() {
   let resolve!: (v: T) => void;

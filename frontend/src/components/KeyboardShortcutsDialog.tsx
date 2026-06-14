@@ -1,16 +1,9 @@
 /**
- * KeyboardShortcutsDialog — Cmd+/ cheat-sheet dialog. Plan 07-12.
- * UI-SPEC §Surface 6.
+ * KeyboardShortcutsDialog — Cmd+/ cheat-sheet dialog.
  *
- * Uses @radix-ui/react-dialog (NOT AlertDialog — this is non-destructive).
- * Width 560px, centered, padding 24px.
- * 2-column grid of grouped entries; each row: label left, KeyboardChip right.
- * Footer with locked tip copy. Close button (accent recipe).
- * Esc closes via Radix default.
- *
- * Forward-compat: KeyboardChip is imported from KeyboardChip.tsx — NEVER
- * re-implemented here (UI-SPEC §Forward-Compat #2).
- * All colors via var(--color-*) tokens; no hex literals.
+ * Uses @radix-ui/react-dialog (not AlertDialog — non-destructive). Width 560px,
+ * centered. 2-column grid of grouped entries; each row: label left, KeyboardChip
+ * right. Footer tip + Close button. Esc closes via Radix default.
  */
 import * as Dialog from "@radix-ui/react-dialog";
 import { CHEAT_SHEET_ENTRIES, GROUP_ORDER } from "../lib/shortcutsRegistry";
@@ -68,7 +61,6 @@ export function KeyboardShortcutsDialog({ open, onOpenChange }: Props) {
             Keyboard shortcuts
           </Dialog.Title>
 
-          {/* 2-column grid of grouped entries */}
           <div
             style={{
               display: "grid",
@@ -79,7 +71,6 @@ export function KeyboardShortcutsDialog({ open, onOpenChange }: Props) {
           >
             {grouped.map(({ group, entries }) => (
               <div key={group}>
-                {/* Group eyebrow: 12px / 600 / muted / uppercase / 0.05em */}
                 <div
                   style={{
                     fontSize: 12,
@@ -117,7 +108,6 @@ export function KeyboardShortcutsDialog({ open, onOpenChange }: Props) {
             ))}
           </div>
 
-          {/* Locked footer — verbatim from UI-SPEC §Copywriting Contract */}
           <div
             style={{
               marginTop: 24,
@@ -133,7 +123,6 @@ export function KeyboardShortcutsDialog({ open, onOpenChange }: Props) {
             }
           </div>
 
-          {/* Close button — accent recipe (matches ResetAndRebuildDialog.tsx) */}
           <div
             style={{
               marginTop: 24,

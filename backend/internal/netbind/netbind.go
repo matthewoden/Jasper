@@ -1,11 +1,7 @@
 // Package netbind provides loopback-only bind enforcement reused by
 // the primary HTTP listener (backend/cmd/jasper/serve.go) and the MCP
-// listener (backend/internal/mcp/server.go, Phase 8 Plan 08-09) per
-// D-15 / D-45. Extracted in Plan 08-01 Task 3 because the MCP listener
-// cannot import package main; the function used to live in
-// backend/cmd/jasper/serve.go and is byte-identical to the original
-// (same accept list, same error wording — existing log greps and
-// downstream tests continue to match).
+// listener (backend/internal/mcp/server.go). Extracted to a separate
+// package because the MCP listener cannot import package main.
 package netbind
 
 import (
@@ -21,10 +17,8 @@ import (
 // treats it as 0.0.0.0 (all interfaces). Callers must spell the host
 // explicitly so a typo doesn't silently expose the listener to the LAN.
 //
-// The error string preserves the original "phase 1 only allows binding
-// to loopback (localhost / 127.0.0.1 / ::1); 0.0.0.0 will be revisited
-// in phase 8" wording from cmd/jasper/serve.go so smoke tests +
-// log greps + downstream MCP tests can all match the same literal.
+// The error string is stable — smoke tests, log greps, and downstream
+// MCP tests all match the same literal.
 func RequireLoopbackBind(addr string) error {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {

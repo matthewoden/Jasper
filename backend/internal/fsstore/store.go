@@ -8,17 +8,13 @@ import (
 
 // Store is the concrete FileStore for a single data root (e.g.
 // ~/.jasper/notes/). It routes every operation through Canonicalize
-// (the case-collision / NFC / symlink-escape gate — Pitfall 2) and
-// AtomicWrite (the durable-write primitive — Pitfall 3 / DATA-13).
-//
-// Plan 04's main.go constructs Store with the resolved --data-dir /
-// $JASPER_DATA_DIR / default-`~/.jasper/notes` value (CONTEXT.md D-07).
+// (case-collision / NFC / symlink-escape gate) and AtomicWrite
+// (durable-write primitive).
 type Store struct {
 	root string
 }
 
-// NewStore returns a Store rooted at notesDir. The directory MUST exist;
-// caller (Plan 04 main.go) is responsible for mkdir.
+// NewStore returns a Store rooted at notesDir. The directory MUST already exist.
 func NewStore(notesDir string) *Store {
 	return &Store{root: notesDir}
 }
@@ -62,9 +58,7 @@ func (s *Store) Stat(relPath string) (time.Time, error) {
 }
 
 // CreateFile delegates to the package-level primitive in ops.go,
-// supplying s.root as the data root. Plan 03-03's notes service uses
-// these wrappers to pair every FS mutation with an index update under
-// a single transaction.
+// supplying s.root as the data root.
 func (s *Store) CreateFile(relPath string) error {
 	return CreateFile(s.root, relPath)
 }

@@ -7,12 +7,11 @@ import (
 	"strings"
 )
 
-// PostFolders implements POST /api/v1/folders (TREE-04 — folder creation).
+// PostFolders implements POST /api/v1/folders (folder creation).
 //
-// Thin shim per Plan 03-04: validate body presence → call
-// notes.Service.CreateFolder → translate response. The wire response is
-// a FolderNode with Children explicitly populated as an empty (non-nil)
-// slice — Plan 03-01 wire-shape rule.
+// Validates body presence → calls notes.Service.CreateFolder → translates
+// response. The wire response is a FolderNode with Children explicitly
+// populated as an empty (non-nil) slice.
 //
 //nolint:revive // generated interface name
 func (s *Server) PostFolders(
@@ -25,7 +24,8 @@ func (s *Server) PostFolders(
 	}
 	folderPath, err := s.notes.CreateFolder(ctx, req.Body.ParentPath, req.Body.Name)
 	if err != nil {
-		s.log.Error("PostFolders: domain error",
+		s.log.Error(
+			"PostFolders: domain error",
 			"parent", req.Body.ParentPath,
 			"name", req.Body.Name,
 			"err", err,
@@ -49,13 +49,12 @@ func (s *Server) PostFolders(
 	}, nil
 }
 
-// DeleteFolder implements DELETE /api/v1/folders (TREE-06).
+// DeleteFolder implements DELETE /api/v1/folders.
 //
 // Query parameters:
 //   - path (required) — canonical relative path of the folder to delete
-//   - recursive (optional, default false) — when false, the server
-//     refuses to delete a non-empty folder with 409 folder_not_empty;
-//     when true, the entire subtree is removed (T-03-04-02 fail-closed).
+//   - recursive (optional, default false) — when false, refuses non-empty
+//     folders with 409 folder_not_empty; when true, removes the entire subtree.
 //
 //nolint:revive // generated interface name
 func (s *Server) DeleteFolder(
@@ -68,7 +67,8 @@ func (s *Server) DeleteFolder(
 		recursive = *req.Params.Recursive
 	}
 	if err := s.notes.DeleteFolder(ctx, req.Params.Path, recursive); err != nil {
-		s.log.Error("DeleteFolder: domain error",
+		s.log.Error(
+			"DeleteFolder: domain error",
 			"path", req.Params.Path,
 			"recursive", recursive,
 			"err", err,
@@ -88,7 +88,7 @@ func (s *Server) DeleteFolder(
 	return DeleteFolder204Response{}, nil
 }
 
-// PostFolderMove implements POST /api/v1/folders/move (TREE-05, TREE-07).
+// PostFolderMove implements POST /api/v1/folders/move.
 //
 //nolint:revive // generated interface name
 func (s *Server) PostFolderMove(
@@ -101,7 +101,8 @@ func (s *Server) PostFolderMove(
 	}
 	newCanonPath, err := s.notes.MoveFolder(ctx, req.Body.OldPath, req.Body.NewPath)
 	if err != nil {
-		s.log.Error("PostFolderMove: domain error",
+		s.log.Error(
+			"PostFolderMove: domain error",
 			"old_path", req.Body.OldPath,
 			"new_path", req.Body.NewPath,
 			"err", err,

@@ -26,18 +26,13 @@ const FrontmatterCanonicalContract = "Frontmatter is present iff the file begins
 //     (key casing, etc.) are irrelevant to detection: HasFrontmatter only
 //     answers "is the block delimited?", not "is the YAML valid?".
 //   - Rejected: "----\n" (four hyphens), "--- \n" (trailing space on
-//     the open fence), missing close delimiter, the four bytes "---\r\n"
-//     (CRLF on the open fence — out of contract per R4-5; vault files
-//     are LF-canonical).
+//     the open fence), missing close delimiter, "---\r\n" (CRLF on the
+//     open fence — vault files are LF-canonical).
 //
-// Used by:
-//   - The D-11 one-time startup migration (TAGS-EXT-03): "does this file
-//     already have a frontmatter block?"
-//   - InjectFrontmatterScaffold (idempotency guard): "is the scaffold
-//     already present?"
-//   - The D-10 auto-restore on save (TAGS-EXT-02): "should we inject?"
-//   - The MCP create_note / update_note tools (R4-5) — they MUST route
-//     through this function rather than duplicating the check.
+// Used by InjectFrontmatterScaffold (idempotency guard), the one-time
+// startup migration, the auto-restore-on-save path, and the MCP
+// create_note / update_note tools. All callers route through this
+// function to avoid duplicate implementations.
 //
 // See FrontmatterCanonicalContract for the contract suitable for embedding
 // in user-facing docs.
@@ -64,7 +59,7 @@ func HasFrontmatter(content []byte) bool {
 
 // InjectFrontmatterScaffold prepends the canonical scaffold to content IFF
 // content does not already start with a frontmatter block. Returns content
-// unchanged when HasFrontmatter is true (idempotent — re-running the D-11
+// unchanged when HasFrontmatter is true (idempotent — re-running the
 // one-time migration over an already-migrated file is a safe no-op).
 //
 // Scaffold format (matches UI-SPEC §Copywriting Contract > Frontmatter scaffold

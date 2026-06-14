@@ -2,45 +2,21 @@
  * FileTree — react-arborist <Tree> wrapper + state routing.
  *
  * Branches:
- *   - useFileTree.error           → <TreeErrorState onRetry={refresh} />
- *   - loading + tree==null        → 1px indeterminate progress stripe
- *                                   (re-uses Phase 2's jasper-progress-stripe
- *                                    keyframes from theme.css)
- *   - tree.root.length === 0      → <TreeEmptyState />
- *   - tree.root has children      → <Tree> with adapted data + TreeRow renderer
+ *   - useFileTree.error       → <TreeErrorState onRetry={refresh} />
+ *   - loading + tree==null    → 1px indeterminate progress stripe
+ *   - tree.root.length === 0  → <TreeEmptyState />
+ *   - tree.root has children  → <Tree> with adapted data + TreeRow renderer
  *
- * Wire-shape adapter (UI-SPEC §Component Inventory + plan §Wire-shape adapter):
- *   react-arborist requires unique string ids and a stable id+name+children
- *   shape. We:
- *     - prefix folder ids with "folder:" + path
- *     - prefix note ids with "note:" + uuid
- *     - preserve the original wire shape under .data so TreeRow can branch
- *       on data.kind without re-parsing
+ * Wire-shape adapter: react-arborist requires stable id+name+children. Folder
+ * ids are "folder:" + path, note ids are "note:" + uuid. The original wire shape
+ * is preserved under .data so TreeRow can branch on data.kind without re-parsing.
  *
- * Plan 03-07 wires:
- *   - onMove: drag-drop dispatches POST /notes/{id}/move OR /folders/move,
- *     then refresh()es the tree (server is the source of truth — simpler
- *     than precise revert).
- *   - disableDrop: cycle prevention — reject dropping a folder onto its
- *     own descendant (defense-in-depth: server also has ErrCycle).
- *   - DeleteConfirmDialog state managed here; opens when a row's
- *     onRequestDelete fires; Confirm dispatches deleteNote / deleteFolder
- *     with recursive=true.
- *   - The 5 locked toast tuples (UI-SPEC §Surface 5) are surfaced from
- *     surfaceError() based on TreeMutationError.code + the operation name.
- *   - Plan 03-18 (Gap R2-3): a `treeRef` imperative handle into the
- *     react-arborist <Tree> lets us poke its react-window
- *     FixedSizeList row-position cache after a successful create — see
- *     resetTreeListLayout helper below.
- *   - Plan 03-22 (Gap R2-6) — Direction B (filename → H1): after a
- *     successful note rename, handleCommitRename additionally fetches
- *     the renamed note's content via getNote, rewrites the first H1
- *     line to match the new basename via rewriteH1, and writes the
- *     content back via updateNote. No-op when the file has no H1
- *     (research §2.4: do NOT auto-insert) or when the existing H1
- *     already matches the new basename (loop guard against
- *     Direction-A round-trips). Folder renames bypass this path —
- *     folders have no H1.
+ * Key behaviors: drag-drop dispatches the appropriate move endpoint then
+ * refresh()es (server is source of truth); disableDrop prevents cycle drops;
+ * DeleteConfirmDialog is managed here; after a successful note rename,
+ * handleCommitRename rewrites the H1 to match the new basename (no-op when
+ * the file has no H1 or when H1 already matches — loop guard against
+ * the editor's direction-A round-trips).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Tree, type NodeApi, type TreeApi } from "react-arborist";
@@ -471,9 +447,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     } catch (e) {
       surfaceError(e, "delete");
     }
-    // WR-09 (Plan 13): `tree` no longer appears in the dependency list —
-    // handleConfirmDelete now reads canonical id/path off the dialog
-    // target instead of walking the wire tree to recover them.
+    // reads canonical id/path off the dialog target, not the wire tree
   }, [deleteTarget, muts, surfaceError, refresh]);
 
   const handleMove = useCallback(
@@ -512,10 +486,8 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
             await muts.moveFile(src.path, target.newPath);
           }
         }
-        // Plan 03-09 (Gap 1) + Plan 08 single-flight: the mutator
-        // already refreshed the tree on success per call; Plan 08's
-        // useFileTree single-flight collapses the per-call refresh
-        // fanout to one in-flight network round across the loop.
+        // mutator already refreshed the tree on success per call;
+        // useFileTree single-flight collapses the per-call refresh fanout.
       } catch (e) {
         surfaceError(e, "move");
         await refresh();
@@ -918,13 +890,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
 
   return (
     <>
-      {/*
-        Tree-area wrap — fills the Sidebar's flex column. The Tree
-        sits inside it at (measured height - dropzone height); long
-        lists scroll INSIDE the Tree's own scroller. flexShrink:1 +
-        minHeight:0 is the standard "this column may shrink to fit"
-        recipe.
-      */}
+      {/* Tree-area wrap — fills the sidebar column. flexShrink:1 + minHeight:0 lets it shrink. */}
       <div
         ref={setTreeAreaEl}
         onDragOverCapture={handleSidebarDragOver}

@@ -2,33 +2,20 @@
  * wikilinkResolver — title → note-id resolution backed by tree data.
  *
  * Division of responsibility:
+ *   Frontend (this module): answers "does a note with this title exist?"
+ *   using a case-insensitive Set<string> of lowercase titles — O(1) check.
+ *   Backend (registry.go): implements same-folder-then-alphabetical
+ *   disambiguation and returns the canonical id for ambiguous titles. The
+ *   frontend stores whichever id was seen last in tree-walk order; ambiguous
+ *   links may fall back to an async server round-trip.
  *
- *   FRONTEND (this module):
- *     Answers "does a note with this title exist anywhere in the vault?"
- *     using a case-insensitive Set<string> of lowercase note titles derived
- *     from the current tree snapshot. This is an O(1) existence check.
+ * NFC normalization: applied at set-build time so accented-character variants
+ * (e.g. "ñ" as n+combining-tilde vs. precomposed "ñ") compare equal.
  *
- *   BACKEND (Plan 06-04, registry.go):
- *     Implements the full D-20 same-folder-then-alphabetical disambiguation
- *     rule and returns the canonical target id for ambiguous titles. The
- *     frontend treats every resolved title as having AT MOST ONE canonical
- *     target id (the one stored in the titleToId map). When multiple notes
- *     share a title, the titleToId map holds whichever id was seen LAST in
- *     tree walk order; click handling for ambiguous links may fall back to
- *     an async server round-trip in Plan 06-10/06-11.
- *
- * NFC normalization: String.prototype.normalize("NFC") applied to all title
- * keys ensures "ñ" typed as n+combining-tilde compares equal to the
- * precomposed "ñ" stored in the tree. Applied at set-build time (the
- * title values from the tree are also NFC-normalized at the same point).
- *
- * Module-level snapshot pattern:
- *   wikilinkPlugin runs inside CM6's synchronous decoration build — it cannot
- *   call React hooks. MarkdownEditor wires a useEffect that calls
- *   setResolvedTitlesSnapshot(resolvedTitles, titleToId) whenever the hook
- *   returns a new Set. The plugin reads the snapshot synchronously.
- *   Alternatives (StateField fed via Annotation, dispatched StateEffect) are
- *   documented here so a later plan can refactor if needed.
+ * Module-level snapshot: wikilinkPlugin runs in CM6's synchronous decoration
+ * build and cannot call React hooks. MarkdownEditor uses a useEffect to call
+ * setResolvedTitlesSnapshot() whenever useResolvedTitleSet returns a new Set.
+ * The plugin reads the snapshot synchronously.
  */
 
 import { useMemo } from "react";
@@ -83,14 +70,10 @@ function collectNoteTitles(nodes: TreeNode[]): Map<string, string> {
 }
 
 /**
- * Returns a Set of lowercase, NFC-normalized titles of all notes currently
- * known to the tree. Memoized — only rebuilds when the tree data identity
- * changes. Pair with setResolvedTitlesSnapshot in a useEffect so the CM6
- * plugin can read synchronously.
- *
- * Test R1: 3 notes in tree → set has 3 lowercase titles
- * Test R2: tree update triggers new Set (memo deps change on new tree identity)
- * Test R3: empty/null tree → empty Set
+ * Returns a Set of lowercase, NFC-normalized titles of all notes known to
+ * the tree. Memoized — only rebuilds when tree identity changes. Pair with
+ * setResolvedTitlesSnapshot in a useEffect so the CM6 plugin can read
+ * synchronously.
  */
 export function useResolvedTitleSet(): {
   titleSet: Set<string>;
@@ -114,17 +97,11 @@ export interface WikilinkResolution {
 }
 
 /**
- * Resolve a wikilink title against the provided Set of known lowercase titles.
+ * Resolve a wikilink title against a Set of known lowercase titles.
  * Returns { resolved: true, targetId } on a match; { resolved: false, targetId: null } otherwise.
- *
- * Inputs are NFC-normalized so accented-character variants compare equal.
- *
- * Test R4: resolveWikilinkTitle("Foo", set with "foo") → { resolved: true }
- * Test R5: resolveWikilinkTitle("FOO", set with "foo") → { resolved: true } (case-insensitive)
- *
- * Division note: when targetId is null (title found in set but idMap lacks
- * the entry — can happen if the snapshot is stale), the click handler should
- * fall back to an async server lookup. Plan 06-10/06-11 implements this.
+ * Input is NFC-normalized so accented-character variants compare equal.
+ * When targetId is null (snapshot is stale), the click handler should fall back
+ * to an async server lookup.
  */
 export function resolveWikilinkTitle(
   rawTitle: string,

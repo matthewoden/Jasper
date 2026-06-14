@@ -1,30 +1,25 @@
 /**
- * Phase 6.5 — Plan 06.5-04: RightRail — restructured two-panel layout shell.
+ * RightRail — two-panel layout shell (tags + backlinks).
  *
- * Phase 6 D-46 anticipated multi-panel slots; Phase 6.5 exercises that capability.
- *
- * Structure (UI-SPEC §Surface 1-NEW):
+ * Structure:
  *   <aside bg=--color-bg>           ← floating-panel container
- *     <ResizeHandle left-edge />    ← existing left-edge width resize
+ *     <ResizeHandle left-edge />    ← left-edge width resize
  *     <div flex-column>             ← tags panel (ratio-driven height)
  *       <RightRailTagsPanel />
  *     </div>
- *     <InterPanelDivider railRef /> ← horizontal drag handle (Plan 02)
+ *     <InterPanelDivider railRef /> ← horizontal drag handle
  *     <div flex-1>                  ← backlinks panel (remaining height)
  *       <BacklinksRail noteId />
  *     </div>
  *   </aside>
  *
- * The rail background is `var(--color-bg)` (not `--color-surface`) so the
- * 8px inset padding exposes background color between the two panel cards,
- * creating the "floating cards" aesthetic per D-03.
+ * Background is --color-bg (not --color-surface) so the 8px inset exposes
+ * background color between the two panel cards, giving the "floating cards"
+ * aesthetic.
  *
- * Aria contract (updated from Phase 6):
- *   - Collapsed toggle: aria-label="Show backlinks panel" aria-expanded={false}
- *   - Vertical resize handle: role="separator" aria-orientation="vertical"
- *     aria-label="Resize backlinks panel"
- *   - InterPanelDivider: role="separator" aria-orientation="horizontal"
- *     aria-label="Resize panels" (provided by InterPanelDivider itself)
+ * When expanded=false the component returns null (no collapsed aside). When
+ * both panelSelector booleans are false while expanded=true, a useEffect
+ * auto-collapses the rail.
  */
 import { useCallback, useEffect, useRef } from "react";
 import type React from "react";
@@ -41,10 +36,7 @@ import { BacklinksRail } from "./BacklinksRail";
 interface Props {
   /** UUID of the currently open note. Null when no note is open. */
   activeNoteId: string | null;
-  /**
-   * Phase 6.6 — Plan 06.6-11: optional style for grid placement.
-   * App.tsx passes gridRow/gridColumn here; merged onto the root aside.
-   */
+  /** Optional style for grid placement; merged onto the root aside. */
   style?: React.CSSProperties;
 }
 
@@ -113,7 +105,7 @@ export function RightRail({ activeNoteId, style }: Props) {
         ...style,
       }}
     >
-      {/* Vertical resize handle — left edge, 4px hit area, cursor: col-resize */}
+      {/* Vertical resize handle — left edge, cursor-only affordance */}
       <div
         role="separator"
         aria-orientation="vertical"
@@ -131,7 +123,7 @@ export function RightRail({ activeNoteId, style }: Props) {
         }}
       />
 
-      {/* Tags panel — height determined by tagsPanelHeightRatio (gated on panelSelector) */}
+      {/* Tags panel — height driven by tagsPanelHeightRatio */}
       {panelSelector.tags && (
         <div
           style={{
@@ -144,12 +136,12 @@ export function RightRail({ activeNoteId, style }: Props) {
         </div>
       )}
 
-      {/* Inter-panel divider — only rendered when both panels are visible */}
+      {/* Inter-panel divider — only when both panels are visible */}
       {bothPanelsVisible && (
         <InterPanelDivider railRef={railRef as React.RefObject<HTMLElement>} />
       )}
 
-      {/* Backlinks panel — remaining height after tags panel + divider (gated on panelSelector) */}
+      {/* Backlinks panel — fills remaining height */}
       {panelSelector.backlinks && (
         <div
           style={{

@@ -1,49 +1,33 @@
 /**
- * livePreviewPlugin — Phase 5 production decoration plugin (D-01..D-09).
+ * livePreviewPlugin — CM6 decoration plugin for live preview of markdown.
  * Walks the lezer-markdown syntax tree on every relevant transaction,
- * computes the cursor-line set (multi-line selection per D-06), and
+ * computes the cursor-line set (multi-line selection included), and
  * emits per-node decorations:
  *
- *   - Decoration.line for headings (cm-heading-1..6 — EDIT-02),
- *     blockquote (cm-blockquote — EDIT-05), and code blocks
- *     (cm-codeblock — D-02 visual).
- *   - Decoration.mark for StrongEmphasis (cm-strong — EDIT-03),
- *     Emphasis (cm-emphasis — EDIT-03), InlineCode (cm-inline-code
- *     — EDIT-06).
- *   - Decoration.replace for HIDEABLE marker nodes when their line
- *     is OFF-cursor (HeaderMark, EmphasisMark, QuoteMark, ListMark,
- *     LinkMark, URL, HardBreak, CodeMark — D-01) AND for HorizontalRule
- *     via a small <hr> widget (EDIT-07).
- *   - Decoration.mark with class cm-marker for the SAME hideable
- *     nodes when their line IS on-cursor (markers visible-but-muted).
+ *   - Decoration.line for headings (cm-heading-1..6), blockquote
+ *     (cm-blockquote), and code blocks (cm-codeblock).
+ *   - Decoration.mark for StrongEmphasis (cm-strong), Emphasis
+ *     (cm-emphasis), InlineCode (cm-inline-code).
+ *   - Decoration.replace for hideable marker nodes when their line is
+ *     off-cursor (HeaderMark, EmphasisMark, QuoteMark, ListMark, LinkMark,
+ *     URL, HardBreak, CodeMark) and for HorizontalRule (hr widget).
+ *   - Decoration.mark with cm-marker for the same hideable nodes when
+ *     their line is on-cursor (markers visible-but-muted).
  *
  * Edge cases:
- *   - D-06 Multi-line selection: every line touched by a selection
- *     range stays in the cursor-line set; markers visible there.
- *   - D-07/D-31 IME gate: u.view.composing → skip rebuild; map
- *     existing decorations through u.changes instead.
- *   - D-09 Code-fence guard: any HIDEABLE node nested inside
- *     FencedCode is skipped (markers stay literal). InlineCode's
- *     backticks ARE allowed to hide off-line per UI-SPEC line 323
- *     ("Inline code backticks: Hidden when off-line") — the styled
- *     monospace background carries the affordance.
+ *   - Multi-line selection: every line touched stays in the cursor-line
+ *     set; markers remain visible there.
+ *   - IME gate: u.view.composing → map existing decorations through
+ *     u.changes instead of rebuilding.
+ *   - Code-fence guard: any hideable node nested inside FencedCode is
+ *     skipped (markers stay literal). InlineCode backticks ARE allowed to
+ *     hide off-line — the styled monospace background carries the affordance.
  *
- * Note for code-fence content: the language-specific grammars (Plan
- * 05-07) are injected via markdown({codeLanguages: [...]}). The
- * plugin's syntax-tree iteration receives FencedCode → CodeText
- * children with whatever the inner language emitted; isInsideCode
- * still trips on the FencedCode parent so emphasis-style markers
- * inside `**not bold**` blocks are NOT hidden.
- *
- * Node names verified by spike (Plan 05-01 findings):
- * - Frontmatter (lowercase m) — NOT "FrontMatter"
- * - ATXHeading1..ATXHeading6, SetextHeading1, SetextHeading2
- * - HeaderMark — `#` markers
- * - StrongEmphasis, Emphasis, EmphasisMark
- * - FencedCode, InlineCode
- * - Blockquote, QuoteMark
- * - ListMark, HorizontalRule
- * - LinkMark, URL
+ * lezer-markdown node names used (case-sensitive):
+ *   Frontmatter (lowercase m), ATXHeading1..6, SetextHeading1/2,
+ *   HeaderMark, StrongEmphasis, Emphasis, EmphasisMark, FencedCode,
+ *   InlineCode, Blockquote, QuoteMark, ListMark, HorizontalRule,
+ *   LinkMark, URL.
  */
 import {
   Decoration,
@@ -171,8 +155,8 @@ const bulletDeco = Decoration.replace({ widget: new BulletWidget() });
 
 /**
  * Compute the set of line numbers that contain the current selection.
- * Multi-line selections (D-06): every line between anchor and head
- * (inclusive) stays in the visible-marker set.
+ * For multi-line selections, every line between anchor and head (inclusive)
+ * stays in the visible-marker set.
  */
 export function computeCursorLines(view: EditorView): Set<number> {
   const lines = new Set<number>();
@@ -186,9 +170,8 @@ export function computeCursorLines(view: EditorView): Set<number> {
 
 /**
  * Walk the parent chain of a syntax node to detect fenced code context.
- * D-09 amendment: ONLY FencedCode is the no-hide container.
- * Inline code's backticks ARE allowed to hide off-line per UI-SPEC
- * line 323 — the styled monospace background carries the affordance.
+ * Only FencedCode suppresses hiding; inline code backticks may still hide
+ * off-line because the monospace background carries the affordance.
  */
 function isInsideCode(node: SyntaxNodeRef): boolean {
   let p = node.node.parent;
@@ -203,12 +186,11 @@ type Entry = { from: number; to: number; deco: Decoration; sortKey: number };
 
 /**
  * Build the full decoration set for the current view state.
- * Exported as a pure function for testability (no side effects; depends
- * only on view.state + view.visibleRanges).
+ * Exported as a pure function for testability.
  *
- * Two-pass approach: collect entries first (they may arrive out of
- * sort order due to parent-node visiting before children), then sort
- * and feed to RangeSetBuilder which requires ascending order.
+ * Two-pass: collect entries first (parent-node visiting before children
+ * can produce out-of-order positions), then sort and feed to
+ * RangeSetBuilder which requires ascending order.
  */
 export function buildDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
@@ -347,7 +329,7 @@ export function buildDecorations(view: EditorView): DecorationSet {
 
         if (node.name === "ListMark") {
           if (isInsideCode(node)) return;
-          // D-01a coexistence guard: if this ListItem has a Task child,
+          // Coexistence guard: if this ListItem has a Task child,
           // taskCheckboxPlugin owns the marker range — yield to it (no bullet).
           if (node.node.parent?.getChild("Task")) return;
           const text = view.state.doc.sliceString(node.from, node.to).trim();

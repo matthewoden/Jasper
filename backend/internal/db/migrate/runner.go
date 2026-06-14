@@ -14,8 +14,8 @@ import (
 )
 
 // ErrUnrecoverable is returned by Run when Path 3 fires. The composition
-// root (Plan 02-06) MUST refuse to start the HTTP listener and serve
-// the static error page instead. Callers detect with errors.Is.
+// root must refuse to start the HTTP listener and serve the static error
+// page instead. Callers detect with errors.Is.
 var ErrUnrecoverable = errors.New("migrate: unrecoverable schema state — manual intervention required")
 
 var migrationFilenamePattern = regexp.MustCompile(`^[0-9]{3}_[a-z0-9_]+\.sql$`)
@@ -34,7 +34,7 @@ type RunnerOptions struct {
 	DiskFreeFn func(path string) (uint64, error) // injectable for tests; production default reads syscall.Statfs
 }
 
-// Runner is the three-path orchestrator (DESIGN.md §4.4).
+// Runner is the three-path migration orchestrator.
 //
 // Lifecycle of a single Run(ctx) call:
 //
@@ -50,10 +50,9 @@ type RunnerOptions struct {
 //     6a. All succeed → DeleteBackup; Status = OK; return.
 //     6b. Any failed → Path 1 — RestoreBackup; Status = RolledBack; Run
 //     returns nil error (the app keeps running on the prior schema).
-//  7. Path 2 (RebuildAndReindex) is triggered by POST /admin/reindex —
-//     wired by Plan 02-04b; the body of RebuildAndReindex lands in
-//     that plan. Path 3 (Unrecoverable) fires when restore itself
-//     fails OR when Path 2 also fails.
+//  7. Path 2 (RebuildAndReindex) is triggered by POST /admin/reindex.
+//     Path 3 (Unrecoverable) fires when restore itself fails OR when
+//     Path 2 also fails.
 type Runner struct {
 	DBPath       string
 	BackupPath   string
@@ -61,7 +60,7 @@ type Runner struct {
 	Migrations   fs.FS
 	Pair         *sqlite.Pair
 	Log          *slog.Logger
-	Path2Rebuild func(context.Context) (notesIndexed int, err error) // wired by Plan 02-04b in app.New
+	Path2Rebuild func(context.Context) (notesIndexed int, err error)
 
 	store         *statusStore
 	nowUnix       func() int64
@@ -325,7 +324,8 @@ func (r *Runner) applyAll(ctx context.Context, pending []string) string {
 			r.Log.Error("migration sql failed", "name", name, "err", err)
 			return name
 		}
-		if _, err := tx.ExecContext(ctx,
+		if _, err := tx.ExecContext(
+			ctx,
 			`INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)`,
 			name, r.nowUnix(),
 		); err != nil {
@@ -356,7 +356,7 @@ func (r *Runner) refreshNoteCount(ctx context.Context) {
 	r.store.set(cur)
 }
 
-// RebuildAndReindex implements Path 2 (DATA-10). Called by
+// RebuildAndReindex implements Path 2. Called by
 // api.Server.PostAdminReindex with mode=full.
 //
 // Lifecycle:
@@ -372,25 +372,16 @@ func (r *Runner) refreshNoteCount(ctx context.Context) {
 //     applyAll. If any migration breaks on the now-clean schema, the
 //     whole rebuild is unrecoverable (Path 3) — there is no prior
 //     schema to fall back to.
-//  4. Invoke r.Path2Rebuild(ctx) — wired by Plan 02-06's app.New as a
-//     bridge to *index.Indexer.Reconcile(ctx, ModeFull). This walks the
-//     filesystem and repopulates the notes table.
+//  4. Invoke r.Path2Rebuild(ctx) — bridge to *index.Indexer.Reconcile
+//     that walks the filesystem and repopulates the notes table.
 //  5. Status = OK on success; Status = Unrecoverable + wrapped
 //     ErrUnrecoverable on any failure (the composition root must
 //     refuse to start the listener; the user must restore-from-backup
 //     or wipe the data dir).
 //
-// T-02-04b-08 mitigation: the api.Server.PostAdminReindex handler
-// holds reindexBusy for the entire call; combined with
-// Pair.Writer.SetMaxOpenConns(1), no concurrent Service.Update can
-// interleave with the DROP.
-//
-// Historical note: the drop list was previously hardcoded. Phase 8
-// added `004_mcp_grants.sql` (mcp_write_grants) without updating the
-// list, which caused every rebuild to 503 "unrecoverable" because
-// re-applying 004 hit a duplicate CREATE TABLE. Resolved in commit
-// 0240d36 (hardcoded fix) then structurally eliminated by switching
-// to deriveDropStatements.
+// The api.Server.PostAdminReindex handler holds reindexBusy for the
+// entire call; combined with Pair.Writer.SetMaxOpenConns(1), no
+// concurrent Service.Update can interleave with the DROP.
 func (r *Runner) RebuildAndReindex(ctx context.Context) (Status, error) {
 	r.store.set(Status{State: StateRebuilding, LogsPath: r.LogsPath})
 

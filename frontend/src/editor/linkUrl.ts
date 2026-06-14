@@ -11,7 +11,7 @@
  * Bare domains are upgraded to https:// at open time so the browser
  * navigates correctly. The bar for "is this a URL" is intentionally
  * loose — markdown link bodies that don't match are treated as
- * relative paths or wiki refs and left to Phase 6 routing.
+ * relative paths or wiki refs.
  *
  * Anti-patterns this gate explicitly EXCLUDES:
  *   - Anchors:        "#section"

@@ -1,11 +1,5 @@
 /**
- * dropIndicatorWidget tests — TDD RED/GREEN for C3 (UAT #12) + Plan 07-28 snap-to-line.
- *
- * Tests:
- * 1. Module-level smoke: imports the 3 exports without crashing.
- * 2. StateField initial value is null.
- * 3. dropPosField updates when setDropPos effect dispatched.
- * 4. (Plan 07-28) snapDropPos helper snaps to line.from/line.to correctly.
+ * dropIndicatorWidget tests — smoke + StateField + snapDropPos helper.
  */
 import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
@@ -55,7 +49,7 @@ describe("dropIndicatorWidget — smoke + StateField", () => {
   });
 });
 
-describe("DI-snap — drop indicator snaps to line boundary (UAT-2 R1-6 / Plan 07-28)", () => {
+describe("DI-snap — drop indicator snaps to line boundary", () => {
 
   function makeState(doc: string) {
     return EditorState.create({ doc, extensions: [] });

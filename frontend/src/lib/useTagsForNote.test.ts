@@ -1,7 +1,5 @@
 /**
- * useTagsForNote.test.ts — Plan 07-35 / UAT-3 N3 (TDD RED phase).
- *
- * Tests: per-note tag count hook that replaces global useTagBrowser in TopBar.
+ * Tests for useTagsForNote — per-note tag hook.
  *
  * TGN-1: null noteId → tags: [], loading: false, error: null
  * TGN-2: uuid → fetches getNote, parses tags from content
@@ -21,7 +19,7 @@ import { getNote } from "./notesApi";
 const mockGetNote = vi.mocked(getNote);
 
 
-/** Build a fake getNote response with the given content. */
+/** Builds a minimal getNote response stub with the given content. */
 function mockNoteResponse(content: string) {
   return Promise.resolve({
     data: {

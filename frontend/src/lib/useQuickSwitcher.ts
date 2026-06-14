@@ -1,13 +1,12 @@
 /**
- * useQuickSwitcher — fuzzy match note titles + recency tiebreaker (D-12, D-13).
+ * useQuickSwitcher — fuzzy note-title search with recency tiebreaker.
  *
- * Empty query → recency-ordered list (most recently opened first), then
- *               updated_at desc for notes not in recency list. Capped at 50.
- * Non-empty query → fuzzysort score order with recency tiebreaker on equal scores.
+ * Empty query → recency-ordered (most recently opened first), then updated_at
+ * desc, capped at 50.
+ * Non-empty query → fuzzysort score order with recency tiebreaker on ties.
  *
- * Accepts query as an argument so the caller (CommandMenu) can maintain
- * the input state independently from the sidebar search (separate local React state
- * — not useTreeStore.searchQuery, which is for the full-text search sidebar).
+ * Query is accepted as an argument so the caller maintains its own input
+ * state separately from useTreeStore.searchQuery (which is for FTS5 search).
  */
 import { useMemo } from "react";
 import fuzzysort from "fuzzysort";
@@ -19,16 +18,12 @@ export interface NoteHit {
   id: string;
   title: string;
   path: string;
-  /** ISO 8601 UTC string — used for updated_at desc fallback sort (C2 / UAT #10). */
+  /** ISO 8601 UTC string — used for updated_at desc fallback sort. */
   updated_at: string;
   score?: number;
 }
 
-/**
- * Recursively flatten the tree into a search-friendly note list.
- * Only nodes with kind === "note" are included (folders are skipped).
- * The tree root is Tree["root"] (an array of TreeNode).
- */
+/** Flatten the tree into a note list for search; folders are excluded. */
 function flattenTree(tree: Tree): NoteHit[] {
   const notes: NoteHit[] = [];
 
@@ -50,9 +45,7 @@ function flattenTree(tree: Tree): NoteHit[] {
 
 /**
  * useQuickSwitcher — fuzzy match note titles + recency tiebreaker.
- *
- * @param query - The current search input. Empty string returns recency-sorted list.
- * @returns Array of NoteHit (up to 50), sorted per the rules above.
+ * @param query - Empty string returns recency-sorted list (up to 50).
  */
 export function useQuickSwitcher(query: string): NoteHit[] {
   const { tree } = useFileTree();

@@ -157,8 +157,7 @@ func TestReconcileIncremental_MTimeUnchanged_Skipped(t *testing.T) {
 }
 
 // TestReconcile_Scratchpad_KeepsScratchpadUUID — writing scratchpad.md
-// in the notes dir and reconciling assigns it the canonical
-// ScratchpadUUID (Phase 1 frontend depends on this hard-coded id).
+// in the notes dir and reconciling assigns it the canonical ScratchpadUUID.
 func TestReconcile_Scratchpad_KeepsScratchpadUUID(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newReconcileFixture(t)
@@ -188,8 +187,7 @@ func TestReconcile_UnknownMode_Errors(t *testing.T) {
 }
 
 // TestReconcile_NoChecksumWritten_Phase2Deferral — after Reconcile,
-// every notes.checksum_sha256 column is empty (DATA-09 deferral
-// proof).
+// every notes.checksum_sha256 column is empty.
 func TestReconcile_NoChecksumWritten_Phase2Deferral(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newReconcileFixture(t)

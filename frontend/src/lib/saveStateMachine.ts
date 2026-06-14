@@ -1,9 +1,6 @@
 /**
- * Save state machine — locked by 01-UI-SPEC.md §"Save Indicator State Machine".
- *
- * Reused VERBATIM by Phase 5 when CodeMirror replaces the textarea (per the
- * UI-SPEC "Forward-looking constraint"). Keep this file pure (no React deps)
- * so the Phase 5 editor can drive it from a CM6 transaction filter.
+ * Save state machine — pure (no React deps) so the CM6 editor can drive it
+ * from a transaction filter.
  *
  * Transitions:
  *   idle      --requestSave-------> saving

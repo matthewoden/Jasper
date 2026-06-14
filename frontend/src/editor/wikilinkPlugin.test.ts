@@ -1,10 +1,6 @@
 /**
  * wikilinkPlugin.test.ts — vitest suite for the CM6 wikilink decoration plugin.
  *
- * TDD gate: RED → GREEN
- * Tests P1..P12 as specified in Plan 06-09 Task 2.
- *
- * Harness: reuses the EditorView setup pattern from livePreviewPlugin.test.ts.
  * Decorations are inspected by accessing the plugin instance's .decorations field.
  */
 import { describe, it, expect, afterEach, beforeEach } from "vitest";

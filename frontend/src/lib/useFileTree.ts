@@ -1,41 +1,24 @@
 /**
  * useFileTree — single-flight GET /tree on mount, with manual `refresh()`
- * and optimistic `mutate(recipe)` for in-tree updates that should NOT
- * re-fetch (e.g., drag-drop applies the new layout immediately).
+ * and optimistic `mutate(recipe)` for in-tree updates that skip a round-trip.
  *
- * Locked signature (UI-SPEC §Forward-compat assert #1 — Phase 4 will swap
- * the data source to WebSocket-driven invalidation without changing the
- * public shape):
- *
+ * Public shape:
  *   useFileTree(): {
- *     tree:    Tree | null   // null until first fetch resolves
- *     loading: boolean       // true during in-flight fetch
- *     error:   Error | null  // last error from getTree()
- *     refresh: () => Promise<void>                        // re-fetch
- *     mutate:  (recipe: (cur: Tree) => Tree) => void      // optimistic update
+ *     tree:    Tree | null
+ *     loading: boolean
+ *     error:   Error | null
+ *     refresh: () => Promise<void>
+ *     mutate:  (recipe: (cur: Tree) => Tree) => void
  *   }
  *
- * After every successful fetch (mount + refresh), the hook walks the
- * response and calls pruneStaleTreeState(folderPaths, noteIds) so any
- * localStorage entries for nodes that no longer exist get silently
- * dropped (UI-SPEC §State persistence — "Stale entries are silently
- * dropped on hydration").
+ * After every successful fetch, the hook calls pruneStaleTreeState() to
+ * silently drop localStorage entries for nodes that no longer exist.
  *
- * Plan 03-09 (Gap 1) — broadcast refresh: refresh() now triggers EVERY
- * mounted useFileTree instance to re-fetch, not just the one whose
- * `refresh` was invoked. This is required because useTreeMutations
- * calls useFileTree() to get its own refresh handle (per Plan 03-09's
- * "lift the contract into the data layer" decision); without
- * broadcasting, only the mutator's instance would see the new tree —
- * the FileTree-rendered instance would stay stale, which IS the bug
- * Gap 1 reported.
- *
- * Implementation: a module-level Set<() => Promise<void>> of
- * subscriber-fetch callbacks. Each useFileTree instance registers its
- * fetchTree on mount and unregisters on unmount. refresh() iterates
- * the Set and awaits all of them (instances that have unmounted
- * silently no-op via the cancelled flag — same pattern as the
- * existing StrictMode-safety guard).
+ * Broadcast refresh: refresh() triggers every mounted useFileTree instance,
+ * not just the one whose `refresh` was called. Without broadcasting, a
+ * mutation caller's instance would refresh but the rendered FileTree instance
+ * would stay stale. Module-level Set of subscriber callbacks, registered on
+ * mount and removed on unmount.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -115,15 +98,11 @@ startBootFetch();
 
 /**
  * Trigger every mounted useFileTree instance to re-fetch. Exported so
- * non-display callers (mutations, WS event handlers) can refresh the
- * tree WITHOUT instantiating their own useFileTree subscriber. Adding
- * a subscriber per non-display caller used to inflate the broadcast Set
- * by N (one per TreeRow's useTreeMutations) which collapsed the
- * single-flight coalescer to nothing as soon as React re-mounted any
- * one of those rows on a parent re-render — see the sidebar-resize
- * regression fixed 2026-05-09. Display surfaces (Sidebar, FileTree,
- * EditorPane) still call useFileTree() because they need to render the
- * tree state.
+ * non-display callers (mutations, WS event handlers) can refresh the tree
+ * without instantiating their own useFileTree subscriber. Adding a subscriber
+ * per non-display caller inflates the broadcast Set by N (one per TreeRow's
+ * useTreeMutations), which collapses the single-flight coalescer on any
+ * parent re-render. Display surfaces still call useFileTree() to render tree state.
  */
 export async function broadcastRefresh(): Promise<void> {
   const snapshot = Array.from(treeFetchSubscribers);
@@ -138,11 +117,7 @@ export interface UseFileTreeResult {
   mutate: (recipe: (current: Tree) => Tree) => void;
 }
 
-/**
- * Walk the tree once, collecting every folder path and every note id.
- * Used by useFileTree to prune stale entries from useTreeStore after a
- * fresh fetch lands.
- */
+/** Walk the tree collecting every folder path and note id. */
 export function walkTreeCollect(tree: Tree): {
   folders: Set<string>;
   notes: Set<string>;
@@ -158,7 +133,7 @@ export function walkTreeCollect(tree: Tree): {
     } else if (node.kind === "note") {
       notes.add(node.id);
     }
-    // Plan 07-26: "file" kind nodes are not tracked (no note id).
+    // "file" kind nodes have no note id and are not tracked here.
   };
   for (const node of tree.root) visit(node);
   return { folders, notes };

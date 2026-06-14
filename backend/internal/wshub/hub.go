@@ -13,25 +13,18 @@ var _ notes.Broadcaster = (*Hub)(nil)
 
 // Hub is the registry of connected WebSocket clients and the broadcast
 // fan-out point. Per-client outbound buffering + non-blocking sends
-// satisfy SYNC-08 (slow clients dropped without blocking the broadcast
-// goroutine).
+// ensure slow clients are dropped without blocking the broadcast goroutine.
 //
 // Concurrency:
 //   - mu (RWMutex) guards the clients map.
-//   - Broadcast holds RLock (read-only iteration of the map).
+//   - Broadcast holds RLock (read-only iteration).
 //   - register / unregister hold Lock (mutate the map).
 //   - closeSlow is invoked in a goroutine so the broadcast loop never
-//     waits on the unregister Lock (Pitfall 6 in RESEARCH.md).
+//     waits on the unregister Lock.
 //
-// ClientCount is a small convenience getter exposed for tests
-// (TestHub_DisconnectCleanup). It is cheap enough to leave in production.
-//
-// WR-05: marshalFailures (atomic) counts broadcast attempts that
-// dropped silently because json.Marshal returned an error on the
-// payload (e.g. a chan accidentally embedded, cyclic struct). The
-// log line is only-discoverable; this counter gives ops + tests a
-// numeric handle. MarshalFailureCount() exposes the value for
-// monitoring / regression tests.
+// marshalFailures (atomic) counts broadcast attempts dropped because
+// json.Marshal returned an error on the payload (e.g. a chan embedded,
+// cyclic struct). MarshalFailureCount() exposes the value for tests.
 type Hub struct {
 	log             *slog.Logger
 	mu              sync.RWMutex
@@ -55,13 +48,9 @@ func New(log *slog.Logger) *Hub {
 // EXCEPT the one whose session_id matches originSessionID. Non-blocking:
 // slow clients (full send chan) are dropped via closeSlow.
 //
-// Plan 04-04 declares notes.Broadcaster matching this signature, so the
-// hub satisfies the port without further work in this plan. The signature
-// below is FROZEN.
-//
-// SECURITY (T-04-04): payload MUST be a metadata-only shape. Note content
-// MUST NOT appear in any payload. The notes.Service caller honors this
-// (Plan 04-04).
+// SECURITY: payload MUST be a metadata-only shape. Note content MUST NOT
+// appear in any payload. The notes.Service caller is responsible for
+// honoring this constraint.
 func (h *Hub) Broadcast(eventType string, payload any, originSessionID string) {
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -122,11 +111,9 @@ func (h *Hub) ClientCount() int {
 
 // MarshalFailureCount returns the cumulative number of Broadcast
 // calls dropped because json.Marshal returned an error on the
-// payload or envelope (WR-05). Atomic read; safe for concurrent
-// callers. Used by tests to assert that disciplined callers do
-// not produce marshal failures, and exposed publicly so an admin
-// /admin/status surface can later report it without changing the
-// Hub's internals.
+// payload or envelope. Atomic read; safe for concurrent callers.
+// Used by tests to assert that disciplined callers do not produce
+// marshal failures.
 func (h *Hub) MarshalFailureCount() uint64 {
 	return atomic.LoadUint64(&h.marshalFailures)
 }

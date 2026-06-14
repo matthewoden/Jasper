@@ -28,27 +28,23 @@ func (s *Server) hydrateRegistryFromIndex(ctx context.Context) {
 	s.log.Info("admin/reindex: registry hydrated", "count", len(summaries))
 }
 
-// PostAdminReindex implements POST /api/v1/admin/reindex (DATA-10).
+// PostAdminReindex implements POST /api/v1/admin/reindex.
 //
 // Body: {mode: "full" | "incremental"} — "full" defaults if omitted.
 //
-//   - mode="full"  → s.runner.RebuildAndReindex (Path 2: drop, re-run
-//     migrations, full re-index walk).
-//   - mode="incremental" → s.index.Reconcile(ModeIncremental)
-//     (cheap mtime-only delta — DATA-09 partial). W-1 fix: this mode
-//     is now wired through; it no longer 503s on a valid enum value.
+//   - mode="full"        → s.runner.RebuildAndReindex (drop, re-run migrations, full walk).
+//   - mode="incremental" → s.index.Reconcile(ModeIncremental) (cheap mtime-only delta).
 //
 // Concurrency: reindexBusy.TryLock returns 409 with code
 // "reindex_in_progress" if another reindex is already running.
 //
 // Error mapping:
 //
-//   - nil runner (Phase 1 NewServer compat) → 503 "no_runner".
+//   - nil runner               → 503 "no_runner".
 //   - nil index for incremental → 503 "no_indexer".
-//   - mode not in {"full","incremental"} → 409 "invalid_mode".
-//   - runner returns ErrUnrecoverable → 503 "unrecoverable".
-//   - any other runner / index error → bare 500 with a generic
-//     message (T-02-04b-02 — never leak SQL or absolute paths).
+//   - mode not in enum          → 409 "invalid_mode".
+//   - ErrUnrecoverable          → 503 "unrecoverable".
+//   - other errors              → 500 with a generic message (no SQL or path leakage).
 //
 //nolint:revive // generated interface name
 func (s *Server) PostAdminReindex(
@@ -57,12 +53,14 @@ func (s *Server) PostAdminReindex(
 ) (PostAdminReindexResponseObject, error) {
 	if s.runner == nil {
 		return PostAdminReindex503JSONResponse(
-			newError("no_runner", "migration runner not available")), nil
+			newError("no_runner", "migration runner not available"),
+		), nil
 	}
 
 	if !s.reindexBusy.TryLock() {
 		return PostAdminReindex409JSONResponse(
-			newError("reindex_in_progress", "another reindex is already running")), nil
+			newError("reindex_in_progress", "another reindex is already running"),
+		), nil
 	}
 	defer s.reindexBusy.Unlock()
 
@@ -75,7 +73,8 @@ func (s *Server) PostAdminReindex(
 
 	if mode != "full" && mode != "incremental" {
 		return PostAdminReindex409JSONResponse(
-			newError("invalid_mode", "mode must be 'full' or 'incremental'")), nil
+			newError("invalid_mode", "mode must be 'full' or 'incremental'"),
+		), nil
 	}
 
 	if s.broadcaster != nil {
@@ -100,7 +99,8 @@ func (s *Server) PostAdminReindex(
 				s.log.Error("PostAdminReindex: rebuild fired Path 3", "err", err)
 				return PostAdminReindex503JSONResponse(
 					newError("unrecoverable",
-						"rebuild failed; database is in unrecoverable state — see logs")), nil
+						"rebuild failed; database is in unrecoverable state — see logs"),
+				), nil
 			}
 			s.log.Error("PostAdminReindex: rebuild failed", "err", err)
 			return nil, errors.New("could not rebuild index")
@@ -119,7 +119,8 @@ func (s *Server) PostAdminReindex(
 		idx, ok := s.index.(*index.Indexer)
 		if !ok || idx == nil {
 			return PostAdminReindex503JSONResponse(
-				newError("no_indexer", "indexer not available")), nil
+				newError("no_indexer", "indexer not available"),
+			), nil
 		}
 		n, err := idx.Reconcile(ctx, index.ModeIncremental)
 		if err != nil {
@@ -137,6 +138,7 @@ func (s *Server) PostAdminReindex(
 	default:
 
 		return PostAdminReindex409JSONResponse(
-			newError("invalid_mode", "mode must be 'full' or 'incremental'")), nil
+			newError("invalid_mode", "mode must be 'full' or 'incremental'"),
+		), nil
 	}
 }

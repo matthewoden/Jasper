@@ -14,21 +14,18 @@ import (
 const maxSessionIDLen = 128
 
 // ServeHTTP upgrades the request and runs read+write pumps until
-// either side errors. Bound by chi at /api/v1/ws (Plan 04-04 wires
-// this in lifecycle.go BEFORE api.HandlerFromMux so the manual route
-// wins over the oapi-codegen-generated stub — Pitfall 8).
+// either side errors. Bound by chi at /api/v1/ws; the manual route
+// is registered BEFORE api.HandlerFromMux so it wins over the
+// oapi-codegen-generated stub.
 //
-// Origin enforcement (T-04-01): AcceptOptions.OriginPatterns rejects
-// upgrades whose Origin header doesn't match. coder/websocket v1.8.14
-// REQUIRES this option (or InsecureSkipVerify) — without it the
-// connection is rejected.
+// Origin enforcement: AcceptOptions.OriginPatterns rejects upgrades
+// whose Origin header doesn't match. coder/websocket REQUIRES this
+// option (or InsecureSkipVerify) — without it the connection is rejected.
 //
-// WR-01 defense-in-depth: coder/websocket's authenticateOrigin returns
-// nil when Origin is empty (e.g. native HTTP clients, curl, scripts),
-// bypassing OriginPatterns. The localhost-bind posture in cmd/jasper
-// (requireLoopbackBind) already mitigates this, but reject empty
-// Origin here so a future bind-to-LAN regression cannot silently
-// open the door.
+// Defense-in-depth: coder/websocket's authenticateOrigin returns nil when
+// Origin is empty (e.g. curl, scripts), bypassing OriginPatterns. The
+// localhost-bind posture already mitigates this, but we reject empty Origin
+// here so a future bind-to-LAN regression cannot silently open the door.
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Origin") == "" {
 		h.log.Warn("hub: rejecting upgrade with empty Origin header (WR-01)",

@@ -145,7 +145,7 @@ func TestFTS5Migration(t *testing.T) {
 // TestFTSUpsertSync verifies that the reconcile path populates body_fts and
 // tag_names_fts so that notes_fts is queryable after a reconcile pass:
 //
-//   - body_fts MUST NOT contain frontmatter (D-37: "tags: [project]" must not
+//   - body_fts MUST NOT contain frontmatter ("tags: [project]" must not
 //     be found in body-match results — only tag_names_fts carries the tag).
 //   - body_fts MUST contain the note body text ("hello searchable world").
 //   - tag_names_fts MUST contain the tag name ("project").
@@ -172,7 +172,7 @@ func TestFTSUpsertSync(t *testing.T) {
 	}
 
 	if strings.Contains(bodyFTS, "tags:") {
-		t.Errorf("body_fts contains frontmatter ('tags:'); D-37 violated\nbody_fts=%q", bodyFTS)
+		t.Errorf("body_fts contains frontmatter ('tags:')\nbody_fts=%q", bodyFTS)
 	}
 
 	if !strings.Contains(bodyFTS, "hello searchable world") {
@@ -206,16 +206,12 @@ func TestFTSUpsertSync(t *testing.T) {
 var fixedMtime = time.Unix(1700000000, 0)
 
 // TestFTSDivergenceRebuild verifies that checkAndRepairFTSDivergence detects
-// and heals FTS content staleness (D-36). The test exercises two scenarios:
+// and heals FTS content staleness. The test exercises two scenarios:
 //
 //  1. Healthy index (body_fts populated): checkAndRepairFTSDivergence is a no-op.
 //  2. Stale index (all body_fts empty): checkAndRepairFTSDivergence detects
-//     staleness via the "all body_fts empty" heuristic, runs 'rebuild', and
+//     staleness via the “all body_fts empty” heuristic, runs 'rebuild', and
 //     restores FTS5 MATCH capability.
-//
-// The end-to-end scenario tested here mirrors the post-startup behaviour:
-// after reconcile populates notes.body_fts, checkAndRepairFTSDivergence
-// ensures the FTS5 shadow index stays in sync with the content table.
 //
 // Note: for FTS5 external-content tables, SELECT COUNT(*) FROM notes_fts
 // always equals SELECT COUNT(*) FROM notes. The divergence check therefore

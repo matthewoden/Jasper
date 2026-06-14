@@ -31,19 +31,16 @@ import (
 )
 
 // ErrAlreadyOpen is returned by OpenVault when a vault is already open.
-// Plan 08-17d adds the in-process mutex + concurrent 409 enforcement;
-// 17b returns this sentinel as a stub for the "switch is unsupported" case.
+// Hot-swap is not yet supported.
 var ErrAlreadyOpen = errors.New("a vault is already open; hot-swap not yet supported (see 08-17d)")
 
 func notesDirFor(dataDir string) string { return filepath.Join(dataDir, "notes") }
 
 // EnsureDataDir creates <dataDir>/{notes,.jasper} with 0o755 perms if
-// missing. 0o755 (not 0o700) is intentional per CONTEXT.md / threat
-// model T-01-04-07: Jasper runs as the user, the data dir lives under
-// the user's home, and 0o755 matches the prevailing convention for
-// app-data dirs on macOS / Linux. A more restrictive 0o700 default
-// would surprise external sync tools (Syncthing, iCloud, git) that
-// expect to walk the tree.
+// missing. 0o755 (not 0o700) because Jasper runs as the user and that
+// permission matches the prevailing convention for app-data dirs on
+// macOS/Linux. A more restrictive 0o700 would surprise sync tools
+// (Syncthing, iCloud, git) that need to walk the tree.
 func EnsureDataDir(dataDir string) error {
 	for _, sub := range []string{"notes", vault.SubdirName} {
 		if err := os.MkdirAll(filepath.Join(dataDir, sub), 0o755); err != nil {
@@ -54,12 +51,9 @@ func EnsureDataDir(dataDir string) error {
 }
 
 // SeedScratchpadIfMissing writes notes.ScratchpadWelcome to
-// <dataDir>/notes/scratchpad.md ONLY if the file does not already
-// exist. Idempotent — safe to call on every startup. Per CONTEXT.md
-// D-08 / UI-SPEC §Copywriting Contract.
-//
-// Uses fsstore.AtomicWrite per DATA-13 / Pitfall 3 — every byte that
-// reaches the data root must go through temp+fsync+rename+fsync(parent).
+// <dataDir>/notes/scratchpad.md only if the file does not already exist.
+// Idempotent — safe to call on every startup. Uses fsstore.AtomicWrite
+// so every byte goes through temp+fsync+rename+fsync(parent).
 func SeedScratchpadIfMissing(dataDir string, log *slog.Logger) error {
 	path := filepath.Join(notesDirFor(dataDir), notes.ScratchpadRelPath)
 	if _, err := os.Stat(path); err == nil {
@@ -89,46 +83,34 @@ func (a *App) serveStartupError(ctx context.Context, phaseName string, initErr e
 	return a.serveListener(ctx)
 }
 
-// Run executes the Phase 2 startup sequence and serves until ctx is
-// canceled. On ctx cancellation a graceful shutdown is attempted with
-// a 5-second deadline.
+// Run executes the startup sequence and serves until ctx is canceled.
+// On ctx cancellation a graceful shutdown is attempted with a 5-second
+// deadline.
 //
-// Plan 08-17b adds a "no-vault" branch at the top of the sequence
-// (ADR-001 §2 boot steps):
+// Boot steps:
 //
 //  0. resolveVaultMode — read app.json; determine modeOpen vs modeNoVault.
-//     V13 + V14 clear current_vault + set banner atomically; per-vault
-//     subsystems remain dormant in no-vault mode.
+//     Per-vault subsystems remain dormant in no-vault mode.
 //
 // Per-vault steps (only when modeOpen):
 //
 //  1. EnsureDataDir — mkdir <DataDir>/{notes,.jasper}.
 //  2. SeedScratchpadIfMissing — write the welcome template if absent.
-//  3. mkdir <DataDir>/.jasper and <DataDir>/.jasper/logs (the migration
+//  3. mkdir <DataDir>/.jasper and <DataDir>/.jasper/logs (migration
 //     runner expects them).
 //  4. sqlite.Open — open the writer/reader Pair on app.db.
-//     pair is opened before runner.Run regardless of outcome; Close on
-//     the pair is always safe — it tears down both Reader and Writer
-//     cleanly even if the migration runner returned ErrUnrecoverable
-//     / ErrDiskFull. (W-3.)
+//     pair.Close is always safe even if the runner returned an error.
 //  5. Build *index.Indexer + *migrate.Runner; wire Path2Rebuild.
-//  6. runner.Run — apply pending migrations on the live DB. Three
-//     outcomes:
+//  6. runner.Run — apply pending migrations. Three outcomes:
 //     - StateOK / StateRolledBack → continue to step 7.
-//     - ErrDiskFull → install the disk-full static handler and
-//     serve it on the listener (the user must free space and
-//     restart the binary).
-//     - ErrUnrecoverable → install the unrecoverable static
-//     handler and serve it on the listener.
-//  7. indexer.Reconcile(ModeIncremental) — DATA-09 startup delta scan.
+//     - ErrDiskFull → install the disk-full static handler.
+//     - ErrUnrecoverable → install the unrecoverable static handler.
+//  7. indexer.Reconcile(ModeIncremental) — startup delta scan.
 //     Only runs when state != Unrecoverable.
-//  8. Rebuild api.Server with full wiring (NewServerWithIndex 5-arg
-//     form — B-2 locked) and replace a.handler.
+//  8. Rebuild api.Server with full wiring and replace a.handler.
 //  9. net.Listen + http.Server.Serve, graceful shutdown on ctx.Done.
 //
-// ReadHeaderTimeout is set per threat model T-01-04-05 to mitigate
-// slowloris-style attacks. Full ReadTimeout / WriteTimeout are
-// deferred to Phase 4 alongside the WebSocket hub timeout config.
+// ReadHeaderTimeout is set to mitigate slowloris-style attacks.
 func (a *App) Run(ctx context.Context) error {
 	appJSONPath, err := vault.AppJSONPath()
 	if err != nil {
@@ -269,10 +251,9 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	}
 
 	if status.State != migrate.StateUnrecoverable {
-		// Drain any seed grants queued by firstrun.RunSetup (Phase 9 D-04).
-		// Non-fatal on error: a corrupt seed_grants.json should not brick
-		// boot; operator can inspect <vault>/.jasper/seed_grants.json and
-		// retry. ON CONFLICT DO UPDATE makes a repeat-apply safe.
+		// Drain any seed grants queued by firstrun.RunSetup. Non-fatal: a
+		// corrupt seed_grants.json should not brick boot; ON CONFLICT DO
+		// UPDATE makes a repeat-apply safe.
 		if err := firstrun.ApplySeedGrants(ctx, pair.Writer, a.cfg.DataDir); err != nil {
 			a.cfg.Logger.Warn("apply seed grants failed (non-fatal)", "err", err)
 		}
@@ -447,7 +428,7 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 
 	if status.State != migrate.StateUnrecoverable {
 		// Mirror of bootPerVaultSubsystems: drain seed grants on hot-swap
-		// into a freshly-created vault (Phase 9 D-04). Non-fatal on error.
+		// into a freshly-created vault. Non-fatal on error.
 		if err := firstrun.ApplySeedGrants(ctx, pair.Writer, a.cfg.DataDir); err != nil {
 			a.cfg.Logger.Warn("switch: apply seed grants failed (non-fatal)", "err", err)
 		}
@@ -613,20 +594,12 @@ func (a *App) serveListener(ctx context.Context) error {
 	}
 }
 
-// OpenVault transitions a no-vault App to an open-vault App.
-// Called by POST /vault/open and POST /vault/create after their disk-side
-// preparation work completes.
-//
-// Plan 08-17b implementation: single-shot. Returns ErrAlreadyOpen if a
-// vault DB pair is already set up (i.e., bootPerVaultSubsystems already
-// ran). Plan 08-17d adds hot-swap support with an in-process mutex.
-//
-// The ctx parameter controls the lifetime of the newly started per-vault
-// server. Cancel it to shut down the server loop and release DB handles.
-//
-// Side effect: updates app.json via vault.TouchOpened + SaveAppJSON so
-// current_vault is persisted and last_opened_at is refreshed. Clears
-// api.BootBanner so subsequent GET /vault/recent returns no banner.
+// OpenVault transitions a no-vault App to an open-vault App. Called by
+// POST /vault/open and POST /vault/create after disk-side preparation.
+// Returns ErrAlreadyOpen if a vault DB pair is already set up. ctx
+// controls the lifetime of the per-vault subsystems; cancel it to shut
+// down and release DB handles. Updates app.json so current_vault is
+// persisted and clears api.BootBanner.
 func (a *App) OpenVault(ctx context.Context, absCanonical string) error {
 	if !a.swapMu.TryLock() {
 		return ErrSwitchInProgress

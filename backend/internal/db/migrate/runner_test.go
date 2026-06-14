@@ -101,7 +101,8 @@ func TestRun_NoPending_NoOp(t *testing.T) {
 	if _, err := pair.Writer.ExecContext(ctx, string(initialSQL)); err != nil {
 		t.Fatalf("seed schema: %v", err)
 	}
-	if _, err := pair.Writer.ExecContext(ctx,
+	if _, err := pair.Writer.ExecContext(
+		ctx,
 		`INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)`,
 		"001_initial.sql", int64(1234567890),
 	); err != nil {
@@ -152,7 +153,8 @@ func TestRun_BrokenMigration_FiresPath1(t *testing.T) {
 	if _, err := pair.Writer.ExecContext(ctx, string(initialSQL)); err != nil {
 		t.Fatalf("seed 001 schema: %v", err)
 	}
-	if _, err := pair.Writer.ExecContext(ctx,
+	if _, err := pair.Writer.ExecContext(
+		ctx,
 		`INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)`,
 		"001_initial.sql", int64(1),
 	); err != nil {
@@ -326,7 +328,8 @@ func TestRun_RestoreFailureDuringPath1_FiresPath3(t *testing.T) {
 	if _, err := pair.Writer.ExecContext(ctx, string(initialSQL)); err != nil {
 		t.Fatalf("seed schema: %v", err)
 	}
-	if _, err := pair.Writer.ExecContext(ctx,
+	if _, err := pair.Writer.ExecContext(
+		ctx,
 		`INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)`,
 		"001_initial.sql", int64(1),
 	); err != nil {
@@ -398,7 +401,8 @@ func TestRun_RecordsNotesIndexedAfterSuccess(t *testing.T) {
 		t.Errorf("NotesIndexed: got %d, want 0", st.NotesIndexed)
 	}
 
-	if _, err := pair.Writer.ExecContext(context.Background(),
+	if _, err := pair.Writer.ExecContext(
+		context.Background(),
 		`INSERT INTO notes(id,path,title,mtime_unix,size_bytes,checksum_sha256,created_at,updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		"00000000-0000-0000-0000-000000000001", "scratchpad.md", "Scratchpad",

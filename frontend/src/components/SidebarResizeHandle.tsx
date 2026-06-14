@@ -1,33 +1,16 @@
 /**
- * Phase 5.5 — Plan 05 (UX-09): SidebarResizeHandle.
+ * SidebarResizeHandle — 8px transparent hit-area at the sidebar's right edge.
+ * Cursor change (col-resize) is the only visual cue.
  *
- * 4px-wide pointer-events drag handle anchored to the sidebar's right edge.
- * Drives `useTreeStore.setSidebarWidth` on `pointermove`; the store clamps
- * to SIDEBAR_WIDTH_DEFAULT (MIN) and the existing 250ms-debounced subscriber
- * persists the width to localStorage.
+ * Drag lifecycle:
+ *   - pointerdown → mark draggingRef, attach pointermove + pointerup to document
+ *     (listeners stay active even when cursor leaves the 8px hit area)
+ *   - pointermove → clamp(MIN, clientX, MAX) where MAX = computeMaxWidth()
+ *     (keeps editor pane ≥320px)
+ *   - pointerup → clear draggingRef, detach both listeners
  *
- * Recipe (RESEARCH §Pattern 5):
- *   - `pointerdown` on the handle → mark `draggingRef.current = true` and
- *     attach `pointermove` + `pointerup` listeners to `document` so the drag
- *     keeps tracking even when the cursor leaves the 4px hit area.
- *   - `pointermove` → compute the new width as `clamp(MIN, clientX, MAX)`
- *     where MAX = `max(MIN, window.innerWidth - 320)` (keeps the editor
- *     pane ≥320px wide).
- *   - `pointerup` → flip `draggingRef` off and detach BOTH document
- *     listeners. Cleanup is explicit so a long-lived process never leaks.
- *
- * Anti-patterns the recipe rejects:
- *   - No visible 1px divider line (Open Question 4 in RESEARCH — cursor
- *     change on the 4px hit area is the entire UX cue).
- *   - No `react-resizable-panels` import (project bias: no extras; the
- *     ~30-line raw recipe matches the rest of the codebase).
- *   - `e.preventDefault()` is REQUIRED on pointerdown — without it, the
- *     browser starts a native text-selection drag on the sidebar.
- *
- * Accessibility: role="separator" + aria-orientation="vertical" +
- * aria-label="Resize sidebar" matches the WAI-ARIA window-splitter
- * convention. (Phase 5.5 v1 ships pointer-driven only; keyboard arrow-key
- * resize is deferred.)
+ * e.preventDefault() on pointerdown is required — without it, the browser
+ * starts a native text-selection drag on the sidebar content.
  */
 import { useCallback, useRef } from "react";
 import type React from "react";
@@ -83,7 +66,7 @@ export function SidebarResizeHandle() {
         top: 0,
         right: 0,
         bottom: 0,
-        width: 8, // D-12: 8px hit area (was 4px); transparent, cursor-only affordance
+        width: 8, // 8px hit area; transparent, cursor-only affordance
         cursor: "col-resize",
         userSelect: "none",
       }}

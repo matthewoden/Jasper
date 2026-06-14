@@ -11,17 +11,13 @@ export interface PaletteSearchResult {
 }
 
 /**
- * useSearch — debounced text search with optional tag-AND combination.
- * Now parameter-driven (post-Plan 07-18 / Bucket B1 pivot): caller supplies
- * query + activeTagFilter; hook returns { results, isSearching }.
+ * useSearch — debounced full-text search with optional tag-AND filter.
+ * Caller supplies query + activeTagFilter; hook returns { results, isSearching }.
  * No store writes. Mounted inside CommandMenu when mode === "notes".
  *
- * Below 2-character threshold: returns { results: [], isSearching: false }
- * synchronously (no debounce, no store writes).
- * Above threshold: debounces 200ms (Plan 07-44 — reverted from Plan 07-43's
- * 500ms after user reversal; activity indicator covers in-window feedback),
- * fires searchNotes(query, activeTagFilter, 50), returns the results when
- * they land.
+ * Below 2-character threshold: returns empty results synchronously (no debounce).
+ * Above threshold: debounces 200ms then fires searchNotes(query, activeTagFilter, 50).
+ * 200ms chosen over 500ms because the activity indicator covers in-window feedback.
  */
 export function useSearch(
   query: string,

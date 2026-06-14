@@ -1,14 +1,11 @@
 /**
- * FileTree tests — UI-SPEC §Surface 1 (chassis) + §Surface 5 toasts +
- * §Surface 7 drag-drop.
+ * FileTree tests — state branches, toasts, and drag-drop.
  *
  * Mocks useFileTree + useTreeMutations to drive each state branch
- * deterministically. Wraps the component in <ToastProvider> because
- * Plan 03-07's toast surfacing requires it.
+ * deterministically. Wraps in <ToastProvider> for toast surfacing.
  *
- * react-arborist actually renders into the DOM under jsdom — its
- * virtualization defaults to react-window which mounts the visible
- * window of rows synchronously when given a finite height.
+ * react-arborist renders into the DOM under jsdom — its virtualization
+ * (react-window) mounts the visible window of rows synchronously at finite height.
  */
 import {
   fireEvent,

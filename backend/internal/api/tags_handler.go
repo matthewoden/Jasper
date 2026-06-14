@@ -14,7 +14,7 @@ var tagNameRE = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 func isValidTagNameStr(s string) bool { return tagNameRE.MatchString(s) }
 
-// GetTags implements GET /api/v1/tags (TAGS-03).
+// GetTags implements GET /api/v1/tags.
 // Returns alphabetical TagWithCount list; nil index returns empty list.
 func (s *Server) GetTags(
 	ctx context.Context,
@@ -35,7 +35,7 @@ func (s *Server) GetTags(
 	return GetTags200JSONResponse{Tags: out}, nil
 }
 
-// GetTagNotes implements GET /api/v1/tags/{name}/notes (TAGS-04).
+// GetTagNotes implements GET /api/v1/tags/{name}/notes.
 // Returns NoteSummary list for tag carriers; 404 when tag has no carriers.
 func (s *Server) GetTagNotes(
 	ctx context.Context,
@@ -65,12 +65,12 @@ func (s *Server) GetTagNotes(
 	return GetTagNotes200JSONResponse{Notes: out}, nil
 }
 
-// PutTag implements PUT /api/v1/tags/{name} (TAGS-06 / D-23 rename).
+// PutTag implements PUT /api/v1/tags/{name} (tag rename).
 //
-// Validates D-22 charset for both old and new names, then calls
-// s.notes.RenameTagAcrossVault() which rewrites disk files AND performs
-// the SQL-level rename, then broadcasts the tags:rewritten WS event (D-34)
-// with origin_session_id for self-suppression (D-35).
+// Validates charset for both old and new names, calls
+// s.notes.RenameTagAcrossVault() which rewrites disk files AND the SQL row,
+// then broadcasts the tags:rewritten WS event with origin_session_id for
+// self-suppression.
 //
 // Error mapping:
 //   - notes.ErrTagNotFound    → 404 not_found
@@ -136,11 +136,10 @@ func (s *Server) PutTag(
 	}), nil
 }
 
-// DeleteTag implements DELETE /api/v1/tags/{name} (TAGS-07 / D-24 bulk-remove).
+// DeleteTag implements DELETE /api/v1/tags/{name} (bulk-remove).
 //
-// Calls s.notes.DeleteTagAcrossVault() which rewrites disk files AND performs
-// the SQL-level delete, then broadcasts the tags:rewritten WS event (D-34)
-// with new_name=null.
+// Calls s.notes.DeleteTagAcrossVault() which rewrites disk files AND the SQL
+// row, then broadcasts the tags:rewritten WS event with new_name=null.
 //
 // Error mapping:
 //   - notes.ErrTagNotFound → 404 not_found

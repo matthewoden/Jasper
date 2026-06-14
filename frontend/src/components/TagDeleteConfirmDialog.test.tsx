@@ -1,7 +1,4 @@
-/**
- * Tests for TagDeleteConfirmDialog component.
- * Validates DC1..DC6 from Plan 06-08 Task 2 behaviors.
- */
+/** TagDeleteConfirmDialog component tests — DC1..DC6 behaviors. */
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { TagDeleteConfirmDialog } from "./TagDeleteConfirmDialog";

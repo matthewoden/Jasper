@@ -1,34 +1,23 @@
 /**
- * Phase 8 — Offline operation (PERF-04 / D-43).
+ * Phase 8 — Offline operation.
  *
- * Asserts the SPA + setup wizard issues ZERO external network requests
- * during a full app exercise. Any leaked request to a CDN font, analytics
- * pixel, remote help URL, or an image with an absolute URL would surface
- * here.
+ * Asserts the SPA + setup wizard issue ZERO external network requests during
+ * a full app exercise. Any leaked request to a CDN font, analytics pixel,
+ * remote help URL, or image with an absolute URL would surface here.
  *
  * Method: Playwright's `context.route("**\/*", ...)` intercepts every
- * outbound request the page makes. Requests to localhost (127.0.0.1, ::1,
- * localhost) are allowed; any other hostname is recorded AND aborted so
- * the request cannot complete. The assertion is `externalRequests` is
- * empty.
+ * outbound request. Localhost requests (127.0.0.1 / ::1 / localhost) are
+ * allowed; anything else is recorded AND aborted. The assertion is that
+ * `externalRequests` is empty.
  *
- * Coverage: two scenarios cover the lifecycle:
+ * Two scenarios cover the lifecycle:
+ *   1. First-run wizard — no external requests.
+ *   2. Post-setup SPA shell (command palette, sidebar, editor mount) — no
+ *      external requests.
  *
- *   1. First-run wizard surface — bin/jasper boots against an empty
- *      data-dir; the firstrun middleware redirects to /setup. We open
- *      the wizard, interact with it (without submitting), and assert
- *      no external requests.
- *
- *   2. Post-setup SPA surface — we POST /api/v1/setup to provision the
- *      vault, reload, and exercise the steady-state shell (command
- *      palette, sidebar, editor mount). Again, zero external requests.
- *
- * Why this lives outside the unit-test suite: only Playwright can
- * intercept at the browser-context layer and observe the full set of
- * resource fetches (HTML/JS/CSS/fonts/images/XHR/WebSocket-handshakes).
- *
- * See: .planning/phases/08-native-install-service-sharing-first-run-polish/08-RESEARCH.md
- *      §"Offline Playwright spec" lines 906-939 (verbatim recipe).
+ * Lives outside the unit-test suite because only Playwright can intercept at
+ * the browser-context layer and observe resource fetches
+ * (HTML/JS/CSS/fonts/images/XHR/WebSocket-handshakes).
  */
 import { test, expect } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

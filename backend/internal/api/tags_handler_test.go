@@ -70,7 +70,9 @@ func (f *tagFakeIndex) List(_ context.Context) ([]notes.NoteSummary, error) {
 func (f *tagFakeIndex) LookupByPath(_ context.Context, _ string) (notes.NoteRecord, error) {
 	return notes.NoteRecord{}, notes.ErrNotFound
 }
-func (f *tagFakeIndex) MovePathPrefix(_ context.Context, _, _ string) (int, error)  { return 0, nil }
+
+func (f *tagFakeIndex) MovePathPrefix(_ context.Context, _, _ string) (int, error) { return 0, nil }
+
 func (f *tagFakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) { return 0, nil }
 func (f *tagFakeIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error   { return nil }
 func (f *tagFakeIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
@@ -87,7 +89,6 @@ func (f *tagFakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string
 	return nil
 }
 
-// Plan 06-11: backlinks retrieval + title search stubs for tagFakeIndex.
 func (f *tagFakeIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]notes.BacklinkRow, error) {
 	return []notes.BacklinkRow{}, nil
 }
@@ -96,7 +97,6 @@ func (f *tagFakeIndex) SearchTitles(_ context.Context, _ string, _ int) ([]notes
 	return []notes.SearchResult{}, nil
 }
 
-// Plan 07-04: SearchFTS no-op stub.
 func (f *tagFakeIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes.SearchHit, error) {
 	return []notes.SearchHit{}, nil
 }

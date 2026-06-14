@@ -1,29 +1,21 @@
 /**
- * mcpGrantsApi — typed wrappers over the Phase 8 MCP grant endpoints (08-08).
+ * mcpGrantsApi — typed wrappers over the MCP grant endpoints.
+ * All calls route through the openapi-fetch client; no hand-written request shapes.
  *
- * Mirrors the pattern established in tagsApi.ts / notesApi.ts: all calls
- * route through the openapi-fetch client (`frontend/src/api/client.ts`).
- * ZERO hand-written request shapes — types come from the generated OpenAPI
- * schema (08-01 regenerated the typed paths after the MCP endpoints landed).
- *
- * Endpoints (locked by 08-08 backend + 08-01 schema regen):
+ * Endpoints:
  *   GET    /api/v1/mcp/grants                → listGrants(): McpGrant[]
  *   POST   /api/v1/mcp/grants                → postGrant(path, level): McpGrant
  *   DELETE /api/v1/mcp/grants?path=<encoded> → deleteGrant(path): void
  *
- * The backend re-validates folder_path + level enum (T-08-45 mitigation —
- * the frontend can only send what the schema permits; the server enforces
- * the actual semantics). Each wrapper throws on non-2xx so callers can use
- * try/catch.
+ * Each wrapper throws on non-2xx so callers can use try/catch.
  */
 
 import { client } from "../api/client";
 import type { McpGrant } from "./useTreeStore";
 
 /**
- * List all MCP write grants. Returns [] on error (called from useEffect on
- * mount — silent failure preserves any previously-cached grants in the
- * store rather than wiping them on a transient backend hiccup).
+ * List all MCP write grants. Returns [] on error so a transient backend
+ * hiccup doesn't wipe previously-cached grants from the store.
  */
 export async function listGrants(): Promise<McpGrant[]> {
   const { data, error } = await client.GET("/mcp/grants");

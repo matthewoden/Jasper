@@ -1,31 +1,16 @@
 /**
- * setupApi — typed openapi-fetch wrappers around the first-run wizard
- * endpoints introduced in Plan 08-01 / 08-02:
+ * setupApi — typed openapi-fetch wrappers for the first-run wizard endpoints:
+ *   - GET  /api/v1/setup/status
+ *   - POST /api/v1/setup/validate-data-dir
+ *   - POST /api/v1/setup
  *
- *   - GET  /api/v1/setup/status               → SetupStatus
- *   - POST /api/v1/setup/validate-data-dir    → SetupValidateResponse
- *   - POST /api/v1/setup                       → SetupResponse
+ * Reuses the shared `client` to keep the baseUrl consistent even though
+ * X-Session-ID is not meaningful before setup completes.
  *
- * Plan 08-04 Task 1.
- *
- * The setup endpoints don't go through the X-Session-ID middleware
- * meaningfully (there's no session before setup), but reusing the
- * shared `client` keeps the baseUrl ("/api/v1") consistent and lets
- * openapi-fetch infer body/response types from the regenerated
- * `schema.d.ts`.
- *
- * Notes:
- *  - validateDataDir always resolves on 200 — the backend returns
- *    { valid: false, code, message } in the response body for the four
- *    D-08 refusal cases. The wrapper does NOT throw on `valid: false`;
- *    the caller distinguishes valid/invalid by reading the response.
- *  - submitSetup returns void on success; on 400/500 it throws an Error
- *    whose message is a JSON-encoded form of the backend Error payload
- *    so the wizard can surface `{server_message}` in the locked toast
- *    copy (UI-SPEC §Copywriting Contract submit error).
- *  - All three wrappers accept an optional AbortSignal so the wizard
- *    can cancel in-flight requests on rapid keystrokes (T-08-18 race
- *    protection).
+ * validateDataDir always resolves (backend returns { valid: false, ... } in the
+ * body for refusal cases — the wrapper never throws on valid: false).
+ * submitSetup throws on 400/500 so the wizard can surface the server message.
+ * All wrappers accept an optional AbortSignal for rapid-keystroke cancellation.
  */
 import { client } from "../api/client";
 import type { components } from "../api/schema";

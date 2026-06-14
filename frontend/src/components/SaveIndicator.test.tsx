@@ -1,13 +1,9 @@
 /**
- * SaveIndicator render tests. Per 01-UI-SPEC.md §"Save Indicator State Machine"
- * we lock copy strings + tooltip phrasing + ARIA semantics here so the contract
- * survives the Phase 5 CodeMirror swap.
+ * SaveIndicator render tests — locks copy strings, tooltip phrasing, and ARIA semantics.
  *
- * Plan 07-37 (UAT-3 N9): SaveIndicator additionally accepts an optional
- * `onClick` prop. When provided it renders as a `<button>` (clickable hybrid
- * SaveIndicator + manual-refresh control mounted in TopBar's right cluster).
- * When omitted it preserves the legacy read-only behavior used by older
- * mounting points.
+ * When onClick is provided the component renders as a clickable button (hybrid
+ * save indicator + manual-refresh control). Without onClick it renders a
+ * read-only status overlay.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";

@@ -1,13 +1,9 @@
 /**
- * KeyboardShortcutsDialog tests — Plan 07-12.
+ * KeyboardShortcutsDialog tests.
  *
- * Verifies:
- * - Dialog opens when open=true, renders title + footer + close button.
- * - All CHEAT_SHEET_ENTRIES labels are present.
- * - GROUP_ORDER groups are rendered as eyebrows.
- * - Close button calls onOpenChange(false).
- * - Esc closes via Radix (tested via Dialog.Root onOpenChange).
- * - No hex literals in the component (structural guard only — gated by grep in CI).
+ * Verifies: dialog opens with title + footer + close button; all
+ * CHEAT_SHEET_ENTRIES labels are present; GROUP_ORDER groups render as
+ * eyebrows; Close button calls onOpenChange(false).
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";

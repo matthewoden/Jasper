@@ -19,13 +19,12 @@ import (
 
 const maxAttachmentBytes int64 = 100 << 20
 
-// CreateAttachment implements POST /api/v1/attachments/{noteId} (ATTACH-01..04).
+// CreateAttachment implements POST /api/v1/attachments/{noteId}.
 //
 // Accepts multipart/form-data with a single field 'file'. Stores the file under
-// <dataDir>/notes/<parent>/attachments/ per D-25. Auto-renames on collision
-// (image.png → image-1.png). Enforces 100 MB cap (D-29). Returns
-// AttachmentUploadResult with filename, path, content_type, category, is_image,
-// size_bytes.
+// <dataDir>/notes/<parent>/attachments/. Auto-renames on collision
+// (image.png → image-1.png). Enforces 100 MB cap. Returns AttachmentUploadResult
+// with filename, path, content_type, category, is_image, size_bytes.
 //
 //nolint:revive // generated interface name
 func (s *Server) CreateAttachment(
@@ -125,10 +124,9 @@ func (s *Server) CreateAttachment(
 	}, nil
 }
 
-// GetAttachment implements GET /api/v1/attachments/{noteId}/{filename} (ATTACH-05/06).
+// GetAttachment implements GET /api/v1/attachments/{noteId}/{filename}.
 //
-// Streams the attachment file with full path-traversal hardening (5-rule pipeline
-// per RESEARCH.md §Thread 4 §Path Traversal Hardening — D-34, SECURITY-06).
+// Streams the attachment file with full path-traversal hardening (5-rule pipeline).
 //
 // Note on Content-Type: oapi-codegen's GetAttachment200ApplicationoctetStreamResponse
 // always sets Content-Type: application/octet-stream in VisitGetAttachmentResponse.

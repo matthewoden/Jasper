@@ -1,19 +1,10 @@
 /**
- * Tests for ResizeHandle (Phase 6.6 — Plan 06.6-01, UX-CHROME-04).
+ * Tests for ResizeHandle — generic drag handle backing all resize affordances.
  *
- * Generic drag handle backing all resize affordances. Uses the same
- * pointer-event recipe as SidebarResizeHandle.test.tsx:
- *
- *   1. `fireEvent.pointerDown(handle)` — React calls onPointerDown;
- *      lastPosRef is initialized to 0 (jsdom PointerEvent does not honor
- *      clientX in fireEvent synthetic events).
- *   2. `document.dispatchEvent(new MouseEvent("pointermove", {clientX|Y}))` —
- *      jsdom PointerEvent is not constructible; MouseEvent is used per the
- *      SidebarResizeHandle.test.tsx pattern.
- *   3. Assert `onDrag` was called with the correct delta (clientX - 0).
- *   4. `document.dispatchEvent(new MouseEvent("pointerup"))` — cleanup.
- *
- * D-12: cursor-only affordance — no visible band, transparent background.
+ * Pointer-event recipe: fireEvent.pointerDown initializes lastPosRef to 0
+ * (jsdom PointerEvent ignores clientX); pointermove is dispatched via
+ * MouseEvent since jsdom PointerEvent is not constructible. Delta = clientX - 0.
+ * Cursor-only affordance: transparent background, no visible band.
  */
 import { fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

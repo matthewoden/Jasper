@@ -5,7 +5,7 @@
  * counts, sorted alphabetically. Clicking a tag sets activeTagFilter in
  * useTreeStore (which causes FileTree to swap into flat-list mode).
  *
- * Behaviors (locked, per Plan 06-08 Task 2):
+ * Behaviors:
  *   TB1: collapsed → only 32px header "▶ TAGS (N)"
  *   TB2: expanded → header (chevron down) + scrollable tag list (max 240px)
  *   TB3: clicking header toggles tagBrowserExpanded
@@ -20,7 +20,7 @@
  *   TB12: empty state copy "No tags yet. Add tags: [] to a note's frontmatter."
  *   TB13: aria-expanded + aria-controls on header button
  *
- * Security (T-06-08-01): client pre-validates tag name against /^[a-z0-9_-]+$/
+ * Security: client pre-validates tag name against /^[a-z0-9_-]+$/
  * before calling renameTag — server is authoritative but we block the submit
  * for UX.
  */
@@ -250,7 +250,6 @@ export function TagBrowserSection() {
   return (
     <>
       <div style={sectionStyle}>
-        {/* Section header */}
         <button
           type="button"
           style={headerStyle}
@@ -267,7 +266,6 @@ export function TagBrowserSection() {
           <span style={headerLabelStyle}>TAGS ({tags.length})</span>
         </button>
 
-        {/* Tag list (shown only when expanded) */}
         {expanded && (
           <ul id={listId} role="list" style={listStyle}>
             {sortedTags.length === 0 ? (
@@ -364,7 +362,7 @@ export function TagBrowserSection() {
         )}
       </div>
 
-      {/* Tag delete confirmation dialog (shown for N > 5) */}
+      {/* Confirmation dialog — only shown when tag count > 5 */}
       <TagDeleteConfirmDialog
         open={confirming !== null}
         onOpenChange={(open) => {

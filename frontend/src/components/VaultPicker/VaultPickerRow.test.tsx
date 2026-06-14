@@ -1,8 +1,4 @@
-/**
- * VaultPickerRow tests — Plan 08-17c Task 2.
- *
- * Tests the V11 missing-entry UX (greyed row + Folder not found + Reconnect/Remove).
- */
+/** VaultPickerRow tests — missing-entry UX: greyed row + "Folder not found" + Reconnect/Remove. */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 

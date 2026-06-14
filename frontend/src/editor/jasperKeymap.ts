@@ -1,32 +1,16 @@
 /**
- * jasperKeymap — Phase 5 / Plan 05-11. CM6 keymap factory for the
- * Cmd+S save shortcut (EDIT-10). Find/Replace (EDIT-11) is provided
- * by @codemirror/search's searchKeymap, already wired by Plan 05-05's
- * MarkdownEditor extensions array — this file does NOT re-bind Cmd+F.
+ * jasperKeymap — CM6 keymap factory for the Cmd+S save shortcut.
+ * Find/Replace is provided by @codemirror/search's searchKeymap (already wired
+ * in MarkdownEditor's extensions array) — this file does NOT re-bind Cmd+F.
  *
- * Translation note: EditorPane.tsx lines 516-530 had a textarea
- * onKeyDown that detected `(e.metaKey || e.ctrlKey) && key === 's'`,
- * called preventDefault, and dispatched performSave. CM6 keymap
- * "Mod-s" expands to Cmd-s on Mac and Ctrl-s on other platforms —
- * same semantic. Returning true from a keymap run = handled (CM6's
- * preventDefault equivalent).
+ * The save callback is captured by closure; MarkdownEditor passes a stable
+ * cbRef-routed callback so the keymap always calls the latest handler
+ * without rebuilding the EditorView.
  *
- * The save callback is captured by closure, so MarkdownEditor passes
- * a stable cbRef-routed callback (NOT the prop directly) to keep the
- * EditorView's keymap pointing at the latest handler without
- * rebuilding the editor.
+ * Also exports toggleBold and toggleItalic: wrap/unwrap selection with `**`/`*`.
  *
- * Plan 07-24 (UAT-2 R1-4): Added toggleBold and toggleItalic commands
- * that wrap/unwrap the selection with `**` / `*` markers (Obsidian-style).
- * These are exported as a jasperKeymap KeyBinding[] and wired into
- * MarkdownEditor.tsx's keymap.of([...]) call.
- *
- * Trade-off note (italic vs bullet lists): The italic command (`*`) uses
- * naïve wrap/strip — it does NOT distinguish `*foo*` (italic) from `* foo`
- * (bullet list item) when the selection or flanking context starts at
- * line-beginning. v1 lean: naïve is acceptable; the user can undo with
- * Cmd+Z if it bites a list item. This trade-off is documented in
- * 07-24-SUMMARY.md under "Known Trade-offs".
+ * Italic trade-off: naïve wrap/strip does not distinguish `*foo*` (italic)
+ * from `* foo` (bullet list). User can undo with Cmd+Z.
  */
 import { keymap } from "@codemirror/view";
 import type { KeyBinding } from "@codemirror/view";
@@ -110,15 +94,11 @@ export function toggleItalic(view: EditorView): boolean {
 
 /**
  * jasperKeymap — CM6 KeyBinding array for project-specific shortcuts.
- *
- * Plan 07-24: Mod-b → toggleBold, Mod-i → toggleItalic.
- * Plan 07-36: Mod-u underline removed (UAT-3 N7).
  * Wire into MarkdownEditor.tsx via keymap.of([...jasperKeymap, ...]).
  *
  * "Mod-" expands to Cmd on macOS and Ctrl on other platforms (CM6 standard).
- * preventDefault: true ensures the browser default (OS font panel, etc.) is
- * suppressed even if the command returns false (defensive; all commands
- * always return true when they handle the key).
+ * preventDefault: true suppresses the browser default (OS font panel, etc.)
+ * even if a command returns false — all commands here always return true.
  */
 export const jasperKeymap: KeyBinding[] = [
   { key: "Mod-b", run: toggleBold, preventDefault: true },

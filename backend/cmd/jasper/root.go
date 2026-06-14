@@ -1,15 +1,5 @@
 // Package main: cobra root command for the `jasper` CLI.
-//
-// Phase 8 Plan 08-11 migrates from a stdlib `flag`-based switch dispatch
-// (the Phase 1 pattern) to cobra. The trigger was the install/uninstall/
-// status/doctor subcommand surface that 08-12 adds — once we cross
-// 3-4 user-facing subcommands, hand-rolled dispatch becomes more code
-// than the cobra dep saves. See 08-CONTEXT.md D-34 + 08-RESEARCH.md
-// Open Question #4 (Long-help strings hand-tuned, not generated).
-//
-// Subcommands self-register in their own *.go file's init() via
-// rootCmd.AddCommand(...) so this file stays a single registration
-// surface.
+// Subcommands self-register in their own *.go file via init() → rootCmd.AddCommand.
 package main
 
 import (

@@ -2,22 +2,17 @@
  * useBacklinks — reactive hook that fetches and refreshes backlinks for the
  * currently open note.
  *
- * Plan 06-11 / LINKS-08 / D-27..D-32.
+ * WS integration: module-level subscriber Set mirrors the useTagBrowser /
+ * useFileTree pattern. useSessionSync calls dispatchLinksEvent(), which
+ * fans out to all mounted instances without modifying useSessionSync's signature.
  *
- * WS integration strategy: module-level subscriber Set (mirrors useTagBrowser
- * and useFileTree patterns). When any of the relevant WS events arrive,
- * useSessionSync calls dispatchLinksEvent() which fan-outs to all mounted
- * useBacklinks instances. This avoids modifying useSessionSync's signature
- * while keeping the hook reactive.
- *
- * Events that trigger a refetch (D-31):
- *   - note:updated  — a save anywhere could change the [[...]] content
- *   - note:created  — new note might link to the current one
+ * Events that trigger a refetch:
+ *   - note:updated   — a save anywhere could change [[...]] content
+ *   - note:created   — a new note might link to the current one
  *   - links:rewritten — a rename propagated link text changes
  *
  * tags:rewritten is intentionally excluded: tag rewrites do not affect
- * [[wiki-link]] content and including it would over-trigger fetches.
- * (D-31 precision clarification — documented here.)
+ * [[wiki-link]] content and would over-trigger fetches.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,9 +24,8 @@ export const linksEventSubscribers = new Set<() => void>();
 export type LinksEventType = "note:updated" | "note:created" | "links:rewritten";
 
 /**
- * Called by useSessionSync (via the switch over WSEnvelope.event) when a
- * note:updated, note:created, or links:rewritten event arrives. Triggers
- * all mounted useBacklinks instances to refetch.
+ * Called by useSessionSync when a note:updated, note:created, or
+ * links:rewritten WS event arrives. Triggers all mounted instances to refetch.
  */
 export function dispatchLinksEvent(event: LinksEventType): void {
   void event;
@@ -52,9 +46,7 @@ export interface UseBacklinksResult {
 /**
  * useBacklinks(noteId) — fetches GET /api/v1/notes/{id}/backlinks on mount and
  * whenever a relevant WS event fires. Returns null backlinks when noteId is null.
- *
- * Data retention on error: previous backlinks are preserved (same as useFileTree
- * and useTagBrowser; surfaces the error without clearing the stale rows).
+ * On error, preserves the previous backlinks rather than clearing them.
  */
 export function useBacklinks(noteId: string | null): UseBacklinksResult {
   const [backlinks, setBacklinks] = useState<BacklinkRow[] | null>(null);
@@ -110,7 +102,6 @@ export function useBacklinks(noteId: string | null): UseBacklinksResult {
       cancelled.current = true;
       linksEventSubscribers.delete(subscriber);
     };
-    // fetchBacklinks is stable (no deps) — safe to include.
   }, [noteId, fetchBacklinks]);
 
   const refresh = useCallback(async () => {

@@ -423,7 +423,8 @@ func TestSmoke_HTTPListenerGatedByMigration(t *testing.T) {
 
 		t.Errorf(
 			"listener accepted before migrations finished: status=%d body=%s",
-			resp.StatusCode, body)
+			resp.StatusCode, body,
+		)
 		break
 	}
 	if !sawSuccess {

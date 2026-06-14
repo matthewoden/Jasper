@@ -146,8 +146,8 @@ func TestPutConfig_ThemeEnum_400(t *testing.T) {
 	}
 }
 
-// TestPutConfig_DisplayName — D-10 round-trip. PUT a config with
-// display_name; the response and a subsequent GET must both return it.
+// TestPutConfig_DisplayName — PUT a config with display_name; the response
+// and a subsequent GET must both return it.
 func TestPutConfig_DisplayName(t *testing.T) {
 	ts, _ := setupConfigServer(t)
 	defer ts.Close()
@@ -192,9 +192,9 @@ func TestPutConfig_DisplayName(t *testing.T) {
 	}
 }
 
-// TestLineHeightRoundTrip_Precision — CR-01 regression. toWireConfig /
-// fromWireConfig must preserve float64 precision for lineHeight: 1.6 must
-// come back as exactly 1.6, not the float32-truncated 1.5999999046325684.
+// TestLineHeightRoundTrip_Precision — toWireConfig / fromWireConfig must
+// preserve float64 precision for lineHeight: 1.6 must come back as exactly
+// 1.6, not the float32-truncated 1.5999999046325684.
 func TestLineHeightRoundTrip_Precision(t *testing.T) {
 	t.Parallel()
 	ts, _ := setupConfigServer(t)
@@ -238,13 +238,12 @@ func TestLineHeightRoundTrip_Precision(t *testing.T) {
 	}
 }
 
-// TestPutConfig_PreservesUnknownFields — SET-05 / D-09 merge-on-write.
-// A PUT must preserve an unmanaged key that was already on disk.
+// TestPutConfig_PreservesUnknownFields — a PUT must preserve an unmanaged
+// key that was already on disk (merge-on-write).
 func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 	ts, dir := setupConfigServer(t)
 	defer ts.Close()
 
-	// Write config.json with a hand-added unmanaged key.
 	configPath := filepath.Join(dir, ".jasper", "config.json")
 	seed := []byte(`{
 		"appName":"Jasper","theme":"dark",
@@ -258,7 +257,6 @@ func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// PUT a valid config that changes the theme but omits the unmanaged key.
 	body := []byte(`{
 		"appName": "Jasper", "theme": "light",
 		"dailyNotes": {"folder": "daily", "template": ""},
@@ -276,7 +274,6 @@ func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 		t.Fatalf("PUT status: got %d, want 200; body: %s", resp.StatusCode, respBody)
 	}
 
-	// Read the raw disk file and assert the unmanaged key is still present.
 	raw, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("read config: %v", err)
@@ -295,7 +292,6 @@ func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 		}
 	}
 
-	// Also assert the managed theme field was actually updated.
 	theme, ok := onDisk["theme"]
 	if !ok {
 		t.Error("theme key missing after PUT")

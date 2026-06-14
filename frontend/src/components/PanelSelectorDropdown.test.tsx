@@ -1,19 +1,9 @@
 /**
- * PanelSelectorDropdown.test.tsx — Phase 6.6, Plan 08.
+ * PanelSelectorDropdown tests — action-menu model (each item opens its panel).
  *
- * UAT-updated 2026-05-12: the dropdown was refactored from a checkbox model
- * (toggle on/off, indicator shown) to an action-menu model (each item opens
- * its panel). These tests track that contract.
- *
- * Covers:
- *   1. Trigger button renders with aria-label="Open panel"
- *   2. Clicking trigger opens the dropdown Content portal
- *   3. Content contains Tags and Backlinks menuitem items
- *   4. Items are NOT menuitemcheckbox — no aria-checked indicator
- *   5. Clicking Tags calls setPanelSelector({ tags: true })
- *   6. Clicking Backlinks calls setPanelSelector({ backlinks: true })
- *   7. If rail is collapsed, opening a panel also expands the rail
- *   8. Content has zIndex: 100
+ * Covers: trigger aria-label; dropdown renders Tags + Backlinks menuitems;
+ * items are plain menuitems (no aria-checked); clicking calls setPanelSelector;
+ * collapsed rail is expanded on panel open; zIndex: 100 on content.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";

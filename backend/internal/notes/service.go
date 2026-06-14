@@ -21,17 +21,15 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
 
-// Service is the Phase 1 notes domain service. Get reads the file via
-// FileStore; Update writes it via FileStore.WriteAtomic (DATA-13).
+// Service is the notes domain service. Get reads the file via FileStore;
+// Update writes it via FileStore.WriteAtomic.
 //
-// Per ARCHITECTURE.md §11.1 the canonical save path is filesystem FIRST,
-// then Index, then broadcast. Plan 02-04a wires step TWO (Index.Upsert
-// AFTER WriteAtomic). The broadcaster is added in Phase 4 the same way.
+// Canonical save ordering: filesystem FIRST, then Index, then broadcast.
 //
 // File-FIRST contract: if Index.Upsert fails for a non-collision reason,
 // the file is left on disk unchanged and the next Reconcile heals the
 // index. The only error class that propagates to the caller is
-// ErrCaseCollision (DATA-12), which the API layer maps to 409.
+// ErrCaseCollision, which the API layer maps to 409.
 type Service struct {
 	files       FileStore
 	index       Index
@@ -40,19 +38,9 @@ type Service struct {
 	log         *slog.Logger
 }
 
-// NewService constructs the service. The index parameter is required
-// in production (Plan 02-06's composition root passes a real
-// *index.Indexer); callers may pass nil and Service substitutes a
-// nopIndex no-op so Phase 1 tests and any callers that don't need the
-// derived index continue to work unchanged.
-//
-// The broadcaster parameter is the Phase 4 WebSocket hub port. Pass nil
-// and Service substitutes nopBroadcaster so existing callers compile and
-// pass without wiring the hub. Plan 04-04's composition root always
-// passes a real *wshub.Hub.
-//
-// A nil log is replaced with slog.Default() so callers don't have to
-// thread a logger through every test.
+// NewService constructs the service. Passing nil for index substitutes a
+// nopIndex no-op; passing nil for broadcaster substitutes nopBroadcaster.
+// A nil log is replaced with slog.Default().
 func NewService(files FileStore, index Index, broadcaster Broadcaster, log *slog.Logger) *Service {
 	if log == nil {
 		log = slog.Default()
@@ -76,16 +64,14 @@ type nopBroadcaster struct{}
 
 func (nopBroadcaster) Broadcast(_ string, _ any, _ string) {}
 
-// Registry returns the in-memory UUID → relPath registry. Exposed
-// ONLY for the composition root in Plan 03-04: lifecycle.Run calls
-// svc.Registry().Hydrate(summaries) after the startup incremental
-// reindex completes, so every indexed note has a registry entry
-// before the HTTP listener accepts connections (DESIGN.md §6.1
-// listener gating preserved).
+// Registry returns the in-memory UUID → relPath registry. Exposed only
+// for the composition root: lifecycle.Run calls svc.Registry().Hydrate(summaries)
+// after the startup incremental reindex completes, so every indexed note has
+// a registry entry before the HTTP listener accepts connections.
 //
-// Production callers other than lifecycle.Run should NOT use this
-// accessor — Service.Get / Update / Create / Delete / Move / *Folder
-// maintain the registry internally.
+// Production callers other than lifecycle.Run should NOT use this accessor —
+// Service.Get / Update / Create / Delete / Move / *Folder maintain the
+// registry internally.
 func (s *Service) Registry() *Registry { return s.registry }
 
 // Get returns the Note for the given UUID, or ErrNotFound if the UUID is
@@ -93,9 +79,7 @@ func (s *Service) Registry() *Registry { return s.registry }
 //
 // File-not-found is mapped to ErrNotFound rather than surfaced raw because
 // the API layer treats both as a 404 — and the registry "knowing" about a
-// UUID does not guarantee the file was seeded yet (Plan 04 main.go is
-// responsible for seeding scratchpad.md on startup; if that step is
-// skipped this returns ErrNotFound rather than a more confusing 500).
+// UUID does not guarantee the file was seeded yet.
 func (s *Service) Get(_ context.Context, id uuid.UUID) (Note, error) {
 	relPath, ok := s.registry.Lookup(id)
 	if !ok {
@@ -120,17 +104,16 @@ func (s *Service) Get(_ context.Context, id uuid.UUID) (Note, error) {
 	}, nil
 }
 
-// Update writes new content for the given UUID. Filesystem write FIRST
-// per ARCHITECTURE.md §11.1; Index.Upsert SECOND; Broadcast THIRD.
+// Update writes new content for the given UUID. Filesystem write FIRST;
+// Index.Upsert SECOND; Broadcast THIRD.
 // Returns the updated Note (or ErrNotFound if the UUID is unknown).
 //
-// Empty content is allowed (Phase 1 has a textarea — empty markdown is
-// a legal state).
+// Empty content is allowed; empty markdown is a legal state.
 //
-// If-Match validation (SYNC-06): when ifMatch is non-empty, the file's
-// current mtime is compared to the client-supplied value (formatted as
-// RFC3339Nano UTC). On mismatch the method returns ErrStaleWrite without
-// touching the file. Empty ifMatch is permissive (curl/automation friendly).
+// If-Match validation: when ifMatch is non-empty, the file's current mtime
+// is compared to the client-supplied value (formatted as RFC3339Nano UTC).
+// On mismatch the method returns ErrStaleWrite without touching the file.
+// Empty ifMatch is permissive (curl/automation friendly).
 //
 // Index ordering and error semantics:
 //
@@ -143,12 +126,12 @@ func (s *Service) Get(_ context.Context, id uuid.UUID) (Note, error) {
 //     Reconcile will re-attempt Upsert; in the meantime the API layer
 //     surfaces 409 to the user.
 //   - On any other Index.Upsert error: log + continue. The file write
-//     is preserved because the filesystem is the source of truth
-//     (DATA-01); the index is recoverable via Reconcile. We do NOT
-//     return the error to the caller — a transient SQLite error must
-//     not surface as a 500 when the user's content is safely on disk.
+//     is preserved because the filesystem is the source of truth;
+//     the index is recoverable via Reconcile. We do NOT return the error
+//     to the caller — a transient SQLite error must not surface as a 500
+//     when the user's content is safely on disk.
 //   - Broadcast fires ONLY when Upsert succeeded (not on transient
-//     index errors). Pitfall 2: broadcast after index, never before.
+//     index errors) — broadcast after index, never before.
 func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMatch string) (Note, error) {
 	relPath, ok := s.registry.Lookup(id)
 	if !ok {
@@ -196,7 +179,8 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 			return Note{}, fmt.Errorf("notes.Update(%s): %w", id, err)
 		}
 
-		s.log.Error("notes.Update: index upsert failed (file is on disk; recoverable via Reconcile)",
+		s.log.Error(
+			"notes.Update: index upsert failed (file is on disk; recoverable via Reconcile)",
 			"id", id.String(),
 			"path", relPath,
 			"err", err,
@@ -260,56 +244,43 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 }
 
 // Create creates a new note at <parentPath>/<title>.md. The path is
-// canonicalized inside FileStore.CreateFile (DATA-11); collision
-// rejection (DATA-12) and atomic temp+rename (DATA-13) are delegated.
+// canonicalized inside FileStore.CreateFile; collision rejection and
+// atomic temp+rename are delegated to the FileStore.
 //
 // FS-FIRST contract: file is created, then index is upserted, then the
 // registry is updated. On Index.Upsert failure AFTER successful file
 // creation, the file is deleted in a best-effort cleanup and the index
 // error is returned wrapped. The reconciler heals any half-state if the
-// cleanup fails (DESIGN.md §4.4).
+// cleanup fails.
 //
-// Create is a thin wrapper around CreateWithBody — preserves the
-// pre-08-19 signature for every existing caller while routing through
-// the single-write code path that eliminates the R4-1 partial-create
-// class of failures.
+// Create is a thin wrapper around CreateWithBody routing through the
+// single-write code path.
 func (s *Service) Create(ctx context.Context, parentPath, title string) (NoteSummary, error) {
 	return s.CreateWithBody(ctx, parentPath, title, "")
 }
 
 // CreateWithBodyAndTitle creates a new note at <parentPath>/<title>.md with
-// an optional human-friendly display title used for the scaffold H1.
+// an optional human-friendly display title used for the scaffold H1. When
+// displayTitle == "", the scaffold's H1 falls back to the filename-derived
+// title (same as CreateWithBody).
 //
-// R4-4 (08-21): the MCP create_note tool exposes an optional `title` param
-// so AI callers can give a note a friendly H1 (`# My Friendly Title`) while
-// the filename stays slugified (`some/slug.md`). When displayTitle == "",
-// the scaffold's H1 falls back to the filename-derived title (legacy
-// CreateWithBody behaviour).
-//
-// displayTitle is sanitized at the call site (MCP tool handler) to strip
-// newlines + control chars + collapse whitespace.
+// displayTitle is sanitized at the call site to strip newlines + control
+// chars + collapse whitespace.
 func (s *Service) CreateWithBodyAndTitle(ctx context.Context, parentPath, title, body, displayTitle string) (NoteSummary, error) {
 	return s.createInternal(ctx, parentPath, title, body, displayTitle)
 }
 
 // CreateWithBody creates a new note at <parentPath>/<title>.md, optionally
 // pre-populating it with the supplied body. Composes (scaffold + body) IN
-// MEMORY and writes it via the existing atomic temp+rename helper EXACTLY
-// ONCE. Eliminates the R4-1 two-write split that landed a partial
-// scaffold-only file on disk when the MCP `create_note` tool's
-// scaffold→body sequence raced its own If-Match check.
+// MEMORY and writes it in one atomic operation.
 //
-// body == "" is byte-equivalent to the pre-08-19 Create behaviour: the
-// canonical NewNoteContent(title) scaffold lands in one atomic write.
+// body == "" produces the canonical NewNoteContent(title) scaffold.
 //
-// body != "" appends the body BYTES VERBATIM after the scaffold (which
-// itself ends in a trailing blank line per UI-SPEC §Copywriting Contract
-// > Frontmatter scaffold), so the MCP caller's content is preserved
-// exactly as supplied — no server-side massaging beyond the scaffold
-// prefix.
+// body != "" appends the body BYTES VERBATIM after the scaffold, so the
+// caller's content is preserved exactly as supplied — no server-side
+// massaging beyond the scaffold prefix.
 //
-// Single updated_at, single WS broadcast, single index Upsert. R4-2's
-// partial_create error code is unreachable from this path by construction.
+// Single updated_at, single WS broadcast, single index Upsert.
 func (s *Service) CreateWithBody(ctx context.Context, parentPath, title, body string) (NoteSummary, error) {
 	return s.createInternal(ctx, parentPath, title, body, "")
 }
@@ -448,23 +419,19 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // Move renames a note. FS-FIRST: rename the file, then UPDATE the index
-// row's path inside a fresh Upsert (which carries the same UUID +
-// existing fields, only Path changes), then update the registry. On
+// row's path inside a fresh Upsert, then update the registry. On
 // Index.Upsert failure AFTER successful FS rename, the file is moved
 // back (best-effort).
 //
-// The new path is canonicalized inside FileStore.MoveFile per DATA-11.
+// The new path is canonicalized inside FileStore.MoveFile.
 //
 // After the FS rename succeeds, the file's content is re-read and the
 // title is re-extracted (markdown.ExtractTitle — the same scanner the
-// indexer uses) so the index row's Title field reflects the current
-// first-H1 (or filename fallback) for the renamed file. Gap R2-6
-// closure (Plan 03-21).
+// indexer uses) so the index row's Title reflects the current first-H1
+// (or filename fallback).
 //
 // A read failure post-rename is non-fatal: a warn log is emitted and
-// the filename fallback is used (markdown.ExtractTitle handles nil
-// content by returning the filename without ".md"). The reconciler
-// heals at the next pass if the read failure was transient.
+// the filename fallback is used. The reconciler heals at the next pass.
 func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteSummary, error) {
 	oldRelPath, ok := s.registry.Lookup(id)
 	if !ok {
@@ -739,16 +706,16 @@ func uuidsToStrings(ids []uuid.UUID) []string {
 }
 
 // RenameTagAcrossVault renames a tag from oldName to newName in every carrier
-// note's YAML frontmatter. Two-phase D-37 atomicity: FS pass first, SQL pass
+// note's YAML frontmatter. Two-phase atomicity: FS pass first, SQL pass
 // second (non-fatal), broadcast third.
 //
 // Returns the UUIDs of all affected notes, or:
 //   - ErrTagNotFound if oldName has no carriers (empty index result).
-//   - ErrInvalidTagName if newName violates D-22 charset.
+//   - ErrInvalidTagName if newName violates the allowed charset ([a-z0-9_-]+).
 //   - ErrTagCollision if newName collides with an existing tag (propagated
 //     from index.RenameTag).
 //
-// Rollback on FS failure (D-37): if any WriteAtomic call fails, every
+// Rollback on FS failure: if any WriteAtomic call fails, every
 // already-written file is restored to its pre-state via a best-effort
 // WriteAtomic pass.
 func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName string) ([]uuid.UUID, error) {
@@ -819,9 +786,9 @@ func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName str
 }
 
 // DeleteTagAcrossVault removes a tag from every carrier note's YAML frontmatter.
-// Structurally identical to RenameTagAcrossVault except step 3 deletes the tag
-// (rewriteTagsArray with newName="") and step 4 calls index.DeleteTag.
-// The broadcast payload uses new_name=nil (D-34 delete semantics).
+// Structurally identical to RenameTagAcrossVault except the tag is deleted
+// (rewriteTagsArray with newName="") and index.DeleteTag is called.
+// The broadcast payload uses new_name=nil.
 func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid.UUID, error) {
 	carriers, err := s.index.NotesByTag(ctx, name)
 	if err != nil {
@@ -884,15 +851,15 @@ func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid
 
 // RenameRewriteWikilinks rewrites every [[OldTitle]] and [[OldTitle|alias]]
 // reference to [[NewTitle]] / [[NewTitle|alias]] across the vault. Two-phase
-// D-36 atomicity: FS pass first, SQL pass second (non-fatal), broadcast third.
+// atomicity: FS pass first, SQL pass second (non-fatal), broadcast third.
 //
 // Only INBOUND references are rewritten — the renamed note's own [[...]] links
 // are not touched here (they are updated on next Save via SyncBacklinks).
 //
 // Returns the UUIDs of all touched referrer notes, or an empty slice when
-// there are no referrers (no broadcast fired in that case — Test RW2).
+// there are no referrers (no broadcast fired in that case).
 //
-// Rollback on FS failure (D-36): every already-written file is restored.
+// Rollback on FS failure: every already-written file is restored.
 func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle string) ([]uuid.UUID, error) {
 	referrers, err := s.index.SourcesByBacklinkTitle(ctx, oldTitle)
 	if err != nil {
@@ -964,18 +931,16 @@ func (nopIndex) Upsert(_ context.Context, _ NoteRecord) error  { return nil }
 func (nopIndex) Delete(_ context.Context, _ uuid.UUID) error   { return nil }
 func (nopIndex) List(_ context.Context) ([]NoteSummary, error) { return nil, nil }
 
-// Phase 3 Plan 03-03 additions — nopIndex no-ops. The reconciler heals
-// any state in a real-index world (T-03-03-08 mitigation: misconfigured
-// caller gets a quiet failure mode rather than a panic).
+// nopIndex no-ops for path-mutation methods. A misconfigured caller gets a
+// quiet failure mode rather than a panic; the reconciler heals any state.
 func (nopIndex) LookupByPath(_ context.Context, _ string) (NoteRecord, error) {
 	return NoteRecord{}, ErrNotFound
 }
 func (nopIndex) MovePathPrefix(_ context.Context, _, _ string) (int, error)  { return 0, nil }
 func (nopIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) { return 0, nil }
 
-// Phase 6 Plan 06-05 additions — nopIndex no-ops for tag + backlink sync.
-// Plan 06-05 wires the real implementations; these are the fallbacks used
-// by nil-index callers (Phase 1 tests, httptest-based unit tests, etc.).
+// nopIndex no-ops for tag + backlink sync. These are the fallbacks used
+// by nil-index callers (tests that don't wire a real indexer).
 func (nopIndex) ListTags(_ context.Context) ([]TagWithCount, error)        { return []TagWithCount{}, nil }
 func (nopIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
 
@@ -985,7 +950,7 @@ func (nopIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
 	return nil
 }
 
-// Phase 6 Plan 06-05 Task 3 additions — cross-vault rewrite nopIndex stubs.
+// nopIndex no-ops for cross-vault rewrite methods.
 func (nopIndex) NotesByTag(_ context.Context, _ string) ([]NoteSummary, error) {
 	return []NoteSummary{}, nil
 }
@@ -999,8 +964,7 @@ func (nopIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uu
 	return nil
 }
 
-// Plan 06-11: nopIndex no-ops for GetBacklinks + SearchTitles.
-// Real implementations live in internal/index/store.go.
+// nopIndex no-ops for GetBacklinks + SearchTitles.
 func (nopIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, error) {
 	return []BacklinkRow{}, nil
 }
@@ -1009,8 +973,7 @@ func (nopIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchResult
 	return []SearchResult{}, nil
 }
 
-// Plan 07-04: nopIndex no-op for SearchFTS. Real implementation in
-// internal/index/store.go (SearchFTS method on *Indexer).
+// nopIndex no-op for SearchFTS.
 func (nopIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]SearchHit, error) {
 	return []SearchHit{}, nil
 }

@@ -1,10 +1,6 @@
 /**
  * backlinksApi — typed wrapper over GET /api/v1/notes/{id}/backlinks.
- *
- * Part of Plan 06-11 (LINKS-08): data wiring for the backlinks rail.
- *
- * Uses the shared openapi-fetch client (same session middleware as all other
- * API modules) and maps the snake_case OpenAPI response to camelCase for TS.
+ * Maps the snake_case OpenAPI response to camelCase for TypeScript consumers.
  */
 
 import { client } from "../api/client";
@@ -17,7 +13,7 @@ export interface BacklinkRow {
   sourcePath: string;
   /**
    * Server-built HTML excerpt; MUST be passed through sanitize.ts before
-   * dangerouslySetInnerHTML (T-06-11-01). BacklinksRail handles this.
+   * dangerouslySetInnerHTML. BacklinksRail handles this.
    */
   excerpt: string;
   /** Number of distinct [[...]] references in the source note. */

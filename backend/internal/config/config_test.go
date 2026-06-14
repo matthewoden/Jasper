@@ -18,9 +18,8 @@ func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// mkdirStorage creates <dir>/.jasper (the per-vault data subdir; Phase 9
-// D-06). Function name retained for git-diff readability — sweep is in
-// the body. Perms 0o755 match production EnsureDataDir.
+// mkdirStorage creates <dir>/.jasper (the per-vault data subdir).
+// Perms 0o755 match production EnsureDataDir.
 func mkdirStorage(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(dir, ".jasper"), 0o755); err != nil {
@@ -28,8 +27,8 @@ func mkdirStorage(t *testing.T, dir string) {
 	}
 }
 
-// TestLoad_DefaultsOnMissing — D-39 first-run behavior. Load on a fresh
-// dataDir returns DefaultConfig AND writes config.json to disk.
+// TestLoad_DefaultsOnMissing — Load on a fresh dataDir returns DefaultConfig
+// AND writes config.json to disk.
 func TestLoad_DefaultsOnMissing(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -61,8 +60,8 @@ func TestLoad_DefaultsOnMissing(t *testing.T) {
 	}
 }
 
-// TestLoad_RoundTrip — D-39 GET round-trip semantics. Save then Load
-// returns the same Config bit-for-bit (no field drift).
+// TestLoad_RoundTrip — Save then Load returns the same Config bit-for-bit
+// (no field drift).
 func TestLoad_RoundTrip(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -89,10 +88,9 @@ func TestLoad_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestLoad_MalformedFallsBackToDefaults — D-39 / D-10 graceful fallback
-// for parse errors. Load on a dir whose config.json is corrupt returns
-// DefaultConfig WITHOUT overwriting the bad file (preserved for
-// forensics).
+// TestLoad_MalformedFallsBackToDefaults — graceful fallback for parse
+// errors. Load on a dir whose config.json is corrupt returns DefaultConfig
+// WITHOUT overwriting the bad file (preserved for forensics).
 func TestLoad_MalformedFallsBackToDefaults(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -121,26 +119,26 @@ func TestLoad_MalformedFallsBackToDefaults(t *testing.T) {
 	}
 }
 
-// TestDefaults_ServerAndMCP — Phase 8 D-50 / D-47. The Defaults factory
-// must return canonical port + bind values for every downstream plan
-// that reads cfg.Server.Port / cfg.MCP.* without re-deriving them.
+// TestDefaults_ServerAndMCP — Defaults must return canonical port + bind
+// values so downstream code reads cfg.Server.Port / cfg.MCP.* without
+// re-deriving them.
 func TestDefaults_ServerAndMCP(t *testing.T) {
 	t.Parallel()
 	d := Defaults()
 	if d.Server.Port != 6683 {
-		t.Errorf("Server.Port: got %d, want 6683 (D-50)", d.Server.Port)
+		t.Errorf("Server.Port: got %d, want 6683", d.Server.Port)
 	}
 	if d.Server.DataDir == "" {
 		t.Errorf("Server.DataDir: got empty; expected non-empty default (DefaultDataDir)")
 	}
 	if d.MCP.Port != 6684 {
-		t.Errorf("MCP.Port: got %d, want 6684 (D-47)", d.MCP.Port)
+		t.Errorf("MCP.Port: got %d, want 6684", d.MCP.Port)
 	}
 	if !d.MCP.Enabled {
-		t.Errorf("MCP.Enabled: got false, want true (UAT-2 round 2 Q3 — default-on)")
+		t.Errorf("MCP.Enabled: got false, want true (default-on so grant UI works out of the box)")
 	}
 	if d.MCP.Bind != "127.0.0.1" {
-		t.Errorf("MCP.Bind: got %q, want 127.0.0.1 (D-15)", d.MCP.Bind)
+		t.Errorf("MCP.Bind: got %q, want 127.0.0.1", d.MCP.Bind)
 	}
 	if d.Theme != "dark" {
 		t.Errorf("Theme: got %q, want dark", d.Theme)
@@ -150,8 +148,8 @@ func TestDefaults_ServerAndMCP(t *testing.T) {
 	}
 }
 
-// TestDefaults_MatchesDefaultConfig — DefaultConfig is the pre-Phase-8
-// alias; both must return the same struct so existing callers keep
+// TestDefaults_MatchesDefaultConfig — DefaultConfig is an alias for
+// Defaults(); both must return the same struct so existing callers keep
 // working.
 func TestDefaults_MatchesDefaultConfig(t *testing.T) {
 	t.Parallel()
@@ -204,10 +202,10 @@ func TestDefaults_JSONRoundTrip(t *testing.T) {
 	}
 }
 
-// TestLoad_OldConfigWithoutServerOrMCP_BackCompat — Phase 8 backward
-// compat. A pre-Phase-8 config.json (no `server`, no `mcp`) loads with
-// the canonical defaults applied (Server.Port=6683, MCP.Port=6684,
-// MCP.Bind=127.0.0.1) so downstream readers never see zero values.
+// TestLoad_OldConfigWithoutServerOrMCP_BackCompat — a config.json without
+// `server` or `mcp` blocks loads with canonical defaults applied
+// (Server.Port=6683, MCP.Port=6684, MCP.Bind=127.0.0.1) so downstream
+// readers never see zero values.
 func TestLoad_OldConfigWithoutServerOrMCP_BackCompat(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -237,10 +235,9 @@ func TestLoad_OldConfigWithoutServerOrMCP_BackCompat(t *testing.T) {
 	}
 }
 
-// TestLoad_UnknownFieldsFallBackToDefaults — D-40 strict decoding.
-// A config.json with a field not declared on the struct triggers
-// the malformed path; Load returns DefaultConfig (does NOT silently
-// ignore the unknown key).
+// TestLoad_UnknownFieldsFallBackToDefaults — strict decoding: a
+// config.json with an undeclared field triggers the malformed path;
+// Load returns DefaultConfig (does NOT silently ignore the unknown key).
 func TestLoad_UnknownFieldsFallBackToDefaults(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -259,6 +256,6 @@ func TestLoad_UnknownFieldsFallBackToDefaults(t *testing.T) {
 	}
 	want := DefaultConfig()
 	if cfg != want {
-		t.Errorf("got %+v, want defaults (D-40 strict) %+v", cfg, want)
+		t.Errorf("got %+v, want defaults (strict decoding) %+v", cfg, want)
 	}
 }

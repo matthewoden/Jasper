@@ -18,7 +18,7 @@ import (
 // then notes + files merged alphabetically; within folders alphabetical
 // by Name. Children is non-nil — an empty folder has Children
 // == []TreeNode{} so the handler can omit the children array OR emit
-// `[]` based on context (the wire-shape rule lives in Plan 03-04).
+// `[]` based on context.
 type TreeFolder struct {
 	Path     string
 	Name     string
@@ -26,8 +26,8 @@ type TreeFolder struct {
 }
 
 // TreeNote is a leaf note node. UpdatedAt is derived from the index's
-// mtime_unix column (NOT the filesystem) so the entire tree projection
-// is one consistent SELECT result.
+// mtime_unix column (NOT the filesystem) so the tree projection is a
+// consistent snapshot from a single SELECT.
 type TreeNote struct {
 	ID        uuid.UUID
 	Path      string
@@ -37,13 +37,12 @@ type TreeNote struct {
 
 // TreeFile is a leaf non-markdown file node. These are files that exist
 // on disk under notes/ but are not indexed as notes (images, PDFs,
-// attachments, etc.). Surfaced in the tree so users can browse and open
-// files directly from the sidebar (Plan 07-26 / UAT-2 R1-7).
+// attachments, etc.). Surfaced in the tree so users can browse files
+// directly from the sidebar.
 //
 // SizeBytes and ContentType are intentionally left zero / "" in v1 for
 // performance — no per-file os.Stat or MIME sniff during tree building.
-// The file-stream endpoint (GET /api/v1/attachments/{noteId}/{filename})
-// returns Content-Type in its response headers.
+// The file-stream endpoint returns Content-Type in its response headers.
 type TreeFile struct {
 	Path        string // canonical relative path under notes/
 	Name        string // basename (last path segment)
@@ -52,33 +51,27 @@ type TreeFile struct {
 }
 
 // TreeNode is the tagged-union node — exactly one of Folder / Note / File
-// is non-nil. The handler in Plan 03-04 translates this into the wire's
-// `kind` discriminator.
+// is non-nil. The handler translates this into the wire's `kind` discriminator.
 type TreeNode struct {
 	Folder *TreeFolder
 	Note   *TreeNote
-	File   *TreeFile // non-markdown file (Plan 07-26 / UAT-2 R1-7)
+	File   *TreeFile // non-markdown file
 }
 
 // Tree is the top-level projection. Root is the slice of children of
-// notes/ (the vault root itself is implicit — the handler does not
-// expose a "root folder" node).
+// notes/ — the vault root is implicit and not exposed as a node.
 type Tree struct {
 	Root []TreeNode
 }
 
 // BuildTree returns the nested folder/note structure for GET /tree.
 // Reads notes via x.List (already path-ASC sorted); discovers empty
-// folders by walking notesDir with the same skip rules as walk.go
-// (dotdirs, non-md files). Merges into a single in-memory tree, sorts
-// each level (folders before notes/files; alphabetical within each kind),
-// and returns *Tree.
+// folders and non-markdown files by walking notesDir with the same skip
+// rules as walk.go. Sorts each level: folders first, then notes/files
+// alphabetically. Non-markdown files appear as TreeNode{File: ...} entries.
 //
-// Plan 07-26 / UAT-2 R1-7: non-markdown files are now surfaced as
-// TreeNode{File: ...} entries alongside notes and folders.
-//
-// Performance: O(N + D + F) where N = note count, D = directory count,
-// F = non-markdown file count. For a 1,000-note vault well under PERF-02.
+// O(N + D + F) where N = note count, D = directory count,
+// F = non-markdown file count.
 func (x *Indexer) BuildTree(ctx context.Context) (*Tree, error) {
 	notesSummaries, err := x.List(ctx)
 	if err != nil {

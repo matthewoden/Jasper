@@ -20,13 +20,12 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
-// TestDailyNotesHandler exercises GET /api/v1/daily-notes/{date}.
-// Plan 07-05. Covers:
+// TestDailyNotesHandler exercises GET /api/v1/daily-notes/{date}. Covers:
 //   - first call: creates from template, returns 201, file exists on disk
 //   - second call: returns 200 with same id
 //   - invalid date formats → 400 + code='invalid_date'
 //   - {{date}} template substitution in config
-//   - frontmatter scaffold prepended (D-43)
+//   - frontmatter scaffold prepended
 func TestDailyNotesHandler(t *testing.T) {
 	t.Run("create branch returns 201", func(t *testing.T) {
 		t.Parallel()
@@ -308,7 +307,6 @@ func (f *fakeIndexForDaily) SearchTitles(_ context.Context, _ string, _ int) ([]
 	return nil, nil
 }
 
-// Plan 07-04: SearchFTS no-op stub.
 func (f *fakeIndexForDaily) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes.SearchHit, error) {
 	return nil, nil
 }
@@ -356,10 +354,9 @@ func newDailyHTTPServer(t *testing.T, dailyNotesTemplate string) (*Server, *http
 	return srv, ts, dir
 }
 
-// TestDailyNotesHandler_RegistryHydration verifies UAT #1 + #6 fixes:
-// GetDailyNote must register the note's UUID into notes.Service.Registry()
-// so that subsequent Service.Get(id) calls (e.g. from EditorPane.getNote)
-// resolve immediately without a 404.
+// TestDailyNotesHandler_RegistryHydration verifies that GetDailyNote registers
+// the note's UUID into notes.Service.Registry() so that subsequent
+// Service.Get(id) calls resolve immediately without a 404.
 func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
 	t.Run("create branch registers UUID in notes.Service.Registry", func(t *testing.T) {
 		t.Parallel()
@@ -427,10 +424,8 @@ func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
 	})
 }
 
-// TestDailyNotesHandler_TagPassthrough verifies CR-03 fix:
-// GetDailyNote 200 path must return the actual frontmatter tags, not an
-// empty slice.  The test fails against the unfixed daily.go and passes after
-// the markdown.ExtractTags fix in readDailyNoteDetail.
+// TestDailyNotesHandler_TagPassthrough verifies that the GetDailyNote 200
+// path returns the actual frontmatter tags, not an empty slice.
 func TestDailyNotesHandler_TagPassthrough(t *testing.T) {
 	t.Run("get-existing branch returns frontmatter tags", func(t *testing.T) {
 		t.Parallel()

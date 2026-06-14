@@ -1,21 +1,9 @@
 /**
- * StatusBar — Phase 6.6 Plan 10 / Plan 07-38 restored SaveIndicator-button
- * after UAT-4 N9 user reversal of UAT-3 N9 decision.
+ * StatusBar — layout: [ConnectionStatusDot] [vault segment?] [spacer] [SaveIndicator-button] [SettingsMenu]
  *
- * Layout (left-to-right):
- *   [ConnectionStatusDot] [flex:1 spacer] [SaveIndicator-button] [SettingsMenu]
- *
- * The SaveIndicator was originally hoisted into the StatusBar by Plan 07-28
- * (B3 / UAT-2 N9), then moved to TopBar by Plan 07-37 (UAT-3 N9 / D-55), and
- * is now restored to StatusBar by Plan 07-38 (UAT-4 N9 / D-56).
- *
- * D-55's "click = manual reindex" merge behavior is PRESERVED — clicking
- * the SaveIndicator triggers postAdminReindex('incremental') exactly as it
- * did in TopBar. Only the mount location has reverted.
- *
- * The standalone "Reindex notes" refresh button (Plan 06.6) stays REMOVED
- * — D-55's merger is intact; the SaveIndicator now plays both roles
- * (state display + manual refresh trigger).
+ * SaveIndicator doubles as a manual-reindex trigger — clicking it calls
+ * postAdminReindex('incremental'). When paused (WebSocket offline), clicking
+ * forces a WS reconnect instead.
  */
 import { useCallback } from "react";
 import type { CSSProperties } from "react";
@@ -60,7 +48,7 @@ export function StatusBar() {
   return (
     <footer style={statusBarStyle} data-testid="status-bar" aria-label="Status bar">
       <ConnectionStatusDot />
-      {/* Plan 08-17c (V7): vault display_name segment; click opens the picker in switch mode */}
+      {/* Vault display_name; click opens vault picker in switch mode */}
       {current && (
         <button
           type="button"
@@ -83,7 +71,7 @@ export function StatusBar() {
       <div style={{ flex: 1 }} data-testid="status-bar-spacer" />
       <SaveIndicator state={saveState} onClick={handleRefresh} />
       <SettingsMenu />
-      {/* Plan 08-17c: VaultPicker in switch mode — persistent modal, controlled by useTreeStore.vaultPickerOpen */}
+      {/* VaultPicker in switch mode — persistent modal */}
       <VaultPicker mode="switch" />
     </footer>
   );

@@ -7,11 +7,10 @@
  * exhaust the OS's launchctl/systemd handle table and cause spurious
  * test flakes on the next run.
  *
- * Phase 4 (Plan 04-06): JasperHandle now also exposes `restart()` for the
- * reconnect scenario. restart() kills the running binary and spawns a new
- * one against the SAME data directory on the SAME port. This allows browser
- * tabs to reconnect autonomously via their WS onclose → reconnect timer
- * (useSessionSync connects to window.location.host, so the port must match).
+ * restart() kills the running binary and spawns a new one against the SAME
+ * data directory on the SAME port. This allows browser tabs to reconnect
+ * autonomously via their WS onclose → reconnect timer (useSessionSync
+ * connects to window.location.host, so the port must match).
  *
  * Same-port restart rationale vs. new-port: useSessionSync builds the WS URL
  * from window.location.host at mount time. A new port would require navigating
@@ -38,9 +37,9 @@ export interface JasperHandle {
   baseURL: string;
   kill: () => Promise<void>;
   /**
-   * Phase 4: kill the running binary and spawn a fresh one against
-   * the SAME data directory on the SAME port so reconnect tests can
-   * prove that tabs re-establish the WS without needing to navigate.
+   * Kill the running binary and spawn a fresh one against the SAME
+   * data directory on the SAME port so reconnect tests can prove that
+   * tabs re-establish the WS without needing to navigate.
    *
    * Returns a NEW JasperHandle (with the same port and dataDir).
    * The old handle's kill() must NOT be called after restart() —
@@ -104,10 +103,10 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..");
  * If dataDir is not provided, an ephemeral tmpdir is created.
  * If port is not provided, a free port is allocated.
  *
- * env (08-24 R4-14): optional environment overlay merged on top of
- * process.env. Used by the deterministic-timing MCP race spec to set
- * JASPER_MCP_TEST_DELAY without leaking into unrelated tests. Pass
- * undefined to inherit process.env verbatim.
+ * env: optional environment overlay merged on top of process.env. Used by
+ * the deterministic-timing MCP race spec to set JASPER_MCP_TEST_DELAY
+ * without leaking into unrelated tests. Pass undefined to inherit
+ * process.env verbatim.
  */
 async function spawnJasperInternal(opts: { dataDir?: string; port?: number; ownsDataDir: boolean; env?: NodeJS.ProcessEnv }): Promise<JasperHandle> {
   const dataDir = opts.dataDir ?? await mkdtemp(path.join(tmpdir(), "jasper-e2e-"));
@@ -171,9 +170,8 @@ export interface SpawnOpts {
   dataDir?: string;
   /**
    * Optional environment overlay (merged on top of process.env). Used by the
-   * 08-24 R4-14 deterministic-timing MCP race spec to set
-   * JASPER_MCP_TEST_DELAY without leaking into unrelated tests. Empty/undefined
-   * inherits process.env verbatim.
+   * deterministic-timing MCP race spec to set JASPER_MCP_TEST_DELAY without
+   * leaking into unrelated tests. Empty/undefined inherits process.env verbatim.
    */
   env?: NodeJS.ProcessEnv;
 }

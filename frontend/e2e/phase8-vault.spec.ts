@@ -1,32 +1,19 @@
 /**
- * Phase 8 vault picker E2E spec — Plan 08-17c Task 4.
- *
- * Per CLAUDE.md §"Verification policy: E2E before human UAT":
- * This spec MUST run against bin/jasper (from `make build`) BEFORE human UAT.
+ * Phase 8 vault picker E2E spec.
  *
  * Scenarios:
- *   1. no-vault boot shows picker with create+open tabs (default tab = create)
- *      and 08-16 polish copy verbatim
- *   2. create new vault → app.json registers entry → SPA reloads to main shell
- *      with vault display_name visible in StatusBar
- *   3. path validation refuses non-ASCII paths inline (V-PARK-1)
- *   4. missing-folder recent entry renders V11 affordances (Folder not found +
+ *   1. No-vault boot shows picker with create+open tabs (default tab = create)
+ *   2. Create new vault → app.json registers entry → SPA reloads to main shell
+ *   3. Path validation refuses non-ASCII paths inline
+ *   4. Missing-folder recent entry renders V11 affordances (Folder not found +
  *      Reconnect + Remove)
  *
- * Binary: spawned from bin/jasper (CLAUDE.md §Build & embed pipeline — bin/jasper
- * must exist; run `make build` first). Each test uses a fresh JASPER_APP_HOME
- * so vault state is isolated.
+ * Each test uses a fresh JASPER_APP_HOME so vault state is isolated.
+ * JASPER_APP_HOME stores app.json (current_vault + recent_vaults). Without a
+ * pre-existing vault, GET /vault/current returns null and VaultPicker mounts.
  *
- * JASPER_APP_HOME: the vault model stores app.json (current_vault + recent_vaults)
- * in this directory. Each test creates an ephemeral one and passes it via the
- * JASPER_APP_HOME env var. The binary infers the vault model from the absence of
- * a pre-existing vault in app.json (boot without a vault → GET /vault/current null
- * → VaultPicker mode="boot" renders).
- *
- * Note: this spec does NOT use the existing spawnJasper helper from
- * e2e/helpers/binary.ts (which uses --data-dir) because the vault model
- * uses JASPER_APP_HOME. Tests spawn the binary directly following the same
- * pattern but with the vault-model env var.
+ * Uses a local spawnVaultJasper (not the shared spawnJasper helper) because
+ * this spec uses JASPER_APP_HOME, not --data-dir.
  */
 
 import { test, expect } from "@playwright/test";
@@ -158,13 +145,8 @@ async function openVault(baseURL: string, vaultPath: string): Promise<void> {
 /**
  * expectActuallyPainted — asserts a locator is rendered with non-trivial
  * geometry, not just "in the DOM with some bounding box from child text."
- * Playwright's stock toBeVisible() returns true for an unstyled div whose
- * children give it any non-zero size — so a modal whose CSS classes were
- * never written passes toBeVisible() while looking nothing like a modal.
- *
- * UAT-2 #1c surfaced exactly this: vault-picker-overlay / vault-picker-modal
- * had zero CSS rules; the picker mounted but had no fixed positioning, no
- * backdrop, no centering. The agent's existing toBeVisible() check passed.
+ * Playwright's toBeVisible() returns true for an unstyled div whose children
+ * give it any non-zero size — so a modal with no CSS still passes.
  *
  * This helper enforces a minimum width/height (defaults: 200×100) so an
  * unstyled element fails the gate. Tune per-call when asserting smaller
@@ -185,7 +167,7 @@ async function expectActuallyPainted(
   expect(box!.height, `${label}: height ${box!.height}px < ${minH}px (likely unstyled)`).toBeGreaterThanOrEqual(minH);
 }
 
-test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
+test.describe("Phase 8 vault picker — make-build smoke", () => {
   test("no-vault boot shows the picker with create+open tabs (default = create)", async ({ page }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-vault-e2e-app-"));
     let handle: VaultHandle | undefined;
@@ -502,21 +484,12 @@ test.describe("Phase 8 vault picker — make-build smoke (Plan 08-17c)", () => {
 });
 
 
-test.describe("Phase 8 vault switch — make-build smoke (Plan 08-17d)", () => {
+test.describe("Phase 8 vault switch — make-build smoke", () => {
   /**
-   * Test: switch from vault A to vault B.
+   * Switch from vault A to vault B.
    *
-   * Steps:
-   *   1. Create two vaults A and B on disk via /vault/create.
-   *   2. Open A so the main shell is visible with A's name in the StatusBar.
-   *   3. Open the vault picker in switch mode via StatusBar click.
-   *   4. Click vault B's row in the Recent tab.
-   *   5. The VaultSwitchOverlay mounts (role=dialog "Switching vault").
-   *   6. SPA reloads; StatusBar shows B's display_name.
-   *
-   * Note: The overlay may appear and disappear quickly (server teardown + reopen
-   * can be sub-second in the test environment). The assertion is on the FINAL
-   * state (B open in StatusBar) which is load-bearing, with a generous timeout.
+   * The VaultSwitchOverlay may appear and disappear quickly (sub-second in
+   * test environments). The load-bearing assertion is the final StatusBar state.
    */
   test("switch from vault A to vault B — SPA reloads to new vault, StatusBar shows B", async ({ page }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-app-"));
@@ -560,14 +533,11 @@ test.describe("Phase 8 vault switch — make-build smoke (Plan 08-17d)", () => {
   });
 
   /**
-   * Test: concurrent switch returns 409 with vault_switch_in_progress.
+   * Concurrent switch returns 409 with vault_switch_in_progress.
    *
-   * Fires two simultaneous POST /vault/switch requests. One should succeed
-   * (200) and the other should be rejected (409) with `error: "vault_switch_in_progress"`.
-   * We verify the status code distribution is exactly [200, 409] and that
-   * the 409 body includes the error code.
-   *
-   * Uses the request fixture (not page) — this is a pure API test.
+   * Fires two simultaneous POST /vault/switch requests. One must succeed
+   * (200) and the other must be rejected (409). Uses the request fixture —
+   * pure API test.
    */
   test("concurrent switch returns 409 with vault_switch_in_progress", async ({ request }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-switch-409-app-"));

@@ -1,18 +1,7 @@
 /**
- * Phase 2 app shell. Phase 1's locked three-column grid is preserved unchanged
- * (260px / 1fr / 0); Phase 2 wraps it with:
- *   - <ToastProvider> at the root (mounted ONCE per UI-SPEC §Forward-Compat
- *     assert #3; Phase 4 + Phase 5 reuse this provider)
- *   - <MigrationBanner /> as a flex-column row above the grid (Surface 1).
- *     Renders nothing when state=ok, so visual drift from Phase 1 is zero.
- *   - <ResetAndRebuildDialog /> portal (Surface 2; Radix manages portal mount)
- *   - <ReindexProgress /> overlay replaces the EditorPane while reindexPhase
- *     is non-idle (Surface 3). When idle, the EditorPane renders normally.
- *
- * The reindex state machine lives HERE in AppInner (W-4 lock). ReindexProgress
- * is presentational; this file owns the phase enum and drives the transitions
- * idle → running → completing → idle (success path) or idle → running →
- * error → idle (error path, after Close).
+ * App shell. ReindexProgress is presentational; AppInner owns the reindex
+ * phase enum and drives the state machine. W-4 lock: no internal phase-state
+ * in ReindexProgress.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -86,17 +75,10 @@ const SUCCESS_TRANSIENT_MS = 600;
 
 
 /**
- * Boot detection gate (Plan 08-17c).
- *
- * Reads GET /vault/current on mount. If null, renders <VaultPicker mode="boot">
- * (the picker IS the page). If a vault is open, renders the normal app shell.
- * Errors err on the side of showing the picker to avoid a blank-page state.
- *
- * Implementation note: the boot check is local (127.0.0.1) and resolves in a
- * few ms. We render nothing during the check rather than optimistically mounting
- * AppInner — the prior optimistic mount spawned the WebSocket against
- * /api/v1/ws which is dormant in no-vault mode, producing console errors that
- * confused first-run UAT. The brief blank is preferable to a torn-mount race.
+ * Reads GET /vault/current on mount. Renders nothing during the check rather
+ * than optimistically mounting AppInner — an optimistic mount would open the
+ * WebSocket while no vault is active, producing console errors. The brief
+ * blank is preferable to a torn-mount race.
  */
 type BootState = "loading" | "noVault" | "vaultOpen";
 
@@ -358,15 +340,14 @@ export function AppInner() {
       activeNoteId,
       reveal,
       tree,
-      // switchVaultCommand is a stable module-level function — no dependency needed,
-      // but including it keeps ESLint's exhaustive-deps rule satisfied.
+      // switchVaultCommand is a stable module-level fn; included to satisfy exhaustive-deps.
     ],
   );
 
   return (
     <>
-    {/* Plan 08-17d (V4): vault-switch overlay. Mounts above everything on
-        vault.switching WS event; SPA reloads on vault.switched (or 10s failsafe). */}
+    {/* Vault-switch overlay: mounts above everything on vault.switching WS event;
+        SPA reloads on vault.switched (or 10s failsafe). */}
     {vaultSwitching && (
       <VaultSwitchOverlay targetName={vaultSwitchTargetName} />
     )}
@@ -382,8 +363,7 @@ export function AppInner() {
         onResetConfirm={() => setDialogOpen(true)}
         status={status}
       />
-      {/* Plan 06-11 (D-36/D-37): rename/tag-rewrite rollback error banner.
-          Stacks below MigrationBanner when both are visible simultaneously. */}
+      {/* Rename/tag-rewrite rollback error banner. Stacks below MigrationBanner. */}
       <RenameRewriteErrorBanner
         state={rewriteError}
         onDismiss={() => setRewriteError(null)}
@@ -393,11 +373,9 @@ export function AppInner() {
         onOpenChange={setDialogOpen}
         onConfirm={onConfirm}
       />
-      {/* Phase 7 (Plan 07-12) — Command palette + cheat-sheet dialogs.
-          Portal siblings to ResetAndRebuildDialog (Radix manages portals).
-          paletteOpen / cheatSheetOpen are store slices set by the capture-phase
-          keydown handlers (handleAppCmdP/O/Slash). CommandActions wire all 9
-          registered commands to existing hooks and store setters. */}
+      {/* Command palette + cheat-sheet dialogs. Radix portal siblings to
+          ResetAndRebuildDialog. paletteOpen/cheatSheetOpen are store slices set
+          by the capture-phase keydown handlers. */}
       <CommandMenu
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
@@ -408,12 +386,10 @@ export function AppInner() {
         open={cheatSheetOpen}
         onOpenChange={setCheatSheetOpen}
       />
-      {/* Phase 6.6 — Plan 06.6-11 (UX-CHROME-01/02): two-row grid.
-          Row 1: TopBar (gridColumn:2 only). Row 2: EditorPane (gridColumn:2).
-          Sidebar and RightRail span both rows (gridRow: "1 / 3").
-          StatusBar sits below the grid as a direct flex child — full app width.
-          RESEARCH §Option A: two-row grid avoids position:sticky inside
-          overflow:hidden (Pitfall 1). */}
+      {/* Two-row grid. Row 1: TopBar (col 2 only). Row 2: EditorPane (col 2).
+          Sidebar + RightRail span both rows (gridRow "1/3").
+          StatusBar sits below the grid as a flex child — full app width.
+          Two-row grid avoids position:sticky inside overflow:hidden. */}
       <div
         style={{
           display: "grid",
@@ -424,7 +400,7 @@ export function AppInner() {
           overflow: "hidden",
         }}
       >
-        {/* TopBar: row 1, column 2 — editor pane width only (D-01) */}
+        {/* TopBar: row 1, column 2 — editor pane width only */}
         <TopBar style={{ gridRow: "1", gridColumn: "2" }} />
 
         {/* Sidebar: spans both rows (gridRow 1/3) — column 1 */}
@@ -452,14 +428,13 @@ export function AppInner() {
           />
         )}
 
-        {/* Phase 6.5 — Plan 06.5-04: right rail two-panel layout (D-01/D-03).
-            Phase 6.6 — spans both rows (gridRow 1/3) — column 3 */}
+        {/* RightRail: spans both rows (gridRow 1/3) — column 3 */}
         <RightRail
           style={{ gridRow: "1 / 3", gridColumn: "3" }}
           activeNoteId={activeNoteId}
         />
       </div>
-      {/* Phase 6.6 — StatusBar: below the grid, full app width (D-06) */}
+      {/* StatusBar: below the grid, full app width */}
       <StatusBar />
     </div>
     </>

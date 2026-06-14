@@ -1,8 +1,4 @@
-/**
- * VaultPicker tests — Plan 08-17c Task 2.
- *
- * Tests the modal shell with three tabs (Recent / Open existing / Create new).
- */
+/** VaultPicker tests — modal shell with three tabs (Recent / Open existing / Create new). */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 

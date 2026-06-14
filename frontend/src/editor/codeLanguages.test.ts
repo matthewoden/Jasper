@@ -1,13 +1,13 @@
 /**
  * codeLanguages.test — verifies each declared language resolves
- * a LanguageSupport instance without throwing. Plan 05-07 / EDIT-08.
+ * a LanguageSupport instance without throwing.
  */
 import { describe, it, expect } from "vitest";
 import { LanguageSupport } from "@codemirror/language";
 import { codeLanguages } from "./codeLanguages";
 
 describe("codeLanguages", () => {
-  it("declares the D-03 bundled grammar set (10 entries — including markdown for recursive nesting)", () => {
+  it("declares the bundled grammar set (10 entries — including markdown for recursive nesting)", () => {
     const names = codeLanguages.map((l) => l.name);
     expect(names).toContain("javascript");
     expect(names).toContain("typescript");

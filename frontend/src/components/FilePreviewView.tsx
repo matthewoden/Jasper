@@ -1,24 +1,13 @@
 /**
- * FilePreviewView — middle-pane preview for non-markdown files (Plan 07-32b / UAT-3 R7).
+ * FilePreviewView — middle-pane preview for non-markdown files.
  *
- * When useTreeStore.activeFilePath is non-null, EditorPane renders this
- * component instead of the markdown editor. Image extensions render an
- * inline <img> sourced from `/api/v1/files?path=<encoded>` (the
- * query-parameter contract introduced by Plan 07-32a's backend GET
- * /files endpoint). Non-image files render a metadata panel showing the
- * filename, type (uppercased extension), and full path.
+ * Image extensions render an inline <img> sourced from
+ * `/api/v1/files?path=<encoded>` (query-parameter form because OpenAPI 3.1
+ * has no native multi-segment path-wildcard and oapi-codegen does not emit
+ * chi `*` catch-all routes). Non-image files render a metadata panel.
  *
- * URL contract: `/api/v1/files?path=${encodeURIComponent(path)}` — matches
- * both Plan 07-32a (GET) and Plan 07-34 (POST) which use a query parameter
- * because OpenAPI 3.1 has no native multi-segment path-wildcard syntax and
- * oapi-codegen does not emit chi `*` catch-all routes. See 07-CONTEXT.md
- * D-53 + 07-31-INVESTIGATION.md §Item 6 lines 226-256.
- *
- * Security:
- *   - Same-origin <img src>; CSP already restricts img-src to 'self'.
- *   - The path attribute on the section element is the same value already
- *     shown in the tree row label — no information disclosure beyond the
- *     existing surface.
+ * Security: same-origin <img src>; CSP restricts img-src to 'self'. The
+ * path attribute echoes the tree row label — no additional information disclosure.
  */
 import type { CSSProperties } from "react";
 

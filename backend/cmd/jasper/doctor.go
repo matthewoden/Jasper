@@ -56,7 +56,7 @@ func init() {
 }
 
 // DoctorCheck is the wire-shape of one row in `jasper doctor --json`.
-// Per D-37: name + status (ok/fail/skip) + optional hint string.
+// Fields: name + status (ok/fail/skip) + optional hint string.
 type DoctorCheck struct {
 	Name   string `json:"name"`
 	Status string `json:"status"` // "ok" | "fail" | "skip"

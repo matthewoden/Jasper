@@ -1,15 +1,14 @@
 // Package static embeds the Vite-built SPA (frontend/dist/, copied into
 // ./dist/ by `make build`) into the Go binary at build time and exposes
 // it as an io/fs.FS. The `all:` prefix ensures hidden files (e.g.
-// .vite/manifest.json if Vite emits it) are included — see Pitfall 13
-// in research/PITFALLS.md.
+// .vite/manifest.json if Vite emits it) are included.
 //
-// The embed source path is relative to THIS Go file —
-// backend/internal/static/embed.go — so `all:dist` resolves to
-// backend/internal/static/dist/. Plan 04's Makefile build target copies
+// The embed source path is relative to this file
+// (backend/internal/static/embed.go), so `all:dist` resolves to
+// backend/internal/static/dist/. The Makefile build target copies
 // frontend/dist/ → backend/internal/static/dist/ before `go build`.
 // A .keep file in dist/ ensures this package compiles on a fresh
-// clone (before `make build` has been run) for `go test ./...`.
+// clone before `make build` has been run.
 package static
 
 import (

@@ -1,12 +1,11 @@
 /**
  * Phase 8 vault picker — fake-WSL E2E (Docker harness).
  *
- * Connects Playwright to the compose/wsl-validation jasper container,
- * which boots with JASPER_OSRELEASE_PATH pointed at a fake file containing
- * "microsoft" so platform.IsWSL() returns true. Asserts the Windows-form
- * breadcrumb labels and the dual-line footer render against a real running
- * binary — closes the gap between unit-test/mocked coverage and what a
- * user on a real WSL2 box would see.
+ * Connects Playwright to the compose/wsl-validation jasper container, which
+ * boots with JASPER_OSRELEASE_PATH pointing at a fake file containing
+ * "microsoft" so platform.IsWSL() returns true. Asserts Windows-form
+ * breadcrumb labels and the dual-line footer against a real binary — closes
+ * the gap between unit-test/mocked coverage and a real WSL2 user's experience.
  *
  * Run via:
  *   make test-wsl-e2e        (docker compose up + this spec + down)
@@ -15,9 +14,8 @@
  *   JASPER_WSL_E2E=1 JASPER_WSL_HOST_PORT=6684 \
  *     npx playwright test phase8-wsl-vault.spec.ts
  *
- * Skipped by default — Playwright's standard `phase8-vault.spec.ts` runs
- * on every developer's macOS box; this spec only runs when the harness is
- * explicitly available (env-var gate). CI runs both.
+ * Skipped by default — only runs when the harness is explicitly available
+ * (env-var gate). CI runs both this and phase8-vault.spec.ts.
  */
 
 import { test, expect } from "@playwright/test";

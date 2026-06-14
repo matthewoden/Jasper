@@ -83,7 +83,6 @@ func (f *fakeIndexForAttachments) SearchTitles(_ context.Context, _ string, _ in
 	return nil, nil
 }
 
-// Plan 07-04: SearchFTS no-op stub.
 func (f *fakeIndexForAttachments) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]notes.SearchHit, error) {
 	return nil, nil
 }
@@ -140,7 +139,7 @@ func callCreateAttachment(
 	return resp
 }
 
-// TestAttachmentsUploadStorage verifies the D-25 storage-layout rules:
+// TestAttachmentsUploadStorage verifies storage-layout rules:
 //   - Root-level note  → notes/attachments/
 //   - Sub-folder note  → notes/sub/attachments/
 //   - Oversize upload  → 413
@@ -218,7 +217,7 @@ func TestAttachmentsUploadStorage(t *testing.T) {
 	})
 }
 
-// TestUniqueAttachmentName verifies the ATTACH-04 collision auto-rename logic.
+// TestUniqueAttachmentName verifies collision auto-rename logic.
 func TestUniqueAttachmentName(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -253,7 +252,7 @@ func TestUniqueAttachmentName(t *testing.T) {
 }
 
 // TestAttachmentsSecurity exercises the 5-rule path-traversal hardening on
-// GetAttachment (RESEARCH §Thread 4 §Path Traversal Hardening, D-34, SECURITY-06).
+// GetAttachment.
 func TestAttachmentsSecurity(t *testing.T) {
 	t.Parallel()
 

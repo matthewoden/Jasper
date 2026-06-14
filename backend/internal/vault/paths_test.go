@@ -7,10 +7,9 @@ import (
 
 // TestVaultPaths exercises every helper exported by paths.go for two
 // representative roots (a fixed absolute literal + a t.TempDir() value) and
-// asserts the SubdirName constant is the exact load-bearing literal ".jasper"
-// (D-06 — Phase 9 grep gate is calibrated against this value).
+// asserts the SubdirName constant is the exact load-bearing literal ".jasper".
 func TestVaultPaths(t *testing.T) {
-	// SubdirName is load-bearing per ADR-001 §6 and D-06. Pin its literal value.
+	// SubdirName is load-bearing — pin its literal value.
 	if SubdirName != ".jasper" {
 		t.Fatalf("SubdirName: want %q, got %q", ".jasper", SubdirName)
 	}

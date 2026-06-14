@@ -1,18 +1,5 @@
 /**
- * Breadcrumbs tests — Phase 06.6-07. UAT-updated 2026-05-12: the leading
- * "notes" root segment was dropped, so the segment-count + separator-count
- * expectations decrement by one.
- *
- * Covers:
- *   T1: no active note → renders nothing
- *   T2: root-level note → renders just "note-title" (no separators, no buttons)
- *   T3: nested note → renders "folder / subfolder / note-title"
- *   T4: folder segments are <button> with aria-label
- *   T5: clicking folder segment calls expandAndScrollToFolder + sets pulseTarget
- *   T6: final note-title segment is <span>, not <button>
- *   T7: live title from liveLabels overrides static title
- *   T8: nav has aria-label="Note path"
- *   T9: segments are separated by "/"
+ * Breadcrumbs tests — T1..T9.
  */
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";

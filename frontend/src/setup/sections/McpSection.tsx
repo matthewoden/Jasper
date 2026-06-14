@@ -1,41 +1,20 @@
 /**
- * McpSection — Section 3 of the first-run wizard.
+ * McpSection — MCP access configuration section of the first-run wizard.
  *
- * UI-SPEC §Surface 1 + §Copywriting Contract (LOCKED):
- *   eyebrow:      AI ACCESS (MCP)
- *   helper:       Optional. Lets local AI tools read your notes — and, in
- *                 folders you pick, write to them. Off by default.
- *   checkbox:     Enable MCP server for AI tools
- *   grants hint:  Pick folders where AI can create and edit notes. You can
- *                 change this later from any folder's right-click menu.
- *   empty state:  No folders granted yet. (Reads are global once MCP is on.)
- *   add button:   Add folder…
+ * Uses window.prompt for folder selection (no native folder picker is available
+ * in this context). Client-side path validation via isValidGrantFolderPath
+ * rejects: empty/whitespace, `..` traversal, leading `/`, Windows drive-letter
+ * absolute, and non-ASCII chars. Backend re-validates at submit time — client
+ * validation here is UX, not security.
  *
- * Behavior:
- *   - v1 uses window.prompt for folder selection (08-PATTERNS.md §"No Analog
- *     Found"). Acknowledged rough edge — flagged in the plan's must_haves
- *     and surfaced in the plan summary, not silently deferred. Future plan
- *     replaces with a folder picker.
- *   - Client-side path validation (Phase 8 Warning #7) — `isValidGrantFolderPath`
- *     rejects: empty/whitespace, `..` traversal, leading `/` (POSIX absolute),
- *     `<letter>:[/\]` (Windows drive-letter absolute), and any non-ASCII chars.
- *     Backend re-validates at submit time (T-08-06 mitigation) — the client
- *     validation here is UX, not security.
- *   - Invalid input → inline error message under the grants list (NOT alert());
- *     auto-clears after 4 seconds.
- *
- * Plan 08-04 Task 1.
+ * Invalid input shows an inline error (not alert()); auto-clears after 4 seconds.
  */
 
 import { useEffect, useRef, useState } from "react";
 import type { SetupGrantDraft } from "../draft";
 
-/**
- * Phase 8 Warning #7 client-side validation. Backend re-validates (T-08-06).
- *
- * Re-exported helper isValidGrantFolderPath lives in ./mcpSection.utils
- * so McpSection.tsx exports React components only (react-refresh DX).
- */
+// isValidGrantFolderPath lives in ./mcpSection.utils so this file exports React components only
+// (required for react-refresh Fast Refresh to work correctly).
 import { isValidGrantFolderPath } from "./mcpSection.utils";
 
 interface McpSectionProps {

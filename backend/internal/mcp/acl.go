@@ -1,5 +1,5 @@
 // Package mcp provides the Model Context Protocol server + ACL for
-// folder-scoped AI write access (Phase 8 D-13..D-25).
+// folder-scoped AI write access.
 //
 // The ACL stores grants in the mcp_write_grants table (migration 004).
 // Reads are global (any folder readable). Writes are gated by Resolve,
@@ -8,15 +8,13 @@
 // Tier 1 (level=1): create_note + update_note in the granted folder (recursive).
 // Tier 2 (level=2): create_note + update_note + move_note + delete_note.
 //
-// D-18 (recursive grants): a grant on "projects" covers
-// "projects/ai/draft.md" and "projects/notes/draft.md". To exclude a
-// sub-folder, users grant siblings instead (no deny entries in v1).
+// Grants are recursive: a grant on "projects" covers
+// "projects/ai/draft.md". To exclude a sub-folder, users grant siblings
+// instead (no deny entries in v1).
 //
-// D-24 (next-call revocation): Resolve is consulted on every MCP tool
-// invocation, so once Revoke deletes the row, the very next call into
-// the previously-granted folder fails. In-flight writes are allowed to
-// finish (they already passed their Resolve check); the bounded window
-// is acceptable for the loopback-trust posture.
+// Revocation takes effect on the next MCP tool invocation: Resolve is
+// consulted on every call, so once Revoke deletes the row, the very next
+// call fails. In-flight writes are allowed to finish.
 package mcp
 
 import (
@@ -30,14 +28,13 @@ import (
 )
 
 // GrantLevel mirrors the integer level column in mcp_write_grants.
-// Two values are legal per the CHECK constraint in migration 004; the
-// constructor / Set rejects anything else.
+// Two values are legal per the CHECK constraint; Set rejects anything else.
 type GrantLevel int
 
 const (
-	// TierEditOnly is D-13's Tier 1: create_note + update_note.
+	// TierEditOnly is Tier 1: create_note + update_note.
 	TierEditOnly GrantLevel = 1
-	// TierFull is D-13's Tier 2: create_note + update_note + move_note + delete_note.
+	// TierFull is Tier 2: create_note + update_note + move_note + delete_note.
 	TierFull GrantLevel = 2
 )
 
@@ -53,9 +50,8 @@ type Grant struct {
 
 // ACL is the folder-grant access-control layer. It is a thin wrapper
 // over the writer *sql.DB — every method is goroutine-safe because
-// database/sql handles concurrency. State lives entirely in SQLite
-// (DATA-01: filesystem is source of truth; the indexer DB is derived,
-// and so is this grant table — re-grant is the recovery path).
+// database/sql handles concurrency. State lives entirely in SQLite;
+// the grant table is recoverable by re-granting after a DB wipe.
 type ACL struct {
 	db *sql.DB
 }
@@ -159,14 +155,13 @@ func (a *ACL) Revoke(ctx context.Context, folderPath string) error {
 // notePath is the rel path under notes/ (e.g., "projects/ai/draft.md"
 // or just "projects/ai" for a folder-targeted check).
 //
-// Implementation detail: we start from filepath.Dir(notePath) because
-// grants are folder-scoped — a grant on "projects/ai" applies to any
-// file directly inside it AND to deeper descendants. For folder-target
-// queries (where the caller passes a folder path directly), the Dir()
-// strip walks one level too high; callers that mean "is THIS folder
-// granted?" should append "/x" sentinel before calling — but for the
-// Phase 8 MCP tool dispatch path the caller always has a note path, so
-// the Dir-first behavior is correct.
+// We start from filepath.Dir(notePath) because grants are folder-scoped —
+// a grant on "projects/ai" applies to any file directly inside it AND to
+// deeper descendants. For folder-target queries (where the caller passes a
+// folder path directly), the Dir() strip walks one level too high; callers
+// meaning "is THIS folder granted?" should append "/x" sentinel before
+// calling. The MCP tool dispatch path always has a note path, so the
+// Dir-first behavior is correct.
 func (a *ACL) Resolve(ctx context.Context, notePath string) (GrantLevel, bool) {
 	cur := filepath.Dir(normalizeGrantPath(notePath))
 	for {
@@ -188,25 +183,25 @@ func (a *ACL) Resolve(ctx context.Context, notePath string) (GrantLevel, bool) {
 }
 
 // CanCreate returns true iff notePath has any grant (Tier 1 or Tier 2).
-// Per D-13, Tier 1 covers create + update so both checks share Resolve.
+// Tier 1 covers create + update so both checks share Resolve.
 func (a *ACL) CanCreate(ctx context.Context, notePath string) bool {
 	_, ok := a.Resolve(ctx, notePath)
 	return ok
 }
 
-// CanUpdate is identical to CanCreate per D-13 — Tier 1 covers both.
+// CanUpdate is identical to CanCreate — Tier 1 covers both.
 func (a *ACL) CanUpdate(ctx context.Context, notePath string) bool {
 	return a.CanCreate(ctx, notePath)
 }
 
 // CanMove returns true iff notePath has a Tier 2 grant on an ancestor.
-// Tier 1 grants explicitly do NOT satisfy this check (D-13 + T-08-32).
+// Tier 1 grants do NOT satisfy this check.
 func (a *ACL) CanMove(ctx context.Context, notePath string) bool {
 	lvl, ok := a.Resolve(ctx, notePath)
 	return ok && lvl == TierFull
 }
 
-// CanDelete is identical to CanMove — both are Tier-2-only ops (D-13).
+// CanDelete is identical to CanMove — both are Tier-2-only ops.
 func (a *ACL) CanDelete(ctx context.Context, notePath string) bool {
 	return a.CanMove(ctx, notePath)
 }

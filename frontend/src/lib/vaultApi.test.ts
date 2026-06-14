@@ -1,12 +1,9 @@
 /**
- * vaultApi tests — Plan 08-17c Task 1 (TDD GREEN).
+ * Tests for vaultApi — validateVaultPath and openapi-fetch wrappers.
  *
- * Tests validateVaultPath (5-rule pipeline from 07-32a / D-44 / V-PARK-1)
- * and the openapi-fetch wrappers.
- *
- * Security: validateVaultPath is the client-side gate before POST /vault/create
- * and POST /vault/open. The backend repeats every check (SECURITY-06 defense-in-
- * depth). Client-side validation is UX; backend validation is security.
+ * validateVaultPath is the client-side gate before POST /vault/create and
+ * POST /vault/open. The backend repeats every check (defense-in-depth).
+ * Client-side validation is UX; backend validation is security.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

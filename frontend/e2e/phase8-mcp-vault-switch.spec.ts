@@ -1,45 +1,28 @@
 /**
- * Phase 8 Plan 08-24 — R4-14 scripted Playwright spec for the
- * "MCP write in-flight during a user-initiated vault switch" race.
+ * Scripted E2E for the "MCP write in-flight during vault switch" race.
  *
- * Background:
- *   UAT-2 Test 3 was skipped because the race window between an MCP
- *   create_note and a user clicking "switch vault" is ~50ms — below
- *   reliable hand-testing threshold. CLAUDE.md §Verification policy says
- *   the right fit for "below human reaction threshold" scenarios is a
- *   scripted E2E with deterministic timing control.
+ * The race window between an MCP create_note and a user clicking "switch
+ * vault" is ~50ms — below reliable hand-testing threshold. Deterministic
+ * timing is achieved via JASPER_MCP_TEST_DELAY=1500 (env-gated hook in
+ * backend/internal/mcp/tools.go) which sleeps 1.5s before the atomic
+ * write.
  *
- * Strategy (V-TEST-4 + V6 from 08-CONTEXT.md):
- *   1. Build with `make build` (CLAUDE.md §Build & embed pipeline).
- *   2. Launch bin/jasper with JASPER_MCP_TEST_DELAY=1500 in the env so
- *      every MCP create_note sleeps 1.5s BEFORE the atomic write. The
- *      hook is implemented in backend/internal/mcp/tools.go and is
- *      explicitly debug-only (env-gated, not documented elsewhere).
- *   3. Two vaults A and B are bootstrapped via /vault/create with
- *      mcp_enabled=true; A is opened as current. POST /api/v1/mcp/grants
- *      seeds A:notes/projects/ (Tier-1) and B:notes/research/ (Tier-1).
- *   4. Spawn an MCP create_note against A's projects/race.md — DO NOT
- *      await; capture the promise. Wait ~200ms (write is mid-throttle),
- *      then drive a vault switch via the UI (StatusBar click → vault B
- *      row).
- *   5. After both the MCP RPC and the SPA reload settle, assert:
- *        (a) on-disk state in A's notes/projects/race.md is EITHER a
- *            fully composed scaffold+body OR the file does not exist.
- *            NEVER a partial scaffold-only file (V-TEST-4 + R4-1).
- *        (b) MCP listener on 6684 is bound to B's grants — list_grants
- *            returns B's notes/research/ grant; create_note against
- *            notes/projects/ returns no_grant (A's grants are gone).
+ * Strategy:
+ *   1. Two vaults A and B bootstrapped via /vault/create with mcp_enabled=true.
+ *      POST /api/v1/mcp/grants seeds A:notes/projects/ and B:notes/research/.
+ *   2. Spawn an MCP create_note against A's projects/race.md — DO NOT await;
+ *      wait ~200ms (write is mid-throttle), then switch vault via the UI.
+ *   3. After both settle, assert:
+ *        (a) A's notes/projects/race.md is either fully written OR absent —
+ *            never a partial scaffold-only file.
+ *        (b) MCP listener is bound to B's grants — list_grants returns
+ *            B's notes/research/; create_note against notes/projects/ returns
+ *            no_grant (A's grants are gone).
  *        (c) StatusBar reflects vault B.
  *
- * Negative-path note (out of scope, documented for the next reader):
- *   If JASPER_MCP_TEST_DELAY exceeds V6's 2-second drain cap, the swap
- *   handler MUST cancel the in-flight write via ctx.Done(). The throttle
- *   hook respects that — the create_note returns ctx.Err() and the file
- *   does NOT land. This spec stays under the cap (1.5s < 2s) so the
- *   primary scenario exercises the SUCCESS-arm of drain. The cancellation
- *   arm is covered by the throttle hook's TestCreateNoteRespectsTestDelay
- *   unit test plus this comment — adding a second flaky scripted scenario
- *   for the cancel arm is more cost than value at this stage.
+ * The cancellation arm (JASPER_MCP_TEST_DELAY > drain cap) is covered by
+ * TestCreateNoteRespectsTestDelay unit test. Not duplicated here — the cancel
+ * path would require a flaky scripted scenario with little marginal coverage.
  */
 
 import { test, expect } from "@playwright/test";

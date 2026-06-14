@@ -137,8 +137,8 @@ func TestUpsert_CaseCollision_DifferentID(t *testing.T) {
 	}
 }
 
-// TestUpsert_NoChecksumComputed — Phase 2 contract: rec.Checksum is
-// "" and the column is stored as "" (NULL/empty). DATA-09 deferral.
+// TestUpsert_NoChecksumComputed — rec.Checksum is "" and the column is
+// stored as "" (NULL/empty); checksum computation is deferred.
 func TestUpsert_NoChecksumComputed(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
@@ -232,8 +232,8 @@ func TestList_EmptyTable_ReturnsNilSlice(t *testing.T) {
 	}
 }
 
-// TestList_TitleAndUpdatedAtPopulated — wire fields are populated
-// correctly; UpdatedAt is mtime-derived (NOT index-touch time).
+// TestList_TitleAndUpdatedAtPopulated — Title and UpdatedAt are populated;
+// UpdatedAt is mtime-derived, not the indexer's internal touch time.
 func TestList_TitleAndUpdatedAtPopulated(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)

@@ -5,12 +5,11 @@ import (
 	"testing"
 )
 
-// TestHasFrontmatter verifies the canonical frontmatter detection contract
-// (TAGS-EXT-03, D-10, D-11, R4-5 — Plan 08-21).
+// TestHasFrontmatter verifies the canonical frontmatter detection contract.
 //
-// HasFrontmatter is the SINGLE source of truth for "is a frontmatter block
-// present in this file?" — duplicate implementations elsewhere in the tree
-// would re-introduce the loose-vs-strict drift R4-5 was filed to fix.
+// HasFrontmatter is the single source of truth for "is a frontmatter block
+// present in this file?" — duplicate implementations would re-introduce
+// loose-vs-strict drift.
 //
 // The contract (also recorded verbatim in FrontmatterCanonicalContract):
 //
@@ -152,10 +151,9 @@ func TestFrontmatterCanonicalContract_SmokeContent(t *testing.T) {
 	}
 }
 
-// TestInjectFrontmatterScaffold verifies the scaffold injection contract (TAGS-EXT-02, TAGS-EXT-03, D-10, D-11).
-//
-// InjectFrontmatterScaffold must be idempotent: re-running on already-migrated files
-// is a no-op (D-11 one-time migration can safely be retried on restart).
+// TestInjectFrontmatterScaffold verifies the scaffold injection contract.
+// InjectFrontmatterScaffold must be idempotent: re-running on already-migrated
+// files is a no-op (the one-time migration can safely be retried on restart).
 func TestInjectFrontmatterScaffold(t *testing.T) {
 	tests := []struct {
 		name  string

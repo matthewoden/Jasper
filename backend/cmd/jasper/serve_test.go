@@ -40,9 +40,8 @@ func TestRunServe_VaultFlagAccepted(t *testing.T) {
 	}
 }
 
-// TestRunServe_DataDirFlagRejected — Plan 08-23 / R4-15: the --data-dir flag
-// was removed entirely. fs.Parse must return an "unknown flag" error
-// (Go stdlib default form: "flag provided but not defined: -data-dir").
+// TestRunServe_DataDirFlagRejected — the --data-dir flag was removed entirely.
+// fs.Parse must return an "unknown flag" error.
 func TestRunServe_DataDirFlagRejected(t *testing.T) {
 	dir := t.TempDir()
 
@@ -62,10 +61,9 @@ func TestRunServe_DataDirFlagRejected(t *testing.T) {
 	}
 }
 
-// TestRunServe_JasperDataDirEnvIgnored — Plan 08-23 / R4-15: the JASPER_DATA_DIR
-// env var is no longer recognized. Setting it must NOT produce any
-// deprecation warning (the env var is silently ignored) and must NOT
-// influence vault resolution.
+// TestRunServe_JasperDataDirEnvIgnored — the JASPER_DATA_DIR env var is no
+// longer recognized. Setting it must not produce any deprecation warning and
+// must not influence vault resolution.
 func TestRunServe_JasperDataDirEnvIgnored(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JASPER_DATA_DIR", dir)

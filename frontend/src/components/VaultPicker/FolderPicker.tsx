@@ -1,16 +1,10 @@
 /**
- * FolderPicker — modal that lets the user browse the local filesystem and
- * select an absolute folder path without typing one.
+ * FolderPicker — server-side directory browser rendered as a Radix Dialog
+ * (overlaid on the parent VaultPicker Dialog).
  *
- * Renders inside a Radix Dialog so it overlays the parent VaultPicker (which
- * is itself a Dialog). The picker calls GET /api/v1/fs/list as the user
- * clicks into subfolders; the breadcrumb is reconstructed from the response's
- * canonical `path`.
- *
- * UAT-2 #1d follow-up. The OS-native folder picker isn't reachable from a
- * browser (privacy: no absolute paths exposed), so we build a server-side
- * directory enumerator and a browser-side click-through. Acceptable trade-off
- * because Jasper is loopback-only — the user already has shell access.
+ * The OS-native folder picker is unavailable from a browser (no absolute
+ * paths), so we call GET /api/v1/fs/list as the user clicks into subfolders.
+ * Acceptable for a loopback-only app — the user already has shell access.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -182,7 +176,6 @@ export function FolderPicker({
             </Dialog.Description>
           </header>
 
-          {/* Breadcrumb (or typed-path input when editing) */}
           {editingPath ? (
             <div
               data-testid="folder-picker-breadcrumb-edit"
@@ -268,10 +261,8 @@ export function FolderPicker({
             </nav>
           )}
 
-          {/* Vault-detected banner — surfaces above the entries list when
-              the current folder already contains a .jasper/ that isn't
-              the app registry. The picker doesn't decide whether to open
-              it; the footer's Open Vault button is what fires the action. */}
+          {/* Vault-detected banner — shown when the current folder already contains
+              a .jasper/ directory. Footer's "Open Vault" button fires the action. */}
           {state?.is_vault === true && (
             <div
               className="vault-picker-banner"
@@ -286,9 +277,7 @@ export function FolderPicker({
             </div>
           )}
 
-          {/* New-folder affordance — either a button to start, or the
-              inline name input. Keeps the user in the picker rather
-              than punting them out to Finder to mkdir. */}
+          {/* New-folder affordance — button to start, or inline name input. */}
           {newFolderOpen ? (
             <div
               data-testid="folder-picker-new-folder-edit"
@@ -384,7 +373,6 @@ export function FolderPicker({
             </div>
           )}
 
-          {/* Body — entries or status */}
           <div
             style={{
               flex: 1,
@@ -452,7 +440,6 @@ export function FolderPicker({
             )}
           </div>
 
-          {/* Footer — current path display + actions */}
           <footer
             style={{
               display: "flex",

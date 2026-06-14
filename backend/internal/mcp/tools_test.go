@@ -546,11 +546,11 @@ func (f *failingWriteStore) DeleteDir(p string, recursive bool) error {
 
 func (f *failingWriteStore) MoveDir(o, n string) error { return f.inner.MoveDir(o, n) }
 
-// TestCreateNoteAtomic — 08-19 R4-1: create_note composes scaffold+body in
-// memory and writes ONCE via WriteAtomic. No partial scaffold-only file
-// lands on disk under any failure mode reachable from the MCP handler.
-// R4-2: error codes distinguish {already_exists, invalid_path, internal};
-// the legacy partial_create code is unreachable from this path.
+// TestCreateNoteAtomic — create_note composes scaffold+body in memory and
+// writes ONCE via WriteAtomic. No partial scaffold-only file lands on disk
+// under any failure mode reachable from the MCP handler. Error codes
+// distinguish {already_exists, invalid_path, internal}; the legacy
+// partial_create code is unreachable from this path.
 func TestCreateNoteAtomic(t *testing.T) {
 	t.Parallel()
 
@@ -689,8 +689,8 @@ func TestCreateNoteAtomic(t *testing.T) {
 
 // TestListGrants verifies the list_grants tool returns every explicit
 // folder grant, sorted alphabetically by path, with tier values and
-// RFC3339 timestamps. Per R4-3 / D-18 list_grants surfaces ONLY explicit
-// grants — clients compute recursive inheritance themselves.
+// RFC3339 timestamps. list_grants surfaces ONLY explicit grants —
+// clients compute recursive inheritance themselves.
 func TestListGrants(t *testing.T) {
 	t.Parallel()
 

@@ -1,38 +1,15 @@
 /**
- * sanitize — DOMPurify wrapper. Phase 5 SECURITY-02 / D-36.
+ * sanitize — DOMPurify wrapper. Every `dangerouslySetInnerHTML` in the
+ * codebase MUST go through sanitizeHtml(). Strips standard XSS vectors:
+ * <script>, <iframe>, <object>, <embed>, <form>, on* handlers, javascript: URIs.
  *
- * Phase 5 has ZERO callers. The wrapper exists so Phase 6 (backlinks
- * panel HTML render surface) and Phase 7 (command-palette result
- * snippets) have a single mandated entry point that strips the
- * standard XSS vectors:
- *   - <script>, <iframe>, <object>, <embed>, <form> tags removed
- *   - on* event handlers stripped
- *   - javascript: URIs blocked
- *
- * Drift policy: every `dangerouslySetInnerHTML` in the codebase MUST
- * go through sanitizeHtml(). A future eslint custom rule (Phase 6
- * Deferred Idea per CONTEXT.md) will enforce this; for v1 the rule
- * is a code-review convention.
- *
- * SAFE_CONFIG values are LOCKED — extending them requires a follow-on
- * planning round so the threat model stays tight.
- *   - USE_PROFILES.html — DOMPurify's standard HTML allowlist
- *   - ALLOWED_ATTR — explicit list of legitimate attributes Phase 6+
- *     will need on links/images/spans
- *   - ALLOWED_URI_REGEXP — http(s), blob:, data:, and relative URIs
- *     only (matches the editor's external-image widget allowance from
- *     Plan 05-08)
- *   - ADD_TAGS — explicit allowlist additions on top of USE_PROFILES.html.
- *     Phase 7 added 'mark' for FTS5 search-highlight rendering (SEARCH-04).
- *   - FORBID_TAGS / FORBID_ATTR — defense-in-depth on top of the
- *     profile allowlist
+ * SAFE_CONFIG is LOCKED — extending it requires a deliberate threat-model review.
+ *   - ALLOWED_URI_REGEXP allows http(s), blob:, data:, and relative URIs only.
+ *   - ADD_TAGS includes 'mark' for FTS5 search-highlight rendering.
  */
 import DOMPurify from "dompurify";
 
-/**
- * SAFE_CONFIG — LOCKED (do not extend without an updated threat
- * model). Plan 05-09 / SECURITY-02.
- */
+/** SAFE_CONFIG — LOCKED (do not extend without an updated threat model). */
 const SAFE_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
   USE_PROFILES: { html: true },
   ALLOWED_ATTR: ["href", "title", "alt", "src", "class"],
@@ -45,14 +22,7 @@ const SAFE_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
 
 /**
  * sanitizeHtml — strips XSS vectors from the input HTML string.
- *
- * Returns a sanitized string. Never throws; on edge cases (null,
- * undefined, non-string) DOMPurify coerces to a string before
- * sanitizing. Caller is responsible for passing a string.
- *
- * Usage (Phase 6+):
- *   const safe = sanitizeHtml(serverSnippet);
- *   element.innerHTML = safe;
+ * Never throws; DOMPurify coerces edge cases to a string before sanitizing.
  */
 export function sanitizeHtml(input: string): string {
   return DOMPurify.sanitize(input, SAFE_CONFIG);

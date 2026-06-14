@@ -36,7 +36,8 @@ func TestSyncBacklinks_ResolvedTarget(t *testing.T) {
 	var targetIDStr string
 	var targetTitle string
 	var excerpt string
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT COALESCE(target_id, ''), target_title, excerpt
 		 FROM backlinks WHERE source_id = ?`, sourceID.String(),
 	).Scan(&targetIDStr, &targetTitle, &excerpt); err != nil {
@@ -73,7 +74,8 @@ func TestSyncBacklinks_PendingTarget(t *testing.T) {
 
 	var targetIDIsNull bool
 	var targetTitle string
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT target_id IS NULL, target_title FROM backlinks WHERE source_id = ?`,
 		sourceID.String(),
 	).Scan(&targetIDIsNull, &targetTitle); err != nil {
@@ -88,7 +90,7 @@ func TestSyncBacklinks_PendingTarget(t *testing.T) {
 }
 
 // TestSyncBacklinks_MultipleOccurrencesCollapse — [[Foo]] three times →
-// ONE row (D-29 UNIQUE collapse) (F3).
+// ONE row (unique collapse) (F3).
 func TestSyncBacklinks_MultipleOccurrencesCollapse(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -112,13 +114,14 @@ func TestSyncBacklinks_MultipleOccurrencesCollapse(t *testing.T) {
 	}
 
 	var cnt int
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT COUNT(*) FROM backlinks WHERE source_id = ?`, sourceID.String(),
 	).Scan(&cnt); err != nil {
 		t.Fatalf("count: %v", err)
 	}
 	if cnt != 1 {
-		t.Errorf("D-29: got %d rows, want 1 (dedup)", cnt)
+		t.Errorf("got %d rows, want 1 (dedup)", cnt)
 	}
 }
 
@@ -188,7 +191,8 @@ func TestSyncBacklinks_EmptyRefs(t *testing.T) {
 	}
 
 	var cnt int
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT COUNT(*) FROM backlinks WHERE source_id = ?`, sourceID.String(),
 	).Scan(&cnt); err != nil {
 		t.Fatal(err)
@@ -223,7 +227,8 @@ func TestSyncBacklinks_AmbiguousResolution(t *testing.T) {
 	}
 
 	var resolvedID string
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT COALESCE(target_id, '') FROM backlinks WHERE source_id = ?`,
 		sourceID.String(),
 	).Scan(&resolvedID); err != nil {
@@ -252,7 +257,8 @@ func TestSyncBacklinks_ExcerptHTML(t *testing.T) {
 	}
 
 	var excerpt string
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT excerpt FROM backlinks WHERE source_id = ?`, sourceID.String(),
 	).Scan(&excerpt); err != nil {
 		t.Fatal(err)
@@ -275,7 +281,8 @@ func TestSyncBacklinks_ExcerptHTML(t *testing.T) {
 		t.Fatal(err)
 	}
 	var excerpt2 string
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT excerpt FROM backlinks WHERE source_id = ?`, sourceID.String(),
 	).Scan(&excerpt2); err != nil {
 		t.Fatal(err)
@@ -345,7 +352,7 @@ func TestGetBacklinks_ReturnsRowsSortedByRecency(t *testing.T) {
 }
 
 // TestGetBacklinks_PendingExcluded — pending backlinks (target_id IS NULL)
-// are NOT returned by GetBacklinks for the target (D-32) (G3).
+// are NOT returned by GetBacklinks for the target (G3).
 func TestGetBacklinks_PendingExcluded(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -368,7 +375,7 @@ func TestGetBacklinks_PendingExcluded(t *testing.T) {
 		t.Fatalf("GetBacklinks: %v", err)
 	}
 	if len(rows) != 0 {
-		t.Errorf("D-32: pending row returned by GetBacklinks — got %d rows, want 0", len(rows))
+		t.Errorf("pending row returned by GetBacklinks — got %d rows, want 0", len(rows))
 	}
 }
 
@@ -443,8 +450,7 @@ func TestReconcileBacklinks_IncrementalSingleFile(t *testing.T) {
 }
 
 // TestReconcileBacklinks_TAGS05_WipeAndRebuildBacklinks — wiping DB and
-// rerunning ReconcileWithRegistry restores backlinks (TAGS-05 + LINKS-01
-// implicit) (H3).
+// rerunning ReconcileWithRegistry restores backlinks (H3).
 func TestReconcileBacklinks_TAGS05_WipeAndRebuildBacklinks(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newTagTestIndexer(t)
@@ -489,10 +495,10 @@ func TestReconcileBacklinks_TAGS05_WipeAndRebuildBacklinks(t *testing.T) {
 	}
 
 	if blCnt2 != blCnt {
-		t.Errorf("TAGS-05: backlinks count: before=%d after=%d", blCnt, blCnt2)
+		t.Errorf("backlinks count: before=%d after=%d", blCnt, blCnt2)
 	}
 	if tagCnt2 != tagCnt {
-		t.Errorf("TAGS-05: tags count: before=%d after=%d", tagCnt, tagCnt2)
+		t.Errorf("tags count: before=%d after=%d", tagCnt, tagCnt2)
 	}
 }
 
@@ -550,8 +556,8 @@ func TestBuildExcerpt_CaseInsensitive(t *testing.T) {
 	}
 }
 
-// TestResolvePendingBacklinks_Basic — BUG-02 regression: after startup reconcile
-// with nil registry leaves backlinks as pending (target_id = NULL),
+// TestResolvePendingBacklinks_Basic — after a startup reconcile with nil
+// registry leaves backlinks as pending (target_id = NULL),
 // ResolvePendingBacklinks resolves them using the now-populated registry.
 func TestResolvePendingBacklinks_Basic(t *testing.T) {
 	t.Parallel()
@@ -568,7 +574,8 @@ func TestResolvePendingBacklinks_Basic(t *testing.T) {
 	}
 
 	var isNull bool
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT target_id IS NULL FROM backlinks WHERE source_id = ?`,
 		sourceID.String(),
 	).Scan(&isNull); err != nil {
@@ -588,7 +595,8 @@ func TestResolvePendingBacklinks_Basic(t *testing.T) {
 	}
 
 	var gotTargetID string
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT COALESCE(target_id, '') FROM backlinks WHERE source_id = ?`,
 		sourceID.String(),
 	).Scan(&gotTargetID); err != nil {
@@ -625,7 +633,8 @@ func TestResolvePendingBacklinks_NilRegistry(t *testing.T) {
 	}
 
 	var isNull bool
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT target_id IS NULL FROM backlinks WHERE source_id = ?`,
 		sourceID.String(),
 	).Scan(&isNull); err != nil {
@@ -660,7 +669,8 @@ func TestResolvePendingBacklinks_UnresolvableStaysPending(t *testing.T) {
 	}
 
 	var isNull bool
-	if err := idx.Pair.Reader.QueryRowContext(ctx,
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
 		`SELECT target_id IS NULL FROM backlinks WHERE source_id = ?`,
 		sourceID.String(),
 	).Scan(&isNull); err != nil {

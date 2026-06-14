@@ -1,24 +1,21 @@
 /**
- * useAttachmentUpload.ts — Phase 7 Plan 10 / ATTACH-01..ATTACH-02.
+ * useAttachmentUpload — drag-over/drop and clipboard-paste handlers that
+ * upload files to the backend and insert the resulting markdown reference
+ * into the active CodeMirror editor view.
  *
- * Provides drag-over/drop and clipboard-paste handlers that upload files to
- * the backend and insert the resulting markdown reference into the active
- * CodeMirror editor view.
+ * Counter pattern: nested dragenter/dragleave on child elements fire extra
+ * events on the parent. A depth ref ensures drop-active state only clears
+ * when the drag truly leaves the root container.
  *
- * Counter pattern (Pitfall 4): nested dragenter/dragleave on child elements
- * fire extra events on the parent. Tracking depth with a ref ensures the
- * drop-active state only clears when the drag truly leaves the root container.
+ * Paste: only intercepts clipboard items with an image/* MIME type; text-paste
+ * falls through to CodeMirror's default handler.
  *
- * Paste (D-28): only intercepts clipboard items with an image/* MIME type.
- * Text-paste falls through to CodeMirror's default handler.
- *
- * Filename convention for paste (D-28):
- *   paste-YYYY-MM-DDTHH-MM-SS.{ext}
+ * Paste filename convention: paste-YYYY-MM-DDTHH-MM-SS.{ext}
  * (ISO date with colons replaced by hyphens for filesystem safety.)
  *
- * Toast copy (UI-SPEC §Copywriting Contract §Attachments, LOCKED):
- *   413 → title: "File too large", description: "The maximum upload size is 100 MB. Use an external link instead."
- *   other → title: "Couldn't attach file", description: "Try again, or use Show in file manager to add it manually."
+ * Toast copy (LOCKED):
+ *   413   → "File too large" / "The maximum upload size is 100 MB. Use an external link instead."
+ *   other → "Couldn't attach file" / "Try again, or use Show in file manager to add it manually."
  */
 import { useCallback, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";

@@ -1,17 +1,9 @@
 /**
  * Phase 6.5 UAT — Tags + Rails Polish.
  *
- * Regression-proof Playwright coverage for Phase 6.5 requirements and bug fixes
- * against the live `bin/jasper` binary (built via `make build` — CLAUDE.md §Build
- * & embed pipeline). Gates human UAT per CLAUDE.md §Verification policy.
- *
- * SCENARIO ORDERING NOTE:
  * All scenarios share a single `bin/jasper` instance (beforeAll / afterAll) to
- * reduce test runtime. Scenarios run in declaration order. Data created in one
- * scenario (e.g., notes with specific tags) is visible to later scenarios.
- * Scenario-local notes use unique tag/title names to avoid cross-scenario
- * interference. Scenario 5 creates three specific notes required for tag-search
- * assertions and must run after the jasper instance starts.
+ * reduce runtime. Scenarios run in declaration order; data created earlier is
+ * visible to later scenarios. Use unique tag/title names to avoid interference.
  *
  * Scenarios:
  *   S1 (@UX-T-01) : Rail visible, two panel cards, inter-panel divider exists,
@@ -33,19 +25,13 @@
  *   S9 (@autocomplete-polish) : `[[` popup and `#` popup have border-radius 8px
  *                               and foreground-contrast text
  *
- * Authoring notes:
- *   - CM6 typing recipe: page.locator(".cm-content").click() → keyboard.type()
- *     NOT textarea.fill() (the editor is CodeMirror 6 contenteditable).
- *   - Tags panel is in the RIGHT RAIL (not the sidebar) in Phase 6.5.
- *   - The Tags panel uses `data-testid="tag-row-{name}"` (preserved from Phase 6).
- *   - Right rail "Show backlinks panel" toggle: aria-label="Show backlinks panel".
- *   - BacklinksRail region: role="region" aria-label="Notes that link to this note".
- *   - SaveIndicator renders null when idle; "Saved" text appears when status=saved.
+ * Selector notes:
+ *   - CM6 editor is contenteditable — use keyboard.type(), not .fill().
+ *   - Tags panel uses data-testid="tag-row-{name}".
  *   - Inter-panel divider: data-testid="inter-panel-divider".
- *   - Frontmatter affordance widget: button.cm-frontmatter-affordance with text
- *     `▸ frontmatter (N tags)` or `▸ frontmatter (empty)`.
- *   - Tags panel filter input: aria-label="Filter tag list" placeholder="Filter tags…"
- *   - Tags panel header button: aria-label matching "Tags panel, (expanded|collapsed)…"
+ *   - Frontmatter affordance: button.cm-frontmatter-affordance
+ *   - Tags panel filter input: aria-label="Filter tag list"
+ *   - Tags panel header: aria-label matching "Tags panel, (expanded|collapsed)…"
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -105,13 +91,9 @@ async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
 }
 
 /**
- * Ensure the right rail is expanded. The rail starts collapsed by default
- * (backlinksRailExpanded default = false in useTreeStore). Phase 6.5 moves
- * Tags into the rail, so we must expand it before any rail assertions.
- *
- * Phase 6.6 note: the "Show backlinks panel" button was relocated from the
- * collapsed-rail aside to the TopBar as "Show panels". Both labels are
- * checked here for forward/backward compatibility.
+ * Ensure the right rail is expanded. The rail starts collapsed by default.
+ * Checks both "Show backlinks panel" (older label) and "Show panels" (newer
+ * TopBar label) for forward/backward compatibility.
  */
 async function ensureRailExpanded(page: Page): Promise<void> {
   const showBtnOld = page.getByRole("button", { name: "Show backlinks panel" });
@@ -175,8 +157,8 @@ async function apiCreateNote(
 /**
  * Expand the Tags panel in the right rail (click the header if collapsed).
  *
- * Phase 6.6 note: the Tags panel header has TWO buttons (expand toggle + × close).
- * Use "Tags panel, " (trailing comma+space) to match only the expand/collapse toggle.
+ * The Tags panel header has TWO buttons (expand toggle + × close). The selector
+ * uses "Tags panel, " (trailing comma+space) to match only the expand/collapse toggle.
  */
 async function ensureTagsPanelExpanded(page: Page): Promise<void> {
   await ensureRailExpanded(page);

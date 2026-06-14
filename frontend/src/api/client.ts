@@ -26,7 +26,7 @@ import { generateOrLoadSessionId } from "../lib/sessionId";
  * value MATCHES the WS connection's session_id, which is required for
  * server-side origin filtering to work.
  *
- * SECURITY (T-04-03): session_id is an opaque UUID — never rendered
+ * SECURITY: session_id is an opaque UUID — never rendered
  * to the DOM, never logged, just threaded through headers.
  */
 const sessionMiddleware: Middleware = {

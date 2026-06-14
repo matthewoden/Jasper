@@ -12,8 +12,8 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
-// TestRunSetup_InvalidTheme exercises the up-front theme check —
-// "darkmode" is not a valid choice and the error must surface BEFORE
+// TestRunSetup_InvalidTheme exercises the up-front theme check:
+// "darkmode" is not a valid choice and the error must surface before
 // any filesystem work.
 func TestRunSetup_InvalidTheme(t *testing.T) {
 	t.Parallel()
@@ -37,7 +37,7 @@ func TestRunSetup_InvalidTheme(t *testing.T) {
 }
 
 // TestRunSetup_InvalidPath verifies that a non-ASCII data-dir is
-// rejected at the ValidateDataDir gate (T-08-06: hostile client
+// rejected at the ValidateDataDir gate (hostile client
 // bypassing the debounced /validate-data-dir endpoint).
 func TestRunSetup_InvalidPath(t *testing.T) {
 	t.Parallel()
@@ -58,11 +58,11 @@ func TestRunSetup_InvalidPath(t *testing.T) {
 // TestRunSetup_HappyPath drives a fresh data-dir through the full
 // submit pipeline and asserts every side effect lands correctly:
 //   - <DataDir>/notes/   exists
-//   - <DataDir>/.jasper/ exists (per-vault data subdir; Phase 9 D-06)
+//   - <DataDir>/.jasper/ exists (per-vault data subdir)
 //   - <DataDir>/.jasper/config.json exists with the locked defaults
 //     overlaid by the wizard's choices
 //   - <DataDir>/.jasper/app.db exists with the mcp_write_grants table
-//     populated by migration 004 (vault model — plan 08-17b moved DB here)
+//     populated by migration 004
 //   - today's daily note exists when CreateTodayDailyNote=true
 func TestRunSetup_HappyPath(t *testing.T) {
 	t.Setenv("JASPER_APP_HOME", t.TempDir())
@@ -123,10 +123,10 @@ func TestRunSetup_HappyPath(t *testing.T) {
 		t.Fatalf("DailyNotes.Template: got %q want template-override", cfg.DailyNotes.Template)
 	}
 
-	// app.db is intentionally NOT created by RunSetup (Plan 09-03a D-04):
-	// the migration runner creates it on first server boot. With no
-	// wizard grants, the seed_grants.json queue file is also absent
-	// (writeSeedGrants short-circuits on empty input — Plan 09-03b).
+	// app.db is intentionally NOT created by RunSetup: the migration
+	// runner creates it on first server boot. With no wizard grants,
+	// the seed_grants.json queue file is also absent (writeSeedGrants
+	// short-circuits on empty input).
 	if _, err := os.Stat(vault.AppDBPath(target)); err == nil {
 		t.Fatalf("RunSetup should NOT create app.db (D-04); got file at %s", vault.AppDBPath(target))
 	}
@@ -154,10 +154,9 @@ func TestRunSetup_HappyPath(t *testing.T) {
 	}
 }
 
-// TestRunSetup_McpEnabledRoundTrips is the revision-2 W1 fix
-// regression test: the wizard's mcp_enabled choice MUST persist to
-// cfg.MCP.Enabled on disk so 08-09's listener sees the user's choice
-// at next boot.
+// TestRunSetup_McpEnabledRoundTrips verifies that the wizard's
+// mcp_enabled choice persists to cfg.MCP.Enabled on disk so the MCP
+// listener sees the user's choice at next boot.
 func TestRunSetup_McpEnabledRoundTrips(t *testing.T) {
 	cases := []struct {
 		name string
@@ -202,8 +201,8 @@ func TestRunSetup_McpEnabledRoundTrips(t *testing.T) {
 }
 
 // TestRunSetup_SeedGrants — wizard MCP-grants seeding writes a queue
-// file at <vault>/.jasper/seed_grants.json (Plan 09-03b). Drain side
-// of the contract is covered by apply_seed_grants_test.go.
+// file at <vault>/.jasper/seed_grants.json. Drain side of the contract
+// is covered by apply_seed_grants_test.go.
 func TestRunSetup_SeedGrants(t *testing.T) {
 	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	base := t.TempDir()

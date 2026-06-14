@@ -1,19 +1,12 @@
 /**
- * Phase 12 UAT — Interactive Checkboxes (Plan 03 / E2E-1..E2E-4).
+ * Phase 12 UAT — Interactive Checkboxes.
  *
- * Per CONVENTIONS.md §"Verification policy: E2E before human UAT" and
- * §"Build & embed pipeline" (make build is mandatory — never npm run build
- * && go build which skips the embed copy step).
- *
- * Per CONVENTIONS.md §"Flaky tests are bugs": all synchronization uses
- * deterministic assertion-based waits (expect(...).toBeVisible(),
- * expect(...).toHaveAttribute(), expect.poll()). No fixed waitForTimeout
- * sleeps used for synchronization.
+ * All synchronization uses deterministic assertion-based waits.
  *
  * Selectors:
  *   - Checkbox widget: button.cm-task-checkbox (aria-checked="true"|"false")
  *   - Checked text:    .cm-task-text-checked
- *   - Save indicator:  [role="status"] containing "Saved" text (overlay render)
+ *   - Save indicator:  button[data-save-state="saved"]
  *   - Note rows:       [data-tree-row-kind="note"]
  *
  * E2E-1 (CHK-01 check):   click unchecked checkbox → file shows [x]
@@ -140,17 +133,14 @@ test("E2E-1 CHK-01 check: unchecked checkbox click writes [x] to disk @phase12",
   await waitForConnected(page);
   await openNoteInEditor(page, noteId);
 
-  // Locate the unchecked checkbox widget
   const checkbox = page.locator("button.cm-task-checkbox[aria-checked='false']").first();
   await expect(checkbox).toBeVisible({ timeout: 5_000 });
 
-  // Click to check
   await checkbox.click();
 
   // Wait for immediate flush to complete — save indicator shows "Saved"
   await waitForSaved(page);
 
-  // Assert disk content updated
   const content = await getNoteContent(page, noteId);
   expect(content).toContain("- [x] My task");
 });
@@ -171,17 +161,13 @@ test("E2E-2 CHK-01 uncheck: checked checkbox click writes [ ] to disk @phase12",
   await waitForConnected(page);
   await openNoteInEditor(page, noteId);
 
-  // Locate the checked checkbox widget
   const checkbox = page.locator("button.cm-task-checkbox[aria-checked='true']").first();
   await expect(checkbox).toBeVisible({ timeout: 5_000 });
 
-  // Click to uncheck
   await checkbox.click();
 
-  // Wait for immediate flush to complete
   await waitForSaved(page);
 
-  // Assert disk content updated
   const content = await getNoteContent(page, noteId);
   expect(content).toContain("- [ ] Done task");
 });
@@ -202,7 +188,6 @@ test("E2E-3 CHK-02 strikethrough: checked item text carries .cm-task-text-checke
   await waitForConnected(page);
   await openNoteInEditor(page, noteId);
 
-  // The checked item's text span must carry .cm-task-text-checked
   const strikeSpan = page.locator(".cm-task-text-checked").first();
   await expect(strikeSpan).toBeVisible({ timeout: 5_000 });
 });
@@ -225,8 +210,6 @@ test("E2E-4 CHK-04 off-cursor: checkbox clickable without cursor on task line @p
   await waitForConnected(page);
   await openNoteInEditor(page, noteId);
 
-  // Click into the non-task text line to move cursor there
-  // We find the "Some other line" text in the CM6 editor and click it
   const otherLine = page
     .locator(".cm-content .cm-line")
     .filter({ hasText: /Some other line/ })
@@ -241,10 +224,8 @@ test("E2E-4 CHK-04 off-cursor: checkbox clickable without cursor on task line @p
   // Click the checkbox — must toggle without requiring cursor placement
   await checkbox.click();
 
-  // Wait for save
   await waitForSaved(page);
 
-  // Assert disk content updated
   const content = await getNoteContent(page, noteId);
   expect(content).toContain("- [x] Task");
 });

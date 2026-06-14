@@ -10,15 +10,13 @@ import (
 )
 
 // NotesProvider is the small adapter the MCP server uses to list every
-// note in the vault. The full notes.Service does not expose List; the
-// index does (see adapters.go for the wrapper).
+// note in the vault (see adapters.go for the wrapper).
 type NotesProvider interface {
 	List(ctx context.Context) ([]notes.NoteSummary, error)
 }
 
 // SearchProvider is the small adapter the MCP server uses to run an
-// FTS5 search. Wraps the existing index.SearchFTS path; concrete impl
-// is constructed by lifecycle.go (see adapters.go).
+// FTS5 search (see adapters.go for the concrete implementation).
 type SearchProvider interface {
 	Search(ctx context.Context, q string, limit int) ([]SearchHit, error)
 }
@@ -33,15 +31,15 @@ type AttachmentProvider interface {
 // Broadcaster is the subset of *wshub.Hub the MCP server may use. Kept
 // as an interface so unit tests can pass a fake without instantiating a
 // real hub. MCP write tools never call Broadcast directly — notes.Service
-// does (D-57). This interface is reserved for any future MCP-originated
-// event that doesn't already flow through notes.Service.
+// does. This interface is reserved for any future MCP-originated event
+// that doesn't already flow through notes.Service.
 type Broadcaster interface {
 	Broadcast(eventType string, payload any, originSessionID string)
 }
 
 // Server bundles every dependency the MCP tools need and owns the
 // underlying *mcpsdk.Server. Construct via NewServer; the constructor
-// registers every tool (D-16) before returning.
+// registers every tool before returning.
 type Server struct {
 	sdk           *mcpsdk.Server
 	notesSvc      *notes.Service
@@ -57,12 +55,11 @@ type Server struct {
 //
 // Parameters:
 //   - notesSvc: the production notes.Service. Required.
-//   - notesProv: adapter that lists every note (typically wraps index.List).
+//   - notesProv: adapter that lists every note.
 //   - search: adapter that runs an FTS5 search.
 //   - attach: adapter that reads attachment bytes.
-//   - acl: the folder-grant ACL from Plan 08-08. Required for write tools.
-//   - bcast: the WS hub. Currently unused (notes.Service emits its own
-//     events) but kept for forward compat. May be nil.
+//   - acl: the folder-grant ACL. Required for write tools.
+//   - bcast: the WS hub. May be nil (notes.Service emits its own events).
 //   - log: structured logger. A nil logger is replaced with slog.Default().
 func NewServer(
 	notesSvc *notes.Service,

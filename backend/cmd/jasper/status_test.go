@@ -49,11 +49,8 @@ func writeMinimalConfig(t *testing.T, dataDir string, cfg config.Config) {
 	}
 }
 
-// TestRunStatus_NoConfig_PrintsSetupHint asserts the not-yet-set-up
-// branch: with no config.json on disk, status prints the wizard hint.
-//
-// Plan 08-23 (R4-15): switched from removed JASPER_DATA_DIR env to --vault
-// (via vaultFlag) to point status at the per-test tempdir.
+// TestRunStatus_NoConfig_PrintsSetupHint asserts that with no config.json on
+// disk, status prints the wizard hint.
 func TestRunStatus_NoConfig_PrintsSetupHint(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JASPER_APP_HOME", filepath.Join(dir, "appHome"))
@@ -116,8 +113,8 @@ func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 	}
 }
 
-// TestRunStatus_McpEnabledWithGrants pins the D-36 MCP summary line
-// including per-grant breakdown.
+// TestRunStatus_McpEnabledWithGrants pins the MCP summary line including
+// per-grant breakdown.
 func TestRunStatus_McpEnabledWithGrants(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JASPER_APP_HOME", filepath.Join(dir, "appHome"))

@@ -1,15 +1,12 @@
 /**
- * VaultPicker — the vault selection modal.
+ * VaultPicker — vault selection modal with three tabs (Recent / Open existing / Create new).
  *
- * Three tabs: Recent / Open existing / Create new.
  * Two modes:
  *   - "boot": picker IS the page (no-vault state); Dialog is non-dismissable.
  *   - "switch": modal over MainShell; dismissable via Escape / outside-click.
  *
- * V13/V14: banner from GET /vault/recent.banner displayed at top when non-empty.
- * V11: missing entries rendered via VaultPickerRow with Reconnect/Remove affordances.
- *
- * Plan 08-17c Task 2.
+ * Banner from GET /vault/recent.banner is shown at the top when non-empty.
+ * Missing entries render via VaultPickerRow with Reconnect/Remove affordances.
  */
 
 import * as Dialog from "@radix-ui/react-dialog";

@@ -3,19 +3,15 @@
 // → API (api.Server + StrictHandler) → router (chi) → SPA fallback
 // (static.Handler).
 //
-// chi mount order is FIRST API under r.Route("/api/v1", ...) and LAST
-// the SPA fallback (Pitfall 13). Plan 02's handler tests use the same
-// r.Route("/api/v1", ...) wrapper so dev tests and the production
-// binary serve identical URLs.
+// chi mount order: API first under r.Route("/api/v1", ...), SPA fallback
+// last — this prevents the fallback from swallowing API 404s.
 //
-// Phase 2 boundary: New() builds a Phase-1-compatible router with the
-// API server in nil-everything mode (no migration runner, no SQLite
-// pair, no real indexer). The REAL composition (sqlite.Open →
-// migrate.NewRunner → index.New → api.NewServerWithIndex) happens in
-// lifecycle.Run because it is side-effecting (mkdir + open DB) and
-// must run BEFORE the HTTP listener accepts connections (DESIGN.md
-// §6.1). Run replaces a.handler with the fully-wired router after
-// migrations + incremental reindex complete.
+// New() builds the router with the API server in nil-everything mode.
+// The real composition (sqlite.Open → migrate.NewRunner → index.New →
+// api.NewServerWithIndex) happens in lifecycle.Run because it is
+// side-effecting (mkdir + open DB) and must run BEFORE the HTTP listener
+// accepts connections. Run replaces a.handler with the fully-wired router
+// after migrations + incremental reindex complete.
 package app
 
 import (
@@ -45,36 +41,27 @@ import (
 
 // Config is the resolved runtime configuration for `jasper serve`.
 // cmd/jasper/serve.go populates this after applying the
-// flag → env → default precedence chain (D-07).
+// flag → env → default precedence chain.
 type Config struct {
 	// DataDir is the resolved absolute path under which <DataDir>/notes/
-	// holds .md files and <DataDir>/.jasper/ holds Phase 2's SQLite
-	// database (app.db) and logs. Caller passes an absolute path;
-	// lifecycle.go creates the subdirs on Run.
+	// holds .md files and <DataDir>/.jasper/ holds the SQLite database
+	// (app.db) and logs. Caller passes an absolute path; lifecycle.go
+	// creates the subdirs on Run.
 	//
-	// LEGACY (pre-Phase-8): this top-level field is retained for
-	// backward compat with existing lifecycle.go references
-	// (a.cfg.DataDir). New code paths SHOULD prefer cfg.Server.DataDir
-	// (forward-looking — Phase 8 D-04 wizard wires it).
-	// Both carry the same value (set at app init by cmd/jasper/serve.go).
+	// This top-level field is retained for backward compat with existing
+	// lifecycle.go references (a.cfg.DataDir). New code paths should
+	// prefer cfg.Server.DataDir. Both carry the same value.
 	DataDir string
 
 	// Server mirrors the loaded config.Config.Server block. Set at app
-	// init from the config.Load result. Makes cfg.Server.DataDir
-	// reachable in downstream middleware (Plan 08-02 firstrun) and
-	// the FileLogger (Plan 08-12) without those code paths having to
-	// re-load config.json or thread an additional argument.
-	//
-	// Phase 8 Plan 08-01 Task 4 thread-through: declared here so
-	// downstream waves compile cleanly. cmd/jasper/serve.go (or the
-	// equivalent app-init caller in 08-02) populates the value before
-	// calling app.New. While the field is zero-valued, downstream
-	// readers may fall back to cfg.DataDir.
+	// init from the config.Load result. Makes cfg.Server.DataDir reachable
+	// in downstream middleware and the FileLogger without re-loading
+	// config.json or threading an additional argument. While zero-valued,
+	// downstream readers may fall back to cfg.DataDir.
 	Server config.ServerConfig
 
-	// ListenAddr is the host:port to bind. Phase 1 enforces loopback
-	// at the CLI layer (see cmd/jasper/serve.go's call to
-	// netbind.RequireLoopbackBind, Plan 08-01 Task 3).
+	// ListenAddr is the host:port to bind. Loopback is enforced at the
+	// CLI layer via netbind.RequireLoopbackBind.
 	ListenAddr string
 
 	// Logger is the structured logger used by middleware and lifecycle.
@@ -94,17 +81,14 @@ type Config struct {
 	MigrationsOverride fs.FS
 
 	// DisableFirstRunGate is a TEST-ONLY flag retained for backward
-	// compatibility. As of Plan 08-17b the firstrun.RedirectMiddleware
-	// is no longer mounted on the live router (the vault-model lifecycle
-	// branch handles the no-vault state). This field is now a no-op;
-	// it is kept so existing test code that sets it continues to compile.
+	// compatibility. The firstrun.RedirectMiddleware is no longer mounted
+	// on the live router; this field is now a no-op kept so existing test
+	// code that sets it continues to compile.
 	DisableFirstRunGate bool
 
-	// VaultOverride is the canonical path supplied via --vault (cobra flag,
-	// added in Plan 08-17a). Empty when no override is given.
-	// resolveVaultMode consults this BEFORE consulting app.json's
-	// current_vault. Set by cmd/jasper/serve.go after canonicalizing the
-	// flag value.
+	// VaultOverride is the canonical path supplied via --vault. Empty when
+	// no override is given. resolveVaultMode consults this before
+	// consulting app.json's current_vault.
 	VaultOverride string
 
 	// ListenerOverride is a TEST-ONLY pre-bound listener. When non-nil,
@@ -116,13 +100,13 @@ type Config struct {
 	ListenerOverride net.Listener
 }
 
-// App bundles the wired application. New constructs Phase-1-shape
-// dependencies and returns the composed *App; Run executes the Phase 2
+// App bundles the wired application. New constructs the initial
+// composition and returns the composed *App; Run executes the full
 // startup sequence (sqlite + migrate + reindex) and serves until ctx
 // is canceled.
 //
 // pair, runner, and indexer are populated by lifecycle.Run, NOT by
-// New. They are nil between New and Run so Phase 1 tests that call
+// New. They are nil between New and Run so tests that call
 // New + Handler() directly continue to work unchanged.
 //
 // diskFullHandler is non-nil ONLY when boot fails (ErrDiskFull or
@@ -157,25 +141,22 @@ type App struct {
 	mcpShutdown func(ctx context.Context) error
 }
 
-// New builds a Phase-1-compatible composition for `jasper serve`. The
-// real Phase 2 wiring (sqlite.Open → migrate.NewRunner → index.New →
-// api.NewServerWithIndex) lives in lifecycle.Run because it is side-
-// effecting (mkdir + open DB) and must run BEFORE the listener accepts
-// connections (DESIGN.md §6.1).
+// New builds the initial composition for `jasper serve`. The real
+// wiring (sqlite.Open → migrate.NewRunner → index.New →
+// api.NewServerWithIndex) lives in lifecycle.Run because it is
+// side-effecting (mkdir + open DB) and must run BEFORE the listener
+// accepts connections.
 //
-// Wiring sequence (Phase-1-shape — kept here for backward compatibility
-// with app_test.go's httptest.NewServer(a.Handler()) pattern):
+// Wiring sequence (kept minimal for tests that call New + Handler()):
 //
 //  1. fsstore.NewStore(<DataDir>/notes) — concrete FileStore adapter.
 //  2. notes.NewService(files, nil, log) — domain service with nil
-//     Index (Service substitutes nopIndex). Phase 2 lifecycle.Run
-//     replaces this with a real *index.Indexer-backed Service.
-//  3. api.NewServer(notesSvc, log) — 2-arg constructor; internally
-//     delegates to NewServerWithIndex with nil status/runner/index
-//     so handlers gracefully degrade.
+//     Index (Service substitutes nopIndex). lifecycle.Run replaces
+//     this with a real *index.Indexer-backed Service.
+//  3. api.NewServerWithIndex with nil status/runner/index so handlers
+//     gracefully degrade.
 //  4. chi router with RequestID + Recoverer + requestLogger.
-//  5. r.Route("/api/v1", ...) wrapping api.HandlerFromMux — Pitfall
-//     13 mount.
+//  5. r.Route("/api/v1", ...) wrapping api.HandlerFromMux.
 //  6. r.Mount("/", static.Handler()) — SPA fallback LAST.
 func New(cfg Config) (*App, error) {
 	notesDir := notesDirFor(cfg.DataDir)
@@ -214,11 +195,10 @@ func New(cfg Config) (*App, error) {
 	return a, nil
 }
 
-// Handler returns the composed http.Handler for the app — useful
-// for httptest in unit tests. The returned handler is the swappable
-// wrapper; ServeHTTP delegates to whatever router is currently
-// installed (initial Phase-1 router → no-vault picker shell → per-vault
-// full stack as the app transitions).
+// Handler returns the composed http.Handler for the app. The returned
+// handler is the swappable wrapper; ServeHTTP delegates to whatever
+// router is currently installed (initial router → no-vault picker shell
+// → per-vault full stack as the app transitions).
 func (a *App) Handler() http.Handler { return a.handler }
 
 // Config returns the resolved configuration the app was built with.
@@ -238,15 +218,9 @@ func (a *App) setCurrentVaultPath(p string) {
 }
 
 // NotesService returns the wired *notes.Service. Returns nil if Run
-// has not yet executed step 8 (or if Run took the disk-full /
-// unrecoverable error path which never builds the notes service).
-//
-// Plan 03-04 introduces this accessor for app_test.go's
-// TestRun_HydrateRegistry — it lets the test assert that the registry
-// was populated from indexer.List before the listener accepted
-// connections (T-03-04-07). Access is synchronized via a.mu to
-// satisfy the Go memory model when called from a different goroutine
-// than the one running Run.
+// has not yet completed wiring (or took the disk-full / unrecoverable
+// error path which never builds the notes service). Access is
+// synchronized via a.mu for callers on a different goroutine than Run.
 func (a *App) NotesService() *notes.Service {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

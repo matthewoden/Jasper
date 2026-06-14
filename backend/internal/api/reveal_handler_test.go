@@ -275,14 +275,11 @@ func TestPostReveal_DarwinDispatch_FolderPath(t *testing.T) {
 	}
 }
 
-// TestPostReveal_LinuxNative_HappyPath_OpensParentDir asserts that on
-// native Linux (not WSL2), PostReveal dispatches to revealLinuxFn and
-// returns 200 with Platform=Linux. Closes D-28 (v1.1).
-//
-// xdg-open cannot pre-select a file, so revealLinuxFn opens the parent
-// directory of a file target. That parent-directory logic is exercised by
-// the production helper (TestRevealOnLinux_OpensParentForFile below); this
-// test only verifies the dispatch + response shape.
+// TestPostReveal_LinuxNative_HappyPath_OpensParentDir asserts that on native
+// Linux (not WSL2), PostReveal dispatches to revealLinuxFn and returns 200
+// with Platform=Linux. xdg-open cannot pre-select a file, so revealLinuxFn
+// opens the parent directory. This test verifies only the dispatch + response
+// shape; the parent-directory logic is covered by TestRevealOnLinux_OpensParentForFile.
 func TestPostReveal_LinuxNative_HappyPath(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("linux-only check (PostReveal switches on runtime.GOOS)")

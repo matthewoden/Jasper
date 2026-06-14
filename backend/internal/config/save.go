@@ -10,7 +10,7 @@ import (
 )
 
 // Save writes c to <dataDir>/.jasper/config.json atomically via
-// fsstore.AtomicWrite (DATA-13 — temp+rename+fsync(parent)).
+// fsstore.AtomicWrite (temp+rename+fsync(parent)).
 // Indented JSON so a human can `cat` the file and read it.
 //
 // Caller is responsible for ensuring <dataDir>/.jasper exists.
@@ -33,9 +33,8 @@ func Save(dataDir string, c Config) error {
 // scalars, null) the overlay value replaces base entirely (same
 // behaviour as the old flat merge).
 //
-// This is used by SaveMerged to satisfy SET-05 / D-09: unknown or
-// hand-added keys inside managed nested objects (e.g. editor.spellCheck)
-// survive a PUT /config round-trip.
+// This is used by SaveMerged so unknown or hand-added keys inside managed
+// nested objects (e.g. editor.spellCheck) survive a PUT /config round-trip.
 func deepMergeRawMaps(base, overlay map[string]json.RawMessage) map[string]json.RawMessage {
 	for k, v := range overlay {
 		if baseVal, ok := base[k]; ok {
@@ -59,10 +58,10 @@ func deepMergeRawMaps(base, overlay map[string]json.RawMessage) map[string]json.
 // SaveMerged reads the raw on-disk JSON, overlays the managed keys from
 // updates onto it (preserving any unmanaged/unknown keys), and writes back
 // atomically. This prevents a PUT /config round-trip from dropping keys
-// added by hand or by a newer binary version (D-09 / SET-05).
+// added by hand or by a newer binary version.
 //
-// Load intentionally uses DisallowUnknownFields (D-40) — this function
-// does NOT relax that. Load is the read-path; SaveMerged is write-path only.
+// Load intentionally uses DisallowUnknownFields — this function does NOT
+// relax that. Load is the read-path; SaveMerged is write-path only.
 //
 // Algorithm:
 //  1. Read existing disk JSON into map[string]json.RawMessage (best-effort).

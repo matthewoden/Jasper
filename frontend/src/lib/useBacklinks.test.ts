@@ -1,9 +1,5 @@
 /**
- * useBacklinks tests — UB1..UB7
- *
- * Plan 06-11 / LINKS-08.
- *
- * Tests the reactive hook that drives the backlinks rail.
+ * Tests for useBacklinks — the reactive hook that drives the backlinks rail.
  */
 
 import { renderHook, act, waitFor } from "@testing-library/react";

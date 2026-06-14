@@ -18,17 +18,16 @@ import (
 // deletes the file on success. Idempotent: returns nil if the file does
 // not exist (the common path on every boot of an established vault).
 //
-// Per Phase 9 D-04: firstrun.RunSetup queues grants at submit time (when
-// the per-vault DB does not yet exist after Plan 03a's "CreateVault does
-// not open the DB" refactor); the server's first boot of the vault drains
-// the queue after migrations.
+// RunSetup queues grants at submit time (when the per-vault DB does not
+// yet exist); the server's first boot of the vault drains the queue after
+// migrations.
 //
-// Path discipline (mitigates T-09-03b-06): both writer (writeSeedGrants
-// in submit.go) and reader (this function) compute the path via
-// vault.SeedGrantsPath with their respective canonical roots. RunSetup
-// canonicalizes once at the top and passes the canonical value to the
-// writer. Lifecycle invokes this with a.cfg.DataDir, which is canonical
-// post-boot. Same helper, same input → same path. No TOCTOU.
+// Path discipline: both writer (writeSeedGrants in submit.go) and reader
+// (this function) compute the path via vault.SeedGrantsPath with their
+// respective canonical roots. RunSetup canonicalizes once at the top and
+// passes the canonical value to the writer. Lifecycle invokes this with
+// a.cfg.DataDir, which is canonical post-boot. Same helper, same input →
+// same path. No TOCTOU.
 //
 // Errors:
 //   - JSON decode failure: returns wrapped error, leaves file in place
@@ -52,10 +51,9 @@ func ApplySeedGrants(ctx context.Context, db *sql.DB, dataDir string) error {
 		return fmt.Errorf("ApplySeedGrants: decode %s: %w", path, err)
 	}
 
-	// SQL preserved verbatim from the deleted firstrun.insertSeedGrants
-	// (migration 004 schema: folder_path UNIQUE, level CHECK (1,2),
-	// granted_at INTEGER UNIX seconds, granted_via TEXT). Bound
-	// parameters mitigate T-09-03b-02 (SQL injection via folder_path).
+	// migration 004 schema: folder_path UNIQUE, level CHECK (1,2),
+	// granted_at INTEGER UNIX seconds, granted_via TEXT. Bound
+	// parameters prevent SQL injection via folder_path.
 	const insertSQL = `INSERT INTO mcp_write_grants (folder_path, level, granted_at, granted_via)
 		 VALUES (?, ?, ?, 'wizard')
 		 ON CONFLICT(folder_path) DO UPDATE SET

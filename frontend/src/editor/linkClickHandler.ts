@@ -1,37 +1,22 @@
 /**
  * linkClickHandler — Obsidian-style cmd/ctrl-click on markdown links.
  *
- * In an EDITABLE markdown surface, a single click should NOT navigate
- * (the user might be aiming to position the cursor for editing). The
- * convention from VS Code, Obsidian, and most prose editors is:
+ * In an editable markdown surface, plain click positions the cursor (CM6
+ * default). Cmd-click (Mac) or Ctrl-click (Windows/Linux) navigates:
+ *   - External URL → window.open with noopener,noreferrer
+ *   - [[Title]] resolved → setActiveNoteId(targetId)
+ *   - [[Title]] pending → createNoteFromPendingLink then navigate
  *
- *   - Plain click  → caret placement (CM6 default; we don't intercept)
- *   - Cmd-click    → open the link (Mac)
- *   - Ctrl-click   → open the link (Windows / Linux)
+ * "External" means http(s):// or a bare domain-with-TLD; bare domains are
+ * upgraded to https:// at open time.
  *
- * 05.5-18: external links open. "External" means either a URL with
- * an http(s):// protocol OR a bare domain-with-TLD (e.g. "test.com",
- * "a.b.org/path"). Bare domains are silently upgraded to https:// at
- * open time.
+ * Plain click on a wiki-link is inert. The `data-cmd-held` attribute on
+ * `.cm-editor` is toggled by document-level keydown/keyup in MarkdownEditor
+ * to drive the pointer-cursor CSS.
  *
- * Phase 6 / Plan 06-09: wiki-link branch added alongside the external-link
- * branch. Cmd/Ctrl-click on [[Title]] navigates to the resolved note via
- * setActiveNoteId; Cmd/Ctrl-click on a pending [[Title]] creates the note in
- * the source note's folder (createNoteFromPendingLink) then navigates. Plain
- * click on a wiki-link is inert (D-15). The `data-cmd-held` attribute on the
- * `.cm-editor` element is toggled by document-level keydown/keyup listeners
- * wired in MarkdownEditor — that attribute drives the pointer-cursor CSS (D-16).
- *
- * External links open with `target="_blank"` semantics via window.open
- * with `noopener,noreferrer` so the new tab cannot manipulate the
- * opener via window.opener.
- *
- * Module-level snapshot pattern for React integration:
- *   setWikilinkHandlerCallbacks({ setActiveNoteId, getCurrentSourceFolder })
- *   must be called (from MarkdownEditor's useEffect) to wire the React-layer
- *   callbacks into this CM6 extension. The click handler reads these callbacks
- *   synchronously from the module-level closure without going through React.
- *   This mirrors the wikilinkResolver snapshot pattern.
+ * Module-level snapshot: setWikilinkHandlerCallbacks() must be called from
+ * MarkdownEditor's useEffect to wire React-layer callbacks into this CM6
+ * extension without going through React. Mirrors the wikilinkResolver pattern.
  */
 import { syntaxTree } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
@@ -93,7 +78,7 @@ export interface WikiLinkAtPos {
  * Scans the line text with WIKILINK_RE and returns the wikilink whose range
  * covers `pos`. Returns null if no wikilink covers the position.
  *
- * Test K7: findWikiLinkAt outside any wikilink returns null.
+ * Returns null when pos is not inside any wikilink on the line.
  */
 export function findWikiLinkAt(
   view: EditorView,
@@ -126,16 +111,9 @@ export function findWikiLinkAt(
 /**
  * Create a new note from a pending wikilink. Posts to /api/v1/notes with
  * `parent_path` = `sourceFolder` and `title` = `rawTitle` (without .md).
- *
- * On success, returns the new note's id. On error, throws so the caller can
- * surface the failure appropriately.
- *
- * Test K8: calls postNotes with parent_path=sourceFolder, title=rawTitle;
- *          on success calls setActiveNoteId with the new note's id.
- *
- * Security (T-06-09-02): the backend validates parent_path and title for
- * path-traversal and illegal chars (Phase 3 Service.Create). Returns 400
- * on bad input — the caller logs the error.
+ * On success, returns the new note's id. Throws on API error.
+ * The backend validates parent_path and title for path-traversal; returns
+ * 400 on bad input — the caller logs the error.
  */
 export async function createNoteFromPendingLink(
   rawTitle: string,

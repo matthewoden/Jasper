@@ -1,34 +1,16 @@
 /**
- * TreeRowMenu — UI-SPEC §Surface 2.
+ * TreeRowMenu — two trigger variants sharing the same content body:
+ *   - TreeRowContextMenu: Radix ContextMenu (right-click)
+ *   - TreeRowDropdownMenu: Radix DropdownMenu (kebab click)
  *
- * Exports two trigger variants that share the SAME content body:
- *   - <TreeRowContextMenu> wraps Radix ContextMenu (right-click)
- *   - <TreeRowDropdownMenu> wraps Radix DropdownMenu (kebab click)
+ * MenuItems branches on rowKind; Item / Separator differ per primitive so they
+ * are passed as ItemComp / SepComp props.
  *
- * Both render an internal <MenuItems /> body whose item set branches on
- * rowKind. The Item / Separator components differ between the two
- * primitives, so MenuItems takes them as ItemComp / SepComp props.
- *
- * Visual specification is locked in UI-SPEC §Surface 2:
- *   - Container: bg-surface, 1px border-border, radius 6, padding xs
- *     vertical, min-width 200, max-width 320, soft shadow.
- *   - Item: 32px tall, padding 0 16, gap 8, fontSize 14, hover bg
- *     rgba(255,255,255,0.04). Destructive item uses text-destructive
- *     with a destructive-tinted hover background.
- *   - Shortcut: right-aligned text-muted (F2 / ⌫).
- *
- * Item set table (locked verbatim):
- *   note         → Open · sep · New note · sep · Rename(F2) · Delete(⌫)
- *   folder       →                 New note · New folder · sep · Rename(F2) · Delete(⌫)
- *   empty-area   →                 New note · New folder
- *   file         →                 Rename(F2) · Delete(⌫)    (Plan 07-38 R7b)
- *
- * Plan 07-38 R7b: file-kind rows are non-markdown attachments / generic
- * files surfaced in the sidebar tree (FileNodeData in TreeRow.tsx). They
- * have no "Open" because clicking the row opens the preview view; they
- * have no "New note" / "New folder" because files cannot host children.
- * Rename + Delete dispatch through filesApi.moveFile / deleteFile in
- * FileTree.handleCommitRename / handleConfirmDelete.
+ * Item set (locked):
+ *   note       → Open · sep · New note · sep · Rename(F2) · Delete(⌫)
+ *   folder     → New note · New folder · sep · Rename(F2) · Delete(⌫)
+ *   empty-area → New note · New folder
+ *   file       → Rename(F2) · Delete(⌫)  (files can't host children; click opens preview)
  */
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -52,62 +34,40 @@ export interface TreeRowMenuProps {
   /** not on empty-area */
   onDelete?: () => void;
   /**
-   * Plan 08-06 (D-26 / SHARE-01): "Show in file manager" reveal action.
-   *
-   * Present on note / folder / file rows; omitted on empty-area (no path).
-   * The caller is expected to wire this through useReveal().reveal(path)
-   * with the correct path for the row kind:
-   *   - note   → note path (e.g. "projects/jasper/note.md")
-   *   - folder → folder path (e.g. "projects/jasper")
-   *   - file   → file path (e.g. "attachments/diagram.png")
-   *
-   * Position in the menu body is locked by UI-SPEC §Surface 4 Mount A:
-   *   - note rows  → directly below "Open", before the first separator
-   *   - folder rows → directly below "New folder", before the AI-grant
-   *                   submenu mount-slot (filled by Plan 08-10)
-   *   - file rows  → at the TOP of the menu (becomes the new first item)
+   * "Show in file manager" reveal action. Present on note/folder/file rows;
+   * omitted on empty-area (no path).
+   *   - note rows  → below "Open", before first separator
+   *   - folder rows → below "New folder", before AI-grant submenu slot
+   *   - file rows  → top of menu (files: Reveal + Rename + Delete only)
    */
   onReveal?: () => void;
 
   /**
-   * Plan 08-10 (D-17, D-19, MCP-01): MCP "Grant AI access" submenu — folder rows only.
-   *
-   *   - activeLevel: the DIRECT grant attached to this folder (1 / 2 / null).
-   *                  Null means no grant attached AT THIS leaf (ancestor
-   *                  grants don't surface here per UI-SPEC §Surface 3 —
-   *                  use directLevelFor, not levelFor).
-   *   - onGrant(level): user clicked "Edit only" (1) or "Full" (2).
-   *                     Idempotent — backend re-validates.
-   *   - onRevoke(): user clicked "Revoke access". Only shown when
-   *                 activeLevel !== null.
-   *
-   * Omitted on note / file / empty-area rows.
+   * MCP "Grant AI access" submenu — folder rows only.
+   *   - activeLevel: DIRECT grant at this folder (1/2/null). Ancestor grants
+   *     don't surface here; use directLevelFor, not levelFor.
+   *   - onGrant(level): "Edit only" (1) or "Full" (2). Idempotent.
+   *   - onRevoke(): "Revoke access". Only shown when activeLevel !== null.
+   * Omitted on note/file/empty-area rows.
    */
   activeLevel?: 1 | 2 | null;
   onGrant?: (level: 1 | 2) => void;
   onRevoke?: () => void;
 
   /**
-   * R4-9 (Plan 08-22): inherited grant on an ANCESTOR folder. When
-   * non-null AND `activeLevel` is null (no direct grant on this leaf),
-   * the "Grant AI access ▸" SubTrigger is replaced by a single DISABLED
-   * menu item reading `Inherits AI access from <basename(ancestorPath)>
-   * (<tierLabel(level)>)`. This prevents the user from creating a
-   * redundant grant on a child whose ancestor already covers it (D-18
-   * recursive coverage).
-   *
-   * If the row holds its own direct grant (`activeLevel != null`), the
-   * existing Sub still renders so Revoke is reachable.
-   *
-   * Omitted on note / file / empty-area rows (no MCP submenu there).
+   * Inherited grant from an ANCESTOR folder. When non-null and activeLevel
+   * is null (no direct grant here), replaces the "Grant AI access ▸" submenu
+   * with a DISABLED "Inherits AI access from <ancestor>" label — prevents
+   * a redundant grant on a child already covered by the ancestor (recursive
+   * coverage). When the row has its own direct grant, the Sub still renders so
+   * Revoke is reachable. Omitted on note/file/empty-area rows.
    */
   inheritedGrant?: InheritedGrant | null;
 }
 
 /**
- * Mirrors useMcpGrants.InheritedGrant — duplicated here so the menu
- * component doesn't have to import from the hook (avoids a cycle when
- * future code paths build menus inside the hook for previews).
+ * Mirrors useMcpGrants.InheritedGrant — duplicated to avoid an import cycle
+ * if menus are ever built inside the hook.
  */
 export interface InheritedGrant {
   level: 1 | 2;
@@ -259,13 +219,10 @@ function MenuItems({
           <span>Open</span>
         </Item>
       )}
-      {/* Plan 08-06 Mount A — note rows: Reveal sits just below "Open" and
-          BEFORE the first separator (UI-SPEC §Surface 4 Mount A). */}
+      {/* Note rows: Reveal below "Open", before first separator. */}
       {rowKind === "note" && revealItem}
       {rowKind === "note" && <Sep style={separatorStyle} />}
-      {/* Plan 08-06 Mount A — file rows: Reveal is the TOP item, before
-          any other action (UI-SPEC §Surface 4 Mount A). File rows
-          otherwise only have Rename + Delete (07-38 R7b). */}
+      {/* File rows: Reveal at top, before Rename + Delete. */}
       {isFile && revealItem}
       {!isFile && (
         <Item
@@ -289,19 +246,10 @@ function MenuItems({
           <span>New folder</span>
         </Item>
       )}
-      {/* Plan 08-06 Mount A — folder rows: Reveal sits just below
-          "New folder" and BEFORE the AI-grant submenu mount-slot
-          (UI-SPEC §Surface 4 Mount A). The AI-grant submenu lands in
-          Plan 08-10 — for now just leave a marker comment so the next
-          plan knows the slot. */}
+      {/* Folder rows: Reveal below "New folder", before AI-grant submenu. */}
       {rowKind === "folder" && revealItem}
-      {/* R4-9 (Plan 08-22): if an ANCESTOR folder holds a grant AND this
-          folder has no direct grant of its own, replace the "Grant AI
-          access ▸" submenu with a single DISABLED inheritance label.
-          D-18 recursive coverage means the ancestor grant already covers
-          this folder; offering a separate grant creates ambiguous state.
-          To revoke the inherited grant, the user goes to the ancestor's
-          menu (which is where the grant was attached). */}
+      {/* Inherited grant: ancestor covers this folder, so show a DISABLED label
+          rather than a submenu (creating a redundant grant is ambiguous). */}
       {rowKind === "folder" && inheritedGrant && !activeLevel && (
         <Item
           style={{ ...itemStyle, opacity: 0.6, cursor: "not-allowed" }}
@@ -327,27 +275,18 @@ function MenuItems({
           </span>
         </Item>
       )}
-      {/* Plan 08-10 (D-17, D-19, MCP-01) — "Grant AI access ▸" submenu mounts
-          between Reveal and the Rename/Delete separator on folder rows only.
-          The submenu offers Tier 1 (Edit only) + Tier 2 (Full) items; when a
-          grant is already attached at this leaf, a "Revoke access" destructive
-          item appears below a separator. Locked copy + locked layout from
-          UI-SPEC §Surface 2 lines 180-194.
-
-          R4-9 (Plan 08-22): suppressed when inheritedGrant exists AND no
-          direct grant on this leaf — the disabled label above takes over. */}
+      {/* "Grant AI access ▸" submenu — folder rows only.
+          Suppressed when an inherited grant exists and there's no direct grant
+          (disabled label above takes over). When a direct grant exists, "Revoke
+          access" appears below a separator. */}
       {rowKind === "folder" &&
         (onGrant || onRevoke) &&
         !(inheritedGrant && !activeLevel) && (
         <Sub key={`sub-${activeLevel ?? "none"}`}>
           <SubTrigger style={itemStyle}>
             <span>Grant AI access</span>
-            {/* UAT-2 R4-6: Sparkles icon next to the SubTrigger when this
-                folder has an active grant — replaces the in-row indicator
-                so the granted folder reads via background tint + the
-                in-menu icon (legible only when the menu is open). Color
-                tier matches the inline tint: violet-400 for Tier 1,
-                violet-600 for Tier 2. */}
+            {/* Sparkles icon next to SubTrigger when folder has an active grant.
+                Color tier: violet-400 for Tier 1, violet-600 for Tier 2. */}
             {activeLevel && (
               <>
                 <Sparkles
@@ -370,10 +309,8 @@ function MenuItems({
           </SubTrigger>
           <Portal>
             <SubContent style={menuContainerStyle}>
-              {/* UAT-2 R4-5: data-active drives the global "active item"
-                  CSS rule (theme.css) — stronger tint + left stripe + bold
-                  weight so it stays distinguishable from hover (which uses
-                  the same accent-12% background). */}
+              {/* data-active drives theme.css active-item rule — stronger tint,
+                  left stripe, bold weight (distinguishable from hover at same accent-12%). */}
               <Item
                 data-active={activeLevel === 1 ? "true" : undefined}
                 style={{ ...itemStyle, height: 36 }}
@@ -440,14 +377,9 @@ export function TreeRowContextMenu({
 }: TreeRowMenuProps & {
   children: ReactNode;
   /**
-   * R4-12 (Plan 08-22): receive Radix's open-state transitions so
-   * TreeRow can observe menu-close events. Radix's ContextMenu.Root
-   * is open-on-right-click and only exposes `onOpenChange` (not a
-   * controlled `open` prop) — so we can't force-close from outside.
-   * Instead, the R4-12 fix keys the `<Sub>` block on `activeLevel`
-   * inside MenuItems, which guarantees full unmount + remount of the
-   * SubContent when grants change. This callback is forwarded so
-   * future surfaces can react to dismissals.
+   * Forwarded from Radix ContextMenu.Root so callers can observe open-state
+   * transitions. The Sub block is keyed on activeLevel inside MenuItems to
+   * guarantee SubContent unmount+remount when grants change.
    */
   onOpenChange?: (open: boolean) => void;
 }) {
@@ -485,10 +417,8 @@ export function TreeRowDropdownMenu({
     <DropdownMenu.Root open={open} onOpenChange={onOpenChange}>
       <DropdownMenu.Trigger asChild>{children}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        {/* Open to the right of the kebab trigger with the top edge aligned
-            to the trigger's top — keeps the source row visible (otherwise
-            the default side="bottom" align="end" drops the menu over the
-            narrow sidebar row the user just clicked). */}
+        {/* side=right align=start keeps the source row visible; default bottom/end
+            drops the menu over the narrow sidebar row. */}
         <DropdownMenu.Content
           style={menuContainerStyle}
           side="right"

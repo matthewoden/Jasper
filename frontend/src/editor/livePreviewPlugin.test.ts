@@ -1,17 +1,8 @@
 /**
  * livePreviewPlugin.test.ts — vitest suite for the Live Preview decoration
  * plugin. Covers: heading line decoration, emphasis marks, multi-line
- * selection (D-06), code-fence guard (D-09), IME gate (D-07/D-31), and
- * production-scope additions from Plan 05-06: list bullets (EDIT-04),
- * blockquote (EDIT-05), inline code (EDIT-06), HR (EDIT-07).
- *
- * Phase 5 Plan 05-01 (spike) → extended by Plan 05-06 (production scope).
- * Per TDD gate sequence:
- *   RED  → this file (failing; livePreviewPlugin.ts not yet written)
- *   GREEN → implement livePreviewPlugin.ts
- *   REFACTOR → (if needed)
- *
- * Test cases are named verbatim per the plan spec.
+ * selection, code-fence guard, IME gate, list bullets, blockquote,
+ * inline code, and HR.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { EditorView } from "@codemirror/view";
@@ -557,12 +548,12 @@ describe("livePreviewPlugin / all-features mixed doc", () => {
 });
 
 
-describe("livePreviewPlugin / TC-7 task-line coexistence guard (D-01a)", () => {
+describe("livePreviewPlugin / TC-7 task-line coexistence guard", () => {
   /**
    * With GFM enabled (base: markdownLanguage), a task line "- [ ] text" has
-   * a ListMark node sibling to a Task node. The ListMark branch MUST skip
+   * a ListMark node sibling to a Task node. The ListMark branch must skip
    * task lines so that taskCheckboxPlugin can own the marker range exclusively.
-   * A regular list item "- item" MUST still emit a bullet.
+   * A regular list item "- item" must still emit a bullet.
    *
    * Uses markdownLanguage base so Task/TaskMarker lezer nodes exist.
    */

@@ -1,11 +1,7 @@
 /**
- * attachmentApi.test.ts — Phase 7 Plan 10 / ATTACH-01..ATTACH-06
- *
- * Tests cover:
- *   - uploadAttachment happy path (200) → returns AttachmentUploadResult
- *   - uploadAttachment 413 → throws AttachmentTooLargeError
- *   - uploadAttachment non-200 non-413 → throws generic Error with status
- *   - Uses raw fetch + FormData (NOT openapi-fetch) per RESEARCH §Thread 5
+ * Tests for attachmentApi.uploadAttachment.
+ * Uses raw fetch + FormData rather than openapi-fetch (openapi-typescript
+ * does not generate ergonomic file-field types for multipart/form-data).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {

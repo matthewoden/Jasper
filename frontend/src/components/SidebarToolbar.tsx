@@ -1,27 +1,14 @@
 /**
- * SidebarToolbar — Phase 6.6 update (D-08) + Phase 7 Today button (D-16).
+ * SidebarToolbar — note-navigation controls: New note, New folder, Today,
+ * and Search. Global controls (connection dot, refresh, settings) live in
+ * StatusBar.
  *
- * Note-navigation controls ONLY (per D-08 enforcement):
- *   1. New note (FilePlus)
- *   2. New folder (FolderPlus)
- *   3. Today (CalendarDays) — Phase 7 D-16: opens today's daily note
+ * `creating` prop disables New note + New folder while a create is in flight
+ * (opacity 0.5, cursor wait, disabled attribute). Parent reads isCreating from
+ * useTreeCreateActions and threads it through.
  *
- * Global controls (connectivity dot, refresh button, settings menu) have been
- * relocated to StatusBar.tsx per Phase 6.6 D-08.
- *
- * `onRefresh` prop is kept with a deprecation comment for backward compat
- * with existing Sidebar.tsx call site — Plan 11 will clean up Sidebar.tsx.
- *
- * Create in-flight visuals (Gap R2-2):
- *   - `creating` prop (defaults to false) drives the New Note + New Folder
- *     buttons' disabled-state visuals (opacity 0.5, cursor "wait", disabled
- *     attribute). Owned by the parent (Sidebar reads from
- *     useTreeCreateActions().isCreating).
- *
- * Today button in-flight visuals (Phase 7 D-16):
- *   - `todayLoading` from useDailyNote().isLoading drives the Today button's
- *     disabled-state visuals (opacity 0.5, cursor "wait", disabled attribute).
- *     Re-entrancy guard is in useDailyNote — disabled attr is defense-in-depth.
+ * Today button disabled while useDailyNote().isLoading — re-entrancy guard is
+ * in the hook; the disabled attribute is defense-in-depth.
  */
 import { CalendarDays, FilePlus, FolderPlus, Search } from "lucide-react";
 import { useDailyNote } from "../lib/useDailyNote";
@@ -30,15 +17,9 @@ import { useTreeStore } from "../lib/useTreeStore";
 export interface SidebarToolbarProps {
   onNewNote: () => void;
   onNewFolder: () => void;
-  /**
-   * @deprecated Phase 6.6 — Refresh moved to StatusBar. Kept for backward
-   * compat with existing Sidebar.tsx call site. Plan 11 removes this prop.
-   */
+  /** @deprecated Refresh moved to StatusBar; prop retained for call-site compat. */
   onRefresh?: () => Promise<void>;
-  /**
-   * Gap R2-2 — when true, disables the New Note + New Folder buttons
-   * (visually + functionally) while a create is in flight.
-   */
+  /** When true, disables New note + New folder buttons while a create is in flight. */
   creating?: boolean;
 }
 
@@ -96,7 +77,7 @@ export function SidebarToolbar({
       >
         <FolderPlus size={16} aria-hidden="true" />
       </button>
-      {/* Phase 7 D-16: Today button — opens today's daily note (get-or-create). */}
+      {/* Today button — opens today's daily note (get-or-create). */}
       <button
         type="button"
         title="Today (⌘⇧D)"
@@ -111,15 +92,9 @@ export function SidebarToolbar({
       >
         <CalendarDays size={16} aria-hidden="true" />
       </button>
-      {/* Phase 7 Plan 07-42 (UAT-7): Search button — opens the search modal
-          (Plan 07-40's mode='search'), NOT the switcher (mode='notes'). The
-          switcher remains reachable via ⌘O on the keyboard; this icon's
-          purpose is note-body FTS5 search, hence the ⌘⇧F hint.
-
-          Supersedes Plan 07-28 (UAT-2 R1-5) wiring, which conflated the
-          icon with the quick switcher. UAT-7 (2026-05-17) flagged that the
-          icon's visual affordance (magnifying glass) implies body search,
-          not title switching. */}
+      {/* Search button — opens CommandMenu in search mode (Cmd+Shift+F).
+          Magnifying glass implies body FTS search, not the title quick switcher
+          (⌘O), so this button always opens mode='search'. */}
       <button
         type="button"
         title="Search notes (⌘⇧F)"

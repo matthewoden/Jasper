@@ -1,33 +1,14 @@
 /**
  * codeLanguages — LanguageDescription[] passed to
  * markdown({codeLanguages: [...]}) so code-fence ```lang blocks
- * highlight per declared language. Phase 5 D-03 / EDIT-08.
+ * highlight per declared language.
  *
- * All grammars are EAGERLY imported (PERF-04, SECURITY-07 — no
- * runtime fetch). The `async load()` callback is required by
- * LanguageDescription's API but the imports are captured by closure
- * — no dynamic import happens at runtime; the bundler resolves
- * everything at build time.
- *
- * Bundled set (D-03):
- *   javascript / typescript (lang-javascript handles both via opts)
- *   python
- *   go
- *   sh / bash (legacy-modes shell wrapped in StreamLanguage)
- *   json
- *   yaml
- *   markdown (recursive — but accepted)
- *   html
- *   css
+ * All grammars are eagerly imported — no dynamic import happens at runtime;
+ * the bundler resolves everything at build time. The `async load()` callback
+ * shape is required by the LanguageDescription API.
  *
  * Unknown language → no LanguageDescription matches → CM6 falls back
- * to plain monospace. No error, no warning (UI-SPEC §Code-block
- * highlighting line 336).
- *
- * Bundle cost: see 05-BUNDLE-MEASURE.md for the measured production
- * delta. RESEARCH §Bundle Budget revised D-45's 200KB ceiling based
- * on measured evidence; this file's import set is the implementation
- * of that revision.
+ * to plain monospace (no error, no warning).
  */
 import {
   LanguageDescription,

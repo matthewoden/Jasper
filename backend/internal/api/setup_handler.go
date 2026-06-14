@@ -11,16 +11,9 @@ import (
 )
 
 // GetSetupStatus reports whether the first-run wizard has completed.
-// The contract (D-04 / openapi.yaml SetupStatus.firstRun):
-//
-//   - true  when <vault>/.jasper/config.json does NOT exist
-//   - false when it does
-//
-// The SPA polls this on initial load so it can render either the
-// wizard or the steady-state shell. The firstrun.RedirectMiddleware
-// also gates non-/setup routes server-side, so the SPA's branch is
-// belt-and-suspenders (avoids a render flash if JS evaluates before
-// the middleware redirects).
+// Returns firstRun:true when <vault>/.jasper/config.json does not exist.
+// The SPA polls this on initial load to decide wizard vs. steady-state shell.
+// firstrun.RedirectMiddleware also gates non-/setup routes server-side.
 //
 //nolint:revive // generated interface method name
 func (s *Server) GetSetupStatus(
@@ -33,17 +26,13 @@ func (s *Server) GetSetupStatus(
 	return GetSetupStatus200JSONResponse{FirstRun: firstRun}, nil
 }
 
-// PostSetupValidateDataDir runs the four D-08 refusal rules
-// (parent_missing, nested_vault, unwritable, non_ascii) on the
-// candidate data-dir. Returns 200 + Valid:true when the path passes
-// all four; 200 + Valid:false + Code + Message when it fails any one.
-// The 400 path is reserved for missing/malformed body.
+// PostSetupValidateDataDir runs the four refusal rules
+// (parent_missing, nested_vault, unwritable, non_ascii) on the candidate
+// data-dir. Returns 200 + Valid:true when all pass; 200 + Valid:false + Code
+// + Message on any failure. 400 is reserved for missing/malformed body.
 //
-// The locked refusal codes/strings live in firstrun/validate.go; we
-// cast the package-local RefusalCode to the wire-format string here.
-// Per UI-SPEC §Copywriting Contract: the strings are pinned and a
-// drift here breaks the ui-checker gate. The cast preserves them
-// byte-for-byte.
+// Refusal codes live in firstrun/validate.go; the cast preserves the strings
+// byte-for-byte for the copywriting contract.
 //
 //nolint:revive // generated interface method name
 func (s *Server) PostSetupValidateDataDir(
@@ -72,17 +61,10 @@ func (s *Server) PostSetupValidateDataDir(
 	}, nil
 }
 
-// PostSetup runs the wizard submit pipeline (firstrun.RunSetup).
-// On success returns 200 + Ok:true; the SPA reloads itself and the
-// firstrun middleware now passes through. On any failure returns 500
-// with the wrapped error message — the user retries with the
-// underlying problem fixed (e.g. free up disk space, choose a
-// different path).
-//
-// migrationsFS is checked for nil as a startup-config guard: if
-// SetMigrationsFS was never called the server is misconfigured, so we
-// 500 with a clear "not configured" message rather than silently
-// proceeding.
+// PostSetup runs the wizard submit pipeline (firstrun.RunSetup). On success
+// returns 200 + Ok:true; on failure returns 500 with the wrapped error so the
+// user can retry. migrationsFS is checked for nil as a startup-config guard:
+// a missing FS means SetMigrationsFS was never called, which is a 500.
 //
 //nolint:revive // generated interface method name
 func (s *Server) PostSetup(
@@ -112,7 +94,8 @@ func (s *Server) PostSetup(
 		})
 	}
 	if err := firstrun.RunSetup(ctx, sr); err != nil {
-		s.log.Error("PostSetup: setup failed",
+		s.log.Error(
+			"PostSetup: setup failed",
 			"err", err,
 			"data_dir", req.Body.DataDir,
 		)

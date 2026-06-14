@@ -1,9 +1,6 @@
 /**
- * Reducer tests for the save-state machine. Per 01-UI-SPEC.md §"Save Indicator
- * State Machine" the transitions are locked here verbatim because Phase 5's
- * CodeMirror editor reuses this reducer unchanged.
- *
- * R1..R7 cover every transition listed in the plan's <behavior> block.
+ * Reducer tests for the save-state machine.
+ * Covers every transition in saveStateReducer.
  */
 import { describe, expect, it } from "vitest";
 

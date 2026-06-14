@@ -1,15 +1,13 @@
 /**
- * UAT-2 R4-3: search "123" finds note-00123 + hyphenated tokens don't 500.
+ * Search "123" finds note-00123 + hyphenated tokens don't 500.
  *
  * Two bugs in the same FTS5 stack:
- *   (a) "123" was prefix-wrapped to "123*" but the unicode61 tokenizer
- *       with tokenchars '_-' indexes "note-00123" as ONE token, so the
- *       prefix match never fired. Fix: title/path LIKE backstop.
+ *   (a) "123" was prefix-wrapped to "123*" but the unicode61 tokenizer with
+ *       tokenchars '_-' indexes "note-00123" as ONE token, so the prefix
+ *       match never fired. Fix: title/path LIKE backstop.
  *   (b) "note-00123" prefix-wrapped to "note-00123*"; FTS5 query grammar
  *       parses '-' as a binary operator, erroring with "no such column:
  *       00123". Fix: quote hyphen/underscore tokens before wrapping.
- *
- * Both fixes in backend/internal/index/store.go (R4-3, e7914ac).
  *
  * Drives the full path: seeded notes → indexer → search API → SPA modal
  * render. Mock-the-API style wouldn't catch the FTS5 query syntax issue.

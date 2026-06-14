@@ -25,23 +25,15 @@ func (nilStatusProvider) Status(_ context.Context) migrate.Status {
 }
 
 // Server bundles dependencies and implements api.StrictServerInterface.
-// Plan 02-06's app.New wires the concrete *notes.Service + runner +
-// indexer via NewServerWithIndex (the 5-arg constructor introduced by
-// Plan 02-04b, which replaces the 3-arg NewServerWithStatus from Plan
-// 02-03 — locked decision B-2).
 //
-// status, runner, and index can each be nil; the constructor
-// substitutes a no-op fallback for status (so admin_status always has
-// a source) and the handlers are written to gracefully degrade when
-// runner / index are nil (Phase 1 NewServer compatibility):
+// status, runner, and index can each be nil; the constructor substitutes a
+// no-op fallback for status and handlers degrade gracefully:
 //   - GetNotes with nil index → returns an empty list (NOT 503).
 //   - PostAdminReindex with nil runner → 503 with code "no_runner".
 //
-// broadcaster is the Phase 4 WebSocket broadcaster port (Plan 04-04).
-// In production this is *wshub.Hub; in tests it is nil (graceful
-// degradation — no reindex events emitted). We use the interface
-// (not *wshub.Hub) to avoid an import cycle: wshub imports api
-// (via envelope.go's Amendment 2 bridge), so api MUST NOT import wshub.
+// broadcaster is the WebSocket broadcaster port. In production this is
+// *wshub.Hub; in tests it is nil. We accept the interface (not *wshub.Hub)
+// to avoid an import cycle: wshub imports api, so api MUST NOT import wshub.
 type Server struct {
 	notes       *notes.Service
 	status      migrate.StatusProvider
@@ -65,27 +57,18 @@ type Server struct {
 	mcpACL *mcp.ACL
 }
 
-// NewServer keeps Phase 1's 2-arg signature so existing call sites and
-// tests continue to compile unchanged. Internally delegates to
-// NewServerWithIndex with nil status/runner/index/broadcaster and an
-// empty dataDir so the nilStatusProvider fallback applies and
-// GetNotes / PostAdminReindex / GetConfig / PutConfig degrade gracefully.
+// NewServer is the minimal 2-arg constructor. Delegates to NewServerWithIndex
+// with nil status/runner/index/broadcaster so all handlers degrade gracefully.
 func NewServer(notesSvc *notes.Service, log *slog.Logger) *Server {
 	return NewServerWithIndex(notesSvc, nil, nil, nil, nil, log, "")
 }
 
-// NewServerWithIndex is the 7-arg constructor. Extends the Phase 4 6-arg
-// form with a dataDir for Plan 05-03's GetConfig + PutConfig handlers.
+// NewServerWithIndex is the full 7-arg constructor.
 //
 // Argument order: notesSvc, status, runner, index, broadcaster, log, dataDir.
 //
-// Plan 02-06's composition root passes a *migrate.Runner for both
-// status (it implements StatusProvider) and runner (the same value),
-// and a *index.Indexer for index (which implements notes.Index).
-//
-// We accept notes.Broadcaster (not *wshub.Hub) to avoid an import
-// cycle: wshub/envelope.go imports api for the WSEnvelope Amendment 2
-// sentinel; api importing wshub would create a cycle.
+// We accept notes.Broadcaster (not *wshub.Hub) to avoid an import cycle:
+// wshub imports api, so api must not import wshub.
 func NewServerWithIndex(
 	notesSvc *notes.Service,
 	status migrate.StatusProvider,
@@ -112,25 +95,19 @@ func NewServerWithIndex(
 	}
 }
 
-// SetMigrationsFS wires the embedded migrations.FS into the Server so
-// the server's first boot of a newly-created vault can apply schema
-// migrations against <vault>/.jasper/app.db (D-04 — CreateVault no
-// longer runs migrations; lifecycle does). Called by the composition
-// root (app.New / lifecycle.Run) after construction so we don't have
-// to evolve NewServerWithIndex's signature for every new Phase 8
-// dependency. nil-safe — passing nil leaves the field empty and
-// PostSetup will short-circuit with a 500.
+// SetMigrationsFS wires the embedded migrations.FS into the Server so the
+// server can apply schema migrations against <vault>/.jasper/app.db on first
+// boot of a newly-created vault. Additive setter — avoids growing
+// NewServerWithIndex's signature. nil-safe; PostSetup short-circuits with 500
+// when nil.
 func (s *Server) SetMigrationsFS(f fs.FS) {
 	s.migrationsFS = f
 }
 
 // SetMcpACL wires the folder-grant ACL into the Server so the
-// /api/v1/mcp/grants handlers can read/write the mcp_write_grants
-// table. Called by the composition root only when cfg.MCP.Enabled is
-// true; otherwise the field stays nil and the handlers return
-// "mcp_disabled" errors. Mirrors SetMigrationsFS — additive setter so
-// the NewServerWithIndex signature doesn't grow for every new Phase 8
-// dependency.
+// /api/v1/mcp/grants handlers can read/write mcp_write_grants. Called by
+// the composition root only when cfg.MCP.Enabled is true; nil field
+// causes handlers to return "mcp_disabled" errors.
 func (s *Server) SetMcpACL(acl *mcp.ACL) {
 	s.mcpACL = acl
 }
@@ -155,8 +132,7 @@ var _ StrictServerInterface = (*Server)(nil)
 
 // GetNoteById implements GET /api/v1/notes/{id}.
 //
-// Per ARCHITECTURE.md §13 anti-pattern 1, the handler is a thin shim:
-// translate the request, call the domain service, translate the response.
+// Thin shim: translate request → call domain service → translate response.
 // All business logic lives in notes.Service.
 //
 // Method name `Id` (not `ID`) is forced by oapi-codegen, which derives the
@@ -173,7 +149,8 @@ func (s *Server) GetNoteById(
 			return GetNoteById404JSONResponse(newError("not_found", err.Error())), nil
 		}
 
-		s.log.Error("GetNoteById: domain error",
+		s.log.Error(
+			"GetNoteById: domain error",
 			"id", uuid.UUID(request.Id).String(),
 			"err", err,
 		)
@@ -211,7 +188,8 @@ func (s *Server) PutNoteById(
 		}
 
 		if errors.Is(err, notes.ErrStaleWrite) {
-			s.log.Error("PutNoteById: stale write detected",
+			s.log.Error(
+				"PutNoteById: stale write detected",
 				"id", uuid.UUID(request.Id).String(),
 				"err", err,
 			)
@@ -226,7 +204,8 @@ func (s *Server) PutNoteById(
 			}), nil
 		}
 
-		s.log.Error("PutNoteById: domain error",
+		s.log.Error(
+			"PutNoteById: domain error",
 			"id", uuid.UUID(request.Id).String(),
 			"err", err,
 		)

@@ -94,8 +94,7 @@ func TestStartupErrorHandler_NoCache(t *testing.T) {
 // TestStartupErrorHandler_XSSGuard — the four template fields must be
 // auto-escaped by html/template. An injected <script> tag in
 // ErrorSummary must appear as &lt;script&gt; in the rendered body,
-// never as a literal <script>. This is the load-bearing security
-// invariant per UI-SPEC §Forward-Compatibility Assert #1 + threat T-08-12.
+// never as a literal <script>. This is the load-bearing XSS guard.
 func TestStartupErrorHandler_XSSGuard(t *testing.T) {
 	h := newStartupErrorHandler(StartupErrorData{
 		PhaseName:       "Migration",
@@ -118,9 +117,8 @@ func TestStartupErrorHandler_XSSGuard(t *testing.T) {
 	}
 }
 
-// TestStartupErrorHandler_NoScriptTags — UI-SPEC §Forward-Compatibility
-// Assert #1: the rendered HTML body must contain zero `<script` substrings.
-// This is the CSP-bypass guard (T-08-15 mitigation).
+// TestStartupErrorHandler_NoScriptTags — the rendered HTML body must
+// contain zero `<script` substrings. This is the CSP-bypass guard.
 func TestStartupErrorHandler_NoScriptTags(t *testing.T) {
 	h := newStartupErrorHandler(StartupErrorData{
 		PhaseName:       "Migration",
@@ -138,10 +136,9 @@ func TestStartupErrorHandler_NoScriptTags(t *testing.T) {
 	}
 }
 
-// TestStartupErrorHandler_NoExternalResources — UI-SPEC §Forward-Compat
-// Assert #2: the rendered HTML body must not reference any external
-// resource (no http://, https://, <link, <img). The template inlines
-// the CSS and embeds no images.
+// TestStartupErrorHandler_NoExternalResources — the rendered HTML body
+// must not reference any external resource (no http://, https://, <link,
+// <img). The template inlines the CSS and embeds no images.
 func TestStartupErrorHandler_NoExternalResources(t *testing.T) {
 	h := newStartupErrorHandler(StartupErrorData{
 		PhaseName:       "Migration",
@@ -167,8 +164,8 @@ func TestStartupErrorHandler_NoExternalResources(t *testing.T) {
 	}
 }
 
-// TestSuggestedActionFor — coarse mapping (D-11): error class → one of
-// three legal user-facing suggestion strings.
+// TestSuggestedActionFor — coarse mapping: error class → one of three
+// legal user-facing suggestion strings.
 func TestSuggestedActionFor(t *testing.T) {
 	cases := []struct {
 		name string
@@ -228,7 +225,7 @@ func TestTailLog_LastNLines(t *testing.T) {
 
 // TestTailLog_HugeFile_Capped — tailLog caps the read at 16 KiB; a
 // 64 KiB file's tail-3-lines call should succeed quickly and return
-// three lines from somewhere in the last 16 KiB (T-08-14 mitigation).
+// three lines from somewhere in the last 16 KiB.
 func TestTailLog_HugeFile_Capped(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "huge.log")

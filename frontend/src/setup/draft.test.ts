@@ -2,15 +2,12 @@
  * Tests for draft.ts — localStorage helpers for the first-run wizard.
  *
  * Coverage:
- *   - SETUP_DRAFT_KEY value is LOCKED at "jasper.setup.draft" (D-09)
- *   - loadDraft returns DEFAULT_DRAFT when no key is present
- *   - loadDraft returns DEFAULT_DRAFT on malformed JSON
+ *   - SETUP_DRAFT_KEY is locked at "jasper.setup.draft"
+ *   - loadDraft returns DEFAULT_DRAFT when no key is present or JSON is malformed
  *   - saveDraft merges partial patches into existing state
  *   - clearDraft removes the key
- *   - Shallow-merge: an older draft missing a newer field still loads
- *     with the field defaulted (forward-compat per the schema comment).
- *   - Private-mode safety: when localStorage throws, save/load/clear
- *     do not propagate the exception.
+ *   - Older drafts missing newer fields load with defaults (forward-compat)
+ *   - Private-mode safety: when localStorage throws, save/load/clear swallow it
  */
 import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
 import {

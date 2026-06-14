@@ -1,47 +1,21 @@
 /**
- * EditorPane — the editor pane: MarkdownEditor (CM6) + load on mount /
- * noteId-change + 2s debounced autosave + Cmd+S immediate save +
- * in-flight save coalescing, all driving the locked SaveIndicator
- * state machine (Phase 1 Task 1).
+ * EditorPane — MarkdownEditor (CM6) + load on noteId-change + 2s debounced
+ * autosave + Cmd+S immediate save + in-flight save coalescing.
  *
- * Plan 05-11 D-27: the old controlled textarea is replaced by a MarkdownEditor
- * (uncontrolled CM6 view) via the ref API. Every Phase 4 wiring remains intact:
- * banners, conflict prompts, deletion banner, autosave + saveStateMachine,
- * h1Extract, editorHandlersRef, userHasEdited, lastNotePath.
+ * When noteId is null, renders a locked placeholder with no API calls.
+ * When noteId changes, the load effect re-runs and the save-state machine
+ * resets for the new note.
  *
- * Phase 3 (Plan 03-07) refactor: the prior single-note model (Phase 1's
- * hardcoded note UUID) is replaced by a `noteId: string | null` prop
- * driven from useTreeStore.activeNoteId. When noteId === null, render
- * the locked placeholder ("Select a note to start editing.") with no
- * API calls. When noteId changes, the load effect re-runs against the
- * new id, the userHasEdited latch resets, and the existing save-state
- * machine is re-initialized for the new note.
+ * H1→filename binding: when the H1 in the editor changes, the next debounced
+ * save detects the delta, sanitizes the new heading via the same illegal-char
+ * regex RenameInput uses, and dispatches postNoteMove BEFORE updateNote.
+ * On move failure (e.g. case_collision), the save aborts and surfaces a banner.
+ * A single isRenameInProgress ref short-circuits the detector while a move is
+ * in flight to prevent rename loops. Empty H1 → no-op.
  *
- * Plan 03-22 (Gap R2-6 — filename↔H1 bidirectional binding) — DIRECTION A:
- *   When the H1 in the editor changes (e.g. user types "# new title"),
- *   the next debounced performSave detects the H1 delta vs the
- *   most-recently-persisted H1 (lastH1Sent ref), sanitizes it through
- *   the same illegal-char regex RenameInput uses, and dispatches
- *   postNoteMove(id, parent + sanitized + ".md") BEFORE updateNote.
- *   On move success, updateNote then commits the latest content. On
- *   move failure (e.g. case_collision), the save aborts entirely and
- *   surfaces an inline banner so the user can retry with a different
- *   heading. A single isRenameInProgress ref short-circuits the H1
- *   detector while a move is in flight (loop prevention mirroring the
- *   Obsidian plugin's pattern; PROJECT.md Key Decision 2026-05-03 LOCKED).
- *   Empty H1 → no-op (research §2.1: filename does NOT auto-bind when
- *   the H1 is empty). Invalid H1 → soft error: content still saves,
- *   banner explains the rename was skipped.
- *
- * Plan 04-05 (Phase 4 — WebSocket session sync):
- *   - Subscribes to useTreeStore.connectionStatus for autosave gate (D-06).
- *   - Adds conflictBanner + deletedBanner state.
- *   - Renders both banners above the textarea in the banner-stack region (D-01).
- *   - Implements onNoteUpdated: silent reload OR conflict banner (D-10/D-11).
- *   - Implements onNoteDeleted: deletion banner without clearing content (UX-05/D-03).
- *   - Exposes handlers via editorHandlersRef prop (D-09 — no new event bus).
- *   - On connectionStatus !== 'connected': dispatches connectionLost to
- *     saveStateMachine; on reconnect: dispatches connectionRestored (D-06).
+ * WebSocket sync: subscribes to connectionStatus for the autosave gate.
+ * Exposes onNoteUpdated / onNoteDeleted handlers via editorHandlersRef so
+ * App's useSessionSync can dispatch WS events directly into this editor.
  */
 
 import {
@@ -75,12 +49,7 @@ type LoadStatus = "loading" | "loaded" | "error";
 type WSNoteUpdatedPayload = components["schemas"]["WSNoteUpdatedPayload"];
 type WSNoteDeletedPayload = components["schemas"]["WSNoteDeletedPayload"];
 
-/**
- * Phase 4 (D-09): handler ref shape written by EditorPane on mount so
- * App's useSessionSync can dispatch WS events directly into this editor.
- * Using a plain MutableRefObject ref instead of an event-bus abstraction
- * (no new pub/sub layer needed for a single-pane app).
- */
+/** Handler ref written by EditorPane on mount so App can dispatch WS events into this editor. */
 export interface EditorPaneHandlers {
   onNoteUpdated: (p: WSNoteUpdatedPayload) => void;
   onNoteDeleted: (p: WSNoteDeletedPayload) => void;
@@ -99,23 +68,10 @@ const NULL_NOTE_PLACEHOLDER_COPY = "Select a note to start editing.";
 interface EditorPaneProps {
   noteId: string | null;
   reindexing?: boolean;
-  /**
-   * Phase 4 (D-09): handler ref written to by EditorPane on mount so
-   * App's useSessionSync can dispatch WS events directly into this editor.
-   * No new event-bus abstraction — a plain ref per Plan 04-05.
-   */
   editorHandlersRef?: MutableRefObject<EditorPaneHandlers | null>;
-  /**
-   * Phase 6.6 — Plan 06.6-11: optional style for grid placement.
-   * App.tsx passes gridRow/gridColumn here; merged onto the root section.
-   */
+  /** Optional style for grid placement; App.tsx passes gridRow/gridColumn here. */
   style?: React.CSSProperties;
-  /**
-   * Phase 11 (D-07 / SET-03): autosave debounce interval in ms, read from
-   * config.editor.autosaveMs at mount. Defaults to AUTOSAVE_DEBOUNCE_MS
-   * (2000) when absent. Captured to a ref at mount so the debounce interval
-   * does not change mid-session (D-07 "restart to apply" label).
-   */
+  /** Autosave debounce interval in ms. Captured to a ref at mount so interval is stable per session. */
   autosaveMs?: number;
 }
 
@@ -504,13 +460,9 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, []);
 
 
-  /**
-   * D-10: when note:updated arrives for the OPEN note AND userHasEdited is false
-   * AND no debounce/inflight pending, silently re-fetch and replace content;
-   * cursor preserved.
-   * D-11: when unsaved edits OR pending autosave OR in-flight save, surface the
-   * conflict banner (SYNC-05) — never silent overwrite.
-   */
+  // When note:updated arrives for the open note with no pending edits/saves, silently
+  // re-fetch and replace content. When unsaved edits or a pending save exist, surface
+  // the conflict banner instead — never silently overwrite uncommitted work.
   const onNoteUpdated = useCallback(
     (p: WSNoteUpdatedPayload) => {
       if (p.id !== noteIdRef.current) return;
@@ -535,10 +487,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     [], // uses refs only (noteIdRef, debounceTimer, inFlight, userHasEdited)
   );
 
-  /**
-   * UX-05 / D-03: note:deleted for the open note → deletion banner; editor
-   * content stays intact for recovery. Never clears content state.
-   */
+  // note:deleted for the open note → deletion banner; content stays intact for recovery.
   const onNoteDeleted = useCallback(
     (p: WSNoteDeletedPayload) => {
       if (p.id !== noteIdRef.current) return;
@@ -620,7 +569,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           {h1RenameError}
         </div>
       )}
-      {/* Phase 4 (D-01): conflict banner — stacks AFTER h1RenameError, BEFORE textarea */}
+      {/* conflict banner — stacks after h1RenameError, before textarea */}
       {conflictBanner?.visible && (
         <div className="px-4" role="alert" data-testid="conflict-banner">
           <span>
@@ -719,7 +668,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           </button>
         </div>
       )}
-      {/* Phase 4 (D-01, UX-05, D-03): deletion banner — informational only; no content clear */}
+      {/* deletion banner — informational only; content is never cleared */}
       {deletedBanner?.visible && (
         <div className="px-4" role="alert" data-testid="deleted-banner">
           <span>This note was deleted in another session</span>
@@ -732,17 +681,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           </button>
         </div>
       )}
-      {/* Plan 05-11 D-26..D-27: editor element (MarkdownEditor).
-          MarkdownEditor is uncontrolled — initialDoc is captured ONCE on mount.
-          Updates flow through the ref API (editorRef). Phase 4 wiring is intact:
-          banners, conflictBanner, deletedBanner, autosave, saveStateMachine, h1Extract,
-          editorHandlersRef, userHasEdited, lastNotePath all remain in EditorPane.
-
-          Phase 5.5 / UX-10: click-anywhere-to-type host. Clicks that did NOT
-          land inside .cm-content (i.e. clicks below the last line / on
-          surrounding empty area) call focusEnd() to focus the editor with the
-          caret at end-of-doc. Padding stays on .cm-content (themeBridge) — host
-          has zero padding so empty-area clicks reach this onClick reliably. */}
+      {/* MarkdownEditor is uncontrolled — initialDoc captured once on mount;
+          updates flow through the ref API. Click-anywhere-to-type: clicks outside
+          .cm-content call focusEnd() to move caret to end-of-doc. Host has zero
+          padding so empty-area clicks reach this onClick reliably. */}
       <div
         className="cm-host-shell"
         style={{

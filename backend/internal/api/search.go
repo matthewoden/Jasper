@@ -7,11 +7,11 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// SearchNotes implements GET /api/v1/search (SEARCH-01..04).
+// SearchNotes implements GET /api/v1/search.
 //
 // Parameters:
 //   - q     (required): full-text search query; < 2 chars → 200 empty results.
-//   - tag   (optional): AND-combine with tag filter (D-05).
+//   - tag   (optional): AND-combined tag filter.
 //   - limit (optional): max results; default 50, clamped [1, 100].
 //
 //nolint:revive // generated interface name

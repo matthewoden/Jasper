@@ -1,8 +1,6 @@
 /**
- * useVaultSwitch tests — Plan 08-17d Task 3.
- *
- * Tests the vault-switch overlay state management and the V4 10-second
- * failsafe reload scheduling via vi.useFakeTimers.
+ * Tests for useVaultSwitch — overlay state management and the 10-second
+ * failsafe reload scheduling (tested via vi.useFakeTimers).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";

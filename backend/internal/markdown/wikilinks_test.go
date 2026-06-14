@@ -4,15 +4,14 @@ import (
 	"testing"
 )
 
-// TestExtractWikilinks verifies the wiki-link extraction contract (LINKS-01, D-19).
+// TestExtractWikilinks verifies the wiki-link extraction contract.
 //
-// D-19: [[Title]] inside code spans, fenced code blocks, or YAML frontmatter
+// [[Title]] inside code spans, fenced code blocks, or YAML frontmatter
+// is treated as literal text — NOT extracted as a wiki-link reference.
 //
-//	is treated as literal text — NOT extracted as a wiki-link reference.
-//
-// The tests in this file also close RESEARCH.md's open question "A1 assumption":
 // goldmark/wikilink respects CommonMark code-context rules and does NOT parse
-// [[Title]] inside code spans or fenced code blocks. Tests 5 and 6 verify A1.
+// [[Title]] inside code spans or fenced code blocks (verified by A1Assumption
+// test).
 func TestExtractWikilinks(t *testing.T) {
 	tests := []struct {
 		name string
@@ -105,9 +104,8 @@ func TestExtractWikilinks_NilInput(t *testing.T) {
 	}
 }
 
-// TestExtractWikilinks_A1Assumption verifies the RESEARCH.md A1 assumption
-// that goldmark/wikilink respects CommonMark code-context rules.
-// This test is the empirical proof that Plan 06-03 committed to provide.
+// TestExtractWikilinks_A1Assumption verifies empirically that
+// goldmark/wikilink respects CommonMark code-context rules.
 func TestExtractWikilinks_A1Assumption(t *testing.T) {
 	inlineCode := "text `[[InCode]]` more text"
 	if got := ExtractWikilinks([]byte(inlineCode)); len(got) != 0 {

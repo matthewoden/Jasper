@@ -1,9 +1,6 @@
 /**
- * SearchInputBar — Phase 7 Surface 2 sidebar search input.
- * UI-SPEC §Surface 2 — 32px height, Search icon, placeholder "Search notes…",
- * clear-X button when value non-empty, focus ring on :focus-within.
- *
- * Reads/writes searchQuery from useTreeStore. On Esc, clears query.
+ * SearchInputBar — 32px search input with Search icon, clear-X button when
+ * non-empty, and focus ring. Reads/writes searchQuery from useTreeStore.
  */
 import { useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
@@ -48,7 +45,7 @@ export function SearchInputBar() {
 
   return (
     <div style={{ padding: "8px 16px", flexShrink: 0 }}>
-      {/* Input wrapper: 32px height, focus ring via inline state */}
+      {/* Input wrapper with focus ring driven by inline state */}
       <div
         style={{
           position: "relative",
@@ -69,13 +66,11 @@ export function SearchInputBar() {
           transition: "border-color 0.1s, box-shadow 0.1s",
         }}
       >
-        {/* Left search icon */}
         <Search
           size={14}
           style={{ color: "var(--color-muted)", flexShrink: 0 }}
           aria-hidden="true"
         />
-        {/* Text input */}
         <input
           ref={inputRef}
           type="text"
@@ -97,7 +92,7 @@ export function SearchInputBar() {
             minWidth: 0,
           }}
         />
-        {/* Clear-X button — only when value non-empty */}
+        {/* Clear-X button — hidden when empty */}
         {searchQuery.length > 0 && (
           <button
             type="button"

@@ -1,24 +1,15 @@
 /**
  * useReveal — hook that opens a vault-relative path in the host OS file manager.
  *
- * Wraps revealPath() from revealApi with:
- *   - Re-entrancy guard: rapid double-clicks no-op while a reveal is in flight
- *   - Toast feedback (LOCKED copy from 08-UI-SPEC §Copywriting "Show in file manager Reveal"):
- *       - macOS success → title "Opened in Finder", variant info
- *       - WSL2 success  → title "Opened in Explorer", variant info
- *       - Linux 501     → title "Show in file manager isn't supported on Linux yet"
- *                          description = backend's "The file is at {abs_path}." (T-08-26 accepted)
- *       - Other failure → title "Could not open file manager", description = server message
+ * Wraps revealPath() with a re-entrancy guard (rapid double-clicks no-op while
+ * a reveal is in flight) and platform-aware toast feedback:
+ *   - macOS success → "Opened in Finder"
+ *   - WSL2 success  → "Opened in Explorer"
+ *   - Linux 501     → unsupported message + backend's absolute path hint
+ *   - Other failure → "Could not open file manager" + server message
  *
- * Used by the four reveal mount points (D-26):
- *   - TreeRowMenu (note/folder/file rows) — wired via TreeRow.onReveal
- *   - Breadcrumbs (folder-segment context menu)
- *   - CommandMenu palette ("Share" group)
- *
- * All 4 mount points share THIS hook — there is exactly one POST /reveal call
- * shape, and exactly one place that decides the toast.
- *
- * Returns { reveal(path), loading } for the caller.
+ * All reveal mount points (TreeRowMenu, Breadcrumbs, CommandMenu) share this
+ * hook — one POST /reveal shape, one place that decides the toast.
  */
 
 import { useCallback, useState } from "react";

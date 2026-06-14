@@ -54,7 +54,8 @@ func TestAtomicWrite_KillNineSubprocess(t *testing.T) {
 		target := filepath.Join(dir, "note.md")
 
 		cmd := exec.Command(exe, "-test.run=TestAtomicWrite_KillNineHelper", "-test.v")
-		cmd.Env = append(os.Environ(),
+		cmd.Env = append(
+			os.Environ(),
 			"JASPER_KILL9_HELPER=1",
 			"JASPER_KILL9_TARGET="+target,
 		)

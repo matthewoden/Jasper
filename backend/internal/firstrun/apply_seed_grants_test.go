@@ -26,9 +26,9 @@ CREATE TABLE mcp_write_grants (
     granted_via  TEXT    NOT NULL DEFAULT 'tree-menu'
 )`
 
-// TestApplySeedGrants_RoundTrip mitigates Plan 03b Blocker 5 / threat
-// T-09-03b-06: write at canonical root, read at canonical root, same
-// vault.SeedGrantsPath helper on both sides → no path mismatch.
+// TestApplySeedGrants_RoundTrip verifies write at canonical root, read at
+// canonical root, same vault.SeedGrantsPath helper on both sides → no path
+// mismatch.
 func TestApplySeedGrants_RoundTrip(t *testing.T) {
 	dataDir := t.TempDir()
 	// Mkdir <dataDir>/.jasper first — production lifecycle does this

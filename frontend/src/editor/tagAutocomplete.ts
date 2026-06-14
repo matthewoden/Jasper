@@ -1,28 +1,15 @@
 /**
  * tagAutocomplete — tag-name CompletionSource inside `tags: [...]` frontmatter.
  *
- * Phase 6 / Plan 06-10 / Task 3.
+ * No "Create" row — tags become valid on save; no pre-existence needed.
  *
- * D-07: Tag autocomplete when cursor is inside `tags: [...]` frontmatter array.
- * D-44: NO "Create new tag" row — tags become valid on save (no pre-existence needed).
+ * Detection: walk lezer-yaml ancestors from cursor looking for FlowSequence
+ * inside a Pair whose Key text === "tags" inside Frontmatter. Falls back to a
+ * regex check on the line prefix `tags: [` if the AST walk is inconclusive.
  *
- * Detection strategy:
- *   isInsideTagsArray uses the same lezer-yaml node-name findings from
- *   SPIKE-FINDINGS.md (Plan 06-01): walk up the ancestor chain from the
- *   cursor's innermost node, look for FlowSequence inside a Pair whose Key
- *   text === "tags" inside Frontmatter.
- *
- *   Fallback (Halt-if-inconclusive gate): if AST walk fails to confirm
- *   the context, we use a regex check on the line text to detect
- *   `tags: [` prefix — documented in Plan 06-10 SUMMARY as "regex fallback".
- *
- * Module-level snapshot pattern (mirrors wikilinkResolver):
- *   MarkdownEditor.tsx calls setTagSnapshot(allTags) in a useEffect.
- *   The source reads the snapshot synchronously on each CompletionContext call.
- *
- * CSS badges:
- *   Each completion's `detail` field shows `(N)` count — rendered by
- *   @codemirror/autocomplete's completion tooltip as a trailing detail chip.
+ * Module-level snapshot: MarkdownEditor calls setTagSnapshot() in a useEffect;
+ * the source reads synchronously on each CompletionContext call.
+ * Each completion's `detail` field shows the usage count.
  */
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
 import { syntaxTree } from "@codemirror/language";
@@ -104,9 +91,8 @@ function isInsideTagsArray(ctx: CompletionContext): boolean {
 
 /**
  * CompletionSource for tag autocomplete inside `tags: [...]` frontmatter.
- * Register this in autocompletion({ override: [wikilinkCompletionSource, tagCompletionSource] }).
- *
- * D-44: Returns null (no popup) when no matching tags found — NOT a Create row.
+ * Register in autocompletion({ override: [wikilinkCompletionSource, tagCompletionSource] }).
+ * Returns null (no popup) when no matching tags found — no Create row.
  */
 export async function tagCompletionSource(
   ctx: CompletionContext,

@@ -3,9 +3,9 @@ package markdown
 import "strings"
 
 // NewNoteContent returns the canonical initial content for a freshly created
-// note (TAGS-EXT-01 / D-09). Every create path — sidebar "New Note", the
-// pending-wiki-link Cmd-click create (D-15), and Phase 7 daily notes — MUST
-// call this function so the frontmatter scaffold stays uniform across the app.
+// note. Every create path — sidebar "New Note", pending-wiki-link Cmd-click
+// create, and daily notes — MUST call this function so the frontmatter
+// scaffold stays uniform across the app.
 //
 // Format (matches UI-SPEC §Copywriting Contract > Frontmatter scaffold):
 //
@@ -33,12 +33,12 @@ func NewNoteContent(title string) []byte {
 
 const frontmatterPrefix = "---\ntags: []\n---\n\n"
 
-// NewDailyNoteContent constructs the content for a new daily note (DAILY-02 / D-43).
+// NewDailyNoteContent constructs the content for a new daily note.
 //
-// Design: daily notes use the bare frontmatter prefix (---\ntags: []\n---\n\n) WITHOUT
-// a scaffoldFor-derived H1, because the template body already contains the heading
-// (DESIGN.md §11 default: "# {{date}}\n\n"). Using scaffoldFor would produce a duplicate
-// H1. Instead we prepend the raw frontmatter prefix and append the substituted template.
+// Daily notes use the bare frontmatter prefix (---\ntags: []\n---\n\n) WITHOUT
+// a scaffoldFor-derived H1 because the template body already contains the heading
+// (default: "# {{date}}\n\n"). Using scaffoldFor would produce a duplicate H1.
+// Instead we prepend the raw frontmatter prefix and append the substituted template.
 //
 // {{date}} substitution is applied to ALL occurrences in the template before prepending.
 //

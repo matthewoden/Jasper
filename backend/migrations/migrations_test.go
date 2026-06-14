@@ -1,8 +1,5 @@
 // Package migrations_test verifies that all embedded migration SQL files
 // apply cleanly and produce the expected schema in a real SQLite database.
-//
-// TDD: RED tests written first (Plan 06-02 Task 2); they turn GREEN once
-// 002_tags_backlinks.sql is created.
 package migrations_test
 
 import (
@@ -154,7 +151,8 @@ func TestMigration002_NoteTagsCascadeDelete(t *testing.T) {
 	}
 
 	var count int
-	if err := db.QueryRowContext(ctx,
+	if err := db.QueryRowContext(
+		ctx,
 		`SELECT count(*) FROM note_tags WHERE note_id=?`, noteID,
 	).Scan(&count); err != nil {
 		t.Fatalf("count note_tags: %v", err)
@@ -203,7 +201,7 @@ func applyAllMigrations(t *testing.T) *sql.DB {
 	return openTestDB(t, sqls...)
 }
 
-// TestMigration004_McpGrantsTableCreated — Phase 8 D-17: applying all
+// TestMigration004_McpGrantsTableCreated verifies that applying all
 // embedded migrations creates the mcp_write_grants table.
 func TestMigration004_McpGrantsTableCreated(t *testing.T) {
 	db := applyAllMigrations(t)
@@ -220,8 +218,8 @@ WHERE type='table' AND name='mcp_write_grants'`
 	}
 }
 
-// TestMigration004_McpGrantsIndexCreated — Phase 8 D-18 recursive
-// resolution walks folder_path, so the supporting index must exist.
+// TestMigration004_McpGrantsIndexCreated verifies the supporting index
+// exists — recursive grant resolution walks folder_path.
 func TestMigration004_McpGrantsIndexCreated(t *testing.T) {
 	db := applyAllMigrations(t)
 

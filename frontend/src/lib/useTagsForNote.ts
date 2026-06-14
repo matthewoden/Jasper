@@ -1,21 +1,17 @@
 /**
- * useTagsForNote — per-note tag list hook (Plan 07-35 / UAT-3 N3).
+ * useTagsForNote — per-note tag list hook.
  *
- * Replaces TopBar's incorrect use of useTagBrowser() which returns ALL global
- * tags in the vault. useTagsForNote(activeNoteId) fetches only the tags that
- * belong to the ACTIVE NOTE, making hasContent per-note-accurate.
+ * Fetches only the tags belonging to the active note (not vault-global tags).
+ * Parses tags from two sources, mirroring backend logic in notes/service.go:
+ *   1. YAML frontmatter: `tags: [foo, bar]` or multi-line `tags:\n  - foo`
+ *   2. Inline body tags: `#tagname` patterns (charset: [a-z0-9_-]+)
  *
- * Implementation (Option B from 07-35-INVESTIGATION.md):
- *   - Calls getNote(noteId) to retrieve the note's markdown content.
- *   - Parses tags from two sources (mirrors backend logic in notes/service.go):
- *       1. YAML frontmatter: `tags: [foo, bar]` or multi-line `tags:\n  - foo`
- *       2. Inline body tags: `#tagname` patterns (charset: [a-z0-9_-]+)
- *   - Refetches on `note:updated` WS events (subscribed via dispatchLinksEvent,
- *     same fan-out mechanism as useBacklinks per Plan 06-11).
- *   - Cancels in-flight requests when noteId changes (cleanup fn in useEffect).
+ * Refetches on `note:updated` WS events via the shared linksEventSubscribers
+ * fan-out (same mechanism as useBacklinks). Cancels in-flight requests on
+ * noteId change.
  *
- * Security (T-35-01): tag names are parsed from content — never eval'd or
- * rendered as HTML. The charset regex limits names to [a-z0-9_-]+.
+ * Tag names are parsed from content — never eval'd or rendered as HTML.
+ * The charset regex [a-z0-9_-]+ is intentionally restrictive for safety.
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -55,20 +51,14 @@ function parseFrontmatterTags(content: string): string[] {
   return [];
 }
 
-/**
- * Parse inline #tag occurrences from the markdown body (outside frontmatter).
- * Charset: [a-z0-9_-]+ (matches backend D-22 rule).
- */
+/** Parse inline #tag occurrences from the markdown body (outside frontmatter). */
 function parseBodyTags(content: string): string[] {
   const body = content.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, "");
   const matches = body.matchAll(/#([a-z0-9_-]+)/g);
   return Array.from(matches, (m) => m[1]);
 }
 
-/**
- * Compute the canonical tag union: sort(dedupe(frontmatterTags ∪ bodyTags)).
- * Mirrors backend notes/service.go:unionTags.
- */
+/** Sorted deduplicated union of frontmatter and body tags. Mirrors backend unionTags logic. */
 function extractTags(content: string): string[] {
   const fm = parseFrontmatterTags(content);
   const body = parseBodyTags(content);
@@ -84,12 +74,9 @@ export interface UseTagsForNoteResult {
 }
 
 /**
- * useTagsForNote(noteId) — fetches the active note's content and returns its
- * parsed tag list. Returns empty tags when noteId is null.
- *
- * Reactivity: refetches on noteId changes AND on `note:updated` / `note:created`
- * / `links:rewritten` WS events (via the shared linksEventSubscribers set from
- * useBacklinks — same module-level fan-out, zero new infrastructure).
+ * useTagsForNote(noteId) — fetches and parses the active note's tag list.
+ * Returns empty tags when noteId is null.
+ * Refetches on noteId changes and on note:updated / links:rewritten WS events.
  */
 export function useTagsForNote(noteId: string | null): UseTagsForNoteResult {
   const [tags, setTags] = useState<string[]>([]);

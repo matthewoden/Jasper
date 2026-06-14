@@ -1,63 +1,38 @@
 /**
  * Phase 6.6 UAT — Rail Chrome Polish.
  *
- * Regression-proof Playwright coverage for Phase 6.6 requirements against
- * the live `bin/jasper` binary (built via `make build` — CLAUDE.md §Build
- * & embed pipeline). Gates human UAT per CLAUDE.md §Verification policy.
- *
- * SCENARIO ORDERING NOTE:
- * All scenarios share a single `bin/jasper` instance (beforeAll / afterAll).
- * Scenarios run in declaration order. Data created in one scenario is visible
- * to later scenarios. Each scenario uses unique note/tag names.
+ * All scenarios share a single `bin/jasper` instance. Scenarios run in
+ * declaration order; use unique note/tag names to avoid cross-scenario
+ * interference.
  *
  * Scenarios:
- *   S1 (@UX-CHROME-01) : TopBar renders — sidebar toggle + Breadcrumbs (aria-label
- *                        "Note path") + PanelSelectorDropdown + right-rail toggle.
- *                        Click sidebar toggle → notes sidebar hides (Sidebar returns null).
- *   S2 (@panel-selector): Open panel dropdown → uncheck Tags → Tags panel hides;
- *                          re-check Tags → Tags panel returns. Same for Backlinks.
- *   S3 (@UX-CHROME-02) : StatusBar renders at bottom — connectivity dot, refresh
- *                        button (aria-label "Reindex notes"), settings trigger.
- *                        Verify these are NOT in the notes sidebar header.
- *   S4 (@UX-CHROME-02-refresh): Click refresh button → button disabled (or spinner)
- *                               during reindex; settings button opens settings dialog.
- *   S5 (@UX-CHROME-03) : Sidebar reads as floating panel — outer nav with 8px inset;
- *                        inner card has borderRadius + border visible in DOM.
- *   S6 (@UX-CHROME-04) : InterPanelDivider (data-testid "inter-panel-divider") has
- *                        cursor row-resize; no visible background color band.
- *   S7 (@UX-CHROME-05) : Open a note with frontmatter — no visible affordance widget;
- *                        editor starts at the first content line (no ".cm-frontmatter-affordance").
- *   S8 (@UX-CHROME-06) : Tag rows in Tags panel show "#tagname (count)" format;
- *                        no lucide Key icon present in the tags panel header.
- *   S9 (@UX-CHROME-07) : Apply a tag filter → filter chip spans full width; text reads
- *                        "Filtered by:" prefix + "#tagname"; × button is present
- *                        and clears the filter.
- *   S10 (@breadcrumbs) : Open a note in a nested folder → breadcrumbs nav
- *                        (aria-label "Note path") shows the path and ends with
- *                        the note title; click a folder segment → sidebar visible.
- *   S11 (@phase-6.5-regression): Phase 6.5 features still work — inline #tag
- *                                 click filters; backlinks panel populates;
- *                                 no false "Saved" on note switch.
+ *   S1 (@UX-CHROME-01) : TopBar renders — sidebar toggle, breadcrumbs, panel
+ *                        selector, right-rail toggle. Click sidebar toggle → hides.
+ *   S2 (@panel-selector): Panel dropdown → uncheck Tags → hides; re-check → returns.
+ *   S3 (@UX-CHROME-02) : StatusBar renders — connectivity dot, refresh button,
+ *                        settings trigger. Verify NOT in the sidebar header.
+ *   S4 (@UX-CHROME-02-refresh): Refresh button → disabled during reindex;
+ *                               settings button opens settings dialog.
+ *   S5 (@UX-CHROME-03) : Sidebar reads as floating panel — outer nav with 8px inset.
+ *   S6 (@UX-CHROME-04) : InterPanelDivider has cursor row-resize; no color band.
+ *   S7 (@UX-CHROME-05) : Note with frontmatter — no ".cm-frontmatter-affordance".
+ *   S8 (@UX-CHROME-06) : Tag rows show "#tagname (count)"; no Key icon in header.
+ *   S9 (@UX-CHROME-07) : Tag filter chip spans full width; × clears the filter.
+ *   S10 (@breadcrumbs) : Nested note → breadcrumbs shows path; click folder → sidebar.
+ *   S11 (@phase-6.5-regression): Phase 6.5 features still work.
  *
- * Authoring notes:
- *   - CM6 typing recipe: page.locator(".cm-content").click() → keyboard.type()
- *     NOT textarea.fill() (editor is CodeMirror 6 contenteditable).
+ * Selector notes:
+ *   - CM6 editor is contenteditable — use keyboard.type(), not .fill().
  *   - TopBar: data-testid="top-bar"
  *   - StatusBar: data-testid="status-bar" aria-label="Status bar"
  *   - Refresh button: aria-label="Reindex notes"
- *   - Sidebar toggle in TopBar: aria-label="Hide notes sidebar" (when visible)
- *                                aria-label="Show notes sidebar" (when hidden)
- *   - Right-rail toggle in TopBar: aria-label="Hide panels" / "Show panels"
+ *   - Sidebar toggle: aria-label="Hide notes sidebar" / "Show notes sidebar"
+ *   - Right-rail toggle: aria-label="Hide panels" / "Show panels"
  *   - Panel selector trigger: aria-label="Select panels"
- *   - Panel selector Tags item: data-testid="panel-selector-tags"
- *   - Panel selector Backlinks item: data-testid="panel-selector-backlinks"
- *   - Tags panel header: button[aria-label*="Tags panel"]
  *   - Tag row: data-testid="tag-row-{name}"
  *   - InterPanelDivider: data-testid="inter-panel-divider"
  *   - ActiveTagFilterChip: role="status" aria-label="Active filter: #tagname"
- *   - Dismiss chip: aria-label="Remove tag filter: #tagname"
  *   - Breadcrumbs nav: aria-label="Note path"
- *   - Breadcrumb folder segment: aria-label="Navigate to folder: {name}"
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -163,10 +138,9 @@ async function ensureRailExpanded(page: Page): Promise<void> {
 /**
  * Ensure the Tags panel is expanded and visible.
  *
- * UAT 2026-05-12: panel dropdown is now an action menu — clicking an item
- * unconditionally opens its panel. The previous aria-checked-driven "toggle
- * to true" logic is replaced with a plain click; we then verify the header
- * is present, and expand if collapsed-within-card.
+ * The panel dropdown is an action menu — clicking an item unconditionally
+ * opens its panel. A plain click is used; we then verify the header is
+ * present and expand if collapsed-within-card.
  */
 async function ensureTagsPanelVisible(page: Page): Promise<void> {
   await ensureRailExpanded(page);

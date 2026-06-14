@@ -1,36 +1,22 @@
 /**
- * useMcpGrants — Phase 8 Plan 08-10 (D-55, MCP-01, MCP-02, D-57).
- *
- * Hook that composes the `mcpGrants` slice of useTreeStore with the
- * GET/POST/DELETE backend (mcpGrantsApi.ts) and a WS refresh subscription
- * on `mcp:grant_changed` (D-57, broadcast by 08-08 backend after every
- * grant mutation). All MCP grant UI surfaces (TreeRowMenu submenu,
- * McpGrantIndicator Sparkles icon, future surfaces) read from this hook.
+ * useMcpGrants — composes the mcpGrants store slice with GET/POST/DELETE
+ * backend calls and a WS refresh subscription on `mcp:grant_changed`.
  *
  * Public surface:
- *   - grants:           the current store slice (McpGrant[])
- *   - refresh():        re-fetch GET /mcp/grants and replace the slice
- *   - grant(path, lv):  POST /mcp/grants — emits LOCKED two-line toast
- *   - revoke(path):     DELETE /mcp/grants?path=... — emits LOCKED toast
- *   - levelFor(path):   recursive lookup — walks ancestors, mirrors D-18
- *                       (backend resolves writes the same way)
- *   - directLevelFor(path): grant attached to THIS folder (no ancestor
- *                       walk) — drives the Sparkles indicator render,
- *                       which per UI-SPEC §Surface 3 shows ONLY on the
- *                       leaf where the grant was attached (T-08-48
- *                       mitigation — Confused Deputy on child folders).
+ *   - grants:            current store slice (McpGrant[])
+ *   - refresh():         re-fetch GET /mcp/grants
+ *   - grant(path, lv):   POST /mcp/grants — emits LOCKED toast
+ *   - revoke(path):      DELETE /mcp/grants?path=... — emits LOCKED toast
+ *   - levelFor(path):    recursive ancestor walk (backend resolves writes the same way)
+ *   - directLevelFor(path): grant on THIS folder only — drives the Sparkles
+ *                        indicator on the leaf where the grant was attached,
+ *                        not on every descendant (Confused Deputy mitigation).
  *
- * WS refresh pattern: a module-level Set of subscriber callbacks
- * (mirrors useTagBrowser.ts's `tagEventSubscribers`). useSessionSync
- * calls `dispatchMcpGrantsEvent()` from its `mcp:grant_changed` branch,
- * which iterates the set and triggers each mounted hook to refetch.
- *
- * Toast contract (LOCKED — UI-SPEC §Copywriting "MCP Grant AI access
- * Submenu" lines 180-194 — 08-15 Playwright spec asserts against this):
- *   grant added:    title="AI access granted"   description="Edit only in {path}" or "Full in {path}"
- *   grant upgraded: title="AI access upgraded"  description="Now full in {path}"
- *   grant changed:  title="AI access changed"   description="Now edit only in {path}"
- *   grant revoked:  title="AI access revoked"   description="{path}"
+ * Toast copy (LOCKED — Playwright spec asserts against these strings):
+ *   grant added:    "AI access granted"   / "Edit only in {path}" or "Full in {path}"
+ *   grant upgraded: "AI access upgraded"  / "Now full in {path}"
+ *   grant changed:  "AI access changed"   / "Now edit only in {path}"
+ *   grant revoked:  "AI access revoked"   / "{path}"
  */
 
 import { useCallback, useEffect } from "react";
@@ -43,9 +29,8 @@ const mcpGrantsSubscribers = new Set<() => void>();
 
 /**
  * Called by useSessionSync when a `mcp:grant_changed` WS event arrives.
- * Iterates a defensive snapshot of the subscriber set so callbacks that
- * register/unregister mid-iteration don't trip a concurrent-mutation
- * error (matches useTagBrowser's dispatchTagEvent precedent).
+ * Iterates a snapshot of the subscriber set so mid-iteration
+ * register/unregister doesn't cause a concurrent-mutation error.
  */
 export function dispatchMcpGrantsEvent(): void {
   const snapshot = Array.from(mcpGrantsSubscribers);
@@ -53,26 +38,18 @@ export function dispatchMcpGrantsEvent(): void {
 }
 
 /**
- * Normalize a folder path the same way the backend canonicalizes paths
- * (DATA-11: NFC + lowercase). The frontend already operates on canonical
- * paths from the tree feed, but trim slashes + lowercase as defense in
- * depth (a hand-built tree node from an older code path could leak in
- * with a leading or trailing slash).
+ * Normalize a folder path to match backend canonicalization (NFC + lowercase).
+ * The tree feed already provides canonical paths, but trimming slashes and
+ * lowercasing is defense-in-depth against stale callers.
  */
 function normPath(p: string): string {
   return p.toLowerCase().replace(/^\/+/, "").replace(/\/+$/, "");
 }
 
 /**
- * Result of `inheritedGrantOn(path)` — describes the FIRST ANCESTOR
- * folder that holds a direct grant, or null if none exists.
- *
- * Distinct from `levelFor` (self-or-ancestor) — this helper SKIPS the
- * folder itself, so a folder with its own direct grant returns null
- * (its grant is its own, not inherited).
- *
- * Drives the R4-9 disabled "Inherits AI access from {ancestor}" menu
- * item in TreeRowMenu — Plan 08-22.
+ * Result of `inheritedGrantOn(path)` — the first ANCESTOR folder that holds
+ * a direct grant, or null. Skips the folder itself (use directLevelFor for
+ * that). Drives the "Inherits AI access from {ancestor}" disabled menu item.
  */
 export interface InheritedGrant {
   level: 1 | 2;
@@ -87,10 +64,8 @@ export interface UseMcpGrantsResult {
   levelFor: (folderPath: string) => 1 | 2 | null;
   directLevelFor: (folderPath: string) => 1 | 2 | null;
   /**
-   * R4-9 (Plan 08-22) — returns the FIRST ANCESTOR folder that holds a
-   * direct grant, or null if none exists. The folder itself is NOT
-   * considered (use `directLevelFor` for that). Mirrors D-18's
-   * recursive coverage semantics on the server.
+   * Returns the first ANCESTOR folder that holds a direct grant, or null.
+   * The folder itself is NOT considered (use `directLevelFor` for that).
    */
   inheritedGrantOn: (folderPath: string) => InheritedGrant | null;
 }
@@ -105,9 +80,8 @@ export function useMcpGrants(): UseMcpGrantsResult {
       const g = await listGrants();
       setGrants(g);
     } catch {
-      // Silent — preserve the existing slice so a transient backend
-      // hiccup doesn't wipe the indicator UI (matches useTagBrowser's
-      // "preserve previous data on error" precedent).
+      // Silent — preserve the existing slice so a transient backend hiccup
+      // doesn't wipe the indicator UI.
     }
   }, [setGrants]);
 
@@ -120,14 +94,9 @@ export function useMcpGrants(): UseMcpGrantsResult {
   }, [refresh]);
 
   /**
-   * levelFor — recursive ancestor walk. Mirrors D-18 backend resolution:
-   * a grant on `projects/` covers `projects/ai/draft.md`. Used by code
-   * paths that need to know whether the AI can write to a given file
-   * (e.g. a future "AI can write here" surface in the editor).
-   *
-   * The walk is intentionally bounded by the path's slash count + one
-   * (the root check), so a deeply-nested path collapses to a constant
-   * number of grants-array scans relative to the grants count.
+   * levelFor — recursive ancestor walk. A grant on `projects/` covers
+   * `projects/ai/draft.md`. Walk is bounded by the path's slash count
+   * plus one root check.
    */
   const levelFor = useCallback(
     (folderPath: string): 1 | 2 | null => {
@@ -149,10 +118,9 @@ export function useMcpGrants(): UseMcpGrantsResult {
   );
 
   /**
-   * directLevelFor — grant attached to THIS folder only (no ancestor
-   * walk). Drives the Sparkles indicator per UI-SPEC §Surface 3:
-   * "indicator renders on the LEAF where the grant was attached, not on
-   * every recursive descendant" (T-08-48 mitigation).
+   * directLevelFor — grant attached to THIS folder only (no ancestor walk).
+   * Drives the Sparkles indicator: renders only on the leaf where the grant
+   * was attached, not on every descendant.
    */
   const directLevelFor = useCallback(
     (folderPath: string): 1 | 2 | null => {
@@ -164,15 +132,9 @@ export function useMcpGrants(): UseMcpGrantsResult {
   );
 
   /**
-   * inheritedGrantOn — R4-9 (Plan 08-22).
-   *
-   * Walks the ancestor chain (skipping the folder itself) and returns
-   * the first ancestor that holds a direct grant, plus the grant's
-   * level. Used by TreeRowMenu to suppress the redundant "Grant AI
-   * access" submenu on descendants of a granted folder.
-   *
-   * The walk is bounded by the path's slash count + the root check —
-   * a deeply-nested path collapses to O(depth × grants.length).
+   * inheritedGrantOn — walks ancestor chain (skipping the folder itself)
+   * and returns the first ancestor with a direct grant. Used by TreeRowMenu
+   * to suppress the redundant "Grant AI access" submenu on descendants.
    */
   const inheritedGrantOn = useCallback(
     (folderPath: string): InheritedGrant | null => {
@@ -198,19 +160,15 @@ export function useMcpGrants(): UseMcpGrantsResult {
   );
 
   /**
-   * grant — POST /mcp/grants. Idempotent on the backend; the frontend
-   * computes the toast variant from the BEFORE state of the direct
-   * grant on this folder:
-   *   - before === null:              "AI access granted" (added)
-   *   - before === 1 && level === 2:  "AI access upgraded"
-   *   - before === 2 && level === 1:  "AI access changed" (downgrade)
-   *   - otherwise (same level):       no toast (no-op user feedback —
-   *     the click was a confirm of the existing state)
+   * grant — POST /mcp/grants. Idempotent on the backend. Toast variant
+   * is computed from the BEFORE state of the direct grant:
+   *   - before === null              → "AI access granted"
+   *   - before === 1 && level === 2  → "AI access upgraded"
+   *   - before === 2 && level === 1  → "AI access changed"
+   *   - same level                   → no toast (no-op confirm)
    *
-   * Local optimistic update (replace the row in the slice) keeps the
-   * indicator UI snappy; the WS `mcp:grant_changed` broadcast will
-   * fire a refresh shortly after that produces the same state (so the
-   * optimistic update is consistent with the broadcast).
+   * Optimistic update keeps the indicator snappy; the WS broadcast
+   * fires a refresh that converges to the same state.
    */
   const grant = useCallback(
     async (folderPath: string, level: 1 | 2) => {
@@ -242,7 +200,6 @@ export function useMcpGrants(): UseMcpGrantsResult {
             variant: "info",
           });
         }
-        // before === level (no-op confirm) → no toast.
       } catch (e) {
         toast({
           title: "Couldn't update AI access",

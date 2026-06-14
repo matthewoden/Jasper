@@ -27,8 +27,8 @@ type SetupRequest struct {
 	// resolved absolute path is what gets MkdirAll'd, persisted into
 	// cfg.Server.DataDir, and handed to sqlite.Open. RunSetup also
 	// re-runs ValidateDataDir against the resolved value as a final
-	// gate (T-08-06 — a hostile client can't skip the debounced
-	// validate endpoint and submit a bad path directly).
+	// gate so a hostile client can't skip the debounced validate
+	// endpoint and submit a bad path directly.
 	DataDir string
 
 	// Theme is one of "dark" or "light". Anything else is rejected
@@ -36,15 +36,14 @@ type SetupRequest struct {
 	Theme string
 
 	// McpEnabled mirrors the wizard's MCP checkbox. Persisted into
-	// cfg.MCP.Enabled (revision 2 W1 fix) so 08-09's listener sees
-	// the user's choice at the next boot. False keeps the MCP
-	// listener disabled (the default).
+	// cfg.MCP.Enabled so the MCP listener sees the user's choice at
+	// the next boot. False keeps the MCP listener disabled (the default).
 	McpEnabled bool
 
 	// McpGrants is the optional seed list of folder grants the wizard
 	// surfaced in the MCP step. Queued to <canonical>/.jasper/seed_grants.json
 	// at submit time; firstrun.ApplySeedGrants drains the queue on the
-	// first server boot of the new vault (Phase 9 D-04).
+	// first server boot of the new vault.
 	McpGrants []SetupGrantSeed
 
 	// DailyTemplate is the user's preferred template for new daily
@@ -62,8 +61,7 @@ type SetupRequest struct {
 
 // SetupGrantSeed is the in-process form of a single grant row passed
 // in by the wizard. Folder is a canonical relative path under notes/
-// (DATA-11 NFC + lowercase) and Level is 1 or 2 (D-13 two-tier ACL).
-// We don't re-validate either here: the ACL package (Plan 08-08)
+// and Level is 1 or 2. Re-validation is deferred: the ACL package
 // re-validates at MCP write time, and migration 004's CHECK constraint
 // enforces level ∈ {1, 2}.
 type SetupGrantSeed struct {
@@ -71,20 +69,19 @@ type SetupGrantSeed struct {
 	Level  int
 }
 
-// RunSetup is the submit pipeline. Per D-10 the order is:
+// RunSetup is the submit pipeline. The order is:
 //
 //  1. Theme value-check (cheap, no syscall).
 //  2. ResolveDataDir: tilde-expand + absolute-path enforcement.
-//  3. ValidateDataDir against the resolved path (final gate vs T-08-06).
+//  3. ValidateDataDir against the resolved path (final gate so a hostile
+//     client cannot skip the debounced validate endpoint).
 //  4. vault.Canonicalize: resolve symlinks + NFC-normalize ONCE; every
-//     subsequent path computation uses the canonical value. This is the
-//     single canonicalization invariant that mitigates the writer/reader
-//     TOCTOU between writeSeedGrants and firstrun.ApplySeedGrants
-//     (Phase 9 Plan 03b threat T-09-03b-06).
+//     subsequent path computation uses the canonical value. This single
+//     canonicalization invariant prevents writer/reader path mismatch
+//     between writeSeedGrants and firstrun.ApplySeedGrants.
 //  5. vault.CreateVault: creates <canonical>/.jasper/, config.json, and
-//     registers the vault in app.json. Per Phase 9 D-04, CreateVault does
-//     NOT open SQLite — the per-vault DB is opened by lifecycle on first
-//     boot of the vault.
+//     registers the vault in app.json. CreateVault does NOT open SQLite —
+//     the per-vault DB is opened by lifecycle on first boot of the vault.
 //  6. Queue MCP seed grants via writeSeedGrants to
 //     <canonical>/.jasper/seed_grants.json — drained on first boot by
 //     firstrun.ApplySeedGrants after migrations succeed.
@@ -149,8 +146,7 @@ func RunSetup(ctx context.Context, req SetupRequest) error {
 //
 // canonical MUST be the canonicalized vault root — see RunSetup's single
 // canonicalization invariant. Mismatched canonicalization between writer
-// and reader would silently drop the grants (handoff-TOCTOU; Plan 03b
-// threat T-09-03b-06).
+// and reader would silently drop the grants (handoff-TOCTOU).
 //
 // Returns nil if len(grants) == 0 (no queue file written — the common
 // path when the user did not seed any grants in the wizard).

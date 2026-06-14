@@ -1,17 +1,13 @@
 /**
- * useMigrationStatus — single-flight fetch of GET /admin/status on mount,
- * plus a manual refresh() to re-fetch (called by App.tsx after a successful
- * reindex).
+ * useMigrationStatus — single-flight GET /admin/status on mount, plus a
+ * manual refresh() called after a successful reindex.
  *
- * The hook's signature is LOCKED here. Phase 4 will replace the internals
- * with a WebSocket subscription (`migration:status` event), but the shape
- * { state, failedMigration, logsPath, notesIndexed, loading, error, refresh }
- * is the contract MigrationBanner depends on. Do NOT change without
- * sweeping every call site.
+ * Shape { state, failedMigration, logsPath, notesIndexed, loading, error, refresh }
+ * is the contract MigrationBanner depends on; do not change without sweeping
+ * every call site.
  *
- * Until the first fetch resolves, state defaults to "ok" — the banner only
- * renders for state === "rolled_back", so the optimistic default avoids a
- * banner-flash on initial load.
+ * State defaults to "ok" until the first fetch resolves — the banner only
+ * renders for state === "rolled_back", so the optimistic default avoids a flash.
  */
 
 import { useCallback, useEffect, useState } from "react";

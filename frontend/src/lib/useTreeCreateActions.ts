@@ -1,50 +1,28 @@
 /**
  * useTreeCreateActions — shared create-note / create-folder handlers.
  *
- * Both Sidebar's toolbar (root-level create) and FileTree's context-menu
- * + kebab callbacks (per-row create at a specific parent) call this
- * hook so the create flow is identical regardless of trigger.
+ * Used by Sidebar's toolbar (root-level create) and FileTree's context-menu /
+ * kebab callbacks (per-row create at a specific parent) so the flow is identical
+ * regardless of trigger.
  *
  * Behavior:
- *   1. Read the current tree state via useFileTree(), find the target
- *      parent's children, and compute the lowest non-colliding default
- *      name via nextUntitledName(siblings, "untitled"). This closes
- *      Gap 5 (Finding A.2 in 03-HUMAN-UAT.md) — clicking `+` twice in
- *      the same folder now produces `untitled.md` then `untitled 1.md`
- *      instead of throwing a 409 case_collision the second time.
- *   2. POST /notes (or /folders) with parentPath + the auto-incremented
- *      name. The mutator inside useTreeMutations refreshes the tree on
- *      success automatically (Plan 03-09 — Gap 1 contract is in the
- *      data layer, not the caller). The next create reads fresh
- *      sibling names from the post-refresh tree.
- *   3. Set useTreeStore.pendingRename to the new node so it
- *      immediately enters inline-rename mode with the locked default
- *      name selected. This runs AFTER muts.createNote / muts.createFolder
- *      resolves — by then the auto-refresh has landed and the new row
- *      exists in the freshly-fetched tree.
- *      Bug D fix: startRename is called with isNew=true so that if the
- *      user presses Escape (or blurs without changing the placeholder
- *      name), TreeRow's cancel handler deletes the ephemeral node
- *      instead of leaving the auto-generated "untitled" file on disk.
- *   4. On TreeMutationError or any other failure, surface a destructive
- *      toast with the matching locked tuple per UI-SPEC §Surface 5. The
- *      auto-increment runs entirely client-side BEFORE the POST, so
- *      `case_collision` toasts now only fire for genuine race-condition
- *      collisions (e.g., another process created an identically-named
- *      file between the tree fetch and the POST).
- *   5. In-flight guard (Gap R2-2): a single `isCreating` boolean is
- *      surfaced on the hook return. While true, both `createNoteAt` and
- *      `createFolderAt` early-return, and the toolbar in Sidebar visibly
- *      disables the New Note + New Folder buttons (mirroring the existing
- *      Refresh-button spin-disabled pattern in `SidebarToolbar.tsx`). This
- *      closes the rapid-double-click race where the second click read the
- *      pre-create snapshot of `tree`, recomputed `"untitled"`, and 409'd.
- *      The guard is per-flight (not permanent): it clears in the `finally`
- *      block so the user can retry immediately on either success or
- *      failure. The early-return is also defense-in-depth for the
- *      per-row create paths (FileTree's context-menu / kebab "New note"
- *      and "New folder") which don't currently expose their own
- *      disable-while-creating affordance.
+ *   1. Reads current tree state, finds the target parent's children, and computes
+ *      the lowest non-colliding default name via nextUntitledName(siblings, "untitled").
+ *      Clicking + twice in the same folder now produces "untitled.md" then
+ *      "untitled 1.md" instead of a 409 case_collision.
+ *   2. POSTs with parentPath + the auto-incremented name. useTreeMutations refreshes
+ *      the tree on success automatically (the auto-refresh contract is in the data
+ *      layer, not the caller).
+ *   3. After the POST resolves, calls startRename with isNew=true so the new node
+ *      immediately enters inline-rename mode. isNew=true means Escape / same-name
+ *      blur deletes the ephemeral node instead of leaving an auto-generated name on disk.
+ *   4. On TreeMutationError, surfaces a destructive toast. case_collision toasts now
+ *      only fire for genuine race-condition collisions (another process created a
+ *      same-named file between the tree fetch and the POST).
+ *   5. In-flight guard: isCreating blocks a second create call during the first's
+ *      flight (the rapid-double-click race where both calls read the same pre-create
+ *      snapshot and both compute "untitled"). Cleared in finally so retry is
+ *      always available.
  */
 import { useCallback, useState } from "react";
 
@@ -62,23 +40,16 @@ export interface UseTreeCreateActions {
   createNoteAt: (parentPath: string) => Promise<void>;
   createFolderAt: (parentPath: string) => Promise<void>;
   /**
-   * Gap R2-2 — true while a create is in flight. Drives:
-   *   - SidebarToolbar's New Note + New Folder disabled-state visuals
-   *     (mirrors the existing Refresh-button spin-disabled pattern).
-   *   - The hook's own internal early-return so a second click during
-   *     a same-tick race is a no-op rather than a 409.
-   * Cleared in the create handlers' `finally` block, so a retry after a
-   * failure is always available immediately.
+   * True while a create is in flight. Drives toolbar disabled-state visuals
+   * and the hook's own early-return so a second same-tick click is a no-op.
+   * Cleared in finally so retry after failure is always available.
    */
   isCreating: boolean;
 }
 
 /**
- * findFolderByPath — recursively walk the tree's nodes and return the
- * folder whose canonical `path` matches the given parentPath exactly.
- * Returns null if no such folder exists (caller treats as "no siblings"
- * — the server will produce the authoritative error if the parent is
- * actually missing).
+ * findFolderByPath — recursively returns the folder whose path matches parentPath exactly,
+ * or null if not found (caller treats as "no siblings"; server handles a genuinely missing parent).
  */
 function findFolderByPath(
   nodes: readonly TreeNode[],
@@ -96,14 +67,9 @@ function findFolderByPath(
 }
 
 /**
- * siblingNamesForCreate — returns the existing sibling names at the
- * target parent for the given kind (note → titles minus `.md`; folder
- * → folder names). The list passed to nextUntitledName is intentionally
- * filtered to ONLY the kind being created — a sibling note named
- * "untitled" does not block a sibling folder named "untitled" (the
- * server's collision check is also kind-scoped within a parent
- * directory because notes are `*.md` files and folders are not).
- *
+ * siblingNamesForCreate — returns existing sibling names at the target parent,
+ * filtered to the given kind (note → titles without .md; folder → folder names).
+ * Kind-scoped because notes (*.md) and folders can share a base name without collision.
  * Exported for testability.
  */
 export function siblingNamesForCreate(

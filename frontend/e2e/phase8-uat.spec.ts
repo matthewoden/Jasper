@@ -1,39 +1,22 @@
 /**
  * Phase 8 UAT — install + first-run wizard + reveal + deep links + MCP grants.
  *
- * Per CLAUDE.md §"Verification policy: E2E before human UAT" + plan 08-15's
- * D-53 reference: this spec lands BEFORE the human UAT walkthrough so the
- * regressions Playwright CAN catch are filtered out before consuming the
- * user's time.
- *
  * Scenarios (tagged for selective runs via --grep):
  *
- *   @first-run   wizard redirect + happy-path entry. NOTE: the wizard
- *                redirect tests are currently test.fixme()'d — see the
- *                "Known issue" note below. The happy-path content
- *                assertions on the wizard SPA itself work and run.
- *                Two regression tests for the UAT-1 tilde-expansion bug
- *                also live in this describe block (live HTTP against
- *                bin/jasper — they do NOT depend on the redirect).
+ *   @first-run   wizard redirect + happy-path entry. Redirect tests are
+ *                test.fixme()'d — see "Known issue" below. The wizard SPA
+ *                content assertions and tilde-expansion regression tests run.
  *
- *   @reveal      tree-row right-click exposes "Show in file manager". The
- *                test only asserts visibility — it does NOT click the item
- *                (clicking would pop a Finder/Explorer window on the host
- *                that runs CI).
+ *   @reveal      tree-row right-click exposes "Show in file manager". Test
+ *                asserts visibility only — clicking would pop Finder/Explorer.
  *
- *   @deep-link   /?note=<bad-uuid> navigates to /note-not-found with the
- *                three locked CTAs.
+ *   @deep-link   /?note=<bad-uuid> navigates to /note-not-found.
  *
- *   @grant       The toast contract (08-10 useMcpGrants two-line title +
- *                description) is asserted via pinned string constants in
- *                this file — the unit tests in useMcpGrants.test.ts
- *                exercise the toast firing path. The E2E half (sparkles
- *                indicator appears after grant) requires MCP enabled in
- *                config; see the @sparkles test for how it's set up.
+ *   @grant       Toast contract asserted via pinned string constants.
+ *                Unit tests in useMcpGrants.test.ts cover the firing path.
  *
- *   @sparkles    The mcp-grant-indicator data-testid is rendered with
- *                data-grant-tier matching the level when a grant is
- *                present.
+ *   @sparkles    mcp-grant-indicator data-testid is rendered with
+ *                data-grant-tier matching the level when a grant is present.
  *
  * Toast contract — two-line {title, description}:
  *   - Grant added:    title="AI access granted"   description="Edit only in {path}" | "Full in {path}"
@@ -44,40 +27,27 @@
  *   - data-testid="mcp-grant-indicator"
  *   - data-grant-tier="1"|"2"
  *
- * Spec spawns `bin/jasper` via spawnJasper (CLAUDE.md §Build & embed pipeline:
- * the helper fails fast if bin/jasper is missing — caller must `make build`).
  * Each top-level test.describe block spawns its OWN binary against a fresh
  * ephemeral data dir so the test surfaces are isolated.
  *
  * ─────────────────────────────────────────────────────────────────────────
- * KNOWN ISSUE — wizard redirect interleaving (surfaced 2026-05-18 during
- * Plan 08-15 verification):
+ * KNOWN ISSUE — wizard redirect interleaving:
  *
- *   lifecycle.Run step 8b calls config.Load (which auto-writes config.json
- *   if missing) BEFORE step 9 (serveListener accepts connections). This
- *   means by the time a Playwright page navigates to "/" against a
- *   `bin/jasper serve --data-dir <fresh>` instance, config.json already
- *   exists at <fresh>/storage/config.json and the firstrun.RedirectMiddleware
- *   no-ops on `os.Stat(cfgPath)` returning a non-NotExist result.
+ *   lifecycle.Run calls config.Load (which auto-writes config.json if missing)
+ *   BEFORE the listener accepts connections. By the time a Playwright page
+ *   navigates to "/", config.json already exists and the firstrun middleware
+ *   no-ops — "/" doesn't redirect to "/setup" in the spawnJasper baseline.
  *
- *   The fix is one of:
- *     A. Defer config.Load auto-write until POST /setup runs (lifecycle.go
- *        step 8b reads config.json read-only, treats not-exist as
- *        "MCP disabled by default", doesn't write).
- *     B. Have lifecycle.Run check for a "wizard intent" sentinel (e.g.,
- *        no <dataDir>/notes/ subdir present) and skip the auto-write in
- *        that case.
- *     C. (Operationally simplest) the install subcommand creates the data
- *        dir but does NOT pre-create config.json, and serve starts in a
- *        fresh-config mode.
+ *   Fix options:
+ *     A. Defer config.Load auto-write until POST /setup runs.
+ *     B. Check for a "wizard intent" sentinel (e.g., no notes/ subdir)
+ *        and skip the auto-write.
+ *     C. The install subcommand creates the data dir but does NOT
+ *        pre-create config.json.
  *
- *   These options are architectural (Rule 4) — surfaced to the orchestrator
- *   via the human UAT checkpoint for triage. For now, the @first-run
- *   redirect tests are test.fixme()'d with a TODO referencing this note.
- *   The wizard SPA itself renders correctly; the only failure is that
- *   "/" doesn't redirect to "/setup" in the spawnJasper baseline. The
- *   user's actual install (jasper install on a fresh box) hits the same
- *   timing, so this also surfaces a real production gap.
+ *   @first-run redirect tests are test.fixme()'d pending resolution.
+ *   The wizard SPA renders correctly; only the redirect is broken in the
+ *   test environment. This is also a real production gap.
  * ─────────────────────────────────────────────────────────────────────────
  */
 import { test, expect } from "@playwright/test";

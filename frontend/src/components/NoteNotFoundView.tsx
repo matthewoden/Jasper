@@ -1,34 +1,13 @@
 /**
- * NoteNotFoundView — Phase 8 Plan 08-07 / D-32 / UI-SPEC §Surface 6.
+ * NoteNotFoundView — rendered when the boot-time useDeepLink hook fails to
+ * resolve a `?note=<uuid>` or `?path=<rel>` deep link.
  *
- * Rendered at the `/note-not-found` route when the boot-time
- * useDeepLink hook fails to resolve a `?note=<uuid>` or `?path=<rel>`
- * deep link.
+ * "Search notes" navigates to `/?search=<query>` so the main App can open
+ * the palette in search mode after the page reload (CustomEvent wouldn't
+ * survive the navigation since this view mounts outside the App tree).
  *
- * Layout (LOCKED per UI-SPEC §Surface 6):
- *   - 480px centered card, 32px above viewport vertical center
- *   - Search icon (lucide-react, 32px, muted) — top, centered
- *   - Heading "This note doesn't exist"
- *   - Subtitle (echoes the failed query when present)
- *   - Search input pre-filled with the query
- *   - Primary CTA "Search notes"
- *   - Secondary row: "Open today's note" + "Show file tree"
- *   - Footer tip about ?note=<id> rename-resilience
- *
- * Copy strings are VERBATIM from UI-SPEC §Copywriting lines 222-231
- * (LOCKED). Any change to user-facing text is a UI-SPEC change.
- *
- * Search-modal mechanism: clicking "Search notes" navigates to
- * `/?search=<query>` — the main App boots, reads the param, and
- * opens the palette in search mode. The URL-param hand-off survives
- * the page reload that route changes incur on this SPA (we are NOT
- * inside the React tree of App when this view is mounted), unlike
- * a CustomEvent fired pre-navigation. Documented in the SUMMARY.
- *
- * Security (T-08-28): the subtitle interpolates `queryRaw` as a
- * React child — React escapes children automatically; we do NOT
- * use dangerouslySetInnerHTML. The `&lt;id&gt;` in the footer tip
- * is a hard-coded literal, NOT user input.
+ * Security: subtitle interpolates queryRaw as a React child — React escapes
+ * it automatically; dangerouslySetInnerHTML is not used.
  */
 
 import { Search } from "lucide-react";

@@ -43,8 +43,8 @@ type ReadNoteArgs struct {
 }
 
 // ReadNoteResult — read_note returns the full note body + metadata.
-// UpdatedAt is RFC3339Nano so the AI can echo it back as the
-// If-Match argument on a follow-up update_note.
+// UpdatedAt is RFC3339Nano so the AI can echo it back as the If-Match
+// argument on a follow-up update_note.
 type ReadNoteResult struct {
 	ID        string `json:"id"`
 	Path      string `json:"path"`
@@ -60,8 +60,8 @@ type SearchNotesArgs struct {
 }
 
 // SearchHit is one row of an FTS5 result. ExcerptHTML carries the
-// <mark>...</mark> snippet that the index produces (T-7-08 mitigation:
-// the index escapes user content; only the <mark> tags are unescaped).
+// <mark>...</mark> snippet that the index produces (the index escapes
+// user content; only the <mark> tags are unescaped).
 type SearchHit struct {
 	ID          string `json:"id"`
 	Path        string `json:"path"`
@@ -87,8 +87,7 @@ type ReadAttachmentResult struct {
 }
 
 // CreateNoteArgs — create_note takes a notes/-relative path ending in
-// .md, an optional initial body, and an optional human-friendly title
-// (R4-4 / 08-21).
+// .md, an optional initial body, and an optional human-friendly title.
 type CreateNoteArgs struct {
 	Path  string `json:"path" jsonschema:"folder-relative path under notes/, e.g. projects/2026-roadmap.md (must end .md)"`
 	Body  string `json:"body,omitempty" jsonschema:"optional initial markdown body; if omitted, only the frontmatter scaffold + heading are written"`
@@ -103,7 +102,7 @@ type CreateNoteResult struct {
 }
 
 // UpdateNoteArgs — update_note takes the path (or id), new body, and an
-// optional If-Match value (the prior updated_at). SYNC-06 propagation.
+// optional If-Match value (the prior updated_at) for stale-write detection.
 type UpdateNoteArgs struct {
 	Path    string `json:"path,omitempty" jsonschema:"notes/-relative path to the note (preferred); used to resolve the UUID"`
 	ID      string `json:"id,omitempty" jsonschema:"UUID of the note (fallback if path not supplied)"`
@@ -112,7 +111,7 @@ type UpdateNoteArgs struct {
 }
 
 // UpdateNoteResult — id + path + updated_at after the write. ForceWrite is
-// true iff the caller passed if_match="*" (last-writer-wins opt-in, R4-6).
+// true iff the caller passed if_match="*" (last-writer-wins opt-in).
 type UpdateNoteResult struct {
 	ID         string `json:"id"`
 	Path       string `json:"path"`
@@ -120,8 +119,8 @@ type UpdateNoteResult struct {
 	ForceWrite bool   `json:"force_write,omitempty"`
 }
 
-// GrantInfo is the wire shape of a single grant returned by list_grants
-// (R4-3). Path is the canonical folder path (notes/-relative, lower-cased),
+// GrantInfo is the wire shape of a single grant returned by list_grants.
+// Path is the canonical folder path (notes/-relative, lower-cased),
 // Tier is 1 (Edit only) or 2 (Full), GrantedAt is RFC3339.
 type GrantInfo struct {
 	Path      string `json:"path"`
@@ -384,7 +383,8 @@ func (s *Server) registerUpdateNote() {
 			if errors.As(err, &swInfo) {
 				return nil, UpdateNoteResult{}, fmt.Errorf(
 					"conflict: note was modified by another writer; re-read with read_note and retry. latest_updated_at=%s",
-					swInfo.Current.UTC().Format(time.RFC3339Nano))
+					swInfo.Current.UTC().Format(time.RFC3339Nano),
+				)
 			}
 			return nil, UpdateNoteResult{}, fmt.Errorf("update_note: %w", err)
 		}

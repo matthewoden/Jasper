@@ -14,26 +14,16 @@ import (
 
 // GetNoteByPath implements GET /api/v1/notes/by-path?path=<rel>.
 //
-// Pipeline (mirrors files.go Rules 1-4; Rule 5 — symlink Lstat — is
-// implicitly enforced because a symlink could not have been indexed
-// in the first place; the indexer would have followed it via
-// fsstore.Canonicalize or skipped it):
+// Pipeline:
 //
 //  1. Reject `..`, absolute paths, and Windows-style `\` prefixes.
 //  2. filepath.Clean and refuse empty/"."/"/" residue.
-//  3. Require `.md` suffix (deep-links target notes, not folders or
-//     attachments).
-//  4. Canonicalize via DATA-11 (NFC + lowercase) — the indexer stores
-//     paths under this canonical form, so LookupByPath needs the
-//     normalized input.
+//  3. Require `.md` suffix (deep-links target notes, not folders or attachments).
+//  4. Canonicalize via NFC + lowercase — the indexer stores paths in this form.
 //  5. s.index.LookupByPath: on hit → 200 NoteSummary; on
-//     notes.ErrNotFound → 404 code "not_found"; on other err → 500
-//     via bare error.
+//     notes.ErrNotFound → 404 "not_found"; on other err → 500.
 //
-// Returns 503-equivalent (bare error → 500) if s.index is nil — the
-// Phase 1 NewServer constructor wires nil, and deep-links are
-// useless without the indexer. The wire response is generic; the
-// log includes the error chain.
+// Returns 404 when s.index is nil (deep-links are useless without the indexer).
 //
 //nolint:revive // generated interface name
 func (s *Server) GetNoteByPath(
@@ -74,7 +64,8 @@ func (s *Server) GetNoteByPath(
 			return GetNoteByPath404JSONResponse(newError("not_found",
 				"no note at "+rawPath)), nil
 		}
-		s.log.Error("GetNoteByPath: index lookup failed",
+		s.log.Error(
+			"GetNoteByPath: index lookup failed",
 			"path", canonRel,
 			"err", err,
 		)

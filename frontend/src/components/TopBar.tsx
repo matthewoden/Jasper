@@ -1,24 +1,11 @@
 /**
- * TopBar — Phase 06.6-09 (UX-CHROME-01)
+ * TopBar — horizontal chrome strip.
  *
- * Composed horizontal chrome strip occupying gridRow: 1, gridColumn: 2 of the
- * App.tsx two-row grid. Layout:
- *   [left group]  sidebar-toggle + Breadcrumbs
- *   [right group] PanelSelectorDropdown + right-rail-toggle
+ * Layout: [sidebar-toggle + Breadcrumbs] [PanelSelectorDropdown + right-rail-toggle]
  *
- * Background: var(--color-bg) with var(--shadow-elevation-1) drop shadow so
- * editor content slips visually behind it on scroll (D-05, D-31).
- *
- * Reads / writes existing store state only (no new store slices introduced here):
- *   - notesSidebarVisible / setNotesSidebarVisible (Phase 6.6 Plan 02 slice)
- *   - backlinksRailExpanded / setBacklinksRailExpanded (Phase 6 slice)
- *
- * Child components Breadcrumbs (Plan 07) and PanelSelectorDropdown (Plan 08)
- * handle their own store subscriptions; TopBar just mounts them.
- *
- * The optional `style` prop is spread over the root container so App.tsx can
- * pass grid-placement props directly:
- *   <TopBar style={{ gridRow: "1", gridColumn: "2" }} />
+ * var(--color-bg) background + var(--shadow-elevation-1) drop shadow so editor
+ * content slips visually behind it on scroll. Optional style prop used by App.tsx
+ * for grid placement.
  */
 import { useState } from "react";
 import type { CSSProperties } from "react";
@@ -115,9 +102,8 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
       data-testid="top-bar"
     >
       {/* Left group: sidebar toggle + breadcrumbs.
-          Plan 07-38 (UAT-4 N5) reverts Plan 07-36's 2px inner gap back to
-          4px so 8px (outer pad) + 24px (toggle) + 4px (inner gap) = 36px
-          breadcrumb text-start, matching the new --editor-content-x = 36px. */}
+          4px inner gap → 8px outer pad + 24px toggle + 4px gap = 36px text-start,
+          matching --editor-content-x. */}
       <div
         style={{
           display: "flex",
@@ -142,22 +128,8 @@ export function TopBar({ style }: TopBarProps): React.JSX.Element {
       </div>
 
       {/* Right group: PanelSelectorDropdown (always present) + right-rail
-          toggle (gated on panelSelector state).
-
-          Plan 07-38 (UAT-4 N3, N9) supersedes Plan 07-30 / 07-35 / 07-37:
-          - PanelSelectorDropdown is mounted UNCONDITIONALLY — the user
-            needs a way to re-enable a panel even when none is currently
-            selected (the previous hasContent gate hid the dropdown when
-            there was no active-note content, leaving the user stuck).
-          - The right-rail toggle is now gated on
-            `useTreeStore.panelSelector.{tags,backlinks}` — i.e. is there
-            actually a rail to show? An all-false panelSelector means the
-            user has explicitly hidden every panel, so the toggle has
-            nothing to toggle.
-          - The save-state button (Plan 07-37) is REMOVED from this
-            location in Plan 07-38 N9 and moved back to StatusBar (its
-            Plan 07-28 location). D-55's "click=manual reindex" behavior
-            is PRESERVED — only the mount point changed. */}
+          toggle (gated on panelSelector state — hidden when no panel is selected,
+          since there would be nothing to toggle). */}
       <div
         style={{
           display: "flex",

@@ -6,11 +6,9 @@ import (
 	"testing"
 )
 
-// TestVersionStringDefault asserts the legacy Phase 1 output is
-// preserved when no ldflags are injected (buildCommit == "").
-// Existing smoke tests assert against "jasper 0.1.0-phase1"; this
-// test pins that contract so a future buildVersion default change
-// has to be deliberate.
+// TestVersionStringDefault asserts the output when no ldflags are injected
+// (buildCommit == ""). Pins the default format so a future buildVersion
+// change has to be deliberate.
 func TestVersionStringDefault(t *testing.T) {
 	got := versionString()
 	if !strings.HasPrefix(got, "jasper ") {

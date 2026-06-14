@@ -1,36 +1,23 @@
 /**
  * Phase 4 UAT — multi-tab session sync via WebSocket.
  *
- * These tests run against the LIVE Go binary (spawnJasper). Each scenario
- * uses TWO BrowserContexts so the two tabs have independent sessionStorage
- * (and therefore independent session_id UUIDs) — exercising server-side
- * origin filtering for real.
+ * Each scenario uses two BrowserContexts so the tabs have independent
+ * sessionStorage (and therefore independent session_id UUIDs) — exercising
+ * server-side origin filtering for real.
  *
- * Scenarios (mirrors D-12 + ROADMAP success criteria):
- *   1. Mutate-in-A-appears-in-B for note + folder + move (SYNC-01..04, success #1)
- *   2. Stale-write conflict in tab B with Save-anyway + Discard (SYNC-05/06, success #2)
- *   3. Delete-in-another-session shows UX-05 banner with editor content intact (UX-05, success #5)
- *   4. 5-tab disconnect/reconnect spread (SYNC-07, success #3)
+ * Scenarios:
+ *   1. Mutate-in-A-appears-in-B for note + folder + move
+ *   2. Stale-write conflict in tab B with Save-anyway + Discard
+ *   3. Delete-in-another-session shows banner with editor content intact
+ *   4. 5-tab disconnect/reconnect spread
  *
- * The Phase 3 phase3-uat.spec.ts file is the structural template — same
- * spawnJasper helper, same commitRenameWith helper (post-Bug-D
- * replacement for the legacy dismissAnyOpenRenameInput; see Plan
- * 05.5-16), same wait patterns. The new layer is dual-BrowserContext.
+ * Tree rows use `data-tree-row-kind="note"` (not `data-testid="tree-row"`).
  *
- * Tree row selectors: tree rows use `data-tree-row-kind="note"` (not
- * `data-testid="tree-row"`). This matches the actual DOM from TreeRow.tsx.
+ * Delete flow: API-level DELETE is used for reliable WS event broadcasting;
+ * this exercises the exact broadcast path (Service.Delete → Broadcaster)
+ * that Tab B must observe.
  *
- * Delete flow: API-level DELETE is used for reliable WS event broadcasting.
- * The browser context that "deletes" calls the API directly via
- * page.request.delete() — this exercises the exact WS broadcast path
- * (backend Service.Delete → Broadcaster.Broadcast) that Tab B must observe.
- * A future E2E can layer in UI-driven delete once Radix ContextMenu
- * synthetic-event support matures in Playwright.
- *
- * Spec uses UI-level assertions only (banner text, tree-row counts,
- * data-status attribute) — no inline WS payload shape assertions.
- * Therefore Amendment 2 schema-type requirement is moot.
- * SUMMARY notes: "spec uses UI-level assertions only, no fixture types needed"
+ * Spec uses UI-level assertions only — no WS payload shape assertions.
  */
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -49,9 +36,8 @@ test.afterEach(async () => {
 /**
  * Open a page in the given BrowserContext, navigate to baseURL, wait for the
  * connection-status dot to reach "connected". Each scenario creates its OWN
- * BrowserContext via `browser.newContext()` at the call site so that every
- * "tab" has independent sessionStorage (and therefore an independent
- * session_id UUID) — the core of the Phase 4 dual-context pattern.
+ * BrowserContext so that every "tab" has independent sessionStorage (and
+ * therefore an independent session_id UUID).
  */
 async function openTabInContext(
   ctx: BrowserContext,
@@ -85,23 +71,13 @@ async function waitForFolderRowCount(page: Page, expected: number, timeoutMs = 5
 }
 
 /**
- * Commit an open rename input with a specific name. Replaces the
- * pre-Bug-D `dismissAnyOpenRenameInput` helper for post-create
- * scenarios.
+ * Commit an open rename input with a specific name.
  *
- * Background — Bug D (resolved 2026-05-07,
- * `.planning/debug/resolved/rename-input-lifecycle.md`): pressing
- * Escape on a brand-new (just-created, never-confirmed) row now
- * fires DELETE /api/v1/notes/{id} (or the folder analogue), per the
- * locked UAT product contract. Phase 4 Scenario 1's post-create
- * dismiss-then-assert-N+1 flow regressed silently after Bug D
- * landed; commit-the-rename restores the row's persistence. See
- * `.planning/phases/05.5-sidebar-editor-shell-polish/05.5-14-INVESTIGATION.md`.
+ * Pressing Escape on a brand-new (never-confirmed) row fires DELETE —
+ * always use Enter so the row persists.
  *
- * Duplicated from phase3-uat.spec.ts to match the existing project
- * convention (the legacy dismissAnyOpenRenameInput was duplicated
- * across both spec files; we follow the same pattern rather than
- * factoring into a shared helper module).
+ * Duplicated from phase3-uat.spec.ts (inline per file rather than a shared
+ * helper module, following the convention established for this suite).
  *
  * @param page Playwright page handle
  * @param name Unique name to commit. Must not collide with an
@@ -127,13 +103,9 @@ async function openFirstNote(page: Page): Promise<void> {
 }
 
 /**
- * CM6 typing recipe (Phase 5.5 plan 09 Task 1).
+ * CM6 typing recipe: click .cm-content to focus → select-all → delete → type.
  *
- * Replaces textarea.fill() patterns from the pre-CM6 era. The
- * .cm-content surface is contenteditable, not a real <textarea>, so
- * .fill() is a no-op and .toHaveValue() returns "".
- *
- * Recipe: click .cm-content to focus → select-all → delete → type.
+ * .fill() is a no-op on contenteditable; .toHaveValue() returns "".
  */
 async function typeIntoEditor(page: Page, text: string): Promise<void> {
   const cm = page.locator(".cm-content");
@@ -148,11 +120,8 @@ async function typeIntoEditor(page: Page, text: string): Promise<void> {
 /**
  * Read the visible plain text out of the CM6 editor surface.
  *
- * Replaces the pre-CM6 `expect(textarea).toHaveValue(...)` pattern.
- * .cm-content's textContent gives the doc's plain text; line breaks
- * inserted by the user are flattened to spaces in textContent, but
- * for the Phase 4 assertions (single-line "Tab A content v2"-style
- * strings) that's lossless.
+ * .cm-content's textContent gives the doc's plain text; line breaks are
+ * flattened to spaces, which is lossless for single-line assertions.
  */
 async function readEditorText(page: Page): Promise<string> {
   return (await page.locator(".cm-content").textContent()) ?? "";

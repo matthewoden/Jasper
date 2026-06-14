@@ -15,7 +15,7 @@ func newTestRegistry() *Registry {
 }
 
 // TestRegistryFindByTitle_SingleMatch verifies that a single matching
-// record is returned correctly (Test 1 from plan).
+// record is returned correctly.
 func TestRegistryFindByTitle_SingleMatch(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
@@ -35,7 +35,7 @@ func TestRegistryFindByTitle_SingleMatch(t *testing.T) {
 }
 
 // TestRegistryFindByTitle_NoMatch verifies empty slice (not nil) when no
-// match is found (Test 2 from plan).
+// match is found.
 func TestRegistryFindByTitle_NoMatch(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
@@ -50,7 +50,7 @@ func TestRegistryFindByTitle_NoMatch(t *testing.T) {
 }
 
 // TestRegistryFindByTitle_CaseInsensitive verifies that lookup by uppercase
-// title returns the record registered under lowercase title (Test 3 from plan).
+// title returns the record registered under lowercase title.
 func TestRegistryFindByTitle_CaseInsensitive(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
@@ -67,7 +67,7 @@ func TestRegistryFindByTitle_CaseInsensitive(t *testing.T) {
 }
 
 // TestRegistryFindByTitle_NFCNormalization verifies that NFC and NFD forms
-// of the same title resolve to the same record (Test 4 from plan).
+// of the same title resolve to the same record.
 func TestRegistryFindByTitle_NFCNormalization(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
@@ -87,9 +87,8 @@ func TestRegistryFindByTitle_NFCNormalization(t *testing.T) {
 	}
 }
 
-// TestRegistryFindByTitle_SameFolderBias tests D-20: when multiple notes
-// share a title, the one in sourceFolder appears first, then alphabetical
-// (Test 5 from plan).
+// TestRegistryFindByTitle_SameFolderBias: when multiple notes share a
+// title, the one in sourceFolder appears first, then alphabetical.
 func TestRegistryFindByTitle_SameFolderBias(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
@@ -124,8 +123,8 @@ func TestRegistryFindByTitle_SameFolderBias(t *testing.T) {
 	})
 }
 
-// TestRegistryFindByTitle_AlphabeticalNoSourceFolder tests D-20 ordering
-// when sourceFolder is "" — pure alphabetical by canonical path (Test 6 from plan).
+// TestRegistryFindByTitle_AlphabeticalNoSourceFolder: when sourceFolder is
+// "" results are sorted purely alphabetical by canonical path.
 func TestRegistryFindByTitle_AlphabeticalNoSourceFolder(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()

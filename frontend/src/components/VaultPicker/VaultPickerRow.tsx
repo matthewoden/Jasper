@@ -1,14 +1,8 @@
 /**
- * VaultPickerRow — renders one RecentVaultEntry in the picker's Recent tab.
+ * VaultPickerRow — one RecentVaultEntry in the picker's Recent tab.
  *
- * V11: missing=true → row is greyed (opacity 0.6) with "Folder not found" caption
- * plus Reconnect and Remove action buttons.
- *
- * Plan 08-17c Task 2.
- * Plan 08-17d: `mode` prop added. "switch" mode calls vaultApi.switch (hot-swap
- * while a vault is already open); "boot" mode calls vaultApi.open (first open
- * when no vault is active). The WS vault.switching event drives the overlay;
- * window.location.reload fires on vault.switched (or 10s failsafe).
+ * missing=true → greyed row with "Folder not found" + Reconnect/Remove buttons.
+ * mode="switch" → calls vaultApi.switch (hot-swap); mode="boot" → vaultApi.open.
  */
 
 import { vaultApi } from "../../lib/vaultApi";

@@ -30,12 +30,11 @@ var fts5OperatorKeywordRE = regexp.MustCompile(`\b(AND|OR|NOT|NEAR)\b`)
 //     INSERT.
 //
 // The transaction is BEGIN IMMEDIATE so concurrent writers serialize
-// without SQLITE_BUSY (DATA-03 + ROADMAP success criterion #5).
+// without SQLITE_BUSY.
 //
-// `checksum_sha256` is rec.Checksum which Phase 2 ALWAYS sets to "" —
-// the column exists in the schema but is populated NULL/empty for
-// the entirety of Phase 2. DATA-09 checksum-fallback is deferred to
-// Phase 7.
+// `checksum_sha256` is rec.Checksum, which the indexer currently always
+// sets to "" — the column exists in the schema but checksum computation
+// is deferred; callers should not rely on it being populated.
 func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {
@@ -103,9 +102,7 @@ func (x *Indexer) Delete(ctx context.Context, id uuid.UUID) error {
 //
 // UpdatedAt in the projection is mtime_unix converted to time.Time —
 // the file's last-modified time, NOT the indexer's row-touch time.
-// The UI shows file-relevant timestamps; the index-touch time is
-// internal-only (T-02-04a-02 mitigation — Checksum / UpdatedAtUnix
-// never escape the package).
+// The index-touch time is internal-only and never escapes the package.
 func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 	rows, err := x.Pair.Reader.QueryContext(ctx,
 		`SELECT id, path, title, mtime_unix FROM notes ORDER BY path ASC`)
@@ -138,11 +135,10 @@ func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 }
 
 // LookupByPath finds a NoteRecord by its canonical relative path. Returns
-// notes.ErrNotFound when no row matches. Phase 3 Plan 03-03 addition.
-//
-// Reads via Pair.Reader (no transaction — pure read). Used by
-// Service.Move to look up the existing record before issuing the rename
-// (so the same UUID stays attached to the moved file).
+// notes.ErrNotFound when no row matches. Reads via Pair.Reader (no
+// transaction — pure read). Used by Service.Move to look up the existing
+// record before issuing the rename (so the same UUID stays attached to
+// the moved file).
 func (x *Indexer) LookupByPath(ctx context.Context, canonicalPath string) (notes.NoteRecord, error) {
 	var (
 		idStr, path, title, checksum      string
@@ -189,7 +185,7 @@ func (x *Indexer) LookupByPath(ctx context.Context, canonicalPath string) (notes
 // paths can contain `_` legitimately (a valid filename character) and
 // theoretically `%` (filenames are bytes; canonical form does not strip
 // `%`). The ESCAPE '\' clause + escapeLike() ensures `_` and `%` in the
-// prefix bind as literal characters. T-03-03-03 mitigation.
+// prefix bind as literal characters.
 func (x *Indexer) MovePathPrefix(ctx context.Context, oldPrefix, newPrefix string) (int, error) {
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {
@@ -274,8 +270,7 @@ func (x *Indexer) DeleteByPathPrefix(ctx context.Context, prefix string) (int, e
 // When q is empty, returns the most-recent notes up to limit.
 // limit is clamped to [1, 50] by the caller; the SQL LIMIT is applied here.
 //
-// Returns []notes.SearchResult — a lightweight projection (id, title, path,
-// mtime_unix) used by GetNotesSearchTitles (LINKS-06 / D-13).
+// Returns []notes.SearchResult — a lightweight projection (id, title, path, mtime_unix).
 func (x *Indexer) SearchTitles(ctx context.Context, q string, limit int) ([]notes.SearchResult, error) {
 	var (
 		rows *sql.Rows
@@ -347,15 +342,14 @@ func prefixWrap(q string) string {
 }
 
 // SearchFTS runs an FTS5 MATCH query against the notes_fts virtual table with
-// an optional AND-combined tag filter. Results are ordered by the bm25 +
-// recency blend described in RESEARCH.md §bm25() × Recency SQL (D-03/D-46).
+// an optional AND-combined tag filter. Results are ordered by a bm25 +
+// recency blend.
 //
 // Security: the MATCH clause always uses a positional bind parameter (?1) —
-// NEVER fmt.Sprintf or string concatenation (T-7-08 mitigation).
+// NEVER string concatenation.
 //
-// FTS5 syntax errors (unbalanced parentheses, etc.) are caught by
-// strings.Contains on the error message and wrapped as notes.ErrFTSQuerySyntax
-// so the handler maps to HTTP 400 (T-7-10 mitigation, Pitfall 2).
+// FTS5 syntax errors (unbalanced parentheses, etc.) are caught and wrapped as
+// notes.ErrFTSQuerySyntax so the handler maps to HTTP 400.
 func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]notes.SearchHit, error) {
 	if limit < 1 {
 		limit = 1

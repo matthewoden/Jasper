@@ -1,19 +1,7 @@
 /**
- * Tests for useReveal hook.
- *
- * Coverage (Plan 08-06 Task 1 done criteria: all 5 toast scenarios):
- *   - REVEAL-HOOK-1: darwin success → toast "Opened in Finder" + variant info
- *   - REVEAL-HOOK-2: wsl2 success   → toast "Opened in Explorer" + variant info
- *   - REVEAL-HOOK-3: 501 native Linux → toast "Show in file manager isn't supported on Linux yet"
- *   - REVEAL-HOOK-4: generic non-2xx → toast "Could not open file manager"
- *   - REVEAL-HOOK-5: re-entrancy   → second reveal() while in-flight is a no-op
- *
- * revealPath is mocked at the module boundary so no network call occurs.
- * useToast is provided via the real ToastProvider — we spy on it via a
- * mock-wrapped toast() function injected through a custom provider wrapper,
- * mirroring the spy approach used elsewhere in the project. Toast.tsx's
- * own enqueue setter is the source of truth, but for assertions we capture
- * the calls via mocking the Toast module's useToast export.
+ * Tests for useReveal hook — all 5 toast scenarios:
+ * darwin/wsl2 success, 501 Linux, generic error, re-entrancy guard.
+ * revealPath is mocked at the module boundary; no network call occurs.
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";

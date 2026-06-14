@@ -1,13 +1,11 @@
 /**
- * Tests for useTreeMutations — Phase 3 typed mutation hooks.
+ * Tests for useTreeMutations — typed mutation hooks.
  *
  * Each hook wraps a treeApi.* call and either returns the typed payload on
- * success or throws a TreeMutationError carrying the server's { code, message,
- * status } so callers can branch and surface destructive toasts.
+ * success or throws a TreeMutationError carrying { code, message, status }
+ * so callers can branch and surface destructive toasts.
  *
- * The treeApi module is mocked so we can synthesize success / error responses
- * without touching the network. UI-SPEC §Surface 5 lists the canonical error
- * codes the consumer (Plan 03-07) maps to toast copy.
+ * treeApi is mocked to synthesize success / error responses without network calls.
  */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

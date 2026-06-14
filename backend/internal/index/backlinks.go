@@ -17,29 +17,22 @@ import (
 )
 
 // BacklinkRow is an alias for notes.BacklinkRow used within the index package.
-// Plan 06-11 moved the canonical type to notes/ports.go so the notes.Index
-// interface can reference it without an import cycle. Index-internal code
-// may use either name; the port-facing method signature uses notes.BacklinkRow.
-//
-// Count is always 1 in v1 (D-claude-04: multi-occurrence badge deferred).
+// Count is always 1 in v1 (multi-occurrence badge deferred).
 //
 // Deprecated: use notes.BacklinkRow directly.
 type BacklinkRow = notes.BacklinkRow
 
 // SyncBacklinks resolves every WikiLinkRef in refs, groups them by target
-// title (D-29 one row per unique source+title), and rewrites all backlinks
-// rows for sourceID in a single BEGIN IMMEDIATE transaction.
+// title (one row per unique source+title), and rewrites all backlinks rows
+// for sourceID in a single BEGIN IMMEDIATE transaction.
 //
-// Resolution (D-20): for each ref, registry.FindByTitle is called with the
-// source folder as the bias parameter. The first result (if any) becomes
-// target_id. If registry is nil, all links are treated as pending.
+// Resolution: for each ref, registry.FindByTitle is called with the source
+// folder as the bias parameter. The first result (if any) becomes target_id.
+// If registry is nil, all links are treated as pending.
 //
 // Excerpt generation: buildExcerpt scans content for the first line
-// containing [[target]] (case-insensitive) and returns the UI-SPEC contract
-// HTML (see buildExcerpt godoc).
-//
-// T-06-04-03 (DoS on malformed file): per-file errors during extract are
-// non-fatal; SyncBacklinks itself uses a transaction to ensure atomicity.
+// containing [[target]] (case-insensitive) and returns HTML (see buildExcerpt
+// godoc). Per-file errors during extract are non-fatal.
 func (x *Indexer) SyncBacklinks(
 	ctx context.Context,
 	sourceID uuid.UUID,
@@ -114,12 +107,8 @@ func (x *Indexer) SyncBacklinks(
 }
 
 // GetBacklinks returns the resolved backlinks for targetID, sorted by source
-// note recency (mtime_unix DESC) per D-28.
-//
-// Only rows where target_id = targetID are returned — pending rows (target_id
-// IS NULL) are excluded per D-32.
-//
-// Returns a non-nil empty slice when there are no backlinks.
+// note recency (mtime_unix DESC). Pending rows (target_id IS NULL) are
+// excluded. Returns a non-nil empty slice when there are no backlinks.
 func (x *Indexer) GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]BacklinkRow, error) {
 	rows, err := x.Pair.Reader.QueryContext(ctx,
 		`SELECT b.source_id, n.title, n.path, b.excerpt
@@ -236,12 +225,11 @@ func (x *Indexer) UpdateBacklinksTargetTitle(
 
 // ResolvePendingBacklinks updates all backlinks rows where target_id IS NULL
 // by attempting to resolve target_title via the registry. Called after
-// registry hydration at startup to fix the nil-registry reconcile window
-// (BUG-02 root cause: ReconcileWithRegistry at startup runs before the
-// registry is populated, leaving all startup-synced backlinks as pending).
+// registry hydration at startup, because ReconcileWithRegistry runs before
+// the registry is populated, leaving all startup-synced backlinks pending.
 //
-// This is a one-pass scan: SELECT DISTINCT target_title FROM backlinks WHERE
-// target_id IS NULL, then for each title, call registry.FindByTitle and
+// One-pass scan: SELECT DISTINCT target_title FROM backlinks WHERE
+// target_id IS NULL, then for each title call registry.FindByTitle and
 // UPDATE backlinks SET target_id = ? WHERE target_id IS NULL AND target_title = ?
 //
 // Non-fatal: errors are logged; partial updates leave remaining rows pending

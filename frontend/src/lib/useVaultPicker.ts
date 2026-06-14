@@ -1,28 +1,11 @@
 /**
  * useVaultPicker — Zustand-backed hook for vault picker state.
  *
- * Plan 08-17c (V7 / V11 / ADR-001 §3).
+ * Returns isOpen / open() / close() from the vaultPickerOpen slice in useTreeStore,
+ * plus current, recents, banner, isLoading, and refresh() as transient local state.
  *
- * Returns:
- *   - isOpen: boolean  (from vaultPickerOpen slice in useTreeStore)
- *   - open() / close(): toggle the picker modal
- *   - current: RecentVaultEntry | null
- *   - recents: RecentVaultEntry[]
- *   - banner: string (V13/V14 banner from GET /vault/recent)
- *   - isLoading: boolean
- *   - refresh(): re-fetches getCurrent + getRecent
- *
- * State management (D-55 ADD-only):
- *   - `isOpen` lives in the NEW `vaultPickerOpen` slice in useTreeStore.
- *   - `current`, `recents`, `banner`, `isLoading` are local React state
- *     (transient, not persisted — same pattern as other picker state in
- *     the store).
- *
- * Boot vs switch mode:
- *   - Boot detection lives in App.tsx via a direct vaultApi.getCurrent call
- *     (not this hook) — keeping the boot path simple.
- *   - This hook is used by: StatusBar.tsx (to show current vault + open picker)
- *     + VaultPicker.tsx itself + registerVaultCommands.ts.
+ * Boot detection (first-run vs switch) lives in App.tsx via a direct
+ * vaultApi.getCurrent call — keeping the boot path independent of this hook.
  */
 
 import { useEffect, useState } from "react";

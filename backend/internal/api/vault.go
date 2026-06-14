@@ -31,9 +31,7 @@ type VaultSwitcher interface {
 const switchInProgressMsg = "vault switch already in progress"
 
 // SetVaultSwitcher wires the hot-swap entry point into the Server so the
-// /vault/switch handler can call SwitchVault. Uses the same additive-setter
-// pattern as SetMigrationsFS + SetMcpACL so the NewServerWithIndex signature
-// does not need to grow for every new Phase 8 dependency.
+// /vault/switch handler can call SwitchVault. Additive setter pattern.
 func (s *Server) SetVaultSwitcher(vs VaultSwitcher) {
 	s.vaultSwitcher = vs
 }
@@ -44,13 +42,11 @@ func (s *Server) SetVaultSwitcher(vs VaultSwitcher) {
 //
 // Distinct from VaultSwitcher: SwitchVault assumes a vault is already open
 // and runs the teardown protocol; OpenVault assumes no vault is open and
-// just brings the per-vault subsystems up alongside the existing listener.
+// brings up per-vault subsystems alongside the existing listener.
 //
-// nil-safe: when the opener isn't wired (Phase-1-shape tests, or the
-// pre-08-17e code path) the handlers fall back to "best effort" — write to
-// disk and update app.json, but skip the in-process transition. The next
-// process restart picks it up via lifecycle.Run. This preserves backward
-// compat for tests that don't wire the opener.
+// nil-safe: when the opener isn't wired, handlers fall back to best-effort —
+// write to disk and update app.json, skip the in-process transition. The next
+// process restart picks it up.
 type VaultOpener interface {
 	// OpenVault transitions a no-vault App to an open-vault App for the
 	// vault at absCanonical. Updates app.json and brings up the per-vault
@@ -229,9 +225,9 @@ func (s *Server) PostVaultOpen(
 
 // PostVaultCreate creates a new Jasper vault inside the chosen folder.
 //
-// Validation pipeline (T-17b-01 + T-17b-02):
+// Validation pipeline:
 //  1. abs path
-//  2. ASCII+NFC check (V-PARK-1 carry-forward)
+//  2. ASCII+NFC check
 //  3. parent directory must exist
 //  4. .jasper/ must NOT already exist (already-a-vault check)
 //  5. nested-vault detection (upstream-walk for ancestor .jasper/)
@@ -358,7 +354,7 @@ func (s *Server) PostVaultCreate(
 //
 // Returns 200 with the new vault entry on success.
 // Returns 400 when the target path is invalid or missing .jasper/.
-// Returns 409 (vault_switch_in_progress) when a switch is already in progress (V5).
+// Returns 409 (vault_switch_in_progress) when a switch is already in progress.
 //
 // Wire: POST /api/v1/vault/switch
 //

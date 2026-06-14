@@ -4,42 +4,34 @@
  *
  * Design decisions:
  *
- *   - Uses MatchDecorator (from @codemirror/view) with a global regex.
- *     lezer-markdown has NO WikiLink node (RESEARCH.md critical finding), so
- *     syntax-tree iteration is not an option. MatchDecorator operates on line
- *     text and calls the decorate callback for each regex match in the
- *     visible viewport.
+ *   - Uses MatchDecorator with a global regex. lezer-markdown has no WikiLink
+ *     node, so syntax-tree iteration is not an option. MatchDecorator operates
+ *     on line text and calls the decorate callback for each match in the viewport.
  *
- *   - Decoration.replace is used (NOT Decoration.mark) so off-cursor aliases
- *     render correctly: [[Title|Alias]] shows only "Alias" as the link text
- *     (D-17). A Decoration.mark on the full [[...]] span would still show the
- *     raw brackets and pipe. The WikiLinkWidget.toDOM() produces the visible span.
+ *   - Decoration.replace (not Decoration.mark) so off-cursor aliases render
+ *     correctly: [[Title|Alias]] shows only "Alias". A mark on the full [[...]]
+ *     span would still show the raw brackets and pipe.
  *
- *   - Pitfall 1 (from RESEARCH.md): WidgetType.ignoreEvent must return false
- *     so click events propagate to the linkClickHandler. If ignoreEvent returns
- *     true, CM6 consumes the event before it reaches our handler.
+ *   - WidgetType.ignoreEvent must return false so click events propagate to the
+ *     linkClickHandler. If it returns true, CM6 consumes events before our handler.
  *
- *   - D-19 code-context guard: isInsideCodeOrFrontmatter walks the syntax tree
- *     at the match position. If the position is inside FencedCode, CodeBlock,
- *     InlineCode, or Frontmatter, the match is skipped — no decoration emitted.
+ *   - Code-context guard: isInsideCodeOrFrontmatter walks the syntax tree at the
+ *     match position; if inside FencedCode, CodeBlock, InlineCode, or Frontmatter,
+ *     the match is skipped.
  *
  *   - IME gate: u.view.composing → map existing decorations through u.changes
- *     instead of rebuilding (same pattern as livePreviewPlugin / frontmatterPlugin).
+ *     instead of rebuilding.
  *
- *   - Resolved-vs-pending distinction: reads getResolvedTitlesSnapshot() from
- *     wikilinkResolver. MarkdownEditor calls setResolvedTitlesSnapshot in a
- *     useEffect whenever useResolvedTitleSet returns a new Set. The snapshot
- *     refresh triggers on the NEXT doc/viewport update (document that in tests
- *     P11 — the caveat is expected and documented).
+ *   - Resolved-vs-pending: reads getResolvedTitlesSnapshot() from wikilinkResolver.
+ *     Snapshot refresh triggers on the NEXT doc/viewport update (known caveat).
  *
- *   - On-cursor line: raw [[Title]] markup stays visible for editing (D-17
- *     live-preview pattern). The cursor-line check uses the single-line
- *     computeCursorLines set; any line containing a selection range is in scope.
+ *   - On-cursor line: raw [[Title]] markup stays visible for editing. Any line
+ *     containing a selection range is in the cursor-line set.
  *
- * CSS classes (added to index.css — see Task 2):
- *   .cm-wiki-link                     — resolved link (accent color + underline)
- *   .cm-wiki-link-pending             — pending link (dashed underline + dimmed)
- *   .cm-editor[data-cmd-held] ...     — pointer cursor while Cmd/Ctrl held (D-16)
+ * CSS classes:
+ *   .cm-wiki-link         — resolved link (accent color + underline)
+ *   .cm-wiki-link-pending — pending link (dashed underline + dimmed)
+ *   [data-cmd-held] ...   — pointer cursor while Cmd/Ctrl held
  */
 import {
   Decoration,
@@ -56,17 +48,13 @@ import { getResolvedTitlesSnapshot } from "./wikilinkResolver";
 
 
 /**
- * Dispatching this effect tells the wikilinkPlugin to do a full
- * createDeco() rebuild on the next update cycle. MarkdownEditor fires it
- * from the useEffect that updates the module-level snapshot whenever
- * useResolvedTitleSet() returns a new Set.
+ * Dispatching this effect forces a full createDeco() rebuild on the next
+ * update cycle. MarkdownEditor fires it from the useEffect that updates the
+ * module-level snapshot whenever useResolvedTitleSet() returns a new Set.
  *
- * Why an effect instead of relying on selectionSet / docChanged:
- *   MatchDecorator.updateDeco() only rebuilds when the doc or viewport
- *   changed — a pure selection dispatch is silently ignored by updateDeco.
- *   Detecting the effect in the plugin's update() and calling createDeco()
- *   directly (full rebuild) is the correct CM6 pattern for external state
- *   changes that affect decorations.
+ * An effect is needed (not just selectionSet / docChanged) because
+ * MatchDecorator.updateDeco() only rebuilds on doc or viewport changes;
+ * external state changes require an explicit effect to trigger createDeco().
  */
 export const resolvedTitlesChanged = StateEffect.define<void>();
 
@@ -88,14 +76,13 @@ export const WIKILINK_RE = /\[\[([^\]\n]+?)(?:\|([^\]\n]+?))?\]\]/g;
 /**
  * Renders the visible [[Title]] / [[Title|Alias]] replacement.
  * Off-cursor: the raw [[...]] markup is replaced by this widget's span.
- * On-cursor line: NO replace decoration is emitted (raw markup visible).
+ * On-cursor line: no replace decoration is emitted (raw markup visible).
  *
- * Security (T-06-09-01): textContent is used, NEVER innerHTML. The
- * displayText is user-controlled (wikilink title) but setting it via
- * textContent means no HTML parsing — XSS impossible through this path.
+ * Security: textContent is used, never innerHTML — XSS is impossible
+ * even though displayText is user-controlled.
  *
- * data-wikilink-title carries the raw title (without alias) so linkClickHandler
- * can identify the link target on click without re-parsing the doc text.
+ * data-wikilink-title carries the raw title (without alias) so
+ * linkClickHandler can identify the link target without re-parsing the doc.
  */
 export class WikiLinkWidget extends WidgetType {
   constructor(
@@ -129,9 +116,9 @@ export class WikiLinkWidget extends WidgetType {
   }
 
   /**
-   * Pitfall 1: return false so click events bubble to the editor's DOM
-   * event handlers and reach linkClickHandler. If this returned true,
-   * CM6 would consume clicks before our handler sees them.
+   * Return false so click events bubble to the editor's DOM event handlers
+   * and reach linkClickHandler. Returning true would cause CM6 to consume
+   * clicks before our handler sees them.
    */
   ignoreEvent(): boolean {
     return false;
@@ -141,14 +128,11 @@ export class WikiLinkWidget extends WidgetType {
 
 /**
  * Returns true if the position is inside any code or frontmatter context
- * that should suppress wiki-link decoration (D-19).
+ * that should suppress wiki-link decoration.
  *
  * Walks the parent chain from the innermost node at `pos`. Any of these
  * node types in the ancestor chain suppresses the decoration:
- *   FencedCode   — fenced ``` block
- *   CodeBlock    — indented code block
- *   InlineCode   — `` `code` `` span
- *   Frontmatter  — YAML front-matter block (any key, not just tags)
+ *   FencedCode, CodeBlock, InlineCode, Frontmatter.
  */
 function isInsideCodeOrFrontmatter(view: EditorView, from: number): boolean {
   let node = syntaxTree(view.state).resolveInner(from);
@@ -210,17 +194,16 @@ const wikilinkMatcher = new MatchDecorator({
 
 
 /**
- * The exported CM6 extension. Slot this into MarkdownEditor's extensions
- * array alongside livePreviewPlugin and frontmatterPlugin.
+ * The exported CM6 extension. Slot into MarkdownEditor's extensions array
+ * alongside livePreviewPlugin and frontmatterPlugin.
  *
  * Update strategy:
  *   - IME composing → map existing decorations (no rebuild)
  *   - docChanged, viewportChanged, or syntax-tree change → full rebuild
  *
- * Resolved-state refresh: after setResolvedTitlesSnapshot is called,
- * decorations are rebuilt on the NEXT doc/viewport update. A future
- * improvement could dispatch an explicit StateEffect to force an immediate
- * rebuild without requiring a doc change (documented here for Plan 06-11).
+ * Resolved-state refresh: decorations rebuild on the NEXT doc/viewport update
+ * after setResolvedTitlesSnapshot is called. An explicit resolvedTitlesChanged
+ * StateEffect can force an immediate rebuild without a doc change.
  */
 export const wikilinkPlugin = ViewPlugin.fromClass(
   class {

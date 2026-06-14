@@ -18,9 +18,8 @@ import (
 
 // atomicWriteHook is a package-level test injection point that replaces
 // the real fsstore.AtomicWrite call inside doAtomicWrite. Set only in
-// tests (via setAtomicWriteHook in frontmatter_migration_test.go) to
-// simulate mid-walk failures for the D-39 resumability test. nil means
-// use the real fsstore.AtomicWrite.
+// tests to simulate mid-walk failures. nil means use the real
+// fsstore.AtomicWrite.
 //
 //nolint:gochecknoglobals // test-hook pattern; intentionally mutable.
 var (
@@ -29,10 +28,10 @@ var (
 )
 
 // FrontmatterScaffoldMarker is the version string inserted into
-// schema_migrations after the one-time D-11 walk completes. The leading
-// "006_" keeps lexical ordering consistent with the real migration filenames
-// (e.g. "002_tags_backlinks.sql") without conflicting with them — marker
-// strings lack a file extension.
+// schema_migrations after the one-time walk completes. The leading "006_"
+// keeps lexical ordering consistent with real migration filenames (e.g.
+// "002_tags_backlinks.sql") without conflicting with them — marker strings
+// lack a file extension.
 const FrontmatterScaffoldMarker = "006_frontmatter_scaffold_complete"
 
 func doAtomicWrite(path string, data []byte) error {
@@ -46,15 +45,14 @@ func doAtomicWrite(path string, data []byte) error {
 	return fsstore.AtomicWrite(path, data)
 }
 
-// InjectFrontmatterScaffoldMigration implements the D-11 / TAGS-EXT-03
-// startup step: walk notesDir and, for each .md file lacking a frontmatter
-// block, atomically prepend the scaffold. On completion, record the
-// FrontmatterScaffoldMarker in schema_migrations so the walk never runs
-// again.
+// InjectFrontmatterScaffoldMigration walks notesDir and, for each .md file
+// lacking a frontmatter block, atomically prepends the scaffold. On
+// completion it records FrontmatterScaffoldMarker in schema_migrations so
+// the walk never runs again (idempotent across restarts).
 //
 // Parameters:
-//   - ctx      — passed to all DB calls; honour cancellation.
-//   - writerDB — the single-writer *sql.DB (DATA-03); marker is written here.
+//   - ctx      — passed to all DB calls; honours cancellation.
+//   - writerDB — the single-writer *sql.DB; marker is written here.
 //   - notesDir — absolute path to the vault's notes/ directory.
 //   - log      — structured logger; one entry per injected file + summary.
 func InjectFrontmatterScaffoldMigration(
@@ -64,7 +62,8 @@ func InjectFrontmatterScaffoldMigration(
 	log *slog.Logger,
 ) error {
 	var dummy string
-	err := writerDB.QueryRowContext(ctx,
+	err := writerDB.QueryRowContext(
+		ctx,
 		`SELECT version FROM schema_migrations WHERE version = ?`,
 		FrontmatterScaffoldMarker,
 	).Scan(&dummy)
@@ -129,7 +128,8 @@ func InjectFrontmatterScaffoldMigration(
 		return walkErr
 	}
 
-	if _, err := writerDB.ExecContext(ctx,
+	if _, err := writerDB.ExecContext(
+		ctx,
 		`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
 		FrontmatterScaffoldMarker, time.Now().Unix(),
 	); err != nil {

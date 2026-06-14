@@ -1,10 +1,7 @@
 /**
  * BacklinksRail tests — BR1..BR8
  *
- * Plan 06-11 / LINKS-08.
- *
- * Tests for the full data-wired backlinks rail (updated from Plan 06-07
- * chrome-only tests). Uses vi.mock for useBacklinks and sanitize.ts.
+ * Uses vi.mock for useBacklinks and sanitize.ts.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -213,7 +210,7 @@ describe("BR8: rows have backlinks-row CSS class for hover background", () => {
 });
 
 
-describe("Header chrome (from Plan 06-07)", () => {
+describe("Header chrome", () => {
   it("renders 'Linked from' header", () => {
     render(<BacklinksRail noteId={null} />);
     expect(screen.getByText(/linked from/i)).toBeInTheDocument();
@@ -234,7 +231,7 @@ describe("Header chrome (from Plan 06-07)", () => {
 });
 
 
-describe("Phase 6.6: BacklinksRail × close button (D-04)", () => {
+describe("BacklinksRail × close button", () => {
   it("BR-6.6-1: header contains a button with aria-label='Close Backlinks panel'", () => {
     render(<BacklinksRail noteId={null} />);
     const closeBtn = screen.getByRole("button", { name: /close backlinks panel/i });

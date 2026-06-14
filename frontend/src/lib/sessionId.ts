@@ -8,10 +8,9 @@
  * useSessionSync (the WS upgrade query param ?session_id=<sid>) call
  * generateOrLoadSessionId(). This guarantees the X-Session-ID header
  * value matches the WS connection's session_id exactly — without that
- * match, the server cannot origin-filter broadcasts (RESEARCH.md
- * Pitfall 1).
+ * match, the server cannot origin-filter broadcasts.
  *
- * SECURITY (T-04-03): the value is opaque. It is never rendered to the
+ * SECURITY: the value is opaque. It is never rendered to the
  * DOM. The server applies a 128-char length cap on the WS handshake
  * side; UUIDs are 36 chars so this is always safe.
  */

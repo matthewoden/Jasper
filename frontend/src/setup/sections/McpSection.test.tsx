@@ -1,20 +1,12 @@
 /**
- * Tests for McpSection — specifically the client-side path validator
- * (`isValidGrantFolderPath`) and the inline error path when the user
- * provides an unsafe folder via window.prompt.
+ * Tests for McpSection — isValidGrantFolderPath and the inline error path
+ * when the user provides an unsafe folder via window.prompt.
  *
- * The validator must reject:
- *   - empty / whitespace-only
- *   - `..` substring (path traversal)
- *   - leading `/` (POSIX absolute)
- *   - Windows drive-letter absolute (`C:\` / `D:/`)
- *   - non-ASCII characters (regex: /[^\x20-\x7E]/)
+ * The validator rejects: empty/whitespace, `..` traversal, leading `/`
+ * (POSIX absolute), Windows drive-letter absolute (C:\ / D:/), and non-ASCII.
  *
- * The render test verifies that when an invalid prompt result comes back,
- * the grants array is NOT mutated and an inline error message becomes
- * visible (no alert(), no throw — wizard stays interactive).
- *
- * Plan 08-04 Task 1.
+ * The render tests verify that an invalid prompt result leaves grants unmutated
+ * and shows an inline error (no alert(), wizard stays interactive).
  */
 import {
   beforeEach,

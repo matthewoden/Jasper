@@ -13,23 +13,13 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// GetNotes implements GET /api/v1/notes — returns the indexed
-// notes-list metadata. DATA-01: filesystem is the source of truth, the
-// index is a derived projection; this endpoint reads only the index.
+// GetNotes implements GET /api/v1/notes — returns the indexed notes-list
+// metadata. The filesystem is the source of truth; the index is a derived
+// projection. Nil index returns an empty list (NOT 503) so the frontend
+// remains functional when the indexer is not wired.
 //
-// Phase 1 compatibility: callers that build the Server via 2-arg
-// NewServer pass a nil index → the handler returns an empty list
-// (NOT 503) so the frontend's MigrationBanner / file-tree work even
-// when the indexer is not yet wired.
-//
-// Order: the index already returns rows ordered by path ASC; the
-// handler does NOT re-sort. The wire shape is api.NoteList = {notes:
-// NoteSummary[]} with no pagination in Phase 2 (Phase 6 introduces
-// pagination if and when total counts demand it).
-//
-// Threat T-02-04a-02: NoteSummary is a strict subset of the indexer's
-// NoteRecord — Checksum and UpdatedAtUnix are intentionally absent
-// from the wire format.
+// Rows are returned in the index's natural order (path ASC); the handler does
+// not re-sort. NoteSummary intentionally omits Checksum and UpdatedAtUnix.
 //
 //nolint:revive // generated interface name
 func (s *Server) GetNotes(
@@ -57,12 +47,8 @@ func (s *Server) GetNotes(
 	return out, nil
 }
 
-// PostNotes implements POST /api/v1/notes (TREE-03 — note creation).
-//
-// Thin shim per Plan 03-04: validate body presence → call
-// notes.Service.Create → translate response. All business logic lives
-// in the service layer; the handler only fan-outs the locked error
-// table.
+// PostNotes implements POST /api/v1/notes (note creation). Thin shim:
+// validate body → call notes.Service.Create → translate response.
 //
 //nolint:revive // generated interface name
 func (s *Server) PostNotes(
@@ -75,7 +61,8 @@ func (s *Server) PostNotes(
 	}
 	summary, err := s.notes.Create(ctx, req.Body.ParentPath, req.Body.Title)
 	if err != nil {
-		s.log.Error("PostNotes: domain error",
+		s.log.Error(
+			"PostNotes: domain error",
 			"parent", req.Body.ParentPath,
 			"title", req.Body.Title,
 			"err", err,
@@ -99,7 +86,7 @@ func (s *Server) PostNotes(
 	}, nil
 }
 
-// DeleteNoteById implements DELETE /api/v1/notes/{id} (TREE-06).
+// DeleteNoteById implements DELETE /api/v1/notes/{id}.
 //
 //nolint:revive // generated interface name
 func (s *Server) DeleteNoteById(
@@ -108,7 +95,8 @@ func (s *Server) DeleteNoteById(
 ) (DeleteNoteByIdResponseObject, error) {
 	defer s.trackWrite()()
 	if err := s.notes.Delete(ctx, uuid.UUID(req.Id)); err != nil {
-		s.log.Error("DeleteNoteById: domain error",
+		s.log.Error(
+			"DeleteNoteById: domain error",
 			"id", uuid.UUID(req.Id).String(),
 			"err", err,
 		)
@@ -123,17 +111,13 @@ func (s *Server) DeleteNoteById(
 	return DeleteNoteById204Response{}, nil
 }
 
-// PostNoteMove implements POST /api/v1/notes/{id}/move (TREE-05, TREE-07).
+// PostNoteMove implements POST /api/v1/notes/{id}/move.
 //
-// LINKS-07 / D-36 (Phase 6 Plan 06-05 Task 5): after a successful move,
-// if the note's title changed (determined by comparing the filename-based
-// title before the move to the content-based title after the move), the
-// handler invokes Service.RenameRewriteWikilinks to rewrite all inbound
-// [[OldTitle]] references vault-wide. On any rewrite failure, the move
-// itself is rolled back (D-36 all-or-nothing) and a links:rewritten WS
-// event with error:true is broadcast so the UI can surface a rename-failed
-// banner. The 200 response is returned in both cases (the wire contract
-// does not change; failure is surfaced via the WS event / UI banner).
+// After a successful move, if the note's title changed, the handler invokes
+// Service.RenameRewriteWikilinks to rewrite all inbound [[OldTitle]] refs
+// vault-wide. On any rewrite failure the move is rolled back (all-or-nothing)
+// and a links:rewritten WS event with error:true is broadcast so the UI can
+// surface a rename-failed banner.
 //
 //nolint:revive // generated interface name
 func (s *Server) PostNoteMove(
@@ -158,7 +142,8 @@ func (s *Server) PostNoteMove(
 
 	summary, err := s.notes.Move(ctx, id, req.Body.NewPath)
 	if err != nil {
-		s.log.Error("PostNoteMove: domain error",
+		s.log.Error(
+			"PostNoteMove: domain error",
 			"id", id.String(),
 			"new_path", req.Body.NewPath,
 			"err", err,
@@ -183,7 +168,8 @@ func (s *Server) PostNoteMove(
 		if rwErr != nil {
 			if oldPath != "" {
 				if _, rbErr := s.notes.Move(ctx, id, oldPath); rbErr != nil {
-					s.log.Error("PostNoteMove: rename-rewrite rollback failed",
+					s.log.Error(
+						"PostNoteMove: rename-rewrite rollback failed",
 						"id", id.String(),
 						"rewrite_err", rwErr,
 						"rollback_err", rbErr,

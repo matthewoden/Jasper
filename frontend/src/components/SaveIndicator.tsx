@@ -1,36 +1,19 @@
 /**
- * SaveIndicator — renders the current SaveState per 01-UI-SPEC.md
- * §"Save Indicator State Machine".
+ * SaveIndicator — renders the current SaveState.
  *
- * 2026-05-10 — switched from a fixed 24px row at the top of the
- * editor pane to an absolute-positioned overlay. Pre-fix, the row
- * always reserved 24px even when idle, which (after the App-shell
- * viewport-clamp) read as a "blank gap" above the first content
- * line that the user couldn't scroll past. Now the editor content
- * flows from y=0 of the editor pane and the indicator floats over
- * the top-right corner only when there's something to show
- * (saving / saved / error). The host EditorPane section sets
- * `position: relative` so this absolute layer anchors there.
+ * Without onClick: absolute-positioned overlay in the top-right corner of the
+ * host EditorPane (which must set `position: relative`). Returns null when
+ * idle so no layout space is reserved.
  *
- * 2026-05-15 — Plan 07-37 (UAT-3 N9 / D-55) extends the API: when an
- * `onClick` prop is provided, SaveIndicator renders as an icon-only
- * `<button>` (the unified SaveIndicator-as-refresh-button hybrid that
- * lives in TopBar's right cluster). Click triggers a manual incremental
- * reindex (the prior StatusBar refresh button's behavior). Without
- * `onClick` the legacy read-only overlay render is preserved verbatim
- * so older mounting points (and the tests in C1..C5) still pass.
+ * With onClick: icon-only button. Click triggers manual incremental reindex.
+ * The button is disabled while status === "saving" to prevent re-entrancy.
  *
- * Locked copy strings (legacy overlay, do not paraphrase):
+ * Locked copy strings (overlay mode, do not paraphrase):
  *   saving → "Saving…"        title="Saving your note"
  *   saved  → "Saved"          title="Saved at HH:MM:SS"
  *   error  → "Save failed"    title="Save failed — your edit is still in the editor. Press ⌘S to retry."
  *
- * Button-mode tooltip (Plan 07-37): legacy state copy + " — click to refresh"
- *   idle    → "All changes synced — click to refresh"
- *   saving  → "Saving your note — click to refresh"  (button is disabled)
- *   saved   → "Saved at HH:MM:SS — click to refresh"
- *   error   → "Save failed — your edit is still in the editor. Press ⌘S to retry. — click to refresh"
- *   paused  → "Offline — saves paused — click to refresh"
+ * Button-mode tooltip: state copy + " — click to refresh"
  */
 
 import type { CSSProperties } from "react";
@@ -42,9 +25,8 @@ import type { SaveState } from "../lib/saveStateMachine";
 interface Props {
   state: SaveState;
   /**
-   * Plan 07-37: when set, SaveIndicator renders as a clickable `<button>`.
-   * The click is the manual-refresh action (POST /admin/reindex?mode=incremental).
-   * Omit to preserve the legacy read-only overlay behavior.
+   * When set, renders as a clickable button for manual reindex.
+   * Omit to get the legacy read-only overlay.
    */
   onClick?: () => void;
 }

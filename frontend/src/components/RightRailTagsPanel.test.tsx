@@ -1,12 +1,5 @@
 /**
  * Tests for RightRailTagsPanel component.
- * Phase 6.5 — UX-T-01, UX-T-05.
- *
- * Validates relocated tag browser behaviors (TB1..TB13 adapted) plus new
- * search-input behaviors (SR1..SR6) and panel-card shell spec.
- *
- * Adapted from TagBrowserSection.test.tsx — same patterns, new slice names,
- * new header copy (title-case), new search input tests.
  */
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
