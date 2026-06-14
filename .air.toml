@@ -12,7 +12,8 @@ tmp_dir = "tmp"
   # custom server.port in ~/.jasper/storage/config.json should also pass
   # --addr 127.0.0.1:<port> here OR rely on the binary's eventual config-driven
   # bind (the wizard does NOT expose server.port — file-edit override only per D-50).
-  full_bin = "./tmp/jasper serve --data-dir ./tmp/jasper-data"
+  # --vault requires an absolute path, hence $PWD (air runs full_bin via /bin/sh).
+  full_bin = './tmp/jasper serve --vault "$PWD/tmp/jasper-data"'
   include_ext = ["go", "sql"]
   include_dir = ["backend/cmd", "backend/internal", "backend/migrations"]
   exclude_dir = ["tmp", "node_modules", "frontend", ".planning", "bin"]
