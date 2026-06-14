@@ -347,6 +347,9 @@ export function buildDecorations(view: EditorView): DecorationSet {
 
         if (node.name === "ListMark") {
           if (isInsideCode(node)) return;
+          // D-01a coexistence guard: if this ListItem has a Task child,
+          // taskCheckboxPlugin owns the marker range — yield to it (no bullet).
+          if (node.node.parent?.getChild("Task")) return;
           const text = view.state.doc.sliceString(node.from, node.to).trim();
           const isUnordered = /^[-*+]$/.test(text);
           if (!isUnordered) return;

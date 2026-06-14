@@ -16,7 +16,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import {
   livePreviewPlugin,
@@ -553,5 +553,92 @@ describe("livePreviewPlugin / all-features mixed doc", () => {
     const decos = collectDecorations(view);
     const inlineCodeDecos = decos.filter((d) => d.class === "cm-inline-code");
     expect(inlineCodeDecos.length).toBeGreaterThan(0);
+  });
+});
+
+
+describe("livePreviewPlugin / TC-7 task-line coexistence guard (D-01a)", () => {
+  /**
+   * With GFM enabled (base: markdownLanguage), a task line "- [ ] text" has
+   * a ListMark node sibling to a Task node. The ListMark branch MUST skip
+   * task lines so that taskCheckboxPlugin can own the marker range exclusively.
+   * A regular list item "- item" MUST still emit a bullet.
+   *
+   * Uses markdownLanguage base so Task/TaskMarker lezer nodes exist.
+   */
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  function makeGFMView(doc: string, selectionPos = 0): EditorView {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc,
+        selection: { anchor: selectionPos, head: selectionPos },
+        extensions: [
+          yamlFrontmatter({ content: markdown({ codeLanguages: [], base: markdownLanguage }) }),
+          livePreviewPlugin,
+        ],
+      }),
+    });
+    views.push(view);
+    return view;
+  }
+
+  it("TC-7: task line '- [ ] task' does NOT emit a bullet widget over the ListMark range (cursor OFF line)", () => {
+    // "- [ ] task\nanother line" — cursor on line 2 so line 1 is off-cursor
+    // Without the guard, livePreviewPlugin would render a bullet '•' on "- [ ] task"
+    // With the guard (getChild("Task")), it skips the ListMark — no bullet widget
+    const doc = "- [ ] task\nanother line";
+    const view = makeGFMView(doc, 15); // cursor on "another line" (line 2)
+    const plugin = view.plugin(livePreviewPlugin);
+    expect(plugin).not.toBeNull();
+
+    // ListMark "-" is at position 0..1 in the doc
+    // Check no bullet widget is emitted anywhere in the decorations
+    const cursor = plugin!.decorations.iter();
+    let bulletFound = false;
+    while (cursor.value !== null) {
+      const spec = (cursor.value as unknown as { spec: Record<string, unknown> }).spec;
+      const widget = spec?.widget as { toDOM?: () => Element } | undefined;
+      if (widget && typeof widget.toDOM === "function") {
+        const dom = widget.toDOM();
+        if (dom.classList.contains("cm-list-bullet") && dom.textContent === "•") {
+          bulletFound = true;
+        }
+      }
+      cursor.next();
+    }
+    expect(bulletFound).toBe(false);
+  });
+
+  it("TC-7 regression: regular list item '- item' still emits a bullet widget when cursor is off the line", () => {
+    // A non-task list item should still get the bullet decoration when cursor is off its line
+    // Use a two-line doc with cursor on line 2 so line 1's ListMark renders as a bullet
+    const view = makeGFMView("- item\nanother line", 10);
+    const plugin = view.plugin(livePreviewPlugin);
+    expect(plugin).not.toBeNull();
+
+    let foundBullet = false;
+    const cursor = plugin!.decorations.iter();
+    while (cursor.value !== null) {
+      const spec = (cursor.value as unknown as { spec: Record<string, unknown> }).spec;
+      const widget = spec?.widget as { toDOM?: () => Element } | undefined;
+      if (widget && typeof widget.toDOM === "function") {
+        const dom = widget.toDOM();
+        if (dom.classList.contains("cm-list-bullet") && dom.textContent === "•") {
+          foundBullet = true;
+          break;
+        }
+      }
+      cursor.next();
+    }
+    expect(foundBullet).toBe(true);
   });
 });
