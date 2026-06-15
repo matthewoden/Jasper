@@ -11,12 +11,105 @@
  *
  * Italic trade-off: naïve wrap/strip does not distinguish `*foo*` (italic)
  * from `* foo` (bullet list). User can undo with Cmd+Z.
+ *
+ * Also exports listEnterCommand: custom Enter handler for the nested-empty-item
+ * de-indent behavior. Must be installed at Prec.high so it runs before
+ * @codemirror/lang-markdown's insertNewlineContinueMarkup (also Prec.high, but
+ * extension order determines priority within the same precedence).
  */
-import { keymap } from "@codemirror/view";
+import { keymap, EditorView } from "@codemirror/view";
 import type { KeyBinding } from "@codemirror/view";
-import type { EditorView } from "@codemirror/view";
+import { getIndentUnit, indentUnit } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 
+
+/**
+ * listEnterCommand — custom Enter handler for the empty-list-item case.
+ *
+ * NEW SPEC (supersedes CM6 default behavior for empty nested items):
+ *   - Enter on a NON-EMPTY list/task item → fall through (let
+ *     insertNewlineContinueMarkup create a new sibling item). ✓ already works.
+ *   - Enter on an EMPTY item at OUTERMOST level (no leading whitespace)
+ *     → fall through (let insertNewlineContinueMarkup exit the list). ✓ already works.
+ *   - Enter on an EMPTY item that is INDENTED (nested) → de-indent one level
+ *     (strip one indentUnit from the leading whitespace, keep the marker,
+ *     cursor stays on same line). Pressing Enter again de-indents another level
+ *     until top-level is reached, then the next Enter exits the list via CM6 default.
+ *
+ * Applies uniformly to plain bullet items (`- `) and task items (`- [ ] `).
+ * De-indent unit matches Shift-Tab (both use @codemirror/language indentUnit,
+ * defaulting to 2 spaces when no indentUnit facet is configured).
+ *
+ * This command returns true ONLY for the nested-empty case; all other cases
+ * return false, falling through to insertNewlineContinueMarkup (Prec.high from
+ * the markdown() extension). Must be installed at Prec.high BEFORE the
+ * markdown() extension in the extensions array so it wins when precedence ties.
+ *
+ * Empty-item detection: line text is ONLY leading whitespace + list marker
+ * (with optional task checkbox marker) + trailing spaces. No other content.
+ * Supported markers: `- `, `- [ ] `, `- [x] `, `* `, `* [ ] `.
+ */
+export function listEnterCommand(view: EditorView): boolean {
+  const { state } = view;
+  const sel = state.selection.main;
+  // Only act on a collapsed cursor (not a selection)
+  if (sel.from !== sel.to) return false;
+
+  const line = state.doc.lineAt(sel.from);
+  const text = line.text;
+
+  // Match: leading whitespace (at least one space/tab) + list marker + optional task marker + optional trailing spaces
+  // The "text after marker" must be empty (only marker + optional trailing spaces, no other content).
+  // Regex: (leading_ws)(marker)(optional_task_marker)(optional_trailing_spaces)$
+  // marker: `- ` or `* ` or `+ `
+  // task_marker: `[ ] ` or `[x] ` or `[X] ` (with trailing space)
+  const EMPTY_INDENTED_ITEM_RE = /^(\s+)([-*+] )(?:\[[ xX]\] )?$/;
+  const match = EMPTY_INDENTED_ITEM_RE.exec(text);
+  if (!match) return false;
+
+  // The item is empty AND indented — de-indent one level
+  const leadingWs = match[1];
+  const indentUnitStr = state.facet(indentUnit);
+  const unitSize = getIndentUnit(state);
+  const currentIndentCols = leadingWs.length; // simplified: assumes spaces only
+
+  if (currentIndentCols === 0) {
+    // This shouldn't match (regex requires \s+), but guard anyway — fall through
+    return false;
+  }
+
+  // Compute new indentation: strip one unit
+  const newIndentCols = Math.max(0, currentIndentCols - unitSize);
+  // Build new indent string (spaces — matches indentUnit convention)
+  const indentChar = indentUnitStr[0] === "\t" ? "\t" : " ";
+  const newIndent = indentChar === "\t"
+    ? "\t".repeat(Math.floor(newIndentCols / state.tabSize))
+    : " ".repeat(newIndentCols);
+
+  // Replace the leading whitespace with the new (reduced) indent
+  const changes = {
+    from: line.from,
+    to: line.from + leadingWs.length,
+    insert: newIndent,
+  };
+
+  // Position cursor after the new indent (at the start of the marker)
+  const newCursorPos = line.from + newIndent.length;
+
+  view.dispatch({
+    changes,
+    selection: { anchor: newCursorPos },
+    scrollIntoView: true,
+    userEvent: "delete.dedent",
+  });
+  return true;
+}
+
+/**
+ * listEnterKeymap — keymap entry for listEnterCommand.
+ * Install at Prec.high so it runs before insertNewlineContinueMarkup.
+ */
+export const listEnterKeymap: KeyBinding = { key: "Enter", run: listEnterCommand };
 
 export function saveKeymap(onSave: () => void): Extension {
   return keymap.of([

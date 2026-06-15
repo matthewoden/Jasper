@@ -11,7 +11,7 @@
  * Ref API: getContent / setContent / applyServerUpdate / focus / focusEnd.
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Annotation } from "@codemirror/state";
+import { Annotation, Prec } from "@codemirror/state";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -45,7 +45,7 @@ import {
   taskCheckboxPlugin,
 } from "../editor/taskCheckboxPlugin";
 import { useAttachmentUpload } from "../lib/useAttachmentUpload";
-import { saveKeymap, jasperKeymap } from "../editor/jasperKeymap";
+import { saveKeymap, jasperKeymap, listEnterKeymap } from "../editor/jasperKeymap";
 import {
   tagClickPlugin,
   setTagClickHandler,
@@ -252,6 +252,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           extensions: [
             history(),
             search({ top: true }), // searchKeymap omitted; browser native Cmd+F fires instead
+            // listEnterKeymap at Prec.high: runs before insertNewlineContinueMarkup (also Prec.high
+            // from markdown()) because it is placed EARLIER in the extensions array.
+            // Handles nested-empty-item de-indent; falls through to markdown() for all other Enter cases.
+            Prec.high(keymap.of([listEnterKeymap])),
             yamlFrontmatter({ content: markdown({ codeLanguages, base: markdownLanguage }) }),
             jasperEditorTheme,
             jasperSyntaxHighlighting,

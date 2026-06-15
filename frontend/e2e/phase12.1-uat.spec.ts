@@ -436,6 +436,108 @@ test("W1-regression: indented task Enter creates one checkbox at correct indent 
 });
 
 /**
+ * U10-nested-empty-enter-deindents: Enter on an EMPTY indented task item de-indents
+ * one level rather than exiting the list. The marker is preserved; only the indentation
+ * is reduced. This is the NEW spec for nested empty items.
+ *
+ * Scenario: `  - [ ] ` (empty, 2-space indent) + Enter → `- [ ] ` (top level, marker kept)
+ */
+test("U10-nested-empty-enter-deindents: Enter on empty indented task de-indents, keeps marker @phase12.1", async ({ page }) => {
+  const noteId = await apiCreateNote(
+    page,
+    "u10-nested-deindent",
+    "- [ ] Parent\n  - [ ] Child\n",
+  );
+  await waitForConnected(page);
+  await openNoteInEditor(page, noteId);
+
+  // Place cursor at end of the EMPTY child task line.
+  // The note has: "- [ ] Parent\n  - [ ] Child\n"
+  // We want to position on the SECOND task line, then erase "Child" to make it empty,
+  // then press Enter and verify de-indent.
+  //
+  // Strategy: create a note with an already-empty nested task to avoid the
+  // 'type + Enter' sequence that conflates typing state with the Enter behavior.
+  // We start fresh with an empty nested task.
+  const emptyNested = await apiCreateNote(
+    page,
+    "u10-empty-nested",
+    "- [ ] Parent\n  - [ ] \n",
+  );
+
+  await openNoteInEditor(page, emptyNested);
+
+  // Navigate to end of indented empty task line (line 2: `  - [ ] `)
+  // Control+End lands after trailing \n (line 3 which is empty).
+  // ArrowUp twice from end → line 3 → line 2.
+  // But the trailing \n creates a line 3. So ArrowUp once from the trailing line
+  // lands on line 2 (`  - [ ] `). Then End to go to end of that line.
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("End");
+
+  // Press Enter — should de-indent to `- [ ] ` (marker preserved, one level up)
+  await page.keyboard.press("Enter");
+
+  await waitForSaved(page);
+
+  const content = await getNoteContent(page, emptyNested);
+
+  // The de-indented task marker at top level should be present
+  expect(content).toMatch(/^- \[ \] $/m);
+  // The original `  - [ ] ` indented marker should NOT be in the content anymore
+  // (it was de-indented to `- [ ] `)
+  expect(content).not.toMatch(/^ {2}- \[ \] $/m);
+  // The `- [ ] Parent` line should still be present
+  expect(content).toMatch(/^- \[ \] Parent/m);
+});
+
+/**
+ * U11-deeply-nested-progressive-deindent: a deeply nested empty item de-indents one
+ * level per Enter. This test verifies the FIRST de-indent step (4-space → 2-space).
+ * The second de-indent step (2-space → top-level) is covered by U10.
+ *
+ * Scenario: `    - [ ] ` (4-space indent) + Enter → `  - [ ] ` (2-space indent, marker kept)
+ *
+ * Note: a plain bullet empty item is used to avoid Enter creating a continuation
+ * on a non-empty item. The plain bullet `    - ` is empty and indented.
+ */
+test("U11-deeply-nested-progressive-deindent: Enter on empty 4-space task de-indents to 2-space @phase12.1", async ({ page }) => {
+  // Create a note with a deeply nested (4-space) empty task
+  const noteId = await apiCreateNote(
+    page,
+    "u11-deep-deindent",
+    "- [ ] Root\n  - [ ] L1\n    - [ ] \n",
+  );
+  await waitForConnected(page);
+  await openNoteInEditor(page, noteId);
+
+  // Navigate to end of `    - [ ] ` (the 4-space indented empty task).
+  // Control+End lands after the trailing \n (last empty line).
+  // ArrowUp moves to `    - [ ] ` (the last content line).
+  // End moves to end of that line.
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("End");
+
+  // Press Enter: should de-indent `    - [ ] ` to `  - [ ] ` (one level, marker preserved)
+  await page.keyboard.press("Enter");
+
+  await waitForSaved(page);
+  const content = await getNoteContent(page, noteId);
+
+  // After Enter: the item should be at 2-space indent (one level de-indented)
+  expect(content).toMatch(/^ {2}- \[ \] $/m);
+  // The 4-space version should no longer exist (de-indented)
+  expect(content).not.toMatch(/^ {4}- \[ \] $/m);
+  // Root and L1 items must still be present
+  expect(content).toMatch(/^- \[ \] Root/m);
+  expect(content).toMatch(/^ {2}- \[ \] L1/m);
+});
+
+/**
  * U8-enter-continues-list: Enter on a non-empty task line creates a new '- [ ] ' continuation.
  * The list must NOT exit (i.e., no bare newline; new line has the '- [ ] ' marker).
  * Tests the ENTER BUG fix: previously Enter sometimes exited the list instead of continuing.
