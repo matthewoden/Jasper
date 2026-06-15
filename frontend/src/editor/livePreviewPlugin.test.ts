@@ -609,6 +609,36 @@ describe("livePreviewPlugin / TC-7 task-line coexistence guard", () => {
     expect(bulletFound).toBe(false);
   });
 
+  it("TC-7 reveal: on-cursor task line emits a .cm-marker mark decoration over the ListMark range", () => {
+    // D-01 reveal model: when the cursor IS on the task line, livePreviewPlugin must emit
+    // a .cm-marker decoration on the ListMark range so the raw '-' is muted-but-visible.
+    // taskCheckboxPlugin emits nothing on-cursor (per TC-10), so livePreviewPlugin owns
+    // the on-cursor ListMark styling.
+    // This test is RED until plan 02 lands (livePreviewPlugin TC-7 guard adjustment).
+    const doc = "- [ ] task\nanother line";
+    const view = makeGFMView(doc, 2); // cursor on task line (pos 2 inside TaskMarker)
+    const plugin = view.plugin(livePreviewPlugin);
+    expect(plugin).not.toBeNull();
+
+    // ListMark '-' is at position 0..1; on-cursor the guard should emit .cm-marker
+    const decos = (() => {
+      const out: Array<{ from: number; to: number; class?: string }> = [];
+      const cur = plugin!.decorations.iter();
+      while (cur.value !== null) {
+        const spec = (cur.value as unknown as { spec: Record<string, unknown> }).spec;
+        out.push({ from: cur.from, to: cur.to, class: spec?.class as string | undefined });
+        cur.next();
+      }
+      return out;
+    })();
+
+    // There must be a mark decoration with cm-marker class covering the ListMark range [0..1]
+    const listMarkMarker = decos.find(
+      d => d.class !== undefined && d.class.includes("cm-marker") && d.from === 0 && d.to === 1,
+    );
+    expect(listMarkMarker).toBeDefined();
+  });
+
   it("TC-7 regression: regular list item '- item' still emits a bullet widget when cursor is off the line", () => {
     // A non-task list item should still get the bullet decoration when cursor is off its line
     // Use a two-line doc with cursor on line 2 so line 1's ListMark renders as a bullet

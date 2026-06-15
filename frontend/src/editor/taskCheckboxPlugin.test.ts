@@ -8,8 +8,11 @@
  * TC-5: ordered: ordered-list task toggles correctly
  * TC-6: position-stable: widget data-pos equals new absolute TaskMarker.from after line insert above
  * TC-7: (in livePreviewPlugin.test.ts) no-bullet-on-task-line
- * TC-8: widget-regardless-of-cursor: checkbox widget emitted even with cursor on task line
+ * TC-8: DELETED — asserted always-widget behavior superseded by D-01 reveal model
  * TC-9: annotation-present: char-flip transaction carries CheckboxToggleAnnotation
+ * TC-10: no-widget-on-active-line (D-01 reveal): cursor on task line → no widget emitted (U2)
+ * TC-11: widget-on-off-cursor-line (D-01 reveal): cursor NOT on task line → widget emitted (U2)
+ * TC-12: widget-covers-ListMark-range (D-02): widget replace range starts at ListMark.from (0), not TaskMarker.from (2) (U7)
  *
  * Note on async tests (TC-1..TC-5):
  *   CM6 does not allow view.dispatch() from inside ViewPlugin.update(). The char-flip
@@ -167,16 +170,6 @@ describe("TC-6: position-stable after line insert above", () => {
   });
 });
 
-describe("TC-8: widget-regardless-of-cursor", () => {
-  it("checkbox widget is emitted even when cursor is on the task line", () => {
-    // Place cursor directly on the task line (pos 2 = inside TaskMarker)
-    const view = makeView(UNCHECKED_TASK_DOC, 2);
-    const decos = collectCheckboxDecos(view);
-    const widgetDecos = decos.filter(d => d.hasWidget);
-    expect(widgetDecos.length).toBeGreaterThan(0);
-  });
-});
-
 describe("TC-9: annotation-present", () => {
   it("char-flip transaction carries CheckboxToggleAnnotation", async () => {
     const view = makeView(UNCHECKED_TASK_DOC);
@@ -208,6 +201,53 @@ describe("TC-9: annotation-present", () => {
     });
     expect(tr.annotation(CheckboxToggleAnnotation)).toBe(true);
     expect(tr.state.doc.toString()).toBe("- [x] task");
+  });
+});
+
+describe("TC-10: no-widget-on-active-line (D-01 reveal / U2)", () => {
+  it("no widget decoration emitted when cursor is on the task line (pos 2 inside TaskMarker)", () => {
+    // D-01 reveal model: caret ON the task line → raw text visible, no widget.
+    // This test is RED until plan 02 lands (taskCheckboxPlugin gains the cursor-line guard).
+    const view = makeView(UNCHECKED_TASK_DOC, 2);
+    const decos = collectCheckboxDecos(view);
+    const widgetDecos = decos.filter(d => d.hasWidget);
+    expect(widgetDecos.length).toBe(0);
+  });
+});
+
+describe("TC-11: widget-on-off-cursor-line (D-01 reveal / U2)", () => {
+  it("widget decoration IS emitted for a task line when cursor is on a different line", () => {
+    // NESTED_TASK_DOC = "- [ ] parent\n  - [ ] child"
+    // "- [ ] parent" is 12 chars + '\n' = 13 chars offset to line 2.
+    // Place the cursor on the child line (pos 14 = first char of "  - [ ] child")
+    // so the parent task line (line 1) is off-cursor and should emit a widget.
+    // This test is RED until plan 02 lands.
+    const view = makeView(NESTED_TASK_DOC, 14);
+    const decos = collectCheckboxDecos(view);
+    const widgetDecos = decos.filter(d => d.hasWidget);
+    expect(widgetDecos.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("TC-12: widget-covers-ListMark-range (D-02 / U7)", () => {
+  it("the replace decoration from starts at ListMark.from (0), not TaskMarker.from (2)", () => {
+    // D-02: widget replaces the full '- [ ] ' prefix (ListMark + space + TaskMarker + space).
+    // For UNCHECKED_TASK_DOC = '- [ ] task':
+    //   ListMark.from = 0, ListMark.to = 1
+    //   TaskMarker.from = 2, TaskMarker.to = 5
+    //   Widget replace range should be [0..6]
+    // Cursor placed off the task line (past end of doc) so the widget is emitted.
+    // This test is RED until plan 02 lands (current widget covers [2..6]).
+    const doc = UNCHECKED_TASK_DOC + "\nanother line";
+    const view = makeView(doc, doc.length); // cursor on "another line"
+    const decos = collectCheckboxDecos(view);
+    const widgetDecos = decos.filter(d => d.hasWidget);
+    expect(widgetDecos.length).toBeGreaterThan(0);
+    const widgetDeco = widgetDecos[0];
+    // D-02: replace range must start at the ListMark (pos 0), not at TaskMarker.from (pos 2)
+    expect(widgetDeco.from).toBe(0);
+    // Range end must cover TaskMarker.to + 1 = 6 (end of '- [ ] ' prefix)
+    expect(widgetDeco.to).toBe(6);
   });
 });
 
