@@ -329,9 +329,22 @@ export function buildDecorations(view: EditorView): DecorationSet {
 
         if (node.name === "ListMark") {
           if (isInsideCode(node)) return;
-          // Coexistence guard: if this ListItem has a Task child,
-          // taskCheckboxPlugin owns the marker range — yield to it (no bullet).
-          if (node.node.parent?.getChild("Task")) return;
+          // Coexistence guard: cursor-state-aware coordination with taskCheckboxPlugin.
+          if (node.node.parent?.getChild("Task")) {
+            // Task line: ownership depends on cursor position.
+            // Off-cursor: taskCheckboxPlugin owns the full "- [ ] " replace range — emit nothing.
+            // On-cursor: taskCheckboxPlugin emits nothing (D-01 reveal), so we emit .cm-marker
+            //   so the raw "-" is muted-but-visible (consistent with other marker reveal UX).
+            const lineNum = view.state.doc.lineAt(node.from).number;
+            if (!cursorLines.has(lineNum)) return; // off-cursor → yield to taskCheckboxPlugin
+            markDecos.push({
+              from: node.from,
+              to: node.to,
+              deco: Decoration.mark({ class: `${VISIBLE_MARKER_CLASS} cm-list-marker` }),
+              sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
+            });
+            return;
+          }
           const text = view.state.doc.sliceString(node.from, node.to).trim();
           const isUnordered = /^[-*+]$/.test(text);
           if (!isUnordered) return;
