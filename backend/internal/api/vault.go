@@ -91,15 +91,35 @@ func (s *Server) GetVaultCurrent(
 		return nil, fmt.Errorf("GetVaultCurrent: load app.json: %w", err)
 	}
 
-	if state.CurrentVault == "" {
+	target := state.CurrentVault
+
+	// When --vault override is active (E2E, CI, dev) the vault is open but
+	// app.json has no current_vault entry. Fall back to the live path.
+	if target == "" && s.vaultSwitcher != nil {
+		if live := s.vaultSwitcher.CurrentVaultPath(); live != "" {
+			target = live
+		}
+	}
+
+	if target == "" {
 		return GetVaultCurrent200JSONResponse{Vault: nil}, nil
 	}
 
 	for _, e := range state.RecentVaults {
-		if e.Path == state.CurrentVault {
+		if e.Path == target {
 			entry := toWireRecentVaultEntry(e)
 			return GetVaultCurrent200JSONResponse{Vault: &entry}, nil
 		}
+	}
+
+	// Vault is open (via --vault override) but not in recent_vaults yet —
+	// synthesize a minimal entry so the frontend renders the main UI.
+	if target != "" {
+		entry := RecentVaultEntry{
+			Path:        target,
+			DisplayName: filepath.Base(target),
+		}
+		return GetVaultCurrent200JSONResponse{Vault: &entry}, nil
 	}
 
 	return GetVaultCurrent200JSONResponse{Vault: nil}, nil
