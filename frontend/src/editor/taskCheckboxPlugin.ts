@@ -20,11 +20,19 @@
  *   no-op shim so MarkdownEditor.tsx doesn't need to change its extensions array.
  *
  * Key decisions:
- *   - Always-clickable widget — no on-cursor guard
+ *   - Reveal-on-cursor model (D-01): caret ON the task line → no widget emitted,
+ *     raw "- [ ] " text is visible and editable. caret OFF the line → checkbox
+ *     widget replaces the full "- [ ] " prefix (D-02). Mirrors wikilinkPlugin.
+ *   - Widget replace range covers ListMark + space + TaskMarker + trailing space
+ *     (D-02): [ListMark.from .. TaskMarker.to + 1]. Ordered-list fallback uses
+ *     TaskMarker.from if ListMark cannot be located via getChild("ListMark").
  *   - Uses Task/TaskMarker lezer nodes (GFM)
  *   - Strikethrough on text only; checkbox glyph stays visible
  *   - StateEffect dispatch — position resolved at transaction time
  *   - ignoreEvent() returns false so clicks reach eventHandlers
+ *   - data-pos on the widget button is always TaskMarker.from (the '[' position)
+ *     so the char-flip dispatch targets the correct bracket regardless of D-02
+ *     range widening.
  *
  * Security: SVG built via createElementNS only (no innerHTML); data-pos
  * parsed with parseInt + isNaN guard; '[' bracket verified before char-flip.
@@ -47,6 +55,7 @@ import {
   RangeSetBuilder,
 } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
+import { computeCursorLines } from "./livePreviewPlugin";
 
 
 export const CheckboxToggleAnnotation = Annotation.define<true>();
@@ -114,13 +123,15 @@ class CheckboxWidget extends WidgetType {
 
 function buildCheckboxDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
+  const cursorLines = computeCursorLines(view); // D-01: identify cursor-occupied lines
   const tree = syntaxTree(view.state);
 
   interface Entry {
-    markerFrom: number;
-    markerTo: number;
+    markerFrom: number; // start of replace range (ListMark.from per D-02, or fallback)
+    markerTo: number;   // end of TaskMarker (exclusive: markerTo+1 covers trailing space)
     taskTo: number;
     checked: boolean;
+    markerPos: number;  // TaskMarker.from — stays as data-pos for the click handler
   }
   const entries: Entry[] = [];
 
@@ -130,15 +141,29 @@ function buildCheckboxDecorations(view: EditorView): DecorationSet {
       to,
       enter(node) {
         if (node.name !== "TaskMarker") return;
+
+        // D-01 reveal: skip widget when cursor is on this task line so raw text is editable
+        const lineNum = view.state.doc.lineAt(node.from).number;
+        if (cursorLines.has(lineNum)) return;
+
         const stateChar = view.state.doc.sliceString(node.from + 1, node.from + 2);
         const checked = stateChar !== " ";
         const taskNode = node.node.parent; // Task is direct parent of TaskMarker
         if (!taskNode) return;
+
+        // D-02: widen replace range to cover the full "- [ ] " prefix (ListMark + TaskMarker)
+        // Lezer tree: BulletList > ListItem > [ListMark, Task > TaskMarker]
+        const listItemNode = taskNode.parent;
+        const listMarkNode = listItemNode?.getChild("ListMark");
+        // Fallback to TaskMarker.from if ListMark not found (ordered-list A5 graceful degrade)
+        const markerFrom = listMarkNode ? listMarkNode.from : node.from;
+
         entries.push({
-          markerFrom: node.from,
+          markerFrom,
           markerTo: node.to,
           taskTo: taskNode.to,
           checked,
+          markerPos: node.from, // data-pos must stay = TaskMarker.from for click handler
         });
       },
     });
@@ -147,12 +172,12 @@ function buildCheckboxDecorations(view: EditorView): DecorationSet {
   // RangeSetBuilder requires ascending from order
   entries.sort((a, b) => a.markerFrom - b.markerFrom);
 
-  for (const { markerFrom, markerTo, taskTo, checked } of entries) {
-    // Replace widget: [markerFrom .. markerTo+1] — covers "[ ] " or "[x] " (marker + space)
+  for (const { markerFrom, markerTo, taskTo, checked, markerPos } of entries) {
+    // Replace widget: [markerFrom .. markerTo+1] — covers "- [ ] " or "1. [ ] " prefix (D-02)
     builder.add(
       markerFrom,
       markerTo + 1,
-      Decoration.replace({ widget: new CheckboxWidget(checked, markerFrom) }),
+      Decoration.replace({ widget: new CheckboxWidget(checked, markerPos) }),
     );
     // Strikethrough mark: [markerTo+1 .. taskTo] — text only
     if (checked) {
