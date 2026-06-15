@@ -7,12 +7,13 @@
  * TC-4: nested: child task toggled independently; parent unaffected
  * TC-5: ordered: ordered-list task toggles correctly
  * TC-6: position-stable: widget data-pos equals new absolute TaskMarker.from after line insert above
- * TC-7: (in livePreviewPlugin.test.ts) no-bullet-on-task-line
+ * TC-7: (in livePreviewPlugin.test.ts) bullet-on-task-line (D-02 reversed: livePreviewPlugin now renders bullet)
  * TC-8: DELETED — asserted always-widget behavior superseded by D-01 reveal model
  * TC-9: annotation-present: char-flip transaction carries CheckboxToggleAnnotation
  * TC-10: no-widget-on-active-line (D-01 reveal): cursor on task line → no widget emitted (U2)
  * TC-11: widget-on-off-cursor-line (D-01 reveal): cursor NOT on task line → widget emitted (U2)
- * TC-12: widget-covers-ListMark-range (D-02): widget replace range starts at ListMark.from (0), not TaskMarker.from (2) (U7)
+ * TC-12: widget-covers-TaskMarker-range (D-02 reversed): widget replace range starts at TaskMarker.from (2), NOT ListMark.from (0)
+ * TC-13: no-native-input: widget DOM is a <span> with SVG, no <input type=checkbox>
  *
  * Note on async tests (TC-1..TC-5):
  *   CM6 does not allow view.dispatch() from inside ViewPlugin.update(). The char-flip
@@ -164,10 +165,10 @@ describe("TC-6: position-stable after line insert above", () => {
     const decos = collectCheckboxDecos(view);
     const widgetDecos = decos.filter(d => d.hasWidget);
     expect(widgetDecos.length).toBeGreaterThan(0);
-    // D-02: widget replace range starts at ListMark.from (the '-' position = 15),
-    // not at TaskMarker.from (17). "new line above\n" = 15 chars; ListMark = pos 15.
-    const listMarkPos = 15; // "new line above\n" = 15 chars; '-' is at index 15
-    const widgetDeco = widgetDecos.find(d => d.from === listMarkPos);
+    // D-02 REVERSED: widget replace range starts at TaskMarker.from (the '[' position).
+    // "new line above\n" = 15 chars, then "- " = 2 more chars, so '[' is at index 17.
+    const taskMarkerPos = 17; // "new line above\n- " = 17 chars; '[' is at index 17
+    const widgetDeco = widgetDecos.find(d => d.from === taskMarkerPos);
     expect(widgetDeco).toBeDefined();
   });
 });
@@ -231,25 +232,87 @@ describe("TC-11: widget-on-off-cursor-line (D-01 reveal / U2)", () => {
   });
 });
 
-describe("TC-12: widget-covers-ListMark-range (D-02 / U7)", () => {
-  it("the replace decoration from starts at ListMark.from (0), not TaskMarker.from (2)", () => {
-    // D-02: widget replaces the full '- [ ] ' prefix (ListMark + space + TaskMarker + space).
+describe("TC-12: widget-covers-TaskMarker-range (D-02 reversed / U7)", () => {
+  it("the replace decoration starts at TaskMarker.from (2) and covers '[ ] ' only (not '- [ ] ')", () => {
+    // D-02 REVERSED: widget replaces ONLY the TaskMarker "[ ] " range.
     // For UNCHECKED_TASK_DOC = '- [ ] task':
-    //   ListMark.from = 0, ListMark.to = 1
+    //   ListMark.from = 0, ListMark.to = 1 — handled by livePreviewPlugin as bullet
     //   TaskMarker.from = 2, TaskMarker.to = 5
-    //   Widget replace range should be [0..6]
+    //   Widget replace range should be [2..6] (TaskMarker + trailing space)
     // Cursor placed off the task line (past end of doc) so the widget is emitted.
-    // This test is RED until plan 02 lands (current widget covers [2..6]).
     const doc = UNCHECKED_TASK_DOC + "\nanother line";
     const view = makeView(doc, doc.length); // cursor on "another line"
     const decos = collectCheckboxDecos(view);
     const widgetDecos = decos.filter(d => d.hasWidget);
     expect(widgetDecos.length).toBeGreaterThan(0);
     const widgetDeco = widgetDecos[0];
-    // D-02: replace range must start at the ListMark (pos 0), not at TaskMarker.from (pos 2)
-    expect(widgetDeco.from).toBe(0);
-    // Range end must cover TaskMarker.to + 1 = 6 (end of '- [ ] ' prefix)
+    // D-02 reversed: replace range must start at TaskMarker.from (pos 2), NOT ListMark.from (0)
+    expect(widgetDeco.from).toBe(2);
+    // Range end covers TaskMarker.to + 1 = 6 (the trailing space after '[ ]')
     expect(widgetDeco.to).toBe(6);
+  });
+});
+
+describe("TC-13: no-native-input (lucide SVG widget)", () => {
+  it("widget toDOM() returns a <span> element, not a <button> or <input>", () => {
+    const doc = UNCHECKED_TASK_DOC + "\nanother line";
+    const view = makeView(doc, doc.length); // cursor on "another line"
+    const plugin = view.plugin(taskCheckboxPlugin);
+    expect(plugin).not.toBeNull();
+
+    let foundWidget = false;
+    const cursor = plugin!.decorations.iter();
+    while (cursor.value !== null) {
+      const spec = (cursor.value as unknown as { spec: Record<string, unknown> }).spec;
+      const widget = spec?.widget as { toDOM?: () => Element } | undefined;
+      if (widget && typeof widget.toDOM === "function") {
+        const dom = widget.toDOM();
+        // Widget must be a <span>, not <button> or <input>
+        expect(dom.tagName).toBe("SPAN");
+        expect(dom.tagName).not.toBe("INPUT");
+        expect(dom.tagName).not.toBe("BUTTON");
+        expect(dom.className).toContain("cm-task-checkbox");
+        // SVG child must be present
+        const svg = dom.querySelector("svg");
+        expect(svg).not.toBeNull();
+        foundWidget = true;
+        break;
+      }
+      cursor.next();
+    }
+    expect(foundWidget).toBe(true);
+  });
+
+  it("checked widget has SquareCheck SVG with rect and check path", () => {
+    const doc = CHECKED_LOWER_TASK_DOC + "\nanother line";
+    const view = makeView(doc, doc.length); // cursor on "another line"
+    const plugin = view.plugin(taskCheckboxPlugin);
+    expect(plugin).not.toBeNull();
+
+    let foundChecked = false;
+    const cursor = plugin!.decorations.iter();
+    while (cursor.value !== null) {
+      const spec = (cursor.value as unknown as { spec: Record<string, unknown> }).spec;
+      const widget = spec?.widget as { toDOM?: () => Element } | undefined;
+      if (widget && typeof widget.toDOM === "function") {
+        const dom = widget.toDOM();
+        if (dom.getAttribute("aria-checked") === "true") {
+          const svg = dom.querySelector("svg");
+          expect(svg).not.toBeNull();
+          // SquareCheck has rect (the square) and path (the check mark)
+          const rectEl = svg!.querySelector("rect");
+          const pathEl = svg!.querySelector("path");
+          expect(rectEl).not.toBeNull();
+          expect(pathEl).not.toBeNull();
+          // Check path has white stroke
+          expect(pathEl!.getAttribute("stroke")).toBe("#fff");
+          foundChecked = true;
+          break;
+        }
+      }
+      cursor.next();
+    }
+    expect(foundChecked).toBe(true);
   });
 });
 

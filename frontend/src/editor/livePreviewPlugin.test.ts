@@ -582,17 +582,18 @@ describe("livePreviewPlugin / TC-7 task-line coexistence guard", () => {
     return view;
   }
 
-  it("TC-7: task line '- [ ] task' does NOT emit a bullet widget over the ListMark range (cursor OFF line)", () => {
-    // "- [ ] task\nanother line" — cursor on line 2 so line 1 is off-cursor
-    // Without the guard, livePreviewPlugin would render a bullet '•' on "- [ ] task"
-    // With the guard (getChild("Task")), it skips the ListMark — no bullet widget
+  it("TC-7 (D-02 reversed): task line '- [ ] task' DOES emit a bullet widget over the ListMark range (cursor OFF line)", () => {
+    // D-02 REVERSED: taskCheckboxPlugin now only owns the '[ ]' range.
+    // livePreviewPlugin treats task-line ListMarks identically to regular list items:
+    // off-cursor → bullet widget '•' replacing the '-'.
+    // This gives the "• ☐ text" Obsidian-style layout.
     const doc = "- [ ] task\nanother line";
     const view = makeGFMView(doc, 15); // cursor on "another line" (line 2)
     const plugin = view.plugin(livePreviewPlugin);
     expect(plugin).not.toBeNull();
 
     // ListMark "-" is at position 0..1 in the doc
-    // Check no bullet widget is emitted anywhere in the decorations
+    // A bullet widget must be emitted for the task-line ListMark
     const cursor = plugin!.decorations.iter();
     let bulletFound = false;
     while (cursor.value !== null) {
@@ -601,12 +602,15 @@ describe("livePreviewPlugin / TC-7 task-line coexistence guard", () => {
       if (widget && typeof widget.toDOM === "function") {
         const dom = widget.toDOM();
         if (dom.classList.contains("cm-list-bullet") && dom.textContent === "•") {
-          bulletFound = true;
+          // Must replace the ListMark at position 0..1
+          if (cursor.from === 0 && cursor.to === 1) {
+            bulletFound = true;
+          }
         }
       }
       cursor.next();
     }
-    expect(bulletFound).toBe(false);
+    expect(bulletFound).toBe(true);
   });
 
   it("TC-7 reveal: on-cursor task line emits a .cm-marker mark decoration over the ListMark range", () => {

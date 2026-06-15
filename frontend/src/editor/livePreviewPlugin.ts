@@ -329,18 +329,23 @@ export function buildDecorations(view: EditorView): DecorationSet {
 
         if (node.name === "ListMark") {
           if (isInsideCode(node)) return;
-          // Coexistence guard: cursor-state-aware coordination with taskCheckboxPlugin.
+          // Coexistence guard (D-02 reversed): cursor-state-aware coordination with taskCheckboxPlugin.
           if (node.node.parent?.getChild("Task")) {
-            // Task line: ownership depends on cursor position.
-            // Off-cursor: taskCheckboxPlugin owns the full "- [ ] " replace range — emit nothing.
-            // On-cursor: taskCheckboxPlugin emits nothing (D-01 reveal), so we emit .cm-marker
-            //   so the raw "-" is muted-but-visible (consistent with other marker reveal UX).
+            // Task line: D-02 is REVERSED — taskCheckboxPlugin now owns only "[ ]" (TaskMarker),
+            // NOT the full "- [ ] " prefix. livePreviewPlugin therefore handles the ListMark "-"
+            // identically to a regular list item:
+            //   Off-cursor: render bullet widget (•) replacing the "-"
+            //   On-cursor: render .cm-marker so the raw "-" is muted-but-visible
             const lineNum = view.state.doc.lineAt(node.from).number;
-            if (!cursorLines.has(lineNum)) return; // off-cursor → yield to taskCheckboxPlugin
+            const text = view.state.doc.sliceString(node.from, node.to).trim();
+            const isUnordered = /^[-*+]$/.test(text);
+            if (!isUnordered) return; // ordered-list task marker stays as-is
             markDecos.push({
               from: node.from,
               to: node.to,
-              deco: Decoration.mark({ class: `${VISIBLE_MARKER_CLASS} cm-list-marker` }),
+              deco: cursorLines.has(lineNum)
+                ? Decoration.mark({ class: `${VISIBLE_MARKER_CLASS} cm-list-marker` })
+                : bulletDeco,
               sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
             });
             return;

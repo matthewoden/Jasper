@@ -172,39 +172,28 @@ export const jasperEditorTheme = EditorView.theme(
       textUnderlineOffset: "2px",
     },
     ".cm-task-checkbox": {
+      // Lucide SVG icon container (span element, not a native <input> or <button>).
+      // The SVG itself carries the visual — the span is a transparent hit-area wrapper.
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",
-      boxSizing: "border-box",
-      width: "0.85em",
-      height: "0.85em",
+      width: "1em",
+      height: "1em",
       padding: "0",
-      margin: "0 4px 0 0",
-      verticalAlign: "-0.1em",
-      borderRadius: "3px",
+      margin: "0 2px 0 0",
+      verticalAlign: "-0.15em",
       cursor: "pointer",
       userSelect: "none",
-      appearance: "none",
       flexShrink: "0",
+      lineHeight: "1",
     },
-    ".cm-task-checkbox[aria-checked='false']": {
-      border: "1.5px solid var(--color-border)",
-      background: "transparent",
-    },
-    ".cm-task-checkbox[aria-checked='true']": {
-      border: "none",
-      background: "var(--color-accent)",
-    },
-    ".cm-task-checkbox[aria-checked='false']:hover": {
-      outline: "2px solid color-mix(in srgb, var(--color-accent) 25%, transparent)",
-      outlineOffset: "1px",
-    },
-    ".cm-task-checkbox[aria-checked='true']:hover": {
-      filter: "brightness(1.1)",
+    ".cm-task-checkbox:hover": {
+      opacity: "0.8",
     },
     ".cm-task-checkbox:focus-visible": {
       outline: "2px solid var(--color-accent)",
       outlineOffset: "2px",
+      borderRadius: "3px",
     },
     ".cm-task-text-checked": {
       textDecoration: "line-through",

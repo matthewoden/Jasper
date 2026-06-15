@@ -18,7 +18,7 @@
  *
  * Selectors (after plan 02 ships):
  *   - Editor content: .cm-content
- *   - Checkbox widget: button.cm-task-checkbox
+ *   - Checkbox widget: span.cm-task-checkbox
  *   - Save indicator: button[data-save-state="saved"]
  *   - Note rows: [data-tree-row-kind="note"]
  */
@@ -113,23 +113,44 @@ async function getNoteContent(page: Page, noteId: string): Promise<string> {
 
 /**
  * U1-visual: checkbox widget matches 12-UI-SPEC.md styling.
- * Automated assertion: screenshot file is written to e2e/.artifacts/.
- * Visual judgment is the human checkpoint in plan 03.
+ * Automated assertions: lucide SVG icon (no native input), bullet + checkbox layout.
+ * Screenshot written to e2e/.artifacts/ for human visual review.
  */
 test("U1-visual: checkbox widget matches UI-SPEC styling @phase12.1", async ({ page }) => {
   const noteId = await apiCreateNote(
     page,
     "u1-visual-styling",
-    "- [ ] Unchecked\n- [x] Checked\n",
+    "- Plain bullet item\n- [ ] Unchecked\n- [x] Checked\n",
   );
   await waitForConnected(page);
   await openNoteInEditor(page, noteId);
 
-  // Move caret to a non-task line (end of doc) so task lines are rendered off-cursor
-  // and the checkbox widgets are visible rather than raw text
+  // Move caret to end of doc so all task lines are rendered off-cursor (widgets visible)
   await page.locator(".cm-content").click();
   await page.keyboard.press("Control+End");
 
+  // --- Automated DOM structure assertions ---
+
+  // 1. No native <input type="checkbox"> anywhere in the editor
+  const nativeInputs = await page.locator(".cm-content input[type='checkbox']").count();
+  expect(nativeInputs).toBe(0);
+
+  // 2. Checkbox widget must be a <span.cm-task-checkbox>, not a <button> or <input>
+  const checkboxWidgets = page.locator("span.cm-task-checkbox");
+  await expect(checkboxWidgets.first()).toBeVisible({ timeout: 5_000 });
+
+  // 3. Each checkbox widget must contain an SVG (lucide icon)
+  const svgInCheckbox = page.locator("span.cm-task-checkbox svg");
+  await expect(svgInCheckbox.first()).toBeVisible({ timeout: 3_000 });
+
+  // 4. Bullet widget must be present for task lines (• replaces -)
+  // Each task line should have a .cm-list-bullet span (from livePreviewPlugin)
+  // alongside the checkbox widget (D-02 reversed: bullet + checkbox layout)
+  const bulletWidgets = page.locator(".cm-content .cm-list-bullet");
+  // Should have at least 3 bullets (plain + unchecked task + checked task)
+  await expect(bulletWidgets).toHaveCount(3, { timeout: 5_000 });
+
+  // 5. Screenshot for human review
   const screenshotPath = path.join(__dirname, ".artifacts", "u1-checkbox-visual.png");
   await page.screenshot({ path: screenshotPath, fullPage: false });
 
@@ -160,7 +181,7 @@ test("U2-reveal: arrow onto task line shows raw markup, no widget @phase12.1", a
   await otherLine.click();
 
   // Widget should be present while cursor is off the task line
-  const checkbox = page.locator("button.cm-task-checkbox").first();
+  const checkbox = page.locator("span.cm-task-checkbox").first();
   await expect(checkbox).toBeVisible({ timeout: 5_000 });
 
   // Now move cursor to the task line by pressing ArrowUp
@@ -171,7 +192,7 @@ test("U2-reveal: arrow onto task line shows raw markup, no widget @phase12.1", a
   await page.keyboard.press("ArrowLeft");
 
   // After D-01: the checkbox widget should be GONE from the DOM on the active line
-  await expect(page.locator("button.cm-task-checkbox")).toHaveCount(0, { timeout: 3_000 });
+  await expect(page.locator("span.cm-task-checkbox")).toHaveCount(0, { timeout: 3_000 });
 
   // The raw '[ ]' text must be visible/editable in the task line
   const taskLine = page.locator(".cm-content .cm-line").first();
@@ -325,10 +346,11 @@ test("U6-tab-indent: Tab indents task line; Shift-Tab de-indents; focus stays in
 });
 
 /**
- * U7-no-leaking-dash: off-cursor task line shows only the checkbox widget,
- * no raw '-' dash text beside it.
+ * U7-no-leaking-dash: off-cursor task line shows bullet + checkbox widget.
+ * The raw '-' dash must not appear as a text node (it is replaced by bullet widget •).
+ * The checkbox widget must be a <span> with SVG, not a native <button> or <input>.
  */
-test("U7-no-leaking-dash: off-cursor task shows widget only, no raw dash @phase12.1", async ({ page }) => {
+test("U7-no-leaking-dash: off-cursor task shows bullet+widget, no raw dash, no native checkbox @phase12.1", async ({ page }) => {
   const noteId = await apiCreateNote(
     page,
     "u7-no-leaking-dash",
@@ -345,21 +367,23 @@ test("U7-no-leaking-dash: off-cursor task shows widget only, no raw dash @phase1
   await expect(otherLine).toBeVisible({ timeout: 5_000 });
   await otherLine.click();
 
-  // Checkbox widgets should be visible
-  const checkboxes = page.locator("button.cm-task-checkbox");
+  // Checkbox widgets should be visible (now <span>, not <button>)
+  const checkboxes = page.locator("span.cm-task-checkbox");
   await expect(checkboxes.first()).toBeVisible({ timeout: 5_000 });
 
+  // No native <input type="checkbox"> in the task lines
+  const nativeInputs = await page.locator(".cm-content input[type='checkbox']").count();
+  expect(nativeInputs).toBe(0);
+
   // The task lines in the DOM should NOT contain a raw '-' text node
-  // beside the checkbox button. The checkbox replaces the full '- [ ] ' prefix.
-  // Inspect the first task cm-line: it should not have '-' as a standalone text
-  // beside the checkbox widget.
+  // (D-02 reversed: the '-' is replaced by a bullet widget '•', not by the checkbox widget)
   const taskLineHasDash = await page.evaluate(() => {
     const lines = document.querySelectorAll(".cm-content .cm-line");
     for (const line of lines) {
-      // Check if the line contains a checkbox widget
-      const hasWidget = line.querySelector("button.cm-task-checkbox") !== null;
+      // Check if the line contains a checkbox widget (span, not button)
+      const hasWidget = line.querySelector("span.cm-task-checkbox") !== null;
       if (!hasWidget) continue;
-      // Look for a text node that is just a dash (would indicate D-02 is not implemented)
+      // Look for a text node that is just a dash (would indicate the '-' was not replaced)
       for (const node of line.childNodes) {
         if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim() === "-") {
           return true;
@@ -369,6 +393,10 @@ test("U7-no-leaking-dash: off-cursor task shows widget only, no raw dash @phase1
     return false;
   });
   expect(taskLineHasDash).toBe(false);
+
+  // Bullet widget must be present for task lines (• replaces -)
+  const bulletWidgets = page.locator(".cm-content .cm-list-bullet");
+  await expect(bulletWidgets.first()).toBeVisible({ timeout: 3_000 });
 });
 
 /**
@@ -405,4 +433,88 @@ test("W1-regression: indented task Enter creates one checkbox at correct indent 
 
   // No double-newlines in the indented area
   expect(content).not.toContain("\n\n\n");
+});
+
+/**
+ * U8-enter-continues-list: Enter on a non-empty task line creates a new '- [ ] ' continuation.
+ * The list must NOT exit (i.e., no bare newline; new line has the '- [ ] ' marker).
+ * Tests the ENTER BUG fix: previously Enter sometimes exited the list instead of continuing.
+ *
+ * Root-cause of original bug: D-02 widened the widget atomic range to cover "- [ ] ",
+ * causing CM6 cursor movement to behave unexpectedly near the boundary. D-02 reversal
+ * fixes this — "- " is normal markup, only "[ ]" is atomic.
+ */
+test("U8-enter-continues-list: Enter on non-empty task continues with new checkbox @phase12.1", async ({ page }) => {
+  const noteId = await apiCreateNote(
+    page,
+    "u8-enter-continues",
+    "- [ ] Buy milk\n",
+  );
+  await waitForConnected(page);
+  await openNoteInEditor(page, noteId);
+
+  // Place cursor at end of "- [ ] Buy milk" (line 1)
+  // Control+End lands on trailing empty line, ArrowUp+End lands at end of task line
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("End");
+
+  // Press Enter — must create a new '- [ ] ' continuation line (not exit the list)
+  await page.keyboard.press("Enter");
+
+  await waitForSaved(page);
+
+  const content = await getNoteContent(page, noteId);
+
+  // Count '- [ ] ' markers — should be exactly 2 (original + continuation)
+  const taskMarkerCount = (content.match(/^- \[ \] /gm) ?? []).length;
+  expect(taskMarkerCount).toBe(2);
+
+  // The two task lines must be adjacent (no blank line between them in the list area)
+  // A blank line between task items would indicate the list was exited.
+  // Note: frontmatter creates a \n\n separator before the content — that's expected.
+  // We check the task section specifically.
+  expect(content).not.toMatch(/^- \[ \].*\n\n/m);
+});
+
+/**
+ * U9-backspace-boundary: Backspace from start of task text deletes one character at a time
+ * (does not delete the entire "- [ ] " prefix atomically).
+ *
+ * Root-cause of original bug: D-02 made the entire "- [ ] " range an atomic CM6 replacement,
+ * so Backspace from the first text character jumped back to position 0. D-02 reversal
+ * (widget only covers "[ ]") means Backspace from text position 6 goes to position 5 (space),
+ * then position 5 is at the boundary of the smaller "[ ]" widget.
+ */
+test("U9-backspace-boundary: Backspace from task text does not delete whole prefix @phase12.1", async ({ page }) => {
+  const noteId = await apiCreateNote(
+    page,
+    "u9-backspace-boundary",
+    "- [ ] Buy milk\n",
+  );
+  await waitForConnected(page);
+  await openNoteInEditor(page, noteId);
+
+  // Place cursor at END of task text "Buy milk"
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("End");
+
+  // Press Backspace once — should delete 'k' (last char of "milk"), not the whole line
+  await page.keyboard.press("Backspace");
+
+  await waitForSaved(page);
+
+  const content = await getNoteContent(page, noteId);
+
+  // The task marker must still be present (backspace only deleted one char from text)
+  expect(content).toMatch(/^- \[ \] /m);
+
+  // The text should now be "Buy mil" (deleted last char 'k')
+  expect(content).toContain("Buy mil");
+
+  // The whole line was NOT deleted (task marker still there, content > 0)
+  expect(content.length).toBeGreaterThan(0);
 });

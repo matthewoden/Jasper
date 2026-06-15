@@ -6,7 +6,7 @@
  *   - CheckboxToggleAnnotation  — marks toggle transactions for updateListener
  *   - ToggleCheckboxEffect      — carries absolute TaskMarker.from position
  *   - checkboxTransactionExtender — exported no-op shim (see note below)
- *   - CheckboxWidget (WidgetType) — renders <button role="checkbox"> with SVG checkmark
+ *   - CheckboxWidget (WidgetType) — renders lucide-style SVG checkbox (no native <input>)
  *   - taskCheckboxPlugin (ViewPlugin) — builds decorations + handles mousedown/keydown
  *     + dispatches the char-flip on ToggleCheckboxEffect
  *
@@ -22,17 +22,23 @@
  * Key decisions:
  *   - Reveal-on-cursor model (D-01): caret ON the task line → no widget emitted,
  *     raw "- [ ] " text is visible and editable. caret OFF the line → checkbox
- *     widget replaces the full "- [ ] " prefix (D-02). Mirrors wikilinkPlugin.
- *   - Widget replace range covers ListMark + space + TaskMarker + trailing space
- *     (D-02): [ListMark.from .. TaskMarker.to + 1]. Ordered-list fallback uses
- *     TaskMarker.from if ListMark cannot be located via getChild("ListMark").
+ *     widget + bullet are rendered. Mirrors wikilinkPlugin.
+ *   - D-02 REVERSED (user design decision): widget replace range covers ONLY the
+ *     TaskMarker "[ ]" + trailing space — [TaskMarker.from .. TaskMarker.to + 1].
+ *     The leading "- " is left as normal list markup so livePreviewPlugin can render
+ *     it as a bullet (•). This gives the "• ☐ text" Obsidian-style layout.
+ *     Corollary: Backspace atomicity only covers the small [ ] range, not the full
+ *     "- [ ] " prefix — fixing the Backspace-deletes-whole-prefix bug.
+ *   - Lucide-style SVG icons (user design decision): unchecked = Square (rounded rect),
+ *     checked = SquareCheck (rounded rect + check path). Built via createElementNS,
+ *     NOT via lucide-react imports (CM6 WidgetType produces plain DOM, not React).
+ *     SVG path data extracted from lucide-react v0.460.0 source.
  *   - Uses Task/TaskMarker lezer nodes (GFM)
  *   - Strikethrough on text only; checkbox glyph stays visible
  *   - StateEffect dispatch — position resolved at transaction time
  *   - ignoreEvent() returns false so clicks reach eventHandlers
- *   - data-pos on the widget button is always TaskMarker.from (the '[' position)
- *     so the char-flip dispatch targets the correct bracket regardless of D-02
- *     range widening.
+ *   - data-pos on the widget is always TaskMarker.from (the '[' position)
+ *     so the char-flip dispatch targets the correct bracket regardless of range.
  *
  * Security: SVG built via createElementNS only (no innerHTML); data-pos
  * parsed with parseInt + isNaN guard; '[' bracket verified before char-flip.
@@ -74,6 +80,48 @@ export const checkboxTransactionExtender = EditorState.transactionExtender.of(()
 });
 
 
+/**
+ * Build a lucide-style SVG element using createElementNS (no innerHTML).
+ * Lucide icon specs extracted from lucide-react v0.460.0:
+ *   Square:      <rect width="18" height="18" x="3" y="3" rx="2"/>
+ *   SquareCheck: <rect width="18" height="18" x="3" y="3" rx="2"/>
+ *                <path d="m9 12 2 2 4-4"/>
+ */
+function makeLucideSvg(checked: boolean): SVGSVGElement {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "1em");
+  svg.setAttribute("height", "1em");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("fill", checked ? "var(--color-accent)" : "none");
+  svg.setAttribute("stroke", checked ? "var(--color-accent)" : "var(--color-border)");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+
+  // Rounded rect (the square outline / filled square)
+  const rect = document.createElementNS(ns, "rect");
+  rect.setAttribute("width", "18");
+  rect.setAttribute("height", "18");
+  rect.setAttribute("x", "3");
+  rect.setAttribute("y", "3");
+  rect.setAttribute("rx", "2");
+  svg.appendChild(rect);
+
+  if (checked) {
+    // White checkmark path centered in the filled square
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", "m9 12 2 2 4-4");
+    path.setAttribute("stroke", "#fff"); // intentional fixed color per UI-SPEC
+    path.setAttribute("stroke-width", "2");
+    svg.appendChild(path);
+  }
+
+  return svg;
+}
+
+
 class CheckboxWidget extends WidgetType {
   constructor(
     private readonly checked: boolean,
@@ -87,32 +135,17 @@ class CheckboxWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
-    const btn = document.createElement("button");
-    btn.className = "cm-task-checkbox";
-    btn.setAttribute("role", "checkbox");
-    btn.setAttribute("aria-checked", this.checked ? "true" : "false");
-    btn.setAttribute("aria-label", "Toggle task");
-    btn.setAttribute("tabIndex", "-1"); // D-04: out of DOM tab order; toggle still works via editor-level keydown handler
-    btn.setAttribute("data-pos", String(this.markerPos));
+    const span = document.createElement("span");
+    span.className = "cm-task-checkbox";
+    span.setAttribute("role", "checkbox");
+    span.setAttribute("aria-checked", this.checked ? "true" : "false");
+    span.setAttribute("aria-label", "Toggle task");
+    span.setAttribute("tabIndex", "-1"); // D-04: out of DOM tab order; toggle still works via editor-level keydown handler
+    span.setAttribute("data-pos", String(this.markerPos));
 
-    if (this.checked) {
-      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.setAttribute("viewBox", "0 0 10 8");
-      svg.setAttribute("width", "10");
-      svg.setAttribute("height", "8");
-      svg.setAttribute("aria-hidden", "true");
-      svg.setAttribute("fill", "none");
-      svg.setAttribute("stroke", "#fff"); // intentional fixed color per UI-SPEC
-      svg.setAttribute("stroke-width", "2");
-      svg.setAttribute("stroke-linecap", "round");
-      svg.setAttribute("stroke-linejoin", "round");
-      const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-      poly.setAttribute("points", "1.5,4 4,6.5 8.5,1.5");
-      svg.appendChild(poly);
-      btn.appendChild(svg);
-    }
+    span.appendChild(makeLucideSvg(this.checked));
 
-    return btn;
+    return span;
   }
 
   ignoreEvent(): boolean {
@@ -127,8 +160,8 @@ function buildCheckboxDecorations(view: EditorView): DecorationSet {
   const tree = syntaxTree(view.state);
 
   interface Entry {
-    markerFrom: number; // start of replace range (ListMark.from per D-02, or fallback)
-    markerTo: number;   // end of TaskMarker (exclusive: markerTo+1 covers trailing space)
+    markerFrom: number; // start of replace range: TaskMarker.from (D-02 reversed)
+    markerTo: number;   // end of replace range: TaskMarker.to + 1 (trailing space)
     taskTo: number;
     checked: boolean;
     markerPos: number;  // TaskMarker.from — stays as data-pos for the click handler
@@ -151,19 +184,17 @@ function buildCheckboxDecorations(view: EditorView): DecorationSet {
         const taskNode = node.node.parent; // Task is direct parent of TaskMarker
         if (!taskNode) return;
 
-        // D-02: widen replace range to cover the full "- [ ] " prefix (ListMark + TaskMarker)
-        // Lezer tree: BulletList > ListItem > [ListMark, Task > TaskMarker]
-        const listItemNode = taskNode.parent;
-        const listMarkNode = listItemNode?.getChild("ListMark");
-        // Fallback to TaskMarker.from if ListMark not found (ordered-list A5 graceful degrade)
-        const markerFrom = listMarkNode ? listMarkNode.from : node.from;
-
+        // D-02 REVERSED: widget replace range covers ONLY "[ ] " (TaskMarker + trailing space)
+        // livePreviewPlugin retains ownership of the ListMark "-" and renders it as a bullet.
+        // This gives the Obsidian-style "• ☐ text" layout and fixes:
+        //   - Backspace atomicity: only the "[ ]" range is atomic, not the full "- [ ] " prefix
+        //   - Enter continuation: "- " stays in document, markdown() can parse and continue list
         entries.push({
-          markerFrom,
-          markerTo: node.to,
+          markerFrom: node.from,        // TaskMarker.from: the '[' position
+          markerTo: node.to,            // TaskMarker.to: after ']'
           taskTo: taskNode.to,
           checked,
-          markerPos: node.from, // data-pos must stay = TaskMarker.from for click handler
+          markerPos: node.from,         // data-pos for click handler
         });
       },
     });
@@ -173,7 +204,8 @@ function buildCheckboxDecorations(view: EditorView): DecorationSet {
   entries.sort((a, b) => a.markerFrom - b.markerFrom);
 
   for (const { markerFrom, markerTo, taskTo, checked, markerPos } of entries) {
-    // Replace widget: [markerFrom .. markerTo+1] — covers "- [ ] " or "1. [ ] " prefix (D-02)
+    // Replace widget: [markerFrom .. markerTo+1] — covers "[ ] " (TaskMarker + trailing space)
+    // D-02 reversed: does NOT cover ListMark "- "; livePreviewPlugin renders that as bullet.
     builder.add(
       markerFrom,
       markerTo + 1,
@@ -244,7 +276,7 @@ export const taskCheckboxPlugin = ViewPlugin.fromClass(
     eventHandlers: {
       mousedown(e: MouseEvent, view: EditorView) {
         const target = e.target as HTMLElement;
-        const btn = target.closest("button[data-pos]") as HTMLElement | null;
+        const btn = target.closest("span[data-pos]") as HTMLElement | null;
         if (!btn) return false;
         const pos = parseInt(btn.getAttribute("data-pos") ?? "", 10);
         if (isNaN(pos)) return false;
@@ -253,10 +285,10 @@ export const taskCheckboxPlugin = ViewPlugin.fromClass(
         return true;
       },
       keydown(e: KeyboardEvent, view: EditorView) {
-        // UI-SPEC a11y: Space/Enter on focused checkbox button dispatches toggle
+        // UI-SPEC a11y: Space/Enter on focused checkbox span dispatches toggle
         if (e.key !== " " && e.key !== "Enter") return false;
         const target = e.target as HTMLElement;
-        const btn = target.closest("button[data-pos]") as HTMLElement | null;
+        const btn = target.closest("span[data-pos]") as HTMLElement | null;
         if (!btn) return false;
         const pos = parseInt(btn.getAttribute("data-pos") ?? "", 10);
         if (isNaN(pos)) return false;
