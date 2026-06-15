@@ -230,9 +230,10 @@ test("U4-enter-position-independent: Enter on empty task same after caret leave+
   await page.keyboard.press("Control+End");
   await page.keyboard.type("- [ ] ");
 
-  // Move caret DOWN to another line, then back UP to the task line
-  await page.keyboard.press("ArrowDown");
+  // Move caret UP to another line, then back DOWN to the task line.
+  // (ArrowDown has no effect when on the last line, so we go Up first then Down.)
   await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowDown");
 
   // Press Enter — must behave the same as U3 (exit list, not delete line, not move line)
   await page.keyboard.press("Enter");
@@ -265,9 +266,10 @@ test("U5-enter-nonEmpty: Enter on non-empty task creates exactly one new checkbo
   await page.keyboard.press("Control+End");
   await page.keyboard.type("- [ ] this is a test");
 
-  // Move caret DOWN then back UP (reproducing U4's position-independent check for non-empty)
-  await page.keyboard.press("ArrowDown");
+  // Move caret UP to the previous line, then back DOWN to the task line.
+  // (ArrowDown has no effect when on the last line, so we go Up first then Down.)
   await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowDown");
 
   // Press Enter — must add exactly ONE new '- [ ] ' line
   await page.keyboard.press("Enter");
@@ -382,9 +384,13 @@ test("W1-regression: indented task Enter creates one checkbox at correct indent 
   await waitForConnected(page);
   await openNoteInEditor(page, noteId);
 
-  // Place cursor at the end of the indented task line '  - [ ] this is a test'
+  // Place cursor at the end of the indented task line '  - [ ] this is a test'.
+  // Control+End lands on the empty trailing line (after the trailing \n), so we
+  // press ArrowUp to move to line 2 (the indented task), then End to reach its end.
   await page.locator(".cm-content").click();
   await page.keyboard.press("Control+End");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("End");
 
   // Press Enter — should create exactly one new '  - [ ] ' at the same indent
   await page.keyboard.press("Enter");
