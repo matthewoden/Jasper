@@ -14,7 +14,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { Annotation } from "@codemirror/state";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { autocompletion } from "@codemirror/autocomplete";
 import { search } from "@codemirror/search";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
@@ -272,7 +272,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // BEFORE defaultKeymap so Cmd+S takes precedence
             frontmatterToggleKeymap, // Cmd-Shift-Y toggles raw frontmatter view
             codeblockExpand,
-            keymap.of([...jasperKeymap, ...defaultKeymap, ...historyKeymap]), // jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap
+            keymap.of([...jasperKeymap, indentWithTab, ...defaultKeymap, ...historyKeymap]), // jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap; indentWithTab before defaultKeymap so Tab→indent wins
             EditorView.lineWrapping,
             EditorView.domEventHandlers({
               blur() {

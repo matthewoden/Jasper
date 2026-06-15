@@ -92,7 +92,7 @@ class CheckboxWidget extends WidgetType {
     btn.setAttribute("role", "checkbox");
     btn.setAttribute("aria-checked", this.checked ? "true" : "false");
     btn.setAttribute("aria-label", "Toggle task");
-    btn.setAttribute("tabIndex", "0");
+    btn.setAttribute("tabIndex", "-1"); // D-04: out of DOM tab order; toggle still works via editor-level keydown handler
     btn.setAttribute("data-pos", String(this.markerPos));
 
     if (this.checked) {
