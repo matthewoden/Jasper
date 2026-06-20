@@ -183,15 +183,19 @@ describe("JK-bold-italic — toggleBold / toggleItalic commands", () => {
 /**
  * listEnterCommand tests — LE series.
  *
- * LE-1: NON-EMPTY nested task → returns false (falls through to markdown handler)
+ * LE-1: NON-EMPTY nested task (cursor at end) → tight continuation `\n  - [ ] `, returns true
  * LE-2: EMPTY top-level task `- [ ] ` → clears marker in place, returns true (no \n\n)
  * LE-3: EMPTY top-level plain bullet `- ` → clears marker in place, returns true (no \n\n)
  * LE-4: EMPTY NESTED task `  - [ ] ` → de-indents to `- [ ] `, returns true
  * LE-5: EMPTY NESTED plain bullet `  - ` → de-indents to `- `, returns true
  * LE-6: DEEPLY NESTED task `    - [ ] ` → de-indents to `  - [ ] ` (one level only), returns true
  * LE-7: Press Enter TWICE on empty nested task → de-indents once, then clears in place
- * LE-8: NON-EMPTY nested bullet `  - some text` → returns false (falls through)
+ * LE-8: NON-EMPTY nested bullet `  - some text` (cursor at end) → tight continuation `\n  - `, returns true
  * LE-11: multi-line `- [x] test\n- [ ] ` → clears second line in place, returns true (no \n\n)
+ * LE-12: NON-EMPTY top-level task `- [x] test` → tight continuation `\n- [ ] ` (task reset), returns true
+ * LE-13: LOOSE list, Enter on non-empty item → new item is TIGHT, no NEW `\n\n` added
+ * LE-14: cursor MID-LINE on a non-empty item → returns false (falls through to CM6 split)
+ * LE-15: ordered-list item `1. foo` → returns false (falls through; CM6 owns ordered lists)
  */
 describe("listEnterCommand — nested-empty-item de-indent", () => {
   // Helper: create a view with the markdown language loaded (needed for indentUnit defaults)
@@ -208,14 +212,15 @@ describe("listEnterCommand — nested-empty-item de-indent", () => {
     });
   }
 
-  it("LE-1: non-empty nested task → returns false (falls through)", () => {
-    // `  - [ ] some text` — cursor at end of line
+  it("LE-1: non-empty nested task (cursor at end) → tight continuation, returns true", () => {
+    // `  - [ ] some text` — cursor at end. Continue tightly: same indent, task reset.
     const doc = "  - [ ] some text";
     const view = makeListView(doc, doc.length);
     try {
       const result = listEnterCommand(view);
-      expect(result).toBe(false);
-      expect(view.state.doc.toString()).toBe(doc); // unchanged
+      expect(result).toBe(true);
+      expect(view.state.doc.toString()).toBe("  - [ ] some text\n  - [ ] ");
+      expect(view.state.doc.toString()).not.toContain("\n\n");
     } finally {
       view.destroy();
     }
@@ -312,13 +317,14 @@ describe("listEnterCommand — nested-empty-item de-indent", () => {
     }
   });
 
-  it("LE-8: non-empty nested bullet `  - some text` → returns false (falls through)", () => {
+  it("LE-8: non-empty nested bullet `  - some text` (cursor at end) → tight continuation, returns true", () => {
     const doc = "  - some text";
     const view = makeListView(doc, doc.length);
     try {
       const result = listEnterCommand(view);
-      expect(result).toBe(false);
-      expect(view.state.doc.toString()).toBe(doc); // unchanged
+      expect(result).toBe(true);
+      expect(view.state.doc.toString()).toBe("  - some text\n  - ");
+      expect(view.state.doc.toString()).not.toContain("\n\n");
     } finally {
       view.destroy();
     }
@@ -359,6 +365,60 @@ describe("listEnterCommand — nested-empty-item de-indent", () => {
       expect(result).toBe(true);
       expect(view.state.doc.toString()).toBe("- [x] test\n");
       expect(view.state.doc.toString()).not.toContain("\n\n");
+    } finally {
+      view.destroy();
+    }
+  });
+
+  it("LE-12: non-empty top-level task `- [x] test` → tight continuation `\\n- [ ] ` (reset), returns true", () => {
+    const doc = "- [x] test";
+    const view = makeListView(doc, doc.length);
+    try {
+      const result = listEnterCommand(view);
+      expect(result).toBe(true);
+      expect(view.state.doc.toString()).toBe("- [x] test\n- [ ] ");
+      expect(view.state.doc.toString()).not.toContain("\n\n");
+    } finally {
+      view.destroy();
+    }
+  });
+
+  it("LE-13: loose list — Enter on a non-empty item keeps the NEW item tight (no new \\n\\n)", () => {
+    // Pre-existing loose list (blank line between items). Continuing the second
+    // item must add the new item on the immediately following line — we do NOT
+    // reproduce the loose blank-line spacing CM6's continuation would.
+    const doc = "- [x] test\n\n- [ ] second";
+    const view = makeListView(doc, doc.length);
+    try {
+      const result = listEnterCommand(view);
+      expect(result).toBe(true);
+      expect(view.state.doc.toString()).toBe("- [x] test\n\n- [ ] second\n- [ ] ");
+      // Exactly ONE blank-line gap remains (the pre-existing one) — none added.
+      expect(view.state.doc.toString().match(/\n\n/g)?.length ?? 0).toBe(1);
+    } finally {
+      view.destroy();
+    }
+  });
+
+  it("LE-14: cursor MID-LINE on a non-empty item → returns false (CM6 owns the split)", () => {
+    const doc = "- [x] test";
+    const view = makeListView(doc, 6); // between "- [x] " and "test"
+    try {
+      const result = listEnterCommand(view);
+      expect(result).toBe(false);
+      expect(view.state.doc.toString()).toBe(doc); // unchanged
+    } finally {
+      view.destroy();
+    }
+  });
+
+  it("LE-15: ordered-list item `1. foo` → returns false (falls through to CM6)", () => {
+    const doc = "1. foo";
+    const view = makeListView(doc, doc.length);
+    try {
+      const result = listEnterCommand(view);
+      expect(result).toBe(false);
+      expect(view.state.doc.toString()).toBe(doc); // unchanged
     } finally {
       view.destroy();
     }

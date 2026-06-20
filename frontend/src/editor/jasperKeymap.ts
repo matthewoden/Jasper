@@ -24,29 +24,36 @@ import type { Extension } from "@codemirror/state";
 
 
 /**
- * listEnterCommand — custom Enter handler for the empty-list-item case.
+ * listEnterCommand — custom Enter handler for bullet/task list items.
+ *
+ * Owns Enter for unordered bullets (`-`/`*`/`+`) and task items so behavior is
+ * predictable; ordered lists (`1.`) and mid-line splits fall through to CM6's
+ * insertNewlineContinueMarkup.
  *
  * SPEC:
- *   - Enter on a NON-EMPTY list/task item → return false, falling through to
- *     insertNewlineContinueMarkup which creates a new sibling item.
+ *   - Enter on a NON-EMPTY bullet/task item with the cursor at END of line →
+ *     continue the list TIGHTLY: insert a single newline + same indentation +
+ *     same marker (task markers reset `[x]`→`[ ]`), return true. This bypasses
+ *     CM6's insertNewlineContinueMarkup, which preserves "loose" list spacing
+ *     (a blank line between items) and so adds a stray blank line before every
+ *     new item in any list that already has blank-separated items.
  *   - Enter on an EMPTY item at TOP LEVEL (no leading whitespace) → clear the
  *     marker in place (exit the list), no extra blank line, return true. CM6's
  *     insertNewlineContinueMarkup mishandles this case on a trailing/last empty
  *     item — it inserts a blank line AND keeps the marker (`- [ ] ` + Enter →
- *     `\n\n- [ ] `). Short-circuiting it here is the whole point.
+ *     `\n\n- [ ] `).
  *   - Enter on an EMPTY item that is INDENTED (nested) → de-indent one level
  *     (strip one indentUnit from the leading whitespace, keep the marker,
  *     cursor stays on same line). Pressing Enter again de-indents another level
  *     until top-level, where the next Enter clears the marker in place (exit).
+ *   - Anything else (cursor mid-line, ordered list, non-list line) → return
+ *     false and fall through.
  *
- * Applies uniformly to plain bullet items (`- `) and task items (`- [ ] `).
  * De-indent unit matches Shift-Tab (both use @codemirror/language indentUnit,
  * defaulting to 2 spaces when no indentUnit facet is configured).
  *
- * Returns true for both empty cases (top-level clear and nested de-indent);
- * non-empty items return false and fall through to insertNewlineContinueMarkup
- * (Prec.high from the markdown() extension). Must be installed at Prec.high
- * BEFORE the markdown() extension so it wins when precedence ties.
+ * Must be installed at Prec.high BEFORE the markdown() extension so it wins
+ * when precedence ties.
  *
  * Empty-item detection: line text is ONLY leading whitespace + list marker
  * (with optional task checkbox marker) + trailing spaces. No other content.
@@ -82,7 +89,28 @@ export function listEnterCommand(view: EditorView): boolean {
   // task_marker: `[ ] ` or `[x] ` or `[X] ` (with trailing space)
   const EMPTY_INDENTED_ITEM_RE = /^(\s+)([-*+] )(?:\[[ xX]\] )?$/;
   const match = EMPTY_INDENTED_ITEM_RE.exec(text);
-  if (!match) return false;
+  if (!match) {
+    // Non-empty bullet/task item with the cursor at END of line → continue the
+    // list tightly (single newline + same indent + marker), reset task to `[ ]`.
+    // Owning this avoids CM6's loose-list blank-line insertion. Ordered lists
+    // and mid-line cursors are left to insertNewlineContinueMarkup.
+    if (sel.from === line.to) {
+      const CONTINUE_ITEM_RE = /^(\s*)([-*+] )(\[[ xX]\] )?\S.*$/;
+      const cont = CONTINUE_ITEM_RE.exec(text);
+      if (cont) {
+        const [, leadingWs, bullet, taskMarker] = cont;
+        const insert = `\n${leadingWs}${bullet}${taskMarker ? "[ ] " : ""}`;
+        view.dispatch({
+          changes: { from: sel.from, insert },
+          selection: { anchor: sel.from + insert.length },
+          scrollIntoView: true,
+          userEvent: "input",
+        });
+        return true;
+      }
+    }
+    return false;
+  }
 
   // The item is empty AND indented — de-indent one level
   const leadingWs = match[1];
