@@ -184,13 +184,14 @@ describe("JK-bold-italic — toggleBold / toggleItalic commands", () => {
  * listEnterCommand tests — LE series.
  *
  * LE-1: NON-EMPTY nested task → returns false (falls through to markdown handler)
- * LE-2: EMPTY top-level task `- [ ] ` → returns false (falls through)
- * LE-3: EMPTY top-level plain bullet `- ` → returns false (falls through)
+ * LE-2: EMPTY top-level task `- [ ] ` → clears marker in place, returns true (no \n\n)
+ * LE-3: EMPTY top-level plain bullet `- ` → clears marker in place, returns true (no \n\n)
  * LE-4: EMPTY NESTED task `  - [ ] ` → de-indents to `- [ ] `, returns true
  * LE-5: EMPTY NESTED plain bullet `  - ` → de-indents to `- `, returns true
  * LE-6: DEEPLY NESTED task `    - [ ] ` → de-indents to `  - [ ] ` (one level only), returns true
- * LE-7: Press Enter TWICE on empty nested task → de-indents twice, then top-level (falls through)
+ * LE-7: Press Enter TWICE on empty nested task → de-indents once, then clears in place
  * LE-8: NON-EMPTY nested bullet `  - some text` → returns false (falls through)
+ * LE-11: multi-line `- [x] test\n- [ ] ` → clears second line in place, returns true (no \n\n)
  */
 describe("listEnterCommand — nested-empty-item de-indent", () => {
   // Helper: create a view with the markdown language loaded (needed for indentUnit defaults)
@@ -220,25 +221,31 @@ describe("listEnterCommand — nested-empty-item de-indent", () => {
     }
   });
 
-  it("LE-2: empty top-level task `- [ ] ` → returns false (falls through to markdown handler)", () => {
-    // No leading whitespace — top-level item, let insertNewlineContinueMarkup exit
+  it("LE-2: empty top-level task `- [ ] ` → clears marker in place, returns true (no \\n\\n)", () => {
+    // No leading whitespace — top-level item: exit the list by clearing the
+    // marker in place. Short-circuits CM6's broken insertNewlineContinueMarkup.
     const doc = "- [ ] ";
     const view = makeListView(doc, doc.length);
     try {
       const result = listEnterCommand(view);
-      expect(result).toBe(false);
-      expect(view.state.doc.toString()).toBe(doc); // unchanged
+      expect(result).toBe(true);
+      expect(view.state.doc.toString()).toBe(""); // line cleared in place
+      expect(view.state.doc.toString()).not.toContain("\n"); // no newline added
+      expect(view.state.selection.main.from).toBe(0); // cursor at line start
     } finally {
       view.destroy();
     }
   });
 
-  it("LE-3: empty top-level plain bullet `- ` → returns false", () => {
+  it("LE-3: empty top-level plain bullet `- ` → clears marker in place, returns true (no \\n\\n)", () => {
     const doc = "- ";
     const view = makeListView(doc, doc.length);
     try {
       const result = listEnterCommand(view);
-      expect(result).toBe(false);
+      expect(result).toBe(true);
+      expect(view.state.doc.toString()).toBe("");
+      expect(view.state.doc.toString()).not.toContain("\n");
+      expect(view.state.selection.main.from).toBe(0);
     } finally {
       view.destroy();
     }
@@ -284,9 +291,9 @@ describe("listEnterCommand — nested-empty-item de-indent", () => {
     }
   });
 
-  it("LE-7: two Enters on empty nested task de-indents twice", () => {
-    // First Enter: `  - [ ] ` → `- [ ] `
-    // Second Enter: `- [ ] ` → returns false (top-level, falls through to exit)
+  it("LE-7: two Enters on empty nested task de-indents once, then clears in place", () => {
+    // First Enter: `  - [ ] ` → `- [ ] ` (de-indent)
+    // Second Enter: `- [ ] ` → "" (top-level, clear in place, returns true)
     const doc = "  - [ ] ";
     const view = makeListView(doc, doc.length);
     try {
@@ -298,7 +305,8 @@ describe("listEnterCommand — nested-empty-item de-indent", () => {
       view.dispatch({ selection: { anchor: view.state.doc.length } });
       // Second Enter
       result = listEnterCommand(view);
-      expect(result).toBe(false); // top-level, falls through
+      expect(result).toBe(true); // top-level, cleared in place
+      expect(view.state.doc.toString()).toBe("");
     } finally {
       view.destroy();
     }
@@ -336,6 +344,21 @@ describe("listEnterCommand — nested-empty-item de-indent", () => {
       const result = listEnterCommand(view);
       expect(result).toBe(true);
       expect(view.state.doc.toString()).toBe("- [ ] ");
+    } finally {
+      view.destroy();
+    }
+  });
+
+  it("LE-11: multi-line `- [x] test\\n- [ ] ` → clears second line in place, no \\n\\n", () => {
+    // Cursor at the very end of the empty second item. Exiting must NOT insert
+    // a blank line — the second line is cleared in place, leaving `- [x] test\n`.
+    const doc = "- [x] test\n- [ ] ";
+    const view = makeListView(doc, doc.length);
+    try {
+      const result = listEnterCommand(view);
+      expect(result).toBe(true);
+      expect(view.state.doc.toString()).toBe("- [x] test\n");
+      expect(view.state.doc.toString()).not.toContain("\n\n");
     } finally {
       view.destroy();
     }
