@@ -19,60 +19,62 @@
  */
 import { keymap, EditorView } from "@codemirror/view";
 import type { KeyBinding } from "@codemirror/view";
-import { getIndentUnit, indentUnit } from "@codemirror/language";
+import { getIndentUnit } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 
 
+// Leading whitespace + unordered marker (`- `/`* `/`+ `) + optional task
+// checkbox (`[ ] `/`[x] `/`[X] `) + the remaining content. Ordered lists and
+// non-list lines don't match and fall through to CodeMirror.
+const LIST_ITEM_RE = /^(\s*)([-*+] )(\[[ xX]\] )?(.*)$/;
+
 /**
- * listEnterCommand — custom Enter handler for bullet/task list items.
+ * listEnterCommand — Enter handler for unordered bullet/task list items.
  *
- * Owns Enter for unordered bullets (`-`/`*`/`+`) and task items so behavior is
- * predictable; ordered lists (`1.`) and mid-line splits fall through to CM6's
- * insertNewlineContinueMarkup.
+ * CodeMirror's insertNewlineContinueMarkup has two behaviors Jasper does not
+ * want: it preserves "loose" list spacing (a blank line between items, then
+ * re-inserts that blank before every new item), and it leaves a stray blank
+ * line when exiting an empty item at end-of-document. This command takes over
+ * Enter for `-`/`*`/`+` bullets and task items to keep things tight:
  *
- * SPEC:
- *   - Enter on a NON-EMPTY bullet/task item with the cursor at END of line →
- *     continue the list TIGHTLY: insert a single newline + same indentation +
- *     same marker (task markers reset `[x]`→`[ ]`), return true. This bypasses
- *     CM6's insertNewlineContinueMarkup, which preserves "loose" list spacing
- *     (a blank line between items) and so adds a stray blank line before every
- *     new item in any list that already has blank-separated items.
- *   - Enter on an EMPTY item at TOP LEVEL (no leading whitespace) → clear the
- *     marker in place (exit the list), no extra blank line, return true. CM6's
- *     insertNewlineContinueMarkup mishandles this case on a trailing/last empty
- *     item — it inserts a blank line AND keeps the marker (`- [ ] ` + Enter →
- *     `\n\n- [ ] `).
- *   - Enter on an EMPTY item that is INDENTED (nested) → de-indent one level
- *     (strip one indentUnit from the leading whitespace, keep the marker,
- *     cursor stays on same line). Pressing Enter again de-indents another level
- *     until top-level, where the next Enter clears the marker in place (exit).
- *   - Anything else (cursor mid-line, ordered list, non-list line) → return
- *     false and fall through.
+ *   - non-empty item, cursor at end of line → continue tightly: newline + same
+ *     indent + same marker (task markers reset `[x]`→`[ ]`)
+ *   - empty item, top level                 → clear the marker in place (exit)
+ *   - empty item, nested                     → de-indent one level (keep marker)
  *
- * De-indent unit matches Shift-Tab (both use @codemirror/language indentUnit,
- * defaulting to 2 spaces when no indentUnit facet is configured).
- *
- * Must be installed at Prec.high BEFORE the markdown() extension so it wins
- * when precedence ties.
- *
- * Empty-item detection: line text is ONLY leading whitespace + list marker
- * (with optional task checkbox marker) + trailing spaces. No other content.
- * Supported markers: `- `, `- [ ] `, `- [x] `, `* `, `* [ ] `.
+ * Everything else — cursor mid-line, ordered lists (`1.`), non-list lines —
+ * returns false and falls through. Must be installed at Prec.high BEFORE the
+ * markdown() extension so it wins on a precedence tie. De-indent strips one
+ * indentUnit (2 spaces by default), matching Shift-Tab.
  */
 export function listEnterCommand(view: EditorView): boolean {
   const { state } = view;
   const sel = state.selection.main;
-  // Only act on a collapsed cursor (not a selection)
-  if (sel.from !== sel.to) return false;
+  if (sel.from !== sel.to) return false; // collapsed cursor only
 
   const line = state.doc.lineAt(sel.from);
-  const text = line.text;
+  const m = LIST_ITEM_RE.exec(line.text);
+  if (!m) return false; // not an unordered bullet/task item
 
-  // Top-level empty item: NO leading whitespace. Mutually exclusive with the
-  // nested regex below (which requires \s+), so nested still wins for indented
-  // lines. Clear the marker in place to exit the list without a blank line.
-  const EMPTY_TOPLEVEL_ITEM_RE = /^([-*+] )(?:\[[ xX]\] )?\s*$/;
-  if (EMPTY_TOPLEVEL_ITEM_RE.test(text)) {
+  const [, indent, bullet, task, content] = m;
+  const isEmpty = content.trim() === "";
+
+  // Non-empty item → continue the list tightly. A mid-line Enter is a content
+  // split, which we leave to CodeMirror.
+  if (!isEmpty) {
+    if (sel.from !== line.to) return false;
+    const insert = `\n${indent}${bullet}${task ? "[ ] " : ""}`;
+    view.dispatch({
+      changes: { from: sel.from, insert },
+      selection: { anchor: sel.from + insert.length },
+      scrollIntoView: true,
+      userEvent: "input",
+    });
+    return true;
+  }
+
+  // Empty top-level item → clear the marker in place (exit the list).
+  if (indent === "") {
     view.dispatch({
       changes: { from: line.from, to: line.to, insert: "" },
       selection: { anchor: line.from },
@@ -82,68 +84,13 @@ export function listEnterCommand(view: EditorView): boolean {
     return true;
   }
 
-  // Match: leading whitespace (at least one space/tab) + list marker + optional task marker + optional trailing spaces
-  // The "text after marker" must be empty (only marker + optional trailing spaces, no other content).
-  // Regex: (leading_ws)(marker)(optional_task_marker)(optional_trailing_spaces)$
-  // marker: `- ` or `* ` or `+ `
-  // task_marker: `[ ] ` or `[x] ` or `[X] ` (with trailing space)
-  const EMPTY_INDENTED_ITEM_RE = /^(\s+)([-*+] )(?:\[[ xX]\] )?$/;
-  const match = EMPTY_INDENTED_ITEM_RE.exec(text);
-  if (!match) {
-    // Non-empty bullet/task item with the cursor at END of line → continue the
-    // list tightly (single newline + same indent + marker), reset task to `[ ]`.
-    // Owning this avoids CM6's loose-list blank-line insertion. Ordered lists
-    // and mid-line cursors are left to insertNewlineContinueMarkup.
-    if (sel.from === line.to) {
-      const CONTINUE_ITEM_RE = /^(\s*)([-*+] )(\[[ xX]\] )?\S.*$/;
-      const cont = CONTINUE_ITEM_RE.exec(text);
-      if (cont) {
-        const [, leadingWs, bullet, taskMarker] = cont;
-        const insert = `\n${leadingWs}${bullet}${taskMarker ? "[ ] " : ""}`;
-        view.dispatch({
-          changes: { from: sel.from, insert },
-          selection: { anchor: sel.from + insert.length },
-          scrollIntoView: true,
-          userEvent: "input",
-        });
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // The item is empty AND indented — de-indent one level
-  const leadingWs = match[1];
-  const indentUnitStr = state.facet(indentUnit);
-  const unitSize = getIndentUnit(state);
-  const currentIndentCols = leadingWs.length; // simplified: assumes spaces only
-
-  if (currentIndentCols === 0) {
-    // This shouldn't match (regex requires \s+), but guard anyway — fall through
-    return false;
-  }
-
-  // Compute new indentation: strip one unit
-  const newIndentCols = Math.max(0, currentIndentCols - unitSize);
-  // Build new indent string (spaces — matches indentUnit convention)
-  const indentChar = indentUnitStr[0] === "\t" ? "\t" : " ";
-  const newIndent = indentChar === "\t"
-    ? "\t".repeat(Math.floor(newIndentCols / state.tabSize))
-    : " ".repeat(newIndentCols);
-
-  // Replace the leading whitespace with the new (reduced) indent
-  const changes = {
-    from: line.from,
-    to: line.from + leadingWs.length,
-    insert: newIndent,
-  };
-
-  // Position cursor after the new indent (at the start of the marker)
-  const newCursorPos = line.from + newIndent.length;
-
+  // Empty nested item → de-indent one level (strip one tab, or `unit` spaces).
+  const unit = getIndentUnit(state);
+  const strip = indent.startsWith("\t") ? 1 : Math.min(unit, indent.length);
+  const newIndent = indent.slice(strip);
   view.dispatch({
-    changes,
-    selection: { anchor: newCursorPos },
+    changes: { from: line.from, to: line.from + indent.length, insert: newIndent },
+    selection: { anchor: line.from + newIndent.length },
     scrollIntoView: true,
     userEvent: "delete.dedent",
   });
