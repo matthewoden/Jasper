@@ -177,8 +177,8 @@ export const jasperEditorTheme = EditorView.theme(
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",
-      width: "1.4em",
-      height: "1.4em",
+      width: "1.2em",
+      height: "1.2em",
       padding: "0",
       margin: "0 2px 0 0",
       // Center the box on the text x-height rather than the baseline so it sits
