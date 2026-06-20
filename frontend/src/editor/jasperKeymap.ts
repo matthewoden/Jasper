@@ -26,24 +26,27 @@ import type { Extension } from "@codemirror/state";
 /**
  * listEnterCommand — custom Enter handler for the empty-list-item case.
  *
- * NEW SPEC (supersedes CM6 default behavior for empty nested items):
- *   - Enter on a NON-EMPTY list/task item → fall through (let
- *     insertNewlineContinueMarkup create a new sibling item). ✓ already works.
- *   - Enter on an EMPTY item at OUTERMOST level (no leading whitespace)
- *     → fall through (let insertNewlineContinueMarkup exit the list). ✓ already works.
+ * SPEC:
+ *   - Enter on a NON-EMPTY list/task item → return false, falling through to
+ *     insertNewlineContinueMarkup which creates a new sibling item.
+ *   - Enter on an EMPTY item at TOP LEVEL (no leading whitespace) → clear the
+ *     marker in place (exit the list), no extra blank line, return true. CM6's
+ *     insertNewlineContinueMarkup mishandles this case on a trailing/last empty
+ *     item — it inserts a blank line AND keeps the marker (`- [ ] ` + Enter →
+ *     `\n\n- [ ] `). Short-circuiting it here is the whole point.
  *   - Enter on an EMPTY item that is INDENTED (nested) → de-indent one level
  *     (strip one indentUnit from the leading whitespace, keep the marker,
  *     cursor stays on same line). Pressing Enter again de-indents another level
- *     until top-level is reached, then the next Enter exits the list via CM6 default.
+ *     until top-level, where the next Enter clears the marker in place (exit).
  *
  * Applies uniformly to plain bullet items (`- `) and task items (`- [ ] `).
  * De-indent unit matches Shift-Tab (both use @codemirror/language indentUnit,
  * defaulting to 2 spaces when no indentUnit facet is configured).
  *
- * This command returns true ONLY for the nested-empty case; all other cases
- * return false, falling through to insertNewlineContinueMarkup (Prec.high from
- * the markdown() extension). Must be installed at Prec.high BEFORE the
- * markdown() extension in the extensions array so it wins when precedence ties.
+ * Returns true for both empty cases (top-level clear and nested de-indent);
+ * non-empty items return false and fall through to insertNewlineContinueMarkup
+ * (Prec.high from the markdown() extension). Must be installed at Prec.high
+ * BEFORE the markdown() extension so it wins when precedence ties.
  *
  * Empty-item detection: line text is ONLY leading whitespace + list marker
  * (with optional task checkbox marker) + trailing spaces. No other content.
@@ -57,6 +60,20 @@ export function listEnterCommand(view: EditorView): boolean {
 
   const line = state.doc.lineAt(sel.from);
   const text = line.text;
+
+  // Top-level empty item: NO leading whitespace. Mutually exclusive with the
+  // nested regex below (which requires \s+), so nested still wins for indented
+  // lines. Clear the marker in place to exit the list without a blank line.
+  const EMPTY_TOPLEVEL_ITEM_RE = /^([-*+] )(?:\[[ xX]\] )?\s*$/;
+  if (EMPTY_TOPLEVEL_ITEM_RE.test(text)) {
+    view.dispatch({
+      changes: { from: line.from, to: line.to, insert: "" },
+      selection: { anchor: line.from },
+      scrollIntoView: true,
+      userEvent: "delete.list-exit",
+    });
+    return true;
+  }
 
   // Match: leading whitespace (at least one space/tab) + list marker + optional task marker + optional trailing spaces
   // The "text after marker" must be empty (only marker + optional trailing spaces, no other content).
