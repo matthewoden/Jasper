@@ -90,9 +90,12 @@ export const checkboxTransactionExtender = EditorState.transactionExtender.of(()
 function makeLucideSvg(checked: boolean): SVGSVGElement {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("width", "1em");
-  svg.setAttribute("height", "1em");
+  // Crop most of Lucide's built-in whitespace (the 18px rect sits in a 24px box)
+  // so the visible square nearly fills the widget. Size comes from the parent
+  // span's CSS (.cm-task-checkbox) — the SVG just fills it (single size source).
+  svg.setAttribute("viewBox", "1 1 22 22");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("fill", checked ? "var(--color-accent)" : "none");
   svg.setAttribute("stroke", checked ? "var(--color-accent)" : "var(--color-border)");

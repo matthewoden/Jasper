@@ -181,8 +181,9 @@ export const jasperEditorTheme = EditorView.theme(
       height: "1.4em",
       padding: "0",
       margin: "0 2px 0 0",
-      // Larger box needs a deeper negative offset to stay centered on the baseline.
-      verticalAlign: "-0.3em",
+      // Center the box on the text x-height rather than the baseline so it sits
+      // vertically aligned with the line's letters.
+      verticalAlign: "middle",
       cursor: "pointer",
       userSelect: "none",
       flexShrink: "0",
