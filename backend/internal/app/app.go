@@ -158,6 +158,23 @@ type App struct {
 //  4. chi router with RequestID + Recoverer + requestLogger.
 //  5. r.Route("/api/v1", ...) wrapping api.HandlerFromMux.
 //  6. r.Mount("/", static.Handler()) — SPA fallback LAST.
+// allowedOrigins derives the full-URL Origin values permitted by the CSRF
+// middleware from the resolved listen address. Stores http://host:port forms
+// so comparison against r.Header.Get("Origin") needs no scheme-stripping.
+// For 0.0.0.0 binds the returned slice contains loopback forms only;
+// csrfOriginMiddleware applies an additional port-match fallback for that case.
+func allowedOrigins(listenAddr string) []string {
+	_, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		port = "6683"
+	}
+	return []string{
+		"http://127.0.0.1:" + port,
+		"http://localhost:" + port,
+		"http://[::1]:" + port,
+	}
+}
+
 func New(cfg Config) (*App, error) {
 	notesDir := notesDirFor(cfg.DataDir)
 	files := fsstore.NewStore(notesDir)
@@ -182,6 +199,7 @@ func New(cfg Config) (*App, error) {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
 		r.Use(api.ConfigStrictBodyMiddleware)
+		r.Use(csrfOriginMiddleware(cfg.ListenAddr))
 		api.HandlerFromMux(si, r)
 
 		r.Get("/files", apiServer.ServeFile)

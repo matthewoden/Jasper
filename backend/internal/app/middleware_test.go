@@ -223,8 +223,7 @@ func csrfSentinel(t *testing.T, called *bool) http.Handler {
 // passes through the CSRF middleware unconditionally (safe method).
 func TestCSRFOriginMiddleware_SafeMethodPassthrough(t *testing.T) {
 	called := false
-	origins := allowedOrigins("127.0.0.1:6683")
-	h := csrfOriginMiddleware(origins)(csrfSentinel(t, &called))
+	h := csrfOriginMiddleware("127.0.0.1:6683")(csrfSentinel(t, &called))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notes", nil)
 	rec := httptest.NewRecorder()
@@ -242,8 +241,7 @@ func TestCSRFOriginMiddleware_SafeMethodPassthrough(t *testing.T) {
 // loopback Origin passes the CSRF check.
 func TestCSRFOriginMiddleware_SameOriginAllow(t *testing.T) {
 	called := false
-	origins := allowedOrigins("127.0.0.1:6683")
-	h := csrfOriginMiddleware(origins)(csrfSentinel(t, &called))
+	h := csrfOriginMiddleware("127.0.0.1:6683")(csrfSentinel(t, &called))
 
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/notes/1", nil)
 	req.Header.Set("Origin", "http://127.0.0.1:6683")
@@ -262,8 +260,7 @@ func TestCSRFOriginMiddleware_SameOriginAllow(t *testing.T) {
 // is rejected with 403.
 func TestCSRFOriginMiddleware_EmptyOriginReject(t *testing.T) {
 	called := false
-	origins := allowedOrigins("127.0.0.1:6683")
-	h := csrfOriginMiddleware(origins)(csrfSentinel(t, &called))
+	h := csrfOriginMiddleware("127.0.0.1:6683")(csrfSentinel(t, &called))
 
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/notes/1", nil)
 	rec := httptest.NewRecorder()
@@ -281,8 +278,7 @@ func TestCSRFOriginMiddleware_EmptyOriginReject(t *testing.T) {
 // is rejected with 403.
 func TestCSRFOriginMiddleware_ForeignOriginReject(t *testing.T) {
 	called := false
-	origins := allowedOrigins("127.0.0.1:6683")
-	h := csrfOriginMiddleware(origins)(csrfSentinel(t, &called))
+	h := csrfOriginMiddleware("127.0.0.1:6683")(csrfSentinel(t, &called))
 
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/notes/1", nil)
 	req.Header.Set("Origin", "http://evil.com")
@@ -300,8 +296,7 @@ func TestCSRFOriginMiddleware_ForeignOriginReject(t *testing.T) {
 // TestCSRFOriginMiddleware_DeleteAllows: DELETE with allowed Origin passes.
 func TestCSRFOriginMiddleware_DeleteAllows(t *testing.T) {
 	called := false
-	origins := allowedOrigins("127.0.0.1:6683")
-	h := csrfOriginMiddleware(origins)(csrfSentinel(t, &called))
+	h := csrfOriginMiddleware("127.0.0.1:6683")(csrfSentinel(t, &called))
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/notes/1", nil)
 	req.Header.Set("Origin", "http://localhost:6683")
@@ -320,8 +315,7 @@ func TestCSRFOriginMiddleware_DeleteAllows(t *testing.T) {
 // browser Origin whose port matches the configured port passes; a request
 // from the same IP with a wrong port is rejected.
 func TestCSRFOriginMiddleware_AllIfacesPortMatch(t *testing.T) {
-	origins := allowedOrigins("0.0.0.0:6683")
-	h := csrfOriginMiddleware(origins)
+	h := csrfOriginMiddleware("0.0.0.0:6683")
 
 	// LAN origin with correct port — should pass.
 	t.Run("correct_port_allows", func(t *testing.T) {
