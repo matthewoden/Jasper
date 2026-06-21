@@ -2,7 +2,9 @@ package app
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"time"
 	"unicode"
 
@@ -79,4 +81,57 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		next.ServeHTTP(w, r)
 	})
+}
+
+var csrfSafeMethods = map[string]bool{
+	http.MethodGet:     true,
+	http.MethodHead:    true,
+	http.MethodOptions: true,
+}
+
+// csrfOriginMiddleware rejects state-mutating requests (PUT/POST/DELETE)
+// whose Origin header does not appear in the set derived from listenAddr.
+// GET/HEAD/OPTIONS pass through unconditionally. Empty Origin is always
+// rejected for mutations. Always-on regardless of bind address (D-07).
+//
+// For 0.0.0.0 all-interfaces binds, the middleware applies a port-match
+// fallback: any Origin whose port matches the configured port is accepted.
+func csrfOriginMiddleware(listenAddr string) func(http.Handler) http.Handler {
+	bindHost, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		bindHost, port = "127.0.0.1", "6683"
+	}
+	allIfaces := bindHost == "0.0.0.0"
+
+	allowed := make(map[string]bool)
+	for _, o := range allowedOrigins(listenAddr) {
+		allowed[o] = true
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if csrfSafeMethods[r.Method] {
+				next.ServeHTTP(w, r)
+				return
+			}
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				http.Error(w, "missing Origin header", http.StatusForbidden)
+				return
+			}
+			if allowed[origin] {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if allIfaces {
+				if u, parseErr := url.Parse(origin); parseErr == nil {
+					if _, originPort, splitErr := net.SplitHostPort(u.Host); splitErr == nil && originPort == port {
+						next.ServeHTTP(w, r)
+						return
+					}
+				}
+			}
+			http.Error(w, "forbidden Origin", http.StatusForbidden)
+		})
+	}
 }

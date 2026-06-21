@@ -3,6 +3,7 @@ package wshub
 import (
 	"encoding/json"
 	"log/slog"
+	"net"
 	"sync"
 	"sync/atomic"
 
@@ -27,20 +28,63 @@ var _ notes.Broadcaster = (*Hub)(nil)
 // cyclic struct). MarshalFailureCount() exposes the value for tests.
 type Hub struct {
 	log             *slog.Logger
+	originPatterns  []string
 	mu              sync.RWMutex
 	clients         map[*client]struct{}
 	marshalFailures uint64
 }
 
-// New constructs an empty Hub. Logger fallback mirrors notes.NewService
-// (backend/internal/notes/service.go:46-59).
-func New(log *slog.Logger) *Hub {
+// WsOriginPatterns derives the glob host:port patterns that websocket.Accept
+// expects from a listen address. The format ("localhost:*") differs from the
+// full-URL form used by the CSRF middleware ("http://localhost:6683") — do not
+// share slices between them. For 0.0.0.0 all-interfaces binds, returns a
+// wildcard port pattern "*:PORT" so any host on the configured port is accepted.
+func WsOriginPatterns(listenAddr string) []string {
+	host, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		return []string{"localhost:*", "127.0.0.1:*"}
+	}
+	if host == "0.0.0.0" {
+		return []string{
+			"localhost:" + port,
+			"127.0.0.1:" + port,
+			"[::1]:" + port,
+			"*:" + port,
+		}
+	}
+	return []string{
+		"localhost:" + port,
+		"127.0.0.1:" + port,
+		"[::1]:" + port,
+	}
+}
+
+// New constructs an empty Hub with origin patterns derived from listenAddr.
+// Pass the resolved listen address (e.g. "127.0.0.1:6683" or "0.0.0.0:6683")
+// so the Hub's WebSocket upgrade enforcement matches the HTTP bind posture.
+// Logger fallback mirrors notes.NewService (backend/internal/notes/service.go).
+func New(log *slog.Logger, listenAddr string) *Hub {
 	if log == nil {
 		log = slog.Default()
 	}
 	return &Hub{
-		log:     log,
-		clients: make(map[*client]struct{}),
+		log:            log,
+		originPatterns: WsOriginPatterns(listenAddr),
+		clients:        make(map[*client]struct{}),
+	}
+}
+
+// NewWithOrigins constructs a Hub with an explicit set of origin patterns.
+// Prefer New() for production use; NewWithOrigins is provided for tests that
+// need precise pattern control.
+func NewWithOrigins(log *slog.Logger, originPatterns []string) *Hub {
+	if log == nil {
+		log = slog.Default()
+	}
+	return &Hub{
+		log:            log,
+		originPatterns: originPatterns,
+		clients:        make(map[*client]struct{}),
 	}
 }
 

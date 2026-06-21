@@ -34,7 +34,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns: []string{"localhost:*", "127.0.0.1:*"},
+		OriginPatterns: h.originPatterns,
 	})
 	if err != nil {
 		h.log.Warn("hub: accept failed", "err", err)

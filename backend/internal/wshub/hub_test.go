@@ -20,7 +20,12 @@ import (
 
 func newTestHub(t *testing.T) *wshub.Hub {
 	t.Helper()
-	return wshub.New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return wshub.New(slog.New(slog.NewTextHandler(io.Discard, nil)), "127.0.0.1:6683")
+}
+
+// wsOriginPatterns is a test helper exposing wshub.WsOriginPatterns.
+func wsOriginPatterns(listenAddr string) []string {
+	return wshub.WsOriginPatterns(listenAddr)
 }
 
 func dialClient(t *testing.T, srvURL, sid string) (*websocket.Conn, string) {
@@ -216,6 +221,39 @@ func TestHub_RejectsEmptyOrigin(t *testing.T) {
 	defer resp.Body.Close() //nolint:errcheck
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected 403 for empty Origin, got %d", resp.StatusCode)
+	}
+}
+
+// TestHub_LANBoundOriginPatterns verifies that WsOriginPatterns derives the
+// correct wildcard port pattern for a 0.0.0.0 all-interfaces bind, and that
+// a Hub constructed for that bind still rejects upgrades with empty Origin
+// (WR-01 preserved). The empty-Origin check runs before websocket.Accept, so
+// we can test it without a real network listener using httptest.NewRecorder.
+func TestHub_LANBoundOriginPatterns(t *testing.T) {
+	// Derive patterns for a 0.0.0.0:6683 bind.
+	patterns := wsOriginPatterns("0.0.0.0:6683")
+
+	// A wildcard port pattern must be included so LAN browsers are accepted.
+	found := false
+	for _, p := range patterns {
+		if p == "*:6683" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("WsOriginPatterns(0.0.0.0:6683) missing *:6683 pattern; got: %v", patterns)
+	}
+
+	// Construct a Hub with those patterns and verify empty-Origin is still rejected.
+	// The empty-Origin check is in ServeHTTP BEFORE websocket.Accept, so it does
+	// not require a real listener — httptest.NewRecorder is sufficient.
+	hub := wshub.NewWithOrigins(slog.New(slog.NewTextHandler(io.Discard, nil)), patterns)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	hub.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for empty Origin on LAN hub, got %d", rec.Code)
 	}
 }
 
