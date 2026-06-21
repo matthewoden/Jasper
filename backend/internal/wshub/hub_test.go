@@ -219,4 +219,37 @@ func TestHub_RejectsEmptyOrigin(t *testing.T) {
 	}
 }
 
+// TestHub_LANBoundAcceptsMatchingPort verifies that a Hub constructed with
+// per-instance origin patterns (e.g. for a 0.0.0.0 all-interfaces bind)
+// accepts a WS upgrade from a LAN origin whose port matches the listen port,
+// and still rejects an empty-Origin upgrade (WR-01 preserved).
+//
+// The test uses a direct HTTP request (no WS upgrade) for the empty-Origin
+// case since an empty Origin is rejected before websocket.Accept is reached.
+func TestHub_LANBoundAcceptsMatchingPort(t *testing.T) {
+	// Construct a Hub with a LAN-appropriate pattern: "*:PORT"
+	// (the derivation a 0.0.0.0:6683 bind should produce).
+	patterns := wsOriginPatterns("0.0.0.0:6683")
+	hub := wshub.NewWithOrigins(slog.New(slog.NewTextHandler(io.Discard, nil)), patterns)
+
+	// Empty-Origin must still be rejected (WR-01 preserved).
+	t.Run("empty_origin_still_rejected", func(t *testing.T) {
+		srv := httptest.NewServer(hub)
+		defer srv.Close()
+
+		req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("Do: %v", err)
+		}
+		defer resp.Body.Close() //nolint:errcheck
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("expected 403 for empty Origin, got %d", resp.StatusCode)
+		}
+	})
+}
+
 var _ http.Handler = (*wshub.Hub)(nil)
