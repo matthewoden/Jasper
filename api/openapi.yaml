@@ -1938,8 +1938,10 @@ components:
           # wizard does NOT expose a port override (config-file edit only).
           # DataDir is set by the first-run wizard (08-02 / D-04) and
           # re-read at every server boot.
+          # Phase 13 NET-01: bind field added — loopback default, 0.0.0.0
+          # for all interfaces. MCP always stays loopback regardless.
           type: object
-          required: [port, dataDir]
+          required: [port, dataDir, bind]
           additionalProperties: false
           properties:
             port:
@@ -1950,6 +1952,13 @@ components:
             dataDir:
               type: string
               minLength: 1
+            bind:
+              type: string
+              default: "127.0.0.1"
+              description: |
+                HTTP listener bind address. Defaults to "127.0.0.1" (loopback-only).
+                Set to "0.0.0.0" to expose on all network interfaces. Requires a
+                server restart. MCP always remains loopback regardless of this value.
         mcp:
           # Phase 8 D-14 / D-15 / D-47: optional secondary HTTP listener
           # serving the MCP StreamableHTTP endpoint. Disabled by default;

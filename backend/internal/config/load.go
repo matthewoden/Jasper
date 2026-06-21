@@ -60,6 +60,9 @@ func Load(dataDir string, log *slog.Logger) (Config, error) {
 	if cfg.Server.Port == 0 {
 		cfg.Server.Port = 6683
 	}
+	if cfg.Server.Bind == "" {
+		cfg.Server.Bind = "127.0.0.1"
+	}
 	if cfg.MCP.Port == 0 {
 		cfg.MCP.Port = 6684
 	}

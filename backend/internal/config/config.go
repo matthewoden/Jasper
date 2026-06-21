@@ -49,9 +49,13 @@ type Editor struct {
 //     expose a port override; users edit config.json directly to change ports.
 //   - DataDir is set by the first-run wizard at submit time and re-read at
 //     every boot via load.go.
+//   - Bind defaults to "127.0.0.1" (loopback-only). Set to "0.0.0.0" to
+//     expose the HTTP listener on all network interfaces. Requires a server
+//     restart. MCP always binds loopback regardless of this value.
 type ServerConfig struct {
 	Port    int    `json:"port"`
 	DataDir string `json:"dataDir"`
+	Bind    string `json:"bind,omitempty"`
 }
 
 // MCPConfig controls the optional second HTTP listener that serves the MCP

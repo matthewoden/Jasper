@@ -72,7 +72,7 @@ func TestLoad_RoundTrip(t *testing.T) {
 		DailyNotes: DailyNotes{Folder: "journal", Template: "## {{date}}"},
 		Editor:     Editor{FontSize: 16, LineHeight: 1.7, VimMode: true, AutosaveMs: 3000},
 		Theme:      "light",
-		Server:     ServerConfig{Port: 6683, DataDir: "/tmp/jasper-test"},
+		Server:     ServerConfig{Port: 6683, DataDir: "/tmp/jasper-test", Bind: "127.0.0.1"},
 		MCP:        MCPConfig{Enabled: true, Port: 6684, Bind: "127.0.0.1"},
 	}
 	if err := Save(dir, in); err != nil {
@@ -130,6 +130,9 @@ func TestDefaults_ServerAndMCP(t *testing.T) {
 	}
 	if d.Server.DataDir == "" {
 		t.Errorf("Server.DataDir: got empty; expected non-empty default (DefaultDataDir)")
+	}
+	if d.Server.Bind != "127.0.0.1" {
+		t.Errorf("Server.Bind: got %q, want 127.0.0.1", d.Server.Bind)
 	}
 	if d.MCP.Port != 6684 {
 		t.Errorf("MCP.Port: got %d, want 6684", d.MCP.Port)
@@ -226,6 +229,9 @@ func TestLoad_OldConfigWithoutServerOrMCP_BackCompat(t *testing.T) {
 	}
 	if cfg.Server.Port != 6683 {
 		t.Errorf("Server.Port: got %d, want 6683 (defaulted)", cfg.Server.Port)
+	}
+	if cfg.Server.Bind != "127.0.0.1" {
+		t.Errorf("Server.Bind: got %q, want 127.0.0.1 (defaulted)", cfg.Server.Bind)
 	}
 	if cfg.MCP.Port != 6684 {
 		t.Errorf("MCP.Port: got %d, want 6684 (defaulted)", cfg.MCP.Port)

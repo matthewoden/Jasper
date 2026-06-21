@@ -54,6 +54,7 @@ func Defaults() Config {
 		Server: ServerConfig{
 			Port:    6683,
 			DataDir: DefaultDataDir(),
+			Bind:    "127.0.0.1",
 		},
 		MCP: MCPConfig{
 			Enabled: true,
