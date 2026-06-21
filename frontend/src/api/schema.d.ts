@@ -1230,6 +1230,13 @@ export interface components {
                 /** @default 6683 */
                 port: number;
                 dataDir: string;
+                /**
+                 * @description HTTP listener bind address. Defaults to "127.0.0.1" (loopback-only).
+                 *     Set to "0.0.0.0" to expose on all network interfaces. Requires a
+                 *     server restart. MCP always remains loopback regardless of this value.
+                 * @default 127.0.0.1
+                 */
+                bind: string;
             };
             mcp?: {
                 /** @default false */

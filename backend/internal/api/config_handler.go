@@ -57,9 +57,11 @@ func (s *Server) PutConfig(
 
 func toWireConfig(c config.Config) Config {
 	server := struct {
+		Bind    string `json:"bind"`
 		DataDir string `json:"dataDir"`
 		Port    int    `json:"port"`
 	}{
+		Bind:    c.Server.Bind,
 		DataDir: c.Server.DataDir,
 		Port:    c.Server.Port,
 	}
@@ -123,14 +125,18 @@ func fromWireConfig(w Config) config.Config {
 			LineHeight: w.Editor.LineHeight,
 			VimMode:    w.Editor.VimMode,
 		},
-		Server: config.ServerConfig{Port: 6683, DataDir: ""},
+		Server: config.ServerConfig{Port: 6683, DataDir: "", Bind: "127.0.0.1"},
 		MCP:    config.MCPConfig{Enabled: false, Port: 6684, Bind: "127.0.0.1"},
 	}
 	if w.Server != nil {
 		out.Server.Port = w.Server.Port
 		out.Server.DataDir = w.Server.DataDir
+		out.Server.Bind = w.Server.Bind
 		if out.Server.Port == 0 {
 			out.Server.Port = 6683
+		}
+		if out.Server.Bind == "" {
+			out.Server.Bind = "127.0.0.1"
 		}
 	}
 	if w.Mcp != nil {
