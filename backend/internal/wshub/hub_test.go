@@ -20,7 +20,12 @@ import (
 
 func newTestHub(t *testing.T) *wshub.Hub {
 	t.Helper()
-	return wshub.New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return wshub.New(slog.New(slog.NewTextHandler(io.Discard, nil)), "127.0.0.1:6683")
+}
+
+// wsOriginPatterns is a test helper exposing wshub.WsOriginPatterns.
+func wsOriginPatterns(listenAddr string) []string {
+	return wshub.WsOriginPatterns(listenAddr)
 }
 
 func dialClient(t *testing.T, srvURL, sid string) (*websocket.Conn, string) {
@@ -219,37 +224,37 @@ func TestHub_RejectsEmptyOrigin(t *testing.T) {
 	}
 }
 
-// TestHub_LANBoundAcceptsMatchingPort verifies that a Hub constructed with
-// per-instance origin patterns (e.g. for a 0.0.0.0 all-interfaces bind)
-// accepts a WS upgrade from a LAN origin whose port matches the listen port,
-// and still rejects an empty-Origin upgrade (WR-01 preserved).
-//
-// The test uses a direct HTTP request (no WS upgrade) for the empty-Origin
-// case since an empty Origin is rejected before websocket.Accept is reached.
-func TestHub_LANBoundAcceptsMatchingPort(t *testing.T) {
-	// Construct a Hub with a LAN-appropriate pattern: "*:PORT"
-	// (the derivation a 0.0.0.0:6683 bind should produce).
+// TestHub_LANBoundOriginPatterns verifies that WsOriginPatterns derives the
+// correct wildcard port pattern for a 0.0.0.0 all-interfaces bind, and that
+// a Hub constructed for that bind still rejects upgrades with empty Origin
+// (WR-01 preserved). The empty-Origin check runs before websocket.Accept, so
+// we can test it without a real network listener using httptest.NewRecorder.
+func TestHub_LANBoundOriginPatterns(t *testing.T) {
+	// Derive patterns for a 0.0.0.0:6683 bind.
 	patterns := wsOriginPatterns("0.0.0.0:6683")
+
+	// A wildcard port pattern must be included so LAN browsers are accepted.
+	found := false
+	for _, p := range patterns {
+		if p == "*:6683" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("WsOriginPatterns(0.0.0.0:6683) missing *:6683 pattern; got: %v", patterns)
+	}
+
+	// Construct a Hub with those patterns and verify empty-Origin is still rejected.
+	// The empty-Origin check is in ServeHTTP BEFORE websocket.Accept, so it does
+	// not require a real listener — httptest.NewRecorder is sufficient.
 	hub := wshub.NewWithOrigins(slog.New(slog.NewTextHandler(io.Discard, nil)), patterns)
-
-	// Empty-Origin must still be rejected (WR-01 preserved).
-	t.Run("empty_origin_still_rejected", func(t *testing.T) {
-		srv := httptest.NewServer(hub)
-		defer srv.Close()
-
-		req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
-		if err != nil {
-			t.Fatalf("NewRequest: %v", err)
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatalf("Do: %v", err)
-		}
-		defer resp.Body.Close() //nolint:errcheck
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("expected 403 for empty Origin, got %d", resp.StatusCode)
-		}
-	})
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	hub.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for empty Origin on LAN hub, got %d", rec.Code)
+	}
 }
 
 var _ http.Handler = (*wshub.Hub)(nil)

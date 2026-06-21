@@ -268,7 +268,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 		}
 	}
 
-	hub := wshub.New(a.cfg.Logger)
+	hub := wshub.New(a.cfg.Logger, a.cfg.ListenAddr)
 	a.mu.Lock()
 	a.hub = hub
 	a.mu.Unlock()
@@ -443,7 +443,7 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 		}
 	}
 
-	hub := wshub.New(a.cfg.Logger)
+	hub := wshub.New(a.cfg.Logger, a.cfg.ListenAddr)
 	a.mu.Lock()
 	a.hub = hub
 	a.mu.Unlock()
