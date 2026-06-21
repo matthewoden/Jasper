@@ -49,12 +49,12 @@ func TestRequireLoopbackBind_OnlyLoopback(t *testing.T) {
 	}
 }
 
-// TestServeWSLBindOptIn documents the WSL2 0.0.0.0 acceptance path.
+// TestServeWSLBindOptIn documents the MCP loopback enforcement path.
 //
-// There is no env-var or build-tag opt-in to RequireLoopbackBind: users who
-// need LAN access on WSL2 must explicitly edit server.bind in config.json, and
-// the loopback gate refuses startup. This test documents the absence of any
-// silent escape hatch; if one is added to netbind.go, a case can be added here.
+// RequireLoopbackBind continues to refuse non-loopback addresses — it is used
+// by the MCP listener (mcp/listener.go) which must always stay loopback-only.
+// The HTTP listener now uses IsLoopback for a warning-only check (NET-01).
+// This test verifies no env-var escape hatch exists for RequireLoopbackBind.
 func TestServeWSLBindOptIn(t *testing.T) {
 	t.Setenv("JASPER_ALLOW_WSL_BIND", "1")
 	if err := netbind.RequireLoopbackBind("0.0.0.0:6683"); err == nil {
