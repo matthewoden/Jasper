@@ -84,3 +84,40 @@ describe("Plan 07-36 — Cmd+U underline removed (UAT-3 N7)", () => {
     expect(entry).toBeUndefined();
   });
 });
+
+
+describe("Plan 13-02 — DEBT-05: vault.switch has no keybinding (palette-only lock)", () => {
+  it("vault.switch entry exists in the registry", () => {
+    const entry = SHORTCUTS_REGISTRY.find((s) => s.id === "vault.switch");
+    expect(entry).toBeDefined();
+  });
+
+  it("vault.switch has no shortcut property (undefined)", () => {
+    const entry = SHORTCUTS_REGISTRY.find((s) => s.id === "vault.switch");
+    expect(entry).toBeDefined();
+    expect(entry?.shortcut).toBeUndefined();
+  });
+
+  it("vault.switch is reachable via the palette (inPalette === true)", () => {
+    const entry = SHORTCUTS_REGISTRY.find((s) => s.id === "vault.switch");
+    expect(entry?.inPalette).toBe(true);
+  });
+
+  it("vault.switch does NOT appear in the cheat-sheet (inCheatSheet === false)", () => {
+    const entry = SHORTCUTS_REGISTRY.find((s) => s.id === "vault.switch");
+    expect(entry?.inCheatSheet).toBe(false);
+  });
+
+  it("no registry entry declares a Shift+V vault shortcut combination (guards against re-introduction)", () => {
+    // Check all shortcut strings for a shift+v pattern in any encoding:
+    // - "⌘⇧V" or "⌘⇧v" (Mac symbol form)
+    // - "Ctrl Shift V" or "Ctrl Shift v" (non-Mac form)
+    // Any entry whose shortcut contains the shift modifier and the letter V is a collision candidate.
+    const vaultShiftVEntries = SHORTCUTS_REGISTRY.filter((s) => {
+      if (!s.shortcut) return false;
+      const sc = s.shortcut.toLowerCase();
+      return (sc.includes("⇧v") || sc.includes("shift v"));
+    });
+    expect(vaultShiftVEntries).toHaveLength(0);
+  });
+});
