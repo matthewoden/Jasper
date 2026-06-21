@@ -10,26 +10,30 @@ import (
 	"net"
 )
 
+// IsLoopback reports whether host is a loopback address (127.0.0.1, ::1, localhost).
+// Called by serve.go to decide whether to log a LAN-exposure warning and by
+// doctor/status to report the server bind address.
+func IsLoopback(host string) bool {
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
 // RequireLoopbackBind returns nil when addr's host is loopback
 // (127.0.0.1, ::1, or "localhost"); otherwise an error.
 //
 // Empty-host shorthand like ":3000" is REJECTED because net.Listen
 // treats it as 0.0.0.0 (all interfaces). Callers must spell the host
 // explicitly so a typo doesn't silently expose the listener to the LAN.
-//
-// The error string is stable — smoke tests, log greps, and downstream
-// MCP tests all match the same literal.
 func RequireLoopbackBind(addr string) error {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return fmt.Errorf("invalid --addr %q: %w", addr, err)
+		return fmt.Errorf("invalid --bind %q: %w", addr, err)
 	}
-	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+	if IsLoopback(host) {
 		return nil
 	}
 
 	return errors.New(
-		"phase 1 only allows binding to loopback (localhost / 127.0.0.1 / ::1); " +
-			"0.0.0.0 will be revisited in phase 8",
+		"MCP listener only allows binding to loopback (localhost / 127.0.0.1 / ::1); " +
+			"set server.bind in config to expose the HTTP listener on LAN",
 	)
 }

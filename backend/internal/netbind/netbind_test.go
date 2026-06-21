@@ -45,7 +45,7 @@ func TestRequireLoopbackBind_RejectsMalformed(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for malformed addr, got nil")
 	}
-	if !strings.Contains(err.Error(), `invalid --addr "not-an-addr"`) {
-		t.Errorf("error did not mention invalid --addr: %v", err)
+	if !strings.Contains(err.Error(), `invalid --bind "not-an-addr"`) {
+		t.Errorf("error did not mention invalid --bind: %v", err)
 	}
 }
