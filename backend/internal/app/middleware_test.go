@@ -209,3 +209,147 @@ func TestSecurityHeadersMiddleware_UsesSetNotAdd(t *testing.T) {
 		t.Errorf("Referrer-Policy values: got %d, want 1; values=%v", len(got), got)
 	}
 }
+
+// sentinel next handler for CSRF tests — records whether it was called.
+func csrfSentinel(t *testing.T, called *bool) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		*called = true
+		w.WriteHeader(http.StatusOK)
+	})
+}
+
+// TestCSRFOriginMiddleware_SafeMethodPassthrough: GET with no Origin header
+// passes through the CSRF middleware unconditionally (safe method).
+func TestCSRFOriginMiddleware_SafeMethodPassthrough(t *testing.T) {
+	called := false
+	origins := allowedOrigins("127.0.0.1:6683")
+	h := csrfOriginMiddleware(origins)(csrfSentinel(t, &called))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notes", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if !called {
+		t.Error("expected next handler to be called for GET with no Origin")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+// TestCSRFOriginMiddleware_SameOriginAllow: PUT with the same-origin
+// loopback Origin passes the CSRF check.
+func TestCSRFOriginMiddleware_SameOriginAllow(t *testing.T) {
+	called := false
+	origins := allowedOrigins("127.0.0.1:6683")
+	h := csrfOriginMiddleware(origins)(csrfSentinel(t, &called))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/notes/1", nil)
+	req.Header.Set("Origin", "http://127.0.0.1:6683")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if !called {
+		t.Error("expected next handler to be called for PUT with same-origin loopback")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+// TestCSRFOriginMiddleware_EmptyOriginReject: PUT with empty Origin
+// is rejected with 403.
+func TestCSRFOriginMiddleware_EmptyOriginReject(t *testing.T) {
+	called := false
+	origins := allowedOrigins("127.0.0.1:6683")
+	h := csrfOriginMiddleware(origins)(csrfSentinel(t, &called))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/notes/1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if called {
+		t.Error("expected next handler NOT to be called for PUT with empty Origin")
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+}
+
+// TestCSRFOriginMiddleware_ForeignOriginReject: PUT with a foreign Origin
+// is rejected with 403.
+func TestCSRFOriginMiddleware_ForeignOriginReject(t *testing.T) {
+	called := false
+	origins := allowedOrigins("127.0.0.1:6683")
+	h := csrfOriginMiddleware(origins)(csrfSentinel(t, &called))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/notes/1", nil)
+	req.Header.Set("Origin", "http://evil.com")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if called {
+		t.Error("expected next handler NOT to be called for PUT with foreign Origin")
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+}
+
+// TestCSRFOriginMiddleware_DeleteAllows: DELETE with allowed Origin passes.
+func TestCSRFOriginMiddleware_DeleteAllows(t *testing.T) {
+	called := false
+	origins := allowedOrigins("127.0.0.1:6683")
+	h := csrfOriginMiddleware(origins)(csrfSentinel(t, &called))
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/notes/1", nil)
+	req.Header.Set("Origin", "http://localhost:6683")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if !called {
+		t.Error("expected next handler to be called for DELETE with allowed Origin")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+// TestCSRFOriginMiddleware_AllIfacesPortMatch: when bound to 0.0.0.0, a LAN
+// browser Origin whose port matches the configured port passes; a request
+// from the same IP with a wrong port is rejected.
+func TestCSRFOriginMiddleware_AllIfacesPortMatch(t *testing.T) {
+	origins := allowedOrigins("0.0.0.0:6683")
+	h := csrfOriginMiddleware(origins)
+
+	// LAN origin with correct port — should pass.
+	t.Run("correct_port_allows", func(t *testing.T) {
+		called := false
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/notes/1", nil)
+		req.Header.Set("Origin", "http://192.168.1.5:6683")
+		rec := httptest.NewRecorder()
+		h(csrfSentinel(t, &called)).ServeHTTP(rec, req)
+		if !called {
+			t.Error("expected next handler to be called for LAN origin with correct port")
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rec.Code)
+		}
+	})
+
+	// LAN origin with wrong port — should be rejected.
+	t.Run("wrong_port_rejects", func(t *testing.T) {
+		called := false
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/notes/1", nil)
+		req.Header.Set("Origin", "http://192.168.1.5:9999")
+		rec := httptest.NewRecorder()
+		h(csrfSentinel(t, &called)).ServeHTTP(rec, req)
+		if called {
+			t.Error("expected next handler NOT to be called for LAN origin with wrong port")
+		}
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected 403, got %d", rec.Code)
+		}
+	})
+}
