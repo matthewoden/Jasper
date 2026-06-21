@@ -264,8 +264,9 @@ describe("listEnterCommand — nested-empty-item de-indent", () => {
       const result = listEnterCommand(view);
       expect(result).toBe(true);
       expect(view.state.doc.toString()).toBe("- [ ] ");
-      // Cursor should be at start of marker (position 0 after removing 2 leading spaces)
-      expect(view.state.selection.main.from).toBe(0);
+      // Cursor stays at END of line (shifted left only by the 2 removed spaces):
+      // "  - [ ] " len 8, cursor at 8 → "- [ ] " len 6, cursor at 6.
+      expect(view.state.selection.main.from).toBe(6);
     } finally {
       view.destroy();
     }

@@ -40,7 +40,8 @@ const LIST_ITEM_RE = /^(\s*)([-*+] )(\[[ xX]\] )?(.*)$/;
  *   - non-empty item, cursor at end of line → continue tightly: newline + same
  *     indent + same marker (task markers reset `[x]`→`[ ]`)
  *   - empty item, top level                 → clear the marker in place (exit)
- *   - empty item, nested                     → de-indent one level (keep marker)
+ *   - empty item, nested                     → de-indent one level (keep marker,
+ *     cursor stays at end of line)
  *
  * Everything else — cursor mid-line, ordered lists (`1.`), non-list lines —
  * returns false and falls through. Must be installed at Prec.high BEFORE the
@@ -85,12 +86,14 @@ export function listEnterCommand(view: EditorView): boolean {
   }
 
   // Empty nested item → de-indent one level (strip one tab, or `unit` spaces).
+  // Keep the cursor at the end of the line (it shifts left only by the removed
+  // indent) rather than jumping to the start of the marker.
   const unit = getIndentUnit(state);
   const strip = indent.startsWith("\t") ? 1 : Math.min(unit, indent.length);
   const newIndent = indent.slice(strip);
   view.dispatch({
     changes: { from: line.from, to: line.from + indent.length, insert: newIndent },
-    selection: { anchor: line.from + newIndent.length },
+    selection: { anchor: line.to - strip },
     scrollIntoView: true,
     userEvent: "delete.dedent",
   });
