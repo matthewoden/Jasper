@@ -86,6 +86,13 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     dragNodes: NodeApi<ArboristNode>[];
   } | null>(null);
 
+  // A single drop dispatches handleMove twice — once from the native window
+  // `drop` listener (folder/empty-space drops) and once from react-arborist's
+  // own onMove. The first move succeeds; the duplicate then 404s because the
+  // source no longer exists at its old path. Dedupe identical moves fired within
+  // a short window so only the first runs.
+  const lastMoveRef = useRef<{ key: string; t: number } | null>(null);
+
   const observerRef = useRef<ResizeObserver | null>(null);
   const treeAreaRef = useRef<HTMLDivElement | null>(null);
   const [treeHeight, setTreeHeight] = useState(400);
@@ -465,6 +472,25 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         id: dn.data.data.kind === "note" ? dn.data.data.id : null,
         path: dn.data.data.path,
       }));
+
+      // Dedupe the native-listener + arborist-onMove double dispatch: same
+      // sources + same target folder within 1s is always the spurious repeat
+      // (a real second move would see the already-relocated source path).
+      const targetKey =
+        args.parentNode?.data.data.kind === "folder"
+          ? args.parentNode.data.data.path
+          : "root";
+      const moveKey =
+        sources.map((s) => s.path).sort().join("\n") + "→" + targetKey;
+      const now = Date.now();
+      if (
+        lastMoveRef.current &&
+        lastMoveRef.current.key === moveKey &&
+        now - lastMoveRef.current.t < 1000
+      ) {
+        return;
+      }
+      lastMoveRef.current = { key: moveKey, t: now };
 
       try {
         for (const src of sources) {
