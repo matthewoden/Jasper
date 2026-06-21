@@ -24,9 +24,13 @@
  *     raw "- [ ] " text is visible and editable. caret OFF the line → checkbox
  *     widget + bullet are rendered. Mirrors wikilinkPlugin.
  *   - D-02 REVERSED (user design decision): widget replace range covers ONLY the
- *     TaskMarker "[ ]" + trailing space — [TaskMarker.from .. TaskMarker.to + 1].
- *     The leading "- " is left as normal list markup so livePreviewPlugin can render
- *     it as a bullet (•). This gives the "• ☐ text" Obsidian-style layout.
+ *     TaskMarker "[ ]" — [TaskMarker.from .. TaskMarker.to]. The leading "- " is
+ *     left as normal list markup so livePreviewPlugin renders it as a bullet (•),
+ *     and the TaskMarker's trailing space is left as a literal character so the
+ *     gap before the text is preserved and the rendered width stays close to the
+ *     raw "[ ] " (no horizontal jump when the line toggles to raw). The widget
+ *     span is `3ch` wide — exactly the raw "[ ]" it replaces — with the icon
+ *     centered inside. This gives the "• ☐ text" Obsidian-style layout.
  *     Corollary: Backspace atomicity only covers the small [ ] range, not the full
  *     "- [ ] " prefix — fixing the Backspace-deletes-whole-prefix bug.
  *   - Lucide-style SVG icons (user design decision): unchecked = Square (rounded rect),
@@ -91,10 +95,12 @@ function makeLucideSvg(checked: boolean): SVGSVGElement {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   // Crop most of Lucide's built-in whitespace (the 18px rect sits in a 24px box)
-  // so the visible square nearly fills the widget. Size comes from the parent
-  // span's CSS (.cm-task-checkbox) — the SVG just fills it (single size source).
+  // so the visible square nearly fills the icon. The square is sized by the
+  // parent span's height; width:auto keeps it square. (The span is wider than
+  // the icon — `3ch` — to match the raw "[ ]" it replaces; the icon centers in
+  // that slot.)
   svg.setAttribute("viewBox", "1 1 22 22");
-  svg.setAttribute("width", "100%");
+  svg.setAttribute("width", "auto");
   svg.setAttribute("height", "100%");
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("fill", checked ? "var(--color-accent)" : "none");
@@ -207,14 +213,17 @@ function buildCheckboxDecorations(view: EditorView): DecorationSet {
   entries.sort((a, b) => a.markerFrom - b.markerFrom);
 
   for (const { markerFrom, markerTo, taskTo, checked, markerPos } of entries) {
-    // Replace widget: [markerFrom .. markerTo+1] — covers "[ ] " (TaskMarker + trailing space)
-    // D-02 reversed: does NOT cover ListMark "- "; livePreviewPlugin renders that as bullet.
+    // Replace widget: [markerFrom .. markerTo] — covers ONLY "[ ]", NOT the
+    // trailing space. Leaving the space as a literal character (a) preserves the
+    // gap between the checkbox and the text, and (b) keeps the rendered width
+    // close to the raw "[ ] " width, so the text barely shifts when the line
+    // toggles between raw and widget. D-02: ListMark "- " stays a bullet.
     builder.add(
       markerFrom,
-      markerTo + 1,
+      markerTo,
       Decoration.replace({ widget: new CheckboxWidget(checked, markerPos) }),
     );
-    // Strikethrough mark: [markerTo+1 .. taskTo] — text only
+    // Strikethrough mark: [markerTo+1 .. taskTo] — text only (skips the space).
     if (checked) {
       builder.add(
         markerTo + 1,

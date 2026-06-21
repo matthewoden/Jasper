@@ -177,10 +177,13 @@ export const jasperEditorTheme = EditorView.theme(
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",
-      width: "1.2em",
+      // Occupy exactly the 3 characters of the raw "[ ]" it replaces so the text
+      // doesn't shift horizontally when the line toggles between widget and raw.
+      // The icon (sized by height) centers within this slot.
+      width: "3ch",
       height: "1.2em",
       padding: "0",
-      margin: "0 2px 0 0",
+      margin: "0",
       // Center the box on the text x-height rather than the baseline so it sits
       // vertically aligned with the line's letters.
       verticalAlign: "middle",

@@ -233,12 +233,14 @@ describe("TC-11: widget-on-off-cursor-line (D-01 reveal / U2)", () => {
 });
 
 describe("TC-12: widget-covers-TaskMarker-range (D-02 reversed / U7)", () => {
-  it("the replace decoration starts at TaskMarker.from (2) and covers '[ ] ' only (not '- [ ] ')", () => {
-    // D-02 REVERSED: widget replaces ONLY the TaskMarker "[ ] " range.
+  it("the replace decoration starts at TaskMarker.from (2) and covers '[ ]' only (not the trailing space)", () => {
+    // D-02 REVERSED: widget replaces ONLY the TaskMarker "[ ]" range. The trailing
+    // space is left as a literal character so the gap before the text is preserved
+    // and the rendered width stays close to the raw "[ ] " (no horizontal jump).
     // For UNCHECKED_TASK_DOC = '- [ ] task':
     //   ListMark.from = 0, ListMark.to = 1 — handled by livePreviewPlugin as bullet
     //   TaskMarker.from = 2, TaskMarker.to = 5
-    //   Widget replace range should be [2..6] (TaskMarker + trailing space)
+    //   Widget replace range should be [2..5] ('[ ]', not the trailing space)
     // Cursor placed off the task line (past end of doc) so the widget is emitted.
     const doc = UNCHECKED_TASK_DOC + "\nanother line";
     const view = makeView(doc, doc.length); // cursor on "another line"
@@ -248,8 +250,8 @@ describe("TC-12: widget-covers-TaskMarker-range (D-02 reversed / U7)", () => {
     const widgetDeco = widgetDecos[0];
     // D-02 reversed: replace range must start at TaskMarker.from (pos 2), NOT ListMark.from (0)
     expect(widgetDeco.from).toBe(2);
-    // Range end covers TaskMarker.to + 1 = 6 (the trailing space after '[ ]')
-    expect(widgetDeco.to).toBe(6);
+    // Range end covers TaskMarker.to = 5 ('[ ]' only; the trailing space stays literal)
+    expect(widgetDeco.to).toBe(5);
   });
 });
 
