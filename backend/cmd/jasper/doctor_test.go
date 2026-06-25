@@ -44,8 +44,8 @@ func TestDoctor_JSONFlag_EmitsParseableArray(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &arr); err != nil {
 		t.Fatalf("--json output not parseable: %v\nbody=%s", err, buf.String())
 	}
-	if len(arr) != 11 {
-		t.Errorf("want 11 checks (8 original + 3 vault checks), got %d", len(arr))
+	if len(arr) != 12 {
+		t.Errorf("want 12 checks (8 original + 3 vault checks + server bind address), got %d", len(arr))
 	}
 
 	for i, c := range arr {
@@ -503,4 +503,62 @@ func checkNames(arr []DoctorCheck) []string {
 		names[i] = c.Name
 	}
 	return names
+}
+
+// TestDoctorBindCheck pins the three branches of checkServerBind:
+// empty/loopback → ok, "0.0.0.0" → fail with address in hint, LAN IP → fail.
+func TestDoctorBindCheck(t *testing.T) {
+	cases := []struct {
+		bind       string
+		wantStatus string
+		wantHints  []string
+	}{
+		{
+			bind:       "",
+			wantStatus: "ok",
+		},
+		{
+			bind:       "127.0.0.1",
+			wantStatus: "ok",
+		},
+		{
+			bind:       "localhost",
+			wantStatus: "ok",
+		},
+		{
+			bind:       "::1",
+			wantStatus: "ok",
+		},
+		{
+			bind:       "0.0.0.0",
+			wantStatus: "fail",
+			wantHints:  []string{"0.0.0.0", "non-loopback", "trusted networks"},
+		},
+		{
+			bind:       "192.168.1.10",
+			wantStatus: "fail",
+			wantHints:  []string{"192.168.1.10", "non-loopback", "trusted networks"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run("bind="+tc.bind, func(t *testing.T) {
+			cfg := config.Config{Server: config.ServerConfig{Bind: tc.bind}}
+			r := checkServerBind(cfg)
+			if r.Name != "server bind address" {
+				t.Errorf("Name = %q; want %q", r.Name, "server bind address")
+			}
+			if r.Status != tc.wantStatus {
+				t.Errorf("Status = %q; want %q (hint=%q)", r.Status, tc.wantStatus, r.Hint)
+			}
+			for _, substr := range tc.wantHints {
+				if !strings.Contains(r.Hint, substr) {
+					t.Errorf("Hint %q missing %q", r.Hint, substr)
+				}
+			}
+			if tc.wantStatus == "ok" && r.Hint != "" {
+				t.Errorf("ok check should have empty hint, got %q", r.Hint)
+			}
+		})
+	}
 }

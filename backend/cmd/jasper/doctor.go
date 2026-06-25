@@ -22,6 +22,7 @@ import (
 	_ "modernc.org/sqlite" // pure-Go SQLite driver
 
 	"github.com/matthewoden/jasper/backend/internal/config"
+	"github.com/matthewoden/jasper/backend/internal/netbind"
 	"github.com/matthewoden/jasper/backend/internal/static"
 	"github.com/matthewoden/jasper/backend/internal/vault"
 	"github.com/matthewoden/jasper/backend/migrations"
@@ -97,6 +98,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		checkMigrationState(dataDir),
 		checkLogWritable(dataDir),
 		checkFrontendEmbed(),
+		checkServerBind(cfg),
 	}
 
 	anyFail := false
@@ -438,4 +440,19 @@ func checkCurrentVaultHasJasperDir(currentVault string) DoctorCheck {
 		}
 	}
 	return DoctorCheck{Name: "current_vault_has_jasper_dir", Status: "ok"}
+}
+
+func checkServerBind(cfg config.Config) DoctorCheck {
+	bind := cfg.Server.Bind
+	if bind == "" {
+		bind = "127.0.0.1"
+	}
+	if netbind.IsLoopback(bind) {
+		return DoctorCheck{Name: "server bind address", Status: "ok"}
+	}
+	return DoctorCheck{
+		Name:   "server bind address",
+		Status: "fail",
+		Hint:   "Bound to " + bind + " (non-loopback). Only enable LAN access on trusted networks.",
+	}
 }
