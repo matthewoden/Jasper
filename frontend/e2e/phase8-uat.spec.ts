@@ -51,7 +51,7 @@
  * ─────────────────────────────────────────────────────────────────────────
  */
 import { test, expect } from "@playwright/test";
-import { spawnJasper, type JasperHandle } from "./helpers/binary";
+import { spawnJasper, withMcpPortLock, type JasperHandle } from "./helpers/binary";
 
 
 test.describe("Phase 8 — first-run wizard (@first-run)", () => {
@@ -465,13 +465,31 @@ test.describe("Phase 8 — R4-11 (@r4-11) stack-overflow regression", () => {
 
 
 test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
+  test.describe.configure({ mode: "serial" });
   let jasper: JasperHandle;
   const MCP_PORT = 6684;
   const MCP_URL = `http://127.0.0.1:${MCP_PORT}/mcp`;
 
+  // Cross-process lock: held from before MCP binary spawn through after kill(),
+  // so no two workers can bind port 6684 concurrently.
+  let releaseMcpLock: (() => void) | null = null;
+
   test.beforeAll(async () => {
     const path = await import("node:path");
     const fs = await import("node:fs/promises");
+
+    // Acquire the cross-process MCP port 6684 lock before spawning. Store a
+    // release callback so afterAll can free the lock after kill().
+    await new Promise<void>((outerResolve, outerReject) => {
+      withMcpPortLock(async () => {
+        // Signal to beforeAll that the lock is held.
+        await new Promise<void>((innerResolve, innerReject) => {
+          releaseMcpLock = innerResolve;
+          outerResolve();
+          void innerReject; // never called; lock released via releaseMcpLock()
+        });
+      }).catch(outerReject);
+    });
 
     jasper = await spawnJasper();
 
@@ -510,6 +528,9 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
 
   test.afterAll(async () => {
     if (jasper) await jasper.kill();
+    // Release the cross-process lock after the binary is fully killed.
+    releaseMcpLock?.();
+    releaseMcpLock = null;
   });
 
   test("R4-1 — create_note is atomic, no partial scaffold on failure", async () => {
@@ -1075,13 +1096,28 @@ test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
 
 
 test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
+  test.describe.configure({ mode: "serial" });
   let jasper: JasperHandle;
   const MCP_PORT = 6684;
   const MCP_URL = `http://127.0.0.1:${MCP_PORT}/mcp`;
 
+  // Cross-process lock: held from before MCP binary spawn through after kill().
+  let releaseMcpLock: (() => void) | null = null;
+
   test.beforeAll(async () => {
     const path = await import("node:path");
     const fs = await import("node:fs/promises");
+
+    // Acquire the cross-process MCP port 6684 lock before spawning.
+    await new Promise<void>((outerResolve, outerReject) => {
+      withMcpPortLock(async () => {
+        await new Promise<void>((innerResolve, innerReject) => {
+          releaseMcpLock = innerResolve;
+          outerResolve();
+          void innerReject;
+        });
+      }).catch(outerReject);
+    });
 
     jasper = await spawnJasper();
 
@@ -1110,6 +1146,9 @@ test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
 
   test.afterAll(async () => {
     if (jasper) await jasper.kill();
+    // Release the cross-process lock after the binary is fully killed.
+    releaseMcpLock?.();
+    releaseMcpLock = null;
   });
 
   async function newMcpSession(): Promise<{
