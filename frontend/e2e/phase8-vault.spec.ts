@@ -306,6 +306,14 @@ test.describe("Phase 8 vault picker — make-build smoke", () => {
       await page.getByTestId("vault-create-browse").click();
       await expect(page.getByTestId("folder-picker")).toBeVisible();
 
+      // The picker fetches its listing async; dblclicking the breadcrumb before
+      // it settles drops the event and the path-input never opens. Wait for the
+      // loaded directory (current-path populated) before interacting.
+      await expect(page.getByTestId("folder-picker-current-path")).toContainText(
+        path.basename(browseRoot),
+      );
+      await expect(page.getByTestId("folder-picker-entries")).toBeVisible();
+
       const crumb = page.getByTestId("folder-picker-breadcrumb");
       await crumb.dblclick();
 
