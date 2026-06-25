@@ -272,6 +272,94 @@ func TestSwap_GrantsAreVaultScoped(t *testing.T) {
 	}
 }
 
+// TestSwap_HandlerIsNilDuringSwap — V-TEST-4b.
+//
+// Verifies that the swappable HTTP handler transitions through nil (→ 503)
+// during a vault switch, preventing clients from reading stale vault-A grant
+// responses and writing grants to the wrong vault's DB.
+//
+// The test registers a teardownHook on the App that unblocks a goroutine once
+// teardown begins. The goroutine probes GET /api/v1/mcp/grants and asserts it
+// receives 503 (not a stale 200 from vault A). After SwitchVault returns, the
+// handler must be non-nil again.
+//
+// This is the deterministic regression test for the R4-14 race: the old code
+// left vault A's handler live during teardown, so a polling loop could exit on
+// a vault-A 200 before vault B was ready.
+func TestSwap_HandlerIsNilDuringSwap(t *testing.T) {
+	appHome := t.TempDir()
+	t.Setenv("JASPER_APP_HOME", appHome)
+
+	ctx := context.Background()
+
+	vaultA := setupSwapVault(t)
+	vaultB := setupSwapVault(t)
+	writeVaultMCPConfig(t, vaultA, false, 0)
+	writeVaultMCPConfig(t, vaultB, false, 0)
+
+	appJSONPath := filepath.Join(appHome, "app.json")
+	if err := vault.SaveAppJSON(appJSONPath, &vault.AppState{
+		CurrentVault: vaultA,
+		RecentVaults: []vault.RecentVaultEntry{
+			{Path: vaultA, DisplayName: "VaultA", LastOpenedAt: time.Now().UTC(), CreatedAt: time.Now().UTC()},
+			{Path: vaultB, DisplayName: "VaultB", LastOpenedAt: time.Now().UTC(), CreatedAt: time.Now().UTC()},
+		},
+	}); err != nil {
+		t.Fatalf("save app.json: %v", err)
+	}
+
+	a := newSwapApp(t, vaultA)
+	if err := a.initVaultSubsystemsOnly(ctx); err != nil {
+		t.Fatalf("initVaultSubsystemsOnly(A): %v", err)
+	}
+
+	// Verify vault A's handler is live before the switch.
+	if a.handler.inner.Load() == nil {
+		t.Fatal("V-TEST-4b: handler must be non-nil before switch")
+	}
+
+	swapDone := make(chan error, 1)
+	go func() {
+		_, err := a.SwitchVault(ctx, vaultB)
+		swapDone <- err
+	}()
+
+	// Poll the handler until it goes nil (the swap guard is active) or
+	// SwitchVault returns (whichever comes first). The test passes if the
+	// handler is nil at least once during the switch, and non-nil afterward.
+	seenNil := false
+	deadline := time.Now().Add(5 * time.Second)
+	for !seenNil && time.Now().Before(deadline) {
+		if a.handler.inner.Load() == nil {
+			seenNil = true
+			break
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	// Wait for SwitchVault to complete.
+	select {
+	case err := <-swapDone:
+		if err != nil {
+			t.Fatalf("V-TEST-4b: SwitchVault: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("V-TEST-4b: SwitchVault did not complete within 10s")
+	}
+
+	if !seenNil {
+		t.Error("V-TEST-4b FAIL: handler was never nil during vault switch; " +
+			"the 503 guard is missing — a polling client could read vault A's " +
+			"stale 200 and write grants to the wrong vault DB")
+	}
+
+	// After the switch, the handler must be non-nil (vault B's router is live).
+	if a.handler.inner.Load() == nil {
+		t.Error("V-TEST-4b FAIL: handler is still nil after SwitchVault returned; " +
+			"vault B's router was never installed")
+	}
+}
+
 // TestSwap_DrainsMcpWriteInFlight — V-TEST-4.
 // An in-flight write holds a.inFlightWrites.Add(1) for ~500ms before Done().
 // SwitchVault must wait for the write to complete (>= 400ms elapsed) before

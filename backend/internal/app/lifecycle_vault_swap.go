@@ -85,6 +85,14 @@ func (a *App) SwitchVault(ctx context.Context, targetPath string) (vault.RecentV
 		a.cfg.Logger.Warn("SwitchVault: drain timeout after 2s; tearing down with possibly-pending writes")
 	}
 
+	// Swap the HTTP handler to nil so that requests arriving during teardown
+	// and the new-vault setup window receive 503 (not stale vault-A responses).
+	// This prevents the REST polling loop in tests and clients from exiting early
+	// on a vault-A 200 and writing grants to the wrong vault's DB. The handler
+	// is restored to the new vault-B router inside initVaultSubsystemsOnly only
+	// after SetMcpACL has been called, so the first 200 is always coherent.
+	a.handler.Swap(nil)
+
 	if tearErr := a.tearDownPerVaultSubsystems(); tearErr != nil {
 		return vault.RecentVaultEntry{}, fmt.Errorf("SwitchVault: teardown: %w", tearErr)
 	}

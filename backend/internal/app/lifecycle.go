@@ -488,7 +488,6 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 		r.Get("/files", apiServer.ServeFile)
 	})
 	r.Mount("/", static.Handler())
-	a.handler.Swap(r)
 
 	a.mcpServer = nil
 	a.mcpShutdown = nil
@@ -504,9 +503,19 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 			a.mcpServer = mcpSrv
 			a.mcpShutdown = mcpShutdownFn
 
+			// SetMcpACL must be called before a.handler.Swap(r) so the first
+			// non-503 response to GET /api/v1/mcp/grants always reflects vault
+			// B's fully-initialised ACL. Any earlier swap would create a window
+			// where mcpACL==nil and GET returns 200 with an empty grant list,
+			// causing clients to POST grants against the wrong (nil) ACL.
 			apiServer.SetMcpACL(acl)
 		}
 	}
+
+	// Swap the handler only after all vault-B subsystems (including MCP ACL)
+	// are wired. Requests during the 503 window (handler==nil) retry until
+	// this swap completes, ensuring the first 200 is fully coherent.
+	a.handler.Swap(r)
 
 	a.setCurrentVaultPath(a.cfg.DataDir)
 	return nil
