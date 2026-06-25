@@ -141,23 +141,6 @@ type App struct {
 	mcpShutdown func(ctx context.Context) error
 }
 
-// New builds the initial composition for `jasper serve`. The real
-// wiring (sqlite.Open → migrate.NewRunner → index.New →
-// api.NewServerWithIndex) lives in lifecycle.Run because it is
-// side-effecting (mkdir + open DB) and must run BEFORE the listener
-// accepts connections.
-//
-// Wiring sequence (kept minimal for tests that call New + Handler()):
-//
-//  1. fsstore.NewStore(<DataDir>/notes) — concrete FileStore adapter.
-//  2. notes.NewService(files, nil, log) — domain service with nil
-//     Index (Service substitutes nopIndex). lifecycle.Run replaces
-//     this with a real *index.Indexer-backed Service.
-//  3. api.NewServerWithIndex with nil status/runner/index so handlers
-//     gracefully degrade.
-//  4. chi router with RequestID + Recoverer + requestLogger.
-//  5. r.Route("/api/v1", ...) wrapping api.HandlerFromMux.
-//  6. r.Mount("/", static.Handler()) — SPA fallback LAST.
 // allowedOrigins derives the full-URL Origin values permitted by the CSRF
 // middleware from the resolved listen address. Stores http://host:port forms
 // so comparison against r.Header.Get("Origin") needs no scheme-stripping.
@@ -175,6 +158,23 @@ func allowedOrigins(listenAddr string) []string {
 	}
 }
 
+// New builds the initial composition for `jasper serve`. The real
+// wiring (sqlite.Open → migrate.NewRunner → index.New →
+// api.NewServerWithIndex) lives in lifecycle.Run because it is
+// side-effecting (mkdir + open DB) and must run BEFORE the listener
+// accepts connections.
+//
+// Wiring sequence (kept minimal for tests that call New + Handler()):
+//
+//  1. fsstore.NewStore(<DataDir>/notes) — concrete FileStore adapter.
+//  2. notes.NewService(files, nil, log) — domain service with nil
+//     Index (Service substitutes nopIndex). lifecycle.Run replaces
+//     this with a real *index.Indexer-backed Service.
+//  3. api.NewServerWithIndex with nil status/runner/index so handlers
+//     gracefully degrade.
+//  4. chi router with RequestID + Recoverer + requestLogger.
+//  5. r.Route("/api/v1", ...) wrapping api.HandlerFromMux.
+//  6. r.Mount("/", static.Handler()) — SPA fallback LAST.
 func New(cfg Config) (*App, error) {
 	notesDir := notesDirFor(cfg.DataDir)
 	files := fsstore.NewStore(notesDir)

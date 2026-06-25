@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -21,7 +22,9 @@ func captureServeLog(t *testing.T) *bytes.Buffer {
 
 // TestRunServe_VaultFlagAccepted verifies that --vault is the canonical
 // flag and runServe accepts it without error from fs.Parse. A non-loopback
-// --bind logs a warning; app.Run never starts because the vault dir is empty.
+// --bind now only logs a warning (NET-01) rather than aborting, so the test
+// drives shutdown via a pre-cancelled context to keep the serve loop from
+// blocking; the flag-parsing and log assertions run before a.Run.
 func TestRunServe_VaultFlagAccepted(t *testing.T) {
 	dir := t.TempDir()
 	vaultDir := filepath.Join(dir, "myvault")
@@ -35,7 +38,9 @@ func TestRunServe_VaultFlagAccepted(t *testing.T) {
 
 	buf := captureServeLog(t)
 
-	_ = runServe([]string{"--bind", "0.0.0.0:0"})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_ = runServeContext(ctx, []string{"--bind", "0.0.0.0:0"})
 
 	if strings.Contains(buf.String(), "deprecated") {
 		t.Errorf("--vault flag should not produce any deprecation warnings, but saw it in log:\n%s", buf.String())
@@ -76,7 +81,9 @@ func TestRunServe_JasperDataDirEnvIgnored(t *testing.T) {
 
 	buf := captureServeLog(t)
 
-	_ = runServe([]string{"--bind", "0.0.0.0:0"})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_ = runServeContext(ctx, []string{"--bind", "0.0.0.0:0"})
 
 	if strings.Contains(buf.String(), "JASPER_DATA_DIR") {
 		t.Errorf("JASPER_DATA_DIR should be silently ignored (not recognized at all), but saw it in log:\n%s", buf.String())
@@ -97,48 +104,48 @@ func TestResolveBindAddr(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		cfg            config.Config
-		bindFlagValue  string
-		bindFlagSet    bool
-		want           string
-		wantErr        bool
+		name          string
+		cfg           config.Config
+		bindFlagValue string
+		bindFlagSet   bool
+		want          string
+		wantErr       bool
 	}{
 		{
-			name:    "default — no flag, no config bind",
-			cfg:     makeConfig("", 6683),
-			want:    defaultListenAddr, // 127.0.0.1:6683
+			name: "default — no flag, no config bind",
+			cfg:  makeConfig("", 6683),
+			want: defaultListenAddr, // 127.0.0.1:6683
 		},
 		{
-			name:    "config server.bind takes effect when flag not set",
-			cfg:     makeConfig("0.0.0.0", 6683),
-			want:    "0.0.0.0:6683",
+			name: "config server.bind takes effect when flag not set",
+			cfg:  makeConfig("0.0.0.0", 6683),
+			want: "0.0.0.0:6683",
 		},
 		{
-			name:    "config server.bind uses config port",
-			cfg:     makeConfig("127.0.0.1", 6700),
-			want:    "127.0.0.1:6700",
+			name: "config server.bind uses config port",
+			cfg:  makeConfig("127.0.0.1", 6700),
+			want: "127.0.0.1:6700",
 		},
 		{
-			name:           "CLI --bind overrides config server.bind",
-			cfg:            makeConfig("0.0.0.0", 6683),
-			bindFlagValue:  "127.0.0.1:6683",
-			bindFlagSet:    true,
-			want:           "127.0.0.1:6683",
+			name:          "CLI --bind overrides config server.bind",
+			cfg:           makeConfig("0.0.0.0", 6683),
+			bindFlagValue: "127.0.0.1:6683",
+			bindFlagSet:   true,
+			want:          "127.0.0.1:6683",
 		},
 		{
-			name:           "CLI --bind with non-loopback overrides loopback config",
-			cfg:            makeConfig("127.0.0.1", 6683),
-			bindFlagValue:  "0.0.0.0:6683",
-			bindFlagSet:    true,
-			want:           "0.0.0.0:6683",
+			name:          "CLI --bind with non-loopback overrides loopback config",
+			cfg:           makeConfig("127.0.0.1", 6683),
+			bindFlagValue: "0.0.0.0:6683",
+			bindFlagSet:   true,
+			want:          "0.0.0.0:6683",
 		},
 		{
-			name:           "malformed --bind value returns error",
-			cfg:            makeConfig("", 6683),
-			bindFlagValue:  "not-an-addr",
-			bindFlagSet:    true,
-			wantErr:        true,
+			name:          "malformed --bind value returns error",
+			cfg:           makeConfig("", 6683),
+			bindFlagValue: "not-an-addr",
+			bindFlagSet:   true,
+			wantErr:       true,
 		},
 	}
 

@@ -1008,7 +1008,11 @@ func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 	}
 
 	createReq := fmt.Sprintf(`{"path":%q,"theme":"dark","mcp_enabled":false,"daily_template":"# {{date}}\n\n"}`, vaultDir)
-	createResp, err := http.Post("http://"+addr+"/api/v1/vault/create", "application/json", strings.NewReader(createReq))
+	createHTTPReq, _ := http.NewRequest(http.MethodPost, "http://"+addr+"/api/v1/vault/create", strings.NewReader(createReq))
+	createHTTPReq.Header.Set("Content-Type", "application/json")
+	// Same-origin browser requests carry an Origin header; the CSRF guard (NET-04) rejects mutations without one.
+	createHTTPReq.Header.Set("Origin", "http://"+addr)
+	createResp, err := http.DefaultClient.Do(createHTTPReq)
 	if err != nil {
 		t.Fatalf("POST /vault/create: %v", err)
 	}

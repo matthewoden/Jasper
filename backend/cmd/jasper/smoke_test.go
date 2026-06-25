@@ -58,7 +58,7 @@ func pickFreePort(t *testing.T) string {
 
 func spawn(t *testing.T, dataDir, addr string, env []string) (*exec.Cmd, *bytes.Buffer) {
 	t.Helper()
-	cmd := exec.Command(jasperBin, "serve", "--vault", dataDir, "--addr", addr)
+	cmd := exec.Command(jasperBin, "serve", "--vault", dataDir, "--bind", addr)
 	cmd.Env = append(os.Environ(), env...)
 	var buf bytes.Buffer
 	cmd.Stdout = &buf

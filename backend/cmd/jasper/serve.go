@@ -92,6 +92,15 @@ func resolveBindAddr(cfg config.Config, bindFlagValue string, bindFlagExplicit b
 }
 
 func runServe(args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	return runServeContext(ctx, args)
+}
+
+// runServeContext is the body of runServe with the lifecycle context injected so
+// tests can drive shutdown without raising an OS signal. Non-test callers go
+// through runServe, which wires ctx to SIGINT/SIGTERM.
+func runServeContext(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	// Empty default so flag.Visit can detect when --bind was explicitly passed.
 	bindFlag := fs.String("bind", "",
@@ -179,7 +188,5 @@ func runServe(args []string) error {
 		return err
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
 	return a.Run(ctx)
 }
