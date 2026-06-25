@@ -39,6 +39,11 @@ const MCP_LOCK_ACQUIRE_TIMEOUT_MS = 300_000;
 const MCP_LOCK_STALE_AGE_MS = 180_000;
 const MCP_LOCK_POLL_INTERVAL_MS = 100;
 
+// Boot-readiness window. Generous (30s) so CPU contention at workers:4 — where
+// several binaries boot simultaneously (migrations + incremental reindex) —
+// does not produce false "did not become ready" failures.
+const READINESS_TIMEOUT_MS = 30_000;
+
 /**
  * Cross-process critical section that serializes MCP port 6684 acquisition
  * across Playwright worker processes (which are separate OS processes —
@@ -203,7 +208,7 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; owns
   });
   const baseURL = `http://127.0.0.1:${port}`;
   try {
-    await waitForReady(baseURL, 15_000);
+    await waitForReady(baseURL, READINESS_TIMEOUT_MS);
   } catch (e) {
     proc.kill("SIGTERM");
     if (ownsDataDir) {

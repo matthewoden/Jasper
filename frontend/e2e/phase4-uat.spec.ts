@@ -232,10 +232,14 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       await expect(conflictBannerB).toBeHidden({ timeout: 5_000 });
 
 
+      // Mirror round 1's ordering: B must have a PENDING edit (userHasEdited=true)
+      // BEFORE A's save broadcasts note:updated. Otherwise A's broadcast can reach
+      // B while userHasEdited=false (Save-anyway just reset it) and B silently
+      // adopts A's version — no conflict. Type in B first, then save in A.
+      await typeIntoEditor(pageB, "Tab B work v2");
+
       await typeIntoEditor(pageA, "Tab A content v2");
       await pageA.keyboard.press("Control+s");
-
-      await typeIntoEditor(pageB, "Tab B work v2");
 
       await expect(conflictBannerB).toBeVisible({ timeout: 8_000 });
 
@@ -310,7 +314,25 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
     }
 
     try {
-      await jasper.kill();
+      // Stop the process WITHOUT removing its data dir — jasper.kill() would
+      // rm the owned dataDir, then restart() (which reuses it) would fail with
+      // "--vault path does not exist". restart() does its own graceful kill of
+      // the (now-dead) proc, so we only need to await exit here.
+      await new Promise<void>((resolve) => {
+        if (jasper.proc.exitCode !== null || jasper.proc.signalCode !== null) {
+          resolve();
+          return;
+        }
+        const timer = setTimeout(() => {
+          jasper.proc.kill("SIGKILL");
+          resolve();
+        }, 3_000);
+        jasper.proc.once("exit", () => {
+          clearTimeout(timer);
+          resolve();
+        });
+        jasper.proc.kill("SIGTERM");
+      });
 
       for (const { page } of tabs) {
         await expect(
