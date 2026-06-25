@@ -272,6 +272,60 @@ func TestStatus_PrintsVaultFromAppJSON(t *testing.T) {
 	}
 }
 
+// TestStatusBoundOnLAN verifies that the "Bound on:" line derives the bind
+// address from cfg.Server.Bind and appends the warning suffix for non-loopback.
+func TestStatusBoundOnLAN(t *testing.T) {
+	cases := []struct {
+		bind        string
+		wantAddr    string
+		wantWarning bool
+	}{
+		{bind: "", wantAddr: "127.0.0.1:6683", wantWarning: false},
+		{bind: "127.0.0.1", wantAddr: "127.0.0.1:6683", wantWarning: false},
+		{bind: "0.0.0.0", wantAddr: "0.0.0.0:6683", wantWarning: true},
+	}
+	for _, tc := range cases {
+		t.Run("bind="+tc.bind, func(t *testing.T) {
+			cfg := config.Config{
+				Server: config.ServerConfig{Port: 6683, Bind: tc.bind},
+			}
+			addr := serverBoundAddr(cfg)
+			if addr != tc.wantAddr {
+				t.Errorf("serverBoundAddr = %q; want %q", addr, tc.wantAddr)
+			}
+
+			dir := t.TempDir()
+			t.Setenv("JASPER_APP_HOME", filepath.Join(dir, "appHome"))
+			orig := vaultFlag
+			vaultFlag = dir
+			t.Cleanup(func() { vaultFlag = orig })
+			writeMinimalConfig(t, dir, cfg)
+			withStatusFactory(t, &fakeStatusProvider{state: service.StatusRunning})
+
+			var buf bytes.Buffer
+			cmd := &cobra.Command{}
+			cmd.SetOut(&buf)
+			if err := runStatus(cmd, nil); err != nil {
+				t.Fatalf("runStatus: %v", err)
+			}
+			out := buf.String()
+
+			if !strings.Contains(out, "Bound on:       "+tc.wantAddr) {
+				t.Errorf("output missing 'Bound on:       %s':\n%s", tc.wantAddr, out)
+			}
+			if tc.wantWarning {
+				if !strings.Contains(out, "[WARNING: exposed on all interfaces]") {
+					t.Errorf("output missing warning suffix:\n%s", out)
+				}
+			} else {
+				if strings.Contains(out, "[WARNING:") {
+					t.Errorf("output should not contain warning suffix for loopback:\n%s", out)
+				}
+			}
+		})
+	}
+}
+
 // TestStatus_NoVaultSelectedShowsPickerMessage verifies that when app.json
 // has no current_vault, the output says "none selected".
 func TestStatus_NoVaultSelectedShowsPickerMessage(t *testing.T) {

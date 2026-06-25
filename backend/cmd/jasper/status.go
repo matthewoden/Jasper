@@ -17,6 +17,7 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/installer"
+	"github.com/matthewoden/jasper/backend/internal/netbind"
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
@@ -151,10 +152,20 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		_, summary := summarizeGrants(dataDir)
 		mcpLine = fmt.Sprintf("MCP enabled:    yes on 127.0.0.1:%d — %s", cfg.MCP.Port, summary)
 	}
+	boundAddr := serverBoundAddr(cfg)
+	warnSuffix := ""
+	bindHost := cfg.Server.Bind
+	if bindHost == "" {
+		bindHost = "127.0.0.1"
+	}
+	if !netbind.IsLoopback(bindHost) {
+		warnSuffix = "  [WARNING: exposed on all interfaces]"
+	}
 	body := fmt.Sprintf(
-		"Jasper service: %s\nBound on:       127.0.0.1:%d\nData directory: %s\nLog file:       %s\n%s\n",
+		"Jasper service: %s\nBound on:       %s%s\nData directory: %s\nLog file:       %s\n%s\n",
 		humanState(state),
-		cfg.Server.Port,
+		boundAddr,
+		warnSuffix,
 		dataDir,
 		vault.LogsPath(dataDir),
 		mcpLine,
@@ -166,6 +177,14 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 func configExists(dataDir string) bool {
 	_, err := os.Stat(vault.ConfigPath(dataDir))
 	return err == nil
+}
+
+func serverBoundAddr(cfg config.Config) string {
+	bind := cfg.Server.Bind
+	if bind == "" {
+		bind = "127.0.0.1"
+	}
+	return fmt.Sprintf("%s:%d", bind, cfg.Server.Port)
 }
 
 func humanState(s service.Status) string {
