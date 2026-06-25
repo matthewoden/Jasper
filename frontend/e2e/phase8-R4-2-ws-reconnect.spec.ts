@@ -151,6 +151,19 @@ test.describe("Phase 8 R4-2 — WS forceReconnect on cloud-icon click", () => {
     try {
       handle = await spawnJasperOnPort(appHome, port);
       await bootstrapVault(handle.baseURL, vault);
+
+      // Seed a note on disk before vault/open so the reconciler indexes it.
+      // This note will appear in the file tree, allowing us to click it and
+      // mount EditorPane — which is required for saveState to transition to
+      // "paused" when the WS drops (EditorPane dispatches connectionLost).
+      const notesDir = path.join(vault, "notes");
+      fs.mkdirSync(notesDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(notesDir, "test-note.md"),
+        "# Test note\n\nContent for WS reconnect test.\n",
+        "utf8",
+      );
+
       await openVault(handle.baseURL, vault);
 
       await page.goto(handle.baseURL + "/");
@@ -161,13 +174,21 @@ test.describe("Phase 8 R4-2 — WS forceReconnect on cloud-icon click", () => {
         timeout: 5_000,
       });
 
+      // Click the seeded note to mount EditorPane so saveState can transition
+      // to "paused" when the WS drops.
+      const noteRow = page.locator('[data-tree-row-kind="note"]').first();
+      await expect(noteRow).toBeVisible({ timeout: 5_000 });
+      await noteRow.click();
+      await expect(page.getByTestId("cm-host-shell")).toBeVisible({ timeout: 5_000 });
+
       const proc = handle.proc;
       handle.kill();
-      await waitForExit(proc, 5_000);
+      await waitForExit(proc, 8_000);
 
       await expect(dot).toHaveAttribute("data-status", "reconnecting", {
         timeout: 5_000,
       });
+      // saveState flips to "paused" via EditorPane's connectionLost dispatch.
       const saveBtn = page.locator('[data-save-state="paused"]');
       await expect(saveBtn).toBeVisible({ timeout: 5_000 });
 

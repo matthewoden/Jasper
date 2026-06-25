@@ -364,6 +364,13 @@ test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
           `Expected 200 from /api/v1/setup; got ${setupResp.status}`,
         ).toBe(200);
 
+        // The setup endpoint writes seed_grants.json but does NOT open
+        // SQLite — migrations run on first boot.  Boot the new vault so
+        // ApplySeedGrants drains the queue and creates the DB row, then
+        // kill and query.
+        const bootedVault = await spawnJasper({ dataDir: expandedPath });
+        await bootedVault.kill();
+
         const dbPath = path.join(expandedPath, ".jasper", "app.db");
         let sqlite3Available = false;
         try {
