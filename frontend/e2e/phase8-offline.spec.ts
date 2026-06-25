@@ -20,7 +20,73 @@
  * (HTML/JS/CSS/fonts/images/XHR/WebSocket-handshakes).
  */
 import { test, expect } from "@playwright/test";
+import { spawn, type ChildProcess } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { createServer } from "node:net";
+import { fileURLToPath } from "node:url";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, "..", "..");
+const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
+
+async function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.unref();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address();
+      if (typeof addr === "object" && addr) {
+        const p = addr.port;
+        srv.close(() => resolve(p));
+      } else {
+        reject(new Error("could not allocate free port"));
+      }
+    });
+  });
+}
+
+/**
+ * Spawn jasper with JASPER_APP_HOME but NO --vault override, so GET
+ * /vault/current returns null and the SPA mounts the VaultPicker (first-run
+ * surface). The shared spawnJasper() passes --vault, which bypasses the picker
+ * — wrong for the first-run offline assertion. Mirrors phase8-vault's local
+ * spawn helper.
+ */
+async function spawnNoVaultJasper(
+  appHome: string,
+): Promise<{ proc: ChildProcess; baseURL: string; kill: () => void }> {
+  if (!fs.existsSync(JASPER_BIN)) {
+    throw new Error(
+      `bin/jasper missing — run \`make build\` first (CLAUDE.md §Build & embed pipeline). ` +
+        `Expected at: ${JASPER_BIN}`,
+    );
+  }
+  const port = await findFreePort();
+  const proc = spawn(JASPER_BIN, ["serve", "--bind", `127.0.0.1:${port}`], {
+    env: { ...process.env, JASPER_APP_HOME: appHome },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  proc.stdout?.on("data", (b) => process.stderr.write(`[jasper] ${b}`));
+  proc.stderr?.on("data", (b) => process.stderr.write(`[jasper] ${b}`));
+
+  const baseURL = `http://127.0.0.1:${port}`;
+  const start = Date.now();
+  while (Date.now() - start < 30_000) {
+    try {
+      const r = await fetch(`${baseURL}/api/v1/vault/current`);
+      if (r.ok || r.status === 404) break;
+    } catch {
+      // not yet listening
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return { proc, baseURL, kill: () => proc.kill("SIGTERM") };
+}
 
 test.describe("Phase 8 — offline operation (PERF-04 / D-43)", () => {
   let jasper: JasperHandle;
@@ -72,25 +138,34 @@ test.describe("Phase 8 — offline operation (PERF-04 / D-43)", () => {
   }
 
   test("first-run wizard issues zero external network requests", async ({ context, page }) => {
-    const externalRequests = installOfflineGuard(context);
+    // A no-vault binary is required so GET /vault/current returns null and the
+    // SPA mounts the VaultPicker. The shared spawnJasper() passes --vault, which
+    // sets the current vault and bypasses the picker entirely.
+    const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-offline-app-"));
+    const noVault = await spawnNoVaultJasper(appHome);
+    try {
+      const externalRequests = installOfflineGuard(context);
 
-    await page.goto(jasper.baseURL);
-    await page.waitForLoadState("networkidle");
+      await page.goto(noVault.baseURL);
+      await page.waitForLoadState("networkidle");
 
-    // config.Load auto-writes defaults before the listener accepts connections,
-    // so first_run=false and the SPA renders the vault picker (not the setup wizard).
-    // The vault picker's Create-new tab is the default when no recents exist.
-    const dataDirInput = page.getByTestId("vault-create-path-input");
-    await expect(dataDirInput).toBeVisible({ timeout: 10_000 });
+      // No current vault → SPA renders the vault picker. Its Create-new tab is
+      // the default when no recents exist.
+      const dataDirInput = page.getByTestId("vault-create-path-input");
+      await expect(dataDirInput).toBeVisible({ timeout: 10_000 });
 
-    await dataDirInput.fill("/tmp/jasper-offline-probe");
+      await dataDirInput.fill("/tmp/jasper-offline-probe");
 
-    await page.waitForTimeout(500);
+      await page.waitForTimeout(500);
 
-    expect(
-      externalRequests,
-      `wizard surface issued external request(s): ${externalRequests.join(", ")}`,
-    ).toEqual([]);
+      expect(
+        externalRequests,
+        `wizard surface issued external request(s): ${externalRequests.join(", ")}`,
+      ).toEqual([]);
+    } finally {
+      noVault.kill();
+      fs.rmSync(appHome, { recursive: true, force: true });
+    }
   });
 
   test("post-setup SPA issues zero external network requests", async ({ context, page, request }) => {

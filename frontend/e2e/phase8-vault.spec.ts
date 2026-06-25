@@ -64,7 +64,7 @@ interface VaultHandle {
   proc: ChildProcess;
   baseURL: string;
   appHome: string;
-  kill: () => void;
+  kill: () => Promise<void>;
 }
 
 async function spawnVaultJasper(appHome: string): Promise<VaultHandle> {
@@ -97,9 +97,24 @@ async function spawnVaultJasper(appHome: string): Promise<VaultHandle> {
     proc,
     baseURL,
     appHome,
-    kill: () => {
-      proc.kill("SIGTERM");
-    },
+    // Resolve only after the process actually exits so callers can rmSync the
+    // vault/app data dirs without racing the still-running binary (ENOTEMPTY).
+    kill: () =>
+      new Promise<void>((resolve) => {
+        if (proc.exitCode !== null || proc.signalCode !== null) {
+          resolve();
+          return;
+        }
+        const timer = setTimeout(() => {
+          proc.kill("SIGKILL");
+          resolve();
+        }, 3_000);
+        proc.once("exit", () => {
+          clearTimeout(timer);
+          resolve();
+        });
+        proc.kill("SIGTERM");
+      }),
   };
 }
 
@@ -223,7 +238,7 @@ test.describe("Phase 8 vault picker — make-build smoke", () => {
       await page.getByRole("radio", { name: /dark/i }).check();
       await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     } finally {
-      handle?.kill();
+      await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
     }
   });
@@ -267,7 +282,7 @@ test.describe("Phase 8 vault picker — make-build smoke", () => {
       expect(inputValue).toContain(targetSub);
       expect(path.isAbsolute(inputValue)).toBe(true);
     } finally {
-      handle?.kill();
+      await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
       fs.rmSync(browseRoot, { recursive: true, force: true });
     }
@@ -311,7 +326,7 @@ test.describe("Phase 8 vault picker — make-build smoke", () => {
       const inputValue = await page.getByTestId("vault-create-path-input").inputValue();
       expect(inputValue).toContain(path.basename(jumpTarget));
     } finally {
-      handle?.kill();
+      await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
       fs.rmSync(browseRoot, { recursive: true, force: true });
     }
@@ -355,7 +370,7 @@ test.describe("Phase 8 vault picker — make-build smoke", () => {
       );
       await expect(page.getByTestId("folder-picker")).toBeVisible();
     } finally {
-      handle?.kill();
+      await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
       fs.rmSync(browseRoot, { recursive: true, force: true });
     }
@@ -390,7 +405,7 @@ test.describe("Phase 8 vault picker — make-build smoke", () => {
       ).toBeVisible({ timeout: 5_000 });
       expect(fs.existsSync(path.join(browseRoot, targetName))).toBe(true);
     } finally {
-      handle?.kill();
+      await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
       fs.rmSync(browseRoot, { recursive: true, force: true });
     }
@@ -423,7 +438,7 @@ test.describe("Phase 8 vault picker — make-build smoke", () => {
       };
       expect(appJSON.recent_vaults).toHaveLength(1);
     } finally {
-      handle?.kill();
+      await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
       fs.rmSync(vaultDir, { recursive: true, force: true });
     }
@@ -442,7 +457,7 @@ test.describe("Phase 8 vault picker — make-build smoke", () => {
 
       await expect(page.getByRole("button", { name: /create vault/i })).toBeDisabled();
     } finally {
-      handle?.kill();
+      await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
     }
   });
@@ -477,7 +492,7 @@ test.describe("Phase 8 vault picker — make-build smoke", () => {
       await expect(page.getByRole("button", { name: /reconnect/i })).toBeVisible();
       await expect(page.getByRole("button", { name: /remove/i })).toBeVisible();
     } finally {
-      handle?.kill();
+      await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
     }
   });
@@ -525,7 +540,7 @@ test.describe("Phase 8 vault switch — make-build smoke", () => {
         { timeout: 20_000 },
       );
     } finally {
-      handle?.kill();
+      await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
       fs.rmSync(vaultA, { recursive: true, force: true });
       fs.rmSync(vaultB, { recursive: true, force: true });
@@ -569,7 +584,7 @@ test.describe("Phase 8 vault switch — make-build smoke", () => {
       const body = (await conflictResp.json()) as { error?: string; current_target?: string };
       expect(body.error).toBe("vault_switch_in_progress");
     } finally {
-      handle?.kill();
+      await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
       fs.rmSync(vaultA, { recursive: true, force: true });
       fs.rmSync(vaultB1, { recursive: true, force: true });
