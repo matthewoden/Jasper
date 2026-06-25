@@ -416,12 +416,29 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
       await waitForMCP(5_000);
       await clientB.initialize("r4-14-spec-post-switch");
 
-      const listOut = await clientB.callTool("list_grants", {});
-      expect(listOut.isError, `list_grants errored: ${JSON.stringify(listOut)}`).toBeFalsy();
-      const grants = (listOut.structuredContent as {
-        grants?: Array<{ path: string; tier: number }>;
-      })?.grants ?? [];
-      const grantPaths = grants.map((g) => g.path).sort();
+      // The grant B POST above commits via the HTTP API's writer connection;
+      // list_grants reads through the MCP server's separate WAL reader
+      // connection, which can lag a just-committed write under parallel load.
+      // Poll for the eventual-consistent state (deterministic — not a fixed
+      // sleep). A leak of A's "projects/" grant fails immediately, so the poll
+      // never masks a real cross-vault leak.
+      let grantPaths: string[] = [];
+      const listDeadline = Date.now() + 10_000;
+      for (;;) {
+        const listOut = await clientB.callTool("list_grants", {});
+        expect(listOut.isError, `list_grants errored: ${JSON.stringify(listOut)}`).toBeFalsy();
+        const grants = (listOut.structuredContent as {
+          grants?: Array<{ path: string; tier: number }>;
+        })?.grants ?? [];
+        grantPaths = grants.map((g) => g.path).sort();
+        expect(
+          grantPaths.includes("projects"),
+          `A's projects/ grant leaked into vault B after switch: ${JSON.stringify(grantPaths)}`,
+        ).toBe(false);
+        if (grantPaths.length === 1 && grantPaths[0] === "research") break;
+        if (Date.now() >= listDeadline) break;
+        await new Promise((r) => setTimeout(r, 150));
+      }
       expect(
         grantPaths,
         "list_grants must return ONLY B's research/ grant after the switch — A's projects/ MUST NOT leak",
