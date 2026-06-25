@@ -118,8 +118,7 @@ func httpGet(t *testing.T, url string) (int, []byte) {
 	return resp.StatusCode, body
 }
 
-// originFor derives the scheme://host origin from a request URL so smoke tests
-// pass the always-on CSRF Origin guard (NET-04) the way a real browser does.
+// originFor returns the scheme://host origin of a request URL (browser-like Origin header).
 func originFor(t *testing.T, rawURL string) string {
 	t.Helper()
 	u, err := url.Parse(rawURL)
@@ -366,7 +365,7 @@ func TestSmoke_ConcurrentSaves_NoSQLITE_BUSY(t *testing.T) {
 	}
 
 	url := "http://" + addr + "/api/v1/notes/" + notes.ScratchpadUUID.String()
-	origin := "http://" + addr // CSRF Origin guard (NET-04) — set per-request below
+	origin := "http://" + addr
 	const N = 100
 
 	var wg sync.WaitGroup

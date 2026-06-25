@@ -20,11 +20,11 @@ func captureServeLog(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-// TestRunServe_VaultFlagAccepted verifies that --vault is the canonical
-// flag and runServe accepts it without error from fs.Parse. A non-loopback
-// --bind now only logs a warning (NET-01) rather than aborting, so the test
-// drives shutdown via a pre-cancelled context to keep the serve loop from
-// blocking; the flag-parsing and log assertions run before a.Run.
+// TestRunServe_VaultFlagAccepted verifies that --vault is the canonical flag and
+// runServe accepts it without error from fs.Parse. A non-loopback --bind only
+// logs a warning rather than aborting, so the test drives shutdown via a
+// pre-cancelled context to keep the serve loop from blocking; the flag-parsing
+// and log assertions run before a.Run.
 func TestRunServe_VaultFlagAccepted(t *testing.T) {
 	dir := t.TempDir()
 	vaultDir := filepath.Join(dir, "myvault")
@@ -94,7 +94,7 @@ func TestRunServe_JasperDataDirEnvIgnored(t *testing.T) {
 }
 
 // TestResolveBindAddr asserts the CLI-flag > config > default precedence
-// for the HTTP listener bind address (NET-01).
+// for the HTTP listener bind address.
 func TestResolveBindAddr(t *testing.T) {
 	makeConfig := func(bind string, port int) config.Config {
 		cfg := config.Defaults()

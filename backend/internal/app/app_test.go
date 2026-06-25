@@ -295,12 +295,10 @@ func waitFor(t *testing.T, timeout time.Duration, httpFn func() error) error {
 	return fmt.Errorf("waitFor timed out after %s: %w", timeout, lastErr)
 }
 
-// TestApp_LiveRouter_EnforcesCSRFOrigin — the CSRF Origin guard (NET-04) must be
-// wired into the LIVE router built by lifecycle.Run (and swapped in via
-// handler.Swap), not just the app.New skeleton router. Regression guard: a
-// mutating request through the running server is rejected without an Origin
-// header and accepted with one. The isolated middleware tests do not exercise
-// this runtime wiring.
+// TestApp_LiveRouter_EnforcesCSRFOrigin — the CSRF guard must be wired into the
+// LIVE router built by lifecycle.Run (swapped in via handler.Swap), not just the
+// app.New skeleton. A mutating request through the running server is rejected
+// with a foreign Origin and accepted with the matching one.
 func TestApp_LiveRouter_EnforcesCSRFOrigin(t *testing.T) {
 	dir := t.TempDir()
 	ln, addr := pickFreeListener(t)
@@ -342,8 +340,8 @@ func TestApp_LiveRouter_EnforcesCSRFOrigin(t *testing.T) {
 		return resp.StatusCode
 	}
 
-	if got := post(""); got != http.StatusForbidden {
-		t.Errorf("POST /notes with no Origin through live router: got %d, want 403 (CSRF must be wired in lifecycle.go, not just app.New)", got)
+	if got := post("http://evil.example.com"); got != http.StatusForbidden {
+		t.Errorf("POST /notes with foreign Origin through live router: got %d, want 403 (CSRF must be wired in lifecycle.go, not just app.New)", got)
 	}
 	if got := post("http://" + addr); got == http.StatusForbidden {
 		t.Errorf("POST /notes with matching Origin: got 403, want it to pass the CSRF guard")
@@ -1066,11 +1064,7 @@ func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 	}
 
 	createReq := fmt.Sprintf(`{"path":%q,"theme":"dark","mcp_enabled":false,"daily_template":"# {{date}}\n\n"}`, vaultDir)
-	createHTTPReq, _ := http.NewRequest(http.MethodPost, "http://"+addr+"/api/v1/vault/create", strings.NewReader(createReq))
-	createHTTPReq.Header.Set("Content-Type", "application/json")
-	// Same-origin browser requests carry an Origin header; the CSRF guard (NET-04) rejects mutations without one.
-	createHTTPReq.Header.Set("Origin", "http://"+addr)
-	createResp, err := http.DefaultClient.Do(createHTTPReq)
+	createResp, err := http.Post("http://"+addr+"/api/v1/vault/create", "application/json", strings.NewReader(createReq))
 	if err != nil {
 		t.Fatalf("POST /vault/create: %v", err)
 	}

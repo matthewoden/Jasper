@@ -160,8 +160,8 @@ func runServeContext(ctx context.Context, args []string) error {
 		return err
 	}
 
-	// HTTP path: warn (not block) when resolved host is non-loopback (NET-01).
-	// MCP remains loopback-only via its own RequireLoopbackBind call in mcp/listener.go.
+	// HTTP path: warn (not block) when the resolved host is non-loopback.
+	// MCP remains loopback-only via its own RequireLoopbackBind call.
 	if host, _, _ := net.SplitHostPort(resolvedAddr); !netbind.IsLoopback(host) {
 		log.Warn("HTTP listener bound beyond loopback — only use on trusted networks",
 			"addr", resolvedAddr)

@@ -256,9 +256,9 @@ func TestCSRFOriginMiddleware_SameOriginAllow(t *testing.T) {
 	}
 }
 
-// TestCSRFOriginMiddleware_EmptyOriginReject: PUT with empty Origin
-// is rejected with 403.
-func TestCSRFOriginMiddleware_EmptyOriginReject(t *testing.T) {
+// TestCSRFOriginMiddleware_EmptyOriginAllowed: PUT with an absent Origin passes
+// (non-browser client, not a CSRF vector).
+func TestCSRFOriginMiddleware_EmptyOriginAllowed(t *testing.T) {
 	called := false
 	h := csrfOriginMiddleware("127.0.0.1:6683")(csrfSentinel(t, &called))
 
@@ -266,11 +266,11 @@ func TestCSRFOriginMiddleware_EmptyOriginReject(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if called {
-		t.Error("expected next handler NOT to be called for PUT with empty Origin")
+	if !called {
+		t.Error("expected next handler to be called for PUT with absent Origin")
 	}
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
 	}
 }
 

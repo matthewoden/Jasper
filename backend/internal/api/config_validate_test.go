@@ -132,11 +132,9 @@ func TestConfigMiddleware_DisplayName_TooLong(t *testing.T) {
 	}
 }
 
-// TestConfigMiddleware_ServerBindAccepted — a body carrying server.bind must
-// NOT be rejected as an unknown field. Regression guard for the strict
-// validator missing the server.bind key (NET-01): the Settings NETWORK section
-// round-trips the full config including server.bind, so DisallowUnknownFields
-// must recognize it.
+// TestConfigMiddleware_ServerBindAccepted — a body carrying server.bind must NOT
+// be rejected as an unknown field. The Settings panel round-trips the full
+// config including server.bind, so the strict validator must recognize it.
 func TestConfigMiddleware_ServerBindAccepted(t *testing.T) {
 	ts := setupValidateServer(t)
 	defer ts.Close()

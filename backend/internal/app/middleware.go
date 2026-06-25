@@ -89,13 +89,10 @@ var csrfSafeMethods = map[string]bool{
 	http.MethodOptions: true,
 }
 
-// csrfOriginMiddleware rejects state-mutating requests (PUT/POST/DELETE)
-// whose Origin header does not appear in the set derived from listenAddr.
-// GET/HEAD/OPTIONS pass through unconditionally. Empty Origin is always
-// rejected for mutations. Always-on regardless of bind address (D-07).
-//
-// For 0.0.0.0 all-interfaces binds, the middleware applies a port-match
-// fallback: any Origin whose port matches the configured port is accepted.
+// csrfOriginMiddleware rejects mutating requests (PUT/POST/DELETE) whose Origin
+// is present but not in the set derived from listenAddr. Safe methods and absent
+// Origin pass (a missing Origin is a non-browser client, not a CSRF vector).
+// For 0.0.0.0 binds, any Origin whose port matches the configured port passes.
 func csrfOriginMiddleware(listenAddr string) func(http.Handler) http.Handler {
 	bindHost, port, err := net.SplitHostPort(listenAddr)
 	if err != nil {
@@ -116,7 +113,7 @@ func csrfOriginMiddleware(listenAddr string) func(http.Handler) http.Handler {
 			}
 			origin := r.Header.Get("Origin")
 			if origin == "" {
-				http.Error(w, "missing Origin header", http.StatusForbidden)
+				next.ServeHTTP(w, r)
 				return
 			}
 			if allowed[origin] {
