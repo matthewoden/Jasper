@@ -140,15 +140,19 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       await waitForNoteRowCount(pageA, 1);
       await waitForNoteRowCount(pageB, 1);
 
+      // Cross-tab WS-sync waits use a generous 15s deadline: at workers:4 the
+      // broadcast → refetch → re-render chain in the OTHER tab competes with
+      // many concurrent binaries for CPU and can exceed a 5s window. Still a
+      // poll-for-eventual-condition, not a fixed sleep.
       await pageA.getByRole("button", { name: /new note/i }).click();
       await commitRenameWith(pageA, "scenario-1-note-1");
-      await waitForNoteRowCount(pageA, 2, 5_000);
-      await waitForNoteRowCount(pageB, 2, 5_000);
+      await waitForNoteRowCount(pageA, 2, 15_000);
+      await waitForNoteRowCount(pageB, 2, 15_000);
 
       await pageA.getByRole("button", { name: /new folder/i }).click();
       await commitRenameWith(pageA, "scenario-1-folder-1");
-      await waitForFolderRowCount(pageA, 1, 5_000);
-      await waitForFolderRowCount(pageB, 1, 5_000);
+      await waitForFolderRowCount(pageA, 1, 15_000);
+      await waitForFolderRowCount(pageB, 1, 15_000);
 
       const treeResp = await pageA.request.get(`${jasper.baseURL}/api/v1/tree`);
       expect(treeResp.status()).toBe(200);
@@ -189,8 +193,8 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       );
       expect(moveResp.status()).toBe(200);
 
-      await waitForNoteRowCount(pageA, 2, 5_000);
-      await waitForNoteRowCount(pageB, 2, 5_000);
+      await waitForNoteRowCount(pageA, 2, 15_000);
+      await waitForNoteRowCount(pageB, 2, 15_000);
 
       const treeAfter = await pageA.request.get(`${jasper.baseURL}/api/v1/tree`);
       expect(treeAfter.status()).toBe(200);
