@@ -13,8 +13,11 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.ts",
   testIgnore: ["**/.claude/**", "**/node_modules/**"],
-  fullyParallel: false, // we manage one binary per test serially
-  workers: 1,
+  // Each test self-isolates via per-test ephemeral port + mkdtemp data dir.
+  // MCP port 6684 is serialized across worker processes via withMcpPortLock
+  // in helpers/binary.ts — not via worker-count reduction.
+  fullyParallel: true,
+  workers: process.env.CI ? 2 : 4,
   retries: 0, // E2E flakes mean a real bug — retry hides
   forbidOnly: true,
   reporter: [["list"]],
