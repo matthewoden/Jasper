@@ -119,7 +119,7 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; owns
       "serve",
       "--vault",
       dataDir,
-      "--addr",
+      "--bind",
       `127.0.0.1:${port}`,
     ],
     {

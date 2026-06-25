@@ -131,3 +131,31 @@ func TestConfigMiddleware_DisplayName_TooLong(t *testing.T) {
 		t.Errorf("display_name 65 chars: got %d, want 400; body=%s", resp.StatusCode, respBody)
 	}
 }
+
+// TestConfigMiddleware_ServerBindAccepted — a body carrying server.bind must
+// NOT be rejected as an unknown field. Regression guard for the strict
+// validator missing the server.bind key (NET-01): the Settings NETWORK section
+// round-trips the full config including server.bind, so DisallowUnknownFields
+// must recognize it.
+func TestConfigMiddleware_ServerBindAccepted(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{
+		"appName":"Jasper","theme":"dark",
+		"dailyNotes":{"folder":"daily","template":""},
+		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"server":{"port":6683,"dataDir":"/tmp/x","bind":"0.0.0.0"}
+	}`)
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode == 400 {
+		t.Errorf("server.bind rejected as unknown field: got 400; body=%s", respBody)
+	}
+}

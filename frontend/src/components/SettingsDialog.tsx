@@ -352,7 +352,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }, [config, displayName, saveConfig]);
 
   const handleBindAddressCommit = useCallback(async () => {
-    if (!config) return;
+    if (!config?.server) return;
     const { error } = await saveConfig({
       ...config,
       server: { ...config.server, bind: bindAddress },

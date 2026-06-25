@@ -126,6 +126,7 @@ type strictConfigValidator struct {
 	Server *struct {
 		Port    int    `json:"port"`
 		DataDir string `json:"dataDir"`
+		Bind    string `json:"bind"`
 	} `json:"server,omitempty"`
 	Mcp *struct {
 		Enabled bool   `json:"enabled"`
