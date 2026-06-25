@@ -4,7 +4,7 @@
  * All synchronization uses deterministic assertion-based waits.
  *
  * Selectors:
- *   - Checkbox widget: button.cm-task-checkbox (aria-checked="true"|"false")
+ *   - Checkbox widget: span.cm-task-checkbox (aria-checked="true"|"false")
  *   - Checked text:    .cm-task-text-checked
  *   - Save indicator:  button[data-save-state="saved"]
  *   - Note rows:       [data-tree-row-kind="note"]
@@ -133,7 +133,7 @@ test("E2E-1 CHK-01 check: unchecked checkbox click writes [x] to disk @phase12",
   await waitForConnected(page);
   await openNoteInEditor(page, noteId);
 
-  const checkbox = page.locator("button.cm-task-checkbox[aria-checked='false']").first();
+  const checkbox = page.locator("span.cm-task-checkbox[aria-checked='false']").first();
   await expect(checkbox).toBeVisible({ timeout: 5_000 });
 
   await checkbox.click();
@@ -161,7 +161,7 @@ test("E2E-2 CHK-01 uncheck: checked checkbox click writes [ ] to disk @phase12",
   await waitForConnected(page);
   await openNoteInEditor(page, noteId);
 
-  const checkbox = page.locator("button.cm-task-checkbox[aria-checked='true']").first();
+  const checkbox = page.locator("span.cm-task-checkbox[aria-checked='true']").first();
   await expect(checkbox).toBeVisible({ timeout: 5_000 });
 
   await checkbox.click();
@@ -217,8 +217,8 @@ test("E2E-4 CHK-04 off-cursor: checkbox clickable without cursor on task line @p
   await expect(otherLine).toBeVisible({ timeout: 5_000 });
   await otherLine.click();
 
-  // The checkbox button must still be present in the DOM even though cursor is elsewhere
-  const checkbox = page.locator("button.cm-task-checkbox").first();
+  // The checkbox widget must still be present in the DOM even though cursor is elsewhere
+  const checkbox = page.locator("span.cm-task-checkbox").first();
   await expect(checkbox).toBeVisible({ timeout: 5_000 });
 
   // Click the checkbox — must toggle without requiring cursor placement

@@ -65,17 +65,13 @@ async function typeIntoEditor(page: Page, text: string): Promise<void> {
 }
 
 /**
- * Wait for the SaveIndicator to show "Saved". Tolerates both
- * data-testid="save-indicator" (preferred) and rendered text "Saved"
- * (fallback) for forward/backward compat.
+ * Wait for the SaveIndicator to show the "saved" state.
+ * The StatusBar renders an icon-only button with data-save-state="saved".
  */
 async function waitForSaved(page: Page, timeoutMs = 8_000): Promise<void> {
-  const byId = page.locator('[data-testid="save-indicator"]');
-  if ((await byId.count()) > 0) {
-    await expect(byId).toContainText(/saved/i, { timeout: timeoutMs });
-    return;
-  }
-  await expect(page.getByText("Saved")).toBeVisible({ timeout: timeoutMs });
+  await expect(
+    page.locator('button[data-save-state="saved"]'),
+  ).toBeVisible({ timeout: timeoutMs });
 }
 
 /**

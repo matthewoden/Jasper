@@ -93,8 +93,9 @@ test.describe("Phase 5 — CodeMirror editor + theme + security", () => {
   test("EDIT-09: autosave fires after debounce; SaveIndicator transitions saving → saved", async ({ page }) => {
     await openEditor(page);
     await typeIntoEditor(page, "edit");
-    await expect(page.getByText(/Saving|Saved/)).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("Saved")).toBeVisible({ timeout: 5_000 });
+    // SaveIndicator is rendered as an icon-only button in the StatusBar with data-save-state attribute.
+    await expect(page.locator('button[data-save-state="saving"], button[data-save-state="saved"]')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('button[data-save-state="saved"]')).toBeVisible({ timeout: 5_000 });
   });
 
   test("EDIT-10: Cmd+S triggers immediate save", async ({ page }) => {
@@ -102,7 +103,7 @@ test.describe("Phase 5 — CodeMirror editor + theme + security", () => {
     await typeIntoEditor(page, "explicit save test");
     const saveKey = process.platform === "darwin" ? "Meta+S" : "Control+S";
     await page.keyboard.press(saveKey);
-    await expect(page.getByText("Saved")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('button[data-save-state="saved"]')).toBeVisible({ timeout: 5_000 });
   });
 
   test("EDIT-11: Cmd+F opens the Find panel (@codemirror/search)", async ({ page }) => {
@@ -119,19 +120,31 @@ test.describe("Phase 5 — CodeMirror editor + theme + security", () => {
     await page.waitForSelector('.cm-panels', { timeout: 5_000 });
 
     const findInput = page.locator('.cm-panels .cm-textfield').first();
+    await expect(findInput).toBeVisible({ timeout: 3_000 });
     await findInput.click();
-    await page.keyboard.type("beta");
+    await findInput.pressSequentially("beta", { delay: 30 });
 
+    // CM6 search highlights matches in the document with .cm-searchMatch
     await page.waitForSelector('.cm-searchMatch', { timeout: 5_000 });
   });
 
   test("EDIT-12: theme toggle persists through page reload", async ({ page }) => {
     await openEditor(page);
 
+    // Open settings and wait for the dialog to render.
     await page.getByTestId("settings-menu-trigger").click();
-    await page.getByLabel("Dark").click();
+    const dialog = page.getByRole("dialog", { name: "Settings" });
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    const lightRadio = page.getByLabel("Light");
+    await expect(lightRadio).toBeVisible({ timeout: 5_000 });
+
+    // Poll: click Light radio until data-theme="light" settles (config may be loading).
+    // handleThemeChange returns early if config is null, so retry until it applies.
+    await expect.poll(async () => {
+      await lightRadio.click();
+      return page.locator('html').getAttribute('data-theme');
+    }, { timeout: 8_000, intervals: [300] }).toBe("light");
 
     await page.reload();
     await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
@@ -140,7 +153,8 @@ test.describe("Phase 5 — CodeMirror editor + theme + security", () => {
       { timeout: 10_000 },
     );
 
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    // After reload, theme-bootstrap.js reads the persisted "light" preference from localStorage.
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light', { timeout: 5_000 });
   });
 
   test("EDIT-14: IME composition does not corrupt the editor (Japanese kana sample)", async ({ page }) => {
@@ -237,11 +251,11 @@ test.describe("Phase 5 — CodeMirror editor + theme + security", () => {
 
     await typeIntoEditor(page, "# My note\n\nNo external traffic please.");
 
-    await expect(page.getByText("Saved")).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('button[data-save-state="saved"]')).toBeVisible({ timeout: 8_000 });
 
     const saveKey = process.platform === "darwin" ? "Meta+S" : "Control+S";
     await page.keyboard.press(saveKey);
-    await expect(page.getByText("Saved")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('button[data-save-state="saved"]')).toBeVisible({ timeout: 5_000 });
 
     expect(externalRequests).toEqual([]);
   });
