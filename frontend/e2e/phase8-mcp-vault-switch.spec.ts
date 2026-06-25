@@ -103,7 +103,7 @@ async function waitForMCP(deadlineMs: number): Promise<void> {
 interface Handle {
   proc: ChildProcess;
   baseURL: string;
-  kill: () => void;
+  kill: () => Promise<void>;
 }
 
 async function spawnJasperWithEnv(
@@ -134,9 +134,24 @@ async function spawnJasperWithEnv(
   return {
     proc,
     baseURL,
-    kill: () => {
-      proc.kill("SIGTERM");
-    },
+    // Resolve only after the process actually exits, so callers holding the
+    // cross-process MCP-port lock keep it until port 6684 is truly freed.
+    kill: () =>
+      new Promise<void>((resolve) => {
+        if (proc.exitCode !== null || proc.signalCode !== null) {
+          resolve();
+          return;
+        }
+        const timer = setTimeout(() => {
+          proc.kill("SIGKILL");
+          resolve();
+        }, 3_000);
+        proc.once("exit", () => {
+          clearTimeout(timer);
+          resolve();
+        });
+        proc.kill("SIGTERM");
+      }),
   };
 }
 
@@ -431,8 +446,9 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         `StatusBar must reflect vault B; got: ${statusText}`,
       ).toContain(nameB.substring(0, 8).toLowerCase());
     } finally {
-      handle?.kill();
-      await new Promise((r) => setTimeout(r, 200));
+      // Await full process exit before releasing the lock (finally below) and
+      // removing the data dirs — port 6684 must be free for the next worker.
+      await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
       fs.rmSync(vaultARaw, { recursive: true, force: true });
       fs.rmSync(vaultBRaw, { recursive: true, force: true });

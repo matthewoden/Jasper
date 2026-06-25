@@ -31,7 +31,11 @@ import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 
 const MCP_LOCK_PATH = path.join(tmpdir(), "jasper-e2e-mcp-6684.lock");
-const MCP_LOCK_ACQUIRE_TIMEOUT_MS = 120_000;
+// Acquire timeout MUST exceed stale age, otherwise a waiter gives up before it
+// can reclaim a lock orphaned by a crashed worker (180s stale) — turning a
+// recoverable orphan into a hard suite failure. Ordering invariant:
+// max legit hold (~60s) < STALE_AGE (180s) < ACQUIRE_TIMEOUT (300s).
+const MCP_LOCK_ACQUIRE_TIMEOUT_MS = 300_000;
 const MCP_LOCK_STALE_AGE_MS = 180_000;
 const MCP_LOCK_POLL_INTERVAL_MS = 100;
 
