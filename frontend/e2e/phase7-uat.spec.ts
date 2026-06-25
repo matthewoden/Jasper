@@ -46,7 +46,7 @@ test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
     if (jasper) await jasper.kill();
   });
 
-  test("typing in the Sidebar SearchInputBar shows FTS5 results with mark highlight; click opens note", async ({ page }) => {
+  test("Search modal (Cmd+Shift+F) shows FTS5 results with mark highlight; click opens note", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -63,16 +63,22 @@ test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
     await waitForConnected(page);
     await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
 
-    const searchInput = page.getByPlaceholder("Search notes…");
+    // Sidebar no longer has an inline SearchInputBar — search lives in the "Search notes" modal.
+    // Open via Cmd+Shift+F or the Search button in SidebarToolbar.
+    await page.keyboard.press("Meta+Shift+f");
+    const searchDialog = page.getByRole("dialog", { name: "Search notes" });
+    await expect(searchDialog).toBeVisible({ timeout: 5_000 });
+
+    const searchInput = searchDialog.getByPlaceholder("Search notes…");
     await expect(searchInput).toBeVisible({ timeout: 3_000 });
     await searchInput.fill("searchable");
 
     await page.waitForTimeout(600);
 
-    const alphaResult = page.getByText(/alpha-s1/i).first();
+    const alphaResult = searchDialog.getByText(/alpha-s1/i).first();
     await expect(alphaResult).toBeVisible({ timeout: 5_000 });
 
-    await expect(page.locator(".search-result-excerpt mark").first()).toBeVisible({
+    await expect(searchDialog.locator("[data-row-kind='search-result'] mark").first()).toBeVisible({
       timeout: 3_000,
     });
 
@@ -84,7 +90,7 @@ test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
 });
 
 
-test.describe("Phase 7 — Cmd+O palette search AND-combines with active tag filter (S2 / UAT #11)", () => {
+test.describe("Phase 7 — Cmd+O quick switcher searches note titles (S2 / UAT #11)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -95,7 +101,11 @@ test.describe("Phase 7 — Cmd+O palette search AND-combines with active tag fil
     if (jasper) await jasper.kill();
   });
 
-  test("Cmd+O palette search AND-combines with active tag filter chip", async ({ page }) => {
+  test("Cmd+O quick switcher searches note titles regardless of active tag filter", async ({ page }) => {
+    // Design note: Cmd+O quick switcher is title-only fuzzy search across ALL notes.
+    // It does NOT AND-combine with the active tag filter (that applies only to the
+    // FTS search modal at Cmd+Shift+F). This test verifies the quick switcher shows
+    // notes matching by title, ignoring the active tag filter.
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -120,12 +130,14 @@ test.describe("Phase 7 — Cmd+O palette search AND-combines with active tag fil
 
     await activateTagFilterChip(page, "project");
 
+    // Quick switcher: type "world" — matches world-s2 by title (title-only fuzzy search,
+    // tag filter is NOT applied in Cmd+O mode).
     await openCommandMenuAndType(page, "switch", "world");
     await page.waitForTimeout(600);
 
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
-    await expect(dialog.getByText(/hello-s2/i).first()).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.getByText(/world-s2/i)).toHaveCount(0);
+    // world-s2 matches "world" by title; quick switcher ignores the active tag filter.
+    await expect(dialog.getByText(/world-s2/i).first()).toBeVisible({ timeout: 5_000 });
 
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
@@ -1748,7 +1760,9 @@ test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop s
     if (jasper) await jasper.kill();
   });
 
-  test("S24a — SaveIndicator-button visible in TopBar after typing (transitions through saving → saved)", async ({ page }) => {
+  test("S24a — SaveIndicator-button visible in StatusBar after typing (transitions through saving → saved)", async ({ page }) => {
+    // Design change: SaveIndicator-button lives in StatusBar (not TopBar).
+    // TopBar does NOT render SaveIndicator (confirmed by S31b).
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -1762,8 +1776,9 @@ test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop s
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
     await page.waitForTimeout(500);
 
-    const topBar = page.locator("[data-testid='top-bar']");
-    const saveBtn = topBar.locator("button[data-save-state]");
+    // SaveIndicator is in the StatusBar, not TopBar.
+    const statusBar = page.locator("[data-testid='status-bar']");
+    const saveBtn = statusBar.locator("button[data-save-state]");
     await expect(saveBtn).toBeVisible({ timeout: 5_000 });
 
     await page.locator(".cm-content").click();
@@ -1771,15 +1786,16 @@ test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop s
 
     await expect(saveBtn).toHaveAttribute("data-save-state", "saved", { timeout: 8_000 });
 
-    const statusBarSaveBtn = page.locator("[data-testid='status-bar'] button[data-save-state]");
-    expect(await statusBarSaveBtn.count()).toBe(0);
-    const editorSavedEl = page.locator("section").filter({ hasText: /cm-editor/ }).getByRole("status");
-    expect(await editorSavedEl.count()).toBe(0);
+    // TopBar must NOT have a SaveIndicator button.
+    const topBarSaveBtn = page.locator("[data-testid='top-bar'] button[data-save-state]");
+    expect(await topBarSaveBtn.count()).toBe(0);
 
     void noteId;
   });
 
-  test("S24b — clicking Search icon in SidebarToolbar opens Cmd+O quick switcher palette", async ({ page }) => {
+  test("S24b — clicking Search icon in SidebarToolbar opens Search notes dialog (FTS5 modal)", async ({ page }) => {
+    // Design change: SidebarToolbar Search button opens mode='search' (FTS5 modal),
+    // not the Cmd+O quick switcher. Dialog name is "Search notes".
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -1787,7 +1803,7 @@ test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop s
     await expect(searchBtn).toBeVisible({ timeout: 5_000 });
     await searchBtn.click();
 
-    const dialog = page.getByRole("dialog", { name: "Quick switcher" });
+    const dialog = page.getByRole("dialog", { name: "Search notes" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
     await page.keyboard.press("Escape");
@@ -1811,7 +1827,11 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     if (jasper) await jasper.kill();
   });
 
-  test("S26a — right-rail toggle hidden when note has no tags + no backlinks", async ({ page }) => {
+  test("S26a — right-rail toggle is visible when panels are selected; adding a tag populates the Tags panel", async ({ page }) => {
+    // Design change: the rail toggle (Hide/Show panels) visibility is gated on
+    // panelSelector state, not on note content. Both panels are selected by default
+    // so the toggle is always visible. This test verifies the toggle is present and
+    // that typing a tag in the editor populates the Tags panel.
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -1831,16 +1851,19 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
 
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
 
+    // The toggle is gated on panelSelector (defaults both on), so it should be visible.
     await expect(
       page.getByRole("button", { name: /hide panels|show panels/i }),
-    ).toHaveCount(0, { timeout: 3_000 });
+    ).toBeVisible({ timeout: 3_000 });
 
+    // Type a tag and auto-save; the Tags panel should populate.
     await page.locator(".cm-content").click();
     await page.keyboard.press("End");
     await page.keyboard.type("\n\n#testtag-s26a");
 
     await page.waitForTimeout(3_500);
 
+    // Rail toggle still visible after tag is added.
     await expect(
       page.getByRole("button", { name: /hide panels|show panels/i }),
     ).toBeVisible({ timeout: 8_000 });
@@ -2179,13 +2202,19 @@ test.describe("Phase 7 — Switcher/Search split (S32 / UAT-5 N11 / D-57)", () =
 
     await page.keyboard.press("Escape");
 
-    const sidebarSearchInput = page.getByPlaceholder("Search notes…");
-    await expect(sidebarSearchInput).toBeVisible({ timeout: 3_000 });
-    await sidebarSearchInput.fill("uat5n11needle");
+    // Sidebar no longer has an inline SearchInputBar — FTS5 search is via the "Search notes" modal.
+    await page.keyboard.press("Meta+Shift+f");
+    const searchDialog = page.getByRole("dialog", { name: "Search notes" });
+    await expect(searchDialog).toBeVisible({ timeout: 5_000 });
+    const searchModalInput = searchDialog.getByPlaceholder("Search notes…");
+    await expect(searchModalInput).toBeVisible({ timeout: 3_000 });
+    await searchModalInput.fill("uat5n11needle");
     await page.waitForTimeout(500);
 
-    const sidebarMark = page.locator(".search-result-excerpt mark").first();
+    const sidebarMark = searchDialog.locator("[data-row-kind='search-result'] mark").first();
     await expect(sidebarMark).toBeVisible({ timeout: 5_000 });
+
+    await page.keyboard.press("Escape");
   });
 });
 

@@ -109,74 +109,55 @@ async function apiCreateNote(
 }
 
 /**
- * Selector for the Tags panel expand/collapse toggle button only
- * (not the "Close Tags panel" × button).
- */
-const TAGS_PANEL_EXPAND_BTN = 'button[aria-label*="Tags panel, "]';
-
-/**
- * Ensure the right rail is expanded.
- * The rail starts collapsed by default; we need it expanded for rail assertions.
+ * Ensure the right rail is expanded and Tags panel is visible.
+ *
+ * Current UI: the Tags panel has NO expand/collapse toggle. It is opened
+ * via PanelSelectorDropdown (aria-label "Open panel") and closed via its
+ * × button. The rail toggle (Hide/Show panels) is in the TopBar.
  */
 async function ensureRailExpanded(page: Page): Promise<void> {
+  // If the rail toggle shows "Show panels", click it to expand.
   const showBtn = page.getByRole("button", { name: "Show panels" });
   if ((await showBtn.count()) > 0 && (await showBtn.isVisible())) {
     await showBtn.click();
-    await expect(
-      page.locator(TAGS_PANEL_EXPAND_BTN),
-    ).toBeVisible({ timeout: 5_000 });
+    await page.waitForTimeout(300);
   }
-  const showBtnOld = page.getByRole("button", { name: "Show backlinks panel" });
-  if ((await showBtnOld.count()) > 0 && (await showBtnOld.isVisible())) {
-    await showBtnOld.click();
-    await expect(
-      page.locator(TAGS_PANEL_EXPAND_BTN),
-    ).toBeVisible({ timeout: 5_000 });
+
+  // If Tags panel is not mounted, open it via PanelSelectorDropdown.
+  const closeTagsBtn = page.getByRole("button", { name: "Close Tags panel" });
+  if ((await closeTagsBtn.count()) === 0) {
+    const panelTrigger = page.getByRole("button", { name: "Open panel" });
+    if ((await panelTrigger.count()) > 0) {
+      await panelTrigger.click();
+      await page.waitForTimeout(200);
+      const tagsItem = page.getByTestId("panel-selector-tags");
+      if ((await tagsItem.count()) > 0) {
+        await tagsItem.click();
+        await page.waitForTimeout(200);
+      }
+    }
   }
+  // Verify Tags panel is mounted.
+  await expect(
+    page.getByRole("button", { name: "Close Tags panel" }),
+  ).toBeVisible({ timeout: 5_000 });
 }
 
 /**
- * Ensure the Tags panel is expanded and visible.
- *
- * The panel dropdown is an action menu — clicking an item unconditionally
- * opens its panel. A plain click is used; we then verify the header is
- * present and expand if collapsed-within-card.
+ * Ensure the Tags panel is visible in the right rail.
+ * Delegates to ensureRailExpanded which opens it via PanelSelectorDropdown.
  */
 async function ensureTagsPanelVisible(page: Page): Promise<void> {
   await ensureRailExpanded(page);
-
-  const tagsPanelHeader = page.locator(TAGS_PANEL_EXPAND_BTN);
-  if ((await tagsPanelHeader.count()) === 0) {
-    const panelSelectorTrigger = page.getByRole("button", {
-      name: "Open panel",
-    });
-    await expect(panelSelectorTrigger).toBeVisible({ timeout: 5_000 });
-    await panelSelectorTrigger.click();
-    await page.waitForTimeout(300);
-    const tagsItem = page.getByTestId("panel-selector-tags");
-    if ((await tagsItem.count()) > 0) {
-      await tagsItem.click();
-      // No need to press Escape — Radix closes the menu on item select.
-    }
-  }
-
-  const headerBtn = page.locator(TAGS_PANEL_EXPAND_BTN);
-  await expect(headerBtn).toBeVisible({ timeout: 5_000 });
-  const label = (await headerBtn.getAttribute("aria-label")) ?? "";
-  if (label.includes("collapsed")) {
-    await headerBtn.click();
-    await expect(
-      page.locator(`${TAGS_PANEL_EXPAND_BTN}[aria-expanded="true"]`),
-    ).toBeVisible({ timeout: 5_000 });
-  }
 }
 
 /**
- * Wait for SaveIndicator to show "Saved".
+ * Wait for SaveIndicator to reach "saved" state.
+ * SaveIndicator is an icon-button with data-save-state attribute (no text label).
  */
 async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
   await expect(
-    page.locator('[role="status"]').filter({ hasText: /^Saved$/ }),
+    page.locator('button[data-save-state="saved"]'),
   ).toBeVisible({ timeout: timeoutMs });
 }
 
@@ -229,7 +210,8 @@ test("S2 @panel-selector: dropdown opens panels; × closes panels; rail auto-col
   const closeTagsBtn = page.getByRole("button", { name: "Close Tags panel" });
   await expect(closeTagsBtn).toBeVisible({ timeout: 5_000 });
   await closeTagsBtn.click();
-  await expect(page.locator(TAGS_PANEL_EXPAND_BTN)).toHaveCount(0, {
+  // After closing, Close Tags button should be gone.
+  await expect(page.getByRole("button", { name: "Close Tags panel" })).toHaveCount(0, {
     timeout: 3_000,
   });
 
@@ -240,7 +222,8 @@ test("S2 @panel-selector: dropdown opens panels; × closes panels; rail auto-col
   await expect(tagsItem).toBeVisible({ timeout: 3_000 });
   expect(await tagsItem.getAttribute("aria-checked")).toBeNull();
   await tagsItem.click();
-  await expect(page.locator(TAGS_PANEL_EXPAND_BTN)).toBeVisible({
+  // After opening, Tags panel Close button should reappear.
+  await expect(page.getByRole("button", { name: "Close Tags panel" })).toBeVisible({
     timeout: 5_000,
   });
 
@@ -251,9 +234,10 @@ test("S2 @panel-selector: dropdown opens panels; × closes panels; rail auto-col
     await closeBacklinksBtn.click();
   }
   await page.getByRole("button", { name: "Close Tags panel" }).click();
+  // After all panels closed, anyPanelSelected=false → rail toggle disappears entirely (not "Show panels")
   await expect(
-    page.getByRole("button", { name: "Show panels" }),
-  ).toBeVisible({ timeout: 5_000 });
+    page.getByRole("button", { name: /hide panels|show panels/i }),
+  ).toHaveCount(0, { timeout: 5_000 });
 });
 
 
@@ -270,7 +254,8 @@ test("S3 @UX-CHROME-02: StatusBar visible at bottom; connectivity dot + refresh 
   const connDot = page.getByTestId("connection-status-dot");
   await expect(connDot).toBeVisible({ timeout: 5_000 });
 
-  const refreshBtn = page.getByRole("button", { name: "Reindex notes" });
+  // SaveIndicator in StatusBar acts as the refresh trigger (icon-button, no "Reindex notes" label).
+  const refreshBtn = statusBar.locator("button[data-save-state]");
   await expect(refreshBtn).toBeVisible({ timeout: 5_000 });
 
   const statusBarButtons = statusBar.locator("button");
@@ -282,9 +267,7 @@ test("S3 @UX-CHROME-02: StatusBar visible at bottom; connectivity dot + refresh 
     const connDotInSidebar = sidebarNav.getByTestId("connection-status-dot");
     expect(await connDotInSidebar.count()).toBe(0);
 
-    const refreshInSidebar = sidebarNav.getByRole("button", {
-      name: "Reindex notes",
-    });
+    const refreshInSidebar = sidebarNav.locator("button[data-save-state]");
     expect(await refreshInSidebar.count()).toBe(0);
   }
 });
@@ -295,7 +278,9 @@ test("S4 @UX-CHROME-02-refresh: refresh button briefly disables during reindex; 
 
   await expect(page.getByTestId("status-bar")).toBeVisible({ timeout: 8_000 });
 
-  const refreshBtn = page.getByRole("button", { name: "Reindex notes" });
+  // SaveIndicator in StatusBar acts as the reindex trigger (icon-button, data-save-state attribute).
+  const statusBar = page.getByTestId("status-bar");
+  const refreshBtn = statusBar.locator("button[data-save-state]");
   await expect(refreshBtn).toBeVisible({ timeout: 5_000 });
   await expect(refreshBtn).toBeEnabled({ timeout: 3_000 });
 
@@ -313,7 +298,6 @@ test("S4 @UX-CHROME-02-refresh: refresh button briefly disables during reindex; 
   await expect(refreshBtn).toBeEnabled({ timeout: 10_000 });
   void observedDisabled;
 
-  const statusBar = page.getByTestId("status-bar");
   const allStatusBarBtns = statusBar.locator("button");
   const lastBtn = allStatusBarBtns.last();
   await expect(lastBtn).toBeVisible({ timeout: 3_000 });
@@ -511,11 +495,14 @@ test("S8 @UX-CHROME-06: tag rows render '#tagname' + badge count; no Key icon in
   );
   expect(hashColor).toBeTruthy();
 
-  const headerBtn = page.locator(TAGS_PANEL_EXPAND_BTN);
-  await expect(headerBtn).toBeVisible({ timeout: 5_000 });
+  // Tags panel header has no expand-toggle — verify panel header by Close button.
+  const panelHeader = page.locator("header").filter({
+    has: page.getByRole("button", { name: "Close Tags panel" }),
+  });
+  await expect(panelHeader).toBeVisible({ timeout: 5_000 });
 
-  const hasKeyIcon = await headerBtn.evaluate((btn) => {
-    const svgs = btn.querySelectorAll("svg");
+  const hasKeyIcon = await panelHeader.evaluate((hdr) => {
+    const svgs = hdr.querySelectorAll("svg");
     for (const svg of Array.from(svgs)) {
       const title = svg.querySelector("title");
       if (title?.textContent?.toLowerCase().includes("key")) return true;

@@ -81,37 +81,55 @@ async function typeIntoEditor(page: Page, text: string): Promise<void> {
 }
 
 /**
- * Wait for the SaveIndicator to show "Saved".
- * The overlay renders a <span class="text-muted">Saved</span> inside a role="status" div.
+ * Wait for the SaveIndicator to reach "saved" state.
+ * SaveIndicator renders as an icon-button with data-save-state attribute
+ * (button mode, used in StatusBar). The legacy role="status" overlay is not
+ * shown when SaveIndicator receives an onClick prop.
  */
 async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
   await expect(
-    page.locator('[role="status"]').filter({ hasText: /^Saved$/ }),
+    page.locator('button[data-save-state="saved"]'),
   ).toBeVisible({ timeout: timeoutMs });
 }
 
 /**
- * Ensure the right rail is expanded. The rail starts collapsed by default.
- * Checks both "Show backlinks panel" (older label) and "Show panels" (newer
- * TopBar label) for forward/backward compatibility.
+ * Ensure the right rail is expanded and Tags panel is visible.
+ *
+ * Current UI: the rail toggle button (aria-label "Hide panels" / "Show panels")
+ * lives in the TopBar and is gated on panelSelector state. The Tags panel has
+ * no expand/collapse toggle — it is opened via the PanelSelectorDropdown
+ * (aria-label "Open panel") and closed via its × button.
+ *
+ * If the rail is collapsed ("Show panels" visible), click the toggle.
+ * If Tags panel is not mounted, open it via the PanelSelectorDropdown.
+ * Verifies Tags panel is present by checking for its "Close Tags panel" × button.
  */
 async function ensureRailExpanded(page: Page): Promise<void> {
-  const showBtnOld = page.getByRole("button", { name: "Show backlinks panel" });
-  if ((await showBtnOld.count()) > 0 && (await showBtnOld.isVisible())) {
-    await showBtnOld.click();
-    await expect(
-      page.locator('button[aria-label*="Tags panel, "]'),
-    ).toBeVisible({ timeout: 5_000 });
-    return;
-  }
-
+  // If the rail toggle shows "Show panels", click it to expand.
   const showBtnNew = page.getByRole("button", { name: "Show panels" });
   if ((await showBtnNew.count()) > 0 && (await showBtnNew.isVisible())) {
     await showBtnNew.click();
-    await expect(
-      page.locator('button[aria-label*="Tags panel, "]'),
-    ).toBeVisible({ timeout: 5_000 });
+    await page.waitForTimeout(300);
   }
+
+  // If Tags panel is not mounted, open it via PanelSelectorDropdown.
+  const closeTagsBtn = page.getByRole("button", { name: "Close Tags panel" });
+  if ((await closeTagsBtn.count()) === 0) {
+    const panelTrigger = page.getByRole("button", { name: "Open panel" });
+    if ((await panelTrigger.count()) > 0) {
+      await panelTrigger.click();
+      await page.waitForTimeout(200);
+      const tagsItem = page.getByTestId("panel-selector-tags");
+      if ((await tagsItem.count()) > 0) {
+        await tagsItem.click();
+        await page.waitForTimeout(200);
+      }
+    }
+  }
+  // Verify Tags panel is mounted.
+  await expect(
+    page.getByRole("button", { name: "Close Tags panel" }),
+  ).toBeVisible({ timeout: 5_000 });
 }
 
 /**
@@ -155,22 +173,18 @@ async function apiCreateNote(
 }
 
 /**
- * Expand the Tags panel in the right rail (click the header if collapsed).
+ * Ensure the Tags panel is open in the right rail.
  *
- * The Tags panel header has TWO buttons (expand toggle + × close). The selector
- * uses "Tags panel, " (trailing comma+space) to match only the expand/collapse toggle.
+ * The Tags panel no longer has an expand/collapse toggle — it is either
+ * mounted (panel card visible) or not. Delegates to ensureRailExpanded which
+ * opens the panel via PanelSelectorDropdown when needed.
  */
 async function ensureTagsPanelExpanded(page: Page): Promise<void> {
   await ensureRailExpanded(page);
-  const headerBtn = page.locator('button[aria-label*="Tags panel, "]');
-  await expect(headerBtn).toBeVisible({ timeout: 5_000 });
-  const label = (await headerBtn.getAttribute("aria-label")) ?? "";
-  if (label.includes("collapsed")) {
-    await headerBtn.click();
-    await expect(
-      page.locator('button[aria-label*="Tags panel, "][aria-expanded="true"]'),
-    ).toBeVisible({ timeout: 5_000 });
-  }
+  // After ensureRailExpanded, the Tags panel is mounted and visible.
+  await expect(
+    page.getByRole("button", { name: "Close Tags panel" }),
+  ).toBeVisible({ timeout: 5_000 });
 }
 
 
@@ -179,7 +193,8 @@ test("S1 @UX-T-01: rail has two panel cards + draggable inter-panel divider + ra
 
   await ensureRailExpanded(page);
 
-  await expect(page.locator('button[aria-label*="Tags panel, "]')).toBeVisible({ timeout: 8_000 });
+  // Tags panel is open — verify by its Close button (no expand-toggle in current UI).
+  await expect(page.getByRole("button", { name: "Close Tags panel" })).toBeVisible({ timeout: 8_000 });
   await expect(
     page.getByRole("region", { name: "Notes that link to this note" }),
   ).toBeVisible({ timeout: 8_000 });
@@ -241,7 +256,7 @@ test("S1 @UX-T-01: rail has two panel cards + draggable inter-panel divider + ra
   );
   expect(ratioAfterReload).toEqual(ratioAfter);
 
-  await expect(page.locator('button[aria-label*="Tags panel, "]')).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole("button", { name: "Close Tags panel" })).toBeVisible({ timeout: 8_000 });
   await expect(
     page.getByRole("region", { name: "Notes that link to this note" }),
   ).toBeVisible({ timeout: 8_000 });
