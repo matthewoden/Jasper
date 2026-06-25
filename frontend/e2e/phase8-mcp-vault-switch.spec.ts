@@ -26,6 +26,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { withMcpPortLock } from "./helpers/binary";
 import { spawn, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";
 import * as fsP from "node:fs/promises";
@@ -223,11 +224,13 @@ class McpClient {
 
 
 test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () => {
+  test.describe.configure({ mode: "serial" });
   test.setTimeout(120_000);
 
   test("R4-14 — MCP write during vault switch commits cleanly or drains, never partial", async ({
     page,
   }) => {
+    await withMcpPortLock(async () => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-r4-14-app-"));
     const vaultARaw = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-r4-14-A-"));
     const vaultBRaw = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-r4-14-B-"));
@@ -434,5 +437,6 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
       fs.rmSync(vaultARaw, { recursive: true, force: true });
       fs.rmSync(vaultBRaw, { recursive: true, force: true });
     }
+    }); // withMcpPortLock
   });
 });

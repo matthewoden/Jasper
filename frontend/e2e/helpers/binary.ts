@@ -24,11 +24,75 @@
  * which already has a 15s window.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, open as fsOpen, unlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
+
+const MCP_LOCK_PATH = path.join(tmpdir(), "jasper-e2e-mcp-6684.lock");
+const MCP_LOCK_ACQUIRE_TIMEOUT_MS = 120_000;
+const MCP_LOCK_STALE_AGE_MS = 180_000;
+const MCP_LOCK_POLL_INTERVAL_MS = 100;
+
+/**
+ * Cross-process critical section that serializes MCP port 6684 acquisition
+ * across Playwright worker processes (which are separate OS processes —
+ * an in-process mutex cannot coordinate them).
+ *
+ * Uses O_EXCL (the "wx" flag) on a shared tmpdir lock file: only one process
+ * can create the file at a time. All others spin-poll until it disappears.
+ *
+ * Stale-lock reclaim: if the lock file is older than MCP_LOCK_STALE_AGE_MS
+ * (a generous ceiling beyond any MCP test's own timeout) it is treated as
+ * an orphan left by a crashed worker that never released, and is removed so
+ * the suite does not deadlock.
+ *
+ * Release is guaranteed in a finally block so a throwing fn() still unlocks.
+ */
+export async function withMcpPortLock<T>(fn: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + MCP_LOCK_ACQUIRE_TIMEOUT_MS;
+  let fh: Awaited<ReturnType<typeof fsOpen>> | null = null;
+
+  while (Date.now() < deadline) {
+    try {
+      fh = await fsOpen(MCP_LOCK_PATH, "wx");
+      break;
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST") throw err;
+
+      // Lock file exists — check if it's stale (orphaned from a crashed worker).
+      try {
+        const info = await stat(MCP_LOCK_PATH);
+        const ageMs = Date.now() - info.mtimeMs;
+        if (ageMs > MCP_LOCK_STALE_AGE_MS) {
+          // Stale lock — safe to reclaim. Another worker may race us here;
+          // unlink is best-effort; we'll re-attempt open on the next iteration.
+          await unlink(MCP_LOCK_PATH).catch(() => {});
+        }
+      } catch {
+        // stat failed — file may already be gone; just retry open
+      }
+
+      await new Promise((r) => setTimeout(r, MCP_LOCK_POLL_INTERVAL_MS));
+    }
+  }
+
+  if (fh === null) {
+    throw new Error(
+      `withMcpPortLock: could not acquire MCP port 6684 lock within ${MCP_LOCK_ACQUIRE_TIMEOUT_MS}ms — ` +
+        `lock path: ${MCP_LOCK_PATH}`,
+    );
+  }
+
+  try {
+    return await fn();
+  } finally {
+    await fh.close();
+    await unlink(MCP_LOCK_PATH).catch(() => {});
+  }
+}
 
 export interface JasperHandle {
   proc: ChildProcess;
