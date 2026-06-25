@@ -116,7 +116,7 @@ async function spawnJasperWithEnv(
     );
   }
   const port = await findFreePort();
-  const proc = spawn(JASPER_BIN, ["serve", "--addr", `127.0.0.1:${port}`], {
+  const proc = spawn(JASPER_BIN, ["serve", "--bind", `127.0.0.1:${port}`], {
     env: { ...process.env, JASPER_APP_HOME: appHome, ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });

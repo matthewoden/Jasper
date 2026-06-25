@@ -82,7 +82,7 @@ async function spawnJasperOnPort(
   if (!fs.existsSync(JASPER_BIN)) {
     throw new Error(`bin/jasper missing — run \`make build\` first. Expected: ${JASPER_BIN}`);
   }
-  const proc = spawn(JASPER_BIN, ["serve", "--addr", `127.0.0.1:${port}`], {
+  const proc = spawn(JASPER_BIN, ["serve", "--bind", `127.0.0.1:${port}`], {
     env: { ...process.env, JASPER_APP_HOME: appHome },
     stdio: ["ignore", "pipe", "pipe"],
   });

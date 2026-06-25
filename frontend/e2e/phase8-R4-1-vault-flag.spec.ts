@@ -69,7 +69,7 @@ async function spawnJasper(appHome: string, extraArgs: string[] = []): Promise<V
   const port = await findFreePort();
   const proc = spawn(
     JASPER_BIN,
-    ["serve", "--addr", `127.0.0.1:${port}`, ...extraArgs],
+    ["serve", "--bind", `127.0.0.1:${port}`, ...extraArgs],
     {
       env: { ...process.env, JASPER_APP_HOME: appHome },
       stdio: ["ignore", "pipe", "pipe"],
