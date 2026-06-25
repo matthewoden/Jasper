@@ -210,6 +210,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [dailyFolder, setDailyFolder] = useState("");
   const [dailyTemplate, setDailyTemplate] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [bindAddress, setBindAddress] = useState("");
 
   // ── Save error banner: shown when PUT /config fails ──
   // Cleared on any subsequent successful save or when dismissed.
@@ -224,6 +225,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     setDailyFolder(config.dailyNotes.folder);
     setDailyTemplate(config.dailyNotes.template);
     setDisplayName(config.display_name ?? "");
+    setBindAddress(config.server?.bind ?? "127.0.0.1");
   }, [config]);
 
   // ── Boot seeding: keep CSS vars in sync with persisted config ───────
@@ -348,6 +350,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       setSaveError(null);
     }
   }, [config, displayName, saveConfig]);
+
+  const handleBindAddressCommit = useCallback(async () => {
+    if (!config) return;
+    const { error } = await saveConfig({
+      ...config,
+      server: { ...config.server, bind: bindAddress },
+    });
+    if (error) {
+      setSaveError(error.message);
+    } else {
+      setSaveError(null);
+    }
+  }, [config, bindAddress, saveConfig]);
 
   const handleThemeChange = useCallback(
     async (t: "dark" | "light") => {
@@ -868,6 +883,67 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 Shown in the status bar and vault switcher.
               </span>
             </ControlRow>
+          </section>
+
+          {/* ── NETWORK ─────────────────────────────────────────────────── */}
+          <SectionDivider />
+          <section>
+            <Eyebrow text="NETWORK" />
+
+            <ControlRow label="Bind address" htmlFor="settings-bind-address">
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  id="settings-bind-address"
+                  type="text"
+                  placeholder="127.0.0.1"
+                  aria-label="Bind address"
+                  aria-describedby="settings-bind-helper"
+                  value={bindAddress}
+                  onChange={(e) => setBindAddress(e.target.value)}
+                  onBlur={() => { void handleBindAddressCommit(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleBindAddressCommit();
+                  }}
+                  style={{ ...inputStyle, width: "100%", fontFamily: "var(--font-mono)" }}
+                />
+                <RestartBadge />
+              </div>
+              <span
+                id="settings-bind-helper"
+                style={{ fontSize: 12, color: "var(--color-muted)", display: "block", marginTop: 4 }}
+              >
+                Loopback only (127.0.0.1) or all interfaces (0.0.0.0).
+              </span>
+              <span style={{ fontSize: 12, color: "var(--color-muted)", display: "block", marginTop: 2 }}>
+                Requires a server restart to take effect.
+              </span>
+            </ControlRow>
+
+            {/* Beyond-loopback warning — driven by PERSISTED config value, not local input state */}
+            {config?.server?.bind && config.server.bind !== "127.0.0.1" &&
+             config.server.bind !== "localhost" && config.server.bind !== "::1" && (
+              <div
+                role="alert"
+                style={{
+                  padding: "8px 12px",
+                  background: "var(--color-warning-surface)",
+                  border: "1px solid var(--color-warning)",
+                  borderRadius: 6,
+                  color: "var(--color-warning)",
+                  fontSize: 14,
+                  lineHeight: 1.4,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 8,
+                  marginTop: 8,
+                }}
+              >
+                <AlertCircle size={14} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  Jasper is exposed on all network interfaces. Only enable LAN access on trusted networks.
+                </span>
+              </div>
+            )}
           </section>
 
           {/* ── Footer / Close ──────────────────────────────────────────── */}

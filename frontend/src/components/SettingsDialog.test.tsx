@@ -4,9 +4,11 @@
  * SD-1: renders Dialog.Title "Settings" when open=true
  * SD-2: dialog does NOT render when open=false
  * SD-3: Close button calls onOpenChange(false)
- * SD-4: all four section eyebrows present (APPEARANCE/EDITOR/DAILY NOTES/GENERAL)
+ * SD-4: all five section eyebrows present (APPEARANCE/EDITOR/DAILY NOTES/GENERAL/NETWORK)
  * SD-5: blurring "Editor font size" input sets --editor-font-size CSS var
  * SD-6: ≥2 elements with aria-label "Requires reload to apply"
+ * NET-01a: blurring bind address input calls saveConfig with server.bind set to new value
+ * NET-01b: warning banner present for 0.0.0.0, absent for 127.0.0.1
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -21,18 +23,33 @@ vi.mock("../api/client", () => ({
         theme: "dark",
         dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
         editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
+        server: { port: 6683, dataDir: "/home/user/.jasper", bind: "127.0.0.1" },
       },
       response: { status: 200 },
     }),
-    PUT: vi.fn().mockResolvedValue({ data: {
-      appName: "Jasper",
-      display_name: "My Notes",
-      theme: "dark",
-      dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
-      editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
-    }, response: { status: 200 } }),
+    PUT: vi.fn().mockResolvedValue({
+      data: {
+        appName: "Jasper",
+        display_name: "My Notes",
+        theme: "dark",
+        dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
+        editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
+        server: { port: 6683, dataDir: "/home/user/.jasper", bind: "127.0.0.1" },
+      },
+      response: { status: 200 },
+    }),
   },
 }));
+
+// Base config shape reused across tests (must match the mock above)
+const baseMockConfig = {
+  appName: "Jasper",
+  display_name: "My Notes",
+  theme: "dark",
+  dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
+  editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
+  server: { port: 6683, dataDir: "/home/user/.jasper", bind: "127.0.0.1" },
+};
 
 import { client } from "../api/client";
 const mockClient = client as unknown as {
@@ -70,13 +87,14 @@ describe("<SettingsDialog />", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("SD-4: APPEARANCE, EDITOR, DAILY NOTES, GENERAL eyebrows all present", async () => {
+  it("SD-4: APPEARANCE, EDITOR, DAILY NOTES, GENERAL, NETWORK eyebrows all present", async () => {
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByText("APPEARANCE")).toBeInTheDocument();
       expect(screen.getByText("EDITOR")).toBeInTheDocument();
       expect(screen.getByText("DAILY NOTES")).toBeInTheDocument();
       expect(screen.getByText("GENERAL")).toBeInTheDocument();
+      expect(screen.getByText("NETWORK")).toBeInTheDocument();
     });
   });
 
@@ -177,5 +195,50 @@ describe("<SettingsDialog />", () => {
       const lineHeightAlerts = alerts.filter(a => a.textContent?.includes("3.0") || a.textContent?.includes("2.5"));
       expect(lineHeightAlerts.length).toBe(0);
     });
+  });
+
+  it("NET-01a: blurring bind address input calls saveConfig with server.bind set to new value", async () => {
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+    await waitFor(() => screen.getByLabelText("Bind address"));
+
+    const input = screen.getByLabelText("Bind address");
+    fireEvent.change(input, { target: { value: "0.0.0.0" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(mockClient.PUT).toHaveBeenCalled();
+    });
+
+    const putBody = mockClient.PUT.mock.calls[0][1]?.body as { server?: { bind?: string } };
+    expect(putBody?.server?.bind).toBe("0.0.0.0");
+  });
+
+  it("NET-01b: warning banner present for 0.0.0.0, absent for 127.0.0.1", async () => {
+    // Render with 0.0.0.0 config — warning banner should appear
+    mockClient.GET.mockResolvedValueOnce({
+      data: { ...baseMockConfig, server: { port: 6683, dataDir: "/home/user/.jasper", bind: "0.0.0.0" } },
+      response: { status: 200 },
+    });
+
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+    await waitFor(() => {
+      const alerts = screen.getAllByRole("alert");
+      const warning = alerts.find(a =>
+        a.textContent?.includes("Jasper is exposed on all network interfaces")
+      );
+      expect(warning).toBeDefined();
+    });
+  });
+
+  it("NET-01b: warning banner absent for 127.0.0.1 (loopback)", async () => {
+    // Default mock config has server.bind: "127.0.0.1" — no warning expected
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+    await waitFor(() => screen.getByText("NETWORK"));
+
+    const alerts = screen.queryAllByRole("alert");
+    const warning = alerts.find(a =>
+      a.textContent?.includes("Jasper is exposed on all network interfaces")
+    );
+    expect(warning).toBeUndefined();
   });
 });
