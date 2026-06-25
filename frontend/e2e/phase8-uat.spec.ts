@@ -364,7 +364,7 @@ test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
           `Expected 200 from /api/v1/setup; got ${setupResp.status}`,
         ).toBe(200);
 
-        const dbPath = path.join(expandedPath, "storage", "app.db");
+        const dbPath = path.join(expandedPath, ".jasper", "app.db");
         let sqlite3Available = false;
         try {
           execFileSync("sqlite3", ["--version"], { stdio: "ignore" });
