@@ -313,6 +313,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
 		r.Use(sessionIDMiddleware)
 		r.Use(api.ConfigStrictBodyMiddleware)
+		r.Use(csrfOriginMiddleware(a.cfg.ListenAddr))
 		api.HandlerFromMux(si, r)
 
 		r.Get("/ws", hub.ServeHTTP)
@@ -481,6 +482,7 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
 		r.Use(sessionIDMiddleware)
 		r.Use(api.ConfigStrictBodyMiddleware)
+		r.Use(csrfOriginMiddleware(a.cfg.ListenAddr))
 		api.HandlerFromMux(si, r)
 		r.Get("/ws", hub.ServeHTTP)
 		r.Get("/files", apiServer.ServeFile)

@@ -295,6 +295,66 @@ func waitFor(t *testing.T, timeout time.Duration, httpFn func() error) error {
 	return fmt.Errorf("waitFor timed out after %s: %w", timeout, lastErr)
 }
 
+// TestApp_LiveRouter_EnforcesCSRFOrigin — the CSRF Origin guard (NET-04) must be
+// wired into the LIVE router built by lifecycle.Run (and swapped in via
+// handler.Swap), not just the app.New skeleton router. Regression guard: a
+// mutating request through the running server is rejected without an Origin
+// header and accepted with one. The isolated middleware tests do not exercise
+// this runtime wiring.
+func TestApp_LiveRouter_EnforcesCSRFOrigin(t *testing.T) {
+	dir := t.TempDir()
+	ln, addr := pickFreeListener(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a, err := New(Config{
+		DataDir:             dir,
+		ListenAddr:          addr,
+		ListenerOverride:    ln,
+		Logger:              logger,
+		DisableFirstRunGate: true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runErr := make(chan error, 1)
+	go func() { runErr <- a.Run(ctx) }()
+	if err := waitFor(t, 5*time.Second, httpReadyProbe(addr)); err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("listener did not come up: %v", err)
+	}
+
+	post := func(origin string) int {
+		req, _ := http.NewRequest(http.MethodPost, "http://"+addr+"/api/v1/notes",
+			strings.NewReader(`{"parent_path":"","name":"csrf-probe"}`))
+		req.Header.Set("Content-Type", "application/json")
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			cancel()
+			<-runErr
+			t.Fatalf("POST /notes (origin=%q): %v", origin, err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	if got := post(""); got != http.StatusForbidden {
+		t.Errorf("POST /notes with no Origin through live router: got %d, want 403 (CSRF must be wired in lifecycle.go, not just app.New)", got)
+	}
+	if got := post("http://" + addr); got == http.StatusForbidden {
+		t.Errorf("POST /notes with matching Origin: got 403, want it to pass the CSRF guard")
+	}
+
+	cancel()
+	if err := <-runErr; err != nil {
+		t.Errorf("Run returned error after cancel: %v", err)
+	}
+}
+
 // TestApp_Run_FreshDB_BootsAndIndexesScratchpad — full happy-path boot.
 // Uses the embedded migrations.FS (no override). Asserts:
 //   - GET /api/v1/notes returns 200 with at least 1 entry (the seeded scratchpad).
