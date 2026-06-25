@@ -33,18 +33,29 @@
  */
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import * as fs from "node:fs/promises";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import * as path from "node:path";
 
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 
 let jasper: JasperHandle;
+let appHome: string;
 
 test.beforeEach(async () => {
-  jasper = await spawnJasper();
+  // Isolate JASPER_APP_HOME per test. Without this, the binary reads the
+  // developer's real ~/.jasper/app.json, whose current_vault may point at a
+  // deleted vault from a prior run. That stale vault makes GET /vault/current
+  // return the wrong vault and destabilizes the WS (it keeps "reconnecting"),
+  // so reindex:complete broadcasts never refresh the tree. --vault then
+  // correctly seeds current_vault inside this isolated home.
+  appHome = mkdtempSync(path.join(tmpdir(), "jasper-phase3-app-"));
+  jasper = await spawnJasper({ env: { JASPER_APP_HOME: appHome } });
 });
 
 test.afterEach(async () => {
   if (jasper) await jasper.kill();
+  if (appHome) rmSync(appHome, { recursive: true, force: true });
 });
 
 
@@ -96,6 +107,7 @@ test.describe("Phase 3 UAT regression suite", () => {
     page,
   }) => {
     await page.goto(jasper.baseURL);
+    await waitForConnected(page);
     await waitForTreeRowCount(page, "note", 1);
 
     const notesDir = path.join(jasper.dataDir, "notes");
@@ -195,8 +207,12 @@ test.describe("Phase 3 UAT regression suite", () => {
     const textarea = page.getByRole("textbox", { name: /note content/i });
     await expect(textarea).toBeEnabled({ timeout: 5_000 });
 
-    await textarea.click();
-    await page.keyboard.type("# My Plan\n\nbody text");
+    // Clicking the role=textbox wrapper does not reliably place the caret in
+    // CM6's contenteditable, so typed text never reaches the saved doc. Use the
+    // .cm-content recipe (focus + select-all + clear + type) so the H1 is
+    // actually rewritten to "My Plan" and the H1→filename binding fires.
+    await typeIntoEditor(page, "# My Plan\n\nbody text");
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+s" : "Control+s");
 
     await page.waitForTimeout(4_000);
 
@@ -276,6 +292,20 @@ async function waitForTreeRowCount(
 ): Promise<void> {
   const rows = page.locator(`[data-tree-row-kind="${kind}"]`);
   await expect(rows).toHaveCount(expected, { timeout: 10_000 });
+}
+
+/**
+ * Wait for the WebSocket to reach "connected". Until then the SaveIndicator is
+ * "paused", and clicking Refresh only forces a WS reconnect instead of running
+ * a reindex — so the external-edit/H1-rename flows (which depend on a live WS
+ * broadcast to refresh the tree) must not start before the socket is up.
+ */
+async function waitForConnected(page: Page): Promise<void> {
+  await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+    "data-status",
+    "connected",
+    { timeout: 15_000 },
+  );
 }
 
 /**

@@ -144,6 +144,10 @@ export function useSessionSync(
             handlersRef.current.onReindexComplete(
               env.payload as WSReindexCompletePayload,
             );
+            // A reindex can discover files added/removed on disk outside the
+            // app (external edits, manual Refresh). Refetch the tree so those
+            // notes appear, mirroring the note/folder mutation cases above.
+            void refreshTree();
             break;
           case "tags:updated":
           case "tags:rewritten":

@@ -271,6 +271,11 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
             return;
           }
           await muts.moveNote(d.id, newPath);
+          // A tree rename rewrites the file's first H1 (server-side and/or via
+          // the rewrite below). Any optimistic liveLabel the editor set for this
+          // note id is now stale and would mask the refetched title — drop it so
+          // the server's title (e.g. "New Name") renders.
+          useTreeStore.getState().clearLiveLabel(d.id);
 
           try {
             const noteResp = await getNote(d.id);
