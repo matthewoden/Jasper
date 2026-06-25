@@ -125,6 +125,14 @@ test.describe("Bug A regression — drag past last row", () => {
     await seedNote(page, "my-note", "projects");
 
     await waitForFolderCount(page, 1);
+
+    // "projects" renders collapsed, so its child note row is not in the DOM.
+    // Expand it before asserting the note count / dragging the note out.
+    await page
+      .locator('[data-tree-row-kind="folder"]')
+      .filter({ hasText: "projects" })
+      .click();
+
     await waitForNoteCount(page, 2);
     await waitForFolderCount(page, 1);
 
