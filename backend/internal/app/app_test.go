@@ -325,46 +325,44 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 		t.Fatalf("listener did not come up: %v", err)
 	}
 
-	resp, err := http.Get("http://" + addr + "/api/v1/notes")
-	if err != nil {
-		cancel()
-		<-runErr
-		t.Fatalf("GET /api/v1/notes: %v", err)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != 200 {
-		cancel()
-		<-runErr
-		t.Fatalf("GET /api/v1/notes status: got %d, want 200; body=%s", resp.StatusCode, body)
-	}
-	var listOut struct {
-		Notes []struct {
-			ID   string `json:"id"`
-			Path string `json:"path"`
-		} `json:"notes"`
-	}
-	if err := json.Unmarshal(body, &listOut); err != nil {
-		cancel()
-		<-runErr
-		t.Fatalf("unmarshal notes list: %v; body=%s", err, body)
-	}
-	if len(listOut.Notes) < 1 {
-		cancel()
-		<-runErr
-		t.Fatalf("expected at least 1 note (scratchpad); got %d; body=%s", len(listOut.Notes), body)
-	}
-	foundScratchpad := false
-	for _, n := range listOut.Notes {
-		if n.Path == notes.ScratchpadRelPath {
-			foundScratchpad = true
-			if n.ID != notes.ScratchpadUUID.String() {
-				t.Errorf("scratchpad id: got %q, want %q", n.ID, notes.ScratchpadUUID.String())
+	// The HTTP readiness probe only confirms the listener is up — the boot-time
+	// scratchpad index runs asynchronously, so poll until it appears rather than
+	// asserting once (otherwise this races the indexer under parallel-suite load).
+	var scratchpadID string
+	findScratchpad := func() error {
+		resp, err := http.Get("http://" + addr + "/api/v1/notes")
+		if err != nil {
+			return err
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != 200 {
+			return fmt.Errorf("GET /api/v1/notes status %d; body=%s", resp.StatusCode, body)
+		}
+		var listOut struct {
+			Notes []struct {
+				ID   string `json:"id"`
+				Path string `json:"path"`
+			} `json:"notes"`
+		}
+		if err := json.Unmarshal(body, &listOut); err != nil {
+			return fmt.Errorf("unmarshal notes list: %w; body=%s", err, body)
+		}
+		for _, n := range listOut.Notes {
+			if n.Path == notes.ScratchpadRelPath {
+				scratchpadID = n.ID
+				return nil
 			}
 		}
+		return fmt.Errorf("scratchpad.md not yet in notes list; body=%s", body)
 	}
-	if !foundScratchpad {
-		t.Errorf("scratchpad.md not in notes list; body=%s", body)
+	if err := waitFor(t, 10*time.Second, findScratchpad); err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("scratchpad never indexed: %v", err)
+	}
+	if scratchpadID != notes.ScratchpadUUID.String() {
+		t.Errorf("scratchpad id: got %q, want %q", scratchpadID, notes.ScratchpadUUID.String())
 	}
 
 	resp2, err := http.Get("http://" + addr + "/api/v1/admin/status")
