@@ -128,8 +128,8 @@ test.describe("Phase 5 — CodeMirror editor + theme + security", () => {
   test("EDIT-12: theme toggle persists through page reload", async ({ page }) => {
     await openEditor(page);
 
-    await page.locator('[data-testid="settings-menu-trigger"]').click();
-    await page.locator('[data-testid="settings-theme-dark"]').click();
+    await page.getByTestId("settings-menu-trigger").click();
+    await page.getByLabel("Dark").click();
 
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 

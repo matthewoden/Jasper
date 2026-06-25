@@ -364,7 +364,7 @@ test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
           `Expected 200 from /api/v1/setup; got ${setupResp.status}`,
         ).toBe(200);
 
-        const dbPath = path.join(expandedPath, "storage", "app.db");
+        const dbPath = path.join(expandedPath, ".jasper", "app.db");
         let sqlite3Available = false;
         try {
           execFileSync("sqlite3", ["--version"], { stdio: "ignore" });
@@ -932,7 +932,7 @@ test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
     try {
       const proc = spawn(
         JASPER_BIN,
-        ["serve", "--data-dir", tmpDir, "--addr", "127.0.0.1:0"],
+        ["serve", "--data-dir", tmpDir, "--bind", "127.0.0.1:0"],
         { stdio: ["ignore", "pipe", "pipe"] },
       );
 
@@ -1007,7 +1007,7 @@ test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
     try {
       const proc = spawn(
         JASPER_BIN,
-        ["serve", "--vault", vaultDir, "--addr", `127.0.0.1:${port}`],
+        ["serve", "--vault", vaultDir, "--bind", `127.0.0.1:${port}`],
         {
           env: {
             ...process.env,
@@ -1407,7 +1407,7 @@ async function spawnAndBootstrapVault(opts: {
     });
   });
 
-  const proc = cp.spawn(JASPER_BIN, ["serve", "--addr", `127.0.0.1:${port}`], {
+  const proc = cp.spawn(JASPER_BIN, ["serve", "--bind", `127.0.0.1:${port}`], {
     env: { ...process.env, JASPER_APP_HOME: appHome },
     stdio: ["ignore", "pipe", "pipe"],
   });

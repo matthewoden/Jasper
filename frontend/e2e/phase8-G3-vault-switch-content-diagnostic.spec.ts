@@ -78,7 +78,7 @@ async function spawnVaultJasper(appHome: string): Promise<VaultHandle> {
   const port = await findFreePort();
   const proc = spawn(
     JASPER_BIN,
-    ["serve", "--addr", `127.0.0.1:${port}`],
+    ["serve", "--bind", `127.0.0.1:${port}`],
     {
       env: { ...process.env, JASPER_APP_HOME: appHome },
       stdio: ["ignore", "pipe", "pipe"],

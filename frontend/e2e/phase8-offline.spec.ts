@@ -77,7 +77,10 @@ test.describe("Phase 8 — offline operation (PERF-04 / D-43)", () => {
     await page.goto(jasper.baseURL);
     await page.waitForLoadState("networkidle");
 
-    const dataDirInput = page.locator('input[aria-label="Data directory path"]');
+    // config.Load auto-writes defaults before the listener accepts connections,
+    // so first_run=false and the SPA renders the vault picker (not the setup wizard).
+    // The vault picker's Create-new tab is the default when no recents exist.
+    const dataDirInput = page.getByTestId("vault-create-path-input");
     await expect(dataDirInput).toBeVisible({ timeout: 10_000 });
 
     await dataDirInput.fill("/tmp/jasper-offline-probe");
@@ -94,10 +97,13 @@ test.describe("Phase 8 — offline operation (PERF-04 / D-43)", () => {
     const externalRequests = installOfflineGuard(context);
 
     const probeDir = `${jasper.dataDir}-spa-${test.info().workerIndex}`;
-    const setupResp = await request.post(`${jasper.baseURL}/api/v1/setup`, {
+    const createResp = await request.post(`${jasper.baseURL}/api/v1/vault/create`, {
+      data: { path: probeDir, theme: "dark", daily_template: "", mcp_enabled: false },
+    });
+    expect(createResp.ok(), `vault/create failed: ${await createResp.text()}`).toBeTruthy();
+    await request.post(`${jasper.baseURL}/api/v1/vault/open`, {
       data: { path: probeDir },
     });
-    expect(setupResp.ok(), `setup submit failed: ${await setupResp.text()}`).toBeTruthy();
 
     await page.goto(jasper.baseURL);
     await page.waitForLoadState("networkidle");
