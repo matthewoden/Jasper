@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -117,6 +118,17 @@ func httpGet(t *testing.T, url string) (int, []byte) {
 	return resp.StatusCode, body
 }
 
+// originFor derives the scheme://host origin from a request URL so smoke tests
+// pass the always-on CSRF Origin guard (NET-04) the way a real browser does.
+func originFor(t *testing.T, rawURL string) string {
+	t.Helper()
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse url %q: %v", rawURL, err)
+	}
+	return u.Scheme + "://" + u.Host
+}
+
 func httpPut(t *testing.T, url string, body []byte) (int, []byte) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(body))
@@ -124,6 +136,7 @@ func httpPut(t *testing.T, url string, body []byte) (int, []byte) {
 		t.Fatalf("NewRequest: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", originFor(t, url))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("PUT %s: %v", url, err)
@@ -143,6 +156,7 @@ func httpPost(t *testing.T, url string, body []byte) (int, []byte) {
 		t.Fatalf("NewRequest: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", originFor(t, url))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST %s: %v", url, err)
@@ -352,6 +366,7 @@ func TestSmoke_ConcurrentSaves_NoSQLITE_BUSY(t *testing.T) {
 	}
 
 	url := "http://" + addr + "/api/v1/notes/" + notes.ScratchpadUUID.String()
+	origin := "http://" + addr // CSRF Origin guard (NET-04) — set per-request below
 	const N = 100
 
 	var wg sync.WaitGroup
@@ -369,6 +384,7 @@ func TestSmoke_ConcurrentSaves_NoSQLITE_BUSY(t *testing.T) {
 				return
 			}
 			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Origin", origin)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				failures <- fmt.Errorf("do %d: %w", i, err)
@@ -571,6 +587,7 @@ func httpDelete(t *testing.T, url string) (int, []byte) {
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
+	req.Header.Set("Origin", originFor(t, url))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("DELETE %s: %v", url, err)
