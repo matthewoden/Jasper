@@ -73,16 +73,11 @@ async function typeIntoEditor(page: Page, text: string): Promise<void> {
 }
 
 /**
- * Wait for the SaveIndicator to show "Saved". Tolerates both
- * data-testid="save-indicator" and a bare text match.
+ * Wait for the status-bar SaveIndicator to reach the saved state. It renders as
+ * an icon-only button carrying data-save-state, so match that rather than text.
  */
 async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
-  const byId = page.locator('[data-testid="save-indicator"]');
-  if ((await byId.count()) > 0) {
-    await expect(byId).toContainText(/saved/i, { timeout: timeoutMs });
-    return;
-  }
-  await expect(page.getByText("Saved")).toBeVisible({ timeout: timeoutMs });
+  await expect(page.locator('[data-save-state="saved"]')).toBeVisible({ timeout: timeoutMs });
 }
 
 /**
@@ -207,21 +202,26 @@ async function openTabInContext(
 }
 
 /**
- * Expand the Tag Browser section in the sidebar if it is currently collapsed.
- * Uses a partial aria-label match on "Tags section" which is stable regardless
- * of current tag count or expand/collapse state.
+ * Open the right-rail Tags panel via the panel-selector dropdown ("Open panel"
+ * → Tags), which expands the rail and renders the tag rows directly.
  */
 async function expandTagBrowser(page: Page): Promise<void> {
-  const headerBtn = page.locator('button[aria-label*="Tags section"]');
-  await expect(headerBtn).toBeVisible({ timeout: 5_000 });
+  const opener = page.getByRole("button", { name: "Open panel" });
+  await expect(opener).toBeVisible({ timeout: 5_000 });
+  await opener.click();
+  await page.getByTestId("panel-selector-tags").click();
+  await expect(page.getByPlaceholder("Filter tags")).toBeVisible({ timeout: 5_000 });
+}
 
-  const label = await headerBtn.getAttribute("aria-label") ?? "";
-  if (label.includes("collapsed")) {
-    await headerBtn.click();
-  }
-  await expect(
-    page.locator('button[aria-label*="Tags section"][aria-expanded="true"]'),
-  ).toBeVisible({ timeout: 5_000 });
+/**
+ * Open the right-rail Backlinks panel via the panel-selector dropdown
+ * ("Open panel" → Backlinks).
+ */
+async function openBacklinks(page: Page): Promise<void> {
+  const opener = page.getByRole("button", { name: "Open panel" });
+  await expect(opener).toBeVisible({ timeout: 5_000 });
+  await opener.click();
+  await page.getByTestId("panel-selector-backlinks").click();
 }
 
 
@@ -424,9 +424,7 @@ test.describe("Phase 6 UAT — Tag browser (TAGS-01..07)", () => {
     await expect(page.getByTestId("tag-row-filterme")).toBeVisible({ timeout: 8_000 });
     await page.getByTestId("tag-row-filterme").click();
 
-    const chip = page.locator('[aria-label="Remove tag filter: filterme"]');
-    await expect(chip).toBeVisible({ timeout: 5_000 });
-
+    const chip = page.locator('[aria-label="Remove tag filter: #filterme"]');
     await expect(chip).toBeVisible({ timeout: 5_000 });
 
     await chip.click();
@@ -712,10 +710,7 @@ test.describe("Phase 6 UAT — Wiki-links (LINKS-01..08)", () => {
     await newTitleRow.click();
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
 
-    const showBacklinks = page.getByRole("button", { name: "Show backlinks panel" });
-    if ((await showBacklinks.count()) > 0) {
-      await showBacklinks.click();
-    }
+    await openBacklinks(page);
     const rail = page.getByRole("region", { name: "Notes that link to this note" });
     await expect(rail).toBeVisible({ timeout: 8_000 });
 
@@ -1017,13 +1012,7 @@ test.describe("Phase 6 UAT — Wiki-link resolution + backlinks (LINKS-02..04, L
     await targetRow.click();
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
 
-    const showBacklinksBtn = page.getByRole("button", {
-      name: "Show backlinks panel",
-    });
-    if ((await showBacklinksBtn.count()) > 0) {
-      await showBacklinksBtn.click();
-    }
-
+    await openBacklinks(page);
     const rail = page.getByRole("region", { name: "Notes that link to this note" });
     await expect(rail).toBeVisible({ timeout: 8_000 });
 
