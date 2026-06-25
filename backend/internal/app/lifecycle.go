@@ -303,6 +303,14 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 
 	apiServer.SetInFlightWrites(&a.inFlightWrites)
 
+	// Wire the MCP ACL unconditionally so the grant HTTP endpoints
+	// (/api/v1/mcp/grants) remain functional regardless of whether the
+	// MCP listener is enabled or whether it successfully binds. The ACL
+	// only requires the SQLite writer — it does not depend on the MCP
+	// listener. This lets the tree-menu grant UI work even on systems
+	// where port 6684 is in use or the user has MCP disabled.
+	apiServer.SetMcpACL(mcp.NewACL(pair.Writer))
+
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
@@ -336,6 +344,10 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 			a.mcpServer = mcpSrv
 			a.mcpShutdown = mcpShutdownFn
 
+			// Replace the unconditional ACL with the one created by
+			// startMCP, which is already wired to the same pair.Writer.
+			// This is a no-op in terms of behaviour but keeps the
+			// acl pointer consistent with the MCP server's own acl.
 			apiServer.SetMcpACL(acl)
 		}
 	}
@@ -472,6 +484,9 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	apiServer.SetVaultSwitcher(a)
 	apiServer.SetInFlightWrites(&a.inFlightWrites)
 
+	// Wire the MCP ACL unconditionally (same rationale as bootPerVaultSubsystems).
+	apiServer.SetMcpACL(mcp.NewACL(pair.Writer))
+
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
@@ -503,11 +518,9 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 			a.mcpServer = mcpSrv
 			a.mcpShutdown = mcpShutdownFn
 
-			// SetMcpACL must be called before a.handler.Swap(r) so the first
-			// non-503 response to GET /api/v1/mcp/grants always reflects vault
-			// B's fully-initialised ACL. Any earlier swap would create a window
-			// where mcpACL==nil and GET returns 200 with an empty grant list,
-			// causing clients to POST grants against the wrong (nil) ACL.
+			// Replace the unconditional ACL with the one wired to the MCP
+			// server. SetMcpACL must be called before a.handler.Swap(r) so
+			// the first non-503 response always reflects vault B's ACL.
 			apiServer.SetMcpACL(acl)
 		}
 	}
