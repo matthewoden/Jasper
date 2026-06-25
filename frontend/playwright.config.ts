@@ -12,7 +12,7 @@ try {
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.ts",
-  testIgnore: ["**/.claude/**", "**/node_modules/**"],
+  testIgnore: ["**/node_modules/**"],
   // Each test self-isolates via per-test ephemeral port + mkdtemp data dir.
   // MCP port 6684 is serialized across worker processes via withMcpPortLock
   // in helpers/binary.ts — not via worker-count reduction.
