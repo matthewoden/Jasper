@@ -27,7 +27,7 @@ export function applyTheme(theme: "dark" | "light"): void {
   document.documentElement.setAttribute("data-theme", theme);
 }
 
-function persistBootstrap(theme: "dark" | "light"): void {
+export function persistBootstrap(theme: "dark" | "light"): void {
   try {
     localStorage.setItem(THEME_BOOTSTRAP_KEY, theme);
   } catch {

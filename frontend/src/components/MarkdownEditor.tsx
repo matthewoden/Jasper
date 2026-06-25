@@ -16,7 +16,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { autocompletion } from "@codemirror/autocomplete";
-import { search } from "@codemirror/search";
+import { search, openSearchPanel } from "@codemirror/search";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 
@@ -308,7 +308,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       });
       viewRef.current = view;
 
+      // E2E hook: expose openSearchPanel so tests can open the CM6 find panel
+      // programmatically without relying on Cmd+F (intercepted by the browser).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__jasperOpenSearchPanel = () => openSearchPanel(view);
+
       return () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (window as any).__jasperOpenSearchPanel;
         view.destroy();
         viewRef.current = null;
       };

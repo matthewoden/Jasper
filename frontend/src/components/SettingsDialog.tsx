@@ -13,7 +13,7 @@ import * as Switch from "@radix-ui/react-switch";
 import { AlertCircle } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useConfig } from "../lib/useConfig";
-import { applyTheme } from "../lib/useTheme";
+import { applyTheme, persistBootstrap } from "../lib/useTheme";
 
 export interface SettingsDialogProps {
   open: boolean;
@@ -368,6 +368,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     async (t: "dark" | "light") => {
       if (!config) return;
       applyTheme(t);
+      persistBootstrap(t); // keep localStorage in sync so theme survives page reload
       const { error } = await saveConfig({ ...config, theme: t });
       if (error) {
         setSaveError(error.message);
