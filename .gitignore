@@ -37,6 +37,7 @@ backend/internal/static/dist/*
 frontend/e2e/.artifacts/
 frontend/playwright-report/
 frontend/test-results/
+/test-results/
 
 # Local Claude Code / Vite caches — agent worktrees and build cache live here.
 .claude/
