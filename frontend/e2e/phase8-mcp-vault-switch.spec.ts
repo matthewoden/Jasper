@@ -26,7 +26,6 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { withMcpPortLock } from "./helpers/binary";
 import { spawn, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";
 import * as fsP from "node:fs/promises";
@@ -39,10 +38,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
-
-
-const MCP_PORT = 6684;
-const MCP_URL = `http://127.0.0.1:${MCP_PORT}/mcp`;
 
 
 const MCP_DELAY_MS = 1500;
@@ -85,12 +80,12 @@ async function waitForVault(baseURL: string, deadlineMs: number): Promise<void> 
   throw new Error(`jasper not ready at ${baseURL} within ${deadlineMs}ms`);
 }
 
-async function waitForMCP(deadlineMs: number): Promise<void> {
+async function waitForMCP(mcpPort: number, deadlineMs: number): Promise<void> {
   const start = Date.now();
   let lastErr: unknown;
   while (Date.now() - start < deadlineMs) {
     try {
-      const r = await fetch(`http://127.0.0.1:${MCP_PORT}/healthz`);
+      const r = await fetch(`http://127.0.0.1:${mcpPort}/healthz`);
       if (r.status === 200) return;
     } catch (e) {
       lastErr = e;
@@ -103,6 +98,8 @@ async function waitForMCP(deadlineMs: number): Promise<void> {
 interface Handle {
   proc: ChildProcess;
   baseURL: string;
+  /** Ephemeral port this binary's MCP listener binds (via JASPER_MCP_PORT). */
+  mcpPort: number;
   kill: () => Promise<void>;
 }
 
@@ -117,8 +114,11 @@ async function spawnJasperWithEnv(
     );
   }
   const port = await findFreePort();
+  // Per-binary ephemeral MCP port (overrides the fixed 6684 default via
+  // JASPER_MCP_PORT) so this vault-switch test runs parallel with the suite.
+  const mcpPort = await findFreePort();
   const proc = spawn(JASPER_BIN, ["serve", "--bind", `127.0.0.1:${port}`], {
-    env: { ...process.env, JASPER_APP_HOME: appHome, ...env },
+    env: { ...process.env, JASPER_APP_HOME: appHome, ...env, JASPER_MCP_PORT: String(mcpPort) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   proc.stdout?.on("data", (b) => process.stderr.write(`[jasper] ${b}`));
@@ -134,8 +134,9 @@ async function spawnJasperWithEnv(
   return {
     proc,
     baseURL,
-    // Resolve only after the process actually exits, so callers holding the
-    // cross-process MCP-port lock keep it until port 6684 is truly freed.
+    mcpPort,
+    // Resolve only after the process actually exits, so the next operation
+    // sees the MCP port fully released.
     kill: () =>
       new Promise<void>((resolve) => {
         if (proc.exitCode !== null || proc.signalCode !== null) {
@@ -160,6 +161,8 @@ class McpClient {
   private sessionID: string | null = null;
   private nextID = 1;
 
+  constructor(private readonly mcpUrl: string) {}
+
   async rpc(
     method: string,
     params: Record<string, unknown> | undefined,
@@ -175,7 +178,7 @@ class McpClient {
     };
     if (this.sessionID) headers["mcp-session-id"] = this.sessionID;
 
-    const resp = await fetch(MCP_URL, {
+    const resp = await fetch(this.mcpUrl, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -245,7 +248,7 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
   test("R4-14 — MCP write during vault switch commits cleanly or drains, never partial", async ({
     page,
   }) => {
-    await withMcpPortLock(async () => {
+    await (async () => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-r4-14-app-"));
     const vaultARaw = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-r4-14-A-"));
     const vaultBRaw = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-r4-14-B-"));
@@ -296,9 +299,9 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         throw new Error(`grant A POST failed: ${grantARes.status} ${await grantARes.text()}`);
       }
 
-      await waitForMCP(5_000);
+      await waitForMCP(handle.mcpPort, 5_000);
 
-      const client = new McpClient();
+      const client = new McpClient(`http://127.0.0.1:${handle.mcpPort}/mcp`);
       await client.initialize("r4-14-spec");
 
       await page.goto(handle.baseURL + "/");
@@ -412,8 +415,8 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         );
       }
 
-      const clientB = new McpClient();
-      await waitForMCP(5_000);
+      const clientB = new McpClient(`http://127.0.0.1:${handle.mcpPort}/mcp`);
+      await waitForMCP(handle.mcpPort, 5_000);
       await clientB.initialize("r4-14-spec-post-switch");
 
       // The grant B POST above commits via the HTTP API's writer connection;
@@ -463,13 +466,13 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
         `StatusBar must reflect vault B; got: ${statusText}`,
       ).toContain(nameB.substring(0, 8).toLowerCase());
     } finally {
-      // Await full process exit before releasing the lock (finally below) and
-      // removing the data dirs — port 6684 must be free for the next worker.
+      // Await full process exit before removing the data dirs so no file
+      // handles remain open (this binary's MCP port is ephemeral and private).
       await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
       fs.rmSync(vaultARaw, { recursive: true, force: true });
       fs.rmSync(vaultBRaw, { recursive: true, force: true });
     }
-    }); // withMcpPortLock
+    })();
   });
 });

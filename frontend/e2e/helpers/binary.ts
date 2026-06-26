@@ -24,20 +24,11 @@
  * which already has a 15s window.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, rm, open as fsOpen, unlink, stat } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
-
-const MCP_LOCK_PATH = path.join(tmpdir(), "jasper-e2e-mcp-6684.lock");
-// Acquire timeout MUST exceed stale age, otherwise a waiter gives up before it
-// can reclaim a lock orphaned by a crashed worker (180s stale) — turning a
-// recoverable orphan into a hard suite failure. Ordering invariant:
-// max legit hold (~60s) < STALE_AGE (180s) < ACQUIRE_TIMEOUT (300s).
-const MCP_LOCK_ACQUIRE_TIMEOUT_MS = 300_000;
-const MCP_LOCK_STALE_AGE_MS = 180_000;
-const MCP_LOCK_POLL_INTERVAL_MS = 100;
 
 // Boot-readiness window. Generous (30s) so CPU contention at workers:4 — where
 // several binaries boot simultaneously (migrations + incremental reindex) —
@@ -45,67 +36,22 @@ const MCP_LOCK_POLL_INTERVAL_MS = 100;
 const READINESS_TIMEOUT_MS = 30_000;
 
 /**
- * Cross-process critical section that serializes MCP port 6684 acquisition
- * across Playwright worker processes (which are separate OS processes —
- * an in-process mutex cannot coordinate them).
- *
- * Uses O_EXCL (the "wx" flag) on a shared tmpdir lock file: only one process
- * can create the file at a time. All others spin-poll until it disappears.
- *
- * Stale-lock reclaim: if the lock file is older than MCP_LOCK_STALE_AGE_MS
- * (a generous ceiling beyond any MCP test's own timeout) it is treated as
- * an orphan left by a crashed worker that never released, and is removed so
- * the suite does not deadlock.
- *
- * Release is guaranteed in a finally block so a throwing fn() still unlocks.
+ * Pass-through retained for call-site compatibility. The cross-process file
+ * lock that previously serialized access to the fixed MCP port 6684 is no
+ * longer needed: each spawned binary now binds its MCP listener to its own
+ * ephemeral port (see spawnJasperInternal / JASPER_MCP_PORT), so there is no
+ * shared singleton to serialize. New tests should NOT wrap with this; it exists
+ * only so existing call sites keep working until they are simplified away.
  */
 export async function withMcpPortLock<T>(fn: () => Promise<T>): Promise<T> {
-  const deadline = Date.now() + MCP_LOCK_ACQUIRE_TIMEOUT_MS;
-  let fh: Awaited<ReturnType<typeof fsOpen>> | null = null;
-
-  while (Date.now() < deadline) {
-    try {
-      fh = await fsOpen(MCP_LOCK_PATH, "wx");
-      break;
-    } catch (err: unknown) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code !== "EEXIST") throw err;
-
-      // Lock file exists — check if it's stale (orphaned from a crashed worker).
-      try {
-        const info = await stat(MCP_LOCK_PATH);
-        const ageMs = Date.now() - info.mtimeMs;
-        if (ageMs > MCP_LOCK_STALE_AGE_MS) {
-          // Stale lock — safe to reclaim. Another worker may race us here;
-          // unlink is best-effort; we'll re-attempt open on the next iteration.
-          await unlink(MCP_LOCK_PATH).catch(() => {});
-        }
-      } catch {
-        // stat failed — file may already be gone; just retry open
-      }
-
-      await new Promise((r) => setTimeout(r, MCP_LOCK_POLL_INTERVAL_MS));
-    }
-  }
-
-  if (fh === null) {
-    throw new Error(
-      `withMcpPortLock: could not acquire MCP port 6684 lock within ${MCP_LOCK_ACQUIRE_TIMEOUT_MS}ms — ` +
-        `lock path: ${MCP_LOCK_PATH}`,
-    );
-  }
-
-  try {
-    return await fn();
-  } finally {
-    await fh.close();
-    await unlink(MCP_LOCK_PATH).catch(() => {});
-  }
+  return await fn();
 }
 
 export interface JasperHandle {
   proc: ChildProcess;
   port: number;
+  /** Ephemeral port this binary's MCP listener binds (via JASPER_MCP_PORT). */
+  mcpPort: number;
   dataDir: string;
   baseURL: string;
   kill: () => Promise<void>;
@@ -181,9 +127,14 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..");
  * without leaking into unrelated tests. Pass undefined to inherit
  * process.env verbatim.
  */
-async function spawnJasperInternal(opts: { dataDir?: string; port?: number; ownsDataDir: boolean; env?: NodeJS.ProcessEnv }): Promise<JasperHandle> {
+async function spawnJasperInternal(opts: { dataDir?: string; port?: number; mcpPort?: number; ownsDataDir: boolean; env?: NodeJS.ProcessEnv }): Promise<JasperHandle> {
   const dataDir = opts.dataDir ?? await mkdtemp(path.join(tmpdir(), "jasper-e2e-"));
   const port = opts.port ?? await findFreePort();
+  // Each binary binds its MCP listener to its own ephemeral port (via the
+  // JASPER_MCP_PORT override) instead of the fixed default 6684. This removes
+  // the shared-singleton contention that previously required a cross-process
+  // file lock, so MCP tests run fully parallel and deterministic.
+  const mcpPort = opts.mcpPort ?? await findFreePort();
   const ownsDataDir = opts.ownsDataDir;
   const binPath = path.join(repoRoot, "bin", "jasper");
   const proc = spawn(
@@ -197,7 +148,7 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; owns
     ],
     {
       stdio: ["ignore", "pipe", "pipe"],
-      env: opts.env ? { ...process.env, ...opts.env } : process.env,
+      env: { ...process.env, ...(opts.env ?? {}), JASPER_MCP_PORT: String(mcpPort) },
     },
   );
   proc.stdout?.on("data", (b) => {
@@ -227,10 +178,10 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; owns
   const restart = async (): Promise<JasperHandle> => {
     await killProcess(proc);
     await new Promise((r) => setTimeout(r, 200));
-    return spawnJasperInternal({ dataDir, port, ownsDataDir, env: opts.env });
+    return spawnJasperInternal({ dataDir, port, mcpPort, ownsDataDir, env: opts.env });
   };
 
-  return { proc, port, dataDir, baseURL, kill, restart };
+  return { proc, port, mcpPort, dataDir, baseURL, kill, restart };
 }
 
 export interface SpawnOpts {
