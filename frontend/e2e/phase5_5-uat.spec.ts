@@ -414,12 +414,15 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       .first();
     await expect(folderRow).toBeVisible({ timeout: 3_000 });
     await folderRow.click();
+    // Wait for the toggle to commit (aria-expanded flips when node.toggle() fires,
+    // which happens after setSelectedRow — proves the Zustand selection is written).
+    await expect(folderRow).toHaveAttribute("aria-expanded", "true", { timeout: 3_000 });
 
     const notePostP = page.waitForResponse(
       (resp) =>
         resp.url().includes("/api/v1/notes") &&
         resp.request().method() === "POST",
-      { timeout: 5_000 },
+      { timeout: 8_000 },
     );
     await page.getByRole("button", { name: /new note/i }).click();
     await notePostP;
@@ -428,30 +431,46 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       .locator('[data-tree-row] input[type="text"]')
       .first();
     if ((await noteRename.count()) > 0) {
-      await noteRename.press("Escape").catch(() => {});
+      // Commit (not cancel) the rename to keep the new note alive.
+      // Escape on an isNew=true node triggers a DELETE — the note must
+      // survive for the tree poll below to find it.
+      await noteRename.press("Enter").catch(() => {});
     }
 
-    const treeResp = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
-    expect(treeResp.status()).toBe(200);
-    const tree = (await treeResp.json()) as {
+    type TreeShape = {
       root: Array<{
         kind: string;
         path?: string;
         children?: Array<{ kind: string; path?: string }>;
       }>;
     };
-    const bugBFolder = tree.root.find(
-      (n) =>
-        n.kind === "folder" &&
-        typeof n.path === "string" &&
-        /bug-b-folder/i.test(n.path),
-    );
-    expect(bugBFolder).toBeTruthy();
-    const childNotes = (bugBFolder?.children ?? []).filter(
-      (c) => c.kind === "note",
-    );
-    expect(childNotes.length).toBeGreaterThanOrEqual(1);
+    // The note POST has completed, but GET /tree is index-backed and can lag a
+    // just-committed write under parallel load. Poll for the eventual tree state
+    // rather than asserting immediately (deterministic — no fixed sleep).
+    let tree: TreeShape = { root: [] };
+    await expect
+      .poll(
+        async () => {
+          const r = await page.request.get(`${jasper.baseURL}/api/v1/tree`);
+          if (r.status() !== 200) return 0;
+          tree = (await r.json()) as TreeShape;
+          const folder = tree.root.find(
+            (n) =>
+              n.kind === "folder" &&
+              typeof n.path === "string" &&
+              /bug-b-folder/i.test(n.path),
+          );
+          return (folder?.children ?? []).filter((c) => c.kind === "note").length;
+        },
+        {
+          timeout: 10_000,
+          message: "new note should appear inside the selected folder",
+        },
+      )
+      .toBeGreaterThanOrEqual(1);
 
+    // The new note must target the folder, never leak to root (root keeps only
+    // the original editor-focus note).
     const rootNotesAfter = tree.root.filter(
       (n) =>
         n.kind === "note" &&

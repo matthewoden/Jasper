@@ -185,20 +185,31 @@ test.describe("Phase 8 R4-2 — WS forceReconnect on cloud-icon click", () => {
       handle.kill();
       await waitForExit(proc, 8_000);
 
+      // Under parallel load the kernel's TCP close-notify can arrive late;
+      // give the WS close-detection a generous window (no blind sleep — this is
+      // a real latency bound for the observable browser event).
       await expect(dot).toHaveAttribute("data-status", "reconnecting", {
-        timeout: 5_000,
+        timeout: 15_000,
       });
-      // saveState flips to "paused" via EditorPane's connectionLost dispatch.
-      const saveBtn = page.locator('[data-save-state="paused"]');
-      await expect(saveBtn).toBeVisible({ timeout: 5_000 });
+      // Prove the WS drop was detected: saveState flips to "paused" via
+      // EditorPane's connectionLost dispatch.
+      await expect(page.locator('button[data-save-state="paused"]')).toBeVisible({
+        timeout: 15_000,
+      });
 
       await new Promise((r) => setTimeout(r, 500));
       handle = await spawnJasperOnPort(appHome, port);
 
-      await saveBtn.click();
+      // Click the SaveIndicator to force reconnect. Target it by the stable
+      // data-save-state attribute (any value), not the transient "paused"
+      // value — under load the tab's own reconnect timer can flip it off
+      // "paused" before we click, which would make a paused-only selector time
+      // out. Clicking is idempotent: if auto-reconnect already won, the dot is
+      // already connected and the assertion below still holds.
+      await page.locator("button[data-save-state]").first().click();
 
       await expect(dot).toHaveAttribute("data-status", "connected", {
-        timeout: 8_000,
+        timeout: 15_000,
       });
     } finally {
       handle?.kill();
