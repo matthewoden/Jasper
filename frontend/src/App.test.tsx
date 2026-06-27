@@ -119,7 +119,10 @@ vi.mock("./lib/useDailyNote", () => ({
 
 const mockCreateNoteAt = vi.fn().mockResolvedValue(undefined);
 const mockCreateFolderAt = vi.fn().mockResolvedValue(undefined);
-vi.mock("./lib/useTreeCreateActions", () => ({
+// Preserve the real siblingNamesForCreate (App.tsx imports it for collision-safe
+// untitled naming); only the hook is stubbed.
+vi.mock("./lib/useTreeCreateActions", async (importActual) => ({
+  ...(await importActual<typeof import("./lib/useTreeCreateActions")>()),
   useTreeCreateActions: () => ({
     createNoteAt: mockCreateNoteAt,
     createFolderAt: mockCreateFolderAt,
@@ -160,6 +163,9 @@ import {
 void App;
 import { useTreeStore } from "./lib/useTreeStore";
 import { COMMAND_PALETTE_ENTRIES } from "./lib/shortcutsRegistry";
+import { siblingNamesForCreate } from "./lib/useTreeCreateActions";
+import { nextUntitledName } from "./lib/nextUntitledName";
+import type { Tree } from "./lib/treeApi";
 
 const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
 
@@ -1144,5 +1150,45 @@ describe("handleAppCmdShiftF (Cmd+Shift+F opens search modal)", () => {
     } finally {
       window.removeEventListener("jasper:focus-search", listener);
     }
+  });
+});
+
+
+// BUG 2 (260627-ih9): the + new-tab affordance and open-to-the-right both route
+// through nextUntitledName(siblingNamesForCreate(...)) so a second untitled create
+// in an occupied folder yields "untitled 1" instead of a 409 case_collision.
+describe("uniqueUntitledTitle composition (BUG 2 — collision-safe untitled)", () => {
+  // Hardcoded tree fixture (no Date.now / Math.random — deterministic).
+  const tree = {
+    root: [
+      { kind: "note", id: "n1", title: "untitled.md", path: "untitled.md" },
+      {
+        kind: "folder",
+        name: "occupied",
+        path: "occupied",
+        children: [
+          { kind: "note", id: "n2", title: "untitled.md", path: "occupied/untitled.md" },
+        ],
+      },
+      { kind: "folder", name: "empty", path: "empty", children: [] },
+    ],
+  } as unknown as Tree;
+
+  it("root folder already holding untitled → 'untitled 1'", () => {
+    expect(
+      nextUntitledName(siblingNamesForCreate(tree, "", "note"), "untitled"),
+    ).toBe("untitled 1");
+  });
+
+  it("subfolder already holding untitled → 'untitled 1'", () => {
+    expect(
+      nextUntitledName(siblingNamesForCreate(tree, "occupied", "note"), "untitled"),
+    ).toBe("untitled 1");
+  });
+
+  it("empty folder → plain 'untitled' (no collision)", () => {
+    expect(
+      nextUntitledName(siblingNamesForCreate(tree, "empty", "note"), "untitled"),
+    ).toBe("untitled");
   });
 });

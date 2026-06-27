@@ -57,7 +57,11 @@ import {
   handleAppPanelShortcuts,
   subscribePhase7,
 } from "./lib/appShortcuts";
-import { useTreeCreateActions } from "./lib/useTreeCreateActions";
+import {
+  siblingNamesForCreate,
+  useTreeCreateActions,
+} from "./lib/useTreeCreateActions";
+import { nextUntitledName } from "./lib/nextUntitledName";
 import { useFileTree } from "./lib/useFileTree";
 import { useConfig } from "./lib/useConfig";
 import type { CommandActions } from "./lib/useCommandPalette";
@@ -368,6 +372,15 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   const { tree } = useFileTree();
   const { createNote } = useTreeMutations();
 
+  // Collision-safe default title for a new note in `parent`: reuses the same
+  // pattern as the tree toolbar so a second + / open-to-the-right in a folder
+  // already holding "untitled.md" yields "untitled 1" instead of a 409.
+  const uniqueUntitledTitle = useCallback(
+    (parent: string): string =>
+      nextUntitledName(siblingNamesForCreate(tree, parent, "note"), "untitled"),
+    [tree],
+  );
+
   useDeepLink(tree !== null);
 
   // --- Tab ↔ tree synchronization & persistence (Plan 05) ----------------
@@ -484,7 +497,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       const parent = notePath !== null ? parentDir(notePath) : "";
       void (async () => {
         try {
-          const created = await createNote(parent, "untitled");
+          const created = await createNote(parent, uniqueUntitledTitle(parent));
           useTabStore.getState().openTab(created.id);
         } catch {
           // Creation failures surface via the shared tree-mutation toast path;
@@ -492,7 +505,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         }
       })();
     },
-    [tree, createNote],
+    [tree, createNote, uniqueUntitledTitle],
   );
 
   // Shared create-then-open handler for both new-tab affordances (TAB-14): the
@@ -510,13 +523,13 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     const parent = notePath !== null ? parentDir(notePath) : "";
     void (async () => {
       try {
-        const created = await createNote(parent, "untitled");
+        const created = await createNote(parent, uniqueUntitledTitle(parent));
         useTabStore.getState().openTab(created.id);
       } catch {
         // Creation failures surface via the shared tree-mutation toast path.
       }
     })();
-  }, [tree, createNote]);
+  }, [tree, createNote, uniqueUntitledTitle]);
 
   useEffect(() => {
     return subscribePhase7((ev) => {
