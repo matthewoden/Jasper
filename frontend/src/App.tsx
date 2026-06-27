@@ -28,7 +28,7 @@ import { ResetAndRebuildDialog } from "./components/ResetAndRebuildDialog";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { TabStrip } from "./components/TabStrip";
-import { TopBar } from "./components/TopBar";
+import { ChromeBar } from "./components/ChromeBar";
 import { ToastProvider } from "./components/Toast";
 import { postAdminReindex } from "./lib/adminApi";
 import { useDailyNote } from "./lib/useDailyNote";
@@ -62,6 +62,7 @@ import {
   useTreeCreateActions,
 } from "./lib/useTreeCreateActions";
 import { nextUntitledName } from "./lib/nextUntitledName";
+import { breadcrumbPrefix } from "./lib/breadcrumbPrefix";
 import { shouldPromoteActiveNote } from "./lib/promoteActiveNote";
 import { useFileTree } from "./lib/useFileTree";
 import { useConfig } from "./lib/useConfig";
@@ -450,6 +451,15 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     [tree],
   );
 
+  // breadcrumbForTab — the active tab's folder prefix (muted, on the pill).
+  const breadcrumbForTab = useCallback(
+    (noteId: string): string => {
+      const path = tree ? findActiveNotePath(tree.root, noteId) : null;
+      return path ? breadcrumbPrefix(path) : "";
+    },
+    [tree],
+  );
+
   // flushAndClose — persist a closing tab's pending edits before removal (TAB-13).
   // A deleted tab is frozen read-only, so it has nothing to flush (D-10).
   // On flush rejection, surface the confirm dialog rather than dropping edits (D-04).
@@ -703,53 +713,57 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
           setFlushConfirm(null);
         }}
       />
-      {/* Three-row grid. Row 1: TopBar (col 2). Row 2: TabStrip (col 2).
-          Row 3: editor host (col 2). Sidebar + RightRail span all three rows
-          (gridRow "1/4"). StatusBar sits below the grid as a flex child.
+      {/* Two-row grid. Row 1: ChromeBar (col 2) wrapping the TabStrip — the
+          breadcrumb now lives on the active pill, so the old TopBar row is gone.
+          Row 2: editor host (col 2). Sidebar + RightRail span both rows
+          (gridRow "1/3"). StatusBar sits below the grid as a flex child.
           The fixed-track grid avoids position:sticky inside overflow:hidden. */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: `${notesSidebarVisible ? sidebarWidth : 0}px 1fr ${backlinksRailExpanded ? backlinksRailWidth : 0}px`,
-          gridTemplateRows: "auto auto minmax(0, 1fr)",
+          gridTemplateRows: "auto minmax(0, 1fr)",
           flex: 1,
           minHeight: 0,
           overflow: "hidden",
         }}
       >
-        {/* TopBar: row 1, column 2 — editor pane width only */}
-        <TopBar style={{ gridRow: "1", gridColumn: "2" }} />
+        {/* ChromeBar: row 1, column 2 — single chrome row hosting the TabStrip.
+            Always renders (incl. zero-tab state, which shows only the + new-tab
+            button — TAB-14). The longhand flex props spread AFTER tabStripStyle so
+            the strip fills the middle (overriding tabStripStyle's flexShrink:0) and
+            its ResizeObserver measures the correct width. */}
+        <ChromeBar style={{ gridRow: "1", gridColumn: "2" }}>
+          <TabStrip
+            style={{ flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 }}
+            tabs={tabs}
+            activeTabId={tabActiveTabId}
+            deletedTabIds={deletedTabIds}
+            titleForTab={titleForTab}
+            breadcrumbForTab={breadcrumbForTab}
+            onSelectTab={setActiveTab}
+            onRequestClose={(id) => void flushAndClose(id)}
+            onCloseOthers={closeOthers}
+            onCloseToRight={closeToRight}
+            onOpenRight={openRight}
+            onReorder={reorderTabs}
+            onNewTab={newTab}
+          />
+        </ChromeBar>
 
-        {/* TabStrip: row 2, column 2. Always renders (incl. zero-tab state, which
-            shows only the + new-tab button — TAB-14). */}
-        <TabStrip
-          style={{ gridRow: "2", gridColumn: "2" }}
-          tabs={tabs}
-          activeTabId={tabActiveTabId}
-          deletedTabIds={deletedTabIds}
-          titleForTab={titleForTab}
-          onSelectTab={setActiveTab}
-          onRequestClose={(id) => void flushAndClose(id)}
-          onCloseOthers={closeOthers}
-          onCloseToRight={closeToRight}
-          onOpenRight={openRight}
-          onReorder={reorderTabs}
-          onNewTab={newTab}
-        />
-
-        {/* Sidebar: spans all three rows (gridRow 1/4) — column 1.
+        {/* Sidebar: spans both rows (gridRow 1/3) — column 1.
             Selecting a note opens it as a tab (TAB-01/02). */}
         <Sidebar
-          style={{ gridRow: "1 / 4", gridColumn: "1" }}
+          style={{ gridRow: "1 / 3", gridColumn: "1" }}
           onSelectNote={(id) => useTabStore.getState().openTab(id)}
         />
 
-        {/* Editor host: row 3, column 2. One keep-alive EditorPane per open tab,
+        {/* Editor host: row 2, column 2. One keep-alive EditorPane per open tab,
             all hidden except the active one (D-01). When no tabs are open, a single
             pane driven by the legacy activeNoteId renders the placeholder/empty state. */}
         {reindexing ? (
           <ReindexProgress
-            style={{ gridRow: "3", gridColumn: "2" }}
+            style={{ gridRow: "2", gridColumn: "2" }}
             phase={reindexPhase}
             errorMessage={reindexError}
             onRetry={fireReindex}
@@ -757,7 +771,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
           />
         ) : tabs.length === 0 ? (
           <EditorPane
-            style={{ gridRow: "3", gridColumn: "2" }}
+            style={{ gridRow: "2", gridColumn: "2" }}
             noteId={activeNoteId}
             reindexing={false}
             autosaveMs={config?.editor.autosaveMs ?? 2000}
@@ -766,7 +780,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
           tabs.map((tab) => (
             <EditorPane
               key={tab.id}
-              style={{ gridRow: "3", gridColumn: "2" }}
+              style={{ gridRow: "2", gridColumn: "2" }}
               noteId={tab.noteId}
               hidden={tab.id !== tabActiveTabId}
               isDeleted={deletedTabIds.has(tab.noteId)}
@@ -778,9 +792,9 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
           ))
         )}
 
-        {/* RightRail: spans all three rows (gridRow 1/4) — column 3 */}
+        {/* RightRail: spans both rows (gridRow 1/3) — column 3 */}
         <RightRail
-          style={{ gridRow: "1 / 4", gridColumn: "3" }}
+          style={{ gridRow: "1 / 3", gridColumn: "3" }}
           activeNoteId={activeNoteId}
         />
       </div>
