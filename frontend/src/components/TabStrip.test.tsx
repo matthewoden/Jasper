@@ -98,6 +98,27 @@ describe("<TabStrip /> rendering + DnD (Task 1)", () => {
     expect(screen.getByTestId("new-tab-button")).toBeInTheDocument();
   });
 
+  it("BUG 3c: empty-state new-tab button is tab-shaped (top-rounded pill, not a bare icon)", () => {
+    render(
+      <TabStrip
+        tabs={[]}
+        activeTabId={null}
+        deletedTabIds={new Set()}
+        titleForTab={titleForTab}
+        onSelectTab={vi.fn()}
+        onRequestClose={vi.fn()}
+        onCloseOthers={vi.fn()}
+        onCloseToRight={vi.fn()}
+        onOpenRight={vi.fn()}
+        onReorder={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+    const btn = screen.getByTestId("new-tab-button");
+    // Loose silhouette check: top-rounded corners like a TabPill (not a 4px square icon button).
+    expect(btn.style.borderRadius).toBe("4px 4px 0 0");
+  });
+
   it("TAB-14: clicking the + button in the empty state calls onNewTab once", () => {
     const onNewTab = vi.fn();
     render(

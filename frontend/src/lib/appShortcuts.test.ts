@@ -10,7 +10,32 @@ describe("handleAppAltT (tab-new)", () => {
     const received: Phase7DispatchEvent[] = [];
     const unsubscribe = subscribePhase7((ev) => received.push(ev));
     try {
-      const e = new KeyboardEvent("keydown", { key: "t", altKey: true });
+      const e = new KeyboardEvent("keydown", {
+        key: "t",
+        code: "KeyT",
+        altKey: true,
+      });
+      const preventDefault = vi.spyOn(e, "preventDefault");
+      handleAppAltT(e);
+      expect(received).toEqual(["newTab"]);
+      expect(preventDefault).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("REGRESSION: macOS Option+T (key:'†', code:'KeyT') still fires newTab and preventDefaults", () => {
+    // Option+T on macOS delivers the dead-key char "†" as the key value but
+    // reports code:"KeyT". The old key.toLowerCase()==="t" guard missed this,
+    // letting "†" type into CodeMirror. Matching e.code fixes it.
+    const received: Phase7DispatchEvent[] = [];
+    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    try {
+      const e = new KeyboardEvent("keydown", {
+        key: "†",
+        code: "KeyT",
+        altKey: true,
+      });
       const preventDefault = vi.spyOn(e, "preventDefault");
       handleAppAltT(e);
       expect(received).toEqual(["newTab"]);
@@ -25,10 +50,20 @@ describe("handleAppAltT (tab-new)", () => {
     const unsubscribe = subscribePhase7((ev) => received.push(ev));
     try {
       handleAppAltT(
-        new KeyboardEvent("keydown", { key: "t", altKey: true, metaKey: true }),
+        new KeyboardEvent("keydown", {
+          key: "t",
+          code: "KeyT",
+          altKey: true,
+          metaKey: true,
+        }),
       );
       handleAppAltT(
-        new KeyboardEvent("keydown", { key: "t", altKey: true, ctrlKey: true }),
+        new KeyboardEvent("keydown", {
+          key: "t",
+          code: "KeyT",
+          altKey: true,
+          ctrlKey: true,
+        }),
       );
       expect(received).toEqual([]);
     } finally {
@@ -40,7 +75,7 @@ describe("handleAppAltT (tab-new)", () => {
     const received: Phase7DispatchEvent[] = [];
     const unsubscribe = subscribePhase7((ev) => received.push(ev));
     try {
-      handleAppAltT(new KeyboardEvent("keydown", { key: "t" }));
+      handleAppAltT(new KeyboardEvent("keydown", { key: "t", code: "KeyT" }));
       expect(received).toEqual([]);
     } finally {
       unsubscribe();
@@ -53,7 +88,13 @@ describe("handleAppAltT (tab-new)", () => {
     const received: Phase7DispatchEvent[] = [];
     const unsubscribe = subscribePhase7((ev) => received.push(ev));
     try {
-      handleAppAltT(new KeyboardEvent("keydown", { key: "T", altKey: true }));
+      handleAppAltT(
+        new KeyboardEvent("keydown", {
+          key: "T",
+          code: "KeyT",
+          altKey: true,
+        }),
+      );
       expect(received).toEqual(["newTab"]);
     } finally {
       unsubscribe();

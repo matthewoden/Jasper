@@ -119,7 +119,10 @@ vi.mock("./lib/useDailyNote", () => ({
 
 const mockCreateNoteAt = vi.fn().mockResolvedValue(undefined);
 const mockCreateFolderAt = vi.fn().mockResolvedValue(undefined);
-vi.mock("./lib/useTreeCreateActions", () => ({
+// Preserve the real siblingNamesForCreate (App.tsx imports it for collision-safe
+// untitled naming); only the hook is stubbed.
+vi.mock("./lib/useTreeCreateActions", async (importActual) => ({
+  ...(await importActual<typeof import("./lib/useTreeCreateActions")>()),
   useTreeCreateActions: () => ({
     createNoteAt: mockCreateNoteAt,
     createFolderAt: mockCreateFolderAt,
@@ -160,6 +163,10 @@ import {
 void App;
 import { useTreeStore } from "./lib/useTreeStore";
 import { COMMAND_PALETTE_ENTRIES } from "./lib/shortcutsRegistry";
+import { siblingNamesForCreate } from "./lib/useTreeCreateActions";
+import { nextUntitledName } from "./lib/nextUntitledName";
+import type { Tree } from "./lib/treeApi";
+import { useTabStore } from "./lib/useTabStore";
 
 const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
 
@@ -1144,5 +1151,106 @@ describe("handleAppCmdShiftF (Cmd+Shift+F opens search modal)", () => {
     } finally {
       window.removeEventListener("jasper:focus-search", listener);
     }
+  });
+});
+
+
+// BUG 2 (260627-ih9): the + new-tab affordance and open-to-the-right both route
+// through nextUntitledName(siblingNamesForCreate(...)) so a second untitled create
+// in an occupied folder yields "untitled 1" instead of a 409 case_collision.
+describe("uniqueUntitledTitle composition (BUG 2 — collision-safe untitled)", () => {
+  // Hardcoded tree fixture (no Date.now / Math.random — deterministic).
+  const tree = {
+    root: [
+      { kind: "note", id: "n1", title: "untitled.md", path: "untitled.md" },
+      {
+        kind: "folder",
+        name: "occupied",
+        path: "occupied",
+        children: [
+          { kind: "note", id: "n2", title: "untitled.md", path: "occupied/untitled.md" },
+        ],
+      },
+      { kind: "folder", name: "empty", path: "empty", children: [] },
+    ],
+  } as unknown as Tree;
+
+  it("root folder already holding untitled → 'untitled 1'", () => {
+    expect(
+      nextUntitledName(siblingNamesForCreate(tree, "", "note"), "untitled"),
+    ).toBe("untitled 1");
+  });
+
+  it("subfolder already holding untitled → 'untitled 1'", () => {
+    expect(
+      nextUntitledName(siblingNamesForCreate(tree, "occupied", "note"), "untitled"),
+    ).toBe("untitled 1");
+  });
+
+  it("empty folder → plain 'untitled' (no collision)", () => {
+    expect(
+      nextUntitledName(siblingNamesForCreate(tree, "empty", "note"), "untitled"),
+    ).toBe("untitled");
+  });
+});
+
+
+// BUG 3b (260627-ih9): closing the final tab blanks the editor — clear the legacy
+// activeNoteId so the note does not reappear in the tab-less fallback pane.
+describe("close-last-tab clears activeNoteId (BUG 3b)", () => {
+  beforeEach(() => {
+    getAdminStatusMock.mockReset();
+    postAdminReindexMock.mockReset();
+    getAdminStatusMock.mockResolvedValue({
+      data: { state: "ok" },
+      error: undefined,
+    });
+    // Reset BOTH stores for order-independence. paletteOpen/cheatSheetOpen MUST
+    // be cleared: a prior test that leaves a Radix dialog open sets aria-hidden on
+    // the app, hiding every button from getByRole (order-dependent false failure).
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: null,
+      pendingRename: null,
+      draftCreate: null,
+      paletteOpen: false,
+      cheatSheetOpen: false,
+    });
+    useTabStore.getState().clearAllTabs();
+  });
+
+  afterEach(() => {
+    useTabStore.getState().clearAllTabs();
+  });
+
+  it("closing the only tab sets activeNoteId to null (editor blanks)", async () => {
+    // Seed one open tab + matching legacy activeNoteId. The note is marked
+    // deleted so the empty-tree prune pass retains the tab (deterministic — no
+    // dependence on the mocked tree containing the note, no flush save path).
+    useTabStore.setState({
+      tabs: [{ id: "x", noteId: "x" }],
+      activeTabId: "x",
+      deletedTabIds: new Set(["x"]),
+    });
+    useTreeStore.setState({ activeNoteId: "x" });
+
+    render(<AppShell />);
+
+    // Mirror effect syncs activeNoteId to the active tab while tabs are open.
+    await waitFor(() =>
+      expect(useTreeStore.getState().activeNoteId).toBe("x"),
+    );
+
+    // Close the only tab via its X (routes through the flush-aware close path).
+    // findByRole retries so the assertion never races async EditorPane renders.
+    const closeBtn = await screen.findByRole("button", {
+      name: "Close Untitled",
+    });
+    fireEvent.click(closeBtn);
+
+    await waitFor(() => {
+      expect(useTabStore.getState().tabs).toHaveLength(0);
+      expect(useTreeStore.getState().activeNoteId).toBeNull();
+    });
   });
 });
