@@ -37,6 +37,7 @@ function renderStrip(overrides?: {
   activeTabId?: string | null;
   deletedTabIds?: Set<string>;
   forceHiddenTabIds?: Set<string>;
+  breadcrumbForTab?: (noteId: string) => string;
 }): Handlers {
   const handlers: Handlers = {
     onSelectTab: vi.fn(),
@@ -53,6 +54,7 @@ function renderStrip(overrides?: {
       activeTabId={overrides?.activeTabId ?? "a"}
       deletedTabIds={overrides?.deletedTabIds ?? new Set()}
       titleForTab={titleForTab}
+      breadcrumbForTab={overrides?.breadcrumbForTab ?? (() => "")}
       forceHiddenTabIds={overrides?.forceHiddenTabIds}
       {...handlers}
     />,
@@ -143,6 +145,17 @@ describe("<TabStrip /> rendering + DnD (Task 1)", () => {
   it("TAB-14: the + button also renders in the non-empty state", () => {
     renderStrip();
     expect(screen.getByTestId("new-tab-button")).toBeInTheDocument();
+  });
+
+  it("passes the breadcrumb to the active pill only (inactive pills get none)", () => {
+    renderStrip({
+      activeTabId: "a",
+      breadcrumbForTab: () => "docs / api",
+    });
+    // Exactly one breadcrumb span (the active pill).
+    const crumbs = screen.getAllByTestId("tab-breadcrumb");
+    expect(crumbs).toHaveLength(1);
+    expect(crumbs[0].textContent).toContain("docs / api");
   });
 
   it("clicking a pill calls onSelectTab with that tab id", () => {

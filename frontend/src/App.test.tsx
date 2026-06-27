@@ -652,7 +652,7 @@ describe("<App /> — session sync", () => {
 });
 
 
-describe("<App /> — three-row grid + chrome mounts", () => {
+describe("<App /> — two-row grid + chrome mounts", () => {
   beforeEach(() => {
     getAdminStatusMock.mockReset();
     postAdminReindexMock.mockReset();
@@ -671,9 +671,9 @@ describe("<App /> — three-row grid + chrome mounts", () => {
     });
   });
 
-  it("A6.6-1: App renders a TopBar (data-testid='top-bar')", async () => {
+  it("A6.6-1: App renders a ChromeBar (data-testid='chrome-bar')", async () => {
     render(<AppShell />);
-    expect(screen.getByTestId("top-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("chrome-bar")).toBeInTheDocument();
   });
 
   it("A6.6-2: App renders a StatusBar (data-testid='status-bar')", async () => {
@@ -681,13 +681,13 @@ describe("<App /> — three-row grid + chrome mounts", () => {
     expect(screen.getByTestId("status-bar")).toBeInTheDocument();
   });
 
-  it("A6.6-3: three-row grid — gridTemplateRows is 'auto auto minmax(0, 1fr)'", async () => {
+  it("A6.6-3: two-row grid — gridTemplateRows is 'auto minmax(0, 1fr)'", async () => {
     render(<AppShell />);
     const grid = document.querySelector(
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
     expect(grid).not.toBeNull();
-    expect(grid!.style.gridTemplateRows).toBe("auto auto minmax(0, 1fr)");
+    expect(grid!.style.gridTemplateRows).toBe("auto minmax(0, 1fr)");
   });
 
   it("A6.6-4: when notesSidebarVisible=true, sidebar column is sidebarWidth px (260px default)", async () => {
@@ -730,11 +730,11 @@ describe("<App /> — three-row grid + chrome mounts", () => {
     expect(grid!.nextElementSibling).toBe(statusBar);
   });
 
-  it("A6.6-8: TopBar has gridRow=1 gridColumn=2 style (set by App.tsx)", async () => {
+  it("A6.6-8: ChromeBar has gridRow=1 gridColumn=2 style (set by App.tsx)", async () => {
     render(<AppShell />);
-    const topBar = screen.getByTestId("top-bar");
-    expect(topBar.style.gridRow).toBe("1");
-    expect(topBar.style.gridColumn).toBe("2");
+    const chromeBar = screen.getByTestId("chrome-bar");
+    expect(chromeBar.style.gridRow).toBe("1");
+    expect(chromeBar.style.gridColumn).toBe("2");
   });
 });
 
