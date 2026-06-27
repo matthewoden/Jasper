@@ -166,6 +166,7 @@ import { COMMAND_PALETTE_ENTRIES } from "./lib/shortcutsRegistry";
 import { siblingNamesForCreate } from "./lib/useTreeCreateActions";
 import { nextUntitledName } from "./lib/nextUntitledName";
 import type { Tree } from "./lib/treeApi";
+import { useTabStore } from "./lib/useTabStore";
 
 const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
 
@@ -1190,5 +1191,66 @@ describe("uniqueUntitledTitle composition (BUG 2 — collision-safe untitled)", 
     expect(
       nextUntitledName(siblingNamesForCreate(tree, "empty", "note"), "untitled"),
     ).toBe("untitled");
+  });
+});
+
+
+// BUG 3b (260627-ih9): closing the final tab blanks the editor — clear the legacy
+// activeNoteId so the note does not reappear in the tab-less fallback pane.
+describe("close-last-tab clears activeNoteId (BUG 3b)", () => {
+  beforeEach(() => {
+    getAdminStatusMock.mockReset();
+    postAdminReindexMock.mockReset();
+    getAdminStatusMock.mockResolvedValue({
+      data: { state: "ok" },
+      error: undefined,
+    });
+    // Reset BOTH stores for order-independence. paletteOpen/cheatSheetOpen MUST
+    // be cleared: a prior test that leaves a Radix dialog open sets aria-hidden on
+    // the app, hiding every button from getByRole (order-dependent false failure).
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: null,
+      pendingRename: null,
+      draftCreate: null,
+      paletteOpen: false,
+      cheatSheetOpen: false,
+    });
+    useTabStore.getState().clearAllTabs();
+  });
+
+  afterEach(() => {
+    useTabStore.getState().clearAllTabs();
+  });
+
+  it("closing the only tab sets activeNoteId to null (editor blanks)", async () => {
+    // Seed one open tab + matching legacy activeNoteId. The note is marked
+    // deleted so the empty-tree prune pass retains the tab (deterministic — no
+    // dependence on the mocked tree containing the note, no flush save path).
+    useTabStore.setState({
+      tabs: [{ id: "x", noteId: "x" }],
+      activeTabId: "x",
+      deletedTabIds: new Set(["x"]),
+    });
+    useTreeStore.setState({ activeNoteId: "x" });
+
+    render(<AppShell />);
+
+    // Mirror effect syncs activeNoteId to the active tab while tabs are open.
+    await waitFor(() =>
+      expect(useTreeStore.getState().activeNoteId).toBe("x"),
+    );
+
+    // Close the only tab via its X (routes through the flush-aware close path).
+    // findByRole retries so the assertion never races async EditorPane renders.
+    const closeBtn = await screen.findByRole("button", {
+      name: "Close Untitled",
+    });
+    fireEvent.click(closeBtn);
+
+    await waitFor(() => {
+      expect(useTabStore.getState().tabs).toHaveLength(0);
+      expect(useTreeStore.getState().activeNoteId).toBeNull();
+    });
   });
 });

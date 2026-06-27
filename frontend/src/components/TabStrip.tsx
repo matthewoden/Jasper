@@ -58,6 +58,48 @@ const newTabButtonStyle: CSSProperties = {
   flexShrink: 0,
 };
 
+/** Tab-shaped + button for the zero-tab empty state — reads as a real tab
+ *  silhouette (TabPill's 32px top-rounded pill seated on the 36px strip) rather
+ *  than a bare icon, so the empty state still looks like a tab row. */
+const emptyStateNewTabButtonStyle: CSSProperties = {
+  height: 32,
+  minWidth: 80,
+  padding: "0 8px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: "1px solid var(--color-border)",
+  borderRadius: "4px 4px 0 0",
+  color: "var(--color-muted)",
+  cursor: "pointer",
+  flexShrink: 0,
+};
+
+/** Empty-state new-tab button: own hover state so it tints like a TabPill
+ *  (accent-12%) without leaking a hook into TabStrip's normal render path. */
+function EmptyStateNewTabButton({ onNewTab }: { onNewTab: () => void }) {
+  const [hovering, setHovering] = useState(false);
+  return (
+    <button
+      type="button"
+      title="New tab (⌥T)"
+      aria-label="New tab"
+      data-testid="new-tab-button"
+      onClick={onNewTab}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+      style={{
+        ...emptyStateNewTabButtonStyle,
+        background: hovering
+          ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+          : "var(--color-surface)",
+      }}
+    >
+      <Plus size={16} aria-hidden="true" />
+    </button>
+  );
+}
+
 const tabStripStyle: CSSProperties = {
   height: 36,
   background: "var(--color-bg)",
@@ -236,7 +278,7 @@ export function TabStrip({
         style={{ ...tabStripStyle, ...style }}
         data-testid="tab-strip"
       >
-        {newTabButton}
+        <EmptyStateNewTabButton onNewTab={onNewTab} />
       </div>
     );
   }

@@ -62,6 +62,7 @@ import {
   useTreeCreateActions,
 } from "./lib/useTreeCreateActions";
 import { nextUntitledName } from "./lib/nextUntitledName";
+import { shouldPromoteActiveNote } from "./lib/promoteActiveNote";
 import { useFileTree } from "./lib/useFileTree";
 import { useConfig } from "./lib/useConfig";
 import type { CommandActions } from "./lib/useCommandPalette";
@@ -100,6 +101,17 @@ function findNoteTitle(
 function parentDir(path: string): string {
   const i = path.lastIndexOf("/");
   return i === -1 ? "" : path.slice(0, i);
+}
+
+/**
+ * Closing the final tab blanks the editor (BUG 3b — VS Code behavior): clear the
+ * legacy activeNoteId so the note does not reappear in the tab-less fallback pane.
+ * Tied to the close user-action path, not a !hasTabs effect (which would race).
+ */
+function clearActiveOnEmptyTabs(): void {
+  if (useTabStore.getState().tabs.length === 0) {
+    useTreeStore.getState().setActiveNote(null);
+  }
 }
 
 /** Collect every note UUID present in the tree (for tab pruning). */
@@ -413,6 +425,21 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     const notes = new Set<string>();
     collectNoteIds(tree.root, notes);
     pruneTabsForMissingNotes(notes);
+    // Load-time promotion (BUG 3a): a legacy single-open note (persisted
+    // activeNoteId) with zero hydrated tabs becomes a real tab. Read tabs.length
+    // AFTER prune so persisted tabs win and a pruned-away active note is not
+    // re-promoted. prunedRef gates this to once per mount (= once per vault load,
+    // since vault switch reloads the page) — no separate !hasTabs effect that
+    // would race the activeTab↔activeNoteId mirror.
+    if (
+      shouldPromoteActiveNote(
+        useTabStore.getState().tabs.length,
+        useTreeStore.getState().activeNoteId,
+        notes,
+      )
+    ) {
+      useTabStore.getState().openTab(useTreeStore.getState().activeNoteId!);
+    }
   }, [tree]);
 
   // titleForTab — live note title by UUID (TAB-12). Falls back to a stable
@@ -432,11 +459,13 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       if (tab === undefined) return;
       if (useTabStore.getState().deletedTabIds.has(tab.noteId)) {
         closeTab(tabId);
+        clearActiveOnEmptyTabs();
         return;
       }
       try {
         await tabFlushRefs.current[tabId]?.current?.flush();
         closeTab(tabId);
+        clearActiveOnEmptyTabs();
       } catch {
         const filename = titleForTab(tab.noteId);
         setFlushConfirm({ tabId, filename });
