@@ -54,6 +54,8 @@ func (f *fakeFileStore) MoveFile(_, _ string) error       { return nil }
 func (f *fakeFileStore) CreateDir(_ string) error         { return nil }
 func (f *fakeFileStore) DeleteDir(_ string, _ bool) error { return nil }
 func (f *fakeFileStore) MoveDir(_, _ string) error        { return nil }
+func (f *fakeFileStore) TrashFile(_ string) (string, error) { return "", nil }
+func (f *fakeFileStore) TrashDir(_ string) (string, error)  { return "", nil }
 
 func setupTestServer(t *testing.T, files notes.FileStore) *httptest.Server {
 	t.Helper()

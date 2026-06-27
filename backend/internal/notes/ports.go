@@ -64,12 +64,20 @@ type FileStore interface {
 	//   - MoveDir renames a directory; ErrCycle if the destination is
 	//     the source itself or a descendant of it; ErrCaseCollision /
 	//     ErrParentNotFound otherwise.
+	//   - TrashFile moves a note into <dataDir>/.trash/, flattening
+	//     the path (D-02); returns the collision-safe base name written;
+	//     never overwrites (D-04); paths are canonicalized internally.
+	//   - TrashDir moves a folder + subtree into <dataDir>/.trash/ intact
+	//     (D-03); returns the collision-safe folder name written;
+	//     paths are canonicalized internally.
 	CreateFile(relPath string) error
 	DeleteFile(relPath string) error
 	MoveFile(oldRelPath, newRelPath string) error
 	CreateDir(relPath string) error
 	DeleteDir(relPath string, recursive bool) error
 	MoveDir(oldRelPath, newRelPath string) error
+	TrashFile(relPath string) (trashName string, err error)
+	TrashDir(relPath string) (trashName string, err error)
 }
 
 // Broadcaster is the port over the WebSocket hub adapter (internal/wshub).

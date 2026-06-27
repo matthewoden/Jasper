@@ -546,6 +546,9 @@ func (f *failingWriteStore) DeleteDir(p string, recursive bool) error {
 
 func (f *failingWriteStore) MoveDir(o, n string) error { return f.inner.MoveDir(o, n) }
 
+func (f *failingWriteStore) TrashFile(p string) (string, error) { return f.inner.TrashFile(p) }
+func (f *failingWriteStore) TrashDir(p string) (string, error)  { return f.inner.TrashDir(p) }
+
 // TestCreateNoteAtomic — create_note composes scaffold+body in memory and
 // writes ONCE via WriteAtomic. No partial scaffold-only file lands on disk
 // under any failure mode reachable from the MCP handler. Error codes

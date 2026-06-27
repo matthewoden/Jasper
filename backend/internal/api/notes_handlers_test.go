@@ -848,6 +848,8 @@ func (l *leakyFileStore) MoveFile(_, _ string) error           { return nil }
 func (l *leakyFileStore) CreateDir(_ string) error             { return nil }
 func (l *leakyFileStore) DeleteDir(_ string, _ bool) error     { return nil }
 func (l *leakyFileStore) MoveDir(_, _ string) error            { return nil }
+func (l *leakyFileStore) TrashFile(_ string) (string, error)   { return "", nil }
+func (l *leakyFileStore) TrashDir(_ string) (string, error)    { return "", nil }
 
 type apiBroadcaster struct {
 	mu     sync.Mutex

@@ -30,6 +30,13 @@ type fakeFileStore struct {
 	lastWriteData []byte
 	writeErr      error
 
+	// Trash call-tracking (used by soft-delete unit tests).
+	trashFileCalls  int
+	lastTrashedFile string
+	trashDirCalls   int
+	lastTrashedDir  string
+	trashErr        error
+
 	observedSeq *[]string
 }
 
@@ -63,6 +70,31 @@ func (f *fakeFileStore) MoveFile(_, _ string) error       { return nil }
 func (f *fakeFileStore) CreateDir(_ string) error         { return nil }
 func (f *fakeFileStore) DeleteDir(_ string, _ bool) error { return nil }
 func (f *fakeFileStore) MoveDir(_, _ string) error        { return nil }
+
+// Trash call-tracking fields used by soft-delete unit tests (Task 1+3).
+// trashErr, when non-nil, is returned by both TrashFile and TrashDir.
+// trashFileCalls / trashDirCalls count invocations for assertion.
+// lastTrashedFile / lastTrashedDir record the relPath argument.
+//
+// Fields are exported-by-method only; tests set them directly (same pkg).
+
+func (f *fakeFileStore) TrashFile(relPath string) (string, error) {
+	f.trashFileCalls++
+	f.lastTrashedFile = relPath
+	if f.trashErr != nil {
+		return "", f.trashErr
+	}
+	return "stub-trash-name.md", nil
+}
+
+func (f *fakeFileStore) TrashDir(relPath string) (string, error) {
+	f.trashDirCalls++
+	f.lastTrashedDir = relPath
+	if f.trashErr != nil {
+		return "", f.trashErr
+	}
+	return "stub-trash-dir", nil
+}
 
 type fakeIndex struct {
 	upsertCalls      int
@@ -2134,6 +2166,14 @@ func (c *countingFileStore) DeleteDir(relPath string, recursive bool) error {
 
 func (c *countingFileStore) MoveDir(oldPath, newPath string) error {
 	return c.inner.MoveDir(oldPath, newPath)
+}
+
+func (c *countingFileStore) TrashFile(relPath string) (string, error) {
+	return c.inner.TrashFile(relPath)
+}
+
+func (c *countingFileStore) TrashDir(relPath string) (string, error) {
+	return c.inner.TrashDir(relPath)
 }
 
 func (c *countingFileStore) WriteAtomic(relPath string, data []byte) error {
