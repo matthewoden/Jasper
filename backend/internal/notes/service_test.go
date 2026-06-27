@@ -908,7 +908,10 @@ func TestService_Delete_UnknownId(t *testing.T) {
 	}
 }
 
-func TestService_Delete_FSFailure_RollsBackIndex(t *testing.T) {
+// TestService_Delete_FSFailure_LeavesIndexIntact: FS-FIRST contract — when the
+// on-disk trash move fails, index.Delete is never reached, so the row and
+// registry entry are left untouched (nothing to roll back).
+func TestService_Delete_FSFailure_LeavesIndexIntact(t *testing.T) {
 	t.Parallel()
 	svc, root, idx := newRealFSSvc(t)
 	summary, err := svc.Create(context.Background(), "", "alpha")
@@ -925,7 +928,7 @@ func TestService_Delete_FSFailure_RollsBackIndex(t *testing.T) {
 	}
 
 	if _, ok := idx.recByID(summary.ID); !ok {
-		t.Errorf("index row not rolled back on FS failure (reconciler-heals OK, but best-effort rollback expected)")
+		t.Errorf("index row removed despite FS-trash failure (FS-first: index must be untouched)")
 	}
 
 	if _, ok := svc.registry.Lookup(summary.ID); !ok {
@@ -1405,9 +1408,10 @@ func TestService_Delete_Broadcasts(t *testing.T) {
 	}
 }
 
-// TestService_Delete_FSFailRollsBack: when TrashFile returns an error, the prior
-// index row is re-Upserted (rollback) and the error propagates.
-func TestService_Delete_FSFailRollsBack(t *testing.T) {
+// TestService_Delete_FSFailLeavesIndexIntact: FS-FIRST contract — when TrashFile
+// returns an error, index.Delete is never called, so the index row and registry
+// entry remain intact and the error propagates.
+func TestService_Delete_FSFailLeavesIndexIntact(t *testing.T) {
 	t.Parallel()
 
 	fake := &fakeFileStore{trashErr: errors.New("injected trash failure")}
@@ -1416,7 +1420,6 @@ func TestService_Delete_FSFailRollsBack(t *testing.T) {
 	svc := NewService(fake, idx, nil, logger)
 
 	// ScratchpadUUID is pre-seeded in the registry by NewRegistry().
-	// Pre-seed the index with the same record so LookupByPath returns it (enabling rollback).
 	id := ScratchpadUUID
 	priorRec := NoteRecord{ID: id, Path: ScratchpadRelPath}
 	idx.byID[id] = priorRec
@@ -1427,9 +1430,9 @@ func TestService_Delete_FSFailRollsBack(t *testing.T) {
 		t.Fatalf("expected error from TrashFile, got nil")
 	}
 
-	// After TrashFile error + rollback Upsert: index row should be back.
+	// FS-first: index.Delete never ran, so the row is still present (untouched).
 	if _, ok := idx.recByID(id); !ok {
-		t.Errorf("index row not restored via rollback Upsert on TrashFile failure")
+		t.Errorf("index row removed despite TrashFile failure (FS-first: index must be untouched)")
 	}
 	// Registry entry still present (not removed on FS failure).
 	if _, ok := svc.registry.Lookup(id); !ok {

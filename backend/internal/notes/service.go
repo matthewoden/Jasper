@@ -389,24 +389,19 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("notes.Delete(%s): %w", id, ErrNotFound)
 	}
 
-	prior, lookupErr := s.index.LookupByPath(ctx, relPath)
-	priorKnown := lookupErr == nil
-
-	if err := s.index.Delete(ctx, id); err != nil {
-		return fmt.Errorf("notes.Delete(%s): index delete: %w", id, err)
+	// FS-FIRST (PROJECT file-FIRST contract): move the note into .trash/ BEFORE
+	// touching the index. If TrashFile fails, the index and registry are left
+	// untouched — there is nothing to roll back. If the later index.Delete fails,
+	// the reconciler heals on next startup (WalkVault skips .trash/, so the
+	// trashed file is not re-adopted as a live note).
+	if _, err := s.files.TrashFile(relPath); err != nil {
+		return fmt.Errorf("notes.Delete(%s): %w", id, err)
 	}
 
-	if _, err := s.files.TrashFile(relPath); err != nil {
-		if priorKnown {
-			if upsertErr := s.index.Upsert(ctx, prior); upsertErr != nil {
-				s.log.Warn("notes.Delete: rollback Upsert failed (reconciler will heal)",
-					"id", id.String(), "path", relPath, "err", upsertErr)
-			}
-		} else {
-			s.log.Warn("notes.Delete: FS-trash failed and prior row unknown (reconciler will heal)",
-				"id", id.String(), "path", relPath, "err", err)
-		}
-		return fmt.Errorf("notes.Delete(%s): %w", id, err)
+	if err := s.index.Delete(ctx, id); err != nil {
+		s.log.Warn("notes.Delete: index delete failed after FS-trash (reconciler will heal on next startup)",
+			"id", id.String(), "path", relPath, "err", err)
+		return fmt.Errorf("notes.Delete(%s): index delete: %w", id, err)
 	}
 	s.registry.Remove(id)
 
