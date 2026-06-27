@@ -3,6 +3,7 @@ package fsstore
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -11,12 +12,14 @@ import (
 // (case-collision / NFC / symlink-escape gate) and AtomicWrite
 // (durable-write primitive).
 type Store struct {
-	root string
+	root    string
+	dataDir string // parent of notesDir; used for trash operations
 }
 
 // NewStore returns a Store rooted at notesDir. The directory MUST already exist.
+// dataDir is derived as filepath.Dir(notesDir); callers do not need to change.
 func NewStore(notesDir string) *Store {
-	return &Store{root: notesDir}
+	return &Store{root: notesDir, dataDir: filepath.Dir(notesDir)}
 }
 
 // Read returns the bytes at relPath under the store's root.

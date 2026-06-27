@@ -42,7 +42,7 @@ func notesDirFor(dataDir string) string { return filepath.Join(dataDir, "notes")
 // macOS/Linux. A more restrictive 0o700 would surprise sync tools
 // (Syncthing, iCloud, git) that need to walk the tree.
 func EnsureDataDir(dataDir string) error {
-	for _, sub := range []string{"notes", vault.SubdirName} {
+	for _, sub := range []string{"notes", vault.SubdirName, ".trash"} {
 		if err := os.MkdirAll(filepath.Join(dataDir, sub), 0o755); err != nil {
 			return fmt.Errorf("ensure %s: %w", sub, err)
 		}
