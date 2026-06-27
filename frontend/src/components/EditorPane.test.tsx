@@ -53,6 +53,7 @@ vi.mock("./MarkdownEditor", async () => {
             onH1Change?: (h: string | null) => void;
             onSaveRequested?: () => void;
             onBlur?: () => void;
+            readOnly?: boolean;
         }
     >(function MockMarkdownEditor(props, ref) {
         const [value, setValue] = React.useState(props.initialDoc ?? "");
@@ -105,7 +106,7 @@ vi.mock("./MarkdownEditor", async () => {
             "aria-label": "Note content",
             "data-testid": "markdown-editor-mock",
             value,
-            readOnly: false,
+            readOnly: props.readOnly ?? false,
             onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => {
                 const next = e.target.value;
                 setValue(next);
@@ -2409,5 +2410,184 @@ describe("EP-keepalive-session — keepalive PUT carries X-Session-ID (UAT-2 N8)
         } finally {
             global.fetch = originalFetch;
         }
+    });
+});
+
+
+describe("<EditorPane /> — Phase 15 keep-alive (hidden / isDeleted) (Plan 15-02)", () => {
+    it("hidden=true sets display:none on the editor-pane root WITHOUT unmounting", async () => {
+        getNoteMock.mockResolvedValue(okGet("base"));
+
+        render(<EditorPane noteId={ScratchpadUUID} hidden />);
+        await flushMicrotasks();
+
+        const pane = screen.getByTestId("editor-pane");
+        expect(pane.style.display).toBe("none");
+        // Still mounted — CM6 (mock textarea) remains in the DOM for keep-alive.
+        expect(screen.getByLabelText("Note content")).toBeInTheDocument();
+    });
+
+    it("hidden=false renders the pane visible (display:flex)", async () => {
+        getNoteMock.mockResolvedValue(okGet("base"));
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        expect(screen.getByTestId("editor-pane").style.display).toBe("flex");
+    });
+
+    it("isDeleted=true makes the editor read-only", async () => {
+        getNoteMock.mockResolvedValue(okGet("base"));
+
+        render(<EditorPane noteId={ScratchpadUUID} isDeleted />);
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        expect(editor.readOnly).toBe(true);
+    });
+
+    it("isDeleted=true suppresses the in-pane deletion banner on note:deleted", async () => {
+        getNoteMock.mockResolvedValue(okGet("work"));
+        const handlersRef: { current: EditorPaneHandlers | null } = {
+            current: null,
+        };
+
+        render(
+            <EditorPane
+                noteId={ScratchpadUUID}
+                isDeleted
+                editorHandlersRef={handlersRef}
+            />,
+        );
+        await flushMicrotasks();
+
+        act(() => {
+            handlersRef.current!.onNoteDeleted({
+                id: ScratchpadUUID,
+                path: "scratchpad.md",
+            });
+        });
+
+        expect(screen.queryByTestId("deleted-banner")).not.toBeInTheDocument();
+    });
+});
+
+
+describe("<EditorPane /> — Phase 15 flush() ref method (Plan 15-02, TAB-13)", () => {
+    function renderWithFlush(noteId: string | null = ScratchpadUUID) {
+        const flushRef: { current: { flush: () => Promise<void> } | null } = {
+            current: null,
+        };
+        const view = render(<EditorPane noteId={noteId} flushRef={flushRef} />);
+        return { ...view, flushRef };
+    }
+
+    it("flush() with a pending mid-debounce edit saves immediately (no debounce wait)", async () => {
+        getNoteMock.mockResolvedValue(okGet("base"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const { flushRef } = renderWithFlush();
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("base"));
+
+        fireEvent.change(editor, { target: { value: "edited before close" } });
+        // Do NOT advance the 2s debounce — flush() must force the save itself.
+        await act(async () => {
+            await flushRef.current!.flush();
+        });
+
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+        expect(updateNoteMock).toHaveBeenCalledWith(
+            ScratchpadUUID,
+            "edited before close",
+        );
+    });
+
+    it("flush() awaits the save before resolving (save precedes the close hook)", async () => {
+        getNoteMock.mockResolvedValue(okGet("base"));
+        let resolvePut: (v: PutReturn) => void = () => {};
+        updateNoteMock.mockImplementation(
+            () =>
+                new Promise<PutReturn>((r) => {
+                    resolvePut = r;
+                }) as ReturnType<typeof updateNote>,
+        );
+        const { flushRef } = renderWithFlush();
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("base"));
+
+        fireEvent.change(editor, { target: { value: "edited" } });
+
+        let resolved = false;
+        let flushPromise!: Promise<void>;
+        await act(async () => {
+            flushPromise = flushRef.current!.flush().then(() => {
+                resolved = true;
+            });
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        // Save fired, but flush has NOT resolved until the PUT completes.
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+        expect(resolved).toBe(false);
+
+        await act(async () => {
+            resolvePut(okPut());
+            await flushPromise;
+        });
+        expect(resolved).toBe(true);
+    });
+
+    it("flush() rejects when the underlying save fails", async () => {
+        getNoteMock.mockResolvedValue(okGet("base"));
+        updateNoteMock.mockResolvedValue(errPut("disk full"));
+        const { flushRef } = renderWithFlush();
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("base"));
+
+        fireEvent.change(editor, { target: { value: "edited" } });
+
+        let caught: unknown = null;
+        await act(async () => {
+            caught = await flushRef
+                .current!.flush()
+                .then(() => null)
+                .catch((e: unknown) => e);
+        });
+
+        expect(caught).toBeInstanceOf(Error);
+        expect((caught as Error).message).toMatch(/flush failed/);
+    });
+
+    it("flush() with no pending edits resolves and does NOT call the save API", async () => {
+        getNoteMock.mockResolvedValue(okGet("base"));
+        updateNoteMock.mockResolvedValue(okPut());
+        const { flushRef } = renderWithFlush();
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("base"));
+
+        await act(async () => {
+            await flushRef.current!.flush();
+        });
+
+        expect(updateNoteMock).not.toHaveBeenCalled();
     });
 });

@@ -11,7 +11,7 @@
  * Ref API: getContent / setContent / applyServerUpdate / focus / focusEnd.
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Annotation, Prec } from "@codemirror/state";
+import { Annotation, Compartment, Prec } from "@codemirror/state";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -98,6 +98,15 @@ interface Props {
   onSaveRequested?: () => void;
   /** Fires when CM6's contenteditable loses focus to any element OUTSIDE the editor. */
   onBlur?: () => void;
+  /** When true, the document is read-only (deleted-tab keep-alive — D-10). */
+  readOnly?: boolean;
+}
+
+/** Read-only extension toggled at runtime via a Compartment (view is mounted once). */
+function readOnlyExtension(readOnly: boolean) {
+  return readOnly
+    ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
+    : [];
 }
 
 /**
@@ -133,11 +142,12 @@ function getNoteFolder(noteId: string | null, root: TreeNode[]): string {
 
 export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
   function MarkdownEditor(
-    { initialDoc, onChange, onH1Change, onSaveRequested, onBlur },
+    { initialDoc, onChange, onH1Change, onSaveRequested, onBlur, readOnly = false },
     ref
   ) {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const viewRef = useRef<EditorView | null>(null);
+    const readOnlyCompartment = useRef(new Compartment());
 
     const cbRef = useRef({ onChange, onH1Change, onSaveRequested, onBlur });
     cbRef.current = { onChange, onH1Change, onSaveRequested, onBlur };
@@ -250,6 +260,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
         state: EditorState.create({
           doc: initialDoc,
           extensions: [
+            readOnlyCompartment.current.of(readOnlyExtension(readOnly)),
             history(),
             search({ top: true }), // searchKeymap omitted; browser native Cmd+F fires instead
             // listEnterKeymap at Prec.high: runs before insertNewlineContinueMarkup (also Prec.high
@@ -322,6 +333,15 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       // initialDoc captured ONCE for cursor stability. Subsequent updates use the ref API.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Toggle read-only at runtime without re-mounting the view (preserves cursor/undo).
+    useEffect(() => {
+      viewRef.current?.dispatch({
+        effects: readOnlyCompartment.current.reconfigure(
+          readOnlyExtension(readOnly),
+        ),
+      });
+    }, [readOnly]);
 
     useImperativeHandle(
       ref,

@@ -73,6 +73,12 @@ interface EditorPaneProps {
   style?: React.CSSProperties;
   /** Autosave debounce interval in ms. Captured to a ref at mount so interval is stable per session. */
   autosaveMs?: number;
+  /** display:none when true; CM6 stays mounted so cursor/scroll/undo survive (keep-alive, D-01). */
+  hidden?: boolean;
+  /** Read-only + suppress the in-pane deletion banner; the tab pill owns the "(deleted)" indicator (D-10). */
+  isDeleted?: boolean;
+  /** tab-close awaits flush() to persist pending edits before the tab is removed (TAB-13). */
+  flushRef?: MutableRefObject<{ flush: () => Promise<void> } | null>;
 }
 
 
@@ -115,7 +121,7 @@ function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
   return null;
 }
 
-export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style, autosaveMs }: EditorPaneProps) {
+export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style, autosaveMs, hidden = false, isDeleted = false, flushRef }: EditorPaneProps) {
   const autosaveMsRef = useRef(autosaveMs ?? AUTOSAVE_DEBOUNCE_MS);
 
   const [content, setContent] = useState("");
@@ -229,10 +235,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [noteId]);
 
   useEffect(() => {
-    if (loadStatus === "loaded" && noteId !== null) {
+    if (!hidden && loadStatus === "loaded" && noteId !== null) {
       editorRef.current?.focus();
     }
-  }, [loadStatus, noteId]);
+  }, [hidden, loadStatus, noteId]);
 
   const reindexingRef = useRef(reindexing);
   useEffect(() => {
@@ -241,14 +247,15 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
 
   const prevConnectionStatusRef = useRef(connectionStatus);
 
-  const performSave = useCallback(async (latestContent: string) => {
-    if (reindexingRef.current) return;
+  const performSave = useCallback(async (latestContent: string): Promise<{ ok: boolean }> => {
+    if (reindexingRef.current) return { ok: false };
     const id = noteIdRef.current;
-    if (id === null) return;
-    if (connectionStatusRef.current !== "connected") return;
+    if (id === null) return { ok: false };
+    if (connectionStatusRef.current !== "connected") return { ok: false };
     if (inFlight.current) {
+      // A save is already running; this content rides out as the trailing save.
       trailingPending.current = true;
-      return;
+      return { ok: true };
     }
     inFlight.current = true;
     dispatch({ type: "requestSave" });
@@ -278,7 +285,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
                     : "Couldn't rename to match the heading. Try a different heading.";
                 setH1RenameError(msg);
                 dispatch({ type: "saveFailed", error: msg });
-                return;
+                return { ok: false };
               }
               if (moveResp.data) {
                 lastNotePath.current = moveResp.data.path;
@@ -301,7 +308,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           (error as { message?: string } | undefined)?.message ??
           "save failed";
         dispatch({ type: "saveFailed", error: msg });
-        return;
+        return { ok: false };
       }
       if (h1Changed) {
         await refreshTree();
@@ -317,11 +324,13 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       savedTimer.current = window.setTimeout(() => {
         dispatch({ type: "savedTimerExpired" });
       }, SAVED_STICKY_MS);
+      return { ok: true };
     } catch (e) {
       dispatch({
         type: "saveFailed",
         error: e instanceof Error ? e.message : String(e),
       });
+      return { ok: false };
     } finally {
       inFlight.current = false;
       if (trailingPending.current) {
@@ -392,6 +401,27 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     }
     void performSave(latestContentRef.current);
   }, [performSave]);
+
+  // flush() — cancel the pending debounce and save synchronously, awaitable by the
+  // tab-close flow so a closing tab never drops mid-debounce edits (TAB-13, D-04).
+  // Rejects when the save fails so the caller can surface a confirm dialog.
+  const flush = useCallback(async () => {
+    if (debounceTimer.current !== null) {
+      window.clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+    if (!userHasEdited.current) return;
+    const { ok } = await performSave(latestContentRef.current);
+    if (!ok) throw new Error("flush failed");
+  }, [performSave]);
+
+  useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = { flush };
+    return () => {
+      flushRef.current = null;
+    };
+  }, [flushRef, flush]);
 
   useEffect(() => {
     return () => {
@@ -550,7 +580,15 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   return (
     <section
       className="flex flex-col h-full bg-bg"
-      style={{ minHeight: 0, overflow: "hidden", position: "relative", ...style }}
+      data-testid="editor-pane"
+      style={{
+        display: hidden ? "none" : "flex",
+        flexDirection: "column",
+        minHeight: 0,
+        overflow: "hidden",
+        position: "relative",
+        ...style,
+      }}
     >
       {loadStatus === "error" && (
         <div className="px-4 text-destructive" role="alert">
@@ -668,8 +706,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           </button>
         </div>
       )}
-      {/* deletion banner — informational only; content is never cleared */}
-      {deletedBanner?.visible && (
+      {/* deletion banner — informational only; content is never cleared.
+          Suppressed when isDeleted: the tab pill's "(deleted)" indicator is the
+          single source of that signal under the tab model (D-10). */}
+      {!isDeleted && deletedBanner?.visible && (
         <div className="px-4" role="alert" data-testid="deleted-banner">
           <span>This note was deleted in another session</span>
           <button
@@ -708,6 +748,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           onH1Change={handleEditorH1Change}
           onSaveRequested={handleSaveRequested}
           onBlur={handleEditorBlur}
+          readOnly={isDeleted}
         />
       </div>
     </section>
