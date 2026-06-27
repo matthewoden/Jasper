@@ -730,11 +730,15 @@ func TestTrash_CollisionCanonical(t *testing.T) {
 
 // TestTrash_RejectsEscape: a relPath that would resolve outside dataDir returns
 // a Canonicalize escape error, and nothing is moved.
+//
+// "../../etc/x" joined with "notes" produces "../etc/x" after filepath.Clean,
+// which Canonicalize(dataDir, …) rejects with ErrPathEscape because the cleaned
+// path starts with "..".
 func TestTrash_RejectsEscape(t *testing.T) {
 	dataDir := makeTempDataDir(t)
 
-	if _, err := TrashFile(dataDir, "../etc/x"); !errors.Is(err, ErrPathEscape) && !errors.Is(err, ErrNotInRoot) && !errors.Is(err, ErrAbsolutePath) {
-		t.Fatalf("expected canonicalize escape error, got %v", err)
+	if _, err := TrashFile(dataDir, "../../etc/x"); !errors.Is(err, ErrPathEscape) && !errors.Is(err, ErrNotInRoot) && !errors.Is(err, ErrAbsolutePath) {
+		t.Fatalf("expected canonicalize escape error for ../../etc/x, got %v", err)
 	}
 
 	if _, err := TrashFile(dataDir, "/abs/path"); !errors.Is(err, ErrAbsolutePath) {

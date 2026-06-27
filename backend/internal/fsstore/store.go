@@ -95,3 +95,15 @@ func (s *Store) DeleteDir(relPath string, recursive bool) error {
 func (s *Store) MoveDir(oldRelPath, newRelPath string) error {
 	return MoveDir(s.root, oldRelPath, newRelPath)
 }
+
+// TrashFile moves a note file from notes/<relPath> into <dataDir>/.trash/,
+// flattening the source folder path (D-02). Returns the trashName assigned.
+func (s *Store) TrashFile(relPath string) (string, error) {
+	return TrashFile(s.dataDir, relPath)
+}
+
+// TrashDir moves a folder from notes/<relPath> into <dataDir>/.trash/ with
+// the full subtree intact (D-03). Returns the trashName assigned.
+func (s *Store) TrashDir(relPath string) (string, error) {
+	return TrashDir(s.dataDir, relPath)
+}

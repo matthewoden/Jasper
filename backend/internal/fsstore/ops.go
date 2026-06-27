@@ -9,6 +9,11 @@ import (
 	"strings"
 )
 
+// maxTrashSuffix is the upper bound on the collision-suffix loop to prevent
+// unbounded iteration (D-04 / T-14-04: single-user, local-only; pathological
+// counts are not a realistic threat).
+const maxTrashSuffix = 10_000
+
 // Sentinel errors for the CRUD primitives. Callers gate via errors.Is.
 var (
 	// ErrCaseCollision is returned when a create/move target already exists
@@ -269,4 +274,156 @@ func isPathInside(child, parent string) bool {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// TrashFile moves a single note file from notes/<relPath> into <dataDir>/.trash/,
+// flattening the source folder path (D-02). If a same-named file already exists
+// in .trash/ it appends a numeric suffix in Obsidian format (foo 1.md, foo 2.md)
+// — never overwrites (TRASH-04). Returns the trashName (basename only, e.g. "foo.md").
+//
+// All paths are routed through Canonicalize(dataDir, ...) so path-escape and
+// symlink attacks are rejected (T-14-01). relPath must be a non-empty relative
+// path (no leading slash, no ".." that escapes notes/).
+func TrashFile(dataDir, relPath string) (string, error) {
+	if err := validateTrashRelPath(relPath); err != nil {
+		return "", fmt.Errorf("fsstore.TrashFile(%q): %w", relPath, err)
+	}
+
+	stem := strings.TrimSuffix(filepath.Base(filepath.ToSlash(relPath)), ".md")
+	ext := ".md"
+
+	name, err := destTrashName(dataDir, stem, ext)
+	if err != nil {
+		return "", fmt.Errorf("fsstore.TrashFile(%q): name: %w", relPath, err)
+	}
+
+	srcRel := filepath.ToSlash(filepath.Join("notes", relPath))
+	dstRel := filepath.ToSlash(filepath.Join(".trash", name))
+
+	if err := moveWithinDataDir(dataDir, srcRel, dstRel); err != nil {
+		return "", fmt.Errorf("fsstore.TrashFile(%q): %w", relPath, err)
+	}
+	return name, nil
+}
+
+// TrashDir moves a folder from notes/<relPath> into <dataDir>/.trash/ with the
+// full subtree intact (D-03). If a same-named folder already exists in .trash/
+// it appends a numeric suffix (projects 1, projects 2). Returns the trashName
+// (e.g. "projects" or "projects 1").
+func TrashDir(dataDir, relPath string) (string, error) {
+	if err := validateTrashRelPath(relPath); err != nil {
+		return "", fmt.Errorf("fsstore.TrashDir(%q): %w", relPath, err)
+	}
+
+	stem := filepath.Base(filepath.ToSlash(relPath))
+	ext := ""
+
+	name, err := destTrashName(dataDir, stem, ext)
+	if err != nil {
+		return "", fmt.Errorf("fsstore.TrashDir(%q): name: %w", relPath, err)
+	}
+
+	srcRel := filepath.ToSlash(filepath.Join("notes", relPath))
+	dstRel := filepath.ToSlash(filepath.Join(".trash", name))
+
+	if err := moveWithinDataDir(dataDir, srcRel, dstRel); err != nil {
+		return "", fmt.Errorf("fsstore.TrashDir(%q): %w", relPath, err)
+	}
+	return name, nil
+}
+
+// validateTrashRelPath performs early path validation before constructing the
+// notes/-prefixed source relpath. filepath.Join silently absorbs absolute paths
+// and ".." components, so we must check the raw relPath before joining.
+func validateTrashRelPath(relPath string) error {
+	if relPath == "" {
+		return ErrEmptyPath
+	}
+	if filepath.IsAbs(relPath) {
+		return ErrAbsolutePath
+	}
+	// Check for ".." escape. filepath.Clean then check for leading "..".
+	cleaned := filepath.Clean(relPath)
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return ErrPathEscape
+	}
+	return nil
+}
+
+// moveWithinDataDir is structurally identical to MoveFile but rooted at
+// dataDir instead of notesDir, allowing both source (under notes/) and
+// destination (under .trash/) to be expressed as relpaths under the same root.
+// The pre-rename os.Stat guard (no-overwrite) and fsync-parent are preserved
+// from MoveFile (TRASH-04 + data durability).
+func moveWithinDataDir(dataDir, srcRel, dstRel string) error {
+	srcAbs, err := Canonicalize(dataDir, srcRel)
+	if err != nil {
+		return fmt.Errorf("moveWithinDataDir(src=%q): %w", srcRel, err)
+	}
+	dstAbs, err := Canonicalize(dataDir, dstRel)
+	if err != nil {
+		return fmt.Errorf("moveWithinDataDir(dst=%q): %w", dstRel, err)
+	}
+
+	// Authoritative no-overwrite guard (T-14-02): os.Rename on POSIX overwrites
+	// file targets silently; the pre-stat prevents silent data loss.
+	if _, statErr := os.Stat(dstAbs); statErr == nil {
+		return fmt.Errorf("moveWithinDataDir(%q→%q): %w", srcRel, dstRel, ErrCaseCollision)
+	} else if !errors.Is(statErr, fs.ErrNotExist) {
+		return fmt.Errorf("moveWithinDataDir(%q→%q): stat dst: %w", srcRel, dstRel, statErr)
+	}
+
+	dstParent := filepath.Dir(dstAbs)
+	if _, err := os.Stat(dstParent); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("moveWithinDataDir(%q→%q): %w", srcRel, dstRel, ErrParentNotFound)
+		}
+		return fmt.Errorf("moveWithinDataDir(%q→%q): stat dst parent: %w", srcRel, dstRel, err)
+	}
+
+	if err := os.Rename(srcAbs, dstAbs); err != nil {
+		return fmt.Errorf("moveWithinDataDir(%q→%q): rename: %w", srcRel, dstRel, err)
+	}
+
+	dirf, err := os.Open(dstParent)
+	if err != nil {
+		return fmt.Errorf("moveWithinDataDir(%q→%q): open parent for fsync: %w", srcRel, dstRel, err)
+	}
+	if err := dirf.Sync(); err != nil {
+		_ = dirf.Close()
+		return fmt.Errorf("moveWithinDataDir(%q→%q): fsync parent: %w", srcRel, dstRel, err)
+	}
+	if err := dirf.Close(); err != nil {
+		return fmt.Errorf("moveWithinDataDir(%q→%q): close parent: %w", srcRel, dstRel, err)
+	}
+	return nil
+}
+
+// destTrashName returns the first free filename candidate in <dataDir>/.trash/
+// for an item with the given stem and ext. The first candidate is stem+ext; if
+// it exists the loop produces "stem 1"+ext, "stem 2"+ext, … up to maxTrashSuffix.
+//
+// Existence is checked by resolving Canonicalize(dataDir, ".trash/<candidate>")
+// then os.Stat, so the comparison is NFC+lowercase-aware (T-14-03 / RESEARCH Q2).
+func destTrashName(dataDir, stem, ext string) (string, error) {
+	for i := 0; i <= maxTrashSuffix; i++ {
+		var candidate string
+		if i == 0 {
+			candidate = stem + ext
+		} else {
+			candidate = fmt.Sprintf("%s %d%s", stem, i, ext)
+		}
+		rel := filepath.ToSlash(filepath.Join(".trash", candidate))
+		abs, err := Canonicalize(dataDir, rel)
+		if err != nil {
+			return "", fmt.Errorf("destTrashName: canonicalize %q: %w", rel, err)
+		}
+		if _, err := os.Stat(abs); errors.Is(err, fs.ErrNotExist) {
+			return candidate, nil
+		} else if err != nil {
+			return "", fmt.Errorf("destTrashName: stat %q: %w", abs, err)
+		}
+		// candidate exists — try next suffix
+	}
+	return "", fmt.Errorf("destTrashName: exceeded %d collision suffixes for %q", maxTrashSuffix, stem+ext)
 }
