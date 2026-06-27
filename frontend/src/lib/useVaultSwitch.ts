@@ -9,6 +9,7 @@
  * connection drops during teardown).
  */
 
+import { useTabStore } from "./useTabStore";
 import { useTreeStore } from "./useTreeStore";
 
 export function useVaultSwitch() {
@@ -27,6 +28,9 @@ export function useVaultSwitch() {
     markSwitching: (name: string) => {
       useTreeStore.getState().setActiveNote(null);
       useTreeStore.getState().setActiveFilePath(null);
+      // Drop this vault's tabs before the reload so the new vault's session
+      // never inherits cross-vault tabs (D-09/TAB-10, threat T-15-03b).
+      useTabStore.getState().clearAllTabs();
 
       setSwitching({ active: true, targetName: name });
       setTimeout(() => {
