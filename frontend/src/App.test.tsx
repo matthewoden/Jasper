@@ -645,7 +645,7 @@ describe("<App /> — session sync", () => {
 });
 
 
-describe("<App /> — two-row grid + chrome mounts", () => {
+describe("<App /> — three-row grid + chrome mounts", () => {
   beforeEach(() => {
     getAdminStatusMock.mockReset();
     postAdminReindexMock.mockReset();
@@ -674,13 +674,13 @@ describe("<App /> — two-row grid + chrome mounts", () => {
     expect(screen.getByTestId("status-bar")).toBeInTheDocument();
   });
 
-  it("A6.6-3: two-row grid — gridTemplateRows is 'auto minmax(0, 1fr)'", async () => {
+  it("A6.6-3: three-row grid — gridTemplateRows is 'auto auto minmax(0, 1fr)'", async () => {
     render(<AppShell />);
     const grid = document.querySelector(
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
     expect(grid).not.toBeNull();
-    expect(grid!.style.gridTemplateRows).toBe("auto minmax(0, 1fr)");
+    expect(grid!.style.gridTemplateRows).toBe("auto auto minmax(0, 1fr)");
   });
 
   it("A6.6-4: when notesSidebarVisible=true, sidebar column is sidebarWidth px (260px default)", async () => {

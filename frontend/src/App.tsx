@@ -4,7 +4,14 @@
  * in ReindexProgress.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type MutableRefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { vaultApi } from "./lib/vaultApi";
 import { VaultPicker } from "./components/VaultPicker";
 import { switchVaultCommand } from "./lib/commands/registerVaultCommands";
@@ -12,6 +19,7 @@ import { switchVaultCommand } from "./lib/commands/registerVaultCommands";
 import { RightRail } from "./components/RightRail";
 import { CommandMenu } from "./components/CommandMenu";
 import { EditorPane, type EditorPaneHandlers } from "./components/EditorPane";
+import { FlushConfirmDialog } from "./components/FlushConfirmDialog";
 import { KeyboardShortcutsDialog } from "./components/KeyboardShortcutsDialog";
 import { MigrationBanner } from "./components/MigrationBanner";
 import { RenameRewriteErrorBanner, type RewriteError } from "./components/RenameRewriteErrorBanner";
@@ -19,6 +27,7 @@ import { ReindexProgress } from "./components/ReindexProgress";
 import { ResetAndRebuildDialog } from "./components/ResetAndRebuildDialog";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
+import { TabStrip } from "./components/TabStrip";
 import { TopBar } from "./components/TopBar";
 import { ToastProvider } from "./components/Toast";
 import { postAdminReindex } from "./lib/adminApi";
@@ -30,6 +39,11 @@ import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
 import { useVaultSwitch } from "./lib/useVaultSwitch";
 import { VaultSwitchOverlay } from "./components/VaultSwitchOverlay";
 import { useTreeStore } from "./lib/useTreeStore";
+import {
+  pruneTabsForMissingNotes,
+  useTabStore,
+} from "./lib/useTabStore";
+import { useTreeMutations } from "./lib/useTreeMutations";
 import {
   handleAppCmdB,
   handleAppCmdI,
@@ -63,6 +77,36 @@ function findActiveNotePath(
   return null;
 }
 
+/** Live note title by UUID for a tab pill (TAB-12 — follows server-side renames). */
+function findNoteTitle(
+  nodes: ReadonlyArray<TreeNode>,
+  id: string,
+): string | null {
+  for (const node of nodes) {
+    if (node.kind === "note" && node.id === id) return node.title;
+    if (node.kind === "folder" && Array.isArray(node.children)) {
+      const found = findNoteTitle(node.children, id);
+      if (found !== null) return found;
+    }
+  }
+  return null;
+}
+
+function parentDir(path: string): string {
+  const i = path.lastIndexOf("/");
+  return i === -1 ? "" : path.slice(0, i);
+}
+
+/** Collect every note UUID present in the tree (for tab pruning). */
+function collectNoteIds(nodes: ReadonlyArray<TreeNode>, acc: Set<string>): void {
+  for (const node of nodes) {
+    if (node.kind === "note") acc.add(node.id);
+    else if (node.kind === "folder" && Array.isArray(node.children)) {
+      collectNoteIds(node.children, acc);
+    }
+  }
+}
+
 
 type ReindexPhase =
   | "idle"
@@ -84,12 +128,18 @@ type BootState = "loading" | "noVault" | "vaultOpen";
 
 function BootGate() {
   const [state, setState] = useState<BootState>("loading");
+  const [vaultPath, setVaultPath] = useState<string | null>(null);
 
   useEffect(() => {
     vaultApi
       .getCurrent()
       .then((current) => {
-        setState(current === null ? "noVault" : "vaultOpen");
+        if (current === null) {
+          setState("noVault");
+        } else {
+          setVaultPath(current.path);
+          setState("vaultOpen");
+        }
       })
       .catch(() => setState("noVault"));
   }, []);
@@ -98,7 +148,7 @@ function BootGate() {
   if (state === "noVault") return <VaultPicker mode="boot" />;
   return (
     <ToastProvider>
-      <AppInner />
+      <AppInner vaultPath={vaultPath} />
     </ToastProvider>
   );
 }
@@ -117,7 +167,12 @@ export default function App() {
 }
 
 
-export function AppInner() {
+interface AppInnerProps {
+  /** Stable vault id for per-vault tab persistence; null in the AppShell test path. */
+  vaultPath?: string | null;
+}
+
+export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reindexPhase, setReindexPhase] = useState<ReindexPhase>("idle");
   const [reindexError, setReindexError] = useState<string | undefined>();
@@ -135,7 +190,47 @@ export function AppInner() {
   const cheatSheetOpen = useTreeStore((s) => s.cheatSheetOpen);
   const setCheatSheetOpen = useTreeStore((s) => s.setCheatSheetOpen);
 
-  const editorHandlersRef = useRef<EditorPaneHandlers | null>(null);
+  // --- Tab system state (Plan 05) ----------------------------------------
+  const tabs = useTabStore((s) => s.tabs);
+  const tabActiveTabId = useTabStore((s) => s.activeTabId);
+  const deletedTabIds = useTabStore((s) => s.deletedTabIds);
+  const setActiveTab = useTabStore((s) => s.setActiveTab);
+  const closeTab = useTabStore((s) => s.closeTab);
+  const reorderTabs = useTabStore((s) => s.reorderTabs);
+
+  const activeTab = tabs.find((t) => t.id === tabActiveTabId) ?? null;
+
+  // One handler ref + one flush ref per open tab so WS fan-out (D-01) and
+  // flush-on-close (TAB-13) address each keep-alive EditorPane individually.
+  const tabHandlerRefs = useRef<
+    Record<string, MutableRefObject<EditorPaneHandlers | null>>
+  >({});
+  const tabFlushRefs = useRef<
+    Record<string, MutableRefObject<{ flush: () => Promise<void> } | null>>
+  >({});
+
+  // Each render, ensure a ref pair exists for every open tab and drop refs for
+  // tabs that have closed (PATTERNS Section 2).
+  for (const tab of tabs) {
+    if (!tabHandlerRefs.current[tab.id]) {
+      tabHandlerRefs.current[tab.id] = { current: null };
+    }
+    if (!tabFlushRefs.current[tab.id]) {
+      tabFlushRefs.current[tab.id] = { current: null };
+    }
+  }
+  for (const id of Object.keys(tabHandlerRefs.current)) {
+    if (!tabs.some((t) => t.id === id)) {
+      delete tabHandlerRefs.current[id];
+      delete tabFlushRefs.current[id];
+    }
+  }
+
+  // Flush-confirm dialog state: set when an on-close flush rejects (D-04).
+  const [flushConfirm, setFlushConfirm] = useState<{
+    tabId: string;
+    filename: string;
+  } | null>(null);
 
   const { config } = useConfig();
 
@@ -156,10 +251,18 @@ export function AppInner() {
   const sessionSyncHandlers: SessionSyncHandlers = useMemo(
     () => ({
       onNoteUpdated: (p) => {
-        editorHandlersRef.current?.onNoteUpdated(p);
+        // Fan out to every open tab's editor; each EditorPane's internal
+        // p.id !== noteIdRef guard ignores events for other notes (D-01).
+        for (const ref of Object.values(tabHandlerRefs.current)) {
+          ref.current?.onNoteUpdated(p);
+        }
       },
       onNoteDeleted: (p) => {
-        editorHandlersRef.current?.onNoteDeleted(p);
+        for (const ref of Object.values(tabHandlerRefs.current)) {
+          ref.current?.onNoteDeleted(p);
+        }
+        // Freeze the matching tab read-only for the rest of the session (D-10).
+        useTabStore.getState().markDeleted(p.id);
       },
       onReindexStarted: () => {
         setReindexPhase("starting");
@@ -260,8 +363,134 @@ export function AppInner() {
 
   const { reveal } = useReveal();
   const { tree } = useFileTree();
+  const { createNote } = useTreeMutations();
 
   useDeepLink(tree !== null);
+
+  // --- Tab ↔ tree synchronization & persistence (Plan 05) ----------------
+
+  // Keep useTreeStore.activeNoteId mirrored to the active tab so the tree
+  // highlight, breadcrumbs, and backlinks rail follow tab switches (RESEARCH OQ#3).
+  // Only mirror while at least one tab is open: with no tabs the legacy
+  // activeNoteId drives the single fallback pane and must be left untouched.
+  const activeTabNoteId = activeTab?.noteId ?? null;
+  const hasTabs = tabs.length > 0;
+  useEffect(() => {
+    if (!hasTabs) return;
+    useTreeStore.getState().setActiveNote(activeTabNoteId);
+  }, [activeTabNoteId, hasTabs]);
+
+  // Hydrate per-vault tab state once the vault is resolved (D-08/D-11). The tab
+  // key is vault-scoped, so this can only run after BootGate hands us the path.
+  useEffect(() => {
+    if (vaultPath === null) return;
+    useTabStore.getState().initForVault(vaultPath);
+  }, [vaultPath]);
+
+  // After the first tree fetch, drop any persisted tab whose note no longer
+  // exists in this vault (deleted-on-disk, or a stale UUID from another vault).
+  // Deleted-session tabs are retained by pruneTabsForMissingNotes itself (D-10).
+  const prunedRef = useRef(false);
+  useEffect(() => {
+    if (prunedRef.current || tree === null) return;
+    prunedRef.current = true;
+    const notes = new Set<string>();
+    collectNoteIds(tree.root, notes);
+    pruneTabsForMissingNotes(notes);
+  }, [tree]);
+
+  // titleForTab — live note title by UUID (TAB-12). Falls back to a stable
+  // placeholder when the tree hasn't loaded the note yet.
+  const titleForTab = useCallback(
+    (noteId: string): string =>
+      (tree && findNoteTitle(tree.root, noteId)) ?? "Untitled",
+    [tree],
+  );
+
+  // flushAndClose — persist a closing tab's pending edits before removal (TAB-13).
+  // A deleted tab is frozen read-only, so it has nothing to flush (D-10).
+  // On flush rejection, surface the confirm dialog rather than dropping edits (D-04).
+  const flushAndClose = useCallback(
+    async (tabId: string): Promise<void> => {
+      const tab = useTabStore.getState().tabs.find((t) => t.id === tabId);
+      if (tab === undefined) return;
+      if (useTabStore.getState().deletedTabIds.has(tab.noteId)) {
+        closeTab(tabId);
+        return;
+      }
+      try {
+        await tabFlushRefs.current[tabId]?.current?.flush();
+        closeTab(tabId);
+      } catch {
+        const filename = titleForTab(tab.noteId);
+        setFlushConfirm({ tabId, filename });
+        // Re-throw so a sequential bulk loop pauses on the unresolved decision.
+        throw new Error("flush failed");
+      }
+    },
+    [closeTab, titleForTab],
+  );
+
+  // Bulk closes run SEQUENTIALLY (Pitfall 7 — never Promise.all): each dirty tab
+  // flushes and resolves before the next starts, so the confirm dialog (if any)
+  // is handled one tab at a time. A rejected flush aborts the remaining loop.
+  const closeOthers = useCallback(
+    (tabId: string): void => {
+      void (async () => {
+        const targets = useTabStore
+          .getState()
+          .tabs.filter((t) => t.id !== tabId)
+          .map((t) => t.id);
+        for (const id of targets) {
+          try {
+            await flushAndClose(id);
+          } catch {
+            return; // stop on the first unresolved flush (dialog now open)
+          }
+        }
+      })();
+    },
+    [flushAndClose],
+  );
+
+  const closeToRight = useCallback(
+    (tabId: string): void => {
+      void (async () => {
+        const all = useTabStore.getState().tabs;
+        const idx = all.findIndex((t) => t.id === tabId);
+        if (idx === -1) return;
+        const targets = all.slice(idx + 1).map((t) => t.id);
+        for (const id of targets) {
+          try {
+            await flushAndClose(id);
+          } catch {
+            return;
+          }
+        }
+      })();
+    },
+    [flushAndClose],
+  );
+
+  // onOpenRight — create a new note beside the context tab's note and open it.
+  const openRight = useCallback(
+    (tabId: string): void => {
+      const tab = useTabStore.getState().tabs.find((t) => t.id === tabId);
+      if (tab === undefined || tree === null) return;
+      const notePath = findActiveNotePath(tree.root, tab.noteId);
+      const parent = notePath !== null ? parentDir(notePath) : "";
+      void (async () => {
+        try {
+          const created = await createNote(parent, "untitled");
+          useTabStore.getState().openTab(created.id);
+        } catch {
+          // Creation failures surface via the shared tree-mutation toast path;
+          // nothing tab-specific to recover here.
+        }
+      })();
+    },
+    [tree, createNote],
+  );
 
   const commandActions: CommandActions = useMemo(
     () => ({
@@ -386,15 +615,29 @@ export function AppInner() {
         open={cheatSheetOpen}
         onOpenChange={setCheatSheetOpen}
       />
-      {/* Two-row grid. Row 1: TopBar (col 2 only). Row 2: EditorPane (col 2).
-          Sidebar + RightRail span both rows (gridRow "1/3").
-          StatusBar sits below the grid as a flex child — full app width.
-          Two-row grid avoids position:sticky inside overflow:hidden. */}
+      {/* Flush-on-close confirm dialog (TAB-13 / D-04). Shown only when an
+          on-close flush save rejected; the user explicitly keeps or drops edits. */}
+      <FlushConfirmDialog
+        open={flushConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setFlushConfirm(null);
+        }}
+        filename={flushConfirm?.filename ?? ""}
+        onKeepEditing={() => setFlushConfirm(null)}
+        onCloseWithoutSaving={() => {
+          if (flushConfirm !== null) closeTab(flushConfirm.tabId);
+          setFlushConfirm(null);
+        }}
+      />
+      {/* Three-row grid. Row 1: TopBar (col 2). Row 2: TabStrip (col 2).
+          Row 3: editor host (col 2). Sidebar + RightRail span all three rows
+          (gridRow "1/4"). StatusBar sits below the grid as a flex child.
+          The fixed-track grid avoids position:sticky inside overflow:hidden. */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: `${notesSidebarVisible ? sidebarWidth : 0}px 1fr ${backlinksRailExpanded ? backlinksRailWidth : 0}px`,
-          gridTemplateRows: "auto minmax(0, 1fr)",
+          gridTemplateRows: "auto auto minmax(0, 1fr)",
           flex: 1,
           minHeight: 0,
           overflow: "hidden",
@@ -403,34 +646,65 @@ export function AppInner() {
         {/* TopBar: row 1, column 2 — editor pane width only */}
         <TopBar style={{ gridRow: "1", gridColumn: "2" }} />
 
-        {/* Sidebar: spans both rows (gridRow 1/3) — column 1 */}
-        <Sidebar
-          style={{ gridRow: "1 / 3", gridColumn: "1" }}
-          onSelectNote={(id) => useTreeStore.getState().setActiveNote(id)}
+        {/* TabStrip: row 2, column 2. Renders nothing when no tabs are open. */}
+        <TabStrip
+          style={{ gridRow: "2", gridColumn: "2" }}
+          tabs={tabs}
+          activeTabId={tabActiveTabId}
+          deletedTabIds={deletedTabIds}
+          titleForTab={titleForTab}
+          onSelectTab={setActiveTab}
+          onRequestClose={(id) => void flushAndClose(id)}
+          onCloseOthers={closeOthers}
+          onCloseToRight={closeToRight}
+          onOpenRight={openRight}
+          onReorder={reorderTabs}
         />
 
-        {/* Editor/reindex: row 2, column 2 */}
+        {/* Sidebar: spans all three rows (gridRow 1/4) — column 1.
+            Selecting a note opens it as a tab (TAB-01/02). */}
+        <Sidebar
+          style={{ gridRow: "1 / 4", gridColumn: "1" }}
+          onSelectNote={(id) => useTabStore.getState().openTab(id)}
+        />
+
+        {/* Editor host: row 3, column 2. One keep-alive EditorPane per open tab,
+            all hidden except the active one (D-01). When no tabs are open, a single
+            pane driven by the legacy activeNoteId renders the placeholder/empty state. */}
         {reindexing ? (
           <ReindexProgress
-            style={{ gridRow: "2", gridColumn: "2" }}
+            style={{ gridRow: "3", gridColumn: "2" }}
             phase={reindexPhase}
             errorMessage={reindexError}
             onRetry={fireReindex}
             onClose={onCloseOverlay}
           />
-        ) : (
+        ) : tabs.length === 0 ? (
           <EditorPane
-            style={{ gridRow: "2", gridColumn: "2" }}
+            style={{ gridRow: "3", gridColumn: "2" }}
             noteId={activeNoteId}
             reindexing={false}
-            editorHandlersRef={editorHandlersRef}
             autosaveMs={config?.editor.autosaveMs ?? 2000}
           />
+        ) : (
+          tabs.map((tab) => (
+            <EditorPane
+              key={tab.id}
+              style={{ gridRow: "3", gridColumn: "2" }}
+              noteId={tab.noteId}
+              hidden={tab.id !== tabActiveTabId}
+              isDeleted={deletedTabIds.has(tab.noteId)}
+              reindexing={false}
+              editorHandlersRef={tabHandlerRefs.current[tab.id]}
+              flushRef={tabFlushRefs.current[tab.id]}
+              autosaveMs={config?.editor.autosaveMs ?? 2000}
+            />
+          ))
         )}
 
-        {/* RightRail: spans both rows (gridRow 1/3) — column 3 */}
+        {/* RightRail: spans all three rows (gridRow 1/4) — column 3 */}
         <RightRail
-          style={{ gridRow: "1 / 3", gridColumn: "3" }}
+          style={{ gridRow: "1 / 4", gridColumn: "3" }}
           activeNoteId={activeNoteId}
         />
       </div>
