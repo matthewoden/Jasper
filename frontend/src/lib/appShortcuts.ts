@@ -120,13 +120,16 @@ export function handleAppCmdShiftD(e: KeyboardEvent): void {
 /**
  * Alt+T — open a new untitled note as a tab (bootstrap path; tab-new).
  *
- * The !metaKey && !ctrlKey guard exists so plain Alt+T never collides with the
- * Cmd+Alt+T Tags-panel toggle in handleAppPanelShortcuts (which requires a
- * meta/ctrl modifier). No tab-count check: Alt+T must work from a zero-tab
- * state, since it is the only keyboard way to create the first tab.
+ * Matches the PHYSICAL KeyT code, not the produced key value: on macOS Option+T
+ * emits key:"†" (a dead-key char) while still reporting code:"KeyT". Guarding on
+ * e.code lets Option+T fire newTab AND preventDefault, so the "†" never types
+ * into CodeMirror. The !metaKey && !ctrlKey guard keeps plain Alt+T disjoint from
+ * the Cmd+Alt+T Tags-panel toggle in handleAppPanelShortcuts. No tab-count check:
+ * Alt+T must work from a zero-tab state, since it is the only keyboard way to
+ * create the first tab.
  */
 export function handleAppAltT(e: KeyboardEvent): void {
-  if (!(e.altKey && !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === "t")) {
+  if (!(e.altKey && !e.metaKey && !e.ctrlKey && e.code === "KeyT")) {
     return;
   }
   e.preventDefault();
