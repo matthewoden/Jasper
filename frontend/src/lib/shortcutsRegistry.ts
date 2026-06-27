@@ -126,6 +126,14 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inCheatSheet: true,
   },
   {
+    id: "tab-new",
+    label: "New tab",
+    group: "Navigation",
+    shortcut: "⌥T",
+    inPalette: false,
+    inCheatSheet: true,
+  },
+  {
     id: "focus-search",
     label: "Search notes",
     group: "Palette",

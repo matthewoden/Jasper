@@ -7,7 +7,7 @@
 import { useTreeStore } from "./useTreeStore";
 
 
-export type Phase7DispatchEvent = "openToday";
+export type Phase7DispatchEvent = "openToday" | "newTab";
 
 const phase7Subscribers = new Set<(ev: Phase7DispatchEvent) => void>();
 
@@ -115,6 +115,23 @@ export function handleAppCmdShiftD(e: KeyboardEvent): void {
   e.preventDefault();
   e.stopPropagation();
   dispatchPhase7("openToday");
+}
+
+/**
+ * Alt+T — open a new untitled note as a tab (bootstrap path; tab-new).
+ *
+ * The !metaKey && !ctrlKey guard exists so plain Alt+T never collides with the
+ * Cmd+Alt+T Tags-panel toggle in handleAppPanelShortcuts (which requires a
+ * meta/ctrl modifier). No tab-count check: Alt+T must work from a zero-tab
+ * state, since it is the only keyboard way to create the first tab.
+ */
+export function handleAppAltT(e: KeyboardEvent): void {
+  if (!(e.altKey && !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === "t")) {
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  dispatchPhase7("newTab");
 }
 
 /**
