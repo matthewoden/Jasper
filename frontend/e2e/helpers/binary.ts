@@ -84,18 +84,39 @@ async function findFreePort(): Promise<number> {
   });
 }
 
-async function waitForReady(baseURL: string, deadlineMs: number): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < deadlineMs) {
-    try {
-      const r = await fetch(`${baseURL}/api/v1/admin/status`);
-      if (r.status === 200) return;
-    } catch {
-      // not yet listening
+async function waitForReadyOrExit(
+  proc: ChildProcess,
+  baseURL: string,
+  deadlineMs: number,
+): Promise<void> {
+  let exited = false;
+  let exitInfo = "";
+  const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+    exited = true;
+    exitInfo = `code=${code} signal=${signal}`;
+  };
+  proc.once("exit", onExit);
+  try {
+    const start = Date.now();
+    while (Date.now() - start < deadlineMs) {
+      // If the binary lost the port race it exits immediately; abort fast and
+      // let the caller retry on a fresh port instead of polling a dead process
+      // for the full deadline.
+      if (exited) {
+        throw new Error(`jasper exited before becoming ready at ${baseURL} (${exitInfo})`);
+      }
+      try {
+        const r = await fetch(`${baseURL}/api/v1/admin/status`);
+        if (r.status === 200) return;
+      } catch {
+        // not yet listening
+      }
+      await new Promise((r) => setTimeout(r, 100));
     }
-    await new Promise((r) => setTimeout(r, 100));
+    throw new Error(`jasper did not become ready at ${baseURL} within ${deadlineMs}ms`);
+  } finally {
+    proc.removeListener("exit", onExit);
   }
-  throw new Error(`jasper did not become ready at ${baseURL} within ${deadlineMs}ms`);
 }
 
 async function killProcess(proc: ChildProcess): Promise<void> {
@@ -129,59 +150,77 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..");
  */
 async function spawnJasperInternal(opts: { dataDir?: string; port?: number; mcpPort?: number; ownsDataDir: boolean; env?: NodeJS.ProcessEnv }): Promise<JasperHandle> {
   const dataDir = opts.dataDir ?? await mkdtemp(path.join(tmpdir(), "jasper-e2e-"));
-  const port = opts.port ?? await findFreePort();
-  // Each binary binds its MCP listener to its own ephemeral port (via the
-  // JASPER_MCP_PORT override) instead of the fixed default 6684. This removes
-  // the shared-singleton contention that previously required a cross-process
-  // file lock, so MCP tests run fully parallel and deterministic.
-  const mcpPort = opts.mcpPort ?? await findFreePort();
   const ownsDataDir = opts.ownsDataDir;
   const binPath = path.join(repoRoot, "bin", "jasper");
-  const proc = spawn(
-    binPath,
-    [
-      "serve",
-      "--vault",
-      dataDir,
-      "--bind",
-      `127.0.0.1:${port}`,
-    ],
-    {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, ...(opts.env ?? {}), JASPER_MCP_PORT: String(mcpPort) },
-    },
-  );
-  proc.stdout?.on("data", (b) => {
-    process.stderr.write(`[jasper] ${b}`);
-  });
-  proc.stderr?.on("data", (b) => {
-    process.stderr.write(`[jasper] ${b}`);
-  });
-  const baseURL = `http://127.0.0.1:${port}`;
-  try {
-    await waitForReady(baseURL, READINESS_TIMEOUT_MS);
-  } catch (e) {
-    proc.kill("SIGTERM");
-    if (ownsDataDir) {
-      await rm(dataDir, { recursive: true, force: true });
+
+  // Bounded spawn-retry. findFreePort() binds :0 then closes the socket before
+  // returning the port, leaving a TOCTOU window where another parallel worker
+  // (or this call's second findFreePort) can claim the same port before the
+  // binary binds it. The loser exits immediately; retry on freshly-allocated
+  // ports instead of surfacing a flake (harness header: "add a retry loop in
+  // the spawn path"). Each binary also binds its MCP listener to its own
+  // ephemeral port via JASPER_MCP_PORT, so MCP tests stay fully parallel.
+  // Caller-pinned ports (restart()) are kept as-is and not retried-randomized.
+  const MAX_ATTEMPTS = 5;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const port = opts.port ?? await findFreePort();
+    const mcpPort = opts.mcpPort ?? await findFreePort();
+    const proc = spawn(
+      binPath,
+      [
+        "serve",
+        "--vault",
+        dataDir,
+        "--bind",
+        `127.0.0.1:${port}`,
+      ],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, ...(opts.env ?? {}), JASPER_MCP_PORT: String(mcpPort) },
+      },
+    );
+    proc.stdout?.on("data", (b) => {
+      process.stderr.write(`[jasper] ${b}`);
+    });
+    proc.stderr?.on("data", (b) => {
+      process.stderr.write(`[jasper] ${b}`);
+    });
+    const baseURL = `http://127.0.0.1:${port}`;
+    try {
+      await waitForReadyOrExit(proc, baseURL, READINESS_TIMEOUT_MS);
+    } catch (e) {
+      lastErr = e;
+      // Skip the SIGTERM/await if the process already exited (the common
+      // bind-race case) so retries stay fast.
+      if (proc.exitCode === null && proc.signalCode === null) {
+        await killProcess(proc);
+      }
+      // Re-allocating ports cannot help a caller-pinned port — fail fast.
+      if (opts.port !== undefined) break;
+      continue;
     }
-    throw e;
+
+    const kill = async () => {
+      await killProcess(proc);
+      if (ownsDataDir) {
+        await rm(dataDir, { recursive: true, force: true });
+      }
+    };
+
+    const restart = async (): Promise<JasperHandle> => {
+      await killProcess(proc);
+      await new Promise((r) => setTimeout(r, 200));
+      return spawnJasperInternal({ dataDir, port, mcpPort, ownsDataDir, env: opts.env });
+    };
+
+    return { proc, port, mcpPort, dataDir, baseURL, kill, restart };
   }
 
-  const kill = async () => {
-    await killProcess(proc);
-    if (ownsDataDir) {
-      await rm(dataDir, { recursive: true, force: true });
-    }
-  };
-
-  const restart = async (): Promise<JasperHandle> => {
-    await killProcess(proc);
-    await new Promise((r) => setTimeout(r, 200));
-    return spawnJasperInternal({ dataDir, port, mcpPort, ownsDataDir, env: opts.env });
-  };
-
-  return { proc, port, mcpPort, dataDir, baseURL, kill, restart };
+  if (ownsDataDir) {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+  throw lastErr ?? new Error(`jasper did not become ready after ${MAX_ATTEMPTS} attempts`);
 }
 
 export interface SpawnOpts {
