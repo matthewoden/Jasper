@@ -10,6 +10,7 @@ import type { CSSProperties } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { FolderOpen } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
+import { useTabStore } from "../lib/useTabStore";
 import { useFileTree } from "../lib/useFileTree";
 import { useReveal } from "../lib/useReveal";
 import { expandAndScrollToFolder } from "./fileTree.utils";
@@ -142,6 +143,9 @@ export function Breadcrumbs(): React.ReactElement | null {
   );
   const { tree } = useFileTree();
   const { reveal } = useReveal();
+  // TAB-08: cap the breadcrumb at 50% of the TopBar center when tabs are open so
+  // the tab strip's chrome reads as the primary navigation surface.
+  const hasTabs = useTabStore((s) => s.tabs.length > 0);
 
   if (!activeNoteId) return null;
 
@@ -157,7 +161,10 @@ export function Breadcrumbs(): React.ReactElement | null {
   const segments = buildSegments(note.path, displayTitle);
 
   return (
-    <nav aria-label="Note path" style={containerStyle}>
+    <nav
+      aria-label="Note path"
+      style={{ ...containerStyle, maxWidth: hasTabs ? "50%" : undefined }}
+    >
       {segments.map((seg, i) => (
         <React.Fragment key={`${seg.path ?? "root"}:${seg.label}:${i}`}>
           {i > 0 && (

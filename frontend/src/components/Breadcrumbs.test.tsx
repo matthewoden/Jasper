@@ -4,6 +4,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useTreeStore } from "../lib/useTreeStore";
+import { useTabStore } from "../lib/useTabStore";
 
 
 const mockExpandAndScrollToFolder = vi.fn();
@@ -65,6 +66,7 @@ beforeEach(() => {
     liveLabels: {},
     pulseTarget: null,
   });
+  useTabStore.setState({ tabs: [], activeTabId: null });
   mockExpandAndScrollToFolder.mockReset();
   mockUseFileTree.mockReturnValue({
     tree: fakeTree,
@@ -167,5 +169,21 @@ describe("Breadcrumbs", () => {
     render(<Breadcrumbs />);
     const separators = screen.getAllByText("/");
     expect(separators.length).toBe(2);
+  });
+
+  it("T10 (TAB-08): nav is capped at maxWidth 50% when the tab store has tabs", () => {
+    useTreeStore.setState({ activeNoteId: "note-root-uuid", liveLabels: {} });
+    useTabStore.setState({ tabs: [{ id: "x", noteId: "x" }], activeTabId: "x" });
+    render(<Breadcrumbs />);
+    const nav = screen.getByRole("navigation", { name: "Note path" });
+    expect(nav.style.maxWidth).toBe("50%");
+  });
+
+  it("T11 (TAB-08): nav has no maxWidth cap when there are no tabs", () => {
+    useTreeStore.setState({ activeNoteId: "note-root-uuid", liveLabels: {} });
+    useTabStore.setState({ tabs: [], activeTabId: null });
+    render(<Breadcrumbs />);
+    const nav = screen.getByRole("navigation", { name: "Note path" });
+    expect(nav.style.maxWidth).toBe("");
   });
 });
