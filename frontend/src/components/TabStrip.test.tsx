@@ -30,6 +30,7 @@ interface Handlers {
   onCloseToRight: ReturnType<typeof vi.fn>;
   onOpenRight: ReturnType<typeof vi.fn>;
   onReorder: ReturnType<typeof vi.fn>;
+  onNewTab: ReturnType<typeof vi.fn>;
 }
 
 function renderStrip(overrides?: {
@@ -44,6 +45,7 @@ function renderStrip(overrides?: {
     onCloseToRight: vi.fn(),
     onOpenRight: vi.fn(),
     onReorder: vi.fn(),
+    onNewTab: vi.fn(),
   };
   render(
     <TabStrip
@@ -74,8 +76,9 @@ describe("<TabStrip /> rendering + DnD (Task 1)", () => {
     expect(screen.getByText("Title c")).toBeInTheDocument();
   });
 
-  it("renders nothing when there are no tabs", () => {
-    const { container } = render(
+  it("TAB-14: empty state renders the strip with the + new-tab button (not null)", () => {
+    const onNewTab = vi.fn();
+    render(
       <TabStrip
         tabs={[]}
         activeTabId={null}
@@ -87,9 +90,38 @@ describe("<TabStrip /> rendering + DnD (Task 1)", () => {
         onCloseToRight={vi.fn()}
         onOpenRight={vi.fn()}
         onReorder={vi.fn()}
+        onNewTab={onNewTab}
       />,
     );
-    expect(container.firstChild).toBeNull();
+    expect(screen.getByRole("tablist", { name: "Open tabs" })).toBeInTheDocument();
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.getByTestId("new-tab-button")).toBeInTheDocument();
+  });
+
+  it("TAB-14: clicking the + button in the empty state calls onNewTab once", () => {
+    const onNewTab = vi.fn();
+    render(
+      <TabStrip
+        tabs={[]}
+        activeTabId={null}
+        deletedTabIds={new Set()}
+        titleForTab={titleForTab}
+        onSelectTab={vi.fn()}
+        onRequestClose={vi.fn()}
+        onCloseOthers={vi.fn()}
+        onCloseToRight={vi.fn()}
+        onOpenRight={vi.fn()}
+        onReorder={vi.fn()}
+        onNewTab={onNewTab}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("new-tab-button"));
+    expect(onNewTab).toHaveBeenCalledTimes(1);
+  });
+
+  it("TAB-14: the + button also renders in the non-empty state", () => {
+    renderStrip();
+    expect(screen.getByTestId("new-tab-button")).toBeInTheDocument();
   });
 
   it("clicking a pill calls onSelectTab with that tab id", () => {

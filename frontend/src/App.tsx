@@ -45,6 +45,7 @@ import {
 } from "./lib/useTabStore";
 import { useTreeMutations } from "./lib/useTreeMutations";
 import {
+  handleAppAltT,
   handleAppCmdB,
   handleAppCmdI,
   handleAppCmdO,
@@ -304,6 +305,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     window.addEventListener("keydown", handleAppCmdB, true);
     window.addEventListener("keydown", handleAppCmdI, true);
     window.addEventListener("keydown", handleAppCmdShiftF, true);
+    window.addEventListener("keydown", handleAppAltT, true);
     return () => {
       window.removeEventListener("keydown", handleAppCmdP, true);
       window.removeEventListener("keydown", handleAppCmdO, true);
@@ -312,6 +314,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       window.removeEventListener("keydown", handleAppCmdB, true);
       window.removeEventListener("keydown", handleAppCmdI, true);
       window.removeEventListener("keydown", handleAppCmdShiftF, true);
+      window.removeEventListener("keydown", handleAppAltT, true);
     };
   }, []);
 
@@ -492,6 +495,35 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     [tree, createNote],
   );
 
+  // Shared create-then-open handler for both new-tab affordances (TAB-14): the
+  // TabStrip + button and the Alt+T shortcut. Mirrors openRight but targets the
+  // ACTIVE tab's note (parent dir), falling back to the vault root "" when no
+  // tab is active — that fallback is the zero-tab bootstrap path.
+  const newTab = useCallback((): void => {
+    const active = useTabStore.getState();
+    const activeTabRow =
+      active.tabs.find((t) => t.id === active.activeTabId) ?? null;
+    const notePath =
+      activeTabRow !== null && tree !== null
+        ? findActiveNotePath(tree.root, activeTabRow.noteId)
+        : null;
+    const parent = notePath !== null ? parentDir(notePath) : "";
+    void (async () => {
+      try {
+        const created = await createNote(parent, "untitled");
+        useTabStore.getState().openTab(created.id);
+      } catch {
+        // Creation failures surface via the shared tree-mutation toast path.
+      }
+    })();
+  }, [tree, createNote]);
+
+  useEffect(() => {
+    return subscribePhase7((ev) => {
+      if (ev === "newTab") newTab();
+    });
+  }, [newTab]);
+
   const commandActions: CommandActions = useMemo(
     () => ({
       onNewNote: () => {
@@ -646,7 +678,8 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         {/* TopBar: row 1, column 2 — editor pane width only */}
         <TopBar style={{ gridRow: "1", gridColumn: "2" }} />
 
-        {/* TabStrip: row 2, column 2. Renders nothing when no tabs are open. */}
+        {/* TabStrip: row 2, column 2. Always renders (incl. zero-tab state, which
+            shows only the + new-tab button — TAB-14). */}
         <TabStrip
           style={{ gridRow: "2", gridColumn: "2" }}
           tabs={tabs}
@@ -659,6 +692,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
           onCloseToRight={closeToRight}
           onOpenRight={openRight}
           onReorder={reorderTabs}
+          onNewTab={newTab}
         />
 
         {/* Sidebar: spans all three rows (gridRow 1/4) — column 1.
