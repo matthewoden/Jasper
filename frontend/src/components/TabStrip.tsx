@@ -83,6 +83,10 @@ export function TabStrip({
   // are hidden behind the dropdown. Measured after layout; recomputed on resize.
   const stripRef = useRef<HTMLDivElement | null>(null);
   const pillRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  // Last-measured width per tab. Overflow pills unmount (not in visibleTabs), so
+  // their live offsetWidth is unavailable on the next pass; the cache supplies a
+  // stable width and keeps the hidden set from oscillating (re-show → re-hide).
+  const pillWidths = useRef<Map<string, number>>(new Map());
   const [measuredHiddenIds, setMeasuredHiddenIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -92,13 +96,23 @@ export function TabStrip({
     if (strip === null) return;
 
     const measure = () => {
+      // No layout yet (initial mount / jsdom): leave every tab visible rather
+      // than over-hiding against a zero/negative width budget.
+      if (strip.clientWidth === 0) {
+        setMeasuredHiddenIds((prev) => (prev.size === 0 ? prev : new Set()));
+        return;
+      }
       const available = strip.clientWidth - 8 /* padding */ - 28 /* overflow btn */;
       const next = new Set<string>();
       let used = 0;
       for (const tab of tabs) {
         const el = pillRefs.current.get(tab.id);
-        if (el === undefined) continue;
-        used += el.offsetWidth;
+        if (el !== undefined) {
+          pillWidths.current.set(tab.id, el.offsetWidth);
+        }
+        const width = pillWidths.current.get(tab.id);
+        if (width === undefined) continue; // never measured yet
+        used += width;
         if (used > available) next.add(tab.id);
       }
       setMeasuredHiddenIds((prev) =>
@@ -200,7 +214,17 @@ export function TabStrip({
       data-testid="tab-strip"
     >
       {visibleTabs.map((tab) => (
-        <div key={tab.id} style={{ display: "flex", alignItems: "flex-end" }}>
+        <div
+          key={tab.id}
+          ref={(el) => {
+            // Register the pill wrapper so the overflow pass can measure its
+            // width. Without this, measure() read undefined for every pill and
+            // never overflowed (TAB-07). Cleared on unmount.
+            if (el === null) pillRefs.current.delete(tab.id);
+            else pillRefs.current.set(tab.id, el);
+          }}
+          style={{ display: "flex", alignItems: "flex-end" }}
+        >
           {dropTargetId === tab.id && draggingTabId !== tab.id && (
             <div style={dropIndicatorStyle} aria-hidden="true" />
           )}
