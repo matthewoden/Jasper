@@ -13,6 +13,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, DragEvent } from "react";
+import { Plus } from "lucide-react";
 import { useTabStore } from "../lib/useTabStore";
 import type { Tab } from "../lib/useTabStore";
 import { TabPill } from "./TabPill";
@@ -32,10 +33,30 @@ export interface TabStripProps {
   onCloseToRight: (tabId: string) => void;
   onOpenRight: (tabId: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
+  /** Create a new untitled note and open it as a tab (TAB-14, + button / ⌥T). */
+  onNewTab: () => void;
   /** Test-only: force a set of tab ids into the overflow dropdown. */
   forceHiddenTabIds?: Set<string>;
   style?: CSSProperties;
 }
+
+/** + button styled like SidebarToolbar's icon buttons; pinned at the strip's
+ *  right edge (flexShrink:0) so it survives tab overflow. */
+const newTabButtonStyle: CSSProperties = {
+  width: 24,
+  height: 24,
+  padding: 4,
+  margin: "0 0 4px 2px",
+  background: "transparent",
+  border: "none",
+  color: "var(--color-muted)",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 4,
+  flexShrink: 0,
+};
 
 const tabStripStyle: CSSProperties = {
   height: 36,
@@ -68,6 +89,7 @@ export function TabStrip({
   onCloseToRight,
   onOpenRight,
   onReorder,
+  onNewTab,
   forceHiddenTabIds,
   style,
 }: TabStripProps) {
@@ -186,8 +208,38 @@ export function TabStrip({
     return () => window.removeEventListener("keydown", handler, true);
   }, []);
 
-  // UI-SPEC empty state: render nothing when there are no tabs.
-  if (tabs.length === 0) return null;
+  // Single source for the + button so the empty-state and normal branches share
+  // identical markup.
+  const newTabButton = (
+    <button
+      type="button"
+      title="New tab (⌥T)"
+      aria-label="New tab"
+      data-testid="new-tab-button"
+      onClick={onNewTab}
+      style={newTabButtonStyle}
+    >
+      <Plus size={16} aria-hidden="true" />
+    </button>
+  );
+
+  // Empty state (TAB-14): instead of returning null, render the strip with ONLY
+  // the + button. An always-visible + means there is never a state with no way
+  // to create a tab (discoverability + bootstrap). Consequence: grid row 2 is
+  // now always 36px — the strip no longer collapses at zero tabs (intended).
+  if (tabs.length === 0) {
+    return (
+      <div
+        ref={stripRef}
+        role="tablist"
+        aria-label="Open tabs"
+        style={{ ...tabStripStyle, ...style }}
+        data-testid="tab-strip"
+      >
+        {newTabButton}
+      </div>
+    );
+  }
 
   const hiddenIds = forceHiddenTabIds ?? measuredHiddenIds;
   const visibleTabs = tabs.filter((t) => !hiddenIds.has(t.id));
@@ -266,6 +318,7 @@ export function TabStrip({
           onSelectTab={onSelectTab}
         />
       )}
+      {newTabButton}
     </div>
   );
 }
