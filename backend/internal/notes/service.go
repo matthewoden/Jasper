@@ -396,14 +396,14 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("notes.Delete(%s): index delete: %w", id, err)
 	}
 
-	if err := s.files.DeleteFile(relPath); err != nil {
+	if _, err := s.files.TrashFile(relPath); err != nil {
 		if priorKnown {
 			if upsertErr := s.index.Upsert(ctx, prior); upsertErr != nil {
 				s.log.Warn("notes.Delete: rollback Upsert failed (reconciler will heal)",
 					"id", id.String(), "path", relPath, "err", upsertErr)
 			}
 		} else {
-			s.log.Warn("notes.Delete: FS-delete failed and prior row unknown (reconciler will heal)",
+			s.log.Warn("notes.Delete: FS-trash failed and prior row unknown (reconciler will heal)",
 				"id", id.String(), "path", relPath, "err", err)
 		}
 		return fmt.Errorf("notes.Delete(%s): %w", id, err)
@@ -537,7 +537,7 @@ func (s *Service) CreateFolder(ctx context.Context, parentPath, name string) (st
 func (s *Service) DeleteFolder(ctx context.Context, folderPath string, recursive bool) error {
 	canon := canonicalRelPath(folderPath)
 	if !recursive {
-		if err := s.files.DeleteDir(folderPath, false); err != nil {
+		if _, err := s.files.TrashDir(folderPath); err != nil {
 			return fmt.Errorf("notes.DeleteFolder(%s): %w", canon, err)
 		}
 
@@ -551,7 +551,8 @@ func (s *Service) DeleteFolder(ctx context.Context, folderPath string, recursive
 
 	doomedIDs := s.registry.idsUnder(canon)
 
-	if err := s.files.DeleteDir(folderPath, true); err != nil {
+	// MCP delete_note (mcp/tools.go:443) inherits soft-delete via Service.Delete.
+	if _, err := s.files.TrashDir(folderPath); err != nil {
 		return fmt.Errorf("notes.DeleteFolder(%s): %w", canon, err)
 	}
 	if _, err := s.index.DeleteByPathPrefix(ctx, canon); err != nil {

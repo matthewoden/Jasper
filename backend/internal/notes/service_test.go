@@ -695,14 +695,35 @@ func (s *stubIndex) count() int {
 	return len(s.byID)
 }
 
-func newRealFSSvc(t *testing.T) (*Service, string, *stubIndex) {
+// newRealFSSvcWithDataDir sets up a real fsstore.Store under a properly
+// structured dataDir (dataDir/notes/ + dataDir/.trash/) and returns the
+// service, the notesDir (root for file assertions), the dataDir (root for
+// trash assertions), and the stub index.
+func newRealFSSvcWithDataDir(t *testing.T) (*Service, string, string, *stubIndex) {
 	t.Helper()
-	root := t.TempDir()
-	store := fsstore.NewStore(root)
+	dataDir := t.TempDir()
+	notesDir := filepath.Join(dataDir, "notes")
+	trashDir := filepath.Join(dataDir, ".trash")
+	if err := os.MkdirAll(notesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll notesDir: %v", err)
+	}
+	if err := os.MkdirAll(trashDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll trashDir: %v", err)
+	}
+	store := fsstore.NewStore(notesDir)
 	idx := newStubIndex()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := NewService(store, idx, nil, logger)
-	return svc, root, idx
+	return svc, notesDir, dataDir, idx
+}
+
+// newRealFSSvc returns a service backed by a real fsstore and a stub index.
+// root is the notesDir — the same base used for fileExists/dirExists assertions.
+// For soft-delete tests that need to assert trash paths, use newRealFSSvcWithDataDir.
+func newRealFSSvc(t *testing.T) (*Service, string, *stubIndex) {
+	t.Helper()
+	svc, notesDir, _, idx := newRealFSSvcWithDataDir(t)
+	return svc, notesDir, idx
 }
 
 func fileExists(t *testing.T, root, relPath string) bool {
@@ -1159,9 +1180,13 @@ func TestService_CreateFolder_RejectsSlash(t *testing.T) {
 	}
 }
 
+// TestService_DeleteFolder_NotEmpty_NoRecursive: A4 planner decision — soft-delete
+// replaces the old ErrFolderNotEmpty guard. TrashDir moves the folder and its
+// contents regardless of emptiness; the folder is gone from notes/ and present
+// in .trash/ (both recursive and non-recursive calls now trash).
 func TestService_DeleteFolder_NotEmpty_NoRecursive(t *testing.T) {
 	t.Parallel()
-	svc, root, _ := newRealFSSvc(t)
+	svc, notesDir, dataDir, _ := newRealFSSvcWithDataDir(t)
 	if _, err := svc.CreateFolder(context.Background(), "", "projects"); err != nil {
 		t.Fatalf("CreateFolder: %v", err)
 	}
@@ -1169,17 +1194,14 @@ func TestService_DeleteFolder_NotEmpty_NoRecursive(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	err := svc.DeleteFolder(context.Background(), "projects", false)
-	if err == nil {
-		t.Fatalf("expected error, got nil")
+	if err != nil {
+		t.Fatalf("expected nil error (A4: soft-delete trashes non-empty folder), got: %v", err)
 	}
-	if !errors.Is(err, fsstore.ErrFolderNotEmpty) {
-		t.Fatalf("err: got %v, want ErrFolderNotEmpty", err)
+	if dirExists(t, notesDir, "projects") {
+		t.Errorf("dir still in notes/ after trash")
 	}
-	if !dirExists(t, root, "projects") {
-		t.Errorf("dir gone")
-	}
-	if !fileExists(t, root, "projects/a.md") {
-		t.Errorf("file gone")
+	if !dirExists(t, dataDir, filepath.Join(".trash", "projects")) {
+		t.Errorf("dir not found in .trash/ after soft-delete")
 	}
 }
 
