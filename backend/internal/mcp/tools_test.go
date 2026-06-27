@@ -57,20 +57,24 @@ func (f *fakeAttachProvider) Read(_ context.Context, _, _ string) ([]byte, strin
 
 func buildToolFixture(t *testing.T) (*notes.Service, string, *fakeNotesProvider, string) {
 	t.Helper()
-	root := t.TempDir()
+	dataDir := t.TempDir()
+	notesDir := filepath.Join(dataDir, "notes")
 
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		t.Fatalf("mkdir root: %v", err)
+	if err := os.MkdirAll(notesDir, 0o755); err != nil {
+		t.Fatalf("mkdir notesDir: %v", err)
 	}
-	store := fsstore.NewStore(root)
+	if err := os.MkdirAll(filepath.Join(dataDir, ".trash"), 0o755); err != nil {
+		t.Fatalf("mkdir trashDir: %v", err)
+	}
+	store := fsstore.NewStore(notesDir)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := notes.NewService(store, nil, nil, logger)
 	provider := &fakeNotesProvider{}
 
-	if err := os.MkdirAll(filepath.Join(root, "projects"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(notesDir, "projects"), 0o755); err != nil {
 		t.Fatalf("mkdir projects: %v", err)
 	}
-	return svc, root, provider, root
+	return svc, notesDir, provider, notesDir
 }
 
 func newTestServer(t *testing.T) *testServerFixture {

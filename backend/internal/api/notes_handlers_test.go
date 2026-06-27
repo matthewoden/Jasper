@@ -409,8 +409,15 @@ func (r *realIndex) DeleteByPathPrefix(_ context.Context, prefix string) (int, e
 
 func setupRealFSServer(t *testing.T) (*httptest.Server, *notes.Service, string, *realIndex) {
 	t.Helper()
-	root := t.TempDir()
-	store := fsstore.NewStore(root)
+	dataDir := t.TempDir()
+	notesDir := filepath.Join(dataDir, "notes")
+	if err := os.MkdirAll(notesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll notesDir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, ".trash"), 0o755); err != nil {
+		t.Fatalf("MkdirAll trashDir: %v", err)
+	}
+	store := fsstore.NewStore(notesDir)
 	idx := newRealIndex()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := notes.NewService(store, idx, nil, logger)
@@ -420,7 +427,7 @@ func setupRealFSServer(t *testing.T) (*httptest.Server, *notes.Service, string, 
 	r.Route("/api/v1", func(r chi.Router) {
 		HandlerFromMux(si, r)
 	})
-	return httptest.NewServer(r), svc, root, idx
+	return httptest.NewServer(r), svc, notesDir, idx
 }
 
 func mustPostJSON(t *testing.T, ts *httptest.Server, path string, body string) (*http.Response, []byte) {

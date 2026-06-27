@@ -136,11 +136,12 @@ func TestDeleteFolder_HappyPath_Empty_204(t *testing.T) {
 	}
 }
 
-// TestDeleteFolder_NotEmpty_NoRecursive_409 — folder with a note,
-// recursive=false → 409 folder_not_empty.
-func TestDeleteFolder_NotEmpty_NoRecursive_409(t *testing.T) {
+// TestDeleteFolder_NotEmpty_NoRecursive_204 — A4 soft-delete: folder with a note,
+// recursive=false → 204 (TrashDir moves the whole subtree regardless of emptiness).
+// The previous 409 folder_not_empty behavior is replaced by uniform soft-delete.
+func TestDeleteFolder_NotEmpty_NoRecursive_204(t *testing.T) {
 	t.Parallel()
-	ts, _, _, _ := setupRealFSServer(t)
+	ts, _, root, _ := setupRealFSServer(t)
 	defer ts.Close()
 
 	if resp, body := mustPostJSON(t, ts, "/api/v1/folders",
@@ -153,13 +154,12 @@ func TestDeleteFolder_NotEmpty_NoRecursive_409(t *testing.T) {
 	}
 
 	resp, body := mustDelete(t, ts, "/api/v1/folders?path=projects")
-	if resp.StatusCode != 409 {
-		t.Fatalf("delete: %d, want 409; body=%s", resp.StatusCode, body)
+	if resp.StatusCode != 204 {
+		t.Fatalf("delete: %d, want 204; body=%s", resp.StatusCode, body)
 	}
-	var got Error
-	_ = json.Unmarshal(body, &got)
-	if got.Code != "folder_not_empty" {
-		t.Errorf("Code: got %q, want %q", got.Code, "folder_not_empty")
+	// Folder gone from notes/
+	if _, err := os.Stat(filepath.Join(root, "projects")); !os.IsNotExist(err) {
+		t.Errorf("folder still in notes/ after soft-delete: %v", err)
 	}
 }
 

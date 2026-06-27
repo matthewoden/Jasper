@@ -1235,6 +1235,208 @@ func TestService_DeleteFolder_Recursive_BatchDeletesIndex(t *testing.T) {
 	}
 }
 
+// TestService_Delete_SoftDelete: deleting a note moves it to .trash/ (flattened),
+// removes it from notes/, clears the index row, and clears the registry entry.
+func TestService_Delete_SoftDelete(t *testing.T) {
+	t.Parallel()
+	svc, notesDir, dataDir, idx := newRealFSSvcWithDataDir(t)
+
+	summary, err := svc.Create(context.Background(), "", "alpha")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := svc.Delete(context.Background(), summary.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	// (a) file absent from notes/
+	if fileExists(t, notesDir, "alpha.md") {
+		t.Errorf("alpha.md still in notes/ after soft-delete")
+	}
+	// (b) file present in .trash/ (flattened — same basename)
+	if !fileExists(t, dataDir, filepath.Join(".trash", "alpha.md")) {
+		t.Errorf("alpha.md not found in .trash/ after soft-delete")
+	}
+	// (c) index row gone
+	if _, ok := idx.recByID(summary.ID); ok {
+		t.Errorf("index row still present after soft-delete")
+	}
+	// (d) registry entry gone
+	if _, ok := svc.registry.Lookup(summary.ID); ok {
+		t.Errorf("registry entry still present after soft-delete")
+	}
+}
+
+// TestService_DeleteFolder_SoftDelete: recursive folder delete moves the subtree
+// to .trash/ intact, removes notes/projects/, clears index rows, and clears registry.
+func TestService_DeleteFolder_SoftDelete(t *testing.T) {
+	t.Parallel()
+	svc, notesDir, dataDir, idx := newRealFSSvcWithDataDir(t)
+
+	if _, err := svc.CreateFolder(context.Background(), "", "projects"); err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	s, err := svc.Create(context.Background(), "projects", "a")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := svc.DeleteFolder(context.Background(), "projects", true); err != nil {
+		t.Fatalf("DeleteFolder: %v", err)
+	}
+
+	// projects/ gone from notes/
+	if dirExists(t, notesDir, "projects") {
+		t.Errorf("projects/ still in notes/ after soft-delete")
+	}
+	// subtree preserved under .trash/projects/
+	if !dirExists(t, dataDir, filepath.Join(".trash", "projects")) {
+		t.Errorf(".trash/projects/ not found after soft-delete")
+	}
+	if !fileExists(t, dataDir, filepath.Join(".trash", "projects", "a.md")) {
+		t.Errorf(".trash/projects/a.md not found after soft-delete")
+	}
+	// index rows gone
+	if _, ok := idx.recByID(s.ID); ok {
+		t.Errorf("index row still present after soft-delete")
+	}
+	// registry entries gone
+	if _, ok := svc.registry.Lookup(s.ID); ok {
+		t.Errorf("registry entry still present after soft-delete")
+	}
+}
+
+// TestService_DeleteFolder_EmptyTrashed: A4 decision — non-recursive delete of an
+// empty folder now trashes it (TrashDir), ensuring a uniform recoverable UX.
+// Also asserts EventFolderDeleted(recursive:false) is broadcast.
+func TestService_DeleteFolder_EmptyTrashed(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	notesDir := filepath.Join(dataDir, "notes")
+	if err := os.MkdirAll(notesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll notesDir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, ".trash"), 0o755); err != nil {
+		t.Fatalf("MkdirAll trashDir: %v", err)
+	}
+	store := fsstore.NewStore(notesDir)
+	idx := newStubIndex()
+	bc := &fakeBroadcaster{}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := NewService(store, idx, bc, logger)
+
+	if _, err := svc.CreateFolder(context.Background(), "", "empty"); err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	if err := svc.DeleteFolder(context.Background(), "empty", false); err != nil {
+		t.Fatalf("DeleteFolder(non-recursive, empty): %v", err)
+	}
+
+	// empty/ gone from notes/
+	if dirExists(t, notesDir, "empty") {
+		t.Errorf("empty/ still in notes/ after soft-delete")
+	}
+	// empty/ appears in .trash/
+	if !dirExists(t, dataDir, filepath.Join(".trash", "empty")) {
+		t.Errorf(".trash/empty/ not found after soft-delete")
+	}
+	// EventFolderDeleted with recursive:false broadcast
+	found := false
+	for _, c := range bc.calls {
+		if c.event == EventFolderDeleted {
+			if m, ok := c.payload.(map[string]any); ok {
+				if m["recursive"] == false {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Errorf("EventFolderDeleted(recursive:false) not broadcast")
+	}
+}
+
+// TestService_Delete_Broadcasts: Delete emits exactly one EventNoteDeleted
+// with {id, path} payload (TRASH-07: broadcast contract unchanged).
+func TestService_Delete_Broadcasts(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	notesDir := filepath.Join(dataDir, "notes")
+	if err := os.MkdirAll(notesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll notesDir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, ".trash"), 0o755); err != nil {
+		t.Fatalf("MkdirAll trashDir: %v", err)
+	}
+	store := fsstore.NewStore(notesDir)
+	idx := newStubIndex()
+	bc := &fakeBroadcaster{}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := NewService(store, idx, bc, logger)
+
+	summary, err := svc.Create(context.Background(), "", "brcast")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if !fileExists(t, notesDir, "brcast.md") {
+		t.Fatalf("file not created")
+	}
+	if err := svc.Delete(context.Background(), summary.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	var deletedCalls []broadcastCall
+	for _, c := range bc.calls {
+		if c.event == EventNoteDeleted {
+			deletedCalls = append(deletedCalls, c)
+		}
+	}
+	if len(deletedCalls) != 1 {
+		t.Fatalf("EventNoteDeleted count: got %d, want 1", len(deletedCalls))
+	}
+	m, ok := deletedCalls[0].payload.(map[string]any)
+	if !ok {
+		t.Fatalf("payload is not map[string]any: %T", deletedCalls[0].payload)
+	}
+	if m["id"] != summary.ID.String() {
+		t.Errorf("payload.id: got %v, want %v", m["id"], summary.ID.String())
+	}
+	if m["path"] != "brcast.md" {
+		t.Errorf("payload.path: got %v, want %q", m["path"], "brcast.md")
+	}
+}
+
+// TestService_Delete_FSFailRollsBack: when TrashFile returns an error, the prior
+// index row is re-Upserted (rollback) and the error propagates.
+func TestService_Delete_FSFailRollsBack(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeFileStore{trashErr: errors.New("injected trash failure")}
+	idx := newStubIndex()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := NewService(fake, idx, nil, logger)
+
+	// ScratchpadUUID is pre-seeded in the registry by NewRegistry().
+	// Pre-seed the index with the same record so LookupByPath returns it (enabling rollback).
+	id := ScratchpadUUID
+	priorRec := NoteRecord{ID: id, Path: ScratchpadRelPath}
+	idx.byID[id] = priorRec
+	idx.byPath[ScratchpadRelPath] = priorRec
+
+	err := svc.Delete(context.Background(), id)
+	if err == nil {
+		t.Fatalf("expected error from TrashFile, got nil")
+	}
+
+	// After TrashFile error + rollback Upsert: index row should be back.
+	if _, ok := idx.recByID(id); !ok {
+		t.Errorf("index row not restored via rollback Upsert on TrashFile failure")
+	}
+	// Registry entry still present (not removed on FS failure).
+	if _, ok := svc.registry.Lookup(id); !ok {
+		t.Errorf("registry entry removed despite FS-trash failure")
+	}
+}
+
 func TestService_MoveFolder_HappyPath(t *testing.T) {
 	t.Parallel()
 	svc, root, idx := newRealFSSvc(t)
