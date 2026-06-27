@@ -547,3 +547,237 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+// helpers for trash tests — create a temp dataDir with notes/ and .trash/ pre-created.
+func makeTempDataDir(t *testing.T) string {
+	t.Helper()
+	dataDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dataDir, "notes"), 0o755); err != nil {
+		t.Fatalf("mkdir notes: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, ".trash"), 0o755); err != nil {
+		t.Fatalf("mkdir .trash: %v", err)
+	}
+	return dataDir
+}
+
+// TestTrashFile: trash notes/projects/foo.md → .trash/foo.md (flattened),
+// absent from notes/projects/, contents byte-identical.
+func TestTrashFile(t *testing.T) {
+	dataDir := makeTempDataDir(t)
+	if err := os.MkdirAll(filepath.Join(dataDir, "notes", "projects"), 0o755); err != nil {
+		t.Fatalf("mkdir projects: %v", err)
+	}
+	content := []byte("hello trash")
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "projects", "foo.md"), content, 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	trashName, err := TrashFile(dataDir, "projects/foo.md")
+	if err != nil {
+		t.Fatalf("TrashFile: %v", err)
+	}
+	if trashName != "foo.md" {
+		t.Fatalf("trashName: got %q, want %q", trashName, "foo.md")
+	}
+
+	// source gone
+	if _, err := os.Stat(filepath.Join(dataDir, "notes", "projects", "foo.md")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("source should be gone, stat err = %v", err)
+	}
+
+	// trash has it, flattened (not under .trash/projects/)
+	got, err := os.ReadFile(filepath.Join(dataDir, ".trash", "foo.md"))
+	if err != nil {
+		t.Fatalf("read trashed file: %v", err)
+	}
+	if string(got) != string(content) {
+		t.Fatalf("content: got %q, want %q", got, content)
+	}
+}
+
+// TestTrashDir: trash notes/projects/ (a.md + sub/b.md) → .trash/projects/a.md
+// and .trash/projects/sub/b.md; notes/projects/ is gone; trashName == "projects".
+func TestTrashDir(t *testing.T) {
+	dataDir := makeTempDataDir(t)
+	if err := os.MkdirAll(filepath.Join(dataDir, "notes", "projects", "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "projects", "a.md"), []byte("alpha"), 0o644); err != nil {
+		t.Fatalf("write a: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "projects", "sub", "b.md"), []byte("beta"), 0o644); err != nil {
+		t.Fatalf("write b: %v", err)
+	}
+
+	trashName, err := TrashDir(dataDir, "projects")
+	if err != nil {
+		t.Fatalf("TrashDir: %v", err)
+	}
+	if trashName != "projects" {
+		t.Fatalf("trashName: got %q, want %q", trashName, "projects")
+	}
+
+	// source gone
+	if _, err := os.Stat(filepath.Join(dataDir, "notes", "projects")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("notes/projects should be gone, stat err = %v", err)
+	}
+
+	// subtree preserved
+	if got, err := os.ReadFile(filepath.Join(dataDir, ".trash", "projects", "a.md")); err != nil || string(got) != "alpha" {
+		t.Fatalf(".trash/projects/a.md: err=%v content=%q", err, got)
+	}
+	if got, err := os.ReadFile(filepath.Join(dataDir, ".trash", "projects", "sub", "b.md")); err != nil || string(got) != "beta" {
+		t.Fatalf(".trash/projects/sub/b.md: err=%v content=%q", err, got)
+	}
+}
+
+// TestTrash_CollisionSuffix: with .trash/foo.md already present, trash a
+// second foo.md → second lands at .trash/foo 1.md. Folder analog: existing
+// .trash/projects/ → second folder lands at .trash/projects 1/.
+func TestTrash_CollisionSuffix(t *testing.T) {
+	t.Run("file", func(t *testing.T) {
+		dataDir := makeTempDataDir(t)
+
+		// seed .trash/foo.md
+		if err := os.WriteFile(filepath.Join(dataDir, ".trash", "foo.md"), []byte("original"), 0o644); err != nil {
+			t.Fatalf("seed trash: %v", err)
+		}
+		// source under notes/
+		if err := os.WriteFile(filepath.Join(dataDir, "notes", "foo.md"), []byte("second"), 0o644); err != nil {
+			t.Fatalf("write source: %v", err)
+		}
+
+		trashName, err := TrashFile(dataDir, "foo.md")
+		if err != nil {
+			t.Fatalf("TrashFile: %v", err)
+		}
+		if trashName != "foo 1.md" {
+			t.Fatalf("trashName: got %q, want %q", trashName, "foo 1.md")
+		}
+		// both exist
+		if _, err := os.Stat(filepath.Join(dataDir, ".trash", "foo.md")); err != nil {
+			t.Fatalf(".trash/foo.md should exist: %v", err)
+		}
+		if got, err := os.ReadFile(filepath.Join(dataDir, ".trash", "foo 1.md")); err != nil || string(got) != "second" {
+			t.Fatalf(".trash/foo 1.md: err=%v content=%q", err, got)
+		}
+	})
+
+	t.Run("folder", func(t *testing.T) {
+		dataDir := makeTempDataDir(t)
+
+		// seed .trash/projects/
+		if err := os.MkdirAll(filepath.Join(dataDir, ".trash", "projects"), 0o755); err != nil {
+			t.Fatalf("seed .trash/projects: %v", err)
+		}
+		// source notes/projects/
+		if err := os.MkdirAll(filepath.Join(dataDir, "notes", "projects"), 0o755); err != nil {
+			t.Fatalf("mkdir notes/projects: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dataDir, "notes", "projects", "c.md"), []byte("third"), 0o644); err != nil {
+			t.Fatalf("write c: %v", err)
+		}
+
+		trashName, err := TrashDir(dataDir, "projects")
+		if err != nil {
+			t.Fatalf("TrashDir: %v", err)
+		}
+		if trashName != "projects 1" {
+			t.Fatalf("trashName: got %q, want %q", trashName, "projects 1")
+		}
+		// both exist
+		if _, err := os.Stat(filepath.Join(dataDir, ".trash", "projects")); err != nil {
+			t.Fatalf(".trash/projects should exist: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dataDir, ".trash", "projects 1")); err != nil {
+			t.Fatalf(".trash/projects 1 should exist: %v", err)
+		}
+	})
+}
+
+// TestTrash_CollisionCanonical: seed .trash/Foo.md (mixed-case), then trash
+// foo.md → suffixed (foo 1.md), NOT shadowing/overwriting Foo.md. Proves the
+// existence check runs in canonical (NFC+lowercase) space.
+func TestTrash_CollisionCanonical(t *testing.T) {
+	dataDir := makeTempDataDir(t)
+
+	// seed .trash/Foo.md (mixed case — on case-sensitive FS this is distinct
+	// from foo.md, but the canonical check must catch it)
+	if err := os.WriteFile(filepath.Join(dataDir, ".trash", "Foo.md"), []byte("ORIGINAL"), 0o644); err != nil {
+		t.Fatalf("seed .trash/Foo.md: %v", err)
+	}
+	// source notes/foo.md
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "foo.md"), []byte("second"), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	trashName, err := TrashFile(dataDir, "foo.md")
+	if err != nil {
+		t.Fatalf("TrashFile: %v", err)
+	}
+	if trashName != "foo 1.md" {
+		t.Fatalf("trashName: got %q, want %q (canonical check failed)", trashName, "foo 1.md")
+	}
+	// both survive
+	if _, err := os.Stat(filepath.Join(dataDir, ".trash", "Foo.md")); err != nil {
+		t.Fatalf(".trash/Foo.md should still exist: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dataDir, ".trash", "foo 1.md")); err != nil || string(got) != "second" {
+		t.Fatalf(".trash/foo 1.md: err=%v content=%q", err, got)
+	}
+}
+
+// TestTrash_RejectsEscape: a relPath that would resolve outside dataDir returns
+// a Canonicalize escape error, and nothing is moved.
+func TestTrash_RejectsEscape(t *testing.T) {
+	dataDir := makeTempDataDir(t)
+
+	if _, err := TrashFile(dataDir, "../etc/x"); !errors.Is(err, ErrPathEscape) && !errors.Is(err, ErrNotInRoot) && !errors.Is(err, ErrAbsolutePath) {
+		t.Fatalf("expected canonicalize escape error, got %v", err)
+	}
+
+	if _, err := TrashFile(dataDir, "/abs/path"); !errors.Is(err, ErrAbsolutePath) {
+		t.Fatalf("expected ErrAbsolutePath, got %v", err)
+	}
+}
+
+// TestTrash_NoOverwriteFinalGuard: even if the namer were somehow bypassed,
+// the pre-rename os.Stat guard returns ErrCaseCollision rather than clobbering.
+// We test this indirectly by seeding a file at the expected destination and
+// verifying TrashFile returns ErrCaseCollision or produces a suffixed name
+// (the namer should handle it; this test focuses on the no-clobber contract).
+func TestTrash_NoOverwriteFinalGuard(t *testing.T) {
+	dataDir := makeTempDataDir(t)
+
+	// Seed two versions already in trash
+	if err := os.WriteFile(filepath.Join(dataDir, ".trash", "foo.md"), []byte("first"), 0o644); err != nil {
+		t.Fatalf("seed first: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, ".trash", "foo 1.md"), []byte("second"), 0o644); err != nil {
+		t.Fatalf("seed second: %v", err)
+	}
+	// source
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "foo.md"), []byte("third"), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	trashName, err := TrashFile(dataDir, "foo.md")
+	if err != nil {
+		t.Fatalf("TrashFile: %v", err)
+	}
+	// should land at foo 2.md
+	if trashName != "foo 2.md" {
+		t.Fatalf("trashName: got %q, want %q", trashName, "foo 2.md")
+	}
+	// all three exist independently
+	if _, err := os.Stat(filepath.Join(dataDir, ".trash", "foo.md")); err != nil {
+		t.Fatalf(".trash/foo.md should exist: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, ".trash", "foo 1.md")); err != nil {
+		t.Fatalf(".trash/foo 1.md should exist: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dataDir, ".trash", "foo 2.md")); err != nil || string(got) != "third" {
+		t.Fatalf(".trash/foo 2.md: err=%v content=%q", err, got)
+	}
+}
