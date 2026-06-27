@@ -83,6 +83,90 @@ describe("<TabPill />", () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
+  it("active + non-deleted + non-empty breadcrumb renders a muted prefix AND the title", () => {
+    render(
+      <TabPill
+        title="route.md"
+        isActive={true}
+        isDeleted={false}
+        breadcrumb="docs / api"
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const crumb = screen.getByTestId("tab-breadcrumb");
+    expect(crumb.textContent).toContain("docs / api");
+    expect((crumb.getAttribute("style") ?? "")).toContain("var(--color-muted)");
+    expect(screen.getByText("route.md")).toBeDefined();
+  });
+
+  it("inactive pill renders NO breadcrumb even when one is supplied (title only)", () => {
+    render(
+      <TabPill
+        title="route.md"
+        isActive={false}
+        isDeleted={false}
+        breadcrumb="docs / api"
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("tab-breadcrumb")).toBeNull();
+    expect(screen.getByText("route.md")).toBeDefined();
+  });
+
+  it("empty breadcrumb (vault root) renders NO breadcrumb span, even when active", () => {
+    render(
+      <TabPill
+        title="note.md"
+        isActive={true}
+        isDeleted={false}
+        breadcrumb=""
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("tab-breadcrumb")).toBeNull();
+    expect(screen.getByText("note.md")).toBeDefined();
+  });
+
+  it("deleted active pill shows '(deleted)' only — no breadcrumb", () => {
+    render(
+      <TabPill
+        title="route.md"
+        isActive={true}
+        isDeleted={true}
+        breadcrumb="docs / api"
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("tab-breadcrumb")).toBeNull();
+    expect(screen.getByText("(deleted)")).toBeDefined();
+  });
+
+  it("title-wins (structural): breadcrumb flexShrink is strictly greater than the title's", () => {
+    render(
+      <TabPill
+        title="route.md"
+        isActive={true}
+        isDeleted={false}
+        breadcrumb="docs / api"
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const crumb = screen.getByTestId("tab-breadcrumb");
+    const titleSpan = screen.getByText("route.md");
+    const crumbShrink = Number(
+      (crumb as HTMLElement).style.flexShrink || "1",
+    );
+    const titleShrink = Number(
+      (titleSpan as HTMLElement).style.flexShrink || "1",
+    );
+    expect(crumbShrink).toBeGreaterThan(titleShrink);
+  });
+
   it("TAB-12: isDeleted renders '(deleted)' in destructive color", () => {
     render(
       <TabPill

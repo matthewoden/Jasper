@@ -26,6 +26,8 @@ export interface TabStripProps {
   deletedTabIds: Set<string>;
   /** Derived from useFileTree by note UUID (TAB-12 live rename). */
   titleForTab: (noteId: string) => string;
+  /** Folder-path prefix by note UUID; shown only on the active, non-deleted pill. */
+  breadcrumbForTab?: (noteId: string) => string;
   onSelectTab: (tabId: string) => void;
   /** Flush-aware close (Plan 05 supplies the handler). */
   onRequestClose: (tabId: string) => void;
@@ -125,6 +127,7 @@ export function TabStrip({
   activeTabId,
   deletedTabIds,
   titleForTab,
+  breadcrumbForTab,
   onSelectTab,
   onRequestClose,
   onCloseOthers,
@@ -332,6 +335,11 @@ export function TabStrip({
               title={titleForTab(tab.noteId)}
               isActive={tab.id === activeTabId}
               isDeleted={deletedTabIds.has(tab.noteId)}
+              breadcrumb={
+                tab.id === activeTabId && !deletedTabIds.has(tab.noteId)
+                  ? breadcrumbForTab?.(tab.noteId)
+                  : undefined
+              }
               onSelect={() => onSelectTab(tab.id)}
               onClose={() => onRequestClose(tab.id)}
               draggable
