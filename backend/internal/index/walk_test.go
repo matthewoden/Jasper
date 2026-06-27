@@ -202,6 +202,66 @@ func TestWalkVault_ContextCanceled(t *testing.T) {
 	}
 }
 
+// TestWalkVault_SkipsTrashSibling — TRASH-03 regression: WalkVault is rooted
+// at notesDir and must never yield files from a sibling .trash/ directory or
+// from a .trash/ subdirectory placed inside notesDir.
+//
+// Two sub-cases:
+//  1. Sibling .trash/: dataDir/.trash/trashed.md lives next to dataDir/notes/
+//     — WalkVault(ctx, notesDir, yield) must not yield it.
+//  2. In-tree .trash/: notes/.trash/x.md is skipped by the dotdir rule
+//     (walk.go:64 — strings.HasPrefix(name, ".")).
+func TestWalkVault_SkipsTrashSibling(t *testing.T) {
+	t.Parallel()
+
+	// Sub-case 1: sibling .trash/ at the dataDir level.
+	t.Run("sibling trash dir", func(t *testing.T) {
+		t.Parallel()
+		dataDir := t.TempDir()
+		notesDir := filepath.Join(dataDir, "notes")
+		trashDir := filepath.Join(dataDir, ".trash")
+
+		writeFile(t, filepath.Join(notesDir, "kept.md"), "# Kept")
+		writeFile(t, filepath.Join(trashDir, "trashed.md"), "# Trashed")
+
+		got, err := collectWalk(t, notesDir)
+		if err != nil {
+			t.Fatalf("walk: %v", err)
+		}
+		if len(got) != 1 || got[0] != "kept.md" {
+			t.Errorf("got %v, want [kept.md]; .trash/ sibling must not be walked", got)
+		}
+		for _, p := range got {
+			if strings.Contains(p, ".trash") {
+				t.Errorf("yielded path %q contains .trash — trashed item resurfaced", p)
+			}
+		}
+	})
+
+	// Sub-case 2: .trash/ placed inside notesDir is pruned by the dotdir
+	// rule in WalkVault (path != notesDir && HasPrefix(name, ".")).
+	t.Run("in-tree trash dir skipped by dotdir rule", func(t *testing.T) {
+		t.Parallel()
+		notesDir := t.TempDir()
+
+		writeFile(t, filepath.Join(notesDir, "kept.md"), "# Kept")
+		writeFile(t, filepath.Join(notesDir, ".trash", "x.md"), "# Should be skipped")
+
+		got, err := collectWalk(t, notesDir)
+		if err != nil {
+			t.Fatalf("walk: %v", err)
+		}
+		if len(got) != 1 || got[0] != "kept.md" {
+			t.Errorf("got %v, want [kept.md]; notes/.trash/ must be pruned by dotdir rule", got)
+		}
+		for _, p := range got {
+			if strings.Contains(p, ".trash") {
+				t.Errorf("yielded path %q contains .trash — dotdir rule did not fire", p)
+			}
+		}
+	})
+}
+
 func itoa(n int) string {
 	if n == 0 {
 		return "0"

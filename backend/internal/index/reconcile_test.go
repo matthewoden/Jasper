@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -173,6 +175,91 @@ func TestReconcile_Scratchpad_KeepsScratchpadUUID(t *testing.T) {
 	}
 	if got[0].ID != notes.ScratchpadUUID {
 		t.Errorf("ID: got %v, want ScratchpadUUID %v", got[0].ID, notes.ScratchpadUUID)
+	}
+}
+
+// TestReconcile_ReadoptsRestoredFile — TRASH-05 (D-05) regression: a .md file
+// moved back into notes/ (manual restore from .trash/) is re-adopted by an
+// incremental Reconcile with a FRESH, non-nil UUID.
+//
+// Flow:
+//  1. Seed: write note.md, run full Reconcile, capture first UUID.
+//  2. Simulate post-delete state: delete the index row + remove the file from
+//     disk (mirrors Service.Delete which deletes the index row before moving
+//     the file to .trash/).
+//  3. Restore: drop a .md back under notes/ (the user's manual restore from
+//     .trash/), run incremental Reconcile.
+//  4. Assert: index row exists with a NON-NIL UUID (may differ from original —
+//     UUIDs are not persisted in files; chooseID mints uuid.New() for a
+//     newly-seen path). Assert the row's title matches the restored content.
+func TestReconcile_ReadoptsRestoredFile(t *testing.T) {
+	t.Parallel()
+	idx, notesDir := newReconcileFixture(t)
+
+	// Step 1 — seed initial state.
+	mtime := time.Unix(1700000000, 0)
+	writeNote(t, notesDir, "restored.md", "# Original Title", mtime)
+	if _, err := idx.Reconcile(context.Background(), ModeFull); err != nil {
+		t.Fatalf("seed Reconcile: %v", err)
+	}
+	firstList, err := idx.List(context.Background())
+	if err != nil {
+		t.Fatalf("List after seed: %v", err)
+	}
+	var firstUUID uuid.UUID
+	for _, sm := range firstList {
+		if sm.Path == "restored.md" {
+			firstUUID = sm.ID
+			break
+		}
+	}
+	if firstUUID == uuid.Nil {
+		t.Fatalf("seed: restored.md not found in index")
+	}
+
+	// Step 2 — simulate post-delete: remove index row and disk file.
+	if err := idx.Delete(context.Background(), firstUUID); err != nil {
+		t.Fatalf("Delete from index: %v", err)
+	}
+	if err := os.Remove(filepath.Join(notesDir, "restored.md")); err != nil {
+		t.Fatalf("Remove disk file: %v", err)
+	}
+
+	// Verify the row is gone.
+	midList, _ := idx.List(context.Background())
+	for _, sm := range midList {
+		if sm.Path == "restored.md" {
+			t.Fatalf("mid-state: restored.md still in index, want it deleted")
+		}
+	}
+
+	// Step 3 — manual restore: place the file back under notes/.
+	mtimeRestored := time.Unix(1700001000, 0)
+	writeNote(t, notesDir, "restored.md", "# Restored Title", mtimeRestored)
+	if _, err := idx.Reconcile(context.Background(), ModeIncremental); err != nil {
+		t.Fatalf("incremental Reconcile after restore: %v", err)
+	}
+
+	// Step 4 — assert re-adoption with fresh non-nil UUID and correct title.
+	afterList, err := idx.List(context.Background())
+	if err != nil {
+		t.Fatalf("List after restore: %v", err)
+	}
+	var found bool
+	for _, sm := range afterList {
+		if sm.Path != "restored.md" {
+			continue
+		}
+		found = true
+		if sm.ID == uuid.Nil {
+			t.Errorf("restored UUID is nil; chooseID must mint uuid.New() for a newly-seen path")
+		}
+		if sm.Title != "Restored Title" {
+			t.Errorf("restored title: got %q, want %q", sm.Title, "Restored Title")
+		}
+	}
+	if !found {
+		t.Errorf("restored.md not found in index after incremental Reconcile")
 	}
 }
 
