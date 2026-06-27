@@ -11,8 +11,9 @@
  * owns the flush+confirm orchestration) — never `closeTab` directly, so a close
  * can never drop unsaved edits.
  */
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, DragEvent } from "react";
+import { useTabStore } from "../lib/useTabStore";
 import type { Tab } from "../lib/useTabStore";
 import { TabPill } from "./TabPill";
 import { TabContextMenu } from "./TabContextMenu";
@@ -73,6 +74,11 @@ export function TabStrip({
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
+  // Keyboard shortcuts need the current onRequestClose without re-registering the
+  // listener on every render — thread it through a ref kept fresh each render.
+  const requestCloseRef = useRef(onRequestClose);
+  requestCloseRef.current = onRequestClose;
+
   // Overflow measurement: tabs whose right edge exceeds the strip's content box
   // are hidden behind the dropdown. Measured after layout; recomputed on resize.
   const stripRef = useRef<HTMLDivElement | null>(null);
@@ -107,6 +113,64 @@ export function TabStrip({
     ro.observe(strip);
     return () => ro.disconnect();
   }, [tabs]);
+
+  // Capture-phase keyboard shortcuts (D-13). Registered once; the listener reads
+  // live store state via getState() and onRequestClose via a ref so it stays stable.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const store = useTabStore.getState();
+      if (store.tabs.length === 0) return;
+
+      // Alt+W → request close of the active tab (flush-aware via prop).
+      // Never bind plain Cmd/Ctrl+W — the browser owns it.
+      if (e.altKey && !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === "w") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (store.activeTabId !== null) requestCloseRef.current(store.activeTabId);
+        return;
+      }
+
+      // Next: Alt+] OR Ctrl+Tab (no shift).
+      const isNextAlt = e.altKey && !e.metaKey && !e.ctrlKey && e.key === "]";
+      const isNextCtrlTab =
+        e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab" && !e.shiftKey;
+      if (isNextAlt || isNextCtrlTab) {
+        if (isNextCtrlTab) {
+          // Ctrl+Tab may be non-cancelable (browser-swallowed) — guard (Pitfall 8).
+          try {
+            e.preventDefault();
+          } catch {
+            /* event not cancelable — browser owns Ctrl+Tab here */
+          }
+        } else {
+          e.preventDefault();
+        }
+        store.cycleTab(1);
+        return;
+      }
+
+      // Prev: Alt+[ OR Ctrl+Shift+Tab.
+      const isPrevAlt = e.altKey && !e.metaKey && !e.ctrlKey && e.key === "[";
+      const isPrevCtrlTab =
+        e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab" && e.shiftKey;
+      if (isPrevAlt || isPrevCtrlTab) {
+        if (isPrevCtrlTab) {
+          try {
+            e.preventDefault();
+          } catch {
+            /* event not cancelable — browser owns Ctrl+Shift+Tab here */
+          }
+        } else {
+          e.preventDefault();
+        }
+        store.cycleTab(-1);
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, []);
 
   // UI-SPEC empty state: render nothing when there are no tabs.
   if (tabs.length === 0) return null;
