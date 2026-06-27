@@ -48,12 +48,12 @@ func (f *fakeFileStore) Stat(_ string) (time.Time, error) {
 
 // Mutation primitives not exercised in this package (covered by
 // service_test.go + ops_test.go); default no-ops keep the port satisfied.
-func (f *fakeFileStore) CreateFile(_ string) error        { return nil }
-func (f *fakeFileStore) DeleteFile(_ string) error        { return nil }
-func (f *fakeFileStore) MoveFile(_, _ string) error       { return nil }
-func (f *fakeFileStore) CreateDir(_ string) error         { return nil }
-func (f *fakeFileStore) DeleteDir(_ string, _ bool) error { return nil }
-func (f *fakeFileStore) MoveDir(_, _ string) error        { return nil }
+func (f *fakeFileStore) CreateFile(_ string) error          { return nil }
+func (f *fakeFileStore) DeleteFile(_ string) error          { return nil }
+func (f *fakeFileStore) MoveFile(_, _ string) error         { return nil }
+func (f *fakeFileStore) CreateDir(_ string) error           { return nil }
+func (f *fakeFileStore) DeleteDir(_ string, _ bool) error   { return nil }
+func (f *fakeFileStore) MoveDir(_, _ string) error          { return nil }
 func (f *fakeFileStore) TrashFile(_ string) (string, error) { return "", nil }
 func (f *fakeFileStore) TrashDir(_ string) (string, error)  { return "", nil }
 

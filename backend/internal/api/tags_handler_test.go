@@ -198,14 +198,14 @@ type tagFakeFileStore struct{}
 func (f *tagFakeFileStore) Read(_ string) ([]byte, error)        { return nil, nil }
 func (f *tagFakeFileStore) WriteAtomic(_ string, _ []byte) error { return nil }
 func (f *tagFakeFileStore) Stat(_ string) (time.Time, error)     { return time.Now(), nil }
-func (f *tagFakeFileStore) CreateFile(_ string) error              { return nil }
-func (f *tagFakeFileStore) DeleteFile(_ string) error              { return nil }
-func (f *tagFakeFileStore) MoveFile(_, _ string) error             { return nil }
-func (f *tagFakeFileStore) CreateDir(_ string) error               { return nil }
-func (f *tagFakeFileStore) DeleteDir(_ string, _ bool) error       { return nil }
-func (f *tagFakeFileStore) MoveDir(_, _ string) error              { return nil }
-func (f *tagFakeFileStore) TrashFile(_ string) (string, error)     { return "", nil }
-func (f *tagFakeFileStore) TrashDir(_ string) (string, error)      { return "", nil }
+func (f *tagFakeFileStore) CreateFile(_ string) error            { return nil }
+func (f *tagFakeFileStore) DeleteFile(_ string) error            { return nil }
+func (f *tagFakeFileStore) MoveFile(_, _ string) error           { return nil }
+func (f *tagFakeFileStore) CreateDir(_ string) error             { return nil }
+func (f *tagFakeFileStore) DeleteDir(_ string, _ bool) error     { return nil }
+func (f *tagFakeFileStore) MoveDir(_, _ string) error            { return nil }
+func (f *tagFakeFileStore) TrashFile(_ string) (string, error)   { return "", nil }
+func (f *tagFakeFileStore) TrashDir(_ string) (string, error)    { return "", nil }
 
 // GT1: empty vault returns 200 with `{tags: []}`.
 func TestGetTags_GT1_Empty(t *testing.T) {

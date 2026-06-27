@@ -842,22 +842,20 @@ func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 		t.Errorf("expected work/design.md after move, stat err=%v", err)
 	}
 
+	// Phase 14 (A4 soft-delete): deleting a non-empty folder moves the whole
+	// subtree into <dataDir>/.trash/ and returns 204 regardless of the recursive
+	// flag — the prior 409 folder_not_empty guard is gone.
 	status, body = httpDelete(t, base+"/folders?path=work&recursive=false")
-	if status != 409 {
-		t.Errorf("DELETE non-empty folder without recursive: got %d, want 409; body=%s",
-			status, body)
-	}
-	if !bytes.Contains(body, []byte("folder_not_empty")) {
-		t.Errorf("expected folder_not_empty code in 409 body; got: %s", body)
-	}
-
-	status, body = httpDelete(t, base+"/folders?path=work&recursive=true")
 	if status != 204 {
-		t.Fatalf("DELETE recursive folder: got %d, want 204; body=%s", status, body)
+		t.Fatalf("DELETE non-empty folder (soft-delete): got %d, want 204; body=%s",
+			status, body)
 	}
 
 	if _, err := os.Stat(filepath.Join(notesDir, "work")); !os.IsNotExist(err) {
-		t.Errorf("expected work/ gone after recursive delete, stat err=%v", err)
+		t.Errorf("expected work/ gone from notes after soft-delete, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, ".trash", "work", "design.md")); err != nil {
+		t.Errorf("expected work/design.md moved to .trash/ after soft-delete, stat err=%v", err)
 	}
 	status, body = httpGet(t, base+"/notes")
 	if status != 200 {
