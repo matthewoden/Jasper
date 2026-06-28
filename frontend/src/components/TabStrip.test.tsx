@@ -268,3 +268,68 @@ describe("<TabStrip /> keyboard shortcuts (Task 2 — TAB-11 / TAB-05)", () => {
     expect(useTabStore.getState().activeTabId).toBe("b");
   });
 });
+
+describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
+  it("pointerDown + pointerMove past threshold renders tab-drag-ghost", () => {
+    renderStrip();
+    const strip = screen.getByRole("tablist");
+    const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
+    expect(wrapper).not.toBeNull();
+
+    fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+
+    expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
+  });
+
+  it("pointerUp removes the ghost (count 0 after release)", () => {
+    renderStrip();
+    const strip = screen.getByRole("tablist");
+    const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
+
+    fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
+
+    fireEvent.pointerUp(strip, { button: 0, clientX: 120, pointerId: 1 });
+    expect(screen.queryByTestId("tab-drag-ghost")).not.toBeInTheDocument();
+  });
+
+  it("a second pointerMove updates the ghost position without throwing", () => {
+    renderStrip();
+    const strip = screen.getByRole("tablist");
+    const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
+
+    fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    expect(() => {
+      fireEvent.pointerMove(strip, { clientX: 140, pointerId: 1 });
+    }).not.toThrow();
+    expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
+  });
+
+  it("pointerCancel removes the ghost (no stranded ghost)", () => {
+    renderStrip();
+    const strip = screen.getByRole("tablist");
+    const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
+
+    fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
+
+    fireEvent.pointerCancel(strip, { clientX: 120, pointerId: 1 });
+    expect(screen.queryByTestId("tab-drag-ghost")).not.toBeInTheDocument();
+  });
+
+  it("below-threshold move does NOT render the ghost", () => {
+    renderStrip();
+    const strip = screen.getByRole("tablist");
+    const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
+
+    // Move only 3px — below the 5px threshold
+    fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 103, pointerId: 1 });
+
+    expect(screen.queryByTestId("tab-drag-ghost")).not.toBeInTheDocument();
+  });
+});

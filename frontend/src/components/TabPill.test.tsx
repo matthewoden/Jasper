@@ -141,4 +141,64 @@ describe("<TabPill />", () => {
     // draggable should be absent or explicitly false — never "true".
     expect(pill.getAttribute("draggable")).not.toBe("true");
   });
+
+  it("isDragging=true dims the pill to ~0.4 opacity", () => {
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        isDragging={true}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const pill = screen.getByRole("tab");
+    expect(pill.style.opacity).toBe("0.4");
+  });
+
+  it("isDragging=false / omitted renders at full opacity (no dimming)", () => {
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const pill = screen.getByRole("tab");
+    const opacity = pill.style.opacity;
+    expect(opacity === "" || opacity === "1").toBe(true);
+  });
+
+  it("isDragging prop is NOT forwarded to the DOM as an attribute", () => {
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        isDragging={true}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const pill = screen.getByRole("tab");
+    expect(pill.hasAttribute("isDragging")).toBe(false);
+    expect(pill.hasAttribute("isdragging")).toBe(false);
+  });
+
+  it("pill root carries user-select:none so tab titles are never selectable", () => {
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const pill = screen.getByRole("tab");
+    expect(pill.style.userSelect).toBe("none");
+  });
 });
