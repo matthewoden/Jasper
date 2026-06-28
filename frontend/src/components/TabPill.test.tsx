@@ -4,6 +4,9 @@
  *            even when the title is long and truncated.
  *   TAB-05 — middle-click on the pill closes; X click closes without selecting (stopPropagation).
  *   TAB-12 — isDeleted renders "(deleted)" in destructive color.
+ *
+ * Native DnD props (draggable, onDragStart, etc.) are gone — reorder moved to
+ * pointer-event handlers on the TabStrip wrapper (round 2).
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
@@ -28,6 +31,7 @@ describe("<TabPill />", () => {
     expect(pill.style.minWidth).toBe(`${MIN_TAB_WIDTH}px`);
     expect(pill.style.maxWidth).toBe(`${MAX_TAB_WIDTH}px`);
   });
+
   it("TAB-04: renders an always-visible close button even with a long truncated title", () => {
     const longTitle =
       "an-extremely-long-note-filename-that-will-truncate-with-ellipsis.md";
@@ -121,5 +125,20 @@ describe("<TabPill />", () => {
     expect(screen.getByRole("tab").getAttribute("aria-label")).toBe(
       "note.md (deleted, read-only)",
     );
+  });
+
+  it("native DnD removed: pill does not have draggable attribute", () => {
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const pill = screen.getByRole("tab");
+    // draggable should be absent or explicitly false — never "true".
+    expect(pill.getAttribute("draggable")).not.toBe("true");
   });
 });

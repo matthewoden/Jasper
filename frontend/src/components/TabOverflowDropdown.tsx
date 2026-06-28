@@ -19,10 +19,14 @@ export interface TabOverflowDropdownProps {
   onSelectTab: (id: string) => void;
 }
 
+// Height 24 + marginBottom 4 matches the new-tab button (24px, margin "0 0 4px 2px"),
+// so all three trailing icon centers (pill X, new-tab +, overflow chevron) align at
+// ~16px above the strip bottom on the 36px flex-end strip.
 const triggerButtonStyle: React.CSSProperties = {
   width: 28,
-  height: 28,
+  height: 24,
   padding: 4,
+  margin: "0 0 4px 0",
   background: "transparent",
   border: "none",
   color: "var(--color-muted)",
@@ -78,6 +82,7 @@ export function TabOverflowDropdown({
         <button
           type="button"
           aria-label="Show hidden tabs"
+          title="Show hidden tabs"
           style={{
             ...triggerButtonStyle,
             background: hovering
