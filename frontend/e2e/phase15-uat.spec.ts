@@ -448,3 +448,240 @@ test.describe("@phase15 TAB-10: vault swap clears the tab strip", () => {
     }
   });
 });
+
+// ─── UAT-15.1: tab UX fixes (DnD, width, X-pin, breadcrumb) ──────────────────
+
+// UAT-DND: drag-to-reorder
+test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
+  let jasper: JasperHandle;
+  let appHome: string;
+  test.beforeAll(async () => {
+    ({ jasper, appHome } = await spawnIsolated());
+  });
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+    if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
+  });
+
+  test("dragging one pill past another reorders the strip", async ({ page }) => {
+    await waitForConnected(page, jasper.baseURL);
+    const idAlpha = await apiCreateNote(page, jasper.baseURL, "drag-alpha");
+    const idBeta = await apiCreateNote(page, jasper.baseURL, "drag-beta");
+    await openNoteFromTree(page, idAlpha);
+    await openNoteFromTree(page, idBeta);
+    await expect(tabPills(page)).toHaveCount(2);
+
+    // Confirm initial order before dragging.
+    const initialTexts = (await tabPills(page).allTextContents()).map((t) =>
+      t.trim(),
+    );
+    expect(initialTexts).toEqual(["drag-alpha", "drag-beta"]);
+
+    // Drive reorder via a shared DataTransfer so React's synthetic handlers receive a
+    // DataTransfer carrying the tabId across the dragstart → drop sequence.
+    // DataTransfer constructed with new DataTransfer() starts in readwrite mode so
+    // setData/getData work without native-drag browser restrictions.
+    await page.evaluate(() => {
+      const strip = document.querySelector(
+        '[data-testid="tab-strip"]',
+      ) as HTMLElement | null;
+      if (!strip) throw new Error("tab-strip not found");
+      const pills = strip.querySelectorAll('[role="tab"]');
+      if (pills.length < 2) throw new Error("need ≥2 pills");
+      const source = pills[0] as HTMLElement;
+      const target = pills[1] as HTMLElement;
+      const dt = new DataTransfer();
+      source.dispatchEvent(
+        new DragEvent("dragstart", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: dt,
+        }),
+      );
+      target.dispatchEvent(
+        new DragEvent("dragover", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: dt,
+        }),
+      );
+      target.dispatchEvent(
+        new DragEvent("drop", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: dt,
+        }),
+      );
+      source.dispatchEvent(
+        new DragEvent("dragend", { bubbles: true, dataTransfer: dt }),
+      );
+    });
+
+    // Poll until React has re-rendered the settled reordered state.
+    await expect
+      .poll(
+        async () =>
+          (await tabPills(page).allTextContents()).map((t) => t.trim()),
+        { timeout: 5_000 },
+      )
+      .toEqual(["drag-beta", "drag-alpha"]);
+  });
+});
+
+// UAT-WIDTH: responsive width — editor stays within viewport
+test.describe("@phase15 UAT-15.1-WIDTH: responsive editor width", () => {
+  let jasper: JasperHandle;
+  let appHome: string;
+  test.beforeAll(async () => {
+    ({ jasper, appHome } = await spawnIsolated());
+  });
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+    if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
+  });
+
+  test("many open tabs overflow into dropdown; editor pane stays within viewport", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+    const ids: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      ids.push(
+        await apiCreateNote(
+          page,
+          jasper.baseURL,
+          `overflow-uat-${String(i).padStart(2, "0")}-wwwwww`,
+        ),
+      );
+    }
+    for (const id of ids) {
+      await openNoteFromTree(page, id);
+    }
+
+    // Primary: overflow dropdown must appear — tabs shrank then overflowed.
+    const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
+    await expect(overflowBtn).toBeVisible({ timeout: 10_000 });
+
+    // Secondary: active editor pane bounding box fits within viewport width.
+    const vw = page.viewportSize()?.width ?? 1280;
+    await expect
+      .poll(
+        async () => {
+          return page.evaluate(() => {
+            const panes = document.querySelectorAll(
+              '[data-testid="editor-pane"]',
+            );
+            for (const pane of panes) {
+              const el = pane as HTMLElement;
+              if (el.style.display !== "none") {
+                const r = el.getBoundingClientRect();
+                return r.x + r.width;
+              }
+            }
+            return 0;
+          });
+        },
+        { timeout: 5_000 },
+      )
+      .toBeLessThanOrEqual(vw + 1);
+  });
+});
+
+// UAT-XPIN: close X is pinned to the pill's right edge
+test.describe("@phase15 UAT-15.1-XPIN: close X pinned to right edge", () => {
+  let jasper: JasperHandle;
+  let appHome: string;
+  test.beforeAll(async () => {
+    ({ jasper, appHome } = await spawnIsolated());
+  });
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+    if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
+  });
+
+  test("close button right edge is within 12px of pill right edge even for a short title", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+    const id = await apiCreateNote(page, jasper.baseURL, "x");
+    await openNoteFromTree(page, id);
+    await expect(tabPills(page).filter({ hasText: "x" })).toBeVisible({
+      timeout: 5_000,
+    });
+
+    // Poll bounding boxes — layout may settle after first paint.
+    await expect
+      .poll(
+        async () => {
+          const pill = tabStrip(page).getByRole("tab").filter({ hasText: "x" });
+          const btn = pill.locator('button[aria-label^="Close"]');
+          const pillBbox = await pill.boundingBox();
+          const btnBbox = await btn.boundingBox();
+          if (!pillBbox || !btnBbox) return 999;
+          return Math.abs(
+            pillBbox.x + pillBbox.width - (btnBbox.x + btnBbox.width),
+          );
+        },
+        { timeout: 5_000 },
+      )
+      .toBeLessThanOrEqual(12);
+  });
+});
+
+// UAT-BREADCRUMB: centered breadcrumb shows full path
+test.describe("@phase15 UAT-15.1-BREADCRUMB: centered breadcrumb trail", () => {
+  let jasper: JasperHandle;
+  let appHome: string;
+  test.beforeAll(async () => {
+    ({ jasper, appHome } = await spawnIsolated());
+  });
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+    if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
+  });
+
+  test("root note shows title-only; nested note shows folder / title; both centered", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+
+    // Root note: path = "root-crumb.md" → breadcrumb = "root-crumb"
+    const rootId = await apiCreateNote(page, jasper.baseURL, "root-crumb", "");
+    // Nested note: path = "breadcrumbs/nested.md" → breadcrumb = "breadcrumbs / nested"
+    const nestedId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "nested",
+      "breadcrumbs",
+    );
+
+    // Open root note (only 1 tab — 1 breadcrumb element).
+    await openNoteFromTree(page, rootId);
+    const rootBc = page.getByTestId("note-breadcrumb");
+    await expect(rootBc).toBeVisible({ timeout: 5_000 });
+    await expect(rootBc).toHaveText("root-crumb");
+    const rootAlign = await rootBc.evaluate(
+      (el) => getComputedStyle(el).textAlign,
+    );
+    expect(rootAlign).toBe("center");
+
+    // Expand "breadcrumbs" folder, then open nested note.
+    const folderRow = page.locator(
+      '[data-tree-row="breadcrumbs"][data-tree-row-kind="folder"]',
+    );
+    await expect(folderRow).toBeVisible({ timeout: 5_000 });
+    await folderRow.click();
+    await openNoteFromTree(page, nestedId);
+
+    // 2 tabs open; filter by text to get the visible (active) breadcrumb.
+    const nestedBc = page
+      .getByTestId("note-breadcrumb")
+      .filter({ hasText: "breadcrumbs / nested" });
+    await expect(nestedBc).toBeVisible({ timeout: 5_000 });
+    await expect(nestedBc).toHaveText("breadcrumbs / nested");
+    const nestedAlign = await nestedBc.evaluate(
+      (el) => getComputedStyle(el).textAlign,
+    );
+    expect(nestedAlign).toBe("center");
+  });
+});
