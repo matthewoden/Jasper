@@ -97,11 +97,13 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
   ) {
     const [hovering, setHovering] = useState(false);
 
+    // Active: brightest surface. Hovered inactive: accent tint over opaque base.
+    // Idle inactive: surface-subtle (opaque, distinct from strip bg and active).
     const background = isActive
       ? "var(--color-surface)"
       : hovering
-        ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
-        : "transparent";
+        ? "color-mix(in srgb, var(--color-accent) 12%, var(--color-surface-subtle))"
+        : "var(--color-surface-subtle)";
 
     return (
       <div
@@ -137,7 +139,13 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
             (deleted)
           </span>
         ) : (
-          <span style={{ ...titleStyle, fontWeight: isActive ? 600 : 400 }}>
+          <span
+            style={{
+              ...titleStyle,
+              // Active brighter-not-bolder: color conveys selection, weight is uniform.
+              color: isActive ? "var(--color-fg)" : "var(--color-muted)",
+            }}
+          >
             {title}
           </span>
         )}

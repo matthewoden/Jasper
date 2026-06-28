@@ -78,6 +78,7 @@ export function TabOverflowDropdown({
         <button
           type="button"
           aria-label="Show hidden tabs"
+          title="Show hidden tabs"
           style={{
             ...triggerButtonStyle,
             background: hovering
