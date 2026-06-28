@@ -3,16 +3,17 @@
  *
  * Composes the Plan-03 presentational pieces: each ordered tab renders a
  * `TabPill` wrapped in `TabContextMenu`, with a `TabOverflowDropdown` at the
- * right edge listing tabs that don't fit. Reorder is native HTML5 DnD (no
- * library). Capture-phase keyboard shortcuts (Alt+]/Alt+[/Ctrl+Tab cycle,
- * Alt+W close) are registered here (Task 2).
+ * right edge listing tabs that don't fit. Reorder uses pointer-event drag
+ * (pointerdown → threshold → pointermove → pointerup) because native HTML5 DnD
+ * does not deliver drop events reliably in this context. Capture-phase keyboard
+ * shortcuts (Alt+]/Alt+[/Ctrl+Tab cycle, Alt+W close) are registered here.
  *
  * Closing ALWAYS routes through `onRequestClose` (flush-aware; App.tsx/Plan 05
  * owns the flush+confirm orchestration) — never `closeTab` directly, so a close
  * can never drop unsaved edits.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { CSSProperties, DragEvent } from "react";
+import type { CSSProperties, PointerEvent } from "react";
 import { Plus } from "lucide-react";
 import { useTabStore } from "../lib/useTabStore";
 import type { Tab } from "../lib/useTabStore";
@@ -32,6 +33,10 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 //   reserved separately, inside computeHiddenTabIds, ONLY when overflow occurs.
 const RESERVED = 8 + 26;
 const OVERFLOW_BTN = 28;
+
+// Movement threshold (px) before a pointerdown is treated as a drag.
+// Small enough to feel responsive; large enough to not fire on a click.
+const DRAG_THRESHOLD = 5;
 
 export interface TabStripProps {
   tabs: Tab[];
@@ -133,6 +138,15 @@ const dropIndicatorStyle: CSSProperties = {
   flexShrink: 0,
 };
 
+/** State tracked across the pointer-drag lifecycle (mutable ref, not state). */
+interface DragRef {
+  tabId: string;
+  fromIndex: number;
+  startX: number;
+  active: boolean;
+  pointerId: number;
+}
+
 export function TabStrip({
   tabs,
   activeTabId,
@@ -148,8 +162,13 @@ export function TabStrip({
   forceHiddenTabIds,
   style,
 }: TabStripProps) {
-  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+
+  // Pointer drag state — mutable ref avoids triggering re-renders mid-drag.
+  const dragRef = useRef<DragRef | null>(null);
+  // After a real drag the pointerup triggers a click on the same element;
+  // this ref suppresses that click so selection does not fire post-drag.
+  const suppressClickRef = useRef(false);
 
   // Keyboard shortcuts need the current onRequestClose without re-registering the
   // listener on every render — thread it through a ref kept fresh each render.
@@ -287,17 +306,87 @@ export function TabStrip({
   const visibleTabs = tabs.filter((t) => !hiddenIds.has(t.id));
   const hiddenTabs = tabs.filter((t) => hiddenIds.has(t.id));
 
-  const handleDrop = (targetId: string) => (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const fromId = e.dataTransfer.getData("tabId");
-    setDraggingTabId(null);
-    setDropTargetId(null);
-    if (fromId === "" || fromId === targetId) return;
-    const fromIdx = tabs.findIndex((t) => t.id === fromId);
-    const toIdx = tabs.findIndex((t) => t.id === targetId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    onReorder(fromIdx, toIdx);
-  };
+  /** Compute which visible-tab id the dragged pill is hovering before, by comparing
+   *  the current x position against each visible pill wrapper's horizontal midpoint. */
+  function computeDropTarget(clientX: number): string | null {
+    if (!stripRef.current) return null;
+    const wrappers = stripRef.current.querySelectorAll<HTMLElement>(
+      "[data-tab-wrapper]",
+    );
+    for (const wrapper of wrappers) {
+      const rect = wrapper.getBoundingClientRect();
+      if (clientX < rect.left + rect.width / 2) {
+        return wrapper.dataset.tabWrapper ?? null;
+      }
+    }
+    // Past the last pill — target is appending after the last visible tab.
+    return null;
+  }
+
+  function handlePointerDown(
+    tab: Tab,
+    fromIndex: number,
+    e: PointerEvent<HTMLDivElement>,
+  ) {
+    // Only react to primary button; middle/right fall through for auxclick/context menu.
+    if (e.button !== 0) return;
+    dragRef.current = {
+      tabId: tab.id,
+      fromIndex,
+      startX: e.clientX,
+      active: false,
+      pointerId: e.pointerId,
+    };
+    // Capture so pointermove/pointerup arrive even if the pointer leaves the element.
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function handlePointerMove(e: PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const moved = Math.abs(e.clientX - drag.startX);
+    if (!drag.active && moved > DRAG_THRESHOLD) {
+      drag.active = true;
+    }
+    if (drag.active) {
+      const target = computeDropTarget(e.clientX);
+      setDropTargetId(target);
+    }
+  }
+
+  function handlePointerUp(tab: Tab, e: PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.tabId !== tab.id) return;
+
+    if (drag.active) {
+      // Suppress the click that fires immediately after pointerup on a real drag.
+      suppressClickRef.current = true;
+
+      const targetId = dropTargetId;
+      setDropTargetId(null);
+      dragRef.current = null;
+
+      if (targetId !== null) {
+        // Map the visible-tab drop target to the full tabs[] index.
+        const toIdx = tabs.findIndex((t) => t.id === targetId);
+        if (toIdx !== -1 && toIdx !== drag.fromIndex) {
+          onReorder(drag.fromIndex, toIdx);
+        }
+      } else {
+        // Dropped past all visible tabs — move to end of visible range.
+        const lastVisibleIdx = tabs.findIndex(
+          (t) => t.id === visibleTabs[visibleTabs.length - 1]?.id,
+        );
+        if (lastVisibleIdx !== -1 && lastVisibleIdx !== drag.fromIndex) {
+          onReorder(drag.fromIndex, lastVisibleIdx);
+        }
+      }
+    } else {
+      dragRef.current = null;
+    }
+
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  }
 
   return (
     <div
@@ -307,42 +396,55 @@ export function TabStrip({
       style={{ ...tabStripStyle, ...style }}
       data-testid="tab-strip"
     >
-      {visibleTabs.map((tab) => (
-        <div
-          key={tab.id}
-          style={{ display: "flex", alignItems: "flex-end", minWidth: 0 }}
-        >
-          {dropTargetId === tab.id && draggingTabId !== tab.id && (
-            <div style={dropIndicatorStyle} aria-hidden="true" />
-          )}
-          <TabContextMenu
-            onOpenRight={() => onOpenRight(tab.id)}
-            onClose={() => onRequestClose(tab.id)}
-            onCloseOthers={() => onCloseOthers(tab.id)}
-            onCloseToRight={() => onCloseToRight(tab.id)}
-          >
-            <TabPill
-              title={titleForTab(tab.noteId)}
-              isActive={tab.id === activeTabId}
-              isDeleted={deletedTabIds.has(tab.noteId)}
-              onSelect={() => onSelectTab(tab.id)}
-              onClose={() => onRequestClose(tab.id)}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData("tabId", tab.id);
-                e.dataTransfer.effectAllowed = "move";
-                setDraggingTabId(tab.id);
+      {/* Visible tabs in their own flex child so trailing controls always reserve space. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          flex: "1 1 auto",
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        {visibleTabs.map((tab) => {
+          const fromIndex = tabs.findIndex((t) => t.id === tab.id);
+          return (
+            <div
+              key={tab.id}
+              data-tab-wrapper={tab.id}
+              style={{ display: "flex", alignItems: "flex-end", minWidth: 0 }}
+              onPointerDown={(e) => handlePointerDown(tab, fromIndex, e)}
+              onPointerMove={handlePointerMove}
+              onPointerUp={(e) => handlePointerUp(tab, e)}
+              onClickCapture={(e) => {
+                // Swallow the post-drag click so it doesn't also select the tab.
+                if (suppressClickRef.current) {
+                  suppressClickRef.current = false;
+                  e.stopPropagation();
+                }
               }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                if (dropTargetId !== tab.id) setDropTargetId(tab.id);
-              }}
-              onDrop={handleDrop(tab.id)}
-            />
-          </TabContextMenu>
-        </div>
-      ))}
+            >
+              {dropTargetId === tab.id && (
+                <div style={dropIndicatorStyle} aria-hidden="true" />
+              )}
+              <TabContextMenu
+                onOpenRight={() => onOpenRight(tab.id)}
+                onClose={() => onRequestClose(tab.id)}
+                onCloseOthers={() => onCloseOthers(tab.id)}
+                onCloseToRight={() => onCloseToRight(tab.id)}
+              >
+                <TabPill
+                  title={titleForTab(tab.noteId)}
+                  isActive={tab.id === activeTabId}
+                  isDeleted={deletedTabIds.has(tab.noteId)}
+                  onSelect={() => onSelectTab(tab.id)}
+                  onClose={() => onRequestClose(tab.id)}
+                />
+              </TabContextMenu>
+            </div>
+          );
+        })}
+      </div>
       {hiddenTabs.length > 0 && (
         <TabOverflowDropdown
           hiddenTabs={hiddenTabs.map((tab) => ({

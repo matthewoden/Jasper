@@ -2,20 +2,19 @@
  * TabPill — a single editor tab: title (truncated), an always-visible close (X),
  * middle-click close, and a "(deleted)" read-only indicator.
  *
- * Pure props-in / callbacks-out. TabStrip (Plan 04) owns reorder logic and threads
- * the native HTML5 drag handlers; this pill only forwards them. Active styling is a
- * surface background + a 2px accent bottom-border underline; hover uses the shared
- * accent-12% tint. The note's folder breadcrumb lives at the top of the editor
- * content (EditorPane), not on the pill.
+ * Pure props-in / callbacks-out. TabStrip owns pointer-event drag-to-reorder;
+ * this pill only carries selection and close callbacks. Active styling uses
+ * brighter title color (fg vs muted) and a 2px accent bottom-border; the
+ * background is opaque surface-subtle for inactive pills.
  *
- * forwardRef: ContextMenu.Trigger asChild clones this element and injects its own
- * ref + handlers (onPointerDown, onContextMenu). Without forwardRef the injected
- * ref is silently dropped and native DnD cannot initialise. Explicit handlers spread
- * AFTER {...rest} so our DnD/select handlers always win over Radix-injected same-key
- * props; Radix's context-menu-specific handlers (distinct keys) pass through untouched.
+ * forwardRef: ContextMenu.Trigger asChild clones this element and injects its
+ * own ref + handlers (onPointerDown, onContextMenu). Without forwardRef the
+ * injected ref is silently dropped. Explicit handlers spread AFTER {...rest} so
+ * our select handler always wins over Radix-injected same-key props; Radix's
+ * context-menu-specific handlers (distinct keys) pass through untouched.
  */
 import { useState, forwardRef } from "react";
-import type { CSSProperties, DragEvent, HTMLAttributes } from "react";
+import type { CSSProperties, HTMLAttributes } from "react";
 import { X } from "lucide-react";
 import { MIN_TAB_WIDTH, MAX_TAB_WIDTH } from "../lib/tabOverflow";
 
@@ -25,11 +24,6 @@ export interface TabPillProps {
   isDeleted: boolean;
   onSelect: () => void;
   onClose: () => void;
-  /** Native DnD handlers threaded from TabStrip (reorder lives there). */
-  draggable?: boolean;
-  onDragStart?: (e: DragEvent<HTMLDivElement>) => void;
-  onDragOver?: (e: DragEvent<HTMLDivElement>) => void;
-  onDrop?: (e: DragEvent<HTMLDivElement>) => void;
 }
 
 // Passthrough: arbitrary DOM attributes Radix injects (onPointerDown, onContextMenu,
@@ -87,10 +81,6 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
       isDeleted,
       onSelect,
       onClose,
-      draggable,
-      onDragStart,
-      onDragOver,
-      onDrop,
       ...rest
     },
     ref,
@@ -119,10 +109,6 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
             ? "2px solid var(--color-accent)"
             : "2px solid transparent",
         }}
-        draggable={draggable}
-        onDragStart={onDragStart}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
         onClick={onSelect}
         onAuxClick={(e) => {
           if (e.button === 1) {
