@@ -580,6 +580,94 @@ test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
       )
       .toEqual(["drag-beta", "drag-alpha"]);
   });
+
+  test("ghost appears during active drag and is removed on mouse-up", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, idAlpha);
+    await openNoteFromTree(page, idBeta);
+    await expect(tabPills(page)).toHaveCount(2);
+
+    // Poll until bounding boxes settle to non-zero dimensions.
+    let pill0bbox = await tabPills(page).nth(0).boundingBox();
+    await expect
+      .poll(
+        async () => {
+          pill0bbox = await tabPills(page).nth(0).boundingBox();
+          return (pill0bbox?.width ?? 0) > 0;
+        },
+        { timeout: 5_000 },
+      )
+      .toBe(true);
+    if (!pill0bbox) throw new Error("pill0 bounding box unavailable");
+
+    const fromX = pill0bbox.x + pill0bbox.width / 2;
+    const fromY = pill0bbox.y + pill0bbox.height / 2;
+
+    await page.mouse.move(fromX, fromY);
+    await page.mouse.down();
+    // Move 30px past the 5px drag threshold so the strip activates the drag.
+    await page.mouse.move(fromX + 30, fromY, { steps: 6 });
+
+    // Ghost must be visible while the drag is active (before mouse-up).
+    await expect(page.getByTestId("tab-drag-ghost")).toBeVisible({
+      timeout: 3_000,
+    });
+
+    await page.mouse.up();
+
+    // Ghost must be removed immediately after the drag ends.
+    await expect(page.getByTestId("tab-drag-ghost")).toHaveCount(0, {
+      timeout: 3_000,
+    });
+  });
+
+  test("tab title user-select is none; no text selection survives a drag", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, idAlpha);
+    await openNoteFromTree(page, idBeta);
+    await expect(tabPills(page)).toHaveCount(2);
+
+    // Computed user-select must be "none" on every tab pill.
+    const userSelect = await tabPills(page).first().evaluate((el) =>
+      getComputedStyle(el).userSelect,
+    );
+    expect(userSelect).toBe("none");
+
+    // After a real drag across tab titles, the selection must be empty.
+    let pill0bbox = await tabPills(page).nth(0).boundingBox();
+    let pill1bbox = await tabPills(page).nth(1).boundingBox();
+    await expect
+      .poll(
+        async () => {
+          pill0bbox = await tabPills(page).nth(0).boundingBox();
+          pill1bbox = await tabPills(page).nth(1).boundingBox();
+          return (pill0bbox?.width ?? 0) > 0 && (pill1bbox?.width ?? 0) > 0;
+        },
+        { timeout: 5_000 },
+      )
+      .toBe(true);
+    if (!pill0bbox || !pill1bbox) throw new Error("pill bounding boxes unavailable");
+
+    const fromX = pill0bbox.x + pill0bbox.width / 2;
+    const fromY = pill0bbox.y + pill0bbox.height / 2;
+    const toX = pill1bbox.x + pill1bbox.width / 2;
+    const toY = fromY;
+
+    await page.mouse.move(fromX, fromY);
+    await page.mouse.down();
+    await page.mouse.move(toX, toY, { steps: 8 });
+    await page.mouse.up();
+
+    // window.getSelection() must be empty — no text selected across tab titles.
+    const selection = await page.evaluate(
+      () => window.getSelection()?.toString() ?? "",
+    );
+    expect(selection.trim()).toBe("");
+  });
 });
 
 // UAT-15.1: tooltip (#1), overlap (#5), alignment (#6) — all need overflow
