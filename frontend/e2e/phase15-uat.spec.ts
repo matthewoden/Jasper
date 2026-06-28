@@ -477,6 +477,7 @@ test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
   let appHome: string;
   let idAlpha: string;
   let idBeta: string;
+  let idGamma: string;
 
   test.beforeAll(async () => {
     ({ jasper, appHome } = await spawnIsolated());
@@ -492,6 +493,7 @@ test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
     };
     idAlpha = await createNote("drag-alpha");
     idBeta = await createNote("drag-beta");
+    idGamma = await createNote("drag-gamma");
   });
   test.afterAll(async () => {
     if (jasper) await jasper.kill();
@@ -667,6 +669,117 @@ test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
       () => window.getSelection()?.toString() ?? "",
     );
     expect(selection.trim()).toBe("");
+  });
+
+  // POLISH-GHOST: the floating drag ghost is a real TabPill with a Close button,
+  // not the previous title-only lightweight preview.
+  test("FULL GHOST: floating preview is a real pill with a Close button", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, idAlpha);
+    await openNoteFromTree(page, idBeta);
+    await expect(tabPills(page)).toHaveCount(2);
+
+    // Poll until pill0 bounding box resolves to non-zero dimensions.
+    let pill0bbox = await tabPills(page).nth(0).boundingBox();
+    await expect
+      .poll(
+        async () => {
+          pill0bbox = await tabPills(page).nth(0).boundingBox();
+          return (pill0bbox?.width ?? 0) > 0;
+        },
+        { timeout: 5_000 },
+      )
+      .toBe(true);
+    if (!pill0bbox) throw new Error("pill0 bounding box unavailable");
+
+    const fromX = pill0bbox.x + pill0bbox.width / 2;
+    const fromY = pill0bbox.y + pill0bbox.height / 2;
+
+    await page.mouse.move(fromX, fromY);
+    await page.mouse.down();
+    // Move 30px past the 5px drag threshold so the strip activates the drag.
+    await page.mouse.move(fromX + 30, fromY, { steps: 6 });
+
+    // Ghost must be visible with a Close button inside it — proving full pill.
+    await expect(page.getByTestId("tab-drag-ghost")).toBeVisible({
+      timeout: 3_000,
+    });
+    // The Close button is inside the ghost's aria-hidden container; query with
+    // includeHidden so Playwright finds it despite the aria-hidden parent.
+    await expect(
+      page.getByTestId("tab-drag-ghost").locator('button[aria-label^="Close"]'),
+    ).toHaveCount(1);
+
+    await page.mouse.up();
+    await expect(page.getByTestId("tab-drag-ghost")).toHaveCount(0, {
+      timeout: 3_000,
+    });
+  });
+
+  // POLISH-OVERLAY: the insertion indicator is an absolute overlay that does not
+  // shift stationary pills sideways when it appears (no 2px layout contribution).
+  test("NO-REFLOW OVERLAY: indicator never shifts a stationary tab", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, idAlpha);
+    await openNoteFromTree(page, idBeta);
+    await openNoteFromTree(page, idGamma);
+    await expect(tabPills(page)).toHaveCount(3);
+
+    // Poll until all three bounding boxes resolve to non-zero dimensions.
+    let pill0bbox = await tabPills(page).nth(0).boundingBox();
+    let pill1bbox = await tabPills(page).nth(1).boundingBox();
+    let pill2bbox = await tabPills(page).nth(2).boundingBox();
+    await expect
+      .poll(
+        async () => {
+          pill0bbox = await tabPills(page).nth(0).boundingBox();
+          pill1bbox = await tabPills(page).nth(1).boundingBox();
+          pill2bbox = await tabPills(page).nth(2).boundingBox();
+          return (
+            (pill0bbox?.width ?? 0) > 0 &&
+            (pill1bbox?.width ?? 0) > 0 &&
+            (pill2bbox?.width ?? 0) > 0
+          );
+        },
+        { timeout: 5_000 },
+      )
+      .toBe(true);
+    if (!pill0bbox || !pill1bbox || !pill2bbox)
+      throw new Error("pill bounding boxes unavailable");
+
+    // Record pill2 (drag-gamma) x BEFORE the drag — this is the stationary pill.
+    const pill2xBefore = pill2bbox.x;
+
+    // Start at pill0, move toward a position between pill0 and pill1 midpoints so
+    // the indicator appears before pill1 without triggering a reorder threshold.
+    const fromX = pill0bbox.x + pill0bbox.width / 2;
+    const fromY = pill0bbox.y + pill0bbox.height / 2;
+    // Target: just past pill0's right edge but before pill1's midpoint.
+    const toX = pill0bbox.x + pill0bbox.width + 5;
+
+    await page.mouse.move(fromX, fromY);
+    await page.mouse.down();
+    await page.mouse.move(toX, fromY, { steps: 10 });
+
+    // While holding: indicator must be visible and position:absolute.
+    await expect(page.getByTestId("tab-drop-indicator")).toBeVisible({
+      timeout: 3_000,
+    });
+    const indicatorPos = await page
+      .getByTestId("tab-drop-indicator")
+      .evaluate((el) => getComputedStyle(el).position);
+    expect(indicatorPos).toBe("absolute");
+
+    // The stationary pill's x must not shift — prove no 2px flex shove.
+    const pill2xDuring =
+      (await tabPills(page).nth(2).boundingBox())?.x ?? -1;
+    expect(Math.abs(pill2xDuring - pill2xBefore)).toBeLessThanOrEqual(1);
+
+    await page.mouse.up();
   });
 });
 
