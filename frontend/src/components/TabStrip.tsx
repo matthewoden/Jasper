@@ -23,7 +23,7 @@ import type { Tab } from "../lib/useTabStore";
 import { TabPill } from "./TabPill";
 import { TabContextMenu } from "./TabContextMenu";
 import { TabOverflowDropdown } from "./TabOverflowDropdown";
-import { computeHiddenTabIds, MIN_TAB_WIDTH, MAX_TAB_WIDTH } from "../lib/tabOverflow";
+import { computeHiddenTabIds, MIN_TAB_WIDTH } from "../lib/tabOverflow";
 
 /** Set equality used to preserve state identity (avoid re-render churn). */
 function sameSet(a: Set<string>, b: Set<string>): boolean {
@@ -122,6 +122,7 @@ function EmptyStateNewTabButton({ onNewTab }: { onNewTab: () => void }) {
 }
 
 const tabStripStyle: CSSProperties = {
+  position: "relative",
   height: 36,
   background: "var(--color-bg)",
   borderBottom: "1px solid var(--color-border)",
@@ -133,12 +134,15 @@ const tabStripStyle: CSSProperties = {
   flexShrink: 0,
 };
 
-/** 2px accent insertion indicator shown at the boundary the drop will land on. */
-const dropIndicatorStyle: CSSProperties = {
+/** Absolute overlay insertion indicator: sits on top of the tab row at the drop
+ *  boundary without consuming flex width, so pills never shift sideways. */
+const dropOverlayStyle: CSSProperties = {
+  position: "absolute",
+  top: 2,
+  height: 32,
   width: 2,
-  alignSelf: "stretch",
   background: "var(--color-accent)",
-  flexShrink: 0,
+  pointerEvents: "none",
 };
 
 /** State tracked across the pointer-drag lifecycle (mutable ref, not state). */
@@ -149,6 +153,10 @@ interface DragRef {
   active: boolean;
   /** Title of the dragged tab — shown in the ghost element. */
   title: string;
+  /** Whether the dragged tab is the active tab (reflected in ghost pill). */
+  isActive: boolean;
+  /** Whether the dragged tab's note is deleted (reflected in ghost pill). */
+  isDeleted: boolean;
 }
 
 /** Render-only ghost position; null when no drag is active. */
@@ -157,6 +165,8 @@ interface DragGhost {
   title: string;
   x: number;
   y: number;
+  isActive: boolean;
+  isDeleted: boolean;
 }
 
 export function TabStrip({
@@ -174,10 +184,11 @@ export function TabStrip({
   forceHiddenTabIds,
   style,
 }: TabStripProps) {
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   // Render-only ghost state: tracks cursor position while drag is active.
   // dragRef remains the authoritative drag source; this is purely for display.
   const [dragGhost, setDragGhost] = useState<DragGhost | null>(null);
+  // Strip-relative x of the insertion indicator overlay; null when no drag is active.
+  const [dropIndicatorX, setDropIndicatorX] = useState<number | null>(null);
 
   // Pointer drag state — mutable ref avoids triggering re-renders mid-drag.
   const dragRef = useRef<DragRef | null>(null);
@@ -288,7 +299,7 @@ export function TabStrip({
   useEffect(() => {
     function handleWindowBlur() {
       dragRef.current = null;
-      setDropTargetId(null);
+      setDropIndicatorX(null);
       setDragGhost(null);
     }
     window.addEventListener("blur", handleWindowBlur);
@@ -363,6 +374,8 @@ export function TabStrip({
       startX: e.clientX,
       active: false,
       title: titleForTab(tab.noteId),
+      isActive: tab.id === activeTabId,
+      isDeleted: deletedTabIds.has(tab.noteId),
     };
   }
 
@@ -379,9 +392,36 @@ export function TabStrip({
       window.getSelection()?.removeAllRanges();
     }
     if (drag.active) {
-      const target = computeDropTarget(e.clientX);
-      setDropTargetId(target);
-      setDragGhost({ tabId: drag.tabId, title: drag.title, x: e.clientX, y: e.clientY });
+      // Compute strip-relative indicator x in one pass over the wrapper rects —
+      // the indicator moves without taking any flex layout space (no shove).
+      if (stripRef.current) {
+        const stripRect = stripRef.current.getBoundingClientRect();
+        const wrappers = stripRef.current.querySelectorAll<HTMLElement>(
+          "[data-tab-wrapper]",
+        );
+        let indX: number | null = null;
+        let lastRight = 0;
+        for (const wrapper of wrappers) {
+          const rect = wrapper.getBoundingClientRect();
+          lastRight = rect.right - stripRect.left;
+          if (e.clientX < rect.left + rect.width / 2) {
+            indX = rect.left - stripRect.left;
+            break;
+          }
+        }
+        if (indX === null && wrappers.length > 0) {
+          indX = lastRight;
+        }
+        setDropIndicatorX(indX);
+      }
+      setDragGhost({
+        tabId: drag.tabId,
+        title: drag.title,
+        x: e.clientX,
+        y: e.clientY,
+        isActive: drag.isActive,
+        isDeleted: drag.isDeleted,
+      });
     }
   }
 
@@ -394,7 +434,7 @@ export function TabStrip({
       suppressClickRef.current = true;
 
       const targetId = computeDropTarget(e.clientX);
-      setDropTargetId(null);
+      setDropIndicatorX(null);
       setDragGhost(null);
       dragRef.current = null;
 
@@ -413,6 +453,7 @@ export function TabStrip({
         }
       }
     } else {
+      setDropIndicatorX(null);
       setDragGhost(null);
       dragRef.current = null;
     }
@@ -420,7 +461,7 @@ export function TabStrip({
 
   function handleStripPointerCancel() {
     dragRef.current = null;
-    setDropTargetId(null);
+    setDropIndicatorX(null);
     setDragGhost(null);
   }
 
@@ -467,9 +508,6 @@ export function TabStrip({
               style={{ display: "flex", alignItems: "flex-end", minWidth: 0 }}
               onPointerDown={(e) => handlePointerDown(tab, fromIndex, e)}
             >
-              {dropTargetId === tab.id && (
-                <div style={dropIndicatorStyle} aria-hidden="true" />
-              )}
               <TabContextMenu
                 onOpenRight={() => onOpenRight(tab.id)}
                 onClose={() => onRequestClose(tab.id)}
@@ -500,9 +538,20 @@ export function TabStrip({
         />
       )}
       {newTabButton}
+      {/* Single absolute overlay bar at the drop boundary — moves without shifting
+          any pill's layout position. zIndex below the fixed ghost (1000). */}
+      {dragGhost !== null && dropIndicatorX !== null && (
+        <div
+          data-testid="tab-drop-indicator"
+          aria-hidden="true"
+          style={{ ...dropOverlayStyle, left: dropIndicatorX }}
+        />
+      )}
       {/* Ghost copy of the dragged tab that follows the cursor. position:fixed
           escapes the strip's overflow:hidden; pointerEvents:none keeps mouse
-          events reaching the real strip handlers underneath. */}
+          events reaching the real strip handlers underneath. A real TabPill
+          inside the container faithfully shows the X icon, active accent border,
+          and deleted state — not a title-only lightweight preview. */}
       {dragGhost !== null && (
         <div
           data-testid="tab-drag-ghost"
@@ -516,22 +565,15 @@ export function TabStrip({
             opacity: 0.85,
             boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
             cursor: "grabbing",
-            height: 32,
-            padding: "0 8px",
-            borderRadius: "4px 4px 0 0",
-            border: "1px solid var(--color-border)",
-            background: "var(--color-surface)",
-            fontSize: 12,
-            color: "var(--color-fg)",
-            whiteSpace: "nowrap",
-            maxWidth: MAX_TAB_WIDTH,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            display: "flex",
-            alignItems: "center",
           }}
         >
-          {dragGhost.title}
+          <TabPill
+            title={dragGhost.title}
+            isActive={dragGhost.isActive}
+            isDeleted={dragGhost.isDeleted}
+            onSelect={() => {}}
+            onClose={() => {}}
+          />
         </div>
       )}
     </div>
