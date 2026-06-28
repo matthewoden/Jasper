@@ -659,7 +659,11 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         display: "flex",
         flexDirection: "column",
         height: "100vh",
-        overflow: "hidden",
+        // 640px is the smallest usable width: sidebar ~250 + min editor ~360 + chrome.
+        // Below this, horizontal scroll is preferable to layout collapse.
+        minWidth: 640,
+        overflowX: "auto",
+        overflowY: "hidden",
       }}
     >
       <MigrationBanner
@@ -712,7 +716,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: `${notesSidebarVisible ? sidebarWidth : 0}px 1fr ${backlinksRailExpanded ? backlinksRailWidth : 0}px`,
+          gridTemplateColumns: `${notesSidebarVisible ? sidebarWidth : 0}px minmax(0, 1fr) ${backlinksRailExpanded ? backlinksRailWidth : 0}px`,
           gridTemplateRows: "auto minmax(0, 1fr)",
           flex: 1,
           minHeight: 0,
