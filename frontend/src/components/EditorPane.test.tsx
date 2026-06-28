@@ -2593,7 +2593,7 @@ describe("<EditorPane /> — Phase 15 flush() ref method (Plan 15-02, TAB-13)", 
 });
 
 describe("<EditorPane /> breadcrumb (TAB-18)", () => {
-    it("renders a muted, non-interactive folder breadcrumb above the editor for a foldered note", async () => {
+    it("renders a full 'Folder / Sub / Title' breadcrumb above the editor for a foldered note", async () => {
         getNoteMock.mockResolvedValue(okGet("# route"));
         getTreeMock.mockResolvedValue(okTree("docs/api/route.md"));
 
@@ -2601,25 +2601,26 @@ describe("<EditorPane /> breadcrumb (TAB-18)", () => {
         await flushMicrotasks();
 
         const crumb = await screen.findByTestId("note-breadcrumb");
-        expect(crumb.textContent).toBe("docs / api");
+        // breadcrumbTrail includes the title as the last segment.
+        expect(crumb.textContent).toBe("docs / api / route");
         expect(crumb.getAttribute("style") ?? "").toContain(
             "var(--color-muted)",
         );
+        // Centered: inline textAlign set.
+        expect(crumb.getAttribute("style") ?? "").toContain("center");
         // Non-interactive: aria-hidden, no role/button.
         expect(crumb.getAttribute("aria-hidden")).toBe("true");
     });
 
-    it("renders NO breadcrumb for a vault-root note (no folders)", async () => {
+    it("renders title-only breadcrumb for a vault-root note (no parent folders)", async () => {
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
 
         render(<EditorPane noteId={ScratchpadUUID} />);
         await flushMicrotasks();
 
-        // The editor renders (proves the note section mounted) but no breadcrumb.
-        await waitFor(() =>
-            expect(screen.getByTestId("cm-host-shell")).toBeInTheDocument(),
-        );
-        expect(screen.queryByTestId("note-breadcrumb")).toBeNull();
+        // Root notes now show the title as the sole breadcrumb segment (breadcrumbTrail).
+        const crumb = await screen.findByTestId("note-breadcrumb");
+        expect(crumb.textContent).toBe("note");
     });
 });

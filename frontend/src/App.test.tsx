@@ -198,13 +198,17 @@ describe("<App /> — shell composition", () => {
     expect(root.style.display).toBe("flex");
     expect(root.style.flexDirection).toBe("column");
     expect(root.style.height).toBe("100vh");
-    expect(root.style.overflow).toBe("hidden");
+    // Root shell uses per-axis overflow to allow horizontal scroll below minWidth.
+    expect(root.style.overflowX).toBe("auto");
+    expect(root.style.overflowY).toBe("hidden");
+    expect(root.style.minWidth).toBe("640px");
 
     const grid = root.querySelector(
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
     expect(grid).not.toBeNull();
-    expect(grid!.style.gridTemplateColumns).toBe("260px 1fr 0px");
+    // Middle track is minmax(0, 1fr) so TabStrip overflow can engage.
+    expect(grid!.style.gridTemplateColumns).toBe("260px minmax(0, 1fr) 0px");
 
     expect(screen.getByText("NOTES")).toBeInTheDocument();
     expect(screen.getByTestId("tree-empty-state")).toBeInTheDocument();
