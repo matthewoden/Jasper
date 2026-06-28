@@ -27,6 +27,7 @@ import {
   useState,
 } from "react";
 
+import { breadcrumbPrefix } from "../lib/breadcrumbPrefix";
 import { extractH1FromContent, sanitizeH1ForFilename } from "../lib/h1Extract";
 import { getNote, updateNote } from "../lib/notesApi";
 import { generateOrLoadSessionId } from "../lib/sessionId";
@@ -577,6 +578,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     );
   }
 
+  // Folder breadcrumb above the note body (the page title is the H1, line 1 of the
+  // doc). Muted + non-interactive; derived from the live tree so rename/move refresh
+  // it. Vault-root notes (no folders) yield "" and render nothing.
+  const notePath = findNotePathInTree(tree, noteId);
+  const crumb = notePath ? breadcrumbPrefix(notePath) : "";
+
   return (
     <section
       className="flex flex-col h-full bg-bg"
@@ -719,6 +726,22 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           >
             ×
           </button>
+        </div>
+      )}
+      {crumb && (
+        <div
+          data-testid="note-breadcrumb"
+          aria-hidden="true"
+          style={{
+            fontSize: 12,
+            color: "var(--color-muted)",
+            padding: "4px var(--editor-content-x)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {crumb}
         </div>
       )}
       {/* MarkdownEditor is uncontrolled — initialDoc captured once on mount;

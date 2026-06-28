@@ -62,7 +62,6 @@ import {
   useTreeCreateActions,
 } from "./lib/useTreeCreateActions";
 import { nextUntitledName } from "./lib/nextUntitledName";
-import { breadcrumbPrefix } from "./lib/breadcrumbPrefix";
 import { shouldPromoteActiveNote } from "./lib/promoteActiveNote";
 import { useFileTree } from "./lib/useFileTree";
 import { useConfig } from "./lib/useConfig";
@@ -451,15 +450,6 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     [tree],
   );
 
-  // breadcrumbForTab — the active tab's folder prefix (muted, on the pill).
-  const breadcrumbForTab = useCallback(
-    (noteId: string): string => {
-      const path = tree ? findActiveNotePath(tree.root, noteId) : null;
-      return path ? breadcrumbPrefix(path) : "";
-    },
-    [tree],
-  );
-
   // flushAndClose — persist a closing tab's pending edits before removal (TAB-13).
   // A deleted tab is frozen read-only, so it has nothing to flush (D-10).
   // On flush rejection, surface the confirm dialog rather than dropping edits (D-04).
@@ -714,7 +704,8 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         }}
       />
       {/* Two-row grid. Row 1: ChromeBar (col 2) wrapping the TabStrip — the
-          breadcrumb now lives on the active pill, so the old TopBar row is gone.
+          breadcrumb now lives at the top of the note content (EditorPane), so the
+          old TopBar row is gone.
           Row 2: editor host (col 2). Sidebar + RightRail span both rows
           (gridRow "1/3"). StatusBar sits below the grid as a flex child.
           The fixed-track grid avoids position:sticky inside overflow:hidden. */}
@@ -740,7 +731,6 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
             activeTabId={tabActiveTabId}
             deletedTabIds={deletedTabIds}
             titleForTab={titleForTab}
-            breadcrumbForTab={breadcrumbForTab}
             onSelectTab={setActiveTab}
             onRequestClose={(id) => void flushAndClose(id)}
             onCloseOthers={closeOthers}
