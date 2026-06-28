@@ -475,8 +475,23 @@ test.describe("@phase15 TAB-10: vault swap clears the tab strip", () => {
 test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
   let jasper: JasperHandle;
   let appHome: string;
+  let idAlpha: string;
+  let idBeta: string;
+
   test.beforeAll(async () => {
     ({ jasper, appHome } = await spawnIsolated());
+    // Create notes via direct fetch — no page needed, avoids fixture coupling.
+    const createNote = async (title: string): Promise<string> => {
+      const resp = await fetch(`${jasper.baseURL}/api/v1/notes`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ parent_path: "", title }),
+      });
+      if (!resp.ok) throw new Error(`create ${title}: ${resp.status}`);
+      return ((await resp.json()) as { id: string }).id;
+    };
+    idAlpha = await createNote("drag-alpha");
+    idBeta = await createNote("drag-beta");
   });
   test.afterAll(async () => {
     if (jasper) await jasper.kill();
@@ -487,8 +502,7 @@ test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
     page,
   }) => {
     await waitForConnected(page, jasper.baseURL);
-    const idAlpha = await apiCreateNote(page, jasper.baseURL, "drag-alpha");
-    const idBeta = await apiCreateNote(page, jasper.baseURL, "drag-beta");
+    // Each test gets a fresh page — open the pre-created notes from the tree.
     await openNoteFromTree(page, idAlpha);
     await openNoteFromTree(page, idBeta);
     await expect(tabPills(page)).toHaveCount(2);
@@ -516,8 +530,11 @@ test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
   }) => {
     await waitForConnected(page, jasper.baseURL);
 
-    // Reuse the notes opened in the previous test (same jasper instance).
-    // pill order is ["drag-alpha", "drag-beta"] coming into this test.
+    // Each test gets a fresh page — open both notes so the strip shows 2 pills.
+    await openNoteFromTree(page, idAlpha);
+    await openNoteFromTree(page, idBeta);
+
+    // Verify initial order before dragging.
     await expect(tabPills(page)).toHaveCount(2);
     expect(
       (await tabPills(page).allTextContents()).map((t) => t.trim()),
@@ -566,32 +583,37 @@ test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
 });
 
 // UAT-15.1: tooltip (#1), overlap (#5), alignment (#6) — all need overflow
+// Notes are created ONCE in beforeAll via direct API fetch (no page); each test
+// opens them from the tree so fresh pages can re-establish the overflow state.
 test.describe(
   "@phase15 UAT-15.1-TOOLTIP/OVERLAP/ALIGN: overflow context fixes",
   () => {
     let jasper: JasperHandle;
     let appHome: string;
+    const overflowNoteIds: string[] = [];
+
     test.beforeAll(async () => {
       ({ jasper, appHome } = await spawnIsolated());
+      // Create 20 notes via direct fetch — no page needed, avoids 409 on re-create.
+      for (let i = 0; i < 20; i++) {
+        const title = `toa-note-${String(i).padStart(2, "0")}-wwwwwwww`;
+        const resp = await fetch(`${jasper.baseURL}/api/v1/notes`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ parent_path: "", title }),
+        });
+        if (!resp.ok) throw new Error(`create ${title}: ${resp.status}`);
+        overflowNoteIds.push(((await resp.json()) as { id: string }).id);
+      }
     });
     test.afterAll(async () => {
       if (jasper) await jasper.kill();
       if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
     });
 
-    /** Open enough notes to trigger overflow; returns once the overflow button is visible. */
-    async function openManyNotes(page: Page): Promise<void> {
-      const ids: string[] = [];
-      for (let i = 0; i < 20; i++) {
-        ids.push(
-          await apiCreateNote(
-            page,
-            jasper.baseURL,
-            `toa-note-${String(i).padStart(2, "0")}-wwwwwwww`,
-          ),
-        );
-      }
-      for (const id of ids) {
+    /** Open the pre-created overflow notes from the tree, wait for overflow button. */
+    async function openOverflowNotes(page: Page): Promise<void> {
+      for (const id of overflowNoteIds) {
         await openNoteFromTree(page, id);
       }
       await expect(
@@ -603,7 +625,7 @@ test.describe(
       page,
     }) => {
       await waitForConnected(page, jasper.baseURL);
-      await openManyNotes(page);
+      await openOverflowNotes(page);
       const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
       await expect(overflowBtn).toBeVisible();
       // Native title tooltip — no Radix Tooltip dependency.
@@ -615,7 +637,7 @@ test.describe(
       page,
     }) => {
       await waitForConnected(page, jasper.baseURL);
-      await openManyNotes(page);
+      await openOverflowNotes(page);
 
       const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
       await expect(overflowBtn).toBeVisible();
@@ -643,19 +665,21 @@ test.describe(
       page,
     }) => {
       await waitForConnected(page, jasper.baseURL);
-      await openManyNotes(page);
+      await openOverflowNotes(page);
 
       const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
       await expect(overflowBtn).toBeVisible();
 
-      // Poll until all three bounding boxes resolve.
+      // Poll until all three bounding boxes resolve to non-null.
+      // Note: aria-selected is on the tab element itself (not a descendant), so
+      // use .and() (locator intersection) rather than filter({ has: ... }) which
+      // only matches descendants.
       await expect
         .poll(
           async () => {
-            // Active pill close button center-y.
-            const activePill = tabPills(page).filter({
-              has: page.locator('[aria-selected="true"]'),
-            });
+            const activePill = tabPills(page).and(
+              page.locator('[aria-selected="true"]'),
+            );
             const closeBtn = activePill
               .locator('button[aria-label^="Close"]')
               .first();
@@ -677,10 +701,10 @@ test.describe(
         )
         .not.toBeNull();
 
-      // Re-read final values.
-      const activePill = tabPills(page).filter({
-        has: page.locator('[aria-selected="true"]'),
-      });
+      // Re-read final settled values for assertions.
+      const activePill = tabPills(page).and(
+        page.locator('[aria-selected="true"]'),
+      );
       const closeBbox = await activePill
         .locator('button[aria-label^="Close"]')
         .first()
@@ -721,26 +745,27 @@ test.describe(
       page,
     }) => {
       await waitForConnected(page, jasper.baseURL);
-      const idA = await apiCreateNote(page, jasper.baseURL, "active-note");
-      const idB = await apiCreateNote(page, jasper.baseURL, "inactive-note");
+      // Use non-overlapping names: "uat-alpha" does not contain "uat-beta" and vice versa.
+      const idA = await apiCreateNote(page, jasper.baseURL, "uat-alpha");
+      const idB = await apiCreateNote(page, jasper.baseURL, "uat-beta");
       await openNoteFromTree(page, idA);
       await openNoteFromTree(page, idB);
       // idB is the active tab (opened last).
-      await expect(tabPills(page).filter({ hasText: "inactive-note" })).toHaveAttribute(
+      await expect(tabPills(page).filter({ hasText: "uat-beta" })).toHaveAttribute(
         "aria-selected",
         "true",
         { timeout: 5_000 },
       );
 
       // Click idA to make it active.
-      await tabPills(page).filter({ hasText: "active-note" }).click();
-      await expect(tabPills(page).filter({ hasText: "active-note" })).toHaveAttribute(
+      await tabPills(page).filter({ hasText: "uat-alpha" }).click();
+      await expect(tabPills(page).filter({ hasText: "uat-alpha" })).toHaveAttribute(
         "aria-selected",
         "true",
       );
 
-      const activePill = tabPills(page).filter({ hasText: "active-note" });
-      const inactivePill = tabPills(page).filter({ hasText: "inactive-note" });
+      const activePill = tabPills(page).filter({ hasText: "uat-alpha" });
+      const inactivePill = tabPills(page).filter({ hasText: "uat-beta" });
 
       // Read title spans inside each pill.
       const [activeWeight, inactiveWeight, activeColor, inactiveColor] =
