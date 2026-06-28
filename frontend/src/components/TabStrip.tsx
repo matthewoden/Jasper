@@ -19,6 +19,19 @@ import type { Tab } from "../lib/useTabStore";
 import { TabPill } from "./TabPill";
 import { TabContextMenu } from "./TabContextMenu";
 import { TabOverflowDropdown } from "./TabOverflowDropdown";
+import { computeHiddenTabIds, MIN_TAB_WIDTH } from "../lib/tabOverflow";
+
+/** Set equality used to preserve state identity (avoid re-render churn). */
+function sameSet(a: Set<string>, b: Set<string>): boolean {
+  return a.size === b.size && [...a].every((id) => b.has(id));
+}
+
+// Reserved strip chrome that is never available to tabs:
+//   strip horizontal padding (4px each side) + the pinned new-tab button
+//   (width 24 + 2px left margin). The overflow dropdown trigger (28px) is
+//   reserved separately, inside computeHiddenTabIds, ONLY when overflow occurs.
+const RESERVED = 8 + 26;
+const OVERFLOW_BTN = 28;
 
 export interface TabStripProps {
   tabs: Tab[];
@@ -143,14 +156,10 @@ export function TabStrip({
   const requestCloseRef = useRef(onRequestClose);
   requestCloseRef.current = onRequestClose;
 
-  // Overflow measurement: tabs whose right edge exceeds the strip's content box
-  // are hidden behind the dropdown. Measured after layout; recomputed on resize.
+  // Overflow measurement: with a uniform minimum pill width the only DOM read
+  // needed is the strip's content-box width — the hidden-tab decision is the
+  // pure computeHiddenTabIds. Measured after layout; recomputed on resize.
   const stripRef = useRef<HTMLDivElement | null>(null);
-  const pillRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  // Last-measured width per tab. Overflow pills unmount (not in visibleTabs), so
-  // their live offsetWidth is unavailable on the next pass; the cache supplies a
-  // stable width and keeps the hidden set from oscillating (re-show → re-hide).
-  const pillWidths = useRef<Map<string, number>>(new Map());
   const [measuredHiddenIds, setMeasuredHiddenIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -166,31 +175,22 @@ export function TabStrip({
         setMeasuredHiddenIds((prev) => (prev.size === 0 ? prev : new Set()));
         return;
       }
-      const available = strip.clientWidth - 8 /* padding */ - 28 /* overflow btn */;
-      const next = new Set<string>();
-      let used = 0;
-      for (const tab of tabs) {
-        const el = pillRefs.current.get(tab.id);
-        if (el !== undefined) {
-          pillWidths.current.set(tab.id, el.offsetWidth);
-        }
-        const width = pillWidths.current.get(tab.id);
-        if (width === undefined) continue; // never measured yet
-        used += width;
-        if (used > available) next.add(tab.id);
-      }
-      setMeasuredHiddenIds((prev) =>
-        prev.size === next.size && [...prev].every((id) => next.has(id))
-          ? prev
-          : next,
-      );
+      const available = strip.clientWidth - RESERVED;
+      const hidden = computeHiddenTabIds({
+        tabIds: tabs.map((t) => t.id),
+        activeTabId,
+        availableWidth: available,
+        minTabWidth: MIN_TAB_WIDTH,
+        overflowButtonWidth: OVERFLOW_BTN,
+      });
+      setMeasuredHiddenIds((prev) => (sameSet(prev, hidden) ? prev : hidden));
     };
 
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(strip);
     return () => ro.disconnect();
-  }, [tabs]);
+  }, [tabs, activeTabId]);
 
   // Capture-phase keyboard shortcuts (D-13). Registered once; the listener reads
   // live store state via getState() and onRequestClose via a ref so it stays stable.
@@ -310,14 +310,7 @@ export function TabStrip({
       {visibleTabs.map((tab) => (
         <div
           key={tab.id}
-          ref={(el) => {
-            // Register the pill wrapper so the overflow pass can measure its
-            // width. Without this, measure() read undefined for every pill and
-            // never overflowed (TAB-07). Cleared on unmount.
-            if (el === null) pillRefs.current.delete(tab.id);
-            else pillRefs.current.set(tab.id, el);
-          }}
-          style={{ display: "flex", alignItems: "flex-end" }}
+          style={{ display: "flex", alignItems: "flex-end", minWidth: 0 }}
         >
           {dropTargetId === tab.id && draggingTabId !== tab.id && (
             <div style={dropIndicatorStyle} aria-hidden="true" />

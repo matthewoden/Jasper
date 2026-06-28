@@ -8,8 +8,26 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { TabPill } from "./TabPill";
+import { MIN_TAB_WIDTH, MAX_TAB_WIDTH } from "../lib/tabOverflow";
 
 describe("<TabPill />", () => {
+  it("TAB-16: pill shrinks (flexShrink:1, no flexGrow) between MIN and MAX width", () => {
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const pill = screen.getByRole("tab");
+    expect(pill.style.flexShrink).toBe("1");
+    // flexGrow must NOT make pills stretch to fill — left-aligned Obsidian feel.
+    expect(pill.style.flexGrow === "" || pill.style.flexGrow === "0").toBe(true);
+    expect(pill.style.minWidth).toBe(`${MIN_TAB_WIDTH}px`);
+    expect(pill.style.maxWidth).toBe(`${MAX_TAB_WIDTH}px`);
+  });
   it("TAB-04: renders an always-visible close button even with a long truncated title", () => {
     const longTitle =
       "an-extremely-long-note-filename-that-will-truncate-with-ellipsis.md";
