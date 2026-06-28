@@ -177,6 +177,16 @@ describe("<TabStrip /> rendering + DnD (Task 1)", () => {
     expect(h.onReorder).toHaveBeenCalledWith(0, 2);
   });
 
+  it("TAB-17: jsdom escape hatch — clientWidth===0 hides nothing (all pills render)", () => {
+    // jsdom reports clientWidth 0, so measure() bails and the pure overflow
+    // function returns an empty set: every tab stays visible, no dropdown.
+    renderStrip();
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    expect(
+      screen.queryByRole("button", { name: "Show hidden tabs" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("overflow dropdown renders when tabs are forced hidden; selecting calls onSelectTab", async () => {
     const user = userEvent.setup();
     const h = renderStrip({ forceHiddenTabIds: new Set(["c"]) });
