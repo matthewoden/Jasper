@@ -9,7 +9,7 @@
  * All timing is synchronous event dispatch — no sleeps, no fake timers needed.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TabStrip } from "./TabStrip";
 import { useTabStore } from "../lib/useTabStore";
@@ -331,5 +331,42 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     fireEvent.pointerMove(strip, { clientX: 103, pointerId: 1 });
 
     expect(screen.queryByTestId("tab-drag-ghost")).not.toBeInTheDocument();
+  });
+
+  it("POLISH-GHOST: ghost renders a real TabPill with a visible Close button", () => {
+    // Drag tab `a` (the default active tab in renderStrip).
+    renderStrip();
+    const strip = screen.getByRole("tablist");
+    const wrapper = screen.getByText("Title a").closest("[data-tab-wrapper]") as HTMLElement;
+    expect(wrapper).not.toBeNull();
+
+    fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+
+    const ghost = screen.getByTestId("tab-drag-ghost");
+    expect(ghost).toBeInTheDocument();
+    // A real TabPill always renders an aria-labelled Close button — a title-only
+    // lightweight ghost would not have this element.
+    // { hidden: true } because the ghost container carries aria-hidden="true" (it's a
+    // visual decoration); we still want to assert the Close button is physically present.
+    expect(within(ghost).getByRole("button", { name: /^Close/, hidden: true })).toBeInTheDocument();
+  });
+
+  it("POLISH-OVERLAY: drop indicator is position:absolute and not inside any tab wrapper", () => {
+    renderStrip();
+    const strip = screen.getByRole("tablist");
+    const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
+    expect(wrapper).not.toBeNull();
+
+    fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+
+    const indicator = screen.getByTestId("tab-drop-indicator");
+    expect(indicator).toBeInTheDocument();
+    // jsdom reflects inline styles in getComputedStyle — verifies the overlay approach.
+    expect(getComputedStyle(indicator).position).toBe("absolute");
+    // The indicator must be a strip-level child, not inside any tab wrapper
+    // (it is an overlay, not an inline flex-child that would shift other pills).
+    expect(indicator.closest("[data-tab-wrapper]")).toBeNull();
   });
 });
