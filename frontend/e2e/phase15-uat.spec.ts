@@ -469,7 +469,9 @@ test.describe("@phase15 TAB-10: vault swap clears the tab strip", () => {
 
 // ─── UAT-15.1: tab UX fixes (DnD, width, X-pin, breadcrumb) ──────────────────
 
-// UAT-DND: drag-to-reorder
+// UAT-DND: drag-to-reorder (pointer-event implementation — real page.mouse drag)
+// Synthetic DragEvent dispatch via page.evaluate is BANNED (round 1 false positive).
+// All reorder proofs use page.mouse so the pointer-event handlers fire natively.
 test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
   let jasper: JasperHandle;
   let appHome: string;
@@ -481,7 +483,9 @@ test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
     if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
   });
 
-  test("dragging one pill past another reorders the strip", async ({ page }) => {
+  test("a small click (no movement) selects the pill without reordering", async ({
+    page,
+  }) => {
     await waitForConnected(page, jasper.baseURL);
     const idAlpha = await apiCreateNote(page, jasper.baseURL, "drag-alpha");
     const idBeta = await apiCreateNote(page, jasper.baseURL, "drag-beta");
@@ -489,53 +493,68 @@ test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
     await openNoteFromTree(page, idBeta);
     await expect(tabPills(page)).toHaveCount(2);
 
-    // Confirm initial order before dragging.
-    const initialTexts = (await tabPills(page).allTextContents()).map((t) =>
-      t.trim(),
-    );
-    expect(initialTexts).toEqual(["drag-alpha", "drag-beta"]);
+    // Confirm initial order.
+    expect(
+      (await tabPills(page).allTextContents()).map((t) => t.trim()),
+    ).toEqual(["drag-alpha", "drag-beta"]);
 
-    // Drive reorder via a shared DataTransfer so React's synthetic handlers receive a
-    // DataTransfer carrying the tabId across the dragstart → drop sequence.
-    // DataTransfer constructed with new DataTransfer() starts in readwrite mode so
-    // setData/getData work without native-drag browser restrictions.
-    await page.evaluate(() => {
-      const strip = document.querySelector(
-        '[data-testid="tab-strip"]',
-      ) as HTMLElement | null;
-      if (!strip) throw new Error("tab-strip not found");
-      const pills = strip.querySelectorAll('[role="tab"]');
-      if (pills.length < 2) throw new Error("need ≥2 pills");
-      const source = pills[0] as HTMLElement;
-      const target = pills[1] as HTMLElement;
-      const dt = new DataTransfer();
-      source.dispatchEvent(
-        new DragEvent("dragstart", {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer: dt,
-        }),
-      );
-      target.dispatchEvent(
-        new DragEvent("dragover", {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer: dt,
-        }),
-      );
-      target.dispatchEvent(
-        new DragEvent("drop", {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer: dt,
-        }),
-      );
-      source.dispatchEvent(
-        new DragEvent("dragend", { bubbles: true, dataTransfer: dt }),
-      );
-    });
+    // Click pill 0 (drag-alpha) — this is a standard click, well under the 5px threshold.
+    const pill0 = tabPills(page).nth(0);
+    await pill0.click();
 
-    // Poll until React has re-rendered the settled reordered state.
+    // Order must be unchanged after a plain click.
+    expect(
+      (await tabPills(page).allTextContents()).map((t) => t.trim()),
+    ).toEqual(["drag-alpha", "drag-beta"]);
+
+    // The clicked pill must now be selected.
+    await expect(pill0).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("real page.mouse drag past pill[1]'s midpoint reorders the strip", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+
+    // Reuse the notes opened in the previous test (same jasper instance).
+    // pill order is ["drag-alpha", "drag-beta"] coming into this test.
+    await expect(tabPills(page)).toHaveCount(2);
+    expect(
+      (await tabPills(page).allTextContents()).map((t) => t.trim()),
+    ).toEqual(["drag-alpha", "drag-beta"]);
+
+    // Read bounding boxes — poll until they resolve to non-zero dimensions.
+    let pill0bbox = await tabPills(page).nth(0).boundingBox();
+    let pill1bbox = await tabPills(page).nth(1).boundingBox();
+    await expect
+      .poll(
+        async () => {
+          pill0bbox = await tabPills(page).nth(0).boundingBox();
+          pill1bbox = await tabPills(page).nth(1).boundingBox();
+          return (
+            (pill0bbox?.width ?? 0) > 0 && (pill1bbox?.width ?? 0) > 0
+          );
+        },
+        { timeout: 5_000 },
+      )
+      .toBe(true);
+
+    if (!pill0bbox || !pill1bbox) throw new Error("pill bounding boxes unavailable");
+
+    // Start at pill0 center, drag to pill1 right edge (well past pill1's midpoint)
+    // in multiple steps so intermediate pointermove events fire and the 5px drag
+    // threshold is crossed. page.mouse events hit the real pointer-event handlers.
+    const fromX = pill0bbox.x + pill0bbox.width / 2;
+    const fromY = pill0bbox.y + pill0bbox.height / 2;
+    const toX = pill1bbox.x + pill1bbox.width - 2;
+    const toY = pill1bbox.y + pill1bbox.height / 2;
+
+    await page.mouse.move(fromX, fromY);
+    await page.mouse.down();
+    await page.mouse.move(toX, toY, { steps: 10 });
+    await page.mouse.up();
+
+    // Poll until React re-renders the reordered state.
     await expect
       .poll(
         async () =>
@@ -545,6 +564,244 @@ test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
       .toEqual(["drag-beta", "drag-alpha"]);
   });
 });
+
+// UAT-15.1: tooltip (#1), overlap (#5), alignment (#6) — all need overflow
+test.describe(
+  "@phase15 UAT-15.1-TOOLTIP/OVERLAP/ALIGN: overflow context fixes",
+  () => {
+    let jasper: JasperHandle;
+    let appHome: string;
+    test.beforeAll(async () => {
+      ({ jasper, appHome } = await spawnIsolated());
+    });
+    test.afterAll(async () => {
+      if (jasper) await jasper.kill();
+      if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
+    });
+
+    /** Open enough notes to trigger overflow; returns once the overflow button is visible. */
+    async function openManyNotes(page: Page): Promise<void> {
+      const ids: string[] = [];
+      for (let i = 0; i < 20; i++) {
+        ids.push(
+          await apiCreateNote(
+            page,
+            jasper.baseURL,
+            `toa-note-${String(i).padStart(2, "0")}-wwwwwwww`,
+          ),
+        );
+      }
+      for (const id of ids) {
+        await openNoteFromTree(page, id);
+      }
+      await expect(
+        page.getByRole("button", { name: "Show hidden tabs" }),
+      ).toBeVisible({ timeout: 15_000 });
+    }
+
+    test("UAT-15.1-TOOLTIP: overflow trigger has title='Show hidden tabs'", async ({
+      page,
+    }) => {
+      await waitForConnected(page, jasper.baseURL);
+      await openManyNotes(page);
+      const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
+      await expect(overflowBtn).toBeVisible();
+      // Native title tooltip — no Radix Tooltip dependency.
+      const title = await overflowBtn.getAttribute("title");
+      expect(title).toBe("Show hidden tabs");
+    });
+
+    test("UAT-15.1-OVERLAP: overflow trigger does not intersect the last visible pill", async ({
+      page,
+    }) => {
+      await waitForConnected(page, jasper.baseURL);
+      await openManyNotes(page);
+
+      const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
+      await expect(overflowBtn).toBeVisible();
+
+      // Poll layout until both bounding boxes are non-zero.
+      await expect
+        .poll(
+          async () => {
+            const pills = tabPills(page);
+            const count = await pills.count();
+            if (count === 0) return false;
+            const lastPill = pills.last();
+            const overflowBox = await overflowBtn.boundingBox();
+            const pillBox = await lastPill.boundingBox();
+            if (!overflowBox || !pillBox) return false;
+            // Non-overlapping: overflow trigger's left >= last pill's right.
+            return overflowBox.x >= pillBox.x + pillBox.width;
+          },
+          { timeout: 5_000 },
+        )
+        .toBe(true);
+    });
+
+    test("UAT-15.1-ALIGN: close X, new-tab +, and overflow chevron centers are within ~2px", async ({
+      page,
+    }) => {
+      await waitForConnected(page, jasper.baseURL);
+      await openManyNotes(page);
+
+      const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
+      await expect(overflowBtn).toBeVisible();
+
+      // Poll until all three bounding boxes resolve.
+      await expect
+        .poll(
+          async () => {
+            // Active pill close button center-y.
+            const activePill = tabPills(page).filter({
+              has: page.locator('[aria-selected="true"]'),
+            });
+            const closeBtn = activePill
+              .locator('button[aria-label^="Close"]')
+              .first();
+            const newTabBtn = page.getByTestId("new-tab-button");
+
+            const closeBbox = await closeBtn.boundingBox();
+            const newTabBbox = await newTabBtn.boundingBox();
+            const overflowBbox = await overflowBtn.boundingBox();
+
+            if (!closeBbox || !newTabBbox || !overflowBbox) return null;
+
+            return {
+              closeY: closeBbox.y + closeBbox.height / 2,
+              newTabY: newTabBbox.y + newTabBbox.height / 2,
+              overflowY: overflowBbox.y + overflowBbox.height / 2,
+            };
+          },
+          { timeout: 5_000 },
+        )
+        .not.toBeNull();
+
+      // Re-read final values.
+      const activePill = tabPills(page).filter({
+        has: page.locator('[aria-selected="true"]'),
+      });
+      const closeBbox = await activePill
+        .locator('button[aria-label^="Close"]')
+        .first()
+        .boundingBox();
+      const newTabBbox = await page.getByTestId("new-tab-button").boundingBox();
+      const overflowBbox = await overflowBtn.boundingBox();
+
+      expect(closeBbox).not.toBeNull();
+      expect(newTabBbox).not.toBeNull();
+      expect(overflowBbox).not.toBeNull();
+
+      const closeY = closeBbox!.y + closeBbox!.height / 2;
+      const newTabY = newTabBbox!.y + newTabBbox!.height / 2;
+      const overflowY = overflowBbox!.y + overflowBbox!.height / 2;
+
+      // All three icon centers must be within ~2px of each other.
+      expect(Math.abs(closeY - newTabY)).toBeLessThanOrEqual(2);
+      expect(Math.abs(closeY - overflowY)).toBeLessThanOrEqual(2);
+    });
+  },
+);
+
+// UAT-15.1: active styling (#3) and opaque inactive background (#4)
+test.describe(
+  "@phase15 UAT-15.1-ACTIVE/OPAQUE: active brightness and opaque inactive pill",
+  () => {
+    let jasper: JasperHandle;
+    let appHome: string;
+    test.beforeAll(async () => {
+      ({ jasper, appHome } = await spawnIsolated());
+    });
+    test.afterAll(async () => {
+      if (jasper) await jasper.kill();
+      if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
+    });
+
+    test("UAT-15.1-ACTIVE: active title has same font-weight as inactive, but brighter color", async ({
+      page,
+    }) => {
+      await waitForConnected(page, jasper.baseURL);
+      const idA = await apiCreateNote(page, jasper.baseURL, "active-note");
+      const idB = await apiCreateNote(page, jasper.baseURL, "inactive-note");
+      await openNoteFromTree(page, idA);
+      await openNoteFromTree(page, idB);
+      // idB is the active tab (opened last).
+      await expect(tabPills(page).filter({ hasText: "inactive-note" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+        { timeout: 5_000 },
+      );
+
+      // Click idA to make it active.
+      await tabPills(page).filter({ hasText: "active-note" }).click();
+      await expect(tabPills(page).filter({ hasText: "active-note" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+
+      const activePill = tabPills(page).filter({ hasText: "active-note" });
+      const inactivePill = tabPills(page).filter({ hasText: "inactive-note" });
+
+      // Read title spans inside each pill.
+      const [activeWeight, inactiveWeight, activeColor, inactiveColor] =
+        await page.evaluate(() => {
+          const pills = document.querySelectorAll('[role="tab"]');
+          const active = Array.from(pills).find(
+            (p) => p.getAttribute("aria-selected") === "true",
+          );
+          const inactive = Array.from(pills).find(
+            (p) => p.getAttribute("aria-selected") !== "true",
+          );
+          const aSpan = active?.querySelector("span");
+          const iSpan = inactive?.querySelector("span");
+          const cs = (el: Element | null | undefined) =>
+            el ? getComputedStyle(el as HTMLElement) : null;
+          return [
+            cs(aSpan)?.fontWeight ?? "",
+            cs(iSpan)?.fontWeight ?? "",
+            cs(aSpan)?.color ?? "",
+            cs(iSpan)?.color ?? "",
+          ];
+        });
+
+      // Same font-weight (no bolding).
+      expect(activeWeight).toBe(inactiveWeight);
+      // Colors must differ — active is brighter (fg vs muted).
+      expect(activeColor).not.toBe(inactiveColor);
+
+      // Suppress unused-variable lint for pill locators (used above for context).
+      void activePill;
+      void inactivePill;
+    });
+
+    test("UAT-15.1-OPAQUE: inactive pill has an opaque background (not transparent)", async ({
+      page,
+    }) => {
+      await waitForConnected(page, jasper.baseURL);
+      const idA = await apiCreateNote(page, jasper.baseURL, "opaque-active");
+      const idB = await apiCreateNote(page, jasper.baseURL, "opaque-inactive");
+      await openNoteFromTree(page, idA);
+      await openNoteFromTree(page, idB);
+      // idB is active. Click idA to make idB the inactive one.
+      await tabPills(page).filter({ hasText: "opaque-active" }).click();
+      await expect(
+        tabPills(page).filter({ hasText: "opaque-active" }),
+      ).toHaveAttribute("aria-selected", "true", { timeout: 5_000 });
+
+      // Get the computed background-color of the INACTIVE pill (opaque-inactive).
+      const bgColor = await tabPills(page)
+        .filter({ hasText: "opaque-inactive" })
+        .evaluate((el) => getComputedStyle(el).backgroundColor);
+
+      // Transparent is represented as "rgba(0, 0, 0, 0)" in browsers.
+      // An opaque background has alpha 1 and looks like "rgb(...)" or "rgba(..., 1)".
+      expect(bgColor).not.toBe("rgba(0, 0, 0, 0)");
+      expect(bgColor).not.toBe("transparent");
+      // The color should not have a trailing ", 0)" which indicates fully transparent.
+      expect(bgColor).not.toMatch(/, 0\)$/);
+    });
+  },
+);
 
 // UAT-WIDTH: responsive width — editor stays within viewport
 test.describe("@phase15 UAT-15.1-WIDTH: responsive editor width", () => {

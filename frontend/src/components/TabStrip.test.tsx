@@ -1,7 +1,7 @@
 /**
  * TabStrip tests:
- *   Task 1 — renders one pill per tab, wires select/close, overflow dropdown,
- *            native DnD reorder payload.
+ *   Task 1 — renders one pill per tab, wires select/close, overflow dropdown.
+ *   Pointer drag — a non-threshold click still calls onSelectTab; no draggable attrs.
  *   TAB-11 — Alt+] cycles next (cycleTab(1)); Alt+[ cycles previous (cycleTab(-1));
  *            Ctrl+Tab / Ctrl+Shift+Tab cycle too. Ctrl+Tab preventDefault is guarded.
  *   TAB-05 — Alt+W requests close of the active tab; plain Ctrl+W does NOT.
@@ -65,9 +65,12 @@ beforeEach(() => {
   // The keyboard handler reads live store state — keep it in sync with the props.
   useTabStore.setState({ tabs, activeTabId: "a", deletedTabIds: new Set() });
   vi.restoreAllMocks();
+  // jsdom does not implement setPointerCapture / releasePointerCapture.
+  Element.prototype.setPointerCapture = vi.fn();
+  Element.prototype.releasePointerCapture = vi.fn();
 });
 
-describe("<TabStrip /> rendering + DnD (Task 1)", () => {
+describe("<TabStrip /> rendering (Task 1)", () => {
   it("renders one TabPill per tab and a tablist", () => {
     renderStrip();
     expect(screen.getByRole("tablist", { name: "Open tabs" })).toBeInTheDocument();
@@ -157,24 +160,31 @@ describe("<TabStrip /> rendering + DnD (Task 1)", () => {
     expect(h.onRequestClose).toHaveBeenCalledWith("b");
   });
 
-  it("native DnD: dropping tab a onto tab c calls onReorder(fromIdx, toIdx)", () => {
+  it("pointer drag: no draggable attributes on pill wrappers (native DnD removed)", () => {
+    renderStrip();
+    // After the pointer-event migration none of the tab pills should carry draggable=true.
+    const pills = screen.getAllByRole("tab");
+    for (const pill of pills) {
+      expect(pill).not.toHaveAttribute("draggable", "true");
+    }
+  });
+
+  it("pointer drag: a non-threshold click (pointerDown+Up at same x) still calls onSelectTab", () => {
     const h = renderStrip();
-    const pillA = screen.getByText("Title a").closest('[role="tab"]')!;
-    const pillC = screen.getByText("Title c").closest('[role="tab"]')!;
+    const pillB = screen.getByText("Title b").closest('[role="tab"]')!;
+    // The pill is rendered inside the wrapper div that carries the pointer handlers.
+    const wrapper = pillB.closest("[data-tab-wrapper]") as HTMLElement;
+    expect(wrapper).not.toBeNull();
 
-    const data = new Map<string, string>();
-    const dataTransfer = {
-      setData: (k: string, v: string) => data.set(k, v),
-      getData: (k: string) => data.get(k) ?? "",
-      effectAllowed: "",
-      dropEffect: "",
-    };
+    // Fire pointerDown at x=100, then pointerUp at same x — threshold NOT crossed.
+    fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
+    fireEvent.pointerUp(wrapper, { button: 0, clientX: 100, pointerId: 1 });
+    // Then the click fires (no drag was active, so no suppression).
+    fireEvent.click(pillB);
 
-    fireEvent.dragStart(pillA, { dataTransfer });
-    fireEvent.dragOver(pillC, { dataTransfer });
-    fireEvent.drop(pillC, { dataTransfer });
-
-    expect(h.onReorder).toHaveBeenCalledWith(0, 2);
+    expect(h.onSelectTab).toHaveBeenCalledWith("b");
+    // onReorder must NOT have been called because no threshold was crossed.
+    expect(h.onReorder).not.toHaveBeenCalled();
   });
 
   it("TAB-17: jsdom escape hatch — clientWidth===0 hides nothing (all pills render)", () => {
