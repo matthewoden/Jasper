@@ -4,9 +4,12 @@
  * Composes the Plan-03 presentational pieces: each ordered tab renders a
  * `TabPill` wrapped in `TabContextMenu`, with a `TabOverflowDropdown` at the
  * right edge listing tabs that don't fit. Reorder uses pointer-event drag
- * (pointerdown → threshold → pointermove → pointerup) because native HTML5 DnD
- * does not deliver drop events reliably in this context. Capture-phase keyboard
- * shortcuts (Alt+]/Alt+[/Ctrl+Tab cycle, Alt+W close) are registered here.
+ * (pointerdown on the wrapper → pointermove/pointerup on the strip) because
+ * native HTML5 DnD does not deliver drop events reliably in this context.
+ * The strip div handles move/up so that setPointerCapture is unnecessary —
+ * avoiding Chromium's click-target redirection that captures would cause.
+ * Capture-phase keyboard shortcuts (Alt+]/Alt+[/Ctrl+Tab cycle, Alt+W close)
+ * are registered here.
  *
  * Closing ALWAYS routes through `onRequestClose` (flush-aware; App.tsx/Plan 05
  * owns the flush+confirm orchestration) — never `closeTab` directly, so a close
@@ -144,7 +147,6 @@ interface DragRef {
   fromIndex: number;
   startX: number;
   active: boolean;
-  pointerId: number;
 }
 
 export function TabStrip({
@@ -319,7 +321,7 @@ export function TabStrip({
         return wrapper.dataset.tabWrapper ?? null;
       }
     }
-    // Past the last pill — target is appending after the last visible tab.
+    // Past the last pill — insertion goes after the last visible tab.
     return null;
   }
 
@@ -328,20 +330,21 @@ export function TabStrip({
     fromIndex: number,
     e: PointerEvent<HTMLDivElement>,
   ) {
-    // Only react to primary button; middle/right fall through for auxclick/context menu.
+    // Only primary button initiates a drag; middle/right fall through for
+    // auxclick/context-menu so those behaviors keep working.
     if (e.button !== 0) return;
     dragRef.current = {
       tabId: tab.id,
       fromIndex,
       startX: e.clientX,
       active: false,
-      pointerId: e.pointerId,
     };
-    // Capture so pointermove/pointerup arrive even if the pointer leaves the element.
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
 
-  function handlePointerMove(e: PointerEvent<HTMLDivElement>) {
+  // Strip-level pointer handlers: the strip div is large enough to cover all pill
+  // wrappers, so we get move/up events without needing setPointerCapture on each
+  // wrapper (avoiding Chromium's click-target redirection that capture would cause).
+  function handleStripPointerMove(e: PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag) return;
     const moved = Math.abs(e.clientX - drag.startX);
@@ -354,20 +357,19 @@ export function TabStrip({
     }
   }
 
-  function handlePointerUp(tab: Tab, e: PointerEvent<HTMLDivElement>) {
+  function handleStripPointerUp(e: PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
-    if (!drag || drag.tabId !== tab.id) return;
+    if (!drag) return;
 
     if (drag.active) {
       // Suppress the click that fires immediately after pointerup on a real drag.
       suppressClickRef.current = true;
 
-      const targetId = dropTargetId;
+      const targetId = computeDropTarget(e.clientX);
       setDropTargetId(null);
       dragRef.current = null;
 
       if (targetId !== null) {
-        // Map the visible-tab drop target to the full tabs[] index.
         const toIdx = tabs.findIndex((t) => t.id === targetId);
         if (toIdx !== -1 && toIdx !== drag.fromIndex) {
           onReorder(drag.fromIndex, toIdx);
@@ -384,8 +386,6 @@ export function TabStrip({
     } else {
       dragRef.current = null;
     }
-
-    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   }
 
   return (
@@ -395,6 +395,16 @@ export function TabStrip({
       aria-label="Open tabs"
       style={{ ...tabStripStyle, ...style }}
       data-testid="tab-strip"
+      onPointerMove={handleStripPointerMove}
+      onPointerUp={handleStripPointerUp}
+      onClickCapture={(e) => {
+        // Swallow the post-drag click at the strip level so it doesn't also
+        // select the tab that was just reordered.
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          e.stopPropagation();
+        }
+      }}
     >
       {/* Visible tabs in their own flex child so trailing controls always reserve space. */}
       <div
@@ -414,15 +424,6 @@ export function TabStrip({
               data-tab-wrapper={tab.id}
               style={{ display: "flex", alignItems: "flex-end", minWidth: 0 }}
               onPointerDown={(e) => handlePointerDown(tab, fromIndex, e)}
-              onPointerMove={handlePointerMove}
-              onPointerUp={(e) => handlePointerUp(tab, e)}
-              onClickCapture={(e) => {
-                // Swallow the post-drag click so it doesn't also select the tab.
-                if (suppressClickRef.current) {
-                  suppressClickRef.current = false;
-                  e.stopPropagation();
-                }
-              }}
             >
               {dropTargetId === tab.id && (
                 <div style={dropIndicatorStyle} aria-hidden="true" />
