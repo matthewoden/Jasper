@@ -23,7 +23,7 @@ import type { Tab } from "../lib/useTabStore";
 import { TabPill } from "./TabPill";
 import { TabContextMenu } from "./TabContextMenu";
 import { TabOverflowDropdown } from "./TabOverflowDropdown";
-import { computeHiddenTabIds, MIN_TAB_WIDTH } from "../lib/tabOverflow";
+import { computeHiddenTabIds, MIN_TAB_WIDTH, MAX_TAB_WIDTH } from "../lib/tabOverflow";
 
 /** Set equality used to preserve state identity (avoid re-render churn). */
 function sameSet(a: Set<string>, b: Set<string>): boolean {
@@ -147,6 +147,16 @@ interface DragRef {
   fromIndex: number;
   startX: number;
   active: boolean;
+  /** Title of the dragged tab — shown in the ghost element. */
+  title: string;
+}
+
+/** Render-only ghost position; null when no drag is active. */
+interface DragGhost {
+  tabId: string;
+  title: string;
+  x: number;
+  y: number;
 }
 
 export function TabStrip({
@@ -165,6 +175,9 @@ export function TabStrip({
   style,
 }: TabStripProps) {
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  // Render-only ghost state: tracks cursor position while drag is active.
+  // dragRef remains the authoritative drag source; this is purely for display.
+  const [dragGhost, setDragGhost] = useState<DragGhost | null>(null);
 
   // Pointer drag state — mutable ref avoids triggering re-renders mid-drag.
   const dragRef = useRef<DragRef | null>(null);
@@ -271,6 +284,17 @@ export function TabStrip({
     return () => window.removeEventListener("keydown", handler, true);
   }, []);
 
+  // Clear the ghost if the window loses focus mid-drag so it can never get stranded.
+  useEffect(() => {
+    function handleWindowBlur() {
+      dragRef.current = null;
+      setDropTargetId(null);
+      setDragGhost(null);
+    }
+    window.addEventListener("blur", handleWindowBlur);
+    return () => window.removeEventListener("blur", handleWindowBlur);
+  }, []);
+
   // Single source for the + button so the empty-state and normal branches share
   // identical markup.
   const newTabButton = (
@@ -338,6 +362,7 @@ export function TabStrip({
       fromIndex,
       startX: e.clientX,
       active: false,
+      title: titleForTab(tab.noteId),
     };
   }
 
@@ -350,10 +375,13 @@ export function TabStrip({
     const moved = Math.abs(e.clientX - drag.startX);
     if (!drag.active && moved > DRAG_THRESHOLD) {
       drag.active = true;
+      // Clear any text selection accumulated before the threshold was crossed.
+      window.getSelection()?.removeAllRanges();
     }
     if (drag.active) {
       const target = computeDropTarget(e.clientX);
       setDropTargetId(target);
+      setDragGhost({ tabId: drag.tabId, title: drag.title, x: e.clientX, y: e.clientY });
     }
   }
 
@@ -367,6 +395,7 @@ export function TabStrip({
 
       const targetId = computeDropTarget(e.clientX);
       setDropTargetId(null);
+      setDragGhost(null);
       dragRef.current = null;
 
       if (targetId !== null) {
@@ -384,8 +413,15 @@ export function TabStrip({
         }
       }
     } else {
+      setDragGhost(null);
       dragRef.current = null;
     }
+  }
+
+  function handleStripPointerCancel() {
+    dragRef.current = null;
+    setDropTargetId(null);
+    setDragGhost(null);
   }
 
   return (
@@ -393,10 +429,16 @@ export function TabStrip({
       ref={stripRef}
       role="tablist"
       aria-label="Open tabs"
-      style={{ ...tabStripStyle, ...style }}
+      style={{
+        ...tabStripStyle,
+        ...style,
+        // Grabbing cursor signals an active drag at the strip level.
+        ...(dragGhost !== null ? { cursor: "grabbing" } : {}),
+      }}
       data-testid="tab-strip"
       onPointerMove={handleStripPointerMove}
       onPointerUp={handleStripPointerUp}
+      onPointerCancel={handleStripPointerCancel}
       onClickCapture={(e) => {
         // Swallow the post-drag click at the strip level so it doesn't also
         // select the tab that was just reordered.
@@ -438,6 +480,7 @@ export function TabStrip({
                   title={titleForTab(tab.noteId)}
                   isActive={tab.id === activeTabId}
                   isDeleted={deletedTabIds.has(tab.noteId)}
+                  isDragging={dragGhost?.tabId === tab.id}
                   onSelect={() => onSelectTab(tab.id)}
                   onClose={() => onRequestClose(tab.id)}
                 />
@@ -457,6 +500,40 @@ export function TabStrip({
         />
       )}
       {newTabButton}
+      {/* Ghost copy of the dragged tab that follows the cursor. position:fixed
+          escapes the strip's overflow:hidden; pointerEvents:none keeps mouse
+          events reaching the real strip handlers underneath. */}
+      {dragGhost !== null && (
+        <div
+          data-testid="tab-drag-ghost"
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            left: dragGhost.x + 12,
+            top: dragGhost.y + 12,
+            pointerEvents: "none",
+            zIndex: 1000,
+            opacity: 0.85,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+            cursor: "grabbing",
+            height: 32,
+            padding: "0 8px",
+            borderRadius: "4px 4px 0 0",
+            border: "1px solid var(--color-border)",
+            background: "var(--color-surface)",
+            fontSize: 12,
+            color: "var(--color-fg)",
+            whiteSpace: "nowrap",
+            maxWidth: MAX_TAB_WIDTH,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
+          {dragGhost.title}
+        </div>
+      )}
     </div>
   );
 }

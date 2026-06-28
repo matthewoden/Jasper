@@ -24,6 +24,8 @@ export interface TabPillProps {
   isDeleted: boolean;
   onSelect: () => void;
   onClose: () => void;
+  /** Dim the pill while it is being dragged. NOT forwarded to the DOM. */
+  isDragging?: boolean;
 }
 
 // Passthrough: arbitrary DOM attributes Radix injects (onPointerDown, onContextMenu,
@@ -46,6 +48,9 @@ const tabPillStyle: CSSProperties = {
   gap: 4,
   borderRadius: "4px 4px 0 0",
   cursor: "pointer",
+  // Prevent text selection on drag across tabs.
+  userSelect: "none",
+  WebkitUserSelect: "none",
 };
 
 const titleStyle: CSSProperties = {
@@ -81,6 +86,7 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
       isDeleted,
       onSelect,
       onClose,
+      isDragging = false,
       ...rest
     },
     ref,
@@ -108,6 +114,8 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
           borderBottom: isActive
             ? "2px solid var(--color-accent)"
             : "2px solid transparent",
+          // Dim while dragging so the ghost is clearly the moving element.
+          opacity: isDragging ? 0.4 : undefined,
         }}
         onClick={onSelect}
         onAuxClick={(e) => {
