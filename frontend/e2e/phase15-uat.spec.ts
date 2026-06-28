@@ -73,6 +73,24 @@ async function apiCreateNote(
   return ((await resp.json()) as { id: string }).id;
 }
 
+/** Create a folder via the API (parent_path="" = vault root). */
+async function apiCreateFolder(
+  page: Page,
+  baseURL: string,
+  name: string,
+  parentPath = "",
+): Promise<void> {
+  const resp = await page.request.post(`${baseURL}/api/v1/folders`, {
+    data: { parent_path: parentPath, name },
+  });
+  if (resp.status() !== 201) {
+    const body = await resp.text().catch(() => "(no body)");
+    throw new Error(
+      `apiCreateFolder ${name}: ${String(resp.status())} ${body}`,
+    );
+  }
+}
+
 function tabStrip(page: Page): Locator {
   return page.getByTestId("tab-strip");
 }
@@ -431,15 +449,15 @@ test.describe("@phase15 TAB-10: vault swap clears the tab strip", () => {
       await page.getByRole("tab", { name: /recent/i }).click();
       await page.getByTestId(`vault-row-${vaultB}`).click({ timeout: 5_000 });
 
-      // After the swap-driven reload, B's session has no tabs: the strip is
-      // unmounted (renders null when empty). Poll for the connected dot first,
-      // then assert zero pills.
+      // After the swap-driven reload, B's session has no tabs. The strip
+      // always renders (TAB-14 empty state: shows only the + button), so we
+      // assert zero tab PILLS rather than zero strip elements.
       await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
         "data-status",
         "connected",
         { timeout: 20_000 },
       );
-      await expect(tabStrip(page)).toHaveCount(0, { timeout: 10_000 });
+      await expect(tabPills(page)).toHaveCount(0, { timeout: 10_000 });
     } finally {
       await handle?.kill();
       fs.rmSync(appHome, { recursive: true, force: true });
@@ -647,6 +665,8 @@ test.describe("@phase15 UAT-15.1-BREADCRUMB: centered breadcrumb trail", () => {
 
     // Root note: path = "root-crumb.md" → breadcrumb = "root-crumb"
     const rootId = await apiCreateNote(page, jasper.baseURL, "root-crumb", "");
+    // Create the parent folder before the nested note (server requires it to exist).
+    await apiCreateFolder(page, jasper.baseURL, "breadcrumbs", "");
     // Nested note: path = "breadcrumbs/nested.md" → breadcrumb = "breadcrumbs / nested"
     const nestedId = await apiCreateNote(
       page,
