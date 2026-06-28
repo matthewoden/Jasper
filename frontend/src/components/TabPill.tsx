@@ -5,7 +5,8 @@
  * Pure props-in / callbacks-out. TabStrip (Plan 04) owns reorder logic and threads
  * the native HTML5 drag handlers; this pill only forwards them. Active styling is a
  * surface background + a 2px accent bottom-border underline; hover uses the shared
- * accent-12% tint.
+ * accent-12% tint. The note's folder breadcrumb lives at the top of the editor
+ * content (EditorPane), not on the pill.
  */
 import { useState } from "react";
 import type { CSSProperties, DragEvent } from "react";
@@ -15,8 +16,6 @@ export interface TabPillProps {
   title: string;
   isActive: boolean;
   isDeleted: boolean;
-  /** Muted folder-path prefix; rendered only on the active, non-deleted pill. */
-  breadcrumb?: string;
   onSelect: () => void;
   onClose: () => void;
   /** Native DnD handlers threaded from TabStrip (reorder lives there). */
@@ -44,22 +43,7 @@ const titleStyle: CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-  // Title wins: a far lower flexShrink than the breadcrumb (9999) means the
-  // breadcrumb collapses first and the title ellipsizes only as a last resort.
   minWidth: 0,
-};
-
-/** Muted folder prefix shown before the active pill's title. Very high
- *  flexShrink so it disappears before the title truncates ("if only one fits,
- *  show the title"). */
-const breadcrumbStyle: CSSProperties = {
-  fontSize: 12,
-  color: "var(--color-muted)",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  minWidth: 0,
-  flexShrink: 9999,
 };
 
 const closeButtonStyle: CSSProperties = {
@@ -80,7 +64,6 @@ export function TabPill({
   title,
   isActive,
   isDeleted,
-  breadcrumb,
   onSelect,
   onClose,
   draggable,
@@ -103,8 +86,6 @@ export function TabPill({
       aria-label={isDeleted ? `${title} (deleted, read-only)` : undefined}
       style={{
         ...tabPillStyle,
-        // The active pill gets extra room so the breadcrumb + title both fit.
-        maxWidth: isActive ? 320 : 200,
         background,
         borderBottom: isActive
           ? "2px solid var(--color-accent)"
@@ -130,16 +111,9 @@ export function TabPill({
           (deleted)
         </span>
       ) : (
-        <>
-          {breadcrumb && isActive && (
-            <span data-testid="tab-breadcrumb" style={breadcrumbStyle}>
-              {breadcrumb} /
-            </span>
-          )}
-          <span style={{ ...titleStyle, fontWeight: isActive ? 600 : 400 }}>
-            {title}
-          </span>
-        </>
+        <span style={{ ...titleStyle, fontWeight: isActive ? 600 : 400 }}>
+          {title}
+        </span>
       )}
       <button
         type="button"
