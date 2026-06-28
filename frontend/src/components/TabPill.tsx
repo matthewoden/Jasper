@@ -11,6 +11,7 @@
 import { useState } from "react";
 import type { CSSProperties, DragEvent } from "react";
 import { X } from "lucide-react";
+import { MIN_TAB_WIDTH, MAX_TAB_WIDTH } from "../lib/tabOverflow";
 
 export interface TabPillProps {
   title: string;
@@ -27,15 +28,19 @@ export interface TabPillProps {
 
 const tabPillStyle: CSSProperties = {
   height: 32,
-  minWidth: 80,
-  maxWidth: 200,
+  // Shrink-to-fit (TAB-16): pills flex DOWN to MIN_TAB_WIDTH so as many
+  // ellipsized titles show as the strip allows; flexGrow:0 keeps them
+  // left-aligned (Obsidian feel) rather than stretching to fill.
+  minWidth: MIN_TAB_WIDTH,
+  maxWidth: MAX_TAB_WIDTH,
+  flexShrink: 1,
+  flexGrow: 0,
   display: "flex",
   alignItems: "center",
   padding: "0 8px",
   gap: 4,
   borderRadius: "4px 4px 0 0",
   cursor: "pointer",
-  flexShrink: 0,
 };
 
 const titleStyle: CSSProperties = {
