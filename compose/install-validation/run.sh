@@ -28,14 +28,18 @@ echo "==> Starting compose/install-validation suite"
 $COMPOSE up -d
 
 echo "==> Waiting for systemd to become ready (24 x 5 s)"
+# Accept "running" OR "degraded": degraded means boot finished but a
+# non-essential unit (commonly systemd-journald in a container) failed — the
+# system is still usable. `is-system-running --wait` exits non-zero on
+# degraded, so we poll the state string ourselves instead of trusting exit code.
 for i in $(seq 1 24); do
-    if $COMPOSE exec -T jasper-install-test \
-           systemctl is-system-running --quiet --wait 2>/dev/null; then
-        echo "systemd ready (iter $i)"
+    STATE=$($COMPOSE exec -T jasper-install-test systemctl is-system-running 2>/dev/null || true)
+    if echo "$STATE" | grep -Eq '^(running|degraded)$'; then
+        echo "systemd ready (state=$STATE, iter $i)"
         break
     fi
     if [ "$i" -eq 24 ]; then
-        echo "FAIL: systemd never became ready after 120 s" >&2
+        echo "FAIL: systemd never became ready after 120 s (last state: ${STATE:-unknown})" >&2
         $COMPOSE logs >&2
         exit 1
     fi

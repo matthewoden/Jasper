@@ -29,10 +29,29 @@
 
 set -euo pipefail
 
+# The jrei/systemd-ubuntu:noble base image ships neither sudo nor curl, but
+# this harness needs both (sudo -u coworker for the non-root install; curl for
+# the bounded HTTP readiness probes). Install them up front — this mirrors a
+# real fresh-VM setup where a coworker would apt-install prerequisites. apt
+# failure aborts loudly under set -e rather than flaking later.
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq --no-install-recommends sudo curl
+
 # Create a non-root user to mimic a real coworker account.
 useradd -m -s /bin/bash coworker
 echo 'coworker ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/coworker
 chmod 0440 /etc/sudoers.d/coworker
+
+# Enable lingering so coworker's per-user systemd instance (and its D-Bus user
+# bus) starts without an interactive login session. `jasper install` shells out
+# to `systemctl --user enable --now`, which has no bus to talk to for a freshly
+# `useradd`-ed user unless lingering is on — this is the same
+# `loginctl enable-linger` step the WSL2 install docs require. NOTE: this needs
+# a functioning systemd-logind. Emulated-amd64 hosts (e.g. Colima/Rosetta on
+# macOS) where logind cannot start will fail here — this suite must run on a
+# real Linux host / CI runner, which is its target environment anyway.
+loginctl enable-linger coworker
 
 # Provision fake WSL2 identity fixtures (D-06).
 # /proc/sys/kernel/osrelease on jrei/systemd-ubuntu:noble contains the host

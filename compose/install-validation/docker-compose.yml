@@ -41,6 +41,13 @@ services:
     image: jrei/systemd-ubuntu:noble
     platform: linux/amd64
     privileged: true
+    # systemd-as-PID-1 requires the host cgroup namespace on cgroup-v2 hosts
+    # (GitHub Actions ubuntu-latest, Colima, modern Docker all default to
+    # cgroup v2). Without this, /sbin/init cannot manage the cgroup tree and
+    # the container exits 255 immediately. Harmless on cgroup-v1 hosts.
+    # (Compose spec property is `cgroup` = host|private; equals `docker run
+    # --cgroupns=host`.)
+    cgroup: host
     tmpfs:
       - /tmp
       - /run
@@ -51,8 +58,12 @@ services:
       - ../../README.md:/opt/jasper/README.md:ro
       - ./test-install.sh:/opt/jasper/test-install.sh:ro
     command: ["/sbin/init"]
+    # "degraded" means boot completed but a non-essential unit failed (e.g.
+    # systemd-journald is commonly degraded in containers); the system is still
+    # fully usable. Treat running OR degraded as healthy — `is-system-running
+    # --wait` alone exits non-zero on degraded and would wedge the gate.
     healthcheck:
-      test: ["CMD", "systemctl", "is-system-running", "--quiet", "--wait"]
+      test: ["CMD-SHELL", "systemctl is-system-running | grep -Eq '^(running|degraded)$'"]
       interval: 5s
       timeout: 60s
       retries: 12
