@@ -18,6 +18,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/matthewoden/jasper/backend/internal/config"
+	"github.com/matthewoden/jasper/backend/internal/platform"
 	"github.com/matthewoden/jasper/backend/internal/vault"
 	"github.com/matthewoden/jasper/backend/migrations"
 )
@@ -503,6 +504,65 @@ func checkNames(arr []DoctorCheck) []string {
 		names[i] = c.Name
 	}
 	return names
+}
+
+// TestCheckWslSystemd_MicrosoftOsrelease_EntersWSLBranch verifies that when
+// platform.OsreleasePath points at a file containing "microsoft", checkWslSystemd
+// enters the WSL branch rather than returning the "native Linux — N/A" skip.
+// Only reachable on Linux: macOS is caught by the non-linux guard first.
+func TestCheckWslSystemd_MicrosoftOsrelease_EntersWSLBranch(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("WSL branch is only reachable when runtime.GOOS == linux")
+	}
+	dir := t.TempDir()
+	f := filepath.Join(dir, "osrelease")
+	if err := os.WriteFile(f, []byte("5.15.167.4-microsoft-standard-WSL2"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	orig := platform.OsreleasePath
+	platform.OsreleasePath = f
+	t.Cleanup(func() { platform.OsreleasePath = orig })
+
+	r := checkWslSystemd()
+	if r.Status == "skip" && strings.Contains(r.Hint, "native Linux") {
+		t.Errorf("checkWslSystemd returned native-Linux skip with microsoft osrelease; WSL branch not entered: %+v", r)
+	}
+}
+
+// TestCheckWslSystemd_NonMicrosoftOsrelease_Skips verifies that when the
+// osrelease fixture contains no "microsoft" substring, checkWslSystemd returns
+// skip with "native Linux" hint — the native-Linux N/A branch.
+// Only reachable on Linux: macOS returns "macOS — N/A" before reading OsreleasePath.
+func TestCheckWslSystemd_NonMicrosoftOsrelease_Skips(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("osrelease probe only runs on linux; non-linux already covered by TestCheckWslSystemd_NonLinuxSkips")
+	}
+	dir := t.TempDir()
+	f := filepath.Join(dir, "osrelease")
+	if err := os.WriteFile(f, []byte("5.10.0-21-amd64"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	orig := platform.OsreleasePath
+	platform.OsreleasePath = f
+	t.Cleanup(func() { platform.OsreleasePath = orig })
+
+	r := checkWslSystemd()
+	if r.Status != "skip" || !strings.Contains(r.Hint, "native Linux") {
+		t.Errorf("non-microsoft osrelease: want skip with 'native Linux' hint, got %+v", r)
+	}
+}
+
+// TestOsreleasePath_DefaultsToProc verifies the T-16-03 mitigation: when
+// JASPER_OSRELEASE_PATH is not set in the environment, platform.OsreleasePath
+// defaults to /proc/sys/kernel/osrelease so production behavior is unaffected.
+func TestOsreleasePath_DefaultsToProc(t *testing.T) {
+	if os.Getenv("JASPER_OSRELEASE_PATH") != "" {
+		t.Skip("JASPER_OSRELEASE_PATH is set in this environment; skipping default-path assertion")
+	}
+	const want = "/proc/sys/kernel/osrelease"
+	if platform.OsreleasePath != want {
+		t.Errorf("platform.OsreleasePath = %q; want %q when JASPER_OSRELEASE_PATH is unset", platform.OsreleasePath, want)
+	}
 }
 
 // TestDoctorBindCheck pins the three branches of checkServerBind:
