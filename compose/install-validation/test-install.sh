@@ -3,19 +3,22 @@
 #
 # Phase 8 Plan 08-14 / INSTALL-09 / D-38.
 # Updated: Phase 16 Plan 16-03 / D-03 (bounded readiness loops) / D-06 (WSL2 posture).
+# Updated: Phase 16 Plan 16-04 / D-04 (fatal doctor --json) / D-05 (vault setup) /
+#          D-07 (unit-file content assertion).
 #
 # Runs INSIDE the systemd-Ubuntu container started by
 # compose/install-validation/docker-compose.yml. Executes the README's
 # install procedure literally as a non-root user ("coworker") and
 # asserts every step exits 0:
 #
+#   0. Vault bootstrap    — brief serve run creates .jasper/ + app.db so
+#                           vault-dependent doctor checks run (not skip)
 #   1. `jasper install`   — registers + starts the systemd user unit
 #   2. `jasper status`    — reports running (bounded retry loop, ~30s ceiling)
 #   3. HTTP probe         — :PORT/api/v1/admin/status reachable (bounded retry loop)
-#   4. `jasper doctor`    — non-fatal warnings tolerated (some checks
-#                           are platform-specific and may degrade in
-#                           the container)
-#   5. `jasper uninstall` — unit removed, port released
+#   4. Unit file content  — ExecStart=.../jasper serve + WantedBy=default.target (D-07)
+#   5. `jasper doctor`    — fatal; all 12 checks ok via --json parse (D-04, D-05)
+#   6. `jasper uninstall` — unit removed, port released
 #
 # WSL2 posture (D-06):
 #   The container presents as WSL2 by default so doctor's checkWslSystemd
@@ -105,6 +108,25 @@ if [ "$HTTP_READY" -eq 0 ]; then
     echo "FAIL: /api/v1/admin/status never returned HTTP 200 within 30s" >&2
     exit 1
 fi
+
+# 4b. Assert jasper.service was written with the expected content (D-07).
+#     ExecStart must end in "jasper serve" and [Install] must have
+#     WantedBy=default.target — per backend/internal/installer/systemd_template.go.
+UNIT_FILE="$HOME/.config/systemd/user/jasper.service"
+if [[ ! -f "$UNIT_FILE" ]]; then
+    echo "FAIL: jasper install did not create $UNIT_FILE" >&2
+    exit 1
+fi
+if ! grep -q 'ExecStart=.*jasper serve' "$UNIT_FILE"; then
+    echo "FAIL: $UNIT_FILE: ExecStart does not end in 'jasper serve'" >&2
+    echo "  actual: $(grep ExecStart "$UNIT_FILE" || echo '(no ExecStart line)')" >&2
+    exit 1
+fi
+if ! grep -q 'WantedBy=default.target' "$UNIT_FILE"; then
+    echo "FAIL: $UNIT_FILE: WantedBy=default.target not found" >&2
+    exit 1
+fi
+echo "jasper.service content ok (ExecStart=.../jasper serve, WantedBy=default.target)"
 
 # 5. Doctor: non-fatal warnings are acceptable inside a minimal
 #    container (e.g., the macOS-only launchd check will degrade
