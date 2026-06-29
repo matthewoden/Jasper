@@ -62,6 +62,30 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 # sudo -u strips the outer environment, so this must be re-exported here.
 export JASPER_OSRELEASE_PATH=/etc/jasper-wsl/osrelease
 
+# 0. Bootstrap a test vault so vault-dependent doctor checks run (not skip).
+#    A brief serve run creates <vault>/.jasper/ + app.db (all migrations) and
+#    writes current_vault into app.json. We then kill it and let jasper install
+#    start the permanent systemd unit pointing at the same vault.
+VAULT=/home/coworker/test-vault
+mkdir -p "$VAULT"
+/opt/jasper/bin/jasper serve --vault "$VAULT" &
+VAULT_PID=$!
+VAULT_READY=0
+for i in $(seq 1 30); do
+    if curl --max-time 2 -fsS "http://127.0.0.1:6683/api/v1/admin/status" >/dev/null 2>&1; then
+        echo "vault bootstrapped (iter $i)"
+        VAULT_READY=1
+        break
+    fi
+    sleep 1
+done
+kill "$VAULT_PID" 2>/dev/null || true
+wait "$VAULT_PID" 2>/dev/null || true
+if [ "$VAULT_READY" -eq 0 ]; then
+    echo "FAIL: vault bootstrap serve never became ready (30s timeout)" >&2
+    exit 1
+fi
+
 # 1. Install the service.
 /opt/jasper/bin/jasper install
 
@@ -128,10 +152,28 @@ if ! grep -q 'WantedBy=default.target' "$UNIT_FILE"; then
 fi
 echo "jasper.service content ok (ExecStart=.../jasper serve, WantedBy=default.target)"
 
-# 5. Doctor: non-fatal warnings are acceptable inside a minimal
-#    container (e.g., the macOS-only launchd check will degrade
-#    or be skipped — that's by design).
-/opt/jasper/bin/jasper doctor || echo "(doctor surfaced warnings — non-fatal in this CI run)"
+# 5. Doctor — fatal; every check must return "ok" (D-04, D-05).
+#    Stop jasper first so net.Listen port probes (server.port, mcp.port) see
+#    free ports — the naive net.Listen check can't distinguish "port owned by
+#    jasper" from "port stolen by another process" without a health probe.
+#    Permitted-skip set: empty. All 12 checks must be ok with vault + WSL posture.
+#    Cobra prints the error to stderr on non-zero exit; stdout has the JSON array.
+systemctl --user stop jasper 2>/dev/null || true
+
+DOCTOR_RC=0
+DOCTOR_JSON=$(/opt/jasper/bin/jasper doctor --json --vault "$VAULT") || DOCTOR_RC=$?
+if [ "$DOCTOR_RC" -ne 0 ]; then
+    echo "FAIL: jasper doctor --json exited $DOCTOR_RC (one or more checks failed)" >&2
+    echo "$DOCTOR_JSON" >&2
+    exit 1
+fi
+# Any "skip" in this posture is a configuration gap — fail loudly.
+if echo "$DOCTOR_JSON" | grep -q '"status": "skip"'; then
+    echo "FAIL: unexpected skip in doctor output (all 12 checks must be ok):" >&2
+    echo "$DOCTOR_JSON" >&2
+    exit 1
+fi
+echo "doctor passed — all checks ok"
 
 # 6. Uninstall + assert the unit is gone. `jasper uninstall` exits
 #    0 on success; the post-condition is that the service file is
