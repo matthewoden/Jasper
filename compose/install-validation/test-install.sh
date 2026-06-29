@@ -3,19 +3,22 @@
 #
 # Phase 8 Plan 08-14 / INSTALL-09 / D-38.
 # Updated: Phase 16 Plan 16-03 / D-03 (bounded readiness loops) / D-06 (WSL2 posture).
+# Updated: Phase 16 Plan 16-04 / D-04 (fatal doctor --json) / D-05 (vault setup) /
+#          D-07 (unit-file content assertion).
 #
 # Runs INSIDE the systemd-Ubuntu container started by
 # compose/install-validation/docker-compose.yml. Executes the README's
 # install procedure literally as a non-root user ("coworker") and
 # asserts every step exits 0:
 #
+#   0. Vault bootstrap    — brief serve run creates .jasper/ + app.db so
+#                           vault-dependent doctor checks run (not skip)
 #   1. `jasper install`   — registers + starts the systemd user unit
 #   2. `jasper status`    — reports running (bounded retry loop, ~30s ceiling)
 #   3. HTTP probe         — :PORT/api/v1/admin/status reachable (bounded retry loop)
-#   4. `jasper doctor`    — non-fatal warnings tolerated (some checks
-#                           are platform-specific and may degrade in
-#                           the container)
-#   5. `jasper uninstall` — unit removed, port released
+#   4. Unit file content  — ExecStart=.../jasper serve + WantedBy=default.target (D-07)
+#   5. `jasper doctor`    — fatal; all 12 checks ok via --json parse (D-04, D-05)
+#   6. `jasper uninstall` — unit removed, port released
 #
 # WSL2 posture (D-06):
 #   The container presents as WSL2 by default so doctor's checkWslSystemd
@@ -58,6 +61,30 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 # Point jasper at the fake osrelease so checkWslSystemd returns "ok" (D-06).
 # sudo -u strips the outer environment, so this must be re-exported here.
 export JASPER_OSRELEASE_PATH=/etc/jasper-wsl/osrelease
+
+# 0. Bootstrap a test vault so vault-dependent doctor checks run (not skip).
+#    A brief serve run creates <vault>/.jasper/ + app.db (all migrations) and
+#    writes current_vault into app.json. We then kill it and let jasper install
+#    start the permanent systemd unit pointing at the same vault.
+VAULT=/home/coworker/test-vault
+mkdir -p "$VAULT"
+/opt/jasper/bin/jasper serve --vault "$VAULT" &
+VAULT_PID=$!
+VAULT_READY=0
+for i in $(seq 1 30); do
+    if curl --max-time 2 -fsS "http://127.0.0.1:6683/api/v1/admin/status" >/dev/null 2>&1; then
+        echo "vault bootstrapped (iter $i)"
+        VAULT_READY=1
+        break
+    fi
+    sleep 1
+done
+kill "$VAULT_PID" 2>/dev/null || true
+wait "$VAULT_PID" 2>/dev/null || true
+if [ "$VAULT_READY" -eq 0 ]; then
+    echo "FAIL: vault bootstrap serve never became ready (30s timeout)" >&2
+    exit 1
+fi
 
 # 1. Install the service.
 /opt/jasper/bin/jasper install
@@ -106,10 +133,47 @@ if [ "$HTTP_READY" -eq 0 ]; then
     exit 1
 fi
 
-# 5. Doctor: non-fatal warnings are acceptable inside a minimal
-#    container (e.g., the macOS-only launchd check will degrade
-#    or be skipped — that's by design).
-/opt/jasper/bin/jasper doctor || echo "(doctor surfaced warnings — non-fatal in this CI run)"
+# 4b. Assert jasper.service was written with the expected content (D-07).
+#     ExecStart must end in "jasper serve" and [Install] must have
+#     WantedBy=default.target — per backend/internal/installer/systemd_template.go.
+UNIT_FILE="$HOME/.config/systemd/user/jasper.service"
+if [[ ! -f "$UNIT_FILE" ]]; then
+    echo "FAIL: jasper install did not create $UNIT_FILE" >&2
+    exit 1
+fi
+if ! grep -q 'ExecStart=.*jasper serve' "$UNIT_FILE"; then
+    echo "FAIL: $UNIT_FILE: ExecStart does not end in 'jasper serve'" >&2
+    echo "  actual: $(grep ExecStart "$UNIT_FILE" || echo '(no ExecStart line)')" >&2
+    exit 1
+fi
+if ! grep -q 'WantedBy=default.target' "$UNIT_FILE"; then
+    echo "FAIL: $UNIT_FILE: WantedBy=default.target not found" >&2
+    exit 1
+fi
+echo "jasper.service content ok (ExecStart=.../jasper serve, WantedBy=default.target)"
+
+# 5. Doctor — fatal; every check must return "ok" (D-04, D-05).
+#    Stop jasper first so net.Listen port probes (server.port, mcp.port) see
+#    free ports — the naive net.Listen check can't distinguish "port owned by
+#    jasper" from "port stolen by another process" without a health probe.
+#    Permitted-skip set: empty. All 12 checks must be ok with vault + WSL posture.
+#    Cobra prints the error to stderr on non-zero exit; stdout has the JSON array.
+systemctl --user stop jasper 2>/dev/null || true
+
+DOCTOR_RC=0
+DOCTOR_JSON=$(/opt/jasper/bin/jasper doctor --json --vault "$VAULT") || DOCTOR_RC=$?
+if [ "$DOCTOR_RC" -ne 0 ]; then
+    echo "FAIL: jasper doctor --json exited $DOCTOR_RC (one or more checks failed)" >&2
+    echo "$DOCTOR_JSON" >&2
+    exit 1
+fi
+# Any "skip" in this posture is a configuration gap — fail loudly.
+if echo "$DOCTOR_JSON" | grep -q '"status": "skip"'; then
+    echo "FAIL: unexpected skip in doctor output (all 12 checks must be ok):" >&2
+    echo "$DOCTOR_JSON" >&2
+    exit 1
+fi
+echo "doctor passed — all checks ok"
 
 # 6. Uninstall + assert the unit is gone. `jasper uninstall` exits
 #    0 on success; the post-condition is that the service file is
