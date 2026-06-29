@@ -1,5 +1,7 @@
 # .github/workflows/install-validation.yml
 # Phase 8 Plan 08-14 / INSTALL-09 / D-38 / D-48.
+# Updated: Phase 16 Plan 16-05 / D-09 (Linux runner pin, macOS exclusion doc,
+#          make target wiring for zero make/CI drift — T-16-10).
 #
 # CI gate that runs the install-validation docker-compose suite on every
 # push to main and every PR targeting main. Asserts:
@@ -10,10 +12,24 @@
 #      proving the README install flow works end-to-end on a fresh
 #      WSL2-like system.
 #
+# macOS EXCLUSION (D-09 / WSL-04):
+#   This job runs on ubuntu-latest only. macOS GitHub Actions runners are
+#   explicitly excluded because:
+#     (a) Docker on macOS GitHub-hosted runners requires a Docker Engine install
+#         step that is not available on the standard runner image.
+#     (b) jrei/systemd-ubuntu:noble requires Linux cgroups and systemd-as-PID-1
+#         (privileged: true); these cannot be satisfied under macOS's kernel.
+#   Reference: STATE.md Critical Pitfall "Phase 16 / WSL-04: Docker not available
+#   on GitHub Actions macOS runners". Do NOT add a macOS matrix entry here.
+#
+# No-drift guarantee (D-08 / T-16-10):
+#   The job invokes `make test-systemd-e2e` rather than re-listing the compose
+#   commands inline. That make target calls compose/install-validation/run.sh,
+#   which is the single authoritative invocation sequence for both local and CI
+#   runs. Local developers reproduce CI exactly with: `make test-systemd-e2e`.
+#
 # Local UAT note: Apple-Silicon devs can reproduce this locally by
-# `cd compose/install-validation && docker-compose up -d &&
-#  docker-compose exec -T jasper-install-test bash /opt/jasper/test-install.sh &&
-#  docker-compose down`. The `platform: linux/amd64` pin in the compose
+# `make test-systemd-e2e`. The `platform: linux/amd64` pin in the compose
 # file routes through Rosetta-2; first run is slow but works.
 
 name: install-validation
@@ -26,6 +42,9 @@ on:
 
 jobs:
   install-validation:
+    # Linux runner required: systemd-as-PID-1 + Docker privileged containers
+    # are not available on GitHub Actions macOS runners. See macOS EXCLUSION
+    # comment at the top of this file.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -44,32 +63,19 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Build the binary
-        run: make build
-
-      - name: docker-compose up
-        working-directory: compose/install-validation
-        run: docker compose up -d
-
-      - name: Wait for systemd to become ready
-        working-directory: compose/install-validation
-        run: |
-          for i in $(seq 1 24); do
-            if docker compose exec -T jasper-install-test systemctl is-system-running --quiet --wait 2>/dev/null; then
-              echo "systemd ready (after iter $i)"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "FAIL: systemd never became ready" >&2
-          docker compose logs >&2
-          exit 1
-
-      - name: Run test-install.sh inside the container
-        working-directory: compose/install-validation
-        run: docker compose exec -T jasper-install-test bash /opt/jasper/test-install.sh
+      - name: Run systemd install-validation suite
+        # make test-systemd-e2e: builds the linux/amd64 binary (make build),
+        # then delegates to compose/install-validation/run.sh which runs:
+        #   docker compose up -d  →  wait systemd ready  →
+        #   exec test-install.sh  →  down (trap-guarded).
+        # This is the same script that local `make test-systemd-e2e` calls —
+        # no divergent inline compose commands here (zero-drift, T-16-10).
+        run: make test-systemd-e2e
 
       - name: docker-compose down (cleanup)
+        # Belt-and-suspenders: run.sh's EXIT trap already tears down the suite,
+        # but this step ensures cleanup if the CI runner is cancelled externally
+        # or the process is killed before the trap fires.
         if: always()
         working-directory: compose/install-validation
         run: docker compose down --volumes --remove-orphans
