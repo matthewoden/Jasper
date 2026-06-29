@@ -1,4 +1,4 @@
-.PHONY: gen gen-check build test lint dev gen-go gen-ts print-port perf-check perf-vault
+.PHONY: gen gen-check build test lint dev gen-go gen-ts print-port perf-check perf-vault test-systemd-e2e
 
 # Phase 8 D-40: canonical port resolver. Returns server.port from
 # the active vault's <vault>/.jasper/config.json (or $JASPER_CONFIG),
@@ -79,3 +79,18 @@ test-wsl-e2e:
 	@trap 'docker compose -f compose/wsl-validation/docker-compose.yml down -v --remove-orphans' EXIT; \
 	  cd frontend && JASPER_WSL_E2E=1 JASPER_WSL_HOST_PORT=$${JASPER_WSL_HOST_PORT:-6684} \
 	    npx playwright test phase8-wsl-vault.spec.ts
+
+# Phase 16 Plan 16-05 / D-08 / G-09: one-command harness for the systemd
+# install-validation suite (compose/install-validation/).
+# Builds the linux/amd64 binary via 'build', then delegates to
+# compose/install-validation/run.sh for: up → wait-systemd → exec
+# test-install.sh → down (trap-guarded on success AND failure).
+#
+# DISTINCT from test-wsl-e2e, which drives the unrelated Alpine wsl-validation
+# harness (compose/wsl-validation/). Do NOT conflate the two suites.
+#
+# The CI job (.github/workflows/install-validation.yml) calls this target
+# directly so it cannot list divergent compose commands — zero drift (T-16-10).
+.PHONY: test-systemd-e2e
+test-systemd-e2e: build
+	@bash compose/install-validation/run.sh
