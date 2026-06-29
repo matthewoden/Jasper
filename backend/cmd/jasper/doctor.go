@@ -23,6 +23,7 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/netbind"
+	"github.com/matthewoden/jasper/backend/internal/platform"
 	"github.com/matthewoden/jasper/backend/internal/static"
 	"github.com/matthewoden/jasper/backend/internal/vault"
 	"github.com/matthewoden/jasper/backend/migrations"
@@ -154,7 +155,7 @@ func checkWslSystemd() DoctorCheck {
 	if runtime.GOOS != "linux" {
 		return DoctorCheck{Name: "wsl.conf systemd", Status: "skip", Hint: "macOS — N/A"}
 	}
-	rel, _ := os.ReadFile("/proc/sys/kernel/osrelease")
+	rel, _ := os.ReadFile(platform.OsreleasePath)
 	if !strings.Contains(strings.ToLower(string(rel)), "microsoft") {
 		return DoctorCheck{Name: "wsl.conf systemd", Status: "skip", Hint: "native Linux — N/A"}
 	}
