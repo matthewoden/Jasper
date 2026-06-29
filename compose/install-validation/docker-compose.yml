@@ -1,5 +1,6 @@
 # compose/install-validation/docker-compose.yml
 # Phase 8 Plan 08-14 / INSTALL-09 / D-38 / D-48.
+# Updated: Phase 16 Plan 16-03 / D-06 (WSL2 container posture).
 #
 # Purpose: fresh-VM rehearsal of the README install flow on a real
 # systemd-enabled Ubuntu image. Catches regressions in the
@@ -16,6 +17,19 @@
 # `privileged: true` is REQUIRED for systemd-as-PID-1. The container is
 # isolated, short-lived, and does not expose any host network ports —
 # the threat-model trade-off is documented in 08-14-PLAN.md §threat_model.
+#
+# WSL2 identity (D-06 / Phase 16 Plan 16-03):
+#   This container presents as WSL2 by default so the doctor WSL/systemd
+#   check returns "ok" rather than "skip (native Linux — N/A)".
+#   test-install.sh provisions at container start (root preamble):
+#     /etc/jasper-wsl/osrelease  — contains "5.15.167.4-microsoft-standard-WSL2"
+#                                  (the "microsoft" substring satisfies IsWSL())
+#     /etc/wsl.conf              — [boot] / systemd=true
+#   The coworker shell exports JASPER_OSRELEASE_PATH=/etc/jasper-wsl/osrelease
+#   before any jasper invocation so doctor's checkWslSystemd() reads the fake
+#   file via the platform.OsreleasePath seam (hardened in plan 16-02).
+#   Fixtures live only in the ephemeral container; nothing bleeds into
+#   production source trees (threat T-16-05).
 #
 # Mounts:
 #   ../../bin           → /opt/jasper/bin     (built binary, read-only)
