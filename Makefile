@@ -82,9 +82,14 @@ test-wsl-e2e:
 
 # Phase 16 Plan 16-05 / D-08 / G-09: one-command harness for the systemd
 # install-validation suite (compose/install-validation/).
-# Builds the linux/amd64 binary via 'build', then delegates to
-# compose/install-validation/run.sh for: up → wait-systemd → exec
-# test-install.sh → down (trap-guarded on success AND failure).
+# CROSS-compiles a linux/amd64 binary (NOT the host-native `build` target):
+# the compose suite mounts bin/ into a `platform: linux/amd64` container, so a
+# host-native macOS/arm64 Mach-O binary would fail with an exec-format error on
+# the macOS-first dev platform. Pure-Go SQLite (no CGo) cross-compiles cleanly
+# with CGO_ENABLED=0. The frontend embed steps mirror `build` (static assets
+# are platform-independent). Then delegates to compose/install-validation/run.sh
+# for: up → wait-systemd → exec test-install.sh → down (trap-guarded on success
+# AND failure).
 #
 # DISTINCT from test-wsl-e2e, which drives the unrelated Alpine wsl-validation
 # harness (compose/wsl-validation/). Do NOT conflate the two suites.
@@ -92,5 +97,11 @@ test-wsl-e2e:
 # The CI job (.github/workflows/install-validation.yml) calls this target
 # directly so it cannot list divergent compose commands — zero drift (T-16-10).
 .PHONY: test-systemd-e2e
-test-systemd-e2e: build
+test-systemd-e2e:
+	cd frontend && npm install && npm run build
+	rm -rf backend/internal/static/dist
+	mkdir -p backend/internal/static/dist
+	cp -R frontend/dist/. backend/internal/static/dist/
+	touch backend/internal/static/dist/.keep
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../bin/jasper ./cmd/jasper
 	@bash compose/install-validation/run.sh

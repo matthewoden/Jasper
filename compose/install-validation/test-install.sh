@@ -105,16 +105,17 @@ if [ "$JASPER_READY" -eq 0 ]; then
     exit 1
 fi
 
-# 3. Probe the local port. Default is 6683 (Plan 08-13); coworkers who
-#    override server.port in config.json will hit a different port —
-#    we read the actual port via `jasper status --json` so this test
-#    survives a port change.
-#
-#    Fallback to 6683 if --json parsing fails (jq not installed in the
-#    minimal noble image — we use grep instead).
-PORT=$(/opt/jasper/bin/jasper status --json 2>/dev/null | \
-       grep -o '"port"[[:space:]]*:[[:space:]]*[0-9]\+' | \
-       grep -o '[0-9]\+' | head -1)
+# 3. Resolve the local port. This is a controlled container: the harness
+#    creates the vault with defaults and never overrides server.port, so the
+#    port is always the default 6683 (Plan 08-13) — and step 0's bootstrap
+#    loop above already proved the server answers on 6683. We read it back
+#    from the vault config defensively so a future default change is picked
+#    up automatically; `|| true` keeps the 6683 fallback reachable under
+#    `set -euo pipefail` (jq is not installed in the minimal noble image, so
+#    we use grep, scoped to the "server" block to avoid matching mcp.port).
+PORT=$(grep -A4 '"server"' "$VAULT/.jasper/config.json" 2>/dev/null \
+       | grep -o '"port"[[:space:]]*:[[:space:]]*[0-9]\+' \
+       | grep -o '[0-9]\+' | head -1 || true)
 PORT=${PORT:-6683}
 
 # 4. Bounded poll: wait for HTTP health endpoint to return 200 (D-03).
