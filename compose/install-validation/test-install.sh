@@ -36,7 +36,20 @@ set -euo pipefail
 # failure aborts loudly under set -e rather than flaking later.
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends sudo curl
+apt-get install -y -qq --no-install-recommends sudo curl polkitd
+
+# polkitd user is created by the polkit package above, but dbus-daemon already
+# started as part of systemd boot before that user existed.  dbus logs
+# "Unknown username 'polkitd' in message bus configuration file" and therefore
+# refuses to let polkitd own org.freedesktop.PolicyKit1 on the bus — polkitd
+# immediately loses the name and exits.  Reload dbus config so it now resolves
+# the polkitd user, then start polkit so it can hold the D-Bus name.
+# Without polkit, jasper install's self-linger call (loginctl enable-linger
+# coworker, as the coworker user) fails with "Access denied".  Ubuntu Noble's
+# default polkit policy for org.freedesktop.login1.set-self-linger is
+# allow_any=yes, so no active logind session is required.
+systemctl reload dbus
+systemctl restart polkit
 
 # Create a non-root user to mimic a real coworker account.
 useradd -m -s /bin/bash coworker
@@ -105,6 +118,35 @@ if [ "$VAULT_READY" -eq 0 ]; then
     exit 1
 fi
 
+# Register the vault in app.json so the systemd unit (which runs plain
+# "jasper serve" without --vault) opens this vault rather than showing
+# the first-run wizard.  jasper serve --vault bypasses app.json (one-shot
+# CI override); the installer creates a unit that runs bare "jasper serve",
+# which reads current_vault from app.json to decide which vault to open.
+# A real user would have registered the vault through the first-run wizard,
+# which calls vault.CreateVault → vault.TouchOpened → vault.SaveAppJSON.
+mkdir -p "$HOME/.jasper"
+printf '{"current_vault":"%s","recent_vaults":[{"path":"%s","display_name":"test-vault","last_opened_at":"2024-01-01T00:00:00Z","created_at":"2024-01-01T00:00:00Z"}]}\n' \
+    "$VAULT" "$VAULT" > "$HOME/.jasper/app.json"
+
+# Fix .jasper dir permissions. The first-run wizard goes through
+# vault.CreateVault which calls os.MkdirAll(<vault>/.jasper, 0o700).
+# The --vault bootstrap path calls EnsureDataDir which uses 0o755.
+# jasper doctor's checkDataDirPerms expects exactly 0700, so we chmod
+# the dir to match what a real vault-creation wizard would produce.
+chmod 0700 "$VAULT/.jasper"
+
+# Pre-create the installer's log directory. The systemd unit template
+# (backend/internal/installer/systemd_template.go) writes:
+#   StandardOutput=file:~/.jasper/logs/com.jasper.server.out
+# systemd's "file:" directive requires the parent directory to exist
+# (it creates the log file but NOT its parent).  The directory is
+# ~/.jasper/logs — using config.DefaultDataDir() + "/logs" = ~/.jasper/logs.
+# On a real WSL2 machine this directory would exist because the user ran
+# `jasper serve` before `jasper install`; in this harness the bootstrap
+# run uses --vault (which bypasses the app-home path) so we create it now.
+mkdir -p "$HOME/.jasper/logs"
+
 # 1. Install the service.
 /opt/jasper/bin/jasper install
 
@@ -153,10 +195,12 @@ if [ "$HTTP_READY" -eq 0 ]; then
     exit 1
 fi
 
-# 4b. Assert jasper.service was written with the expected content (D-07).
+# 4b. Assert the unit file was written with the expected content (D-07).
+#     The service is named "com.jasper.server" (installer.go const serviceName);
+#     kardianos/service writes com.jasper.server.service on Linux.
 #     ExecStart must end in "jasper serve" and [Install] must have
 #     WantedBy=default.target — per backend/internal/installer/systemd_template.go.
-UNIT_FILE="$HOME/.config/systemd/user/jasper.service"
+UNIT_FILE="$HOME/.config/systemd/user/com.jasper.server.service"
 if [[ ! -f "$UNIT_FILE" ]]; then
     echo "FAIL: jasper install did not create $UNIT_FILE" >&2
     exit 1
@@ -178,7 +222,7 @@ echo "jasper.service content ok (ExecStart=.../jasper serve, WantedBy=default.ta
 #    jasper" from "port stolen by another process" without a health probe.
 #    Permitted-skip set: empty. All 12 checks must be ok with vault + WSL posture.
 #    Cobra prints the error to stderr on non-zero exit; stdout has the JSON array.
-systemctl --user stop jasper 2>/dev/null || true
+systemctl --user stop com.jasper.server 2>/dev/null || true
 
 DOCTOR_RC=0
 DOCTOR_JSON=$(/opt/jasper/bin/jasper doctor --json --vault "$VAULT") || DOCTOR_RC=$?
@@ -198,10 +242,28 @@ echo "doctor passed — all checks ok"
 # 6. Uninstall + assert the unit is gone. `jasper uninstall` exits
 #    0 on success; the post-condition is that the service file is
 #    removed under ~/.config/systemd/user/.
-/opt/jasper/bin/jasper uninstall
+#
+#    Why sudo su - coworker -c instead of a plain invocation:
+#    jasper uninstall calls DisableLingerLinux() before svc.Uninstall().
+#    When this shell runs under `sudo -u coworker bash` (no PAM session),
+#    only lingering keeps user@1001.service alive.  DisableLingerLinux()
+#    removes the linger flag, which terminates user@1001.service immediately
+#    (no active logind session to sustain it), taking down /run/user/1001/.
+#    kardianos then calls `systemctl --user disable com.jasper.server`
+#    which fails with "Failed to connect to bus: No such file or directory"
+#    (exit 1), so Uninstall() returns early WITHOUT removing the unit file.
+#    Running via `sudo su - coworker -c` invokes PAM (pam_systemd), which
+#    registers a real logind session (c1).  That session sustains
+#    user@1001.service past the disable-linger call, so systemctl --user
+#    succeeds and kardianos removes the unit file.
+sudo su - coworker -c "
+  export HOME=/home/coworker
+  export JASPER_OSRELEASE_PATH=/etc/jasper-wsl/osrelease
+  /opt/jasper/bin/jasper uninstall
+"
 
-if [[ -f "$HOME/.config/systemd/user/jasper.service" ]]; then
-    echo "FAIL: uninstall did not remove jasper.service" >&2
+if [[ -f "$HOME/.config/systemd/user/com.jasper.server.service" ]]; then
+    echo "FAIL: uninstall did not remove com.jasper.server.service" >&2
     exit 1
 fi
 
