@@ -2593,7 +2593,7 @@ describe("<EditorPane /> — Phase 15 flush() ref method (Plan 15-02, TAB-13)", 
 });
 
 describe("<EditorPane /> breadcrumb (TAB-18)", () => {
-    it("renders a full 'Folder / Sub / Title' breadcrumb above the editor for a foldered note", async () => {
+    it("renders interactive per-segment breadcrumb above the editor for a foldered note", async () => {
         getNoteMock.mockResolvedValue(okGet("# route"));
         getTreeMock.mockResolvedValue(okTree("docs/api/route.md"));
 
@@ -2601,15 +2601,22 @@ describe("<EditorPane /> breadcrumb (TAB-18)", () => {
         await flushMicrotasks();
 
         const crumb = await screen.findByTestId("note-breadcrumb");
-        // breadcrumbTrail includes the title as the last segment.
-        expect(crumb.textContent).toBe("docs / api / route");
-        expect(crumb.getAttribute("style") ?? "").toContain(
-            "var(--color-muted)",
-        );
+        // Interactive nav container: no aria-hidden; has aria-label.
+        expect(crumb.getAttribute("aria-hidden")).toBeNull();
+        expect(crumb.getAttribute("aria-label")).toBe("Note path");
+        // Container is a <nav> element.
+        expect(crumb.tagName.toLowerCase()).toBe("nav");
         // Centered: inline textAlign set.
         expect(crumb.getAttribute("style") ?? "").toContain("center");
-        // Non-interactive: aria-hidden, no role/button.
-        expect(crumb.getAttribute("aria-hidden")).toBe("true");
+        // Three segment buttons rendered.
+        const segments = crumb.querySelectorAll('[data-testid="breadcrumb-segment"]');
+        expect(segments).toHaveLength(3);
+        expect(segments[0].textContent).toBe("docs");
+        expect(segments[1].textContent).toBe("api");
+        expect(segments[2].textContent).toBe("route");
+        // Two separators between segments (N-1).
+        const separators = crumb.querySelectorAll('[data-testid="breadcrumb-separator"]');
+        expect(separators).toHaveLength(2);
     });
 
     it("renders title-only breadcrumb for a vault-root note (no parent folders)", async () => {
@@ -2619,8 +2626,12 @@ describe("<EditorPane /> breadcrumb (TAB-18)", () => {
         render(<EditorPane noteId={ScratchpadUUID} />);
         await flushMicrotasks();
 
-        // Root notes now show the title as the sole breadcrumb segment (breadcrumbTrail).
+        // Root note: single segment, no separators.
         const crumb = await screen.findByTestId("note-breadcrumb");
-        expect(crumb.textContent).toBe("note");
+        const segments = crumb.querySelectorAll('[data-testid="breadcrumb-segment"]');
+        expect(segments).toHaveLength(1);
+        expect(segments[0].textContent).toBe("note");
+        const separators = crumb.querySelectorAll('[data-testid="breadcrumb-separator"]');
+        expect(separators).toHaveLength(0);
     });
 });
