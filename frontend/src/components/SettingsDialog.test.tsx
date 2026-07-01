@@ -90,11 +90,11 @@ describe("<SettingsDialog />", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("SD-3: Close button calls onOpenChange(false)", async () => {
+  it("SD-3: Done button calls onOpenChange(false)", async () => {
     const onOpenChange = vi.fn();
     render(<SettingsDialog open={true} onOpenChange={onOpenChange} />);
-    await waitFor(() => screen.getByRole("button", { name: "Close" }));
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => screen.getByRole("button", { name: "Done" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -143,11 +143,20 @@ describe("<SettingsDialog />", () => {
     expect((input as HTMLInputElement).value).toBe("15");
   });
 
-  it("SD-6 (SET-06): ≥2 elements with aria-label 'Requires reload to apply'", async () => {
+  it("SD-6 (SET-06): restart badge appears after changing a restart-pending field", async () => {
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+    await waitFor(() => screen.getByLabelText("Autosave interval"));
+
+    // No badge on first open — deferred against boot baseline (SET2-03)
+    expect(screen.queryAllByLabelText("Requires reload to apply")).toHaveLength(0);
+
+    // Changing a restart-pending field triggers the badge
+    const autosaveInput = screen.getByLabelText("Autosave interval");
+    fireEvent.change(autosaveInput, { target: { value: "5000" } });
+
     await waitFor(() => {
-      const badges = screen.getAllByLabelText("Requires reload to apply");
-      expect(badges.length).toBeGreaterThanOrEqual(2);
+      const badges = screen.queryAllByLabelText("Requires reload to apply");
+      expect(badges.length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -160,7 +169,7 @@ describe("<SettingsDialog />", () => {
 
   it("no Save button rendered", async () => {
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
-    await waitFor(() => screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => screen.getByRole("button", { name: "Done" }));
     const buttons = screen.getAllByRole("button");
     const saveButtons = buttons.filter((b) => b.textContent?.toLowerCase().includes("save"));
     expect(saveButtons.length).toBe(0);
