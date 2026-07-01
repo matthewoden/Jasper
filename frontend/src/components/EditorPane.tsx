@@ -19,6 +19,7 @@
  */
 
 import {
+  Fragment,
   type MutableRefObject,
   useCallback,
   useEffect,
@@ -27,7 +28,10 @@ import {
   useState,
 } from "react";
 
-import { breadcrumbTrail } from "../lib/breadcrumbPrefix";
+import {
+  breadcrumbSegments,
+  type BreadcrumbSegment,
+} from "../lib/breadcrumbPrefix";
 import { extractH1FromContent, sanitizeH1ForFilename } from "../lib/h1Extract";
 import { getNote, updateNote } from "../lib/notesApi";
 import { generateOrLoadSessionId } from "../lib/sessionId";
@@ -41,6 +45,7 @@ import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
 import type { components } from "../api/schema";
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
+import { expandAndScrollToFolder } from "./fileTree.utils";
 
 import { FilePreviewView } from "./FilePreviewView";
 
@@ -137,6 +142,29 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   const connectionStatus = useTreeStore((s) => s.connectionStatus);
 
   const activeFilePath = useTreeStore((s) => s.activeFilePath);
+
+  const toggleExpanded = useTreeStore((s) => s.toggleExpanded);
+  const setPulseTarget = useTreeStore((s) => s.setPulseTarget);
+  const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);
+  const activeNoteId = useTreeStore((s) => s.activeNoteId);
+
+  const handleBreadcrumbClick = useCallback((seg: BreadcrumbSegment) => {
+    if (seg.kind === "folder") {
+      expandAndScrollToFolder(seg.folderPath);
+      setPulseTarget({ kind: "folder", target: seg.folderPath });
+    } else {
+      // Note segment: expand ancestors, pulse the note row in the tree
+      const parts = seg.folderPath.split("/").filter(Boolean).slice(0, -1);
+      parts.forEach((_, i) => {
+        const anc = parts.slice(0, i + 1).join("/");
+        if (!useTreeStore.getState().expanded.has(anc)) toggleExpanded(anc);
+      });
+      setNotesSidebarVisible(true);
+      if (activeNoteId) {
+        setPulseTarget({ kind: "note", target: activeNoteId });
+      }
+    }
+  }, [toggleExpanded, setPulseTarget, setNotesSidebarVisible, activeNoteId]);
 
   const [conflictBanner, setConflictBanner] = useState<{
     visible: boolean;
@@ -578,11 +606,9 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     );
   }
 
-  // "Folder / Sub / Title" breadcrumb above the note body, centered. Muted +
-  // non-interactive; derived from the live tree so rename/move refreshes it.
-  // Root notes show title-only; empty path yields "" and renders nothing.
+  // Per-segment interactive breadcrumb above the note body. Clicking a folder
+  // segment reveals it in the tree; clicking the title segment pulses the note row.
   const notePath = findNotePathInTree(tree, noteId);
-  const crumb = notePath ? breadcrumbTrail(notePath) : "";
 
   return (
     <section
@@ -728,13 +754,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           </button>
         </div>
       )}
-      {crumb && (
-        <div
+      {notePath && breadcrumbSegments(notePath).length > 0 && (
+        <nav
           data-testid="note-breadcrumb"
-          aria-hidden="true"
+          aria-label="Note path"
           style={{
             fontSize: 12,
-            color: "var(--color-muted)",
             padding: "4px var(--editor-content-x)",
             whiteSpace: "nowrap",
             overflow: "hidden",
@@ -742,8 +767,45 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
             textAlign: "center",
           }}
         >
-          {crumb}
-        </div>
+          {breadcrumbSegments(notePath).map((seg, i, arr) => (
+            <Fragment key={seg.folderPath}>
+              <button
+                type="button"
+                data-testid="breadcrumb-segment"
+                aria-label={`Reveal ${seg.label} in Files`}
+                onClick={() => handleBreadcrumbClick(seg)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "color-mix(in srgb, var(--color-fg) 75%, transparent)",
+                  fontSize: 12,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  padding: "0 2px",
+                  borderRadius: 2,
+                  lineHeight: "inherit",
+                }}
+              >
+                {seg.label}
+              </button>
+              {i < arr.length - 1 && (
+                <span
+                  data-testid="breadcrumb-separator"
+                  aria-hidden="true"
+                  style={{
+                    color: "var(--color-muted)",
+                    margin: "0 4px",
+                    fontSize: 12,
+                    lineHeight: "inherit",
+                    userSelect: "none",
+                  }}
+                >
+                  /
+                </span>
+              )}
+            </Fragment>
+          ))}
+        </nav>
       )}
       {/* MarkdownEditor is uncontrolled — initialDoc captured once on mount;
           updates flow through the ref API. Click-anywhere-to-type: clicks outside
