@@ -24,7 +24,9 @@ export interface SetupGrantDraft {
 
 export interface SetupDraft {
   dataDir: string;
-  theme: "dark" | "light";
+  // theme dropped — dark-only (D-01); submit hardcodes "dark"
+  accent: string;
+  readingFont: "sans" | "serif";
   mcpEnabled: boolean;
   mcpGrants: SetupGrantDraft[];
   dailyTemplate: string;
@@ -44,7 +46,8 @@ export interface SetupDraft {
  */
 export const DEFAULT_DRAFT: SetupDraft = {
   dataDir: "",
-  theme: "dark",
+  accent: "purple",
+  readingFont: "sans",
   mcpEnabled: true,
   mcpGrants: [],
   dailyTemplate: "# {{date}}\n\n",

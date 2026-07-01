@@ -1,93 +1,45 @@
 /**
- * ThemeSection — theme picker for the first-run wizard (Dark / Light).
+ * ThemeSection — Appearance step for the first-run wizard.
  *
- * aria-label values are "Dark" and "Light" (not "Dark theme") — Playwright
- * selectors depend on the exact string.
+ * Dark-only (D-01): no theme toggle offered. Shows the accent swatch picker
+ * and the reading-font toggle (Sans / Serif). Live preview applies on each
+ * selection so the wizard restyles as the user picks.
  *
- * Selecting a radio immediately writes data-theme to <html> for live preview.
- * SetupApp also syncs it via useEffect on draft.theme; the local write here
- * avoids the render-cycle delay on click.
+ * aria-label values on swatch buttons match the Copywriting Contract ("Purple",
+ * "Sky", "Green", "Orange") — Playwright selectors in phase17-uat.spec.ts
+ * depend on these exact strings.
  */
 
+import { applyAccent, applyReadingFont } from "../../lib/useAccent";
+
 interface ThemeSectionProps {
-  value: "dark" | "light";
-  onChange: (next: "dark" | "light") => void;
+  accent: string;
+  readingFont: "sans" | "serif";
+  onAccentChange: (a: string) => void;
+  onReadingFontChange: (rf: "sans" | "serif") => void;
 }
 
-function applyThemeNow(theme: "dark" | "light"): void {
-  document.documentElement.setAttribute("data-theme", theme);
-}
+const ACCENT_SWATCHES = [
+  { key: "purple", hex: "#a78bfa", label: "Purple" },
+  { key: "sky",    hex: "#7dd3fc", label: "Sky" },
+  { key: "green",  hex: "#34d399", label: "Green" },
+  { key: "orange", hex: "#fb923c", label: "Orange" },
+] as const;
 
-function ThemeRow({
-  label,
-  value,
-  selected,
-  onSelect,
-}: {
-  label: string;
-  value: "dark" | "light";
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <label
-      style={{
-        display: "flex",
-        alignItems: "center",
-        height: 36,
-        gap: 10,
-        cursor: "pointer",
-        fontSize: 14,
-        color: "var(--color-fg)",
-      }}
-    >
-      <input
-        type="radio"
-        name="setup-theme"
-        value={value}
-        checked={selected}
-        onChange={onSelect}
-        aria-label={label}
-        style={{
-          appearance: "none",
-          margin: 0,
-          width: 16,
-          height: 16,
-          borderRadius: "50%",
-          border: `1px solid ${
-            selected ? "var(--color-accent)" : "var(--color-border)"
-          }`,
-          background: "var(--color-bg)",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          position: "relative",
-          cursor: "pointer",
-        }}
-      />
-      {selected && (
-        <span
-          aria-hidden
-          style={{
-            position: "absolute",
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: "var(--color-accent)",
-            marginLeft: 4, // center the 8px dot inside the 16px ring
-            pointerEvents: "none",
-          }}
-        />
-      )}
-      <span>{label}</span>
-    </label>
-  );
-}
+export function ThemeSection({
+  accent,
+  readingFont,
+  onAccentChange,
+  onReadingFontChange,
+}: ThemeSectionProps) {
+  const selectAccent = (key: string) => {
+    applyAccent(key);
+    onAccentChange(key);
+  };
 
-export function ThemeSection({ value, onChange }: ThemeSectionProps) {
-  const select = (next: "dark" | "light") => {
-    applyThemeNow(next);
-    onChange(next);
+  const selectReadingFont = (rf: "sans" | "serif") => {
+    applyReadingFont(rf);
+    onReadingFontChange(rf);
   };
 
   return (
@@ -102,32 +54,107 @@ export function ThemeSection({ value, onChange }: ThemeSectionProps) {
           marginBottom: 6,
         }}
       >
-        THEME
+        APPEARANCE
       </div>
-      <p
-        style={{
-          fontSize: 14,
-          color: "var(--color-muted)",
-          margin: "0 0 10px",
-          lineHeight: 1.5,
-        }}
-      >
-        You can switch any time. Wizard restyles live as you choose.
-      </p>
 
-      <div style={{ position: "relative" }}>
-        <ThemeRow
-          label="Dark"
-          value="dark"
-          selected={value === "dark"}
-          onSelect={() => select("dark")}
-        />
-        <ThemeRow
-          label="Light"
-          value="light"
-          selected={value === "light"}
-          onSelect={() => select("light")}
-        />
+      {/* Accent color */}
+      <div style={{ marginBottom: 16 }}>
+        <p
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: "var(--color-fg)",
+            margin: "0 0 8px",
+          }}
+        >
+          Choose your accent color
+        </p>
+        <div
+          role="group"
+          aria-label="Accent color"
+          style={{ display: "flex", gap: 8 }}
+        >
+          {ACCENT_SWATCHES.map(({ key, hex, label }) => {
+            const selected = accent === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-label={label}
+                aria-pressed={selected}
+                onClick={() => selectAccent(key)}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: hex,
+                  border: selected
+                    ? "2px solid var(--color-fg)"
+                    : "2px solid transparent",
+                  outline: selected ? `2px solid ${hex}` : "none",
+                  outlineOffset: 2,
+                  cursor: "pointer",
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Reading font */}
+      <div>
+        <p
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: "var(--color-fg)",
+            margin: "0 0 2px",
+          }}
+        >
+          Reading font
+        </p>
+        <p
+          style={{
+            fontSize: 12,
+            color: "var(--color-muted)",
+            margin: "0 0 8px",
+          }}
+        >
+          Applies to note content only
+        </p>
+        <div
+          role="group"
+          aria-label="Reading font"
+          style={{ display: "flex", gap: 4 }}
+        >
+          {(["sans", "serif"] as const).map((rf) => {
+            const active = readingFont === rf;
+            return (
+              <button
+                key={rf}
+                type="button"
+                aria-pressed={active}
+                onClick={() => selectReadingFont(rf)}
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: 4,
+                  border: "none",
+                  background: active
+                    ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+                    : "transparent",
+                  color: active ? "var(--color-fg)" : "var(--color-muted)",
+                  fontWeight: active ? 600 : 400,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                {rf === "sans" ? "Sans" : "Serif"}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
