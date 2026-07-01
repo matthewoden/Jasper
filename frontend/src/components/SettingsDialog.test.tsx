@@ -313,4 +313,121 @@ describe("<SettingsDialog />", () => {
     );
     expect(warning).toBeUndefined();
   });
+
+  // ─── SET2-02: inline font-size / line-height row ─────────────────────────
+  //
+  // RED scaffold: both inputs currently live in SEPARATE ControlRow elements.
+  // After plan 02 lands, they must share a single combined ControlRow container.
+  // Do NOT edit these tests to make them pass — fix the production component.
+
+  describe("SET2-02: inline font-size / line-height row", () => {
+    it("SET2-02: both #settings-font-size and #settings-line-height inputs exist", async () => {
+      render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+      await waitFor(() => screen.getByLabelText("Editor font size"));
+      expect(document.getElementById("settings-font-size")).not.toBeNull();
+      expect(document.getElementById("settings-line-height")).not.toBeNull();
+    });
+
+    it("SET2-02: both inputs share a single ControlRow container (inline-row parent)", async () => {
+      render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+      await waitFor(() => screen.getByLabelText("Editor font size"));
+
+      const fontSizeInput = document.getElementById("settings-font-size");
+      const lineHeightInput = document.getElementById("settings-line-height");
+      expect(fontSizeInput).not.toBeNull();
+      expect(lineHeightInput).not.toBeNull();
+
+      // The label for settings-font-size should be the ControlRow label for the
+      // combined row. Its parentElement is the outer ControlRow div.
+      // After plan 02 fix: that div ALSO contains #settings-line-height.
+      // RED now: lineHeightInput is in a separate ControlRow (different parent).
+      const fontSizeLabel = document.querySelector('label[for="settings-font-size"]');
+      expect(fontSizeLabel).not.toBeNull();
+      const rowContainer = fontSizeLabel?.parentElement;
+
+      expect(rowContainer?.contains(lineHeightInput)).toBe(true);
+    });
+  });
+
+  // ─── SET2-03: deferred restart badge ─────────────────────────────────────
+  //
+  // RED scaffold: badge is currently always rendered for autosaveMs, vimMode,
+  // and bind (3 badges unconditionally). After plan 02, badge is deferred:
+  // only shown when the field differs from the boot-baseline config captured
+  // at first load (D-05 honest-signal rule).
+
+  describe("SET2-03: deferred restart badge (boot baseline)", () => {
+    it("SET2-03: no restart badge shown on first open (badge deferred against boot baseline)", async () => {
+      render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+      await waitFor(() => screen.getByLabelText("Autosave interval"));
+
+      // RED: currently RestartBadge is unconditionally rendered for autosaveMs,
+      // vimMode, and bind — so queryAllByLabelText returns 3 elements.
+      // After fix: all 3 badges are deferred; 0 shown until user changes a field.
+      expect(screen.queryAllByLabelText("Requires reload to apply")).toHaveLength(0);
+    });
+
+    it("SET2-03: badge appears after autosaveMs change and persists after blur/save settles", async () => {
+      // PUT returns the changed autosaveMs so the badge has a real diff to show
+      mockClient.PUT.mockResolvedValue({
+        data: { ...baseMockConfig, editor: { ...baseMockConfig.editor, autosaveMs: 3000 } },
+        response: { status: 200 },
+      });
+
+      render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+      await waitFor(() => screen.getByLabelText("Autosave interval"));
+
+      // Initially: no badge (RED: 3 badges shown unconditionally right now)
+      expect(screen.queryAllByLabelText("Requires reload to apply")).toHaveLength(0);
+
+      // Change autosaveMs to a value that differs from boot baseline (2000 ms)
+      const autosaveInput = screen.getByLabelText("Autosave interval");
+      fireEvent.change(autosaveInput, { target: { value: "3000" } });
+
+      // Badge must appear — field now differs from boot baseline
+      expect(screen.queryAllByLabelText("Requires reload to apply")).not.toHaveLength(0);
+
+      // Blur triggers saveConfig; response confirms autosaveMs=3000
+      fireEvent.blur(autosaveInput);
+      await waitFor(() => expect(mockClient.PUT).toHaveBeenCalled());
+
+      // Badge MUST PERSIST after save — boot baseline still holds 2000 ms.
+      // Only a page reload would reset the baseline (D-05).
+      expect(screen.queryAllByLabelText("Requires reload to apply")).not.toHaveLength(0);
+    });
+  });
+
+  // ─── SET2-04: reading-font live preview ──────────────────────────────────
+  //
+  // RED scaffold: no preview paragraph exists below the reading-font toggle.
+  // After plan 02, a <p style="font-family: var(--font-reading)"> renders
+  // below the Sans/Serif pill group and updates on toggle.
+
+  describe("SET2-04: reading-font live preview paragraph", () => {
+    it("SET2-04: a preview paragraph with var(--font-reading) font-family exists", async () => {
+      render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+      await waitFor(() => screen.getByRole("group", { name: "Reading font" }));
+
+      // RED: currently no preview paragraph below the reading-font toggle.
+      // After fix: a <p style="...font-family: var(--font-reading)..."> is rendered.
+      const previewParagraph = document.querySelector('p[style*="--font-reading"]');
+      expect(previewParagraph).not.toBeNull();
+    });
+
+    it("SET2-04: preview paragraph is still present after toggling to Serif", async () => {
+      mockClient.PUT.mockResolvedValue({
+        data: { ...baseMockConfig, readingFont: "serif" },
+        response: { status: 200 },
+      });
+
+      render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+      await waitFor(() => screen.getByRole("group", { name: "Reading font" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "Serif" }));
+
+      // RED: currently no preview paragraph at all
+      const preview = document.querySelector('p[style*="--font-reading"]');
+      expect(preview).not.toBeNull();
+    });
+  });
 });
