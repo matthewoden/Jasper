@@ -25,6 +25,14 @@ type CreateOpts struct {
 
 	// MCPEnabled persists the per-vault MCP toggle.
 	MCPEnabled bool
+
+	// Accent is the UI accent selection ("purple"|"sky"|"green"|"orange").
+	// Empty keeps the config.Defaults() accent ("purple").
+	Accent string
+
+	// ReadingFont is the reading-surface font selection ("sans"|"serif").
+	// Empty keeps the config.Defaults() reading font ("sans").
+	ReadingFont string
 }
 
 // CreateVault initializes a new Jasper vault at canonical and registers it in
@@ -62,6 +70,12 @@ func CreateVault(ctx context.Context, canonical string, opts CreateOpts) (*AppSt
 	cfg.DisplayName = displayName
 	if opts.DailyTemplate != "" {
 		cfg.DailyNotes.Template = opts.DailyTemplate
+	}
+	if opts.Accent != "" {
+		cfg.Accent = opts.Accent
+	}
+	if opts.ReadingFont != "" {
+		cfg.ReadingFont = opts.ReadingFont
 	}
 	cfg.MCP.Enabled = opts.MCPEnabled
 

@@ -87,6 +87,15 @@ func (s *Server) PostSetup(
 		DailyTemplate:        req.Body.DailyTemplate,
 		CreateTodayDailyNote: req.Body.CreateTodayDailyNote,
 	}
+	// accent/readingFont are optional in SetupRequest; a nil pointer means the
+	// wizard omitted them, so leave the field empty and let CreateVault apply
+	// the config.Defaults() value.
+	if req.Body.Accent != nil {
+		sr.Accent = string(*req.Body.Accent)
+	}
+	if req.Body.ReadingFont != nil {
+		sr.ReadingFont = string(*req.Body.ReadingFont)
+	}
 	for _, g := range req.Body.McpGrants {
 		sr.McpGrants = append(sr.McpGrants, firstrun.SetupGrantSeed{
 			Folder: g.Folder,

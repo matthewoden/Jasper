@@ -2466,6 +2466,21 @@ components:
           maxLength: 1024
         create_today_daily_note:
           type: boolean
+        accent:
+          type: string
+          enum: [purple, sky, green, orange]
+          default: purple
+          description: |
+            Wizard accent selection. Optional — NOT in required[] so omitted
+            bodies fall back to the "purple" default at vault creation
+            (config.Defaults). Coerced to "purple" on load if out of enum.
+        readingFont:
+          type: string
+          enum: [sans, serif]
+          default: sans
+          description: |
+            Wizard reading-font selection. Optional — NOT in required[] so
+            omitted bodies fall back to the "sans" default at vault creation.
     SetupResponse:
       type: object
       required: [ok]

@@ -74,6 +74,8 @@ func TestRunSetup_HappyPath(t *testing.T) {
 		McpEnabled:           false,
 		DailyTemplate:        "# {{date}}\n\n- ",
 		CreateTodayDailyNote: true,
+		Accent:               "sky",
+		ReadingFont:          "serif",
 	}
 	if err := RunSetup(t.Context(), req); err != nil {
 		t.Fatalf("RunSetup: %v", err)
@@ -108,6 +110,14 @@ func TestRunSetup_HappyPath(t *testing.T) {
 	// wizard-submitted value ("light" above), so the loaded config coerces to dark.
 	if cfg.Theme != "dark" {
 		t.Fatalf("Theme: got %q want %q", cfg.Theme, "dark")
+	}
+	// CR-01 (Phase 17): the wizard's accent/reading-font choices must persist
+	// through RunSetup → CreateVault into config.json.
+	if cfg.Accent != "sky" {
+		t.Fatalf("Accent: got %q want %q", cfg.Accent, "sky")
+	}
+	if cfg.ReadingFont != "serif" {
+		t.Fatalf("ReadingFont: got %q want %q", cfg.ReadingFont, "serif")
 	}
 	if cfg.MCP.Enabled {
 		t.Fatalf("MCP.Enabled: got true want false")

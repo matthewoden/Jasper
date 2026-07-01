@@ -57,6 +57,17 @@ type SetupRequest struct {
 	// substituted, so the user lands in the editor with a starting
 	// note instead of an empty file tree.
 	CreateTodayDailyNote bool
+
+	// Accent is the wizard's Appearance accent selection
+	// ("purple"|"sky"|"green"|"orange"). Empty falls back to the
+	// config.Defaults() value at vault creation. Persisted into
+	// cfg.Accent so the app opens with the user's chosen accent.
+	Accent string
+
+	// ReadingFont is the wizard's Appearance reading-font selection
+	// ("sans"|"serif"). Empty falls back to config.Defaults(). Persisted
+	// into cfg.ReadingFont.
+	ReadingFont string
 }
 
 // SetupGrantSeed is the in-process form of a single grant row passed
@@ -112,6 +123,8 @@ func RunSetup(ctx context.Context, req SetupRequest) error {
 		Theme:         req.Theme,
 		DailyTemplate: req.DailyTemplate,
 		MCPEnabled:    req.McpEnabled,
+		Accent:        req.Accent,
+		ReadingFont:   req.ReadingFont,
 	}); err != nil {
 		return fmt.Errorf("create vault: %w", err)
 	}

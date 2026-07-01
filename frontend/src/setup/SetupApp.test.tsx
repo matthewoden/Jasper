@@ -113,6 +113,11 @@ describe("SetupApp — submit happy path", () => {
     render(<SetupApp />);
     await makeDataDirValid();
 
+    // Pick a non-default accent + reading font so the submit body proves the
+    // wizard's Appearance choices reach the server (CR-01).
+    fireEvent.click(screen.getByLabelText("Sky"));
+    fireEvent.click(screen.getByRole("button", { name: "Serif" }));
+
     fireEvent.click(screen.getByRole("button", { name: "Start Jasper" }));
     await waitFor(() => {
       expect(locationAssignMock).toHaveBeenCalledWith("/");
@@ -122,10 +127,21 @@ describe("SetupApp — submit happy path", () => {
 
     const setupCall = postMock.mock.calls.find((c) => c[0] === "/setup");
     expect(setupCall).toBeDefined();
-    const body = (setupCall?.[1] as { body: { data_dir: string; theme: string } })
-      .body;
+    const body = (
+      setupCall?.[1] as {
+        body: {
+          data_dir: string;
+          theme: string;
+          accent: string;
+          readingFont: string;
+        };
+      }
+    ).body;
     expect(body.data_dir).toBe("~/JasperNotes");
     expect(body.theme).toBe("dark");
+    // CR-01: accent + readingFont are included in the setup submit body.
+    expect(body.accent).toBe("sky");
+    expect(body.readingFont).toBe("serif");
   });
 });
 

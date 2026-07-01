@@ -21,7 +21,7 @@ import {
   type SetupDraft,
   type SetupGrantDraft,
 } from "./draft";
-import { submitSetup, type McpGrantSeed } from "./setupApi";
+import { submitSetup, type McpGrantSeed, type SetupRequest } from "./setupApi";
 import { applyAccent, applyReadingFont } from "../lib/useAccent";
 
 
@@ -74,18 +74,18 @@ export function SetupApp() {
         folder: g.folder.trim(),
         level: g.level,
       }));
-      // Intermediate variable lets TypeScript use structural compatibility rather than
-      // freshness/excess-property checking, so accent + readingFont flow into the body
-      // even though SetupRequest schema does not enumerate them yet. theme is pinned to
-      // "dark" (D-01); the server accepts it per D-02 back-compat.
-      const payload = {
+      // theme is pinned to "dark" (D-01); the server accepts it per D-02
+      // back-compat. accent + readingFont are first-class optional fields on
+      // SetupRequest — the backend persists them into config.json at vault
+      // creation (firstrun.RunSetup → vault.CreateVault).
+      const payload: SetupRequest = {
         data_dir: draft.dataDir,
-        theme: "dark" as const,
+        theme: "dark",
         mcp_enabled: draft.mcpEnabled,
         mcp_grants: grants,
         daily_template: draft.dailyTemplate,
         create_today_daily_note: draft.createTodayDailyNote,
-        accent: draft.accent,
+        accent: draft.accent as SetupRequest["accent"],
         readingFont: draft.readingFont,
       };
       await submitSetup(payload);

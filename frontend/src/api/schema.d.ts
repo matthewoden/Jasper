@@ -1582,6 +1582,21 @@ export interface components {
             mcp_grants: components["schemas"]["McpGrantSeed"][];
             daily_template: string;
             create_today_daily_note: boolean;
+            /**
+             * @description Wizard accent selection. Optional — NOT in required[] so omitted
+             *     bodies fall back to the "purple" default at vault creation
+             *     (config.Defaults). Coerced to "purple" on load if out of enum.
+             * @default purple
+             * @enum {string}
+             */
+            accent: "purple" | "sky" | "green" | "orange";
+            /**
+             * @description Wizard reading-font selection. Optional — NOT in required[] so
+             *     omitted bodies fall back to the "sans" default at vault creation.
+             * @default sans
+             * @enum {string}
+             */
+            readingFont: "sans" | "serif";
         };
         SetupResponse: {
             ok: boolean;
