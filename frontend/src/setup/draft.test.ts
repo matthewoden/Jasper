@@ -50,7 +50,8 @@ describe("loadDraft", () => {
   it("returns the persisted draft when present", () => {
     const persisted: SetupDraft = {
       dataDir: "~/Notes",
-      theme: "light",
+      accent: "sky",
+      readingFont: "serif",
       mcpEnabled: true,
       mcpGrants: [{ folder: "projects", level: 1 }],
       dailyTemplate: "# CUSTOM\n",
@@ -63,11 +64,12 @@ describe("loadDraft", () => {
   it("shallow-merges older drafts missing newer fields with DEFAULT_DRAFT", () => {
     localStorage.setItem(
       SETUP_DRAFT_KEY,
-      JSON.stringify({ dataDir: "~/X", theme: "light" }),
+      JSON.stringify({ dataDir: "~/X", accent: "sky" }),
     );
     const out = loadDraft();
     expect(out.dataDir).toBe("~/X");
-    expect(out.theme).toBe("light");
+    expect(out.accent).toBe("sky");
+    expect(out.readingFont).toBe(DEFAULT_DRAFT.readingFont);
     expect(out.mcpEnabled).toBe(DEFAULT_DRAFT.mcpEnabled);
     expect(out.mcpGrants).toEqual(DEFAULT_DRAFT.mcpGrants);
     expect(out.dailyTemplate).toBe(DEFAULT_DRAFT.dailyTemplate);
@@ -80,16 +82,16 @@ describe("saveDraft", () => {
     saveDraft({ dataDir: "~/Notes" });
     const stored = JSON.parse(localStorage.getItem(SETUP_DRAFT_KEY)!);
     expect(stored.dataDir).toBe("~/Notes");
-    expect(stored.theme).toBe(DEFAULT_DRAFT.theme);
+    expect(stored.accent).toBe(DEFAULT_DRAFT.accent);
     expect(stored.mcpEnabled).toBe(DEFAULT_DRAFT.mcpEnabled);
   });
 
   it("merges patches into the existing draft", () => {
-    saveDraft({ dataDir: "~/Notes", theme: "light" });
+    saveDraft({ dataDir: "~/Notes", accent: "sky" });
     saveDraft({ mcpEnabled: true });
     const out = loadDraft();
     expect(out.dataDir).toBe("~/Notes");
-    expect(out.theme).toBe("light");
+    expect(out.accent).toBe("sky");
     expect(out.mcpEnabled).toBe(true);
   });
 });

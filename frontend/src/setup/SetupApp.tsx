@@ -7,8 +7,8 @@
  *   1. loadDraft() hydrates from localStorage on mount so mid-wizard reloads resume.
  *   2. Every field change calls updateDraft() → setState + saveDraft().
  *   3. DataDirSection calls onValidityChange to gate the submit button.
- *   4. Theme radio writes <html data-theme> synchronously for live preview;
- *      a useEffect on draft.theme also syncs it as a belt-and-braces fallback.
+ *   4. Appearance step applies accent + reading font live (dark-only, D-01);
+ *      useEffects on draft.accent/draft.readingFont keep the DOM in sync.
  *   5. On success: clearDraft() then window.location.assign("/") (reload IS the
  *      confirmation — no toast). On failure: surface the error message and re-enable.
  */

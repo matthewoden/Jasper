@@ -5,18 +5,13 @@ import App from "./App";
 import { NoteNotFoundView } from "./components/NoteNotFoundView";
 import { ToastProvider } from "./components/Toast";
 import { SetupApp } from "./setup/SetupApp";
-import { loadDraft } from "./setup/draft";
 import "./theme.css";
 
 
 const path = window.location.pathname;
 if (path === "/setup") {
-  try {
-    const { theme } = loadDraft();
-    document.documentElement.setAttribute("data-theme", theme);
-  } catch {
-    /* private mode — fall through, useTheme will fix it post-setup */
-  }
+  // Dark-only (D-01): the wizard has no theme toggle, so pin dark for the setup page.
+  document.documentElement.setAttribute("data-theme", "dark");
 }
 
 

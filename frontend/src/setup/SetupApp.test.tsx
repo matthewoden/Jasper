@@ -6,7 +6,7 @@
  *   - "Start Jasper" is disabled until DataDirSection reports valid=true.
  *   - Successful submit: calls clearDraft() and window.location.assign("/").
  *   - Failed submit: shows error banner with prefix and suffix copy.
- *   - Theme radio click updates <html data-theme>.
+ *   - Appearance controls apply accent + reading font live (dark-only, D-01).
  *
  * client.{POST,GET} mocked via vi.mock so no real network calls fly.
  * window.location.assign spied via vi.spyOn (jsdom's location is read-only).
@@ -82,7 +82,7 @@ describe("SetupApp — rendering", () => {
       screen.getByText(/A few choices and you're writing/),
     ).toBeInTheDocument();
     expect(screen.getByText("DATA DIRECTORY · REQUIRED")).toBeInTheDocument();
-    expect(screen.getByText("THEME")).toBeInTheDocument();
+    expect(screen.getByText("APPEARANCE")).toBeInTheDocument();
     expect(screen.getByText("AI ACCESS (MCP)")).toBeInTheDocument();
     expect(screen.getByText("DAILY NOTES")).toBeInTheDocument();
   });
@@ -164,13 +164,24 @@ describe("SetupApp — submit failure", () => {
   });
 });
 
-describe("SetupApp — theme live preview", () => {
-  it("flips <html data-theme> when the Light radio is selected", () => {
+describe("SetupApp — appearance live preview", () => {
+  it("applies the accent + reading font live (dark-only, D-01: no theme toggle)", () => {
     render(<SetupApp />);
-    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
-    fireEvent.click(screen.getByLabelText("Light"));
-    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
-    fireEvent.click(screen.getByLabelText("Dark"));
-    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+
+    // Clicking the Sky swatch applies its hex to the --color-accent var immediately.
+    fireEvent.click(screen.getByLabelText("Sky"));
+    expect(
+      document.documentElement.style.getPropertyValue("--color-accent"),
+    ).toBe("#7dd3fc");
+
+    // Selecting Serif applies the serif reading-font stack to --font-reading.
+    fireEvent.click(screen.getByRole("button", { name: "Serif" }));
+    expect(
+      document.documentElement.style.getPropertyValue("--font-reading"),
+    ).not.toBe("");
+
+    // Dark-only: the wizard offers no light option, so it never sets data-theme
+    // to anything other than dark (main.tsx pins "dark" for the /setup route).
+    expect(document.documentElement.getAttribute("data-theme")).not.toBe("light");
   });
 });
