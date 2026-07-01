@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"errors"
+	"path/filepath"
 
 	"github.com/matthewoden/jasper/backend/internal/config"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 // GetConfig implements GET /api/v1/config. Returns the persisted config
@@ -52,6 +54,28 @@ func (s *Server) PutConfig(
 			"dataDir", s.dataDir, "err", err)
 		return nil, errors.New("could not save config")
 	}
+
+	// Sync display_name to app.json so GET /vault/current reflects the new name.
+	// Best-effort: log on failure but do not fail the request (config.json is the primary store).
+	if appJSONPath, err := vault.AppJSONPath(); err == nil {
+		if state, err := vault.LoadAppJSON(appJSONPath); err == nil {
+			dn := cfg.DisplayName
+			if dn == "" {
+				dn = filepath.Base(s.dataDir)
+			}
+			for i := range state.RecentVaults {
+				if state.RecentVaults[i].Path == s.dataDir {
+					state.RecentVaults[i].DisplayName = dn
+					break
+				}
+			}
+			vault.TouchOpened(state, s.dataDir, dn)
+			if err := vault.SaveAppJSON(appJSONPath, state); err != nil {
+				s.log.Warn("PutConfig: sync app.json failed", "err", err)
+			}
+		}
+	}
+
 	return PutConfig200JSONResponse(toWireConfig(cfg)), nil
 }
 
