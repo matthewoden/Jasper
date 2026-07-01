@@ -50,7 +50,9 @@ func Defaults() Config {
 			VimMode:    false,
 			AutosaveMs: 2000,
 		},
-		Theme: "dark",
+		Theme:       "dark",
+		Accent:      "purple",
+		ReadingFont: "sans",
 		Server: ServerConfig{
 			Port:    6683,
 			DataDir: DefaultDataDir(),

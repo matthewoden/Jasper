@@ -68,12 +68,14 @@ func TestLoad_RoundTrip(t *testing.T) {
 	mkdirStorage(t, dir)
 
 	in := Config{
-		AppName:    "Jasper",
-		DailyNotes: DailyNotes{Folder: "journal", Template: "## {{date}}"},
-		Editor:     Editor{FontSize: 16, LineHeight: 1.7, VimMode: true, AutosaveMs: 3000},
-		Theme:      "light",
-		Server:     ServerConfig{Port: 6683, DataDir: "/tmp/jasper-test", Bind: "127.0.0.1"},
-		MCP:        MCPConfig{Enabled: true, Port: 6684, Bind: "127.0.0.1"},
+		AppName:     "Jasper",
+		DailyNotes:  DailyNotes{Folder: "journal", Template: "## {{date}}"},
+		Editor:      Editor{FontSize: 16, LineHeight: 1.7, VimMode: true, AutosaveMs: 3000},
+		Theme:       "dark",
+		Accent:      "sky",
+		ReadingFont: "serif",
+		Server:      ServerConfig{Port: 6683, DataDir: "/tmp/jasper-test", Bind: "127.0.0.1"},
+		MCP:         MCPConfig{Enabled: true, Port: 6684, Bind: "127.0.0.1"},
 	}
 	if err := Save(dir, in); err != nil {
 		t.Fatalf("Save: %v", err)
