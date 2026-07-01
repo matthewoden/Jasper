@@ -22,7 +22,9 @@ type Config struct {
 	DisplayName string       `json:"display_name,omitempty"`
 	DailyNotes  DailyNotes   `json:"dailyNotes"`
 	Editor      Editor       `json:"editor"`
-	Theme       string       `json:"theme"`  // "dark" | "light" (enum-validated by openapi)
+	Theme       string       `json:"theme"`                   // "dark" | "light" (D-02: pinned to "dark" at load)
+	Accent      string       `json:"accent,omitempty"`        // "purple"|"sky"|"green"|"orange"; default "purple"
+	ReadingFont string       `json:"readingFont,omitempty"`   // "sans"|"serif"; default "sans"
 	Server      ServerConfig `json:"server"` // port (6683) + dataDir source of truth
 	MCP         MCPConfig    `json:"mcp"`    // optional MCP listener
 }

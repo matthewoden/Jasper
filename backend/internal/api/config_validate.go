@@ -104,6 +104,26 @@ func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"display_name must be at most 64 chars"}`))
 			return
 		}
+		if tmp.Accent != nil {
+			switch *tmp.Accent {
+			case "purple", "sky", "green", "orange":
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"code":"invalid_request","message":"accent must be one of: purple, sky, green, orange"}`))
+				return
+			}
+		}
+		if tmp.ReadingFont != nil {
+			switch *tmp.ReadingFont {
+			case "sans", "serif":
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"code":"invalid_request","message":"readingFont must be one of: sans, serif"}`))
+				return
+			}
+		}
 
 		next.ServeHTTP(w, r)
 	})
@@ -113,6 +133,8 @@ type strictConfigValidator struct {
 	AppName     string  `json:"appName"`
 	DisplayName *string `json:"display_name,omitempty"`
 	Theme       string  `json:"theme"`
+	Accent      *string `json:"accent,omitempty"`
+	ReadingFont *string `json:"readingFont,omitempty"`
 	DailyNotes  struct {
 		Folder   string `json:"folder"`
 		Template string `json:"template"`

@@ -79,10 +79,14 @@ func toWireConfig(c config.Config) Config {
 		dn := c.DisplayName
 		displayName = &dn
 	}
+	accent := ConfigAccent(c.Accent)
+	readingFont := ConfigReadingFont(c.ReadingFont)
 	return Config{
 		AppName:     c.AppName,
 		DisplayName: displayName,
 		Theme:       ConfigTheme(c.Theme),
+		Accent:      &accent,
+		ReadingFont: &readingFont,
 		DailyNotes: struct {
 			Folder   string `json:"folder"`
 			Template string `json:"template"`
@@ -127,6 +131,12 @@ func fromWireConfig(w Config) config.Config {
 		},
 		Server: config.ServerConfig{Port: 6683, DataDir: "", Bind: "127.0.0.1"},
 		MCP:    config.MCPConfig{Enabled: false, Port: 6684, Bind: "127.0.0.1"},
+	}
+	if w.Accent != nil {
+		out.Accent = string(*w.Accent)
+	}
+	if w.ReadingFont != nil {
+		out.ReadingFont = string(*w.ReadingFont)
 	}
 	if w.Server != nil {
 		out.Server.Port = w.Server.Port

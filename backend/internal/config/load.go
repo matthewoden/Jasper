@@ -84,5 +84,22 @@ func Load(dataDir string, log *slog.Logger) (Config, error) {
 	if cfg.MCP.Bind == "" {
 		cfg.MCP.Bind = "127.0.0.1"
 	}
+
+	// D-02: runtime is always dark. The "light" value remains in the
+	// OpenAPI enum (wire-compat) but is coerced here so no component
+	// needs to branch on theme.
+	cfg.Theme = "dark"
+
+	// Normalize accent to one of the valid enum values; unknown → "purple".
+	validAccents := map[string]bool{"purple": true, "sky": true, "green": true, "orange": true}
+	if !validAccents[cfg.Accent] {
+		cfg.Accent = "purple"
+	}
+
+	// Normalize readingFont to "sans" or "serif"; unknown → "sans".
+	if cfg.ReadingFont != "sans" && cfg.ReadingFont != "serif" {
+		cfg.ReadingFont = "sans"
+	}
+
 	return withEnvMCPPort(cfg), nil
 }
