@@ -6,7 +6,7 @@
  *   2. Autosave indicator transitions (EDIT-09)
  *   3. Cmd+S explicit save (EDIT-10)
  *   4. Cmd+F opens Find panel (EDIT-11)
- *   5. Theme toggle persists through reload (EDIT-12)
+ *   5. App always boots with dark theme; accent default is purple (EDIT-12)
  *   6. IME composition does not corrupt the editor (EDIT-14)
  *   7. CSP + Referrer-Policy headers on every response (SECURITY-01, SECURITY-04)
  *   8. External image click-to-load placeholder + fetch (SECURITY-03)
@@ -128,33 +128,19 @@ test.describe("Phase 5 — CodeMirror editor + theme + security", () => {
     await page.waitForSelector('.cm-searchMatch', { timeout: 5_000 });
   });
 
-  test("EDIT-12: theme toggle persists through page reload", async ({ page }) => {
+  test("EDIT-12: app always boots dark-only; default accent is purple (#a78bfa)", async ({ page }) => {
     await openEditor(page);
 
-    // Open settings and wait for the dialog to render.
-    await page.getByTestId("settings-menu-trigger").click();
-    const dialog = page.getByRole("dialog", { name: "Settings" });
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    // D-01: light theme removed — html[data-theme] is always "dark".
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark', { timeout: 5_000 });
 
-    const lightRadio = page.getByLabel("Light");
-    await expect(lightRadio).toBeVisible({ timeout: 5_000 });
-
-    // Poll: click Light radio until data-theme="light" settles (config may be loading).
-    // handleThemeChange returns early if config is null, so retry until it applies.
-    await expect.poll(async () => {
-      await lightRadio.click();
-      return page.locator('html').getAttribute('data-theme');
-    }, { timeout: 8_000, intervals: [300] }).toBe("light");
-
-    await page.reload();
-    await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
-      "data-status",
-      "connected",
-      { timeout: 10_000 },
-    );
-
-    // After reload, theme-bootstrap.js reads the persisted "light" preference from localStorage.
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light', { timeout: 5_000 });
+    // Default accent (purple) applied by theme-bootstrap.js before React mounts.
+    const accentVal = await page.evaluate(() => {
+      const inline = document.documentElement.style.getPropertyValue("--color-accent").trim();
+      if (inline) return inline;
+      return getComputedStyle(document.documentElement).getPropertyValue("--color-accent").trim();
+    });
+    expect(accentVal).toBe("#a78bfa");
   });
 
   test("EDIT-14: IME composition does not corrupt the editor (Japanese kana sample)", async ({ page }) => {

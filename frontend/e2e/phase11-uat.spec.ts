@@ -4,7 +4,7 @@
  * All synchronization uses deterministic assertion-based waits
  * (expect(...).toBeVisible(), expect(...).toBeChecked(), waitForFunction).
  *
- * SET-E2E-1: Open settings panel → change theme → reopen → persisted Light selected
+ * SET-E2E-1: Open settings panel → toggle reading font Serif → --font-reading CSS var updated
  * SET-E2E-2: Open settings panel → change font size to 18 → blur → CSS var updated
  * SET-E2E-3: Unmanaged config key survives settings round-trip
  */
@@ -25,11 +25,11 @@ test.describe("Phase 11 Settings panel (@phase11)", () => {
   });
 
   /**
-   * SET-E2E-1: Open the gear → settings panel visible → click Light radio →
-   * close → reopen → Light radio is checked (persistence round-trip via PUT /config
-   * and GET /config on next open).
+   * SET-E2E-1: Open the gear → settings panel visible → toggle reading font to Serif →
+   * assert --font-reading CSS var on <html> updates to include "Source Serif 4".
+   * Previous theme toggle removed — dark-only (D-01).
    */
-  test("SET-E2E-1: open settings panel → change theme live → reopen shows saved @phase11", async ({
+  test("SET-E2E-1: open settings panel → toggle reading font Serif → --font-reading CSS var updates @phase11", async ({
     page,
   }) => {
     await page.goto(jasper.baseURL);
@@ -39,18 +39,27 @@ test.describe("Phase 11 Settings panel (@phase11)", () => {
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
 
-    await page.getByLabel("Light").click();
+    // Toggle reading font to Serif via the reading-font group.
+    const readingFontGroup = page.getByRole("group", { name: "Reading font" });
+    await readingFontGroup.getByRole("button", { name: "Serif" }).click();
+
+    // --font-reading on <html> must now contain "Source Serif 4" (applyReadingFont sets property).
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() =>
+            document.documentElement.style.getPropertyValue("--font-reading").trim(),
+          ),
+        {
+          message:
+            "Expected --font-reading to contain 'Source Serif 4' after clicking Serif",
+          timeout: 5_000,
+        },
+      )
+      .toContain("Source Serif 4");
 
     await page.getByRole("button", { name: "Close" }).click();
     await expect(dialog).not.toBeVisible();
-
-    await page.getByTestId("settings-menu-trigger").click();
-    await expect(dialog).toBeVisible();
-
-    const lightRadio = page.getByLabel("Light");
-    await expect(lightRadio).toBeChecked();
-
-    await page.getByRole("button", { name: "Close" }).click();
   });
 
   /**
