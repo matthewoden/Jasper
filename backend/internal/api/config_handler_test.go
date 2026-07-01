@@ -84,6 +84,8 @@ func TestPutConfig_RoundTrip(t *testing.T) {
 	if err := json.Unmarshal(putBody, &echoed); err != nil {
 		t.Fatal(err)
 	}
+	// The PUT response echoes the submitted config before D-02 load-coercion,
+	// so the written value ("light") is reflected here verbatim.
 	if string(echoed.Theme) != "light" {
 		t.Errorf("Theme: got %q, want %q", echoed.Theme, "light")
 	}
@@ -98,8 +100,10 @@ func TestPutConfig_RoundTrip(t *testing.T) {
 	if err := json.Unmarshal(getBody, &got); err != nil {
 		t.Fatal(err)
 	}
-	if string(got.Theme) != "light" {
-		t.Errorf("after GET — Theme: got %q, want %q", got.Theme, "light")
+	// GET reloads through config.Load, which under D-02 (Phase 17) pins Theme to
+	// "dark" regardless of the persisted value — so the effective theme is dark.
+	if string(got.Theme) != "dark" {
+		t.Errorf("after GET — Theme: got %q, want %q", got.Theme, "dark")
 	}
 }
 

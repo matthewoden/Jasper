@@ -104,8 +104,10 @@ func TestRunSetup_HappyPath(t *testing.T) {
 	if cfg.Server.DataDir != wantDataDir {
 		t.Fatalf("Server.DataDir: got %q want %q", cfg.Server.DataDir, wantDataDir)
 	}
-	if cfg.Theme != "light" {
-		t.Fatalf("Theme: got %q want %q", cfg.Theme, "light")
+	// D-02 (Phase 17): config.Load pins Theme to "dark" regardless of the
+	// wizard-submitted value ("light" above), so the loaded config coerces to dark.
+	if cfg.Theme != "dark" {
+		t.Fatalf("Theme: got %q want %q", cfg.Theme, "dark")
 	}
 	if cfg.MCP.Enabled {
 		t.Fatalf("MCP.Enabled: got true want false")
