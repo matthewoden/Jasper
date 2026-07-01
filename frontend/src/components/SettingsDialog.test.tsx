@@ -7,10 +7,13 @@
  * SD-4: all five section eyebrows present (APPEARANCE/EDITOR/DAILY NOTES/GENERAL/NETWORK)
  * SD-5: blurring "Editor font size" input sets --editor-font-size CSS var
  * SD-6: ≥2 elements with aria-label "Requires reload to apply"
+ * SD-7: four accent swatches present with correct aria-labels
+ * SD-8: clicking Sky swatch calls setAccent/saveConfig with accent "sky"
+ * SD-9: reading font group present; clicking Serif persists readingFont "serif"
  * NET-01a: blurring bind address input calls saveConfig with server.bind set to new value
  * NET-01b: warning banner present for 0.0.0.0, absent for 127.0.0.1
  */
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 // Mock the API client — same pattern as SettingsMenu.test.tsx
@@ -21,6 +24,8 @@ vi.mock("../api/client", () => ({
         appName: "Jasper",
         display_name: "My Notes",
         theme: "dark",
+        accent: "purple",
+        readingFont: "sans",
         dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
         editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
         server: { port: 6683, dataDir: "/home/user/.jasper", bind: "127.0.0.1" },
@@ -32,6 +37,8 @@ vi.mock("../api/client", () => ({
         appName: "Jasper",
         display_name: "My Notes",
         theme: "dark",
+        accent: "purple",
+        readingFont: "sans",
         dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
         editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
         server: { port: 6683, dataDir: "/home/user/.jasper", bind: "127.0.0.1" },
@@ -46,6 +53,8 @@ const baseMockConfig = {
   appName: "Jasper",
   display_name: "My Notes",
   theme: "dark",
+  accent: "purple",
+  readingFont: "sans",
   dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
   editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
   server: { port: 6683, dataDir: "/home/user/.jasper", bind: "127.0.0.1" },
@@ -63,6 +72,8 @@ beforeEach(() => {
   document.documentElement.removeAttribute("data-theme");
   document.documentElement.style.removeProperty("--editor-font-size");
   document.documentElement.style.removeProperty("--editor-line-height");
+  document.documentElement.style.removeProperty("--color-accent");
+  document.documentElement.style.removeProperty("--font-reading");
   vi.clearAllMocks();
 });
 
@@ -195,6 +206,67 @@ describe("<SettingsDialog />", () => {
       const lineHeightAlerts = alerts.filter(a => a.textContent?.includes("3.0") || a.textContent?.includes("2.5"));
       expect(lineHeightAlerts.length).toBe(0);
     });
+  });
+
+  it("SD-7: four accent swatches with aria-labels Purple/Sky/Green/Orange", async () => {
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Purple")).toBeInTheDocument();
+      expect(screen.getByLabelText("Sky")).toBeInTheDocument();
+      expect(screen.getByLabelText("Green")).toBeInTheDocument();
+      expect(screen.getByLabelText("Orange")).toBeInTheDocument();
+    });
+  });
+
+  it("SD-8: clicking Sky swatch calls saveConfig with accent 'sky' and applies --color-accent", async () => {
+    mockClient.PUT.mockResolvedValue({
+      data: { ...baseMockConfig, accent: "sky" },
+      response: { status: 200 },
+    });
+
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+
+    // Wait for config to load and accent to be synced to DOM
+    await waitFor(() =>
+      expect(document.documentElement.style.getPropertyValue("--color-accent")).toBe("#a78bfa"),
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Sky"));
+    });
+
+    // --color-accent should be sky hex immediately (optimistic)
+    expect(document.documentElement.style.getPropertyValue("--color-accent")).toBe("#7dd3fc");
+
+    // saveConfig (PUT) should have been called with accent: "sky"
+    await waitFor(() => {
+      expect(mockClient.PUT).toHaveBeenCalled();
+    });
+    const putBody = mockClient.PUT.mock.calls[0][1]?.body as { accent?: string };
+    expect(putBody?.accent).toBe("sky");
+  });
+
+  it("SD-9: reading font group present; clicking Serif persists readingFont 'serif'", async () => {
+    mockClient.PUT.mockResolvedValue({
+      data: { ...baseMockConfig, readingFont: "serif" },
+      response: { status: 200 },
+    });
+
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+
+    // Wait for the reading font group to appear
+    await waitFor(() => screen.getByRole("group", { name: "Reading font" }));
+
+    const serifButton = screen.getByRole("button", { name: "Serif" });
+    await act(async () => {
+      fireEvent.click(serifButton);
+    });
+
+    await waitFor(() => {
+      expect(mockClient.PUT).toHaveBeenCalled();
+    });
+    const putBody = mockClient.PUT.mock.calls[0][1]?.body as { readingFont?: string };
+    expect(putBody?.readingFont).toBe("serif");
   });
 
   it("NET-01a: blurring bind address input calls saveConfig with server.bind set to new value", async () => {
