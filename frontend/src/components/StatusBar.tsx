@@ -5,7 +5,7 @@
  * postAdminReindex('incremental'). When paused (WebSocket offline), clicking
  * forces a WS reconnect instead.
  */
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import type { CSSProperties } from "react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useVaultPicker } from "../lib/useVaultPicker";
@@ -30,7 +30,12 @@ const statusBarStyle: CSSProperties = {
 export function StatusBar() {
   const saveState = useTreeStore((s) => s.saveState);
 
-  const { current, open } = useVaultPicker();
+  const { current, open, refresh } = useVaultPicker();
+  const setRefreshVaultCurrent = useTreeStore((s) => s.setRefreshVaultCurrent);
+
+  useEffect(() => {
+    setRefreshVaultCurrent(refresh);
+  }, [refresh, setRefreshVaultCurrent]);
 
   const forceWsReconnect = useTreeStore((s) => s.forceWsReconnect);
   const handleRefresh = useCallback(async () => {

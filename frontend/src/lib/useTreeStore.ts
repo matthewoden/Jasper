@@ -89,6 +89,9 @@ export interface TreeStore {
   forceWsReconnect: () => void;
   setForceWsReconnect: (fn: () => void) => void;
 
+  refreshVaultCurrent: () => void;
+  setRefreshVaultCurrent: (fn: () => void) => void;
+
   liveLabels: Record<string, string>;
   setLiveLabel: (id: string, label: string) => void;
   clearLiveLabel: (id: string) => void;
@@ -205,6 +208,8 @@ export const useTreeStore = create<TreeStore>((set) => ({
   setConnectionStatus: (s) => set({ connectionStatus: s }),
   forceWsReconnect: () => {},
   setForceWsReconnect: (fn) => set({ forceWsReconnect: fn }),
+  refreshVaultCurrent: () => {},
+  setRefreshVaultCurrent: (fn) => set({ refreshVaultCurrent: fn }),
   setLiveLabel: (id, label) =>
     set((s) => ({ liveLabels: { ...s.liveLabels, [id]: label } })),
   clearLiveLabel: (id) =>
