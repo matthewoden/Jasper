@@ -242,6 +242,149 @@ func TestLineHeightRoundTrip_Precision(t *testing.T) {
 	}
 }
 
+// TestPutConfig_DisplayNameSyncsAppJSON — PUT /config with display_name must sync
+// the new name into app.json (RecentVaults entry for the server's dataDir) so that
+// GET /vault/current subsequently returns the updated display_name.
+//
+// RED scaffold: PutConfig currently only calls config.SaveMerged and does NOT
+// call vault.TouchOpened / vault.SaveAppJSON. This test FAILS until plan 04 adds
+// the sync call. Leave this test unchanged — fix the production handler.
+//
+// Isolation: t.Setenv("JASPER_APP_HOME", t.TempDir()) prevents any writes to
+// the real ~/.jasper/app.json (T-17.1-01).
+func TestPutConfig_DisplayNameSyncsAppJSON(t *testing.T) {
+	// Isolate app.json writes to a test-controlled directory.
+	appHome := t.TempDir()
+	t.Setenv("JASPER_APP_HOME", appHome)
+
+	ts, dataDir := setupConfigServer(t)
+	defer ts.Close()
+
+	// Seed app.json with the server's dataDir as the current vault.
+	// This establishes the RecentVaultEntry that PutConfig should update.
+	appJSONPath, err := vault.AppJSONPath()
+	if err != nil {
+		t.Fatalf("AppJSONPath: %v", err)
+	}
+	initialState := &vault.AppState{
+		CurrentVault: dataDir,
+		RecentVaults: []vault.RecentVaultEntry{
+			{
+				Path:        dataDir,
+				DisplayName: "OldName",
+			},
+		},
+	}
+	if err := vault.SaveAppJSON(appJSONPath, initialState); err != nil {
+		t.Fatalf("seed app.json: %v", err)
+	}
+
+	// PUT /config with a new display_name.
+	newName := "SyncedVaultName"
+	body := []byte(`{
+		"appName": "Jasper", "theme": "dark",
+		"display_name": "` + newName + `",
+		"dailyNotes": {"folder": "daily", "template": ""},
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000}
+	}`)
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("PUT /config status: got %d, want 200; body: %s", resp.StatusCode, putBody)
+	}
+
+	// RED: PutConfig does not sync app.json → app.json still has "OldName".
+	// After plan 04 fix: app.json will have display_name = newName.
+	afterState, err := vault.LoadAppJSON(appJSONPath)
+	if err != nil {
+		t.Fatalf("load app.json after PUT: %v", err)
+	}
+	var updatedEntry *vault.RecentVaultEntry
+	for i := range afterState.RecentVaults {
+		if afterState.RecentVaults[i].Path == dataDir {
+			updatedEntry = &afterState.RecentVaults[i]
+			break
+		}
+	}
+	if updatedEntry == nil {
+		t.Fatalf("RecentVaults entry for %q not found after PUT", dataDir)
+	}
+	if updatedEntry.DisplayName != newName {
+		t.Errorf("app.json display_name after PUT: got %q, want %q (SET2-05: PutConfig must sync app.json)", updatedEntry.DisplayName, newName)
+	}
+
+	// GET /vault/current must also return the new display_name.
+	resp2, err := http.Get(ts.URL + "/api/v1/vault/current")
+	if err != nil {
+		t.Fatal(err)
+	}
+	getBody, _ := io.ReadAll(resp2.Body)
+	_ = resp2.Body.Close()
+	if resp2.StatusCode != 200 {
+		t.Fatalf("GET /vault/current status: got %d, want 200; body: %s", resp2.StatusCode, getBody)
+	}
+
+	// Decode vault/current response
+	var vaultResp struct {
+		Vault *struct {
+			DisplayName string `json:"display_name"`
+		} `json:"vault"`
+	}
+	if err := json.Unmarshal(getBody, &vaultResp); err != nil {
+		t.Fatalf("GET /vault/current unmarshal: %v", err)
+	}
+	if vaultResp.Vault == nil {
+		t.Fatal("GET /vault/current returned null vault; expected an entry for the current vault")
+	}
+	if vaultResp.Vault.DisplayName != newName {
+		t.Errorf("GET /vault/current display_name: got %q, want %q (SET2-05: GET /vault/current must reflect updated app.json)", vaultResp.Vault.DisplayName, newName)
+	}
+
+	// A2: empty-string display_name clears back to the directory basename.
+	wantFallback := filepath.Base(dataDir)
+	clearBody := []byte(`{
+		"appName": "Jasper", "theme": "dark",
+		"display_name": "",
+		"dailyNotes": {"folder": "daily", "template": ""},
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000}
+	}`)
+	req2, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(clearBody))
+	req2.Header.Set("Content-Type", "application/json")
+	resp3, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clearRespBody, _ := io.ReadAll(resp3.Body)
+	_ = resp3.Body.Close()
+	if resp3.StatusCode != 200 {
+		t.Fatalf("PUT /config (clear) status: got %d, want 200; body: %s", resp3.StatusCode, clearRespBody)
+	}
+
+	clearState, err := vault.LoadAppJSON(appJSONPath)
+	if err != nil {
+		t.Fatalf("load app.json after clear PUT: %v", err)
+	}
+	var clearedEntry *vault.RecentVaultEntry
+	for i := range clearState.RecentVaults {
+		if clearState.RecentVaults[i].Path == dataDir {
+			clearedEntry = &clearState.RecentVaults[i]
+			break
+		}
+	}
+	if clearedEntry == nil {
+		t.Fatalf("RecentVaults entry for %q not found after clear PUT", dataDir)
+	}
+	if clearedEntry.DisplayName != wantFallback {
+		t.Errorf("app.json display_name after empty PUT: got %q, want %q (A3: empty clears to filepath.Base(dataDir))", clearedEntry.DisplayName, wantFallback)
+	}
+}
+
 // TestPutConfig_PreservesUnknownFields — a PUT must preserve an unmanaged
 // key that was already on disk (merge-on-write).
 func TestPutConfig_PreservesUnknownFields(t *testing.T) {
