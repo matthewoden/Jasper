@@ -13,12 +13,20 @@ import * as Switch from "@radix-ui/react-switch";
 import { AlertCircle } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useConfig } from "../lib/useConfig";
-import { applyTheme, persistBootstrap } from "../lib/useTheme";
+import { useAccent } from "../lib/useAccent";
 
 export interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }
+
+// ─── Accent swatches ──────────────────────────────────────────────────────
+const ACCENT_SWATCHES = [
+  { id: "purple", label: "Purple", hex: "#a78bfa" },
+  { id: "sky",    label: "Sky",    hex: "#7dd3fc" },
+  { id: "green",  label: "Green",  hex: "#34d399" },
+  { id: "orange", label: "Orange", hex: "#fb923c" },
+] as const;
 
 // ─── Restart badge ─────────────────────────────────────────────────────────
 // aria-label ensures screen readers announce it (not color only).
@@ -128,77 +136,12 @@ function ControlRow({
   );
 }
 
-// ─── Theme radio row (reuse ThemeSection pattern) ─────────────────────────
-function ThemeRadioRow({
-  label,
-  value,
-  selected,
-  onSelect,
-}: {
-  label: string;
-  value: "dark" | "light";
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <label
-      style={{
-        display: "flex",
-        alignItems: "center",
-        height: 36,
-        gap: 10,
-        cursor: "pointer",
-        fontSize: 14,
-        color: "var(--color-fg)",
-        position: "relative",
-      }}
-    >
-      <input
-        type="radio"
-        name="settings-theme"
-        value={value}
-        checked={selected}
-        onChange={onSelect}
-        aria-label={label}
-        style={{
-          appearance: "none",
-          margin: 0,
-          width: 16,
-          height: 16,
-          borderRadius: "50%",
-          border: `1px solid ${selected ? "var(--color-accent)" : "var(--color-border)"}`,
-          background: "var(--color-bg)",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          position: "relative",
-          cursor: "pointer",
-          flexShrink: 0,
-        }}
-      />
-      {selected && (
-        <span
-          aria-hidden
-          style={{
-            position: "absolute",
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: "var(--color-accent)",
-            marginLeft: 4,
-            left: 0,
-            pointerEvents: "none",
-          }}
-        />
-      )}
-      <span>{label}</span>
-    </label>
-  );
-}
-
 // ─── Main component ────────────────────────────────────────────────────────
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { config, saveConfig } = useConfig();
+
+  // useAccent always-mounted: boot-applies persisted accent/readingFont from config.
+  const { accent, setAccent, readingFont, setReadingFont } = useAccent();
 
   // ── Local input state (controlled inputs that commit on blur/Enter) ──
   const [fontSizeInput, setFontSizeInput] = useState("");
@@ -248,6 +191,30 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // All handlers await saveConfig and surface errors in the save-error banner.
   // On failure, useConfig.saveConfig rolls back to the last persisted value
   // so the local input reverts in the next config sync.
+
+  const handleAccentChange = useCallback(
+    async (id: string) => {
+      const { error } = await setAccent(id);
+      if (error) {
+        setSaveError("Couldn't save accent preference. Changes will be lost on reload.");
+      } else {
+        setSaveError(null);
+      }
+    },
+    [setAccent],
+  );
+
+  const handleReadingFontChange = useCallback(
+    async (rf: string) => {
+      const { error } = await setReadingFont(rf);
+      if (error) {
+        setSaveError("Couldn't save font preference. Changes will be lost on reload.");
+      } else {
+        setSaveError(null);
+      }
+    },
+    [setReadingFont],
+  );
 
   const handleFontSizeCommit = useCallback(async () => {
     if (!config) return;
@@ -364,21 +331,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   }, [config, bindAddress, saveConfig]);
 
-  const handleThemeChange = useCallback(
-    async (t: "dark" | "light") => {
-      if (!config) return;
-      applyTheme(t);
-      persistBootstrap(t); // keep localStorage in sync so theme survives page reload
-      const { error } = await saveConfig({ ...config, theme: t });
-      if (error) {
-        setSaveError(error.message);
-      } else {
-        setSaveError(null);
-      }
-    },
-    [config, saveConfig],
-  );
-
   const handleVimModeChange = useCallback(
     async (checked: boolean) => {
       if (!config) return;
@@ -392,7 +344,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     [config, saveConfig],
   );
 
-  const currentTheme = config?.theme ?? "dark";
   const vimMode = config?.editor.vimMode ?? false;
 
   return (
@@ -472,7 +423,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               }}
             >
               <AlertCircle size={14} aria-hidden="true" />
-              <span>Settings could not be saved: {saveError}</span>
+              <span>{saveError}</span>
               <button
                 type="button"
                 onClick={() => setSaveError(null)}
@@ -498,26 +449,82 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           <section>
             <Eyebrow text="APPEARANCE" />
 
-            {/* Theme */}
+            {/* Accent color */}
             <div style={{ marginBottom: 16 }}>
               <div
-                style={{ fontSize: 14, color: "var(--color-fg)", marginBottom: 4 }}
+                style={{ fontSize: 14, color: "var(--color-fg)", marginBottom: 8 }}
               >
-                Theme
+                Accent color
               </div>
-              <div style={{ position: "relative" }}>
-                <ThemeRadioRow
-                  label="Dark"
-                  value="dark"
-                  selected={currentTheme === "dark"}
-                  onSelect={() => { void handleThemeChange("dark"); }}
-                />
-                <ThemeRadioRow
-                  label="Light"
-                  value="light"
-                  selected={currentTheme === "light"}
-                  onSelect={() => { void handleThemeChange("light"); }}
-                />
+              <div style={{ display: "flex", gap: 8 }}>
+                {ACCENT_SWATCHES.map(({ id, label, hex }) => {
+                  const selected = accent === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-label={label}
+                      aria-pressed={selected}
+                      onClick={() => { void handleAccentChange(id); }}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: "50%",
+                        background: hex,
+                        border: selected
+                          ? "2px solid var(--color-fg)"
+                          : "2px solid transparent",
+                        outline: selected ? `2px solid ${hex}` : "none",
+                        outlineOffset: 2,
+                        cursor: "pointer",
+                        padding: 0,
+                        flexShrink: 0,
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Reading font */}
+            <div style={{ marginBottom: 16 }}>
+              <div
+                style={{ fontSize: 13, color: "var(--color-muted)", marginBottom: 4 }}
+              >
+                Reading font
+              </div>
+              <div
+                style={{ fontSize: 12, color: "var(--color-muted)", marginBottom: 8 }}
+              >
+                Applies to note content only
+              </div>
+              <div role="group" aria-label="Reading font" style={{ display: "flex", gap: 4 }}>
+                {(["sans", "serif"] as const).map((rf) => {
+                  const active = readingFont === rf;
+                  return (
+                    <button
+                      key={rf}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => { void handleReadingFontChange(rf); }}
+                      style={{
+                        padding: "4px 14px",
+                        borderRadius: 16,
+                        border: "1px solid var(--color-border)",
+                        background: active
+                          ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+                          : "transparent",
+                        color: active ? "var(--color-fg)" : "var(--color-muted)",
+                        fontWeight: active ? 600 : 400,
+                        fontSize: 13,
+                        fontFamily: "inherit",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {rf === "sans" ? "Sans" : "Serif"}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
