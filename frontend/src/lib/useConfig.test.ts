@@ -25,6 +25,8 @@ const mockClient = client as unknown as {
 const sampleConfig = {
   appName: "Jasper",
   theme: "dark" as const,
+  accent: "purple" as const,
+  readingFont: "sans" as const,
   dailyNotes: { folder: "daily", template: "" },
   editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
 };

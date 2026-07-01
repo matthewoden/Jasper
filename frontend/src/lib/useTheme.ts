@@ -15,10 +15,12 @@ import { useConfig } from "./useConfig";
 
 export const THEME_BOOTSTRAP_KEY = "jasper:theme-bootstrap";
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- param kept for call-site compat (dark-only, D-01); removed in a later phase
 export function applyTheme(_theme?: string): void {
   document.documentElement.setAttribute("data-theme", "dark");
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- param kept for call-site compat (dark-only, D-01); removed in a later phase
 export function persistBootstrap(_theme?: string): void {
   try {
     localStorage.setItem(THEME_BOOTSTRAP_KEY, "dark");
@@ -39,7 +41,8 @@ export function useTheme(): {
     persistBootstrap();
   }, [config]);
 
-  const setTheme = async (_t: string) => {
+  // Impl ignores the arg (dark-only, D-01); the returned type keeps `(t: string)` so callers still typecheck.
+  const setTheme = async () => {
     applyTheme();
     persistBootstrap();
     return {};
