@@ -102,7 +102,12 @@ describe("useAccent", () => {
       response: { status: 200 },
     });
     const { result } = renderHook(() => useAccent());
-    await waitFor(() => expect(mockClient.GET).toHaveBeenCalled());
+    // Wait until config has loaded and useEffect has synced DOM (not just GET called)
+    await waitFor(() =>
+      expect(
+        document.documentElement.style.getPropertyValue("--color-accent"),
+      ).toBe("#a78bfa"),
+    );
     await act(async () => {
       await result.current.setAccent("sky");
     });

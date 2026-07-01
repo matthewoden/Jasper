@@ -1,6 +1,6 @@
 /**
- * useTheme.test — verifies data-theme is applied + persisted on
- * setTheme; verifies bootstrap rollback on PUT failure.
+ * useTheme.test — dark-only behavior (Phase 17 D-01).
+ * Verifies data-theme is always "dark"; light-theme assertions removed.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
@@ -24,7 +24,9 @@ const sampleConfig = {
   appName: "Jasper",
   theme: "dark" as const,
   dailyNotes: { folder: "daily", template: "" },
-  editor: { fontSize: 15, lineHeight: 1.6, vimMode: false },
+  editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
+  accent: "purple" as const,
+  readingFont: "sans" as const,
 };
 
 beforeEach(() => {
@@ -34,8 +36,8 @@ beforeEach(() => {
   document.documentElement.removeAttribute("data-theme");
 });
 
-describe("useTheme", () => {
-  it("applies data-theme='dark' from config on mount", async () => {
+describe("useTheme (dark-only)", () => {
+  it("applies data-theme='dark' on config load", async () => {
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
     renderHook(() => useTheme());
     await waitFor(() => {
@@ -43,41 +45,21 @@ describe("useTheme", () => {
     });
   });
 
-  it("setTheme('light') flips data-theme + persists to LS bootstrap + saves config", async () => {
+  it("setTheme always sets data-theme='dark' regardless of argument", async () => {
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
-    mockClient.PUT.mockResolvedValue({
-      data: { ...sampleConfig, theme: "light" },
-      response: { status: 200 },
-    });
     const { result } = renderHook(() => useTheme());
     await waitFor(() => expect(mockClient.GET).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(document.documentElement.getAttribute("data-theme")).toBe("dark"),
-    );
     await act(async () => {
       await result.current.setTheme("light");
     });
-    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
-    expect(localStorage.getItem(THEME_BOOTSTRAP_KEY)).toBe("light");
-    expect(mockClient.PUT).toHaveBeenCalled();
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    expect(localStorage.getItem(THEME_BOOTSTRAP_KEY)).toBe("dark");
   });
 
-  it("on PUT failure: reverts data-theme AND rolls back LS bootstrap (WR-04 fix)", async () => {
+  it("returns theme='dark' always", async () => {
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
-    mockClient.PUT.mockResolvedValue({
-      error: { code: "internal", message: "save failed" },
-      response: { status: 500 },
-    });
     const { result } = renderHook(() => useTheme());
-    await waitFor(() =>
-      expect(document.documentElement.getAttribute("data-theme")).toBe("dark"),
-    );
-    let res: Awaited<ReturnType<typeof result.current.setTheme>> | undefined;
-    await act(async () => {
-      res = await result.current.setTheme("light");
-    });
-    expect(res?.error).toBeDefined();
-    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
-    expect(localStorage.getItem(THEME_BOOTSTRAP_KEY)).toBeNull();
+    await waitFor(() => expect(mockClient.GET).toHaveBeenCalled());
+    expect(result.current.theme).toBe("dark");
   });
 });
