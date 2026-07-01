@@ -1,5 +1,32 @@
 @import "tailwindcss";
 
+/* Phase 17 — self-hosted font faces (D-09, UI-SPEC §Font Delivery).
+   font-display: swap for progressive rendering; src is same-origin static
+   asset embedded in the Go binary via //go:embed all:dist. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Source Serif 4';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/SourceSerif4-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Source Serif 4';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/SourceSerif4-SemiBold.woff2') format('woff2');
+}
+
 /* Phase 17 dark-only theme (D-01: light theme removed).
    Semantic CSS variables in :root, mapped through Tailwind v4 @theme
    so utilities like bg-bg / text-fg / text-accent work. */
