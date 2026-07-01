@@ -1226,6 +1226,24 @@ export interface components {
                  */
                 autosaveMs: number;
             };
+            /**
+             * @description UI accent color. Applied to interactive elements (links, buttons,
+             *     active tab indicator). Optional — legacy configs without this key
+             *     load with the default "purple". Coerced to "purple" on load if
+             *     the value is not a member of the enum.
+             * @default purple
+             * @enum {string}
+             */
+            accent: "purple" | "sky" | "green" | "orange";
+            /**
+             * @description Font family used in the reading/preview surface. "sans" uses the
+             *     system sans-serif stack; "serif" uses the system serif stack.
+             *     Optional — legacy configs without this key load with default "sans".
+             *     Coerced to "sans" on load if the value is not "sans" or "serif".
+             * @default sans
+             * @enum {string}
+             */
+            readingFont: "sans" | "serif";
             server?: {
                 /** @default 6683 */
                 port: number;

@@ -1932,6 +1932,24 @@ components:
                 Autosave debounce interval in milliseconds. Replaces the
                 hard-coded 2000ms constant in EditorPane.tsx (Phase 11 D-08).
                 Read at mount; requires reload to apply (D-07).
+        accent:
+          type: string
+          enum: [purple, sky, green, orange]
+          default: purple
+          description: |
+            UI accent color. Applied to interactive elements (links, buttons,
+            active tab indicator). Optional — legacy configs without this key
+            load with the default "purple". Coerced to "purple" on load if
+            the value is not a member of the enum.
+        readingFont:
+          type: string
+          enum: [sans, serif]
+          default: sans
+          description: |
+            Font family used in the reading/preview surface. "sans" uses the
+            system sans-serif stack; "serif" uses the system serif stack.
+            Optional — legacy configs without this key load with default "sans".
+            Coerced to "sans" on load if the value is not "sans" or "serif".
         server:
           # Phase 8 D-50 / D-40: HTTP listener port + resolved data
           # directory. Port pinned at 6683 (T9 spelling of "NOTE");
