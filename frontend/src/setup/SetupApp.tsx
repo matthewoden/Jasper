@@ -22,6 +22,7 @@ import {
   type SetupGrantDraft,
 } from "./draft";
 import { submitSetup, type McpGrantSeed } from "./setupApi";
+import { applyAccent, applyReadingFont } from "../lib/useAccent";
 
 
 function dedupGrantsByFolder(grants: SetupGrantDraft[]): SetupGrantDraft[] {
@@ -44,9 +45,15 @@ export function SetupApp() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Sync accent + reading font to DOM when draft loads from localStorage (resume flow).
+  // ThemeSection also applies live on each selection; these effects handle the initial load.
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", draft.theme);
-  }, [draft.theme]);
+    applyAccent(draft.accent);
+  }, [draft.accent]);
+
+  useEffect(() => {
+    applyReadingFont(draft.readingFont);
+  }, [draft.readingFont]);
 
   const updateDraft = (patch: Partial<SetupDraft>) => {
     setDraft((d) => {
@@ -67,14 +74,21 @@ export function SetupApp() {
         folder: g.folder.trim(),
         level: g.level,
       }));
-      await submitSetup({
+      // Intermediate variable lets TypeScript use structural compatibility rather than
+      // freshness/excess-property checking, so accent + readingFont flow into the body
+      // even though SetupRequest schema does not enumerate them yet. theme is pinned to
+      // "dark" (D-01); the server accepts it per D-02 back-compat.
+      const payload = {
         data_dir: draft.dataDir,
-        theme: draft.theme,
+        theme: "dark" as const,
         mcp_enabled: draft.mcpEnabled,
         mcp_grants: grants,
         daily_template: draft.dailyTemplate,
         create_today_daily_note: draft.createTodayDailyNote,
-      });
+        accent: draft.accent,
+        readingFont: draft.readingFont,
+      };
+      await submitSetup(payload);
       clearDraft();
       window.location.assign("/");
     } catch (e) {
@@ -123,8 +137,10 @@ export function SetupApp() {
           onValidityChange={setIsValid}
         />
         <ThemeSection
-          value={draft.theme}
-          onChange={(v) => updateDraft({ theme: v })}
+          accent={draft.accent}
+          readingFont={draft.readingFont}
+          onAccentChange={(a) => updateDraft({ accent: a })}
+          onReadingFontChange={(rf) => updateDraft({ readingFont: rf })}
         />
         <McpSection
           enabled={draft.mcpEnabled}
