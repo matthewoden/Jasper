@@ -241,6 +241,185 @@ func TestLoad_OldConfigWithoutServerOrMCP_BackCompat(t *testing.T) {
 	}
 }
 
+// TestLoad_ThemeLightCoercedToDark — D-02: any persisted theme:"light"
+// is coerced to "dark" on Load. The "light" value is still accepted on
+// the wire (kept in OpenAPI enum) but the runtime is always dark.
+func TestLoad_ThemeLightCoercedToDark(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{
+		"appName":"Jasper","theme":"light",
+		"dailyNotes":{"folder":"daily","template":""},
+		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
+		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+	}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Theme != "dark" {
+		t.Errorf("Theme: got %q, want %q (D-02 coercion)", cfg.Theme, "dark")
+	}
+}
+
+// TestLoad_MissingAccentDefaultsToPurple — a config.json without the
+// accent key loads with Accent defaulting to "purple".
+func TestLoad_MissingAccentDefaultsToPurple(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{
+		"appName":"Jasper","theme":"dark",
+		"dailyNotes":{"folder":"daily","template":""},
+		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
+		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+	}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Accent != "purple" {
+		t.Errorf("Accent: got %q, want %q (defaulted when absent)", cfg.Accent, "purple")
+	}
+}
+
+// TestLoad_MissingReadingFontDefaultsToSans — a config.json without the
+// readingFont key loads with ReadingFont defaulting to "sans".
+func TestLoad_MissingReadingFontDefaultsToSans(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{
+		"appName":"Jasper","theme":"dark",
+		"dailyNotes":{"folder":"daily","template":""},
+		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
+		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+	}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ReadingFont != "sans" {
+		t.Errorf("ReadingFont: got %q, want %q (defaulted when absent)", cfg.ReadingFont, "sans")
+	}
+}
+
+// TestLoad_BogusAccentNormalizedToPurple — a config.json with an invalid
+// accent value is normalized to "purple" on Load.
+func TestLoad_BogusAccentNormalizedToPurple(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{
+		"appName":"Jasper","theme":"dark","accent":"bogus",
+		"dailyNotes":{"folder":"daily","template":""},
+		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
+		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+	}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Accent != "purple" {
+		t.Errorf("Accent: got %q, want %q (out-of-enum normalized)", cfg.Accent, "purple")
+	}
+}
+
+// TestLoad_BogusReadingFontNormalizedToSans — a config.json with an
+// invalid readingFont value is normalized to "sans" on Load.
+func TestLoad_BogusReadingFontNormalizedToSans(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{
+		"appName":"Jasper","theme":"dark","readingFont":"bogus",
+		"dailyNotes":{"folder":"daily","template":""},
+		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
+		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+	}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ReadingFont != "sans" {
+		t.Errorf("ReadingFont: got %q, want %q (out-of-enum normalized)", cfg.ReadingFont, "sans")
+	}
+}
+
+// TestLoad_ValidAccentAndReadingFontPreserved — a config.json with
+// valid accent:"sky" and readingFont:"serif" round-trips without modification.
+func TestLoad_ValidAccentAndReadingFontPreserved(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{
+		"appName":"Jasper","theme":"dark","accent":"sky","readingFont":"serif",
+		"dailyNotes":{"folder":"daily","template":""},
+		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
+		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+	}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Accent != "sky" {
+		t.Errorf("Accent: got %q, want %q", cfg.Accent, "sky")
+	}
+	if cfg.ReadingFont != "serif" {
+		t.Errorf("ReadingFont: got %q, want %q", cfg.ReadingFont, "serif")
+	}
+}
+
+// TestDefaults_AccentAndReadingFont — Defaults() returns Accent "purple"
+// and ReadingFont "sans".
+func TestDefaults_AccentAndReadingFont(t *testing.T) {
+	t.Parallel()
+	d := Defaults()
+	if d.Accent != "purple" {
+		t.Errorf("Accent: got %q, want %q", d.Accent, "purple")
+	}
+	if d.ReadingFont != "sans" {
+		t.Errorf("ReadingFont: got %q, want %q", d.ReadingFont, "sans")
+	}
+}
+
 // TestLoad_UnknownFieldsFallBackToDefaults — strict decoding: a
 // config.json with an undeclared field triggers the malformed path;
 // Load returns DefaultConfig (does NOT silently ignore the unknown key).
