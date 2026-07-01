@@ -23,7 +23,7 @@ export const jasperEditorTheme = EditorView.theme(
     "&": {
       backgroundColor: "var(--color-bg)",
       color: "var(--color-fg)",
-      fontFamily: "var(--font-mono)",
+      fontFamily: "var(--font-reading)",
       fontSize: "var(--editor-font-size)",
       lineHeight: "var(--editor-line-height)",
       height: "100%",
@@ -57,18 +57,21 @@ export const jasperEditorTheme = EditorView.theme(
       borderRight: "1px solid var(--color-border)",
       paddingLeft: "12px",
       paddingRight: "12px",
+      fontFamily: "var(--font-mono)",
     },
     ".cm-codeblock-first": {
       borderTop: "1px solid var(--color-border)",
       borderTopLeftRadius: "6px",
       borderTopRightRadius: "6px",
       paddingTop: "8px",
+      fontFamily: "var(--font-mono)",
     },
     ".cm-codeblock-last": {
       borderBottom: "1px solid var(--color-border)",
       borderBottomLeftRadius: "6px",
       borderBottomRightRadius: "6px",
       paddingBottom: "8px",
+      fontFamily: "var(--font-mono)",
     },
     ".cm-link": {
       color: "var(--color-accent)",
