@@ -1,18 +1,17 @@
 @import "tailwindcss";
 
-/* Per UI-SPEC §Color and CONTEXT.md D-10:
-   semantic CSS variables in :root, mapped through Tailwind v4 @theme
-   so utilities like bg-bg / text-fg / text-accent work.
-   Phase 5 adds [data-theme='light'] overrides under the same names. */
+/* Phase 17 dark-only theme (D-01: light theme removed).
+   Semantic CSS variables in :root, mapped through Tailwind v4 @theme
+   so utilities like bg-bg / text-fg / text-accent work. */
 :root {
-  /* Concrete hex values from UI-SPEC §Color palette table */
-  --color-bg:          #18181b; /* zinc-900 — dominant 60% */
-  --color-surface:     #27272a; /* zinc-800 — secondary 30% */
-  --color-surface-subtle: #1f1f22; /* Phase 5 NEW — frontmatter-only (D-18, D-41) */
-  --color-fg:          #e4e4e7; /* zinc-200 — foreground primary */
-  --color-muted:       #a1a1aa; /* zinc-400 — foreground muted */
-  --color-border:      #3f3f46; /* zinc-700 — 1px dividers */
-  --color-accent:      #60a5fa; /* blue-400 — accent 10% */
+  /* Concrete hex values — Phase 17 dark Vault palette (UI-SPEC §Token Remap Table) */
+  --color-bg:          #1e1e21; /* editor background — dominant 60% */
+  --color-surface:     #1a1a1c; /* chrome/sidebar — secondary 30% */
+  --color-surface-subtle: #1a1a1c; /* frontmatter-only (D-18, D-41) */
+  --color-fg:          #d4d4d8; /* foreground primary */
+  --color-muted:       #6a6a72; /* foreground muted/secondary */
+  --color-border:      #2a2a2e; /* structural dividers */
+  --color-accent:      #a78bfa; /* purple default — accent 10%; user overrides via setProperty */
   --color-success:     #4ade80; /* green-400 — save-indicator saved only */
   --color-destructive: #f87171; /* red-400 — save-indicator error only */
 
@@ -28,11 +27,12 @@
      No other use site. */
   --spacing-md-tight: 12px;
 
-  /* Font stacks from UI-SPEC Design System table */
+  /* Font stacks from UI-SPEC Design System table (Phase 17 updated) */
   --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
                "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
-               "Liberation Mono", monospace;
+  --font-mono: 'JetBrains Mono', ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* Reading font: default = sans (system stack); toggled to serif stack at runtime via setProperty */
+  --font-reading: var(--font-sans);
 
   /* Phase 6.6 — TopBar drop shadow (D-31, UX-CHROME-01) */
   --shadow-elevation-1: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -45,15 +45,18 @@
      surfaces visually line up. */
   --editor-content-x: 36px;
 
-  /* Phase 8 (Plan 08-04 / D-19) — AI grant tier tokens. Used by:
-       - the wizard MCP section's Tier 1 / Tier 2 pills (08-04)
-       - the AI-grant indicator + submenu badges (08-10)
-     The dark-theme defaults below are violet-400 / violet-600; the
-     light-theme overrides shift to violet-600 / violet-800 for contrast
-     against the lighter surface palette. Reserved for AI-access UI only;
-     do not reuse for other accent shades. */
+  /* Phase 8 (Plan 08-04 / D-19) — AI grant tier tokens. Reserved for AI-access UI only;
+     do not reuse for other accent shades. Fixed values per D-08. */
   --color-ai-grant:        #a78bfa; /* violet-400 — Tier 1 (Edit only) */
   --color-ai-grant-strong: #7c3aed; /* violet-600 — Tier 2 (Full) */
+
+  /* Phase 17 new color tokens (UI-SPEC §New tokens to add) */
+  --color-fg-title:         #e8e8ec; /* title/heading text — brighter than body fg */
+  --color-border-inner:     #232327; /* inner/secondary borders (tab right border, sidebar dividers) */
+  --color-border-input:     #34343a; /* input/form borders + scrollbar thumb */
+  --color-surface-ribbon:   #161618; /* ribbon surface — pre-defined for Phase 18 */
+  --color-code-inline-bg:   #2a2a30; /* inline code background */
+  --color-code-inline-text: #d8b9ff; /* inline code text (lavender) */
 
   /* Phase 11 (D-08 / SC2): editor font/line-height CSS-var bridge.
      Default values match config defaults (fontSize=15, lineHeight=1.6).
@@ -78,6 +81,14 @@
   --spacing-md-tight:       var(--spacing-md-tight);
   --font-sans:              var(--font-sans);
   --font-mono:              var(--font-mono);
+  /* Phase 17 new tokens — Tailwind utility bridge */
+  --color-fg-title:         var(--color-fg-title);
+  --color-border-inner:     var(--color-border-inner);
+  --color-border-input:     var(--color-border-input);
+  --color-surface-ribbon:   var(--color-surface-ribbon);
+  --color-code-inline-bg:   var(--color-code-inline-bg);
+  --color-code-inline-text: var(--color-code-inline-text);
+  --font-reading:           var(--font-reading);
 }
 
 /* Phase 2 — indeterminate progress stripe for ReindexProgress (Surface 3).
@@ -112,28 +123,6 @@ body {
   line-height:      1.5;
 }
 
-/* Phase 5 — light theme palette (UI-SPEC §Light theme palette).
-   Same token names as :root; CSS variable retargeting flips the
-   app + CodeMirror editor in one DOM mutation when the bootstrap
-   (or useTheme hook) sets <html data-theme="light"> (D-16). */
-[data-theme='light'] {
-  --color-bg:              #fafafa; /* zinc-50 */
-  --color-surface:         #f4f4f5; /* zinc-100 */
-  --color-surface-subtle:  #ececef; /* zinc-100/200 — frontmatter only */
-  --color-fg:              #18181b; /* zinc-900 */
-  --color-muted:           #71717a; /* zinc-500 */
-  --color-border:          #d4d4d8; /* zinc-300 */
-  --color-accent:          #2563eb; /* blue-600 — deeper than dark for contrast */
-  --color-success:         #16a34a; /* green-600 */
-  --color-destructive:     #dc2626; /* red-600 */
-  --color-warning:         #b45309; /* amber-700 — banner only */
-  --color-warning-surface: #fef3c7; /* amber-50/100 — banner only */
-
-  /* Phase 8 (Plan 08-04 / D-19) — AI grant tier tokens, light theme. */
-  --color-ai-grant:        #7c3aed; /* violet-600 — Tier 1 (Edit only) */
-  --color-ai-grant-strong: #5b21b6; /* violet-800 — Tier 2 (Full) */
-}
-
 /* ────────────────────────────────────────────────────────────────────
    Scrollbar styling — applied to every scrollable surface in the app
    (sidebar tree, editor scroller, etc). The browser-default scrollbar
@@ -143,8 +132,7 @@ body {
 
    - Firefox: scrollbar-width + scrollbar-color (newer property names).
    - WebKit / Blink (Chrome / Safari / Edge / Electron): the
-     ::-webkit-scrollbar* pseudo-elements. CSS variables auto-flip
-     under [data-theme='light'].
+     ::-webkit-scrollbar* pseudo-elements. CSS variables resolve from :root.
    ──────────────────────────────────────────────────────────────────── */
 * {
   scrollbar-width: thin;
@@ -406,7 +394,7 @@ body {
 .vault-picker-textarea:focus {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.25);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
 }
 
 .vault-picker-input::placeholder,
