@@ -11,7 +11,6 @@
  * mutation restyles the entire app.
  */
 import { useEffect } from "react";
-import { useConfig } from "./useConfig";
 
 export const THEME_BOOTSTRAP_KEY = "jasper:theme-bootstrap";
 
@@ -33,13 +32,13 @@ export function useTheme(): {
   theme: "dark";
   setTheme: (t: string) => Promise<{ error?: { message: string } }>;
 } {
-  const { config } = useConfig();
-
+  // WR-03: dark is config-independent, so apply once on mount instead of
+  // re-running on every config change. applyTheme/persistBootstrap set
+  // data-theme="dark" unconditionally.
   useEffect(() => {
-    if (!config) return;
     applyTheme();
     persistBootstrap();
-  }, [config]);
+  }, []);
 
   // Impl ignores the arg (dark-only, D-01); the returned type keeps `(t: string)` so callers still typecheck.
   const setTheme = async () => {

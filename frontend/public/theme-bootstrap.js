@@ -21,9 +21,11 @@
   // Reading-font bootstrap — prevent first-paint layout shift (D-03).
   try {
     if (localStorage.getItem("jasper:reading-font-bootstrap") === "serif") {
+      // WR-02: keep this stack byte-identical to SERIF_STACK in useAccent.ts
+      // so no font swap occurs between first paint and React hydration.
       document.documentElement.style.setProperty(
         "--font-reading",
-        "'Source Serif 4', Georgia, serif"
+        "'Source Serif 4', Georgia, 'Times New Roman', serif"
       );
     }
   } catch (e) {

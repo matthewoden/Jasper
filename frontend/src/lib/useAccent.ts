@@ -85,6 +85,7 @@ export function useAccent(): {
       const { error } = await saveConfig(next);
       if (error) {
         applyAccent(prev);
+        persistAccentBootstrap(prev); // WR-01: revert the bootstrap key too, else next reload flashes the rejected accent
         return { error: { message: error.message } };
       }
       return {};
@@ -102,6 +103,7 @@ export function useAccent(): {
       const { error } = await saveConfig(next);
       if (error) {
         applyReadingFont(prev);
+        persistReadingFontBootstrap(prev); // WR-01: revert the bootstrap key too, else next reload flashes the rejected font
         return { error: { message: error.message } };
       }
       return {};
