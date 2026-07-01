@@ -132,15 +132,15 @@ test.describe("SET2-05: display_name persists across reload (@phase17.1)", () =>
           async () => {
             const resp = await fetch(`${jasper.baseURL}/api/v1/vault/current`);
             if (!resp.ok) return "";
-            const data = (await resp.json()) as { display_name?: string };
-            return data.display_name ?? "";
+            const data = (await resp.json()) as { vault?: { display_name?: string } };
+            return data.vault?.display_name ?? "";
           },
           { message: "Expected GET /vault/current to return new display_name after PUT", timeout: 8_000 },
         )
         .toBe(newName);
 
-      // Close the dialog
-      await page.getByRole("button", { name: /close|done/i }).click();
+      // Close the dialog (click the footer Done button specifically)
+      await page.getByRole("button", { name: "Done" }).click();
 
       // StatusBar must reflect the new name immediately
       await expect(page.getByTestId("status-bar-vault")).toHaveText(newName, {

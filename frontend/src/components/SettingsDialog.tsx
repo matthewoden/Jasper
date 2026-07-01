@@ -17,6 +17,7 @@ import { AlertCircle, X } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useConfig, type Config } from "../lib/useConfig";
 import { useAccent } from "../lib/useAccent";
+import { useTreeStore } from "../lib/useTreeStore";
 
 export interface SettingsDialogProps {
   open: boolean;
@@ -327,6 +328,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       setSaveError(error.message);
     } else {
       setSaveError(null);
+      useTreeStore.getState().refreshVaultCurrent?.();
     }
   }, [config, displayName, saveConfig]);
 
