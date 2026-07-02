@@ -1428,7 +1428,7 @@ export interface components {
          */
         WSEnvelope: {
             /** @enum {string} */
-            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed" | "vault.switching" | "vault.switched";
+            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "file:created" | "file:deleted" | "file:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed" | "vault.switching" | "vault.switched";
             /**
              * @description UUID of the session that originated the mutation. Empty
              *     string for server-originated events (reindex:*,
@@ -1478,6 +1478,17 @@ export interface components {
             recursive: boolean;
         };
         WSFolderMovedPayload: {
+            old_path: string;
+            new_path: string;
+        };
+        WSFileCreatedPayload: {
+            path: string;
+            name: string;
+        };
+        WSFileDeletedPayload: {
+            path: string;
+        };
+        WSFileMovedPayload: {
             old_path: string;
             new_path: string;
         };
