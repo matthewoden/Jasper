@@ -142,12 +142,13 @@ func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 func (x *Indexer) LookupByPath(ctx context.Context, canonicalPath string) (notes.NoteRecord, error) {
 	var (
 		idStr, path, title, checksum      string
+		bodyFTS, tagNamesFTS              string
 		mtime, size, createdAt, updatedAt int64
 	)
 	err := x.Pair.Reader.QueryRowContext(ctx,
-		`SELECT id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at
+		`SELECT id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at, body_fts, tag_names_fts
          FROM notes WHERE path = ?`,
-		canonicalPath).Scan(&idStr, &path, &title, &mtime, &size, &checksum, &createdAt, &updatedAt)
+		canonicalPath).Scan(&idStr, &path, &title, &mtime, &size, &checksum, &createdAt, &updatedAt, &bodyFTS, &tagNamesFTS)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return notes.NoteRecord{}, fmt.Errorf("LookupByPath(%q): %w", canonicalPath, notes.ErrNotFound)
@@ -166,6 +167,8 @@ func (x *Indexer) LookupByPath(ctx context.Context, canonicalPath string) (notes
 		SizeBytes:     size,
 		Checksum:      checksum,
 		UpdatedAtUnix: updatedAt,
+		BodyFTS:       bodyFTS,
+		TagNamesFTS:   tagNamesFTS,
 	}, nil
 }
 
