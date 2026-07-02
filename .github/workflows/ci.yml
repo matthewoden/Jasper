@@ -1,0 +1,119 @@
+# .github/workflows/ci.yml
+# Quick task 260701-u9s / OPS-01.
+#
+# CI gate that runs on every push and PR to main. Today the only workflow is
+# install-validation.yml (systemd install smoke test); nothing runs `go test`,
+# lint, vitest, eslint, or the `make gen-check` OpenAPI drift guard on the
+# server side. This workflow closes that gap so a commit that edits
+# api/openapi.yaml without regenerating, or a failing test/lint, cannot
+# silently land on main. Pre-commit hooks (lefthook.yml) are routinely
+# bypassed with --no-verify under the GSD sandbox, so this is the only
+# enforced net.
+#
+# Platform note: all jobs use ubuntu-latest only for v1 of this CI pipeline —
+# cheapest and fastest. The project is macOS-first, so a macos-latest backend
+# matrix entry would add real coverage, but it roughly doubles cost/time and
+# the pure-Go backend (no CGo) is platform-portable. Deferring a macOS matrix
+# entry is the deliberate v1 tradeoff here, not an oversight.
+#
+# No step in this file suppresses a non-zero exit or marks a failure as
+# non-blocking — the point of OPS-01 is a real net, not a green checkmark.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gen-check:
+    # OpenAPI codegen drift guard — the core of OPS-01. `make gen-check` runs
+    # `go generate` (Go, via oapi-codegen) AND `npx openapi-typescript` (Node),
+    # then `git diff --exit-code` on the two generated artifacts. It is the
+    # one job that needs both toolchains, so it owns them. Reusing the make
+    # target (rather than re-listing its steps) keeps CI and local
+    # `make gen-check` zero-drift, matching install-validation.yml's approach.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        # npx openapi-typescript (invoked by `make gen-ts`) must resolve the
+        # pinned devDependency from package-lock.json, not an ad-hoc download.
+        run: cd frontend && npm ci
+
+      - name: make gen-check
+        run: make gen-check
+
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: go test -race
+        run: cd backend && go test -race ./...
+
+      - name: golangci-lint
+        # Pinned to a golangci-lint v2.x release: .golangci.yml (repo root,
+        # discovered via golangci-lint's upward config search from
+        # working-directory: backend) starts with `version: "2"` (v2 config
+        # schema). Do NOT downgrade to v1.x — it will reject this config.
+        # golangci-lint-action@v6 only supports linting with golangci-lint
+        # v1.x; v7+ is required for the `version: v2.x` input to resolve a v2
+        # binary, so this pins @v9 (latest at authoring time) rather than the
+        # @v6 examples found in older docs.
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          working-directory: backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+
+      - name: vitest
+        run: cd frontend && npm test -- --run
+
+      - name: eslint
+        run: cd frontend && npx eslint .
+
+      - name: typecheck
+        run: cd frontend && npx tsc -b
