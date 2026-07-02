@@ -556,6 +556,119 @@ func TestBuildExcerpt_CaseInsensitive(t *testing.T) {
 	}
 }
 
+// TestSyncBacklinks_ResolvesAfterHydrateFromIndex — regression for DI-02:
+// exercises the hydrate-FROM-index path (Hydrate([]NoteSummary) fed by
+// idx.List, the exact call the composition root makes at startup /
+// hot-swap / after admin reindex), NOT in-session AddRecord or the
+// HydrateRecords test-only helper. A fresh registry hydrated this way must
+// still resolve wiki-links against notes indexed before this process
+// started.
+func TestSyncBacklinks_ResolvesAfterHydrateFromIndex(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTagTestIndexer(t)
+	ctx := context.Background()
+
+	targetID := uuid.New()
+	if err := idx.Upsert(ctx, notes.NoteRecord{
+		ID: targetID, Path: "notes/target.md", Title: "Target", MTimeUnix: 1700000002,
+	}); err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+	sourceID := uuid.New()
+	if err := idx.Upsert(ctx, notes.NoteRecord{
+		ID: sourceID, Path: "notes/source.md", Title: "Source", MTimeUnix: 1700000001,
+	}); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+
+	summaries, err := idx.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	reg := &notes.Registry{}
+	reg.Hydrate(summaries)
+
+	refs := []markdown.WikiLinkRef{{Target: "Target"}}
+	content := []byte("Linking [[Target]] here.\n")
+	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
+		t.Fatalf("SyncBacklinks: %v", err)
+	}
+
+	rows, err := idx.GetBacklinks(ctx, targetID)
+	if err != nil {
+		t.Fatalf("GetBacklinks: %v", err)
+	}
+	if len(rows) == 0 {
+		t.Fatalf("GetBacklinks after hydrate-from-index: got 0 rows, want non-empty (backlink dropped as pending)")
+	}
+}
+
+// TestResolvePendingBacklinks_ResolvesAfterHydrateFromIndex — regression
+// for DI-02: a pending row (seeded before any registry existed, mirroring
+// TestResolvePendingBacklinks_Basic) must resolve once a registry is
+// hydrated FROM the index via Hydrate([]NoteSummary) fed by idx.List —
+// the real startup/rebuild path, not HydrateRecords.
+func TestResolvePendingBacklinks_ResolvesAfterHydrateFromIndex(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTagTestIndexer(t)
+	ctx := context.Background()
+
+	targetID := uuid.New()
+	if err := idx.Upsert(ctx, notes.NoteRecord{
+		ID: targetID, Path: "notes/target.md", Title: "Target", MTimeUnix: 1700000002,
+	}); err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+	sourceID := uuid.New()
+	if err := idx.Upsert(ctx, notes.NoteRecord{
+		ID: sourceID, Path: "notes/source.md", Title: "Source", MTimeUnix: 1700000001,
+	}); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+
+	refs := []markdown.WikiLinkRef{{Target: "Target"}}
+	content := []byte("Linking [[Target]] here.\n")
+	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, nil, content); err != nil {
+		t.Fatalf("SyncBacklinks with nil registry: %v", err)
+	}
+
+	var isNull bool
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
+		`SELECT target_id IS NULL FROM backlinks WHERE source_id = ?`,
+		sourceID.String(),
+	).Scan(&isNull); err != nil {
+		t.Fatalf("query pending row: %v", err)
+	}
+	if !isNull {
+		t.Fatal("pre-condition failed: expected target_id IS NULL after nil-registry SyncBacklinks")
+	}
+
+	summaries, err := idx.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	reg := &notes.Registry{}
+	reg.Hydrate(summaries)
+
+	if err := idx.ResolvePendingBacklinks(ctx, reg); err != nil {
+		t.Fatalf("ResolvePendingBacklinks: %v", err)
+	}
+
+	var gotTargetID string
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
+		`SELECT COALESCE(target_id, '') FROM backlinks WHERE source_id = ?`,
+		sourceID.String(),
+	).Scan(&gotTargetID); err != nil {
+		t.Fatalf("query resolved row: %v", err)
+	}
+	if gotTargetID != targetID.String() {
+		t.Errorf("target_id after hydrate-from-index resolve: got %q, want %q", gotTargetID, targetID.String())
+	}
+}
+
 // TestResolvePendingBacklinks_Basic — after a startup reconcile with nil
 // registry leaves backlinks as pending (target_id = NULL),
 // ResolvePendingBacklinks resolves them using the now-populated registry.

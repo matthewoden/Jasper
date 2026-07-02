@@ -203,6 +203,30 @@ func TestRegistryHydrateRecords(t *testing.T) {
 	}
 }
 
+// TestRegistryHydrate_PopulatesTitleIndex verifies that Hydrate (the
+// function actually called by the composition root at startup and after
+// vault hot-swap / admin reindex — see lifecycle.go and
+// admin_reindex_handler.go) populates BOTH byID and byTitle from
+// []NoteSummary. Regression for DI-02: Hydrate used to clear byTitle,
+// leaving wiki-link resolution dead after every restart.
+func TestRegistryHydrate_PopulatesTitleIndex(t *testing.T) {
+	t.Parallel()
+	r := &Registry{}
+	id := uuid.New()
+
+	r.Hydrate([]NoteSummary{
+		{ID: id, Path: "notes/foo.md", Title: "Foo"},
+	})
+
+	got := r.FindByTitle("foo", "")
+	if len(got) != 1 {
+		t.Fatalf("FindByTitle after Hydrate: got %d records, want 1", len(got))
+	}
+	if got[0].ID != id {
+		t.Errorf("ID: got %v, want %v", got[0].ID, id)
+	}
+}
+
 // TestRegistryRename_UpdatesTitleMap verifies that Rename updates path
 // entries in the title index.
 func TestRegistryRename_UpdatesTitleMap(t *testing.T) {
