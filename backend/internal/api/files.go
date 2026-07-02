@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 //nolint:revive // generated interface name
@@ -99,7 +100,7 @@ func (s *Server) GetFile(
 //
 //nolint:revive // generated interface name
 func (s *Server) CreateFile(
-	_ context.Context,
+	ctx context.Context,
 	req CreateFileRequestObject,
 ) (CreateFileResponseObject, error) {
 	rawTargetDir := req.Params.Path
@@ -207,6 +208,13 @@ func (s *Server) CreateFile(
 		relPath = filepath.ToSlash(filepath.Join(cleanRel, finalName))
 	}
 
+	if s.broadcaster != nil {
+		s.broadcaster.Broadcast(notes.EventFileCreated, map[string]any{
+			"path": relPath,
+			"name": finalName,
+		}, notes.SessionIDFromContext(ctx))
+	}
+
 	return CreateFile201JSONResponse{
 		Path:        relPath,
 		Name:        finalName,
@@ -267,7 +275,7 @@ func (s *Server) resolveFileUnderNotes(rawPath string) fileResolveResult {
 //
 //nolint:revive // generated interface name
 func (s *Server) DeleteFile(
-	_ context.Context,
+	ctx context.Context,
 	req DeleteFileRequestObject,
 ) (DeleteFileResponseObject, error) {
 	res := s.resolveFileUnderNotes(req.Params.Path)
@@ -292,6 +300,18 @@ func (s *Server) DeleteFile(
 		s.log.Error("DeleteFile: os.Remove", "path", res.abs, "err", err)
 		return nil, errors.New("could not delete file")
 	}
+
+	if s.broadcaster != nil {
+		notesRoot := filepath.Join(s.dataDir, "notes")
+		relPath, relErr := filepath.Rel(notesRoot, res.abs)
+		if relErr != nil {
+			relPath = filepath.Clean(req.Params.Path)
+		}
+		s.broadcaster.Broadcast(notes.EventFileDeleted, map[string]any{
+			"path": filepath.ToSlash(relPath),
+		}, notes.SessionIDFromContext(ctx))
+	}
+
 	return DeleteFile204Response{}, nil
 }
 
@@ -302,7 +322,7 @@ func (s *Server) DeleteFile(
 //
 //nolint:revive // generated interface name
 func (s *Server) PostFileMove(
-	_ context.Context,
+	ctx context.Context,
 	req PostFileMoveRequestObject,
 ) (PostFileMoveResponseObject, error) {
 	if req.Body == nil {
@@ -401,6 +421,14 @@ func (s *Server) PostFileMove(
 
 	finalName := filepath.Base(dstAbs)
 	finalPath := filepath.ToSlash(dstClean)
+
+	if s.broadcaster != nil {
+		s.broadcaster.Broadcast(notes.EventFileMoved, map[string]any{
+			"old_path": filepath.ToSlash(filepath.Clean(req.Body.SrcPath)),
+			"new_path": finalPath,
+		}, notes.SessionIDFromContext(ctx))
+	}
+
 	return PostFileMove200JSONResponse{
 		Path: finalPath,
 		Name: finalName,

@@ -2233,6 +2233,9 @@ components:
             - "folder:created"
             - "folder:deleted"
             - "folder:moved"
+            - "file:created"
+            - "file:deleted"
+            - "file:moved"
             - "tags:updated"
             - "tags:rewritten"
             - "links:rewritten"
@@ -2301,6 +2304,23 @@ components:
         path: { type: string }
         recursive: { type: boolean }
     WSFolderMovedPayload:
+      type: object
+      required: [old_path, new_path]
+      properties:
+        old_path: { type: string }
+        new_path: { type: string }
+    WSFileCreatedPayload:
+      type: object
+      required: [path, name]
+      properties:
+        path: { type: string }
+        name: { type: string }
+    WSFileDeletedPayload:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string }
+    WSFileMovedPayload:
       type: object
       required: [old_path, new_path]
       properties:

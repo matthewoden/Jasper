@@ -114,6 +114,18 @@ func (s *Server) CreateAttachment(
 	category := mimeToCategory(contentType, filepath.Ext(finalName))
 	isImage := strings.HasPrefix(contentType, "image/")
 
+	if s.broadcaster != nil {
+		notesRoot := filepath.Join(s.dataDir, "notes")
+		attachRelPath, relErr := filepath.Rel(notesRoot, absPath)
+		if relErr != nil {
+			attachRelPath = "attachments/" + finalName
+		}
+		s.broadcaster.Broadcast(notes.EventFileCreated, map[string]any{
+			"path": filepath.ToSlash(attachRelPath),
+			"name": finalName,
+		}, notes.SessionIDFromContext(ctx))
+	}
+
 	return CreateAttachment200JSONResponse{
 		Filename:    finalName,
 		Path:        "attachments/" + finalName,

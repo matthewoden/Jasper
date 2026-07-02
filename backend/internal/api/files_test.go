@@ -4,14 +4,19 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 func callGetFile(t *testing.T, srv *Server, relPath string) GetFileResponseObject {
@@ -748,5 +753,190 @@ func TestMoveFile_SrcMissingDifferentBasename(t *testing.T) {
 	}
 	if got404.Code != "not_found" {
 		t.Errorf("code: got %q, want %q", got404.Code, "not_found")
+	}
+}
+
+// newAttachmentTestServerWithBroadcaster mirrors newAttachmentTestServer but
+// wires a recordingBroadcaster into the Server (SY-01: CreateFile/DeleteFile/
+// PostFileMove/CreateAttachment must broadcast file:* events — the default
+// fixture wires nil so these assertions need their own variant).
+func newAttachmentTestServerWithBroadcaster(t *testing.T, summaries []notes.NoteSummary) (*Server, string, *recordingBroadcaster) {
+	t.Helper()
+	dir := t.TempDir()
+
+	notesDir := filepath.Join(dir, "notes")
+	if err := os.MkdirAll(notesDir, 0o755); err != nil {
+		t.Fatalf("mkdir notes: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	idx := &fakeIndexForAttachments{summaries: summaries}
+	bc := &recordingBroadcaster{}
+	svc := notes.NewService(&fakeFileStore{}, idx, nil, logger)
+	srv := NewServerWithIndex(svc, nil, nil, idx, bc, logger, dir)
+	return srv, dir, bc
+}
+
+// TestCreateFile_BroadcastsFileCreated is the failing-first regression for
+// SY-01: a successful upload must broadcast file:created with the
+// vault-relative path and final (post-collision-rename) filename.
+func TestCreateFile_BroadcastsFileCreated(t *testing.T) {
+	t.Parallel()
+	srv, _, bc := newAttachmentTestServerWithBroadcaster(t, nil)
+
+	resp := callCreateFile(t, srv, "", "photo.png", []byte("\x89PNGdata"))
+	if _, ok := resp.(CreateFile201JSONResponse); !ok {
+		t.Fatalf("expected CreateFile201JSONResponse, got %T", resp)
+	}
+
+	if got := bc.countByType(notes.EventFileCreated); got != 1 {
+		t.Fatalf("file:created count: got %d, want 1", got)
+	}
+	ev, _ := bc.lastByType(notes.EventFileCreated)
+	payload, ok := ev.payload.(map[string]any)
+	if !ok {
+		t.Fatalf("payload type: got %T, want map[string]any", ev.payload)
+	}
+	if payload["path"] != "photo.png" {
+		t.Errorf("payload[path]: got %v, want %q", payload["path"], "photo.png")
+	}
+	if payload["name"] != "photo.png" {
+		t.Errorf("payload[name]: got %v, want %q", payload["name"], "photo.png")
+	}
+}
+
+// TestDeleteFile_BroadcastsFileDeleted is the failing-first regression for
+// SY-01: a successful delete must broadcast file:deleted with the
+// vault-relative path.
+func TestDeleteFile_BroadcastsFileDeleted(t *testing.T) {
+	t.Parallel()
+	srv, dataDir, bc := newAttachmentTestServerWithBroadcaster(t, nil)
+
+	abs := filepath.Join(dataDir, "notes", "to-delete.png")
+	if err := os.WriteFile(abs, []byte("\x89PNGdata"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	resp := callDeleteFile(t, srv, "to-delete.png")
+	if _, ok := resp.(DeleteFile204Response); !ok {
+		t.Fatalf("expected DeleteFile204Response, got %T", resp)
+	}
+
+	if got := bc.countByType(notes.EventFileDeleted); got != 1 {
+		t.Fatalf("file:deleted count: got %d, want 1", got)
+	}
+	ev, _ := bc.lastByType(notes.EventFileDeleted)
+	payload, ok := ev.payload.(map[string]any)
+	if !ok {
+		t.Fatalf("payload type: got %T, want map[string]any", ev.payload)
+	}
+	if payload["path"] != "to-delete.png" {
+		t.Errorf("payload[path]: got %v, want %q", payload["path"], "to-delete.png")
+	}
+}
+
+// TestPostFileMove_BroadcastsFileMoved is the failing-first regression for
+// SY-01: a successful (real, non-idempotent) move must broadcast
+// file:moved with old_path/new_path.
+func TestPostFileMove_BroadcastsFileMoved(t *testing.T) {
+	t.Parallel()
+	srv, dataDir, bc := newAttachmentTestServerWithBroadcaster(t, nil)
+
+	if err := os.MkdirAll(filepath.Join(dataDir, "notes", "attachments"), 0o755); err != nil {
+		t.Fatalf("mkdir attachments: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "notes", "foo.png"), []byte("foo-bytes"), 0o644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	resp := callMoveFile(t, srv, "foo.png", "attachments/foo.png")
+	if _, ok := resp.(PostFileMove200JSONResponse); !ok {
+		t.Fatalf("expected PostFileMove200JSONResponse, got %T", resp)
+	}
+
+	if got := bc.countByType(notes.EventFileMoved); got != 1 {
+		t.Fatalf("file:moved count: got %d, want 1", got)
+	}
+	ev, _ := bc.lastByType(notes.EventFileMoved)
+	payload, ok := ev.payload.(map[string]any)
+	if !ok {
+		t.Fatalf("payload type: got %T, want map[string]any", ev.payload)
+	}
+	if payload["old_path"] != "foo.png" {
+		t.Errorf("payload[old_path]: got %v, want %q", payload["old_path"], "foo.png")
+	}
+	if payload["new_path"] != "attachments/foo.png" {
+		t.Errorf("payload[new_path]: got %v, want %q", payload["new_path"], "attachments/foo.png")
+	}
+}
+
+// TestPostFileMove_NotFoundAndCollision_NoBroadcast verifies the 404
+// (src missing) and 409 (dst exists) branches never broadcast file:moved.
+func TestPostFileMove_NotFoundAndCollision_NoBroadcast(t *testing.T) {
+	t.Parallel()
+
+	t.Run("404 not found", func(t *testing.T) {
+		t.Parallel()
+		srv, _, bc := newAttachmentTestServerWithBroadcaster(t, nil)
+
+		resp := callMoveFile(t, srv, "missing.png", "dst.png")
+		if _, ok := resp.(PostFileMove404JSONResponse); !ok {
+			t.Fatalf("expected PostFileMove404JSONResponse, got %T", resp)
+		}
+		if got := bc.countByType(notes.EventFileMoved); got != 0 {
+			t.Errorf("file:moved count: got %d, want 0", got)
+		}
+	})
+
+	t.Run("409 collision", func(t *testing.T) {
+		t.Parallel()
+		srv, dataDir, bc := newAttachmentTestServerWithBroadcaster(t, nil)
+
+		if err := os.WriteFile(filepath.Join(dataDir, "notes", "src.png"), []byte("src"), 0o644); err != nil {
+			t.Fatalf("write src: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dataDir, "notes", "dst.png"), []byte("dst"), 0o644); err != nil {
+			t.Fatalf("write dst: %v", err)
+		}
+
+		resp := callMoveFile(t, srv, "src.png", "dst.png")
+		if _, ok := resp.(PostFileMove409JSONResponse); !ok {
+			t.Fatalf("expected PostFileMove409JSONResponse, got %T", resp)
+		}
+		if got := bc.countByType(notes.EventFileMoved); got != 0 {
+			t.Errorf("file:moved count: got %d, want 0", got)
+		}
+	})
+}
+
+// TestCreateAttachment_BroadcastsFileCreated is the failing-first regression
+// for SY-01: a successful attachment upload must broadcast file:created
+// with the note-parent-relative attachment path and final filename.
+func TestCreateAttachment_BroadcastsFileCreated(t *testing.T) {
+	t.Parallel()
+	noteID := uuid.New()
+	summaries := []notes.NoteSummary{
+		{ID: noteID, Path: "root.md", Title: "Root", UpdatedAt: time.Now()},
+	}
+	srv, _, bc := newAttachmentTestServerWithBroadcaster(t, summaries)
+
+	resp := callCreateAttachment(t, srv, noteID.String(), "hello.png", []byte("\x89PNGdata"))
+	if _, ok := resp.(CreateAttachment200JSONResponse); !ok {
+		t.Fatalf("expected CreateAttachment200JSONResponse, got %T", resp)
+	}
+
+	if got := bc.countByType(notes.EventFileCreated); got != 1 {
+		t.Fatalf("file:created count: got %d, want 1", got)
+	}
+	ev, _ := bc.lastByType(notes.EventFileCreated)
+	payload, ok := ev.payload.(map[string]any)
+	if !ok {
+		t.Fatalf("payload type: got %T, want map[string]any", ev.payload)
+	}
+	if payload["path"] != "attachments/hello.png" {
+		t.Errorf("payload[path]: got %v, want %q", payload["path"], "attachments/hello.png")
+	}
+	if payload["name"] != "hello.png" {
+		t.Errorf("payload[name]: got %v, want %q", payload["name"], "hello.png")
 	}
 }

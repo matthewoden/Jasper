@@ -135,6 +135,9 @@ export function useSessionSync(
           case "folder:created":
           case "folder:deleted":
           case "folder:moved":
+          case "file:created":
+          case "file:deleted":
+          case "file:moved":
             void refreshTree();
             break;
           case "reindex:started":
