@@ -384,9 +384,14 @@ func TestTool_UpdateNote_AllowedAtTier1(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	f.NotesProv.notes = []notes.NoteSummary{{ID: summary.ID, Path: summary.Path, Title: summary.Title}}
+	current, err := f.NotesSvc.Get(context.Background(), summary.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
 	res, err := f.callTool(t, "update_note", map[string]any{
-		"path": summary.Path,
-		"body": "new body",
+		"path":     summary.Path,
+		"body":     "new body",
+		"if_match": current.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		t.Fatalf("CallTool: %v", err)
@@ -884,6 +889,97 @@ func TestUpdateNoteIfMatchWildcard(t *testing.T) {
 
 		if strings.Contains(text, `"force_write":true`) {
 			t.Errorf("force_write must not appear on conflict path: %s", text)
+		}
+	})
+}
+
+// TestUpdateNoteIfMatchRequired locks in SY-05: update_note must reject an
+// omitted if_match with a model-actionable error and perform no write, while
+// a valid current if_match still succeeds without claiming force_write.
+func TestUpdateNoteIfMatchRequired(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing if_match rejected, no write performed", func(t *testing.T) {
+		t.Parallel()
+		f := newTestServer(t)
+		if _, err := f.ACL.Set(context.Background(), "projects", mcp.TierEditOnly, "test"); err != nil {
+			t.Fatalf("Set grant: %v", err)
+		}
+		summary, err := f.NotesSvc.Create(context.Background(), "projects", "guarded")
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		f.NotesProv.notes = []notes.NoteSummary{{ID: summary.ID, Path: summary.Path, Title: summary.Title}}
+
+		original, err := f.NotesSvc.Get(context.Background(), summary.ID)
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+
+		res, err := f.callTool(t, "update_note", map[string]any{
+			"path": summary.Path,
+			"body": "should never land",
+		})
+		if err != nil {
+			t.Fatalf("CallTool: %v", err)
+		}
+		if !res.IsError {
+			t.Fatal("expected tool error for missing if_match")
+		}
+		text := flattenContent(res)
+		if !strings.Contains(text, "missing_if_match") {
+			t.Errorf("expected missing_if_match in error: %s", text)
+		}
+
+		after, err := f.NotesSvc.Get(context.Background(), summary.ID)
+		if err != nil {
+			t.Fatalf("Get after: %v", err)
+		}
+		if after.Content != original.Content {
+			t.Errorf("note content changed despite missing_if_match rejection.\n before=%q\n after=%q", original.Content, after.Content)
+		}
+	})
+
+	t.Run("valid current if_match succeeds without force_write", func(t *testing.T) {
+		t.Parallel()
+		f := newTestServer(t)
+		if _, err := f.ACL.Set(context.Background(), "projects", mcp.TierEditOnly, "test"); err != nil {
+			t.Fatalf("Set grant: %v", err)
+		}
+		summary, err := f.NotesSvc.Create(context.Background(), "projects", "current")
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		f.NotesProv.notes = []notes.NoteSummary{{ID: summary.ID, Path: summary.Path, Title: summary.Title}}
+
+		current, err := f.NotesSvc.Get(context.Background(), summary.ID)
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		currentTag := current.UpdatedAt.UTC().Format(time.RFC3339Nano)
+
+		res, err := f.callTool(t, "update_note", map[string]any{
+			"path":     summary.Path,
+			"body":     "fresh body",
+			"if_match": currentTag,
+		})
+		if err != nil {
+			t.Fatalf("CallTool: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("tool error: %v", flattenContent(res))
+		}
+		text := flattenContent(res)
+		if strings.Contains(text, `"force_write":true`) {
+			t.Errorf("valid guarded write must not report force_write:true: %s", text)
+		}
+
+		after, err := f.NotesSvc.Get(context.Background(), summary.ID)
+		if err != nil {
+			t.Fatalf("Get after: %v", err)
+		}
+		if !strings.Contains(after.Content, "fresh body") {
+			t.Errorf("expected updated body on disk; got: %q", after.Content)
 		}
 	})
 }

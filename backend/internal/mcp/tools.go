@@ -107,7 +107,7 @@ type UpdateNoteArgs struct {
 	Path    string `json:"path,omitempty" jsonschema:"notes/-relative path to the note (preferred); used to resolve the UUID"`
 	ID      string `json:"id,omitempty" jsonschema:"UUID of the note (fallback if path not supplied)"`
 	Body    string `json:"body" jsonschema:"new markdown body (server prepends frontmatter scaffold if missing)"`
-	IfMatch string `json:"if_match,omitempty" jsonschema:"updated_at from prior read; required for race protection (SYNC-06)"`
+	IfMatch string `json:"if_match,omitempty" jsonschema:"REQUIRED: updated_at from a prior read_note call, or '*' to force last-writer-wins; omitting or passing empty is rejected"`
 }
 
 // UpdateNoteResult — id + path + updated_at after the write. ForceWrite is
@@ -347,10 +347,10 @@ func (s *Server) registerUpdateNote() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name: "update_note",
 		Description: "Update a note's markdown body. The folder must have a Tier 1 or Tier 2 AI write grant. " +
-			"if_match: pass the note's current updated_at as returned by read_note to detect stale-write conflicts " +
-			"(conflict error). Pass '*' to explicitly opt-in to last-writer-wins (force overwrite — response will include " +
-			"force_write: true). Omitting if_match is equivalent to passing the result of read_note immediately prior; " +
-			"this is recommended for safety.",
+			"if_match is REQUIRED: call read_note first and pass its updated_at to detect stale-write conflicts " +
+			"(conflict error if another writer changed the note since). Pass '*' to explicitly opt-in to " +
+			"last-writer-wins (force overwrite — response will include force_write: true). Omitting or passing " +
+			"an empty if_match is rejected with a missing_if_match error; no write is performed.",
 	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args UpdateNoteArgs) (*mcpsdk.CallToolResult, UpdateNoteResult, error) {
 		notePath := args.Path
 		if notePath == "" && args.ID != "" {
@@ -366,6 +366,10 @@ func (s *Server) registerUpdateNote() {
 		}
 		if !s.acl.CanUpdate(ctx, notePath) {
 			return nil, UpdateNoteResult{}, fmt.Errorf("no_grant: folder for %q has no AI write grant", notePath)
+		}
+		if args.IfMatch == "" {
+			return nil, UpdateNoteResult{}, errors.New(
+				"missing_if_match: if_match is required — call read_note first and pass its updated_at, or pass \"*\" to force last-writer-wins")
 		}
 		id, err := s.resolveNoteID(ctx, args.ID, notePath)
 		if err != nil {
