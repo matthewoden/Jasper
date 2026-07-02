@@ -1,13 +1,3 @@
-// ExtractBodyForFTS strips YAML frontmatter from note content before
-// indexing into body_fts so that "tags: [foo]" in frontmatter does not
-// pollute full-text body matches.
-//
-// JoinTagNamesForFTS produces the space-joined list for tag_names_fts so
-// that FTS5 unicode61 tokenizer treats each tag as a distinct query token.
-//
-// Relocated from internal/index/fts.go so internal/notes can populate
-// NoteRecord.BodyFTS / TagNamesFTS on the interactive save paths (Update,
-// createInternal, Move) without importing the index adapter package.
 package markdown
 
 import (
