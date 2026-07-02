@@ -65,7 +65,7 @@ func (r *Registry) Lookup(id uuid.UUID) (string, bool) {
 // re-Adding the same id replaces the path in place.
 //
 // Note: Add does NOT update the title map because it does not receive the
-// note title. Use AddRecord or HydrateRecords for full title-index maintenance.
+// note title. Use AddRecord for full title-index maintenance.
 func (r *Registry) Add(id uuid.UUID, relPath string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -125,39 +125,23 @@ func (r *Registry) Rename(id uuid.UUID, newRelPath string) {
 	}
 }
 
-// Hydrate replaces the entire id → path map atomically with the given
-// summaries. Used by the composition root at startup after the incremental
-// reindex so the in-memory registry reflects every indexed note.
+// Hydrate replaces both the id→path map and the title index atomically
+// from the given summaries. Called by the composition root at startup
+// after the incremental reindex, after vault hot-swap, and after a full
+// admin reindex, so the in-memory registry — including title→records
+// lookup used for wiki-link resolution — reflects every indexed note.
 //
-// Note: Hydrate does NOT populate the title index. Use HydrateRecords
-// to populate both maps from NoteRecords.
+// The Title field in each summary need not be pre-normalized; titleKey
+// (NFC + lowercase) is applied when indexing into byTitle.
 func (r *Registry) Hydrate(summaries []NoteSummary) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.byID = make(map[uuid.UUID]string, len(summaries))
+	r.byTitle = make(map[string][]NoteRecord, len(summaries))
 	for _, s := range summaries {
 		r.byID[s.ID] = s.Path
-	}
-
-	r.byTitle = make(map[string][]NoteRecord)
-}
-
-// HydrateRecords replaces both the id→path map and the title index
-// atomically from the given NoteRecords. Called by the composition root
-// at startup after reconcile completes, so the title→records lookup
-// reflects every indexed note.
-//
-// The Title field in each record must already be NFC-normalized and
-// lowercase. The indexer guarantees this via ExtractTitle.
-func (r *Registry) HydrateRecords(records []NoteRecord) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.byID = make(map[uuid.UUID]string, len(records))
-	r.byTitle = make(map[string][]NoteRecord, len(records))
-	for _, rec := range records {
-		r.byID[rec.ID] = rec.Path
-		key := titleKey(rec.Title)
-		r.byTitle[key] = append(r.byTitle[key], rec)
+		key := titleKey(s.Title)
+		r.byTitle[key] = append(r.byTitle[key], NoteRecord{ID: s.ID, Path: s.Path, Title: s.Title})
 	}
 }
 

@@ -22,7 +22,7 @@ func TestSyncBacklinks_ResolvedTarget(t *testing.T) {
 	fooID := newNoteID(t, idx, "notes/foo.md", 1700000002)
 
 	reg := &notes.Registry{}
-	reg.HydrateRecords([]notes.NoteRecord{
+	reg.Hydrate([]notes.NoteSummary{
 		{ID: fooID, Path: "notes/foo.md", Title: "foo"},
 	})
 
@@ -63,7 +63,7 @@ func TestSyncBacklinks_PendingTarget(t *testing.T) {
 	sourceID := newNoteID(t, idx, "notes/source.md", 1700000001)
 
 	reg := &notes.Registry{}
-	reg.HydrateRecords(nil)
+	reg.Hydrate(nil)
 
 	refs := []markdown.WikiLinkRef{{Target: "Missing"}}
 	content := []byte("Link to [[Missing]] here.\n")
@@ -100,7 +100,7 @@ func TestSyncBacklinks_MultipleOccurrencesCollapse(t *testing.T) {
 	fooID := newNoteID(t, idx, "notes/foo.md", 1700000002)
 
 	reg := &notes.Registry{}
-	reg.HydrateRecords([]notes.NoteRecord{{ID: fooID, Path: "notes/foo.md", Title: "foo"}})
+	reg.Hydrate([]notes.NoteSummary{{ID: fooID, Path: "notes/foo.md", Title: "foo"}})
 
 	refs := []markdown.WikiLinkRef{
 		{Target: "Foo"},
@@ -134,7 +134,7 @@ func TestSyncBacklinks_Replacement(t *testing.T) {
 	sourceID := newNoteID(t, idx, "notes/source.md", 1700000001)
 
 	reg := &notes.Registry{}
-	reg.HydrateRecords(nil)
+	reg.Hydrate(nil)
 
 	refs1 := []markdown.WikiLinkRef{{Target: "A"}, {Target: "B"}}
 	content1 := []byte("[[A]] and [[B]]\n")
@@ -179,7 +179,7 @@ func TestSyncBacklinks_EmptyRefs(t *testing.T) {
 
 	sourceID := newNoteID(t, idx, "notes/source.md", 1700000001)
 	reg := &notes.Registry{}
-	reg.HydrateRecords(nil)
+	reg.Hydrate(nil)
 
 	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md",
 		[]markdown.WikiLinkRef{{Target: "X"}}, reg, []byte("[[X]]\n")); err != nil {
@@ -214,7 +214,7 @@ func TestSyncBacklinks_AmbiguousResolution(t *testing.T) {
 	fooB := newNoteID(t, idx, "notes/b/foo.md", 1700000003)
 
 	reg := &notes.Registry{}
-	reg.HydrateRecords([]notes.NoteRecord{
+	reg.Hydrate([]notes.NoteSummary{
 		{ID: fooA, Path: "notes/a/foo.md", Title: "foo"},
 		{ID: fooB, Path: "notes/b/foo.md", Title: "foo"},
 	})
@@ -247,7 +247,7 @@ func TestSyncBacklinks_ExcerptHTML(t *testing.T) {
 
 	sourceID := newNoteID(t, idx, "notes/source.md", 1700000001)
 	reg := &notes.Registry{}
-	reg.HydrateRecords(nil)
+	reg.Hydrate(nil)
 
 	refs := []markdown.WikiLinkRef{{Target: "Foo"}}
 	content := []byte("prefix [[Foo]] suffix\nother line\n")
@@ -323,7 +323,7 @@ func TestGetBacklinks_ReturnsRowsSortedByRecency(t *testing.T) {
 	src3 := newNoteID(t, idx, "notes/src3.md", 1700000002)
 
 	reg := &notes.Registry{}
-	reg.HydrateRecords([]notes.NoteRecord{
+	reg.Hydrate([]notes.NoteSummary{
 		{ID: targetID, Path: "notes/target.md", Title: "target"},
 	})
 
@@ -362,7 +362,7 @@ func TestGetBacklinks_PendingExcluded(t *testing.T) {
 	sourceID := newNoteID(t, idx, "notes/source.md", 1700000001)
 
 	reg := &notes.Registry{}
-	reg.HydrateRecords(nil)
+	reg.Hydrate(nil)
 
 	refs := []markdown.WikiLinkRef{{Target: "target"}}
 	content := []byte("See [[target]] here.\n")
@@ -559,10 +559,9 @@ func TestBuildExcerpt_CaseInsensitive(t *testing.T) {
 // TestSyncBacklinks_ResolvesAfterHydrateFromIndex — regression for DI-02:
 // exercises the hydrate-FROM-index path (Hydrate([]NoteSummary) fed by
 // idx.List, the exact call the composition root makes at startup /
-// hot-swap / after admin reindex), NOT in-session AddRecord or the
-// HydrateRecords test-only helper. A fresh registry hydrated this way must
-// still resolve wiki-links against notes indexed before this process
-// started.
+// hot-swap / after admin reindex), NOT in-session AddRecord. A fresh
+// registry hydrated this way must still resolve wiki-links against notes
+// indexed before this process started.
 func TestSyncBacklinks_ResolvesAfterHydrateFromIndex(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -608,7 +607,7 @@ func TestSyncBacklinks_ResolvesAfterHydrateFromIndex(t *testing.T) {
 // for DI-02: a pending row (seeded before any registry existed, mirroring
 // TestResolvePendingBacklinks_Basic) must resolve once a registry is
 // hydrated FROM the index via Hydrate([]NoteSummary) fed by idx.List —
-// the real startup/rebuild path, not HydrateRecords.
+// the real startup/rebuild path.
 func TestResolvePendingBacklinks_ResolvesAfterHydrateFromIndex(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -699,7 +698,7 @@ func TestResolvePendingBacklinks_Basic(t *testing.T) {
 	}
 
 	reg := &notes.Registry{}
-	reg.HydrateRecords([]notes.NoteRecord{
+	reg.Hydrate([]notes.NoteSummary{
 		{ID: targetID, Path: "notes/b.md", Title: "Note B"},
 	})
 
@@ -773,7 +772,7 @@ func TestResolvePendingBacklinks_UnresolvableStaysPending(t *testing.T) {
 	}
 
 	reg := &notes.Registry{}
-	reg.HydrateRecords([]notes.NoteRecord{
+	reg.Hydrate([]notes.NoteSummary{
 		{ID: uuid.New(), Path: "notes/other.md", Title: "Other Note"},
 	})
 
