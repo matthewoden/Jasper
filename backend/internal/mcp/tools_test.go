@@ -384,9 +384,14 @@ func TestTool_UpdateNote_AllowedAtTier1(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	f.NotesProv.notes = []notes.NoteSummary{{ID: summary.ID, Path: summary.Path, Title: summary.Title}}
+	current, err := f.NotesSvc.Get(context.Background(), summary.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
 	res, err := f.callTool(t, "update_note", map[string]any{
-		"path": summary.Path,
-		"body": "new body",
+		"path":     summary.Path,
+		"body":     "new body",
+		"if_match": current.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		t.Fatalf("CallTool: %v", err)
