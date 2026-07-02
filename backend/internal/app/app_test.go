@@ -883,6 +883,12 @@ func TestApp_ListenerGated(t *testing.T) {
 // after Run completes. The listener opening proves the migration ran and
 // succeeded before the gate opened.
 func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
+	// Isolate the app home so resolveVaultMode reads an empty app.json and
+	// deterministically takes the per-vault boot path against dir. Without
+	// this the test reads the developer's real ~/.jasper/app.json, whose
+	// CurrentVault state varies between runs (other tests/E2E mutate it) and
+	// silently reroutes boot away from the migration — the SY-05 flake.
+	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
 	dir := t.TempDir()
 	if err := EnsureDataDir(dir); err != nil {
 		t.Fatalf("EnsureDataDir: %v", err)
@@ -934,6 +940,10 @@ func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
 // TestRun_FrontmatterMigrationIdempotent — Run twice on same vault;
 // second start must not modify files (marker row prevents re-walk).
 func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
+	// Isolate the app home (see TestRun_FrontmatterMigrationRuns_BeforeReconcile):
+	// otherwise the real ~/.jasper/app.json's varying CurrentVault reroutes boot
+	// away from the temp-dir migration, making this test flaky.
+	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
 	dir := t.TempDir()
 	if err := EnsureDataDir(dir); err != nil {
 		t.Fatalf("EnsureDataDir: %v", err)
