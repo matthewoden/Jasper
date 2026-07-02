@@ -164,6 +164,11 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 	}
 
 	freshTitle := markdown.ExtractTitle([]byte(content), relPath)
+
+	tags := markdown.ExtractTags([]byte(content))
+	bodyTags := markdown.ExtractBodyTags([]byte(content))
+	canonical := unionTags(tags, bodyTags)
+
 	rec := NoteRecord{
 		ID:            id,
 		Path:          relPath,
@@ -172,6 +177,8 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 		SizeBytes:     int64(len(content)),
 		Checksum:      "",
 		UpdatedAtUnix: modTime.UTC().Unix(),
+		BodyFTS:       markdown.ExtractBodyForFTS([]byte(content)),
+		TagNamesFTS:   markdown.JoinTagNamesForFTS(canonical),
 	}
 	indexSucceeded := false
 	if err := s.index.Upsert(ctx, rec); err != nil {
@@ -188,11 +195,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 	} else {
 		indexSucceeded = true
 	}
-
-	tags := markdown.ExtractTags([]byte(content))
-
-	bodyTags := markdown.ExtractBodyTags([]byte(content))
-	canonical := unionTags(tags, bodyTags)
 
 	sortedTags := append([]string(nil), tags...)
 	sort.Strings(sortedTags)
@@ -319,6 +321,11 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 
 	id := uuid.New()
 	now := time.Now().UTC()
+
+	scaffoldTags := markdown.ExtractTags(scaffoldContent)
+	scaffoldBodyTags := markdown.ExtractBodyTags(scaffoldContent)
+	createCanonical := unionTags(scaffoldTags, scaffoldBodyTags)
+
 	rec := NoteRecord{
 		ID:            id,
 		Path:          canonPath,
@@ -327,6 +334,8 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 		SizeBytes:     int64(len(scaffoldContent)),
 		Checksum:      "",
 		UpdatedAtUnix: now.Unix(),
+		BodyFTS:       markdown.ExtractBodyForFTS(scaffoldContent),
+		TagNamesFTS:   markdown.JoinTagNamesForFTS(createCanonical),
 	}
 	if err := s.index.Upsert(ctx, rec); err != nil {
 		if delErr := s.files.DeleteFile(relPath); delErr != nil {
@@ -337,10 +346,6 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 	}
 
 	s.registry.AddRecord(id, rec.Path, strings.ToLower(rec.Title))
-
-	scaffoldTags := markdown.ExtractTags(scaffoldContent)
-	scaffoldBodyTags := markdown.ExtractBodyTags(scaffoldContent)
-	createCanonical := unionTags(scaffoldTags, scaffoldBodyTags)
 
 	sortedScaffoldTags := append([]string(nil), scaffoldTags...)
 	sort.Strings(sortedScaffoldTags)
@@ -464,6 +469,13 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 			Title:         freshTitle,
 			MTimeUnix:     postMoveMTime.Unix(),
 			UpdatedAtUnix: postMoveMTime.Unix(),
+		}
+		// Belt-and-suspenders: LookupByPath failed (index row missing/stale),
+		// so there is no old BodyFTS to carry forward. If the post-rename
+		// Read succeeded, derive it fresh so a move never wipes body search.
+		if content != nil {
+			rec.BodyFTS = markdown.ExtractBodyForFTS(content)
+			rec.TagNamesFTS = markdown.JoinTagNamesForFTS(unionTags(markdown.ExtractTags(content), markdown.ExtractBodyTags(content)))
 		}
 	} else {
 		rec.Path = canonNew
