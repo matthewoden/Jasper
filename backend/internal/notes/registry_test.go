@@ -176,30 +176,55 @@ func TestRegistryAddRecord_RemoveUpdatesTitle(t *testing.T) {
 	}
 }
 
-// TestRegistryHydrateRecords verifies that HydrateRecords populates both
-// the id map and the title index from a slice of NoteRecords.
-func TestRegistryHydrateRecords(t *testing.T) {
+// TestRegistryHydrate_PopulatesMultipleTitles verifies that Hydrate
+// populates both the id map and the title index from a slice of
+// NoteSummaries containing multiple distinct titles.
+func TestRegistryHydrate_PopulatesMultipleTitles(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
 	id1 := uuid.New()
 	id2 := uuid.New()
-	r.HydrateRecords([]NoteRecord{
+	r.Hydrate([]NoteSummary{
 		{ID: id1, Path: "notes/foo.md", Title: "foo"},
 		{ID: id2, Path: "notes/bar.md", Title: "bar"},
 	})
 
 	got1 := r.FindByTitle("foo", "")
 	if len(got1) != 1 || got1[0].ID != id1 {
-		t.Errorf("HydrateRecords foo: got %v", got1)
+		t.Errorf("Hydrate foo: got %v", got1)
 	}
 	got2 := r.FindByTitle("bar", "")
 	if len(got2) != 1 || got2[0].ID != id2 {
-		t.Errorf("HydrateRecords bar: got %v", got2)
+		t.Errorf("Hydrate bar: got %v", got2)
 	}
 
 	path, ok := r.Lookup(id1)
 	if !ok || path != "notes/foo.md" {
 		t.Errorf("Lookup id1: got %q, %v; want notes/foo.md, true", path, ok)
+	}
+}
+
+// TestRegistryHydrate_PopulatesTitleIndex verifies that Hydrate (the
+// function actually called by the composition root at startup and after
+// vault hot-swap / admin reindex — see lifecycle.go and
+// admin_reindex_handler.go) populates BOTH byID and byTitle from
+// []NoteSummary. Regression for DI-02: Hydrate used to clear byTitle,
+// leaving wiki-link resolution dead after every restart.
+func TestRegistryHydrate_PopulatesTitleIndex(t *testing.T) {
+	t.Parallel()
+	r := &Registry{}
+	id := uuid.New()
+
+	r.Hydrate([]NoteSummary{
+		{ID: id, Path: "notes/foo.md", Title: "Foo"},
+	})
+
+	got := r.FindByTitle("foo", "")
+	if len(got) != 1 {
+		t.Fatalf("FindByTitle after Hydrate: got %d records, want 1", len(got))
+	}
+	if got[0].ID != id {
+		t.Errorf("ID: got %v, want %v", got[0].ID, id)
 	}
 }
 

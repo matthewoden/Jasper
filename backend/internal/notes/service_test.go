@@ -2552,3 +2552,31 @@ func TestService_Create_ScaffoldEmptyBodyTagsAreNoOp(t *testing.T) {
 		t.Errorf("scaffold body should have no inline tags, got %v", bodyTags)
 	}
 }
+
+// TestServiceUpdate_RefreshesTitleIndex is a regression test for DI-02:
+// Service.Update never refreshed the registry's title index, so an H1
+// rename drifted the byTitle map out of sync with the file on disk (the
+// old title kept resolving; the new title never did).
+func TestServiceUpdate_RefreshesTitleIndex(t *testing.T) {
+	t.Parallel()
+	svc, _, _ := newRealFSSvc(t)
+
+	summary, err := svc.Create(context.Background(), "", "OldTitle")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if _, err := svc.Update(context.Background(), summary.ID, "# Brand New Heading\n\nbody\n", ""); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	gotNew := svc.Registry().FindByTitle("brand new heading", "")
+	if len(gotNew) != 1 || gotNew[0].ID != summary.ID {
+		t.Errorf("FindByTitle(new title) after Update: got %v, want single record with ID %v", gotNew, summary.ID)
+	}
+
+	gotOld := svc.Registry().FindByTitle(strings.ToLower(summary.Title), "")
+	if len(gotOld) != 0 {
+		t.Errorf("FindByTitle(old title) after Update: got %v, want empty (stale title removed)", gotOld)
+	}
+}

@@ -219,6 +219,8 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 			"id", id.String(), "err", err)
 	}
 
+	s.registry.AddRecord(id, relPath, strings.ToLower(freshTitle))
+
 	refs := markdown.ExtractWikilinks([]byte(content))
 	if err := s.index.SyncBacklinks(ctx, id, relPath, refs, s.registry, []byte(content)); err != nil {
 		s.log.Error("notes.Update: backlinks sync failed (file safe; index heals on reconcile)",
