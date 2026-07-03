@@ -750,6 +750,13 @@ describe("<App /> — two-row grid + chrome mounts", () => {
       screen.getByRole("navigation", { name: "Activity ribbon" }),
     ).toBeInTheDocument();
   });
+
+  it("A6.6-10: ActivityRibbon spans both grid rows (gridRow '1 / 3') so it renders the full shell height, not just the tab-strip row", async () => {
+    render(<AppShell />);
+    const ribbon = screen.getByRole("navigation", { name: "Activity ribbon" });
+    expect(ribbon.style.gridRow).toBe("1 / 3");
+    expect(ribbon.style.gridColumn).toBe("1");
+  });
 });
 
 
