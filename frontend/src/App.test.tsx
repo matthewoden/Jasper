@@ -207,8 +207,11 @@ describe("<App /> — shell composition", () => {
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
     expect(grid).not.toBeNull();
-    // Middle track is minmax(0, 1fr) so TabStrip overflow can engage.
-    expect(grid!.style.gridTemplateColumns).toBe("260px minmax(0, 1fr) 0px");
+    // Leading 48px track is the ActivityRibbon column; middle track is
+    // minmax(0, 1fr) so TabStrip overflow can engage.
+    expect(grid!.style.gridTemplateColumns).toBe(
+      "48px 260px minmax(0, 1fr) 0px",
+    );
 
     expect(screen.getByText("NOTES")).toBeInTheDocument();
     expect(screen.getByTestId("tree-empty-state")).toBeInTheDocument();
@@ -675,9 +678,9 @@ describe("<App /> — two-row grid + chrome mounts", () => {
     });
   });
 
-  it("A6.6-1: App renders a ChromeBar (data-testid='chrome-bar')", async () => {
+  it("A6.6-1: App renders the TabStrip directly (no chrome wrapper — D-04)", async () => {
     render(<AppShell />);
-    expect(screen.getByTestId("chrome-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-strip")).toBeInTheDocument();
   });
 
   it("A6.6-2: App renders a StatusBar (data-testid='status-bar')", async () => {
@@ -694,24 +697,24 @@ describe("<App /> — two-row grid + chrome mounts", () => {
     expect(grid!.style.gridTemplateRows).toBe("auto minmax(0, 1fr)");
   });
 
-  it("A6.6-4: when notesSidebarVisible=true, sidebar column is sidebarWidth px (260px default)", async () => {
+  it("A6.6-4: when notesSidebarVisible=true, sidebar column is sidebarWidth px (260px default), after the 48px ribbon column", async () => {
     useTreeStore.setState({ notesSidebarVisible: true, sidebarWidth: 260 });
     render(<AppShell />);
     const grid = document.querySelector(
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
     expect(grid).not.toBeNull();
-    expect(grid!.style.gridTemplateColumns).toMatch(/^260px/);
+    expect(grid!.style.gridTemplateColumns).toMatch(/^48px 260px/);
   });
 
-  it("A6.6-5: when notesSidebarVisible=false, sidebar column is 0px", async () => {
+  it("A6.6-5: when notesSidebarVisible=false, sidebar column is 0px, after the 48px ribbon column", async () => {
     useTreeStore.setState({ notesSidebarVisible: false });
     render(<AppShell />);
     const grid = document.querySelector(
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
     expect(grid).not.toBeNull();
-    expect(grid!.style.gridTemplateColumns).toMatch(/^0px/);
+    expect(grid!.style.gridTemplateColumns).toMatch(/^48px 0px/);
   });
 
   it("A6.6-6: when backlinksRailExpanded=false, rail column is 0px", async () => {
@@ -734,11 +737,18 @@ describe("<App /> — two-row grid + chrome mounts", () => {
     expect(grid!.nextElementSibling).toBe(statusBar);
   });
 
-  it("A6.6-8: ChromeBar has gridRow=1 gridColumn=2 style (set by App.tsx)", async () => {
+  it("A6.6-8: TabStrip has gridRow=1 gridColumn=3 style (set by App.tsx, shifted right for the ribbon column)", async () => {
     render(<AppShell />);
-    const chromeBar = screen.getByTestId("chrome-bar");
-    expect(chromeBar.style.gridRow).toBe("1");
-    expect(chromeBar.style.gridColumn).toBe("2");
+    const tabStrip = screen.getByTestId("tab-strip");
+    expect(tabStrip.style.gridRow).toBe("1");
+    expect(tabStrip.style.gridColumn).toBe("3");
+  });
+
+  it("A6.6-9: ActivityRibbon renders as the far-left grid column (RIBBON-01)", async () => {
+    render(<AppShell />);
+    expect(
+      screen.getByRole("navigation", { name: "Activity ribbon" }),
+    ).toBeInTheDocument();
   });
 });
 
