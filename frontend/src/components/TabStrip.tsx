@@ -24,7 +24,10 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { TabPill } from "./TabPill";
 import { TabContextMenu } from "./TabContextMenu";
 import { TabOverflowDropdown } from "./TabOverflowDropdown";
-import { PanelSelectorDropdown } from "./PanelSelectorDropdown";
+import {
+  PanelSelectorDropdown,
+  PANEL_SELECTOR_TRIGGER_WIDTH,
+} from "./PanelSelectorDropdown";
 import { computeHiddenTabIds, MIN_TAB_WIDTH } from "../lib/tabOverflow";
 
 /** Set equality used to preserve state identity (avoid re-render churn). */
@@ -34,15 +37,18 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 
 // Reserved strip chrome that is never available to tabs:
 //   strip horizontal padding (8) + pinned new-tab button (26) + the tab-bar
-//   right cluster (65) + the tab-bar left cluster (37).
-//   Right cluster: 1 (borderLeft) + 8 (paddingLeft) + 24 (PanelSelectorDropdown
-//   trigger, per triggerButtonStyle.width) + 4 (flex gap) + 28 (right toggle)
-//   = 65. Left cluster: 28 (left toggle) + 8 (paddingRight) + 1 (borderRight)
-//   = 37. Split placement supersedes the original single right-hand cluster
-//   (owner revision 2026-07-02, gap 3 / TABUI-02). The overflow dropdown
-//   trigger (28px) is reserved separately, inside computeHiddenTabIds, ONLY
-//   when overflow occurs.
-const RESERVED = 8 + 26 + 65 + 37;
+//   right cluster + the tab-bar left cluster (37).
+//   Right cluster: 1 (borderLeft) + 8 (paddingLeft) + PANEL_SELECTOR_TRIGGER_WIDTH
+//   (imported from PanelSelectorDropdown, the single source of truth for its
+//   trigger's width — IN-06) + 4 (flex gap) + 28 (right toggle). Left cluster:
+//   28 (left toggle) + 8 (paddingRight) + 1 (borderRight) = 37. Split
+//   placement supersedes the original single right-hand cluster (owner
+//   revision 2026-07-02, gap 3 / TABUI-02). The overflow dropdown trigger
+//   (28px) is reserved separately, inside computeHiddenTabIds, ONLY when
+//   overflow occurs.
+const RIGHT_CLUSTER = 1 + 8 + PANEL_SELECTOR_TRIGGER_WIDTH + 4 + 28;
+const LEFT_CLUSTER = 37;
+export const RESERVED = 8 + 26 + RIGHT_CLUSTER + LEFT_CLUSTER;
 const OVERFLOW_BTN = 28;
 
 /** 28x28 icon button shared by the tab-bar's far-left and far-right clusters —

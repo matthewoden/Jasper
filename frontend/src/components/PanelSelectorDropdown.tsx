@@ -10,8 +10,15 @@ import { useState } from "react";
 import type React from "react";
 import { useTreeStore } from "../lib/useTreeStore";
 
+/**
+ * Shared source of truth for this trigger's width — TabStrip's RESERVED
+ * chrome-width arithmetic imports this instead of hard-coding a duplicate
+ * literal, so the two files cannot silently desync (IN-06).
+ */
+export const PANEL_SELECTOR_TRIGGER_WIDTH = 24;
+
 const triggerButtonStyle: React.CSSProperties = {
-  width: 24,
+  width: PANEL_SELECTOR_TRIGGER_WIDTH,
   height: 24,
   padding: 4,
   background: "transparent",
