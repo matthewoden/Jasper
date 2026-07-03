@@ -10,8 +10,14 @@
 
 /** Floor each pill shrinks to before tabs start collapsing into the dropdown. */
 export const MIN_TAB_WIDTH = 120;
-/** Natural cap a pill grows to (matches the prior fixed maxWidth). */
-export const MAX_TAB_WIDTH = 200;
+/**
+ * Natural cap a pill grows to. Reconciled to 185 for the Phase 18 flush-tab
+ * restyle: the title span (flex:1) ellipsizes at roughly
+ * (pill width - file icon 14 - gaps 8 - horizontal padding 16 - close X 20)
+ * chrome, so 185 - ~58 = ~127px title width, matching DESIGN-NOTES.md §3's
+ * "~130px" target. Stays above MIN_TAB_WIDTH (120) so no inversion.
+ */
+export const MAX_TAB_WIDTH = 185;
 
 export interface OverflowInput {
   tabIds: string[];

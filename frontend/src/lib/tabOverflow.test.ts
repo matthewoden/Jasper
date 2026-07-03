@@ -20,7 +20,7 @@ const base = {
 describe("computeHiddenTabIds", () => {
   it("constants: MIN < MAX", () => {
     expect(MIN_TAB_WIDTH).toBe(120);
-    expect(MAX_TAB_WIDTH).toBe(200);
+    expect(MAX_TAB_WIDTH).toBe(185);
     expect(MIN_TAB_WIDTH).toBeLessThan(MAX_TAB_WIDTH);
   });
 

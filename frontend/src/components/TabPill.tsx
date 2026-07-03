@@ -1,11 +1,13 @@
 /**
- * TabPill — a single editor tab: title (truncated), an always-visible close (X),
- * middle-click close, and a "(deleted)" read-only indicator.
+ * TabPill — a single editor tab: file icon, title (truncated), an
+ * always-visible close (X), middle-click close, and a "(deleted)" read-only
+ * indicator.
  *
  * Pure props-in / callbacks-out. TabStrip owns pointer-event drag-to-reorder;
  * this pill only carries selection and close callbacks. Active styling uses
- * brighter title color (fg vs muted) and a 2px accent bottom-border; the
- * background is opaque surface-subtle for inactive pills.
+ * brighter title color (fg-title vs muted) and a 2px accent top-border; the
+ * background is flush with the tab bar (--color-surface) for inactive pills,
+ * --color-bg (matches the editor column) for the active pill.
  *
  * forwardRef: ContextMenu.Trigger asChild clones this element and injects its
  * own ref + handlers (onPointerDown, onContextMenu). Without forwardRef the
@@ -15,7 +17,7 @@
  */
 import { useState, forwardRef } from "react";
 import type { CSSProperties, HTMLAttributes } from "react";
-import { X } from "lucide-react";
+import { X, FileText } from "lucide-react";
 import { MIN_TAB_WIDTH, MAX_TAB_WIDTH } from "../lib/tabOverflow";
 
 export interface TabPillProps {
@@ -34,7 +36,7 @@ type TabPillAllProps = TabPillProps &
   Omit<HTMLAttributes<HTMLDivElement>, keyof TabPillProps>;
 
 const tabPillStyle: CSSProperties = {
-  height: 32,
+  height: 40,
   // Shrink-to-fit (TAB-16): pills flex DOWN to MIN_TAB_WIDTH so as many
   // ellipsized titles show as the strip allows; flexGrow:0 keeps them
   // left-aligned (Obsidian feel) rather than stretching to fill.
@@ -46,7 +48,8 @@ const tabPillStyle: CSSProperties = {
   alignItems: "center",
   padding: "0 8px",
   gap: 4,
-  borderRadius: "4px 4px 0 0",
+  borderRadius: 0,
+  borderRight: "1px solid var(--color-border-inner)",
   cursor: "pointer",
   // Prevent text selection on drag across tabs.
   userSelect: "none",
@@ -93,13 +96,21 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
   ) {
     const [hovering, setHovering] = useState(false);
 
-    // Active: brightest surface. Hovered inactive: accent tint over opaque base.
-    // Idle inactive: surface-subtle (opaque, distinct from strip bg and active).
+    // Active: seated on the editor column below (--color-bg). Hovered inactive:
+    // accent tint over the flush base. Idle inactive: flush with the tab bar
+    // itself (--color-surface) — no separate "pill" surface color.
     const background = isActive
-      ? "var(--color-surface)"
+      ? "var(--color-bg)"
       : hovering
-        ? "color-mix(in srgb, var(--color-accent) 12%, var(--color-surface-subtle))"
-        : "var(--color-surface-subtle)";
+        ? "color-mix(in srgb, var(--color-accent) 12%, var(--color-surface))"
+        : "var(--color-surface)";
+
+    // Icon/title share the same color branch; deleted tabs always read destructive.
+    const iconColor = isDeleted
+      ? "var(--color-destructive)"
+      : isActive
+        ? "var(--color-fg-title)"
+        : "var(--color-muted)";
 
     return (
       <div
@@ -111,7 +122,7 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
         style={{
           ...tabPillStyle,
           background,
-          borderBottom: isActive
+          borderTop: isActive
             ? "2px solid var(--color-accent)"
             : "2px solid transparent",
           // Dim while dragging so the ghost is clearly the moving element.
@@ -128,6 +139,7 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
       >
+        <FileText size={14} aria-hidden="true" style={{ flexShrink: 0, color: iconColor }} />
         {isDeleted ? (
           <span style={{ ...titleStyle, color: "var(--color-destructive)" }}>
             (deleted)
@@ -137,7 +149,7 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
             style={{
               ...titleStyle,
               // Active brighter-not-bolder: color conveys selection, weight is uniform.
-              color: isActive ? "var(--color-fg)" : "var(--color-muted)",
+              color: isActive ? "var(--color-fg-title)" : "var(--color-muted)",
             }}
           >
             {title}
