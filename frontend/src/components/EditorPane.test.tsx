@@ -2592,6 +2592,216 @@ describe("<EditorPane /> — Phase 15 flush() ref method (Plan 15-02, TAB-13)", 
     });
 });
 
+describe("<EditorPane /> — UAT-3: coalescing OUTCOME (flush-dialog race, DEBT-01)", () => {
+    // These assert on the SETTLED outcome of flush() when it coalesces into an
+    // already in-flight save — NOT on updateNote call count (E6 already proves
+    // call count; it does not catch the optimistic `{ ok: true }` race).
+    function renderWithFlush(noteId: string | null = ScratchpadUUID) {
+        const flushRef: { current: { flush: () => Promise<void> } | null } = {
+            current: null,
+        };
+        const view = render(<EditorPane noteId={noteId} flushRef={flushRef} />);
+        return { ...view, flushRef };
+    }
+
+    it("Test A: blur-started save fails while flush() coalesces into it → flush() REJECTS (UAT-3 repro)", async () => {
+        getNoteMock.mockResolvedValue(okGet("base"));
+
+        // A single shared, still-pending PUT represents "save #1" — every call
+        // to updateNote (the in-flight save AND the trailing re-fire the fix
+        // schedules once it settles) observes the SAME eventual outcome.
+        let resolveShared: (v: PutReturn) => void = () => {};
+        const sharedPut = new Promise<PutReturn>((r) => {
+            resolveShared = r;
+        }) as ReturnType<typeof updateNote>;
+        updateNoteMock.mockImplementation(() => sharedPut);
+
+        const { flushRef } = renderWithFlush();
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("base"));
+
+        fireEvent.change(editor, { target: { value: "edited" } });
+
+        // Blur starts save #1 (in-flight, unresolved) — the common close path.
+        await act(async () => {
+            window.__jasperMockEditorBlur?.();
+            await Promise.resolve();
+        });
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+
+        // flush() coalesces into the in-flight save.
+        let flushSettled: "resolved" | "rejected" | null = null;
+        const flushPromise = flushRef.current!.flush().then(
+            () => {
+                flushSettled = "resolved";
+            },
+            () => {
+                flushSettled = "rejected";
+            },
+        );
+
+        await flushMicrotasks();
+        // Must NOT have settled yet — save #1's real outcome is still pending.
+        expect(flushSettled).toBeNull();
+
+        // Resolve save #1's PUT with a FAILURE.
+        await act(async () => {
+            resolveShared(errPut("disk full"));
+            await flushPromise;
+        });
+
+        expect(flushSettled).toBe("rejected");
+    });
+
+    it("Test B: coalesced caller resolves when the in-flight AND trailing save both succeed (no hang)", async () => {
+        getNoteMock.mockResolvedValue(okGet("base"));
+
+        let resolveFirst: (v: PutReturn) => void = () => {};
+        let resolveSecond: (v: PutReturn) => void = () => {};
+        updateNoteMock
+            .mockImplementationOnce(
+                () =>
+                    new Promise<PutReturn>((r) => {
+                        resolveFirst = r;
+                    }) as ReturnType<typeof updateNote>,
+            )
+            .mockImplementationOnce(
+                () =>
+                    new Promise<PutReturn>((r) => {
+                        resolveSecond = r;
+                    }) as ReturnType<typeof updateNote>,
+            );
+
+        const { flushRef } = renderWithFlush();
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("base"));
+
+        fireEvent.change(editor, { target: { value: "edited" } });
+
+        await act(async () => {
+            window.__jasperMockEditorBlur?.();
+            await Promise.resolve();
+        });
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+
+        let flushSettled: "resolved" | "rejected" | null = null;
+        const flushPromise = flushRef.current!.flush().then(
+            () => {
+                flushSettled = "resolved";
+            },
+            () => {
+                flushSettled = "rejected";
+            },
+        );
+
+        await flushMicrotasks();
+        expect(flushSettled).toBeNull();
+
+        // Save #1 succeeds — the trailing save (carrying flush's coalesced
+        // content) fires next; flush must NOT settle until IT resolves too.
+        await act(async () => {
+            resolveFirst(okPut());
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+        expect(updateNoteMock).toHaveBeenCalledTimes(2);
+        expect(flushSettled).toBeNull();
+
+        await act(async () => {
+            resolveSecond(okPut());
+            await flushPromise;
+        });
+
+        expect(flushSettled).toBe("resolved");
+    });
+
+    it("Test C: 3-deep coalescing — all coalesced callers settle with the SAME final outcome, no leaked promise", async () => {
+        getNoteMock.mockResolvedValue(okGet("base"));
+
+        let resolveFirst: (v: PutReturn) => void = () => {};
+        let resolveTrailing: (v: PutReturn) => void = () => {};
+        updateNoteMock
+            .mockImplementationOnce(
+                () =>
+                    new Promise<PutReturn>((r) => {
+                        resolveFirst = r;
+                    }) as ReturnType<typeof updateNote>,
+            )
+            .mockImplementationOnce(
+                () =>
+                    new Promise<PutReturn>((r) => {
+                        resolveTrailing = r;
+                    }) as ReturnType<typeof updateNote>,
+            );
+
+        const { flushRef } = renderWithFlush();
+        await flushMicrotasks();
+
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("base"));
+
+        fireEvent.change(editor, { target: { value: "edited" } });
+
+        // Save #1 starts in-flight (blur — the common close path).
+        await act(async () => {
+            window.__jasperMockEditorBlur?.();
+            await Promise.resolve();
+        });
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+
+        // 3 additional callers (autosave-debounce equivalent + blur retry + flush)
+        // all coalesce onto the SAME in-flight save while it is unresolved.
+        const outcomes: Array<"resolved" | "rejected"> = [];
+        const record = (p: Promise<void>) =>
+            p.then(
+                () => {
+                    outcomes.push("resolved");
+                },
+                () => {
+                    outcomes.push("rejected");
+                },
+            );
+
+        const p1 = record(flushRef.current!.flush());
+        const p2 = record(flushRef.current!.flush());
+        const p3 = record(flushRef.current!.flush());
+
+        await flushMicrotasks();
+        expect(outcomes).toHaveLength(0);
+
+        // Save #1 FAILS — none of the 3 coalesced callers may settle yet; the
+        // fix must fire exactly ONE trailing save that carries their outcome.
+        await act(async () => {
+            resolveFirst(errPut("disk full"));
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+        expect(updateNoteMock).toHaveBeenCalledTimes(2);
+        expect(outcomes).toHaveLength(0);
+
+        // The trailing save also FAILS — ALL 3 coalesced callers reject with
+        // this SAME outcome, and no promise is left unresolved.
+        await act(async () => {
+            resolveTrailing(errPut("disk full"));
+            await Promise.all([p1, p2, p3]);
+        });
+
+        expect(outcomes).toEqual(["rejected", "rejected", "rejected"]);
+        // Exactly one trailing save regardless of how many callers coalesced.
+        expect(updateNoteMock).toHaveBeenCalledTimes(2);
+    });
+});
+
 describe("<EditorPane /> breadcrumb (TAB-18)", () => {
     it("renders interactive per-segment breadcrumb above the editor for a foldered note", async () => {
         getNoteMock.mockResolvedValue(okGet("# route"));
