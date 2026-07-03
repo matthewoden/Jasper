@@ -182,6 +182,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   const savedTimer = useRef<number | null>(null);
   const inFlight = useRef(false);
   const trailingPending = useRef(false);
+  // Coalesced callers (flush(), another blur, autosave-debounce) that landed
+  // while a save was already in flight; resolved with the trailing save's
+  // REAL outcome once it settles (UAT-3 — never an optimistic ok:true).
+  const trailingWaiters = useRef<Array<(r: { ok: boolean }) => void>>([]);
   const userHasEdited = useRef(false);
   const noteIdRef = useRef<string | null>(noteId);
   useEffect(() => {
@@ -282,9 +286,13 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     if (id === null) return { ok: false };
     if (connectionStatusRef.current !== "connected") return { ok: false };
     if (inFlight.current) {
-      // A save is already running; this content rides out as the trailing save.
+      // A save is already running; this content rides out as the trailing
+      // save. Resolve with ITS real outcome once it settles (UAT-3) — never
+      // optimistically here.
       trailingPending.current = true;
-      return { ok: true };
+      return new Promise<{ ok: boolean }>((resolve) => {
+        trailingWaiters.current.push(resolve);
+      });
     }
     inFlight.current = true;
     dispatch({ type: "requestSave" });
@@ -364,7 +372,13 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       inFlight.current = false;
       if (trailingPending.current) {
         trailingPending.current = false;
-        void performSave(latestContentRef.current);
+        // Snapshot-and-clear so callers that coalesce onto the NEW trailing
+        // save (fired below) queue onto a fresh array, not this one.
+        const waiters = trailingWaiters.current;
+        trailingWaiters.current = [];
+        void performSave(latestContentRef.current).then((r) => {
+          waiters.forEach((resolve) => resolve(r));
+        });
       }
     }
   }, [refreshTree]);
