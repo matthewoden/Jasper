@@ -409,15 +409,25 @@ export function TabStrip({
     return () => window.removeEventListener("keydown", handler, true);
   }, []);
 
-  // Clear the ghost if the window loses focus mid-drag so it can never get stranded.
+  // Clear the ghost if the window loses focus mid-drag, or if the button is
+  // released anywhere in the window, so a drag can never get stranded (gap 5 /
+  // CR-02). The window pointerup is a safety-net dismiss for releases outside
+  // the strip — it never fires a reorder; the strip's own onPointerUp still
+  // owns in-strip drops.
   useEffect(() => {
-    function handleWindowBlur() {
+    function dismissStrandedDrag() {
+      if (dragRef.current === null) return;
       dragRef.current = null;
       setDropIndicatorX(null);
       setDragGhost(null);
+      suppressClickRef.current = false;
     }
-    window.addEventListener("blur", handleWindowBlur);
-    return () => window.removeEventListener("blur", handleWindowBlur);
+    window.addEventListener("blur", dismissStrandedDrag);
+    window.addEventListener("pointerup", dismissStrandedDrag);
+    return () => {
+      window.removeEventListener("blur", dismissStrandedDrag);
+      window.removeEventListener("pointerup", dismissStrandedDrag);
+    };
   }, []);
 
   // Single source for the + button so the empty-state and normal branches share
@@ -501,6 +511,12 @@ export function TabStrip({
   function handleStripPointerMove(e: PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag) return;
+    // The primary button was already released outside the strip (no pointerup
+    // ever reached us) — abandon the stale drag instead of resuming it.
+    if (e.buttons === 0) {
+      handleStripPointerCancel();
+      return;
+    }
     const moved = Math.abs(e.clientX - drag.startX);
     if (!drag.active && moved > DRAG_THRESHOLD) {
       drag.active = true;
@@ -579,6 +595,9 @@ export function TabStrip({
     dragRef.current = null;
     setDropIndicatorX(null);
     setDragGhost(null);
+    // An abandoned/cancelled drag must never leave a later legitimate click
+    // suppressed (gap 5 / CR-02).
+    suppressClickRef.current = false;
   }
 
   return (

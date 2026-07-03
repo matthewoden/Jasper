@@ -282,7 +282,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     expect(wrapper).not.toBeNull();
 
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
 
     expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
   });
@@ -293,7 +293,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
 
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
     expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
 
     fireEvent.pointerUp(strip, { button: 0, clientX: 120, pointerId: 1 });
@@ -306,9 +306,9 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
 
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
     expect(() => {
-      fireEvent.pointerMove(strip, { clientX: 140, pointerId: 1 });
+      fireEvent.pointerMove(strip, { clientX: 140, pointerId: 1, buttons: 1 });
     }).not.toThrow();
     expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
   });
@@ -319,7 +319,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
 
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
     expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
 
     fireEvent.pointerCancel(strip, { clientX: 120, pointerId: 1 });
@@ -333,7 +333,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
 
     // Move only 3px — below the 5px threshold
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 103, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 103, pointerId: 1, buttons: 1 });
 
     expect(screen.queryByTestId("tab-drag-ghost")).not.toBeInTheDocument();
   });
@@ -346,7 +346,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     expect(wrapper).not.toBeNull();
 
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
 
     const ghost = screen.getByTestId("tab-drag-ghost");
     expect(ghost).toBeInTheDocument();
