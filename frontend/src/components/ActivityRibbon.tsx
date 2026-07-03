@@ -81,7 +81,14 @@ function RibbonButton({
   );
 }
 
-export function ActivityRibbon(): React.JSX.Element {
+interface ActivityRibbonProps {
+  /** Optional style for grid placement; merged onto the outer nav. */
+  style?: CSSProperties;
+}
+
+export function ActivityRibbon({
+  style = {},
+}: ActivityRibbonProps = {}): React.JSX.Element {
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
   const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);
   const paletteOpen = useTreeStore((s) => s.paletteOpen);
@@ -98,7 +105,7 @@ export function ActivityRibbon(): React.JSX.Element {
   const searchActive = paletteOpen && paletteMode === "search";
 
   return (
-    <nav style={ribbonStyle} aria-label="Activity ribbon">
+    <nav style={{ ...ribbonStyle, ...style }} aria-label="Activity ribbon">
       <div
         aria-label={`Vault: ${displayName}`}
         style={{
