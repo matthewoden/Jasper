@@ -589,7 +589,6 @@ export function TabStrip({
         tabIds: tabs.map((t) => t.id),
         visibleTabIds: visibleTabs.map((t) => t.id),
         targetId,
-        fromIndex: drag.fromIndex,
       });
       // reorderTabs splices fromIndex OUT before inserting at toIndex
       // (splice-first), so a left-to-right drop must compensate by one to

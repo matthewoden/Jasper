@@ -145,7 +145,7 @@ describe("computeDropIndex", () => {
 
     // Drag 'a' (fromIndex 0); drop indicator sits between 'b' and 'e' -> targetId 'e'.
     // prevVisible = visibleTabIds[visIdx('e') - 1] = 'b'; toIdx = tabIds.indexOf('b') + 1 = 2.
-    const toIdx = computeDropIndex({ tabIds, visibleTabIds, targetId: "e", fromIndex: 0 });
+    const toIdx = computeDropIndex({ tabIds, visibleTabIds, targetId: "e" });
     expect(toIdx).toBe(2);
 
     // Splice-first compensation (mirrors TabStrip.handleStripPointerUp, gap 6 / WR-01):
@@ -172,7 +172,7 @@ describe("computeDropIndex", () => {
 
     // targetId null = past all visible pills; prevVisible = last visible = 'e';
     // toIdx = tabIds.indexOf('e') + 1 = 5 (append past the end of the full array).
-    const toIdx = computeDropIndex({ tabIds, visibleTabIds, targetId: null, fromIndex: 0 });
+    const toIdx = computeDropIndex({ tabIds, visibleTabIds, targetId: null });
     expect(toIdx).toBe(5);
 
     const adjusted = 0 < toIdx ? toIdx - 1 : toIdx;
@@ -191,7 +191,7 @@ describe("computeDropIndex", () => {
 
     // Old buggy code: toIdx = tabs.findIndex(t => t.id === 'c') = 2.
     // New fn: prevVisible = visibleTabIds[visIdx('c') - 1] = 'b'; toIdx = tabIds.indexOf('b') + 1 = 2.
-    const toIdx = computeDropIndex({ tabIds, visibleTabIds, targetId: "c", fromIndex: 0 });
+    const toIdx = computeDropIndex({ tabIds, visibleTabIds, targetId: "c" });
     expect(toIdx).toBe(2);
     expect(toIdx).toBe(tabIds.findIndex((id) => id === "c"));
   });
@@ -199,18 +199,18 @@ describe("computeDropIndex", () => {
   it("(k) drop onto the first visible tab -> no prevVisible, toIdx 0", () => {
     const tabIds = ["a", "b", "c"];
     const visibleTabIds = ["a", "b", "c"];
-    expect(computeDropIndex({ tabIds, visibleTabIds, targetId: "a", fromIndex: 2 })).toBe(0);
+    expect(computeDropIndex({ tabIds, visibleTabIds, targetId: "a" })).toBe(0);
   });
 
   it("(l) targetId not present in visibleTabIds -> -1 (caller no-ops)", () => {
     const tabIds = ["a", "b", "c"];
     const visibleTabIds = ["a", "b", "c"];
-    expect(computeDropIndex({ tabIds, visibleTabIds, targetId: "zzz", fromIndex: 0 })).toBe(-1);
+    expect(computeDropIndex({ tabIds, visibleTabIds, targetId: "zzz" })).toBe(-1);
   });
 
   it("(m) empty visibleTabIds with targetId null -> 0 (no prevVisible, nothing to be adjacent to)", () => {
     expect(
-      computeDropIndex({ tabIds: [], visibleTabIds: [], targetId: null, fromIndex: 0 }),
+      computeDropIndex({ tabIds: [], visibleTabIds: [], targetId: null }),
     ).toBe(0);
   });
 });

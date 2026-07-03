@@ -75,8 +75,6 @@ export interface DropIndexInput {
   visibleTabIds: string[];
   /** The visible tab the pointer is dropping onto, or null to drop past the last visible tab. */
   targetId: string | null;
-  /** Full-array index of the tab being dragged (unused in the calculation; carried for callers). */
-  fromIndex: number;
 }
 
 /**
