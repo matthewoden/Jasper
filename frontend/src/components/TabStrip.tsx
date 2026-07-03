@@ -28,7 +28,7 @@ import {
   PanelSelectorDropdown,
   PANEL_SELECTOR_TRIGGER_WIDTH,
 } from "./PanelSelectorDropdown";
-import { computeHiddenTabIds, MIN_TAB_WIDTH } from "../lib/tabOverflow";
+import { computeHiddenTabIds, computeDropIndex, MIN_TAB_WIDTH } from "../lib/tabOverflow";
 
 /** Set equality used to preserve state identity (avoid re-render churn). */
 function sameSet(a: Set<string>, b: Set<string>): boolean {
@@ -398,16 +398,7 @@ export function TabStrip({
       const isNextCtrlTab =
         e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab" && !e.shiftKey;
       if (isNextAlt || isNextCtrlTab) {
-        if (isNextCtrlTab) {
-          // Ctrl+Tab may be non-cancelable (browser-swallowed) — guard (Pitfall 8).
-          try {
-            e.preventDefault();
-          } catch {
-            /* event not cancelable — browser owns Ctrl+Tab here */
-          }
-        } else {
-          e.preventDefault();
-        }
+        e.preventDefault();
         store.cycleTab(1);
         return;
       }
@@ -418,15 +409,7 @@ export function TabStrip({
       const isPrevCtrlTab =
         e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab" && e.shiftKey;
       if (isPrevAlt || isPrevCtrlTab) {
-        if (isPrevCtrlTab) {
-          try {
-            e.preventDefault();
-          } catch {
-            /* event not cancelable — browser owns Ctrl+Shift+Tab here */
-          }
-        } else {
-          e.preventDefault();
-        }
+        e.preventDefault();
         store.cycleTab(-1);
         return;
       }
@@ -598,23 +581,22 @@ export function TabStrip({
       setDragGhost(null);
       dragRef.current = null;
 
-      if (targetId !== null) {
-        const toIdx = tabs.findIndex((t) => t.id === targetId);
-        // reorderTabs splices fromIndex OUT before inserting at toIndex
-        // (splice-first), so a left-to-right drop must compensate by one to
-        // land where the left-edge indicator promised (gap 6 / WR-01).
-        const adjusted = drag.fromIndex < toIdx ? toIdx - 1 : toIdx;
-        if (toIdx !== -1 && adjusted !== drag.fromIndex) {
-          onReorder(drag.fromIndex, adjusted);
-        }
-      } else {
-        // Dropped past all visible tabs — move to end of visible range.
-        const lastVisibleIdx = tabs.findIndex(
-          (t) => t.id === visibleTabs[visibleTabs.length - 1]?.id,
-        );
-        if (lastVisibleIdx !== -1 && lastVisibleIdx !== drag.fromIndex) {
-          onReorder(drag.fromIndex, lastVisibleIdx);
-        }
+      // Map the drop onto the VISIBLE strip to a full-array insert index.
+      // Hidden (overflowed) tabs can be interleaved between visible ones, so
+      // this anchors on the previous VISIBLE tab's full-array position + 1
+      // rather than the target's own full-array index (WR-03).
+      const toIdx = computeDropIndex({
+        tabIds: tabs.map((t) => t.id),
+        visibleTabIds: visibleTabs.map((t) => t.id),
+        targetId,
+        fromIndex: drag.fromIndex,
+      });
+      // reorderTabs splices fromIndex OUT before inserting at toIndex
+      // (splice-first), so a left-to-right drop must compensate by one to
+      // land where the left-edge indicator promised (gap 6 / WR-01).
+      const adjusted = drag.fromIndex < toIdx ? toIdx - 1 : toIdx;
+      if (toIdx !== -1 && adjusted !== drag.fromIndex) {
+        onReorder(drag.fromIndex, adjusted);
       }
     } else {
       setDropIndicatorX(null);
