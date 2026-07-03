@@ -587,7 +587,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     return (
       <section
         className="flex flex-col h-full bg-bg"
-        style={{ minHeight: 0, overflow: "hidden", ...style }}
+        style={{
+          display: hidden ? "none" : undefined,
+          minHeight: 0,
+          overflow: "hidden",
+          ...style,
+        }}
         data-testid="editor-pane-file-preview"
       >
         <FilePreviewView path={activeFilePath} />
@@ -600,7 +605,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       <section
         className="flex flex-col h-full bg-bg"
         data-testid="editor-pane-placeholder"
-        style={style}
+        style={{ display: hidden ? "none" : undefined, ...style }}
       >
         <div
           className="flex items-center justify-center"

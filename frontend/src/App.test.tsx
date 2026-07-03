@@ -694,6 +694,48 @@ describe("<App /> — session sync", () => {
     });
   });
 
+  it("CR-01: reindex hides the EditorPane via CSS but keeps it MOUNTED — unsaved edits survive", async () => {
+    useTreeStore.setState({ activeNoteId: SCRATCHPAD });
+    useTabStore.getState().clearAllTabs();
+    render(<AppShell />);
+    await waitFor(() => expect(capturedSessionSyncHandlers).not.toBeNull());
+    const editor = (await screen.findByLabelText(
+      "Note content",
+    )) as HTMLTextAreaElement;
+    await waitFor(() => expect(editor.value).toBe("# Welcome"));
+
+    // Mid-debounce edit that a pane unmount would silently discard.
+    fireEvent.change(editor, {
+      target: { value: "# Welcome — unsaved edit" },
+    });
+
+    act(() => {
+      capturedSessionSyncHandlers!.onReindexStarted();
+    });
+    await waitFor(() =>
+      expect(screen.getByText(/Rebuilding/i)).toBeInTheDocument(),
+    );
+
+    // Pane is display:none, NOT unmounted; the buffer is intact underneath.
+    expect(screen.getByTestId("editor-pane").style.display).toBe("none");
+    expect(
+      (screen.getByLabelText("Note content") as HTMLTextAreaElement).value,
+    ).toBe("# Welcome — unsaved edit");
+
+    act(() => {
+      capturedSessionSyncHandlers!.onReindexComplete({ notes_indexed: 1 });
+    });
+    await waitFor(() =>
+      expect(screen.queryByText(/Rebuilding/i)).not.toBeInTheDocument(),
+    );
+
+    // Same pane instance re-shown with the edit still in place (no re-fetch).
+    expect(screen.getByTestId("editor-pane").style.display).not.toBe("none");
+    expect(
+      (screen.getByLabelText("Note content") as HTMLTextAreaElement).value,
+    ).toBe("# Welcome — unsaved edit");
+  });
+
   it("A-Phase4-4: onLinksRewritten with error:true shows RenameRewriteErrorBanner", async () => {
     render(<AppShell />);
     await waitFor(() => expect(capturedSessionSyncHandlers).not.toBeNull());

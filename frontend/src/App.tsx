@@ -764,8 +764,12 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
 
         {/* Editor host: row 2, column 3. One keep-alive EditorPane per open tab,
             all hidden except the active one (D-01). When no tabs are open, a single
-            pane driven by the legacy activeNoteId renders the placeholder/empty state. */}
-        {reindexing ? (
+            pane driven by the legacy activeNoteId renders the placeholder/empty state.
+            During reindex, ReindexProgress OVERLAYS the cell and the panes are
+            hidden via CSS — never unmounted. Unmounting would discard unsaved
+            buffers and pending debounces (data loss); keeping the panes mounted
+            lets EditorPane's reindexing save-block guard do its job. */}
+        {reindexing && (
           <ReindexProgress
             style={{ gridRow: "2", gridColumn: "3" }}
             phase={reindexPhase}
@@ -773,11 +777,13 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
             onRetry={fireReindex}
             onClose={onCloseOverlay}
           />
-        ) : tabs.length === 0 ? (
+        )}
+        {tabs.length === 0 ? (
           <EditorPane
             style={{ gridRow: "2", gridColumn: "3" }}
             noteId={activeNoteId}
-            reindexing={false}
+            hidden={reindexing}
+            reindexing={reindexing}
             autosaveMs={config?.editor.autosaveMs ?? 2000}
           />
         ) : (
@@ -786,9 +792,9 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
               key={tab.id}
               style={{ gridRow: "2", gridColumn: "3" }}
               noteId={tab.noteId}
-              hidden={tab.id !== tabActiveTabId}
+              hidden={reindexing || tab.id !== tabActiveTabId}
               isDeleted={deletedTabIds.has(tab.noteId)}
-              reindexing={false}
+              reindexing={reindexing}
               editorHandlersRef={tabHandlerRefs.current[tab.id]}
               flushRef={tabFlushRefs.current[tab.id]}
               autosaveMs={config?.editor.autosaveMs ?? 2000}
