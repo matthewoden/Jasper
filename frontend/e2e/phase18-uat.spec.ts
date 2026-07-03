@@ -392,6 +392,64 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
   });
 });
 
+// ─── POLISH-09: center-column vertical geometry pin (18-09 sign-off) ────────
+
+test.describe("@phase18 POLISH-09: center-column vertical geometry pin", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("tab-strip is y=0/h=40 (absolute), breadcrumb is flush under the strip, cm-content is flush under the breadcrumb", async ({
+    page,
+  }) => {
+    // Match the 1512x944 measurement context the pins were empirically
+    // derived from (18-09-SUMMARY.md) so these pins are stable across CI
+    // runners regardless of the suite's default Desktop Chrome viewport.
+    await page.setViewportSize({ width: 1512, height: 944 });
+
+    const noteId = await createNote(jasper, "geom-pinned-note");
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, noteId);
+
+    const breadcrumb = page.getByTestId("note-breadcrumb");
+    const cmContent = page.locator(".cm-content:visible");
+
+    // Poll until all three boxes resolve to non-zero dimensions before
+    // asserting exact pixel values (no bare pre-layout read).
+    let stripBox = await tabStrip(page).boundingBox();
+    let breadcrumbBox = await breadcrumb.boundingBox();
+    let cmBox = await cmContent.boundingBox();
+    await expect
+      .poll(async () => {
+        stripBox = await tabStrip(page).boundingBox();
+        breadcrumbBox = await breadcrumb.boundingBox();
+        cmBox = await cmContent.boundingBox();
+        return (
+          (stripBox?.height ?? 0) > 0 &&
+          (breadcrumbBox?.height ?? 0) > 0 &&
+          (cmBox?.height ?? 0) > 0
+        );
+      }, { timeout: 5_000 })
+      .toBe(true);
+    if (!stripBox || !breadcrumbBox || !cmBox) {
+      throw new Error("geometry bounding boxes unavailable");
+    }
+
+    // Absolute — TABUI-01 contract.
+    expect(stripBox.y).toBe(0);
+    expect(stripBox.height).toBe(40);
+    // Relational flush pins (survive benign breadcrumb-padding restyles).
+    expect(breadcrumbBox.y).toBe(stripBox.y + stripBox.height);
+    expect(cmBox.y).toBe(breadcrumbBox.y + breadcrumbBox.height);
+  });
+});
+
 // ─── TABUI-02: tab-bar split toggle placement (far-left / far-right) ────────
 
 test.describe("@phase18 TABUI-02: tab-bar split toggle placement", () => {
