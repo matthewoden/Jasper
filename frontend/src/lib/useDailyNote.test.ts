@@ -173,7 +173,14 @@ describe("useDailyNote", () => {
       expect(mockedOpenToday.mock.calls[0][0]).toBe("2026-07-02");
     } finally {
       vi.useRealTimers();
-      process.env.TZ = originalTz;
+      // Assigning undefined here would coerce TZ to the literal string
+      // "undefined" (an invalid IANA zone), corrupting later date tests
+      // that share this worker.
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
     }
   });
 
