@@ -23,9 +23,10 @@ export function useDailyNote() {
   const { toast } = useToast();
 
   const openToday = useCallback(async () => {
-    if (dailyNoteLoading) return;
+    if (useTreeStore.getState().dailyNoteLoading) return;
 
-    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
     setDailyNoteLoading(true);
     try {
@@ -42,7 +43,7 @@ export function useDailyNote() {
     } finally {
       setDailyNoteLoading(false);
     }
-  }, [dailyNoteLoading, setDailyNoteLoading, setActiveNote, toast]);
+  }, [setDailyNoteLoading, setActiveNote, toast]);
 
   return { openToday, isLoading: dailyNoteLoading };
 }
