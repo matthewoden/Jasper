@@ -10,6 +10,8 @@ import {
   MIN_TAB_WIDTH,
   MAX_TAB_WIDTH,
 } from "./tabOverflow";
+import { PANEL_SELECTOR_TRIGGER_WIDTH } from "../components/PanelSelectorDropdown";
+import { RESERVED } from "../components/TabStrip";
 
 const OVERFLOW = 28;
 const base = {
@@ -112,5 +114,17 @@ describe("computeHiddenTabIds", () => {
     expect(
       computeHiddenTabIds({ ...base, tabIds: [], activeTabId: null, availableWidth: 400 }),
     ).toEqual(new Set());
+  });
+
+  it("(g) drift guard: TabStrip's RESERVED stays composed from PANEL_SELECTOR_TRIGGER_WIDTH (IN-06)", () => {
+    // Right cluster: 1 (borderLeft) + 8 (paddingLeft) + PANEL_SELECTOR_TRIGGER_WIDTH
+    // + 4 (flex gap) + 28 (right toggle). Left cluster: 28 + 8 + 1 = 37.
+    // Strip chrome: 8 (padding) + 26 (new-tab button).
+    const rightCluster = 1 + 8 + PANEL_SELECTOR_TRIGGER_WIDTH + 4 + 28;
+    const leftCluster = 37;
+    const expectedReserved = 8 + 26 + rightCluster + leftCluster;
+
+    expect(expectedReserved).toBe(136);
+    expect(RESERVED).toBe(expectedReserved);
   });
 });
