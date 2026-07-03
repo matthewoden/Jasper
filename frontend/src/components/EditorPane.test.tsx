@@ -2957,3 +2957,40 @@ describe("<EditorPane /> breadcrumb (TAB-18)", () => {
         expect(separators).toHaveLength(0);
     });
 });
+
+
+describe("<EditorPane /> — WR-03 global saveState ownership", () => {
+    it("WR-03: a hidden pane's background save does NOT touch the global saveState; becoming visible re-syncs it", async () => {
+        getNoteMock.mockResolvedValue(okGet("background content"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        // Sentinel object: identity check proves the hidden pane never wrote.
+        const marker = { status: "idle" } as const;
+        useTreeStore.getState().setSaveState(marker);
+
+        const { rerender } = render(
+            <EditorPane noteId={ScratchpadUUID} hidden />,
+        );
+        await flushMicrotasks();
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("background content"));
+
+        // Hidden pane saves in the background (debounce fires while hidden).
+        fireEvent.change(editor, { target: { value: "background edit" } });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
+        });
+        await waitFor(() => expect(updateNoteMock).toHaveBeenCalled());
+
+        // The saving → saved transitions stayed local to the hidden pane.
+        expect(useTreeStore.getState().saveState).toBe(marker);
+
+        // Pane becomes visible → it now owns the global indicator.
+        rerender(<EditorPane noteId={ScratchpadUUID} />);
+        await waitFor(() =>
+            expect(useTreeStore.getState().saveState.status).toBe("saved"),
+        );
+    });
+});

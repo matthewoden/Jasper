@@ -197,9 +197,13 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     connectionStatusRef.current = connectionStatus;
   }, [connectionStatus]);
 
+  // Only the VISIBLE pane owns the global save indicator: hidden keep-alive
+  // panes save in the background (blur, reconnect-flush) and would otherwise
+  // drive the status bar last-writer-wins for a note the user isn't viewing.
   useEffect(() => {
+    if (hidden) return;
     useTreeStore.getState().setSaveState(saveState);
-  }, [saveState]);
+  }, [saveState, hidden]);
 
   const keepaliveSentRef = useRef(false);
 
