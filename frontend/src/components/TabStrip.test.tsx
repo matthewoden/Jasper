@@ -357,6 +357,26 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     expect(within(ghost).getByRole("button", { name: /^Close/, hidden: true })).toBeInTheDocument();
   });
 
+  it("gap 5 / CR-02: an off-strip release (buttons:0 move) dismisses the drag and does not swallow the next click", () => {
+    const h = renderStrip();
+    const strip = screen.getByRole("tablist");
+    const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
+
+    fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
+    expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
+
+    // The mouse button was released outside the strip, so no pointerup ever
+    // reaches the strip — but the next pointermove reports buttons:0.
+    fireEvent.pointerMove(strip, { clientX: 130, pointerId: 1, buttons: 0 });
+    expect(screen.queryByTestId("tab-drag-ghost")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("tab-drop-indicator")).not.toBeInTheDocument();
+
+    // A subsequent legitimate click must not be swallowed by a stale suppressClickRef.
+    fireEvent.click(screen.getByText("Title a"));
+    expect(h.onSelectTab).toHaveBeenCalledWith("a");
+  });
+
   it("POLISH-OVERLAY: drop indicator is position:absolute and not inside any tab wrapper", () => {
     renderStrip();
     const strip = screen.getByRole("tablist");
@@ -364,7 +384,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     expect(wrapper).not.toBeNull();
 
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
 
     const indicator = screen.getByTestId("tab-drop-indicator");
     expect(indicator).toBeInTheDocument();
