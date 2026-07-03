@@ -17,12 +17,14 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
-import { Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useTabStore } from "../lib/useTabStore";
 import type { Tab } from "../lib/useTabStore";
+import { useTreeStore } from "../lib/useTreeStore";
 import { TabPill } from "./TabPill";
 import { TabContextMenu } from "./TabContextMenu";
 import { TabOverflowDropdown } from "./TabOverflowDropdown";
+import { PanelSelectorDropdown } from "./PanelSelectorDropdown";
 import { computeHiddenTabIds, MIN_TAB_WIDTH } from "../lib/tabOverflow";
 
 /** Set equality used to preserve state identity (avoid re-render churn). */
@@ -31,11 +33,62 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 }
 
 // Reserved strip chrome that is never available to tabs:
-//   strip horizontal padding (4px each side) + the pinned new-tab button
-//   (width 24 + 2px left margin). The overflow dropdown trigger (28px) is
-//   reserved separately, inside computeHiddenTabIds, ONLY when overflow occurs.
-const RESERVED = 8 + 26;
+//   strip horizontal padding (8) + pinned new-tab button (26) + the tab-bar
+//   right-hand cluster (97): 1 (borderLeft) + 8 (paddingLeft) + 24
+//   (PanelSelectorDropdown trigger, per triggerButtonStyle.width) + 28 (left
+//   toggle) + 28 (right toggle) + 2x4 (the two flex gaps between the three
+//   children) = 97. The overflow dropdown trigger (28px) is reserved
+//   separately, inside computeHiddenTabIds, ONLY when overflow occurs.
+const RESERVED = 8 + 26 + 97;
 const OVERFLOW_BTN = 28;
+
+/** 28x28 icon button for the tab-bar right-hand cluster — same hover-fill
+ *  idiom as ChromeBar's ToggleButton, relocated here per D-04. */
+const rightClusterButtonBase: CSSProperties = {
+  width: 28,
+  height: 28,
+  padding: 6,
+  background: "transparent",
+  border: "none",
+  color: "var(--color-muted)",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 4,
+};
+
+interface RightClusterToggleProps {
+  ariaLabel: string;
+  onClick: () => void;
+  icon: React.ReactNode;
+}
+
+function RightClusterToggle({
+  ariaLabel,
+  onClick,
+  icon,
+}: RightClusterToggleProps): React.JSX.Element {
+  const [hovering, setHovering] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      title={ariaLabel}
+      onClick={onClick}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+      style={{
+        ...rightClusterButtonBase,
+        background: hovering
+          ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+          : "transparent",
+      }}
+    >
+      {icon}
+    </button>
+  );
+}
 
 // Movement threshold (px) before a pointerdown is treated as a drag.
 // Small enough to feel responsive; large enough to not fire on a click.
@@ -187,6 +240,62 @@ export function TabStrip({
   forceHiddenTabIds,
   style,
 }: TabStripProps) {
+  // Right-hand cluster (relocated from ChromeBar, D-04): left/right sidebar
+  // toggles + PanelSelectorDropdown. The right toggle is ALWAYS rendered
+  // (no panelSelector gating — that gate belonged to the old ChromeBar and
+  // is intentionally dropped, see TabStrip.test.tsx).
+  const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
+  const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);
+  const backlinksRailExpanded = useTreeStore((s) => s.backlinksRailExpanded);
+  const setBacklinksRailExpanded = useTreeStore(
+    (s) => s.setBacklinksRailExpanded,
+  );
+
+  const sidebarLabel = notesSidebarVisible
+    ? "Hide notes sidebar"
+    : "Show notes sidebar";
+  const railLabel = backlinksRailExpanded ? "Hide panels" : "Show panels";
+
+  const rightCluster = (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        borderLeft: "1px solid var(--color-border-inner)",
+        paddingLeft: 8,
+        flexShrink: 0,
+      }}
+      data-testid="tab-strip-right-cluster"
+    >
+      <span style={{ display: "inline-flex" }}>
+        <PanelSelectorDropdown />
+      </span>
+      <RightClusterToggle
+        ariaLabel={sidebarLabel}
+        onClick={() => setNotesSidebarVisible(!notesSidebarVisible)}
+        icon={
+          notesSidebarVisible ? (
+            <ChevronLeft size={16} aria-hidden="true" />
+          ) : (
+            <ChevronRight size={16} aria-hidden="true" />
+          )
+        }
+      />
+      <RightClusterToggle
+        ariaLabel={railLabel}
+        onClick={() => setBacklinksRailExpanded(!backlinksRailExpanded)}
+        icon={
+          backlinksRailExpanded ? (
+            <ChevronRight size={16} aria-hidden="true" />
+          ) : (
+            <ChevronLeft size={16} aria-hidden="true" />
+          )
+        }
+      />
+    </div>
+  );
+
   // Render-only ghost state: tracks cursor position while drag is active.
   // dragRef remains the authoritative drag source; this is purely for display.
   const [dragGhost, setDragGhost] = useState<DragGhost | null>(null);
@@ -338,6 +447,8 @@ export function TabStrip({
         data-testid="tab-strip"
       >
         <EmptyStateNewTabButton onNewTab={onNewTab} />
+        <div style={{ flex: "1 1 auto" }} />
+        {rightCluster}
       </div>
     );
   }
@@ -541,6 +652,7 @@ export function TabStrip({
         />
       )}
       {newTabButton}
+      {rightCluster}
       {/* Single absolute overlay bar at the drop boundary — moves without shifting
           any pill's layout position. zIndex below the fixed ghost (1000). */}
       {dragGhost !== null && dropIndicatorX !== null && (
