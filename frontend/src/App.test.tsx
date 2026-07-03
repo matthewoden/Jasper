@@ -363,10 +363,12 @@ describe("<App /> — shell composition", () => {
       error: undefined,
     });
 
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 700));
-    });
-    expect(screen.queryByText("Index rebuilt.")).toBeNull();
+    // The overlay auto-dismisses SUCCESS_TRANSIENT_MS after success; poll for
+    // that eventual condition instead of sleeping out the timer.
+    await waitFor(
+      () => expect(screen.queryByText("Index rebuilt.")).toBeNull(),
+      { timeout: 2000 },
+    );
   });
 
   it("A5: postAdminReindex error → ReindexProgress shows error copy; Close returns to the editor", async () => {
