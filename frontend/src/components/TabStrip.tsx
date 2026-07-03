@@ -80,17 +80,17 @@ const newTabButtonStyle: CSSProperties = {
 };
 
 /** Tab-shaped + button for the zero-tab empty state — reads as a real tab
- *  silhouette (TabPill's 32px top-rounded pill seated on the 36px strip) rather
- *  than a bare icon, so the empty state still looks like a tab row. */
+ *  silhouette (TabPill's 40px flush rectangular pill seated on the 40px strip)
+ *  rather than a bare icon, so the empty state still looks like a tab row. */
 const emptyStateNewTabButtonStyle: CSSProperties = {
-  height: 32,
+  height: 40,
   minWidth: 80,
   padding: "0 8px",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   border: "1px solid var(--color-border)",
-  borderRadius: "4px 4px 0 0",
+  borderRadius: 0,
   color: "var(--color-muted)",
   cursor: "pointer",
   flexShrink: 0,
@@ -121,11 +121,14 @@ function EmptyStateNewTabButton({ onNewTab }: { onNewTab: () => void }) {
   );
 }
 
+// No borderBottom (TABUI-01): per-tab right borders + the active top-accent
+// carry the separation now. A strip-level bottom border would draw a seam
+// across the active tab's --color-bg background, undermining the "seated on
+// the editor column below" look that background is meant to convey.
 const tabStripStyle: CSSProperties = {
   position: "relative",
-  height: 36,
-  background: "var(--color-bg)",
-  borderBottom: "1px solid var(--color-border)",
+  height: 40,
+  background: "var(--color-surface)",
   padding: "0 4px",
   display: "flex",
   alignItems: "flex-end",
