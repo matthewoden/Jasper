@@ -9,12 +9,17 @@
  * in flight and coalesces onto it (EditorPane's trailingWaiters queue).
  * Before the 18.2-01 fix, the coalescing branch optimistically resolved
  * `{ ok: true }` without waiting for the real outcome, so a failed save
- * silently closed the tab and dropped the edit. This spec proves the fix:
- * with the note's PUT aborted (page.route), the "Save failed — close
- * anyway?" dialog (FlushConfirmDialog) must surface on this exact path,
- * and "Close without saving" must leave zero tabs + the blank fallback
- * pane (per WR-01, the flush-reject close path also clears the legacy
- * activeNoteId so the note does not reappear in the tab-less fallback).
+ * silently closed the tab and dropped the edit. This spec proves the fix
+ * ON the coalescing path specifically: the blur-started PUT is HELD in
+ * flight (page.route defers settling it) until after the close click is
+ * processed, so flush() is guaranteed to land while that save is still in
+ * flight and coalesce onto its real outcome — an immediate abort could
+ * settle first and let flush start its own save, bypassing coalescing
+ * (IN-06). Only then is the held PUT aborted; the "Save failed — close
+ * anyway?" dialog (FlushConfirmDialog) must surface, and "Close without
+ * saving" must leave zero tabs + the blank fallback pane (per WR-01, the
+ * flush-reject close path also clears the legacy activeNoteId so the note
+ * does not reappear in the tab-less fallback).
  *
  * Discipline: zero fixed sleeps; every timing-sensitive step uses a
  * web-first assertion (expect / expect.poll). Real keyboard input into
@@ -74,7 +79,7 @@ test.describe("@uat3 UAT-3: dirty-tab close-X race surfaces the flush-confirm di
     if (jasper) await jasper.kill();
   });
 
-  test("PUT-abort + real edit + real close-X click -> 'Save failed — close anyway?' -> 'Close without saving' leaves zero tabs + blank fallback", async ({
+  test("held-PUT abort + real edit + real close-X click -> 'Save failed — close anyway?' -> 'Close without saving' leaves zero tabs + blank fallback", async ({
     page,
   }) => {
     const noteId = await createNote(jasper, "uat3-flush-race");
@@ -86,11 +91,24 @@ test.describe("@uat3 UAT-3: dirty-tab close-X race surfaces the flush-confirm di
       timeout: 10_000,
     });
 
-    // Abort only the note's PUT — every other request (including the initial
-    // GET that loaded the note) continues normally.
-    await page.route("**/api/v1/notes/**", (route) => {
-      if (route.request().method() === "PUT") return route.abort();
-      return route.continue();
+    // Hold the note's PUTs in flight (unsettled) until released, then abort.
+    // Aborting immediately would leave a timing window where the
+    // blur-started save settles BEFORE the close handler's flush() runs —
+    // flush would then start its own failing save and the dialog would
+    // surface without ever exercising the coalescing branch (IN-06).
+    // Holding the PUT until after the close click is processed pins the
+    // interleaving: flush() must coalesce onto the in-flight save. Every
+    // other request (including the initial GET) continues normally.
+    let putCount = 0;
+    let releaseHeldPut = (): void => {};
+    const putHeld = new Promise<void>((resolve) => {
+      releaseHeldPut = resolve;
+    });
+    await page.route("**/api/v1/notes/**", async (route) => {
+      if (route.request().method() !== "PUT") return route.continue();
+      putCount += 1;
+      await putHeld;
+      return route.abort();
     });
 
     // Real keyboard input (not fireEvent) so this reproduces an actual
@@ -98,14 +116,21 @@ test.describe("@uat3 UAT-3: dirty-tab close-X race surfaces the flush-confirm di
     await page.locator(".cm-content:visible").click();
     await page.keyboard.type(" — an edit that will fail to save");
 
-    // Click the tab's close X. This blurs the editor first (starting an
-    // in-flight PUT that will be aborted), then flushAndClose's flush()
-    // call lands while that save is still in flight and coalesces onto its
-    // real (failing) outcome — the exact UAT-3 race path.
+    // Click the tab's close X. This blurs the editor first (starting the
+    // PUT now held in flight), then flushAndClose's flush() call lands
+    // while that save cannot have settled and coalesces onto its real
+    // (failing) outcome — the exact UAT-3 race path.
     const closeBtn = tabPills(page)
       .first()
       .locator('button[aria-label^="Close "]');
     await closeBtn.click();
+
+    // The click has been processed, so flush() has already coalesced onto
+    // the held save. Confirm the held PUT reached the route, then release
+    // it so the save fails and its real outcome flows to the coalesced
+    // flush.
+    await expect.poll(() => putCount, { timeout: 10_000 }).toBe(1);
+    releaseHeldPut();
 
     const dialog = page.getByRole("alertdialog", {
       name: "Save failed — close anyway?",
