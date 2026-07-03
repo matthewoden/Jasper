@@ -43,7 +43,7 @@ const RESERVED = 8 + 26 + 97;
 const OVERFLOW_BTN = 28;
 
 /** 28x28 icon button for the tab-bar right-hand cluster — same hover-fill
- *  idiom as ChromeBar's ToggleButton, relocated here per D-04. */
+ *  idiom (originally hosted in the now-dissolved chrome wrapper, D-04). */
 const rightClusterButtonBase: CSSProperties = {
   width: 28,
   height: 28,
@@ -240,9 +240,9 @@ export function TabStrip({
   forceHiddenTabIds,
   style,
 }: TabStripProps) {
-  // Right-hand cluster (relocated from ChromeBar, D-04): left/right sidebar
+  // Right-hand cluster (relocated per D-04): left/right sidebar
   // toggles + PanelSelectorDropdown. The right toggle is ALWAYS rendered
-  // (no panelSelector gating — that gate belonged to the old ChromeBar and
+  // (no panelSelector gating — that gate belonged to the old chrome wrapper and
   // is intentionally dropped, see TabStrip.test.tsx).
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
   const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);

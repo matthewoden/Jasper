@@ -372,7 +372,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
   });
 });
 
-describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated from ChromeBar, D-04)", () => {
+describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", () => {
   beforeEach(() => {
     useTreeStore.setState({
       notesSidebarVisible: true,
@@ -427,7 +427,7 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated from ChromeB
     expect(screen.getByRole("button", { name: "Open panel" })).toBeInTheDocument();
   });
 
-  // D-04: the old ChromeBar gated the right-rail toggle behind
+  // D-04: the old chrome wrapper gated the right-rail toggle behind
   // panelSelectorState.tags || panelSelectorState.backlinks (TBR-N3-3/4a/4b,
   // RR-T-1). That gate is intentionally dropped here — the right toggle is
   // ALWAYS rendered regardless of panelSelector state.
