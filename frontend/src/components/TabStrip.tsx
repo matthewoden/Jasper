@@ -34,16 +34,20 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 
 // Reserved strip chrome that is never available to tabs:
 //   strip horizontal padding (8) + pinned new-tab button (26) + the tab-bar
-//   right-hand cluster (97): 1 (borderLeft) + 8 (paddingLeft) + 24
-//   (PanelSelectorDropdown trigger, per triggerButtonStyle.width) + 28 (left
-//   toggle) + 28 (right toggle) + 2x4 (the two flex gaps between the three
-//   children) = 97. The overflow dropdown trigger (28px) is reserved
-//   separately, inside computeHiddenTabIds, ONLY when overflow occurs.
-const RESERVED = 8 + 26 + 97;
+//   right cluster (65) + the tab-bar left cluster (37).
+//   Right cluster: 1 (borderLeft) + 8 (paddingLeft) + 24 (PanelSelectorDropdown
+//   trigger, per triggerButtonStyle.width) + 4 (flex gap) + 28 (right toggle)
+//   = 65. Left cluster: 28 (left toggle) + 8 (paddingRight) + 1 (borderRight)
+//   = 37. Split placement supersedes the original single right-hand cluster
+//   (owner revision 2026-07-02, gap 3 / TABUI-02). The overflow dropdown
+//   trigger (28px) is reserved separately, inside computeHiddenTabIds, ONLY
+//   when overflow occurs.
+const RESERVED = 8 + 26 + 65 + 37;
 const OVERFLOW_BTN = 28;
 
-/** 28x28 icon button for the tab-bar right-hand cluster — same hover-fill
- *  idiom (originally hosted in the now-dissolved chrome wrapper, D-04). */
+/** 28x28 icon button shared by the tab-bar's far-left and far-right clusters —
+ *  same hover-fill idiom (originally hosted in the now-dissolved chrome
+ *  wrapper, D-04). */
 const rightClusterButtonBase: CSSProperties = {
   width: 28,
   height: 28,
@@ -240,10 +244,12 @@ export function TabStrip({
   forceHiddenTabIds,
   style,
 }: TabStripProps) {
-  // Right-hand cluster (relocated per D-04): left/right sidebar
-  // toggles + PanelSelectorDropdown. The right toggle is ALWAYS rendered
-  // (no panelSelector gating — that gate belonged to the old chrome wrapper and
-  // is intentionally dropped, see TabStrip.test.tsx).
+  // Split placement (owner revision 2026-07-02, gap 3 / TABUI-02, supersedes
+  // the original D-04 right-hand cluster): the left-sidebar toggle sits alone
+  // in a far-left cluster; the right-sidebar toggle stays with the
+  // PanelSelectorDropdown in a far-right cluster. The right toggle is ALWAYS
+  // rendered (no panelSelector gating — that gate belonged to the old chrome
+  // wrapper and is intentionally dropped, see TabStrip.test.tsx).
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
   const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);
   const backlinksRailExpanded = useTreeStore((s) => s.backlinksRailExpanded);
@@ -255,6 +261,32 @@ export function TabStrip({
     ? "Hide notes sidebar"
     : "Show notes sidebar";
   const railLabel = backlinksRailExpanded ? "Hide panels" : "Show panels";
+
+  const leftCluster = (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        borderRight: "1px solid var(--color-border-inner)",
+        paddingRight: 8,
+        flexShrink: 0,
+      }}
+      data-testid="tab-strip-left-cluster"
+    >
+      <RightClusterToggle
+        ariaLabel={sidebarLabel}
+        onClick={() => setNotesSidebarVisible(!notesSidebarVisible)}
+        icon={
+          notesSidebarVisible ? (
+            <ChevronLeft size={16} aria-hidden="true" />
+          ) : (
+            <ChevronRight size={16} aria-hidden="true" />
+          )
+        }
+      />
+    </div>
+  );
 
   const rightCluster = (
     <div
@@ -271,17 +303,6 @@ export function TabStrip({
       <span style={{ display: "inline-flex" }}>
         <PanelSelectorDropdown />
       </span>
-      <RightClusterToggle
-        ariaLabel={sidebarLabel}
-        onClick={() => setNotesSidebarVisible(!notesSidebarVisible)}
-        icon={
-          notesSidebarVisible ? (
-            <ChevronLeft size={16} aria-hidden="true" />
-          ) : (
-            <ChevronRight size={16} aria-hidden="true" />
-          )
-        }
-      />
       <RightClusterToggle
         ariaLabel={railLabel}
         onClick={() => setBacklinksRailExpanded(!backlinksRailExpanded)}
@@ -458,6 +479,7 @@ export function TabStrip({
         style={{ ...tabStripStyle, ...style }}
         data-testid="tab-strip"
       >
+        {leftCluster}
         <EmptyStateNewTabButton onNewTab={onNewTab} />
         <div style={{ flex: "1 1 auto" }} />
         {rightCluster}
@@ -628,6 +650,7 @@ export function TabStrip({
         }
       }}
     >
+      {leftCluster}
       {/* Visible tabs in their own flex child so trailing controls always reserve space. */}
       <div
         style={{
