@@ -358,7 +358,7 @@ export function TabStrip({
 
       // Alt+W → request close of the active tab (flush-aware via prop).
       // Never bind plain Cmd/Ctrl+W — the browser owns it.
-      if (e.altKey && !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === "w") {
+      if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === "KeyW") {
         e.preventDefault();
         e.stopPropagation();
         if (store.activeTabId !== null) requestCloseRef.current(store.activeTabId);
@@ -366,7 +366,8 @@ export function TabStrip({
       }
 
       // Next: Alt+] OR Ctrl+Tab (no shift).
-      const isNextAlt = e.altKey && !e.metaKey && !e.ctrlKey && e.key === "]";
+      const isNextAlt =
+        e.altKey && !e.metaKey && !e.ctrlKey && e.code === "BracketRight";
       const isNextCtrlTab =
         e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab" && !e.shiftKey;
       if (isNextAlt || isNextCtrlTab) {
@@ -385,7 +386,8 @@ export function TabStrip({
       }
 
       // Prev: Alt+[ OR Ctrl+Shift+Tab.
-      const isPrevAlt = e.altKey && !e.metaKey && !e.ctrlKey && e.key === "[";
+      const isPrevAlt =
+        e.altKey && !e.metaKey && !e.ctrlKey && e.code === "BracketLeft";
       const isPrevCtrlTab =
         e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab" && e.shiftKey;
       if (isPrevAlt || isPrevCtrlTab) {
@@ -407,15 +409,25 @@ export function TabStrip({
     return () => window.removeEventListener("keydown", handler, true);
   }, []);
 
-  // Clear the ghost if the window loses focus mid-drag so it can never get stranded.
+  // Clear the ghost if the window loses focus mid-drag, or if the button is
+  // released anywhere in the window, so a drag can never get stranded (gap 5 /
+  // CR-02). The window pointerup is a safety-net dismiss for releases outside
+  // the strip — it never fires a reorder; the strip's own onPointerUp still
+  // owns in-strip drops.
   useEffect(() => {
-    function handleWindowBlur() {
+    function dismissStrandedDrag() {
+      if (dragRef.current === null) return;
       dragRef.current = null;
       setDropIndicatorX(null);
       setDragGhost(null);
+      suppressClickRef.current = false;
     }
-    window.addEventListener("blur", handleWindowBlur);
-    return () => window.removeEventListener("blur", handleWindowBlur);
+    window.addEventListener("blur", dismissStrandedDrag);
+    window.addEventListener("pointerup", dismissStrandedDrag);
+    return () => {
+      window.removeEventListener("blur", dismissStrandedDrag);
+      window.removeEventListener("pointerup", dismissStrandedDrag);
+    };
   }, []);
 
   // Single source for the + button so the empty-state and normal branches share
@@ -499,6 +511,12 @@ export function TabStrip({
   function handleStripPointerMove(e: PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag) return;
+    // The primary button was already released outside the strip (no pointerup
+    // ever reached us) — abandon the stale drag instead of resuming it.
+    if (e.buttons === 0) {
+      handleStripPointerCancel();
+      return;
+    }
     const moved = Math.abs(e.clientX - drag.startX);
     if (!drag.active && moved > DRAG_THRESHOLD) {
       drag.active = true;
@@ -554,8 +572,12 @@ export function TabStrip({
 
       if (targetId !== null) {
         const toIdx = tabs.findIndex((t) => t.id === targetId);
-        if (toIdx !== -1 && toIdx !== drag.fromIndex) {
-          onReorder(drag.fromIndex, toIdx);
+        // reorderTabs splices fromIndex OUT before inserting at toIndex
+        // (splice-first), so a left-to-right drop must compensate by one to
+        // land where the left-edge indicator promised (gap 6 / WR-01).
+        const adjusted = drag.fromIndex < toIdx ? toIdx - 1 : toIdx;
+        if (toIdx !== -1 && adjusted !== drag.fromIndex) {
+          onReorder(drag.fromIndex, adjusted);
         }
       } else {
         // Dropped past all visible tabs — move to end of visible range.
@@ -577,6 +599,9 @@ export function TabStrip({
     dragRef.current = null;
     setDropIndicatorX(null);
     setDragGhost(null);
+    // An abandoned/cancelled drag must never leave a later legitimate click
+    // suppressed (gap 5 / CR-02).
+    suppressClickRef.current = false;
   }
 
   return (

@@ -216,14 +216,16 @@ describe("<TabStrip /> keyboard shortcuts (Task 2 — TAB-11 / TAB-05)", () => {
   it("TAB-11: Alt+] advances the active tab (cycleTab(1))", () => {
     renderStrip();
     expect(useTabStore.getState().activeTabId).toBe("a");
-    fireEvent.keyDown(window, { key: "]", altKey: true });
+    // macOS Option-key composition remaps Alt+] to key:"'" — dispatch the real
+    // composed key alongside code:"BracketRight" to prove the handler reads e.code.
+    fireEvent.keyDown(window, { code: "BracketRight", key: "'", altKey: true });
     expect(useTabStore.getState().activeTabId).toBe("b");
   });
 
   it("TAB-11: Alt+[ moves to the previous tab (cycleTab(-1))", () => {
     useTabStore.setState({ activeTabId: "b" });
     renderStrip({ activeTabId: "b" });
-    fireEvent.keyDown(window, { key: "[", altKey: true });
+    fireEvent.keyDown(window, { code: "BracketLeft", key: "'", altKey: true });
     expect(useTabStore.getState().activeTabId).toBe("a");
   });
 
@@ -238,21 +240,23 @@ describe("<TabStrip /> keyboard shortcuts (Task 2 — TAB-11 / TAB-05)", () => {
   it("TAB-05: Alt+W calls onRequestClose with the active tab id", () => {
     const h = renderStrip({ activeTabId: "b" });
     useTabStore.setState({ activeTabId: "b" });
-    fireEvent.keyDown(window, { key: "w", altKey: true });
+    // macOS Option-key composition remaps Alt+W to key:"∑" — dispatch the real
+    // composed key alongside code:"KeyW" to prove the handler reads e.code.
+    fireEvent.keyDown(window, { code: "KeyW", key: "∑", altKey: true });
     expect(h.onRequestClose).toHaveBeenCalledWith("b");
   });
 
   it("TAB-05: plain Ctrl+W does NOT trigger close (browser owns it)", () => {
     const h = renderStrip();
-    fireEvent.keyDown(window, { key: "w", ctrlKey: true });
+    fireEvent.keyDown(window, { code: "KeyW", key: "w", ctrlKey: true });
     expect(h.onRequestClose).not.toHaveBeenCalled();
   });
 
   it("no-op when there are zero tabs", () => {
     useTabStore.setState({ tabs: [], activeTabId: null });
     const h = renderStrip();
-    fireEvent.keyDown(window, { key: "]", altKey: true });
-    fireEvent.keyDown(window, { key: "w", altKey: true });
+    fireEvent.keyDown(window, { code: "BracketRight", key: "'", altKey: true });
+    fireEvent.keyDown(window, { code: "KeyW", key: "∑", altKey: true });
     expect(h.onRequestClose).not.toHaveBeenCalled();
   });
 
@@ -278,7 +282,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     expect(wrapper).not.toBeNull();
 
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
 
     expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
   });
@@ -289,7 +293,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
 
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
     expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
 
     fireEvent.pointerUp(strip, { button: 0, clientX: 120, pointerId: 1 });
@@ -302,9 +306,9 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
 
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
     expect(() => {
-      fireEvent.pointerMove(strip, { clientX: 140, pointerId: 1 });
+      fireEvent.pointerMove(strip, { clientX: 140, pointerId: 1, buttons: 1 });
     }).not.toThrow();
     expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
   });
@@ -315,7 +319,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
 
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
     expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
 
     fireEvent.pointerCancel(strip, { clientX: 120, pointerId: 1 });
@@ -329,7 +333,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
 
     // Move only 3px — below the 5px threshold
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 103, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 103, pointerId: 1, buttons: 1 });
 
     expect(screen.queryByTestId("tab-drag-ghost")).not.toBeInTheDocument();
   });
@@ -342,7 +346,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     expect(wrapper).not.toBeNull();
 
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
 
     const ghost = screen.getByTestId("tab-drag-ghost");
     expect(ghost).toBeInTheDocument();
@@ -353,6 +357,26 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     expect(within(ghost).getByRole("button", { name: /^Close/, hidden: true })).toBeInTheDocument();
   });
 
+  it("gap 5 / CR-02: an off-strip release (buttons:0 move) dismisses the drag and does not swallow the next click", () => {
+    const h = renderStrip();
+    const strip = screen.getByRole("tablist");
+    const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
+
+    fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
+    expect(screen.getByTestId("tab-drag-ghost")).toBeInTheDocument();
+
+    // The mouse button was released outside the strip, so no pointerup ever
+    // reaches the strip — but the next pointermove reports buttons:0.
+    fireEvent.pointerMove(strip, { clientX: 130, pointerId: 1, buttons: 0 });
+    expect(screen.queryByTestId("tab-drag-ghost")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("tab-drop-indicator")).not.toBeInTheDocument();
+
+    // A subsequent legitimate click must not be swallowed by a stale suppressClickRef.
+    fireEvent.click(screen.getByText("Title a"));
+    expect(h.onSelectTab).toHaveBeenCalledWith("a");
+  });
+
   it("POLISH-OVERLAY: drop indicator is position:absolute and not inside any tab wrapper", () => {
     renderStrip();
     const strip = screen.getByRole("tablist");
@@ -360,7 +384,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     expect(wrapper).not.toBeNull();
 
     fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, pointerId: 1, buttons: 1 });
 
     const indicator = screen.getByTestId("tab-drop-indicator");
     expect(indicator).toBeInTheDocument();
