@@ -358,7 +358,7 @@ export function TabStrip({
 
       // Alt+W → request close of the active tab (flush-aware via prop).
       // Never bind plain Cmd/Ctrl+W — the browser owns it.
-      if (e.altKey && !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === "w") {
+      if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === "KeyW") {
         e.preventDefault();
         e.stopPropagation();
         if (store.activeTabId !== null) requestCloseRef.current(store.activeTabId);
@@ -366,7 +366,8 @@ export function TabStrip({
       }
 
       // Next: Alt+] OR Ctrl+Tab (no shift).
-      const isNextAlt = e.altKey && !e.metaKey && !e.ctrlKey && e.key === "]";
+      const isNextAlt =
+        e.altKey && !e.metaKey && !e.ctrlKey && e.code === "BracketRight";
       const isNextCtrlTab =
         e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab" && !e.shiftKey;
       if (isNextAlt || isNextCtrlTab) {
@@ -385,7 +386,8 @@ export function TabStrip({
       }
 
       // Prev: Alt+[ OR Ctrl+Shift+Tab.
-      const isPrevAlt = e.altKey && !e.metaKey && !e.ctrlKey && e.key === "[";
+      const isPrevAlt =
+        e.altKey && !e.metaKey && !e.ctrlKey && e.code === "BracketLeft";
       const isPrevCtrlTab =
         e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab" && e.shiftKey;
       if (isPrevAlt || isPrevCtrlTab) {
