@@ -77,7 +77,7 @@ interface EditorPaneProps {
   editorHandlersRef?: MutableRefObject<EditorPaneHandlers | null>;
   /** Optional style for grid placement; App.tsx passes gridRow/gridColumn here. */
   style?: React.CSSProperties;
-  /** Autosave debounce interval in ms. Captured to a ref at mount so interval is stable per session. */
+  /** Autosave debounce interval in ms. Read through a ref at debounce-arm time; follows prop updates (config loads async). */
   autosaveMs?: number;
   /** display:none when true; CM6 stays mounted so cursor/scroll/undo survive (keep-alive, D-01). */
   hidden?: boolean;
@@ -129,6 +129,11 @@ function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
 
 export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style, autosaveMs, hidden = false, isDeleted = false, flushRef }: EditorPaneProps) {
   const autosaveMsRef = useRef(autosaveMs ?? AUTOSAVE_DEBOUNCE_MS);
+  // Follow prop updates: panes mount before the async /config fetch resolves,
+  // so a mount-only capture would pin them to the default interval forever.
+  useEffect(() => {
+    autosaveMsRef.current = autosaveMs ?? AUTOSAVE_DEBOUNCE_MS;
+  }, [autosaveMs]);
 
   const [content, setContent] = useState("");
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");

@@ -2994,3 +2994,32 @@ describe("<EditorPane /> — WR-03 global saveState ownership", () => {
         );
     });
 });
+
+
+describe("<EditorPane /> — WR-04 autosaveMs prop updates after mount", () => {
+    it("WR-04: autosaveMs arriving after mount (async config) drives the NEXT debounce, not the mount-time default", async () => {
+        getNoteMock.mockResolvedValue(okGet("content"));
+        updateNoteMock.mockResolvedValue(okPut());
+
+        // Mount without autosaveMs — the config fetch has not resolved yet.
+        const { rerender } = render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("content"));
+
+        // Config resolves with a 500ms interval.
+        rerender(<EditorPane noteId={ScratchpadUUID} autosaveMs={500} />);
+
+        fireEvent.change(editor, { target: { value: "edited" } });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(600);
+        });
+
+        // Under the mount-only capture the ref stayed pinned to 2000ms and
+        // nothing would have saved by 600ms.
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited");
+    });
+});
