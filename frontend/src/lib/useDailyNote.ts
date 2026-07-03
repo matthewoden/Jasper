@@ -43,7 +43,7 @@ export function useDailyNote() {
     } finally {
       setDailyNoteLoading(false);
     }
-  }, [dailyNoteLoading, setDailyNoteLoading, setActiveNote, toast]);
+  }, [setDailyNoteLoading, setActiveNote, toast]);
 
   return { openToday, isLoading: dailyNoteLoading };
 }

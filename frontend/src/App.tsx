@@ -703,7 +703,10 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         filename={flushConfirm?.filename ?? ""}
         onKeepEditing={() => setFlushConfirm(null)}
         onCloseWithoutSaving={() => {
-          if (flushConfirm !== null) closeTab(flushConfirm.tabId);
+          if (flushConfirm !== null) {
+            closeTab(flushConfirm.tabId);
+            clearActiveOnEmptyTabs();
+          }
           setFlushConfirm(null);
         }}
       />

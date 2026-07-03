@@ -131,6 +131,73 @@ vi.mock("./lib/useTreeCreateActions", async (importActual) => ({
 }));
 
 
+// Mocked with a ref-API-compatible fake (same shape as EditorPane.test.tsx's
+// mock) that renders a real <textarea aria-label="Note content">, so the
+// WR-01 flush-reject test can drive a real onChange → userHasEdited=true
+// without depending on real CodeMirror's jsdom contenteditable behavior.
+vi.mock("./components/MarkdownEditor", async () => {
+  const React = await import("react");
+
+  const MarkdownEditor = React.forwardRef<
+    {
+      setContent(s: string): void;
+      getContent(): string;
+      applyServerUpdate(s: string): void;
+      focus(): void;
+      focusEnd(): void;
+    },
+    {
+      initialDoc?: string;
+      onChange?: (s: string) => void;
+      onH1Change?: (h: string | null) => void;
+      onSaveRequested?: () => void;
+      onBlur?: () => void;
+      readOnly?: boolean;
+    }
+  >(function MockMarkdownEditor(props, ref) {
+    const [value, setValue] = React.useState(props.initialDoc ?? "");
+    const propsRef = React.useRef(props);
+    propsRef.current = props;
+
+    React.useImperativeHandle(ref, () => ({
+      setContent(s: string) {
+        setValue(s);
+        propsRef.current.onChange?.(s);
+      },
+      getContent() {
+        return value;
+      },
+      applyServerUpdate(s: string) {
+        setValue(s);
+      },
+      focus() {
+        // no-op in test
+      },
+      focusEnd() {
+        // no-op in test
+      },
+    }), [value]);
+
+    return React.createElement("textarea", {
+      "aria-label": "Note content",
+      "data-testid": "markdown-editor-mock",
+      value,
+      readOnly: props.readOnly ?? false,
+      onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const next = e.target.value;
+        setValue(next);
+        propsRef.current.onChange?.(next);
+      },
+    });
+  });
+
+  return {
+    MarkdownEditor,
+    ServerUpdateAnnotation: { of: () => ({}) },
+  };
+});
+
+
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: vi.fn().mockImplementation(({ count }: { count: number }) => ({
     getVirtualItems: () =>
@@ -160,13 +227,14 @@ import {
 } from "./lib/appShortcuts";
 
 
-void App;
 import { useTreeStore } from "./lib/useTreeStore";
 import { COMMAND_PALETTE_ENTRIES } from "./lib/shortcutsRegistry";
 import { siblingNamesForCreate } from "./lib/useTreeCreateActions";
 import { nextUntitledName } from "./lib/nextUntitledName";
 import type { Tree } from "./lib/treeApi";
 import { useTabStore } from "./lib/useTabStore";
+import { updateNote } from "./lib/notesApi";
+import { vaultApi } from "./lib/vaultApi";
 
 const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
 
@@ -1273,5 +1341,101 @@ describe("close-last-tab clears activeNoteId (BUG 3b)", () => {
       expect(useTabStore.getState().tabs).toHaveLength(0);
       expect(useTreeStore.getState().activeNoteId).toBeNull();
     });
+  });
+
+  it("WR-01: 'Close without saving' on a flush-reject clears activeNoteId on the last tab", async () => {
+    // Non-deleted tab so the close routes through flushAndClose's real flush
+    // path (the deletedTabIds shortcut bypasses flush entirely and cannot
+    // exercise onCloseWithoutSaving).
+    vi.mocked(updateNote).mockReset();
+    vi.mocked(updateNote).mockResolvedValue({
+      data: undefined,
+      error: { code: "io", message: "disk full" },
+      response: new Response(),
+    } as Awaited<ReturnType<typeof updateNote>>);
+
+    render(<AppShell />);
+
+    // Open the tab AFTER mount so it is not subject to the one-time
+    // prune-tabs-against-tree effect (the mocked tree is always empty, so a
+    // tab seeded pre-mount and not in deletedTabIds would be pruned away).
+    await act(async () => {
+      useTabStore.getState().openTab("x");
+    });
+
+    // Mirror effect syncs the legacy activeNoteId to the newly active tab.
+    await waitFor(() =>
+      expect(useTreeStore.getState().activeNoteId).toBe("x"),
+    );
+
+    // Force userHasEdited=true so flush() actually attempts a save (and rejects).
+    const editor = await screen.findByLabelText("Note content");
+    fireEvent.change(editor, { target: { value: "edited before close" } });
+
+    const closeBtn = await screen.findByRole("button", {
+      name: "Close Untitled",
+    });
+    fireEvent.click(closeBtn);
+
+    const closeWithoutSavingBtn = await screen.findByRole("button", {
+      name: "Close without saving",
+    });
+    fireEvent.click(closeWithoutSavingBtn);
+
+    await waitFor(() => {
+      expect(useTabStore.getState().tabs).toHaveLength(0);
+      expect(useTreeStore.getState().activeNoteId).toBeNull();
+    });
+  });
+});
+
+
+// IN-04: BootGate (App.tsx) was previously uncovered by any test that renders
+// the default-exported <App /> — every other test renders <AppShell />
+// directly, bypassing the GET /vault/current boot check entirely.
+describe("<App /> — BootGate (IN-04)", () => {
+  beforeEach(() => {
+    getAdminStatusMock.mockReset();
+    postAdminReindexMock.mockReset();
+    getAdminStatusMock.mockResolvedValue({
+      data: { state: "ok" },
+      error: undefined,
+    });
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: null,
+      pendingRename: null,
+      draftCreate: null,
+      paletteOpen: false,
+      cheatSheetOpen: false,
+    });
+    useTabStore.getState().clearAllTabs();
+    vi.mocked(vaultApi.getCurrent).mockReset();
+  });
+
+  afterEach(() => {
+    useTabStore.getState().clearAllTabs();
+  });
+
+  it("vaultApi.getCurrent resolves with a vault → <App/> eventually renders AppInner", async () => {
+    vi.mocked(vaultApi.getCurrent).mockResolvedValueOnce({
+      path: "/vault",
+      display_name: "Test Vault",
+      last_opened_at: "2026-05-24T00:00:00Z",
+      created_at: "2026-05-24T00:00:00Z",
+      missing: false,
+    });
+
+    render(<App />);
+
+    expect(await screen.findByTestId("tab-strip")).toBeInTheDocument();
+  });
+
+  it("vaultApi.getCurrent rejects (transient boot failure) → <App/> renders VaultPicker", async () => {
+    vi.mocked(vaultApi.getCurrent).mockRejectedValueOnce(new Error("boom"));
+
+    render(<App />);
+
+    expect(await screen.findByText("Choose a vault")).toBeInTheDocument();
   });
 });
