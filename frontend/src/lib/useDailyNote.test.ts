@@ -11,7 +11,7 @@
  * useTreeStore is used directly (real store) — reset between tests.
  * useToast is provided via ToastProvider wrapper.
  */
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement, type ReactNode } from "react";
 
@@ -138,18 +138,36 @@ describe("useDailyNote", () => {
   });
 
   it("DN-HOOK-5: openToday passes the exact LOCAL YYYY-MM-DD date string to openTodayDailyNote", async () => {
-    mockedOpenToday.mockResolvedValueOnce(fakeNote);
+    // Pinned via vi.setSystemTime + TZ (DN-HOOK-9 idiom, IN-04) so the
+    // expected date string is computed once, deterministically, instead of
+    // racing a second `new Date()` call against the hook's internal one
+    // across a local-midnight boundary.
+    const originalTz = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-07-02T12:00:00-07:00"));
+      mockedOpenToday.mockResolvedValueOnce(fakeNote);
 
-    const { result } = renderHook(() => useDailyNote(), { wrapper });
+      const { result } = renderHook(() => useDailyNote(), { wrapper });
 
-    await act(async () => {
-      await result.current.openToday();
-    });
+      await act(async () => {
+        await result.current.openToday();
+      });
 
-    const now = new Date();
-    const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    const dateArg = mockedOpenToday.mock.calls[0][0];
-    expect(dateArg).toBe(expected);
+      const dateArg = mockedOpenToday.mock.calls[0][0];
+      expect(dateArg).toBe("2026-07-02");
+    } finally {
+      vi.useRealTimers();
+      // Assigning undefined here would coerce TZ to the literal string
+      // "undefined" (an invalid IANA zone), corrupting later date tests
+      // that share this worker.
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
+    }
   });
 
   it("DN-HOOK-9: uses the LOCAL calendar date, not UTC (WR-02)", async () => {
@@ -222,5 +240,23 @@ describe("useDailyNote", () => {
     });
 
     expect(mockedBroadcastRefresh).toHaveBeenCalledTimes(0);
+  });
+
+  it("WR-04: broadcastRefresh rejects — note still opens, no 'couldn't open' toast fires", async () => {
+    mockedOpenToday.mockResolvedValueOnce(fakeNote);
+    mockedBroadcastRefresh.mockRejectedValueOnce(new Error("tree refresh failed"));
+    const openTabSpy = vi.spyOn(useTabStore.getState(), "openTab");
+
+    const { result } = renderHook(() => useDailyNote(), { wrapper });
+
+    await act(async () => {
+      await result.current.openToday();
+    });
+
+    expect(useTreeStore.getState().activeNoteId).toBe(fakeNote.id);
+    expect(openTabSpy).toHaveBeenCalledWith(fakeNote.id);
+    expect(
+      screen.queryByText("Couldn't open today's daily note"),
+    ).not.toBeInTheDocument();
   });
 });
