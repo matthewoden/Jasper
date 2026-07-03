@@ -2,6 +2,7 @@
  * App-shell tests. Mocks the admin status hook so each test can drive the
  * migration-banner branch without spinning up real fetch.
  */
+import { StrictMode } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import {
   afterEach,
@@ -1437,5 +1438,56 @@ describe("<App /> — BootGate (IN-04)", () => {
     render(<App />);
 
     expect(await screen.findByText("Choose a vault")).toBeInTheDocument();
+  });
+
+  it("IN-07: StrictMode double-invoke — stale phantom-mount resolution does not clobber the settled boot state", async () => {
+    // React StrictMode (main.tsx wraps <App/> in it) double-invokes effects
+    // in dev: mount -> cleanup -> mount again. Without a cancelled guard, a
+    // late-resolving promise from the discarded first ("phantom") effect
+    // invocation still fires setState against the still-mounted component,
+    // clobbering whatever the real (second) invocation already settled.
+    let resolvePhantom: (v: Awaited<ReturnType<typeof vaultApi.getCurrent>>) => void =
+      () => {};
+    let resolveReal: (v: Awaited<ReturnType<typeof vaultApi.getCurrent>>) => void =
+      () => {};
+    vi.mocked(vaultApi.getCurrent)
+      .mockImplementationOnce(
+        () =>
+          new Promise((r) => {
+            resolvePhantom = r;
+          }) as ReturnType<typeof vaultApi.getCurrent>,
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((r) => {
+            resolveReal = r;
+          }) as ReturnType<typeof vaultApi.getCurrent>,
+      );
+
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+
+    await act(async () => {
+      resolveReal({
+        path: "/vault",
+        display_name: "Test Vault",
+        last_opened_at: "2026-05-24T00:00:00Z",
+        created_at: "2026-05-24T00:00:00Z",
+        missing: false,
+      });
+      await Promise.resolve();
+    });
+    expect(await screen.findByTestId("tab-strip")).toBeInTheDocument();
+
+    // Phantom-mount promise resolves LATE with a conflicting outcome.
+    await act(async () => {
+      resolvePhantom(null);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("tab-strip")).toBeInTheDocument();
   });
 });
