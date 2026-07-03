@@ -137,7 +137,7 @@ describe("useDailyNote", () => {
     });
   });
 
-  it("DN-HOOK-5: openToday passes YYYY-MM-DD date string to openTodayDailyNote", async () => {
+  it("DN-HOOK-5: openToday passes the exact LOCAL YYYY-MM-DD date string to openTodayDailyNote", async () => {
     mockedOpenToday.mockResolvedValueOnce(fakeNote);
 
     const { result } = renderHook(() => useDailyNote(), { wrapper });
@@ -146,8 +146,35 @@ describe("useDailyNote", () => {
       await result.current.openToday();
     });
 
+    const now = new Date();
+    const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const dateArg = mockedOpenToday.mock.calls[0][0];
-    expect(dateArg).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(dateArg).toBe(expected);
+  });
+
+  it("DN-HOOK-9: uses the LOCAL calendar date, not UTC (WR-02)", async () => {
+    // Pin the process TZ to Pacific so this test is deterministic regardless
+    // of the host/CI machine's own timezone (Node re-reads process.env.TZ
+    // per Date construction, so this reliably shifts `new Date()` locals).
+    const originalTz = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    vi.useFakeTimers();
+    try {
+      // 2026-07-02T23:30:00 Pacific is 2026-07-03 in UTC —
+      // asserts the implementation does NOT read the UTC-shifted day.
+      vi.setSystemTime(new Date("2026-07-02T23:30:00-07:00"));
+      mockedOpenToday.mockResolvedValueOnce(fakeNote);
+
+      const { result } = renderHook(() => useDailyNote(), { wrapper });
+      await act(async () => {
+        await result.current.openToday();
+      });
+
+      expect(mockedOpenToday.mock.calls[0][0]).toBe("2026-07-02");
+    } finally {
+      vi.useRealTimers();
+      process.env.TZ = originalTz;
+    }
   });
 
   it("DN-HOOK-6: happy path — broadcastRefresh is called after setActiveNote (UAT-2 R1-1)", async () => {
