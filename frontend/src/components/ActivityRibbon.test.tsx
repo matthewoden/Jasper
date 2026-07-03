@@ -52,6 +52,7 @@ vi.mock("../lib/useVaultPicker", () => ({
 }));
 
 import { ActivityRibbon } from "./ActivityRibbon";
+import { mod, shift } from "../lib/shortcutsRegistry";
 
 describe("ActivityRibbon", () => {
   beforeEach(() => {
@@ -198,6 +199,19 @@ describe("ActivityRibbon", () => {
     rerender(<ActivityRibbon />);
 
     expect(btn.style.background).toBe("transparent");
+  });
+
+  it("tooltips derive the modifier glyphs from the shared shortcuts registry, not hardcoded ⌘ (IN-05)", () => {
+    render(<ActivityRibbon />);
+    expect(
+      screen.getByRole("button", { name: "Search notes" }).title,
+    ).toBe(`Search notes (${mod}${shift}F)`);
+    expect(
+      screen.getByRole("button", { name: "Open today's daily note" }).title,
+    ).toBe(`Today (${mod}${shift}D)`);
+    expect(
+      screen.getByRole("button", { name: "Open command palette" }).title,
+    ).toBe(`Command palette (${mod}P)`);
   });
 
   it("Palette button: clicking calls setPaletteMode('commands') then setPaletteOpen(true)", () => {

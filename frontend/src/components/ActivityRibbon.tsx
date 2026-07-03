@@ -14,6 +14,7 @@ import { Folder, Search, CalendarDays, Command } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useDailyNote } from "../lib/useDailyNote";
 import { useVaultPicker } from "../lib/useVaultPicker";
+import { mod, shift } from "../lib/shortcutsRegistry";
 
 const ribbonStyle: CSSProperties = {
   width: 48,
@@ -146,7 +147,7 @@ export function ActivityRibbon({
 
       <RibbonButton
         ariaLabel="Search notes"
-        title="Search notes (⌘⇧F)"
+        title={`Search notes (${mod}${shift}F)`}
         active={searchActive}
         onClick={() => {
           const store = useTreeStore.getState();
@@ -163,7 +164,7 @@ export function ActivityRibbon({
 
       <RibbonButton
         ariaLabel="Open today's daily note"
-        title="Today (⌘⇧D)"
+        title={`Today (${mod}${shift}D)`}
         onClick={openToday}
         disabled={todayLoading}
         icon={<CalendarDays size={16} aria-hidden="true" />}
@@ -178,7 +179,7 @@ export function ActivityRibbon({
 
       <RibbonButton
         ariaLabel="Open command palette"
-        title="Command palette (⌘P)"
+        title={`Command palette (${mod}P)`}
         onClick={() => {
           const s = useTreeStore.getState();
           s.setPaletteMode("commands");
