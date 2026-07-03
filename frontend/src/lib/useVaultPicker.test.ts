@@ -132,4 +132,35 @@ describe("useVaultPicker", () => {
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
     }
   });
+
+  it("refresh has a stable identity across rerenders (IN-02)", async () => {
+    const { result, rerender } = renderHook(() => useVaultPicker());
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    const firstRefresh = result.current.refresh;
+    rerender();
+    expect(result.current.refresh).toBe(firstRefresh);
+  });
+
+  it("a fetch resolving after unmount does not apply state (IN-02)", async () => {
+    let resolveCurrent!: (v: null) => void;
+    vi.mocked(vaultApi.getCurrent).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCurrent = resolve;
+      }),
+    );
+
+    const { unmount } = renderHook(() => useVaultPicker());
+    unmount();
+
+    // Resolving post-unmount must not throw or apply state; the mountedRef
+    // guard short-circuits before any setState.
+    await act(async () => {
+      resolveCurrent(null);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  });
 });

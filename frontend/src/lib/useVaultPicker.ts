@@ -8,7 +8,7 @@
  * vaultApi.getCurrent call — keeping the boot path independent of this hook.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTreeStore } from "./useTreeStore";
 import { vaultApi } from "./vaultApi";
 import type { RecentVaultEntry } from "./vaultApi";
@@ -33,26 +33,38 @@ export function useVaultPicker(): UseVaultPickerResult {
   const [banner, setBanner] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
-  const refresh = async () => {
+  // Guards fetches that resolve after unmount (StrictMode phantom mount /
+  // real teardown); refresh() is also caller-invoked so a per-effect
+  // cancelled flag can't cover it.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const refresh = useCallback(async () => {
     setIsLoading(true);
     try {
       const [c, r] = await Promise.all([
         vaultApi.getCurrent(),
         vaultApi.getRecent(),
       ]);
+      if (!mountedRef.current) return;
       setCurrent(c);
       setRecents(r.vaults);
       setBanner(r.banner);
     } catch {
       // best-effort refresh; leave prior current/recents/banner state intact
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current) setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   return {
     isOpen,
