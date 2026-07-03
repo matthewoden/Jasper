@@ -234,6 +234,11 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     Record<string, MutableRefObject<{ flush: () => Promise<void> } | null>>
   >({});
 
+  // The zero-tab fallback pane gets its own handler ref so WS note.updated /
+  // note.deleted still reach it (silent reload + banners) while no tab is
+  // open — e.g. a deep-linked note that failed tab promotion (IN-04).
+  const fallbackHandlerRef = useRef<EditorPaneHandlers | null>(null);
+
   // Each render, ensure a ref pair exists for every open tab and drop refs for
   // tabs that have closed (PATTERNS Section 2).
   for (const tab of tabs) {
@@ -281,11 +286,13 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         for (const ref of Object.values(tabHandlerRefs.current)) {
           ref.current?.onNoteUpdated(p);
         }
+        fallbackHandlerRef.current?.onNoteUpdated(p);
       },
       onNoteDeleted: (p) => {
         for (const ref of Object.values(tabHandlerRefs.current)) {
           ref.current?.onNoteDeleted(p);
         }
+        fallbackHandlerRef.current?.onNoteDeleted(p);
         // Freeze the matching tab read-only for the rest of the session (D-10).
         useTabStore.getState().markDeleted(p.id);
       },
@@ -784,6 +791,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
             noteId={activeNoteId}
             hidden={reindexing}
             reindexing={reindexing}
+            editorHandlersRef={fallbackHandlerRef}
             autosaveMs={config?.editor.autosaveMs ?? 2000}
           />
         ) : (
