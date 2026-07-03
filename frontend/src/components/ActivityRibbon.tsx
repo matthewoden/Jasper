@@ -70,9 +70,10 @@ function RibbonButton({
       style={{
         ...buttonBase,
         color: active ? "var(--color-accent)" : "var(--color-muted)",
-        background: hovering
-          ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-          : "transparent",
+        background:
+          !disabled && hovering
+            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+            : "transparent",
         ...style,
       }}
     >
@@ -138,7 +139,8 @@ export function ActivityRibbon({
       />
 
       <RibbonButton
-        ariaLabel="Search notes (⌘⇧F)"
+        ariaLabel="Search notes"
+        title="Search notes (⌘⇧F)"
         active={searchActive}
         onClick={() => {
           const store = useTreeStore.getState();

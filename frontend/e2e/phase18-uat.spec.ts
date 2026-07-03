@@ -324,7 +324,7 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
     // Attribute selector (not getByRole): Radix Dialog marks background
     // content aria-hidden while open, which would make a role-based locator
     // stop resolving the button once the dialog opens.
-    const searchBtn = ribbon.locator('button[aria-label="Search notes (⌘⇧F)"]');
+    const searchBtn = ribbon.locator('button[aria-label="Search notes"]');
 
     await expect
       .poll(() => searchBtn.evaluate((el) => getComputedStyle(el).color))

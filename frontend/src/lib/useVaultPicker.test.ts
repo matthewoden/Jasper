@@ -102,4 +102,34 @@ describe("useVaultPicker", () => {
 
     expect(result.current.isLoading).toBe(false);
   });
+
+  it("refresh() swallows a rejected getCurrent/getRecent without an unhandled rejection (IN-02)", async () => {
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (e: PromiseRejectionEvent) => {
+      unhandledRejections.push(e.reason);
+    };
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+
+    try {
+      vi.mocked(vaultApi.getCurrent).mockRejectedValueOnce(new Error("boom"));
+
+      const { result } = renderHook(() => useVaultPicker());
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.current).toBeNull();
+
+      await act(async () => {
+        await result.current.refresh();
+      });
+
+      expect(result.current.isLoading).toBe(false);
+      expect(unhandledRejections).toEqual([]);
+    } finally {
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    }
+  });
 });

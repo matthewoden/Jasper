@@ -126,7 +126,7 @@ describe("ActivityRibbon", () => {
     mockPaletteOpen = true;
     mockPaletteMode = "search";
     render(<ActivityRibbon />);
-    const btn = screen.getByRole("button", { name: "Search notes (⌘⇧F)" });
+    const btn = screen.getByRole("button", { name: "Search notes" });
     expect(btn.style.color).toBe("var(--color-accent)");
   });
 
@@ -134,13 +134,13 @@ describe("ActivityRibbon", () => {
     mockPaletteOpen = true;
     mockPaletteMode = "commands";
     render(<ActivityRibbon />);
-    const btn = screen.getByRole("button", { name: "Search notes (⌘⇧F)" });
+    const btn = screen.getByRole("button", { name: "Search notes" });
     expect(btn.style.color).toBe("var(--color-muted)");
   });
 
   it("Search toggle: clicking calls setPaletteMode('search') then setPaletteOpen(true)", () => {
     render(<ActivityRibbon />);
-    fireEvent.click(screen.getByRole("button", { name: "Search notes (⌘⇧F)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Search notes" }));
     expect(mockSetPaletteMode).toHaveBeenCalledWith("search");
     expect(mockSetPaletteOpen).toHaveBeenCalledWith(true);
   });
@@ -149,7 +149,7 @@ describe("ActivityRibbon", () => {
     mockPaletteOpen = true;
     mockPaletteMode = "search";
     render(<ActivityRibbon />);
-    fireEvent.click(screen.getByRole("button", { name: "Search notes (⌘⇧F)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Search notes" }));
     expect(mockSetPaletteOpen).toHaveBeenCalledWith(false);
     expect(mockSetPaletteMode).not.toHaveBeenCalled();
   });
@@ -168,6 +168,21 @@ describe("ActivityRibbon", () => {
     expect(
       screen.getByRole("button", { name: "Open today's daily note" }),
     ).toBeDisabled();
+  });
+
+  it("RibbonButton: hover tint clears when the button becomes disabled mid-hover (IN-01)", () => {
+    const { rerender } = render(<ActivityRibbon />);
+    const btn = screen.getByRole("button", { name: "Open today's daily note" });
+
+    fireEvent.mouseEnter(btn);
+    expect(btn.style.background).toBe(
+      "color-mix(in srgb, var(--color-fg) 8%, transparent)",
+    );
+
+    mockTodayLoading = true;
+    rerender(<ActivityRibbon />);
+
+    expect(btn.style.background).toBe("transparent");
   });
 
   it("Palette button: clicking calls setPaletteMode('commands') then setPaletteOpen(true)", () => {
