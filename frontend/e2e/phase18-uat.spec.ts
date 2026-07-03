@@ -10,9 +10,12 @@
  * TABUI-01: tabs are 40px tall, square-cornered (no border-radius), each has
  *   a leading file icon + a close X, and the active tab shows a 2px accent
  *   TOP border (moved from the old bottom-border position).
- *
- * (RIBBON-01..04 and TABUI-02 ribbon/right-cluster coverage land in Task 2 of
- * this plan, appended to this same file.)
+ * RIBBON-01..04: the 48px activity ribbon renders with the vault-initial
+ *   badge, and its Files/Search/daily-note/command-palette buttons drive
+ *   their already-shipped actions.
+ * TABUI-02: the left/right sidebar toggles live in the tab-bar's right-hand
+ *   cluster (relocated from the now-dissolved ChromeBar) and toggle their
+ *   respective sidebars.
  *
  * Harness mirrors phase17-uat.spec.ts: spawnJasper per describe block,
  * beforeAll/afterAll. Every binary-backed describe gets its own ephemeral
@@ -237,5 +240,180 @@ test.describe("@phase18 TABUI-01: tab geometry (40px, flush, top accent, file ic
     );
     // "2px solid transparent" resolves to a zero-alpha rgba in Chromium.
     expect(inactiveBorderColor).toBe("rgba(0, 0, 0, 0)");
+  });
+});
+
+// ─── RIBBON-01: activity ribbon presence + vault badge ──────────────────────
+
+test.describe("@phase18 RIBBON-01: activity ribbon presence + vault badge", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("nav[aria-label='Activity ribbon'] is visible and the badge letter matches the vault's display name", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+
+    const ribbon = page.locator('nav[aria-label="Activity ribbon"]');
+    await expect(ribbon).toBeVisible({ timeout: 10_000 });
+
+    const badge = ribbon.locator('div[aria-label^="Vault:"]');
+    await expect(badge).toBeVisible();
+    const badgeLetter = ((await badge.textContent()) ?? "").trim();
+
+    // Same display_name source the StatusBar's vault label reads (D-06).
+    const vaultLabel = page.getByTestId("status-bar-vault");
+    await expect(vaultLabel).toBeVisible({ timeout: 10_000 });
+    const vaultName = ((await vaultLabel.textContent()) ?? "").trim();
+    const expectedLetter =
+      vaultName.length > 0 ? vaultName.charAt(0).toUpperCase() : "J";
+
+    expect(badgeLetter).toBe(expectedLetter);
+  });
+});
+
+// ─── RIBBON-02/03/04: ribbon button wiring ───────────────────────────────────
+
+test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("Files toggle drives notes-sidebar visibility and is accent-colored while the sidebar is visible", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+    const ribbon = page.locator('nav[aria-label="Activity ribbon"]');
+    const filesBtn = ribbon.getByRole("button", { name: "Files" });
+    const sidebarNav = page.locator('nav[aria-label="Notes navigation"]');
+
+    // Default state: notesSidebarVisible === true.
+    await expect(sidebarNav).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(() => filesBtn.evaluate((el) => getComputedStyle(el).color))
+      .toBe("rgb(167, 139, 250)"); // --color-accent
+
+    await filesBtn.click();
+    await expect(sidebarNav).toHaveCount(0, { timeout: 5_000 });
+    await expect
+      .poll(() => filesBtn.evaluate((el) => getComputedStyle(el).color))
+      .toBe("rgb(106, 106, 114)"); // --color-muted
+
+    await filesBtn.click();
+    await expect(sidebarNav).toBeVisible({ timeout: 5_000 });
+    await expect
+      .poll(() => filesBtn.evaluate((el) => getComputedStyle(el).color))
+      .toBe("rgb(167, 139, 250)");
+  });
+
+  test("Search toggle opens the search palette and is accent-colored while it is open", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+    const ribbon = page.locator('nav[aria-label="Activity ribbon"]');
+    // Attribute selector (not getByRole): Radix Dialog marks background
+    // content aria-hidden while open, which would make a role-based locator
+    // stop resolving the button once the dialog opens.
+    const searchBtn = ribbon.locator('button[aria-label="Search notes (⌘⇧F)"]');
+
+    await expect
+      .poll(() => searchBtn.evaluate((el) => getComputedStyle(el).color))
+      .toBe("rgb(106, 106, 114)"); // muted before open
+
+    await searchBtn.click();
+    const dialog = page.getByRole("dialog", { name: "Search notes" });
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect
+      .poll(() => searchBtn.evaluate((el) => getComputedStyle(el).color))
+      .toBe("rgb(167, 139, 250)"); // accent while open
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
+  });
+
+  test("daily-note button opens/creates today's daily note", async ({ page }) => {
+    await waitForConnected(page, jasper.baseURL);
+    const ribbon = page.locator('nav[aria-label="Activity ribbon"]');
+    // Scoped to the ribbon: SidebarToolbar's own "Today" button shares this
+    // exact aria-label, so an unscoped locator would violate strict mode.
+    const dailyBtn = ribbon.getByRole("button", { name: "Open today's daily note" });
+
+    await expect(dailyBtn).toBeVisible({ timeout: 10_000 });
+    await dailyBtn.click();
+
+    // Fresh page/context => zero tabs open, so the fallback pane (driven by
+    // activeNoteId) renders the daily note's editor directly.
+    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("command-palette button opens the CommandMenu", async ({ page }) => {
+    await waitForConnected(page, jasper.baseURL);
+    const ribbon = page.locator('nav[aria-label="Activity ribbon"]');
+    const paletteBtn = ribbon.getByRole("button", { name: "Open command palette" });
+
+    await paletteBtn.click();
+    await expect(
+      page.getByRole("dialog", { name: "Command palette" }),
+    ).toBeVisible({ timeout: 5_000 });
+  });
+});
+
+// ─── TABUI-02: tab-bar right-hand cluster ────────────────────────────────────
+
+test.describe("@phase18 TABUI-02: tab-bar right-hand cluster", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("both sidebar toggles render inside the tab strip and each toggles its own sidebar", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+
+    const cluster = tabStrip(page).getByTestId("tab-strip-right-cluster");
+    await expect(cluster).toBeVisible({ timeout: 10_000 });
+
+    // Default states: notesSidebarVisible=true, backlinksRailExpanded=false.
+    const leftToggle = cluster.getByRole("button", { name: "Hide notes sidebar" });
+    const rightToggle = cluster.getByRole("button", { name: "Show panels" });
+    await expect(leftToggle).toBeVisible();
+    await expect(rightToggle).toBeVisible();
+
+    const sidebarNav = page.locator('nav[aria-label="Notes navigation"]');
+    await expect(sidebarNav).toBeVisible();
+    await leftToggle.click();
+    await expect(sidebarNav).toHaveCount(0, { timeout: 5_000 });
+    await expect(
+      cluster.getByRole("button", { name: "Show notes sidebar" }),
+    ).toBeVisible();
+
+    // The right toggle expands the backlinks/tags rail — its resize handle
+    // only renders while the rail is expanded (RightRail returns null otherwise).
+    const railHandle = page.getByRole("separator", { name: "Resize backlinks panel" });
+    await expect(railHandle).toHaveCount(0);
+    await rightToggle.click();
+    await expect(railHandle).toBeVisible({ timeout: 5_000 });
+    await expect(
+      cluster.getByRole("button", { name: "Hide panels" }),
+    ).toBeVisible();
   });
 });
