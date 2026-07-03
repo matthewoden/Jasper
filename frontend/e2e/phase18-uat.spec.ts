@@ -175,6 +175,104 @@ test.describe("@phase18 D-05: DnD regression — drag/ghost/drop-indicator survi
   });
 });
 
+// ─── WR-03: interleaved-hidden-tabs drag stays visible-adjacent ────────────
+
+test.describe("@phase18 WR-03: interleaved-hidden-tabs real-mouse drag does not swallow the tab into overflow", () => {
+  let jasper: JasperHandle;
+  let ids: string[];
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+    ids = [];
+    for (const title of ["wr03-a", "wr03-b", "wr03-c", "wr03-d", "wr03-e"]) {
+      ids.push(await createNote(jasper, title));
+    }
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("dragging the first visible tab to just before the active (last) visible tab keeps it out of the overflow dropdown", async ({
+    page,
+  }) => {
+    // Force the strip's available width into [388,507) so 5 tabs overflow to
+    // exactly 3 visible pills (RESEARCH.md Pattern 2 window arithmetic:
+    // RESERVED=136, MIN_TAB_WIDTH=120, OVERFLOW_BTN=28 -> visibleCount=3 for
+    // a strip content-box width in this range). With the default 260px
+    // notes sidebar and collapsed backlinks rail, the middle grid column
+    // (== strip clientWidth) is viewportWidth - 308, so a 900px viewport
+    // lands the strip's available width at ~456px, comfortably inside range.
+    await page.setViewportSize({ width: 900, height: 800 });
+
+    await waitForConnected(page, jasper.baseURL);
+    for (const id of ids) {
+      await openNoteFromTree(page, id);
+    }
+
+    // active = the last-opened tab ('wr03-e'); the interleaved window keeps
+    // [a,b,e] visible and hides {c,d} (active is never evicted from view).
+    await expect(tabPills(page)).toHaveCount(3);
+    const hiddenTrigger = tabStrip(page).getByRole("button", {
+      name: "Show hidden tabs",
+    });
+    await expect(hiddenTrigger).toBeVisible({ timeout: 5_000 });
+
+    const visibleBefore = (await tabPills(page).allTextContents()).map((t) =>
+      t.trim(),
+    );
+    expect(visibleBefore).toEqual(["wr03-a", "wr03-b", "wr03-e"]);
+
+    // Drag the first VISIBLE tab ('wr03-a') to just before the last visible
+    // tab ('wr03-e') — the interleaved-hidden scenario WR-03 regresses on:
+    // the naive full-array target index used to span the hidden {c,d} tabs
+    // and land the drop in the wrong place / swallow it into overflow.
+    let fromBox = await tabPills(page).nth(0).boundingBox();
+    let toBox = await tabPills(page).nth(2).boundingBox();
+    await expect
+      .poll(async () => {
+        fromBox = await tabPills(page).nth(0).boundingBox();
+        toBox = await tabPills(page).nth(2).boundingBox();
+        return (fromBox?.width ?? 0) > 0 && (toBox?.width ?? 0) > 0;
+      }, { timeout: 5_000 })
+      .toBe(true);
+    if (!fromBox || !toBox) throw new Error("tab bounding boxes unavailable");
+
+    const fromX = fromBox.x + fromBox.width / 2;
+    const fromY = fromBox.y + fromBox.height / 2;
+    // Land in the left half of the target pill so computeDropTarget resolves
+    // to "just before" it, not past it.
+    const toX = toBox.x + Math.min(5, toBox.width / 4);
+    const toY = toBox.y + toBox.height / 2;
+
+    await page.mouse.move(fromX, fromY);
+    await page.mouse.down();
+    await page.mouse.move(toX, toY, { steps: 10 });
+    await page.mouse.up();
+
+    // Tolerate minor RESERVED-constant drift: assert the 3-visible/2-hidden
+    // SHAPE and the dragged tab's continued presence among the visible
+    // pills, not a specific pixel-derived final order.
+    await expect(tabPills(page)).toHaveCount(3, { timeout: 5_000 });
+    await expect
+      .poll(async () =>
+        (await tabPills(page).allTextContents()).map((t) => t.trim()),
+      )
+      .toContain("wr03-a");
+
+    // Confirm the dragged tab was never swallowed into the overflow dropdown:
+    // open it and assert wr03-a is absent, with exactly 2 items remaining.
+    await hiddenTrigger.click();
+    const hiddenItems = page.getByRole("menuitem");
+    await expect(hiddenItems).toHaveCount(2, { timeout: 5_000 });
+    const hiddenTitles = (await hiddenItems.allTextContents()).map((t) =>
+      t.trim(),
+    );
+    expect(hiddenTitles).not.toContain("wr03-a");
+    await page.keyboard.press("Escape");
+  });
+});
+
 // ─── TABUI-01: tab geometry ──────────────────────────────────────────────────
 
 test.describe("@phase18 TABUI-01: tab geometry (40px, flush, top accent, file icon)", () => {
@@ -269,8 +367,13 @@ test.describe("@phase18 RIBBON-01: activity ribbon presence + vault badge", () =
     const vaultLabel = page.getByTestId("status-bar-vault");
     await expect(vaultLabel).toBeVisible({ timeout: 10_000 });
     const vaultName = ((await vaultLabel.textContent()) ?? "").trim();
+    // Surrogate-safe first-character extraction (IN-05) — matches production
+    // (ActivityRibbon.tsx: `[...trimmedDisplayName][0]?.toUpperCase() ?? "J"`),
+    // not `charAt(0)` which would split a surrogate pair in half.
     const expectedLetter =
-      vaultName.length > 0 ? vaultName.charAt(0).toUpperCase() : "J";
+      vaultName.length > 0
+        ? ([...vaultName][0]?.toUpperCase() ?? "J")
+        : "J";
 
     expect(badgeLetter).toBe(expectedLetter);
   });
@@ -355,24 +458,35 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
     const dailyBtn = ribbon.getByRole("button", { name: "Open today's daily note" });
 
     await expect(dailyBtn).toBeVisible({ timeout: 10_000 });
+
+    // IN-04: capture the local-calendar date BEFORE and AFTER the click so
+    // this test cannot race local midnight — a click landing exactly on the
+    // local day boundary must still match one of the two straddling dates,
+    // not whichever single sample happened to be read.
+    const localDateString = (d: Date): string =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const todayBefore = localDateString(new Date());
     await dailyBtn.click();
+    const todayAfter = localDateString(new Date());
 
     // Proves the tabs-open path (18-05 fix): openToday must push a NEW tab
     // onto the existing strip (via useTabStore.openTab), not merely render
     // into the zero-tab fallback pane — the old assertion here masked a
     // regression where the daily note opened without becoming a tab.
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     await expect
       .poll(
         async () =>
           (await tabPills(page).allTextContents()).map((t) => t.trim()),
         { timeout: 10_000 },
       )
-      .toEqual(["existing-note", today]);
+      .toEqual([
+        "existing-note",
+        expect.stringMatching(new RegExp(`^(${todayBefore}|${todayAfter})$`)),
+      ]);
 
     const activeTab = page.getByRole("tab", { selected: true });
-    await expect(activeTab).toHaveText(today);
+    const activeTabText = ((await activeTab.textContent()) ?? "").trim();
+    expect([todayBefore, todayAfter]).toContain(activeTabText);
     // Two EditorPanes are keep-alive-mounted at this point (one per open tab,
     // D-01); scope to the visible one to avoid a strict-mode violation.
     await expect(page.locator(".cm-content:visible")).toBeVisible({
