@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import {
   computeHiddenTabIds,
+  computeDropIndex,
   MIN_TAB_WIDTH,
   MAX_TAB_WIDTH,
 } from "./tabOverflow";
@@ -126,5 +127,90 @@ describe("computeHiddenTabIds", () => {
 
     expect(expectedReserved).toBe(136);
     expect(RESERVED).toBe(expectedReserved);
+  });
+});
+
+describe("computeDropIndex", () => {
+  it("(h) WR-03 interleaved trace: tabs=[a,b,c,d,e], drag 'a' before 'e' with c,d hidden between b and e — 'a' lands adjacent to the visible window, not swallowed into overflow", () => {
+    const tabIds = ["a", "b", "c", "d", "e"];
+    const activeTabId = "e";
+    const availableWidth = 400;
+    // visibleCount = floor((400-28)/120) = 3; front window [a,b,c], active 'e'
+    // falls outside it, evicts 'c' -> visible=[a,b,e], hidden={c,d}. Matches
+    // the review's exact repro (18.1-REVIEW.md WR-03).
+    const hidden = computeHiddenTabIds({ ...base, tabIds, activeTabId, availableWidth });
+    expect(hidden).toEqual(new Set(["c", "d"]));
+    const visibleTabIds = tabIds.filter((id) => !hidden.has(id));
+    expect(visibleTabIds).toEqual(["a", "b", "e"]);
+
+    // Drag 'a' (fromIndex 0); drop indicator sits between 'b' and 'e' -> targetId 'e'.
+    // prevVisible = visibleTabIds[visIdx('e') - 1] = 'b'; toIdx = tabIds.indexOf('b') + 1 = 2.
+    const toIdx = computeDropIndex({ tabIds, visibleTabIds, targetId: "e", fromIndex: 0 });
+    expect(toIdx).toBe(2);
+
+    // Splice-first compensation (mirrors TabStrip.handleStripPointerUp, gap 6 / WR-01):
+    // fromIndex(0) < toIdx(2) -> adjusted = toIdx - 1 = 1.
+    const adjusted = 0 < toIdx ? toIdx - 1 : toIdx;
+    const reordered = [...tabIds];
+    const [moved] = reordered.splice(0, 1);
+    reordered.splice(adjusted, 0, moved);
+    expect(reordered).toEqual(["b", "a", "c", "d", "e"]);
+
+    // Recompute hidden on the new order: 'a' must NOT be swallowed into overflow.
+    const hiddenAfter = computeHiddenTabIds({
+      ...base,
+      tabIds: reordered,
+      activeTabId,
+      availableWidth,
+    });
+    expect(hiddenAfter.has("a")).toBe(false);
+  });
+
+  it("(i) WR-03 end-of-strip fallback: dropping past the last visible tab lands the dragged tab immediately after it, not swallowed among interleaved hidden tabs", () => {
+    const tabIds = ["a", "b", "c", "d", "e"];
+    const visibleTabIds = ["a", "b", "e"]; // c,d hidden and interleaved before 'e'
+
+    // targetId null = past all visible pills; prevVisible = last visible = 'e';
+    // toIdx = tabIds.indexOf('e') + 1 = 5 (append past the end of the full array).
+    const toIdx = computeDropIndex({ tabIds, visibleTabIds, targetId: null, fromIndex: 0 });
+    expect(toIdx).toBe(5);
+
+    const adjusted = 0 < toIdx ? toIdx - 1 : toIdx;
+    const reordered = [...tabIds];
+    const [moved] = reordered.splice(0, 1);
+    reordered.splice(adjusted, 0, moved);
+    // 'a' lands immediately after 'e' (the last visible tab) — not squeezed
+    // between the interleaved hidden 'c'/'d'.
+    expect(reordered).toEqual(["b", "c", "d", "e", "a"]);
+    expect(reordered.indexOf("a")).toBe(reordered.indexOf("e") + 1);
+  });
+
+  it("(j) non-interleaved regression: trailing-hidden drop between two visible tabs matches the old tabs.findIndex(targetId) result unchanged", () => {
+    const tabIds = ["a", "b", "c", "d", "e"];
+    const visibleTabIds = ["a", "b", "c"]; // d,e trailing-hidden, no interleaving
+
+    // Old buggy code: toIdx = tabs.findIndex(t => t.id === 'c') = 2.
+    // New fn: prevVisible = visibleTabIds[visIdx('c') - 1] = 'b'; toIdx = tabIds.indexOf('b') + 1 = 2.
+    const toIdx = computeDropIndex({ tabIds, visibleTabIds, targetId: "c", fromIndex: 0 });
+    expect(toIdx).toBe(2);
+    expect(toIdx).toBe(tabIds.findIndex((id) => id === "c"));
+  });
+
+  it("(k) drop onto the first visible tab -> no prevVisible, toIdx 0", () => {
+    const tabIds = ["a", "b", "c"];
+    const visibleTabIds = ["a", "b", "c"];
+    expect(computeDropIndex({ tabIds, visibleTabIds, targetId: "a", fromIndex: 2 })).toBe(0);
+  });
+
+  it("(l) targetId not present in visibleTabIds -> -1 (caller no-ops)", () => {
+    const tabIds = ["a", "b", "c"];
+    const visibleTabIds = ["a", "b", "c"];
+    expect(computeDropIndex({ tabIds, visibleTabIds, targetId: "zzz", fromIndex: 0 })).toBe(-1);
+  });
+
+  it("(m) empty visibleTabIds with targetId null -> 0 (no prevVisible, nothing to be adjacent to)", () => {
+    expect(
+      computeDropIndex({ tabIds: [], visibleTabIds: [], targetId: null, fromIndex: 0 }),
+    ).toBe(0);
   });
 });
