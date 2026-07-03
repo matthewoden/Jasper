@@ -185,6 +185,21 @@ describe("ActivityRibbon", () => {
     expect(btn.style.background).toBe("transparent");
   });
 
+  it("RibbonButton: hover tint stays cleared after a disable/re-enable cycle when the pointer left while disabled (IN-01)", () => {
+    const { rerender } = render(<ActivityRibbon />);
+    const btn = screen.getByRole("button", { name: "Open today's daily note" });
+
+    fireEvent.mouseEnter(btn);
+    mockTodayLoading = true;
+    rerender(<ActivityRibbon />);
+    // Pointer leaves while disabled: the browser suppresses mouse events on
+    // disabled buttons, so no mouseLeave is fired here.
+    mockTodayLoading = false;
+    rerender(<ActivityRibbon />);
+
+    expect(btn.style.background).toBe("transparent");
+  });
+
   it("Palette button: clicking calls setPaletteMode('commands') then setPaletteOpen(true)", () => {
     render(<ActivityRibbon />);
     fireEvent.click(

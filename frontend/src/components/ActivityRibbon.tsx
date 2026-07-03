@@ -8,7 +8,7 @@
  * researcher should re-derive a real panel concept when the in-sidebar
  * Search panel ships; see 18-02-SUMMARY.md.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { Folder, Search, CalendarDays, Command } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
@@ -58,6 +58,12 @@ function RibbonButton({
   style,
 }: RibbonButtonProps): React.JSX.Element {
   const [hovering, setHovering] = useState(false);
+  // Disabled buttons suppress mouse events: if the pointer leaves while
+  // disabled, onMouseLeave never fires and the tint would reappear on
+  // re-enable — reset instead of trusting the leave event.
+  useEffect(() => {
+    if (disabled) setHovering(false);
+  }, [disabled]);
   return (
     <button
       type="button"
