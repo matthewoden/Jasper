@@ -88,6 +88,19 @@ describe("ActivityRibbon", () => {
     expect(screen.getByLabelText(/^Vault:/).textContent).toBe("J");
   });
 
+  it("shows the whole code point for an emoji-led vault name, not a broken half-surrogate (IN-01)", () => {
+    mockDisplayName = "📓 Notes";
+    render(<ActivityRibbon />);
+    expect(screen.getByLabelText(/^Vault:/).textContent).toBe("📓");
+  });
+
+  it("exposes the vault badge to assistive tech via role=img (IN-02)", () => {
+    render(<ActivityRibbon />);
+    expect(
+      screen.getByRole("img", { name: /^Vault:/ }).textContent,
+    ).toBe("M");
+  });
+
   it("Files toggle: active when notesSidebarVisible is true", () => {
     mockNotesSidebarVisible = true;
     render(<ActivityRibbon />);
@@ -130,6 +143,15 @@ describe("ActivityRibbon", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search notes (⌘⇧F)" }));
     expect(mockSetPaletteMode).toHaveBeenCalledWith("search");
     expect(mockSetPaletteOpen).toHaveBeenCalledWith(true);
+  });
+
+  it("Search toggle: clicking while already open+search closes the palette instead of re-opening it (IN-03)", () => {
+    mockPaletteOpen = true;
+    mockPaletteMode = "search";
+    render(<ActivityRibbon />);
+    fireEvent.click(screen.getByRole("button", { name: "Search notes (⌘⇧F)" }));
+    expect(mockSetPaletteOpen).toHaveBeenCalledWith(false);
+    expect(mockSetPaletteMode).not.toHaveBeenCalled();
   });
 
   it("Daily button: clicking calls the mocked openToday", () => {

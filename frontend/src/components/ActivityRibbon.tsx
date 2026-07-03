@@ -98,15 +98,18 @@ export function ActivityRibbon({
   const { current } = useVaultPicker();
 
   const displayName = current?.display_name ?? "";
-  const badgeLetter = displayName.trim().length > 0
-    ? displayName.trim().charAt(0).toUpperCase()
-    : "J";
+  const trimmedDisplayName = displayName.trim();
+  const badgeLetter =
+    trimmedDisplayName.length > 0
+      ? ([...trimmedDisplayName][0]?.toUpperCase() ?? "J")
+      : "J";
 
   const searchActive = paletteOpen && paletteMode === "search";
 
   return (
     <nav style={{ ...ribbonStyle, ...style }} aria-label="Activity ribbon">
       <div
+        role="img"
         aria-label={`Vault: ${displayName}`}
         style={{
           width: 30,
@@ -139,8 +142,12 @@ export function ActivityRibbon({
         active={searchActive}
         onClick={() => {
           const store = useTreeStore.getState();
-          store.setPaletteMode("search");
-          store.setPaletteOpen(true);
+          if (searchActive) {
+            store.setPaletteOpen(false);
+          } else {
+            store.setPaletteMode("search");
+            store.setPaletteOpen(true);
+          }
         }}
         icon={<Search size={16} aria-hidden="true" />}
         style={{ marginTop: 4 }}
