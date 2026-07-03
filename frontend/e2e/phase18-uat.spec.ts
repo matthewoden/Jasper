@@ -361,7 +361,8 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
     // onto the existing strip (via useTabStore.openTab), not merely render
     // into the zero-tab fallback pane — the old assertion here masked a
     // regression where the daily note opened without becoming a tab.
-    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     await expect
       .poll(
         async () =>
