@@ -344,8 +344,14 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
   });
 
-  test("daily-note button opens/creates today's daily note", async ({ page }) => {
+  test("daily-note button opens today's daily note as a NEW tab when a note is already open", async ({
+    page,
+  }) => {
+    const existingId = await createNote(jasper, "existing-note");
     await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, existingId);
+    await expect(tabPills(page)).toHaveCount(1);
+
     const ribbon = page.locator('nav[aria-label="Activity ribbon"]');
     // Scoped to the ribbon: SidebarToolbar's own "Today" button shares this
     // exact aria-label, so an unscoped locator would violate strict mode.
@@ -354,9 +360,26 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
     await expect(dailyBtn).toBeVisible({ timeout: 10_000 });
     await dailyBtn.click();
 
-    // Fresh page/context => zero tabs open, so the fallback pane (driven by
-    // activeNoteId) renders the daily note's editor directly.
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 10_000 });
+    // Proves the tabs-open path (18-05 fix): openToday must push a NEW tab
+    // onto the existing strip (via useTabStore.openTab), not merely render
+    // into the zero-tab fallback pane — the old assertion here masked a
+    // regression where the daily note opened without becoming a tab.
+    const today = new Date().toISOString().slice(0, 10);
+    await expect
+      .poll(
+        async () =>
+          (await tabPills(page).allTextContents()).map((t) => t.trim()),
+        { timeout: 10_000 },
+      )
+      .toEqual(["existing-note", today]);
+
+    const activeTab = page.getByRole("tab", { selected: true });
+    await expect(activeTab).toHaveText(today);
+    // Two EditorPanes are keep-alive-mounted at this point (one per open tab,
+    // D-01); scope to the visible one to avoid a strict-mode violation.
+    await expect(page.locator(".cm-content:visible")).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test("command-palette button opens the CommandMenu", async ({ page }) => {
