@@ -67,3 +67,42 @@ export function computeHiddenTabIds(input: OverflowInput): Set<string> {
 
   return new Set(tabIds.filter((id) => !kept.has(id)));
 }
+
+export interface DropIndexInput {
+  /** Full tab order (including hidden/overflowed tabs). */
+  tabIds: string[];
+  /** Currently visible tab order (a subset of tabIds, same relative order). */
+  visibleTabIds: string[];
+  /** The visible tab the pointer is dropping onto, or null to drop past the last visible tab. */
+  targetId: string | null;
+  /** Full-array index of the tab being dragged (unused in the calculation; carried for callers). */
+  fromIndex: number;
+}
+
+/**
+ * Map a drop onto the VISIBLE tab strip to a full-array insert index (WR-03).
+ *
+ * Hidden (overflowed) tabs can be interleaved between visible ones, so the
+ * naive `tabIds.findIndex(t => t.id === targetId)` spans those hidden tabs
+ * and diverges from where the drop indicator promised the tab would land.
+ * Instead, anchor on the VISIBLE tab immediately before the target: the
+ * insert index is that tab's full-array position + 1 (or 0 if the target is
+ * the first visible tab / there is no previous visible tab).
+ */
+export function computeDropIndex(input: DropIndexInput): number {
+  const { tabIds, visibleTabIds, targetId } = input;
+
+  let prevVisibleId: string | undefined;
+  if (targetId === null) {
+    // Past the last visible tab — land immediately after it.
+    prevVisibleId = visibleTabIds[visibleTabIds.length - 1];
+  } else {
+    const visIdx = visibleTabIds.findIndex((id) => id === targetId);
+    if (visIdx === -1) return -1;
+    prevVisibleId = visibleTabIds[visIdx - 1];
+  }
+
+  if (prevVisibleId === undefined) return 0;
+  const prevFullIdx = tabIds.findIndex((id) => id === prevVisibleId);
+  return prevFullIdx === -1 ? 0 : prevFullIdx + 1;
+}
