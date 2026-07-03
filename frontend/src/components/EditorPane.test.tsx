@@ -584,6 +584,37 @@ describe("<EditorPane />", () => {
             expect.objectContaining({ signal: expect.any(Object) }),
         );
     });
+
+    it("WR-02: pending debounce armed for note A is cleared on noteId change — no cross-note PUT", async () => {
+        const NOTE_B = "00000000-0000-4000-a000-000000000002";
+        getNoteMock.mockImplementation((id: string) =>
+            Promise.resolve(okGet(`content for ${id}`)),
+        );
+        updateNoteMock.mockResolvedValue(okPut());
+
+        const { rerender } = render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        const editor = screen.getByLabelText(
+            "Note content",
+        ) as HTMLTextAreaElement;
+        await waitFor(() =>
+            expect(editor.value).toBe(`content for ${ScratchpadUUID}`),
+        );
+
+        // Arm the debounce with note A's edited content…
+        fireEvent.change(editor, { target: { value: "edited note A" } });
+
+        // …then switch to note B BEFORE the debounce fires.
+        rerender(<EditorPane noteId={NOTE_B} />);
+        await flushMicrotasks();
+
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
+        });
+
+        // The stale debounce must not PUT note A's content anywhere.
+        expect(updateNoteMock).not.toHaveBeenCalled();
+    });
 });
 
 describe("generic load-error copy (Gap 6b)", () => {

@@ -218,6 +218,13 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   const prevNoteIdRef = useRef<string | null>(noteId);
 
   useEffect(() => {
+    // A debounce armed for the previous note must never fire against the new
+    // noteIdRef — latestContentRef may still hold the old note's content and
+    // the save would write it into the new note (cross-note corruption).
+    if (debounceTimer.current !== null) {
+      window.clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
     {
       const prevId = prevNoteIdRef.current;
       if (prevId !== null && prevId !== noteId && userHasEdited.current) {
@@ -376,9 +383,15 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
         // save (fired below) queue onto a fresh array, not this one.
         const waiters = trailingWaiters.current;
         trailingWaiters.current = [];
-        void performSave(latestContentRef.current).then((r) => {
-          waiters.forEach((resolve) => resolve(r));
-        });
+        if (noteIdRef.current !== id) {
+          // noteId changed while this save was in flight; latestContentRef may
+          // hold the previous note's content — never PUT it to the new note.
+          waiters.forEach((resolve) => resolve({ ok: false }));
+        } else {
+          void performSave(latestContentRef.current).then((r) => {
+            waiters.forEach((resolve) => resolve(r));
+          });
+        }
       }
     }
   }, [refreshTree]);
