@@ -736,7 +736,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
           deletedTabIds={deletedTabIds}
           titleForTab={titleForTab}
           onSelectTab={setActiveTab}
-          onRequestClose={(id) => void flushAndClose(id)}
+          onRequestClose={(id) => void flushAndClose(id).catch(() => {})}
           onCloseOthers={closeOthers}
           onCloseToRight={closeToRight}
           onOpenRight={openRight}
