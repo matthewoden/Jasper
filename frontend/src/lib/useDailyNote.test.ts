@@ -12,10 +12,11 @@
  * useToast is provided via ToastProvider wrapper.
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement, type ReactNode } from "react";
 
 import { useTreeStore } from "./useTreeStore";
+import { useTabStore } from "./useTabStore";
 import { ToastProvider } from "../components/Toast";
 
 vi.mock("../api/client", () => ({
@@ -65,6 +66,15 @@ describe("useDailyNote", () => {
       dailyNoteLoading: false,
       activeNoteId: null,
     });
+    useTabStore.setState({
+      tabs: [],
+      activeTabId: null,
+      deletedTabIds: new Set<string>(),
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("DN-HOOK-1: isLoading is false initially (mirrors store)", () => {
@@ -150,6 +160,22 @@ describe("useDailyNote", () => {
     });
 
     expect(mockedBroadcastRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("DN-HOOK-8: happy path — opens a tab for the created note id (RIBBON-04 gap 2)", async () => {
+    mockedOpenToday.mockResolvedValueOnce(fakeNote);
+    const openTabSpy = vi.spyOn(useTabStore.getState(), "openTab");
+
+    const { result } = renderHook(() => useDailyNote(), { wrapper });
+
+    await act(async () => {
+      await result.current.openToday();
+    });
+
+    expect(openTabSpy).toHaveBeenCalledTimes(1);
+    expect(openTabSpy).toHaveBeenCalledWith(fakeNote.id);
+    // Legacy pointer is still set for the zero-tab fallback pane.
+    expect(useTreeStore.getState().activeNoteId).toBe(fakeNote.id);
   });
 
   it("DN-HOOK-7: error path — broadcastRefresh is NOT called on failure (UAT-2 R1-1)", async () => {
