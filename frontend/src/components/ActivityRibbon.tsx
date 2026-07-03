@@ -1,0 +1,170 @@
+/**
+ * ActivityRibbon — the 48px far-left activity bar: vault badge, Files/Search
+ * toggles, daily-note button, and the command-palette button.
+ *
+ * Files toggle reflects `notesSidebarVisible`; Search toggle reflects
+ * `paletteOpen && paletteMode === "search"`. These are two independent
+ * booleans this phase (not a unified "active panel" enum) — Phase 19's
+ * researcher should re-derive a real panel concept when the in-sidebar
+ * Search panel ships; see 18-02-SUMMARY.md.
+ */
+import { useState } from "react";
+import type { CSSProperties } from "react";
+import { Folder, Search, CalendarDays, Command } from "lucide-react";
+import { useTreeStore } from "../lib/useTreeStore";
+import { useDailyNote } from "../lib/useDailyNote";
+import { useVaultPicker } from "../lib/useVaultPicker";
+
+const ribbonStyle: CSSProperties = {
+  width: 48,
+  height: "100%",
+  background: "var(--color-surface-ribbon)",
+  borderRight: "1px solid var(--color-border-inner)",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+};
+
+const buttonBase: CSSProperties = {
+  width: 32,
+  height: 32,
+  padding: 4,
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 4,
+};
+
+interface RibbonButtonProps {
+  ariaLabel: string;
+  title?: string;
+  onClick: () => void;
+  icon: React.ReactNode;
+  active?: boolean;
+  disabled?: boolean;
+  style?: CSSProperties;
+}
+
+function RibbonButton({
+  ariaLabel,
+  title,
+  onClick,
+  icon,
+  active = false,
+  disabled = false,
+  style,
+}: RibbonButtonProps): React.JSX.Element {
+  const [hovering, setHovering] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      title={title ?? ariaLabel}
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+      style={{
+        ...buttonBase,
+        color: active ? "var(--color-accent)" : "var(--color-muted)",
+        background: hovering
+          ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+          : "transparent",
+        ...style,
+      }}
+    >
+      {icon}
+    </button>
+  );
+}
+
+export function ActivityRibbon(): React.JSX.Element {
+  const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
+  const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);
+  const paletteOpen = useTreeStore((s) => s.paletteOpen);
+  const paletteMode = useTreeStore((s) => s.paletteMode);
+
+  const { openToday, isLoading: todayLoading } = useDailyNote();
+  const { current } = useVaultPicker();
+
+  const displayName = current?.display_name ?? "";
+  const badgeLetter = displayName.trim().length > 0
+    ? displayName.trim().charAt(0).toUpperCase()
+    : "J";
+
+  const searchActive = paletteOpen && paletteMode === "search";
+
+  return (
+    <nav style={ribbonStyle} aria-label="Activity ribbon">
+      <div
+        aria-label={`Vault: ${displayName}`}
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 6,
+          marginTop: 8,
+          background:
+            "color-mix(in srgb, var(--color-accent) 16%, var(--color-surface-ribbon))",
+          color: "var(--color-accent)",
+          fontSize: 14,
+          fontWeight: 600,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {badgeLetter}
+      </div>
+
+      <RibbonButton
+        ariaLabel="Files"
+        active={notesSidebarVisible}
+        onClick={() => setNotesSidebarVisible(!notesSidebarVisible)}
+        icon={<Folder size={16} aria-hidden="true" />}
+        style={{ marginTop: 8 }}
+      />
+
+      <RibbonButton
+        ariaLabel="Search notes (⌘⇧F)"
+        active={searchActive}
+        onClick={() => {
+          const store = useTreeStore.getState();
+          store.setPaletteMode("search");
+          store.setPaletteOpen(true);
+        }}
+        icon={<Search size={16} aria-hidden="true" />}
+        style={{ marginTop: 4 }}
+      />
+
+      <RibbonButton
+        ariaLabel="Open today's daily note"
+        title="Today (⌘⇧D)"
+        onClick={openToday}
+        disabled={todayLoading}
+        icon={<CalendarDays size={16} aria-hidden="true" />}
+        style={{
+          marginTop: 16,
+          opacity: todayLoading ? 0.5 : 1,
+          cursor: todayLoading ? "wait" : "pointer",
+        }}
+      />
+
+      <div style={{ flex: 1 }} />
+
+      <RibbonButton
+        ariaLabel="Open command palette"
+        title="Command palette (⌘P)"
+        onClick={() => {
+          const s = useTreeStore.getState();
+          s.setPaletteMode("commands");
+          s.setPaletteOpen(true);
+        }}
+        icon={<Command size={16} aria-hidden="true" />}
+        style={{ marginBottom: 8 }}
+      />
+    </nav>
+  );
+}
