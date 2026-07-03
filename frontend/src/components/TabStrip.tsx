@@ -572,8 +572,12 @@ export function TabStrip({
 
       if (targetId !== null) {
         const toIdx = tabs.findIndex((t) => t.id === targetId);
-        if (toIdx !== -1 && toIdx !== drag.fromIndex) {
-          onReorder(drag.fromIndex, toIdx);
+        // reorderTabs splices fromIndex OUT before inserting at toIndex
+        // (splice-first), so a left-to-right drop must compensate by one to
+        // land where the left-edge indicator promised (gap 6 / WR-01).
+        const adjusted = drag.fromIndex < toIdx ? toIdx - 1 : toIdx;
+        if (toIdx !== -1 && adjusted !== drag.fromIndex) {
+          onReorder(drag.fromIndex, adjusted);
         }
       } else {
         // Dropped past all visible tabs — move to end of visible range.
