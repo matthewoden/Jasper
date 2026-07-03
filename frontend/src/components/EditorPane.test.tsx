@@ -1077,6 +1077,87 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         expect(screen.queryByTestId("conflict-banner")).not.toBeInTheDocument();
     });
 
+    it("WR-01: silent-reload getNote API error (non-thrown) surfaces the conflict banner instead of dropping the update", async () => {
+        getNoteMock.mockResolvedValue(okGet("initial"));
+        const { handlersRef } = renderEditorWithHandlers();
+        await flushMicrotasks();
+        const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("initial"));
+
+        getNoteMock.mockClear();
+        // openapi-fetch style: API failures resolve with { data: undefined, error } — no throw.
+        getNoteMock.mockResolvedValue(errGet("boom"));
+
+        act(() => {
+            handlersRef.current!.onNoteUpdated({
+                id: ScratchpadUUID,
+                path: "scratchpad.md",
+                updated_at: "2026-05-06T13:00:00Z",
+            });
+        });
+        await waitFor(() =>
+            expect(screen.getByTestId("conflict-banner")).toBeInTheDocument(),
+        );
+        // Content untouched — the user decides via the banner.
+        expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+            "initial",
+        );
+    });
+
+    it("WR-01: late-resolving silent reload for the PREVIOUS note does not clobber the new note", async () => {
+        const NOTE_B = "00000000-0000-4000-a000-000000000002";
+        getNoteMock.mockResolvedValue(okGet("note A content"));
+        const handlersRef: { current: EditorPaneHandlers | null } = { current: null };
+        const { rerender } = render(
+            <EditorPane noteId={ScratchpadUUID} editorHandlersRef={handlersRef} />,
+        );
+        await flushMicrotasks();
+        const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
+        await waitFor(() => expect(editor.value).toBe("note A content"));
+
+        // Hold the silent-reload fetch for note A open.
+        let resolveReload: (v: GetReturn) => void = () => {};
+        getNoteMock.mockClear();
+        getNoteMock.mockImplementationOnce(
+            () => new Promise<GetReturn>((r) => { resolveReload = r; }),
+        );
+        act(() => {
+            handlersRef.current!.onNoteUpdated({
+                id: ScratchpadUUID,
+                path: "scratchpad.md",
+                updated_at: "2026-05-06T13:00:00Z",
+            });
+        });
+
+        // Switch the pane to note B; its load resolves with B's content.
+        getNoteMock.mockResolvedValue({
+            data: {
+                id: NOTE_B,
+                path: "note-b.md",
+                content: "note B content",
+                updated_at: "2025-01-01T00:00:00Z",
+            },
+            error: undefined,
+            response: new Response(),
+        } as GetReturn);
+        rerender(<EditorPane noteId={NOTE_B} editorHandlersRef={handlersRef} />);
+        await waitFor(() =>
+            expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+                "note B content",
+            ),
+        );
+
+        // Note A's silent reload resolves LATE — must be discarded.
+        await act(async () => {
+            resolveReload(okGet("stale note A from server"));
+            await Promise.resolve();
+        });
+        expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+            "note B content",
+        );
+        expect(screen.queryByTestId("conflict-banner")).not.toBeInTheDocument();
+    });
+
     it("P4-deletion-banner: note:deleted for open note shows banner WITHOUT clearing content", async () => {
         getNoteMock.mockResolvedValue(okGet("user typed work"));
         const { handlersRef } = renderEditorWithHandlers();

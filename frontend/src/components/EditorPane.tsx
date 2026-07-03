@@ -544,12 +544,21 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       if (!userHasEdited.current && !debouncePending && !inFlightSave) {
         void (async () => {
           try {
-            const { data } = await getNote(p.id);
-            if (!data) return;
+            const { data, error } = await getNote(p.id);
+            // Stale-response guard: the fallback pane's noteId can change while
+            // the fetch is in flight — never clobber the new note's content.
+            if (p.id !== noteIdRef.current) return;
+            if (error || !data) {
+              // getNote returns { error } on API failures without throwing;
+              // surface the banner rather than silently dropping the update.
+              setConflictBanner({ visible: true, currentUpdatedAt: p.updated_at });
+              return;
+            }
             setContent(data.content);
             latestContentRef.current = data.content;
             editorRef.current?.applyServerUpdate(data.content);
           } catch {
+            if (p.id !== noteIdRef.current) return;
             setConflictBanner({ visible: true, currentUpdatedAt: p.updated_at });
           }
         })();
