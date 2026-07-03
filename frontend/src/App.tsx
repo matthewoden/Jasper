@@ -148,9 +148,11 @@ function BootGate() {
   const [vaultPath, setVaultPath] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     vaultApi
       .getCurrent()
       .then((current) => {
+        if (cancelled) return;
         if (current === null) {
           setState("noVault");
         } else {
@@ -158,7 +160,13 @@ function BootGate() {
           setState("vaultOpen");
         }
       })
-      .catch(() => setState("noVault"));
+      .catch(() => {
+        if (cancelled) return;
+        setState("noVault");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (state === "loading") return null;
