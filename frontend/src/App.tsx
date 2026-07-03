@@ -724,7 +724,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         }}
       >
         {/* ActivityRibbon: spans both rows (gridRow 1/3) — column 1. */}
-        <ActivityRibbon />
+        <ActivityRibbon style={{ gridRow: "1 / 3", gridColumn: "1" }} />
 
         {/* TabStrip: row 1, column 3 — renders directly (D-04 dissolution).
             Always renders (incl. zero-tab state, which shows only the + new-tab
