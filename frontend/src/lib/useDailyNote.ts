@@ -11,6 +11,7 @@
 
 import { useCallback } from "react";
 import { useTreeStore } from "./useTreeStore";
+import { useTabStore } from "./useTabStore";
 import { openTodayDailyNote } from "./dailyNoteApi";
 import { broadcastRefresh } from "./useFileTree";
 import { useToast } from "../components/toast.utils";
@@ -30,6 +31,7 @@ export function useDailyNote() {
     try {
       const note = await openTodayDailyNote(today);
       setActiveNote(note.id);
+      useTabStore.getState().openTab(note.id);
       await broadcastRefresh();
     } catch {
       toast({
