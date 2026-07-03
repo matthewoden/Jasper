@@ -451,6 +451,38 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
     expect(screen.getByRole("button", { name: "Open panel" })).toBeInTheDocument();
   });
 
+  // Gap 3 / TABUI-02 (owner revision 2026-07-02): split placement supersedes
+  // the original D-04 right-hand cluster — left-sidebar toggle moves to the
+  // far-left cluster; right-sidebar toggle + PanelSelectorDropdown stay in the
+  // far-right cluster.
+  it("SPLIT-PLACEMENT: left-sidebar toggle is inside tab-strip-left-cluster", () => {
+    renderStrip();
+    const leftCluster = screen.getByTestId("tab-strip-left-cluster");
+    expect(leftCluster).toBeInTheDocument();
+    expect(
+      within(leftCluster).getByRole("button", { name: "Hide notes sidebar" }),
+    ).toBeInTheDocument();
+  });
+
+  it("SPLIT-PLACEMENT: right-sidebar toggle and PanelSelectorDropdown are inside tab-strip-right-cluster, not the left cluster", () => {
+    renderStrip();
+    const rightCluster = screen.getByTestId("tab-strip-right-cluster");
+    expect(
+      within(rightCluster).getByRole("button", { name: "Hide panels" }),
+    ).toBeInTheDocument();
+    expect(
+      within(rightCluster).getByRole("button", { name: "Open panel" }),
+    ).toBeInTheDocument();
+
+    const leftCluster = screen.getByTestId("tab-strip-left-cluster");
+    expect(
+      within(leftCluster).queryByRole("button", { name: "Hide panels" }),
+    ).toBeNull();
+    expect(
+      within(leftCluster).queryByRole("button", { name: "Open panel" }),
+    ).toBeNull();
+  });
+
   // D-04: the old chrome wrapper gated the right-rail toggle behind
   // panelSelectorState.tags || panelSelectorState.backlinks (TBR-N3-3/4a/4b,
   // RR-T-1). That gate is intentionally dropped here — the right toggle is
@@ -463,7 +495,7 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
     ).not.toBeNull();
   });
 
-  it("right cluster is present in the zero-tab empty state too", () => {
+  it("right cluster and left cluster are both present in the zero-tab empty state too", () => {
     render(
       <TabStrip
         tabs={[]}
@@ -480,5 +512,6 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
       />,
     );
     expect(screen.getByTestId("tab-strip-right-cluster")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-strip-left-cluster")).toBeInTheDocument();
   });
 });
