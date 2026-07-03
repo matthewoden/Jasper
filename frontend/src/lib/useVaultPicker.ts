@@ -43,6 +43,8 @@ export function useVaultPicker(): UseVaultPickerResult {
       setCurrent(c);
       setRecents(r.vaults);
       setBanner(r.banner);
+    } catch {
+      // best-effort refresh; leave prior current/recents/banner state intact
     } finally {
       setIsLoading(false);
     }
