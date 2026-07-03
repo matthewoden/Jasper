@@ -179,6 +179,8 @@ function BootGate() {
 }
 
 
+// Test-only composition: bypasses BootGate's vault resolution so shell tests
+// can mount AppInner directly. Production always enters through <App/>.
 export function AppShell() {
   return (
     <ToastProvider>
