@@ -127,20 +127,17 @@ test.describe("@phase18 D-05: DnD regression — drag/ghost/drop-indicator survi
     await page.mouse.move(toX, toY, { steps: 10 });
     await page.mouse.up();
 
-    // reorderTabs splices fromIndex out of the array BEFORE inserting at
-    // toIndex, so a drop target computed against the pre-removal array (here,
-    // "gamma", index 2) lands past the shifted end once alpha is removed:
-    // [alpha,beta,gamma] -> remove alpha -> [beta,gamma] -> insert at index 2
-    // (now out of bounds) -> [beta,gamma,alpha]. This is pre-existing,
-    // already-shipped reorder semantics (useTabStore.reorderTabs), not
-    // something this restyle changes.
+    // 18-06 compensates the drop target by -1 when dropping to the right of
+    // the drag source, so the drop indicator's visual promise (insert before
+    // gamma) now matches the actual outcome: [alpha,beta,gamma] -> drag alpha
+    // to just before gamma -> [beta,alpha,gamma].
     await expect
       .poll(
         async () =>
           (await tabPills(page).allTextContents()).map((t) => t.trim()),
         { timeout: 5_000 },
       )
-      .toEqual(["d05-beta", "d05-gamma", "d05-alpha"]);
+      .toEqual(["d05-beta", "d05-alpha", "d05-gamma"]);
   });
 
   test("ghost + drop indicator appear during an active drag and are removed on mouse-up", async ({
@@ -344,8 +341,14 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
   });
 
-  test("daily-note button opens/creates today's daily note", async ({ page }) => {
+  test("daily-note button opens today's daily note as a NEW tab when a note is already open", async ({
+    page,
+  }) => {
+    const existingId = await createNote(jasper, "existing-note");
     await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, existingId);
+    await expect(tabPills(page)).toHaveCount(1);
+
     const ribbon = page.locator('nav[aria-label="Activity ribbon"]');
     // Scoped to the ribbon: SidebarToolbar's own "Today" button shares this
     // exact aria-label, so an unscoped locator would violate strict mode.
@@ -354,9 +357,26 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
     await expect(dailyBtn).toBeVisible({ timeout: 10_000 });
     await dailyBtn.click();
 
-    // Fresh page/context => zero tabs open, so the fallback pane (driven by
-    // activeNoteId) renders the daily note's editor directly.
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 10_000 });
+    // Proves the tabs-open path (18-05 fix): openToday must push a NEW tab
+    // onto the existing strip (via useTabStore.openTab), not merely render
+    // into the zero-tab fallback pane — the old assertion here masked a
+    // regression where the daily note opened without becoming a tab.
+    const today = new Date().toISOString().slice(0, 10);
+    await expect
+      .poll(
+        async () =>
+          (await tabPills(page).allTextContents()).map((t) => t.trim()),
+        { timeout: 10_000 },
+      )
+      .toEqual(["existing-note", today]);
+
+    const activeTab = page.getByRole("tab", { selected: true });
+    await expect(activeTab).toHaveText(today);
+    // Two EditorPanes are keep-alive-mounted at this point (one per open tab,
+    // D-01); scope to the visible one to avoid a strict-mode violation.
+    await expect(page.locator(".cm-content:visible")).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test("command-palette button opens the CommandMenu", async ({ page }) => {
@@ -371,9 +391,9 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
   });
 });
 
-// ─── TABUI-02: tab-bar right-hand cluster ────────────────────────────────────
+// ─── TABUI-02: tab-bar split toggle placement (far-left / far-right) ────────
 
-test.describe("@phase18 TABUI-02: tab-bar right-hand cluster", () => {
+test.describe("@phase18 TABUI-02: tab-bar split toggle placement", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -384,17 +404,22 @@ test.describe("@phase18 TABUI-02: tab-bar right-hand cluster", () => {
     if (jasper) await jasper.kill();
   });
 
-  test("both sidebar toggles render inside the tab strip and each toggles its own sidebar", async ({
+  test("left-sidebar toggle sits in the far-left cluster, right-sidebar toggle in the far-right cluster, and each toggles its own sidebar", async ({
     page,
   }) => {
     await waitForConnected(page, jasper.baseURL);
 
-    const cluster = tabStrip(page).getByTestId("tab-strip-right-cluster");
-    await expect(cluster).toBeVisible({ timeout: 10_000 });
+    // Owner revision (2026-07-02, gap 3): the toggles are SPLIT, not
+    // co-located in a single right-hand cluster — left toggle far-left,
+    // right toggle far-right, superseding CONTEXT D-04.
+    const leftCluster = tabStrip(page).getByTestId("tab-strip-left-cluster");
+    const rightCluster = tabStrip(page).getByTestId("tab-strip-right-cluster");
+    await expect(leftCluster).toBeVisible({ timeout: 10_000 });
+    await expect(rightCluster).toBeVisible({ timeout: 10_000 });
 
     // Default states: notesSidebarVisible=true, backlinksRailExpanded=false.
-    const leftToggle = cluster.getByRole("button", { name: "Hide notes sidebar" });
-    const rightToggle = cluster.getByRole("button", { name: "Show panels" });
+    const leftToggle = leftCluster.getByRole("button", { name: "Hide notes sidebar" });
+    const rightToggle = rightCluster.getByRole("button", { name: "Show panels" });
     await expect(leftToggle).toBeVisible();
     await expect(rightToggle).toBeVisible();
 
@@ -403,7 +428,7 @@ test.describe("@phase18 TABUI-02: tab-bar right-hand cluster", () => {
     await leftToggle.click();
     await expect(sidebarNav).toHaveCount(0, { timeout: 5_000 });
     await expect(
-      cluster.getByRole("button", { name: "Show notes sidebar" }),
+      leftCluster.getByRole("button", { name: "Show notes sidebar" }),
     ).toBeVisible();
 
     // The right toggle expands the backlinks/tags rail — its resize handle
@@ -413,7 +438,7 @@ test.describe("@phase18 TABUI-02: tab-bar right-hand cluster", () => {
     await rightToggle.click();
     await expect(railHandle).toBeVisible({ timeout: 5_000 });
     await expect(
-      cluster.getByRole("button", { name: "Hide panels" }),
+      rightCluster.getByRole("button", { name: "Hide panels" }),
     ).toBeVisible();
   });
 });
