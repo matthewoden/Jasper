@@ -18,7 +18,7 @@ describe("searchApi.searchNotes", () => {
     });
     await searchNotes("hello", "project", 25);
     expect(client.GET).toHaveBeenCalledWith("/search", {
-      params: { query: { q: "hello", tag: "project", limit: 25 } },
+      params: { query: { q: "hello", tag: ["project"], limit: 25 } },
     });
   });
 
