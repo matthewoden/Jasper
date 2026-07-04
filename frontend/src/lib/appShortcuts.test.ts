@@ -112,7 +112,7 @@ describe("handleAppCmdShiftF (Phase 19 D-05 re-point)", () => {
     });
   });
 
-  it("opens the sidebar to the Search panel and dispatches 'focusSearch' (D-05)", () => {
+  it("opens the sidebar to the Search panel and dispatches 'focusSearch' (D-05)", async () => {
     const received: Phase7DispatchEvent[] = [];
     const unsubscribe = subscribePhase7((ev) => received.push(ev));
     try {
@@ -125,6 +125,9 @@ describe("handleAppCmdShiftF (Phase 19 D-05 re-point)", () => {
       handleAppCmdShiftF(e);
       expect(useTreeStore.getState().sidebarPanel).toBe("search");
       expect(useTreeStore.getState().notesSidebarVisible).toBe(true);
+      // Dispatch is deferred one frame past this handler (SidebarSearchPanel
+      // may mount and subscribe in this same tick; see appShortcuts.ts).
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       expect(received).toEqual(["focusSearch"]);
       expect(preventDefault).toHaveBeenCalledOnce();
     } finally {

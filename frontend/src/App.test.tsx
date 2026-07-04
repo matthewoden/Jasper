@@ -1246,6 +1246,15 @@ describe("handleAppCmdShiftF (Phase 19 D-05: opens sidebar Search panel, not pal
     });
   });
 
+  // handleAppCmdShiftF defers its dispatchPhase7("focusSearch") call by one
+  // animation frame (see appShortcuts.ts) so a freshly-mounted
+  // SidebarSearchPanel has time to subscribe. Flush that pending frame after
+  // every test so an un-awaited dispatch from one test doesn't leak into the
+  // next test's subscriber (APP-CMDSHIFTF-OPEN-6 asserts an exact array).
+  afterEach(async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+
   it("APP-CMDSHIFTF-OPEN-1: handleAppCmdShiftF sets sidebarPanel='search' + notesSidebarVisible=true on Mod+Shift+F", () => {
     const e = makeEvent("f", { meta: true, shift: true });
     handleAppCmdShiftF(e);
@@ -1285,12 +1294,15 @@ describe("handleAppCmdShiftF (Phase 19 D-05: opens sidebar Search panel, not pal
     expect(useTreeStore.getState().paletteMode).toBe("notes");
   });
 
-  it("APP-CMDSHIFTF-OPEN-6: handleAppCmdShiftF dispatches 'focusSearch' on the phase7 bus (D-05)", () => {
+  it("APP-CMDSHIFTF-OPEN-6: handleAppCmdShiftF dispatches 'focusSearch' on the phase7 bus (D-05)", async () => {
     const received: Phase7DispatchEvent[] = [];
     const unsubscribe = subscribePhase7((ev) => received.push(ev));
     try {
       const e = makeEvent("f", { meta: true, shift: true });
       handleAppCmdShiftF(e);
+      // Dispatch is deferred one frame past this handler (SidebarSearchPanel
+      // may mount and subscribe in this same tick; see appShortcuts.ts).
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       expect(received).toEqual(["focusSearch"]);
     } finally {
       unsubscribe();

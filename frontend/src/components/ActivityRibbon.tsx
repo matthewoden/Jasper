@@ -165,7 +165,14 @@ export function ActivityRibbon({
           } else {
             setSidebarPanel("search");
             setNotesSidebarVisible(true);
-            dispatchPhase7("focusSearch");
+            // Switching from Files (or opening from closed) mounts
+            // SidebarSearchPanel for the first time in this same tick;
+            // its subscribePhase7 effect only registers after React commits
+            // and runs passive effects, which happens AFTER this handler
+            // returns. Dispatching synchronously here would fire into an
+            // empty subscriber set and silently drop the focus request.
+            // Defer one frame so the panel has mounted and subscribed.
+            requestAnimationFrame(() => dispatchPhase7("focusSearch"));
           }
         }}
         icon={<Search size={16} aria-hidden="true" />}
