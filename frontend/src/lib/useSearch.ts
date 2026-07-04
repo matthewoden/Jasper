@@ -16,7 +16,7 @@ export interface PaletteSearchResult {
  * No store writes. Mounted inside CommandMenu when mode === "notes".
  *
  * Below 2-character threshold: returns empty results synchronously (no debounce).
- * Above threshold: debounces 200ms then fires searchNotes(query, activeTagFilter, 50).
+ * Above threshold: debounces 200ms then fires searchNotes(query, [activeTagFilter], 50).
  * 200ms chosen over 500ms because the activity indicator covers in-window feedback.
  */
 export function useSearch(
@@ -45,7 +45,7 @@ export function useSearch(
       try {
         const r = await searchNotes(
           query,
-          activeTagFilter ?? undefined,
+          activeTagFilter ? [activeTagFilter] : undefined,
           50,
         );
         if (!cancelled.current) {

@@ -11,14 +11,25 @@ afterEach(() => {
 });
 
 describe("searchApi.searchNotes", () => {
-  it("calls GET /search with q, tag, limit", async () => {
+  it("calls GET /search with q, tag array, limit", async () => {
     (client.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { results: [] },
       error: null,
     });
-    await searchNotes("hello", "project", 25);
+    await searchNotes("hello", ["project"], 25);
     expect(client.GET).toHaveBeenCalledWith("/search", {
       params: { query: { q: "hello", tag: ["project"], limit: 25 } },
+    });
+  });
+
+  it("sends multiple tags as a repeated array", async () => {
+    (client.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { results: [] },
+      error: null,
+    });
+    await searchNotes("hello", ["work", "draft"], 25);
+    expect(client.GET).toHaveBeenCalledWith("/search", {
+      params: { query: { q: "hello", tag: ["work", "draft"], limit: 25 } },
     });
   });
 
@@ -28,6 +39,19 @@ describe("searchApi.searchNotes", () => {
       error: null,
     });
     await searchNotes("hello");
+    const call = (client.GET as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      { params: { query: Record<string, unknown> } },
+    ];
+    expect(call[1].params.query.tag).toBeUndefined();
+  });
+
+  it("omits tag param when tags is an empty array", async () => {
+    (client.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { results: [] },
+      error: null,
+    });
+    await searchNotes("hello", []);
     const call = (client.GET as ReturnType<typeof vi.fn>).mock.calls[0] as [
       string,
       { params: { query: Record<string, unknown> } },
