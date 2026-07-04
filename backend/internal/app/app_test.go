@@ -641,6 +641,10 @@ func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
 // static disk-full handler. Without this gate, sqlite.Open would crash
 // on a corrupt/zero-filled app.db before we check free disk space.
 func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
+	// Isolate the app home (see TestRun_FrontmatterMigrationRuns_BeforeReconcile):
+	// otherwise the real ~/.jasper/app.json's varying CurrentVault reroutes boot
+	// away from the temp-dir vault, making this test flaky.
+	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
 	dir := t.TempDir()
 
 	seedRealSQLiteDB(t, dir)
@@ -689,6 +693,10 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 // Service.Get on any freshly-indexed UUID must succeed once the probe
 // returns 200.
 func TestRun_HydrateRegistry(t *testing.T) {
+	// Isolate the app home (see TestRun_FrontmatterMigrationRuns_BeforeReconcile):
+	// otherwise the real ~/.jasper/app.json's varying CurrentVault reroutes boot
+	// away from the temp-dir vault, making this test flaky.
+	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
 	dir := t.TempDir()
 
 	if err := EnsureDataDir(dir); err != nil {
@@ -823,6 +831,10 @@ func TestApp_SecurityHeaders_OnAPIResponse(t *testing.T) {
 // Protocols. A 404 here means the hub was constructed after the listener
 // started — a race. Uses a raw HTTP request to avoid a WS client dependency.
 func TestApp_ListenerGated(t *testing.T) {
+	// Isolate the app home (see TestRun_FrontmatterMigrationRuns_BeforeReconcile):
+	// otherwise the real ~/.jasper/app.json's varying CurrentVault reroutes boot
+	// away from the temp-dir vault, making this test flaky.
+	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
 	dir := t.TempDir()
 	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
