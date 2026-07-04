@@ -1,18 +1,21 @@
 /**
- * Sidebar — layout shell: floating card with a 40px vault-name header + FileTree.
+ * Sidebar — layout shell: floating card with a 40px vault-name header, below
+ * which either the FileTree or SidebarSearchPanel renders (LSIDE-02).
  *
  * Structure:
  *   <nav width=sidebarWidth>
  *     <card>
  *       <header>{vault display name} + SidebarToolbar</header>   (40px, shared chrome)
- *       <FileTree onSelectNote={...} />   (flex: 1; scrolls)
+ *       {sidebarPanel === "files" ? <FileTree /> : <SidebarSearchPanel />}   (flex: 1; scrolls)
  *     </card>
  *     <SidebarResizeHandle />  (outside card — overlays the column boundary)
  *   </nav>
  *
- * Search lives in CommandMenu mode='search' (Cmd+Shift+F), not in the sidebar.
- * SearchInputBar and SearchResultsList remain in the codebase for a potential
- * inline search variant but are currently orphaned.
+ * The 40px header is shared chrome (D-15) — it does NOT swap when the panel
+ * switches to Search; only the area below it does. `sidebarPanel` is driven
+ * by the ribbon Files/Search toggle and Cmd+Shift+F (Plan 04). This panel
+ * complements — never replaces — the existing Cmd+P/Cmd+Shift+F CommandMenu
+ * palette, which still exists as a second, faster entry point into search.
  *
  * Toolbar wiring:
  *   - New note / New folder → useTreeCreateActions().createNoteAt/FolderAt(parent),
@@ -27,6 +30,7 @@ import type React from "react";
 
 import { FileTree } from "./FileTree";
 import { SidebarResizeHandle } from "./SidebarResizeHandle";
+import { SidebarSearchPanel } from "./SidebarSearchPanel";
 import { SidebarToolbar } from "./SidebarToolbar";
 import type { Tree, TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
@@ -89,6 +93,7 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
   const { createNoteAt, createFolderAt, isCreating } = useTreeCreateActions();
   const sidebarWidth = useTreeStore((s) => s.sidebarWidth);
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
+  const sidebarPanel = useTreeStore((s) => s.sidebarPanel);
   const { current } = useVaultPicker();
   const displayName = current?.display_name ?? "Notes";
 
@@ -177,7 +182,11 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
             position: "relative",
           }}
         >
-          <FileTree onSelectNote={onSelectNote} />
+          {sidebarPanel === "files" ? (
+            <FileTree onSelectNote={onSelectNote} />
+          ) : (
+            <SidebarSearchPanel onSelectNote={onSelectNote} />
+          )}
         </div>
         {/* Tag browser panel relocated to right-rail; left sidebar is file-tree-only. */}
       </div>
