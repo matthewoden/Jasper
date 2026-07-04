@@ -645,3 +645,81 @@ func TestSearchFTS_PrefixMatch(t *testing.T) {
 		t.Fatalf("SearchFTS(\"te\"): got %d hits, want >= 1 (prefix match against 'testing')", len(hits))
 	}
 }
+
+// upsertTaggedNote inserts a note with the given body text and syncs the
+// given tags onto it via note_tags/tags (the tables the EXISTS clauses in
+// SearchFTS/searchTitlePathLike join against — distinct from tag_names_fts).
+func upsertTaggedNote(t *testing.T, idx *Indexer, path, body string, tags []string) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	rec := notes.NoteRecord{
+		ID:            id,
+		Path:          path,
+		Title:         path,
+		MTimeUnix:     1700000000,
+		SizeBytes:     42,
+		UpdatedAtUnix: 1730000000,
+		BodyFTS:       body,
+	}
+	if err := idx.Upsert(context.Background(), rec); err != nil {
+		t.Fatalf("upsert(%q): %v", path, err)
+	}
+	if err := idx.SyncTags(context.Background(), id, tags); err != nil {
+		t.Fatalf("SyncTags(%q): %v", path, err)
+	}
+	return id
+}
+
+// TestSearchFTS_MultiTagAND — three notes: (1) tagged work+draft mentioning
+// "budget", (2) tagged only work mentioning "budget", (3) tagged work+draft
+// NOT mentioning "budget". SearchFTS(q="budget", tags=[work,draft]) must
+// return ONLY note 1 (AND semantics: both tags required AND free-text
+// match). SearchFTS(q="budget", tags=[work]) must return both
+// budget-mentioning notes (1 and 2).
+func TestSearchFTS_MultiTagAND(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	both := upsertTaggedNote(t, idx, "quarterly-report.md", "quarterly budget review", []string{"work", "draft"})
+	oneTag := upsertTaggedNote(t, idx, "other-document.md", "another budget document", []string{"work"})
+	upsertTaggedNote(t, idx, "unrelated-note.md", "unrelated content here", []string{"work", "draft"})
+
+	hits, err := idx.SearchFTS(context.Background(), "budget", []string{"work", "draft"}, 50)
+	if err != nil {
+		t.Fatalf("SearchFTS(tags=[work,draft]): %v", err)
+	}
+	if len(hits) != 1 || hits[0].ID != both.String() {
+		t.Fatalf("SearchFTS(tags=[work,draft]): got %+v, want exactly note %s", hits, both)
+	}
+
+	hits, err = idx.SearchFTS(context.Background(), "budget", []string{"work"}, 50)
+	if err != nil {
+		t.Fatalf("SearchFTS(tags=[work]): %v", err)
+	}
+	gotIDs := map[string]bool{}
+	for _, h := range hits {
+		gotIDs[h.ID] = true
+	}
+	if len(gotIDs) != 2 || !gotIDs[both.String()] || !gotIDs[oneTag.String()] {
+		t.Fatalf("SearchFTS(tags=[work]): got %+v, want both budget-mentioning notes (%s, %s)", hits, both, oneTag)
+	}
+}
+
+// TestSearchFTS_TagSQLMetacharacter — a tag value containing a SQL
+// metacharacter (attempted injection) must match nothing and must NOT
+// error or return all rows. Proves the tag value is always a positional
+// bind, never string-concatenated into the query (T-19-02).
+func TestSearchFTS_TagSQLMetacharacter(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	upsertTaggedNote(t, idx, "victim.md", "budget report", []string{"work"})
+
+	hits, err := idx.SearchFTS(context.Background(), "budget", []string{"a' OR '1'='1"}, 50)
+	if err != nil {
+		t.Fatalf("SearchFTS with SQL-metacharacter tag: unexpected error %v", err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("SearchFTS with SQL-metacharacter tag: got %d hits, want 0 (injection guard failed)", len(hits))
+	}
+}

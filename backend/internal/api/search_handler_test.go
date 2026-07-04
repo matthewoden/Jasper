@@ -148,6 +148,36 @@ func TestSearchHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("repeated tag params AND-combine (HTTP-level)", func(t *testing.T) {
+		multiSeeds := []seedNote{
+			{
+				Path: "both-tags.md",
+				Body: "---\ntags: [work, draft]\n---\n# Both\n\nquarterly budget review",
+			},
+			{
+				Path: "one-tag.md",
+				Body: "---\ntags: [work]\n---\n# One\n\nanother budget document",
+			},
+		}
+		multiSrv := newSearchTestServer(t, multiSeeds)
+
+		tags := []string{"work", "draft"}
+		limit := 50
+		resp, err := multiSrv.SearchNotes(ctx, SearchNotesRequestObject{
+			Params: SearchNotesParams{Q: "budget", Tag: &tags, Limit: &limit},
+		})
+		if err != nil {
+			t.Fatalf("SearchNotes: unexpected error %v", err)
+		}
+		r200, ok := resp.(SearchNotes200JSONResponse)
+		if !ok {
+			t.Fatalf("want 200 response, got %T", resp)
+		}
+		if len(r200.Results) != 1 || r200.Results[0].Path != "both-tags.md" {
+			t.Fatalf("want exactly both-tags.md (tags=[work,draft]); got %+v", r200.Results)
+		}
+	})
+
 	t.Run("FTS5 syntax error returns 400 with code invalid_query", func(t *testing.T) {
 		resp, err := srv.SearchNotes(ctx, SearchNotesRequestObject{
 			Params: SearchNotesParams{Q: "hello ("},
