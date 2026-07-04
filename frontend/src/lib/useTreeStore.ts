@@ -47,6 +47,7 @@ export const LS_KEY_TAGS_PANEL_EXPANDED = "jasper.rail.tags.expanded";
 export const LS_KEY_SIDEBAR_VISIBLE = "jasper.chrome.sidebar.visible";
 export const LS_KEY_PANEL_TAGS = "jasper.chrome.panel.selector.tags";
 export const LS_KEY_PANEL_BACKLINKS = "jasper.chrome.panel.selector.backlinks";
+export const LS_KEY_SIDEBAR_PANEL = "jasper.chrome.sidebar.panel";
 
 
 export const LS_KEY_SWITCHER_RECENCY = "jasper:switcher:recency";
@@ -131,6 +132,10 @@ export interface TreeStore {
   setNotesSidebarVisible: (v: boolean) => void;
   panelSelector: { tags: boolean; backlinks: boolean };
   setPanelSelector: (update: Partial<{ tags: boolean; backlinks: boolean }>) => void;
+
+  /** Which left-sidebar panel is active — Files or the in-sidebar Search (D-04). */
+  sidebarPanel: "files" | "search";
+  setSidebarPanel: (p: "files" | "search") => void;
 
   pulseTarget: { kind: "folder" | "note"; target: string } | null;
   setPulseTarget: (t: { kind: "folder" | "note"; target: string } | null) => void;
@@ -257,6 +262,9 @@ export const useTreeStore = create<TreeStore>((set) => ({
   panelSelector: { tags: true, backlinks: true },
   setPanelSelector: (update) =>
     set((s) => ({ panelSelector: { ...s.panelSelector, ...update } })),
+
+  sidebarPanel: "files",
+  setSidebarPanel: (p) => set({ sidebarPanel: p }),
 
   pulseTarget: null,
   setPulseTarget: (t) => set({ pulseTarget: t }),
@@ -455,6 +463,14 @@ if (typeof window !== "undefined") {
   }
 
   try {
+    const raw = window.localStorage.getItem(LS_KEY_SIDEBAR_PANEL);
+    if (raw === "search") useTreeStore.setState({ sidebarPanel: "search" });
+    // any other value (including missing/corrupt) keeps the default "files"
+  } catch {
+    /* localStorage unavailable */
+  }
+
+  try {
     const raw = window.localStorage.getItem(LS_KEY_SWITCHER_RECENCY);
     if (raw !== null) {
       const parsed = JSON.parse(raw);
@@ -490,6 +506,7 @@ if (typeof window !== "undefined") {
   let lastNotesSidebarVisible = useTreeStore.getState().notesSidebarVisible;
   let lastPanelTags = useTreeStore.getState().panelSelector.tags;
   let lastPanelBacklinks = useTreeStore.getState().panelSelector.backlinks;
+  let lastSidebarPanel = useTreeStore.getState().sidebarPanel;
 
   let lastRecentlyOpenedNoteIds = useTreeStore.getState().recentlyOpenedNoteIds;
 
@@ -609,6 +626,14 @@ if (typeof window !== "undefined") {
       lastPanelBacklinks = state.panelSelector.backlinks;
       try {
         window.localStorage.setItem(LS_KEY_PANEL_BACKLINKS, String(state.panelSelector.backlinks));
+      } catch {
+        // Quota / private mode — best-effort.
+      }
+    }
+    if (state.sidebarPanel !== lastSidebarPanel) {
+      lastSidebarPanel = state.sidebarPanel;
+      try {
+        window.localStorage.setItem(LS_KEY_SIDEBAR_PANEL, state.sidebarPanel);
       } catch {
         // Quota / private mode — best-effort.
       }

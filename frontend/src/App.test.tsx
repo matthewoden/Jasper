@@ -225,6 +225,8 @@ import {
   handleAppCmdShiftF,
   handleAppCmdSlash,
   handleAppF2KeyDown,
+  subscribePhase7,
+  type Phase7DispatchEvent,
 } from "./lib/appShortcuts";
 
 
@@ -1218,7 +1220,7 @@ describe("commandActions rewire", () => {
 });
 
 
-describe("handleAppCmdShiftF (Cmd+Shift+F opens search modal)", () => {
+describe("handleAppCmdShiftF (Phase 19 D-05: opens sidebar Search panel, not palette)", () => {
   function makeEvent(
     key: string,
     opts: { meta?: boolean; ctrl?: boolean; shift?: boolean } = {},
@@ -1239,51 +1241,59 @@ describe("handleAppCmdShiftF (Cmd+Shift+F opens search modal)", () => {
     useTreeStore.setState({
       paletteOpen: false,
       paletteMode: "notes",
+      sidebarPanel: "files",
+      notesSidebarVisible: false,
     });
   });
 
-  it("APP-CMDSHIFTF-OPEN-1: handleAppCmdShiftF sets paletteMode='search' + paletteOpen=true on Mod+Shift+F", () => {
+  it("APP-CMDSHIFTF-OPEN-1: handleAppCmdShiftF sets sidebarPanel='search' + notesSidebarVisible=true on Mod+Shift+F", () => {
     const e = makeEvent("f", { meta: true, shift: true });
     handleAppCmdShiftF(e);
     expect(e._preventDefaultCalls).toBe(1);
-    expect(useTreeStore.getState().paletteMode).toBe("search");
-    expect(useTreeStore.getState().paletteOpen).toBe(true);
+    expect(useTreeStore.getState().sidebarPanel).toBe("search");
+    expect(useTreeStore.getState().notesSidebarVisible).toBe(true);
   });
 
   it("APP-CMDSHIFTF-OPEN-2: handleAppCmdShiftF is a no-op without Shift", () => {
     const e = makeEvent("f", { meta: true });
     handleAppCmdShiftF(e);
     expect(e._preventDefaultCalls).toBe(0);
-    expect(useTreeStore.getState().paletteMode).toBe("notes");
-    expect(useTreeStore.getState().paletteOpen).toBe(false);
+    expect(useTreeStore.getState().sidebarPanel).toBe("files");
+    expect(useTreeStore.getState().notesSidebarVisible).toBe(false);
   });
 
   it("APP-CMDSHIFTF-OPEN-3: handleAppCmdShiftF is a no-op without meta/ctrl", () => {
     const e = makeEvent("f", { shift: true });
     handleAppCmdShiftF(e);
     expect(e._preventDefaultCalls).toBe(0);
-    expect(useTreeStore.getState().paletteMode).toBe("notes");
-    expect(useTreeStore.getState().paletteOpen).toBe(false);
+    expect(useTreeStore.getState().sidebarPanel).toBe("files");
+    expect(useTreeStore.getState().notesSidebarVisible).toBe(false);
   });
 
   it("APP-CMDSHIFTF-OPEN-4: handleAppCmdShiftF accepts uppercase F", () => {
     const e = makeEvent("F", { meta: true, shift: true });
     handleAppCmdShiftF(e);
     expect(e._preventDefaultCalls).toBe(1);
-    expect(useTreeStore.getState().paletteMode).toBe("search");
-    expect(useTreeStore.getState().paletteOpen).toBe(true);
+    expect(useTreeStore.getState().sidebarPanel).toBe("search");
+    expect(useTreeStore.getState().notesSidebarVisible).toBe(true);
   });
 
-  it("APP-CMDSHIFTF-OPEN-5: handleAppCmdShiftF does NOT dispatch jasper:focus-search (legacy bus removed)", () => {
-    let received = false;
-    const listener = () => { received = true; };
-    window.addEventListener("jasper:focus-search", listener);
+  it("APP-CMDSHIFTF-OPEN-5: handleAppCmdShiftF does NOT touch the command palette", () => {
+    const e = makeEvent("f", { meta: true, shift: true });
+    handleAppCmdShiftF(e);
+    expect(useTreeStore.getState().paletteOpen).toBe(false);
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+  });
+
+  it("APP-CMDSHIFTF-OPEN-6: handleAppCmdShiftF dispatches 'focusSearch' on the phase7 bus (D-05)", () => {
+    const received: Phase7DispatchEvent[] = [];
+    const unsubscribe = subscribePhase7((ev) => received.push(ev));
     try {
       const e = makeEvent("f", { meta: true, shift: true });
       handleAppCmdShiftF(e);
-      expect(received).toBe(false);
+      expect(received).toEqual(["focusSearch"]);
     } finally {
-      window.removeEventListener("jasper:focus-search", listener);
+      unsubscribe();
     }
   });
 });

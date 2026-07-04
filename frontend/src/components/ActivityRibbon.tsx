@@ -2,11 +2,12 @@
  * ActivityRibbon — the 48px far-left activity bar: vault badge, Files/Search
  * toggles, daily-note button, and the command-palette button.
  *
- * Files toggle reflects `notesSidebarVisible`; Search toggle reflects
- * `paletteOpen && paletteMode === "search"`. These are two independent
- * booleans this phase (not a unified "active panel" enum) — Phase 19's
- * researcher should re-derive a real panel concept when the in-sidebar
- * Search panel ships; see 18-02-SUMMARY.md.
+ * Files/Search toggles implement the symmetric open/switch-in-place/collapse
+ * model (D-01/D-02/D-03): each button opens the sidebar to its panel; the
+ * active one collapses on repeat click; clicking the other switches panels
+ * in place. Accent active-state is derived from `sidebarPanel` + sidebar
+ * visibility (D-07), replacing the old palette-mode-derived check — see
+ * 19-04 (LSIDE-02).
  */
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
@@ -15,6 +16,7 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { useDailyNote } from "../lib/useDailyNote";
 import { useVaultPicker } from "../lib/useVaultPicker";
 import { mod, shift } from "../lib/shortcutsRegistry";
+import { dispatchPhase7 } from "../lib/appShortcuts";
 
 const ribbonStyle: CSSProperties = {
   width: 48,
@@ -99,8 +101,8 @@ export function ActivityRibbon({
 }: ActivityRibbonProps = {}): React.JSX.Element {
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
   const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);
-  const paletteOpen = useTreeStore((s) => s.paletteOpen);
-  const paletteMode = useTreeStore((s) => s.paletteMode);
+  const sidebarPanel = useTreeStore((s) => s.sidebarPanel);
+  const setSidebarPanel = useTreeStore((s) => s.setSidebarPanel);
 
   const { openToday, isLoading: todayLoading } = useDailyNote();
   const { current } = useVaultPicker();
@@ -112,7 +114,8 @@ export function ActivityRibbon({
       ? ([...trimmedDisplayName][0]?.toUpperCase() ?? "J")
       : "J";
 
-  const searchActive = paletteOpen && paletteMode === "search";
+  const searchActive = notesSidebarVisible && sidebarPanel === "search";
+  const filesActive = notesSidebarVisible && sidebarPanel === "files";
 
   return (
     <nav style={{ ...ribbonStyle, ...style }} aria-label="Activity ribbon">
@@ -139,8 +142,15 @@ export function ActivityRibbon({
 
       <RibbonButton
         ariaLabel="Files"
-        active={notesSidebarVisible}
-        onClick={() => setNotesSidebarVisible(!notesSidebarVisible)}
+        active={filesActive}
+        onClick={() => {
+          if (filesActive) {
+            setNotesSidebarVisible(false);
+          } else {
+            setSidebarPanel("files");
+            setNotesSidebarVisible(true);
+          }
+        }}
         icon={<Folder size={16} aria-hidden="true" />}
         style={{ marginTop: 8 }}
       />
@@ -150,12 +160,12 @@ export function ActivityRibbon({
         title={`Search notes (${mod}${shift}F)`}
         active={searchActive}
         onClick={() => {
-          const store = useTreeStore.getState();
           if (searchActive) {
-            store.setPaletteOpen(false);
+            setNotesSidebarVisible(false);
           } else {
-            store.setPaletteMode("search");
-            store.setPaletteOpen(true);
+            setSidebarPanel("search");
+            setNotesSidebarVisible(true);
+            dispatchPhase7("focusSearch");
           }
         }}
         icon={<Search size={16} aria-hidden="true" />}

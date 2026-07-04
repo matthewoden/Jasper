@@ -1,9 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   handleAppAltT,
+  handleAppCmdShiftF,
   subscribePhase7,
   type Phase7DispatchEvent,
 } from "./appShortcuts";
+import { useTreeStore } from "./useTreeStore";
 
 describe("handleAppAltT (tab-new)", () => {
   it("dispatches 'newTab' and preventDefaults on plain Alt+T", () => {
@@ -96,6 +98,57 @@ describe("handleAppAltT (tab-new)", () => {
         }),
       );
       expect(received).toEqual(["newTab"]);
+    } finally {
+      unsubscribe();
+    }
+  });
+});
+
+describe("handleAppCmdShiftF (Phase 19 D-05 re-point)", () => {
+  beforeEach(() => {
+    useTreeStore.setState({
+      sidebarPanel: "files",
+      notesSidebarVisible: false,
+    });
+  });
+
+  it("opens the sidebar to the Search panel and dispatches 'focusSearch' (D-05)", () => {
+    const received: Phase7DispatchEvent[] = [];
+    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    try {
+      const e = new KeyboardEvent("keydown", {
+        key: "f",
+        metaKey: true,
+        shiftKey: true,
+      });
+      const preventDefault = vi.spyOn(e, "preventDefault");
+      handleAppCmdShiftF(e);
+      expect(useTreeStore.getState().sidebarPanel).toBe("search");
+      expect(useTreeStore.getState().notesSidebarVisible).toBe(true);
+      expect(received).toEqual(["focusSearch"]);
+      expect(preventDefault).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("does NOT touch the command palette (no more setPaletteMode/setPaletteOpen calls)", () => {
+    useTreeStore.setState({ paletteOpen: false, paletteMode: "notes" });
+    handleAppCmdShiftF(
+      new KeyboardEvent("keydown", { key: "F", metaKey: true, shiftKey: true }),
+    );
+    expect(useTreeStore.getState().paletteOpen).toBe(false);
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+  });
+
+  it("no-ops without the Shift modifier", () => {
+    const received: Phase7DispatchEvent[] = [];
+    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    try {
+      handleAppCmdShiftF(
+        new KeyboardEvent("keydown", { key: "f", metaKey: true }),
+      );
+      expect(received).toEqual([]);
     } finally {
       unsubscribe();
     }

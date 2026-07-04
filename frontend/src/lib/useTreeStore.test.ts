@@ -1192,3 +1192,85 @@ describe("useTreeStore — activeFilePath slice (Plan 07-32b)", () => {
     expect(useTreeStore.getState().activeNoteId).toBe("uuid-1234");
   });
 });
+
+
+describe("Phase 19 Plan 04 — sidebarPanel persisted slice (LSIDE-02)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useTreeStore.setState({ sidebarPanel: "files" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+  });
+
+  it("SP-1: fresh store defaults sidebarPanel to 'files'", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().sidebarPanel).toBe("files");
+  });
+
+  it("SP-2: setSidebarPanel('search') updates the state to 'search'", () => {
+    useTreeStore.getState().setSidebarPanel("search");
+    expect(useTreeStore.getState().sidebarPanel).toBe("search");
+    useTreeStore.getState().setSidebarPanel("files");
+    expect(useTreeStore.getState().sidebarPanel).toBe("files");
+  });
+
+  it("SP-3: pre-seeded LS_KEY_SIDEBAR_PANEL='search' hydrates sidebarPanel on module load", async () => {
+    localStorage.setItem("jasper.chrome.sidebar.panel", "search");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().sidebarPanel).toBe("search");
+  });
+
+  it("SP-3: corrupt/unknown LS value falls back to default 'files'", async () => {
+    localStorage.setItem("jasper.chrome.sidebar.panel", "garbage");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().sidebarPanel).toBe("files");
+  });
+
+  it("SP-3: absent LS key → sidebarPanel defaults to 'files'", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().sidebarPanel).toBe("files");
+  });
+
+  it("SP-4: setSidebarPanel('search') immediately writes to localStorage[LS_KEY_SIDEBAR_PANEL] (no debounce)", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      mod.useTreeStore.getState().setSidebarPanel("search");
+      const writes = setItemSpy.mock.calls.filter(
+        (c) => c[0] === mod.LS_KEY_SIDEBAR_PANEL,
+      );
+      expect(writes.length).toBeGreaterThan(0);
+      expect(writes[writes.length - 1][1]).toBe("search");
+    } finally {
+      setItemSpy.mockRestore();
+    }
+  });
+
+  it("SP-5: LS_KEY_SIDEBAR_PANEL is the literal string 'jasper.chrome.sidebar.panel'", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.LS_KEY_SIDEBAR_PANEL).toBe("jasper.chrome.sidebar.panel");
+  });
+
+  it("SP-6: searchQuery/searchResults remain unpersisted (D-18) — no new LS write for them", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      mod.useTreeStore.getState().setSearchQuery("hello");
+      mod.useTreeStore.getState().setSearchResults([]);
+      const writes = setItemSpy.mock.calls.map((c) => c[0] as string);
+      expect(writes.some((k) => k.toLowerCase().includes("search"))).toBe(false);
+    } finally {
+      setItemSpy.mockRestore();
+    }
+  });
+});

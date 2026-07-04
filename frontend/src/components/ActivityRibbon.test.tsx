@@ -2,6 +2,11 @@
  * ActivityRibbon tests — nav landmark, vault badge (letter + fallback), and
  * the four wired buttons (Files, Search, daily-note, palette) including
  * their accent-active state.
+ *
+ * Phase 19 Plan 04 (LSIDE-02): Search/Files toggles are re-derived from the
+ * persisted `sidebarPanel` slice (D-07), replacing the old
+ * `paletteOpen && paletteMode === "search"` derivation. See D-01/D-02/D-03
+ * for the symmetric open/switch-in-place/collapse toggle model.
  */
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -9,17 +14,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockSetNotesSidebarVisible = vi.fn();
 const mockSetPaletteMode = vi.fn();
 const mockSetPaletteOpen = vi.fn();
+const mockSetSidebarPanel = vi.fn();
 
 let mockNotesSidebarVisible = true;
-let mockPaletteOpen = false;
-let mockPaletteMode: "notes" | "commands" | "search" = "commands";
+let mockSidebarPanel: "files" | "search" = "files";
 
 vi.mock("../lib/useTreeStore", () => {
   const state = () => ({
     notesSidebarVisible: mockNotesSidebarVisible,
     setNotesSidebarVisible: mockSetNotesSidebarVisible,
-    paletteOpen: mockPaletteOpen,
-    paletteMode: mockPaletteMode,
+    sidebarPanel: mockSidebarPanel,
+    setSidebarPanel: mockSetSidebarPanel,
     setPaletteMode: mockSetPaletteMode,
     setPaletteOpen: mockSetPaletteOpen,
   });
@@ -27,6 +32,10 @@ vi.mock("../lib/useTreeStore", () => {
   useTreeStore.getState = () => state();
   return { useTreeStore };
 });
+
+vi.mock("../lib/appShortcuts", () => ({
+  dispatchPhase7: vi.fn(),
+}));
 
 const mockOpenToday = vi.fn();
 let mockTodayLoading = false;
@@ -53,13 +62,13 @@ vi.mock("../lib/useVaultPicker", () => ({
 
 import { ActivityRibbon } from "./ActivityRibbon";
 import { mod, shift } from "../lib/shortcutsRegistry";
+import { dispatchPhase7 as mockDispatchPhase7 } from "../lib/appShortcuts";
 
 describe("ActivityRibbon", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockNotesSidebarVisible = true;
-    mockPaletteOpen = false;
-    mockPaletteMode = "commands";
+    mockSidebarPanel = "files";
     mockTodayLoading = false;
     mockDisplayName = "My Vault";
   });
@@ -102,8 +111,9 @@ describe("ActivityRibbon", () => {
     ).toBe("M");
   });
 
-  it("Files toggle: active when notesSidebarVisible is true", () => {
+  it("Files toggle: active when notesSidebarVisible && sidebarPanel==='files' (D-07)", () => {
     mockNotesSidebarVisible = true;
+    mockSidebarPanel = "files";
     render(<ActivityRibbon />);
     const btn = screen.getByRole("button", { name: "Files" });
     expect(btn.style.color).toBe("var(--color-accent)");
@@ -116,43 +126,74 @@ describe("ActivityRibbon", () => {
     expect(btn.style.color).toBe("var(--color-muted)");
   });
 
-  it("Files toggle: clicking calls setNotesSidebarVisible with the negated value", () => {
+  it("Files toggle: inactive when sidebar visible but panel is 'search' (D-07)", () => {
     mockNotesSidebarVisible = true;
+    mockSidebarPanel = "search";
+    render(<ActivityRibbon />);
+    const btn = screen.getByRole("button", { name: "Files" });
+    expect(btn.style.color).toBe("var(--color-muted)");
+  });
+
+  it("D-01: Search click with sidebar closed opens it to Search panel + focuses input", () => {
+    mockNotesSidebarVisible = false;
+    mockSidebarPanel = "files";
+    render(<ActivityRibbon />);
+    fireEvent.click(screen.getByRole("button", { name: "Search notes" }));
+    expect(mockSetSidebarPanel).toHaveBeenCalledWith("search");
+    expect(mockSetNotesSidebarVisible).toHaveBeenCalledWith(true);
+    expect(mockDispatchPhase7).toHaveBeenCalledWith("focusSearch");
+  });
+
+  it("D-02: Search click while Search panel showing collapses the sidebar (honest toggle)", () => {
+    mockNotesSidebarVisible = true;
+    mockSidebarPanel = "search";
+    render(<ActivityRibbon />);
+    fireEvent.click(screen.getByRole("button", { name: "Search notes" }));
+    expect(mockSetNotesSidebarVisible).toHaveBeenCalledWith(false);
+    expect(mockSetSidebarPanel).not.toHaveBeenCalled();
+    expect(mockDispatchPhase7).not.toHaveBeenCalled();
+  });
+
+  it("D-03: Files click while Search panel showing switches to Files in place (sidebar stays open)", () => {
+    mockNotesSidebarVisible = true;
+    mockSidebarPanel = "search";
+    render(<ActivityRibbon />);
+    fireEvent.click(screen.getByRole("button", { name: "Files" }));
+    expect(mockSetSidebarPanel).toHaveBeenCalledWith("files");
+    expect(mockSetNotesSidebarVisible).toHaveBeenCalledWith(true);
+  });
+
+  it("D-03: Files click while Files panel already active + sidebar open collapses the sidebar", () => {
+    mockNotesSidebarVisible = true;
+    mockSidebarPanel = "files";
     render(<ActivityRibbon />);
     fireEvent.click(screen.getByRole("button", { name: "Files" }));
     expect(mockSetNotesSidebarVisible).toHaveBeenCalledWith(false);
+    expect(mockSetSidebarPanel).not.toHaveBeenCalled();
   });
 
-  it("Search toggle: active when paletteOpen && paletteMode === 'search'", () => {
-    mockPaletteOpen = true;
-    mockPaletteMode = "search";
+  it("D-07: Search icon active only when notesSidebarVisible && sidebarPanel==='search'", () => {
+    mockNotesSidebarVisible = true;
+    mockSidebarPanel = "search";
     render(<ActivityRibbon />);
     const btn = screen.getByRole("button", { name: "Search notes" });
     expect(btn.style.color).toBe("var(--color-accent)");
   });
 
-  it("Search toggle: inactive when paletteMode is not 'search'", () => {
-    mockPaletteOpen = true;
-    mockPaletteMode = "commands";
+  it("D-07: Search icon inactive when sidebar visible but panel is 'files'", () => {
+    mockNotesSidebarVisible = true;
+    mockSidebarPanel = "files";
     render(<ActivityRibbon />);
     const btn = screen.getByRole("button", { name: "Search notes" });
     expect(btn.style.color).toBe("var(--color-muted)");
   });
 
-  it("Search toggle: clicking calls setPaletteMode('search') then setPaletteOpen(true)", () => {
+  it("D-07: Search icon inactive when sidebar is closed even if panel==='search'", () => {
+    mockNotesSidebarVisible = false;
+    mockSidebarPanel = "search";
     render(<ActivityRibbon />);
-    fireEvent.click(screen.getByRole("button", { name: "Search notes" }));
-    expect(mockSetPaletteMode).toHaveBeenCalledWith("search");
-    expect(mockSetPaletteOpen).toHaveBeenCalledWith(true);
-  });
-
-  it("Search toggle: clicking while already open+search closes the palette instead of re-opening it (IN-03)", () => {
-    mockPaletteOpen = true;
-    mockPaletteMode = "search";
-    render(<ActivityRibbon />);
-    fireEvent.click(screen.getByRole("button", { name: "Search notes" }));
-    expect(mockSetPaletteOpen).toHaveBeenCalledWith(false);
-    expect(mockSetPaletteMode).not.toHaveBeenCalled();
+    const btn = screen.getByRole("button", { name: "Search notes" });
+    expect(btn.style.color).toBe("var(--color-muted)");
   });
 
   it("Daily button: clicking calls the mocked openToday", () => {
