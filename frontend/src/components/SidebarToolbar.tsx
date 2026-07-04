@@ -1,18 +1,13 @@
 /**
- * SidebarToolbar — note-navigation controls: New note, New folder, Today,
- * and Search. Global controls (connection dot, refresh, settings) live in
- * StatusBar.
+ * SidebarToolbar — note-navigation controls: New note, New folder. Today and
+ * Search moved to the activity ribbon (Phase 18); global controls
+ * (connection dot, refresh, settings) live in StatusBar.
  *
  * `creating` prop disables New note + New folder while a create is in flight
  * (opacity 0.5, cursor wait, disabled attribute). Parent reads isCreating from
  * useTreeCreateActions and threads it through.
- *
- * Today button disabled while useDailyNote().isLoading — re-entrancy guard is
- * in the hook; the disabled attribute is defense-in-depth.
  */
-import { CalendarDays, FilePlus, FolderPlus, Search } from "lucide-react";
-import { useDailyNote } from "../lib/useDailyNote";
-import { useTreeStore } from "../lib/useTreeStore";
+import { FilePlus, FolderPlus } from "lucide-react";
 
 export interface SidebarToolbarProps {
   onNewNote: () => void;
@@ -42,8 +37,6 @@ export function SidebarToolbar({
   onNewFolder,
   creating = false,
 }: SidebarToolbarProps) {
-  const { openToday, isLoading: todayLoading } = useDailyNote();
-
   return (
     <div
       style={{ display: "flex", alignItems: "center", gap: 8 }}
@@ -76,37 +69,6 @@ export function SidebarToolbar({
         }}
       >
         <FolderPlus size={16} aria-hidden="true" />
-      </button>
-      {/* Today button — opens today's daily note (get-or-create). */}
-      <button
-        type="button"
-        title="Today (⌘⇧D)"
-        aria-label="Open today's daily note"
-        onClick={openToday}
-        disabled={todayLoading}
-        style={{
-          ...buttonBase,
-          opacity: todayLoading ? 0.5 : 1,
-          cursor: todayLoading ? "wait" : "pointer",
-        }}
-      >
-        <CalendarDays size={16} aria-hidden="true" />
-      </button>
-      {/* Search button — opens CommandMenu in search mode (Cmd+Shift+F).
-          Magnifying glass implies body FTS search, not the title quick switcher
-          (⌘O), so this button always opens mode='search'. */}
-      <button
-        type="button"
-        title="Search notes (⌘⇧F)"
-        aria-label="Search notes"
-        onClick={() => {
-          const store = useTreeStore.getState();
-          store.setPaletteMode("search");
-          store.setPaletteOpen(true);
-        }}
-        style={buttonBase}
-      >
-        <Search size={16} aria-hidden="true" />
       </button>
     </div>
   );

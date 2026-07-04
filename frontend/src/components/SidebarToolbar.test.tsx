@@ -1,8 +1,6 @@
 /**
- * SidebarToolbar tests — note-navigation controls: New note, New folder,
- * Today (CalendarDays), and Search icon.
- *
- * useDailyNote is mocked so tests don't need a ToastProvider or network.
+ * SidebarToolbar tests — note-navigation controls: New note, New folder.
+ * Today and Search moved to the activity ribbon (Phase 18/19).
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -25,22 +23,9 @@ vi.mock("../api/client", () => ({
   },
 }));
 
-
-const mockOpenToday = vi.fn();
-vi.mock("../lib/useDailyNote", () => ({
-  useDailyNote: vi.fn(() => ({
-    openToday: mockOpenToday,
-    isLoading: false,
-  })),
-}));
-
-import { useDailyNote } from "../lib/useDailyNote";
-const mockedUseDailyNote = vi.mocked(useDailyNote);
-
-import { useTreeStore } from "../lib/useTreeStore";
 import { SidebarToolbar } from "./SidebarToolbar";
 
-describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phase 7)", () => {
+describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phase 7 + Phase 19)", () => {
   it("TestToolbar_RendersNewNoteButton", () => {
     render(
       <SidebarToolbar
@@ -192,71 +177,29 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(screen.queryByTestId("settings-menu-trigger")).toBeNull();
   });
 
-  it("TestToolbar_RendersTodayButton", () => {
+  it("TestToolbar_DoesNotRenderTodayButton (Phase 19: ribbon owns Today)", () => {
     render(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
       />,
     );
-    const todayBtn = screen.getByRole("button", { name: "Open today's daily note" });
-    expect(todayBtn).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Open today's daily note" }),
+    ).toBeNull();
   });
 
-  it("TestToolbar_TodayButton_HasCorrectTitle", () => {
+  it("TestToolbar_DoesNotRenderSearchButton (Phase 19: ribbon owns Search)", () => {
     render(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
       />,
     );
-    const todayBtn = screen.getByRole("button", { name: "Open today's daily note" });
-    expect(todayBtn.getAttribute("title")).toBe("Today (⌘⇧D)");
+    expect(screen.queryByLabelText("Search notes")).toBeNull();
   });
 
-  it("TestToolbar_TodayButton_CallsOpenToday_OnClick", () => {
-    const openTodaySpy = vi.fn();
-    mockedUseDailyNote.mockReturnValueOnce({ openToday: openTodaySpy, isLoading: false });
-
-    render(
-      <SidebarToolbar
-        onNewNote={vi.fn()}
-        onNewFolder={vi.fn()}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Open today's daily note" }));
-    expect(openTodaySpy).toHaveBeenCalledTimes(1);
-  });
-
-  it("TestToolbar_TodayButton_ShowsWaitCursor_WhenLoading", () => {
-    mockedUseDailyNote.mockReturnValueOnce({ openToday: vi.fn(), isLoading: true });
-
-    render(
-      <SidebarToolbar
-        onNewNote={vi.fn()}
-        onNewFolder={vi.fn()}
-      />,
-    );
-    const todayBtn = screen.getByRole("button", { name: "Open today's daily note" });
-    expect(todayBtn).toBeDisabled();
-    expect(todayBtn.style.cursor).toBe("wait");
-    expect(todayBtn.style.opacity).toBe("0.5");
-  });
-
-  it("TestToolbar_TodayButton_IsEnabledByDefault_WhenNotLoading", () => {
-    render(
-      <SidebarToolbar
-        onNewNote={vi.fn()}
-        onNewFolder={vi.fn()}
-      />,
-    );
-    const todayBtn = screen.getByRole("button", { name: "Open today's daily note" });
-    expect(todayBtn).not.toBeDisabled();
-    expect(todayBtn.style.cursor).toBe("pointer");
-    expect(todayBtn.style.opacity).toBe("1");
-  });
-
-  it("TestToolbar_TodayButton_IsAfterFolderPlus — third button in cluster", () => {
+  it("TestToolbar_RendersExactlyTwoButtons — New note + New folder only", () => {
     render(
       <SidebarToolbar
         onNewNote={vi.fn()}
@@ -264,33 +207,8 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
       />,
     );
     const buttons = screen.getAllByRole("button");
-    expect(buttons).toHaveLength(4);
+    expect(buttons).toHaveLength(2);
     expect(buttons[0].getAttribute("aria-label")).toBe("New note");
     expect(buttons[1].getAttribute("aria-label")).toBe("New folder");
-    expect(buttons[2].getAttribute("aria-label")).toBe("Open today's daily note");
-    expect(buttons[3].getAttribute("aria-label")).toBe("Search notes");
-  });
-
-  describe("ST-search — Search icon button (UAT-2 R1-5 + UAT-7)", () => {
-    it("ST-S-1: renders a Search button with aria-label 'Search notes'", () => {
-      render(<SidebarToolbar onNewNote={vi.fn()} onNewFolder={vi.fn()} />);
-      const btn = screen.getByLabelText("Search notes");
-      expect(btn).toBeInTheDocument();
-    });
-
-    it("SBT-UAT7-1: clicking Search opens palette in search mode (NOT notes)", () => {
-      useTreeStore.setState({ paletteOpen: false, paletteMode: "commands" });
-      render(<SidebarToolbar onNewNote={vi.fn()} onNewFolder={vi.fn()} />);
-      fireEvent.click(screen.getByLabelText("Search notes"));
-      const state = useTreeStore.getState();
-      expect(state.paletteOpen).toBe(true);
-      expect(state.paletteMode).toBe("search");
-    });
-
-    it("SBT-UAT7-2: Search button has title tooltip 'Search notes (⌘⇧F)'", () => {
-      render(<SidebarToolbar onNewNote={vi.fn()} onNewFolder={vi.fn()} />);
-      const btn = screen.getByLabelText("Search notes");
-      expect(btn.getAttribute("title")).toBe("Search notes (⌘⇧F)");
-    });
   });
 });
