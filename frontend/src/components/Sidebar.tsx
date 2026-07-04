@@ -1,10 +1,10 @@
 /**
- * Sidebar — layout shell: floating card with NOTES header + FileTree.
+ * Sidebar — layout shell: floating card with a 40px vault-name header + FileTree.
  *
  * Structure:
  *   <nav width=sidebarWidth>
  *     <card>
- *       <header>NOTES + SidebarToolbar</header>
+ *       <header>{vault display name} + SidebarToolbar</header>   (40px, shared chrome)
  *       <FileTree onSelectNote={...} />   (flex: 1; scrolls)
  *     </card>
  *     <SidebarResizeHandle />  (outside card — overlays the column boundary)
@@ -32,6 +32,7 @@ import type { Tree, TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeCreateActions } from "../lib/useTreeCreateActions";
 import { useTreeStore, type SelectedRow } from "../lib/useTreeStore";
+import { useVaultPicker } from "../lib/useVaultPicker";
 
 export interface SidebarProps {
   onSelectNote?: (id: string) => void;
@@ -88,6 +89,8 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
   const { createNoteAt, createFolderAt, isCreating } = useTreeCreateActions();
   const sidebarWidth = useTreeStore((s) => s.sidebarWidth);
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
+  const { current } = useVaultPicker();
+  const displayName = current?.display_name ?? "Notes";
 
   const handleNewNote = useCallback(() => {
     const sr = useTreeStore.getState().selectedRow;
@@ -134,7 +137,7 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
         <header
           className="flex items-center justify-between"
           style={{
-            height: 32,
+            height: 40,
             paddingLeft: 16,
             paddingRight: 16,
             borderBottom: "1px solid var(--color-border)",
@@ -142,14 +145,17 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
           }}
         >
           <span
-            className="text-muted uppercase font-semibold"
             style={{
-              fontSize: 12,
-              letterSpacing: "0.05em",
+              fontSize: 13,
+              fontWeight: 600,
               lineHeight: 1.4,
+              color: "var(--color-fg)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
             }}
           >
-            NOTES
+            {displayName}
           </span>
           <SidebarToolbar
             onNewNote={handleNewNote}

@@ -1228,4 +1228,50 @@ describe("<TreeRow />", () => {
       });
     });
   });
+
+  describe("Phase 19 — active row 12% accent tint + title-weight text (LSIDE-01)", () => {
+    it("TR-ACTIVE-12PCT: active note row background uses 12% accent tint (bumped from 8%)", () => {
+      useTreeStore.setState({ activeNoteId: "uuid-1" });
+      const node = makeNoteNode({ id: "uuid-1" });
+      const { container } = render(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      expect(row.style.background).toBe(
+        "color-mix(in srgb, var(--color-accent) 12%, transparent)",
+      );
+    });
+
+    it("TR-ACTIVE-TITLECOLOR: active row label uses --color-fg-title, not plain --color-fg", () => {
+      useTreeStore.setState({ activeNoteId: "uuid-1" });
+      const node = makeNoteNode({ id: "uuid-1", title: "Scratchpad" });
+      const { container } = render(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
+      );
+      const label = container.querySelector(
+        "[data-tree-row-label]",
+      ) as HTMLElement;
+      expect(label.style.color).toBe("var(--color-fg-title)");
+    });
+
+    it("TR-ACTIVE-REGRESSION: non-active note row has neither the 12% tint nor the title color", () => {
+      useTreeStore.setState({ activeNoteId: null });
+      const node = makeNoteNode({ id: "uuid-1", title: "Scratchpad" });
+      const { container } = render(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <TreeRow node={node as any} style={{}} onSelectNote={vi.fn()} />,
+      );
+      const row = container.querySelector("[data-tree-row]") as HTMLElement;
+      const label = container.querySelector(
+        "[data-tree-row-label]",
+      ) as HTMLElement;
+      expect(row.style.background).not.toBe(
+        "color-mix(in srgb, var(--color-accent) 12%, transparent)",
+      );
+      expect(label.style.color).not.toBe("var(--color-fg-title)");
+      expect(label.style.color).toBe("var(--color-fg)");
+    });
+  });
 });
