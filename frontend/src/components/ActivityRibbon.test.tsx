@@ -15,7 +15,6 @@ const mockSetNotesSidebarVisible = vi.fn();
 const mockSetPaletteMode = vi.fn();
 const mockSetPaletteOpen = vi.fn();
 const mockSetSidebarPanel = vi.fn();
-const mockDispatchPhase7 = vi.fn();
 
 let mockNotesSidebarVisible = true;
 let mockSidebarPanel: "files" | "search" = "files";
@@ -35,7 +34,7 @@ vi.mock("../lib/useTreeStore", () => {
 });
 
 vi.mock("../lib/appShortcuts", () => ({
-  dispatchPhase7: mockDispatchPhase7,
+  dispatchPhase7: vi.fn(),
 }));
 
 const mockOpenToday = vi.fn();
@@ -63,6 +62,7 @@ vi.mock("../lib/useVaultPicker", () => ({
 
 import { ActivityRibbon } from "./ActivityRibbon";
 import { mod, shift } from "../lib/shortcutsRegistry";
+import { dispatchPhase7 as mockDispatchPhase7 } from "../lib/appShortcuts";
 
 describe("ActivityRibbon", () => {
   beforeEach(() => {

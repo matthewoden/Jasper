@@ -7,7 +7,7 @@
 import { useTreeStore } from "./useTreeStore";
 
 
-export type Phase7DispatchEvent = "openToday" | "newTab";
+export type Phase7DispatchEvent = "openToday" | "newTab" | "focusSearch";
 
 const phase7Subscribers = new Set<(ev: Phase7DispatchEvent) => void>();
 
@@ -149,8 +149,11 @@ export function handleAppCmdSlash(e: KeyboardEvent): void {
 }
 
 /**
- * Cmd+Shift+F — opens CommandMenu in search mode.
- * Search is its own palette mode, not a sidebar input.
+ * Cmd+Shift+F — opens the sidebar Search panel + focuses its input (D-05).
+ * Re-pointed from the Phase 7 palette-search stopgap: the in-sidebar Search
+ * panel (Plan 06) is now the target, not CommandMenu. While the panel is
+ * already open, this refocuses the input and selects the existing query
+ * (SidebarSearchPanel's own focusSearch subscriber owns that behavior).
  */
 export function handleAppCmdShiftF(e: KeyboardEvent): void {
   if (!(e.metaKey || e.ctrlKey)) return;
@@ -159,8 +162,9 @@ export function handleAppCmdShiftF(e: KeyboardEvent): void {
   e.preventDefault();
   e.stopPropagation();
   const s = useTreeStore.getState();
-  s.setPaletteMode("search");
-  s.setPaletteOpen(true);
+  s.setSidebarPanel("search");
+  s.setNotesSidebarVisible(true);
+  dispatchPhase7("focusSearch");
 }
 
 /**
