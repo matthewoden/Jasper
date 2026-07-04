@@ -419,29 +419,35 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
       .toBe("rgb(167, 139, 250)");
   });
 
-  test("Search toggle opens the search palette and is accent-colored while it is open", async ({
+  test("Search toggle opens the sidebar Search panel (not the command palette) and is accent-colored while it is open", async ({
     page,
   }) => {
+    // Phase 19 D-01/D-02/D-07 re-point: the ribbon Search button now opens
+    // the in-sidebar Search panel, not the CommandMenu palette (which the
+    // Phase 18 stopgap originally wired it to). See 19-CONTEXT.md D-01.
     await waitForConnected(page, jasper.baseURL);
     const ribbon = page.locator('nav[aria-label="Activity ribbon"]');
-    // Attribute selector (not getByRole): Radix Dialog marks background
-    // content aria-hidden while open, which would make a role-based locator
-    // stop resolving the button once the dialog opens.
     const searchBtn = ribbon.locator('button[aria-label="Search notes"]');
+    const sidebarSearchInput = page.getByPlaceholder(
+      "Search notes… (tag:name to filter)",
+    );
 
     await expect
       .poll(() => searchBtn.evaluate((el) => getComputedStyle(el).color))
       .toBe("rgb(106, 106, 114)"); // muted before open
 
     await searchBtn.click();
-    const dialog = page.getByRole("dialog", { name: "Search notes" });
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await expect(sidebarSearchInput).toBeVisible({ timeout: 5_000 });
+    await expect(sidebarSearchInput).toBeFocused();
+    // The palette dialog must NOT open via this button anymore.
+    await expect(page.getByRole("dialog", { name: "Search notes" })).toHaveCount(0);
     await expect
       .poll(() => searchBtn.evaluate((el) => getComputedStyle(el).color))
       .toBe("rgb(167, 139, 250)"); // accent while open
 
-    await page.keyboard.press("Escape");
-    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
+    // D-02 honest toggle: clicking Search again collapses the sidebar.
+    await searchBtn.click();
+    await expect(sidebarSearchInput).toHaveCount(0, { timeout: 3_000 });
   });
 
   test("daily-note button opens today's daily note as a NEW tab when a note is already open", async ({

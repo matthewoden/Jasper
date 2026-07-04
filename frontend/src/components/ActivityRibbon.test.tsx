@@ -134,13 +134,16 @@ describe("ActivityRibbon", () => {
     expect(btn.style.color).toBe("var(--color-muted)");
   });
 
-  it("D-01: Search click with sidebar closed opens it to Search panel + focuses input", () => {
+  it("D-01: Search click with sidebar closed opens it to Search panel + focuses input", async () => {
     mockNotesSidebarVisible = false;
     mockSidebarPanel = "files";
     render(<ActivityRibbon />);
     fireEvent.click(screen.getByRole("button", { name: "Search notes" }));
     expect(mockSetSidebarPanel).toHaveBeenCalledWith("search");
     expect(mockSetNotesSidebarVisible).toHaveBeenCalledWith(true);
+    // Dispatch is deferred one frame past this handler (SidebarSearchPanel
+    // mounts and subscribes in this same tick; see ActivityRibbon.tsx).
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     expect(mockDispatchPhase7).toHaveBeenCalledWith("focusSearch");
   });
 

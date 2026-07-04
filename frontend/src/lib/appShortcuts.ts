@@ -164,7 +164,11 @@ export function handleAppCmdShiftF(e: KeyboardEvent): void {
   const s = useTreeStore.getState();
   s.setSidebarPanel("search");
   s.setNotesSidebarVisible(true);
-  dispatchPhase7("focusSearch");
+  // See ActivityRibbon.tsx's Search button handler: when this switches from
+  // Files (or opens a closed sidebar), SidebarSearchPanel mounts in this same
+  // tick and its subscribePhase7 effect only registers after React commits —
+  // a synchronous dispatch here would fire before any subscriber exists.
+  requestAnimationFrame(() => dispatchPhase7("focusSearch"));
 }
 
 /**
