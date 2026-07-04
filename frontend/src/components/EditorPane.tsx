@@ -23,6 +23,7 @@ import {
   type MutableRefObject,
   useCallback,
   useEffect,
+  useMemo,
   useReducer,
   useRef,
   useState,
@@ -43,6 +44,7 @@ import {
 import { postNoteMove, type Tree, type TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
+import { countWords, formatWordCount } from "../lib/wordCount";
 import type { components } from "../api/schema";
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
 import { expandAndScrollToFolder } from "./fileTree.utils";
@@ -136,6 +138,9 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [autosaveMs]);
 
   const [content, setContent] = useState("");
+  // Hook must run unconditionally (rules-of-hooks) — placed before the
+  // component's later conditional early returns (activeFilePath / noteId null).
+  const wordCount = useMemo(() => countWords(content), [content]);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const [saveState, dispatch] = useReducer(
     saveStateReducer,
@@ -809,52 +814,72 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           data-testid="note-breadcrumb"
           aria-label="Note path"
           style={{
-            fontSize: 12,
-            padding: "4px var(--editor-content-x)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            textAlign: "center",
+            height: 26,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "0 var(--editor-content-x)",
+            boxSizing: "border-box",
           }}
         >
-          {breadcrumbSegments(notePath).map((seg, i, arr) => (
-            <Fragment key={seg.folderPath}>
-              <button
-                type="button"
-                data-testid="breadcrumb-segment"
-                aria-label={`Reveal ${seg.label} in Files`}
-                onClick={() => handleBreadcrumbClick(seg)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "color-mix(in srgb, var(--color-fg) 75%, transparent)",
-                  fontSize: 12,
-                  fontFamily: "inherit",
-                  cursor: "pointer",
-                  padding: "0 2px",
-                  borderRadius: 2,
-                  lineHeight: "inherit",
-                }}
-              >
-                {seg.label}
-              </button>
-              {i < arr.length - 1 && (
-                <span
-                  data-testid="breadcrumb-separator"
-                  aria-hidden="true"
+          <div
+            style={{
+              maxWidth: "70%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: 12,
+            }}
+          >
+            {breadcrumbSegments(notePath).map((seg, i, arr) => (
+              <Fragment key={seg.folderPath}>
+                <button
+                  type="button"
+                  data-testid="breadcrumb-segment"
+                  aria-label={`Reveal ${seg.label} in Files`}
+                  onClick={() => handleBreadcrumbClick(seg)}
                   style={{
-                    color: "var(--color-muted)",
-                    margin: "0 4px",
+                    background: "transparent",
+                    border: "none",
+                    color: "color-mix(in srgb, var(--color-fg) 75%, transparent)",
                     fontSize: 12,
+                    fontFamily: "inherit",
+                    cursor: "pointer",
+                    padding: "0 2px",
+                    borderRadius: 2,
                     lineHeight: "inherit",
-                    userSelect: "none",
                   }}
                 >
-                  /
-                </span>
-              )}
-            </Fragment>
-          ))}
+                  {seg.label}
+                </button>
+                {i < arr.length - 1 && (
+                  <span
+                    data-testid="breadcrumb-separator"
+                    aria-hidden="true"
+                    style={{
+                      color: "var(--color-muted)",
+                      margin: "0 4px",
+                      fontSize: 12,
+                      lineHeight: "inherit",
+                      userSelect: "none",
+                    }}
+                  >
+                    /
+                  </span>
+                )}
+              </Fragment>
+            ))}
+          </div>
+          <span
+            data-testid="word-count"
+            style={{
+              flexShrink: 0,
+              fontSize: 12,
+              color: "var(--color-muted)",
+            }}
+          >
+            {formatWordCount(wordCount)}
+          </span>
         </nav>
       )}
       {/* MarkdownEditor is uncontrolled — initialDoc captured once on mount;
