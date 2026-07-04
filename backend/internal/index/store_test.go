@@ -705,6 +705,55 @@ func TestSearchFTS_MultiTagAND(t *testing.T) {
 	}
 }
 
+// TestSearchFTS_TagOnly — D-24: an empty (or whitespace-only) free-text query
+// with tags present must run a tag-only lookup instead of failing on
+// `notes_fts MATCH ''`. Empty q with no tags must still return zero hits
+// with no error (existing information-disclosure guard).
+func TestSearchFTS_TagOnly(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	work1 := upsertTaggedNote(t, idx, "work-1.md", "first work note", []string{"work"})
+	work2 := upsertTaggedNote(t, idx, "work-2.md", "", []string{"work"})
+	upsertTaggedNote(t, idx, "draft-only.md", "a draft note", []string{"draft"})
+
+	hits, err := idx.SearchFTS(context.Background(), "", []string{"work"}, 50)
+	if err != nil {
+		t.Fatalf("SearchFTS(q=\"\", tags=[work]): unexpected error: %v", err)
+	}
+	gotIDs := map[string]bool{}
+	for _, h := range hits {
+		gotIDs[h.ID] = true
+	}
+	if len(gotIDs) != 2 || !gotIDs[work1.String()] || !gotIDs[work2.String()] {
+		t.Fatalf("SearchFTS(q=\"\", tags=[work]): got %+v, want exactly work-1 and work-2 (%s, %s)", hits, work1, work2)
+	}
+
+	hits, err = idx.SearchFTS(context.Background(), "", []string{"work", "draft"}, 50)
+	if err != nil {
+		t.Fatalf("SearchFTS(q=\"\", tags=[work,draft]): unexpected error: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("SearchFTS(q=\"\", tags=[work,draft]): got %d hits, want 0 (AND semantics — no note carries both)", len(hits))
+	}
+
+	hits, err = idx.SearchFTS(context.Background(), "", nil, 50)
+	if err != nil {
+		t.Fatalf("SearchFTS(q=\"\", tags=nil): unexpected error: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("SearchFTS(q=\"\", tags=nil): got %d hits, want 0 (empty-q + no-tags guard)", len(hits))
+	}
+
+	hits, err = idx.SearchFTS(context.Background(), "   ", []string{"work"}, 50)
+	if err != nil {
+		t.Fatalf("SearchFTS(q=\"   \", tags=[work]): unexpected error: %v", err)
+	}
+	if len(hits) != 2 {
+		t.Fatalf("SearchFTS(q=\"   \", tags=[work]): got %d hits, want 2 (whitespace-only q treated as empty)", len(hits))
+	}
+}
+
 // TestSearchFTS_TagSQLMetacharacter — a tag value containing a SQL
 // metacharacter (attempted injection) must match nothing and must NOT
 // error or return all rows. Proves the tag value is always a positional
