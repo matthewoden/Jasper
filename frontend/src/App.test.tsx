@@ -282,7 +282,7 @@ describe("<App /> — shell composition", () => {
       "48px 260px minmax(0, 1fr) 0px",
     );
 
-    expect(screen.getByText("NOTES")).toBeInTheDocument();
+    expect(screen.getByText("Notes")).toBeInTheDocument();
     expect(screen.getByTestId("tree-empty-state")).toBeInTheDocument();
   });
 
