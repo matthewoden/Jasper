@@ -6,18 +6,18 @@ export type SearchResult = components["schemas"]["SearchResult"];
 /**
  * searchNotes — GET /api/v1/search.
  * Returns up to `limit` results sorted by bm25 + recency.
- * Tag filter AND-combines with the query.
+ * Tag filters AND-combine with the query (repeat the tag param).
  */
 export async function searchNotes(
   q: string,
-  tag?: string,
+  tags?: string[],
   limit: number = 50,
 ): Promise<SearchResult[]> {
   const { data, error } = await client.GET("/search", {
     params: {
       query: {
         q,
-        ...(tag ? { tag: [tag] } : {}),
+        ...(tags && tags.length ? { tag: tags } : {}),
         limit,
       },
     },
