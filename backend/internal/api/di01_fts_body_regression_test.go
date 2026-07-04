@@ -79,7 +79,7 @@ func TestDI01_InteractiveSavesKeepBodyFTS(t *testing.T) {
 			t.Fatalf("Update: %v", err)
 		}
 
-		hits, err := idx.SearchFTS(ctx, "zqxbodyupdate", "", 10)
+		hits, err := idx.SearchFTS(ctx, "zqxbodyupdate", nil, 10)
 		if err != nil {
 			t.Fatalf("SearchFTS: %v", err)
 		}
@@ -105,7 +105,7 @@ func TestDI01_InteractiveSavesKeepBodyFTS(t *testing.T) {
 			t.Fatalf("CreateWithBody: %v", err)
 		}
 
-		hits, err := idx.SearchFTS(ctx, "zqxbodycreate", "", 10)
+		hits, err := idx.SearchFTS(ctx, "zqxbodycreate", nil, 10)
 		if err != nil {
 			t.Fatalf("SearchFTS: %v", err)
 		}
@@ -135,7 +135,7 @@ func TestDI01_InteractiveSavesKeepBodyFTS(t *testing.T) {
 			t.Fatalf("Move: %v", err)
 		}
 
-		hits, err := idx.SearchFTS(ctx, "zqxbodymove", "", 10)
+		hits, err := idx.SearchFTS(ctx, "zqxbodymove", nil, 10)
 		if err != nil {
 			t.Fatalf("SearchFTS: %v", err)
 		}

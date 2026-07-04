@@ -120,10 +120,10 @@ func TestSearchHandler(t *testing.T) {
 	})
 
 	t.Run("tag filter AND combination", func(t *testing.T) {
-		tag := "project"
+		tags := []string{"project"}
 		limit := 50
 		resp, err := srv.SearchNotes(ctx, SearchNotesRequestObject{
-			Params: SearchNotesParams{Q: "world", Tag: &tag, Limit: &limit},
+			Params: SearchNotesParams{Q: "world", Tag: &tags, Limit: &limit},
 		})
 		if err != nil {
 			t.Fatalf("SearchNotes: unexpected error %v", err)
@@ -145,6 +145,36 @@ func TestSearchHandler(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("hello.md (tag 'project' + body 'world') should appear in results; got: %+v", r200.Results)
+		}
+	})
+
+	t.Run("repeated tag params AND-combine (HTTP-level)", func(t *testing.T) {
+		multiSeeds := []seedNote{
+			{
+				Path: "both-tags.md",
+				Body: "---\ntags: [work, draft]\n---\n# Both\n\nquarterly budget review",
+			},
+			{
+				Path: "one-tag.md",
+				Body: "---\ntags: [work]\n---\n# One\n\nanother budget document",
+			},
+		}
+		multiSrv := newSearchTestServer(t, multiSeeds)
+
+		tags := []string{"work", "draft"}
+		limit := 50
+		resp, err := multiSrv.SearchNotes(ctx, SearchNotesRequestObject{
+			Params: SearchNotesParams{Q: "budget", Tag: &tags, Limit: &limit},
+		})
+		if err != nil {
+			t.Fatalf("SearchNotes: unexpected error %v", err)
+		}
+		r200, ok := resp.(SearchNotes200JSONResponse)
+		if !ok {
+			t.Fatalf("want 200 response, got %T", resp)
+		}
+		if len(r200.Results) != 1 || r200.Results[0].Path != "both-tags.md" {
+			t.Fatalf("want exactly both-tags.md (tags=[work,draft]); got %+v", r200.Results)
 		}
 	})
 

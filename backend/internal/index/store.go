@@ -344,8 +344,43 @@ func prefixWrap(q string) string {
 	return strings.Join(tokens, " ")
 }
 
+// maxTagFilters caps the number of ANDed tag EXISTS clauses SearchFTS and
+// searchTitlePathLike will build per query (T-19-03: defensive DoS guard).
+const maxTagFilters = 8
+
+// buildTagClauses builds one bound `AND EXISTS (...)` clause per non-empty
+// tag in tags (capped at maxTagFilters, empties dropped), using positional
+// bind placeholders starting at startIdx. It returns the SQL fragment to
+// splice into the query and the ordered bind args for those placeholders.
+//
+// Security: only the fixed clause shape (SQL keywords, table/column names)
+// is concatenated into the query text — every tag VALUE is appended to the
+// returned args slice and bound positionally (?N), never interpolated.
+func buildTagClauses(tags []string, startIdx int) (string, []any) {
+	var clauses []string
+	var args []any
+	idx := startIdx
+	for _, tagName := range tags {
+		if tagName == "" {
+			continue
+		}
+		if len(clauses) >= maxTagFilters {
+			break
+		}
+		clauses = append(clauses, fmt.Sprintf(`
+		  AND EXISTS (
+		      SELECT 1 FROM note_tags nt
+		      JOIN tags t ON t.id = nt.tag_id
+		      WHERE nt.note_id = n.id AND t.name = ?%d
+		  )`, idx))
+		args = append(args, tagName)
+		idx++
+	}
+	return strings.Join(clauses, ""), args
+}
+
 // SearchFTS runs an FTS5 MATCH query against the notes_fts virtual table with
-// an optional AND-combined tag filter. Results are ordered by a bm25 +
+// optional AND-combined tag filters. Results are ordered by a bm25 +
 // recency blend.
 //
 // Security: the MATCH clause always uses a positional bind parameter (?1) —
@@ -353,7 +388,7 @@ func prefixWrap(q string) string {
 //
 // FTS5 syntax errors (unbalanced parentheses, etc.) are caught and wrapped as
 // notes.ErrFTSQuerySyntax so the handler maps to HTTP 400.
-func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]notes.SearchHit, error) {
+func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit int) ([]notes.SearchHit, error) {
 	if limit < 1 {
 		limit = 1
 	}
@@ -361,7 +396,10 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 		limit = 100
 	}
 
-	const sqlText = `
+	tagClauseSQL, tagArgs := buildTagClauses(tags, 2)
+	limitIdx := 2 + len(tagArgs)
+
+	sqlText := fmt.Sprintf(`
 		SELECT
 			n.id,
 			n.title,
@@ -372,27 +410,20 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 		FROM notes_fts
 		JOIN notes n ON notes_fts.rowid = n.rowid
 		WHERE notes_fts MATCH ?1
-		  AND (
-		    ?2 IS NULL
-		    OR EXISTS (
-		        SELECT 1 FROM note_tags nt
-		        JOIN tags t ON t.id = nt.tag_id
-		        WHERE nt.note_id = n.id AND t.name = ?2
-		    )
-		  )
+		%s
 		ORDER BY
 			bm25(notes_fts) + (julianday('now') - julianday(datetime(n.updated_at,'unixepoch'))) * 0.002
-		LIMIT ?3
-	`
-
-	var tagBind any
-	if tag != "" {
-		tagBind = tag
-	}
+		LIMIT ?%d
+	`, tagClauseSQL, limitIdx)
 
 	matchQuery := prefixWrap(q)
 
-	rows, err := x.Pair.Reader.QueryContext(ctx, sqlText, matchQuery, tagBind, limit+1)
+	args := make([]any, 0, 2+len(tagArgs))
+	args = append(args, matchQuery)
+	args = append(args, tagArgs...)
+	args = append(args, limit+1)
+
+	rows, err := x.Pair.Reader.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		if strings.Contains(err.Error(), "fts5: syntax error") {
 			return nil, fmt.Errorf("%w: %v", notes.ErrFTSQuerySyntax, err)
@@ -423,7 +454,7 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 		}
 		need := limit + 1 - len(hits)
 		if need > 0 {
-			likeHits, lerr := x.searchTitlePathLike(ctx, trimmed, tag, existing, need)
+			likeHits, lerr := x.searchTitlePathLike(ctx, trimmed, tags, existing, need)
 			if lerr != nil {
 				x.Log.Warn("searchfts: title-LIKE fallback failed (continuing with FTS-only)", "err", lerr)
 			} else {
@@ -445,32 +476,30 @@ func (x *Indexer) SearchFTS(ctx context.Context, q, tag string, limit int) ([]no
 
 func (x *Indexer) searchTitlePathLike(
 	ctx context.Context,
-	q, tag string,
+	q string, tags []string,
 	existing map[string]bool,
 	limit int,
 ) ([]notes.SearchHit, error) {
-	const sqlText = `
+	tagClauseSQL, tagArgs := buildTagClauses(tags, 2)
+	limitIdx := 2 + len(tagArgs)
+
+	sqlText := fmt.Sprintf(`
 		SELECT n.id, n.title, n.path, n.updated_at
 		FROM notes n
-		WHERE (n.title LIKE '%' || ?1 || '%' OR n.path LIKE '%' || ?1 || '%')
-		  AND (
-		    ?2 IS NULL
-		    OR EXISTS (
-		        SELECT 1 FROM note_tags nt
-		        JOIN tags t ON t.id = nt.tag_id
-		        WHERE nt.note_id = n.id AND t.name = ?2
-		    )
-		  )
+		WHERE (n.title LIKE '%%' || ?1 || '%%' OR n.path LIKE '%%' || ?1 || '%%')
+		%s
 		ORDER BY n.updated_at DESC
-		LIMIT ?3
-	`
-	var tagBind any
-	if tag != "" {
-		tagBind = tag
-	}
+		LIMIT ?%d
+	`, tagClauseSQL, limitIdx)
 
 	overFetch := limit + len(existing) + 10
-	rows, err := x.Pair.Reader.QueryContext(ctx, sqlText, q, tagBind, overFetch)
+
+	args := make([]any, 0, 2+len(tagArgs))
+	args = append(args, q)
+	args = append(args, tagArgs...)
+	args = append(args, overFetch)
+
+	rows, err := x.Pair.Reader.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return nil, fmt.Errorf("searchlike query: %w", err)
 	}

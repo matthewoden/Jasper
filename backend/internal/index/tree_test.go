@@ -196,6 +196,40 @@ func TestBuildTree_FoldersBeforeNotes(t *testing.T) {
 	}
 }
 
+// TestBuildTree_FoldersBeforeNotes_NestedLevel — the folders-before-notes
+// invariant (LSIDE-01: "at every level", not just root) must also hold two
+// levels deep. Build "parent/z-folder/" (a subfolder) and "parent/a-note.md"
+// (a note) inside a shared parent folder, plus a root-level sibling folder
+// to prove sortChildren is applied recursively per-folder, not just at Root.
+func TestBuildTree_FoldersBeforeNotes_NestedLevel(t *testing.T) {
+	t.Parallel()
+	idx, notesDir := newTreeFixture(t)
+	writeFileForTree(t, notesDir, "parent/a-note.md", "")
+	mkdir(t, notesDir, "parent/z-folder")
+
+	if _, err := idx.Reconcile(context.Background(), ModeFull); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	tree, err := idx.BuildTree(context.Background())
+	if err != nil {
+		t.Fatalf("BuildTree: %v", err)
+	}
+	if len(tree.Root) != 1 || tree.Root[0].Folder == nil {
+		t.Fatalf("expected single root folder 'parent', got %+v", tree.Root)
+	}
+	parent := tree.Root[0].Folder
+	if len(parent.Children) != 2 {
+		t.Fatalf("parent.Children len: got %d, want 2", len(parent.Children))
+	}
+	if parent.Children[0].Folder == nil || parent.Children[0].Folder.Name != "z-folder" {
+		t.Errorf("parent.Children[0]: expected folder z-folder (nested level), got %+v", parent.Children[0])
+	}
+	if parent.Children[1].Note == nil {
+		t.Errorf("parent.Children[1]: expected note (nested level), got %+v", parent.Children[1])
+	}
+}
+
 // TestBuildTree_AlphabeticalWithinKind — Insert "b-note.md",
 // "a-note.md" → at root level, "a-note" comes before "b-note".
 func TestBuildTree_AlphabeticalWithinKind(t *testing.T) {
