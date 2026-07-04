@@ -396,6 +396,14 @@ func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit 
 		limit = 100
 	}
 
+	// An empty (or whitespace-only) q cannot be passed to notes_fts MATCH —
+	// `notes_fts MATCH ''` is an FTS5 syntax error. D-24: a bare tag:name
+	// query still needs to work, so route empty-q requests through a
+	// non-FTS tag-only lookup instead of the MATCH path below.
+	if strings.TrimSpace(q) == "" {
+		return x.searchTagsOnly(ctx, tags, limit)
+	}
+
 	tagClauseSQL, tagArgs := buildTagClauses(tags, 2)
 	limitIdx := 2 + len(tagArgs)
 
@@ -467,6 +475,63 @@ func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit 
 		tagNames, terr := x.tagNamesForNote(ctx, hits[i].ID)
 		if terr != nil {
 			x.Log.Error("searchfts: tagNamesForNote", "note_id", hits[i].ID, "err", terr)
+			continue
+		}
+		hits[i].MatchingTags = tagNames
+	}
+	return hits, nil
+}
+
+// searchTagsOnly serves a pure tag-filter query (empty or whitespace-only q)
+// by listing notes matching ALL given tags directly from the notes table,
+// bypassing FTS5 MATCH entirely (D-24). No snippet is available without a
+// MATCH, so ExcerptHTML stays empty on every hit. If tags yields zero
+// non-empty clauses, returns (nil, nil) — an unfiltered empty-q dump would be
+// an information-disclosure risk (T-SM6-03), so there is nothing to list.
+func (x *Indexer) searchTagsOnly(ctx context.Context, tags []string, limit int) ([]notes.SearchHit, error) {
+	tagClauseSQL, tagArgs := buildTagClauses(tags, 1)
+	if len(tagArgs) == 0 {
+		return nil, nil
+	}
+	limitIdx := 1 + len(tagArgs)
+
+	sqlText := fmt.Sprintf(`
+		SELECT n.id, n.title, n.path, n.updated_at
+		FROM notes n
+		WHERE 1=1
+		%s
+		ORDER BY n.updated_at DESC
+		LIMIT ?%d
+	`, tagClauseSQL, limitIdx)
+
+	args := make([]any, 0, len(tagArgs)+1)
+	args = append(args, tagArgs...)
+	args = append(args, limit)
+
+	rows, err := x.Pair.Reader.QueryContext(ctx, sqlText, args...)
+	if err != nil {
+		return nil, fmt.Errorf("searchtagsonly query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var hits []notes.SearchHit
+	for rows.Next() {
+		var h notes.SearchHit
+		var updatedAt int64
+		if err := rows.Scan(&h.ID, &h.Title, &h.Path, &updatedAt); err != nil {
+			return nil, fmt.Errorf("searchtagsonly scan: %w", err)
+		}
+		h.ModifiedAt = time.Unix(updatedAt, 0).UTC()
+		hits = append(hits, h)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("searchtagsonly iter: %w", err)
+	}
+
+	for i := range hits {
+		tagNames, terr := x.tagNamesForNote(ctx, hits[i].ID)
+		if terr != nil {
+			x.Log.Error("searchtagsonly: tagNamesForNote", "note_id", hits[i].ID, "err", terr)
 			continue
 		}
 		hits[i].MatchingTags = tagNames

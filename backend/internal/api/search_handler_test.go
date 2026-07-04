@@ -210,6 +210,45 @@ func TestSearchHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("tag-only query (empty q) returns tagged notes", func(t *testing.T) {
+		tags := []string{"project"}
+		resp, err := srv.SearchNotes(ctx, SearchNotesRequestObject{
+			Params: SearchNotesParams{Q: "", Tag: &tags},
+		})
+		if err != nil {
+			t.Fatalf("SearchNotes: unexpected error %v", err)
+		}
+		r200, ok := resp.(SearchNotes200JSONResponse)
+		if !ok {
+			t.Fatalf("want 200 response, got %T", resp)
+		}
+		found := false
+		for _, res := range r200.Results {
+			if res.Path == "hello.md" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("tag-only query (tag=project): want hello.md present, got: %+v", r200.Results)
+		}
+	})
+
+	t.Run("empty q + no tags returns 200 empty", func(t *testing.T) {
+		resp, err := srv.SearchNotes(ctx, SearchNotesRequestObject{
+			Params: SearchNotesParams{Q: ""},
+		})
+		if err != nil {
+			t.Fatalf("SearchNotes: unexpected error %v", err)
+		}
+		r200, ok := resp.(SearchNotes200JSONResponse)
+		if !ok {
+			t.Fatalf("want 200 response, got %T", resp)
+		}
+		if len(r200.Results) != 0 {
+			t.Errorf("empty q + no tags: want 0 results, got %d", len(r200.Results))
+		}
+	})
+
 	t.Run("nil index fast path returns 200 empty", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		nilSrv := NewServerWithIndex(nil, nil, nil, nil, nil, logger, "")
