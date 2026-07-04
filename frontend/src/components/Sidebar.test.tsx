@@ -59,6 +59,20 @@ vi.mock("../lib/tagsApi", () => ({
   deleteTag: vi.fn(),
 }));
 
+let mockDisplayName: string | null = "work-vault";
+vi.mock("../lib/useVaultPicker", () => ({
+  useVaultPicker: () => ({
+    isOpen: false,
+    open: vi.fn(),
+    close: vi.fn(),
+    current: mockDisplayName === null ? null : { display_name: mockDisplayName },
+    recents: [],
+    banner: "",
+    isLoading: false,
+    refresh: vi.fn(),
+  }),
+}));
+
 import { useFileTree } from "../lib/useFileTree";
 import { postAdminReindex } from "../lib/adminApi";
 import { useTreeMutations } from "../lib/useTreeMutations";
@@ -118,7 +132,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     expect(screen.getByLabelText("Notes navigation")).toBeInTheDocument();
   });
 
-  it("TestSidebar_RendersNotesHeader", () => {
+  it("TestSidebar_RendersVaultNameHeader — 40px header shows the vault display name (LSIDE-01)", () => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -127,7 +141,8 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
-    expect(screen.getByText("NOTES")).toBeInTheDocument();
+    expect(screen.getByText("work-vault")).toBeInTheDocument();
+    expect(screen.queryByText("NOTES")).toBeNull();
   });
 
   it("TestSidebar_RendersToolbar — New note + New folder buttons (Phase 6.6: Refresh moved to StatusBar)", () => {
