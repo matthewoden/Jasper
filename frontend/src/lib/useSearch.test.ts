@@ -75,7 +75,11 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
     await act(async () => {
       vi.advanceTimersByTime(201);
     });
-    expect(searchApi.searchNotes).toHaveBeenCalledWith("hello", "project", 50);
+    expect(searchApi.searchNotes).toHaveBeenCalledWith(
+      "hello",
+      ["project"],
+      50,
+    );
   });
 
   it("cancels previous debounce when query changes rapidly (only final call fires)", async () => {
@@ -127,7 +131,11 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
     await act(async () => {
       vi.advanceTimersByTime(201);
     });
-    expect(searchApi.searchNotes).toHaveBeenLastCalledWith("hello", "project", 50);
+    expect(searchApi.searchNotes).toHaveBeenLastCalledWith(
+      "hello",
+      ["project"],
+      50,
+    );
     expect(searchApi.searchNotes).toHaveBeenCalledTimes(2);
   });
 
