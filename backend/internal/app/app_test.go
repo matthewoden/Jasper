@@ -300,6 +300,10 @@ func waitFor(t *testing.T, timeout time.Duration, httpFn func() error) error {
 // app.New skeleton. A mutating request through the running server is rejected
 // with a foreign Origin and accepted with the matching one.
 func TestApp_LiveRouter_EnforcesCSRFOrigin(t *testing.T) {
+	// Isolate the app home (see TestRun_FrontmatterMigrationRuns_BeforeReconcile):
+	// otherwise the real ~/.jasper/app.json's CurrentVault reroutes boot away from
+	// the temp-dir vault and this test writes its CSRF probe into the real vault.
+	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
 	dir := t.TempDir()
 	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -358,6 +362,8 @@ func TestApp_LiveRouter_EnforcesCSRFOrigin(t *testing.T) {
 //   - GET /api/v1/notes returns 200 with at least 1 entry (the seeded scratchpad).
 //   - GET /api/v1/admin/status returns state="ok".
 func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
+	// Isolate the app home (see TestRun_FrontmatterMigrationRuns_BeforeReconcile).
+	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
 	dir := t.TempDir()
 	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -473,6 +479,9 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 // 002_break.sql. Asserts the listener still comes up serving 503 with
 // an "unrecoverable" body (migration failure is not fatal to the listener).
 func TestApp_Run_BrokenMigration_FiresPath1(t *testing.T) {
+	// Isolate the app home (see TestRun_FrontmatterMigrationRuns_BeforeReconcile):
+	// without this the broken migration below runs against the real vault's app.db.
+	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
 	initialBytes, err := migrations.FS.ReadFile("001_initial.sql")
 	if err != nil {
 		t.Fatalf("read embedded 001_initial.sql: %v", err)
@@ -578,6 +587,8 @@ func seedRealSQLiteDB(t *testing.T, dir string) {
 // Asserts the listener serves a 503 HTML page on /, with no SPA shell
 // returned.
 func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
+	// Isolate the app home (see TestRun_FrontmatterMigrationRuns_BeforeReconcile).
+	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
 	dir := t.TempDir()
 	seedRealSQLiteDB(t, dir)
 
