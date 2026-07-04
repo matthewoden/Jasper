@@ -555,7 +555,7 @@ func (a *App) startMCP(
 	}
 	notesProv := mcp.NewNotesProvider(a.indexer)
 	searchProv := mcp.NewSearchAdapter(func(ctx context.Context, q string, limit int) ([]mcp.SearchHit, error) {
-		hits, err := a.indexer.SearchFTS(ctx, q, "", limit)
+		hits, err := a.indexer.SearchFTS(ctx, q, nil, limit)
 		if err != nil {
 			return nil, err
 		}

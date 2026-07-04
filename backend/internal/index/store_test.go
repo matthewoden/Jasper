@@ -637,7 +637,7 @@ func TestSearchFTS_PrefixMatch(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	hits, err := idx.SearchFTS(context.Background(), "te", "", 50)
+	hits, err := idx.SearchFTS(context.Background(), "te", nil, 50)
 	if err != nil {
 		t.Fatalf("SearchFTS: %v", err)
 	}

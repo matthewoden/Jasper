@@ -976,7 +976,7 @@ func (nopIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchResult
 }
 
 // nopIndex no-op for SearchFTS.
-func (nopIndex) SearchFTS(_ context.Context, _ string, _ string, _ int) ([]SearchHit, error) {
+func (nopIndex) SearchFTS(_ context.Context, _ string, _ []string, _ int) ([]SearchHit, error) {
 	return []SearchHit{}, nil
 }
 

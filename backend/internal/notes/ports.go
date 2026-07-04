@@ -198,12 +198,12 @@ type Index interface {
 	// empty, returns the most-recent notes up to limit. Max limit = 50.
 	SearchTitles(ctx context.Context, q string, limit int) ([]SearchResult, error)
 
-	// SearchFTS runs an FTS5 query against notes body+tag_names with an
-	// optional AND-combined tag filter. Sort = bm25 + recency blend
+	// SearchFTS runs an FTS5 query against notes body+tag_names with
+	// optional AND-combined tag filters. Sort = bm25 + recency blend
 	// (weight 0.002). Returns up to `limit` results (capped at 100).
 	// Returns ErrFTSQuerySyntax on FTS5 syntax errors so the handler
 	// can map to HTTP 400.
-	SearchFTS(ctx context.Context, q string, tag string, limit int) ([]SearchHit, error)
+	SearchFTS(ctx context.Context, q string, tags []string, limit int) ([]SearchHit, error)
 }
 
 // BacklinkRow is the projection returned by Index.GetBacklinks.

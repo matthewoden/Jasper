@@ -2397,8 +2397,8 @@ export interface operations {
         parameters: {
             query: {
                 q: string;
-                /** @description AND-combine with a tag filter (D-05). */
-                tag?: string;
+                /** @description AND-combine with one or more tag filters (D-05). May be repeated (?tag=a&tag=b) to require all listed tags; capped at 8 tags. */
+                tag?: string[];
                 limit?: number;
             };
             header?: never;

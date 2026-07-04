@@ -120,10 +120,10 @@ func TestSearchHandler(t *testing.T) {
 	})
 
 	t.Run("tag filter AND combination", func(t *testing.T) {
-		tag := "project"
+		tags := []string{"project"}
 		limit := 50
 		resp, err := srv.SearchNotes(ctx, SearchNotesRequestObject{
-			Params: SearchNotesParams{Q: "world", Tag: &tag, Limit: &limit},
+			Params: SearchNotesParams{Q: "world", Tag: &tags, Limit: &limit},
 		})
 		if err != nil {
 			t.Fatalf("SearchNotes: unexpected error %v", err)

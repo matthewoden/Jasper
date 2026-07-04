@@ -560,8 +560,10 @@ paths:
         - name: tag
           in: query
           required: false
-          description: AND-combine with a tag filter (D-05).
-          schema: { type: string }
+          description: >-
+            AND-combine with one or more tag filters (D-05). May be repeated
+            (?tag=a&tag=b) to require all listed tags; capped at 8 tags.
+          schema: { type: array, items: { type: string } }
         - name: limit
           in: query
           required: false
