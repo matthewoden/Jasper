@@ -259,7 +259,7 @@ export function TreeRow({
   };
 
   const activeBackground = isActive
-    ? "color-mix(in srgb, var(--color-accent) 8%, transparent)"
+    ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
     : undefined;
   const selectedBackground =
     isSelected && !isActive
@@ -323,7 +323,7 @@ export function TreeRow({
         whiteSpace: "nowrap",
         fontSize: 14,
         fontWeight: 400,
-        color: "var(--color-fg)",
+        color: isActive ? "var(--color-fg-title)" : "var(--color-fg)",
       }}
       title={displayLabel}
       data-tree-row-label
