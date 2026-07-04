@@ -17,7 +17,7 @@ export async function searchNotes(
     params: {
       query: {
         q,
-        ...(tag ? { tag } : {}),
+        ...(tag ? { tag: [tag] } : {}),
         limit,
       },
     },
