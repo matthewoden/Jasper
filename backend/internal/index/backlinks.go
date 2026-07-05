@@ -123,19 +123,20 @@ func (x *Indexer) SyncBacklinks(
 // note recency (mtime_unix DESC). Pending rows (target_id IS NULL) are
 // excluded. Returns a non-nil empty slice when there are no backlinks.
 //
-// Rows are grouped one card per source_id via json_group_array (D-16); the
-// inner subquery orders by b.id (insertion/document order) BEFORE grouping
-// so each card's excerpts array preserves document order.
+// Rows are grouped one card per source_id via json_group_array (D-16). The
+// aggregate's own ORDER BY clause (SQLite >= 3.44) guarantees each card's
+// excerpts array preserves b.id insertion/document order — an ordered
+// subquery feeding an aggregate is NOT guaranteed to preserve order.
 func (x *Indexer) GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]BacklinkRow, error) {
 	rows, err := x.Pair.Reader.QueryContext(ctx,
-		`SELECT source_id, title, path, json_group_array(excerpt) AS excerpts
+		`SELECT source_id, title, path,
+		        json_group_array(excerpt ORDER BY bl_id) AS excerpts
 		 FROM (
 		     SELECT b.id AS bl_id, b.source_id AS source_id, n.title AS title,
 		            n.path AS path, b.excerpt AS excerpt, n.mtime_unix AS mtime_unix
 		     FROM backlinks b
 		     INNER JOIN notes n ON n.id = b.source_id
 		     WHERE b.target_id = ?
-		     ORDER BY b.id
 		 )
 		 GROUP BY source_id
 		 ORDER BY mtime_unix DESC`,
