@@ -72,6 +72,7 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { useFileTree } from "../lib/useFileTree";
 import { postNotes } from "../lib/treeApi";
 import type { TreeNode } from "../lib/treeApi";
+import { extractHeadings, type HeadingInfo } from "../editor/outlineExtract";
 
 export interface MarkdownEditorRef {
   /** Replace the entire document. Triggers onChange (user-driven). */
@@ -82,6 +83,8 @@ export interface MarkdownEditorRef {
   focus(): void;
   /** Focus and move caret to end-of-doc. Used by EditorPane's click-anywhere-to-type host. */
   focusEnd(): void;
+  /** Move the cursor to `from` and smooth-scroll it into view (RSIDE-01 Outline click). */
+  scrollToHeading(from: number): void;
 }
 
 /** Transactions annotated with this are server-driven and skip the onChange callback. */
@@ -94,6 +97,8 @@ interface Props {
   onChange: (doc: string) => void;
   /** Fires when the first H1 line changes. */
   onH1Change?: (h1: string | null) => void;
+  /** Fires with the live H1-H6 heading list after every doc change, and once on mount (RSIDE-01). */
+  onHeadingsChange?: (headings: HeadingInfo[]) => void;
   /** Cmd+S handler. */
   onSaveRequested?: () => void;
   /** Fires when CM6's contenteditable loses focus to any element OUTSIDE the editor. */
@@ -142,15 +147,15 @@ function getNoteFolder(noteId: string | null, root: TreeNode[]): string {
 
 export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
   function MarkdownEditor(
-    { initialDoc, onChange, onH1Change, onSaveRequested, onBlur, readOnly = false },
+    { initialDoc, onChange, onH1Change, onHeadingsChange, onSaveRequested, onBlur, readOnly = false },
     ref
   ) {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const viewRef = useRef<EditorView | null>(null);
     const readOnlyCompartment = useRef(new Compartment());
 
-    const cbRef = useRef({ onChange, onH1Change, onSaveRequested, onBlur });
-    cbRef.current = { onChange, onH1Change, onSaveRequested, onBlur };
+    const cbRef = useRef({ onChange, onH1Change, onHeadingsChange, onSaveRequested, onBlur });
+    cbRef.current = { onChange, onH1Change, onHeadingsChange, onSaveRequested, onBlur };
 
     const { titleSet, idMap } = useResolvedTitleSet();
     useEffect(() => {
@@ -306,6 +311,9 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
                 const m = doc.match(/^# (.+)$/m);
                 cbRef.current.onH1Change(m ? m[1].trim() : null);
               }
+              if (cbRef.current.onHeadingsChange) {
+                cbRef.current.onHeadingsChange(extractHeadings(u.state));
+              }
               // immediate flush on checkbox toggle — bypass 2s autosave debounce
               const isToggle = u.transactions.some(
                 (tr) => tr.annotation(CheckboxToggleAnnotation),
@@ -318,6 +326,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
         }),
       });
       viewRef.current = view;
+
+      // Fire once on mount so the outline populates before the first edit.
+      if (cbRef.current.onHeadingsChange) {
+        cbRef.current.onHeadingsChange(extractHeadings(view.state));
+      }
 
       // E2E hook: expose openSearchPanel so tests can open the CM6 find panel
       // programmatically without relying on Cmd+F (intercepted by the browser).
@@ -373,6 +386,15 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           v.focus();
           const docLen = v.state.doc.length;
           v.dispatch({ selection: { anchor: docLen, head: docLen } });
+        },
+        scrollToHeading(from: number) {
+          const v = viewRef.current;
+          if (!v) return;
+          v.dispatch({
+            selection: { anchor: from },
+            effects: EditorView.scrollIntoView(from, { y: "start", yMargin: 40 }),
+          });
+          v.focus();
         },
       }),
       []

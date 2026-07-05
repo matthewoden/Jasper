@@ -44,7 +44,9 @@ import {
 import { postNoteMove, type Tree, type TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
+import { useOutlineStore } from "../lib/useOutlineStore";
 import { countWords, formatWordCount } from "../lib/wordCount";
+import type { HeadingInfo } from "../editor/outlineExtract";
 import type { components } from "../api/schema";
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
 import { expandAndScrollToFolder } from "./fileTree.utils";
@@ -454,6 +456,37 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     },
     [],
   );
+
+  // Outline (RSIDE-01): only the pane whose noteId IS the active tab writes
+  // into the shared outline store — keep-alive background panes must not
+  // clobber the outline with their (invisible) content.
+  const handleEditorHeadingsChange = useCallback(
+    (headings: HeadingInfo[]) => {
+      if (noteIdRef.current === null) return;
+      if (noteIdRef.current !== useTreeStore.getState().activeNoteId) return;
+      useOutlineStore.getState().setOutlineHeadings(headings);
+    },
+    [],
+  );
+
+  // Register this pane's scrollToHeading into the shared outline store
+  // whenever it becomes (or is) the active tab, so OutlinePanel always
+  // drives the currently-active editor. Cleared on unmount / deactivation.
+  useEffect(() => {
+    if (hidden || noteId === null || noteId !== activeNoteId) return;
+    useOutlineStore.getState().setScrollToHeading((from: number) => {
+      editorRef.current?.scrollToHeading(from);
+    });
+    return () => {
+      // Only clear if we're still the registered handler owner — a newly
+      // active pane's effect will have already overwritten this by the time
+      // a stale cleanup runs, so an unconditional clear here would be safe
+      // either way, but this avoids a redundant store write in that case.
+      if (useOutlineStore.getState().scrollToHeading !== null) {
+        useOutlineStore.getState().setScrollToHeading(null);
+      }
+    };
+  }, [hidden, noteId, activeNoteId]);
 
   const handleSaveRequested = useCallback(() => {
     if (debounceTimer.current !== null) {
@@ -907,6 +940,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           initialDoc={loadStatus === "loaded" && !reindexing ? content : ""}
           onChange={handleEditorChange}
           onH1Change={handleEditorH1Change}
+          onHeadingsChange={handleEditorHeadingsChange}
           onSaveRequested={handleSaveRequested}
           onBlur={handleEditorBlur}
           readOnly={isDeleted}
