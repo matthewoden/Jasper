@@ -255,9 +255,13 @@ func (x *Indexer) UpdateBacklinksTargetTitle(
 // registry hydration at startup, because ReconcileWithRegistry runs before
 // the registry is populated, leaving all startup-synced backlinks pending.
 //
-// One-pass scan: SELECT DISTINCT target_title FROM backlinks WHERE
-// target_id IS NULL, then for each title call registry.FindByTitle and
-// UPDATE backlinks SET target_id = ? WHERE target_id IS NULL AND target_title = ?
+// One-pass scan: SELECT DISTINCT (target_title, source_id, source path)
+// FROM backlinks WHERE target_id IS NULL, then for each pair resolve via
+// registry.FindByTitle using THAT source's folder bias and
+// UPDATE ... WHERE target_id IS NULL AND target_title = ? AND source_id = ?
+// Scoping the update per source matters when two notes share a title in
+// different folders: each source must resolve with its own folder bias,
+// matching what a subsequent save of that source would produce.
 //
 // Non-fatal: errors are logged; partial updates leave remaining rows pending
 // to be resolved on the next save of the source note.
@@ -267,7 +271,7 @@ func (x *Indexer) ResolvePendingBacklinks(ctx context.Context, registry *notes.R
 	}
 
 	rows, err := x.Pair.Reader.QueryContext(ctx,
-		`SELECT DISTINCT b.target_title, n.path
+		`SELECT DISTINCT b.target_title, b.source_id, n.path
 		 FROM backlinks b
 		 INNER JOIN notes n ON n.id = b.source_id
 		 WHERE b.target_id IS NULL`)
@@ -276,14 +280,14 @@ func (x *Indexer) ResolvePendingBacklinks(ctx context.Context, registry *notes.R
 	}
 	defer func() { _ = rows.Close() }()
 
-	type pending struct{ targetTitle, sourcePath string }
+	type pending struct{ targetTitle, sourceID, sourcePath string }
 	var pendings []pending
 	for rows.Next() {
-		var tt, sp string
-		if err := rows.Scan(&tt, &sp); err != nil {
+		var tt, sid, sp string
+		if err := rows.Scan(&tt, &sid, &sp); err != nil {
 			return fmt.Errorf("resolve pending: scan: %w", err)
 		}
-		pendings = append(pendings, pending{tt, sp})
+		pendings = append(pendings, pending{tt, sid, sp})
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("resolve pending: rows: %w", err)
@@ -299,8 +303,8 @@ func (x *Indexer) ResolvePendingBacklinks(ctx context.Context, registry *notes.R
 		tid := candidates[0].ID
 		if _, err := x.Pair.Writer.ExecContext(ctx,
 			`UPDATE backlinks SET target_id = ?
-			 WHERE target_id IS NULL AND target_title = ?`,
-			tid.String(), p.targetTitle); err != nil {
+			 WHERE target_id IS NULL AND target_title = ? AND source_id = ?`,
+			tid.String(), p.targetTitle, p.sourceID); err != nil {
 			x.Log.Warn("resolve pending: update failed", "title", p.targetTitle, "err", err)
 		}
 	}
