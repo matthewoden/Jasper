@@ -43,6 +43,7 @@ func TestSyncBacklinks_ResolvedTarget(t *testing.T) {
 	).Scan(&targetIDStr, &targetTitle, &excerpt); err != nil {
 		t.Fatalf("query backlinks: %v", err)
 	}
+
 	if targetIDStr != fooID.String() {
 		t.Errorf("target_id: got %q, want %q", targetIDStr, fooID.String())
 	}
@@ -89,8 +90,9 @@ func TestSyncBacklinks_PendingTarget(t *testing.T) {
 	}
 }
 
-// TestSyncBacklinks_MultipleOccurrencesCollapse — [[Foo]] three times →
-// ONE row (unique collapse) (F3).
+// TestSyncBacklinks_MultipleOccurrencesCollapse — [[Foo]] three times on the
+// SAME line collapses to ONE excerpt row for that line (D-16 per-line
+// tie-break, RESEARCH.md Assumption A1).
 func TestSyncBacklinks_MultipleOccurrencesCollapse(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -121,7 +123,55 @@ func TestSyncBacklinks_MultipleOccurrencesCollapse(t *testing.T) {
 		t.Fatalf("count: %v", err)
 	}
 	if cnt != 1 {
-		t.Errorf("got %d rows, want 1 (dedup)", cnt)
+		t.Errorf("same-line triple occurrence: got %d rows, want 1 (per-line collapse)", cnt)
+	}
+}
+
+// TestSyncBacklinks_MultipleLines_ProducesOneExcerptPerLine — [[Foo]] on 3
+// SEPARATE lines produces 3 distinct excerpt rows (D-16), unlike the
+// same-line collapse above.
+func TestSyncBacklinks_MultipleLines_ProducesOneExcerptPerLine(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTagTestIndexer(t)
+	ctx := context.Background()
+
+	sourceID := newNoteID(t, idx, "notes/source.md", 1700000001)
+	fooID := newNoteID(t, idx, "notes/foo.md", 1700000002)
+
+	reg := &notes.Registry{}
+	reg.Hydrate([]notes.NoteSummary{{ID: fooID, Path: "notes/foo.md", Title: "foo"}})
+
+	refs := []markdown.WikiLinkRef{
+		{Target: "Foo"},
+		{Target: "Foo"},
+		{Target: "Foo"},
+	}
+	content := []byte("See [[Foo]] here.\nAnd [[Foo]] again.\nFinally [[Foo]].\n")
+
+	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
+		t.Fatalf("SyncBacklinks: %v", err)
+	}
+
+	var cnt int
+	if err := idx.Pair.Reader.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*) FROM backlinks WHERE source_id = ?`, sourceID.String(),
+	).Scan(&cnt); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if cnt != 3 {
+		t.Errorf("three separate lines: got %d rows, want 3 (one excerpt per line)", cnt)
+	}
+
+	rows, err := idx.GetBacklinks(ctx, fooID)
+	if err != nil {
+		t.Fatalf("GetBacklinks: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("GetBacklinks: got %d cards, want 1 (one card per source)", len(rows))
+	}
+	if len(rows[0].Excerpts) != 3 {
+		t.Errorf("card excerpts: got %d, want 3", len(rows[0].Excerpts))
 	}
 }
 
@@ -348,6 +398,9 @@ func TestGetBacklinks_ReturnsRowsSortedByRecency(t *testing.T) {
 		if rows[i].SourceID != w {
 			t.Errorf("rows[%d].SourceID: got %v, want %v", i, rows[i].SourceID, w)
 		}
+		if len(rows[i].Excerpts) != 1 {
+			t.Errorf("rows[%d].Excerpts: got %d, want 1", i, len(rows[i].Excerpts))
+		}
 	}
 }
 
@@ -502,57 +555,97 @@ func TestReconcileBacklinks_TAGS05_WipeAndRebuildBacklinks(t *testing.T) {
 	}
 }
 
-// TestBuildExcerpt_BasicContract verifies the UI-SPEC HTML contract.
-func TestBuildExcerpt_BasicContract(t *testing.T) {
+// TestBuildExcerpts_BasicContract verifies the UI-SPEC HTML contract.
+func TestBuildExcerpts_BasicContract(t *testing.T) {
 	t.Parallel()
 	content := []byte("prefix [[Foo]] suffix\n")
-	got := buildExcerpt(content, "Foo")
+	got := buildExcerpts(content, "Foo")
 
-	if !strings.Contains(got, `class="backlink-ref"`) {
-		t.Errorf("missing backlink-ref class: %q", got)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 excerpt, got %d", len(got))
 	}
-	if !strings.Contains(got, "[[Foo]]") {
-		t.Errorf("missing [[Foo]]: %q", got)
+	if !strings.Contains(got[0], `class="backlink-ref"`) {
+		t.Errorf("missing backlink-ref class: %q", got[0])
 	}
-	if !strings.Contains(got, "<span>prefix </span>") {
-		t.Errorf("missing prefix span: %q", got)
+	if !strings.Contains(got[0], "[[Foo]]") {
+		t.Errorf("missing [[Foo]]: %q", got[0])
 	}
-	if !strings.Contains(got, "<span> suffix</span>") {
-		t.Errorf("missing suffix span: %q", got)
+	if !strings.Contains(got[0], "<span>prefix </span>") {
+		t.Errorf("missing prefix span: %q", got[0])
+	}
+	if !strings.Contains(got[0], "<span> suffix</span>") {
+		t.Errorf("missing suffix span: %q", got[0])
 	}
 }
 
-// TestBuildExcerpt_XSSEscaping verifies that HTML in prefix/suffix is escaped.
-func TestBuildExcerpt_XSSEscaping(t *testing.T) {
+// TestBuildExcerpts_XSSEscaping verifies that HTML in prefix/suffix is escaped.
+func TestBuildExcerpts_XSSEscaping(t *testing.T) {
 	t.Parallel()
 	content := []byte(`<script>evil</script> [[Foo]] </script>` + "\n")
-	got := buildExcerpt(content, "Foo")
+	got := buildExcerpts(content, "Foo")
 
-	if strings.Contains(got, "<script>") {
-		t.Errorf("XSS not escaped: %q", got)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 excerpt, got %d", len(got))
 	}
-	if !strings.Contains(got, "&lt;script&gt;") {
-		t.Errorf("expected HTML-escaped script tag: %q", got)
+	if strings.Contains(got[0], "<script>") {
+		t.Errorf("XSS not escaped: %q", got[0])
+	}
+	if !strings.Contains(got[0], "&lt;script&gt;") {
+		t.Errorf("expected HTML-escaped script tag: %q", got[0])
 	}
 }
 
-// TestBuildExcerpt_NoMatch verifies empty string when target not found.
-func TestBuildExcerpt_NoMatch(t *testing.T) {
+// TestBuildExcerpts_NoMatch verifies an empty slice when target not found.
+func TestBuildExcerpts_NoMatch(t *testing.T) {
 	t.Parallel()
 	content := []byte("No links here.\n")
-	got := buildExcerpt(content, "Foo")
-	if got != "" {
-		t.Errorf("expected empty, got %q", got)
+	got := buildExcerpts(content, "Foo")
+	if len(got) != 0 {
+		t.Errorf("expected empty slice, got %v", got)
 	}
 }
 
-// TestBuildExcerpt_CaseInsensitive verifies case-insensitive matching.
-func TestBuildExcerpt_CaseInsensitive(t *testing.T) {
+// TestBuildExcerpts_CaseInsensitive verifies case-insensitive matching.
+func TestBuildExcerpts_CaseInsensitive(t *testing.T) {
 	t.Parallel()
 	content := []byte("See [[FOO]] here.\n")
-	got := buildExcerpt(content, "foo")
-	if !strings.Contains(got, "backlink-ref") {
-		t.Errorf("case-insensitive match failed: %q", got)
+	got := buildExcerpts(content, "foo")
+	if len(got) != 1 {
+		t.Fatalf("expected 1 excerpt, got %d", len(got))
+	}
+	if !strings.Contains(got[0], "backlink-ref") {
+		t.Errorf("case-insensitive match failed: %q", got[0])
+	}
+}
+
+// TestBuildExcerpts_MultipleLines verifies one excerpt per matching line, in
+// document order (D-16).
+func TestBuildExcerpts_MultipleLines(t *testing.T) {
+	t.Parallel()
+	content := []byte("first [[Foo]] line\nsecond [[Foo]] line\nno match here\nthird [[Foo]] line\n")
+	got := buildExcerpts(content, "Foo")
+	if len(got) != 3 {
+		t.Fatalf("expected 3 excerpts, got %d: %v", len(got), got)
+	}
+	if !strings.Contains(got[0], "first") {
+		t.Errorf("excerpt[0] should reflect first line: %q", got[0])
+	}
+	if !strings.Contains(got[1], "second") {
+		t.Errorf("excerpt[1] should reflect second line: %q", got[1])
+	}
+	if !strings.Contains(got[2], "third") {
+		t.Errorf("excerpt[2] should reflect third line: %q", got[2])
+	}
+}
+
+// TestBuildExcerpts_SameLineMultipleOccurrences_CollapsesToOne verifies the
+// per-line (not per-occurrence) tie-break for the buildExcerpts unit itself.
+func TestBuildExcerpts_SameLineMultipleOccurrences_CollapsesToOne(t *testing.T) {
+	t.Parallel()
+	content := []byte("[[Foo]] again [[Foo]] and [[Foo]].\n")
+	got := buildExcerpts(content, "Foo")
+	if len(got) != 1 {
+		t.Errorf("expected 1 excerpt (same-line collapse), got %d: %v", len(got), got)
 	}
 }
 

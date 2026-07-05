@@ -56,8 +56,7 @@ func (s *Server) GetNoteBacklinks(
 			SourceId:    openapi_types.UUID(r.SourceID),
 			SourceTitle: r.SourceTitle,
 			SourcePath:  r.SourcePath,
-			Excerpt:     r.Excerpt,
-			Count:       r.Count,
+			Excerpts:    r.Excerpts,
 		})
 	}
 	return GetNoteBacklinks200JSONResponse{Backlinks: out}, nil

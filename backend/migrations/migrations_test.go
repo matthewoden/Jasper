@@ -271,6 +271,81 @@ VALUES('projects/x', 2, 1700000001, 'tree-context-menu')`)
 	}
 }
 
+// TestMigration005_AllowsDuplicateSourceTargetTitle verifies that dropping
+// UNIQUE(source_id, target_title) lets two backlinks rows for the same
+// (source_id, target_title) pair coexist with different excerpts — the
+// storage shape D-16's per-mention-excerpt contract requires.
+func TestMigration005_AllowsDuplicateSourceTargetTitle(t *testing.T) {
+	db := applyAllMigrations(t)
+	ctx := context.Background()
+
+	const sourceID = "00000000-0000-4000-a000-000000000010"
+	const targetID = "00000000-0000-4000-a000-000000000011"
+
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO notes(id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at)
+VALUES(?, 'source.md', 'Source', 1000, 0, '', 1000, 1000)`, sourceID); err != nil {
+		t.Fatalf("insert source note: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO notes(id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at)
+VALUES(?, 'target.md', 'Target', 1000, 0, '', 1000, 1000)`, targetID); err != nil {
+		t.Fatalf("insert target note: %v", err)
+	}
+
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO backlinks(source_id, target_id, target_title, excerpt) VALUES(?, ?, 'Target', 'excerpt one')`,
+		sourceID, targetID); err != nil {
+		t.Fatalf("first insert (same source_id, target_title): %v", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO backlinks(source_id, target_id, target_title, excerpt) VALUES(?, ?, 'Target', 'excerpt two')`,
+		sourceID, targetID); err != nil {
+		t.Fatalf("second insert (same source_id, target_title) must NOT be rejected post-005: %v", err)
+	}
+
+	var count int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM backlinks WHERE source_id = ? AND target_title = 'Target'`, sourceID,
+	).Scan(&count); err != nil {
+		t.Fatalf("count backlinks: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 backlinks rows for same (source_id, target_title), got %d", count)
+	}
+}
+
+// TestMigration005_IndicesRecreated verifies both backlinks indices survive
+// the table-rebuild migration.
+func TestMigration005_IndicesRecreated(t *testing.T) {
+	db := applyAllMigrations(t)
+
+	const query = `
+SELECT name FROM sqlite_master
+WHERE type='index' AND name IN ('idx_backlinks_target_id', 'idx_backlinks_source_id')
+ORDER BY name`
+	rows, err := db.QueryContext(context.Background(), query)
+	if err != nil {
+		t.Fatalf("query indices: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var found []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		found = append(found, name)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows.Err: %v", err)
+	}
+	if len(found) != 2 {
+		t.Errorf("expected 2 indices, got %d: %v", len(found), found)
+	}
+}
+
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {

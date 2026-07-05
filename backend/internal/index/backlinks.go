@@ -3,6 +3,7 @@ package index
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
 	"path/filepath"
@@ -17,22 +18,24 @@ import (
 )
 
 // BacklinkRow is an alias for notes.BacklinkRow used within the index package.
-// Count is always 1 in v1 (multi-occurrence badge deferred).
 //
 // Deprecated: use notes.BacklinkRow directly.
 type BacklinkRow = notes.BacklinkRow
 
 // SyncBacklinks resolves every WikiLinkRef in refs, groups them by target
-// title (one row per unique source+title), and rewrites all backlinks rows
-// for sourceID in a single BEGIN IMMEDIATE transaction.
+// title (one target_id resolution per unique source+title), and rewrites all
+// backlinks rows for sourceID in a single BEGIN IMMEDIATE transaction.
 //
 // Resolution: for each ref, registry.FindByTitle is called with the source
 // folder as the bias parameter. The first result (if any) becomes target_id.
 // If registry is nil, all links are treated as pending.
 //
-// Excerpt generation: buildExcerpt scans content for the first line
-// containing [[target]] (case-insensitive) and returns HTML (see buildExcerpt
-// godoc). Per-file errors during extract are non-fatal.
+// Excerpt generation (D-16): buildExcerpts scans content for every LINE
+// containing [[target]] (case-insensitive) and returns one HTML excerpt per
+// matching line (see buildExcerpts godoc). One backlinks row is inserted per
+// excerpt line — the UNIQUE(source_id, target_title) collapse was removed in
+// 005_backlink_multi_excerpt.sql specifically to allow this. Per-file errors
+// during extract are non-fatal.
 func (x *Indexer) SyncBacklinks(
 	ctx context.Context,
 	sourceID uuid.UUID,
@@ -46,7 +49,7 @@ func (x *Indexer) SyncBacklinks(
 	type pendingRow struct {
 		targetTitle string
 		targetID    *uuid.UUID
-		excerpt     string
+		excerpts    []string
 	}
 	grouped := make(map[string]*pendingRow, len(refs))
 	order := make([]string, 0, len(refs))
@@ -69,7 +72,7 @@ func (x *Indexer) SyncBacklinks(
 		row := &pendingRow{
 			targetTitle: r.Target,
 			targetID:    tid,
-			excerpt:     buildExcerpt(content, r.Target),
+			excerpts:    buildExcerpts(content, r.Target),
 		}
 		grouped[key] = row
 		order = append(order, key)
@@ -92,11 +95,21 @@ func (x *Indexer) SyncBacklinks(
 		if row.targetID != nil {
 			tidStr = row.targetID.String()
 		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO backlinks(source_id, target_id, target_title, excerpt)
-			 VALUES(?, ?, ?, ?)`,
-			sourceID.String(), tidStr, row.targetTitle, row.excerpt); err != nil {
-			return fmt.Errorf("syncbacklinks insert %q: %w", row.targetTitle, err)
+		excerpts := row.excerpts
+		if len(excerpts) == 0 {
+			// Defensive: a ref was extracted but no matching line was found
+			// in content (e.g. stale content snapshot). Still record the
+			// reference with an empty excerpt so the link is not silently
+			// dropped.
+			excerpts = []string{""}
+		}
+		for _, excerpt := range excerpts {
+			if _, err := tx.ExecContext(ctx,
+				`INSERT INTO backlinks(source_id, target_id, target_title, excerpt)
+				 VALUES(?, ?, ?, ?)`,
+				sourceID.String(), tidStr, row.targetTitle, excerpt); err != nil {
+				return fmt.Errorf("syncbacklinks insert %q: %w", row.targetTitle, err)
+			}
 		}
 	}
 
@@ -109,13 +122,23 @@ func (x *Indexer) SyncBacklinks(
 // GetBacklinks returns the resolved backlinks for targetID, sorted by source
 // note recency (mtime_unix DESC). Pending rows (target_id IS NULL) are
 // excluded. Returns a non-nil empty slice when there are no backlinks.
+//
+// Rows are grouped one card per source_id via json_group_array (D-16); the
+// inner subquery orders by b.id (insertion/document order) BEFORE grouping
+// so each card's excerpts array preserves document order.
 func (x *Indexer) GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]BacklinkRow, error) {
 	rows, err := x.Pair.Reader.QueryContext(ctx,
-		`SELECT b.source_id, n.title, n.path, b.excerpt
-		 FROM backlinks b
-		 INNER JOIN notes n ON n.id = b.source_id
-		 WHERE b.target_id = ?
-		 ORDER BY n.mtime_unix DESC`,
+		`SELECT source_id, title, path, json_group_array(excerpt) AS excerpts
+		 FROM (
+		     SELECT b.id AS bl_id, b.source_id AS source_id, n.title AS title,
+		            n.path AS path, b.excerpt AS excerpt, n.mtime_unix AS mtime_unix
+		     FROM backlinks b
+		     INNER JOIN notes n ON n.id = b.source_id
+		     WHERE b.target_id = ?
+		     ORDER BY b.id
+		 )
+		 GROUP BY source_id
+		 ORDER BY mtime_unix DESC`,
 		targetID.String())
 	if err != nil {
 		return nil, fmt.Errorf("getbacklinks query: %w", err)
@@ -124,20 +147,23 @@ func (x *Indexer) GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]Backl
 
 	out := []BacklinkRow{}
 	for rows.Next() {
-		var sourceIDStr, title, path, excerpt string
-		if err := rows.Scan(&sourceIDStr, &title, &path, &excerpt); err != nil {
+		var sourceIDStr, title, path, excerptsJSON string
+		if err := rows.Scan(&sourceIDStr, &title, &path, &excerptsJSON); err != nil {
 			return nil, fmt.Errorf("getbacklinks scan: %w", err)
 		}
 		sid, err := uuid.Parse(sourceIDStr)
 		if err != nil {
 			return nil, fmt.Errorf("getbacklinks parse uuid %q: %w", sourceIDStr, err)
 		}
+		var excerpts []string
+		if err := json.Unmarshal([]byte(excerptsJSON), &excerpts); err != nil {
+			return nil, fmt.Errorf("getbacklinks unmarshal excerpts %q: %w", excerptsJSON, err)
+		}
 		out = append(out, BacklinkRow{
 			SourceID:    sid,
 			SourceTitle: title,
 			SourcePath:  path,
-			Excerpt:     excerpt,
-			Count:       1,
+			Excerpts:    excerpts,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -280,17 +306,21 @@ func (x *Indexer) ResolvePendingBacklinks(ctx context.Context, registry *notes.R
 	return nil
 }
 
-func buildExcerpt(content []byte, target string) string {
+// buildExcerpts scans content for every LINE containing a [[target]]
+// reference (case-insensitive) and returns one HTML excerpt per matching
+// line, in document order (D-16). Multiple occurrences of [[target]] on the
+// SAME line collapse into a single excerpt for that line — the tie-break is
+// per LINE, not per raw occurrence (RESEARCH.md Assumption A1). Returns a
+// nil slice when there is no matching line.
+func buildExcerpts(content []byte, target string) []string {
 	targetLower := strings.ToLower(target)
+	searchFor := "[[" + targetLower
 
-	needle := "[[" + targetLower + "]]"
-
-	scanner := bytes.Split(content, []byte("\n"))
-	for _, lineBytes := range scanner {
+	var excerpts []string
+	for _, lineBytes := range bytes.Split(content, []byte("\n")) {
 		line := string(lineBytes)
 		lineLower := strings.ToLower(line)
 
-		searchFor := "[[" + targetLower
 		idx := strings.Index(lineLower, searchFor)
 		if idx < 0 {
 			continue
@@ -334,9 +364,7 @@ func buildExcerpt(content []byte, target string) string {
 			sb.WriteString(`</span>`)
 		}
 
-		_ = needle
-
-		return sb.String()
+		excerpts = append(excerpts, sb.String())
 	}
-	return ""
+	return excerpts
 }
