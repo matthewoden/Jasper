@@ -59,7 +59,7 @@ vi.mock("../lib/tagsApi", () => ({
   deleteTag: vi.fn(),
 }));
 
-let mockDisplayName: string | null = "work-vault";
+const mockDisplayName: string | null = "work-vault";
 vi.mock("../lib/useVaultPicker", () => ({
   useVaultPicker: () => ({
     isOpen: false,
