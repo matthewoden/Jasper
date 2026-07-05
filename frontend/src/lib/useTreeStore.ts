@@ -39,10 +39,6 @@ export const RAIL_MIN_WIDTH = 220;
 export const RAIL_MAX_WIDTH = 480;
 export const RAIL_COLLAPSED_WIDTH = 32;
 
-
-export const LS_KEY_TAGS_PANEL_HEIGHT_RATIO = "jasper.rail.tags.height.ratio";
-export const LS_KEY_TAGS_PANEL_EXPANDED = "jasper.rail.tags.expanded";
-
 /** Phase 20 unified right-rail sections (Outline / Linked mentions / Tags). */
 export const LS_KEY_OUTLINE_PANEL_EXPANDED = "jasper.rightrail.outline.expanded";
 export const LS_KEY_LINKED_MENTIONS_PANEL_EXPANDED = "jasper.rightrail.linkedmentions.expanded";
@@ -59,9 +55,6 @@ export const LS_KEY_SIDEBAR_PANEL = "jasper.chrome.sidebar.panel";
 
 
 export const LS_KEY_SWITCHER_RECENCY = "jasper:switcher:recency";
-export const TAGS_PANEL_RATIO_DEFAULT = 0.5;
-export const TAGS_PANEL_RATIO_MIN = 0.2;
-export const TAGS_PANEL_RATIO_MAX = 0.8;
 
 
 const EDITOR_MIN = 320;
@@ -130,11 +123,6 @@ export interface TreeStore {
   setBacklinksRailExpanded: (v: boolean) => void;
   backlinksRailWidth: number;
   setBacklinksRailWidth: (w: number) => void;
-
-  tagsPanelHeightRatio: number;
-  setTagsPanelHeightRatio: (r: number) => void;
-  rightRailTagsPanelExpanded: boolean;
-  setRightRailTagsPanelExpanded: (v: boolean) => void;
 
   /** Phase 20 unified right-rail per-section collapse booleans + split ratios. */
   outlinePanelExpanded: boolean;
@@ -263,17 +251,6 @@ export const useTreeStore = create<TreeStore>((set) => ({
   backlinksRailWidth: RAIL_DEFAULT_WIDTH,
   setBacklinksRailWidth: (w) =>
     set({ backlinksRailWidth: Math.min(RAIL_MAX_WIDTH, Math.max(RAIL_MIN_WIDTH, w)) }),
-
-  tagsPanelHeightRatio: TAGS_PANEL_RATIO_DEFAULT,
-  setTagsPanelHeightRatio: (r) =>
-    set({
-      tagsPanelHeightRatio: Math.min(
-        TAGS_PANEL_RATIO_MAX,
-        Math.max(TAGS_PANEL_RATIO_MIN, r),
-      ),
-    }),
-  rightRailTagsPanelExpanded: true,
-  setRightRailTagsPanelExpanded: (v) => set({ rightRailTagsPanelExpanded: v }),
 
   outlinePanelExpanded: true,
   setOutlinePanelExpanded: (v) => set({ outlinePanelExpanded: v }),
@@ -455,30 +432,6 @@ if (typeof window !== "undefined") {
   }
 
   try {
-    const raw = window.localStorage.getItem(LS_KEY_TAGS_PANEL_HEIGHT_RATIO);
-    if (raw !== null) {
-      const n = Number.parseFloat(raw);
-      if (
-        Number.isFinite(n) &&
-        n >= TAGS_PANEL_RATIO_MIN &&
-        n <= TAGS_PANEL_RATIO_MAX
-      ) {
-        useTreeStore.setState({ tagsPanelHeightRatio: n });
-      }
-      // Out-of-range or non-finite → silently fall through to TAGS_PANEL_RATIO_DEFAULT.
-    }
-  } catch {
-    /* localStorage unavailable — keep default */
-  }
-  try {
-    const raw = window.localStorage.getItem(LS_KEY_TAGS_PANEL_EXPANDED);
-    if (raw === "false") useTreeStore.setState({ rightRailTagsPanelExpanded: false });
-    // any other value (including missing) keeps the default `true`
-  } catch {
-    /* localStorage unavailable */
-  }
-
-  try {
     const raw = window.localStorage.getItem(LS_KEY_OUTLINE_PANEL_EXPANDED);
     if (raw === "false") useTreeStore.setState({ outlinePanelExpanded: false });
     // any other value (including missing) keeps the default `true`
@@ -576,10 +529,6 @@ if (typeof window !== "undefined") {
   let lastRailWidth = useTreeStore.getState().backlinksRailWidth;
   let railWidthTimer: ReturnType<typeof setTimeout> | undefined;
 
-  let lastTagsPanelHeightRatio = useTreeStore.getState().tagsPanelHeightRatio;
-  let lastRightRailTagsPanelExpanded = useTreeStore.getState().rightRailTagsPanelExpanded;
-  let tagsPanelHeightRatioTimer: ReturnType<typeof setTimeout> | undefined;
-
   let lastOutlinePanelExpanded = useTreeStore.getState().outlinePanelExpanded;
   let lastLinkedMentionsPanelExpanded = useTreeStore.getState().linkedMentionsPanelExpanded;
   let lastTagsPanelExpanded = useTreeStore.getState().tagsPanelExpanded;
@@ -661,32 +610,6 @@ if (typeof window !== "undefined") {
           // Quota / private mode — best-effort.
         }
       }, 250);
-    }
-
-    if (state.tagsPanelHeightRatio !== lastTagsPanelHeightRatio) {
-      lastTagsPanelHeightRatio = state.tagsPanelHeightRatio;
-      if (tagsPanelHeightRatioTimer !== undefined) clearTimeout(tagsPanelHeightRatioTimer);
-      tagsPanelHeightRatioTimer = setTimeout(() => {
-        try {
-          window.localStorage.setItem(
-            LS_KEY_TAGS_PANEL_HEIGHT_RATIO,
-            String(state.tagsPanelHeightRatio),
-          );
-        } catch {
-          // Quota / private mode — best-effort.
-        }
-      }, 250);
-    }
-    if (state.rightRailTagsPanelExpanded !== lastRightRailTagsPanelExpanded) {
-      lastRightRailTagsPanelExpanded = state.rightRailTagsPanelExpanded;
-      try {
-        window.localStorage.setItem(
-          LS_KEY_TAGS_PANEL_EXPANDED,
-          String(state.rightRailTagsPanelExpanded),
-        );
-      } catch {
-        // Quota / private mode — best-effort.
-      }
     }
 
     if (state.outlinePanelExpanded !== lastOutlinePanelExpanded) {

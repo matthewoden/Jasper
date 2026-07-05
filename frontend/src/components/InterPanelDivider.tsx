@@ -10,22 +10,18 @@
  * delta from the start of the drag. getRatio/setRatio read/write the store
  * fresh on every call, so this holds regardless of when the callback closure
  * itself was created.
- *
- * Defaults to the original tagsPanelHeightRatio slice when getRatio/setRatio
- * are omitted, preserving the pre-Phase-20 single-divider call sites.
  */
 import { useCallback } from "react";
 import type React from "react";
 
-import { useTreeStore } from "../lib/useTreeStore";
 import { ResizeHandle } from "./ResizeHandle";
 
 interface Props {
   railRef: React.RefObject<HTMLElement | null>;
-  /** Reads the current ratio fresh from the store. Defaults to tagsPanelHeightRatio. */
-  getRatio?: () => number;
+  /** Reads the current ratio fresh from the store. */
+  getRatio: () => number;
   /** Writes the next ratio to the store (setter applies its own clamp). */
-  setRatio?: (r: number) => void;
+  setRatio: (r: number) => void;
 }
 
 export function InterPanelDivider({ railRef, getRatio, setRatio }: Props) {
@@ -34,13 +30,7 @@ export function InterPanelDivider({ railRef, getRatio, setRatio }: Props) {
       const railHeight =
         railRef.current?.getBoundingClientRect().height ?? 1;
       if (railHeight <= 0) return;
-      if (getRatio && setRatio) {
-        setRatio(getRatio() + delta / railHeight);
-        return;
-      }
-      const { tagsPanelHeightRatio, setTagsPanelHeightRatio } =
-        useTreeStore.getState();
-      setTagsPanelHeightRatio(tagsPanelHeightRatio + delta / railHeight);
+      setRatio(getRatio() + delta / railHeight);
     },
     [railRef, getRatio, setRatio],
   );
