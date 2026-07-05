@@ -279,9 +279,10 @@ describe("<App /> — shell composition", () => {
     ) as HTMLElement | null;
     expect(grid).not.toBeNull();
     // Leading 48px track is the ActivityRibbon column; middle track is
-    // minmax(0, 1fr) so TabStrip overflow can engage.
+    // minmax(0, 1fr) so TabStrip overflow can engage. Trailing 280px track
+    // is the right rail — visible by default on fresh install (D-06, Phase 20).
     expect(grid!.style.gridTemplateColumns).toBe(
-      "48px 260px minmax(0, 1fr) 0px",
+      "48px 260px minmax(0, 1fr) 280px",
     );
 
     expect(screen.getByText("Notes")).toBeInTheDocument();
