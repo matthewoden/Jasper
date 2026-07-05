@@ -1,19 +1,19 @@
 /**
- * RightRailTagsPanel — tag browser in the right rail.
+ * RightRailTagsPanel — body-only tag browser section in the right rail
+ * (Phase 20 trim, D-08/D-09).
  *
  * Differences from the legacy left-sidebar TagBrowserSection:
- *   - Uses `rightRailTagsPanelExpanded` store slice
- *   - Header: `Tags (N)` title-case
- *   - Case-insensitive substring filter input; query resets on note switch
+ *   - Uses `tagsPanelExpanded` store slice (unified SectionHeader owns the
+ *     header row + collapse toggle — see RightRail.tsx)
+ *   - No own header, no × close button, no substring filter input — this
+ *     component renders only the tag list, click-to-filter, and the
+ *     rename/delete ContextMenu flow
  *   - List uses `flex: 1` to fill the panel card (no fixed maxHeight)
- *   - Floating panel card shell: borderRadius 8px, 1px border, --color-surface bg
  *
- * Filter query is bound via `value=` only — never via dangerouslySetInnerHTML.
  * TagBrowserSection.tsx is left in the repo as dead code; this is the active impl.
  */
-import { useState, useEffect, useId, type CSSProperties } from "react";
+import { type CSSProperties, useState } from "react";
 
-import { X } from "lucide-react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 
 import { useTreeStore } from "../lib/useTreeStore";
@@ -33,40 +33,6 @@ const panelCardStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   height: "100%",
-};
-
-/** Panel header container — flex row; houses expand-toggle + × close button */
-const headerStyle: CSSProperties = {
-  height: 32,
-  padding: "0 4px 0 12px",
-  background: "var(--color-surface)",
-  display: "flex",
-  alignItems: "center",
-  gap: 4,
-  borderBottom: "1px solid var(--color-border)",
-  flexShrink: 0,
-};
-
-/** × close button (right portion of header) */
-const closeButtonStyle: CSSProperties = {
-  padding: 4,
-  background: "none",
-  border: "none",
-  cursor: "pointer",
-  color: "var(--color-muted)",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 3,
-  flexShrink: 0,
-};
-
-const headerLabelStyle: CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: "var(--color-muted)",
-  lineHeight: 1.4,
-  flex: 1,
 };
 
 /** Tag list: flex-1 fills panel card height. */
@@ -155,7 +121,6 @@ const TAG_CHARSET_REGEX = /^[a-z0-9_-]+$/;
 export function RightRailTagsPanel() {
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
   const setActiveTagFilter = useTreeStore((s) => s.setActiveTagFilter);
-  const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const { tags, refresh } = useTagBrowser();
   const [renaming, setRenaming] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{
@@ -163,23 +128,9 @@ export function RightRailTagsPanel() {
     count: number;
   } | null>(null);
   const [softSelected, setSoftSelected] = useState<string | null>(null);
-  const listId = useId();
   const { toast } = useToast();
 
-  const [searchQuery, setSearchQuery] = useState("");
-
-  useEffect(() => {
-    setSearchQuery("");
-  }, [activeNoteId]);
-
   const sortedTags = [...tags].sort((a, b) => a.name.localeCompare(b.name));
-
-  const filteredTags =
-    searchQuery === ""
-      ? sortedTags
-      : sortedTags.filter((t) =>
-          t.name.toLowerCase().includes(searchQuery.toLowerCase()),
-        );
 
   const handleRenameCommit = async (oldName: string, newName: string) => {
     if (!TAG_CHARSET_REGEX.test(newName)) {
@@ -257,71 +208,16 @@ export function RightRailTagsPanel() {
   return (
     <>
       <div style={panelCardStyle}>
-        {/* Panel header — label (left) + × close button (right) */}
-        <header style={headerStyle}>
-          {/* Static label; panel visibility is gated by parent via panelSelector */}
-          <span style={{ ...headerLabelStyle, flex: 1 }}>Tags ({tags.length})</span>
-          <button
-            type="button"
-            aria-label="Close Tags panel"
-            style={closeButtonStyle}
-            onClick={() => {
-              useTreeStore.getState().setPanelSelector({ tags: false });
-            }}
-          >
-            <X size={12} aria-hidden="true" />
-          </button>
-        </header>
-
-        <>
-          {/* Tag search input */}
-            <div style={{ padding: "8px 12px", flexShrink: 0 }}>
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    setSearchQuery("");
-                    (e.currentTarget as HTMLInputElement).focus();
-                  }
-                }}
-                placeholder="Filter tags…"
-                aria-label="Filter tag list"
-                style={{
-                  width: "100%",
-                  height: 28,
-                  padding: "0 8px",
-                  fontSize: 14,
-                  background: "var(--color-bg)",
-                  border: "1px solid var(--color-border)",
-                  borderRadius: 4,
-                  color: "var(--color-fg)",
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
-              />
-            </div>
-
-            <ul id={listId} role="list" style={listStyle}>
-              {/* Empty state: "no match" vs "no tags yet" */}
-              {filteredTags.length === 0 ? (
-                searchQuery !== "" ? (
-                  <li>
-                    <p role="status" style={emptyStateStyle}>
-                      No tags match &ldquo;{searchQuery}&rdquo;.
-                    </p>
-                  </li>
-                ) : (
-                  <li>
-                    <p role="status" style={emptyStateStyle}>
-                      No tags yet. Type #tagname in any note to add a tag.
-                    </p>
-                  </li>
-                )
-              ) : (
-                filteredTags.map((tag) => {
+        <ul role="list" style={listStyle}>
+          {/* Empty state: vault has zero tags */}
+          {sortedTags.length === 0 ? (
+            <li>
+              <p role="status" style={emptyStateStyle}>
+                No tags yet. Type #tagname in any note to add a tag.
+              </p>
+            </li>
+          ) : (
+            sortedTags.map((tag) => {
                   const isActive = activeTagFilter === tag.name;
                   const isRenaming = renaming === tag.name;
 
@@ -441,10 +337,9 @@ export function RightRailTagsPanel() {
                       </ContextMenu.Root>
                     </li>
                   );
-                })
-              )}
-            </ul>
-        </>
+            })
+          )}
+        </ul>
       </div>
 
       {/* Confirmation dialog — only shown when tag count > 5 */}
