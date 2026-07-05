@@ -67,7 +67,6 @@ export function LinkedMentionsPanel({ noteId }: Props) {
         </div>
       ) : error ? (
         <div
-          role="alert"
           style={{
             padding: "16px",
             fontSize: 12,

@@ -91,7 +91,7 @@ describe("LinkedMentionsPanel — empty states", () => {
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
-  it("shows error message with role=alert on fetch failure", () => {
+  it("shows error message on fetch failure (no role=alert — avoids colliding with the app's migration-banner alert)", () => {
     mockUseBacklinks.mockReturnValue({
       backlinks: null,
       loading: false,
@@ -100,7 +100,8 @@ describe("LinkedMentionsPanel — empty states", () => {
     });
 
     render(<LinkedMentionsPanel noteId="some-note-id" />);
-    expect(screen.getByRole("alert")).toHaveTextContent("network down");
+    expect(screen.getByText("network down")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
