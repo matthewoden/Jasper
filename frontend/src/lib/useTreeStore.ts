@@ -42,7 +42,7 @@ export const RAIL_COLLAPSED_WIDTH = 32;
 /** Phase 20 unified right-rail sections (Outline / Linked mentions / Tags). */
 export const LS_KEY_OUTLINE_PANEL_EXPANDED = "jasper.rightrail.outline.expanded";
 export const LS_KEY_LINKED_MENTIONS_PANEL_EXPANDED = "jasper.rightrail.linkedmentions.expanded";
-export const LS_KEY_RIGHT_RAIL_TAGS_PANEL_EXPANDED = "jasper.rightrail.tags.expanded";
+export const LS_KEY_TAGS_PANEL_EXPANDED = "jasper.rightrail.tags.expanded";
 export const LS_KEY_OUTLINE_HEIGHT_RATIO = "jasper.rightrail.outline.height.ratio";
 export const LS_KEY_LINKED_MENTIONS_HEIGHT_RATIO = "jasper.rightrail.linkedmentions.height.ratio";
 export const RIGHT_RAIL_RATIO_DEFAULT = 0.34;
@@ -446,7 +446,7 @@ if (typeof window !== "undefined") {
     /* localStorage unavailable */
   }
   try {
-    const raw = window.localStorage.getItem(LS_KEY_RIGHT_RAIL_TAGS_PANEL_EXPANDED);
+    const raw = window.localStorage.getItem(LS_KEY_TAGS_PANEL_EXPANDED);
     if (raw === "false") useTreeStore.setState({ tagsPanelExpanded: false });
     // any other value (including missing) keeps the default `true`
   } catch {
@@ -638,7 +638,7 @@ if (typeof window !== "undefined") {
       lastTagsPanelExpanded = state.tagsPanelExpanded;
       try {
         window.localStorage.setItem(
-          LS_KEY_RIGHT_RAIL_TAGS_PANEL_EXPANDED,
+          LS_KEY_TAGS_PANEL_EXPANDED,
           String(state.tagsPanelExpanded),
         );
       } catch {

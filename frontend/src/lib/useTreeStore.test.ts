@@ -1159,7 +1159,7 @@ describe("Phase 20 Plan 03 — unified right-rail collapse booleans + split rati
       const writeKeys = setItemSpy.mock.calls.map((c) => c[0]);
       expect(writeKeys).toContain(mod.LS_KEY_OUTLINE_PANEL_EXPANDED);
       expect(writeKeys).toContain(mod.LS_KEY_LINKED_MENTIONS_PANEL_EXPANDED);
-      expect(writeKeys).toContain(mod.LS_KEY_RIGHT_RAIL_TAGS_PANEL_EXPANDED);
+      expect(writeKeys).toContain(mod.LS_KEY_TAGS_PANEL_EXPANDED);
     } finally {
       setItemSpy.mockRestore();
     }
