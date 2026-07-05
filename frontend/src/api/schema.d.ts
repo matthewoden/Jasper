@@ -1325,10 +1325,12 @@ export interface components {
             size_bytes: number;
         };
         /**
-         * @description A single backlink entry: a note that contains a `[[...]]` reference
-         *     resolving to the target note. One row per source note — multiple
-         *     references from the same source note collapse into one row with a
-         *     `count` badge (D-29).
+         * @description A single backlink entry: a note that contains one or more `[[...]]`
+         *     references resolving to the target note. One card per source note,
+         *     carrying one context-line excerpt per distinct `[[...]]` mention
+         *     line (D-16) — multiple references on the SAME line collapse into a
+         *     single excerpt for that line, but references on separate lines each
+         *     produce their own excerpt, rendered as stacked lines within the card.
          */
         BacklinkRow: {
             /**
@@ -1341,18 +1343,15 @@ export interface components {
             /** @description Canonical relative path of the source note under notes/. */
             source_path: string;
             /**
-             * @description Server-built HTML excerpt showing the line containing the first
-             *     `[[...]]` reference. Safe for the DOMPurify allowlist:
-             *     `<span>...<mark class="backlink-ref">[[Title]]</mark>...</span>`.
-             *     Max 200 characters of visible text. Client MUST sanitize via
-             *     sanitize.ts before setting dangerouslySetInnerHTML (T-06-02-04).
+             * @description One server-built HTML excerpt per matching `[[...]]` mention
+             *     line, in document order. Each excerpt is safe for the DOMPurify
+             *     allowlist: `<span>...<mark class="backlink-ref">[[Title]]</mark>...</span>`.
+             *     Max 200 characters of visible text per excerpt. Client MUST
+             *     sanitize EACH excerpt individually via sanitize.ts before
+             *     setting dangerouslySetInnerHTML (T-06-02-04) — never join the
+             *     array before sanitizing.
              */
-            excerpt: string;
-            /**
-             * @description Number of distinct `[[...]]` references in this source note that
-             *     resolve to the target. Used for the count badge (D-29).
-             */
-            count: number;
+            excerpts: string[];
         };
         BacklinksResponse: {
             /**

@@ -209,13 +209,15 @@ type Index interface {
 // BacklinkRow is the projection returned by Index.GetBacklinks.
 // Matches the BacklinkRow component schema in api/openapi.yaml.
 //
-// Count is always 1 in this v1 implementation (multi-occurrence badge deferred).
+// Excerpts carries one context-line excerpt per distinct `[[...]]` mention
+// line in the source note (D-16); len(Excerpts) is the derived count of
+// mention lines (multiple references on the same line collapse to one
+// excerpt for that line).
 type BacklinkRow struct {
 	SourceID    uuid.UUID
 	SourceTitle string
 	SourcePath  string
-	Excerpt     string // server-built HTML snippet
-	Count       int    // v1: always 1
+	Excerpts    []string // server-built HTML snippets, one per mention line
 }
 
 // SearchResult is the projection returned by Index.SearchTitles.
