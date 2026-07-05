@@ -121,9 +121,9 @@ func TestGetNoteBacklinks_BH1_ThreeBacklinks(t *testing.T) {
 	idx := newBlIdx()
 	idx.addNote(targetID, "target.md", "Target")
 	idx.setRows(targetID, []notes.BacklinkRow{
-		{SourceID: src1, SourceTitle: "Note A", SourcePath: "a.md", Excerpt: `<mark class="backlink-ref">[[Target]]</mark>`, Count: 1},
-		{SourceID: src2, SourceTitle: "Note B", SourcePath: "b.md", Excerpt: `<mark class="backlink-ref">[[Target]]</mark>`, Count: 1},
-		{SourceID: src3, SourceTitle: "Note C", SourcePath: "c.md", Excerpt: `<mark class="backlink-ref">[[Target]]</mark>`, Count: 1},
+		{SourceID: src1, SourceTitle: "Note A", SourcePath: "a.md", Excerpts: []string{`<mark class="backlink-ref">[[Target]]</mark>`}},
+		{SourceID: src2, SourceTitle: "Note B", SourcePath: "b.md", Excerpts: []string{`<mark class="backlink-ref">[[Target]]</mark>`}},
+		{SourceID: src3, SourceTitle: "Note C", SourcePath: "c.md", Excerpts: []string{`<mark class="backlink-ref">[[Target]]</mark>`}},
 	})
 
 	ts := setupBLServer(t, idx)
@@ -142,9 +142,9 @@ func TestGetNoteBacklinks_BH1_ThreeBacklinks(t *testing.T) {
 
 	var result struct {
 		Backlinks []struct {
-			SourceID    string `json:"source_id"`
-			SourceTitle string `json:"source_title"`
-			Count       int    `json:"count"`
+			SourceID    string   `json:"source_id"`
+			SourceTitle string   `json:"source_title"`
+			Excerpts    []string `json:"excerpts"`
 		} `json:"backlinks"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -158,6 +158,9 @@ func TestGetNoteBacklinks_BH1_ThreeBacklinks(t *testing.T) {
 	}
 	if result.Backlinks[0].SourceTitle == "" {
 		t.Error("BH1: source_title must be non-empty")
+	}
+	if len(result.Backlinks[0].Excerpts) != 1 {
+		t.Errorf("BH1: expected 1 excerpt, got %d", len(result.Backlinks[0].Excerpts))
 	}
 }
 
@@ -242,7 +245,7 @@ func TestGetNoteBacklinks_BH5_ExcerptContainsMarkClass(t *testing.T) {
 	idx := newBlIdx()
 	idx.addNote(targetID, "target.md", "Target")
 	idx.setRows(targetID, []notes.BacklinkRow{
-		{SourceID: srcID, SourceTitle: "Source", SourcePath: "source.md", Excerpt: wantExcerpt, Count: 1},
+		{SourceID: srcID, SourceTitle: "Source", SourcePath: "source.md", Excerpts: []string{wantExcerpt}},
 	})
 
 	ts := setupBLServer(t, idx)
