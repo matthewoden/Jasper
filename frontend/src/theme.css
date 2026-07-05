@@ -220,6 +220,14 @@ body {
    Both blocks rely on existing --color-* tokens; no new tokens.
 ─────────────────────────────────────────────────────────────────── */
 
+/* RSIDE-01 Outline click-to-scroll (D-13/Pitfall 5): CM6 has no native
+   scrollIntoView `behavior: "smooth"` option — this CSS rule on the actual
+   scroller element IS the entire smooth-scroll mechanism (programmatic
+   scrollTop/scrollLeft assignment respects scroll-behavior). */
+.cm-scroller {
+  scroll-behavior: smooth;
+}
+
 /* Autocomplete popup container — applies to all three CodeMirror
    autocomplete trigger surfaces: [[ wiki-link, tags: [...]
    frontmatter, and # inline body tag. */
