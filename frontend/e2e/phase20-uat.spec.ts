@@ -84,7 +84,7 @@ function outlineHeadingRow(page: Page, text: string) {
 }
 
 function outlineList(page: Page) {
-  return page.getByRole("list", { name: "Note outline" });
+  return page.getByRole("group", { name: "Note outline" });
 }
 
 /** Section-header button (whole-row-clickable, D-03) — matched by its visible title text. */
