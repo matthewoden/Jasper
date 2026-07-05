@@ -446,15 +446,11 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
     expect(useTreeStore.getState().backlinksRailExpanded).toBe(false);
   });
 
-  it("mounts the PanelSelectorDropdown inside the strip", () => {
-    renderStrip();
-    expect(screen.getByRole("button", { name: "Open panel" })).toBeInTheDocument();
-  });
-
   // Gap 3 / TABUI-02 (owner revision 2026-07-02): split placement supersedes
   // the original D-04 right-hand cluster — left-sidebar toggle moves to the
-  // far-left cluster; right-sidebar toggle + PanelSelectorDropdown stay in the
-  // far-right cluster.
+  // far-left cluster; right-sidebar toggle stays in the far-right cluster.
+  // Phase 20 (D-01): the panel-selector dropdown was removed — the
+  // right-sidebar toggle is now the single control in that cluster.
   it("SPLIT-PLACEMENT: left-sidebar toggle is inside tab-strip-left-cluster", () => {
     renderStrip();
     const leftCluster = screen.getByTestId("tab-strip-left-cluster");
@@ -464,14 +460,11 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
     ).toBeInTheDocument();
   });
 
-  it("SPLIT-PLACEMENT: right-sidebar toggle and PanelSelectorDropdown are inside tab-strip-right-cluster, not the left cluster", () => {
+  it("SPLIT-PLACEMENT: right-sidebar toggle is inside tab-strip-right-cluster, not the left cluster", () => {
     renderStrip();
     const rightCluster = screen.getByTestId("tab-strip-right-cluster");
     expect(
       within(rightCluster).getByRole("button", { name: "Hide panels" }),
-    ).toBeInTheDocument();
-    expect(
-      within(rightCluster).getByRole("button", { name: "Open panel" }),
     ).toBeInTheDocument();
 
     const leftCluster = screen.getByTestId("tab-strip-left-cluster");
@@ -483,12 +476,11 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
     ).toBeNull();
   });
 
-  // D-04: the old chrome wrapper gated the right-rail toggle behind
-  // panelSelectorState.tags || panelSelectorState.backlinks (TBR-N3-3/4a/4b,
-  // RR-T-1). That gate is intentionally dropped here — the right toggle is
-  // ALWAYS rendered regardless of panelSelector state.
-  it("D-04: right-rail toggle is ALWAYS rendered regardless of panelSelector state", () => {
-    useTreeStore.setState({ panelSelector: { tags: false, backlinks: false } });
+  // D-04: the old chrome wrapper gated the right-rail toggle behind the
+  // now-retired panel-selector slice (TBR-N3-3/4a/4b, RR-T-1). That gate was
+  // intentionally dropped — the right toggle is ALWAYS rendered, and the
+  // panel-selector slice itself was fully removed in Phase 20 (D-01).
+  it("D-04: right-rail toggle is ALWAYS rendered (no gating condition)", () => {
     renderStrip();
     expect(
       screen.queryByRole("button", { name: /hide panels|show panels/i }),

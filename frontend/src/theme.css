@@ -601,7 +601,7 @@ body {
    rows and the backlinks list). Radix sets data-highlighted="" on the
    currently hovered OR keyboard-focused item; covers DropdownMenu.Item,
    ContextMenu.Item, *.RadioItem, *.CheckboxItem, and *.SubTrigger across
-   every menu surface (SettingsMenu, TreeRowMenu, PanelSelectorDropdown,
+   every menu surface (SettingsMenu, TreeRowMenu, TabOverflowDropdown,
    Breadcrumbs overflow, etc).
 
    Flyout submenus inherit because Radix renders SubContent through the

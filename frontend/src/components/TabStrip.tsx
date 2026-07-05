@@ -24,10 +24,6 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { TabPill } from "./TabPill";
 import { TabContextMenu } from "./TabContextMenu";
 import { TabOverflowDropdown } from "./TabOverflowDropdown";
-import {
-  PanelSelectorDropdown,
-  PANEL_SELECTOR_TRIGGER_WIDTH,
-} from "./PanelSelectorDropdown";
 import { computeHiddenTabIds, computeDropIndex, MIN_TAB_WIDTH } from "../lib/tabOverflow";
 
 /** Set equality used to preserve state identity (avoid re-render churn). */
@@ -38,15 +34,15 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 // Reserved strip chrome that is never available to tabs:
 //   strip horizontal padding (8) + pinned new-tab button (26) + the tab-bar
 //   right cluster + the tab-bar left cluster (37).
-//   Right cluster: 1 (borderLeft) + 8 (paddingLeft) + PANEL_SELECTOR_TRIGGER_WIDTH
-//   (imported from PanelSelectorDropdown, the single source of truth for its
-//   trigger's width — IN-06) + 4 (flex gap) + 28 (right toggle). Left cluster:
-//   28 (left toggle) + 8 (paddingRight) + 1 (borderRight) = 37. Split
-//   placement supersedes the original single right-hand cluster (owner
-//   revision 2026-07-02, gap 3 / TABUI-02). The overflow dropdown trigger
-//   (28px) is reserved separately, inside computeHiddenTabIds, ONLY when
-//   overflow occurs.
-const RIGHT_CLUSTER = 1 + 8 + PANEL_SELECTOR_TRIGGER_WIDTH + 4 + 28;
+//   Right cluster: 1 (borderLeft) + 8 (paddingLeft) + 4 (flex gap) + 28
+//   (right toggle) = 41. The old panel-selector dropdown trigger was removed
+//   in Phase 20 (D-01) — the right-sidebar toggle is now the sole control in
+//   this cluster. Left cluster: 28 (left toggle) + 8 (paddingRight) + 1
+//   (borderRight) = 37. Split placement supersedes the original single
+//   right-hand cluster (owner revision 2026-07-02, gap 3 / TABUI-02). The
+//   overflow dropdown trigger (28px) is reserved separately, inside
+//   computeHiddenTabIds, ONLY when overflow occurs.
+const RIGHT_CLUSTER = 1 + 8 + 4 + 28;
 const LEFT_CLUSTER = 37;
 export const RESERVED = 8 + 26 + RIGHT_CLUSTER + LEFT_CLUSTER;
 const OVERFLOW_BTN = 28;
@@ -252,10 +248,11 @@ export function TabStrip({
 }: TabStripProps) {
   // Split placement (owner revision 2026-07-02, gap 3 / TABUI-02, supersedes
   // the original D-04 right-hand cluster): the left-sidebar toggle sits alone
-  // in a far-left cluster; the right-sidebar toggle stays with the
-  // PanelSelectorDropdown in a far-right cluster. The right toggle is ALWAYS
-  // rendered (no panelSelector gating — that gate belonged to the old chrome
-  // wrapper and is intentionally dropped, see TabStrip.test.tsx).
+  // in a far-left cluster; the right-sidebar toggle sits alone in a far-right
+  // cluster (the panel-selector dropdown that used to share this cluster was
+  // removed in Phase 20, D-01). The right toggle is ALWAYS rendered (no
+  // panel-selector gating — that gate belonged to the old chrome wrapper and
+  // is intentionally dropped, see TabStrip.test.tsx).
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
   const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);
   const backlinksRailExpanded = useTreeStore((s) => s.backlinksRailExpanded);
@@ -306,9 +303,6 @@ export function TabStrip({
       }}
       data-testid="tab-strip-right-cluster"
     >
-      <span style={{ display: "inline-flex" }}>
-        <PanelSelectorDropdown />
-      </span>
       <RightClusterToggle
         ariaLabel={railLabel}
         onClick={() => setBacklinksRailExpanded(!backlinksRailExpanded)}

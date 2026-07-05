@@ -54,8 +54,11 @@ export function handleAppF2KeyDown(e: KeyboardEvent): void {
 
 /**
  * Global panel-toggle shortcuts.
- * Cmd+Alt+T — toggle Tags panel; Cmd+Alt+B — toggle Backlinks panel.
- * Cmd+Alt prefix avoids collisions with the heavily-used Cmd-only namespace.
+ * Cmd+Alt+T — toggle the right-rail Tags section; Cmd+Alt+B — toggle the
+ * right-rail Linked-mentions section. Cmd+Alt prefix avoids collisions with
+ * the heavily-used Cmd-only namespace. Repointed (Phase 20, D-01) from the
+ * retired panel-selector slice onto the per-section collapse booleans; still
+ * reveals the rail when expanding a section.
  */
 export function handleAppPanelShortcuts(e: KeyboardEvent): void {
   if (!e.altKey || !(e.metaKey || e.ctrlKey)) return;
@@ -65,12 +68,12 @@ export function handleAppPanelShortcuts(e: KeyboardEvent): void {
   e.stopPropagation();
   const s = useTreeStore.getState();
   if (k === "t") {
-    const next = !s.panelSelector.tags;
-    s.setPanelSelector({ tags: next });
+    const next = !s.tagsPanelExpanded;
+    s.setTagsPanelExpanded(next);
     if (next && !s.backlinksRailExpanded) s.setBacklinksRailExpanded(true);
   } else {
-    const next = !s.panelSelector.backlinks;
-    s.setPanelSelector({ backlinks: next });
+    const next = !s.linkedMentionsPanelExpanded;
+    s.setLinkedMentionsPanelExpanded(next);
     if (next && !s.backlinksRailExpanded) s.setBacklinksRailExpanded(true);
   }
 }
