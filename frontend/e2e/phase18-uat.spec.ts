@@ -198,12 +198,19 @@ test.describe("@phase18 WR-03: interleaved-hidden-tabs real-mouse drag does not 
   }) => {
     // Force the strip's available width into [388,507) so 5 tabs overflow to
     // exactly 3 visible pills (RESEARCH.md Pattern 2 window arithmetic:
-    // RESERVED=136, MIN_TAB_WIDTH=120, OVERFLOW_BTN=28 -> visibleCount=3 for
-    // a strip content-box width in this range). With the default 260px
-    // notes sidebar and collapsed backlinks rail, the middle grid column
-    // (== strip clientWidth) is viewportWidth - 308, so a 900px viewport
-    // lands the strip's available width at ~456px, comfortably inside range.
-    await page.setViewportSize({ width: 900, height: 800 });
+    // RESERVED=112, MIN_TAB_WIDTH=120, OVERFLOW_BTN=28 -> visibleCount=3 for
+    // a strip content-box width in this range). RESERVED dropped from 136 to
+    // 112 in Phase 20 (D-01, the panel-selector dropdown trigger's removal
+    // recomputed TabStrip's right-cluster arithmetic — see tabOverflow.test.ts's
+    // drift-guard test). Separately, Phase 20 D-06 flips the right rail to
+    // open-by-default (was collapsed by default here in Phase 18), so the
+    // middle grid column (== strip clientWidth) is now viewportWidth - 588
+    // (48 ribbon + 260 notes sidebar + 280 open right rail), not the old
+    // viewportWidth - 308 (collapsed rail). A 1150px viewport lands the
+    // strip's available width at ~450px, comfortably inside range (empirically
+    // verified: [1100,1200] all yield the 3-visible/2-hidden shape; 900px would
+    // now overflow to only 1 visible pill with the rail open).
+    await page.setViewportSize({ width: 1150, height: 800 });
 
     await waitForConnected(page, jasper.baseURL);
     for (const id of ids) {
@@ -596,9 +603,12 @@ test.describe("@phase18 TABUI-02: tab-bar split toggle placement", () => {
     await expect(leftCluster).toBeVisible({ timeout: 10_000 });
     await expect(rightCluster).toBeVisible({ timeout: 10_000 });
 
-    // Default states: notesSidebarVisible=true, backlinksRailExpanded=false.
+    // Default states: notesSidebarVisible=true, backlinksRailExpanded=true
+    // (Phase 20 D-06 flips the right rail to open-by-default on a fresh
+    // profile — previously false; see the Phase 20 RESEARCH.md Pitfall 4
+    // hydration-idiom note).
     const leftToggle = leftCluster.getByRole("button", { name: "Hide notes sidebar" });
-    const rightToggle = rightCluster.getByRole("button", { name: "Show panels" });
+    const rightToggle = rightCluster.getByRole("button", { name: "Hide panels" });
     await expect(leftToggle).toBeVisible();
     await expect(rightToggle).toBeVisible();
 
@@ -610,14 +620,16 @@ test.describe("@phase18 TABUI-02: tab-bar split toggle placement", () => {
       leftCluster.getByRole("button", { name: "Show notes sidebar" }),
     ).toBeVisible();
 
-    // The right toggle expands the backlinks/tags rail — its resize handle
-    // only renders while the rail is expanded (RightRail returns null otherwise).
+    // The right toggle shows/hides the whole right rail (Outline / Linked
+    // mentions / Tags) — its resize handle only renders while the rail is
+    // expanded (RightRail returns null otherwise). Starts expanded (D-06);
+    // this click COLLAPSES it, then re-click to restore expanded.
     const railHandle = page.getByRole("separator", { name: "Resize backlinks panel" });
-    await expect(railHandle).toHaveCount(0);
+    await expect(railHandle).toBeVisible();
     await rightToggle.click();
-    await expect(railHandle).toBeVisible({ timeout: 5_000 });
+    await expect(railHandle).toHaveCount(0, { timeout: 5_000 });
     await expect(
-      rightCluster.getByRole("button", { name: "Hide panels" }),
+      rightCluster.getByRole("button", { name: "Show panels" }),
     ).toBeVisible();
   });
 });
