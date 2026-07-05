@@ -172,6 +172,7 @@ describe("handleAppPanelShortcuts (Phase 20 D-01 re-point onto per-section colla
     useTreeStore.setState({ tagsPanelExpanded: false, backlinksRailExpanded: false });
     const e = new KeyboardEvent("keydown", {
       key: "t",
+      code: "KeyT",
       altKey: true,
       metaKey: true,
     });
@@ -182,10 +183,49 @@ describe("handleAppPanelShortcuts (Phase 20 D-01 re-point onto per-section colla
     expect(preventDefault).toHaveBeenCalledOnce();
   });
 
+  it("REGRESSION: macOS Cmd+Option+T (key:'†', code:'KeyT') still toggles the Tags section", () => {
+    // On macOS, Option transforms the key value even with Cmd held —
+    // Option+T reports key:"†" while code stays "KeyT". Matching e.key
+    // made this shortcut dead on the project's primary platform.
+    useTreeStore.setState({ tagsPanelExpanded: false, backlinksRailExpanded: false });
+    handleAppPanelShortcuts(
+      new KeyboardEvent("keydown", {
+        key: "†",
+        code: "KeyT",
+        altKey: true,
+        metaKey: true,
+      }),
+    );
+    expect(useTreeStore.getState().tagsPanelExpanded).toBe(true);
+    expect(useTreeStore.getState().backlinksRailExpanded).toBe(true);
+  });
+
+  it("REGRESSION: macOS Cmd+Option+B (key:'∫', code:'KeyB') still toggles the Linked-mentions section", () => {
+    useTreeStore.setState({
+      linkedMentionsPanelExpanded: false,
+      backlinksRailExpanded: false,
+    });
+    handleAppPanelShortcuts(
+      new KeyboardEvent("keydown", {
+        key: "∫",
+        code: "KeyB",
+        altKey: true,
+        metaKey: true,
+      }),
+    );
+    expect(useTreeStore.getState().linkedMentionsPanelExpanded).toBe(true);
+    expect(useTreeStore.getState().backlinksRailExpanded).toBe(true);
+  });
+
   it("Cmd+Alt+T collapsing the section does NOT force the rail open", () => {
     useTreeStore.setState({ tagsPanelExpanded: true, backlinksRailExpanded: true });
     handleAppPanelShortcuts(
-      new KeyboardEvent("keydown", { key: "t", altKey: true, metaKey: true }),
+      new KeyboardEvent("keydown", {
+        key: "t",
+        code: "KeyT",
+        altKey: true,
+        metaKey: true,
+      }),
     );
     expect(useTreeStore.getState().tagsPanelExpanded).toBe(false);
     expect(useTreeStore.getState().backlinksRailExpanded).toBe(true);
@@ -197,7 +237,12 @@ describe("handleAppPanelShortcuts (Phase 20 D-01 re-point onto per-section colla
       backlinksRailExpanded: false,
     });
     handleAppPanelShortcuts(
-      new KeyboardEvent("keydown", { key: "b", altKey: true, metaKey: true }),
+      new KeyboardEvent("keydown", {
+        key: "b",
+        code: "KeyB",
+        altKey: true,
+        metaKey: true,
+      }),
     );
     expect(useTreeStore.getState().linkedMentionsPanelExpanded).toBe(true);
     expect(useTreeStore.getState().backlinksRailExpanded).toBe(true);
@@ -205,7 +250,7 @@ describe("handleAppPanelShortcuts (Phase 20 D-01 re-point onto per-section colla
 
   it("no-ops on Alt+T without Cmd/Ctrl (leaves tab-new shortcut untouched)", () => {
     handleAppPanelShortcuts(
-      new KeyboardEvent("keydown", { key: "t", altKey: true }),
+      new KeyboardEvent("keydown", { key: "t", code: "KeyT", altKey: true }),
     );
     expect(useTreeStore.getState().tagsPanelExpanded).toBe(true);
   });

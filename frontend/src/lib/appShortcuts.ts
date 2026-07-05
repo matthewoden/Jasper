@@ -59,15 +59,19 @@ export function handleAppF2KeyDown(e: KeyboardEvent): void {
  * the heavily-used Cmd-only namespace. Repointed (Phase 20, D-01) from the
  * retired panel-selector slice onto the per-section collapse booleans; still
  * reveals the rail when expanding a section.
+ *
+ * Matches the PHYSICAL KeyT/KeyB codes, not the produced key value: on macOS
+ * Option+T emits key:"†" and Option+B emits key:"∫" (holding Cmd does not
+ * suppress the transformation), while code stays "KeyT"/"KeyB" — the same
+ * hazard handleAppAltT guards against below.
  */
 export function handleAppPanelShortcuts(e: KeyboardEvent): void {
   if (!e.altKey || !(e.metaKey || e.ctrlKey)) return;
-  const k = e.key.toLowerCase();
-  if (k !== "t" && k !== "b") return;
+  if (e.code !== "KeyT" && e.code !== "KeyB") return;
   e.preventDefault();
   e.stopPropagation();
   const s = useTreeStore.getState();
-  if (k === "t") {
+  if (e.code === "KeyT") {
     const next = !s.tagsPanelExpanded;
     s.setTagsPanelExpanded(next);
     if (next && !s.backlinksRailExpanded) s.setBacklinksRailExpanded(true);
