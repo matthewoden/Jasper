@@ -373,6 +373,14 @@ func buildExcerpts(content []byte, target string) []string {
 			suffix = string(runes[:maxChunk]) + "…"
 		}
 
+		// The matched span is verbatim note content too (e.g. a long aliased
+		// wikilink) — cap it like prefix/suffix so an excerpt's visible text
+		// stays bounded per the API contract.
+		if utf8.RuneCountInString(matchedText) > maxChunk {
+			runes := []rune(matchedText)
+			matchedText = string(runes[:maxChunk]) + "…"
+		}
+
 		var sb strings.Builder
 		if prefix != "" {
 			sb.WriteString(`<span>`)

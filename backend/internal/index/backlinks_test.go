@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/matthewoden/jasper/backend/internal/markdown"
@@ -681,6 +682,39 @@ func TestBuildExcerpts_PrefixTitleNotMatched(t *testing.T) {
 	}
 	if got := buildExcerpts([]byte("see [[Target#section]] here\n"), "Target"); len(got) != 1 {
 		t.Errorf("expected 1 excerpt for heading link, got %v", got)
+	}
+}
+
+// TestBuildExcerpts_MatchedSpanTruncated verifies the matched [[...]] span is
+// capped at 80 runes with an ellipsis, like prefix/suffix, so a long aliased
+// wikilink cannot push an excerpt past the documented visible-text bound.
+func TestBuildExcerpts_MatchedSpanTruncated(t *testing.T) {
+	t.Parallel()
+	longAlias := strings.Repeat("é", 200)
+	content := []byte("before [[Foo|" + longAlias + "]] after\n")
+	got := buildExcerpts(content, "Foo")
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 excerpt, got %d", len(got))
+	}
+	openTag := `<mark class="backlink-ref">`
+	start := strings.Index(got[0], openTag)
+	end := strings.Index(got[0], `</mark>`)
+	if start < 0 || end < 0 {
+		t.Fatalf("excerpt missing mark span: %q", got[0])
+	}
+	span := got[0][start+len(openTag) : end]
+	if !strings.HasSuffix(span, "…") {
+		t.Errorf("truncated matched span should end with ellipsis: %q", span)
+	}
+	if n := utf8.RuneCountInString(span); n > 81 { // 80 runes + ellipsis
+		t.Errorf("matched span visible text = %d runes, want <= 81", n)
+	}
+
+	// A short matched span stays intact — no spurious ellipsis.
+	short := buildExcerpts([]byte("see [[Foo|alias]] here\n"), "Foo")
+	if len(short) != 1 || !strings.Contains(short[0], "[[Foo|alias]]") {
+		t.Errorf("short matched span must not be truncated: %v", short)
 	}
 }
 
