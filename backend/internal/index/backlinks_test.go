@@ -638,6 +638,34 @@ func TestBuildExcerpts_MultipleLines(t *testing.T) {
 	}
 }
 
+// TestBuildExcerpts_PrefixTitleNotMatched verifies that a longer title
+// sharing the target as a prefix (e.g. [[Targeted Ads]] vs target "Target")
+// does not produce a false-positive excerpt, while a legitimate [[Target]]
+// later on the same line still matches.
+func TestBuildExcerpts_PrefixTitleNotMatched(t *testing.T) {
+	t.Parallel()
+
+	if got := buildExcerpts([]byte("see [[Targeted Ads]] here\n"), "Target"); len(got) != 0 {
+		t.Errorf("expected no excerpt for prefix false-match, got %v", got)
+	}
+
+	got := buildExcerpts([]byte("see [[Targeted Ads]] and [[Target]] here\n"), "Target")
+	if len(got) != 1 {
+		t.Fatalf("expected 1 excerpt for later same-line match, got %d: %v", len(got), got)
+	}
+	if !strings.Contains(got[0], `<mark class="backlink-ref">[[Target]]</mark>`) {
+		t.Errorf("excerpt should mark the exact [[Target]] occurrence: %q", got[0])
+	}
+
+	// Alias and heading forms of the exact target must still match.
+	if got := buildExcerpts([]byte("see [[Target|alias]] here\n"), "Target"); len(got) != 1 {
+		t.Errorf("expected 1 excerpt for aliased link, got %v", got)
+	}
+	if got := buildExcerpts([]byte("see [[Target#section]] here\n"), "Target"); len(got) != 1 {
+		t.Errorf("expected 1 excerpt for heading link, got %v", got)
+	}
+}
+
 // TestBuildExcerpts_SameLineMultipleOccurrences_CollapsesToOne verifies the
 // per-line (not per-occurrence) tie-break for the buildExcerpts unit itself.
 func TestBuildExcerpts_SameLineMultipleOccurrences_CollapsesToOne(t *testing.T) {

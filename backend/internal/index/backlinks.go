@@ -321,7 +321,26 @@ func buildExcerpts(content []byte, target string) []string {
 		line := string(lineBytes)
 		lineLower := strings.ToLower(line)
 
-		idx := strings.Index(lineLower, searchFor)
+		// Accept an occurrence only when the character following the target
+		// terminates the link target (']', '|', '#'); otherwise "[[Target"
+		// would false-match longer titles sharing the prefix (e.g.
+		// "[[Targeted Ads]]"). Iterate occurrences so a legitimate match
+		// later on the same line is still found.
+		idx := -1
+		for from := 0; from < len(lineLower); {
+			cand := strings.Index(lineLower[from:], searchFor)
+			if cand < 0 {
+				break
+			}
+			cand += from
+			after := cand + len(searchFor)
+			if after >= len(lineLower) ||
+				lineLower[after] == ']' || lineLower[after] == '|' || lineLower[after] == '#' {
+				idx = cand
+				break
+			}
+			from = cand + 1
+		}
 		if idx < 0 {
 			continue
 		}
