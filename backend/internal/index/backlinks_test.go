@@ -595,6 +595,24 @@ func TestBuildExcerpts_XSSEscaping(t *testing.T) {
 	}
 }
 
+// TestBuildExcerpts_XSSEscaping_MatchedSpan verifies that HTML inside the
+// matched [[...]] span itself (e.g. an aliased link with markup) is escaped.
+func TestBuildExcerpts_XSSEscaping_MatchedSpan(t *testing.T) {
+	t.Parallel()
+	content := []byte(`before [[Foo|see <b onmouseover=alert(1)>this</b>]] after` + "\n")
+	got := buildExcerpts(content, "Foo")
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 excerpt, got %d", len(got))
+	}
+	if strings.Contains(got[0], "<b ") {
+		t.Errorf("matched span markup not escaped: %q", got[0])
+	}
+	if !strings.Contains(got[0], "&lt;b onmouseover=alert(1)&gt;") {
+		t.Errorf("expected HTML-escaped markup inside mark: %q", got[0])
+	}
+}
+
 // TestBuildExcerpts_NoMatch verifies an empty slice when target not found.
 func TestBuildExcerpts_NoMatch(t *testing.T) {
 	t.Parallel()

@@ -375,7 +375,7 @@ func buildExcerpts(content []byte, target string) []string {
 			sb.WriteString(` </span>`)
 		}
 		sb.WriteString(`<mark class="backlink-ref">`)
-		sb.WriteString(matchedText)
+		sb.WriteString(html.EscapeString(matchedText))
 		sb.WriteString(`</mark>`)
 		if suffix != "" {
 			sb.WriteString(`<span> `)
