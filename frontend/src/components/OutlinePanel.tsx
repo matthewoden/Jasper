@@ -180,7 +180,9 @@ export function OutlinePanel() {
   }
 
   return (
-    <div role="list" aria-label="Note outline">
+    // role="group" (not "list"): ARIA requires list children to be listitem,
+    // but every row here is an interactive role="button".
+    <div role="group" aria-label="Note outline">
       <style>
         {`.outline-row:hover { background: rgba(255,255,255,0.04); }`}
       </style>

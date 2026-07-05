@@ -25,6 +25,15 @@ describe("OutlinePanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("container is a labelled group, not an ARIA list (rows are buttons, not listitems)", () => {
+    setHeadings([{ level: 1, text: "Top", line: 1, from: 0 }]);
+    render(<OutlinePanel />);
+    expect(
+      screen.getByRole("group", { name: "Note outline" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+
   it("renders rows with computed indent for levels 1 and 3", () => {
     setHeadings([
       { level: 1, text: "Top", line: 1, from: 0 },
