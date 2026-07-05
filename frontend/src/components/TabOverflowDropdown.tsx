@@ -1,7 +1,7 @@
 /**
  * TabOverflowDropdown — Radix DropdownMenu listing tabs hidden by the strip's
  * overflow. Selecting an item activates that tab (TAB-07). The active row gets the
- * shared accent-12% tint. Mirrors PanelSelectorDropdown's Root/Trigger/Portal/Content.
+ * shared accent-12% tint.
  */
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown } from "lucide-react";
