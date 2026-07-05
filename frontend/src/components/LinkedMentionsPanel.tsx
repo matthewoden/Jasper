@@ -9,18 +9,26 @@
  *
  * Card click uses useTabStore.getState().openTab(row.sourceId) (D-15) — NOT
  * the legacy active-note setter, which this rename retires from this surface.
+ *
+ * Backlink data arrives as props from RightRail's single useBacklinks call —
+ * this component must NOT fetch on its own, or the SectionHeader count badge
+ * and the card list would issue duplicate requests and could render
+ * different snapshots of the same note's backlinks.
  */
 import { sanitizeHtml } from "../lib/sanitize";
-import { useBacklinks } from "../lib/useBacklinks";
+import type { BacklinkRow } from "../lib/backlinksApi";
 import { useTabStore } from "../lib/useTabStore";
 
 interface Props {
   /** UUID of the currently open note. Null when no note is open. */
   noteId: string | null;
+  /** Backlink rows from RightRail's shared useBacklinks fetch. */
+  backlinks: BacklinkRow[] | null;
+  loading: boolean;
+  error: Error | null;
 }
 
-export function LinkedMentionsPanel({ noteId }: Props) {
-  const { backlinks, loading, error } = useBacklinks(noteId);
+export function LinkedMentionsPanel({ noteId, backlinks, loading, error }: Props) {
 
   const emptyState = (
     <div>

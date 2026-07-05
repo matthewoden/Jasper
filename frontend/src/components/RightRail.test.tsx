@@ -61,12 +61,19 @@ vi.mock("../lib/useTagBrowser", () => ({
 vi.mock("./OutlinePanel", () => ({
   OutlinePanel: () => <div data-testid="mock-outline-panel">No headings</div>,
 }));
+const linkedMentionsPanelProps: unknown[] = [];
 vi.mock("./LinkedMentionsPanel", () => ({
-  LinkedMentionsPanel: ({ noteId }: { noteId: string | null }) => (
-    <div data-testid="mock-linked-mentions-panel" data-noteid={noteId ?? "null"}>
-      No backlinks found
-    </div>
-  ),
+  LinkedMentionsPanel: (props: { noteId: string | null }) => {
+    linkedMentionsPanelProps.push(props);
+    return (
+      <div
+        data-testid="mock-linked-mentions-panel"
+        data-noteid={props.noteId ?? "null"}
+      >
+        No backlinks found
+      </div>
+    );
+  },
 }));
 vi.mock("./RightRailTagsPanel", () => ({
   RightRailTagsPanel: () => <div data-testid="mock-tags-panel">Tags Panel</div>,
@@ -165,6 +172,32 @@ describe("RightRail — three-section shell", () => {
       "data-noteid",
       "abc-123",
     );
+  });
+
+  it("fetches backlinks ONCE and passes the same rows to LinkedMentionsPanel (no duplicate useBacklinks instance)", () => {
+    const rows = [{ sourceId: "a" }, { sourceId: "b" }];
+    mockUseBacklinks.mockReturnValue({
+      backlinks: rows,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    linkedMentionsPanelProps.length = 0;
+
+    render(<RightRail activeNoteId="note-1" />);
+
+    // One shared fetch: the count badge and the card list read the SAME
+    // snapshot instead of two independent useBacklinks instances.
+    expect(mockUseBacklinks).toHaveBeenCalledTimes(1);
+    expect(mockUseBacklinks).toHaveBeenCalledWith("note-1");
+    const last = linkedMentionsPanelProps.at(-1) as {
+      backlinks: unknown;
+      loading: boolean;
+      error: Error | null;
+    };
+    expect(last.backlinks).toBe(rows);
+    expect(last.loading).toBe(false);
+    expect(last.error).toBeNull();
   });
 
   it("Linked-mentions header shows the distinct-source count (backlinks.length)", () => {

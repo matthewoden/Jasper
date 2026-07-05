@@ -106,7 +106,14 @@ export function RightRail({ activeNoteId, style }: Props) {
     (s) => s.setLinkedMentionsHeightRatio,
   );
 
-  const { backlinks } = useBacklinks(activeNoteId);
+  // Single shared fetch (WR-07): the count badge and LinkedMentionsPanel's
+  // cards must render the same snapshot, so the panel receives this result
+  // as props instead of mounting its own useBacklinks instance.
+  const {
+    backlinks,
+    loading: backlinksLoading,
+    error: backlinksError,
+  } = useBacklinks(activeNoteId);
   const linkedMentionsCount = backlinks?.length ?? 0;
   const { tags } = useTagBrowser();
 
@@ -254,7 +261,12 @@ export function RightRail({ activeNoteId, style }: Props) {
         />
         {linkedMentionsPanelExpanded && (
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-            <LinkedMentionsPanel noteId={activeNoteId} />
+            <LinkedMentionsPanel
+              noteId={activeNoteId}
+              backlinks={backlinks}
+              loading={backlinksLoading}
+              error={backlinksError}
+            />
           </div>
         )}
       </div>
