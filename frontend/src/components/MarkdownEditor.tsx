@@ -302,6 +302,24 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             EditorView.updateListener.of((u) => {
               if (!u.docChanged) return;
               if (u.view.composing) return;
+              // Outline (RSIDE-01): headings must reflect the doc after EVERY
+              // docChanged transaction, including server-driven ones — the
+              // initial GET-loaded content and silent WS reloads both dispatch
+              // via applyServerUpdate (ServerUpdateAnnotation), which is the
+              // OVERWHELMINGLY common way a note's real content first reaches
+              // the editor (a brand-new pane mounts with initialDoc="" before
+              // the async GET resolves — see EditorPane's `initialDoc={loadStatus
+              // === "loaded" ? content : ""}` — then applyServerUpdate dispatches
+              // the real content once loaded). Gating this on "not a server
+              // update" left Outline showing "No headings" for every note until
+              // the user made a live edit — a real, live-browser-only bug this
+              // plan's E2E caught (never reproduced by mocked component tests).
+              // onChange/onH1Change/checkbox-flush below stay guarded: those DO
+              // have side effects (autosave-loop / rename-detection) that must
+              // not re-fire for a server-originated document replace.
+              if (cbRef.current.onHeadingsChange) {
+                cbRef.current.onHeadingsChange(extractHeadings(u.state));
+              }
               for (const tr of u.transactions) {
                 if (tr.annotation(ServerUpdateAnnotation)) return;
               }
@@ -310,9 +328,6 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
               if (cbRef.current.onH1Change) {
                 const m = doc.match(/^# (.+)$/m);
                 cbRef.current.onH1Change(m ? m[1].trim() : null);
-              }
-              if (cbRef.current.onHeadingsChange) {
-                cbRef.current.onHeadingsChange(extractHeadings(u.state));
               }
               // immediate flush on checkbox toggle — bypass 2s autosave debounce
               const isToggle = u.transactions.some(

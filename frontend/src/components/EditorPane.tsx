@@ -190,6 +190,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
 
   const editorRef = useRef<MarkdownEditorRef>(null);
   const latestContentRef = useRef("");
+  // Outline (RSIDE-01): cache of the last-computed heading list for THIS pane,
+  // updated on every onHeadingsChange call regardless of the active-tab guard
+  // below. Needed because the "become active" transition (a brand-new tab's
+  // mount-time push races the App-level activeTabId->activeNoteId mirror
+  // effect, which runs one commit later — see the become-active effect near
+  // handleEditorHeadingsChange) must be able to flush a cached, already-computed
+  // heading list into the shared store without waiting on another doc change.
+  const latestHeadingsRef = useRef<HeadingInfo[]>([]);
   const debounceTimer = useRef<number | null>(null);
   const savedTimer = useRef<number | null>(null);
   const inFlight = useRef(false);
@@ -459,9 +467,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
 
   // Outline (RSIDE-01): only the pane whose noteId IS the active tab writes
   // into the shared outline store — keep-alive background panes must not
-  // clobber the outline with their (invisible) content.
+  // clobber the outline with their (invisible) content. latestHeadingsRef is
+  // always updated so the become-active effect below can flush a cached
+  // heading list without depending on another doc-changed event firing.
   const handleEditorHeadingsChange = useCallback(
     (headings: HeadingInfo[]) => {
+      latestHeadingsRef.current = headings;
       if (noteIdRef.current === null) return;
       if (noteIdRef.current !== useTreeStore.getState().activeNoteId) return;
       useOutlineStore.getState().setOutlineHeadings(headings);
@@ -469,11 +480,26 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     [],
   );
 
-  // Register this pane's scrollToHeading into the shared outline store
-  // whenever it becomes (or is) the active tab, so OutlinePanel always
-  // drives the currently-active editor. Cleared on unmount / deactivation.
+  // Register this pane's scrollToHeading into the shared outline store, and
+  // flush its cached heading list, whenever it becomes (or is) the active
+  // tab, so OutlinePanel always drives the currently-active editor. Cleared
+  // on unmount / deactivation.
+  //
+  // The heading-list flush closes a real race (found live via phase20-uat.spec.ts,
+  // never caught by mocked component tests): MarkdownEditor's mount-time
+  // "fire once" push in handleEditorHeadingsChange runs as a CHILD effect
+  // within the SAME commit as the tab-open render, but the App-level
+  // `activeTabId -> useTreeStore.activeNoteId` mirror is a PARENT effect that
+  // commits its state update one render later. So on the very first open of a
+  // brand-new tab, the guard above sees activeNoteId as still stale (or null)
+  // and silently drops the initial heading push — Outline would then show
+  // "No headings" until the user made an edit. Flushing latestHeadingsRef here
+  // (which the mount-time push always populates, guard notwithstanding) once
+  // this effect's own [hidden, noteId, activeNoteId] deps confirm the mirror
+  // settled closes that gap without waiting on a doc change.
   useEffect(() => {
     if (hidden || noteId === null || noteId !== activeNoteId) return;
+    useOutlineStore.getState().setOutlineHeadings(latestHeadingsRef.current);
     useOutlineStore.getState().setScrollToHeading((from: number) => {
       editorRef.current?.scrollToHeading(from);
     });

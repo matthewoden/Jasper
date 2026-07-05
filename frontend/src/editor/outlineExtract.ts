@@ -11,7 +11,7 @@
  * (no visibleRanges restriction) since the outline needs every heading, not
  * just the ones currently on screen.
  */
-import { syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import type { EditorState } from "@codemirror/state";
 import type { SyntaxNodeRef } from "@lezer/common";
 
@@ -82,7 +82,19 @@ function headingLineStart(state: EditorState, node: SyntaxNodeRef): { line: numb
  */
 export function extractHeadings(state: EditorState): HeadingInfo[] {
   const headings: HeadingInfo[] = [];
-  const tree = syntaxTree(state);
+  // Unlike livePreviewPlugin's viewport-scoped decorations (which only need
+  // whatever CM6's incremental background parser has already covered near the
+  // visible range), the outline needs the WHOLE document — including content
+  // far outside the initial viewport. A bare `syntaxTree(state)` can silently
+  // return a tree that only covers the parser's initial budget (e.g. content
+  // loaded via a single large docChanged transaction, such as the initial
+  // GET-load or a note swap, may only be partially parsed at the moment this
+  // runs), which either drops headings beyond that point or resolves their
+  // `from` position off a still-incomplete tree. `ensureSyntaxTree` forces a
+  // synchronous parse up to the full document length (bounded by the timeout
+  // so a pathologically huge note can't freeze typing); falling back to the
+  // best-effort `syntaxTree(state)` only if that budget is exceeded.
+  const tree = ensureSyntaxTree(state, state.doc.length, 200) ?? syntaxTree(state);
 
   tree.iterate({
     enter(node: SyntaxNodeRef) {
