@@ -23,12 +23,26 @@ function indentForLevel(level: number): number {
   return INDENT_BASE + (level - 1) * INDENT_STEP;
 }
 
+/**
+ * Stable per-heading identity for session fold state. The heading list is
+ * rebuilt on every doc change, so positional indices would fold the wrong
+ * section after an insert/delete above a collapsed heading; level + text +
+ * occurrence ordinal survives those edits.
+ */
+function headingKeys(headings: { level: number; text: string }[]): string[] {
+  const seen = new Map<string, number>();
+  return headings.map((h) => {
+    const base = `${h.level}:${h.text}`;
+    const ordinal = seen.get(base) ?? 0;
+    seen.set(base, ordinal + 1);
+    return `${base}:${ordinal}`;
+  });
+}
+
 export function OutlinePanel() {
   const outlineHeadings = useOutlineStore((s) => s.outlineHeadings);
   const scrollToHeading = useOutlineStore((s) => s.scrollToHeading);
-  const [collapsedIndices, setCollapsedIndices] = useState<Set<number>>(
-    new Set(),
-  );
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
 
   if (outlineHeadings.length === 0) {
     return (
@@ -57,15 +71,16 @@ export function OutlinePanel() {
     );
   }
 
-  const toggleCollapsed = (i: number) => {
-    setCollapsedIndices((prev) => {
+  const toggleCollapsed = (key: string) => {
+    setCollapsedKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
 
+  const keys = headingKeys(outlineHeadings);
   const rows: React.ReactNode[] = [];
   let hideUntilLevel: number | null = null;
 
@@ -82,14 +97,14 @@ export function OutlinePanel() {
     const isParent =
       i + 1 < outlineHeadings.length &&
       outlineHeadings[i + 1].level > heading.level;
-    const isCollapsed = isParent && collapsedIndices.has(i);
+    const isCollapsed = isParent && collapsedKeys.has(keys[i]);
     if (isCollapsed) {
       hideUntilLevel = heading.level;
     }
 
     rows.push(
       <div
-        key={i}
+        key={keys[i]}
         role="button"
         tabIndex={0}
         aria-label={`Go to heading: ${heading.text}`}
@@ -120,7 +135,7 @@ export function OutlinePanel() {
             }
             onClick={(e) => {
               e.stopPropagation();
-              toggleCollapsed(i);
+              toggleCollapsed(keys[i]);
             }}
             style={{
               width: 12,

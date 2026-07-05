@@ -2,7 +2,7 @@
  * OutlinePanel.test.tsx — vitest suite for the Outline panel component.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 
 import { OutlinePanel } from "./OutlinePanel";
 import { useOutlineStore } from "../lib/useOutlineStore";
@@ -77,6 +77,44 @@ describe("OutlinePanel", () => {
 
     expect(
       screen.getByLabelText('Expand "Parent" section'),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the SAME section folded after a heading is inserted above it", () => {
+    setHeadings([
+      { level: 1, text: "Alpha", line: 1, from: 0 },
+      { level: 2, text: "Alpha child", line: 2, from: 10 },
+      { level: 1, text: "Beta", line: 4, from: 20 },
+      { level: 2, text: "Beta child", line: 5, from: 30 },
+    ]);
+    render(<OutlinePanel />);
+
+    fireEvent.click(screen.getByLabelText('Collapse "Beta" section'));
+    expect(
+      screen.queryByLabelText("Go to heading: Beta child"),
+    ).not.toBeInTheDocument();
+
+    // Simulate an edit inserting a new heading ABOVE the collapsed one —
+    // fold state must follow the heading identity, not its position.
+    act(() => {
+      setHeadings([
+        { level: 1, text: "Inserted", line: 1, from: 0 },
+        { level: 1, text: "Alpha", line: 3, from: 12 },
+        { level: 2, text: "Alpha child", line: 4, from: 22 },
+        { level: 1, text: "Beta", line: 6, from: 32 },
+        { level: 2, text: "Beta child", line: 7, from: 42 },
+      ]);
+    });
+
+    // Beta stays collapsed; Alpha (now shifted) stays expanded.
+    expect(
+      screen.queryByLabelText("Go to heading: Beta child"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Go to heading: Alpha child"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Expand "Beta" section'),
     ).toBeInTheDocument();
   });
 });
