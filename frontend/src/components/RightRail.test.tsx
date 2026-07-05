@@ -78,15 +78,25 @@ vi.mock("./LinkedMentionsPanel", () => ({
 vi.mock("./RightRailTagsPanel", () => ({
   RightRailTagsPanel: () => <div data-testid="mock-tags-panel">Tags Panel</div>,
 }));
+const interPanelDividerProps: Array<{
+  getRatio: () => number;
+  setRatio: (r: number) => void;
+}> = [];
 vi.mock("./InterPanelDivider", () => ({
-  InterPanelDivider: () => (
-    <div
-      role="separator"
-      aria-orientation="horizontal"
-      aria-label="Resize panels"
-      data-testid="inter-panel-divider"
-    />
-  ),
+  InterPanelDivider: (props: {
+    getRatio: () => number;
+    setRatio: (r: number) => void;
+  }) => {
+    interPanelDividerProps.push(props);
+    return (
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize panels"
+        data-testid="inter-panel-divider"
+      />
+    );
+  },
 }));
 
 
@@ -297,6 +307,8 @@ describe("RightRail — collapse hides body + removes adjacent divider", () => {
     mockSetOutlinePanelExpanded.mockReset();
     mockSetLinkedMentionsPanelExpanded.mockReset();
     mockSetTagsPanelExpanded.mockReset();
+    mockSetOutlineHeightRatio.mockReset();
+    mockSetLinkedMentionsHeightRatio.mockReset();
     mockUseBacklinks.mockReset();
     mockUseBacklinks.mockReturnValue({
       backlinks: [],
@@ -326,15 +338,33 @@ describe("RightRail — collapse hides body + removes adjacent divider", () => {
     expect(screen.getAllByTestId("inter-panel-divider")).toHaveLength(1);
   });
 
-  it("collapsing Linked mentions removes both adjacent dividers", () => {
+  it("collapsing Linked mentions keeps Outline↔Tags resizable via one divider driving outlineHeightRatio", () => {
     mockOutlinePanelExpanded = true;
     mockLinkedMentionsPanelExpanded = false;
     mockTagsPanelExpanded = true;
+    interPanelDividerProps.length = 0;
 
     render(<RightRail activeNoteId={null} />);
     expect(screen.getByTestId("mock-outline-panel")).toBeInTheDocument();
     expect(screen.queryByTestId("mock-linked-mentions-panel")).toBeNull();
     expect(screen.getByTestId("mock-tags-panel")).toBeInTheDocument();
+    // Outline and Tags are consecutively expanded — their split must stay
+    // adjustable even while Linked mentions is collapsed.
+    expect(screen.getAllByTestId("inter-panel-divider")).toHaveLength(1);
+    const divider = interPanelDividerProps.at(-1)!;
+    expect(divider.getRatio()).toBe(mockOutlineHeightRatio);
+    divider.setRatio(0.5);
+    expect(mockSetOutlineHeightRatio).toHaveBeenCalledWith(0.5);
+    expect(mockSetLinkedMentionsHeightRatio).not.toHaveBeenCalled();
+  });
+
+  it("collapsing Tags AND Linked mentions leaves zero dividers (Outline is the remainder)", () => {
+    mockOutlinePanelExpanded = true;
+    mockLinkedMentionsPanelExpanded = false;
+    mockTagsPanelExpanded = false;
+
+    render(<RightRail activeNoteId={null} />);
+    expect(screen.getByTestId("mock-outline-panel")).toBeInTheDocument();
     expect(screen.queryByTestId("inter-panel-divider")).toBeNull();
   });
 

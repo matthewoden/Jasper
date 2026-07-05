@@ -10,12 +10,12 @@
  *       <SectionHeader />
  *       <OutlinePanel /> (when expanded)
  *     </div>
- *     <InterPanelDivider /> (Outline↔Linked mentions, only if both expanded)
+ *     <InterPanelDivider /> (when Outline + a LATER section are expanded)
  *     <div flex-column>                   ← Linked mentions section
  *       <SectionHeader count={distinct linking notes} />
  *       <LinkedMentionsPanel noteId /> (when expanded)
  *     </div>
- *     <InterPanelDivider /> (Linked mentions↔Tags, only if both expanded)
+ *     <InterPanelDivider /> (when Linked mentions + Tags are expanded)
  *     <div flex-column>                   ← Tags section
  *       <SectionHeader count={tags.length} />
  *       <RightRailTagsPanel /> (when expanded)
@@ -34,6 +34,12 @@
  * the drag ratio. Because Tags is structurally last, it is always the
  * remainder-taker whenever it is expanded — matching "Tags takes the
  * remainder" without any special-casing.
+ *
+ * A divider renders after every ratio-driven section (i.e. whenever a later
+ * section is also expanded), so any two consecutively expanded sections stay
+ * mutually resizable — including Outline↔Tags when Linked mentions is
+ * collapsed. The divider allowance is subtracted from a ratio flex-basis
+ * only when that section's divider is actually rendered.
  *
  * All three sections are ALWAYS MOUNTED; only the whole rail (gated on
  * backlinksRailExpanded) can disappear entirely.
@@ -71,6 +77,7 @@ function sectionFlexStyle(
   expanded: boolean,
   isRemainder: boolean,
   ratio: number,
+  hasAdjacentDivider: boolean,
 ): CSSProperties {
   if (!expanded) {
     return { flex: "0 0 auto" };
@@ -78,8 +85,9 @@ function sectionFlexStyle(
   if (isRemainder) {
     return { flex: 1, minHeight: 0, overflow: "hidden" };
   }
+  const dividerAdjust = hasAdjacentDivider ? DIVIDER_FLEX_ADJUST : 0;
   return {
-    flex: `0 0 calc(${ratio * 100}% - ${DIVIDER_FLEX_ADJUST}px)`,
+    flex: `0 0 calc(${ratio * 100}% - ${dividerAdjust}px)`,
     minHeight: 0,
     overflow: "hidden",
   };
@@ -165,10 +173,13 @@ export function RightRail({ activeNoteId, style }: Props) {
   const expandedKeys = order.filter((o) => o.expanded).map((o) => o.key);
   const lastExpandedKey = expandedKeys[expandedKeys.length - 1] ?? null;
 
-  const dividerBetweenOutlineAndMentions =
-    outlinePanelExpanded && linkedMentionsPanelExpanded;
-  const dividerBetweenMentionsAndTags =
-    linkedMentionsPanelExpanded && tagsPanelExpanded;
+  // A divider follows every ratio-driven section: one after Outline whenever
+  // any LATER section is expanded (so Outline↔Tags stays resizable when
+  // Linked mentions is collapsed), and one after Linked mentions when Tags
+  // is expanded. Each divider drags the ratio of the section ABOVE it.
+  const dividerAfterOutline =
+    outlinePanelExpanded && (linkedMentionsPanelExpanded || tagsPanelExpanded);
+  const dividerAfterMentions = linkedMentionsPanelExpanded && tagsPanelExpanded;
 
   return (
     <aside
@@ -214,6 +225,7 @@ export function RightRail({ activeNoteId, style }: Props) {
             outlinePanelExpanded,
             lastExpandedKey === "outline",
             outlineHeightRatio,
+            dividerAfterOutline,
           ),
         }}
       >
@@ -231,7 +243,7 @@ export function RightRail({ activeNoteId, style }: Props) {
         )}
       </div>
 
-      {dividerBetweenOutlineAndMentions && (
+      {dividerAfterOutline && (
         <InterPanelDivider
           railRef={railRef as React.RefObject<HTMLElement>}
           getRatio={() => useTreeStore.getState().outlineHeightRatio}
@@ -248,6 +260,7 @@ export function RightRail({ activeNoteId, style }: Props) {
             linkedMentionsPanelExpanded,
             lastExpandedKey === "mentions",
             linkedMentionsHeightRatio,
+            dividerAfterMentions,
           ),
         }}
       >
@@ -271,7 +284,7 @@ export function RightRail({ activeNoteId, style }: Props) {
         )}
       </div>
 
-      {dividerBetweenMentionsAndTags && (
+      {dividerAfterMentions && (
         <InterPanelDivider
           railRef={railRef as React.RefObject<HTMLElement>}
           getRatio={() => useTreeStore.getState().linkedMentionsHeightRatio}
@@ -284,7 +297,9 @@ export function RightRail({ activeNoteId, style }: Props) {
         style={{
           display: "flex",
           flexDirection: "column",
-          ...sectionFlexStyle(tagsPanelExpanded, lastExpandedKey === "tags", 1),
+          // Tags is structurally last: remainder whenever expanded, so its
+          // ratio/divider params are inert.
+          ...sectionFlexStyle(tagsPanelExpanded, lastExpandedKey === "tags", 1, false),
         }}
       >
         <SectionHeader
