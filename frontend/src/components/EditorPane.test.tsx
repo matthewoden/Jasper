@@ -141,6 +141,7 @@ vi.mock("../lib/treeApi", () => ({
 import { ScratchpadUUID, getNote, updateNote } from "../lib/notesApi";
 import { getTree, postNoteMove } from "../lib/treeApi";
 import { __testing__ as fileTreeTesting } from "../lib/useFileTree";
+import { useOutlineStore } from "../lib/useOutlineStore";
 import { useTreeStore } from "../lib/useTreeStore";
 import type { EditorPaneHandlers } from "./EditorPane";
 import {
@@ -3021,5 +3022,58 @@ describe("<EditorPane /> — WR-04 autosaveMs prop updates after mount", () => {
         // nothing would have saved by 600ms.
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
         expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited");
+    });
+});
+
+describe("<EditorPane /> — Outline store lifecycle (RSIDE-01)", () => {
+    afterEach(() => {
+        useTreeStore.setState({ activeNoteId: null });
+        useOutlineStore.setState({ outlineHeadings: [], scrollToHeading: null });
+    });
+
+    it("clears outlineHeadings + scrollToHeading when the owning pane unmounts (last tab closed)", async () => {
+        getNoteMock.mockResolvedValue(okGet("# Title"));
+        useTreeStore.setState({ activeNoteId: ScratchpadUUID });
+
+        const { unmount } = render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        // The become-active effect registered this pane's scroll handler.
+        expect(useOutlineStore.getState().scrollToHeading).not.toBeNull();
+        act(() => {
+            useOutlineStore.getState().setOutlineHeadings([
+                { level: 1, text: "Title", line: 1, from: 0 },
+            ]);
+        });
+
+        unmount();
+
+        // No pane owns the outline anymore — panel must not render stale headings.
+        expect(useOutlineStore.getState().scrollToHeading).toBeNull();
+        expect(useOutlineStore.getState().outlineHeadings).toEqual([]);
+    });
+
+    it("does NOT clobber the store when another pane has already re-registered", async () => {
+        getNoteMock.mockResolvedValue(okGet("# Title"));
+        useTreeStore.setState({ activeNoteId: ScratchpadUUID });
+
+        const { unmount } = render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+        expect(useOutlineStore.getState().scrollToHeading).not.toBeNull();
+
+        // Simulate a newly-active pane overwriting the store BEFORE this
+        // pane's stale cleanup runs.
+        const otherHandler = vi.fn();
+        const otherHeadings = [{ level: 2, text: "Other", line: 3, from: 12 }];
+        act(() => {
+            useOutlineStore.getState().setScrollToHeading(otherHandler);
+            useOutlineStore.getState().setOutlineHeadings(otherHeadings);
+        });
+
+        unmount();
+
+        // Ownership guard: the stale cleanup left the new pane's state intact.
+        expect(useOutlineStore.getState().scrollToHeading).toBe(otherHandler);
+        expect(useOutlineStore.getState().outlineHeadings).toEqual(otherHeadings);
     });
 });

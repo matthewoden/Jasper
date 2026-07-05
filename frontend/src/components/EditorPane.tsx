@@ -500,16 +500,20 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   useEffect(() => {
     if (hidden || noteId === null || noteId !== activeNoteId) return;
     useOutlineStore.getState().setOutlineHeadings(latestHeadingsRef.current);
-    useOutlineStore.getState().setScrollToHeading((from: number) => {
+    const scrollHandler = (from: number) => {
       editorRef.current?.scrollToHeading(from);
-    });
+    };
+    useOutlineStore.getState().setScrollToHeading(scrollHandler);
     return () => {
       // Only clear if we're still the registered handler owner — a newly
-      // active pane's effect will have already overwritten this by the time
-      // a stale cleanup runs, so an unconditional clear here would be safe
-      // either way, but this avoids a redundant store write in that case.
-      if (useOutlineStore.getState().scrollToHeading !== null) {
+      // active pane's effect may have already overwritten the store by the
+      // time a stale cleanup runs; clearing then would clobber the new
+      // pane's registration. When we ARE still the owner (e.g. the last tab
+      // just closed), also reset the headings so the Outline panel doesn't
+      // keep rendering a note that is no longer open.
+      if (useOutlineStore.getState().scrollToHeading === scrollHandler) {
         useOutlineStore.getState().setScrollToHeading(null);
+        useOutlineStore.getState().setOutlineHeadings([]);
       }
     };
   }, [hidden, noteId, activeNoteId]);
