@@ -915,13 +915,11 @@ describe("Phase 6.6 chrome slices", () => {
     vi.resetModules();
   });
 
-  it("C1: fresh store returns notesSidebarVisible=true, panelSelector={tags:true, backlinks:true}", async () => {
+  it("C1: fresh store returns notesSidebarVisible=true", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
     const s = mod.useTreeStore.getState();
     expect(s.notesSidebarVisible).toBe(true);
-    expect(s.panelSelector.tags).toBe(true);
-    expect(s.panelSelector.backlinks).toBe(true);
   });
 
   it("C2: setNotesSidebarVisible(false) flips the slice; setNotesSidebarVisible(true) restores it", async () => {
@@ -931,24 +929,6 @@ describe("Phase 6.6 chrome slices", () => {
     expect(mod.useTreeStore.getState().notesSidebarVisible).toBe(false);
     mod.useTreeStore.getState().setNotesSidebarVisible(true);
     expect(mod.useTreeStore.getState().notesSidebarVisible).toBe(true);
-  });
-
-  it("C3: setPanelSelector({tags:false}) sets tags=false, leaves backlinks=true", async () => {
-    vi.resetModules();
-    const mod = await import("./useTreeStore");
-    mod.useTreeStore.getState().setPanelSelector({ tags: false });
-    const s = mod.useTreeStore.getState();
-    expect(s.panelSelector.tags).toBe(false);
-    expect(s.panelSelector.backlinks).toBe(true);
-  });
-
-  it("C3: setPanelSelector({tags:false, backlinks:false}) updates both keys", async () => {
-    vi.resetModules();
-    const mod = await import("./useTreeStore");
-    mod.useTreeStore.getState().setPanelSelector({ tags: false, backlinks: false });
-    const s = mod.useTreeStore.getState();
-    expect(s.panelSelector.tags).toBe(false);
-    expect(s.panelSelector.backlinks).toBe(false);
   });
 
   it("C4: setNotesSidebarVisible(false) immediately writes 'false' to LS_KEY_SIDEBAR_VISIBLE", async () => {
@@ -983,22 +963,6 @@ describe("Phase 6.6 chrome slices", () => {
     expect(mod.useTreeStore.getState().notesSidebarVisible).toBe(true);
   });
 
-  it("C5: pre-seeded LS_KEY_PANEL_TAGS='false' yields panelSelector.tags=false on load", async () => {
-    localStorage.setItem("jasper.chrome.panel.selector.tags", "false");
-    vi.resetModules();
-    const mod = await import("./useTreeStore");
-    expect(mod.useTreeStore.getState().panelSelector.tags).toBe(false);
-    expect(mod.useTreeStore.getState().panelSelector.backlinks).toBe(true);
-  });
-
-  it("C5: pre-seeded LS_KEY_PANEL_BACKLINKS='false' yields panelSelector.backlinks=false on load", async () => {
-    localStorage.setItem("jasper.chrome.panel.selector.backlinks", "false");
-    vi.resetModules();
-    const mod = await import("./useTreeStore");
-    expect(mod.useTreeStore.getState().panelSelector.backlinks).toBe(false);
-    expect(mod.useTreeStore.getState().panelSelector.tags).toBe(true);
-  });
-
   it("C6: ADD-ONLY — Phase 6.5 slices (tagsPanelHeightRatio, rightRailTagsPanelExpanded) unchanged; backlinksRailExpanded now defaults true (D-06, Phase 20)", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -1012,8 +976,6 @@ describe("Phase 6.6 chrome slices", () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
     expect(mod.LS_KEY_SIDEBAR_VISIBLE).toBe("jasper.chrome.sidebar.visible");
-    expect(mod.LS_KEY_PANEL_TAGS).toBe("jasper.chrome.panel.selector.tags");
-    expect(mod.LS_KEY_PANEL_BACKLINKS).toBe("jasper.chrome.panel.selector.backlinks");
   });
 });
 
@@ -1419,12 +1381,7 @@ describe("Phase 20 Plan 03 — unified right-rail collapse booleans + split rati
     expect(mod2.useTreeStore.getState().outlineHeightRatio).toBe(0.34);
   });
 
-  it("RR-11: panelSelector slice is unaffected — still present with default {tags:true, backlinks:true}", async () => {
-    vi.resetModules();
-    const mod = await import("./useTreeStore");
-    expect(mod.useTreeStore.getState().panelSelector).toEqual({
-      tags: true,
-      backlinks: true,
-    });
-  });
+  // RR-11 (Phase 20 Plan 03) asserted the legacy panel-selector slice was
+  // unaffected by the additive-only plan; the slice itself was removed by
+  // Plan 05 (D-01 fold), so that assertion no longer applies.
 });

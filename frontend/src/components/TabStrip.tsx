@@ -251,7 +251,7 @@ export function TabStrip({
   // in a far-left cluster; the right-sidebar toggle sits alone in a far-right
   // cluster (the panel-selector dropdown that used to share this cluster was
   // removed in Phase 20, D-01). The right toggle is ALWAYS rendered (no
-  // panelSelector gating — that gate belonged to the old chrome wrapper and
+  // panel-selector gating — that gate belonged to the old chrome wrapper and
   // is intentionally dropped, see TabStrip.test.tsx).
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
   const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);

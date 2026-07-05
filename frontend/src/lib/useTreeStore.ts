@@ -55,8 +55,6 @@ export const RIGHT_RAIL_RATIO_MAX = 0.8;
 
 
 export const LS_KEY_SIDEBAR_VISIBLE = "jasper.chrome.sidebar.visible";
-export const LS_KEY_PANEL_TAGS = "jasper.chrome.panel.selector.tags";
-export const LS_KEY_PANEL_BACKLINKS = "jasper.chrome.panel.selector.backlinks";
 export const LS_KEY_SIDEBAR_PANEL = "jasper.chrome.sidebar.panel";
 
 
@@ -152,8 +150,6 @@ export interface TreeStore {
 
   notesSidebarVisible: boolean;
   setNotesSidebarVisible: (v: boolean) => void;
-  panelSelector: { tags: boolean; backlinks: boolean };
-  setPanelSelector: (update: Partial<{ tags: boolean; backlinks: boolean }>) => void;
 
   /** Which left-sidebar panel is active — Files or the in-sidebar Search (D-04). */
   sidebarPanel: "files" | "search";
@@ -304,9 +300,6 @@ export const useTreeStore = create<TreeStore>((set) => ({
 
   notesSidebarVisible: true,
   setNotesSidebarVisible: (v) => set({ notesSidebarVisible: v }),
-  panelSelector: { tags: true, backlinks: true },
-  setPanelSelector: (update) =>
-    set((s) => ({ panelSelector: { ...s.panelSelector, ...update } })),
 
   sidebarPanel: "files",
   setSidebarPanel: (p) => set({ sidebarPanel: p }),
@@ -547,22 +540,6 @@ if (typeof window !== "undefined") {
     /* localStorage unavailable */
   }
   try {
-    const rawTags = window.localStorage.getItem(LS_KEY_PANEL_TAGS);
-    const rawBacklinks = window.localStorage.getItem(LS_KEY_PANEL_BACKLINKS);
-    const panelUpdate: Partial<{ tags: boolean; backlinks: boolean }> = {};
-    if (rawTags === "false") panelUpdate.tags = false;
-    if (rawBacklinks === "false") panelUpdate.backlinks = false;
-    if (Object.keys(panelUpdate).length > 0) {
-      useTreeStore.setState((s) => ({
-        panelSelector: { ...s.panelSelector, ...panelUpdate },
-      }));
-    }
-    // any other value (including missing) keeps the default `true`
-  } catch {
-    /* localStorage unavailable */
-  }
-
-  try {
     const raw = window.localStorage.getItem(LS_KEY_SIDEBAR_PANEL);
     if (raw === "search") useTreeStore.setState({ sidebarPanel: "search" });
     // any other value (including missing/corrupt) keeps the default "files"
@@ -612,8 +589,6 @@ if (typeof window !== "undefined") {
   let linkedMentionsHeightRatioTimer: ReturnType<typeof setTimeout> | undefined;
 
   let lastNotesSidebarVisible = useTreeStore.getState().notesSidebarVisible;
-  let lastPanelTags = useTreeStore.getState().panelSelector.tags;
-  let lastPanelBacklinks = useTreeStore.getState().panelSelector.backlinks;
   let lastSidebarPanel = useTreeStore.getState().sidebarPanel;
 
   let lastRecentlyOpenedNoteIds = useTreeStore.getState().recentlyOpenedNoteIds;
@@ -780,22 +755,6 @@ if (typeof window !== "undefined") {
       lastNotesSidebarVisible = state.notesSidebarVisible;
       try {
         window.localStorage.setItem(LS_KEY_SIDEBAR_VISIBLE, String(state.notesSidebarVisible));
-      } catch {
-        // Quota / private mode — best-effort.
-      }
-    }
-    if (state.panelSelector.tags !== lastPanelTags) {
-      lastPanelTags = state.panelSelector.tags;
-      try {
-        window.localStorage.setItem(LS_KEY_PANEL_TAGS, String(state.panelSelector.tags));
-      } catch {
-        // Quota / private mode — best-effort.
-      }
-    }
-    if (state.panelSelector.backlinks !== lastPanelBacklinks) {
-      lastPanelBacklinks = state.panelSelector.backlinks;
-      try {
-        window.localStorage.setItem(LS_KEY_PANEL_BACKLINKS, String(state.panelSelector.backlinks));
       } catch {
         // Quota / private mode — best-effort.
       }

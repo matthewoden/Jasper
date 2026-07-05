@@ -785,7 +785,6 @@ describe("<App /> — two-row grid + chrome mounts", () => {
       pendingRename: null,
       draftCreate: null,
       notesSidebarVisible: true,
-      panelSelector: { tags: true, backlinks: true },
       backlinksRailExpanded: false,
     });
     getAdminStatusMock.mockResolvedValue({

@@ -1,7 +1,7 @@
 /**
  * RightRail tests — Phase 20 three-section shell (Outline → Linked
  * mentions → Tags), each behind an independent SectionHeader collapse
- * boolean; no panelSelector gating remains.
+ * boolean; no legacy panel-selector gating remains.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -199,9 +199,9 @@ describe("RightRail — three-section shell", () => {
     expect(mockSetOutlinePanelExpanded).toHaveBeenCalledWith(false);
   });
 
-  it("no panelSelector references remain — RightRail renders without a panelSelector prop/state", () => {
-    // Compile-time: RightRail no longer imports panelSelector; runtime smoke check
-    // that rendering succeeds without any panelSelector-shaped mock state.
+  it("no legacy panel-selector references remain — RightRail renders without that prop/state", () => {
+    // Compile-time: RightRail no longer imports the legacy panel-selector slice;
+    // runtime smoke check that rendering succeeds without any such mock state.
     expect(() => render(<RightRail activeNoteId={null} />)).not.toThrow();
   });
 
