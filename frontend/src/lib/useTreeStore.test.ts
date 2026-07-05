@@ -20,6 +20,8 @@ import {
 import {
   LS_KEY_ACTIVE_NOTE,
   LS_KEY_EXPANDED,
+  LS_KEY_LINKED_MENTIONS_HEIGHT_RATIO,
+  LS_KEY_OUTLINE_HEIGHT_RATIO,
   LS_KEY_SIDEBAR_WIDTH,
   pruneStaleTreeState,
   SIDEBAR_WIDTH_DEFAULT,
@@ -597,13 +599,13 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     vi.resetModules();
   });
 
-  it("S1: fresh store returns tagBrowserExpanded=false, activeTagFilter=null, backlinksRailExpanded=false, backlinksRailWidth=280", async () => {
+  it("S1: fresh store returns tagBrowserExpanded=false, activeTagFilter=null, backlinksRailExpanded=true (D-06 default-visible), backlinksRailWidth=280", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
     const s = mod.useTreeStore.getState();
     expect(s.tagBrowserExpanded).toBe(false);
     expect(s.activeTagFilter).toBeNull();
-    expect(s.backlinksRailExpanded).toBe(false);
+    expect(s.backlinksRailExpanded).toBe(true);
     expect(s.backlinksRailWidth).toBe(280);
   });
 
@@ -881,13 +883,13 @@ describe("Phase 6.5 — tagsPanelHeightRatio + rightRailTagsPanelExpanded", () =
     expect(mod.LS_KEY_TAGS_PANEL_EXPANDED).toBe("jasper.rail.tags.expanded");
   });
 
-  it("T9: existing Phase 6 slices work alongside Phase 6.5 additions (regression guard)", async () => {
+  it("T9: existing Phase 6 slices work alongside Phase 6.5 additions (regression guard); backlinksRailExpanded now defaults true (D-06, Phase 20)", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
     const s = mod.useTreeStore.getState();
     expect(s.tagBrowserExpanded).toBe(false);
     expect(s.activeTagFilter).toBeNull();
-    expect(s.backlinksRailExpanded).toBe(false);
+    expect(s.backlinksRailExpanded).toBe(true);
     expect(s.backlinksRailWidth).toBe(280);
     expect(s.tagsPanelHeightRatio).toBe(0.5);
     expect(s.rightRailTagsPanelExpanded).toBe(true);
@@ -997,13 +999,13 @@ describe("Phase 6.6 chrome slices", () => {
     expect(mod.useTreeStore.getState().panelSelector.tags).toBe(true);
   });
 
-  it("C6: ADD-ONLY — Phase 6.5 slices (tagsPanelHeightRatio, rightRailTagsPanelExpanded, backlinksRailExpanded) unchanged", async () => {
+  it("C6: ADD-ONLY — Phase 6.5 slices (tagsPanelHeightRatio, rightRailTagsPanelExpanded) unchanged; backlinksRailExpanded now defaults true (D-06, Phase 20)", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
     const s = mod.useTreeStore.getState();
     expect(s.tagsPanelHeightRatio).toBe(0.5);
     expect(s.rightRailTagsPanelExpanded).toBe(true);
-    expect(s.backlinksRailExpanded).toBe(false);
+    expect(s.backlinksRailExpanded).toBe(true);
   });
 
   it("C7: LS key constants have expected literal string values", async () => {
@@ -1272,5 +1274,157 @@ describe("Phase 19 Plan 04 — sidebarPanel persisted slice (LSIDE-02)", () => {
     } finally {
       setItemSpy.mockRestore();
     }
+  });
+});
+
+
+describe("Phase 20 Plan 03 — unified right-rail collapse booleans + split ratios (RSIDE-01/02, D-06)", () => {
+  afterEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+  });
+
+  it("RR-1: fresh install (no localStorage key) — backlinksRailExpanded defaults true", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().backlinksRailExpanded).toBe(true);
+  });
+
+  it("RR-2: stored 'false' for backlinksRailExpanded keeps the rail hidden", async () => {
+    localStorage.setItem("jasper.backlinks.rail.expanded", "false");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().backlinksRailExpanded).toBe(false);
+  });
+
+  it("RR-3: fresh install — outlinePanelExpanded, linkedMentionsPanelExpanded, tagsPanelExpanded all default true", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    const s = mod.useTreeStore.getState();
+    expect(s.outlinePanelExpanded).toBe(true);
+    expect(s.linkedMentionsPanelExpanded).toBe(true);
+    expect(s.tagsPanelExpanded).toBe(true);
+  });
+
+  it("RR-4: outlinePanelExpanded hydrates false from stored 'false'", async () => {
+    localStorage.setItem(
+      "jasper.rightrail.outline.expanded",
+      "false",
+    );
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().outlinePanelExpanded).toBe(false);
+  });
+
+  it("RR-5: linkedMentionsPanelExpanded hydrates false from stored 'false'", async () => {
+    localStorage.setItem(
+      "jasper.rightrail.linkedmentions.expanded",
+      "false",
+    );
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().linkedMentionsPanelExpanded).toBe(false);
+  });
+
+  it("RR-6: tagsPanelExpanded hydrates false from stored 'false'", async () => {
+    localStorage.setItem(
+      "jasper.rightrail.tags.expanded",
+      "false",
+    );
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().tagsPanelExpanded).toBe(false);
+  });
+
+  it("RR-7: setOutlinePanelExpanded/setLinkedMentionsPanelExpanded/setTagsPanelExpanded update state and write immediately (no debounce)", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      mod.useTreeStore.getState().setOutlinePanelExpanded(false);
+      expect(mod.useTreeStore.getState().outlinePanelExpanded).toBe(false);
+      mod.useTreeStore.getState().setLinkedMentionsPanelExpanded(false);
+      expect(mod.useTreeStore.getState().linkedMentionsPanelExpanded).toBe(false);
+      mod.useTreeStore.getState().setTagsPanelExpanded(false);
+      expect(mod.useTreeStore.getState().tagsPanelExpanded).toBe(false);
+
+      const writeKeys = setItemSpy.mock.calls.map((c) => c[0]);
+      expect(writeKeys).toContain(mod.LS_KEY_OUTLINE_PANEL_EXPANDED);
+      expect(writeKeys).toContain(mod.LS_KEY_LINKED_MENTIONS_PANEL_EXPANDED);
+      expect(writeKeys).toContain(mod.LS_KEY_RIGHT_RAIL_TAGS_PANEL_EXPANDED);
+    } finally {
+      setItemSpy.mockRestore();
+    }
+  });
+
+  it("RR-8: outlineHeightRatio + linkedMentionsHeightRatio default to 0.34 and clamp within [0.2, 0.8]", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    const s = mod.useTreeStore.getState();
+    expect(s.outlineHeightRatio).toBe(0.34);
+    expect(s.linkedMentionsHeightRatio).toBe(0.34);
+
+    mod.useTreeStore.getState().setOutlineHeightRatio(0.05);
+    expect(mod.useTreeStore.getState().outlineHeightRatio).toBe(mod.RIGHT_RAIL_RATIO_MIN);
+    mod.useTreeStore.getState().setOutlineHeightRatio(0.95);
+    expect(mod.useTreeStore.getState().outlineHeightRatio).toBe(mod.RIGHT_RAIL_RATIO_MAX);
+
+    mod.useTreeStore.getState().setLinkedMentionsHeightRatio(0.05);
+    expect(mod.useTreeStore.getState().linkedMentionsHeightRatio).toBe(mod.RIGHT_RAIL_RATIO_MIN);
+    mod.useTreeStore.getState().setLinkedMentionsHeightRatio(0.95);
+    expect(mod.useTreeStore.getState().linkedMentionsHeightRatio).toBe(mod.RIGHT_RAIL_RATIO_MAX);
+  });
+
+  it("RR-9: setOutlineHeightRatio/setLinkedMentionsHeightRatio persist to LS after 250ms debounce", () => {
+    vi.useFakeTimers();
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      act(() => {
+        useTreeStore.getState().setOutlineHeightRatio(0.4);
+        useTreeStore.getState().setLinkedMentionsHeightRatio(0.45);
+      });
+      const writesBeforeFlush = setItemSpy.mock.calls.filter(
+        (c) => c[0] === LS_KEY_OUTLINE_HEIGHT_RATIO || c[0] === LS_KEY_LINKED_MENTIONS_HEIGHT_RATIO,
+      ).length;
+      expect(writesBeforeFlush).toBe(0);
+      act(() => {
+        vi.advanceTimersByTime(260);
+      });
+      const outlineWrites = setItemSpy.mock.calls.filter(
+        (c) => c[0] === LS_KEY_OUTLINE_HEIGHT_RATIO,
+      );
+      const linkedMentionsWrites = setItemSpy.mock.calls.filter(
+        (c) => c[0] === LS_KEY_LINKED_MENTIONS_HEIGHT_RATIO,
+      );
+      expect(outlineWrites.length).toBeGreaterThan(0);
+      expect(outlineWrites[outlineWrites.length - 1][1]).toBe("0.4");
+      expect(linkedMentionsWrites.length).toBeGreaterThan(0);
+      expect(linkedMentionsWrites[linkedMentionsWrites.length - 1][1]).toBe("0.45");
+    } finally {
+      setItemSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("RR-10: pre-seeded outlineHeightRatio hydrates on module load; out-of-range falls back to default", async () => {
+    localStorage.setItem(LS_KEY_OUTLINE_HEIGHT_RATIO, "0.6");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().outlineHeightRatio).toBe(0.6);
+
+    localStorage.clear();
+    localStorage.setItem(LS_KEY_OUTLINE_HEIGHT_RATIO, "1.5");
+    vi.resetModules();
+    const mod2 = await import("./useTreeStore");
+    expect(mod2.useTreeStore.getState().outlineHeightRatio).toBe(0.34);
+  });
+
+  it("RR-11: panelSelector slice is unaffected — still present with default {tags:true, backlinks:true}", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().panelSelector).toEqual({
+      tags: true,
+      backlinks: true,
+    });
   });
 });
