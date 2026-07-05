@@ -40,16 +40,17 @@ const ROW_A = {
   sourceId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
   sourceTitle: "Note A",
   sourcePath: "notes/a.md",
-  excerpt: '<span>See <mark class="backlink-ref">[[Target]]</mark> here.</span>',
-  count: 1,
+  excerpts: ['<span>See <mark class="backlink-ref">[[Target]]</mark> here.</span>'],
 };
 
 const ROW_B = {
   sourceId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
   sourceTitle: "Note B",
   sourcePath: "notes/b.md",
-  excerpt: '<span><mark class="backlink-ref">[[Target]]</mark> used twice.</span>',
-  count: 2,
+  excerpts: [
+    '<span><mark class="backlink-ref">[[Target]]</mark> first mention.</span>',
+    '<span><mark class="backlink-ref">[[Target]]</mark> second mention.</span>',
+  ],
 };
 
 beforeEach(() => {
@@ -149,8 +150,8 @@ describe("BR5: clicking source title sets active note", () => {
 });
 
 
-describe("BR6: count badge appears when count > 1", () => {
-  it("renders count badge for ROW_B which has count=2", () => {
+describe("BR6: multiple excerpts render as stacked lines (D-16 per-mention excerpts)", () => {
+  it("renders one .backlinks-excerpt element per excerpt for a multi-mention row", () => {
     mockUseBacklinks.mockReturnValue({
       backlinks: [ROW_B],
       loading: false,
@@ -159,10 +160,13 @@ describe("BR6: count badge appears when count > 1", () => {
     });
 
     render(<BacklinksRail noteId="target-id" />);
-    expect(screen.getByText(/·2/)).toBeInTheDocument();
+    const excerptEls = document.querySelectorAll(".backlinks-excerpt");
+    expect(excerptEls).toHaveLength(2);
+    expect(excerptEls[0].innerHTML).toContain("first mention");
+    expect(excerptEls[1].innerHTML).toContain("second mention");
   });
 
-  it("does NOT render count badge for ROW_A which has count=1", () => {
+  it("renders exactly one .backlinks-excerpt element for a single-mention row", () => {
     mockUseBacklinks.mockReturnValue({
       backlinks: [ROW_A],
       loading: false,
@@ -171,13 +175,13 @@ describe("BR6: count badge appears when count > 1", () => {
     });
 
     render(<BacklinksRail noteId="target-id" />);
-    expect(screen.queryByText(/·1/)).toBeNull();
+    expect(document.querySelectorAll(".backlinks-excerpt")).toHaveLength(1);
   });
 });
 
 
-describe("BR7: sanitizeHtml called for every row excerpt", () => {
-  it("calls sanitizeHtml once per row", () => {
+describe("BR7: sanitizeHtml called for every excerpt, individually (never joined)", () => {
+  it("calls sanitizeHtml once per excerpt across all rows", () => {
     mockUseBacklinks.mockReturnValue({
       backlinks: [ROW_A, ROW_B],
       loading: false,
@@ -187,9 +191,10 @@ describe("BR7: sanitizeHtml called for every row excerpt", () => {
 
     render(<BacklinksRail noteId="target-id" />);
 
-    expect(mockSanitizeHtml).toHaveBeenCalledTimes(2);
-    expect(mockSanitizeHtml).toHaveBeenCalledWith(ROW_A.excerpt);
-    expect(mockSanitizeHtml).toHaveBeenCalledWith(ROW_B.excerpt);
+    expect(mockSanitizeHtml).toHaveBeenCalledTimes(3);
+    expect(mockSanitizeHtml).toHaveBeenCalledWith(ROW_A.excerpts[0]);
+    expect(mockSanitizeHtml).toHaveBeenCalledWith(ROW_B.excerpts[0]);
+    expect(mockSanitizeHtml).toHaveBeenCalledWith(ROW_B.excerpts[1]);
   });
 });
 

@@ -12,12 +12,12 @@ export interface BacklinkRow {
   sourceTitle: string;
   sourcePath: string;
   /**
-   * Server-built HTML excerpt; MUST be passed through sanitize.ts before
-   * dangerouslySetInnerHTML. BacklinksRail handles this.
+   * One server-built HTML excerpt per matching `[[...]]` mention line, in
+   * document order. EACH element MUST be passed through sanitize.ts
+   * individually before dangerouslySetInnerHTML — never join the array
+   * before sanitizing. BacklinksRail handles this per-element.
    */
-  excerpt: string;
-  /** Number of distinct [[...]] references in the source note. */
-  count: number;
+  excerpts: string[];
 }
 
 type RawBacklinkRow = components["schemas"]["BacklinkRow"];
@@ -45,7 +45,6 @@ export async function getNoteBacklinks(noteId: string): Promise<BacklinkRow[]> {
     sourceId: r.source_id,
     sourceTitle: r.source_title,
     sourcePath: r.source_path,
-    excerpt: r.excerpt,
-    count: r.count ?? 1,
+    excerpts: r.excerpts,
   }));
 }

@@ -158,27 +158,19 @@ export function BacklinksRail({ noteId }: Props) {
                     }}
                   >
                     {row.sourceTitle}
-                    {row.count > 1 && (
-                      <span
-                        style={{
-                          color: "var(--color-muted)",
-                          fontWeight: 400,
-                          marginLeft: 4,
-                        }}
-                      >
-                        &middot;{row.count}
-                      </span>
-                    )}
                   </button>
-                  <div
-                    className="backlinks-excerpt"
-                    style={{
-                      fontSize: 13,
-                      color: "var(--color-muted)",
-                      lineHeight: 1.5,
-                    }}
-                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(row.excerpt) }}
-                  />
+                  {row.excerpts.map((excerpt, i) => (
+                    <div
+                      key={i}
+                      className="backlinks-excerpt"
+                      style={{
+                        fontSize: 13,
+                        color: "var(--color-muted)",
+                        lineHeight: 1.5,
+                      }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(excerpt) }}
+                    />
+                  ))}
                 </li>
               ))}
             </ul>
