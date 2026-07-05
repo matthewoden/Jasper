@@ -706,9 +706,11 @@ func TestSearchFTS_MultiTagAND(t *testing.T) {
 }
 
 // TestSearchFTS_TagOnly — D-24: an empty (or whitespace-only) free-text query
-// with tags present must run a tag-only lookup instead of failing on
-// `notes_fts MATCH ”`. Empty q with no tags must still return zero hits
-// with no error (existing information-disclosure guard).
+// with tags present must run a tag-only lookup instead of failing on a
+// `notes_fts MATCH` against an empty match string. (Spelled out in prose
+// because gofmt's doc-comment formatting rewrites a two-single-quote pair
+// into a Unicode right double quote.) Empty q with no tags must still return
+// zero hits with no error (existing information-disclosure guard).
 func TestSearchFTS_TagOnly(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
