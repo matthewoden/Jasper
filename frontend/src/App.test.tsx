@@ -1163,7 +1163,7 @@ describe("cold Cmd+P shows all palette commands", () => {
     useTreeStore.setState({ paletteOpen: false, paletteMode: "notes" });
   });
 
-  it("cold Cmd+P shows all 10 commands", async () => {
+  it("cold Cmd+P shows all 11 commands", async () => {
     render(<AppShell />);
 
     act(() => {
@@ -1174,7 +1174,7 @@ describe("cold Cmd+P shows all palette commands", () => {
     expect(palette).toBeInTheDocument();
 
     const commandLabels = COMMAND_PALETTE_ENTRIES.map((e) => e.label);
-    expect(commandLabels).toHaveLength(10);
+    expect(commandLabels).toHaveLength(11);
     for (const label of commandLabels) {
       expect(within(palette).getByText(label)).toBeInTheDocument();
     }

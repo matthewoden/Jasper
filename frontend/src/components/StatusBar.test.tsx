@@ -231,20 +231,18 @@ describe("StatusBar — Phase 22 Plan 03 zen toggle button (ZEN-01)", () => {
     expect(useTreeStore.getState().zen).toBe(true);
   });
 
-  it("ZEN-SB-3: the zen icon uses the accent color when zen is active", () => {
+  it("ZEN-SB-3: the zen button uses the accent color when zen is active (icon inherits via currentColor)", () => {
     useTreeStore.setState({ zen: true });
     render(<StatusBar />);
     const btn = screen.getByLabelText("Toggle zen mode");
-    const icon = btn.querySelector("svg");
-    expect(icon).not.toBeNull();
-    expect(icon?.getAttribute("color")).toBe("var(--color-accent)");
+    expect(btn.querySelector("svg")).not.toBeNull();
+    expect((btn as HTMLButtonElement).style.color).toBe("var(--color-accent)");
   });
 
-  it("ZEN-SB-4: the zen icon uses the muted color when zen is inactive", () => {
+  it("ZEN-SB-4: the zen button uses the muted color when zen is inactive", () => {
     render(<StatusBar />);
     const btn = screen.getByLabelText("Toggle zen mode");
-    const icon = btn.querySelector("svg");
-    expect(icon).not.toBeNull();
-    expect(icon?.getAttribute("color")).toBe("var(--color-muted)");
+    expect(btn.querySelector("svg")).not.toBeNull();
+    expect((btn as HTMLButtonElement).style.color).toBe("var(--color-muted)");
   });
 });

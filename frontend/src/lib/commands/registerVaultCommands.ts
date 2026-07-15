@@ -12,3 +12,8 @@ import { useTreeStore } from "../useTreeStore";
 export function switchVaultCommand(): void {
   useTreeStore.getState().setVaultPickerOpen(true);
 }
+
+/** run() target for the "Toggle Zen Mode" palette command (ZEN-01, D-05). */
+export function toggleZenCommand(): void {
+  useTreeStore.getState().toggleZen();
+}

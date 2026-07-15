@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect } from "react";
 import type { CSSProperties } from "react";
+import { Focus } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useVaultPicker } from "../lib/useVaultPicker";
 import { postAdminReindex } from "../lib/adminApi";
@@ -27,8 +28,25 @@ const statusBarStyle: CSSProperties = {
   flexShrink: 0,
 };
 
+// Cloned from SettingsMenu's buttonBase (24x24 / padding 4, the StatusBar
+// icon-button tier — NOT the 32px RibbonButton tier).
+const zenButtonBase: CSSProperties = {
+  width: 24,
+  height: 24,
+  padding: 4,
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 4,
+};
+
 export function StatusBar() {
   const saveState = useTreeStore((s) => s.saveState);
+  const zen = useTreeStore((s) => s.zen);
+  const toggleZen = useTreeStore((s) => s.toggleZen);
 
   const { current, open, refresh } = useVaultPicker();
   const setRefreshVaultCurrent = useTreeStore((s) => s.setRefreshVaultCurrent);
@@ -75,6 +93,19 @@ export function StatusBar() {
       )}
       <div style={{ flex: 1 }} data-testid="status-bar-spacer" />
       <SaveIndicator state={saveState} onClick={handleRefresh} />
+      <button
+        type="button"
+        aria-label="Toggle zen mode"
+        title="Zen mode (⌘.)"
+        data-testid="zen-toggle-button"
+        style={{
+          ...zenButtonBase,
+          color: zen ? "var(--color-accent)" : "var(--color-muted)",
+        }}
+        onClick={() => toggleZen()}
+      >
+        <Focus size={16} aria-hidden="true" />
+      </button>
       <SettingsMenu />
       {/* VaultPicker in switch mode — persistent modal */}
       <VaultPicker mode="switch" />

@@ -14,7 +14,10 @@ import {
 } from "react";
 import { vaultApi } from "./lib/vaultApi";
 import { VaultPicker } from "./components/VaultPicker";
-import { switchVaultCommand } from "./lib/commands/registerVaultCommands";
+import {
+  switchVaultCommand,
+  toggleZenCommand,
+} from "./lib/commands/registerVaultCommands";
 
 import { RightRail } from "./components/RightRail";
 import { CommandMenu } from "./components/CommandMenu";
@@ -658,6 +661,11 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         setPaletteOpen(false);
         switchVaultCommand();
       },
+
+      onToggleZen: () => {
+        setPaletteOpen(false);
+        toggleZenCommand();
+      },
     }),
     [
       openToday,
@@ -667,7 +675,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       activeNoteId,
       reveal,
       tree,
-      // switchVaultCommand is a stable module-level fn; included to satisfy exhaustive-deps.
+      // switchVaultCommand/toggleZenCommand are stable module-level fns; included to satisfy exhaustive-deps.
     ],
   );
 

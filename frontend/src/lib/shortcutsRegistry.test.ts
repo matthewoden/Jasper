@@ -7,7 +7,7 @@ import {
 } from "./shortcutsRegistry";
 
 describe("shortcutsRegistry", () => {
-  it("registry has all 10 locked Cmd+P palette entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault)", () => {
+  it("registry has all 11 locked Cmd+P palette entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode)", () => {
     const labels = COMMAND_PALETTE_ENTRIES.map((s) => s.label);
     expect(labels).toContain("New note");
     expect(labels).toContain("Save");
@@ -20,7 +20,8 @@ describe("shortcutsRegistry", () => {
     expect(labels).toContain("Show keyboard shortcuts");
     expect(labels).toContain("Show current note in file manager");
     expect(labels).toContain("Switch vault…");
-    expect(COMMAND_PALETTE_ENTRIES.length).toBe(10);
+    expect(labels).toContain("Toggle Zen Mode");
+    expect(COMMAND_PALETTE_ENTRIES.length).toBe(11);
   });
 
   it("cheat-sheet contains CM6 built-in editor entries", () => {
@@ -72,8 +73,8 @@ describe("Plan 07-27 — Cmd+F removal (UAT-2 N6)", () => {
     expect(found).toBeUndefined();
   });
 
-  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 10 entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Find still removed)", () => {
-    expect(COMMAND_PALETTE_ENTRIES.length).toBe(10);
+  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 11 entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode; Find still removed)", () => {
+    expect(COMMAND_PALETTE_ENTRIES.length).toBe(11);
   });
 });
 
