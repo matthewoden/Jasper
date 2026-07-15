@@ -64,6 +64,36 @@ export interface CommandMenuProps {
 }
 
 
+// Kind badge — copied verbatim from the autocomplete detail-badge treatment
+// (theme.css:300-319) per the UI-SPEC contract; the padding: "0 6px" inset is
+// an owner-approved component-internal exception to the 4px grid (see
+// 22-UI-SPEC.md "Spacing Scale" + memory pill-inset-grid-exception).
+const kindBadgeBaseStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minWidth: 16,
+  height: 16,
+  padding: "0 6px",
+  borderRadius: 8,
+  fontSize: 11,
+  fontWeight: 600,
+  lineHeight: "16px",
+  flexShrink: 0,
+};
+
+const noteKindBadgeStyle: React.CSSProperties = {
+  ...kindBadgeBaseStyle,
+  background: "color-mix(in srgb, var(--color-fg) 10%, transparent)",
+  color: "var(--color-muted)",
+};
+
+const cmdKindBadgeStyle: React.CSSProperties = {
+  ...kindBadgeBaseStyle,
+  background: "color-mix(in srgb, var(--color-accent) 12%, transparent)",
+  color: "var(--color-accent)",
+};
+
 function nextSelectable(items: Item[], from: number, direction: 1 | -1): number {
   let i = from + direction;
   while (i >= 0 && i < items.length) {
@@ -367,15 +397,20 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
             top: "12vh",
             left: "50%",
             transform: "translateX(-50%)",
-            width: 600,
+            width: 620,
             maxWidth: "calc(100vw - 48px)",
-            background: "var(--color-surface)",
+            background: "var(--color-border-inner)",
             border: "1px solid var(--color-border)",
             borderRadius: 8,
             overflow: "hidden",
+            animation: "jasper-cmm-popIn 140ms ease-out",
           }}
           onKeyDown={onKeyDown}
         >
+          {/* Scoped popIn entrance — subtle scale+opacity, no layout jank. */}
+          <style>
+            {`@keyframes jasper-cmm-popIn { from { opacity: 0; transform: translateX(-50%) scale(0.98); } to { opacity: 1; transform: translateX(-50%) scale(1); } }`}
+          </style>
           {/* Input row — 44px height, Search/Command icon, transparent input */}
           <div
             style={{
@@ -429,6 +464,8 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                 />
               </>
             )}
+            {/* Esc hint — right-aligned, present in every mode (D-04). */}
+            <KeyboardChip>Esc</KeyboardChip>
           </div>
 
           {/* Result list — max-height 50vh */}
@@ -573,6 +610,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                           >
                             {item.path}
                           </span>
+                          <span style={noteKindBadgeStyle}>Note</span>
                         </>
                       ) : (
                         <>
@@ -580,6 +618,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                           {item.shortcut !== undefined && !cmdDisabled && (
                             <KeyboardChip>{item.shortcut}</KeyboardChip>
                           )}
+                          <span style={cmdKindBadgeStyle}>Cmd</span>
                         </>
                       )}
                     </div>
