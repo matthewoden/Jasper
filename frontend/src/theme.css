@@ -842,3 +842,12 @@ body {
   font-family: var(--font-mono);
 }
 
+/* ── Phase 22 Plan 03 — zen reading-column override (ZEN-01, D-09) ───────
+   Overrides themeBridge.ts's .cm-content (760px / 44px 56px 200px) via
+   attribute+class specificity, no !important. Absent when zen is off, so
+   the 760px default applies unchanged. */
+[data-zen="true"] .cm-content {
+  max-width: 700px;
+  padding: 64px 32px;
+}
+

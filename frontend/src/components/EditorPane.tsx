@@ -713,9 +713,9 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           style={{
             flex: 1,
             width: "100%",
-            maxWidth: 760,
+            maxWidth: zen ? 700 : 760,
             margin: "0 auto",
-            padding: "44px 56px 200px",
+            padding: zen ? "64px 32px" : "44px 56px 200px",
             boxSizing: "border-box",
           }}
         >
@@ -972,12 +972,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
         className="editor-title-wrapper"
         style={{
           width: "100%",
-          maxWidth: 760,
+          maxWidth: zen ? 700 : 760,
           margin: "0 auto",
           // paddingBottom keeps the title's 2px focus ring clear of the editor
           // shell below (which starts flush at the wrapper's edge and would
           // otherwise paint over the ring's bottom).
-          padding: "0 56px 6px",
+          padding: zen ? "0 32px 6px" : "0 56px 6px",
           boxSizing: "border-box",
         }}
       >
