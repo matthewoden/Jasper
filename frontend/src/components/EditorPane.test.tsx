@@ -2960,6 +2960,43 @@ describe("<EditorPane /> breadcrumb (TAB-18)", () => {
 });
 
 
+describe("<EditorPane /> inline title fallback (READ-01 / Obsidian filename title)", () => {
+    it("shows the H1 as the title when the note has one", async () => {
+        getNoteMock.mockResolvedValue(okGet("# My Heading\n\nbody"));
+        getTreeMock.mockResolvedValue(okTree("my heading.md"));
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const title = await screen.findByTestId("editor-title-element");
+        await waitFor(() => expect(title.textContent).toBe("My Heading"));
+    });
+
+    it("falls back to the filename (not 'Untitled') when the note has no H1", async () => {
+        getNoteMock.mockResolvedValue(okGet("## Reading surface\n\nno level-one heading here"));
+        getTreeMock.mockResolvedValue(okTree("reading surface demo.md"));
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const title = await screen.findByTestId("editor-title-element");
+        await waitFor(() => expect(title.textContent).toBe("reading surface demo"));
+        expect(title.textContent).not.toBe("Untitled");
+    });
+
+    it("falls back to the filename for a foldered no-H1 note (basename only, no folder path)", async () => {
+        getNoteMock.mockResolvedValue(okGet("plain body, no heading"));
+        getTreeMock.mockResolvedValue(okTree("docs/api/route notes.md"));
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const title = await screen.findByTestId("editor-title-element");
+        await waitFor(() => expect(title.textContent).toBe("route notes"));
+    });
+});
+
+
 describe("<EditorPane /> — WR-03 global saveState ownership", () => {
     it("WR-03: a hidden pane's background save does NOT touch the global saveState; becoming visible re-syncs it", async () => {
         getNoteMock.mockResolvedValue(okGet("background content"));

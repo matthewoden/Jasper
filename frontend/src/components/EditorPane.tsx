@@ -736,6 +736,15 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   // segment reveals it in the tree; clicking the title segment pulses the note row.
   const notePath = findNotePathInTree(tree, noteId);
 
+  // Inline title (D-01/D-02): the H1 IS the title. When a note has no H1
+  // (API/MCP-created, imported, or not-yet-headed), fall back to the note's
+  // filename so a named file never reads as "Untitled" — matches Obsidian,
+  // where the inline title is the filename. Only a genuinely nameless note
+  // (no H1, no path) shows the "Untitled" placeholder.
+  const titleH1 = extractH1FromContent(content);
+  const titleFallback =
+    titleH1 ?? (notePath ? (breadcrumbSegments(notePath).at(-1)?.label ?? null) : null);
+
   return (
     <section
       className="flex flex-col h-full bg-bg"
@@ -969,7 +978,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
         }}
       >
         <TitleElement
-          title={extractH1FromContent(content)}
+          title={titleFallback}
           onTitleChange={(next) => editorRef.current?.setH1(next)}
           onFocusHandoff={() => editorRef.current?.focus()}
         />
