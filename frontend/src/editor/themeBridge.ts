@@ -105,12 +105,27 @@ export const jasperEditorTheme = EditorView.theme(
       borderLeft: "3px solid var(--color-muted)",
       paddingLeft: "12px",
     },
-    ".cm-heading-1": { fontSize: "28px", fontWeight: "600", lineHeight: "1.3" },
-    ".cm-heading-2": { fontSize: "22px", fontWeight: "600", lineHeight: "1.3" },
-    ".cm-heading-3": { fontSize: "18px", fontWeight: "600", lineHeight: "1.4" },
-    ".cm-heading-4": { fontSize: "16px", fontWeight: "600", lineHeight: "1.4" },
-    ".cm-heading-5": { fontSize: "15px", fontWeight: "600", lineHeight: "1.4" },
-    ".cm-heading-6": { fontSize: "14px", fontWeight: "600", lineHeight: "1.4" },
+    // READ-04: `---` HRWidget (livePreviewPlugin.ts) renders a bare <hr
+    // class="cm-hr">; without this rule it falls back to the browser UA
+    // line. Token-styled rule + lg (24px) vertical spacing step.
+    ".cm-hr": {
+      border: "none",
+      borderTop: "1px solid var(--color-border)",
+      margin: "24px 0",
+    },
+    // D-18 heading scale: 27/21/17.5/15.5/14/13px, weight 700 (retires the
+    // prior 600 mid-weight). H1 gains a bottom-border underline (READ-04).
+    ".cm-heading-1": {
+      fontSize: "27px",
+      fontWeight: "700",
+      lineHeight: "1.3",
+      borderBottom: "1px solid var(--color-border)",
+    },
+    ".cm-heading-2": { fontSize: "21px", fontWeight: "700", lineHeight: "1.3" },
+    ".cm-heading-3": { fontSize: "17.5px", fontWeight: "700", lineHeight: "1.4" },
+    ".cm-heading-4": { fontSize: "15.5px", fontWeight: "700", lineHeight: "1.4" },
+    ".cm-heading-5": { fontSize: "14px", fontWeight: "700", lineHeight: "1.4" },
+    ".cm-heading-6": { fontSize: "13px", fontWeight: "700", lineHeight: "1.4" },
     ".cm-strong": { fontWeight: "700" },
     ".cm-emphasis": { fontStyle: "italic" },
     ".cm-highlight": {
@@ -174,12 +189,13 @@ export const jasperEditorTheme = EditorView.theme(
       textUnderlineOffset: "2px",
       cursor: "text",
     },
+    // D-13: broken/unresolved wiki-links render with a solid reddish
+    // underline (not dashed). CSS-only — click-to-create behavior in
+    // wikilinkPlugin.ts/linkClickHandler.ts is untouched.
     ".cm-wiki-link-pending": {
-      color: "color-mix(in srgb, var(--color-fg) 60%, transparent)",
+      color: "var(--color-destructive)",
       textDecoration: "underline",
-      textDecorationStyle: "dashed",
-      textUnderlineOffset: "4px",
-      textDecorationColor: "var(--color-muted)",
+      textUnderlineOffset: "2px",
       cursor: "text",
     },
     "&[data-cmd-held] .cm-wiki-link": { cursor: "pointer" },
