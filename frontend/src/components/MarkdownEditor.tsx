@@ -22,6 +22,7 @@ import { yamlFrontmatter } from "@codemirror/lang-yaml";
 
 import { jasperEditorTheme, jasperSyntaxHighlighting } from "../editor/themeBridge";
 import { livePreviewPlugin } from "../editor/livePreviewPlugin";
+import { Highlight } from "../editor/highlightExtension";
 import {
   linkClickHandler,
   setWikilinkHandlerCallbacks,
@@ -272,7 +273,9 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             // from markdown()) because it is placed EARLIER in the extensions array.
             // Handles nested-empty-item de-indent; falls through to markdown() for all other Enter cases.
             Prec.high(keymap.of([listEnterKeymap])),
-            yamlFrontmatter({ content: markdown({ codeLanguages, base: markdownLanguage }) }),
+            yamlFrontmatter({
+              content: markdown({ codeLanguages, base: markdownLanguage, extensions: [Highlight] }),
+            }),
             jasperEditorTheme,
             jasperSyntaxHighlighting,
             frontmatterHideExtension, // hide frontmatter by default
