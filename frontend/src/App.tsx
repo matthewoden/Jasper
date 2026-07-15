@@ -47,7 +47,9 @@ import { useTreeMutations } from "./lib/useTreeMutations";
 import {
   handleAppAltT,
   handleAppCmdB,
+  handleAppCmdDot,
   handleAppCmdI,
+  handleAppCmdK,
   handleAppCmdO,
   handleAppCmdP,
   handleAppCmdShiftD,
@@ -333,6 +335,8 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   useEffect(() => {
     window.addEventListener("keydown", handleAppCmdP, true);
     window.addEventListener("keydown", handleAppCmdO, true);
+    window.addEventListener("keydown", handleAppCmdK, true);
+    window.addEventListener("keydown", handleAppCmdDot, true);
     window.addEventListener("keydown", handleAppCmdShiftD, true);
     window.addEventListener("keydown", handleAppCmdSlash, true);
     window.addEventListener("keydown", handleAppCmdB, true);
@@ -342,6 +346,8 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     return () => {
       window.removeEventListener("keydown", handleAppCmdP, true);
       window.removeEventListener("keydown", handleAppCmdO, true);
+      window.removeEventListener("keydown", handleAppCmdK, true);
+      window.removeEventListener("keydown", handleAppCmdDot, true);
       window.removeEventListener("keydown", handleAppCmdShiftD, true);
       window.removeEventListener("keydown", handleAppCmdSlash, true);
       window.removeEventListener("keydown", handleAppCmdB, true);

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   handleAppAltT,
+  handleAppCmdDot,
+  handleAppCmdK,
   handleAppCmdShiftF,
   handleAppPanelShortcuts,
   subscribePhase7,
@@ -253,5 +255,62 @@ describe("handleAppPanelShortcuts (Phase 20 D-01 re-point onto per-section colla
       new KeyboardEvent("keydown", { key: "t", code: "KeyT", altKey: true }),
     );
     expect(useTreeStore.getState().tagsPanelExpanded).toBe(true);
+  });
+});
+
+describe("handleAppCmdK (Phase 22 Plan 01 — unified palette)", () => {
+  beforeEach(() => {
+    useTreeStore.setState({ paletteOpen: false, paletteMode: "notes" });
+  });
+
+  it("Cmd+K opens the palette in unified 'all' mode and preventDefaults/stopPropagates", () => {
+    const e = new KeyboardEvent("keydown", { key: "k", metaKey: true });
+    const preventDefault = vi.spyOn(e, "preventDefault");
+    const stopPropagation = vi.spyOn(e, "stopPropagation");
+    handleAppCmdK(e);
+    expect(useTreeStore.getState().paletteMode).toBe("all");
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(stopPropagation).toHaveBeenCalledOnce();
+  });
+
+  it("Ctrl+K (non-Mac) also opens the palette in 'all' mode", () => {
+    handleAppCmdK(new KeyboardEvent("keydown", { key: "K", ctrlKey: true }));
+    expect(useTreeStore.getState().paletteMode).toBe("all");
+    expect(useTreeStore.getState().paletteOpen).toBe(true);
+  });
+
+  it("no-ops without Cmd/Ctrl", () => {
+    handleAppCmdK(new KeyboardEvent("keydown", { key: "k" }));
+    expect(useTreeStore.getState().paletteOpen).toBe(false);
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+  });
+});
+
+describe("handleAppCmdDot (Phase 22 Plan 01 — zen toggle)", () => {
+  beforeEach(() => {
+    useTreeStore.setState({ zen: false });
+  });
+
+  it("Cmd+. toggles zen on, preventDefaults/stopPropagates", () => {
+    const e = new KeyboardEvent("keydown", { key: ".", metaKey: true });
+    const preventDefault = vi.spyOn(e, "preventDefault");
+    const stopPropagation = vi.spyOn(e, "stopPropagation");
+    handleAppCmdDot(e);
+    expect(useTreeStore.getState().zen).toBe(true);
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(stopPropagation).toHaveBeenCalledOnce();
+  });
+
+  it("a second Cmd+. flips zen back off", () => {
+    handleAppCmdDot(new KeyboardEvent("keydown", { key: ".", metaKey: true }));
+    expect(useTreeStore.getState().zen).toBe(true);
+    handleAppCmdDot(new KeyboardEvent("keydown", { key: ".", metaKey: true }));
+    expect(useTreeStore.getState().zen).toBe(false);
+  });
+
+  it("no-ops without Cmd/Ctrl", () => {
+    handleAppCmdDot(new KeyboardEvent("keydown", { key: "." }));
+    expect(useTreeStore.getState().zen).toBe(false);
   });
 });
