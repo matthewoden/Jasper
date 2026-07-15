@@ -30,9 +30,23 @@ const containerStyle: CSSProperties = {
   justifyContent: "center",
   width: "100%",
   height: "100%",
-  padding: 24,
   background: "var(--color-bg)",
   overflow: "auto",
+};
+
+// D-14/D-15/D-17: same 760px centered reading column as the note surface
+// (themeBridge.ts .cm-content) and the editor-pane-placeholder empty state
+// — values must stay identical across all three.
+const columnStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "100%",
+  maxWidth: 760,
+  margin: "0 auto",
+  padding: "44px 56px 200px",
+  boxSizing: "border-box",
 };
 
 const imageStyle: CSSProperties = {
@@ -76,21 +90,23 @@ export function FilePreviewView({ path, style }: FilePreviewViewProps): React.JS
       data-file-preview-kind={isImage ? "image" : "metadata"}
       style={{ ...containerStyle, ...style }}
     >
-      {isImage ? (
-        <img src={url} alt={name} style={imageStyle} />
-      ) : (
-        <div style={metadataStyle}>
-          <div>
-            <strong>Filename:</strong> {name}
+      <div style={columnStyle}>
+        {isImage ? (
+          <img src={url} alt={name} style={imageStyle} />
+        ) : (
+          <div style={metadataStyle}>
+            <div>
+              <strong>Filename:</strong> {name}
+            </div>
+            <div>
+              <strong>Type:</strong> {typeLabel}
+            </div>
+            <div>
+              <strong>Location:</strong> {path}
+            </div>
           </div>
-          <div>
-            <strong>Type:</strong> {typeLabel}
-          </div>
-          <div>
-            <strong>Location:</strong> {path}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 }

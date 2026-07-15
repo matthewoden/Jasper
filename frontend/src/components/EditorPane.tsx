@@ -708,7 +708,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       >
         <div
           className="flex items-center justify-center"
-          style={{ flex: 1 }}
+          style={{
+            flex: 1,
+            width: "100%",
+            maxWidth: 760,
+            margin: "0 auto",
+            padding: "44px 56px 200px",
+            boxSizing: "border-box",
+          }}
         >
           <p
             style={{
