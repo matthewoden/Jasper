@@ -111,6 +111,36 @@ export function handleAppCmdO(e: KeyboardEvent): void {
 }
 
 /**
+ * Cmd+K — open the unified command palette (mode="all").
+ * preventDefault/stopPropagation stay unconditional (no native-dialog
+ * collision to guard against, but matches sibling handlers and suppresses
+ * any future browser default, e.g. Chrome's address-bar focus in some
+ * builds/locales).
+ */
+export function handleAppCmdK(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  if (e.key !== "k" && e.key !== "K") return;
+  e.preventDefault();
+  e.stopPropagation();
+  const s = useTreeStore.getState();
+  s.setPaletteMode("all");
+  s.setPaletteOpen(true);
+}
+
+/**
+ * Cmd+. — toggle zen mode (Phase 22, ZEN-01).
+ * Verified CM6's keymap stack does not bind Mod-. (see 22-PATTERNS.md);
+ * safe to claim at the window capture-phase tier with no editor-side guard.
+ */
+export function handleAppCmdDot(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  if (e.key !== ".") return;
+  e.preventDefault();
+  e.stopPropagation();
+  useTreeStore.getState().toggleZen();
+}
+
+/**
  * Cmd+Shift+D — open today's daily note.
  * Dispatches via event bus because useDailyNote can't be called from a
  * window event listener (no React context available there).

@@ -139,6 +139,14 @@ export interface TreeStore {
   notesSidebarVisible: boolean;
   setNotesSidebarVisible: (v: boolean) => void;
 
+  /**
+   * Zen mode (Phase 22, D-08) — ephemeral, NOT persisted to localStorage.
+   * Always resets to false on reload by design.
+   */
+  zen: boolean;
+  setZen: (v: boolean) => void;
+  toggleZen: () => void;
+
   /** Which left-sidebar panel is active — Files or the in-sidebar Search (D-04). */
   sidebarPanel: "files" | "search";
   setSidebarPanel: (p: "files" | "search") => void;
@@ -154,8 +162,8 @@ export interface TreeStore {
   setSearchActive: (v: boolean) => void;
   paletteOpen: boolean;
   setPaletteOpen: (v: boolean) => void;
-  paletteMode: "notes" | "commands" | "search";
-  setPaletteMode: (m: "notes" | "commands" | "search") => void;
+  paletteMode: "notes" | "commands" | "search" | "all";
+  setPaletteMode: (m: "notes" | "commands" | "search" | "all") => void;
   recentlyOpenedNoteIds: string[];
   recordOpenedNote: (id: string) => void;
   dailyNoteLoading: boolean;
@@ -277,6 +285,10 @@ export const useTreeStore = create<TreeStore>((set) => ({
 
   notesSidebarVisible: true,
   setNotesSidebarVisible: (v) => set({ notesSidebarVisible: v }),
+
+  zen: false,
+  setZen: (v) => set({ zen: v }),
+  toggleZen: () => set((s) => ({ zen: !s.zen })),
 
   sidebarPanel: "files",
   setSidebarPanel: (p) => set({ sidebarPanel: p }),

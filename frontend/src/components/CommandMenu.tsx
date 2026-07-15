@@ -55,7 +55,7 @@ type Item = NoteItem | CmdItem | SearchHitItem | GroupItem;
 export interface CommandMenuProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  mode: "notes" | "commands" | "search";
+  mode: "notes" | "commands" | "search" | "all";
   actions: CommandActions;
 }
 
