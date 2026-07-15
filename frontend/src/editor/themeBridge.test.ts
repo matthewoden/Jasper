@@ -77,7 +77,7 @@ describe("themeBridge", () => {
     parent.remove();
   });
 
-  it("UX-11: theme applies max-width 72ch on .cm-content", () => {
+  it("READ-01: theme applies max-width 760px centered column on .cm-content", () => {
     const parent = document.createElement("div");
     document.body.append(parent);
     const view = new EditorView({
@@ -92,7 +92,8 @@ describe("themeBridge", () => {
       .map((s) => s.textContent ?? "")
       .join("\n");
 
-    expect(styleContent).toMatch(/\.cm-content[\s\S]*?max-width:\s*72ch/);
+    expect(styleContent).toMatch(/\.cm-content[\s\S]*?max-width:\s*760px/);
+    expect(styleContent).toMatch(/\.cm-content[\s\S]*?margin:\s*0(px)?\s+auto/);
 
     view.destroy();
     parent.remove();
