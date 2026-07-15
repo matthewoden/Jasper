@@ -113,6 +113,16 @@ export const jasperEditorTheme = EditorView.theme(
     ".cm-heading-6": { fontSize: "14px", fontWeight: "600", lineHeight: "1.4" },
     ".cm-strong": { fontWeight: "700" },
     ".cm-emphasis": { fontStyle: "italic" },
+    ".cm-highlight": {
+      // D-10: accent-tint background, NOT a fixed hue — follows the active
+      // accent so the 4-accent picker (Phase 17) stays correct. 28% verified
+      // (contrast-check evidence in 21-02-SUMMARY.md) to pass WCAG AA
+      // large-text contrast (>=3:1) for all 4 accents against --color-fg
+      // text over --color-bg; text color intentionally untouched (stays
+      // --color-fg) for legibility.
+      backgroundColor: "color-mix(in srgb, var(--color-accent) 28%, transparent)",
+      borderRadius: "2px",
+    },
     ".cm-inline-code": {
       fontFamily: "var(--font-mono)",
       fontSize: "14px",
