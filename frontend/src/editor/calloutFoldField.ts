@@ -114,15 +114,28 @@ const calloutFoldDecoField = StateField.define<CalloutFoldFieldState>({
         known = new Set(prev.known);
         changed = true;
       }
+      // Prune while remapping: a tracked position is kept only if it still
+      // starts a foldable "[!type]-" callout after the edit. Without this,
+      // deleting the trailing dash (or the callout marker) would leave the
+      // position in `folded` forever — buildFoldDecorations keeps hiding the
+      // body while the chevron disappears, stranding the content with no way
+      // to reveal it.
+      const currentStarts = findFoldableCalloutStarts(tr.state);
       const remappedFolded = new Set<number>();
-      for (const pos of folded) remappedFolded.add(tr.changes.mapPos(pos));
+      for (const pos of folded) {
+        const mapped = tr.changes.mapPos(pos);
+        if (currentStarts.has(mapped)) remappedFolded.add(mapped);
+      }
       const remappedKnown = new Set<number>();
-      for (const pos of known) remappedKnown.add(tr.changes.mapPos(pos));
+      for (const pos of known) {
+        const mapped = tr.changes.mapPos(pos);
+        if (currentStarts.has(mapped)) remappedKnown.add(mapped);
+      }
 
       // Seed newly-appeared foldable callouts (not previously tracked) as
       // collapsed — covers both a real initial load and a docChanged
       // server-update replace of a previously-empty document.
-      for (const pos of findFoldableCalloutStarts(tr.state)) {
+      for (const pos of currentStarts) {
         if (!remappedKnown.has(pos)) {
           remappedFolded.add(pos);
           remappedKnown.add(pos);

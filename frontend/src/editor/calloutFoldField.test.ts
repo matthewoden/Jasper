@@ -118,4 +118,23 @@ describe("calloutFoldField", () => {
     expect(isCalloutFolded(view.state, 0)).toBe(true);
     expect(hasBlockReplace(view)).toBe(false);
   });
+
+  it("deleting the trailing dash unfolds the callout and reveals its body (no stranded content)", () => {
+    // "> [!tip]- Title" — the fold dash is at index 8. Start collapsed.
+    const doc = "> [!tip]- Title\n> body line";
+    const view = makeView(doc);
+    views.push(view);
+
+    expect(isCalloutFolded(view.state, 0)).toBe(true);
+    expect(hasBlockReplace(view)).toBe(true);
+
+    // User deletes the trailing dash → "> [!tip] Title" is no longer foldable.
+    view.dispatch({ changes: { from: 8, to: 9 } });
+
+    // The position must be pruned from the folded set, and the body decoration
+    // must disappear — otherwise the content is hidden with no chevron to
+    // reveal it (the bug this guards against).
+    expect(isCalloutFolded(view.state, 0)).toBe(false);
+    expect(hasBlockReplace(view)).toBe(false);
+  });
 });

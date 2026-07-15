@@ -124,7 +124,40 @@ describe("tableWidgetPlugin", () => {
     const link = dom.querySelector("a");
     expect(link?.textContent).toBe("t");
     expect(link?.getAttribute("href")).toBe("https://example.com");
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
 
     // Security gate: no innerHTML assignment anywhere in the source (verified separately via grep).
+  });
+
+  it("does NOT emit an href for non-external URLs — javascript:/data:/relative render as inert text (zero-attack-surface link model)", () => {
+    const doc = `| Col |
+| --- |
+| [x](javascript:alert(1)) [y](data:text/html,evil) [z](./local.md) |`;
+    const state = EditorState.create({
+      doc,
+      extensions: [markdown({ base: markdownLanguage })],
+    });
+    const decos = buildTableDecorations(state, new Set<number>());
+
+    let widget: TableWidget | undefined;
+    const cursor = decos.iter();
+    while (cursor.value !== null) {
+      if (cursor.value.spec?.widget instanceof TableWidget) {
+        widget = cursor.value.spec.widget as TableWidget;
+      }
+      cursor.next();
+    }
+    expect(widget).toBeDefined();
+
+    const dom = widget!.toDOM();
+    const links = dom.querySelectorAll("a");
+    expect(links.length).toBe(3);
+    // Every non-external link is rendered as inert text with no href attribute —
+    // a plain click can never execute javascript: or navigate away from the app.
+    for (const a of Array.from(links)) {
+      expect(a.hasAttribute("href")).toBe(false);
+    }
+    expect(Array.from(links).map((a) => a.textContent)).toEqual(["x", "y", "z"]);
   });
 });

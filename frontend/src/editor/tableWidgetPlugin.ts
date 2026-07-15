@@ -47,6 +47,7 @@ import { syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 
 import { computeCursorLines } from "./livePreviewPlugin";
+import { isExternalLikeUrl, ensureProtocol } from "./linkUrl";
 
 
 export const TABLE_SCROLL_CLASS = "cm-table-scroll";
@@ -97,16 +98,23 @@ function renderInlineNode(node: SyntaxNode, doc: Text, container: HTMLElement): 
       return;
     }
     case "Link": {
-      const a = document.createElement("a");
       const marks = node.getChildren("LinkMark");
       const urlNode = node.getChild("URL");
       const text =
         marks.length >= 2
           ? doc.sliceString(marks[0].to, marks[1].from)
           : doc.sliceString(node.from, node.to);
+      // Only emit a live href for external-like URLs (http(s)/bare-domain).
+      // Anything else — javascript:/data:/relative/wiki — renders as inert
+      // styled text, matching the editor's zero-attack-surface link model
+      // (livePreviewPlugin never sets href; navigation is cmd-click gated).
+      const rawUrl = urlNode ? doc.sliceString(urlNode.from, urlNode.to).trim() : "";
+      const a = document.createElement("a");
       a.textContent = text;
-      if (urlNode) {
-        a.setAttribute("href", doc.sliceString(urlNode.from, urlNode.to));
+      if (rawUrl && isExternalLikeUrl(rawUrl)) {
+        a.setAttribute("href", ensureProtocol(rawUrl));
+        a.setAttribute("target", "_blank");
+        a.setAttribute("rel", "noopener noreferrer");
       }
       container.appendChild(a);
       return;
