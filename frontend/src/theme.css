@@ -211,9 +211,11 @@ body {
 
 /* Highlight for [[...]] backlink references in server-built excerpts.
    The server wraps the reference in <mark class="backlink-ref">.
-   T-06-11-01: content must be sanitized via sanitize.ts before render. */
+   T-06-11-01: content must be sanitized via sanitize.ts before render.
+   READ-04/D-12: restyled to the same 28% accent-tint used by .cm-highlight
+   (Plan 02) and the search-result <mark> — snippet surfaces share one tint. */
 .backlinks-excerpt .backlink-ref {
-  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 28%, transparent);
   border-radius: 2px;
   padding: 0 2px;
 }
@@ -316,12 +318,16 @@ body {
   flex-shrink: 0;
 }
 
-/* Inline #tag decoration emitted by inlineTagPlugin. */
+/* Inline #tag decoration emitted by inlineTagPlugin.
+   READ-04: accent-pill treatment — 14% accent-tint resting fill, fully
+   rounded, xs/sm padding scale; the prior 10% hover mix is kept as the
+   hover delta on top of the pill. */
 .cm-inline-tag {
   color: var(--color-accent);
   cursor: pointer;
-  border-radius: 2px;
-  padding: 0 4px;
+  border-radius: 9999px;
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
 }
 .cm-inline-tag:hover {
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
