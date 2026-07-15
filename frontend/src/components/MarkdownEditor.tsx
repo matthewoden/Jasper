@@ -36,6 +36,7 @@ import {
 } from "../editor/frontmatterHidePlugin";
 import { firstH1HideExtension } from "../editor/firstH1HidePlugin";
 import { calloutFoldExtension } from "../editor/calloutFoldField";
+import { tableWidgetExtension } from "../editor/tableWidgetPlugin";
 import { rewriteH1 } from "../lib/h1Extract";
 import { wikilinkPlugin, resolvedTitlesChanged } from "../editor/wikilinkPlugin";
 import { codeLanguages } from "../editor/codeLanguages";
@@ -291,6 +292,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             frontmatterHideExtension, // hide frontmatter by default
             firstH1HideExtension, // hide the first ATX H1 — TitleElement renders it above the editor (READ-01/D-02)
             calloutFoldExtension, // fold state for `[!type]-` callouts (READ-02/D-07); chevron rendered by livePreviewPlugin
+            tableWidgetExtension, // GFM tables render as real <table> widgets outside the cursor (READ-04/D-11)
             checkboxTransactionExtender, // CHK-01 toggle shim (char-flip is in taskCheckboxPlugin)
             taskCheckboxPlugin,          // checkbox decorations + click handler — must be BEFORE livePreviewPlugin
             livePreviewPlugin,

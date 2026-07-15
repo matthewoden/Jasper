@@ -801,3 +801,44 @@ body {
   flex-shrink: 0;
 }
 
+/* ── Phase 21 Plan 06 — GFM table widget (READ-04, D-11) ─────────────────
+   Real <table> rendered by tableWidgetPlugin.ts's TableWidget when the
+   cursor is outside the table's range; drops to raw markdown text on
+   cursor entry (no CSS involved in that flip — the widget decoration is
+   simply absent). D-15: the wrapper scrolls horizontally INSIDE the
+   760px reading column — the column's own edges never move.
+   No zebra-striping (not in the design contract). */
+.cm-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 24px 0;
+}
+
+.cm-table {
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.cm-table th,
+.cm-table td {
+  border: 1px solid var(--color-border);
+  padding: 8px 16px;
+  text-align: left;
+  white-space: nowrap; /* D-15: cells never wrap — a too-wide table scrolls instead */
+}
+
+.cm-table thead th {
+  background: var(--color-surface);
+  font-weight: 700;
+}
+
+.cm-table tbody td {
+  background: var(--color-bg);
+}
+
+/* Fail-soft fallback (malformed table) — plain raw text, no table chrome. */
+.cm-table-fallback {
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+}
+

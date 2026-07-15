@@ -491,3 +491,128 @@ test.describe("@phase21 typography", () => {
     });
   });
 });
+
+// ─── READ-04: GFM tables — cursor-aware widget/raw flip + contained ────────
+// horizontal scroll (D-11/D-15). Cursor entry is driven by real
+// page.mouse (never dispatchEvent/synthetic events) per the
+// verify-dnd-with-real-mouse memory; zero fixed sleeps throughout.
+
+const TABLE_DOC =
+  "# table-widget-note\n\n" +
+  "Intro paragraph above the table.\n\n" +
+  "| Header 1 | Header 2 |\n" +
+  "| --- | --- |\n" +
+  "| a | b |\n" +
+  "| c | d |\n\n" +
+  "Outro paragraph below the table.\n";
+
+function wideTableDoc(): string {
+  const cols = 14;
+  const headerCells = Array.from({ length: cols }, (_, i) => `Column ${i + 1}`);
+  const delimCells = Array.from({ length: cols }, () => "---");
+  const dataCells = Array.from({ length: cols }, (_, i) => `cell-${i + 1}`);
+  const row = (cells: string[]) => `| ${cells.join(" | ")} |`;
+  return (
+    "# wide-table-note\n\n" +
+    `${row(headerCells)}\n${row(delimCells)}\n${row(dataCells)}\n`
+  );
+}
+
+test.describe("@phase21 table widget", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("renders a <table> widget when the cursor is outside the table, drops to raw on cursor entry, and re-renders when the cursor leaves", async ({
+    page,
+  }) => {
+    const noteId = await createNote(jasper, "table-widget-note");
+    await setNoteContent(jasper, noteId, TABLE_DOC);
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, noteId);
+
+    // (a) Cursor starts outside the table (initial caret is on the hidden
+    // H1 line) — a real <table> widget renders with the correct header bg.
+    const table = page.locator(".cm-table").first();
+    await expect(table).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".cm-content")).not.toContainText("| Header 1 | Header 2 |");
+    const headerCell = table.locator("thead th").first();
+    await expect(headerCell).toHaveText("Header 1");
+    await expect
+      .poll(() => headerCell.evaluate((el) => getComputedStyle(el).backgroundColor))
+      .toBe("rgb(26, 26, 28)"); // --color-surface #1a1a1c
+
+    await page.screenshot({
+      path: path.join(__dirname, ".artifacts", "phase21-table-widget-rendered.png"),
+      fullPage: false,
+    });
+
+    // (b) Real-mouse click on the rendered table drops the whole block to
+    // raw markdown (widget disappears, raw pipe text becomes visible).
+    const tableBox = await table.boundingBox();
+    if (!tableBox) throw new Error("table bounding box unavailable");
+    await page.mouse.move(tableBox.x + tableBox.width / 2, tableBox.y + tableBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.up();
+
+    await expect
+      .poll(async () => (await page.locator(".cm-table").count()) === 0)
+      .toBe(true);
+    await expect(page.locator(".cm-content")).toContainText("| Header 1 | Header 2 |");
+
+    await page.screenshot({
+      path: path.join(__dirname, ".artifacts", "phase21-table-raw-on-cursor-entry.png"),
+      fullPage: false,
+    });
+
+    // (c) Moving the cursor back out (real click on the outro paragraph)
+    // re-renders the widget.
+    const outro = page.locator(".cm-content", { hasText: "Outro paragraph below the table." });
+    await outro.click();
+
+    await expect
+      .poll(async () => (await page.locator(".cm-table").count()) === 1)
+      .toBe(true);
+    await expect(page.locator(".cm-content")).not.toContainText("| Header 1 | Header 2 |");
+  });
+
+  test("a table wider than the 760px column scrolls horizontally inside the column; the column's own width is unaffected", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1512, height: 944 });
+
+    const noteId = await createNote(jasper, "wide-table-note");
+    await setNoteContent(jasper, noteId, wideTableDoc());
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, noteId);
+
+    const scroll = page.locator(".cm-table-scroll").first();
+    await expect(scroll).toBeVisible({ timeout: 5_000 });
+
+    let overflowsHorizontally = false;
+    let cmContentWidth = 0;
+    await expect
+      .poll(async () => {
+        overflowsHorizontally = await scroll.evaluate(
+          (el) => el.scrollWidth > el.clientWidth,
+        );
+        return overflowsHorizontally;
+      }, { timeout: 5_000 })
+      .toBe(true);
+
+    const cmContent = page.locator(".cm-content:visible").first();
+    cmContentWidth = (await cmContent.boundingBox())?.width ?? 0;
+    expect(cmContentWidth).toBeLessThanOrEqual(760);
+
+    await page.screenshot({
+      path: path.join(__dirname, ".artifacts", "phase21-table-horizontal-scroll.png"),
+      fullPage: false,
+    });
+  });
+});
