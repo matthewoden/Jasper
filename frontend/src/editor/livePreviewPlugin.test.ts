@@ -15,6 +15,7 @@ import {
   CalloutTitleWidget,
 } from "./livePreviewPlugin";
 import { Highlight } from "./highlightExtension";
+import { calloutFoldExtension, isCalloutFolded } from "./calloutFoldField";
 import {
   HEADING_DOC,
   EMPHASIS_DOC,
@@ -883,5 +884,61 @@ describe("livePreviewPlugin / callouts (READ-02)", () => {
     expect(blockquoteDecos.length).toBeGreaterThanOrEqual(2);
     const calloutDecos = decos.filter((d) => d.class?.includes("cm-callout"));
     expect(calloutDecos.length).toBe(0);
+  });
+});
+
+
+describe("livePreviewPlugin / callout fold chevron (READ-02/D-07)", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  function makeFoldableView(doc: string, selectionPos = 0): EditorView {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc,
+        selection: { anchor: selectionPos, head: selectionPos },
+        extensions: [markdown(), livePreviewPlugin, calloutFoldExtension],
+      }),
+    });
+    views.push(view);
+    return view;
+  }
+
+  it("a non-foldable callout's title widget has no chevron", () => {
+    const doc = "> [!tip] Title\n\nAfter.";
+    const view = makeFoldableView(doc, doc.length);
+    const chevron = view.dom.querySelector(".cm-callout-fold-chevron");
+    expect(chevron).toBeNull();
+  });
+
+  it("a foldable callout's title widget renders a chevron with a Collapse/Expand aria-label", () => {
+    const doc = "> [!tip]- Title\n> body\n\nAfter.";
+    const view = makeFoldableView(doc, doc.length);
+    const chevron = view.dom.querySelector(".cm-callout-fold-chevron");
+    expect(chevron).not.toBeNull();
+    // Starts collapsed (calloutFoldExtension seeds foldable callouts folded on create).
+    expect(chevron!.getAttribute("aria-label")).toBe('Expand "Title" callout');
+  });
+
+  it("clicking the chevron toggles fold state and flips the aria-label", () => {
+    const doc = "> [!tip]- Title\n> body\n\nAfter.";
+    const view = makeFoldableView(doc, doc.length);
+
+    expect(isCalloutFolded(view.state, 0)).toBe(true);
+
+    const chevron = view.dom.querySelector(".cm-callout-fold-chevron") as HTMLElement;
+    expect(chevron).not.toBeNull();
+    chevron.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(isCalloutFolded(view.state, 0)).toBe(false);
+    const chevronAfter = view.dom.querySelector(".cm-callout-fold-chevron");
+    expect(chevronAfter!.getAttribute("aria-label")).toBe('Collapse "Title" callout');
   });
 });

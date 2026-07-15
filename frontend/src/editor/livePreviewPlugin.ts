@@ -56,6 +56,7 @@ import { RangeSetBuilder } from "@codemirror/state";
 import type { SyntaxNodeRef } from "@lezer/common";
 
 import { isExternalLikeUrl } from "./linkUrl";
+import { isCalloutFolded, toggleCalloutFold } from "./calloutFoldField";
 
 
 export const HEADING_LINE_CLASSES: Record<string, string> = {
@@ -153,35 +154,90 @@ function capitalizeWord(s: string): string {
 export const CALLOUT_LINE_CLASS = "cm-callout";
 export const CALLOUT_TITLE_LINE_CLASS = "cm-callout-title-line";
 export const CALLOUT_TITLE_WIDGET_CLASS = "cm-callout-title-widget";
+export const CALLOUT_FOLD_CHEVRON_CLASS = "cm-callout-fold-chevron";
+
+/**
+ * makeChevronSvg — builds a ChevronRight (collapsed) / ChevronDown (expanded)
+ * SVG via createElementNS (no lucide-react import — CM6 widgets produce
+ * plain DOM, not a React render tree). Path data extracted from
+ * lucide-react v0.460.0 (chevron-right.js / chevron-down.js), same
+ * precedent as taskCheckboxPlugin.ts's makeLucideSvg.
+ */
+function makeChevronSvg(expanded: boolean): SVGSVGElement {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "12");
+  svg.setAttribute("height", "12");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", expanded ? "m6 9 6 6 6-6" : "m9 18 6-6-6-6");
+  svg.appendChild(path);
+  return svg;
+}
 
 /**
  * CalloutTitleWidget — replaces a callout's first-line `[!type](-)?\s*title?`
- * span (off-cursor only) with the synthesized title text. The colored dot is
- * NOT part of this widget — it is a pure-CSS `::before` on the title line's
- * class so it stays rendered even while the cursor is on that line and the
- * raw markers are revealed (D-06).
+ * span (off-cursor only) with the synthesized title text (+ fold chevron for
+ * foldable callouts, D-07). The colored dot is NOT part of this widget — it
+ * is a pure-CSS `::before` on the title line's class so it stays rendered
+ * even while the cursor is on that line and the raw markers are revealed
+ * (D-06).
  */
 export class CalloutTitleWidget extends WidgetType {
   constructor(
     public readonly title: string,
     public readonly cssType: string,
+    public readonly foldable: boolean = false,
+    public readonly folded: boolean = false,
+    public readonly blockquoteFrom: number = -1,
   ) {
     super();
   }
 
   eq(other: CalloutTitleWidget): boolean {
-    return other.title === this.title && other.cssType === this.cssType;
+    return (
+      other.title === this.title &&
+      other.cssType === this.cssType &&
+      other.foldable === this.foldable &&
+      other.folded === this.folded &&
+      other.blockquoteFrom === this.blockquoteFrom
+    );
   }
 
   toDOM(): HTMLElement {
     const span = document.createElement("span");
     span.className = `${CALLOUT_TITLE_WIDGET_CLASS} cm-callout-title-${this.cssType}`;
-    span.textContent = this.title;
+
+    if (this.foldable) {
+      const chevron = document.createElement("span");
+      chevron.className = CALLOUT_FOLD_CHEVRON_CLASS;
+      chevron.setAttribute("role", "button");
+      chevron.setAttribute("tabIndex", "-1");
+      chevron.setAttribute("data-pos", String(this.blockquoteFrom));
+      chevron.setAttribute(
+        "aria-label",
+        this.folded ? `Expand "${this.title}" callout` : `Collapse "${this.title}" callout`,
+      );
+      chevron.appendChild(makeChevronSvg(!this.folded));
+      span.appendChild(chevron);
+    }
+
+    const titleText = document.createElement("span");
+    titleText.textContent = this.title;
+    span.appendChild(titleText);
+
     return span;
   }
 
   ignoreEvent(): boolean {
-    return true;
+    return false; // CRITICAL — let clicks reach eventHandlers (mirrors taskCheckboxPlugin's CheckboxWidget)
   }
 }
 
@@ -299,6 +355,7 @@ export function buildDecorations(view: EditorView): DecorationSet {
 
           if (calloutMatch) {
             const rawType = calloutMatch[1].toLowerCase();
+            const foldable = calloutMatch[2] === "-";
             const explicitTitle = calloutMatch[3].trim();
             const cssType = CALLOUT_TYPES.has(rawType) ? rawType : "note";
             const title = explicitTitle.length > 0 ? explicitTitle : capitalizeWord(rawType);
@@ -329,11 +386,12 @@ export function buildDecorations(view: EditorView): DecorationSet {
                   sortKey: markerFrom * 1e9 + (1e9 - (markerTo - markerFrom)),
                 });
               } else {
+                const folded = isCalloutFolded(view.state, node.from);
                 markDecos.push({
                   from: markerFrom,
                   to: markerTo,
                   deco: Decoration.replace({
-                    widget: new CalloutTitleWidget(title, cssType),
+                    widget: new CalloutTitleWidget(title, cssType, foldable, folded, node.from),
                   }),
                   sortKey: markerFrom * 1e9 + (1e9 - (markerTo - markerFrom)),
                 });
@@ -571,15 +629,36 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
         this.decorations = this.decorations.map(u.changes);
         return;
       }
+      // Callout fold toggles (READ-02/D-07) don't touch the doc, viewport,
+      // selection, or syntax tree — rebuild explicitly so the chevron
+      // direction and folded body decoration stay in sync with
+      // calloutFoldField's own StateField.
+      const foldToggled = u.transactions.some((tr) =>
+        tr.effects.some((e) => e.is(toggleCalloutFold)),
+      );
       if (
         u.docChanged ||
         u.viewportChanged ||
         u.selectionSet ||
+        foldToggled ||
         syntaxTree(u.startState) !== syntaxTree(u.state)
       ) {
         this.decorations = buildDecorations(u.view);
       }
     }
   },
-  { decorations: (v) => v.decorations }
+  {
+    decorations: (v) => v.decorations,
+    eventHandlers: {
+      click(e: MouseEvent, view: EditorView) {
+        const target = e.target as HTMLElement | null;
+        const chevron = target?.closest(`.${CALLOUT_FOLD_CHEVRON_CLASS}`) as HTMLElement | null;
+        if (!chevron) return false;
+        const pos = parseInt(chevron.getAttribute("data-pos") ?? "", 10);
+        if (isNaN(pos)) return false;
+        view.dispatch({ effects: toggleCalloutFold.of({ from: pos }) });
+        return true;
+      },
+    },
+  }
 );
