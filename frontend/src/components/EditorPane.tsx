@@ -50,6 +50,7 @@ import type { HeadingInfo } from "../editor/outlineExtract";
 import type { components } from "../api/schema";
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
 import { expandAndScrollToFolder } from "./fileTree.utils";
+import { TitleElement } from "./TitleElement";
 
 import { FilePreviewView } from "./FilePreviewView";
 
@@ -952,6 +953,27 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           </span>
         </nav>
       )}
+      {/* Title element (READ-01/D-01/D-02/D-04): inside the same 760px column,
+          sharing its 56px horizontal padding (NOT --editor-content-x, which
+          is the breadcrumb's pane-wide chrome padding, D-16). Reads/writes
+          through the EXISTING onH1Change/rewriteH1 binding via the
+          MarkdownEditor ref's setH1 — no second rename pathway. */}
+      <div
+        className="editor-title-wrapper"
+        style={{
+          width: "100%",
+          maxWidth: 760,
+          margin: "0 auto",
+          padding: "0 56px",
+          boxSizing: "border-box",
+        }}
+      >
+        <TitleElement
+          title={extractH1FromContent(content)}
+          onTitleChange={(next) => editorRef.current?.setH1(next)}
+          onFocusHandoff={() => editorRef.current?.focus()}
+        />
+      </div>
       {/* MarkdownEditor is uncontrolled — initialDoc captured once on mount;
           updates flow through the ref API. Click-anywhere-to-type: clicks outside
           .cm-content call focusEnd() to move caret to end-of-doc. Host has zero
