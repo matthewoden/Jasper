@@ -228,7 +228,13 @@ export class TableWidget extends WidgetType {
   }
 
   ignoreEvent(): boolean {
-    return true; // let CM6 position the cursor on click (drops to raw, same as HRWidget/BulletWidget)
+    // false = let CM6's default click handling run (maps the click to a
+    // document position at the widget's boundary), which is what drops the
+    // block to raw markdown on cursor entry (D-11). Unlike the small
+    // decorative widgets (HRWidget/BulletWidget), this widget has no
+    // adjacent real DOM within its bounds for a native browser caret to
+    // land on, so CM's own position mapping must run.
+    return false;
   }
 }
 

@@ -824,6 +824,7 @@ body {
   border: 1px solid var(--color-border);
   padding: 8px 16px;
   text-align: left;
+  white-space: nowrap; /* D-15: cells never wrap — a too-wide table scrolls instead */
 }
 
 .cm-table thead th {
