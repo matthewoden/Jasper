@@ -5,16 +5,28 @@
  * emits per-node decorations:
  *
  *   - Decoration.line for headings (cm-heading-1..6), blockquote
- *     (cm-blockquote), and code blocks (cm-codeblock).
+ *     (cm-blockquote), callouts (cm-callout cm-callout-{type}, READ-02),
+ *     and code blocks (cm-codeblock).
  *   - Decoration.mark for StrongEmphasis (cm-strong), Emphasis
  *     (cm-emphasis), InlineCode (cm-inline-code), Highlight (cm-highlight,
  *     from the hand-rolled highlightExtension.ts's == delimiter).
  *   - Decoration.replace for hideable marker nodes when their line is
  *     off-cursor (HeaderMark, EmphasisMark, QuoteMark, ListMark, LinkMark,
  *     URL, HardBreak, CodeMark, HighlightMark) and for HorizontalRule
- *     (hr widget).
+ *     (hr widget), and for a callout's title-line marker+title span
+ *     (CalloutTitleWidget, READ-02).
  *   - Decoration.mark with cm-marker for the same hideable nodes when
  *     their line is on-cursor (markers visible-but-muted).
+ *
+ * Callout detection (READ-02, D-05/D-06/D-08/D-09): a Blockquote's first
+ * line is checked for a `[!type]` or `[!type]-` prefix (regex, not a lezer
+ * node — CommonMark has no callout grammar). A match replaces the plain
+ * `.cm-blockquote` line treatment with `cm-callout cm-callout-{type}` for
+ * every line in the blockquote's range; no match falls through to the
+ * existing plain-blockquote path UNCHANGED (non-regression by construction).
+ * The dot is pure CSS (`::before` on `.cm-callout-title-line`, always
+ * visible); only the `[!type](-)?\s*title?` span hides/reveals per cursor,
+ * exactly like the other hideable markers.
  *
  * Edge cases:
  *   - Multi-line selection: every line touched stays in the cursor-line
@@ -113,6 +125,65 @@ const inlineCodeMarkDeco = Decoration.mark({ class: INLINE_CODE_MARK_CLASS, incl
 const BLOCK_LINE_DECOS: Record<string, Decoration> = {
   Blockquote: blockquoteLineDeco,
 };
+
+
+/**
+ * CALLOUT_TYPES — the six named callout types with dedicated CSS color
+ * treatment (theme.css). Any other `[!word]` value falls back to the
+ * "note" style per D-08, but keeps its own word as the title.
+ */
+export const CALLOUT_TYPES = new Set([
+  "tip",
+  "note",
+  "info",
+  "warning",
+  "danger",
+  "todo",
+]);
+
+/** Regex for the marker portion of a callout's first line, after stripping the "> " quote prefix. */
+const CALLOUT_MARKER_RE = /^\[!(\w+)\](-)?\s*(.*)$/;
+
+/** Capitalizes the first character only (D-08/D-09 auto-title rule). */
+function capitalizeWord(s: string): string {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export const CALLOUT_LINE_CLASS = "cm-callout";
+export const CALLOUT_TITLE_LINE_CLASS = "cm-callout-title-line";
+export const CALLOUT_TITLE_WIDGET_CLASS = "cm-callout-title-widget";
+
+/**
+ * CalloutTitleWidget — replaces a callout's first-line `[!type](-)?\s*title?`
+ * span (off-cursor only) with the synthesized title text. The colored dot is
+ * NOT part of this widget — it is a pure-CSS `::before` on the title line's
+ * class so it stays rendered even while the cursor is on that line and the
+ * raw markers are revealed (D-06).
+ */
+export class CalloutTitleWidget extends WidgetType {
+  constructor(
+    public readonly title: string,
+    public readonly cssType: string,
+  ) {
+    super();
+  }
+
+  eq(other: CalloutTitleWidget): boolean {
+    return other.title === this.title && other.cssType === this.cssType;
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = `${CALLOUT_TITLE_WIDGET_CLASS} cm-callout-title-${this.cssType}`;
+    span.textContent = this.title;
+    return span;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
 
 
 export const CODEBLOCK_FIRST_LINE_CLASS = "cm-codeblock cm-codeblock-first";
@@ -219,7 +290,66 @@ export function buildDecorations(view: EditorView): DecorationSet {
           return;
         }
 
-        if (BLOCK_LINE_DECOS[node.name]) {
+        if (node.name === "Blockquote") {
+          const firstLine = view.state.doc.lineAt(node.from);
+          const markerMatch = firstLine.text.match(/^(>\s?)/);
+          const markerLen = markerMatch ? markerMatch[1].length : 0;
+          const afterMarker = firstLine.text.slice(markerLen);
+          const calloutMatch = afterMarker.match(CALLOUT_MARKER_RE);
+
+          if (calloutMatch) {
+            const rawType = calloutMatch[1].toLowerCase();
+            const explicitTitle = calloutMatch[3].trim();
+            const cssType = CALLOUT_TYPES.has(rawType) ? rawType : "note";
+            const title = explicitTitle.length > 0 ? explicitTitle : capitalizeWord(rawType);
+
+            let pos = node.from;
+            let lineIndex = 0;
+            while (pos < node.to) {
+              const line = view.state.doc.lineAt(pos);
+              const isTitleLine = lineIndex === 0;
+              const cls = isTitleLine
+                ? `${CALLOUT_LINE_CLASS} cm-callout-${cssType} ${CALLOUT_TITLE_LINE_CLASS}`
+                : `${CALLOUT_LINE_CLASS} cm-callout-${cssType}`;
+              lineDecos.push({ from: line.from, deco: Decoration.line({ class: cls }) });
+              if (line.to >= node.to) break;
+              pos = line.to + 1;
+              lineIndex++;
+            }
+
+            const markerFrom = firstLine.from + markerLen;
+            const markerTo = firstLine.to;
+            if (markerFrom < markerTo) {
+              const onCursorLine = cursorLines.has(firstLine.number);
+              if (onCursorLine) {
+                markDecos.push({
+                  from: markerFrom,
+                  to: markerTo,
+                  deco: Decoration.mark({ class: VISIBLE_MARKER_CLASS }),
+                  sortKey: markerFrom * 1e9 + (1e9 - (markerTo - markerFrom)),
+                });
+              } else {
+                markDecos.push({
+                  from: markerFrom,
+                  to: markerTo,
+                  deco: Decoration.replace({
+                    widget: new CalloutTitleWidget(title, cssType),
+                  }),
+                  sortKey: markerFrom * 1e9 + (1e9 - (markerTo - markerFrom)),
+                });
+              }
+            }
+
+            // Stop descent: lezer parses "[!type]" as shortcut-link-like
+            // bracket syntax (Link/LinkMark nodes) that would otherwise
+            // double-decorate the exact same range we just handled above.
+            // Callout body lines forgo generic inline-formatting decoration
+            // as a result — a documented trade-off, not a regression (plain
+            // blockquotes below are unaffected and keep full inline support).
+            return false;
+          }
+
+          // No [!type] match — plain blockquote, unchanged existing behavior.
           const deco = BLOCK_LINE_DECOS[node.name];
           let pos = node.from;
           while (pos < node.to) {

@@ -12,6 +12,7 @@ import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import {
   livePreviewPlugin,
   computeCursorLines,
+  CalloutTitleWidget,
 } from "./livePreviewPlugin";
 import { Highlight } from "./highlightExtension";
 import {
@@ -750,5 +751,137 @@ describe("livePreviewPlugin / highlight (==) decoration (READ-03)", () => {
     }
     const markerDecos = decos.filter((d) => d.class === "cm-marker");
     expect(markerDecos.length).toBeGreaterThan(0);
+  });
+});
+
+
+describe("livePreviewPlugin / callouts (READ-02)", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  /** Iterate raw decorations, returning widget instances alongside from/to/class. */
+  function collectAll(view: EditorView): {
+    from: number;
+    to: number;
+    class?: string;
+    widget?: unknown;
+  }[] {
+    const plugin = view.plugin(livePreviewPlugin);
+    if (!plugin) return [];
+    const out: { from: number; to: number; class?: string; widget?: unknown }[] = [];
+    const cursor = plugin.decorations.iter();
+    while (cursor.value !== null) {
+      const spec = (cursor.value as unknown as { spec: Record<string, unknown> }).spec;
+      out.push({
+        from: cursor.from,
+        to: cursor.to,
+        class: spec?.class as string | undefined,
+        widget: spec?.widget,
+      });
+      cursor.next();
+    }
+    return out;
+  }
+
+  const ALL_TYPES_DOC =
+    "> [!tip] Tip title\n> body\n\n" +
+    "> [!note] Note title\n\n" +
+    "> [!info] Info title\n\n" +
+    "> [!warning] Warning title\n\n" +
+    "> [!danger] Danger title\n\n" +
+    "> [!todo] Todo title\n\n" +
+    "Trailing paragraph.";
+
+  it("emits cm-callout-{type} line decoration for each of the six named types", () => {
+    const view = makeView(ALL_TYPES_DOC, ALL_TYPES_DOC.length);
+    views.push(view);
+
+    const decos = collectAll(view);
+    for (const t of ["tip", "note", "info", "warning", "danger", "todo"]) {
+      const found = decos.some((d) => d.class?.split(/\s+/).includes(`cm-callout-${t}`));
+      expect(found, `expected a cm-callout-${t} line decoration`).toBe(true);
+    }
+  });
+
+  it("an unknown [!custom] type falls back to the note style with 'Custom' as the title", () => {
+    const doc = "> [!custom]\n\nAfter.";
+    const view = makeView(doc, doc.length);
+    views.push(view);
+
+    const decos = collectAll(view);
+    const noteLine = decos.find((d) => d.class?.split(/\s+/).includes("cm-callout-note"));
+    expect(noteLine).toBeDefined();
+
+    const widgetEntry = decos.find(
+      (d) => d.widget instanceof CalloutTitleWidget && (d.widget as CalloutTitleWidget).title === "Custom",
+    );
+    expect(widgetEntry).toBeDefined();
+    expect((widgetEntry!.widget as CalloutTitleWidget).cssType).toBe("note");
+  });
+
+  it("a titleless known-type callout auto-titles with the capitalized type name", () => {
+    const doc = "> [!tip]\n\nAfter.";
+    const view = makeView(doc, doc.length);
+    views.push(view);
+
+    const decos = collectAll(view);
+    const widgetEntry = decos.find(
+      (d) => d.widget instanceof CalloutTitleWidget && (d.widget as CalloutTitleWidget).title === "Tip",
+    );
+    expect(widgetEntry).toBeDefined();
+    expect((widgetEntry!.widget as CalloutTitleWidget).cssType).toBe("tip");
+  });
+
+  it("an explicit title is used verbatim instead of the capitalized type word", () => {
+    const doc = "> [!warning] Be careful\n\nAfter.";
+    const view = makeView(doc, doc.length);
+    views.push(view);
+
+    const decos = collectAll(view);
+    const widgetEntry = decos.find(
+      (d) => d.widget instanceof CalloutTitleWidget && (d.widget as CalloutTitleWidget).title === "Be careful",
+    );
+    expect(widgetEntry).toBeDefined();
+  });
+
+  it("hides the [!type] marker/title span with a widget when the cursor is OFF the title line", () => {
+    const doc = "> [!tip] Title\n\nAfter.";
+    const view = makeView(doc, doc.length);
+    views.push(view);
+
+    const decos = collectAll(view);
+    const widgetEntry = decos.find((d) => d.widget instanceof CalloutTitleWidget);
+    expect(widgetEntry).toBeDefined();
+  });
+
+  it("reveals the raw [!type] marker as a muted cm-marker when the cursor IS on the title line", () => {
+    const doc = "> [!tip] Title\n\nAfter.";
+    const cursorPos = doc.indexOf("tip");
+    const view = makeView(doc, cursorPos);
+    views.push(view);
+
+    const decos = collectAll(view);
+    const widgetEntry = decos.find((d) => d.widget instanceof CalloutTitleWidget);
+    expect(widgetEntry).toBeUndefined();
+
+    const markerEntry = decos.find(
+      (d) => d.class === "cm-marker" && d.from <= cursorPos && d.to > cursorPos,
+    );
+    expect(markerEntry).toBeDefined();
+  });
+
+  it("an ordinary '>' blockquote (no [!type]) still renders cm-blockquote unchanged (non-regression)", () => {
+    const view = makeView(BLOCKQUOTE_DOC, 0);
+    views.push(view);
+
+    const decos = collectAll(view);
+    const blockquoteDecos = decos.filter((d) => d.class === "cm-blockquote");
+    expect(blockquoteDecos.length).toBeGreaterThanOrEqual(2);
+    const calloutDecos = decos.filter((d) => d.class?.includes("cm-callout"));
+    expect(calloutDecos.length).toBe(0);
   });
 });
