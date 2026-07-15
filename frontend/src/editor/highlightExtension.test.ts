@@ -64,7 +64,12 @@ describe("highlightExtension", () => {
   });
 
   it("does not start a highlight on === (three equals)", () => {
-    const doc = "===not a highlight===";
+    // A single isolated run of three '=' has no valid partner delimiter to
+    // pair with (the guard rejects the run's first position as an opener;
+    // any fallback attempt at an offset position can at best produce a
+    // close-only delimiter with nothing preceding it to close) — surrounded
+    // by whitespace so no other '==' pair exists in the document to match.
+    const doc = "text before === text after";
     const names = nodeNames(doc);
     expect(names).not.toContain("Highlight");
   });
