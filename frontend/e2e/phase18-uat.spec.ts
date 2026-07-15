@@ -546,21 +546,25 @@ test.describe("@phase18 POLISH-09: center-column vertical geometry pin", () => {
 
     const breadcrumb = page.getByTestId("note-breadcrumb");
     const cmContent = page.locator(".cm-content:visible");
+    const title = page.getByTestId("editor-title-element");
 
-    // Poll until all three boxes resolve to non-zero dimensions before
+    // Poll until all four boxes resolve to non-zero dimensions before
     // asserting exact pixel values (no bare pre-layout read).
     let stripBox = await tabStrip(page).boundingBox();
     let breadcrumbBox = await breadcrumb.boundingBox();
     let cmBox = await cmContent.boundingBox();
+    let titleBox = await title.boundingBox();
     await expect
       .poll(async () => {
         stripBox = await tabStrip(page).boundingBox();
         breadcrumbBox = await breadcrumb.boundingBox();
         cmBox = await cmContent.boundingBox();
+        titleBox = await title.boundingBox();
         return (
           (stripBox?.height ?? 0) > 0 &&
           (breadcrumbBox?.height ?? 0) > 0 &&
-          (cmBox?.height ?? 0) > 0
+          (cmBox?.height ?? 0) > 0 &&
+          (titleBox?.height ?? 0) > 0
         );
       }, { timeout: 5_000 })
       .toBe(true);
@@ -574,11 +578,14 @@ test.describe("@phase18 POLISH-09: center-column vertical geometry pin", () => {
     // Relational flush pins (survive benign breadcrumb-padding restyles).
     expect(breadcrumbBox.y).toBe(stripBox.y + stripBox.height);
     // Phase 21 (READ-01, RESEARCH Pitfall 6): .cm-content gained a 44px top
-    // padding as part of the 760px centered reading column, so it is no
-    // longer flush against the breadcrumb — it now sits at or below it.
-    // Additive update only; the pin is never deleted. Plan 03 will further
-    // extend this once the title element mounts above .cm-content.
-    expect(cmBox.y).toBeGreaterThanOrEqual(breadcrumbBox.y + breadcrumbBox.height);
+    // padding as part of the 760px centered reading column, and Plan 03's
+    // TitleElement now mounts between the breadcrumb and cm-content, so
+    // cm-content is no longer flush against the breadcrumb — it now sits at
+    // or below the breadcrumb PLUS the title element's own height. Additive
+    // update only; the pin is never deleted.
+    expect(cmBox.y).toBeGreaterThanOrEqual(
+      breadcrumbBox.y + breadcrumbBox.height + (titleBox?.height ?? 0),
+    );
   });
 });
 

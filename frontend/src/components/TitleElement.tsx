@@ -56,7 +56,6 @@ export const TitleElement = ({ title, onTitleChange, onFocusHandoff }: TitleElem
         suppressContentEditableWarning
         data-testid="editor-title-element"
         aria-label="Note title"
-        role="textbox"
         onFocus={() => {
           const el = ref.current;
           if (el && isEmpty) {

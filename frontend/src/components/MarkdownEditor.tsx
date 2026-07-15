@@ -34,6 +34,8 @@ import {
   frontmatterHideExtension,
   frontmatterToggleKeymap,
 } from "../editor/frontmatterHidePlugin";
+import { firstH1HideExtension } from "../editor/firstH1HidePlugin";
+import { rewriteH1 } from "../lib/h1Extract";
 import { wikilinkPlugin, resolvedTitlesChanged } from "../editor/wikilinkPlugin";
 import { codeLanguages } from "../editor/codeLanguages";
 import { externalImagePlugin } from "../editor/externalImagePlugin";
@@ -86,6 +88,13 @@ export interface MarkdownEditorRef {
   focusEnd(): void;
   /** Move the cursor to `from` and smooth-scroll it into view (RSIDE-01 Outline click). */
   scrollToHeading(from: number): void;
+  /**
+   * Rewrites just the first H1 line via rewriteH1(getContent(), next) and
+   * dispatches it as a normal user edit (same as setContent) — fires the
+   * EXISTING onChange/onH1Change flow unchanged (D-02: no second rename
+   * pathway). No-op if the doc has no H1 line (matches rewriteH1's contract).
+   */
+  setH1(next: string): void;
 }
 
 /** Transactions annotated with this are server-driven and skip the onChange callback. */
@@ -279,6 +288,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             jasperEditorTheme,
             jasperSyntaxHighlighting,
             frontmatterHideExtension, // hide frontmatter by default
+            firstH1HideExtension, // hide the first ATX H1 — TitleElement renders it above the editor (READ-01/D-02)
             checkboxTransactionExtender, // CHK-01 toggle shim (char-flip is in taskCheckboxPlugin)
             taskCheckboxPlugin,          // checkbox decorations + click handler — must be BEFORE livePreviewPlugin
             livePreviewPlugin,
@@ -413,6 +423,16 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             effects: EditorView.scrollIntoView(from, { y: "start", yMargin: 40 }),
           });
           v.focus();
+        },
+        setH1(next: string) {
+          const v = viewRef.current;
+          if (!v) return;
+          const current = v.state.doc.toString();
+          const rewritten = rewriteH1(current, next);
+          if (rewritten === current) return;
+          v.dispatch({
+            changes: { from: 0, to: v.state.doc.length, insert: rewritten },
+          });
         },
       }),
       []
