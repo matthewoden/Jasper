@@ -573,7 +573,12 @@ test.describe("@phase18 POLISH-09: center-column vertical geometry pin", () => {
     expect(stripBox.height).toBe(40);
     // Relational flush pins (survive benign breadcrumb-padding restyles).
     expect(breadcrumbBox.y).toBe(stripBox.y + stripBox.height);
-    expect(cmBox.y).toBe(breadcrumbBox.y + breadcrumbBox.height);
+    // Phase 21 (READ-01, RESEARCH Pitfall 6): .cm-content gained a 44px top
+    // padding as part of the 760px centered reading column, so it is no
+    // longer flush against the breadcrumb — it now sits at or below it.
+    // Additive update only; the pin is never deleted. Plan 03 will further
+    // extend this once the title element mounts above .cm-content.
+    expect(cmBox.y).toBeGreaterThanOrEqual(breadcrumbBox.y + breadcrumbBox.height);
   });
 });
 

@@ -32,11 +32,18 @@ export const jasperEditorTheme = EditorView.theme(
     "&.cm-focused": { outline: "none !important" },
     ".cm-scroller": {
       overflow: "auto",
+      width: "100%",
     },
     ".cm-content": {
-      padding: "16px 16px 16px 0",
+      // D-14/D-15/D-17: 760px centered reading column. margin:auto centers
+      // the column against the full-width .cm-editor/.cm-scroller parent
+      // chain; boxSizing:border-box keeps 760px the OUTER width (Pitfall 4)
+      // so padding doesn't push the rendered column past 760px.
+      maxWidth: "760px",
+      margin: "0 auto",
+      padding: "44px 56px 200px",
+      boxSizing: "border-box",
       caretColor: "var(--color-fg)",
-      maxWidth: "72ch", // scope: .cm-content
     },
     ".cm-cursor, .cm-dropCursor": {
       borderLeftColor: "var(--color-fg)",
