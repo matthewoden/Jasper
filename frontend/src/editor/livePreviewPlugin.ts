@@ -369,6 +369,26 @@ export function buildDecorations(view: EditorView): DecorationSet {
                 ? `${CALLOUT_LINE_CLASS} cm-callout-${cssType} ${CALLOUT_TITLE_LINE_CLASS}`
                 : `${CALLOUT_LINE_CLASS} cm-callout-${cssType}`;
               lineDecos.push({ from: line.from, deco: Decoration.line({ class: cls }) });
+
+              // Manually replicate the QuoteMark hide/reveal that the
+              // generic HIDEABLE_MARKER_NODES walk would otherwise provide —
+              // descent into this Blockquote's children is stopped below
+              // (Link/LinkMark collision guard), so every line's "> " prefix
+              // needs its own hide-off-cursor / reveal-on-cursor decoration.
+              const lineMarkerMatch = line.text.match(/^(>\s?)/);
+              const lineMarkerLen = lineMarkerMatch ? lineMarkerMatch[1].length : 0;
+              if (lineMarkerLen > 0) {
+                const onQuoteCursorLine = cursorLines.has(line.number);
+                markDecos.push({
+                  from: line.from,
+                  to: line.from + lineMarkerLen,
+                  deco: onQuoteCursorLine
+                    ? Decoration.mark({ class: VISIBLE_MARKER_CLASS })
+                    : Decoration.replace({}),
+                  sortKey: line.from * 1e9 + (1e9 - lineMarkerLen),
+                });
+              }
+
               if (line.to >= node.to) break;
               pos = line.to + 1;
               lineIndex++;

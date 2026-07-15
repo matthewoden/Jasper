@@ -9,8 +9,13 @@
  * Folded state is keyed by the blockquote's start position (`Set<number>`,
  * not a single boolean — mirrors frontmatterHidePlugin.ts's toggle-effect +
  * StateField shape, but supports multiple independent callouts). Foldable
- * callouts start COLLAPSED on load (seeded from `[!type]-` callouts at
- * `create`). Session-level only — never persisted across reloads.
+ * callouts start COLLAPSED the first time they're seen (seeded from
+ * `[!type]-` callouts at `create` AND on every subsequent docChanged for
+ * any position not already tracked in `known`) — this covers both a
+ * same-session `create()` with real content already present, and the
+ * common app pattern of mounting with `initialDoc=""` and loading the
+ * real content later via a docChanged `applyServerUpdate` transaction
+ * (MarkdownEditor.tsx). Session-level only — never persisted across reloads.
  *
  * The fold chevron itself is rendered by livePreviewPlugin.ts's
  * CalloutTitleWidget (same title-line widget as the dot/title), which
@@ -30,6 +35,8 @@ export const toggleCalloutFold = StateEffect.define<{ from: number }>();
 
 interface CalloutFoldFieldState {
   folded: Set<number>;
+  /** Every foldable-callout position we've already made a fold-state decision for. */
+  known: Set<number>;
   decos: DecorationSet;
 }
 
@@ -78,16 +85,18 @@ function buildFoldDecorations(state: EditorState, folded: Set<number>): Decorati
 const calloutFoldDecoField = StateField.define<CalloutFoldFieldState>({
   create(state) {
     const folded = findFoldableCalloutStarts(state);
-    return { folded, decos: buildFoldDecorations(state, folded) };
+    return { folded, known: new Set(folded), decos: buildFoldDecorations(state, folded) };
   },
   update(prev, tr: Transaction) {
     let folded = prev.folded;
+    let known = prev.known;
     let changed = false;
 
     for (const effect of tr.effects) {
       if (!effect.is(toggleCalloutFold)) continue;
       if (!changed) {
         folded = new Set(prev.folded);
+        known = new Set(prev.known);
         changed = true;
       }
       const pos = effect.value.from;
@@ -96,17 +105,36 @@ const calloutFoldDecoField = StateField.define<CalloutFoldFieldState>({
       } else {
         folded.add(pos);
       }
+      known.add(pos);
     }
 
     if (tr.docChanged) {
-      const remapped = new Set<number>();
-      for (const pos of folded) remapped.add(tr.changes.mapPos(pos));
-      folded = remapped;
-      changed = true;
+      if (!changed) {
+        folded = new Set(prev.folded);
+        known = new Set(prev.known);
+        changed = true;
+      }
+      const remappedFolded = new Set<number>();
+      for (const pos of folded) remappedFolded.add(tr.changes.mapPos(pos));
+      const remappedKnown = new Set<number>();
+      for (const pos of known) remappedKnown.add(tr.changes.mapPos(pos));
+
+      // Seed newly-appeared foldable callouts (not previously tracked) as
+      // collapsed — covers both a real initial load and a docChanged
+      // server-update replace of a previously-empty document.
+      for (const pos of findFoldableCalloutStarts(tr.state)) {
+        if (!remappedKnown.has(pos)) {
+          remappedFolded.add(pos);
+          remappedKnown.add(pos);
+        }
+      }
+
+      folded = remappedFolded;
+      known = remappedKnown;
     }
 
     if (!changed) return prev;
-    return { folded, decos: buildFoldDecorations(tr.state, folded) };
+    return { folded, known, decos: buildFoldDecorations(tr.state, folded) };
   },
   provide: (f) => EditorView.decorations.from(f, (v) => v.decos),
 });

@@ -218,3 +218,156 @@ test.describe("@phase21 centered-column geometry: note surface, empty state, fil
     expect(columnBox.width).toBeLessThanOrEqual(760);
   });
 });
+
+
+// ─── READ-02: Callouts — render, unknown fallback, auto-title, per-line ────
+// reveal, and fold-click (D-05/D-06/D-07/D-08/D-09). Fold interaction is
+// driven by real page.mouse (never dispatchEvent/synthetic events) per the
+// verify-dnd-with-real-mouse memory; zero fixed sleeps throughout.
+
+const CALLOUT_RGB: Record<string, string> = {
+  tip: "rgb(74, 222, 128)", // --color-success #4ade80
+  note: "rgb(125, 211, 252)", // --color-callout-info #7dd3fc
+  info: "rgb(125, 211, 252)", // --color-callout-info #7dd3fc
+  warning: "rgb(251, 191, 36)", // --color-warning #fbbf24
+  danger: "rgb(248, 113, 113)", // --color-destructive #f87171
+  todo: "rgb(167, 139, 250)", // --color-accent default #a78bfa
+};
+
+test.describe("@phase21 callouts", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("renders each of the six callout types with the correct colored left border", async ({
+    page,
+  }) => {
+    const noteId = await createNote(jasper, "callout-all-types");
+    await setNoteContent(
+      jasper,
+      noteId,
+      "> [!tip] Tip title\n> body\n\n" +
+        "> [!note] Note title\n\n" +
+        "> [!info] Info title\n\n" +
+        "> [!warning] Warning title\n\n" +
+        "> [!danger] Danger title\n\n" +
+        "> [!todo] Todo title\n",
+    );
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, noteId);
+
+    for (const type of ["tip", "note", "info", "warning", "danger", "todo"]) {
+      const line = page.locator(`.cm-callout-${type}`).first();
+      await expect(line).toBeVisible({ timeout: 5_000 });
+      await expect
+        .poll(() =>
+          line.evaluate((el) => getComputedStyle(el).borderLeftColor),
+        )
+        .toBe(CALLOUT_RGB[type]);
+    }
+
+    await page.screenshot({
+      path: path.join(__dirname, ".artifacts", "phase21-callouts-all-types.png"),
+      fullPage: false,
+    });
+  });
+
+  test("an unknown [!custom] type falls back to the note style with 'Custom' as the title", async ({
+    page,
+  }) => {
+    const noteId = await createNote(jasper, "callout-unknown-type");
+    await setNoteContent(jasper, noteId, "> [!custom]\n");
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, noteId);
+
+    const line = page.locator(".cm-callout-note").first();
+    await expect(line).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".cm-callout-title-widget")).toHaveText("Custom");
+  });
+
+  test("a bare '> [!warning]' auto-titles with the capitalized type name", async ({ page }) => {
+    const noteId = await createNote(jasper, "callout-titleless");
+    await setNoteContent(jasper, noteId, "> [!warning]\n");
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, noteId);
+
+    const line = page.locator(".cm-callout-warning").first();
+    await expect(line).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".cm-callout-title-widget")).toHaveText("Warning");
+  });
+
+  test("placing the cursor on the callout's title line reveals the raw markers while the border stays present", async ({
+    page,
+  }) => {
+    const noteId = await createNote(jasper, "callout-cursor-reveal");
+    await setNoteContent(jasper, noteId, "> [!tip] Reveal me\n\nAfter.\n");
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, noteId);
+
+    // Off-cursor: the title widget renders instead of raw "[!tip]" text.
+    await expect(page.locator(".cm-callout-title-widget")).toHaveText("Reveal me");
+
+    const titleLine = page.locator(".cm-callout-title-line").first();
+    await expect(titleLine).toBeVisible({ timeout: 5_000 });
+    await titleLine.click();
+
+    // On-cursor: raw markers reveal (widget disappears, raw "[!tip]" text visible).
+    await expect
+      .poll(async () => (await page.locator(".cm-callout-title-widget").count()) === 0)
+      .toBe(true);
+    await expect(titleLine).toContainText("[!tip] Reveal me");
+
+    // The colored border stays present at all times, even while editing (D-06).
+    await expect
+      .poll(() => titleLine.evaluate((el) => getComputedStyle(el).borderLeftColor))
+      .toBe(CALLOUT_RGB.tip);
+  });
+
+  test("a foldable '[!tip]-' callout starts collapsed and reveals its body on a real chevron click", async ({
+    page,
+  }) => {
+    const noteId = await createNote(jasper, "callout-fold");
+    await setNoteContent(
+      jasper,
+      noteId,
+      "> [!tip]- Foldable title\n> Hidden body text\n\nAfter.\n",
+    );
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, noteId);
+
+    await expect(page.locator(".cm-callout-title-widget")).toHaveText("Foldable title");
+
+    // Starts collapsed: the body line's text is not present anywhere in the editor.
+    await expect(page.locator(".cm-content")).not.toContainText("Hidden body text");
+
+    const chevron = page.locator(".cm-callout-fold-chevron").first();
+    await expect(chevron).toBeVisible({ timeout: 5_000 });
+    await expect(chevron).toHaveAttribute("aria-label", 'Expand "Foldable title" callout');
+
+    const box = await chevron.boundingBox();
+    if (!box) throw new Error("chevron bounding box unavailable");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.up();
+
+    // Expanded: the body text becomes visible; aria-label flips to Collapse.
+    await expect
+      .poll(async () => (await page.locator(".cm-content").innerText()).includes("Hidden body text"))
+      .toBe(true);
+    await expect(page.locator(".cm-callout-fold-chevron").first()).toHaveAttribute(
+      "aria-label",
+      'Collapse "Foldable title" callout',
+    );
+
+    await page.screenshot({
+      path: path.join(__dirname, ".artifacts", "phase21-callout-folded-expanded.png"),
+      fullPage: false,
+    });
+  });
+});
