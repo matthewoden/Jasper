@@ -13,6 +13,7 @@ import {
   livePreviewPlugin,
   computeCursorLines,
 } from "./livePreviewPlugin";
+import { Highlight } from "./highlightExtension";
 import {
   HEADING_DOC,
   EMPHASIS_DOC,
@@ -665,5 +666,89 @@ describe("livePreviewPlugin / TC-7 task-line coexistence guard", () => {
       cursor.next();
     }
     expect(foundBullet).toBe(true);
+  });
+});
+
+
+describe("livePreviewPlugin / highlight (==) decoration (READ-03)", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  function makeHighlightView(doc: string, selectionPos = 0): EditorView {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc,
+        selection: { anchor: selectionPos, head: selectionPos },
+        extensions: [
+          yamlFrontmatter({
+            content: markdown({ codeLanguages: [], base: markdownLanguage, extensions: [Highlight] }),
+          }),
+          livePreviewPlugin,
+        ],
+      }),
+    });
+    views.push(view);
+    return view;
+  }
+
+  it("emits cm-highlight mark over ==word==", () => {
+    const view = makeHighlightView("==word==", 0);
+    const plugin = view.plugin(livePreviewPlugin);
+    expect(plugin).not.toBeNull();
+
+    const decos: { from: number; to: number; class?: string }[] = [];
+    const cursor = plugin!.decorations.iter();
+    while (cursor.value !== null) {
+      const spec = (cursor.value as unknown as { spec: Record<string, unknown> }).spec;
+      decos.push({ from: cursor.from, to: cursor.to, class: spec?.class as string | undefined });
+      cursor.next();
+    }
+    const highlightDecos = decos.filter((d) => d.class === "cm-highlight");
+    expect(highlightDecos.length).toBeGreaterThan(0);
+  });
+
+  it("hides HighlightMark with Decoration.replace when cursor is OFF the line", () => {
+    const doc = "==word==\nanother line";
+    const view = makeHighlightView(doc, doc.indexOf("another") + 3);
+    const plugin = view.plugin(livePreviewPlugin);
+    expect(plugin).not.toBeNull();
+
+    let foundReplace = false;
+    const cursor = plugin!.decorations.iter();
+    while (cursor.value !== null) {
+      const spec = (cursor.value as unknown as { spec: Record<string, unknown> }).spec;
+      if (
+        cursor.from < 2 &&
+        spec?.class === undefined &&
+        spec?.widget === undefined
+      ) {
+        foundReplace = true;
+      }
+      cursor.next();
+    }
+    expect(foundReplace).toBe(true);
+  });
+
+  it("shows HighlightMark as visible marker (cm-marker) when cursor is ON the line", () => {
+    const view = makeHighlightView("==word==", 3);
+    const plugin = view.plugin(livePreviewPlugin);
+    expect(plugin).not.toBeNull();
+
+    const decos: { from: number; to: number; class?: string }[] = [];
+    const cursor = plugin!.decorations.iter();
+    while (cursor.value !== null) {
+      const spec = (cursor.value as unknown as { spec: Record<string, unknown> }).spec;
+      decos.push({ from: cursor.from, to: cursor.to, class: spec?.class as string | undefined });
+      cursor.next();
+    }
+    const markerDecos = decos.filter((d) => d.class === "cm-marker");
+    expect(markerDecos.length).toBeGreaterThan(0);
   });
 });

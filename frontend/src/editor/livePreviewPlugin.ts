@@ -7,10 +7,12 @@
  *   - Decoration.line for headings (cm-heading-1..6), blockquote
  *     (cm-blockquote), and code blocks (cm-codeblock).
  *   - Decoration.mark for StrongEmphasis (cm-strong), Emphasis
- *     (cm-emphasis), InlineCode (cm-inline-code).
+ *     (cm-emphasis), InlineCode (cm-inline-code), Highlight (cm-highlight,
+ *     from the hand-rolled highlightExtension.ts's == delimiter).
  *   - Decoration.replace for hideable marker nodes when their line is
  *     off-cursor (HeaderMark, EmphasisMark, QuoteMark, ListMark, LinkMark,
- *     URL, HardBreak, CodeMark) and for HorizontalRule (hr widget).
+ *     URL, HardBreak, CodeMark, HighlightMark) and for HorizontalRule
+ *     (hr widget).
  *   - Decoration.mark with cm-marker for the same hideable nodes when
  *     their line is on-cursor (markers visible-but-muted).
  *
@@ -65,10 +67,12 @@ export const HIDEABLE_MARKER_NODES = new Set<string>([
   "HardBreak",    // trailing 2-space line break
   "CodeMark",     // ` `` ``` (inline-code backticks; FencedCode guard
                   //   prevents these hiding when nested in FencedCode)
+  "HighlightMark", // == (reuses the on/off-cursor-line reveal logic verbatim)
 ]);
 
 export const STRONG_MARK_CLASS = "cm-strong";
 export const EM_MARK_CLASS = "cm-emphasis";
+export const HIGHLIGHT_MARK_CLASS = "cm-highlight";
 export const VISIBLE_MARKER_CLASS = "cm-marker";
 export const LINK_MARK_CLASS = "cm-link";
 export const EXTERNAL_LINK_MARK_CLASS = "cm-link cm-link-external";
@@ -276,6 +280,16 @@ export function buildDecorations(view: EditorView): DecorationSet {
             from: node.from,
             to: node.to,
             deco: Decoration.mark({ class: EM_MARK_CLASS, inclusive: true }),
+            sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
+          });
+          return;
+        }
+
+        if (node.name === "Highlight") {
+          markDecos.push({
+            from: node.from,
+            to: node.to,
+            deco: Decoration.mark({ class: HIGHLIGHT_MARK_CLASS, inclusive: true }),
             sortKey: node.from * 1e9 + (1e9 - (node.to - node.from)),
           });
           return;
