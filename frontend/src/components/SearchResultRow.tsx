@@ -3,8 +3,8 @@
  * <mark> highlighting → matching tag chips.
  *
  * Excerpt is rendered via sanitizeHtml with <mark> allowed through — marks
- * pop via brightness + weight contrast (muted base, fg+600 on match) rather
- * than a fill, so they read as emphasis rather than a form control.
+ * carry the same accent-tint fill (28% color-mix) as the editor's
+ * ==highlight== (READ-04/D-12), plus fg+600 text weight for legibility.
  */
 import { useState } from "react";
 import { sanitizeHtml } from "../lib/sanitize";
@@ -58,8 +58,9 @@ export function SearchResultRow({ result }: SearchResultRowProps) {
         .search-result-excerpt mark {
           color: var(--color-fg);
           font-weight: 600;
-          background: transparent;
-          padding: 0;
+          background: color-mix(in srgb, var(--color-accent) 28%, transparent);
+          padding: 0 2px;
+          border-radius: 2px;
         }
       `}</style>
       <div
