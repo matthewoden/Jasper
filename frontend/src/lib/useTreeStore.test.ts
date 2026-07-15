@@ -919,6 +919,13 @@ describe("Phase 7 ADD-only slices", () => {
     expect(useTreeStore.getState().paletteOpen).toBe(true);
   });
 
+  it("Phase 22: setPaletteMode accepts 'all' as a fourth value", () => {
+    useTreeStore.getState().setPaletteMode("all");
+    expect(useTreeStore.getState().paletteMode).toBe("all");
+    useTreeStore.getState().setPaletteMode("notes");
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+  });
+
   it("recordOpenedNote pushes new id to front", () => {
     const { recordOpenedNote } = useTreeStore.getState();
     recordOpenedNote("a");
@@ -1230,4 +1237,58 @@ describe("Phase 20 Plan 03 — unified right-rail collapse booleans + split rati
   // RR-11 (Phase 20 Plan 03) asserted the legacy panel-selector slice was
   // unaffected by the additive-only plan; the slice itself was removed by
   // Plan 05 (D-01 fold), so that assertion no longer applies.
+});
+
+
+describe("Phase 22 Plan 01 — ephemeral zen slice (ZEN-01, D-08)", () => {
+  afterEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+  });
+
+  it("Z1: fresh store defaults zen to false", async () => {
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().zen).toBe(false);
+  });
+
+  it("Z2: toggleZen() flips false -> true -> false", () => {
+    useTreeStore.setState({ zen: false });
+    useTreeStore.getState().toggleZen();
+    expect(useTreeStore.getState().zen).toBe(true);
+    useTreeStore.getState().toggleZen();
+    expect(useTreeStore.getState().zen).toBe(false);
+  });
+
+  it("Z3: setZen(true) sets zen to true", () => {
+    useTreeStore.setState({ zen: false });
+    useTreeStore.getState().setZen(true);
+    expect(useTreeStore.getState().zen).toBe(true);
+  });
+
+  it("Z4: mutating zen does NOT write any key to localStorage", () => {
+    vi.useFakeTimers();
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      useTreeStore.getState().toggleZen();
+      useTreeStore.getState().setZen(true);
+      useTreeStore.getState().setZen(false);
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      const writeKeys = setItemSpy.mock.calls.map((c) => c[0] as string);
+      expect(writeKeys.some((k) => k.toLowerCase().includes("zen"))).toBe(false);
+    } finally {
+      setItemSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("Z5: a fresh store re-init reads zen back as false regardless of prior mutation", async () => {
+    useTreeStore.getState().setZen(true);
+    expect(useTreeStore.getState().zen).toBe(true);
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().zen).toBe(false);
+  });
 });
