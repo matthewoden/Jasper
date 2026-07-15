@@ -128,6 +128,55 @@ test.describe("@phase21 centered-column geometry: note surface, empty state, fil
     });
   });
 
+  test("inline title's left edge aligns with the body text, and its focus ring has clearance below", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1512, height: 944 });
+
+    const noteId = await createNote(jasper, "align-note");
+    await setNoteContent(
+      jasper,
+      noteId,
+      "# align-note\n\nFirst body line to compare the left edge against the title.\n",
+    );
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, noteId);
+
+    const titleEl = page.getByTestId("editor-title-element");
+    // The first .cm-line is the ATX H1, hidden by firstH1HidePlugin — target the
+    // body line by its text so we measure a real, visible content line.
+    const firstLine = page.locator(".cm-line", { hasText: "First body line" });
+    const cmContent = page.locator(".cm-content:visible");
+
+    await expect(titleEl).toBeVisible({ timeout: 10_000 });
+    await expect(firstLine).toBeVisible({ timeout: 10_000 });
+
+    let titleBox = await titleEl.boundingBox();
+    let lineBox = await firstLine.boundingBox();
+    let contentBox = await cmContent.boundingBox();
+    await expect
+      .poll(async () => {
+        titleBox = await titleEl.boundingBox();
+        lineBox = await firstLine.boundingBox();
+        contentBox = await cmContent.boundingBox();
+        return (titleBox?.width ?? 0) > 0 && (lineBox?.width ?? 0) > 0 && (contentBox?.height ?? 0) > 0;
+      }, { timeout: 5_000 })
+      .toBe(true);
+    if (!titleBox || !lineBox || !contentBox) {
+      throw new Error("bounding boxes unavailable");
+    }
+
+    // The inline title and the body text share the same reading column, so
+    // their left edges must line up (regression: a residual --editor-content-x
+    // padding on the editor shell shifted the body ~36px right of the title).
+    expect(Math.abs(lineBox.x - titleBox.x)).toBeLessThanOrEqual(CENTER_TOLERANCE_PX);
+
+    // The editor must not butt directly against the title, or the title's 2px
+    // focus ring gets painted over at the bottom.
+    const gap = contentBox.y - (titleBox.y + titleBox.height);
+    expect(gap).toBeGreaterThanOrEqual(2);
+  });
+
   test("editor-pane-placeholder empty state renders its content within a <=760px centered wrapper", async ({
     page,
   }) => {

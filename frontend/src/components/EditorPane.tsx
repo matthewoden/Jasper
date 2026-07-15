@@ -973,7 +973,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           width: "100%",
           maxWidth: 760,
           margin: "0 auto",
-          padding: "0 56px",
+          // paddingBottom keeps the title's 2px focus ring clear of the editor
+          // shell below (which starts flush at the wrapper's edge and would
+          // otherwise paint over the ring's bottom).
+          padding: "0 56px 6px",
           boxSizing: "border-box",
         }}
       >
@@ -985,8 +988,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       </div>
       {/* MarkdownEditor is uncontrolled — initialDoc captured once on mount;
           updates flow through the ref API. Click-anywhere-to-type: clicks outside
-          .cm-content call focusEnd() to move caret to end-of-doc. Host has zero
-          padding so empty-area clicks reach this onClick reliably. */}
+          .cm-content call focusEnd() to move caret to end-of-doc.
+          The shell carries NO horizontal padding: the reading column is the
+          self-centering 760px .cm-content (margin:0 auto, 21-01/D-14). Adding
+          --editor-content-x here (pane-wide breadcrumb chrome, D-16) would shift
+          that centered column's axis and push the body out of alignment with the
+          inline title, which centers against the full pane. */}
       <div
         className="cm-host-shell"
         style={{
@@ -995,7 +1002,6 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           flexDirection: "column",
           minHeight: 0,
           overflow: "hidden",
-          paddingLeft: "var(--editor-content-x)",
         }}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest(".cm-content")) return;
