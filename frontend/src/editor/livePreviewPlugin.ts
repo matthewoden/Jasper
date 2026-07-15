@@ -5,16 +5,28 @@
  * emits per-node decorations:
  *
  *   - Decoration.line for headings (cm-heading-1..6), blockquote
- *     (cm-blockquote), and code blocks (cm-codeblock).
+ *     (cm-blockquote), callouts (cm-callout cm-callout-{type}, READ-02),
+ *     and code blocks (cm-codeblock).
  *   - Decoration.mark for StrongEmphasis (cm-strong), Emphasis
  *     (cm-emphasis), InlineCode (cm-inline-code), Highlight (cm-highlight,
  *     from the hand-rolled highlightExtension.ts's == delimiter).
  *   - Decoration.replace for hideable marker nodes when their line is
  *     off-cursor (HeaderMark, EmphasisMark, QuoteMark, ListMark, LinkMark,
  *     URL, HardBreak, CodeMark, HighlightMark) and for HorizontalRule
- *     (hr widget).
+ *     (hr widget), and for a callout's title-line marker+title span
+ *     (CalloutTitleWidget, READ-02).
  *   - Decoration.mark with cm-marker for the same hideable nodes when
  *     their line is on-cursor (markers visible-but-muted).
+ *
+ * Callout detection (READ-02, D-05/D-06/D-08/D-09): a Blockquote's first
+ * line is checked for a `[!type]` or `[!type]-` prefix (regex, not a lezer
+ * node — CommonMark has no callout grammar). A match replaces the plain
+ * `.cm-blockquote` line treatment with `cm-callout cm-callout-{type}` for
+ * every line in the blockquote's range; no match falls through to the
+ * existing plain-blockquote path UNCHANGED (non-regression by construction).
+ * The dot is pure CSS (`::before` on `.cm-callout-title-line`, always
+ * visible); only the `[!type](-)?\s*title?` span hides/reveals per cursor,
+ * exactly like the other hideable markers.
  *
  * Edge cases:
  *   - Multi-line selection: every line touched stays in the cursor-line
@@ -44,6 +56,7 @@ import { RangeSetBuilder } from "@codemirror/state";
 import type { SyntaxNodeRef } from "@lezer/common";
 
 import { isExternalLikeUrl } from "./linkUrl";
+import { isCalloutFolded, toggleCalloutFold } from "./calloutFoldField";
 
 
 export const HEADING_LINE_CLASSES: Record<string, string> = {
@@ -113,6 +126,120 @@ const inlineCodeMarkDeco = Decoration.mark({ class: INLINE_CODE_MARK_CLASS, incl
 const BLOCK_LINE_DECOS: Record<string, Decoration> = {
   Blockquote: blockquoteLineDeco,
 };
+
+
+/**
+ * CALLOUT_TYPES — the six named callout types with dedicated CSS color
+ * treatment (theme.css). Any other `[!word]` value falls back to the
+ * "note" style per D-08, but keeps its own word as the title.
+ */
+export const CALLOUT_TYPES = new Set([
+  "tip",
+  "note",
+  "info",
+  "warning",
+  "danger",
+  "todo",
+]);
+
+/** Regex for the marker portion of a callout's first line, after stripping the "> " quote prefix. */
+const CALLOUT_MARKER_RE = /^\[!(\w+)\](-)?\s*(.*)$/;
+
+/** Capitalizes the first character only (D-08/D-09 auto-title rule). */
+function capitalizeWord(s: string): string {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export const CALLOUT_LINE_CLASS = "cm-callout";
+export const CALLOUT_TITLE_LINE_CLASS = "cm-callout-title-line";
+export const CALLOUT_TITLE_WIDGET_CLASS = "cm-callout-title-widget";
+export const CALLOUT_FOLD_CHEVRON_CLASS = "cm-callout-fold-chevron";
+
+/**
+ * makeChevronSvg — builds a ChevronRight (collapsed) / ChevronDown (expanded)
+ * SVG via createElementNS (no lucide-react import — CM6 widgets produce
+ * plain DOM, not a React render tree). Path data extracted from
+ * lucide-react v0.460.0 (chevron-right.js / chevron-down.js), same
+ * precedent as taskCheckboxPlugin.ts's makeLucideSvg.
+ */
+function makeChevronSvg(expanded: boolean): SVGSVGElement {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "12");
+  svg.setAttribute("height", "12");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", expanded ? "m6 9 6 6 6-6" : "m9 18 6-6-6-6");
+  svg.appendChild(path);
+  return svg;
+}
+
+/**
+ * CalloutTitleWidget — replaces a callout's first-line `[!type](-)?\s*title?`
+ * span (off-cursor only) with the synthesized title text (+ fold chevron for
+ * foldable callouts, D-07). The colored dot is NOT part of this widget — it
+ * is a pure-CSS `::before` on the title line's class so it stays rendered
+ * even while the cursor is on that line and the raw markers are revealed
+ * (D-06).
+ */
+export class CalloutTitleWidget extends WidgetType {
+  constructor(
+    public readonly title: string,
+    public readonly cssType: string,
+    public readonly foldable: boolean = false,
+    public readonly folded: boolean = false,
+    public readonly blockquoteFrom: number = -1,
+  ) {
+    super();
+  }
+
+  eq(other: CalloutTitleWidget): boolean {
+    return (
+      other.title === this.title &&
+      other.cssType === this.cssType &&
+      other.foldable === this.foldable &&
+      other.folded === this.folded &&
+      other.blockquoteFrom === this.blockquoteFrom
+    );
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = `${CALLOUT_TITLE_WIDGET_CLASS} cm-callout-title-${this.cssType}`;
+
+    if (this.foldable) {
+      const chevron = document.createElement("span");
+      chevron.className = CALLOUT_FOLD_CHEVRON_CLASS;
+      chevron.setAttribute("role", "button");
+      chevron.setAttribute("tabIndex", "-1");
+      chevron.setAttribute("data-pos", String(this.blockquoteFrom));
+      chevron.setAttribute(
+        "aria-label",
+        this.folded ? `Expand "${this.title}" callout` : `Collapse "${this.title}" callout`,
+      );
+      chevron.appendChild(makeChevronSvg(!this.folded));
+      span.appendChild(chevron);
+    }
+
+    const titleText = document.createElement("span");
+    titleText.textContent = this.title;
+    span.appendChild(titleText);
+
+    return span;
+  }
+
+  ignoreEvent(): boolean {
+    return false; // CRITICAL — let clicks reach eventHandlers (mirrors taskCheckboxPlugin's CheckboxWidget)
+  }
+}
 
 
 export const CODEBLOCK_FIRST_LINE_CLASS = "cm-codeblock cm-codeblock-first";
@@ -219,7 +346,88 @@ export function buildDecorations(view: EditorView): DecorationSet {
           return;
         }
 
-        if (BLOCK_LINE_DECOS[node.name]) {
+        if (node.name === "Blockquote") {
+          const firstLine = view.state.doc.lineAt(node.from);
+          const markerMatch = firstLine.text.match(/^(>\s?)/);
+          const markerLen = markerMatch ? markerMatch[1].length : 0;
+          const afterMarker = firstLine.text.slice(markerLen);
+          const calloutMatch = afterMarker.match(CALLOUT_MARKER_RE);
+
+          if (calloutMatch) {
+            const rawType = calloutMatch[1].toLowerCase();
+            const foldable = calloutMatch[2] === "-";
+            const explicitTitle = calloutMatch[3].trim();
+            const cssType = CALLOUT_TYPES.has(rawType) ? rawType : "note";
+            const title = explicitTitle.length > 0 ? explicitTitle : capitalizeWord(rawType);
+
+            let pos = node.from;
+            let lineIndex = 0;
+            while (pos < node.to) {
+              const line = view.state.doc.lineAt(pos);
+              const isTitleLine = lineIndex === 0;
+              const cls = isTitleLine
+                ? `${CALLOUT_LINE_CLASS} cm-callout-${cssType} ${CALLOUT_TITLE_LINE_CLASS}`
+                : `${CALLOUT_LINE_CLASS} cm-callout-${cssType}`;
+              lineDecos.push({ from: line.from, deco: Decoration.line({ class: cls }) });
+
+              // Manually replicate the QuoteMark hide/reveal that the
+              // generic HIDEABLE_MARKER_NODES walk would otherwise provide —
+              // descent into this Blockquote's children is stopped below
+              // (Link/LinkMark collision guard), so every line's "> " prefix
+              // needs its own hide-off-cursor / reveal-on-cursor decoration.
+              const lineMarkerMatch = line.text.match(/^(>\s?)/);
+              const lineMarkerLen = lineMarkerMatch ? lineMarkerMatch[1].length : 0;
+              if (lineMarkerLen > 0) {
+                const onQuoteCursorLine = cursorLines.has(line.number);
+                markDecos.push({
+                  from: line.from,
+                  to: line.from + lineMarkerLen,
+                  deco: onQuoteCursorLine
+                    ? Decoration.mark({ class: VISIBLE_MARKER_CLASS })
+                    : Decoration.replace({}),
+                  sortKey: line.from * 1e9 + (1e9 - lineMarkerLen),
+                });
+              }
+
+              if (line.to >= node.to) break;
+              pos = line.to + 1;
+              lineIndex++;
+            }
+
+            const markerFrom = firstLine.from + markerLen;
+            const markerTo = firstLine.to;
+            if (markerFrom < markerTo) {
+              const onCursorLine = cursorLines.has(firstLine.number);
+              if (onCursorLine) {
+                markDecos.push({
+                  from: markerFrom,
+                  to: markerTo,
+                  deco: Decoration.mark({ class: VISIBLE_MARKER_CLASS }),
+                  sortKey: markerFrom * 1e9 + (1e9 - (markerTo - markerFrom)),
+                });
+              } else {
+                const folded = isCalloutFolded(view.state, node.from);
+                markDecos.push({
+                  from: markerFrom,
+                  to: markerTo,
+                  deco: Decoration.replace({
+                    widget: new CalloutTitleWidget(title, cssType, foldable, folded, node.from),
+                  }),
+                  sortKey: markerFrom * 1e9 + (1e9 - (markerTo - markerFrom)),
+                });
+              }
+            }
+
+            // Stop descent: lezer parses "[!type]" as shortcut-link-like
+            // bracket syntax (Link/LinkMark nodes) that would otherwise
+            // double-decorate the exact same range we just handled above.
+            // Callout body lines forgo generic inline-formatting decoration
+            // as a result — a documented trade-off, not a regression (plain
+            // blockquotes below are unaffected and keep full inline support).
+            return false;
+          }
+
+          // No [!type] match — plain blockquote, unchanged existing behavior.
           const deco = BLOCK_LINE_DECOS[node.name];
           let pos = node.from;
           while (pos < node.to) {
@@ -441,15 +649,36 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
         this.decorations = this.decorations.map(u.changes);
         return;
       }
+      // Callout fold toggles (READ-02/D-07) don't touch the doc, viewport,
+      // selection, or syntax tree — rebuild explicitly so the chevron
+      // direction and folded body decoration stay in sync with
+      // calloutFoldField's own StateField.
+      const foldToggled = u.transactions.some((tr) =>
+        tr.effects.some((e) => e.is(toggleCalloutFold)),
+      );
       if (
         u.docChanged ||
         u.viewportChanged ||
         u.selectionSet ||
+        foldToggled ||
         syntaxTree(u.startState) !== syntaxTree(u.state)
       ) {
         this.decorations = buildDecorations(u.view);
       }
     }
   },
-  { decorations: (v) => v.decorations }
+  {
+    decorations: (v) => v.decorations,
+    eventHandlers: {
+      click(e: MouseEvent, view: EditorView) {
+        const target = e.target as HTMLElement | null;
+        const chevron = target?.closest(`.${CALLOUT_FOLD_CHEVRON_CLASS}`) as HTMLElement | null;
+        if (!chevron) return false;
+        const pos = parseInt(chevron.getAttribute("data-pos") ?? "", 10);
+        if (isNaN(pos)) return false;
+        view.dispatch({ effects: toggleCalloutFold.of({ from: pos }) });
+        return true;
+      },
+    },
+  }
 );

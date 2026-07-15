@@ -39,15 +39,21 @@
   --color-muted:       #6a6a72; /* foreground muted/secondary */
   --color-border:      #2a2a2e; /* structural dividers */
   --color-accent:      #a78bfa; /* purple default — accent 10%; user overrides via setProperty */
-  --color-success:     #4ade80; /* green-400 — save-indicator saved only */
-  --color-destructive: #f87171; /* red-400 — save-indicator error only */
+  --color-success:     #4ade80; /* green-400 — save-indicator saved + tip callout (Phase 21 READ-02) */
+  --color-destructive: #f87171; /* red-400 — save-indicator error + danger callout (Phase 21 READ-02) */
 
-  /* Phase 2 NEW (UI-SPEC §Color delta) — RESERVED EXCLUSIVELY for the
-     migration banner per UI-SPEC §"Warning color reserved for". Future
-     phases must declare their own tokens with a different name if they
-     need amber/warning shades; do not extend these. */
-  --color-warning:         #fbbf24; /* amber-400 — banner only */
+  /* Phase 2 NEW (UI-SPEC §Color delta) — RESERVED for the migration banner
+     per UI-SPEC §"Warning color reserved for", extended to the warning
+     callout (Phase 21 READ-02). Future phases must declare their own
+     tokens with a different name if they need amber/warning shades. */
+  --color-warning:         #fbbf24; /* amber-400 — banner + warning callout */
   --color-warning-surface: #27201b; /* warm-tinted zinc-800 — banner only */
+
+  /* Phase 21 NEW (READ-02) — note/info callout color. Fixed hex,
+     intentionally NOT tied to the user's accent choice (unlike
+     --color-accent) so a callout's semantic color stays stable regardless
+     of accent selection, matching tip/warning/danger. */
+  --color-callout-info: #7dd3fc; /* sky-300 — note + info callouts only */
 
   /* Phase 2 NEW (UI-SPEC §Spacing delta) — RESERVED for migration banner
      vertical padding (Surface 1) and toast vertical padding (Surface 5).
@@ -105,6 +111,7 @@
   --color-destructive:      var(--color-destructive);
   --color-warning:          var(--color-warning);
   --color-warning-surface:  var(--color-warning-surface);
+  --color-callout-info:     var(--color-callout-info);
   --spacing-md-tight:       var(--spacing-md-tight);
   --font-sans:              var(--font-sans);
   --font-mono:              var(--font-mono);
@@ -700,5 +707,91 @@ body {
    ───────────────────────────────────────────────────────────────── */
 [role^="menuitem"] + [role^="menuitem"] {
   margin-top: 4px;
+}
+
+/* ── Phase 21 Plan 04 — Callouts (READ-02) ───────────────────────────────
+   Six named types (tip/note/info/warning/danger/todo) + unknown→note
+   fallback. All six share one rendering formula (UI-SPEC §Color):
+   left border 3px solid {type-color}, background color-mix 8% tint, dot
+   6px circle {type-color}, title 14px/700 {type-color}, body inherits
+   normal --color-fg (untinted). Emitted as Decoration.line by
+   livePreviewPlugin.ts's Blockquote branch; the title text itself is a
+   CalloutTitleWidget (Decoration.replace) that hides/reveals per cursor
+   line, but the dot below is pure CSS so it stays visible even while
+   editing the title line (D-06).
+   ───────────────────────────────────────────────────────────────────── */
+.cm-callout {
+  padding: 8px 16px;
+}
+
+.cm-callout-title-line::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.cm-callout-title-widget {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cm-callout-tip {
+  border-left: 3px solid var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 8%, transparent);
+}
+.cm-callout-tip.cm-callout-title-line::before { background: var(--color-success); }
+.cm-callout-title-tip { color: var(--color-success); }
+
+.cm-callout-note {
+  border-left: 3px solid var(--color-callout-info);
+  background: color-mix(in srgb, var(--color-callout-info) 8%, transparent);
+}
+.cm-callout-note.cm-callout-title-line::before { background: var(--color-callout-info); }
+.cm-callout-title-note { color: var(--color-callout-info); }
+
+.cm-callout-info {
+  border-left: 3px solid var(--color-callout-info);
+  background: color-mix(in srgb, var(--color-callout-info) 8%, transparent);
+}
+.cm-callout-info.cm-callout-title-line::before { background: var(--color-callout-info); }
+.cm-callout-title-info { color: var(--color-callout-info); }
+
+.cm-callout-warning {
+  border-left: 3px solid var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+}
+.cm-callout-warning.cm-callout-title-line::before { background: var(--color-warning); }
+.cm-callout-title-warning { color: var(--color-warning); }
+
+.cm-callout-danger {
+  border-left: 3px solid var(--color-destructive);
+  background: color-mix(in srgb, var(--color-destructive) 8%, transparent);
+}
+.cm-callout-danger.cm-callout-title-line::before { background: var(--color-destructive); }
+.cm-callout-title-danger { color: var(--color-destructive); }
+
+.cm-callout-todo {
+  border-left: 3px solid var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+.cm-callout-todo.cm-callout-title-line::before { background: var(--color-accent); }
+.cm-callout-title-todo { color: var(--color-accent); }
+
+/* Fold chevron (Phase 21 Plan 04 Task 2 — D-07). Built via createElementNS
+   inside the CM6 widget (no lucide-react import in CM6 files); styled here
+   like every other CM6-rendered SVG affordance. */
+.cm-callout-fold-chevron {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--color-muted);
+  flex-shrink: 0;
 }
 
