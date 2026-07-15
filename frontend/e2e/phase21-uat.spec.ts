@@ -371,3 +371,123 @@ test.describe("@phase21 callouts", () => {
     });
   });
 });
+
+// ─── READ-04: Token styling — headings, wiki-links, tag pills, snippet ─────
+// parity with the editor's ==highlight== accent tint (D-12/D-13/D-18).
+
+function ribbon(page: Page) {
+  return page.locator('nav[aria-label="Activity ribbon"]');
+}
+
+function ribbonSearchBtn(page: Page) {
+  return ribbon(page).locator('button[aria-label="Search notes"]');
+}
+
+function searchPanelInput(page: Page) {
+  return page.getByPlaceholder("Search notes… (tag:name to filter)");
+}
+
+const DESTRUCTIVE_RGB = "rgb(248, 113, 113)"; // --color-destructive #f87171
+
+test.describe("@phase21 typography", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("headings, broken wiki-links, tag pills, and snippet-mark match the D-18/D-12/D-13 tokens", async ({
+    page,
+  }) => {
+    const uniqueToken = "typographysearchtoken";
+    const noteId = await createNote(jasper, "typography-token-note");
+    // The doc's FIRST ATX H1 is hidden in-editor (TitleElement renders it
+    // above the editor, firstH1HidePlugin.ts) — a second H1 further down
+    // exercises `.cm-heading-1` as an ordinary in-body heading decoration.
+    await setNoteContent(
+      jasper,
+      noteId,
+      `# typography-token-note\n\n# Second H1 Heading\n\n## H2 Heading\n\nA paragraph with an unresolved [[missing-link]] and a #typographytag ` +
+        `plus a ${uniqueToken} for search matching. Also ==highlighted text== here.\n`,
+    );
+    await waitForConnected(page, jasper.baseURL);
+    await openNoteFromTree(page, noteId);
+
+    const h1 = page.locator(".cm-heading-1").first();
+    await expect(h1).toBeVisible({ timeout: 5_000 });
+    await expect
+      .poll(() => h1.evaluate((el) => getComputedStyle(el).fontSize))
+      .toBe("27px");
+    await expect
+      .poll(() => h1.evaluate((el) => getComputedStyle(el).fontWeight))
+      .toBe("700");
+    await expect
+      .poll(() => h1.evaluate((el) => getComputedStyle(el).borderBottomWidth))
+      .not.toBe("0px");
+
+    const h2 = page.locator(".cm-heading-2").first();
+    await expect(h2).toBeVisible({ timeout: 5_000 });
+    await expect
+      .poll(() => h2.evaluate((el) => getComputedStyle(el).fontSize))
+      .toBe("21px");
+    await expect
+      .poll(() => h2.evaluate((el) => getComputedStyle(el).fontWeight))
+      .toBe("700");
+
+    const pendingLink = page.locator(".cm-wiki-link-pending").first();
+    await expect(pendingLink).toBeVisible({ timeout: 5_000 });
+    await expect
+      .poll(() =>
+        pendingLink.evaluate((el) => getComputedStyle(el).textDecorationStyle),
+      )
+      .toBe("solid");
+    await expect
+      .poll(() => pendingLink.evaluate((el) => getComputedStyle(el).color))
+      .toBe(DESTRUCTIVE_RGB);
+
+    const tagPill = page.locator(".cm-inline-tag").first();
+    await expect(tagPill).toBeVisible({ timeout: 5_000 });
+    await expect
+      .poll(() => tagPill.evaluate((el) => getComputedStyle(el).borderRadius))
+      .toBe("9999px");
+    await expect
+      .poll(() =>
+        tagPill.evaluate((el) => getComputedStyle(el).backgroundColor),
+      )
+      .not.toBe("rgba(0, 0, 0, 0)");
+
+    await page.screenshot({
+      path: path.join(__dirname, ".artifacts", "phase21-typography-headings.png"),
+      fullPage: false,
+    });
+
+    const editorHighlight = page.locator(".cm-highlight").first();
+    await expect(editorHighlight).toBeVisible({ timeout: 5_000 });
+    const editorHighlightBg = await editorHighlight.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
+
+    await ribbonSearchBtn(page).click();
+    const input = searchPanelInput(page);
+    await expect(input).toBeVisible({ timeout: 5_000 });
+    await input.fill(uniqueToken);
+
+    await expect
+      .poll(async () => page.getByText(/^\d+ results?$/).count(), { timeout: 5_000 })
+      .toBeGreaterThan(0);
+    const snippetMark = page.locator(".search-result-excerpt mark").first();
+    await expect(snippetMark).toBeVisible({ timeout: 5_000 });
+    await expect
+      .poll(() => snippetMark.evaluate((el) => getComputedStyle(el).backgroundColor))
+      .toBe(editorHighlightBg);
+
+    await page.screenshot({
+      path: path.join(__dirname, ".artifacts", "phase21-typography-search-snippet.png"),
+      fullPage: false,
+    });
+  });
+});

@@ -88,12 +88,13 @@ describe("SearchResultRow", () => {
       expect(css).toMatch(/\.search-result-excerpt\s+mark\s*{[^}]*font-weight:\s*600/);
     });
 
-    it("SRR-N11-LEGIB-3: <mark> rule has transparent background (no yellow fill)", () => {
+    it("SRR-N11-LEGIB-3 (superseded by READ-04/D-12): <mark> rule uses the same 28% accent-tint fill as the editor's ==highlight==, not a plain yellow fill", () => {
       const { container } = render(<SearchResultRow result={mockResult} />);
       const styleEl = container.querySelector("style");
       const css = styleEl?.textContent ?? "";
-      expect(css).toMatch(/\.search-result-excerpt\s+mark\s*{[^}]*background:\s*transparent/);
-      expect(css).not.toMatch(/\.search-result-excerpt\s+mark\s*{[^}]*background:\s*color-mix/);
+      expect(css).toMatch(
+        /\.search-result-excerpt\s+mark\s*{[^}]*background:\s*color-mix\(in srgb, var\(--color-accent\) 28%, transparent\)/,
+      );
     });
   });
 });
