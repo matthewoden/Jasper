@@ -160,6 +160,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   const setPulseTarget = useTreeStore((s) => s.setPulseTarget);
   const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
+  const zen = useTreeStore((s) => s.zen);
 
   const handleBreadcrumbClick = useCallback((seg: BreadcrumbSegment) => {
     if (seg.kind === "folder") {
@@ -889,7 +890,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           </button>
         </div>
       )}
-      {notePath && breadcrumbSegments(notePath).length > 0 && (
+      {!zen && notePath && breadcrumbSegments(notePath).length > 0 && (
         <nav
           data-testid="note-breadcrumb"
           aria-label="Note path"
