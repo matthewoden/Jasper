@@ -1,5 +1,6 @@
 /**
- * CommandMenu — shared modal shell for three palette modes:
+ * CommandMenu — shared modal shell for four palette modes:
+ *   - mode="all"      (Cmd+K)         — unified notes + commands, kind-badged
  *   - mode="notes"    (Cmd+O)         — title-fuzzy quick switcher only
  *   - mode="commands" (Cmd+P)         — command palette
  *   - mode="search"   (Cmd+Shift+F)  — FTS5 body search + snippet excerpts
@@ -10,6 +11,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, Command, Loader2 } from "lucide-react";
+import fuzzysort from "fuzzysort";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette, type CommandActions } from "../lib/useCommandPalette";
 import { useSearch } from "../lib/useSearch";
@@ -52,13 +54,45 @@ interface GroupItem {
 
 type Item = NoteItem | CmdItem | SearchHitItem | GroupItem;
 
+export type PaletteMode = "notes" | "commands" | "search" | "all";
+
 export interface CommandMenuProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  mode: "notes" | "commands" | "search" | "all";
+  mode: PaletteMode;
   actions: CommandActions;
 }
 
+
+// Kind badge — copied verbatim from the autocomplete detail-badge treatment
+// (theme.css:300-319) per the UI-SPEC contract; the padding: "0 6px" inset is
+// an owner-approved component-internal exception to the 4px grid (see
+// 22-UI-SPEC.md "Spacing Scale" + memory pill-inset-grid-exception).
+const kindBadgeBaseStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minWidth: 16,
+  height: 16,
+  padding: "0 6px",
+  borderRadius: 8,
+  fontSize: 11,
+  fontWeight: 600,
+  lineHeight: "16px",
+  flexShrink: 0,
+};
+
+const noteKindBadgeStyle: React.CSSProperties = {
+  ...kindBadgeBaseStyle,
+  background: "color-mix(in srgb, var(--color-fg) 10%, transparent)",
+  color: "var(--color-muted)",
+};
+
+const cmdKindBadgeStyle: React.CSSProperties = {
+  ...kindBadgeBaseStyle,
+  background: "color-mix(in srgb, var(--color-accent) 12%, transparent)",
+  color: "var(--color-accent)",
+};
 
 function nextSelectable(items: Item[], from: number, direction: 1 | -1): number {
   let i = from + direction;
@@ -109,10 +143,10 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const [query, setQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
 
-  const noteHits = useQuickSwitcher(mode === "notes" ? query : "");
+  const noteHits = useQuickSwitcher(mode === "notes" || mode === "all" ? query : "");
 
   const cmd = useCommandPalette(actions);
-  const cmdHits: Shortcut[] = mode === "commands" ? cmd.filtered(query) : [];
+  const cmdHits: Shortcut[] = mode === "commands" || mode === "all" ? cmd.filtered(query) : [];
 
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
   const { results: searchHits, isSearching } = useSearch(
@@ -136,6 +170,44 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       id: r.id,
       result: r,
     }));
+  } else if (mode === "all") {
+    // Unified mode (D-01/D-03): notes + commands merged into one list, no
+    // GroupItem header rows — the kind badge is the sole differentiator.
+    // Empty query: notes (recents) first, then commands. Non-empty query:
+    // single list ordered by match score across both kinds. Commands don't
+    // carry a fuzzysort score of their own (cmd.filtered is substring-based),
+    // so score them the same way useQuickSwitcher scores notes for a
+    // comparable ranking key.
+    const noteEntries = noteHits.map((h) => ({
+      item: {
+        kind: "note" as const,
+        id: h.id,
+        title: h.title,
+        path: h.path,
+      },
+      score: h.score ?? 0,
+    }));
+    const cmdEntries = cmdHits.map((c) => {
+      const scored = query ? fuzzysort.single(query, c.label) : null;
+      return {
+        item: {
+          kind: "cmd" as const,
+          id: c.id,
+          label: c.label,
+          shortcut: c.shortcut,
+          group: c.group,
+          disabled: cmd.isDisabled?.(c.id) ?? false,
+        },
+        score: scored?.score ?? -10000,
+      };
+    });
+    if (!query) {
+      items = [...noteEntries, ...cmdEntries].map((e) => e.item);
+    } else {
+      items = [...noteEntries, ...cmdEntries]
+        .sort((a, b) => b.score - a.score)
+        .map((e) => e.item);
+    }
   } else {
     items = noteHits.map((h) => ({
       kind: "note" as const,
@@ -238,6 +310,8 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     placeholder = "Type a command…";
   } else if (mode === "search") {
     placeholder = "Search notes…";
+  } else if (mode === "all") {
+    placeholder = "Search notes and commands…";
   } else {
     placeholder = "Switch to note…";
   }
@@ -246,6 +320,8 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     ariaLabel = "Command palette";
   } else if (mode === "search") {
     ariaLabel = "Search notes";
+  } else if (mode === "all") {
+    ariaLabel = "Search everything";
   } else {
     ariaLabel = "Quick switcher";
   }
@@ -295,6 +371,10 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       emptyText = "Start typing to switch notes";
     } else if (mode === "commands" && query !== "") {
       emptyText = `No commands match "${query}"`;
+    } else if (mode === "all" && query === "") {
+      emptyText = "Start typing to search notes and commands";
+    } else if (mode === "all" && query !== "") {
+      emptyText = `No matching notes or commands for "${query}"`;
     }
     // commands mode + empty query → full list is shown; no empty state needed
   }
@@ -317,15 +397,20 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
             top: "12vh",
             left: "50%",
             transform: "translateX(-50%)",
-            width: 600,
+            width: 620,
             maxWidth: "calc(100vw - 48px)",
-            background: "var(--color-surface)",
+            background: "var(--color-border-inner)",
             border: "1px solid var(--color-border)",
             borderRadius: 8,
             overflow: "hidden",
+            animation: "jasper-cmm-popIn 140ms ease-out",
           }}
           onKeyDown={onKeyDown}
         >
+          {/* Scoped popIn entrance — subtle scale+opacity, no layout jank. */}
+          <style>
+            {`@keyframes jasper-cmm-popIn { from { opacity: 0; transform: translateX(-50%) scale(0.98); } to { opacity: 1; transform: translateX(-50%) scale(1); } }`}
+          </style>
           {/* Input row — 44px height, Search/Command icon, transparent input */}
           <div
             style={{
@@ -379,6 +464,8 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                 />
               </>
             )}
+            {/* Esc hint — right-aligned, present in every mode (D-04). */}
+            <KeyboardChip>Esc</KeyboardChip>
           </div>
 
           {/* Result list — max-height 50vh */}
@@ -523,6 +610,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                           >
                             {item.path}
                           </span>
+                          <span style={noteKindBadgeStyle}>Note</span>
                         </>
                       ) : (
                         <>
@@ -530,6 +618,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                           {item.shortcut !== undefined && !cmdDisabled && (
                             <KeyboardChip>{item.shortcut}</KeyboardChip>
                           )}
+                          <span style={cmdKindBadgeStyle}>Cmd</span>
                         </>
                       )}
                     </div>
