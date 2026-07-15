@@ -14,7 +14,10 @@ import {
 } from "react";
 import { vaultApi } from "./lib/vaultApi";
 import { VaultPicker } from "./components/VaultPicker";
-import { switchVaultCommand } from "./lib/commands/registerVaultCommands";
+import {
+  switchVaultCommand,
+  toggleZenCommand,
+} from "./lib/commands/registerVaultCommands";
 
 import { RightRail } from "./components/RightRail";
 import { CommandMenu } from "./components/CommandMenu";
@@ -212,6 +215,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   const backlinksRailExpanded = useTreeStore((s) => s.backlinksRailExpanded);
   const backlinksRailWidth = useTreeStore((s) => s.backlinksRailWidth);
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
+  const zen = useTreeStore((s) => s.zen);
 
   const paletteOpen = useTreeStore((s) => s.paletteOpen);
   const paletteMode = useTreeStore((s) => s.paletteMode);
@@ -657,6 +661,11 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         setPaletteOpen(false);
         switchVaultCommand();
       },
+
+      onToggleZen: () => {
+        setPaletteOpen(false);
+        toggleZenCommand();
+      },
     }),
     [
       openToday,
@@ -666,7 +675,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       activeNoteId,
       reveal,
       tree,
-      // switchVaultCommand is a stable module-level fn; included to satisfy exhaustive-deps.
+      // switchVaultCommand/toggleZenCommand are stable module-level fns; included to satisfy exhaustive-deps.
     ],
   );
 
@@ -678,6 +687,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       <VaultSwitchOverlay targetName={vaultSwitchTargetName} />
     )}
     <div
+      data-zen={zen ? "true" : undefined}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -742,33 +752,37 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: `48px ${notesSidebarVisible ? sidebarWidth : 0}px minmax(0, 1fr) ${backlinksRailExpanded ? backlinksRailWidth : 0}px`,
+          gridTemplateColumns: `${zen ? 0 : 48}px ${!zen && notesSidebarVisible ? sidebarWidth : 0}px minmax(0, 1fr) ${!zen && backlinksRailExpanded ? backlinksRailWidth : 0}px`,
           gridTemplateRows: "auto minmax(0, 1fr)",
           flex: 1,
           minHeight: 0,
           overflow: "hidden",
         }}
       >
-        {/* ActivityRibbon: spans both rows (gridRow 1/3) — column 1. */}
+        {/* ActivityRibbon: spans both rows (gridRow 1/3) — column 1. Renders
+            into a 0-width grid cell (clipped, not unmounted) when zen collapses
+            the ribbon track (ZEN-01). */}
         <ActivityRibbon style={{ gridRow: "1 / 3", gridColumn: "1" }} />
 
         {/* TabStrip: row 1, column 3 — renders directly (D-04 dissolution).
             Always renders (incl. zero-tab state, which shows only the + new-tab
-            button — TAB-14). */}
-        <TabStrip
-          style={{ gridRow: "1", gridColumn: "3", minWidth: 0 }}
-          tabs={tabs}
-          activeTabId={tabActiveTabId}
-          deletedTabIds={deletedTabIds}
-          titleForTab={titleForTab}
-          onSelectTab={setActiveTab}
-          onRequestClose={(id) => void flushAndClose(id).catch(() => {})}
-          onCloseOthers={closeOthers}
-          onCloseToRight={closeToRight}
-          onOpenRight={openRight}
-          onReorder={reorderTabs}
-          onNewTab={newTab}
-        />
+            button — TAB-14), except in zen (ZEN-01), where the tab bar hides. */}
+        {!zen && (
+          <TabStrip
+            style={{ gridRow: "1", gridColumn: "3", minWidth: 0 }}
+            tabs={tabs}
+            activeTabId={tabActiveTabId}
+            deletedTabIds={deletedTabIds}
+            titleForTab={titleForTab}
+            onSelectTab={setActiveTab}
+            onRequestClose={(id) => void flushAndClose(id).catch(() => {})}
+            onCloseOthers={closeOthers}
+            onCloseToRight={closeToRight}
+            onOpenRight={openRight}
+            onReorder={reorderTabs}
+            onNewTab={newTab}
+          />
+        )}
 
         {/* Sidebar: spans both rows (gridRow 1/3) — column 2.
             Selecting a note opens it as a tab (TAB-01/02). */}

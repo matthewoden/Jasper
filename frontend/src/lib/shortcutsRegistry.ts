@@ -156,6 +156,14 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inCheatSheet: false,
   },
   {
+    id: "zen.toggle",
+    label: "Toggle Zen Mode",
+    group: "View",
+    shortcut: `${mod}.`,
+    inPalette: true,
+    inCheatSheet: true,
+  },
+  {
     id: "share-reveal-current-note",
     label: "Show current note in file manager",
     group: "Share",

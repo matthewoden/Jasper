@@ -8,7 +8,8 @@
  * Negative assertions: no standalone "Reindex notes" button.
  */
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useTreeStore } from "../lib/useTreeStore";
 
 
 vi.mock("../api/client", () => ({
@@ -204,5 +205,44 @@ describe("StatusBar — Plan 08-17c vault segment", () => {
     const segment = screen.getByTestId("status-bar-vault");
     segment.click();
     expect(openFn).toHaveBeenCalled();
+  });
+});
+
+
+describe("StatusBar — Phase 22 Plan 03 zen toggle button (ZEN-01)", () => {
+  beforeEach(() => {
+    useTreeStore.setState({ zen: false });
+  });
+  afterEach(() => {
+    useTreeStore.setState({ zen: false });
+  });
+
+  it("ZEN-SB-1: renders a zen toggle button with aria-label 'Toggle zen mode'", () => {
+    render(<StatusBar />);
+    const btn = screen.getByLabelText("Toggle zen mode");
+    expect(btn).toBeInTheDocument();
+  });
+
+  it("ZEN-SB-2: clicking the zen toggle button flips the zen store slice", () => {
+    render(<StatusBar />);
+    const btn = screen.getByLabelText("Toggle zen mode");
+    expect(useTreeStore.getState().zen).toBe(false);
+    btn.click();
+    expect(useTreeStore.getState().zen).toBe(true);
+  });
+
+  it("ZEN-SB-3: the zen button uses the accent color when zen is active (icon inherits via currentColor)", () => {
+    useTreeStore.setState({ zen: true });
+    render(<StatusBar />);
+    const btn = screen.getByLabelText("Toggle zen mode");
+    expect(btn.querySelector("svg")).not.toBeNull();
+    expect((btn as HTMLButtonElement).style.color).toBe("var(--color-accent)");
+  });
+
+  it("ZEN-SB-4: the zen button uses the muted color when zen is inactive", () => {
+    render(<StatusBar />);
+    const btn = screen.getByLabelText("Toggle zen mode");
+    expect(btn.querySelector("svg")).not.toBeNull();
+    expect((btn as HTMLButtonElement).style.color).toBe("var(--color-muted)");
   });
 });

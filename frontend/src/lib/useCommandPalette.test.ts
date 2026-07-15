@@ -130,6 +130,13 @@ describe("useCommandPalette — execute()", () => {
     const { result } = renderHook(() => useCommandPalette({}));
     act(() => { result.current.execute("new-note"); });
   });
+
+  it("calls onToggleZen when execute('zen.toggle') is called (ZEN-01, Phase 22 Plan 03)", () => {
+    const onToggleZen = vi.fn();
+    const { result } = renderHook(() => useCommandPalette({ onToggleZen }));
+    act(() => { result.current.execute("zen.toggle"); });
+    expect(onToggleZen).toHaveBeenCalledOnce();
+  });
 });
 
 describe("useCommandPalette — execute() closeOnExecute verdict (UAT #5)", () => {

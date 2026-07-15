@@ -25,6 +25,7 @@ export interface CommandActions {
   onShowShortcuts?: () => void;
   onShareRevealCurrentNote?: () => void;
   onSwitchVault?: () => void;
+  onToggleZen?: () => void;
 }
 
 /**
@@ -65,6 +66,7 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       "show-shortcuts": actions.onShowShortcuts,
       "share-reveal-current-note": actions.onShareRevealCurrentNote,
       "vault.switch": actions.onSwitchVault,
+      "zen.toggle": actions.onToggleZen,
     }),
     [
       actions.onNewNote,
@@ -77,6 +79,7 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       actions.onShowShortcuts,
       actions.onShareRevealCurrentNote,
       actions.onSwitchVault,
+      actions.onToggleZen,
     ],
   );
 
