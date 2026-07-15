@@ -16,6 +16,7 @@ import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette, type CommandActions } from "../lib/useCommandPalette";
 import { useSearch } from "../lib/useSearch";
 import { useTreeStore } from "../lib/useTreeStore";
+import { useTabStore } from "../lib/useTabStore";
 import { KeyboardChip } from "./KeyboardChip";
 import { SearchResultRow } from "./SearchResultRow";
 import type { Shortcut } from "../lib/shortcutsRegistry";
@@ -263,7 +264,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     virtualizer.measure();
   }, [mode, virtualizer]);
 
-  const setActiveNote = useTreeStore((s) => s.setActiveNote);
   const recordOpenedNote = useTreeStore((s) => s.recordOpenedNote);
 
   const activate = (i: number) => {
@@ -271,13 +271,13 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     if (!item) return;
     if (item.kind === "group") return;
     if (item.kind === "note") {
-      setActiveNote(item.id);
+      useTabStore.getState().openTab(item.id);
       recordOpenedNote(item.id);
       onOpenChange(false);
       return;
     }
     if (item.kind === "search-result") {
-      setActiveNote(item.id);
+      useTabStore.getState().openTab(item.id);
       recordOpenedNote(item.id);
       onOpenChange(false);
       return;

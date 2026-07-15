@@ -13,6 +13,12 @@ vi.mock("../lib/useTreeStore", () => ({
   useTreeStore: vi.fn(),
 }));
 
+vi.mock("../lib/useTabStore", () => ({
+  useTabStore: {
+    getState: vi.fn(),
+  },
+}));
+
 vi.mock("../lib/useQuickSwitcher", () => ({
   useQuickSwitcher: vi.fn(),
 }));
@@ -54,6 +60,7 @@ vi.mock("@tanstack/react-virtual", () => ({
 import { CommandMenu } from "./CommandMenu";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
+import { useTabStore } from "../lib/useTabStore";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette } from "../lib/useCommandPalette";
 import { useSearch } from "../lib/useSearch";
@@ -62,6 +69,7 @@ import fuzzysort from "fuzzysort";
 
 const mockUseFileTree = useFileTree as unknown as ReturnType<typeof vi.fn>;
 const mockUseTreeStore = useTreeStore as unknown as ReturnType<typeof vi.fn>;
+const mockUseTabStoreGetState = useTabStore.getState as unknown as ReturnType<typeof vi.fn>;
 const mockUseQuickSwitcher = useQuickSwitcher as unknown as ReturnType<typeof vi.fn>;
 const mockUseCommandPalette = useCommandPalette as unknown as ReturnType<typeof vi.fn>;
 const mockUseSearch = useSearch as unknown as ReturnType<typeof vi.fn>;
@@ -71,6 +79,7 @@ const mockFuzzysortSingle = fuzzysort.single as unknown as ReturnType<typeof vi.
 
 const mockSetActiveNote = vi.fn();
 const mockRecordOpenedNote = vi.fn();
+const mockOpenTab = vi.fn();
 
 function setupMocks() {
   mockUseFileTree.mockReturnValue({ tree: null, loading: false, error: null });
@@ -87,6 +96,8 @@ function setupMocks() {
     };
     return selector(state);
   });
+
+  mockUseTabStoreGetState.mockReturnValue({ openTab: mockOpenTab });
 
   mockUseQuickSwitcher.mockReturnValue([]);
   mockUseCommandPalette.mockReturnValue({
@@ -198,7 +209,7 @@ describe("CommandMenu — notes results + keyboard navigation", () => {
     const input = screen.getByRole("textbox");
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(mockSetActiveNote).toHaveBeenCalledWith("n2");
+    expect(mockOpenTab).toHaveBeenCalledWith("n2");
   });
 
   it("ArrowUp does not go below index 0", async () => {
@@ -209,10 +220,10 @@ describe("CommandMenu — notes results + keyboard navigation", () => {
     const input = screen.getByRole("textbox");
     fireEvent.keyDown(input, { key: "ArrowUp" });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(mockSetActiveNote).toHaveBeenCalledWith("n1");
+    expect(mockOpenTab).toHaveBeenCalledWith("n1");
   });
 
-  it("Enter activates selected note: calls setActiveNote + recordOpenedNote + onOpenChange(false)", () => {
+  it("Enter activates selected note: calls openTab + recordOpenedNote + onOpenChange(false)", () => {
     const onOpenChange = vi.fn();
     const notes = [{ id: "n1", title: "Meeting Notes", path: "meeting.md" }];
     mockUseQuickSwitcher.mockReturnValue(notes);
@@ -221,7 +232,8 @@ describe("CommandMenu — notes results + keyboard navigation", () => {
     const input = screen.getByRole("textbox");
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mockSetActiveNote).toHaveBeenCalledWith("n1");
+    expect(mockOpenTab).toHaveBeenCalledWith("n1");
+    expect(mockSetActiveNote).not.toHaveBeenCalled();
     expect(mockRecordOpenedNote).toHaveBeenCalledWith("n1");
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
@@ -335,7 +347,7 @@ describe("CommandMenu — closeOnExecute behavior", () => {
     const input = screen.getByRole("textbox");
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mockSetActiveNote).toHaveBeenCalledWith("n1");
+    expect(mockOpenTab).toHaveBeenCalledWith("n1");
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
@@ -376,7 +388,7 @@ describe("CMM-NAV — single-section navigation", () => {
 
     fireEvent.keyDown(input, { key: "ArrowUp" });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(mockSetActiveNote).toHaveBeenCalledWith("n1");
+    expect(mockOpenTab).toHaveBeenCalledWith("n1");
   });
 
   it("CMM-NAV-3: Enter when items is empty is a no-op (defensive)", () => {
@@ -401,7 +413,7 @@ describe("CMM-INIT — selectedIdx starts at first selectable", () => {
     fireEvent.change(input, { target: { value: "te" } });
 
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(mockSetActiveNote).toHaveBeenCalledWith("n1");
+    expect(mockOpenTab).toHaveBeenCalledWith("n1");
   });
 });
 
@@ -520,14 +532,14 @@ describe("CMM-SEARCH-MODE — CommandMenu mode='search'", () => {
     expect(mark?.textContent).toBe("hello");
   });
 
-  it("CMM-SEARCH-MODE-5: selecting a result calls setActiveNote(result.id) + closes the modal", () => {
+  it("CMM-SEARCH-MODE-5: selecting a result calls openTab(result.id) + closes the modal", () => {
     const onOpenChange = vi.fn();
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} onOpenChange={onOpenChange} />);
     const input = screen.getByRole("textbox");
     fireEvent.change(input, { target: { value: "he" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(mockSetActiveNote).toHaveBeenCalledWith(FTS5_HIT.id);
+    expect(mockOpenTab).toHaveBeenCalledWith(FTS5_HIT.id);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
