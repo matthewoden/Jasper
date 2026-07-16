@@ -233,6 +233,58 @@ test.describe("@phase22 command palette — unified Cmd+K mode + scoped-binding 
     );
   });
 
+  test("with a tab already open, palette-selecting a different note switches the visible editor (CR-01)", async ({
+    page,
+  }) => {
+    const idA = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "cr01-note-a.md",
+      "",
+      "# cr01-note-a\n\nNote A body.\n",
+    );
+    await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "cr01-note-b.md",
+      "",
+      "# cr01-note-b\n\nNote B body.\n",
+    );
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    // App.tsx keeps one EditorPane mounted per open tab (hidden via CSS for
+    // inactive tabs, never unmounted -- TAB-13 flush-on-close discipline), so
+    // once two tabs are open, `editor-title-element` resolves to more than
+    // one DOM node; scope to the one that is actually visible to the user.
+    const visibleEditorTitle = page
+      .getByTestId("editor-title-element")
+      .and(page.locator(":visible"));
+
+    // Establish the tabs-open precondition: open note A from the tree first,
+    // which the zero-tab Enter-activation test above never reaches.
+    await openNoteFromTree(page, idA);
+    await expect(visibleEditorTitle).toHaveText("cr01-note-a", {
+      timeout: 5_000,
+    });
+
+    await pressCmdK(page);
+    const dialog = page.getByRole("dialog", { name: "Search everything" });
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+    await dialog.getByRole("textbox").fill("cr01-note-b");
+    const noteBRow = dialog
+      .locator('[data-row-kind="note"]')
+      .filter({ hasText: "cr01-note-b" });
+    await expect(noteBRow).toHaveCount(1, { timeout: 5_000 });
+    await noteBRow.click();
+
+    await expect(dialog).toHaveCount(0, { timeout: 5_000 });
+    await expect(visibleEditorTitle).toHaveText("cr01-note-b", {
+      timeout: 5_000,
+    });
+  });
+
   test("Esc and overlay-click both close the unified palette", async ({ page }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
     await page.goto(jasper.baseURL);
