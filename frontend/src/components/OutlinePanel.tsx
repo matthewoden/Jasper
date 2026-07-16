@@ -184,7 +184,7 @@ export function OutlinePanel() {
     // but every row here is an interactive role="button".
     <div role="group" aria-label="Note outline">
       <style>
-        {`.outline-row:hover { background: rgba(255,255,255,0.04); }`}
+        {`.outline-row:hover { background: color-mix(in srgb, var(--color-muted) 8%, transparent); }`}
       </style>
       {rows}
     </div>
