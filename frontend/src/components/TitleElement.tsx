@@ -83,6 +83,7 @@ export const TitleElement = ({ title, onTitleChange, onFocusHandoff }: TitleElem
           fontSize: 33,
           fontWeight: 700,
           lineHeight: 1.2,
+          letterSpacing: "-0.012em",
           fontFamily: "var(--font-reading)",
           color: isEmpty ? "var(--color-muted)" : "var(--color-fg-title)",
           outline: "none",
