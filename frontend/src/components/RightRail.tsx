@@ -188,6 +188,7 @@ export function RightRail({ activeNoteId, style }: Props) {
         width,
         height: "100%",
         background: "var(--color-bg)",
+        borderLeft: "1px solid var(--color-border)",
         position: "relative",
         display: "flex",
         flexDirection: "column",

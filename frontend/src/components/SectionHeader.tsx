@@ -29,6 +29,8 @@ const labelStyle: CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
   color: "var(--color-muted)",
+  letterSpacing: "0.05em",
+  textTransform: "uppercase",
   lineHeight: 1.4,
   flex: 1,
   overflow: "hidden",
