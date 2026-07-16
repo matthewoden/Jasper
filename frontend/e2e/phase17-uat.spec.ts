@@ -367,14 +367,20 @@ test.describe("THEME-04: Font delivery and reading-font toggle (@phase17)", () =
     await page.getByRole("button", { name: "Close" }).click();
     await expect(dialog).not.toBeVisible();
 
-    // After toggling Serif, the CM6 editor root font should contain "Source Serif 4" (D-03).
-    const proseFontFamily = await page.evaluate(() => {
-      const cmEditor = document.querySelector(".cm-editor");
-      if (!cmEditor) return null;
-      return getComputedStyle(cmEditor).fontFamily;
-    });
-    expect(proseFontFamily).not.toBeNull();
-    expect(proseFontFamily).toContain("Source Serif 4");
+    // After toggling Serif, the rendered .cm-content should compute "Source
+    // Serif 4" (D-03). Assert on .cm-content, never .cm-editor — .cm-editor
+    // (the &-rule) already carries var(--font-reading) pre-fix and doesn't
+    // prove the value reaches the rendered text (the exact false-green).
+    const proseContentFontFamily = await page
+      .locator(".cm-content")
+      .evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(proseContentFontFamily).toContain("Source Serif 4");
+
+    // Prove the RENDERED text line inherits it, not just the container.
+    const proseLine = page.locator(".cm-line").filter({ hasText: "Prose text here." });
+    await expect
+      .poll(() => proseLine.evaluate((el) => getComputedStyle(el).fontFamily))
+      .toContain("Source Serif 4");
 
     // Code fences must still use JetBrains Mono regardless of reading-font choice (D-04).
     const codeFontFamilyAfterToggle = await page.evaluate(() => {
@@ -384,5 +390,31 @@ test.describe("THEME-04: Font delivery and reading-font toggle (@phase17)", () =
     });
     expect(codeFontFamilyAfterToggle).not.toBeNull();
     expect(codeFontFamilyAfterToggle).toContain("JetBrains Mono");
+  });
+
+  test("default (sans) reading font reaches rendered .cm-line, not just .cm-editor @THEME-04", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+      "data-status",
+      "connected",
+      { timeout: 10_000 },
+    );
+
+    const noteId = await createCodeFenceNote(page);
+
+    await expect(
+      page.locator('[data-tree-row-kind="note"]').first(),
+    ).toBeVisible({ timeout: 10_000 });
+    const noteRow = page.locator(`[data-tree-row="${noteId}"][data-tree-row-kind="note"]`);
+    await expect(noteRow).toBeVisible({ timeout: 8_000 });
+    await noteRow.click();
+    await page.waitForSelector(".cm-content", { timeout: 8_000 });
+
+    // Default (sans) mode: rendered prose line must be proportional, never
+    // monospace. This is the exact case the P0 bug broke — pins the fix.
+    const proseLine = page.locator(".cm-line").filter({ hasText: "Prose text here." });
+    const fontFamily = await proseLine.evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(fontFamily).not.toContain("monospace");
+    expect(fontFamily).toContain("ui-sans-serif");
   });
 });
