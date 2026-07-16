@@ -26,20 +26,9 @@ function formatPath(path: string): string {
 
 export function SearchResultRow({ result }: SearchResultRowProps) {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
-  const setActiveNote = useTreeStore((s) => s.setActiveNote);
-  const setSearchActive = useTreeStore((s) => s.setSearchActive);
-  const setSearchQuery = useTreeStore((s) => s.setSearchQuery);
-  const setSearchResults = useTreeStore((s) => s.setSearchResults);
   const [hovered, setHovered] = useState(false);
 
   const isActive = activeNoteId === result.id;
-
-  const handleClick = () => {
-    setActiveNote(result.id);
-    setSearchActive(false);
-    setSearchQuery("");
-    setSearchResults([]);
-  };
 
   let rowBg = "transparent";
   if (isActive) {
@@ -64,12 +53,7 @@ export function SearchResultRow({ result }: SearchResultRowProps) {
         }
       `}</style>
       <div
-        role="button"
-        tabIndex={0}
-        onClick={handleClick}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") handleClick();
-        }}
+        data-testid="search-result-row"
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
@@ -83,7 +67,6 @@ export function SearchResultRow({ result }: SearchResultRowProps) {
           background: rowBg,
           boxSizing: "border-box",
         }}
-        aria-label={`Open note: ${result.title}`}
       >
         {/* Title */}
         <div

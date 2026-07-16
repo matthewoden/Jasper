@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { SearchResultRow } from "./SearchResultRow";
 import { useTreeStore } from "../lib/useTreeStore";
 import type { SearchResult } from "../lib/searchApi";
@@ -53,21 +53,12 @@ describe("SearchResultRow", () => {
     expect(screen.queryByText(/#/)).toBeNull();
   });
 
-  it("on click: calls setActiveNote + clears search state", () => {
-    render(<SearchResultRow result={mockResult} />);
-    const row = screen.getByRole("button", { name: "Open note: My Test Note" });
-    fireEvent.click(row);
-    const state = useTreeStore.getState();
-    expect(state.activeNoteId).toBe("abc-123");
-    expect(state.searchActive).toBe(false);
-    expect(state.searchQuery).toBe("");
-    expect(state.searchResults).toEqual([]);
-  });
-
   it("applies active background when row is the currently open note", () => {
     useTreeStore.setState({ activeNoteId: "abc-123" });
     const { container } = render(<SearchResultRow result={mockResult} />);
-    const rowDiv = container.querySelector('[role="button"]') as HTMLElement;
+    const rowDiv = container.querySelector(
+      '[data-testid="search-result-row"]',
+    ) as HTMLElement;
     expect(rowDiv.style.background).toContain("var(--color-accent)");
   });
 
