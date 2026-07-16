@@ -270,13 +270,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     const item = items[i];
     if (!item) return;
     if (item.kind === "group") return;
-    if (item.kind === "note") {
-      useTabStore.getState().openTab(item.id);
-      recordOpenedNote(item.id);
-      onOpenChange(false);
-      return;
-    }
-    if (item.kind === "search-result") {
+    if (item.kind === "note" || item.kind === "search-result") {
       useTabStore.getState().openTab(item.id);
       recordOpenedNote(item.id);
       onOpenChange(false);
