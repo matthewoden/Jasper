@@ -313,7 +313,7 @@ test("S4 @UX-CHROME-02-refresh: refresh button briefly disables during reindex; 
 });
 
 
-test("S5 @UX-CHROME-03: sidebar is floating-panel card with border-radius 8px, border, inset", async ({ page }) => {
+test("S5 @UX-CHROME-03: sidebar is a flush panel — border-right only, no radius/inset (mock parity, 23-03 D-06)", async ({ page }) => {
   await openApp(page, false);
 
   const sidebarNav = page.getByRole("navigation", { name: "Notes navigation" });
@@ -322,17 +322,29 @@ test("S5 @UX-CHROME-03: sidebar is floating-panel card with border-radius 8px, b
   const innerCard = sidebarNav.locator("div").first();
   await expect(innerCard).toBeVisible({ timeout: 3_000 });
 
-  const borderRadius = await innerCard.evaluate(
-    (el) => window.getComputedStyle(el).borderRadius,
+  // Owner adjudicated the floating card away in Phase 23 (D-06): flush to the
+  // mock's file-tree rail — 0 radius, no margin, border-right only.
+  const radiusNum = parseFloat(
+    (await innerCard.evaluate((el) => window.getComputedStyle(el).borderRadius)) ?? "0",
   );
-  const radiusNum = parseFloat(borderRadius ?? "0");
-  expect(radiusNum).toBeGreaterThanOrEqual(4);
+  expect(radiusNum).toBe(0);
 
-  const border = await innerCard.evaluate(
-    (el) => window.getComputedStyle(el).border,
+  const rightWidth = await innerCard.evaluate(
+    (el) => window.getComputedStyle(el).borderRightWidth,
   );
-  expect(border).not.toBe("0px none rgba(0, 0, 0, 0)");
-  expect(border).not.toBe("");
+  expect(parseFloat(rightWidth ?? "0")).toBeGreaterThanOrEqual(1);
+
+  const rightStyle = await innerCard.evaluate(
+    (el) => window.getComputedStyle(el).borderRightStyle,
+  );
+  expect(rightStyle).toBe("solid");
+
+  // The other three sides carry no border in the flush layout.
+  const otherWidths = await innerCard.evaluate((el) => {
+    const s = window.getComputedStyle(el);
+    return [s.borderTopWidth, s.borderBottomWidth, s.borderLeftWidth];
+  });
+  for (const w of otherWidths) expect(parseFloat(w ?? "0")).toBe(0);
 
   const navBg = await sidebarNav.evaluate(
     (el) => window.getComputedStyle(el).background,
