@@ -92,11 +92,11 @@
   --color-code-inline-text: #d8b9ff; /* inline code text (lavender) */
 
   /* Phase 11 (D-08 / SC2): editor font/line-height CSS-var bridge.
-     Default values match config defaults (fontSize=15, lineHeight=1.6).
+     Default values match config defaults (fontSize=15, lineHeight=1.45).
      App.tsx seeds these from config.editor on boot so persisted user
      settings apply on reload even if Settings is never opened (SET-04). */
   --editor-font-size:   15px;
-  --editor-line-height: 1.6;
+  --editor-line-height: 1.45;
 }
 
 @theme {

@@ -46,7 +46,7 @@ func Defaults() Config {
 		},
 		Editor: Editor{
 			FontSize:   15,
-			LineHeight: 1.6,
+			LineHeight: 1.45,
 			VimMode:    false,
 			AutosaveMs: 2000,
 		},

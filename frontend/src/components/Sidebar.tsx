@@ -125,14 +125,12 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
       }}
       aria-label="Notes navigation"
     >
-      {/* Floating card — 8px inset on all sides, matching right-rail panel cards */}
+      {/* Flush panel — border-right only, matching the mock's file-tree rail (D-06 owner-approved 23-03) */}
       <div
         style={{
           flex: 1,
-          margin: "8px",
           background: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "8px",
+          borderRight: "1px solid var(--color-border)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
