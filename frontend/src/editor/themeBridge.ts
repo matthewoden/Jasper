@@ -35,15 +35,14 @@ export const jasperEditorTheme = EditorView.theme(
       width: "100%",
     },
     ".cm-content": {
-      // D-14/D-15/D-17: 760px centered reading column. margin:auto centers
-      // the column against the full-width .cm-editor/.cm-scroller parent
-      // chain; boxSizing:border-box keeps 760px the OUTER width (Pitfall 4)
-      // so padding doesn't push the rendered column past 760px.
+      // D-14/D-15/D-17: 760px centered col (margin:auto+border-box). P0 fix:
+      // explicit fontFamily so .cm-line stops inheriting monospace from .cm-scroller.
       maxWidth: "760px",
       margin: "0 auto",
       padding: "44px 56px 200px",
       boxSizing: "border-box",
       caretColor: "var(--color-fg)",
+      fontFamily: "var(--font-reading)",
     },
     ".cm-cursor, .cm-dropCursor": {
       borderLeftColor: "var(--color-fg)",
