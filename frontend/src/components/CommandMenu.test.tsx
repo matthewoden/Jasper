@@ -965,3 +965,49 @@ describe("CommandMenu — kind badges (D-01 restyle)", () => {
     expect(screen.getByText("Cmd")).toBeTruthy();
   });
 });
+
+
+describe("CMM-CLICK — mouse-click activation path (IN-02)", () => {
+  it("CMM-CLICK-1: clicking a note row calls openTab(id) and never setActiveNote", () => {
+    const onOpenChange = vi.fn();
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Meeting Notes", path: "meeting.md" }]);
+
+    render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
+
+    const noteRow = document.querySelector('[data-row-kind="note"]') as HTMLElement | null;
+    expect(noteRow).not.toBeNull();
+    fireEvent.click(noteRow as HTMLElement);
+
+    expect(mockOpenTab).toHaveBeenCalledWith("n1");
+    expect(mockSetActiveNote).not.toHaveBeenCalled();
+    expect(mockRecordOpenedNote).toHaveBeenCalledWith("n1");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("CMM-CLICK-2: clicking a search-result row calls openTab(id) and never setActiveNote (locks WR-01)", () => {
+    const onOpenChange = vi.fn();
+    const FTS5_HIT = {
+      id: "n-click-search-1",
+      title: "Hello World",
+      path: "notes/hello.md",
+      excerpt_html: "this is a <mark>hello</mark> excerpt",
+      matching_tags: [],
+      rank: 1,
+      modified_at: "2026-05-16T00:00:00Z",
+    };
+    mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
+
+    render(
+      <CommandMenu open={true} onOpenChange={onOpenChange} mode="search" actions={{}} />,
+    );
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "he" } });
+
+    const searchRow = document.querySelector('[data-row-kind="search-result"]') as HTMLElement | null;
+    expect(searchRow).not.toBeNull();
+    fireEvent.click(searchRow as HTMLElement);
+
+    expect(mockOpenTab).toHaveBeenCalledWith(FTS5_HIT.id);
+    expect(mockSetActiveNote).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+});
