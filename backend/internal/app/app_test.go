@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -467,6 +468,107 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 		cancel()
 		<-runErr
 		t.Fatalf("scratchpad-by-UUID status: got %d, want 200", resp3.StatusCode)
+	}
+
+	cancel()
+	if err := <-runErr; err != nil {
+		t.Errorf("Run returned error after cancel: %v", err)
+	}
+}
+
+// TestApp_MCPBindFailure_RecordsStatusAndAdminStatusReports — D-05
+// regression guard. Pre-configures the vault's MCP listener to bind on a
+// port that is already held, forcing StartMCPListener to fail synchronously.
+// Asserts: (1) the HTTP server still boots and serves normally (D-04 — MCP
+// never hard-fails boot), (2) a.McpStatus() reports up=false with a
+// non-empty reason, and (3) GET /api/v1/admin/status surfaces the same
+// mcp{up, reason} object to the frontend banner.
+func TestApp_MCPBindFailure_RecordsStatusAndAdminStatusReports(t *testing.T) {
+	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
+	dir := t.TempDir()
+
+	busyLn, busyAddr := pickFreeListener(t)
+	defer func() { _ = busyLn.Close() }()
+	_, busyPortStr, err := net.SplitHostPort(busyAddr)
+	if err != nil {
+		t.Fatalf("split busy addr: %v", err)
+	}
+	busyPort, err := strconv.Atoi(busyPortStr)
+	if err != nil {
+		t.Fatalf("parse busy port: %v", err)
+	}
+	writeVaultMCPConfig(t, dir, busyPort)
+
+	ln, addr := pickFreeListener(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a, err := New(Config{
+		DataDir:             dir,
+		ListenAddr:          addr,
+		ListenerOverride:    ln,
+		Logger:              logger,
+		DisableFirstRunGate: true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runErr := make(chan error, 1)
+	go func() { runErr <- a.Run(ctx) }()
+
+	probe := httpReadyProbe(addr)
+	if err := waitFor(t, 5*time.Second, probe); err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("listener did not come up despite MCP bind failure (D-04 violated): %v", err)
+	}
+
+	up, reason := a.McpStatus()
+	if up {
+		cancel()
+		<-runErr
+		t.Fatalf("a.McpStatus(): got up=true, want up=false (port %d was held)", busyPort)
+	}
+	if reason == "" {
+		cancel()
+		<-runErr
+		t.Fatalf("a.McpStatus(): got empty reason, want a non-empty explanation")
+	}
+
+	resp, err := http.Get("http://" + addr + "/api/v1/admin/status")
+	if err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("GET /api/v1/admin/status: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		cancel()
+		<-runErr
+		t.Fatalf("admin/status status: got %d, want 200; body=%s", resp.StatusCode, body)
+	}
+	var statusOut struct {
+		Mcp *struct {
+			Up     bool   `json:"up"`
+			Reason string `json:"reason"`
+		} `json:"mcp"`
+	}
+	if err := json.Unmarshal(body, &statusOut); err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("unmarshal admin/status: %v; body=%s", err, body)
+	}
+	if statusOut.Mcp == nil {
+		cancel()
+		<-runErr
+		t.Fatalf("admin/status: mcp object missing; body=%s", body)
+	}
+	if statusOut.Mcp.Up {
+		t.Errorf("admin/status mcp.up: got true, want false")
+	}
+	if statusOut.Mcp.Reason == "" {
+		t.Errorf("admin/status mcp.reason: got empty, want non-empty")
 	}
 
 	cancel()

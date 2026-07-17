@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -310,6 +311,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	// listener. This lets the tree-menu grant UI work even on systems
 	// where port 6684 is in use or the user has MCP disabled.
 	apiServer.SetMcpACL(mcp.NewACL(pair.Writer))
+	apiServer.SetMcpStatusReader(a)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -334,15 +336,24 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	mcpCfg, mcpCfgErr := config.Load(a.cfg.DataDir, a.cfg.Logger)
 	if mcpCfgErr != nil {
 		a.cfg.Logger.Warn("MCP: config load failed (continuing without MCP)", "err", mcpCfgErr)
+		a.mu.Lock()
+		a.mcpStatus = McpStatus{Up: false, Reason: "MCP config load failed"}
+		a.mu.Unlock()
 	} else {
 		mcpSrv, mcpShutdownFn, acl, mcpErr := a.startMCP(ctx, mcpCfg.MCP, notesSvc, hub, pair)
 		if mcpErr != nil {
 			a.cfg.Logger.Error("MCP listener failed to bind; continuing without MCP", "err", mcpErr)
+			a.mu.Lock()
+			a.mcpStatus = McpStatus{Up: false, Reason: classifyMCPBindErr(mcpErr, mcpCfg.MCP.Port)}
+			a.mu.Unlock()
 		} else {
 			a.cfg.Logger.Info("MCP listener up", "port", mcpCfg.MCP.Port, "bind", mcpCfg.MCP.Bind)
 
 			a.mcpServer = mcpSrv
 			a.mcpShutdown = mcpShutdownFn
+			a.mu.Lock()
+			a.mcpStatus = McpStatus{Up: true}
+			a.mu.Unlock()
 
 			// Replace the unconditional ACL with the one created by
 			// startMCP, which is already wired to the same pair.Writer.
@@ -486,6 +497,7 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 
 	// Wire the MCP ACL unconditionally (same rationale as bootPerVaultSubsystems).
 	apiServer.SetMcpACL(mcp.NewACL(pair.Writer))
+	apiServer.SetMcpStatusReader(a)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -506,17 +518,29 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 
 	a.mcpServer = nil
 	a.mcpShutdown = nil
+	a.mu.Lock()
+	a.mcpStatus = McpStatus{}
+	a.mu.Unlock()
 	mcpCfg, mcpCfgErr := config.Load(a.cfg.DataDir, a.cfg.Logger)
 	if mcpCfgErr != nil {
 		a.cfg.Logger.Warn("switch: MCP config load failed (continuing without MCP)", "err", mcpCfgErr)
+		a.mu.Lock()
+		a.mcpStatus = McpStatus{Up: false, Reason: "MCP config load failed"}
+		a.mu.Unlock()
 	} else {
 		mcpSrv, mcpShutdownFn, acl, mcpErr := a.startMCP(ctx, mcpCfg.MCP, notesSvc, hub, pair)
 		if mcpErr != nil {
 			a.cfg.Logger.Error("switch: MCP listener failed to bind; continuing without MCP", "err", mcpErr)
+			a.mu.Lock()
+			a.mcpStatus = McpStatus{Up: false, Reason: classifyMCPBindErr(mcpErr, mcpCfg.MCP.Port)}
+			a.mu.Unlock()
 		} else {
 			a.cfg.Logger.Info("switch: MCP listener up", "port", mcpCfg.MCP.Port)
 			a.mcpServer = mcpSrv
 			a.mcpShutdown = mcpShutdownFn
+			a.mu.Lock()
+			a.mcpStatus = McpStatus{Up: true}
+			a.mu.Unlock()
 
 			// Replace the unconditional ACL with the one wired to the MCP
 			// server. SetMcpACL must be called before a.handler.Swap(r) so
@@ -532,6 +556,21 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 
 	a.setCurrentVaultPath(a.cfg.DataDir)
 	return nil
+}
+
+// classifyMCPBindErr turns a StartMCPListener bind error into a short,
+// human-readable reason for the admin/status mcp.reason field. Mirrors
+// the net.Listen / error-string basis doctor.go's checkPortAvailable
+// already uses for "port in use" detection — do not invent a parallel
+// classifier (24-PATTERNS.md).
+func classifyMCPBindErr(err error, port int) string {
+	if err == nil {
+		return ""
+	}
+	if strings.Contains(err.Error(), "address already in use") {
+		return fmt.Sprintf("port %d in use", port)
+	}
+	return err.Error()
 }
 
 func (a *App) startMCP(

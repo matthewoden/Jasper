@@ -139,6 +139,26 @@ type App struct {
 	mcpServer *http.Server
 
 	mcpShutdown func(ctx context.Context) error
+
+	mcpStatus McpStatus
+}
+
+// McpStatus reports whether the MCP listener is currently bound. Up is
+// false with a human-readable Reason (e.g. "port 6684 in use") when the
+// bind attempt failed; the HTTP server still boots and serves the editor
+// regardless (D-04) — this is purely informational for the admin/status
+// surface and the frontend's dismissible banner (D-05).
+type McpStatus struct {
+	Up     bool
+	Reason string
+}
+
+// McpStatus returns the current MCP listener status. Safe for concurrent
+// callers; synchronized via a.mu the same way NotesService is.
+func (a *App) McpStatus() (up bool, reason string) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.mcpStatus.Up, a.mcpStatus.Reason
 }
 
 // allowedOrigins derives the full-URL Origin values permitted by the CSRF

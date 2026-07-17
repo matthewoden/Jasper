@@ -145,6 +145,9 @@ func (a *App) tearDownPerVaultSubsystems() error {
 		}
 		a.mcpServer = nil
 		a.mcpShutdown = nil
+		a.mu.Lock()
+		a.mcpStatus = McpStatus{}
+		a.mu.Unlock()
 	}
 
 	if a.fileLogCloser != nil {

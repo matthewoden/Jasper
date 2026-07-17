@@ -36,5 +36,17 @@ func (s *Server) GetAdminStatus(
 		v := st.NotesIndexed
 		out.NotesIndexed = &v
 	}
+	if s.mcpStatusReader != nil {
+		up, reason := s.mcpStatusReader.McpStatus()
+		mcp := struct {
+			Reason *string `json:"reason,omitempty"`
+			Up     bool    `json:"up"`
+		}{Up: up}
+		if reason != "" {
+			r := reason
+			mcp.Reason = &r
+		}
+		out.Mcp = &mcp
+	}
 	return out, nil
 }

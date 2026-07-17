@@ -55,6 +55,16 @@ type Server struct {
 	inFlightWrites *sync.WaitGroup
 
 	mcpACL *mcp.ACL
+
+	mcpStatusReader McpStatusReader
+}
+
+// McpStatusReader reports whether the MCP listener is currently bound
+// (and, if not, a human-readable reason). Implemented by *app.App;
+// accepted as an interface here to avoid api importing app (app already
+// imports api).
+type McpStatusReader interface {
+	McpStatus() (up bool, reason string)
 }
 
 // NewServer is the minimal 2-arg constructor. Delegates to NewServerWithIndex
@@ -118,6 +128,14 @@ func (s *Server) SetMcpACL(acl *mcp.ACL) {
 // nil-safe — passing nil is equivalent to no drain tracking.
 func (s *Server) SetInFlightWrites(wg *sync.WaitGroup) {
 	s.inFlightWrites = wg
+}
+
+// SetMcpStatusReader wires the *App's MCP listener status into the Server
+// so GetAdminStatus can report mcp.up/mcp.reason. Called unconditionally
+// by the composition root at boot and on every vault swap; nil field means
+// admin/status omits the mcp object entirely (matches the optional schema).
+func (s *Server) SetMcpStatusReader(r McpStatusReader) {
+	s.mcpStatusReader = r
 }
 
 func (s *Server) trackWrite() func() {
