@@ -280,13 +280,18 @@ test.describe("THEME-04: Font delivery and reading-font toggle (@phase17)", () =
     if (jasper) await jasper.kill();
   });
 
+  // Unique title per creation: the three THEME-04 tests share one jasper
+  // instance (beforeAll), so a fixed title collides on the 2nd/3rd create
+  // (case/path collision → 409). Sequence guarantees a distinct file per test.
+  let fontNoteSeq = 0;
+
   /**
    * Create a note with a code fence via the API, open it in the editor,
    * and return the note ID.
    */
   async function createCodeFenceNote(page: Page): Promise<string> {
     const createResp = await page.request.post(`${jasper.baseURL}/api/v1/notes`, {
-      data: { parent_path: "", title: "Font Test Note" },
+      data: { parent_path: "", title: `Font Test Note ${++fontNoteSeq}` },
     });
     if (createResp.status() !== 201) {
       throw new Error(`Failed to create note: ${String(createResp.status())}`);
@@ -410,9 +415,24 @@ test.describe("THEME-04: Font delivery and reading-font toggle (@phase17)", () =
     await noteRow.click();
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
 
+    // Hermetic reset: these THEME-04 tests share one jasper instance, and the
+    // sibling "Serif" test persists readingFont=serif to the shared vault
+    // config. Explicitly re-select the default "Sans" so this test proves the
+    // default (sans) contract regardless of execution order (no cross-test
+    // state leakage). Selecting Sans is idempotent if already default.
+    await page.getByTestId("settings-menu-trigger").click();
+    const dialog = page.getByRole("dialog", { name: "Settings" });
+    await expect(dialog).toBeVisible();
+    await page.getByRole("group", { name: "Reading font" }).getByRole("button", { name: "Sans" }).click();
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).not.toBeVisible();
+
     // Default (sans) mode: rendered prose line must be proportional, never
     // monospace. This is the exact case the P0 bug broke — pins the fix.
     const proseLine = page.locator(".cm-line").filter({ hasText: "Prose text here." });
+    await expect
+      .poll(() => proseLine.evaluate((el) => getComputedStyle(el).fontFamily))
+      .toContain("ui-sans-serif");
     const fontFamily = await proseLine.evaluate((el) => getComputedStyle(el).fontFamily);
     expect(fontFamily).not.toContain("monospace");
     expect(fontFamily).toContain("ui-sans-serif");
