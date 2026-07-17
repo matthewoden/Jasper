@@ -88,7 +88,7 @@ async function bootstrapVault(baseURL: string, vaultDir: string): Promise<void> 
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      path: vaultDir, theme: "dark", daily_template: "", mcp_enabled: false,
+      path: vaultDir, theme: "dark", daily_template: "",
     }),
   });
   if (!res.ok) throw new Error(`vault/create failed: ${res.status} ${await res.text()}`);

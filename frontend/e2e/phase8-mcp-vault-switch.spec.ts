@@ -8,8 +8,9 @@
  * write.
  *
  * Strategy:
- *   1. Two vaults A and B bootstrapped via /vault/create with mcp_enabled=true.
- *      POST /api/v1/mcp/grants seeds A:notes/projects/ and B:notes/research/.
+ *   1. Two vaults A and B bootstrapped via /vault/create (MCP listener is
+ *      always on; no toggle to set). POST /api/v1/mcp/grants seeds
+ *      A:notes/projects/ and B:notes/research/.
  *   2. Spawn an MCP create_note against A's projects/race.md — DO NOT await;
  *      wait ~200ms (write is mid-throttle), then switch vault via the UI.
  *   3. After both settle, assert:
@@ -269,7 +270,6 @@ test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () =
             path: vault,
             theme: "dark",
             daily_template: "",
-            mcp_enabled: true,
           }),
         });
         if (!createRes.ok) {

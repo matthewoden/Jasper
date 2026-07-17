@@ -96,7 +96,6 @@ async function bootstrapVault(baseURL: string, vaultDir: string): Promise<void> 
       path: vaultDir,
       theme: "dark",
       daily_template: "",
-      mcp_enabled: false,
     }),
   });
   if (!res.ok) {
