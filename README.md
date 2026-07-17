@@ -65,11 +65,11 @@ On first browser hit, Jasper redirects to `/setup`:
   you already own. Jasper validates the path (rejects paths with non-ASCII,
   paths inside existing Jasper vaults, paths the server can't write to).
 - **Theme** — dark (default) or light. The wizard previews the change live.
-- **AI access (MCP)** — optional. When enabled, lets local AI tools
-  (Claude Desktop, Cursor, etc.) read your notes and write to folders
-  you explicitly grant. Off by default.
 - **Daily notes** — customize the template; optionally create today's
   note immediately.
+
+There's no AI/MCP step in the wizard — see [Claude Desktop (MCP)](#claude-desktop-mcp)
+below for how AI access works (nothing to opt into; it's always on).
 
 Click "Start Jasper" and the SPA loads.
 
@@ -94,7 +94,7 @@ plain files. Restoring is a copy-back.
 | `jasper serve`     | Start the HTTP + WebSocket server (run by the service) |
 | `jasper install`   | Register Jasper as a launchd LaunchAgent or systemd user unit |
 | `jasper uninstall` | Unregister the service (your notes are untouched) |
-| `jasper status`    | Show service state, address, data dir, log path, MCP state |
+| `jasper status`    | Show service state, address, data dir, log path, MCP listener state |
 | `jasper doctor`    | Diagnose install/runtime issues with plain-English fixes |
 | `jasper doctor --json` | Same checks, JSON output for support tooling |
 | `jasper version`   | Print binary version + commit |
@@ -104,19 +104,19 @@ side effects.
 
 ## Integrations
 
+Jasper's MCP listener is **always on** — bound to `127.0.0.1:6684`,
+loopback-only (never reachable off your machine), started automatically
+whenever `jasper serve` runs. There's no toggle to flip and nothing to
+enable. AI **reads** (list_notes, read_note, search_notes,
+read_attachment) are available to any local MCP client the moment the
+listener is up. AI **writes** are gated per-folder: grant nothing and AI
+write access stays at zero.
+
 ### Claude Desktop (MCP)
 
-1. In Jasper's first-run wizard (or in your vault's `.jasper/config.json`),
-   enable MCP:
-   ```json
-   {
-     "mcp": { "enabled": true, "port": 6684, "bind": "127.0.0.1" }
-   }
-   ```
-   Restart Jasper (`jasper uninstall && jasper install` if it's
-   service-running).
+Just point Claude Desktop at the already-running listener:
 
-2. In Claude Desktop's `claude_desktop_config.json`, add:
+1. In Claude Desktop's `claude_desktop_config.json`, add:
    ```json
    {
      "mcpServers": {
@@ -128,15 +128,17 @@ side effects.
    }
    ```
 
-3. Restart Claude Desktop. The Jasper MCP server exposes read tools
-   globally (list_notes, read_note, search_notes, read_attachment).
+2. Restart Claude Desktop. The Jasper MCP server exposes read tools
+   globally (list_notes, read_note, search_notes, read_attachment) —
+   available whenever Jasper is running, no setup required.
 
-4. To grant write access on a folder: right-click the folder in the
+3. To grant write access on a folder: right-click the folder in the
    Jasper sidebar → **Grant AI access ▸** → choose **Edit only**
    (create + update) or **Full** (create + update + move + delete).
-   The folder gets a small sparkles icon to show active grants.
+   The folder gets a small sparkles icon to show active grants. Until
+   you grant a folder, AI write tools have nothing to act on.
 
-5. Revoke anytime: same right-click menu → **Revoke access**.
+4. Revoke anytime: same right-click menu → **Revoke access**.
 
 ### Cursor (MCP)
 
@@ -150,13 +152,20 @@ Run `jasper doctor` first. It checks:
 - WSL2 `systemd=true` (fix: edit `/etc/wsl.conf`, then `wsl --shutdown`)
 - `loginctl enable-linger` (fix: `loginctl enable-linger $USER` — or rerun `jasper install`)
 - Port 6683 availability (fix: edit `server.port` in `config.json` then restart)
-- Port 6684 availability if MCP is enabled (fix: edit `mcp.port`)
+- Port 6684 availability for the MCP listener (fix: edit `mcp.port` in
+  `config.json` and restart)
 - Data directory permissions
 - Migration state (any pending migrations show a fix command)
 - Log file is writable
 - Frontend bundle is embedded in the binary
 
 For machine-readable output: `jasper doctor --json`.
+
+**If port 6684 is already taken by something else:** Jasper keeps booting
+normally — your notes app opens and works exactly as usual, AI tools are
+just unreachable until the conflict is resolved. A dismissible banner in
+the app reports it for the session, and `jasper doctor` always flags
+`mcp.port` with a fix hint so you can find and resolve it later.
 
 ### Uninstall + reinstall
 
