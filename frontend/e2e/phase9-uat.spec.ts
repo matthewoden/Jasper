@@ -72,7 +72,6 @@ test.describe("Phase 9 F2 — vault path unification (@phase9-f2)", () => {
           body: JSON.stringify({
             data_dir: tildePath,
             theme: "dark",
-            mcp_enabled: false,
             mcp_grants: [],
             daily_template: "# {{date}}\n\n",
             create_today_daily_note: false,

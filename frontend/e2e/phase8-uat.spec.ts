@@ -350,7 +350,6 @@ test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
           body: JSON.stringify({
             data_dir: tildePath,
             theme: "dark",
-            mcp_enabled: true,
             mcp_grants: [
               { folder: "ai-zone", level: 1 },
               { folder: "ai-zone", level: 2 },
@@ -1463,7 +1462,6 @@ async function spawnAndBootstrapVault(opts: {
       path: vault,
       theme: "dark",
       daily_template: "",
-      mcp_enabled: false,
     }),
   });
   if (!createRes.ok) {

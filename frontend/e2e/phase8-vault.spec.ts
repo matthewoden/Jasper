@@ -136,7 +136,6 @@ async function bootstrapVault(
       path: vaultDir,
       theme: "dark",
       daily_template: "",
-      mcp_enabled: false,
     }),
   });
   if (!res.ok) {

@@ -173,7 +173,7 @@ test.describe("Phase 8 — offline operation (PERF-04 / D-43)", () => {
 
     const probeDir = `${jasper.dataDir}-spa-${test.info().workerIndex}`;
     const createResp = await request.post(`${jasper.baseURL}/api/v1/vault/create`, {
-      data: { path: probeDir, theme: "dark", daily_template: "", mcp_enabled: false },
+      data: { path: probeDir, theme: "dark", daily_template: "" },
     });
     expect(createResp.ok(), `vault/create failed: ${await createResp.text()}`).toBeTruthy();
     await request.post(`${jasper.baseURL}/api/v1/vault/open`, {
