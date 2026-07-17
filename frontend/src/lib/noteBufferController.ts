@@ -60,12 +60,90 @@ export interface NoteBufferController {
   hydrate(serverContent: string, path: string): void;
   /** External-store style subscription — notified on any save-state transition. */
   subscribe(fn: (s: SaveState) => void): () => void;
+  /**
+   * Fired once, synchronously, right after a save successfully renames the
+   * note on disk (H1-driven move). WS `note:moved` broadcasts exclude the
+   * originating session (SYNC-03), so the pane that JUST caused the rename
+   * would otherwise never see its own tree entry update — Plan 05's
+   * EditorPane call-site uses this to trigger its own refreshTree().
+   */
+  subscribeRenamed(fn: (newPath: string) => void): () => void;
+  /**
+   * Fired when onNoteUpdated silently adopts fresh server content (no local
+   * edits pending). MarkdownEditor is uncontrolled — the CM6 view only ever
+   * shows a NEW document via the editorRef.applyServerUpdate imperative
+   * call, never by reacting to a content prop change — so Plan 05's
+   * EditorPane call-site uses this to push the silently-adopted content into
+   * its own CM6 ref. NOT fired for hydrate()/edits: those call sites already
+   * control the applyServerUpdate call directly, in the same synchronous
+   * block as the state change.
+   */
+  subscribeContentReplaced(fn: (content: string) => void): () => void;
   handleEditorChange(next: string): void;
   /** Cancels the pending debounce and saves synchronously; rejects on failure (TAB-13). */
   flush(): Promise<void>;
   /** Fired once per noteId, regardless of how many panes have this note open. */
   onNoteUpdated(p: WSNoteUpdatedPayload): void;
   onNoteDeleted(p: WSNoteDeletedPayload): void;
+  /**
+   * Registers a predicate checked at the START of every save attempt —
+   * debounced, flush()-triggered, or reconnect-triggered alike — one choke
+   * point rather than duplicated per call site. Returning false makes the
+   * attempt a silent, state-unchanged no-op (matching the pre-Plan-04
+   * EditorPane.performSave's reindexing/connectionStatus early-returns).
+   * This module stays React-free (see file header); Plan 05's EditorPane
+   * call-site supplies the actual reindexing/connectionStatus check here,
+   * reading its own refs so the predicate always sees CURRENT values.
+   */
+  setSaveGate(gate: (() => boolean) | null): void;
+  /**
+   * Cancels any pending debounced save WITHOUT saving it — used when a pane
+   * with no tab (the noteId-prop-driven fallback pane) switches to a
+   * different note out from under this controller, mirroring the old
+   * per-pane "debounce armed for the previous note must never fire" guard
+   * (WR-02: no cross-note PUT). Does not touch content/history; a later
+   * hydrate() for the same noteId still fully resets state.
+   */
+  discardPendingEdit(): void;
+  /**
+   * Updates the debounce interval used by the NEXT armed debounce (Plan 05
+   * WR-04: EditorPane's autosaveMs prop can arrive after mount, once the
+   * async /config fetch resolves — getOrCreateController only honors its
+   * autosaveMs argument on first construction, so a later change must be
+   * pushed in explicitly rather than re-passed to getOrCreateController).
+   */
+  setAutosaveMs(ms: number): void;
+  /**
+   * Applies a save-state transition WITHOUT attempting a network save —
+   * for the one UI flow (EditorPane's conflict-banner "Save anyway" button)
+   * that intentionally calls updateNote directly (with an explicit If-Match
+   * override) rather than through this controller's own performSave, but
+   * still needs the shared saveState machine to reflect a failure.
+   */
+  reportSaveFailed(error: string): void;
+  /**
+   * Raw setters for the EditorPane conflict-banner "Save anyway"/"Discard"/
+   * dismiss UI flow, which intentionally drives updateNote/getNote directly
+   * (an explicit If-Match override, and a manual re-fetch) rather than
+   * through this controller's own performSave/hydrate — the flow still
+   * needs to update the SAME shared conflict/deleted/h1RenameError state so
+   * every pane showing this note sees the resolution consistently.
+   */
+  setConflict(c: ConflictState | null): void;
+  setDeleted(d: DeletedState | null): void;
+  setH1RenameError(msg: string | null): void;
+  /**
+   * Updates the path used as the H1-rename comparator's "current" side,
+   * WITHOUT touching content/saveState/conflict. EditorPane's own live-tree
+   * sync effect (Plan 05, mirroring the pre-Plan-04 lastNotePath-from-tree
+   * effect) calls this whenever the tree reports a fresher path for this
+   * note than hydrate()'s load-time seed — e.g. the note was renamed
+   * server-side (another session, or a WS folder/note move) between this
+   * pane's initial GET and the next H1 edit, so the rename comparator must
+   * compose against the note's ACTUAL current parent directory, not a stale
+   * load-time snapshot.
+   */
+  setNotePath(path: string): void;
 }
 
 function parentDirOf(p: string): string {
@@ -79,7 +157,7 @@ function composeNewPath(parent: string, name: string): string {
 
 class NoteBufferControllerImpl implements NoteBufferController {
   private readonly noteId: string;
-  private readonly autosaveMs: number;
+  private autosaveMs: number;
 
   private content = "";
   private saveState: SaveState = initialSaveState;
@@ -88,6 +166,8 @@ class NoteBufferControllerImpl implements NoteBufferController {
   private h1RenameError: string | null = null;
 
   private readonly listeners = new Set<(s: SaveState) => void>();
+  private readonly renameListeners = new Set<(newPath: string) => void>();
+  private readonly contentReplacedListeners = new Set<(content: string) => void>();
 
   private debounceTimer: number | null = null;
   private savedTimer: number | null = null;
@@ -98,6 +178,7 @@ class NoteBufferControllerImpl implements NoteBufferController {
   private isRenameInProgress = false;
   private lastH1Sent: string | null = null;
   private lastNotePath = "";
+  private saveGate: (() => boolean) | null = null;
 
   /** Set true by releaseController; aborts any in-flight trailing chain. */
   private released = false;
@@ -145,6 +226,20 @@ class NoteBufferControllerImpl implements NoteBufferController {
     };
   }
 
+  subscribeRenamed(fn: (newPath: string) => void): () => void {
+    this.renameListeners.add(fn);
+    return () => {
+      this.renameListeners.delete(fn);
+    };
+  }
+
+  subscribeContentReplaced(fn: (content: string) => void): () => void {
+    this.contentReplacedListeners.add(fn);
+    return () => {
+      this.contentReplacedListeners.delete(fn);
+    };
+  }
+
   handleEditorChange(next: string): void {
     // Idempotent overwrite guard: a stray mirrored double-fire from the CM6
     // sync path (identical content delivered twice) must never re-arm the
@@ -187,6 +282,9 @@ class NoteBufferControllerImpl implements NoteBufferController {
           }
           this.content = data.content;
           this.notify();
+          for (const fn of Array.from(this.contentReplacedListeners)) {
+            fn(this.content);
+          }
         } catch {
           if (this.released) return;
           this.setConflict({ visible: true, currentUpdatedAt: p.updated_at });
@@ -208,9 +306,43 @@ class NoteBufferControllerImpl implements NoteBufferController {
     this.released = true;
   }
 
-  private setConflict(c: ConflictState): void {
+  setSaveGate(gate: (() => boolean) | null): void {
+    this.saveGate = gate;
+  }
+
+  discardPendingEdit(): void {
+    if (this.debounceTimer !== null) {
+      window.clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    this.userHasEdited = false;
+  }
+
+  setAutosaveMs(ms: number): void {
+    this.autosaveMs = ms;
+  }
+
+  reportSaveFailed(error: string): void {
+    this.setSaveState({ type: "saveFailed", error });
+  }
+
+  setConflict(c: ConflictState | null): void {
     this.conflict = c;
     this.notify();
+  }
+
+  setDeleted(d: DeletedState | null): void {
+    this.deleted = d;
+    this.notify();
+  }
+
+  setH1RenameError(msg: string | null): void {
+    this.h1RenameError = msg;
+    this.notify();
+  }
+
+  setNotePath(path: string): void {
+    this.lastNotePath = path;
   }
 
   private setSaveState(event: SaveEvent): void {
@@ -226,6 +358,13 @@ class NoteBufferControllerImpl implements NoteBufferController {
   }
 
   private async performSave(latestContent: string): Promise<{ ok: boolean }> {
+    // Gate check FIRST, before any state transition or inFlight coalescing —
+    // matches the pre-Plan-04 EditorPane.performSave ordering exactly: a
+    // blocked attempt (reindexing/disconnected) leaves saveState untouched
+    // and is never queued as a trailing save.
+    if (this.saveGate && !this.saveGate()) {
+      return { ok: false };
+    }
     if (this.inFlight) {
       // A save is already running; this content rides out as the trailing
       // save. Resolve with ITS real outcome once it settles (UAT-3) — never
@@ -263,6 +402,9 @@ class NoteBufferControllerImpl implements NoteBufferController {
               }
               if (moveResp.data) {
                 this.lastNotePath = moveResp.data.path;
+                for (const fn of Array.from(this.renameListeners)) {
+                  fn(moveResp.data.path);
+                }
               }
               this.lastH1Sent = currentH1;
               this.h1RenameError = null;

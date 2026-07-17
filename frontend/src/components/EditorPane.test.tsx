@@ -141,6 +141,7 @@ vi.mock("../lib/treeApi", () => ({
 import { ScratchpadUUID, getNote, updateNote } from "../lib/notesApi";
 import { getTree, postNoteMove } from "../lib/treeApi";
 import { __testing__ as fileTreeTesting } from "../lib/useFileTree";
+import { __resetAllControllersForTest } from "../lib/noteBufferController";
 import { useOutlineStore } from "../lib/useOutlineStore";
 import { useTreeStore } from "../lib/useTreeStore";
 import type { EditorPaneHandlers } from "./EditorPane";
@@ -221,6 +222,12 @@ function errPut(message: string): PutReturn {
 }
 
 beforeEach(() => {
+    // noteBufferController is a module-level singleton keyed by noteId (Plan
+    // 05); most tests in this file reuse ScratchpadUUID, so a controller
+    // left over from a PRIOR test (its own debounce/content/saveState) would
+    // otherwise leak into the next one. Reset before every test for the same
+    // isolation guarantee the old per-render local state gave for free.
+    __resetAllControllersForTest();
     getNoteMock.mockReset();
     updateNoteMock.mockReset();
     postNoteMoveMock.mockReset();

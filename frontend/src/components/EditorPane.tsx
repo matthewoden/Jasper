@@ -1,21 +1,23 @@
 /**
- * EditorPane — MarkdownEditor (CM6) + load on noteId-change + 2s debounced
- * autosave + Cmd+S immediate save + in-flight save coalescing.
+ * EditorPane — thin view over the per-note noteBufferController (Plan 05).
  *
- * When noteId is null, renders a locked placeholder with no API calls.
- * When noteId changes, the load effect re-runs and the save-state machine
- * resets for the new note.
+ * Content/save-state/debounce/coalesced-flush/WS-reconciliation logic lives
+ * in `noteBufferController.ts` (Plan 04) — exactly one buffer per open note,
+ * regardless of how many panes show it (WS-10). EditorPane bridges that
+ * React-free controller into React via useSyncExternalStore, and keeps only
+ * pane-local UI concerns: breadcrumb, inline title/H1 UI, outline
+ * registration, the JSX shell, and browser-lifecycle keepalive plumbing.
  *
- * H1→filename binding: when the H1 in the editor changes, the next debounced
- * save detects the delta, sanitizes the new heading via the same illegal-char
- * regex RenameInput uses, and dispatches postNoteMove BEFORE updateNote.
- * On move failure (e.g. case_collision), the save aborts and surfaces a banner.
- * A single isRenameInProgress ref short-circuits the detector while a move is
- * in flight to prevent rename loops. Empty H1 → no-op.
+ * Reindexing/connectionStatus gating and refreshTree() (H1-rename tree
+ * sync) are reintroduced HERE, at the call site, via controller.setSaveGate
+ * and controller.subscribeRenamed — noteBufferController itself stays
+ * React/Zustand-free (see its file header).
  *
- * WebSocket sync: subscribes to connectionStatus for the autosave gate.
- * Exposes onNoteUpdated / onNoteDeleted handlers via editorHandlersRef so
- * App's useSessionSync can dispatch WS events directly into this editor.
+ * When noteId is null, renders a locked placeholder with no API calls, no
+ * controller. When noteId changes on an already-mounted instance (the
+ * no-tabs fallback pane), the previous note's pending debounced edit is
+ * discarded (never saved cross-note — WR-02), matching the old per-pane
+ * "debounce armed for the previous note must never fire" guard.
  */
 
 import {
@@ -24,24 +26,26 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 import {
   breadcrumbSegments,
   type BreadcrumbSegment,
 } from "../lib/breadcrumbPrefix";
-import { extractH1FromContent, sanitizeH1ForFilename } from "../lib/h1Extract";
+import { extractH1FromContent } from "../lib/h1Extract";
 import { getNote, updateNote } from "../lib/notesApi";
 import { generateOrLoadSessionId } from "../lib/sessionId";
-import { dispatchTagEvent } from "../lib/useTagBrowser";
+import { initialSaveState } from "../lib/saveStateMachine";
 import {
-  initialSaveState,
-  saveStateReducer,
-} from "../lib/saveStateMachine";
-import { postNoteMove, type Tree, type TreeNode } from "../lib/treeApi";
+  getOrCreateController,
+  releaseController,
+  type NoteBufferController,
+} from "../lib/noteBufferController";
+import { getPrimaryView } from "../lib/sharedDocRegistry";
+import { type Tree, type TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useOutlineStore } from "../lib/useOutlineStore";
@@ -93,16 +97,6 @@ interface EditorPaneProps {
 }
 
 
-function parentDirOf(p: string): string {
-  const i = p.lastIndexOf("/");
-  return i === -1 ? "" : p.slice(0, i);
-}
-
-function composeNewPath(parent: string, name: string): string {
-  return parent === "" ? name : `${parent}/${name}`;
-}
-
-
 function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
   if (tree === null) return null;
   const visit = (node: TreeNode): string | null => {
@@ -140,17 +134,49 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     autosaveMsRef.current = autosaveMs ?? AUTOSAVE_DEBOUNCE_MS;
   }, [autosaveMs]);
 
-  const [content, setContent] = useState("");
+  // Per-note controller (Plan 04): a stable singleton per noteId, shared by
+  // every pane showing that note. Safe to derive during render — the
+  // underlying map is idempotent, so a duplicate render (StrictMode) never
+  // creates a second instance.
+  const controller: NoteBufferController | null =
+    noteId !== null
+      ? getOrCreateController(noteId, autosaveMsRef.current)
+      : null;
+
+  const subscribeController = useCallback(
+    (onStoreChange: () => void) => {
+      if (!controller) return () => {};
+      return controller.subscribe(onStoreChange);
+    },
+    [controller],
+  );
+
+  const content = useSyncExternalStore(
+    subscribeController,
+    () => controller?.getContent() ?? "",
+  );
+  const saveState = useSyncExternalStore(
+    subscribeController,
+    () => controller?.getSaveState() ?? initialSaveState,
+  );
+  const conflictBanner = useSyncExternalStore(
+    subscribeController,
+    () => controller?.getConflict() ?? null,
+  );
+  const deletedBanner = useSyncExternalStore(
+    subscribeController,
+    () => controller?.getDeleted() ?? null,
+  );
+  const h1RenameError = useSyncExternalStore(
+    subscribeController,
+    () => controller?.getH1RenameError() ?? null,
+  );
+
   // Hook must run unconditionally (rules-of-hooks) — placed before the
   // component's later conditional early returns (activeFilePath / noteId null).
   const wordCount = useMemo(() => countWords(content), [content]);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
-  const [saveState, dispatch] = useReducer(
-    saveStateReducer,
-    initialSaveState,
-  );
   const { tree, refresh: refreshTree } = useFileTree();
-  const [h1RenameError, setH1RenameError] = useState<string | null>(null);
 
   const connectionStatus = useTreeStore((s) => s.connectionStatus);
 
@@ -180,18 +206,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     }
   }, [toggleExpanded, setPulseTarget, setNotesSidebarVisible, activeNoteId]);
 
-  const [conflictBanner, setConflictBanner] = useState<{
-    visible: boolean;
-    currentUpdatedAt: string;
-  } | null>(null);
-
-  const [deletedBanner, setDeletedBanner] = useState<{
-    visible: boolean;
-    deletedPath: string;
-  } | null>(null);
-
   const editorRef = useRef<MarkdownEditorRef>(null);
+  // Mirrors `content` for synchronous-closure call sites (keepalive/blur/
+  // reconnect handlers below) that cannot re-subscribe on every keystroke.
   const latestContentRef = useRef("");
+  useEffect(() => {
+    latestContentRef.current = content;
+  }, [content]);
+
   // Outline (RSIDE-01): cache of the last-computed heading list for THIS pane,
   // updated on every onHeadingsChange call regardless of the active-tab guard
   // below. Needed because the "become active" transition (a brand-new tab's
@@ -200,14 +222,9 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   // handleEditorHeadingsChange) must be able to flush a cached, already-computed
   // heading list into the shared store without waiting on another doc change.
   const latestHeadingsRef = useRef<HeadingInfo[]>([]);
-  const debounceTimer = useRef<number | null>(null);
-  const savedTimer = useRef<number | null>(null);
-  const inFlight = useRef(false);
-  const trailingPending = useRef(false);
-  // Coalesced callers (flush(), another blur, autosave-debounce) that landed
-  // while a save was already in flight; resolved with the trailing save's
-  // REAL outcome once it settles (UAT-3 — never an optimistic ok:true).
-  const trailingWaiters = useRef<Array<(r: { ok: boolean }) => void>>([]);
+  // Mirrors the controller's internal userHasEdited flag for synchronous
+  // call sites (keepalive/blur/reconnect/note-switch decisions) that read it
+  // outside a render.
   const userHasEdited = useRef(false);
   const noteIdRef = useRef<string | null>(noteId);
   useEffect(() => {
@@ -219,6 +236,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     connectionStatusRef.current = connectionStatus;
   }, [connectionStatus]);
 
+  // Stable-closure handle for the visibilitychange handler below (empty deps
+  // — must read whichever controller is CURRENT at hide-time, not the one
+  // captured when the effect first mounted).
+  const controllerRef = useRef<NoteBufferController | null>(controller);
+  useEffect(() => {
+    controllerRef.current = controller;
+  }, [controller]);
+
   // Only the VISIBLE pane owns the global save indicator: hidden keep-alive
   // panes save in the background (blur, reconnect-flush) and would otherwise
   // drive the status bar last-writer-wins for a note the user isn't viewing.
@@ -229,54 +254,116 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
 
   const keepaliveSentRef = useRef(false);
 
-  const lastH1Sent = useRef<string | null>(null);
-  const isRenameInProgress = useRef(false);
-  const lastNotePath = useRef<string>("");
-
+  const reindexingRef = useRef(reindexing);
   useEffect(() => {
-    if (noteId === null) return;
+    reindexingRef.current = reindexing;
+  }, [reindexing]);
+
+  // Reindex/connectionStatus gating (reintroduced at the call site — the
+  // controller stays React-free): checked at the START of every save
+  // attempt the controller makes (debounced, flush()-triggered, or
+  // reconnect-triggered) via ONE choke point inside the controller's own
+  // internal save method. The gate closure reads the CURRENT ref values, so
+  // it never goes stale.
+  useEffect(() => {
+    if (!controller) return;
+    controller.setSaveGate(
+      () => !reindexingRef.current && connectionStatusRef.current === "connected",
+    );
+    return () => {
+      controller.setSaveGate(null);
+    };
+  }, [controller]);
+
+  // WR-04: autosaveMs can arrive after mount (async /config fetch) — push it
+  // into the controller explicitly since getOrCreateController only honors
+  // its autosaveMs argument on first construction.
+  useEffect(() => {
+    if (!controller) return;
+    controller.setAutosaveMs(autosaveMs ?? AUTOSAVE_DEBOUNCE_MS);
+  }, [controller, autosaveMs]);
+
+  // A successful H1-driven rename moves the note on disk. WS `note:moved`
+  // broadcasts exclude the originating session (SYNC-03), so THIS pane
+  // (which caused the rename) would never otherwise see its own tree entry
+  // update — refresh directly.
+  useEffect(() => {
+    if (!controller) return;
+    return controller.subscribeRenamed(() => {
+      void refreshTree();
+    });
+  }, [controller, refreshTree]);
+
+  // MarkdownEditor is uncontrolled — the CM6 view only ever shows a NEW
+  // document via the ref's applyServerUpdate call, never by reacting to a
+  // content prop change. A silent WS onNoteUpdated adopt happens entirely
+  // inside the controller, so push its result into the ref here.
+  useEffect(() => {
+    if (!controller) return;
+    return controller.subscribeContentReplaced((newContent) => {
+      editorRef.current?.applyServerUpdate(newContent);
+    });
+  }, [controller]);
+
+  // CR-01/CR-02: keep the controller's rename-comparator path in sync with
+  // the LIVE tree — the note may have moved (another session, a WS
+  // folder/note move) since this pane's initial GET seeded hydrate()'s path,
+  // and the H1-rename detector must compose the new path against the note's
+  // ACTUAL current parent directory, not a stale load-time snapshot.
+  useEffect(() => {
+    if (!controller || noteId === null) return;
     const livePath = findNotePathInTree(tree, noteId);
-    if (livePath !== null && livePath !== lastNotePath.current) {
-      lastNotePath.current = livePath;
+    if (livePath !== null) {
+      controller.setNotePath(livePath);
     }
-  }, [tree, noteId]);
+  }, [controller, tree, noteId]);
+
+  // Release the controller ONLY on true unmount (tab/pane closed) — deps
+  // intentionally empty so this cleanup does NOT also fire on a mere
+  // noteId-prop switch (the no-tabs fallback pane keeps the SAME EditorPane
+  // instance alive across notes; releasing here would flush/save the
+  // abandoned note's buffer via releaseController's own flush-before-release
+  // step, contradicting WR-02's "no cross-note PUT" — discardPendingEdit
+  // below handles that transition instead). noteIdRef.current at cleanup
+  // time reflects whichever note this pane was LAST showing. Never fires on
+  // a mere hide (D-01 keep-alive): hidden panes stay mounted, nothing here
+  // re-runs. getPrimaryView guards against releasing a controller another
+  // view still depends on.
+  useEffect(() => {
+    return () => {
+      const id = noteIdRef.current;
+      if (id === null) return;
+      if (getPrimaryView(id) === null) {
+        void releaseController(id);
+      }
+    };
+  }, []);
 
   const prevNoteIdRef = useRef<string | null>(noteId);
 
   useEffect(() => {
     // A debounce armed for the previous note must never fire against the new
-    // noteIdRef — latestContentRef may still hold the old note's content and
-    // the save would write it into the new note (cross-note corruption).
-    if (debounceTimer.current !== null) {
-      window.clearTimeout(debounceTimer.current);
-      debounceTimer.current = null;
-    }
+    // note — the abandoned controller's content may still hold an unsaved
+    // edit and the save would write it under the wrong note (WR-02:
+    // cross-note corruption guard).
     {
       const prevId = prevNoteIdRef.current;
-      if (prevId !== null && prevId !== noteId && userHasEdited.current) {
-        useTreeStore.getState().clearLiveLabel(prevId);
+      if (prevId !== null && prevId !== noteId) {
+        getOrCreateController(prevId, autosaveMsRef.current).discardPendingEdit();
+        if (userHasEdited.current) {
+          useTreeStore.getState().clearLiveLabel(prevId);
+        }
       }
       prevNoteIdRef.current = noteId;
     }
     if (noteId === null) {
       setLoadStatus("loaded");
-      setContent("");
-      latestContentRef.current = "";
       userHasEdited.current = false;
-      lastH1Sent.current = null;
-      lastNotePath.current = "";
-      isRenameInProgress.current = false;
-      setH1RenameError(null);
-      setConflictBanner(null);
-      setDeletedBanner(null);
       return;
     }
     const abortCtrl = new AbortController();
     setLoadStatus("loading");
     userHasEdited.current = false;
-    setH1RenameError(null);
-    setConflictBanner(null);
-    setDeletedBanner(null);
     (async () => {
       const { data, error } = await getNote(noteId, {
         signal: abortCtrl.signal,
@@ -287,12 +374,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
         return;
       }
       if (!userHasEdited.current) {
-        setContent(data.content);
-        latestContentRef.current = data.content;
+        getOrCreateController(noteId, autosaveMsRef.current).hydrate(
+          data.content,
+          data.path,
+        );
         editorRef.current?.applyServerUpdate(data.content);
       }
-      lastH1Sent.current = extractH1FromContent(data.content);
-      lastNotePath.current = data.path;
       setLoadStatus("loaded");
     })();
     return () => {
@@ -306,152 +393,30 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     }
   }, [hidden, loadStatus, noteId]);
 
-  const reindexingRef = useRef(reindexing);
-  useEffect(() => {
-    reindexingRef.current = reindexing;
-  }, [reindexing]);
-
   const prevConnectionStatusRef = useRef(connectionStatus);
-
-  const performSave = useCallback(async (latestContent: string): Promise<{ ok: boolean }> => {
-    if (reindexingRef.current) return { ok: false };
-    const id = noteIdRef.current;
-    if (id === null) return { ok: false };
-    if (connectionStatusRef.current !== "connected") return { ok: false };
-    if (inFlight.current) {
-      // A save is already running; this content rides out as the trailing
-      // save. Resolve with ITS real outcome once it settles (UAT-3) — never
-      // optimistically here.
-      trailingPending.current = true;
-      return new Promise<{ ok: boolean }>((resolve) => {
-        trailingWaiters.current.push(resolve);
-      });
-    }
-    inFlight.current = true;
-    dispatch({ type: "requestSave" });
-    try {
-      const currentH1 = extractH1FromContent(latestContent);
-      const h1Changed =
-        currentH1 !== null && currentH1 !== lastH1Sent.current;
-
-      if (h1Changed && !isRenameInProgress.current) {
-        const sanitized = sanitizeH1ForFilename(currentH1);
-        if (!sanitized.ok) {
-          setH1RenameError(sanitized.error);
-        } else {
-          isRenameInProgress.current = true;
-          try {
-            const parent = parentDirOf(lastNotePath.current);
-            const newPath = composeNewPath(
-              parent,
-              sanitized.value + ".md",
-            );
-            if (newPath.toLowerCase() !== lastNotePath.current.toLowerCase()) {
-              const moveResp = await postNoteMove(id, newPath);
-              if (moveResp.error) {
-                const msg =
-                  moveResp.error.code === "case_collision"
-                    ? "Couldn't rename to match the heading — that filename is already taken."
-                    : "Couldn't rename to match the heading. Try a different heading.";
-                setH1RenameError(msg);
-                dispatch({ type: "saveFailed", error: msg });
-                return { ok: false };
-              }
-              if (moveResp.data) {
-                lastNotePath.current = moveResp.data.path;
-              }
-              lastH1Sent.current = currentH1;
-              setH1RenameError(null);
-            } else {
-              lastH1Sent.current = currentH1;
-              setH1RenameError(null);
-            }
-          } finally {
-            isRenameInProgress.current = false;
-          }
-        }
-      }
-
-      const { data, error } = await updateNote(id, latestContent);
-      if (error || !data) {
-        const msg =
-          (error as { message?: string } | undefined)?.message ??
-          "save failed";
-        dispatch({ type: "saveFailed", error: msg });
-        return { ok: false };
-      }
-      if (h1Changed) {
-        await refreshTree();
-      }
-      dispatch({
-        type: "saveSucceeded",
-        updatedAt: new Date(data.updated_at),
-      });
-      dispatchTagEvent("tags:updated");
-      if (savedTimer.current !== null) {
-        window.clearTimeout(savedTimer.current);
-      }
-      savedTimer.current = window.setTimeout(() => {
-        dispatch({ type: "savedTimerExpired" });
-      }, SAVED_STICKY_MS);
-      return { ok: true };
-    } catch (e) {
-      dispatch({
-        type: "saveFailed",
-        error: e instanceof Error ? e.message : String(e),
-      });
-      return { ok: false };
-    } finally {
-      inFlight.current = false;
-      if (trailingPending.current) {
-        trailingPending.current = false;
-        // Snapshot-and-clear so callers that coalesce onto the NEW trailing
-        // save (fired below) queue onto a fresh array, not this one.
-        const waiters = trailingWaiters.current;
-        trailingWaiters.current = [];
-        if (noteIdRef.current !== id) {
-          // noteId changed while this save was in flight; latestContentRef may
-          // hold the previous note's content — never PUT it to the new note.
-          waiters.forEach((resolve) => resolve({ ok: false }));
-        } else {
-          void performSave(latestContentRef.current).then((r) => {
-            waiters.forEach((resolve) => resolve(r));
-          });
-        }
-      }
-    }
-  }, [refreshTree]);
 
   useEffect(() => {
     const prev = prevConnectionStatusRef.current;
-    if (prev !== connectionStatus) {
-      if (connectionStatus !== "connected") {
-        dispatch({ type: "connectionLost" });
-      } else if (prev !== "connected") {
-        dispatch({ type: "connectionRestored" });
-        if (userHasEdited.current && noteIdRef.current !== null) {
-          void performSave(latestContentRef.current);
-        }
+    if (prev !== connectionStatus && prev !== "connected" && connectionStatus === "connected") {
+      // Reconnect-flush (WR-02): a debounced save blocked by the closed gate
+      // while disconnected never fired; retry once the gate re-opens.
+      // flush() itself no-ops when there is nothing pending.
+      if (controller) {
+        void controller.flush().catch(() => {
+          // Best-effort retry — failures already surface via saveState.
+        });
       }
-      prevConnectionStatusRef.current = connectionStatus;
     }
-  }, [connectionStatus, performSave]);
+    prevConnectionStatusRef.current = connectionStatus;
+  }, [connectionStatus, controller]);
 
   const handleEditorChange = useCallback(
     (next: string) => {
       userHasEdited.current = true;
-      setContent(next);
       latestContentRef.current = next;
-      dispatch({ type: "edit" });
-      if (debounceTimer.current !== null) {
-        window.clearTimeout(debounceTimer.current);
-      }
-      debounceTimer.current = window.setTimeout(() => {
-        debounceTimer.current = null;
-        void performSave(latestContentRef.current);
-      }, autosaveMsRef.current);
+      controller?.handleEditorChange(next);
     },
-    [performSave],
+    [controller],
   );
 
   const handleEditorH1Change = useCallback(
@@ -495,7 +460,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   // commits its state update one render later. So on the very first open of a
   // brand-new tab, the guard above sees activeNoteId as still stale (or null)
   // and silently drops the initial heading push — Outline would then show
-  // "No headings" until the user made an edit. Flushing latestHeadingsRef here
+  // "No headings" until the user made a live edit. Flushing latestHeadingsRef here
   // (which the mount-time push always populates, guard notwithstanding) once
   // this effect's own [hidden, noteId, activeNoteId] deps confirm the mirror
   // settled closes that gap without waiting on a doc change.
@@ -521,34 +486,28 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [hidden, noteId, activeNoteId]);
 
   const handleSaveRequested = useCallback(() => {
-    if (debounceTimer.current !== null) {
-      window.clearTimeout(debounceTimer.current);
-      debounceTimer.current = null;
-    }
-    void performSave(latestContentRef.current);
-  }, [performSave]);
+    if (!controller) return;
+    void controller.flush().catch(() => {
+      // Best-effort — Cmd+S / checkbox-toggle failures already surface via
+      // saveState; this call site doesn't otherwise handle the rejection.
+    });
+  }, [controller]);
 
   const handleEditorBlur = useCallback(() => {
     if (!userHasEdited.current) return;
-    if (debounceTimer.current !== null) {
-      window.clearTimeout(debounceTimer.current);
-      debounceTimer.current = null;
-    }
-    void performSave(latestContentRef.current);
-  }, [performSave]);
+    if (!controller) return;
+    void controller.flush().catch(() => {
+      // Best-effort — failures already surface via saveState.
+    });
+  }, [controller]);
 
   // flush() — cancel the pending debounce and save synchronously, awaitable by the
   // tab-close flow so a closing tab never drops mid-debounce edits (TAB-13, D-04).
   // Rejects when the save fails so the caller can surface a confirm dialog.
   const flush = useCallback(async () => {
-    if (debounceTimer.current !== null) {
-      window.clearTimeout(debounceTimer.current);
-      debounceTimer.current = null;
-    }
-    if (!userHasEdited.current) return;
-    const { ok } = await performSave(latestContentRef.current);
-    if (!ok) throw new Error("flush failed");
-  }, [performSave]);
+    if (!controller) return;
+    await controller.flush();
+  }, [controller]);
 
   useEffect(() => {
     if (!flushRef) return;
@@ -559,26 +518,16 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [flushRef, flush]);
 
   useEffect(() => {
-    return () => {
-      if (debounceTimer.current !== null) {
-        window.clearTimeout(debounceTimer.current);
-      }
-      if (savedTimer.current !== null) {
-        window.clearTimeout(savedTimer.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState !== "hidden") {
         keepaliveSentRef.current = false;
         return;
       }
-      if (debounceTimer.current !== null) {
-        window.clearTimeout(debounceTimer.current);
-        debounceTimer.current = null;
-      }
+      // A debounce armed for this note must never fire once the keepalive
+      // beacon below takes over persistence duty for the hidden tab.
+      // Cancelled unconditionally, before any of the later guards, matching
+      // the pre-Plan-04 EditorPane.onVisibilityChange ordering exactly.
+      controllerRef.current?.discardPendingEdit();
       const id = noteIdRef.current;
       if (id === null) return;
       if (connectionStatusRef.current !== "connected") return;
@@ -620,54 +569,27 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-    // refs only — performSave is no longer called from inside the handlers,
-    // so the dep array is intentionally empty.
+    // refs only — the controller is read through noteIdRef-derived lookups
+    // at call time, so the dep array is intentionally empty.
   }, []);
 
 
-  // When note:updated arrives for the open note with no pending edits/saves, silently
-  // re-fetch and replace content. When unsaved edits or a pending save exist, surface
-  // the conflict banner instead — never silently overwrite uncommitted work.
+  // Delegate straight to the controller — fired once per noteId regardless
+  // of how many panes have this note open (Pitfall 1: no per-pane fan-out).
+  // Plan 07 will have App call the controller directly; this indirection
+  // stays for now so editorHandlersRef's existing wiring is untouched.
   const onNoteUpdated = useCallback(
     (p: WSNoteUpdatedPayload) => {
-      if (p.id !== noteIdRef.current) return;
-      const debouncePending = debounceTimer.current !== null;
-      const inFlightSave = inFlight.current;
-      if (!userHasEdited.current && !debouncePending && !inFlightSave) {
-        void (async () => {
-          try {
-            const { data, error } = await getNote(p.id);
-            // Stale-response guard: the fallback pane's noteId can change while
-            // the fetch is in flight — never clobber the new note's content.
-            if (p.id !== noteIdRef.current) return;
-            if (error || !data) {
-              // getNote returns { error } on API failures without throwing;
-              // surface the banner rather than silently dropping the update.
-              setConflictBanner({ visible: true, currentUpdatedAt: p.updated_at });
-              return;
-            }
-            setContent(data.content);
-            latestContentRef.current = data.content;
-            editorRef.current?.applyServerUpdate(data.content);
-          } catch {
-            if (p.id !== noteIdRef.current) return;
-            setConflictBanner({ visible: true, currentUpdatedAt: p.updated_at });
-          }
-        })();
-        return;
-      }
-      setConflictBanner({ visible: true, currentUpdatedAt: p.updated_at });
+      controller?.onNoteUpdated(p);
     },
-    [], // uses refs only (noteIdRef, debounceTimer, inFlight, userHasEdited)
+    [controller],
   );
 
-  // note:deleted for the open note → deletion banner; content stays intact for recovery.
   const onNoteDeleted = useCallback(
     (p: WSNoteDeletedPayload) => {
-      if (p.id !== noteIdRef.current) return;
-      setDeletedBanner({ visible: true, deletedPath: p.path });
+      controller?.onNoteDeleted(p);
     },
-    [], // uses refs only
+    [controller],
   );
 
   useEffect(() => {
@@ -787,7 +709,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
             onClick={() => {
               void (async () => {
                 const id = noteIdRef.current;
-                if (id === null) return;
+                if (id === null || !controller) return;
                 const result = await updateNote(
                   id,
                   latestContentRef.current,
@@ -803,8 +725,8 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
                     staleErr.code === "stale_write" &&
                     staleErr.current_updated_at
                   ) {
-                    setH1RenameError(null);
-                    setConflictBanner({
+                    controller.setH1RenameError(null);
+                    controller.setConflict({
                       visible: true,
                       currentUpdatedAt: staleErr.current_updated_at,
                     });
@@ -816,7 +738,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
                   try {
                     const fresh = await getNote(id);
                     if (fresh.data) {
-                      setConflictBanner({
+                      controller.setConflict({
                         visible: true,
                         currentUpdatedAt: fresh.data.updated_at,
                       });
@@ -828,12 +750,13 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
                     // banner with its original comparator; the message
                     // tells the user to wait for next sync.
                   }
-                  setH1RenameError(`Couldn't save: ${msg}. ${recoveryHint}`);
-                  dispatch({ type: "saveFailed", error: msg });
+                  controller.setH1RenameError(`Couldn't save: ${msg}. ${recoveryHint}`);
+                  controller.reportSaveFailed(msg);
                   return;
                 }
-                setH1RenameError(null);
-                setConflictBanner(null);
+                controller.setH1RenameError(null);
+                controller.setConflict(null);
+                controller.discardPendingEdit();
                 userHasEdited.current = false;
               })();
             }}
@@ -845,22 +768,19 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
             onClick={() => {
               void (async () => {
                 const id = noteIdRef.current;
-                if (!id) return;
+                if (!id || !controller) return;
                 const { data, error } = await getNote(id);
                 if (id !== noteIdRef.current) return;
                 if (error || !data) {
                   const msg =
                     (error as { message?: string } | undefined)?.message ??
                     "couldn't load latest version";
-                  setH1RenameError(`Discard failed: ${msg}. Try again.`);
+                  controller.setH1RenameError(`Discard failed: ${msg}. Try again.`);
                   return;
                 }
-                setH1RenameError(null);
-                setContent(data.content);
-                latestContentRef.current = data.content;
+                controller.hydrate(data.content, data.path);
                 userHasEdited.current = false;
                 editorRef.current?.applyServerUpdate(data.content);
-                setConflictBanner(null);
               })();
             }}
           >
@@ -869,7 +789,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           <button
             type="button"
             aria-label="Dismiss"
-            onClick={() => setConflictBanner(null)}
+            onClick={() => controller?.setConflict(null)}
           >
             ×
           </button>
@@ -884,7 +804,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           <button
             type="button"
             aria-label="Dismiss"
-            onClick={() => setDeletedBanner(null)}
+            onClick={() => controller?.setDeleted(null)}
           >
             ×
           </button>
@@ -1012,6 +932,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       >
         <MarkdownEditor
           ref={editorRef}
+          noteId={noteId}
           initialDoc={loadStatus === "loaded" && !reindexing ? content : ""}
           onChange={handleEditorChange}
           onH1Change={handleEditorH1Change}

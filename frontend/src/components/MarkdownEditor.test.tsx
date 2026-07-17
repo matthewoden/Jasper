@@ -23,6 +23,7 @@ interface ProbeRef {
 const Probe = forwardRef<
   ProbeRef,
   {
+    noteId?: string;
     initialDoc?: string;
     onChange: (s: string) => void;
     onH1Change?: (h: string | null) => void;
@@ -30,7 +31,7 @@ const Probe = forwardRef<
     onBlur?: () => void;
   }
 >(function Probe(
-  { initialDoc = "", onChange, onH1Change, onSaveRequested, onBlur },
+  { noteId = "test-note", initialDoc = "", onChange, onH1Change, onSaveRequested, onBlur },
   probeRef
 ) {
   const [, setRerenderKey] = useState(0);
@@ -43,6 +44,7 @@ const Probe = forwardRef<
       </button>
       <MarkdownEditor
         ref={editorRef}
+        noteId={noteId}
         initialDoc={initialDoc}
         onChange={onChange}
         onH1Change={onH1Change}
@@ -216,5 +218,59 @@ describe("<MarkdownEditor />", () => {
     expect(contentDOM).not.toBeNull();
     const ws = window.getComputedStyle(contentDOM).whiteSpace;
     expect(["pre-wrap", "break-spaces"]).toContain(ws);
+  });
+
+  describe("shared-doc registry sync (WS-10, Plan 05)", () => {
+    it("a change dispatched in one view mirrors into another view sharing the same noteId, without re-invoking the receiving view's onChange", () => {
+      const noteId = "shared-note-sync";
+      const probeARef = { current: null as ProbeRef | null };
+      const probeBRef = { current: null as ProbeRef | null };
+      const onChangeA = vi.fn();
+      const onChangeB = vi.fn();
+      renderWithToast(
+        <>
+          <Probe ref={probeARef} noteId={noteId} initialDoc="shared" onChange={onChangeA} />
+          <Probe ref={probeBRef} noteId={noteId} initialDoc="shared" onChange={onChangeB} />
+        </>,
+      );
+
+      act(() => {
+        probeARef.current?.ed()?.setContent("shared-edited");
+      });
+
+      // The typing view's own onChange fires exactly once for its own keystroke.
+      expect(onChangeA).toHaveBeenCalledTimes(1);
+      expect(onChangeA).toHaveBeenCalledWith("shared-edited");
+
+      // The mirrored view's document is kept in sync...
+      expect(probeBRef.current?.ed()?.getContent()).toBe("shared-edited");
+      // ...but its onChange must NOT fire for a change mirrored INTO it — one
+      // keystroke drives exactly one controller save/rename, never one-per-pane.
+      expect(onChangeB).not.toHaveBeenCalled();
+    });
+
+    it("onHeadingsChange still fires for a mirrored view (Outline must reflect mirrored edits)", () => {
+      const noteId = "shared-note-headings";
+      const probeARef = { current: null as ProbeRef | null };
+      const onHeadingsChangeB = vi.fn();
+      renderWithToast(
+        <>
+          <Probe ref={probeARef} noteId={noteId} initialDoc="" onChange={vi.fn()} />
+          <MarkdownEditor
+            noteId={noteId}
+            initialDoc=""
+            onChange={vi.fn()}
+            onHeadingsChange={onHeadingsChangeB}
+          />
+        </>,
+      );
+      onHeadingsChangeB.mockClear();
+
+      act(() => {
+        probeARef.current?.ed()?.setContent("# New Heading\n\nbody");
+      });
+
+      expect(onHeadingsChangeB).toHaveBeenCalled();
+    });
   });
 });
