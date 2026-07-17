@@ -444,3 +444,40 @@ func TestLoad_UnknownFieldsFallBackToDefaults(t *testing.T) {
 		t.Errorf("got %+v, want defaults (strict decoding) %+v", cfg, want)
 	}
 }
+
+// TestLoad_LegacyMCPEnabledKeyParses — every pre-Phase-24 config.json on disk
+// carries "mcp":{"enabled":...} (the field was required + always persisted).
+// Phase 24 removed the runtime toggle but keeps a deprecated ignored Enabled
+// field so the strict decoder still accepts the key. Regression guard: an
+// upgrading user's custom settings (accent, editor, mcp.port) MUST survive the
+// load rather than being silently reset to defaults via the malformed path.
+func TestLoad_LegacyMCPEnabledKeyParses(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	legacy := []byte(`{"appName":"Jasper","theme":"dark","accent":"sky",` +
+		`"dailyNotes":{"folder":"journal","template":""},` +
+		`"editor":{"fontSize":18,"lineHeight":1.7,"vimMode":true,"autosaveMs":3000},` +
+		`"server":{"port":6683,"dataDir":"/tmp/jasper-legacy","bind":"127.0.0.1"},` +
+		`"mcp":{"port":7000,"bind":"127.0.0.1","enabled":true}}`)
+	if err := os.WriteFile(path, legacy, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// If the legacy key had triggered the malformed fallback, these would all
+	// be default values instead of the user's.
+	if cfg.Accent != "sky" {
+		t.Errorf("Accent: got %q, want %q (settings wiped — legacy mcp.enabled rejected?)", cfg.Accent, "sky")
+	}
+	if cfg.Editor.FontSize != 18 {
+		t.Errorf("Editor.FontSize: got %d, want 18 (settings wiped?)", cfg.Editor.FontSize)
+	}
+	if cfg.MCP.Port != 7000 {
+		t.Errorf("MCP.Port: got %d, want 7000 (custom port wiped?)", cfg.MCP.Port)
+	}
+}

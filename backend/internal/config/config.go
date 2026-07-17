@@ -70,4 +70,12 @@ type ServerConfig struct {
 type MCPConfig struct {
 	Port int    `json:"port"`
 	Bind string `json:"bind"`
+	// Enabled is a deprecated no-op. Before Phase 24 the wizard always
+	// persisted "mcp":{"enabled":...}, so every pre-24 config.json on disk
+	// carries this key. It is retained (`omitempty`) only so those legacy
+	// files still parse under the strict decoder (DisallowUnknownFields) —
+	// dropping it would send every upgrading user down the malformed-fallback
+	// path and silently reset their settings. The listener is now always-on
+	// (D-06); this field is read and ignored. Do not reintroduce a toggle.
+	Enabled bool `json:"enabled,omitempty"`
 }
