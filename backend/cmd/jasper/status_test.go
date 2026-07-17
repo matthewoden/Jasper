@@ -105,7 +105,7 @@ func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 		"Bound on:       127.0.0.1:6683",
 		"Data directory: " + canon,
 		vault.LogsPath(canon),
-		"MCP:            listening on 127.0.0.1:6684",
+		"MCP:            configured on 127.0.0.1:6684 (loopback-only)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status output missing %q:\n%s", want, out)
@@ -164,7 +164,7 @@ func TestRunStatus_McpListeningWithGrants(t *testing.T) {
 	}
 	out := buf.String()
 	for _, want := range []string{
-		"MCP:            listening on 127.0.0.1:6684",
+		"MCP:            configured on 127.0.0.1:6684 (loopback-only)",
 		"2 grants",
 		"Tier 1 in projects/",
 		"Tier 2 in scratch/",

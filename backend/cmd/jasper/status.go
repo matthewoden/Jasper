@@ -148,7 +148,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	_, grantSummary := summarizeGrants(dataDir)
-	mcpLine := fmt.Sprintf("MCP:            listening on 127.0.0.1:%d — %s", cfg.MCP.Port, grantSummary)
+	mcpLine := fmt.Sprintf("MCP:            configured on 127.0.0.1:%d (loopback-only) — %s", cfg.MCP.Port, grantSummary)
 	boundAddr := serverBoundAddr(cfg)
 	warnSuffix := ""
 	bindHost := cfg.Server.Bind
