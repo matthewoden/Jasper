@@ -11,10 +11,10 @@
  * Ref API: getContent / setContent / applyServerUpdate / focus / focusEnd.
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Annotation, Compartment, Prec } from "@codemirror/state";
+import { Annotation, Compartment, Prec, type Transaction } from "@codemirror/state";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { autocompletion } from "@codemirror/autocomplete";
 import { search, openSearchPanel } from "@codemirror/search";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
@@ -51,6 +51,14 @@ import {
 } from "../editor/taskCheckboxPlugin";
 import { useAttachmentUpload } from "../lib/useAttachmentUpload";
 import { saveKeymap, jasperKeymap, listEnterKeymap } from "../editor/jasperKeymap";
+import {
+  getPrimaryView,
+  historyExtensionFor,
+  registerView,
+  syncAnnotation,
+  syncDispatch,
+  unregisterView,
+} from "../lib/sharedDocRegistry";
 import {
   tagClickPlugin,
   setTagClickHandler,
@@ -103,6 +111,13 @@ export interface MarkdownEditorRef {
 export const ServerUpdateAnnotation = Annotation.define<true>();
 
 interface Props {
+  /**
+   * Note this view is editing. Captured once at mount (alongside initialDoc)
+   * to key this view's shared-doc-registry registration (WS-10) — the same
+   * "construct once, use ref API for the rest" contract initialDoc already
+   * follows, since this component is not remounted on noteId change.
+   */
+  noteId: string;
   /** Initial document text. Captured once — use the ref API for subsequent updates. */
   initialDoc: string;
   /** Fires after every user-typed docChanged transaction; NOT fired during IME or server-update annotations. */
@@ -159,7 +174,7 @@ function getNoteFolder(noteId: string | null, root: TreeNode[]): string {
 
 export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
   function MarkdownEditor(
-    { initialDoc, onChange, onH1Change, onHeadingsChange, onSaveRequested, onBlur, readOnly = false },
+    { noteId, initialDoc, onChange, onH1Change, onHeadingsChange, onSaveRequested, onBlur, readOnly = false },
     ref
   ) {
     const hostRef = useRef<HTMLDivElement | null>(null);
@@ -272,13 +287,27 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     useEffect(() => {
       if (!hostRef.current) return;
 
-      const view = new EditorView({
+      // isPrimary: this view is the first live EditorView registered for
+      // noteId — it owns the note's single undo-history timeline (see
+      // sharedDocRegistry's historyExtensionFor). Determined once, at mount,
+      // same "captured once" contract as noteId/initialDoc above.
+      const isPrimary = getPrimaryView(noteId) === null;
+
+      // dispatchTx's closure references `view` before its own initializer
+      // completes — safe because dispatchTx is only INVOKED later (on a
+      // subsequent view.dispatch() call), by which point `view` is assigned.
+      // EditorView does not call the dispatch option synchronously during
+      // construction.
+      const dispatchTx = (tr: Transaction) => syncDispatch(noteId, tr, view);
+
+      const view: EditorView = new EditorView({
         parent: hostRef.current,
+        dispatch: dispatchTx,
         state: EditorState.create({
           doc: initialDoc,
           extensions: [
             readOnlyCompartment.current.of(readOnlyExtension(readOnly)),
-            history(),
+            historyExtensionFor(noteId, isPrimary),
             search({ top: true }), // searchKeymap omitted; browser native Cmd+F fires instead
             // listEnterKeymap at Prec.high: runs before insertNewlineContinueMarkup (also Prec.high
             // from markdown()) because it is placed EARLIER in the extensions array.
@@ -338,7 +367,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
                 cbRef.current.onHeadingsChange(extractHeadings(u.state));
               }
               for (const tr of u.transactions) {
-                if (tr.annotation(ServerUpdateAnnotation)) return;
+                // ServerUpdateAnnotation: silent WS/initial-load reload (existing).
+                // syncAnnotation: a change MIRRORED INTO this view by another
+                // pane's syncDispatch (WS-10) — must not re-invoke onChange/
+                // onH1Change here, or one keystroke in another pane would
+                // double-fire this note's save/rename for every mirrored view.
+                if (tr.annotation(ServerUpdateAnnotation) || tr.annotation(syncAnnotation)) return;
               }
               const doc = u.state.doc.toString();
               cbRef.current.onChange(doc);
@@ -358,6 +392,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
         }),
       });
       viewRef.current = view;
+      registerView(noteId, view, isPrimary);
 
       // Fire once on mount so the outline populates before the first edit.
       if (cbRef.current.onHeadingsChange) {
@@ -372,10 +407,20 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       return () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         delete (window as any).__jasperOpenSearchPanel;
-        view.destroy();
+        unregisterView(noteId, view);
+        // sharedDocRegistry's keep-alive contract (T-25-05-Loss): if this view
+        // WAS the note's primary and a survivor remains, unregisterView keeps
+        // it registered as primary (still off-DOM, undo history intact) rather
+        // than releasing it — getPrimaryView still returning THIS view after
+        // the call is exactly that signal. Only destroy when the registry has
+        // genuinely let it go (last view for the note, or a promoted survivor
+        // took over as primary).
+        if (getPrimaryView(noteId) !== view) {
+          view.destroy();
+        }
         viewRef.current = null;
       };
-      // initialDoc captured ONCE for cursor stability. Subsequent updates use the ref API.
+      // initialDoc/noteId captured ONCE for cursor stability. Subsequent updates use the ref API.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 

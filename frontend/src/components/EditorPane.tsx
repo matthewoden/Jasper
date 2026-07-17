@@ -1012,6 +1012,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       >
         <MarkdownEditor
           ref={editorRef}
+          noteId={noteId}
           initialDoc={loadStatus === "loaded" && !reindexing ? content : ""}
           onChange={handleEditorChange}
           onH1Change={handleEditorH1Change}
