@@ -20,11 +20,17 @@ export type MigrationState =
   | "rebuilding"
   | "unrecoverable";
 
+export interface McpStatus {
+  up: boolean;
+  reason?: string;
+}
+
 export interface UseMigrationStatusResult {
   state: MigrationState;
   failedMigration?: string;
   logsPath?: string;
   notesIndexed?: number;
+  mcp?: McpStatus;
   loading: boolean;
   error: Error | null;
   refresh: () => Promise<void>;
@@ -44,6 +50,7 @@ export function useMigrationStatus(): UseMigrationStatusResult {
   const [failedMigration, setFailed] = useState<string | undefined>();
   const [logsPath, setLogsPath] = useState<string | undefined>();
   const [notesIndexed, setNotesIndexed] = useState<number | undefined>();
+  const [mcp, setMcp] = useState<McpStatus | undefined>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -61,6 +68,7 @@ export function useMigrationStatus(): UseMigrationStatusResult {
         setFailed(data.failed_migration);
         setLogsPath(data.logs_path);
         setNotesIndexed(data.notes_indexed);
+        setMcp(data.mcp);
       }
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -85,6 +93,7 @@ export function useMigrationStatus(): UseMigrationStatusResult {
           setFailed(data.failed_migration);
           setLogsPath(data.logs_path);
           setNotesIndexed(data.notes_indexed);
+          setMcp(data.mcp);
         }
         setLoading(false);
       } catch (e) {
@@ -103,6 +112,7 @@ export function useMigrationStatus(): UseMigrationStatusResult {
     failedMigration,
     logsPath,
     notesIndexed,
+    mcp,
     loading,
     error,
     refresh,

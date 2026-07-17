@@ -24,6 +24,7 @@ import { CommandMenu } from "./components/CommandMenu";
 import { EditorPane, type EditorPaneHandlers } from "./components/EditorPane";
 import { FlushConfirmDialog } from "./components/FlushConfirmDialog";
 import { KeyboardShortcutsDialog } from "./components/KeyboardShortcutsDialog";
+import { McpUnavailableBanner } from "./components/McpUnavailableBanner";
 import { MigrationBanner } from "./components/MigrationBanner";
 import { RenameRewriteErrorBanner, type RewriteError } from "./components/RenameRewriteErrorBanner";
 import { ReindexProgress } from "./components/ReindexProgress";
@@ -703,6 +704,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         onResetConfirm={() => setDialogOpen(true)}
         status={status}
       />
+      <McpUnavailableBanner status={status} />
       {/* Rename/tag-rewrite rollback error banner. Stacks below MigrationBanner. */}
       <RenameRewriteErrorBanner
         state={rewriteError}
