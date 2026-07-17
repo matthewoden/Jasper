@@ -1,5 +1,6 @@
 /**
- * TabStrip — the editor tab row.
+ * TabStrip — a leaf-scoped editor tab row (Phase 25 / WS-03: one strip per
+ * pane, not a workspace singleton).
  *
  * Composes the Plan-03 presentational pieces: each ordered tab renders a
  * `TabPill` wrapped in `TabContextMenu`, with a `TabOverflowDropdown` at the
@@ -8,8 +9,13 @@
  * native HTML5 DnD does not deliver drop events reliably in this context.
  * The strip div handles move/up so that setPointerCapture is unnecessary —
  * avoiding Chromium's click-target redirection that captures would cause.
+ *
  * Capture-phase keyboard shortcuts (Alt+]/Alt+[/Ctrl+Tab cycle, Alt+W close)
- * are registered here.
+ * are registered here, gated on `usePaneStore.getState().activePaneId ===
+ * leafId` (Pitfall 3 / T-25-06-Dup): with N leaves mounted, N TabStrips each
+ * register a window listener, so every leaf's handler must no-op unless its
+ * OWN leaf is the active pane — otherwise one Alt+W keypress would close a
+ * tab in every pane simultaneously.
  *
  * Closing ALWAYS routes through `onRequestClose` (flush-aware; App.tsx/Plan 05
  * owns the flush+confirm orchestration) — never `closeTab` directly, so a close
@@ -18,7 +24,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { useTabStore } from "../lib/useTabStore";
+import { usePaneStore } from "../lib/usePaneStore";
 import type { Tab } from "../lib/useTabStore";
 import { useTreeStore } from "../lib/useTreeStore";
 import { TabPill } from "./TabPill";
@@ -101,6 +107,8 @@ function RightClusterToggle({
 const DRAG_THRESHOLD = 5;
 
 export interface TabStripProps {
+  /** This strip's owning leaf id — gates the window keydown listener to the active pane. */
+  leafId: string;
   tabs: Tab[];
   activeTabId: string | null;
   deletedTabIds: Set<string>;
@@ -115,6 +123,8 @@ export interface TabStripProps {
   onReorder: (fromIndex: number, toIndex: number) => void;
   /** Create a new untitled note and open it as a tab (TAB-14, + button / ⌥T). */
   onNewTab: () => void;
+  /** Cycle this leaf's active tab (Alt+]/Alt+[/Ctrl+Tab/Ctrl+Shift+Tab) — leaf-scoped, not workspace-wide. */
+  onCycleTab: (direction: 1 | -1) => void;
   /** Test-only: force a set of tab ids into the overflow dropdown. */
   forceHiddenTabIds?: Set<string>;
   style?: CSSProperties;
@@ -232,6 +242,7 @@ interface DragGhost {
 }
 
 export function TabStrip({
+  leafId,
   tabs,
   activeTabId,
   deletedTabIds,
@@ -243,6 +254,7 @@ export function TabStrip({
   onOpenRight,
   onReorder,
   onNewTab,
+  onCycleTab,
   forceHiddenTabIds,
   style,
 }: TabStripProps) {
@@ -329,10 +341,18 @@ export function TabStrip({
   // this ref suppresses that click so selection does not fire post-drag.
   const suppressClickRef = useRef(false);
 
-  // Keyboard shortcuts need the current onRequestClose without re-registering the
-  // listener on every render — thread it through a ref kept fresh each render.
+  // Keyboard shortcuts need the current onRequestClose/onCycleTab/tabs/activeTabId
+  // without re-registering the window listener on every render — thread each
+  // through a ref kept fresh each render (registration effect below has an
+  // empty-ish dep array, keyed only on leafId).
   const requestCloseRef = useRef(onRequestClose);
   requestCloseRef.current = onRequestClose;
+  const onCycleTabRef = useRef(onCycleTab);
+  onCycleTabRef.current = onCycleTab;
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
 
   // Overflow measurement: with a uniform minimum pill width the only DOM read
   // needed is the strip's content-box width — the hidden-tab decision is the
@@ -370,19 +390,22 @@ export function TabStrip({
     return () => ro.disconnect();
   }, [tabs, activeTabId]);
 
-  // Capture-phase keyboard shortcuts (D-13). Registered once; the listener reads
-  // live store state via getState() and onRequestClose via a ref so it stays stable.
+  // Capture-phase keyboard shortcuts (D-13), gated to the ACTIVE pane
+  // (Pitfall 3 / T-25-06-Dup): every mounted leaf's TabStrip registers this
+  // same window listener, so without the guard below N leaves would all act
+  // on one keypress. Registered once per leafId; tabs/activeTabId/callbacks
+  // are read through refs kept fresh each render so the listener stays stable.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const store = useTabStore.getState();
-      if (store.tabs.length === 0) return;
+      if (usePaneStore.getState().activePaneId !== leafId) return;
+      if (tabsRef.current.length === 0) return;
 
       // Alt+W → request close of the active tab (flush-aware via prop).
       // Never bind plain Cmd/Ctrl+W — the browser owns it.
       if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === "KeyW") {
         e.preventDefault();
         e.stopPropagation();
-        if (store.activeTabId !== null) requestCloseRef.current(store.activeTabId);
+        if (activeTabIdRef.current !== null) requestCloseRef.current(activeTabIdRef.current);
         return;
       }
 
@@ -393,7 +416,7 @@ export function TabStrip({
         e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab" && !e.shiftKey;
       if (isNextAlt || isNextCtrlTab) {
         e.preventDefault();
-        store.cycleTab(1);
+        onCycleTabRef.current(1);
         return;
       }
 
@@ -404,14 +427,14 @@ export function TabStrip({
         e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab" && e.shiftKey;
       if (isPrevAlt || isPrevCtrlTab) {
         e.preventDefault();
-        store.cycleTab(-1);
+        onCycleTabRef.current(-1);
         return;
       }
     };
 
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, []);
+  }, [leafId]);
 
   // Clear the ghost if the window loses focus mid-drag, or if the button is
   // released anywhere in the window, so a drag can never get stranded (gap 5 /

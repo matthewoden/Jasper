@@ -2,9 +2,12 @@
  * TabStrip tests:
  *   Task 1 — renders one pill per tab, wires select/close, overflow dropdown.
  *   Pointer drag — a non-threshold click still calls onSelectTab; no draggable attrs.
- *   TAB-11 — Alt+] cycles next (cycleTab(1)); Alt+[ cycles previous (cycleTab(-1));
+ *   TAB-11 — Alt+] calls onCycleTab(1); Alt+[ calls onCycleTab(-1);
  *            Ctrl+Tab / Ctrl+Shift+Tab cycle too. Ctrl+Tab preventDefault is guarded.
  *   TAB-05 — Alt+W requests close of the active tab; plain Ctrl+W does NOT.
+ *   Phase 25 (25-06) — TabStrip is leaf-scoped: the keydown handler gates on
+ *     usePaneStore.getState().activePaneId === leafId (Pitfall 3), so an
+ *     inactive leaf's strip is a no-op for every shortcut.
  *
  * All timing is synchronous event dispatch — no sleeps, no fake timers needed.
  */
@@ -12,9 +15,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TabStrip } from "./TabStrip";
-import { useTabStore } from "../lib/useTabStore";
 import type { Tab } from "../lib/useTabStore";
 import { useTreeStore } from "../lib/useTreeStore";
+import { usePaneStore } from "../lib/usePaneStore";
 
 const tabs: Tab[] = [
   { id: "a", noteId: "a" },
@@ -24,6 +27,8 @@ const tabs: Tab[] = [
 
 const titleForTab = (noteId: string) => `Title ${noteId}`;
 
+const LEAF_ID = "leaf-1";
+
 interface Handlers {
   onSelectTab: ReturnType<typeof vi.fn>;
   onRequestClose: ReturnType<typeof vi.fn>;
@@ -32,9 +37,12 @@ interface Handlers {
   onOpenRight: ReturnType<typeof vi.fn>;
   onReorder: ReturnType<typeof vi.fn>;
   onNewTab: ReturnType<typeof vi.fn>;
+  onCycleTab: ReturnType<typeof vi.fn>;
 }
 
 function renderStrip(overrides?: {
+  leafId?: string;
+  tabs?: Tab[];
   activeTabId?: string | null;
   deletedTabIds?: Set<string>;
   forceHiddenTabIds?: Set<string>;
@@ -47,10 +55,12 @@ function renderStrip(overrides?: {
     onOpenRight: vi.fn(),
     onReorder: vi.fn(),
     onNewTab: vi.fn(),
+    onCycleTab: vi.fn(),
   };
   render(
     <TabStrip
-      tabs={tabs}
+      leafId={overrides?.leafId ?? LEAF_ID}
+      tabs={overrides?.tabs ?? tabs}
       activeTabId={overrides?.activeTabId ?? "a"}
       deletedTabIds={overrides?.deletedTabIds ?? new Set()}
       titleForTab={titleForTab}
@@ -63,8 +73,10 @@ function renderStrip(overrides?: {
 
 beforeEach(() => {
   cleanup();
-  // The keyboard handler reads live store state — keep it in sync with the props.
-  useTabStore.setState({ tabs, activeTabId: "a", deletedTabIds: new Set() });
+  // The keydown handler gates on usePaneStore's activePaneId matching leafId
+  // (Pitfall 3) — default to "this leaf is active" so existing shortcut
+  // assertions exercise the acting path unless a test explicitly overrides it.
+  usePaneStore.setState({ activePaneId: LEAF_ID });
   vi.restoreAllMocks();
   // jsdom does not implement setPointerCapture / releasePointerCapture.
   Element.prototype.setPointerCapture = vi.fn();
@@ -84,6 +96,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
     const onNewTab = vi.fn();
     render(
       <TabStrip
+        leafId={LEAF_ID}
         tabs={[]}
         activeTabId={null}
         deletedTabIds={new Set()}
@@ -95,6 +108,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
         onOpenRight={vi.fn()}
         onReorder={vi.fn()}
         onNewTab={onNewTab}
+        onCycleTab={vi.fn()}
       />,
     );
     expect(screen.getByRole("tablist", { name: "Open tabs" })).toBeInTheDocument();
@@ -105,6 +119,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
   it("BUG 3c: empty-state new-tab button is tab-shaped (flush, square corners — not top-rounded)", () => {
     render(
       <TabStrip
+        leafId={LEAF_ID}
         tabs={[]}
         activeTabId={null}
         deletedTabIds={new Set()}
@@ -116,6 +131,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
         onOpenRight={vi.fn()}
         onReorder={vi.fn()}
         onNewTab={vi.fn()}
+        onCycleTab={vi.fn()}
       />,
     );
     const btn = screen.getByTestId("new-tab-button");
@@ -127,6 +143,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
     const onNewTab = vi.fn();
     render(
       <TabStrip
+        leafId={LEAF_ID}
         tabs={[]}
         activeTabId={null}
         deletedTabIds={new Set()}
@@ -138,6 +155,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
         onOpenRight={vi.fn()}
         onReorder={vi.fn()}
         onNewTab={onNewTab}
+        onCycleTab={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByTestId("new-tab-button"));
@@ -213,33 +231,30 @@ describe("<TabStrip /> rendering (Task 1)", () => {
 });
 
 describe("<TabStrip /> keyboard shortcuts (Task 2 — TAB-11 / TAB-05)", () => {
-  it("TAB-11: Alt+] advances the active tab (cycleTab(1))", () => {
-    renderStrip();
-    expect(useTabStore.getState().activeTabId).toBe("a");
+  it("TAB-11: Alt+] calls onCycleTab(1)", () => {
+    const h = renderStrip();
     // macOS Option-key composition remaps Alt+] to key:"'" — dispatch the real
     // composed key alongside code:"BracketRight" to prove the handler reads e.code.
     fireEvent.keyDown(window, { code: "BracketRight", key: "'", altKey: true });
-    expect(useTabStore.getState().activeTabId).toBe("b");
+    expect(h.onCycleTab).toHaveBeenCalledWith(1);
   });
 
-  it("TAB-11: Alt+[ moves to the previous tab (cycleTab(-1))", () => {
-    useTabStore.setState({ activeTabId: "b" });
-    renderStrip({ activeTabId: "b" });
+  it("TAB-11: Alt+[ calls onCycleTab(-1)", () => {
+    const h = renderStrip({ activeTabId: "b" });
     fireEvent.keyDown(window, { code: "BracketLeft", key: "'", altKey: true });
-    expect(useTabStore.getState().activeTabId).toBe("a");
+    expect(h.onCycleTab).toHaveBeenCalledWith(-1);
   });
 
-  it("TAB-11: Ctrl+Tab advances; Ctrl+Shift+Tab goes back", () => {
-    renderStrip();
+  it("TAB-11: Ctrl+Tab calls onCycleTab(1); Ctrl+Shift+Tab calls onCycleTab(-1)", () => {
+    const h = renderStrip();
     fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
-    expect(useTabStore.getState().activeTabId).toBe("b");
+    expect(h.onCycleTab).toHaveBeenLastCalledWith(1);
     fireEvent.keyDown(window, { key: "Tab", ctrlKey: true, shiftKey: true });
-    expect(useTabStore.getState().activeTabId).toBe("a");
+    expect(h.onCycleTab).toHaveBeenLastCalledWith(-1);
   });
 
   it("TAB-05: Alt+W calls onRequestClose with the active tab id", () => {
     const h = renderStrip({ activeTabId: "b" });
-    useTabStore.setState({ activeTabId: "b" });
     // macOS Option-key composition remaps Alt+W to key:"∑" — dispatch the real
     // composed key alongside code:"KeyW" to prove the handler reads e.code.
     fireEvent.keyDown(window, { code: "KeyW", key: "∑", altKey: true });
@@ -253,15 +268,15 @@ describe("<TabStrip /> keyboard shortcuts (Task 2 — TAB-11 / TAB-05)", () => {
   });
 
   it("no-op when there are zero tabs", () => {
-    useTabStore.setState({ tabs: [], activeTabId: null });
-    const h = renderStrip();
+    const h = renderStrip({ tabs: [], activeTabId: null });
     fireEvent.keyDown(window, { code: "BracketRight", key: "'", altKey: true });
     fireEvent.keyDown(window, { code: "KeyW", key: "∑", altKey: true });
     expect(h.onRequestClose).not.toHaveBeenCalled();
+    expect(h.onCycleTab).not.toHaveBeenCalled();
   });
 
   it("Ctrl+Tab preventDefault is guarded — a non-cancelable event never throws", () => {
-    renderStrip();
+    const h = renderStrip();
     // A non-cancelable KeyboardEvent: preventDefault is a no-op but must not throw.
     const evt = new KeyboardEvent("keydown", {
       key: "Tab",
@@ -270,7 +285,31 @@ describe("<TabStrip /> keyboard shortcuts (Task 2 — TAB-11 / TAB-05)", () => {
       bubbles: true,
     });
     expect(() => window.dispatchEvent(evt)).not.toThrow();
-    expect(useTabStore.getState().activeTabId).toBe("b");
+    expect(h.onCycleTab).toHaveBeenCalledWith(1);
+  });
+});
+
+describe("<TabStrip /> active-pane gating (25-06 Task 1 — Pitfall 3 / T-25-06-Dup)", () => {
+  it("Alt+W in a leaf that is NOT the active pane is a no-op", () => {
+    usePaneStore.setState({ activePaneId: "some-other-leaf" });
+    const h = renderStrip({ activeTabId: "b" });
+    fireEvent.keyDown(window, { code: "KeyW", key: "∑", altKey: true });
+    expect(h.onRequestClose).not.toHaveBeenCalled();
+  });
+
+  it("Alt+]/Ctrl+Tab cycle shortcuts in an inactive leaf are no-ops", () => {
+    usePaneStore.setState({ activePaneId: "some-other-leaf" });
+    const h = renderStrip();
+    fireEvent.keyDown(window, { code: "BracketRight", key: "'", altKey: true });
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(h.onCycleTab).not.toHaveBeenCalled();
+  });
+
+  it("Alt+W in the active leaf still closes (contrast case, same test proves the gate is a real guard not a global no-op)", () => {
+    usePaneStore.setState({ activePaneId: LEAF_ID });
+    const h = renderStrip({ activeTabId: "b" });
+    fireEvent.keyDown(window, { code: "KeyW", key: "∑", altKey: true });
+    expect(h.onRequestClose).toHaveBeenCalledWith("b");
   });
 });
 
@@ -490,6 +529,7 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
   it("right cluster and left cluster are both present in the zero-tab empty state too", () => {
     render(
       <TabStrip
+        leafId={LEAF_ID}
         tabs={[]}
         activeTabId={null}
         deletedTabIds={new Set()}
@@ -501,6 +541,7 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
         onOpenRight={vi.fn()}
         onReorder={vi.fn()}
         onNewTab={vi.fn()}
+        onCycleTab={vi.fn()}
       />,
     );
     expect(screen.getByTestId("tab-strip-right-cluster")).toBeInTheDocument();
