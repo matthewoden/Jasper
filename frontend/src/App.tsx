@@ -47,6 +47,7 @@ import {
   pruneTabsForMissingNotes,
   useTabStore,
 } from "./lib/useTabStore";
+import { usePaneStore } from "./lib/usePaneStore";
 import { useTreeMutations } from "./lib/useTreeMutations";
 import {
   handleAppAltT,
@@ -771,6 +772,13 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
             button — TAB-14), except in zen (ZEN-01), where the tab bar hides. */}
         {!zen && (
           <TabStrip
+            // Single-pane compatibility shim (Phase 25 Plan 06 retrofit;
+            // App.tsx doesn't render <PaneTree> yet — that's Plan 07). Using
+            // usePaneStore's OWN default activePaneId as this strip's leafId
+            // trivially satisfies the new active-pane keyboard gate (there is
+            // only ever one implicit pane until Plan 07 wires the real tree),
+            // with zero behavior change for today's single-column app.
+            leafId={usePaneStore.getState().activePaneId}
             style={{ gridRow: "1", gridColumn: "3", minWidth: 0 }}
             tabs={tabs}
             activeTabId={tabActiveTabId}
@@ -783,6 +791,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
             onOpenRight={openRight}
             onReorder={reorderTabs}
             onNewTab={newTab}
+            onCycleTab={(dir) => useTabStore.getState().cycleTab(dir)}
           />
         )}
 
