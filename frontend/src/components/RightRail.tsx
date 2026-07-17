@@ -22,9 +22,9 @@
  *     </div>
  *   </aside>
  *
- * Background is --color-bg (not --color-surface) so the 8px inset exposes
- * background color between the three section cards, giving the "floating
- * cards" aesthetic.
+ * Background is --color-surface, filling the rail edge-to-edge so section
+ * headers sit flush against border-left (mock parity, 23-03 owner D-06 — the
+ * earlier 8px inset over --color-bg "floating cards" look was adjudicated flush).
  *
  * Space model (D-04): the LAST expanded section (in Outline → Linked
  * mentions → Tags order) always absorbs the remaining height via flex: 1;
@@ -187,13 +187,16 @@ export function RightRail({ activeNoteId, style }: Props) {
       style={{
         width,
         height: "100%",
-        background: "var(--color-bg)",
+        // Flush panel (mock parity, 23-03 owner D-06): --color-surface fills the
+        // rail edge-to-edge and section headers sit flush against border-left,
+        // matching the mock's #1a1a1c file-tree/right rail. (Was an 8px inset
+        // over --color-bg for a floating-cards look; owner adjudicated it flush.)
+        background: "var(--color-surface)",
         borderLeft: "1px solid var(--color-border)",
         position: "relative",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
-        padding: 8,
         boxSizing: "border-box",
         gap: 0,
         ...style,

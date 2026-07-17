@@ -258,12 +258,15 @@ describe("RightRail — three-section shell", () => {
     expect(verticalHandle).toHaveAttribute("aria-label", "Resize backlinks panel");
   });
 
-  it("expanded rail background is --color-bg (floating panel aesthetic)", () => {
+  it("expanded rail background is --color-surface, flush (no inset padding), mock parity 23-03 D-06", () => {
     const { container } = render(<RightRail activeNoteId={null} />);
     const aside = container.querySelector("aside");
     expect(aside).toBeTruthy();
     const styleAttr = aside?.getAttribute("style") ?? "";
-    expect(styleAttr).toContain("var(--color-bg)");
+    // Owner adjudicated the floating-cards inset away (D-06): the rail is now a
+    // flush --color-surface panel with headers edge-to-edge, no 8px inset.
+    expect(styleAttr).toContain("var(--color-surface)");
+    expect(styleAttr).not.toContain("padding: 8px");
   });
 
   it("pointerdown on vertical resize handle + pointermove updates width via store setter", () => {
