@@ -1240,8 +1240,8 @@ paths:
       summary: Submit the first-run wizard (INSTALL-07, D-10)
       description: |
         Persists the wizard payload: writes <vault>/.jasper/config.json
-        with the wizard-supplied theme, MCP enabled flag, MCP grants,
-        and daily-notes template, then runs migrations against the new
+        with the wizard-supplied theme, MCP grants, and daily-notes
+        template, then runs migrations against the new
         data dir. On success the frontend redirects to /. Only callable
         when `GET /setup/status` returns `first_run: true` — repeat calls
         are rejected.
@@ -1980,19 +1980,15 @@ components:
                 Set to "0.0.0.0" to expose on all network interfaces. Requires a
                 server restart. MCP always remains loopback regardless of this value.
         mcp:
-          # Phase 8 D-14 / D-15 / D-47: optional secondary HTTP listener
-          # serving the MCP StreamableHTTP endpoint. Disabled by default;
-          # the first-run wizard (08-02) writes `enabled` based on the
-          # opt-in checkbox. Port pinned at 6684 (D-47). Bind is loopback-
-          # only (127.0.0.1), enforced at listener startup via
+          # Phase 24 D-06: the MCP listener always starts on boot; there is
+          # no enable/disable toggle. AI write access is governed solely by
+          # per-folder write grants. Port pinned at 6684 (D-47). Bind is
+          # loopback-only (127.0.0.1), enforced at listener startup via
           # netbind.RequireLoopbackBind (D-15).
           type: object
-          required: [enabled, port, bind]
+          required: [port, bind]
           additionalProperties: false
           properties:
-            enabled:
-              type: boolean
-              default: false
             port:
               type: integer
               minimum: 1
@@ -2470,7 +2466,7 @@ components:
           description: Human-readable error message when valid=false.
     SetupRequest:
       type: object
-      required: [data_dir, theme, mcp_enabled, mcp_grants, daily_template, create_today_daily_note]
+      required: [data_dir, theme, daily_template, create_today_daily_note]
       properties:
         data_dir:
           type: string
@@ -2478,8 +2474,6 @@ components:
         theme:
           type: string
           enum: [dark, light]
-        mcp_enabled:
-          type: boolean
         mcp_grants:
           type: array
           items: { $ref: "#/components/schemas/McpGrantSeed" }
@@ -2574,10 +2568,6 @@ components:
           type: string
           description: Per-vault daily-note template (inherits 08-04/08-16 wizard polish in 17c).
           maxLength: 1024
-        mcp_enabled:
-          type: boolean
-          default: false
-          description: Whether to enable the MCP listener for this vault.
     VaultCurrentResponse:
       type: object
       description: |

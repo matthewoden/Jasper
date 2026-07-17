@@ -702,8 +702,8 @@ export interface paths {
         /**
          * Submit the first-run wizard (INSTALL-07, D-10)
          * @description Persists the wizard payload: writes <vault>/.jasper/config.json
-         *     with the wizard-supplied theme, MCP enabled flag, MCP grants,
-         *     and daily-notes template, then runs migrations against the new
+         *     with the wizard-supplied theme, MCP grants, and daily-notes
+         *     template, then runs migrations against the new
          *     data dir. On success the frontend redirects to /. Only callable
          *     when `GET /setup/status` returns `first_run: true` — repeat calls
          *     are rejected.
@@ -1257,8 +1257,6 @@ export interface components {
                 bind: string;
             };
             mcp?: {
-                /** @default false */
-                enabled: boolean;
                 /** @default 6684 */
                 port: number;
                 /** @default 127.0.0.1 */
@@ -1588,8 +1586,7 @@ export interface components {
             data_dir: string;
             /** @enum {string} */
             theme: "dark" | "light";
-            mcp_enabled: boolean;
-            mcp_grants: components["schemas"]["McpGrantSeed"][];
+            mcp_grants?: components["schemas"]["McpGrantSeed"][];
             daily_template: string;
             create_today_daily_note: boolean;
             /**
@@ -1657,11 +1654,6 @@ export interface components {
             theme: "dark" | "light";
             /** @description Per-vault daily-note template (inherits 08-04/08-16 wizard polish in 17c). */
             daily_template?: string;
-            /**
-             * @description Whether to enable the MCP listener for this vault.
-             * @default false
-             */
-            mcp_enabled: boolean;
         };
         /**
          * @description Wrapper for the current vault. vault is null when no vault is open
