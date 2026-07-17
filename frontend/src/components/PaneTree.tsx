@@ -25,6 +25,8 @@ export interface PaneTreeProps {
   onOpenRight: (leafId: string, tabId: string) => void;
   onNewTab: (leafId: string) => void;
   autosaveMs?: number;
+  /** Zen mode (ZEN-01): every leaf's tab strip unmounts; the editor body fills the pane. */
+  hideTabStrip?: boolean;
   style?: React.CSSProperties;
 }
 
@@ -50,6 +52,7 @@ function renderNode(
         onOpenRight={props.onOpenRight}
         onNewTab={props.onNewTab}
         autosaveMs={props.autosaveMs}
+        hideTabStrip={props.hideTabStrip}
         style={{ flex: 1, minHeight: 0, minWidth: 0 }}
       />
     );

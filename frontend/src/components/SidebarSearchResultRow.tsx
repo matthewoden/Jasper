@@ -3,14 +3,14 @@
  *
  * Reuses SearchResultRow's visual layout (title / path / 2-line excerpt / tag
  * pills) but CRITICALLY DIVERGES on activation: clicking or pressing
- * Enter/Space calls useTabStore.getState().openTab(result.id) — NOT the
- * tree-store's active-note setter (the Pitfall-1 bug in the palette's
+ * Enter/Space calls usePaneStore.getState().openInActivePane(result.id) — NOT
+ * the tree-store's active-note setter (the Pitfall-1 bug in the palette's
  * SearchResultRow). Query and results are left untouched on click (D-18
  * session persistence): the panel stays populated after opening a note.
  */
 import { useState } from "react";
 import { sanitizeHtml } from "../lib/sanitize";
-import { useTabStore } from "../lib/useTabStore";
+import { usePaneStore } from "../lib/usePaneStore";
 import type { SearchResult } from "../lib/searchApi";
 
 interface SidebarSearchResultRowProps {
@@ -34,7 +34,7 @@ export function SidebarSearchResultRow({
   const [hovered, setHovered] = useState(false);
 
   const handleClick = () => {
-    useTabStore.getState().openTab(result.id);
+    usePaneStore.getState().openInActivePane(result.id);
   };
 
   let rowBg = "transparent";

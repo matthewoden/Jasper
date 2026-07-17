@@ -235,11 +235,20 @@ import { COMMAND_PALETTE_ENTRIES } from "./lib/shortcutsRegistry";
 import { siblingNamesForCreate } from "./lib/useTreeCreateActions";
 import { nextUntitledName } from "./lib/nextUntitledName";
 import type { Tree } from "./lib/treeApi";
-import { useTabStore } from "./lib/useTabStore";
+import { usePaneStore } from "./lib/usePaneStore";
+import { _findLeaf } from "./lib/paneTree";
 import { updateNote } from "./lib/notesApi";
 import { vaultApi } from "./lib/vaultApi";
 
 const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
+
+// Phase 25: usePaneStore is a module-level singleton (not reset by
+// useTreeStore.setState), and every test in this file now renders <PaneTree>
+// — reset it before EVERY test so a tab opened in one test never bleeds into
+// the next test's single-empty-leaf assumptions.
+beforeEach(() => {
+  usePaneStore.getState().clearAll();
+});
 
 describe("<App /> — shell composition", () => {
   beforeEach(() => {
@@ -297,9 +306,15 @@ describe("<App /> — shell composition", () => {
 
     render(<AppShell />);
     expect(screen.queryByRole("alert")).toBeNull();
-    const textarea = screen.getByLabelText(
+    // Phase 25: the active pane starts with a single EMPTY leaf (no legacy
+    // activeNoteId auto-promotion — D-18); open a tab explicitly to drive
+    // the editor, mirroring what Sidebar.onSelectNote does in production.
+    act(() => {
+      usePaneStore.getState().openInActivePane(SCRATCHPAD);
+    });
+    const textarea = (await screen.findByLabelText(
       "Note content",
-    ) as HTMLTextAreaElement;
+    )) as HTMLTextAreaElement;
     expect(textarea).toBeInTheDocument();
     await waitFor(() => expect(textarea).not.toBeDisabled());
   });
@@ -636,14 +651,19 @@ describe("<App /> — shell composition", () => {
         screen.getByText("Select a note to start editing."),
       ).toBeInTheDocument();
     });
+    // Phase 25: tree selection now opens a tab in the active pane
+    // (usePaneStore.openInActivePane, mirroring Sidebar.onSelectNote) — the
+    // D-07 mirror effect then follows the active pane's active tab BACK onto
+    // useTreeStore.activeNoteId, rather than the other direction.
     await act(async () => {
-      useTreeStore.getState().setActiveNote(SCRATCHPAD);
+      usePaneStore.getState().openInActivePane(SCRATCHPAD);
     });
     await waitFor(() => {
       expect(
         screen.getByLabelText("Note content"),
       ).toBeInTheDocument();
     });
+    expect(useTreeStore.getState().activeNoteId).toBe(SCRATCHPAD);
   });
 });
 
@@ -700,10 +720,11 @@ describe("<App /> — session sync", () => {
   });
 
   it("CR-01: reindex hides the EditorPane via CSS but keeps it MOUNTED — unsaved edits survive", async () => {
-    useTreeStore.setState({ activeNoteId: SCRATCHPAD });
-    useTabStore.getState().clearAllTabs();
     render(<AppShell />);
     await waitFor(() => expect(capturedSessionSyncHandlers).not.toBeNull());
+    act(() => {
+      usePaneStore.getState().openInActivePane(SCRATCHPAD);
+    });
     const editor = (await screen.findByLabelText(
       "Note content",
     )) as HTMLTextAreaElement;
@@ -852,11 +873,14 @@ describe("<App /> — two-row grid + chrome mounts", () => {
     expect(grid!.nextElementSibling).toBe(statusBar);
   });
 
-  it("A6.6-8: TabStrip has gridRow=1 gridColumn=3 style (set by App.tsx, shifted right for the ribbon column)", async () => {
+  it("A6.6-8: PaneTree spans gridRow='1 / 3' gridColumn=3 (Phase 25: TabStrip is now nested inside PaneTree's own leaf layout, not a direct grid child)", async () => {
     render(<AppShell />);
-    const tabStrip = screen.getByTestId("tab-strip");
-    expect(tabStrip.style.gridRow).toBe("1");
-    expect(tabStrip.style.gridColumn).toBe("3");
+    const paneTree = screen.getByTestId("pane-tree");
+    expect(paneTree.style.gridRow).toBe("1 / 3");
+    expect(paneTree.style.gridColumn).toBe("3");
+    // The leaf-scoped TabStrip still renders (TAB-14 always-visible + button),
+    // just nested inside PaneTree/LeafPane rather than gridded directly.
+    expect(screen.getByTestId("tab-strip")).toBeInTheDocument();
   });
 
   it("A6.6-9: ActivityRibbon renders as the far-left grid column (RIBBON-01)", async () => {
@@ -1372,27 +1396,27 @@ describe("close-last-tab clears activeNoteId (BUG 3b)", () => {
       paletteOpen: false,
       cheatSheetOpen: false,
     });
-    useTabStore.getState().clearAllTabs();
+    usePaneStore.getState().clearAll();
   });
 
   afterEach(() => {
-    useTabStore.getState().clearAllTabs();
+    usePaneStore.getState().clearAll();
   });
 
   it("closing the only tab sets activeNoteId to null (editor blanks)", async () => {
-    // Seed one open tab + matching legacy activeNoteId. The note is marked
-    // deleted so the empty-tree prune pass retains the tab (deterministic — no
-    // dependence on the mocked tree containing the note, no flush save path).
-    useTabStore.setState({
-      tabs: [{ id: "x", noteId: "x" }],
-      activeTabId: "x",
-      deletedTabIds: new Set(["x"]),
+    // Seed one open tab in the (single) active pane's leaf. The note is
+    // marked deleted so the empty-tree prune pass retains the tab
+    // (deterministic — no dependence on the mocked tree containing the note,
+    // no flush save path).
+    const leafId = usePaneStore.getState().activePaneId;
+    usePaneStore.setState({
+      tree: { t: "leaf", id: leafId, tabs: [{ id: "x", noteId: "x" }], active: "x" },
     });
-    useTreeStore.setState({ activeNoteId: "x" });
+    usePaneStore.getState().markDeleted("x");
 
     render(<AppShell />);
 
-    // Mirror effect syncs activeNoteId to the active tab while tabs are open.
+    // Mirror effect syncs activeNoteId to the active pane's active tab (D-07).
     await waitFor(() =>
       expect(useTreeStore.getState().activeNoteId).toBe("x"),
     );
@@ -1405,15 +1429,16 @@ describe("close-last-tab clears activeNoteId (BUG 3b)", () => {
     fireEvent.click(closeBtn);
 
     await waitFor(() => {
-      expect(useTabStore.getState().tabs).toHaveLength(0);
+      const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
+      expect(leaf?.tabs).toHaveLength(0);
       expect(useTreeStore.getState().activeNoteId).toBeNull();
     });
   });
 
   it("WR-01: 'Close without saving' on a flush-reject clears activeNoteId on the last tab", async () => {
-    // Non-deleted tab so the close routes through flushAndClose's real flush
-    // path (the deletedTabIds shortcut bypasses flush entirely and cannot
-    // exercise onCloseWithoutSaving).
+    // Non-deleted tab so the close routes through flushAndCloseInLeaf's real
+    // flush path (the deletedTabIds shortcut bypasses flush entirely and
+    // cannot exercise onCloseWithoutSaving).
     vi.mocked(updateNote).mockReset();
     vi.mocked(updateNote).mockResolvedValue({
       data: undefined,
@@ -1424,13 +1449,13 @@ describe("close-last-tab clears activeNoteId (BUG 3b)", () => {
     render(<AppShell />);
 
     // Open the tab AFTER mount so it is not subject to the one-time
-    // prune-tabs-against-tree effect (the mocked tree is always empty, so a
+    // prune-layout-against-tree effect (the mocked tree is always empty, so a
     // tab seeded pre-mount and not in deletedTabIds would be pruned away).
     await act(async () => {
-      useTabStore.getState().openTab("x");
+      usePaneStore.getState().openInActivePane("x");
     });
 
-    // Mirror effect syncs the legacy activeNoteId to the newly active tab.
+    // Mirror effect syncs activeNoteId to the newly active tab (D-07).
     await waitFor(() =>
       expect(useTreeStore.getState().activeNoteId).toBe("x"),
     );
@@ -1450,7 +1475,9 @@ describe("close-last-tab clears activeNoteId (BUG 3b)", () => {
     fireEvent.click(closeWithoutSavingBtn);
 
     await waitFor(() => {
-      expect(useTabStore.getState().tabs).toHaveLength(0);
+      const leafId = usePaneStore.getState().activePaneId;
+      const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
+      expect(leaf?.tabs).toHaveLength(0);
       expect(useTreeStore.getState().activeNoteId).toBeNull();
     });
   });
@@ -1476,12 +1503,12 @@ describe("<App /> — BootGate (IN-04)", () => {
       paletteOpen: false,
       cheatSheetOpen: false,
     });
-    useTabStore.getState().clearAllTabs();
+    usePaneStore.getState().clearAll();
     vi.mocked(vaultApi.getCurrent).mockReset();
   });
 
   afterEach(() => {
-    useTabStore.getState().clearAllTabs();
+    usePaneStore.getState().clearAll();
   });
 
   it("vaultApi.getCurrent resolves with a vault → <App/> eventually renders AppInner", async () => {

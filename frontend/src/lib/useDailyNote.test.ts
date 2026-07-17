@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement, type ReactNode } from "react";
 
 import { useTreeStore } from "./useTreeStore";
-import { useTabStore } from "./useTabStore";
+import { usePaneStore } from "./usePaneStore";
 import { ToastProvider } from "../components/Toast";
 
 vi.mock("../api/client", () => ({
@@ -66,11 +66,7 @@ describe("useDailyNote", () => {
       dailyNoteLoading: false,
       activeNoteId: null,
     });
-    useTabStore.setState({
-      tabs: [],
-      activeTabId: null,
-      deletedTabIds: new Set<string>(),
-    });
+    usePaneStore.getState().clearAll();
   });
 
   afterEach(() => {
@@ -214,9 +210,9 @@ describe("useDailyNote", () => {
     expect(mockedBroadcastRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("DN-HOOK-8: happy path — opens a tab for the created note id (RIBBON-04 gap 2)", async () => {
+  it("DN-HOOK-8: happy path — opens a tab in the active pane for the created note id (RIBBON-04 gap 2)", async () => {
     mockedOpenToday.mockResolvedValueOnce(fakeNote);
-    const openTabSpy = vi.spyOn(useTabStore.getState(), "openTab");
+    const openInActivePaneSpy = vi.spyOn(usePaneStore.getState(), "openInActivePane");
 
     const { result } = renderHook(() => useDailyNote(), { wrapper });
 
@@ -224,8 +220,8 @@ describe("useDailyNote", () => {
       await result.current.openToday();
     });
 
-    expect(openTabSpy).toHaveBeenCalledTimes(1);
-    expect(openTabSpy).toHaveBeenCalledWith(fakeNote.id);
+    expect(openInActivePaneSpy).toHaveBeenCalledTimes(1);
+    expect(openInActivePaneSpy).toHaveBeenCalledWith(fakeNote.id);
     // Legacy pointer is still set for the zero-tab fallback pane.
     expect(useTreeStore.getState().activeNoteId).toBe(fakeNote.id);
   });
@@ -245,7 +241,7 @@ describe("useDailyNote", () => {
   it("WR-04: broadcastRefresh rejects — note still opens, no 'couldn't open' toast fires", async () => {
     mockedOpenToday.mockResolvedValueOnce(fakeNote);
     mockedBroadcastRefresh.mockRejectedValueOnce(new Error("tree refresh failed"));
-    const openTabSpy = vi.spyOn(useTabStore.getState(), "openTab");
+    const openInActivePaneSpy = vi.spyOn(usePaneStore.getState(), "openInActivePane");
 
     const { result } = renderHook(() => useDailyNote(), { wrapper });
 
@@ -254,7 +250,7 @@ describe("useDailyNote", () => {
     });
 
     expect(useTreeStore.getState().activeNoteId).toBe(fakeNote.id);
-    expect(openTabSpy).toHaveBeenCalledWith(fakeNote.id);
+    expect(openInActivePaneSpy).toHaveBeenCalledWith(fakeNote.id);
     expect(
       screen.queryByText("Couldn't open today's daily note"),
     ).not.toBeInTheDocument();

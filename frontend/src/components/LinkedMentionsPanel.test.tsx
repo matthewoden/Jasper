@@ -10,10 +10,10 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import type { BacklinkRow } from "../lib/backlinksApi";
 
-const mockOpenTab = vi.fn();
-vi.mock("../lib/useTabStore", () => ({
-  useTabStore: {
-    getState: () => ({ openTab: mockOpenTab }),
+const mockOpenInActivePane = vi.fn();
+vi.mock("../lib/usePaneStore", () => ({
+  usePaneStore: {
+    getState: () => ({ openInActivePane: mockOpenInActivePane }),
   },
 }));
 
@@ -97,11 +97,11 @@ describe("LinkedMentionsPanel — cards", () => {
     expect(screen.getByText("Note B")).toBeInTheDocument();
   });
 
-  it("title click calls useTabStore openTab with sourceId (not setActiveNoteId)", () => {
+  it("title click calls usePaneStore openInActivePane with sourceId (not setActiveNoteId)", () => {
     renderPanel({ noteId: "target-id", backlinks: [ROW_A] });
     const titleBtn = screen.getByRole("button", { name: /open note: note a/i });
     fireEvent.click(titleBtn);
-    expect(mockOpenTab).toHaveBeenCalledWith(ROW_A.sourceId);
+    expect(mockOpenInActivePane).toHaveBeenCalledWith(ROW_A.sourceId);
   });
 
   it("title button color is var(--color-accent)", () => {

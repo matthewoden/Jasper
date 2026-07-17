@@ -43,6 +43,8 @@ export interface LeafPaneProps {
   /** Create a new untitled note and open it in THIS leaf (TAB-14, + button / ⌥T). */
   onNewTab: (leafId: string) => void;
   autosaveMs?: number;
+  /** Zen mode (ZEN-01): the tab strip genuinely unmounts; the editor body fills the pane. */
+  hideTabStrip?: boolean;
   style?: React.CSSProperties;
 }
 
@@ -58,6 +60,7 @@ export function LeafPane({
   onOpenRight,
   onNewTab,
   autosaveMs,
+  hideTabStrip,
   style,
 }: LeafPaneProps) {
   // Per-tab ref bookkeeping, scoped to THIS leaf's own open tabs (mirrors the
@@ -152,21 +155,23 @@ export function LeafPane({
         ...style,
       }}
     >
-      <TabStrip
-        leafId={leafId}
-        tabs={leaf.tabs}
-        activeTabId={leaf.active}
-        deletedTabIds={deletedTabIds}
-        titleForTab={titleForTab}
-        onSelectTab={handleSelectTab}
-        onRequestClose={handleRequestClose}
-        onCloseOthers={handleCloseOthers}
-        onCloseToRight={handleCloseToRight}
-        onOpenRight={handleOpenRight}
-        onReorder={handleReorder}
-        onNewTab={handleNewTab}
-        onCycleTab={handleCycleTab}
-      />
+      {!hideTabStrip && (
+        <TabStrip
+          leafId={leafId}
+          tabs={leaf.tabs}
+          activeTabId={leaf.active}
+          deletedTabIds={deletedTabIds}
+          titleForTab={titleForTab}
+          onSelectTab={handleSelectTab}
+          onRequestClose={handleRequestClose}
+          onCloseOthers={handleCloseOthers}
+          onCloseToRight={handleCloseToRight}
+          onOpenRight={handleOpenRight}
+          onReorder={handleReorder}
+          onNewTab={handleNewTab}
+          onCycleTab={handleCycleTab}
+        />
+      )}
       <div style={{ position: "relative", flex: 1, minHeight: 0, minWidth: 0 }}>
         {leaf.tabs.length === 0 ? (
           <EditorPane
