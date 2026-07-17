@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { SidebarSearchResultRow } from "./SidebarSearchResultRow";
-import { useTabStore } from "../lib/useTabStore";
+import { usePaneStore } from "../lib/usePaneStore";
 import type { SearchResult } from "../lib/searchApi";
 
 const mockResult: SearchResult = {
@@ -16,34 +16,34 @@ const mockResult: SearchResult = {
 
 describe("SidebarSearchResultRow", () => {
   beforeEach(() => {
-    useTabStore.setState({ tabs: [], activeTabId: null });
+    usePaneStore.getState().clearAll();
   });
 
-  it("clicking the row calls useTabStore.getState().openTab(result.id), not setActiveNote", () => {
-    const openTab = vi.fn();
-    useTabStore.setState({ openTab });
+  it("clicking the row calls usePaneStore.getState().openInActivePane(result.id), not setActiveNote", () => {
+    const openInActivePane = vi.fn();
+    usePaneStore.setState({ openInActivePane });
     render(<SidebarSearchResultRow result={mockResult} />);
     const row = screen.getByRole("button", { name: "Open note: My Test Note" });
     fireEvent.click(row);
-    expect(openTab).toHaveBeenCalledWith("abc-123");
+    expect(openInActivePane).toHaveBeenCalledWith("abc-123");
   });
 
-  it("pressing Enter on the focused row calls openTab(result.id)", () => {
-    const openTab = vi.fn();
-    useTabStore.setState({ openTab });
+  it("pressing Enter on the focused row calls openInActivePane(result.id)", () => {
+    const openInActivePane = vi.fn();
+    usePaneStore.setState({ openInActivePane });
     render(<SidebarSearchResultRow result={mockResult} />);
     const row = screen.getByRole("button", { name: "Open note: My Test Note" });
     fireEvent.keyDown(row, { key: "Enter" });
-    expect(openTab).toHaveBeenCalledWith("abc-123");
+    expect(openInActivePane).toHaveBeenCalledWith("abc-123");
   });
 
-  it("pressing Space on the focused row calls openTab(result.id)", () => {
-    const openTab = vi.fn();
-    useTabStore.setState({ openTab });
+  it("pressing Space on the focused row calls openInActivePane(result.id)", () => {
+    const openInActivePane = vi.fn();
+    usePaneStore.setState({ openInActivePane });
     render(<SidebarSearchResultRow result={mockResult} />);
     const row = screen.getByRole("button", { name: "Open note: My Test Note" });
     fireEvent.keyDown(row, { key: " " });
-    expect(openTab).toHaveBeenCalledWith("abc-123");
+    expect(openInActivePane).toHaveBeenCalledWith("abc-123");
   });
 
   it("renders excerpt_html sanitized: <mark> preserved, <script> stripped", () => {

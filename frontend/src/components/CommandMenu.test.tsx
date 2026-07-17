@@ -13,8 +13,8 @@ vi.mock("../lib/useTreeStore", () => ({
   useTreeStore: vi.fn(),
 }));
 
-vi.mock("../lib/useTabStore", () => ({
-  useTabStore: {
+vi.mock("../lib/usePaneStore", () => ({
+  usePaneStore: {
     getState: vi.fn(),
   },
 }));
@@ -60,7 +60,7 @@ vi.mock("@tanstack/react-virtual", () => ({
 import { CommandMenu } from "./CommandMenu";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
-import { useTabStore } from "../lib/useTabStore";
+import { usePaneStore } from "../lib/usePaneStore";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette } from "../lib/useCommandPalette";
 import { useSearch } from "../lib/useSearch";
@@ -69,7 +69,7 @@ import fuzzysort from "fuzzysort";
 
 const mockUseFileTree = useFileTree as unknown as ReturnType<typeof vi.fn>;
 const mockUseTreeStore = useTreeStore as unknown as ReturnType<typeof vi.fn>;
-const mockUseTabStoreGetState = useTabStore.getState as unknown as ReturnType<typeof vi.fn>;
+const mockUsePaneStoreGetState = usePaneStore.getState as unknown as ReturnType<typeof vi.fn>;
 const mockUseQuickSwitcher = useQuickSwitcher as unknown as ReturnType<typeof vi.fn>;
 const mockUseCommandPalette = useCommandPalette as unknown as ReturnType<typeof vi.fn>;
 const mockUseSearch = useSearch as unknown as ReturnType<typeof vi.fn>;
@@ -79,7 +79,7 @@ const mockFuzzysortSingle = fuzzysort.single as unknown as ReturnType<typeof vi.
 
 const mockSetActiveNote = vi.fn();
 const mockRecordOpenedNote = vi.fn();
-const mockOpenTab = vi.fn();
+const mockOpenInActivePane = vi.fn();
 
 function setupMocks() {
   mockUseFileTree.mockReturnValue({ tree: null, loading: false, error: null });
@@ -97,7 +97,7 @@ function setupMocks() {
     return selector(state);
   });
 
-  mockUseTabStoreGetState.mockReturnValue({ openTab: mockOpenTab });
+  mockUsePaneStoreGetState.mockReturnValue({ openInActivePane: mockOpenInActivePane });
 
   mockUseQuickSwitcher.mockReturnValue([]);
   mockUseCommandPalette.mockReturnValue({
@@ -209,7 +209,7 @@ describe("CommandMenu — notes results + keyboard navigation", () => {
     const input = screen.getByRole("textbox");
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(mockOpenTab).toHaveBeenCalledWith("n2");
+    expect(mockOpenInActivePane).toHaveBeenCalledWith("n2");
   });
 
   it("ArrowUp does not go below index 0", async () => {
@@ -220,7 +220,7 @@ describe("CommandMenu — notes results + keyboard navigation", () => {
     const input = screen.getByRole("textbox");
     fireEvent.keyDown(input, { key: "ArrowUp" });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(mockOpenTab).toHaveBeenCalledWith("n1");
+    expect(mockOpenInActivePane).toHaveBeenCalledWith("n1");
   });
 
   it("Enter activates selected note: calls openTab + recordOpenedNote + onOpenChange(false)", () => {
@@ -232,7 +232,7 @@ describe("CommandMenu — notes results + keyboard navigation", () => {
     const input = screen.getByRole("textbox");
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mockOpenTab).toHaveBeenCalledWith("n1");
+    expect(mockOpenInActivePane).toHaveBeenCalledWith("n1");
     expect(mockSetActiveNote).not.toHaveBeenCalled();
     expect(mockRecordOpenedNote).toHaveBeenCalledWith("n1");
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -347,7 +347,7 @@ describe("CommandMenu — closeOnExecute behavior", () => {
     const input = screen.getByRole("textbox");
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mockOpenTab).toHaveBeenCalledWith("n1");
+    expect(mockOpenInActivePane).toHaveBeenCalledWith("n1");
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
@@ -388,7 +388,7 @@ describe("CMM-NAV — single-section navigation", () => {
 
     fireEvent.keyDown(input, { key: "ArrowUp" });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(mockOpenTab).toHaveBeenCalledWith("n1");
+    expect(mockOpenInActivePane).toHaveBeenCalledWith("n1");
   });
 
   it("CMM-NAV-3: Enter when items is empty is a no-op (defensive)", () => {
@@ -413,7 +413,7 @@ describe("CMM-INIT — selectedIdx starts at first selectable", () => {
     fireEvent.change(input, { target: { value: "te" } });
 
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(mockOpenTab).toHaveBeenCalledWith("n1");
+    expect(mockOpenInActivePane).toHaveBeenCalledWith("n1");
   });
 });
 
@@ -539,7 +539,7 @@ describe("CMM-SEARCH-MODE — CommandMenu mode='search'", () => {
     const input = screen.getByRole("textbox");
     fireEvent.change(input, { target: { value: "he" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(mockOpenTab).toHaveBeenCalledWith(FTS5_HIT.id);
+    expect(mockOpenInActivePane).toHaveBeenCalledWith(FTS5_HIT.id);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -978,7 +978,7 @@ describe("CMM-CLICK — mouse-click activation path (IN-02)", () => {
     expect(noteRow).not.toBeNull();
     fireEvent.click(noteRow as HTMLElement);
 
-    expect(mockOpenTab).toHaveBeenCalledWith("n1");
+    expect(mockOpenInActivePane).toHaveBeenCalledWith("n1");
     expect(mockSetActiveNote).not.toHaveBeenCalled();
     expect(mockRecordOpenedNote).toHaveBeenCalledWith("n1");
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -1006,7 +1006,7 @@ describe("CMM-CLICK — mouse-click activation path (IN-02)", () => {
     expect(searchRow).not.toBeNull();
     fireEvent.click(searchRow as HTMLElement);
 
-    expect(mockOpenTab).toHaveBeenCalledWith(FTS5_HIT.id);
+    expect(mockOpenInActivePane).toHaveBeenCalledWith(FTS5_HIT.id);
     expect(mockSetActiveNote).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });

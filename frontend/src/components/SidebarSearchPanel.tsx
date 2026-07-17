@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
-import { useTabStore } from "../lib/useTabStore";
+import { usePaneStore } from "../lib/usePaneStore";
 import { subscribePhase7 } from "../lib/appShortcuts";
 import { parseSearchQuery } from "../lib/searchQueryTokenizer";
 import { searchNotes } from "../lib/searchApi";
@@ -29,7 +29,8 @@ export interface SidebarSearchPanelProps {
 
 export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
   // Kept for prop-shape parity with FileTree's onSelectNote; rows activate via
-  // useTabStore.openTab directly (D-17), so this callback is currently unused.
+  // usePaneStore.openInActivePane directly (D-17), so this callback is
+  // currently unused.
   void onSelectNote;
 
   const searchQuery = useTreeStore((s) => s.searchQuery);
@@ -104,7 +105,7 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
     } else if (e.key === "Enter") {
       e.preventDefault();
       const result = searchResults[selectedIdx];
-      if (result) useTabStore.getState().openTab(result.id);
+      if (result) usePaneStore.getState().openInActivePane(result.id);
     } else if (e.key === "Escape") {
       e.preventDefault();
       if (searchQuery !== "") {

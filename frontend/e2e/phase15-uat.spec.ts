@@ -270,12 +270,15 @@ test.describe("@phase15 TAB-10: tabs persist across reload", () => {
 
     // Tab persistence is debounced (~250ms). Poll localStorage until BOTH tab
     // UUIDs are written before reloading — deterministic, never a fixed sleep.
+    // Phase 25: persistence moved from the flat jasper.tabs.<vault> key to the
+    // pane-tree's jasper.layout.<vault> key (usePaneStore) — the old key is
+    // never written or migrated (D-11/D-18, pre-launch: no back-compat burden).
     await expect
       .poll(
         () =>
           page.evaluate(([a, b]) => {
             const key = Object.keys(localStorage).find((k) =>
-              k.startsWith("jasper.tabs."),
+              k.startsWith("jasper.layout."),
             );
             if (key === undefined) return false;
             const raw = localStorage.getItem(key) ?? "";

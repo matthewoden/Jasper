@@ -7,8 +7,9 @@
  * var(--color-accent) (never the literal mockup hex), stacked per-mention
  * excerpts sanitized individually — never join-then-sanitize (T-20-07).
  *
- * Card click uses useTabStore.getState().openTab(row.sourceId) (D-15) — NOT
- * the legacy active-note setter, which this rename retires from this surface.
+ * Card click uses usePaneStore.getState().openInActivePane(row.sourceId)
+ * (D-15) — NOT the legacy active-note setter, which this rename retires from
+ * this surface.
  *
  * Backlink data arrives as props from RightRail's single useBacklinks call —
  * this component must NOT fetch on its own, or the SectionHeader count badge
@@ -17,7 +18,7 @@
  */
 import { sanitizeHtml } from "../lib/sanitize";
 import type { BacklinkRow } from "../lib/backlinksApi";
-import { useTabStore } from "../lib/useTabStore";
+import { usePaneStore } from "../lib/usePaneStore";
 
 interface Props {
   /** UUID of the currently open note. Null when no note is open. */
@@ -105,7 +106,7 @@ export function LinkedMentionsPanel({ noteId, backlinks, loading, error }: Props
               <button
                 type="button"
                 aria-label={`Open note: ${row.sourceTitle}`}
-                onClick={() => useTabStore.getState().openTab(row.sourceId)}
+                onClick={() => usePaneStore.getState().openInActivePane(row.sourceId)}
                 style={{
                   background: "transparent",
                   border: 0,

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { SidebarSearchPanel } from "./SidebarSearchPanel";
 import { useTreeStore } from "../lib/useTreeStore";
-import { useTabStore } from "../lib/useTabStore";
+import { usePaneStore } from "../lib/usePaneStore";
 import { dispatchPhase7 } from "../lib/appShortcuts";
 import * as searchApi from "./../lib/searchApi";
 import type { SearchResult } from "../lib/searchApi";
@@ -20,7 +20,7 @@ const mkResult = (id: string, title: string): SearchResult => ({
 beforeEach(() => {
   vi.useFakeTimers();
   useTreeStore.setState({ searchQuery: "", searchResults: [] });
-  useTabStore.setState({ tabs: [], activeTabId: null });
+  usePaneStore.getState().clearAll();
   vi.spyOn(searchApi, "searchNotes").mockResolvedValue([]);
 });
 
@@ -118,13 +118,13 @@ describe("SidebarSearchPanel", () => {
     expect(screen.getByText('No matches for "zzz"')).toBeDefined();
   });
 
-  it("ArrowDown/ArrowUp move the highlighted index within bounds; Enter opens via openTab", async () => {
+  it("ArrowDown/ArrowUp move the highlighted index within bounds; Enter opens via openInActivePane", async () => {
     vi.spyOn(searchApi, "searchNotes").mockResolvedValue([
       mkResult("1", "Hello"),
       mkResult("2", "World"),
     ]);
-    const openTab = vi.fn();
-    useTabStore.setState({ openTab });
+    const openInActivePane = vi.fn();
+    usePaneStore.setState({ openInActivePane });
     render(<SidebarSearchPanel onSelectNote={() => {}} />);
     const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
     fireEvent.change(input, { target: { value: "hello" } });
@@ -136,7 +136,7 @@ describe("SidebarSearchPanel", () => {
     fireEvent.keyDown(input, { key: "ArrowUp" });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(openTab).toHaveBeenCalledWith("2");
+    expect(openInActivePane).toHaveBeenCalledWith("2");
   });
 
   it("first Escape (non-empty query) clears the query and results", async () => {

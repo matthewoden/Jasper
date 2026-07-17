@@ -16,7 +16,7 @@ import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette, type CommandActions } from "../lib/useCommandPalette";
 import { useSearch } from "../lib/useSearch";
 import { useTreeStore } from "../lib/useTreeStore";
-import { useTabStore } from "../lib/useTabStore";
+import { usePaneStore } from "../lib/usePaneStore";
 import { KeyboardChip } from "./KeyboardChip";
 import { SearchResultRow } from "./SearchResultRow";
 import type { Shortcut } from "../lib/shortcutsRegistry";
@@ -271,7 +271,9 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     if (!item) return;
     if (item.kind === "group") return;
     if (item.kind === "note" || item.kind === "search-result") {
-      useTabStore.getState().openTab(item.id);
+      // Phase 25: opens as a tab in the active pane (WS-08's openInActivePane
+      // primitive) — replaces the retired flat useTabStore.openTab.
+      usePaneStore.getState().openInActivePane(item.id);
       recordOpenedNote(item.id);
       onOpenChange(false);
       return;

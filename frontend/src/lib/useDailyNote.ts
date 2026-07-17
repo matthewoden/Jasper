@@ -14,7 +14,7 @@
 
 import { useCallback } from "react";
 import { useTreeStore } from "./useTreeStore";
-import { useTabStore } from "./useTabStore";
+import { usePaneStore } from "./usePaneStore";
 import { openTodayDailyNote } from "./dailyNoteApi";
 import { broadcastRefresh } from "./useFileTree";
 import { useToast } from "../components/toast.utils";
@@ -35,7 +35,9 @@ export function useDailyNote() {
     try {
       const note = await openTodayDailyNote(today);
       setActiveNote(note.id);
-      useTabStore.getState().openTab(note.id);
+      // Phase 25: opens as a tab in the active pane (WS-08's openInActivePane
+      // primitive) — replaces the retired flat useTabStore.openTab.
+      usePaneStore.getState().openInActivePane(note.id);
     } catch {
       toast({
         title: "Couldn't open today's daily note",
