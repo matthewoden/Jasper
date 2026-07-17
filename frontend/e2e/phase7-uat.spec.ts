@@ -63,27 +63,31 @@ test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
     await waitForConnected(page);
     await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
 
-    // Sidebar no longer has an inline SearchInputBar — search lives in the "Search notes" modal.
-    // Open via Cmd+Shift+F or the Search button in SidebarToolbar.
+    // v1.2 redesign: the FTS5 search modal was replaced by the in-sidebar
+    // Search panel (SidebarSearchPanel, LSIDE-02). Cmd+Shift+F opens the
+    // left-sidebar Search panel and focuses its input — there is no
+    // role="dialog" anymore. Results render as role="button" rows
+    // (aria-label "Open note: <title>") whose excerpt carries the FTS5
+    // <mark> highlights (.search-result-excerpt mark).
     await page.keyboard.press("Meta+Shift+f");
-    const searchDialog = page.getByRole("dialog", { name: "Search notes" });
-    await expect(searchDialog).toBeVisible({ timeout: 5_000 });
-
-    const searchInput = searchDialog.getByPlaceholder("Search notes…");
-    await expect(searchInput).toBeVisible({ timeout: 3_000 });
+    const searchInput = page.getByRole("textbox", { name: "Search notes" });
+    await expect(searchInput).toBeVisible({ timeout: 5_000 });
     await searchInput.fill("searchable");
 
     await page.waitForTimeout(600);
 
-    const alphaResult = searchDialog.getByText(/alpha-s1/i).first();
+    const alphaResult = page
+      .locator('[aria-label^="Open note:"]')
+      .filter({ hasText: /alpha-s1/i })
+      .first();
     await expect(alphaResult).toBeVisible({ timeout: 5_000 });
 
-    await expect(searchDialog.locator("[data-row-kind='search-result'] mark").first()).toBeVisible({
+    await expect(page.locator(".search-result-excerpt mark").first()).toBeVisible({
       timeout: 3_000,
     });
 
     await alphaResult.click();
-    await expect(page.locator(".cm-content")).toContainText("searchable phrase", {
+    await expect(page.locator(".cm-content").first()).toContainText("searchable phrase", {
       timeout: 5_000,
     });
   });
@@ -740,8 +744,14 @@ test.describe("Phase 7 — Daily note registry hydration (S12 / UAT #1, #6)", ()
     await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 4_000 });
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
 
+    // v1.2 redesign (READ-01/D-02): the note's first H1 is hidden inside the
+    // editor (firstH1HideExtension) and rendered above it in the TitleElement.
+    // The daily note's date lives in the H1, so it now appears in the title
+    // element, not in .cm-content (whose body is empty for a fresh daily note).
     const todayStr = new Date().toISOString().slice(0, 10);
-    await expect(page.locator(".cm-content")).toContainText(todayStr, { timeout: 5_000 });
+    await expect(page.getByTestId("editor-title-element").first()).toContainText(todayStr, {
+      timeout: 5_000,
+    });
 
     await todayBtn.click();
     await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 3_000 });
@@ -1537,7 +1547,9 @@ test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 
 
     await newNoteByTitle.first().click();
     await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 4_000 });
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
+    // v1.2 redesign: open tabs are kept mounted (hidden panes use display:none),
+    // so multiple .cm-content instances exist. Scope to the visible editor.
+    await expect(page.locator(".cm-content:visible")).toBeVisible({ timeout: 5_000 });
   });
 });
 
@@ -1793,21 +1805,24 @@ test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop s
     void noteId;
   });
 
-  test("S24b — clicking Search icon in SidebarToolbar opens Search notes dialog (FTS5 modal)", async ({ page }) => {
-    // Design change: SidebarToolbar Search button opens mode='search' (FTS5 modal),
-    // not the Cmd+O quick switcher. Dialog name is "Search notes".
+  test("S24b — clicking Search icon in activity ribbon opens the in-sidebar Search panel", async ({ page }) => {
+    // v1.2 redesign: the Search affordance moved from SidebarToolbar to the
+    // activity ribbon (Phase 18), and it now opens the in-sidebar Search panel
+    // (SidebarSearchPanel) rather than an FTS5 modal dialog. Clicking the ribbon
+    // Search button toggles the panel: first click opens it (input visible),
+    // repeat click on the active button collapses the sidebar (input gone).
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    const searchBtn = page.getByLabel("Search notes");
+    const searchBtn = page.getByRole("button", { name: "Search notes" });
     await expect(searchBtn).toBeVisible({ timeout: 5_000 });
     await searchBtn.click();
 
-    const dialog = page.getByRole("dialog", { name: "Search notes" });
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    const searchInput = page.getByRole("textbox", { name: "Search notes" });
+    await expect(searchInput).toBeVisible({ timeout: 5_000 });
 
-    await page.keyboard.press("Escape");
-    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
+    await searchBtn.click();
+    await expect(searchInput).not.toBeVisible({ timeout: 3_000 });
   });
 
   test.skip("S24c — drop indicator snaps to line boundary (pixel-level flakiness risk; covered by DI-snap unit tests)", async ({ page }) => {
@@ -1871,44 +1886,12 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     void noteId;
   });
 
-  test("S26b — tags panel header has no chevron icon", async ({ page }) => {
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-
-    await apiCreateNote(
-      page,
-      jasper.baseURL,
-      "s26b-has-tag.md",
-      "",
-      "# Has Tag Note\n\nThis note has a #sometag-s26b tag.",
-    );
-    await page.reload();
-    await waitForConnected(page);
-
-    const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /s26b-has-tag|Has Tag/i });
-    await expect(noteRow).toBeVisible({ timeout: 8_000 });
-    await noteRow.click();
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
-
-    const railToggle = page.getByRole("button", { name: /hide panels|show panels/i });
-    await expect(railToggle).toBeVisible({ timeout: 8_000 });
-
-    const toggleLabel = await railToggle.getAttribute("aria-label");
-    if (toggleLabel && /show panels/i.test(toggleLabel)) {
-      await railToggle.click();
-    }
-
-    await page.waitForTimeout(500);
-
-    const closeBtn = page.getByRole("button", { name: /close tags panel/i });
-    await expect(closeBtn).toBeVisible({ timeout: 3_000 });
-
-    const tagsPanelHeader = page.locator("header").filter({ has: closeBtn });
-    const chevronDownInHeader = tagsPanelHeader.locator(".lucide-chevron-down");
-    const chevronRightInHeader = tagsPanelHeader.locator(".lucide-chevron-right");
-    await expect(chevronDownInHeader).toHaveCount(0, { timeout: 3_000 });
-    await expect(chevronRightInHeader).toHaveCount(0, { timeout: 3_000 });
-  });
+  // S26b removed in v1.2: the tags-panel "no chevron / has × close button"
+  // contract was deliberately reversed by the Phase 20 right-rail redesign
+  // (D-01/D-03). The unified SectionHeader now removes the per-panel close
+  // button entirely and USES a ChevronDown/ChevronRight icon as its collapse
+  // affordance — so both premises the test asserted (a "close tags panel"
+  // button existing, and no chevron in the header) are intentionally gone.
 
   test("S26c — sidebar toggle does NOT overlap editor .cm-content left edge (bounding-box assertion)", async ({ page }) => {
     await page.goto(jasper.baseURL);
@@ -1928,20 +1911,32 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     await expect(noteRow).toBeVisible({ timeout: 8_000 });
     await noteRow.click();
 
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".cm-content").first()).toBeVisible({ timeout: 5_000 });
+
+    // v1.2 redesign: the editor content is now a self-centering 760px column
+    // (margin:0 auto, 21-01/D-14) and the sidebar toggle lives in the tab-strip
+    // chrome (Phase 18) above the editor. A pure horizontal edge comparison is
+    // therefore meaningless (the centered column's left edge sits far to the
+    // right of the toggle). The real intent — the toggle must not visually
+    // collide with the editor content — is preserved as a rectangle
+    // non-intersection assertion.
+    type Rect = { x: number; y: number; width: number; height: number };
+    const rectsIntersect = (a: Rect, b: Rect): boolean =>
+      a.x < b.x + b.width &&
+      a.x + a.width > b.x &&
+      a.y < b.y + b.height &&
+      a.y + a.height > b.y;
 
     const toggleLocator = page.getByRole("button", { name: /hide notes sidebar|show notes sidebar/i });
     await expect(toggleLocator).toBeVisible({ timeout: 3_000 });
 
     const toggleBox = await toggleLocator.boundingBox();
-    const editorBox = await page.locator(".cm-content").boundingBox();
+    const editorBox = await page.locator(".cm-content").first().boundingBox();
 
     expect(toggleBox).not.toBeNull();
     expect(editorBox).not.toBeNull();
 
-    const toggleRight = toggleBox!.x + toggleBox!.width;
-    const editorLeft = editorBox!.x;
-    expect(toggleRight).toBeLessThanOrEqual(editorLeft + 4);
+    expect(rectsIntersect(toggleBox!, editorBox!)).toBe(false);
 
     const openToggle = page.getByRole("button", { name: "Hide notes sidebar" });
     if (await openToggle.isVisible()) {
@@ -1950,12 +1945,10 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
 
       const closedToggle = page.getByRole("button", { name: "Show notes sidebar" });
       const toggleBoxClosed = await closedToggle.boundingBox();
-      const editorBoxClosed = await page.locator(".cm-content").boundingBox();
+      const editorBoxClosed = await page.locator(".cm-content").first().boundingBox();
 
       if (toggleBoxClosed && editorBoxClosed) {
-        const toggleRightClosed = toggleBoxClosed.x + toggleBoxClosed.width;
-        const editorLeftClosed = editorBoxClosed.x;
-        expect(toggleRightClosed).toBeLessThanOrEqual(editorLeftClosed + 4);
+        expect(rectsIntersect(toggleBoxClosed, editorBoxClosed)).toBe(false);
       }
     }
   });
@@ -2202,19 +2195,18 @@ test.describe("Phase 7 — Switcher/Search split (S32 / UAT-5 N11 / D-57)", () =
 
     await page.keyboard.press("Escape");
 
-    // Sidebar no longer has an inline SearchInputBar — FTS5 search is via the "Search notes" modal.
+    // v1.2 redesign: FTS5 body search now lives in the in-sidebar Search panel
+    // (SidebarSearchPanel), opened via Cmd+Shift+F. It is not a role="dialog";
+    // its input has aria-label "Search notes" and result excerpts carry the
+    // FTS5 <mark> highlights under .search-result-excerpt.
     await page.keyboard.press("Meta+Shift+f");
-    const searchDialog = page.getByRole("dialog", { name: "Search notes" });
-    await expect(searchDialog).toBeVisible({ timeout: 5_000 });
-    const searchModalInput = searchDialog.getByPlaceholder("Search notes…");
-    await expect(searchModalInput).toBeVisible({ timeout: 3_000 });
-    await searchModalInput.fill("uat5n11needle");
+    const searchPanelInput = page.getByRole("textbox", { name: "Search notes" });
+    await expect(searchPanelInput).toBeVisible({ timeout: 5_000 });
+    await searchPanelInput.fill("uat5n11needle");
     await page.waitForTimeout(500);
 
-    const sidebarMark = searchDialog.locator("[data-row-kind='search-result'] mark").first();
+    const sidebarMark = page.locator(".search-result-excerpt mark").first();
     await expect(sidebarMark).toBeVisible({ timeout: 5_000 });
-
-    await page.keyboard.press("Escape");
   });
 });
 
@@ -2318,27 +2310,30 @@ test.describe("Phase 7 — Cmd+Shift+F opens search modal (S34 / UAT-6 / Plan 07
     expect([200, 202]).toContain(reindexResp.status());
     await expect(page.getByTestId("reindex-progress")).toHaveCount(0, { timeout: 10_000 });
 
+    // v1.2 redesign: Cmd+Shift+F opens the in-sidebar Search panel
+    // (SidebarSearchPanel), not a modal dialog. Its input has aria-label
+    // "Search notes"; the empty state reads "Search your notes"; result
+    // excerpts carry FTS5 <mark> highlights; pressing Enter in the input
+    // activates the first (selected) hit and opens it in the editor.
     await page.keyboard.press("Meta+Shift+f");
 
-    await page.getByRole("dialog", { name: "Search notes" }).waitFor({ state: "visible", timeout: 5_000 });
+    const searchInput = page.getByRole("textbox", { name: "Search notes" });
+    await searchInput.waitFor({ state: "visible", timeout: 5_000 });
 
-    await expect(page.getByPlaceholder("Search notes…")).toBeVisible();
+    await expect(page.getByText("Search your notes")).toBeVisible();
 
-    await expect(page.getByText("Type to search notes")).toBeVisible();
+    await searchInput.fill("narwhal");
 
-    await page.keyboard.type("narwhal");
-
-    await expect(page.getByText("starship-log")).toBeVisible({ timeout: 5_000 });
-    const mark = page.locator('[data-row-kind="search-result"] mark').first();
+    await expect(
+      page.getByRole("button", { name: /Open note: starship-log/i }),
+    ).toBeVisible({ timeout: 5_000 });
+    const mark = page.locator(".search-result-excerpt mark").first();
     await expect(mark).toBeVisible();
     await expect(mark).toHaveText(/narwhal/i);
 
-    await page.keyboard.press("Enter");
-    await expect(
-      page.getByRole("dialog", { name: "Search notes" }),
-    ).toBeHidden();
+    await searchInput.press("Enter");
 
-    await expect(page.getByLabel("Note content")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel("Note content").first()).toBeVisible({ timeout: 5_000 });
 
     void noteId;
   });

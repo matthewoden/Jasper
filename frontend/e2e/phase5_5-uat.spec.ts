@@ -848,9 +848,13 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     page,
   }) => {
     await openApp(page);
+    // v1.2 title handoff: the document's FIRST ATX H1 is visually hidden
+    // (rendered as the note title above the editor via TitleElement /
+    // firstH1HidePlugin). Prepend a title H1 so the heading under test is
+    // the SECOND H1 and stays visible as a .cm-line in .cm-content.
     await typeIntoEditor(
       page,
-      "# H1 line\n## H2 line\nbody line\n\nfooter line",
+      "# Note Title\n\n# H1 line\n## H2 line\nbody line\n\nfooter line",
     );
 
     await page.locator(".cm-content").click();
@@ -1203,6 +1207,9 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       const host = document.querySelector(
         '[data-testid="cm-host-shell"]',
       ) as HTMLElement | null;
+      const content = document.querySelector(
+        ".cm-content",
+      ) as HTMLElement | null;
       const firstLine = document.querySelector(
         ".cm-content .cm-line",
       ) as HTMLElement | null;
@@ -1211,19 +1218,33 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       ).find((el) =>
         /Saving|Saved at|Save failed/.test(el.getAttribute("title") ?? ""),
       );
-      if (!host || !firstLine) return null;
+      if (!host || !content || !firstLine) return null;
       const hRect = host.getBoundingClientRect();
+      const cRect = content.getBoundingClientRect();
       const fRect = firstLine.getBoundingClientRect();
+      // v1.2 gives .cm-content an intentional top reading padding
+      // (themeBridge: `padding: "44px 56px 200px"`). That is NOT a save
+      // indicator gap. The original intent is that no save-indicator chrome
+      // is injected between the editor host shell and the reading column,
+      // and the first line sits at the top of that column.
+      const contentPadTop =
+        parseFloat(getComputedStyle(content).paddingTop) || 0;
       return {
-        hostTop: Math.round(hRect.top),
-        firstLineTop: Math.round(fRect.top),
-        gapTopPx: Math.round(fRect.top - hRect.top),
+        // Any injected save-indicator chrome would push .cm-content down
+        // relative to the host shell — this must stay ~0.
+        chromeGapPx: Math.round(cRect.top - hRect.top),
+        // First line's offset into the content box, net of the intentional
+        // reading padding — must be ~0 (line pinned to top of the column).
+        lineOffsetBeyondPaddingPx: Math.round(
+          fRect.top - cRect.top - contentPadTop,
+        ),
         idleSaveIndicatorPresent: saveStatus !== undefined,
       };
     });
     expect(probe).not.toBeNull();
     expect(probe!.idleSaveIndicatorPresent).toBe(false);
-    expect(probe!.gapTopPx).toBeLessThanOrEqual(20);
+    expect(probe!.chromeGapPx).toBeLessThanOrEqual(2);
+    expect(Math.abs(probe!.lineOffsetBeyondPaddingPx)).toBeLessThanOrEqual(2);
   });
 
   test("05.5-18: Escape clears tree multi-selection", async ({ page }) => {

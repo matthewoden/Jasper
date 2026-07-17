@@ -233,9 +233,10 @@ test.describe("Phase 8 vault picker — make-build smoke", () => {
       await page.getByTestId("vault-create-path-input").fill("/tmp/jasper-uat-2-1d-smoke");
       await expect(submitBtn).toBeEnabled();
 
-      await page.getByRole("radio", { name: /light/i }).check();
-      await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-      await page.getByRole("radio", { name: /dark/i }).check();
+      // Theme live-preview toggle removed in v1.2 (Phase 17 D-01: Jasper is
+      // dark-only). applyTheme() now sets data-theme="dark" unconditionally, so
+      // the old light/dark radio preview assertions are obsolete. The app stays
+      // dark regardless of selection.
       await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     } finally {
       await handle?.kill();

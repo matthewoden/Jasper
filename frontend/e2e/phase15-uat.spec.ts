@@ -1158,15 +1158,19 @@ test.describe("@phase15 UAT-15.1-BREADCRUMB: centered breadcrumb trail", () => {
       "breadcrumbs",
     );
 
-    // Open root note (only 1 tab — 1 breadcrumb element).
+    // Open root note (only 1 tab — 1 breadcrumb element). The v1.2 breadcrumb is
+    // a space-between nav — interactive path segments on the left, a word-count on
+    // the right — not a single centered text node. Assert the path via the
+    // per-segment buttons (feature survived) rather than the nav's whole
+    // textContent (which now also includes the word-count), and drop the stale
+    // text-align:center check: the trail is left-aligned in the redesigned chrome.
     await openNoteFromTree(page, rootId);
     const rootBc = page.getByTestId("note-breadcrumb");
     await expect(rootBc).toBeVisible({ timeout: 5_000 });
-    await expect(rootBc).toHaveText("root-crumb");
-    const rootAlign = await rootBc.evaluate(
-      (el) => getComputedStyle(el).textAlign,
-    );
-    expect(rootAlign).toBe("center");
+    // Root note: title-only trail → exactly one segment "root-crumb".
+    await expect(rootBc.getByTestId("breadcrumb-segment")).toHaveText([
+      "root-crumb",
+    ]);
 
     // Expand "breadcrumbs" folder, then open nested note.
     const folderRow = page.locator(
@@ -1176,15 +1180,17 @@ test.describe("@phase15 UAT-15.1-BREADCRUMB: centered breadcrumb trail", () => {
     await folderRow.click();
     await openNoteFromTree(page, nestedId);
 
-    // 2 tabs open; filter by text to get the visible (active) breadcrumb.
-    const nestedBc = page
-      .getByTestId("note-breadcrumb")
-      .filter({ hasText: "breadcrumbs / nested" });
+    // 2 tabs open; select the nested pane's breadcrumb by the "nested" segment it
+    // contains. (The separator is now a CSS-margin "/" with no literal surrounding
+    // spaces, so a "breadcrumbs / nested" whole-text filter no longer matches.)
+    const nestedBc = page.getByTestId("note-breadcrumb").filter({
+      has: page.getByTestId("breadcrumb-segment").filter({ hasText: "nested" }),
+    });
     await expect(nestedBc).toBeVisible({ timeout: 5_000 });
-    await expect(nestedBc).toHaveText("breadcrumbs / nested");
-    const nestedAlign = await nestedBc.evaluate(
-      (el) => getComputedStyle(el).textAlign,
-    );
-    expect(nestedAlign).toBe("center");
+    // Nested note: folder + title trail → segments "breadcrumbs" then "nested".
+    await expect(nestedBc.getByTestId("breadcrumb-segment")).toHaveText([
+      "breadcrumbs",
+      "nested",
+    ]);
   });
 });

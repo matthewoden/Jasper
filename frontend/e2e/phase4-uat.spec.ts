@@ -8,7 +8,8 @@
  * Scenarios:
  *   1. Mutate-in-A-appears-in-B for note + folder + move
  *   2. Stale-write conflict in tab B with Save-anyway + Discard
- *   3. Delete-in-another-session shows banner with editor content intact
+ *   3. Delete-in-another-session freezes the tab read-only with a "(deleted)"
+ *      indicator; editor content stays intact (v1.2 D-10/D-11)
  *   4. 5-tab disconnect/reconnect spread
  *
  * Tree rows use `data-tree-row-kind="note"` (not `data-testid="tree-row"`).
@@ -259,7 +260,7 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
     }
   });
 
-  test("Scenario 3: delete-in-another-session shows UX-05 banner; editor content stays intact", async ({ browser }) => {
+  test("Scenario 3: delete-in-another-session shows UX-05 deleted-tab indicator; editor content stays intact", async ({ browser }) => {
     const ctxA = await browser.newContext();
     const pageA = await openTabInContext(ctxA, jasper.baseURL);
     const ctxB = await browser.newContext();
@@ -287,17 +288,30 @@ test.describe("Phase 4 UAT — multi-tab session sync", () => {
       );
       expect(deleteResp.status()).toBe(204);
 
-      const deletedBannerB = pageB.getByTestId("deleted-banner");
-      await expect(deletedBannerB).toBeVisible({ timeout: 8_000 });
-      await expect(pageB.getByText("This note was deleted in another session")).toBeVisible();
+      // v1.2 redesign (D-10/D-11): a note deleted in another session no longer
+      // raises an in-pane "deleted-banner". The note's TAB is instead frozen
+      // read-only for the session (markDeleted → deletedTabIds) and its pill
+      // renders a persistent "(deleted)" indicator — role="tab" with aria-label
+      // "<title> (deleted, read-only)". EditorPane suppresses the old banner
+      // while isDeleted, so the tab pill is now the single source of the UX-05
+      // "deleted elsewhere" signal. Content is still preserved for recovery,
+      // which is the core intent of this scenario.
+      const deletedTabPillB = pageB.getByRole("tab", {
+        name: /\(deleted, read-only\)/,
+      });
+      await expect(deletedTabPillB).toBeVisible({ timeout: 8_000 });
+      await expect(pageB.getByText("(deleted)")).toBeVisible();
 
+      // Primary intent: the user's unsaved work must survive the cross-session
+      // delete (no data loss).
       await expect
         .poll(() => readEditorText(pageB), { timeout: 5_000 })
         .toContain(userWork);
 
-      await deletedBannerB.getByRole("button", { name: /dismiss/i }).click();
-      await expect(deletedBannerB).toBeHidden({ timeout: 3_000 });
-
+      // The "(deleted)" indicator is persistent for the session (D-11) — there
+      // is no dismiss affordance to exercise. Re-assert content stays intact
+      // rather than driving the removed banner-dismiss button.
+      await expect(deletedTabPillB).toBeVisible();
       await expect
         .poll(() => readEditorText(pageB), { timeout: 5_000 })
         .toContain(userWork);

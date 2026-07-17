@@ -109,46 +109,47 @@ async function apiCreateNote(
 }
 
 /**
- * Ensure the right rail is expanded and Tags panel is visible.
+ * Ensure the right rail is expanded.
  *
- * Current UI: the Tags panel has NO expand/collapse toggle. It is opened
- * via PanelSelectorDropdown (aria-label "Open panel") and closed via its
- * × button. The rail toggle (Hide/Show panels) is in the TopBar.
+ * Post-v1.2 UI (Phase 20, D-01): the panel-selector dropdown and per-panel ×
+ * close buttons were removed. The whole right rail is now shown/hidden via a
+ * single toggle in the TabStrip ("Show panels" / "Hide panels"), and the rail
+ * hosts three ALWAYS-MOUNTED sections (Outline / Linked mentions / Tags), each
+ * behind a unified SectionHeader whose whole 32px row is a collapse toggle
+ * (aria-label "Expand Tags panel" / "Collapse Tags panel"). The rail defaults
+ * to expanded, so this is normally a no-op.
  */
 async function ensureRailExpanded(page: Page): Promise<void> {
-  // If the rail toggle shows "Show panels", click it to expand.
+  // If the rail toggle shows "Show panels", click it to expand the rail.
   const showBtn = page.getByRole("button", { name: "Show panels" });
   if ((await showBtn.count()) > 0 && (await showBtn.isVisible())) {
     await showBtn.click();
     await page.waitForTimeout(300);
   }
 
-  // If Tags panel is not mounted, open it via PanelSelectorDropdown.
-  const closeTagsBtn = page.getByRole("button", { name: "Close Tags panel" });
-  if ((await closeTagsBtn.count()) === 0) {
-    const panelTrigger = page.getByRole("button", { name: "Open panel" });
-    if ((await panelTrigger.count()) > 0) {
-      await panelTrigger.click();
-      await page.waitForTimeout(200);
-      const tagsItem = page.getByTestId("panel-selector-tags");
-      if ((await tagsItem.count()) > 0) {
-        await tagsItem.click();
-        await page.waitForTimeout(200);
-      }
-    }
-  }
-  // Verify Tags panel is mounted.
+  // Rail is mounted once its Tags SectionHeader toggle is present (in either
+  // collapsed or expanded state).
   await expect(
-    page.getByRole("button", { name: "Close Tags panel" }),
+    page.getByRole("button", { name: /Expand Tags panel|Collapse Tags panel/ }),
   ).toBeVisible({ timeout: 5_000 });
 }
 
 /**
- * Ensure the Tags panel is visible in the right rail.
- * Delegates to ensureRailExpanded which opens it via PanelSelectorDropdown.
+ * Ensure the Tags section is expanded in the right rail.
+ * Expands the rail first, then opens the Tags section via its SectionHeader.
  */
 async function ensureTagsPanelVisible(page: Page): Promise<void> {
   await ensureRailExpanded(page);
+
+  const expandTags = page.getByRole("button", { name: "Expand Tags panel" });
+  if ((await expandTags.count()) > 0 && (await expandTags.isVisible())) {
+    await expandTags.click();
+    await page.waitForTimeout(200);
+  }
+
+  await expect(
+    page.getByRole("button", { name: "Collapse Tags panel" }),
+  ).toBeVisible({ timeout: 5_000 });
 }
 
 /**
@@ -162,28 +163,21 @@ async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
 }
 
 
-test("S1 @UX-CHROME-01: TopBar renders; sidebar toggle hides/shows notes sidebar", async ({ page }) => {
+test("S1 @UX-CHROME-01: chrome affordances render; sidebar toggle hides/shows notes sidebar", async ({ page }) => {
   await openApp(page, true);
 
-  const topBar = page.getByTestId("top-bar");
-  await expect(topBar).toBeVisible({ timeout: 8_000 });
-
+  // Phase 20 (D-04) dissolved the single `top-bar` shell: the sidebar/rail
+  // toggles moved into the TabStrip's left/right clusters, and the old
+  // panel-selector "Open panel" dropdown was removed entirely (D-01). Assert
+  // the surviving chrome affordances directly rather than the removed shell.
   const sidebarToggle = page.getByRole("button", { name: /hide notes sidebar|show notes sidebar/i });
   await expect(sidebarToggle).toBeVisible({ timeout: 5_000 });
-
-  const panelTrigger = page.getByRole("button", { name: "Open panel" });
-  await expect(panelTrigger).toBeVisible({ timeout: 5_000 });
 
   const railToggle = page.getByRole("button", { name: /hide panels|show panels/i });
   await expect(railToggle).toBeVisible({ timeout: 5_000 });
 
   const breadcrumbsNav = page.getByRole("navigation", { name: "Note path" });
   await expect(breadcrumbsNav).toBeVisible({ timeout: 5_000 });
-
-  const boxShadow = await topBar.evaluate((el) =>
-    window.getComputedStyle(el).boxShadow,
-  );
-  expect(boxShadow).not.toBe("none");
 
   const hideBtn = page.getByRole("button", { name: "Hide notes sidebar" });
   await expect(hideBtn).toBeVisible({ timeout: 3_000 });
@@ -202,42 +196,42 @@ test("S1 @UX-CHROME-01: TopBar renders; sidebar toggle hides/shows notes sidebar
 });
 
 
-test("S2 @panel-selector: dropdown opens panels; × closes panels; rail auto-collapses", async ({ page }) => {
+test("S2 @panel-selector: SectionHeaders collapse/expand panels; rail toggle hides/shows the rail", async ({ page }) => {
+  // Phase 20 (D-01) removed the panel-selector dropdown and per-panel × close
+  // buttons. Panel visibility is now managed by (a) each section's unified
+  // SectionHeader collapse toggle and (b) a single rail toggle in the TabStrip.
+  // This re-point preserves the original intent — a user can open and close
+  // right-rail panels — against the new mechanism.
   await openApp(page, false);
   await ensureRailExpanded(page);
   await ensureTagsPanelVisible(page);
 
-  const closeTagsBtn = page.getByRole("button", { name: "Close Tags panel" });
-  await expect(closeTagsBtn).toBeVisible({ timeout: 5_000 });
-  await closeTagsBtn.click();
-  // After closing, Close Tags button should be gone.
-  await expect(page.getByRole("button", { name: "Close Tags panel" })).toHaveCount(0, {
-    timeout: 3_000,
-  });
-
-  const panelTrigger = page.getByRole("button", { name: "Open panel" });
-  await panelTrigger.click();
-  await page.waitForTimeout(300);
-  const tagsItem = page.getByTestId("panel-selector-tags");
-  await expect(tagsItem).toBeVisible({ timeout: 3_000 });
-  expect(await tagsItem.getAttribute("aria-checked")).toBeNull();
-  await tagsItem.click();
-  // After opening, Tags panel Close button should reappear.
-  await expect(page.getByRole("button", { name: "Close Tags panel" })).toBeVisible({
-    timeout: 5_000,
-  });
-
-  const closeBacklinksBtn = page.getByRole("button", {
-    name: "Close Backlinks panel",
-  });
-  if ((await closeBacklinksBtn.count()) > 0) {
-    await closeBacklinksBtn.click();
-  }
-  await page.getByRole("button", { name: "Close Tags panel" }).click();
-  // After all panels closed, anyPanelSelected=false → rail toggle disappears entirely (not "Show panels")
+  // Collapse the Tags section via its whole-row SectionHeader toggle.
+  const collapseTags = page.getByRole("button", { name: "Collapse Tags panel" });
+  await expect(collapseTags).toBeVisible({ timeout: 5_000 });
+  await collapseTags.click();
   await expect(
-    page.getByRole("button", { name: /hide panels|show panels/i }),
+    page.getByRole("button", { name: "Expand Tags panel" }),
+  ).toBeVisible({ timeout: 3_000 });
+
+  // Re-expand it.
+  await page.getByRole("button", { name: "Expand Tags panel" }).click();
+  await expect(
+    page.getByRole("button", { name: "Collapse Tags panel" }),
+  ).toBeVisible({ timeout: 5_000 });
+
+  // The rail toggle collapses the entire right rail (replacing the old
+  // "auto-collapse when all panels closed" behavior). The three section
+  // headers unmount with the rail; the toggle flips to "Show panels".
+  const hidePanels = page.getByRole("button", { name: "Hide panels" });
+  await expect(hidePanels).toBeVisible({ timeout: 5_000 });
+  await hidePanels.click();
+  await expect(
+    page.getByRole("button", { name: /Collapse Tags panel|Expand Tags panel/ }),
   ).toHaveCount(0, { timeout: 5_000 });
+  await expect(
+    page.getByRole("button", { name: "Show panels" }),
+  ).toBeVisible({ timeout: 3_000 });
 });
 
 
@@ -355,28 +349,25 @@ test("S5 @UX-CHROME-03: sidebar is a flush panel — border-right only, no radiu
 
 test("S6 @UX-CHROME-04: inter-panel divider has row-resize cursor; no visible background band", async ({ page }) => {
   await openApp(page, false);
+  await ensureRailExpanded(page);
 
-  const railToggle = page.getByRole("button", { name: "Show panels" });
-  if ((await railToggle.count()) > 0 && (await railToggle.isVisible())) {
-    await railToggle.click();
-    await page.waitForTimeout(400);
+  // An InterPanelDivider renders between any two adjacent expanded sections.
+  // Outline / Linked mentions / Tags all default to expanded; make Outline and
+  // Tags explicitly expanded (idempotent) so at least one divider exists.
+  const expandOutline = page.getByRole("button", { name: "Expand Outline panel" });
+  if ((await expandOutline.count()) > 0 && (await expandOutline.isVisible())) {
+    await expandOutline.click();
+    await page.waitForTimeout(150);
+  }
+  const expandTags = page.getByRole("button", { name: "Expand Tags panel" });
+  if ((await expandTags.count()) > 0 && (await expandTags.isVisible())) {
+    await expandTags.click();
+    await page.waitForTimeout(150);
   }
 
-  const panelTrigger = page.getByRole("button", { name: "Open panel" });
-  if ((await panelTrigger.count()) > 0) {
-    await panelTrigger.click();
-    await page.waitForTimeout(200);
-    const tagsItem = page.getByTestId("panel-selector-tags");
-    if ((await tagsItem.count()) > 0) await tagsItem.click();
-    await page.waitForTimeout(200);
-    await panelTrigger.click();
-    await page.waitForTimeout(200);
-    const backlinksItem = page.getByTestId("panel-selector-backlinks");
-    if ((await backlinksItem.count()) > 0) await backlinksItem.click();
-    await page.waitForTimeout(200);
-  }
-
-  const divider = page.getByTestId("inter-panel-divider");
+  // Multiple dividers may render (one per adjacent expanded pair); assert on
+  // the first.
+  const divider = page.getByTestId("inter-panel-divider").first();
   await expect(divider).toBeVisible({ timeout: 10_000 });
 
   const cursor = await divider.evaluate(
@@ -507,10 +498,9 @@ test("S8 @UX-CHROME-06: tag rows render '#tagname' + badge count; no Key icon in
   );
   expect(hashColor).toBeTruthy();
 
-  // Tags panel header has no expand-toggle — verify panel header by Close button.
-  const panelHeader = page.locator("header").filter({
-    has: page.getByRole("button", { name: "Close Tags panel" }),
-  });
+  // The Tags panel header is now the unified SectionHeader — its whole 32px row
+  // is the collapse toggle (aria-label "Collapse Tags panel" when expanded).
+  const panelHeader = page.getByRole("button", { name: "Collapse Tags panel" });
   await expect(panelHeader).toBeVisible({ timeout: 5_000 });
 
   const hasKeyIcon = await panelHeader.evaluate((hdr) => {
@@ -630,10 +620,15 @@ test("S10 @breadcrumbs: note in nested folder shows breadcrumb path; folder segm
     expect(breadcrumbText).not.toMatch(/^notes/);
 
     expect(breadcrumbText).toContain("breadcrumb-folder");
-    expect(breadcrumbText).toContain("NestedNote");
+    // v1.2 breadcrumb segments derive labels from the file path: the trailing
+    // note segment is the filename stem ("nested-note"), not the rendered H1
+    // title ("NestedNote", which is what the file-tree row shows).
+    expect(breadcrumbText).toContain("nested-note");
 
+    // v1.2 breadcrumb segments are buttons labelled "Reveal <name> in Files"
+    // (they expand + pulse the row in the file tree).
     const folderBtn = breadcrumbsNav.getByRole("button", {
-      name: /Navigate to folder: breadcrumb-folder/i,
+      name: /Reveal breadcrumb-folder in Files/i,
     });
     await expect(folderBtn).toBeVisible({ timeout: 3_000 });
 
@@ -688,7 +683,10 @@ test("S11 @phase-6.5-regression: inline #tag click filters; backlinks populate; 
     .filter({ hasText: /Reg65NoteA/i });
   await expect(noteARow).toBeVisible({ timeout: 8_000 });
   await noteARow.click();
-  await page.waitForSelector(".cm-content", { timeout: 8_000 });
+  // v1.2 keeps one EditorPane mounted per open tab (D-01), so once a second tab
+  // opens there are multiple `.cm-content` nodes — all but the active one are
+  // hidden. Wait for (and later target) only the visible pane.
+  await page.waitForSelector(".cm-content:visible", { timeout: 8_000 });
 
   await page.waitForTimeout(500);
 
@@ -697,7 +695,7 @@ test("S11 @phase-6.5-regression: inline #tag click filters; backlinks populate; 
     .filter({ hasText: /Reg65NoteB/i });
   await expect(noteBRow).toBeVisible({ timeout: 8_000 });
   await noteBRow.click();
-  await page.waitForSelector(".cm-content", { timeout: 8_000 });
+  await page.waitForSelector(".cm-content:visible", { timeout: 8_000 });
 
   const savedTexts: string[] = [];
   for (let i = 0; i < 10; i++) {
@@ -713,7 +711,7 @@ test("S11 @phase-6.5-regression: inline #tag click filters; backlinks populate; 
     `Phase 6.5 regression BUG-03: "Saved" appeared on note switch without edits: ${savedTexts.join(", ")}`,
   ).toHaveLength(0);
 
-  const cm = page.locator(".cm-content");
+  const cm = page.locator(".cm-content:visible").first();
   await cm.click();
   const gotoEndKey = process.platform === "darwin" ? "Meta+End" : "Control+End";
   await page.keyboard.press(gotoEndKey);

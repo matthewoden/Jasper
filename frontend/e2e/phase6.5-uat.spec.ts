@@ -15,8 +15,8 @@
  *   S4 (@UX-T-04) : Open note with frontmatter → block hidden, affordance visible;
  *                   Cmd-Shift-Y → raw shown; Cmd-Shift-Y → hidden; note switch
  *                   resets to hidden
- *   S5 (@UX-T-05) : Type `pro` in tag search → list narrows; type `proj` → single
- *                   match; Escape clears and full list returns
+ *   S5 (@UX-T-05) : RETIRED in v1.2 — the Tags panel substring-filter input was
+ *                   removed in the Phase 20 RightRail redesign (no replacement).
  *   S6 (@BUG-01)  : Save with new tag → Tags panel updates within 2s (no reload)
  *   S7 (@BUG-02)  : Open note with incoming [[...]] → Backlinks panel shows row
  *                   within 2s
@@ -25,13 +25,20 @@
  *   S9 (@autocomplete-polish) : `[[` popup and `#` popup have border-radius 8px
  *                               and foreground-contrast text
  *
- * Selector notes:
- *   - CM6 editor is contenteditable — use keyboard.type(), not .fill().
+ * Selector notes (v1.2 redesigned chrome):
+ *   - CM6 editor is contenteditable — use keyboard.type(), not .fill(). Tabs
+ *     keep every open note's EditorPane mounted (inactive = display:none), so
+ *     `.cm-content` can match several elements — target `.cm-content:visible`.
  *   - Tags panel uses data-testid="tag-row-{name}".
- *   - Inter-panel divider: data-testid="inter-panel-divider".
+ *   - Inter-panel divider: data-testid="inter-panel-divider" (now TWO of them —
+ *     after Outline and after Linked mentions; first drags the Outline ratio,
+ *     persisted at jasper.rightrail.outline.height.ratio).
  *   - Frontmatter affordance: button.cm-frontmatter-affordance
- *   - Tags panel filter input: aria-label="Filter tag list"
- *   - Tags panel header: aria-label matching "Tags panel, (expanded|collapsed)…"
+ *   - Right-rail sections (Phase 20): each is a SectionHeader <button> with
+ *     aria-label "Collapse <Title> panel" (expanded) / "Expand <Title> panel"
+ *     (collapsed), for Title ∈ {Outline, Linked mentions, Tags}. The legacy
+ *     PanelSelectorDropdown ("Open panel") and "Close … panel" × are gone.
+ *   - The tag-list substring filter input ("Filter tag list") was removed.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -63,16 +70,29 @@ async function openApp(page: Page, openFirstNote = true): Promise<void> {
     const firstNote = page.locator('[data-tree-row-kind="note"]').first();
     await expect(firstNote).toBeVisible({ timeout: 8_000 });
     await firstNote.click();
-    await page.waitForSelector(".cm-content", { timeout: 8_000 });
+    await waitForActiveEditor(page);
   }
 }
 
 /**
- * CM6 typing recipe: click .cm-content, select-all, delete, then keyboard-type.
- * Uses keyboard.type() NOT textarea.fill() — the CM6 editor is contenteditable.
+ * Wait for the ACTIVE tab's editor to be mounted and visible.
+ *
+ * Post-redesign (Phase 18 tabs) each open tab keeps its own CM6 EditorPane
+ * mounted; inactive tabs are display:none keep-alive panes. So `.cm-content`
+ * can resolve to several elements — only the active tab's pane is visible.
+ * The `:visible` filter selects that one.
+ */
+async function waitForActiveEditor(page: Page): Promise<void> {
+  await page.waitForSelector(".cm-content:visible", { timeout: 8_000 });
+}
+
+/**
+ * CM6 typing recipe: click the active (visible) .cm-content, select-all,
+ * delete, then keyboard-type. Uses keyboard.type() NOT textarea.fill() — the
+ * CM6 editor is contenteditable.
  */
 async function typeIntoEditor(page: Page, text: string): Promise<void> {
-  const cm = page.locator(".cm-content");
+  const cm = page.locator(".cm-content:visible").first();
   await cm.click();
   const selectAllKey = process.platform === "darwin" ? "Meta+a" : "Control+a";
   await page.keyboard.press(selectAllKey);
@@ -92,44 +112,51 @@ async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
   ).toBeVisible({ timeout: timeoutMs });
 }
 
+const PANEL_MOD = process.platform === "darwin" ? "Meta" : "Control";
+
 /**
- * Ensure the right rail is expanded and Tags panel is visible.
+ * Ensure a named right-rail section is expanded.
  *
- * Current UI: the rail toggle button (aria-label "Hide panels" / "Show panels")
- * lives in the TopBar and is gated on panelSelector state. The Tags panel has
- * no expand/collapse toggle — it is opened via the PanelSelectorDropdown
- * (aria-label "Open panel") and closed via its × button.
- *
- * If the rail is collapsed ("Show panels" visible), click the toggle.
- * If Tags panel is not mounted, open it via the PanelSelectorDropdown.
- * Verifies Tags panel is present by checking for its "Close Tags panel" × button.
+ * Post-redesign (Phase 20 RightRail) the right rail is a floating three-section
+ * sidebar — Outline / Linked mentions / Tags — each behind a unified
+ * SectionHeader button whose aria-label is "Collapse <Title> panel" when
+ * expanded and "Expand <Title> panel" when collapsed. The legacy
+ * PanelSelectorDropdown ("Open panel") and per-panel "Close … panel" × buttons
+ * were removed (D-01). The whole rail plus all three sections are expanded by
+ * default. If a section is collapsed, click its header. If the rail itself is
+ * hidden, Cmd/Ctrl+Alt+T reveals it (and expands Tags).
  */
-async function ensureRailExpanded(page: Page): Promise<void> {
-  // If the rail toggle shows "Show panels", click it to expand.
-  const showBtnNew = page.getByRole("button", { name: "Show panels" });
-  if ((await showBtnNew.count()) > 0 && (await showBtnNew.isVisible())) {
-    await showBtnNew.click();
+async function ensureSectionExpanded(page: Page, title: string): Promise<void> {
+  const collapse = page.getByRole("button", { name: `Collapse ${title} panel` });
+  const expand = page.getByRole("button", { name: `Expand ${title} panel` });
+
+  // Neither header present → the whole rail is hidden; reveal it.
+  if ((await collapse.count()) === 0 && (await expand.count()) === 0) {
+    await page.keyboard.press(`${PANEL_MOD}+Alt+t`);
     await page.waitForTimeout(300);
   }
 
-  // If Tags panel is not mounted, open it via PanelSelectorDropdown.
-  const closeTagsBtn = page.getByRole("button", { name: "Close Tags panel" });
-  if ((await closeTagsBtn.count()) === 0) {
-    const panelTrigger = page.getByRole("button", { name: "Open panel" });
-    if ((await panelTrigger.count()) > 0) {
-      await panelTrigger.click();
-      await page.waitForTimeout(200);
-      const tagsItem = page.getByTestId("panel-selector-tags");
-      if ((await tagsItem.count()) > 0) {
-        await tagsItem.click();
-        await page.waitForTimeout(200);
-      }
-    }
+  // Section collapsed → click its header to expand.
+  if (
+    (await page.getByRole("button", { name: `Collapse ${title} panel` }).count()) === 0 &&
+    (await expand.count()) > 0
+  ) {
+    await expand.first().click();
+    await page.waitForTimeout(200);
   }
-  // Verify Tags panel is mounted.
+
   await expect(
-    page.getByRole("button", { name: "Close Tags panel" }),
+    page.getByRole("button", { name: `Collapse ${title} panel` }),
   ).toBeVisible({ timeout: 5_000 });
+}
+
+/**
+ * Ensure the right rail is expanded with the Linked mentions + Tags sections
+ * visible (the two panel cards these scenarios assert against).
+ */
+async function ensureRailExpanded(page: Page): Promise<void> {
+  await ensureSectionExpanded(page, "Linked mentions");
+  await ensureSectionExpanded(page, "Tags");
 }
 
 /**
@@ -173,38 +200,35 @@ async function apiCreateNote(
 }
 
 /**
- * Ensure the Tags panel is open in the right rail.
+ * Ensure the Tags section is expanded in the right rail.
  *
- * The Tags panel no longer has an expand/collapse toggle — it is either
- * mounted (panel card visible) or not. Delegates to ensureRailExpanded which
- * opens the panel via PanelSelectorDropdown when needed.
+ * The Tags panel is a SectionHeader-gated section (Phase 20). Expanding it
+ * exposes the tag rows (data-testid="tag-row-{name}").
  */
 async function ensureTagsPanelExpanded(page: Page): Promise<void> {
-  await ensureRailExpanded(page);
-  // After ensureRailExpanded, the Tags panel is mounted and visible.
-  await expect(
-    page.getByRole("button", { name: "Close Tags panel" }),
-  ).toBeVisible({ timeout: 5_000 });
+  await ensureSectionExpanded(page, "Tags");
 }
 
 
-test("S1 @UX-T-01: rail has two panel cards + draggable inter-panel divider + ratio persists", async ({ page }) => {
+test("S1 @UX-T-01: rail has panel cards + draggable inter-panel divider + ratio persists", async ({ page }) => {
   await openApp(page, false);
 
   await ensureRailExpanded(page);
 
-  // Tags panel is open — verify by its Close button (no expand-toggle in current UI).
-  await expect(page.getByRole("button", { name: "Close Tags panel" })).toBeVisible({ timeout: 8_000 });
+  // Two of the rail's panel cards: the Tags section (its collapse header) and
+  // the Linked mentions section (its region). No legacy "Close … panel" × in
+  // the redesigned rail — sections toggle via their whole-row SectionHeader.
+  await expect(page.getByRole("button", { name: "Collapse Tags panel" })).toBeVisible({ timeout: 8_000 });
   await expect(
     page.getByRole("region", { name: "Notes that link to this note" }),
   ).toBeVisible({ timeout: 8_000 });
 
-  const divider = page.getByTestId("inter-panel-divider");
+  // Post-redesign there are two inter-panel dividers (after Outline, after
+  // Linked mentions). The first drags the Outline section's height ratio,
+  // persisted under jasper.rightrail.outline.height.ratio.
+  const RATIO_KEY = "jasper.rightrail.outline.height.ratio";
+  const divider = page.getByTestId("inter-panel-divider").first();
   await expect(divider).toBeVisible({ timeout: 5_000 });
-
-  const ratioBefore = await page.evaluate(() =>
-    window.localStorage.getItem("jasper.rail.tags.height.ratio"),
-  );
 
   const dividerBox = await divider.boundingBox();
   if (!dividerBox) throw new Error("S1: inter-panel-divider has no bounding box");
@@ -223,24 +247,12 @@ test("S1 @UX-T-01: rail has two panel cards + draggable inter-panel divider + ra
 
   await expect
     .poll(
-      () =>
-        page.evaluate(() =>
-          window.localStorage.getItem("jasper.rail.tags.height.ratio"),
-        ),
+      () => page.evaluate((k) => window.localStorage.getItem(k), RATIO_KEY),
       { timeout: 2_000 },
     )
     .not.toBeNull();
 
-  const ratioAfter = await page.evaluate(() =>
-    window.localStorage.getItem("jasper.rail.tags.height.ratio"),
-  );
-
-  if (ratioBefore !== null) {
-    // Both should be numeric strings; after drag the value may differ
-    // NOTE: if the drag landed exactly on the same ratio, this isn't an error
-    // — it just means the drag was below the detection threshold. The real
-    // assertion is that LS was written at all (see above).
-  }
+  const ratioAfter = await page.evaluate((k) => window.localStorage.getItem(k), RATIO_KEY);
   expect(ratioAfter).not.toBeNull();
 
   await page.reload();
@@ -251,12 +263,10 @@ test("S1 @UX-T-01: rail has two panel cards + draggable inter-panel divider + ra
   );
   await ensureRailExpanded(page);
 
-  const ratioAfterReload = await page.evaluate(() =>
-    window.localStorage.getItem("jasper.rail.tags.height.ratio"),
-  );
+  const ratioAfterReload = await page.evaluate((k) => window.localStorage.getItem(k), RATIO_KEY);
   expect(ratioAfterReload).toEqual(ratioAfter);
 
-  await expect(page.getByRole("button", { name: "Close Tags panel" })).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole("button", { name: "Collapse Tags panel" })).toBeVisible({ timeout: 8_000 });
   await expect(
     page.getByRole("region", { name: "Notes that link to this note" }),
   ).toBeVisible({ timeout: 8_000 });
@@ -285,7 +295,13 @@ test("S2 @UX-T-02: #tagname renders as cm-inline-tag; # heading does NOT", async
   expect(inlineTagText).toContain("alpha");
 
   const headingHasInlineTag = await page.evaluate(() => {
-    const lines = document.querySelectorAll(".cm-content .cm-line");
+    const editor =
+      Array.from(document.querySelectorAll(".cm-content")).find(
+        (el) => (el as HTMLElement).offsetParent !== null,
+      ) ?? document.querySelector(".cm-content");
+    const lines = editor
+      ? editor.querySelectorAll(".cm-line")
+      : ([] as unknown as NodeListOf<Element>);
     for (const line of Array.from(lines)) {
       const text = line.textContent ?? "";
       if (text.startsWith("# My Note") || text.includes("My Note")) {
@@ -346,7 +362,13 @@ test("S4 @UX-T-04: frontmatter block hidden by default; Cmd-Shift-Y toggles raw 
   await openApp(page, true);
 
   const rawFrontmatterVisible = await page.evaluate(() => {
-    const lines = document.querySelectorAll(".cm-content .cm-line");
+    const editor =
+      Array.from(document.querySelectorAll(".cm-content")).find(
+        (el) => (el as HTMLElement).offsetParent !== null,
+      ) ?? document.querySelector(".cm-content");
+    const lines = editor
+      ? editor.querySelectorAll(".cm-line")
+      : ([] as unknown as NodeListOf<Element>);
     for (const line of Array.from(lines)) {
       if ((line.textContent ?? "").trim() === "---") return true;
     }
@@ -362,7 +384,7 @@ test("S4 @UX-T-04: frontmatter block hidden by default; Cmd-Shift-Y toggles raw 
 
   const toggleKey =
     process.platform === "darwin" ? "Meta+Shift+y" : "Control+Shift+y";
-  await page.locator(".cm-content").click();
+  await page.locator(".cm-content:visible").first().click();
   await page.waitForTimeout(200);
   await page.keyboard.press("Home");
   await page.waitForTimeout(100);
@@ -370,7 +392,13 @@ test("S4 @UX-T-04: frontmatter block hidden by default; Cmd-Shift-Y toggles raw 
   await page.waitForTimeout(600);
 
   const rawAfterToggle = await page.evaluate(() => {
-    const lines = document.querySelectorAll(".cm-content .cm-line");
+    const editor =
+      Array.from(document.querySelectorAll(".cm-content")).find(
+        (el) => (el as HTMLElement).offsetParent !== null,
+      ) ?? document.querySelector(".cm-content");
+    const lines = editor
+      ? editor.querySelectorAll(".cm-line")
+      : ([] as unknown as NodeListOf<Element>);
     for (const line of Array.from(lines)) {
       if ((line.textContent ?? "").trim() === "---") return true;
     }
@@ -402,11 +430,17 @@ test("S4 @UX-T-04: frontmatter block hidden by default; Cmd-Shift-Y toggles raw 
   const firstNote = page.locator('[data-tree-row-kind="note"]').first();
   await expect(firstNote).toBeVisible({ timeout: 8_000 });
   await firstNote.click();
-  await page.waitForSelector(".cm-content", { timeout: 8_000 });
+  await waitForActiveEditor(page);
   await page.waitForTimeout(400);
 
   const rawAfterNoteSwitch = await page.evaluate(() => {
-    const lines = document.querySelectorAll(".cm-content .cm-line");
+    const editor =
+      Array.from(document.querySelectorAll(".cm-content")).find(
+        (el) => (el as HTMLElement).offsetParent !== null,
+      ) ?? document.querySelector(".cm-content");
+    const lines = editor
+      ? editor.querySelectorAll(".cm-line")
+      : ([] as unknown as NodeListOf<Element>);
     for (const line of Array.from(lines)) {
       if ((line.textContent ?? "").trim() === "---") return true;
     }
@@ -416,58 +450,13 @@ test("S4 @UX-T-04: frontmatter block hidden by default; Cmd-Shift-Y toggles raw 
 });
 
 
-test("S5 @UX-T-05: tag search filters list by substring; Escape clears", async ({ page }) => {
-  await apiCreateNote(
-    page,
-    "notes/search-test-project.md",
-    "---\ntags: [project]\n---\n\n# search-test-project\n\nbody",
-  );
-  await apiCreateNote(
-    page,
-    "notes/search-test-prototype.md",
-    "---\ntags: [prototype]\n---\n\n# search-test-prototype\n\nbody",
-  );
-  await apiCreateNote(
-    page,
-    "notes/search-test-process.md",
-    "---\ntags: [process]\n---\n\n# search-test-process\n\nbody",
-  );
-
-  await page.goto(jasper.baseURL);
-  await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
-    "data-status",
-    "connected",
-    { timeout: 10_000 },
-  );
-
-  await ensureTagsPanelExpanded(page);
-
-  await expect(page.getByTestId("tag-row-project")).toBeVisible({ timeout: 8_000 });
-
-  const searchInput = page.locator('input[aria-label="Filter tag list"]');
-  await expect(searchInput).toBeVisible({ timeout: 5_000 });
-  await searchInput.click();
-  await page.keyboard.type("pro");
-
-  await expect(page.getByTestId("tag-row-project")).toBeVisible({ timeout: 3_000 });
-  await expect(page.getByTestId("tag-row-prototype")).toBeVisible({ timeout: 3_000 });
-  await expect(page.getByTestId("tag-row-process")).toBeVisible({ timeout: 3_000 });
-
-  await page.keyboard.type("j");
-
-  await expect(page.getByTestId("tag-row-project")).toBeVisible({ timeout: 3_000 });
-  await expect(page.getByTestId("tag-row-prototype")).toHaveCount(0, { timeout: 3_000 });
-  await expect(page.getByTestId("tag-row-process")).toHaveCount(0, { timeout: 3_000 });
-
-  await page.keyboard.press("Escape");
-
-  const inputValue = await searchInput.inputValue();
-  expect(inputValue).toBe("");
-
-  await expect(page.getByTestId("tag-row-project")).toBeVisible({ timeout: 3_000 });
-  await expect(page.getByTestId("tag-row-prototype")).toBeVisible({ timeout: 3_000 });
-  await expect(page.getByTestId("tag-row-process")).toBeVisible({ timeout: 3_000 });
-});
+// S5 (@UX-T-05) DELETED in v1.2: the Tags panel's substring-filter input
+// (input[aria-label="Filter tag list"]) was intentionally removed in the
+// Phase 20 RightRail redesign. Per RightRailTagsPanel.tsx: "No own header, no ×
+// close button, no substring filter input." Tag-list substring filtering is no
+// longer an affordance — clicking a tag row now sets an activeTagFilter over
+// NOTES, a different capability. Nothing to re-point; the tested affordance is
+// gone, so the scenario is retired.
 
 
 test("BUG-01: saving note with new tag → Tags panel updates within 2s (no WS round-trip needed)", async ({ page }) => {
@@ -563,7 +552,7 @@ test("BUG-02: open note with incoming [[...]] links → Backlinks panel shows ro
     .filter({ hasText: /BugTwoTarget/i });
   await expect(targetRow).toBeVisible({ timeout: 8_000 });
   await targetRow.click();
-  await page.waitForSelector(".cm-content", { timeout: 8_000 });
+  await waitForActiveEditor(page);
 
   const rail = page.getByRole("region", { name: "Notes that link to this note" });
   await expect(rail).toBeVisible({ timeout: 5_000 });
@@ -607,7 +596,7 @@ test("BUG-03: switch notes without editing → save indicator stays idle; actual
     .filter({ hasText: /BugThreeNoteA/i });
   await expect(noteARow).toBeVisible({ timeout: 8_000 });
   await noteARow.click();
-  await page.waitForSelector(".cm-content", { timeout: 8_000 });
+  await waitForActiveEditor(page);
 
   await page.waitForTimeout(500);
 
@@ -616,13 +605,17 @@ test("BUG-03: switch notes without editing → save indicator stays idle; actual
     .filter({ hasText: /BugThreeNoteB/i });
   await expect(noteBRow).toBeVisible({ timeout: 8_000 });
   await noteBRow.click();
-  await page.waitForSelector(".cm-content", { timeout: 8_000 });
+  await waitForActiveEditor(page);
 
+  // Redesign: the SaveIndicator is a StatusBar icon-button carrying
+  // data-save-state ("idle" | "saving" | "saved" | "error"); the legacy
+  // role="status" "Saved" overlay is not rendered in button mode. A phantom
+  // save during a no-edit switch would flip the button to "saved", so poll
+  // that it never reaches "saved" while switching.
   const savedTexts: string[] = [];
   for (let i = 0; i < 10; i++) {
     const savedCount = await page
-      .locator('[role="status"]')
-      .filter({ hasText: /^Saved$/ })
+      .locator('button[data-save-state="saved"]')
       .count();
     if (savedCount > 0) savedTexts.push(`found at poll ${i}`);
     await new Promise((r) => setTimeout(r, 100));
@@ -632,7 +625,7 @@ test("BUG-03: switch notes without editing → save indicator stays idle; actual
     `BUG-03: "Saved" indicator appeared during note switch without edits: ${savedTexts.join(", ")}`,
   ).toHaveLength(0);
 
-  const cm = page.locator(".cm-content");
+  const cm = page.locator(".cm-content:visible").first();
   await cm.click();
   const gotoEndKey = process.platform === "darwin" ? "Meta+End" : "Control+End";
   await page.keyboard.press(gotoEndKey);
@@ -663,7 +656,7 @@ test("S9 @autocomplete-polish: [[  popup and # popup have border-radius 8px + re
   const firstNote = page.locator('[data-tree-row-kind="note"]').first();
   await expect(firstNote).toBeVisible({ timeout: 8_000 });
   await firstNote.click();
-  await page.waitForSelector(".cm-content", { timeout: 8_000 });
+  await waitForActiveEditor(page);
 
   const cm = page.locator(".cm-content");
   await cm.click();

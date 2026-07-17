@@ -202,26 +202,49 @@ async function openTabInContext(
 }
 
 /**
- * Open the right-rail Tags panel via the panel-selector dropdown ("Open panel"
- * → Tags), which expands the rail and renders the tag rows directly.
+ * Reveal the right-rail Tags section (Phase 20 RightRail rework).
+ *
+ * The legacy "Open panel" dropdown + panel-selector were removed (D-01). Panels
+ * now live in the always-mounted RightRail behind unified SectionHeader toggles.
+ * The rail (TabStrip "Show/Hide panels" toggle) and each section default to
+ * expanded, so normally there is nothing to click — but a prior test in the same
+ * context could have collapsed either, so re-expand defensively before asserting
+ * the Tags SectionHeader is showing (which means the tag rows are rendered).
  */
 async function expandTagBrowser(page: Page): Promise<void> {
-  const opener = page.getByRole("button", { name: "Open panel" });
-  await expect(opener).toBeVisible({ timeout: 5_000 });
-  await opener.click();
-  await page.getByTestId("panel-selector-tags").click();
-  await expect(page.getByPlaceholder("Filter tags")).toBeVisible({ timeout: 5_000 });
+  const showPanels = page.getByRole("button", { name: "Show panels" });
+  if (await showPanels.isVisible().catch(() => false)) {
+    await showPanels.click();
+  }
+  const expandTags = page.getByRole("button", { name: "Expand Tags panel" });
+  if (await expandTags.isVisible().catch(() => false)) {
+    await expandTags.click();
+  }
+  await expect(
+    page.getByRole("button", { name: "Collapse Tags panel" }),
+  ).toBeVisible({ timeout: 5_000 });
 }
 
 /**
- * Open the right-rail Backlinks panel via the panel-selector dropdown
- * ("Open panel" → Backlinks).
+ * Reveal the right-rail Backlinks section — now the "Linked mentions" section of
+ * the RightRail (Phase 20 rename, RSIDE-02). Same open/collapse toggle model as
+ * expandTagBrowser; the backlinks region (role="region" aria-label="Notes that
+ * link to this note") lives inside once the section is expanded.
  */
 async function openBacklinks(page: Page): Promise<void> {
-  const opener = page.getByRole("button", { name: "Open panel" });
-  await expect(opener).toBeVisible({ timeout: 5_000 });
-  await opener.click();
-  await page.getByTestId("panel-selector-backlinks").click();
+  const showPanels = page.getByRole("button", { name: "Show panels" });
+  if (await showPanels.isVisible().catch(() => false)) {
+    await showPanels.click();
+  }
+  const expandMentions = page.getByRole("button", {
+    name: "Expand Linked mentions panel",
+  });
+  if (await expandMentions.isVisible().catch(() => false)) {
+    await expandMentions.click();
+  }
+  await expect(
+    page.getByRole("button", { name: "Collapse Linked mentions panel" }),
+  ).toBeVisible({ timeout: 5_000 });
 }
 
 

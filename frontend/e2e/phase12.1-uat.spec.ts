@@ -93,7 +93,10 @@ async function openNoteInEditor(page: Page, noteId: string): Promise<void> {
   const noteRow = page.locator(`[data-tree-row="${noteId}"][data-tree-row-kind="note"]`);
   await expect(noteRow).toBeVisible({ timeout: 8_000 });
   await noteRow.click();
-  await page.waitForSelector(".cm-content", { timeout: 8_000 });
+  // v1.2 keep-alive tabs (EditorPane hidden=display:none) leave inactive-tab
+  // .cm-content nodes mounted in the DOM. Wait for the VISIBLE (active-tab)
+  // editor rather than the first match, which may be a hidden keep-alive pane.
+  await page.waitForSelector(".cm-content:visible", { timeout: 8_000 });
 }
 
 async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
@@ -472,7 +475,10 @@ test("U10-nested-empty-enter-deindents: Enter on empty indented task de-indents,
   // ArrowUp twice from end → line 3 → line 2.
   // But the trailing \n creates a line 3. So ArrowUp once from the trailing line
   // lands on line 2 (`  - [ ] `). Then End to go to end of that line.
-  await page.locator(".cm-content").click();
+  // Scope to the visible editor: opening two notes above leaves the first tab's
+  // keep-alive .cm-content mounted-but-hidden (v1.2 tabs), so an unscoped
+  // .cm-content locator resolves to 2 elements and trips strict mode.
+  await page.locator(".cm-content:visible").click();
   await page.keyboard.press("Control+End");
   await page.keyboard.press("ArrowUp");
   await page.keyboard.press("End");

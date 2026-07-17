@@ -889,15 +889,35 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
           throw new Error(`unparseable color: ${s}`);
         };
         const [aiR, aiG, aiB] = parseRgb(aiColor);
-        const [plainR, , plainB] = parseRgb(plainColor);
+        const [plainR, plainG, plainB] = parseRgb(plainColor);
+
+        // v1.2 redesign unified --color-accent to violet-400 (#a78bfa), the same
+        // hue as --color-ai-grant. Pre-redesign the accent was a non-violet hue,
+        // so an AI row's violet read as "more red" than a plain selected row and
+        // the old check compared red channels (aiR > plainR). Now BOTH selected
+        // backgrounds share the violet hue (identical R,G,B); the AI grant keeps
+        // its identity by being a *stronger* violet — a 24% mix vs the plain
+        // row's 4% accent mix. So the surviving distinction is tint strength
+        // (opacity), not hue. Assert the AI row reads as the more intense violet.
+        const parseAlpha = (s: string): number => {
+          const mSlash = s.match(/\/\s*([\d.]+)\s*\)/); // color(srgb r g b / a) or rgb(r g b / a)
+          if (mSlash) return parseFloat(mSlash[1]);
+          const mComma = s.match(
+            /rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*([\d.]+)\s*\)/,
+          );
+          if (mComma) return parseFloat(mComma[1]);
+          return 1; // opaque form carries no alpha component
+        };
+        const aiAlpha = parseAlpha(aiColor);
+        const plainAlpha = parseAlpha(plainColor);
 
         expect(
           aiColor !== plainColor,
           `R4-10: AI row color (${aiColor}) is indistinguishable from plain selected (${plainColor}) — violet identity lost on selection`,
         ).toBe(true);
         expect(
-          aiR > plainR,
-          `R4-10: AI selected red (${aiR}) should exceed plain selected red (${plainR}) for the violet shift to read. aiColor=${aiColor} plainColor=${plainColor} aiG=${aiG} plainB=${plainB}`,
+          aiAlpha > plainAlpha,
+          `R4-10: AI selected tint (${aiColor}, α=${aiAlpha}) must read as a stronger violet than the plain selected row (${plainColor}, α=${plainAlpha}) — violet identity must survive selection. aiRGB=${aiR},${aiG},${aiB} plainRGB=${plainR},${plainG},${plainB}`,
         ).toBe(true);
         expect(
           aiB,
@@ -1646,13 +1666,14 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
       await page.waitForTimeout(400);
 
       const notes404: string[] = [];
+      const notesLoadedOk: string[] = []; // note ids the server actually served (200)
       page.on("response", (resp) => {
-        if (
-          resp.status() === 404 &&
-          /\/api\/v1\/notes\/[a-f0-9-]+$/.test(new URL(resp.url()).pathname)
-        ) {
-          notes404.push(resp.url());
-        }
+        const m = new URL(resp.url()).pathname.match(
+          /\/api\/v1\/notes\/([a-f0-9-]+)$/,
+        );
+        if (!m) return;
+        if (resp.status() === 404) notes404.push(resp.url());
+        else if (resp.status() === 200) notesLoadedOk.push(m[1]);
       });
 
       const beforeNoteId = await page.evaluate(
@@ -1675,15 +1696,31 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
       const afterNoteId = await page.evaluate(
         () => window.localStorage.getItem("jasper.tree.activeNoteId"),
       );
-      expect(
-        afterNoteId === null || afterNoteId === "null",
-        `activeNoteId not cleared post-switch — was: ${afterNoteId}`,
-      ).toBe(true);
+      // activeNoteId is persisted as a JSON string ("<uuid>" or "null"/null).
+      const parsedAfter =
+        afterNoteId === null || afterNoteId === "null"
+          ? null
+          : afterNoteId.replace(/^"|"$/g, "");
 
+      // v1.2 redesign (phase 18) replaced the single-open-note model with a
+      // per-vault persisted tab store. jasper.tree.activeNoteId is now a DERIVED
+      // mirror of the active tab, so removing it alone no longer keeps a note
+      // closed — the persisted (valid, same-vault) alpha tab re-hydrates on reload
+      // and re-derives the mirror. Asserting the mirror is "cleared" is therefore
+      // obsolete. The surviving prior-vault-404 guard lives in pruneStaleTreeState
+      // / pruneTabsForMissingNotes, which drop any note id absent from the current
+      // vault's tree before it can be fetched. So the intent — "a vault switch must
+      // never fetch a prior-vault note" — is asserted as: (1) zero 404s for
+      // /notes/<uuid>, and (2) whatever note ends up active post-reload is one the
+      // server actually served (200) — a real current-vault note, never a stale id.
       expect(
         notes404,
         `R4-13: unexpected 404 responses for /notes/<uuid>: ${notes404.join(", ")}`,
       ).toEqual([]);
+      expect(
+        parsedAfter === null || notesLoadedOk.includes(parsedAfter),
+        `R4-13: post-reload active note (${parsedAfter}) was never successfully loaded — a stale/prior-vault id lingered. loaded-ok=[${notesLoadedOk.join(", ")}]`,
+      ).toBe(true);
     } finally {
       await local.cleanup();
     }

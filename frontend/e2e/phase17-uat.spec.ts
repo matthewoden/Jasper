@@ -161,9 +161,19 @@ test.describe("THEME-02: 4-accent system (@phase17)", () => {
       }
       return null;
     });
-    // Must be non-null and contain rgba (color-mix produces rgba with non-zero alpha)
+    // Must be non-null and carry a non-zero, sub-1 alpha (a translucent accent
+    // tint from color-mix). Chromium serializes color-mix output as either the
+    // legacy rgba(r, g, b, a) form OR the modern color(srgb r g b / a) form
+    // depending on the mix; assert on the alpha channel in either syntax rather
+    // than a literal "rgba" substring (the exact stale assertion).
     expect(activeRowBg).not.toBeNull();
-    expect(activeRowBg).toContain("rgba");
+    const alphaMatch =
+      activeRowBg!.match(/\/\s*([0-9.]+)\s*\)$/) ?? // color(srgb r g b / a)
+      activeRowBg!.match(/,\s*([0-9.]+)\s*\)$/); //    rgba(r, g, b, a)
+    expect(alphaMatch).not.toBeNull();
+    const alpha = Number(alphaMatch![1]);
+    expect(alpha).toBeGreaterThan(0);
+    expect(alpha).toBeLessThan(1);
   });
 });
 

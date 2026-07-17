@@ -139,9 +139,22 @@ test.describe("Phase 3 UAT regression suite", () => {
       page.getByRole("alert").filter({ hasText: /Could not load note/i }),
     ).toHaveCount(0);
 
-    const textareaValue =
-      (await page.locator(".cm-content").textContent()) ?? "";
-    expect(textareaValue).toContain("# External");
+    // v1.2 redesign: the live-preview plugin replaces the ATX HeaderMark ("# ")
+    // with a hidden Decoration when the H1 line is off-cursor, so the editor's
+    // rendered text no longer contains the literal "# External". The note still
+    // opened successfully — assert on the body line (unique to external.md),
+    // which live preview renders verbatim, to prove the correct content loaded
+    // (the original regression was a 404 / empty editor). Poll to absorb the
+    // CM6 mount/render race.
+    await expect
+      .poll(
+        async () => (await page.locator(".cm-content").textContent()) ?? "",
+        {
+          timeout: 5_000,
+          message: "external.md content never rendered in the editor",
+        },
+      )
+      .toContain("Hello from outside the server.");
   });
 
   test("Scenario F: F2 enters rename, typing trapped, Enter commits", async ({
