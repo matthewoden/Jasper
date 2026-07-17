@@ -23,9 +23,6 @@ type CreateOpts struct {
 	// Stored in .jasper/config.json under daily_notes.template.
 	DailyTemplate string
 
-	// MCPEnabled persists the per-vault MCP toggle.
-	MCPEnabled bool
-
 	// Accent is the UI accent selection ("purple"|"sky"|"green"|"orange").
 	// Empty keeps the config.Defaults() accent ("purple").
 	Accent string
@@ -77,7 +74,6 @@ func CreateVault(ctx context.Context, canonical string, opts CreateOpts) (*AppSt
 	if opts.ReadingFont != "" {
 		cfg.ReadingFont = opts.ReadingFont
 	}
-	cfg.MCP.Enabled = opts.MCPEnabled
 
 	if err := config.Save(canonical, cfg); err != nil {
 		return nil, fmt.Errorf("CreateVault: write config.json: %w", err)

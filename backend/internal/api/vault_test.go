@@ -300,9 +300,8 @@ func TestPostVaultCreate_AppHomeRegistry_DoesNotBlockSiblingVaults(t *testing.T)
 	}
 
 	resp := mustPost(t, ts, "/api/v1/vault/create", map[string]any{
-		"path":        target,
-		"theme":       "dark",
-		"mcp_enabled": false,
+		"path":  target,
+		"theme": "dark",
 	})
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
@@ -325,9 +324,8 @@ func TestPostVaultCreate_AtHomeContainingAppRegistry_Succeeds(t *testing.T) {
 	defer ts.Close()
 
 	resp := mustPost(t, ts, "/api/v1/vault/create", map[string]any{
-		"path":        fakeHome,
-		"theme":       "dark",
-		"mcp_enabled": false,
+		"path":  fakeHome,
+		"theme": "dark",
 	})
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
@@ -349,9 +347,8 @@ func TestPostVaultCreate_AppHomeAsVault_Returns400(t *testing.T) {
 	defer ts.Close()
 
 	resp := mustPost(t, ts, "/api/v1/vault/create", map[string]any{
-		"path":        appHome,
-		"theme":       "dark",
-		"mcp_enabled": false,
+		"path":  appHome,
+		"theme": "dark",
 	})
 	if resp.StatusCode != http.StatusBadRequest {
 		b, _ := io.ReadAll(resp.Body)
@@ -409,9 +406,8 @@ func TestPostVaultCreate_HappyPath_CreatesDotJasper(t *testing.T) {
 	target := t.TempDir()
 
 	resp := mustPost(t, ts, "/api/v1/vault/create", map[string]any{
-		"path":        target,
-		"theme":       "dark",
-		"mcp_enabled": false,
+		"path":  target,
+		"theme": "dark",
 	})
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)

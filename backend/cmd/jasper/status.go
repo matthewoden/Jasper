@@ -147,11 +147,8 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	mcpLine := "MCP enabled:    no"
-	if cfg.MCP.Enabled {
-		_, summary := summarizeGrants(dataDir)
-		mcpLine = fmt.Sprintf("MCP enabled:    yes on 127.0.0.1:%d — %s", cfg.MCP.Port, summary)
-	}
+	_, grantSummary := summarizeGrants(dataDir)
+	mcpLine := fmt.Sprintf("MCP:            listening on 127.0.0.1:%d — %s", cfg.MCP.Port, grantSummary)
 	boundAddr := serverBoundAddr(cfg)
 	warnSuffix := ""
 	bindHost := cfg.Server.Bind

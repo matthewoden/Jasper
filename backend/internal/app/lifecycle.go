@@ -333,8 +333,8 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 
 	mcpCfg, mcpCfgErr := config.Load(a.cfg.DataDir, a.cfg.Logger)
 	if mcpCfgErr != nil {
-		a.cfg.Logger.Warn("MCP: config load failed (continuing with MCP disabled)", "err", mcpCfgErr)
-	} else if mcpCfg.MCP.Enabled {
+		a.cfg.Logger.Warn("MCP: config load failed (continuing without MCP)", "err", mcpCfgErr)
+	} else {
 		mcpSrv, mcpShutdownFn, acl, mcpErr := a.startMCP(ctx, mcpCfg.MCP, notesSvc, hub, pair)
 		if mcpErr != nil {
 			a.cfg.Logger.Error("MCP listener failed to bind; continuing without MCP", "err", mcpErr)
@@ -508,8 +508,8 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	a.mcpShutdown = nil
 	mcpCfg, mcpCfgErr := config.Load(a.cfg.DataDir, a.cfg.Logger)
 	if mcpCfgErr != nil {
-		a.cfg.Logger.Warn("switch: MCP config load failed (continuing with MCP disabled)", "err", mcpCfgErr)
-	} else if mcpCfg.MCP.Enabled {
+		a.cfg.Logger.Warn("switch: MCP config load failed (continuing without MCP)", "err", mcpCfgErr)
+	} else {
 		mcpSrv, mcpShutdownFn, acl, mcpErr := a.startMCP(ctx, mcpCfg.MCP, notesSvc, hub, pair)
 		if mcpErr != nil {
 			a.cfg.Logger.Error("switch: MCP listener failed to bind; continuing without MCP", "err", mcpErr)

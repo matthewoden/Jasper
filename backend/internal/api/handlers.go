@@ -105,9 +105,9 @@ func (s *Server) SetMigrationsFS(f fs.FS) {
 }
 
 // SetMcpACL wires the folder-grant ACL into the Server so the
-// /api/v1/mcp/grants handlers can read/write mcp_write_grants. Called by
-// the composition root only when cfg.MCP.Enabled is true; nil field
-// causes handlers to return "mcp_disabled" errors.
+// /api/v1/mcp/grants handlers can read/write mcp_write_grants. Called
+// unconditionally by the composition root at boot; nil field causes
+// handlers to return "mcp_disabled" errors.
 func (s *Server) SetMcpACL(acl *mcp.ACL) {
 	s.mcpACL = acl
 }

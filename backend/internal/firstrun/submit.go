@@ -35,11 +35,6 @@ type SetupRequest struct {
 	// with a 400-shaped error.
 	Theme string
 
-	// McpEnabled mirrors the wizard's MCP checkbox. Persisted into
-	// cfg.MCP.Enabled so the MCP listener sees the user's choice at
-	// the next boot. False keeps the MCP listener disabled (the default).
-	McpEnabled bool
-
 	// McpGrants is the optional seed list of folder grants the wizard
 	// surfaced in the MCP step. Queued to <canonical>/.jasper/seed_grants.json
 	// at submit time; firstrun.ApplySeedGrants drains the queue on the
@@ -122,7 +117,6 @@ func RunSetup(ctx context.Context, req SetupRequest) error {
 	if _, err := vault.CreateVault(ctx, canonical, vault.CreateOpts{
 		Theme:         req.Theme,
 		DailyTemplate: req.DailyTemplate,
-		MCPEnabled:    req.McpEnabled,
 		Accent:        req.Accent,
 		ReadingFont:   req.ReadingFont,
 	}); err != nil {

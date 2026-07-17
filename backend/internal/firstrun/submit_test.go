@@ -71,7 +71,6 @@ func TestRunSetup_HappyPath(t *testing.T) {
 	req := SetupRequest{
 		DataDir:              target,
 		Theme:                "light",
-		McpEnabled:           false,
 		DailyTemplate:        "# {{date}}\n\n- ",
 		CreateTodayDailyNote: true,
 		Accent:               "sky",
@@ -119,9 +118,6 @@ func TestRunSetup_HappyPath(t *testing.T) {
 	if cfg.ReadingFont != "serif" {
 		t.Fatalf("ReadingFont: got %q want %q", cfg.ReadingFont, "serif")
 	}
-	if cfg.MCP.Enabled {
-		t.Fatalf("MCP.Enabled: got true want false")
-	}
 	if cfg.Server.Port != 6683 {
 		t.Fatalf("Server.Port: got %d want 6683 (Defaults must win when wizard does not override)", cfg.Server.Port)
 	}
@@ -166,49 +162,30 @@ func TestRunSetup_HappyPath(t *testing.T) {
 	}
 }
 
-// TestRunSetup_McpEnabledRoundTrips verifies that the wizard's
-// mcp_enabled choice persists to cfg.MCP.Enabled on disk so the MCP
-// listener sees the user's choice at next boot.
-func TestRunSetup_McpEnabledRoundTrips(t *testing.T) {
-	cases := []struct {
-		name string
-		req  SetupRequest
-		want bool
-	}{
-		{
-			name: "McpEnabled=true persists",
-			req: SetupRequest{
-				Theme:      "dark",
-				McpEnabled: true,
-			},
-			want: true,
-		},
-		{
-			name: "McpEnabled=false persists",
-			req: SetupRequest{
-				Theme:      "dark",
-				McpEnabled: false,
-			},
-			want: false,
-		},
+// TestRunSetup_McpAlwaysConfigured verifies that RunSetup no longer
+// accepts or persists an mcp_enabled toggle (Phase 24 D-06): the MCP
+// listener config (port/bind) is always written regardless of any
+// wizard input, since the listener always starts on boot.
+func TestRunSetup_McpAlwaysConfigured(t *testing.T) {
+	t.Setenv("JASPER_APP_HOME", t.TempDir())
+	base := t.TempDir()
+	target := filepath.Join(base, "Jasper")
+	req := SetupRequest{
+		DataDir: target,
+		Theme:   "dark",
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("JASPER_APP_HOME", t.TempDir())
-			base := t.TempDir()
-			target := filepath.Join(base, "Jasper")
-			tc.req.DataDir = target
-			if err := RunSetup(t.Context(), tc.req); err != nil {
-				t.Fatalf("RunSetup: %v", err)
-			}
-			cfg, err := config.Load(target, slog.Default())
-			if err != nil {
-				t.Fatalf("config.Load: %v", err)
-			}
-			if cfg.MCP.Enabled != tc.want {
-				t.Fatalf("cfg.MCP.Enabled: got %v want %v", cfg.MCP.Enabled, tc.want)
-			}
-		})
+	if err := RunSetup(t.Context(), req); err != nil {
+		t.Fatalf("RunSetup: %v", err)
+	}
+	cfg, err := config.Load(target, slog.Default())
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if cfg.MCP.Port != 6684 {
+		t.Fatalf("cfg.MCP.Port: got %d want 6684 (always configured; no enable toggle)", cfg.MCP.Port)
+	}
+	if cfg.MCP.Bind != "127.0.0.1" {
+		t.Fatalf("cfg.MCP.Bind: got %q want 127.0.0.1", cfg.MCP.Bind)
 	}
 }
 

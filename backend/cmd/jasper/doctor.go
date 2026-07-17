@@ -145,9 +145,6 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 }
 
 func mcpPortCheck(cfg config.Config) DoctorCheck {
-	if !cfg.MCP.Enabled {
-		return DoctorCheck{Name: "mcp.port", Status: "skip", Hint: "MCP disabled in config"}
-	}
 	return checkPortAvailable("mcp.port", cfg.MCP.Port)
 }
 

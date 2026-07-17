@@ -255,7 +255,6 @@ func TestPostSetup_HappyPath(t *testing.T) {
 	reqBody := map[string]any{
 		"data_dir":                target,
 		"theme":                   "dark",
-		"mcp_enabled":             false,
 		"mcp_grants":              []any{},
 		"daily_template":          "# {{date}}\n\n",
 		"create_today_daily_note": false,
@@ -293,9 +292,10 @@ func TestPostSetup_HappyPath(t *testing.T) {
 	}
 }
 
-// SH7: mcp_enabled:true must persist to cfg.MCP.Enabled on disk so the
-// MCP listener boots with the correct flag.
-func TestPostSetup_McpEnabledTrue_PersistsToConfigJSON(t *testing.T) {
+// SH7: the wizard payload no longer carries mcp_enabled (Phase 24 D-06);
+// the MCP listener config (port/bind) must still persist to disk so the
+// listener has something to bind on the next (always-on) boot.
+func TestPostSetup_McpConfigAlwaysPersisted(t *testing.T) {
 	t.Parallel()
 	ts, _ := setupSetupTestServer(t)
 	defer ts.Close()
@@ -305,7 +305,6 @@ func TestPostSetup_McpEnabledTrue_PersistsToConfigJSON(t *testing.T) {
 	reqBody := map[string]any{
 		"data_dir":                target,
 		"theme":                   "dark",
-		"mcp_enabled":             true,
 		"mcp_grants":              []any{},
 		"daily_template":          "# {{date}}\n\n",
 		"create_today_daily_note": false,
@@ -325,8 +324,11 @@ func TestPostSetup_McpEnabledTrue_PersistsToConfigJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	if !cfg.MCP.Enabled {
-		t.Fatalf("cfg.MCP.Enabled: got false want true (revision 2 W1 fix regression)")
+	if cfg.MCP.Port != 6684 {
+		t.Fatalf("cfg.MCP.Port: got %d want 6684", cfg.MCP.Port)
+	}
+	if cfg.MCP.Bind != "127.0.0.1" {
+		t.Fatalf("cfg.MCP.Bind: got %q want 127.0.0.1", cfg.MCP.Bind)
 	}
 }
 
@@ -368,7 +370,6 @@ func TestPostSetup_MissingMigrationsFS_500(t *testing.T) {
 	body, _ := json.Marshal(map[string]any{
 		"data_dir":                filepath.Join(t.TempDir(), "Jasper"),
 		"theme":                   "dark",
-		"mcp_enabled":             false,
 		"mcp_grants":              []any{},
 		"daily_template":          "",
 		"create_today_daily_note": false,

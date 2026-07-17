@@ -83,7 +83,7 @@ func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 		AppName: "Jasper",
 		Theme:   "dark",
 		Server:  config.ServerConfig{Port: 6683, DataDir: dir},
-		MCP:     config.MCPConfig{Enabled: false, Port: 6684, Bind: "127.0.0.1"},
+		MCP:     config.MCPConfig{Port: 6684, Bind: "127.0.0.1"},
 	})
 	withStatusFactory(t, &fakeStatusProvider{state: service.StatusRunning})
 
@@ -105,7 +105,7 @@ func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 		"Bound on:       127.0.0.1:6683",
 		"Data directory: " + canon,
 		vault.LogsPath(canon),
-		"MCP enabled:    no",
+		"MCP:            listening on 127.0.0.1:6684",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status output missing %q:\n%s", want, out)
@@ -113,9 +113,10 @@ func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 	}
 }
 
-// TestRunStatus_McpEnabledWithGrants pins the MCP summary line including
-// per-grant breakdown.
-func TestRunStatus_McpEnabledWithGrants(t *testing.T) {
+// TestRunStatus_McpListeningWithGrants pins the MCP summary line including
+// per-grant breakdown. The listener always starts (Phase 24 D-06); there
+// is no enable/disable toggle to pin here.
+func TestRunStatus_McpListeningWithGrants(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JASPER_APP_HOME", filepath.Join(dir, "appHome"))
 	orig := vaultFlag
@@ -125,7 +126,7 @@ func TestRunStatus_McpEnabledWithGrants(t *testing.T) {
 		AppName: "Jasper",
 		Theme:   "dark",
 		Server:  config.ServerConfig{Port: 6683, DataDir: dir},
-		MCP:     config.MCPConfig{Enabled: true, Port: 6684, Bind: "127.0.0.1"},
+		MCP:     config.MCPConfig{Port: 6684, Bind: "127.0.0.1"},
 	})
 	withStatusFactory(t, &fakeStatusProvider{state: service.StatusRunning})
 
@@ -163,7 +164,7 @@ func TestRunStatus_McpEnabledWithGrants(t *testing.T) {
 	}
 	out := buf.String()
 	for _, want := range []string{
-		"MCP enabled:    yes on 127.0.0.1:6684",
+		"MCP:            listening on 127.0.0.1:6684",
 		"2 grants",
 		"Tier 1 in projects/",
 		"Tier 2 in scratch/",

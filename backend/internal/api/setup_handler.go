@@ -83,7 +83,6 @@ func (s *Server) PostSetup(
 	sr := firstrun.SetupRequest{
 		DataDir:              req.Body.DataDir,
 		Theme:                string(req.Body.Theme),
-		McpEnabled:           req.Body.McpEnabled,
 		DailyTemplate:        req.Body.DailyTemplate,
 		CreateTodayDailyNote: req.Body.CreateTodayDailyNote,
 	}
@@ -96,11 +95,13 @@ func (s *Server) PostSetup(
 	if req.Body.ReadingFont != nil {
 		sr.ReadingFont = string(*req.Body.ReadingFont)
 	}
-	for _, g := range req.Body.McpGrants {
-		sr.McpGrants = append(sr.McpGrants, firstrun.SetupGrantSeed{
-			Folder: g.Folder,
-			Level:  int(g.Level),
-		})
+	if req.Body.McpGrants != nil {
+		for _, g := range *req.Body.McpGrants {
+			sr.McpGrants = append(sr.McpGrants, firstrun.SetupGrantSeed{
+				Folder: g.Folder,
+				Level:  int(g.Level),
+			})
+		}
 	}
 	if err := firstrun.RunSetup(ctx, sr); err != nil {
 		s.log.Error(

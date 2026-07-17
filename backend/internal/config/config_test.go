@@ -75,7 +75,7 @@ func TestLoad_RoundTrip(t *testing.T) {
 		Accent:      "sky",
 		ReadingFont: "serif",
 		Server:      ServerConfig{Port: 6683, DataDir: "/tmp/jasper-test", Bind: "127.0.0.1"},
-		MCP:         MCPConfig{Enabled: true, Port: 6684, Bind: "127.0.0.1"},
+		MCP:         MCPConfig{Port: 6684, Bind: "127.0.0.1"},
 	}
 	if err := Save(dir, in); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -139,9 +139,6 @@ func TestDefaults_ServerAndMCP(t *testing.T) {
 	if d.MCP.Port != 6684 {
 		t.Errorf("MCP.Port: got %d, want 6684", d.MCP.Port)
 	}
-	if !d.MCP.Enabled {
-		t.Errorf("MCP.Enabled: got false, want true (default-on so grant UI works out of the box)")
-	}
 	if d.MCP.Bind != "127.0.0.1" {
 		t.Errorf("MCP.Bind: got %q, want 127.0.0.1", d.MCP.Bind)
 	}
@@ -180,7 +177,8 @@ func TestDefaultDataDir_NonEmpty(t *testing.T) {
 
 // TestDefaults_JSONRoundTrip — the marshalled defaults must round-trip
 // bit-for-bit and use the lowercase-first JSON keys required by
-// api/openapi.yaml (server, port, dataDir, mcp, enabled, bind).
+// api/openapi.yaml (server, port, dataDir, mcp, bind). No "enabled" key
+// (Phase 24 D-06 removed the MCP listener toggle).
 func TestDefaults_JSONRoundTrip(t *testing.T) {
 	t.Parallel()
 	d := Defaults()
@@ -191,7 +189,7 @@ func TestDefaults_JSONRoundTrip(t *testing.T) {
 	for _, key := range []string{
 		`"appName"`, `"theme"`, `"dailyNotes"`, `"editor"`,
 		`"server"`, `"port"`, `"dataDir"`,
-		`"mcp"`, `"enabled"`, `"bind"`,
+		`"mcp"`, `"bind"`,
 		`"autosaveMs"`,
 	} {
 		if !strings.Contains(string(raw), key) {
@@ -256,7 +254,7 @@ func TestLoad_ThemeLightCoercedToDark(t *testing.T) {
 		"dailyNotes":{"folder":"daily","template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
-		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+		"mcp":{"port":6684,"bind":"127.0.0.1"}
 	}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -283,7 +281,7 @@ func TestLoad_MissingAccentDefaultsToPurple(t *testing.T) {
 		"dailyNotes":{"folder":"daily","template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
-		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+		"mcp":{"port":6684,"bind":"127.0.0.1"}
 	}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -310,7 +308,7 @@ func TestLoad_MissingReadingFontDefaultsToSans(t *testing.T) {
 		"dailyNotes":{"folder":"daily","template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
-		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+		"mcp":{"port":6684,"bind":"127.0.0.1"}
 	}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -337,7 +335,7 @@ func TestLoad_BogusAccentNormalizedToPurple(t *testing.T) {
 		"dailyNotes":{"folder":"daily","template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
-		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+		"mcp":{"port":6684,"bind":"127.0.0.1"}
 	}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -364,7 +362,7 @@ func TestLoad_BogusReadingFontNormalizedToSans(t *testing.T) {
 		"dailyNotes":{"folder":"daily","template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
-		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+		"mcp":{"port":6684,"bind":"127.0.0.1"}
 	}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -391,7 +389,7 @@ func TestLoad_ValidAccentAndReadingFontPreserved(t *testing.T) {
 		"dailyNotes":{"folder":"daily","template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
-		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+		"mcp":{"port":6684,"bind":"127.0.0.1"}
 	}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)

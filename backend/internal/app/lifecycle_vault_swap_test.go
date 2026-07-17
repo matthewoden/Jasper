@@ -31,14 +31,17 @@ func setupSwapVault(t *testing.T) string {
 	return canonical
 }
 
-func writeVaultMCPConfig(t *testing.T, vaultDir string, enabled bool, port int) {
+// writeVaultMCPConfig writes a vault config with the given MCP port. Since
+// Phase 24 (D-06) the MCP listener always starts on boot — there is no
+// enable/disable toggle — so callers pass port=0 for "dynamic/don't-care"
+// or a specific port when a test needs to observe the real listener.
+func writeVaultMCPConfig(t *testing.T, vaultDir string, port int) {
 	t.Helper()
 	jasperDir := filepath.Join(vaultDir, vault.SubdirName)
 	if err := os.MkdirAll(jasperDir, 0o755); err != nil {
 		t.Fatalf("mkdir .jasper: %v", err)
 	}
 	cfg := config.DefaultConfig()
-	cfg.MCP.Enabled = enabled
 	cfg.MCP.Port = port
 	cfg.MCP.Bind = "127.0.0.1"
 	if err := config.Save(vaultDir, cfg); err != nil {
@@ -66,7 +69,9 @@ func newSwapApp(t *testing.T, dataDir string) *App {
 
 // TestSwap_McpReleased — V-TEST-1.
 // Vault A has a simulated MCP listener held on a free port. After SwitchVault
-// to vault B (MCP disabled), that port is released.
+// to vault B (whose config uses a dynamic port, port=0), the old fixed port
+// is released — the listener always restarts on the new vault's own port,
+// never keeps the previous vault's port bound (Phase 24: MCP always starts).
 func TestSwap_McpReleased(t *testing.T) {
 	if testing.Short() {
 		t.Skip("V-TEST-1: integration test; requires real net.Listen")
@@ -78,7 +83,7 @@ func TestSwap_McpReleased(t *testing.T) {
 	vaultA := setupSwapVault(t)
 	vaultB := setupSwapVault(t)
 
-	writeVaultMCPConfig(t, vaultB, false, 0)
+	writeVaultMCPConfig(t, vaultB, 0)
 
 	appJSONPath := filepath.Join(appHome, "app.json")
 	appState := &vault.AppState{
@@ -133,8 +138,9 @@ func TestSwap_McpReleased(t *testing.T) {
 }
 
 // TestSwap_McpBoundOnSwitch — V-TEST-2.
-// Vault A has no MCP. After SwitchVault to vault B (MCP enabled),
-// the MCP listener is bound on a dynamic free port and responds to HTTP.
+// Vault A never had its own MCP started (test harness bypasses lifecycle.Run).
+// After SwitchVault to vault B, the always-on MCP listener binds on vault B's
+// configured port and responds to HTTP (Phase 24: no enable gate).
 func TestSwap_McpBoundOnSwitch(t *testing.T) {
 	if testing.Short() {
 		t.Skip("V-TEST-2: integration test; requires real net.Listen")
@@ -153,7 +159,7 @@ func TestSwap_McpBoundOnSwitch(t *testing.T) {
 
 	vaultA := setupSwapVault(t)
 	vaultB := setupSwapVault(t)
-	writeVaultMCPConfig(t, vaultA, false, 0)
+	writeVaultMCPConfig(t, vaultA, 0)
 
 	appJSONPath := filepath.Join(appHome, "app.json")
 	if err := vault.SaveAppJSON(appJSONPath, &vault.AppState{
@@ -170,13 +176,12 @@ func TestSwap_McpBoundOnSwitch(t *testing.T) {
 	if _, err := vault.CreateVault(ctx, vaultB, vault.CreateOpts{
 		DisplayName: "VaultB",
 		Theme:       "dark",
-		MCPEnabled:  true,
 	}); err != nil {
 		t.Fatalf("pre-seed vaultB: %v", err)
 	}
 
 	// Write vault B config AFTER CreateVault so our dynamic port is not overwritten.
-	writeVaultMCPConfig(t, vaultB, true, mcpPort)
+	writeVaultMCPConfig(t, vaultB, mcpPort)
 
 	if err := vault.SaveAppJSON(appJSONPath, &vault.AppState{
 		CurrentVault: vaultA,
@@ -232,8 +237,8 @@ func TestSwap_GrantsAreVaultScoped(t *testing.T) {
 
 	vaultA := setupSwapVault(t)
 	vaultB := setupSwapVault(t)
-	writeVaultMCPConfig(t, vaultA, false, 0)
-	writeVaultMCPConfig(t, vaultB, false, 0)
+	writeVaultMCPConfig(t, vaultA, 0)
+	writeVaultMCPConfig(t, vaultB, 0)
 
 	if err := EnsureDataDir(vaultA); err != nil {
 		t.Fatalf("EnsureDataDir A: %v", err)
@@ -294,8 +299,8 @@ func TestSwap_HandlerIsNilDuringSwap(t *testing.T) {
 
 	vaultA := setupSwapVault(t)
 	vaultB := setupSwapVault(t)
-	writeVaultMCPConfig(t, vaultA, false, 0)
-	writeVaultMCPConfig(t, vaultB, false, 0)
+	writeVaultMCPConfig(t, vaultA, 0)
+	writeVaultMCPConfig(t, vaultB, 0)
 
 	appJSONPath := filepath.Join(appHome, "app.json")
 	if err := vault.SaveAppJSON(appJSONPath, &vault.AppState{
@@ -372,8 +377,8 @@ func TestSwap_DrainsMcpWriteInFlight(t *testing.T) {
 
 	vaultA := setupSwapVault(t)
 	vaultB := setupSwapVault(t)
-	writeVaultMCPConfig(t, vaultA, false, 0)
-	writeVaultMCPConfig(t, vaultB, false, 0)
+	writeVaultMCPConfig(t, vaultA, 0)
+	writeVaultMCPConfig(t, vaultB, 0)
 
 	appJSONPath := filepath.Join(appHome, "app.json")
 	if err := vault.SaveAppJSON(appJSONPath, &vault.AppState{

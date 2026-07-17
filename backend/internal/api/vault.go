@@ -339,16 +339,11 @@ func (s *Server) PostVaultCreate(
 	if req.Body.DailyTemplate != nil {
 		dailyTemplate = *req.Body.DailyTemplate
 	}
-	mcpEnabled := false
-	if req.Body.McpEnabled != nil {
-		mcpEnabled = *req.Body.McpEnabled
-	}
 
 	appState, createErr := vault.CreateVault(ctx, canonical, vault.CreateOpts{
 		DisplayName:   displayName,
 		Theme:         theme,
 		DailyTemplate: dailyTemplate,
-		MCPEnabled:    mcpEnabled,
 	})
 	if createErr != nil {
 		return nil, fmt.Errorf("PostVaultCreate: %w", createErr)

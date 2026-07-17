@@ -1096,7 +1096,7 @@ func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 		}
 	}
 
-	createReq := fmt.Sprintf(`{"path":%q,"theme":"dark","mcp_enabled":false,"daily_template":"# {{date}}\n\n"}`, vaultDir)
+	createReq := fmt.Sprintf(`{"path":%q,"theme":"dark","daily_template":"# {{date}}\n\n"}`, vaultDir)
 	createResp, err := http.Post("http://"+addr+"/api/v1/vault/create", "application/json", strings.NewReader(createReq))
 	if err != nil {
 		t.Fatalf("POST /vault/create: %v", err)

@@ -316,12 +316,13 @@ func TestCheckMigrationState_MissingDB(t *testing.T) {
 	}
 }
 
-// TestMcpPortCheck_DisabledSkips short-circuits when MCP is off.
-func TestMcpPortCheck_DisabledSkips(t *testing.T) {
-	cfg := config.Config{MCP: config.MCPConfig{Enabled: false, Port: 6684}}
+// TestMcpPortCheck_NeverSkips pins Phase 24 D-06: the MCP listener always
+// starts, so mcpPortCheck has no skip branch and always checks the port.
+func TestMcpPortCheck_NeverSkips(t *testing.T) {
+	cfg := config.Config{MCP: config.MCPConfig{Port: 6684}}
 	r := mcpPortCheck(cfg)
-	if r.Status != "skip" {
-		t.Errorf("mcp disabled: want skip, got %+v", r)
+	if r.Status == "skip" {
+		t.Errorf("mcpPortCheck must never skip (no enable/disable toggle), got %+v", r)
 	}
 }
 

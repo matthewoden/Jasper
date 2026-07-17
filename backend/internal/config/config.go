@@ -60,15 +60,14 @@ type ServerConfig struct {
 	Bind    string `json:"bind,omitempty"`
 }
 
-// MCPConfig controls the optional second HTTP listener that serves the MCP
-// StreamableHTTP endpoint.
+// MCPConfig controls the second HTTP listener that serves the MCP
+// StreamableHTTP endpoint. The listener always starts on boot (Phase 24
+// D-06); AI write access is governed solely by per-folder write grants.
 //
-//   - Enabled defaults to true (so the grant UI works out of the box).
 //   - Port defaults to 6684.
 //   - Bind defaults to "127.0.0.1" and is enforced loopback-only at
 //     listener startup via netbind.RequireLoopbackBind.
 type MCPConfig struct {
-	Enabled bool   `json:"enabled"`
-	Port    int    `json:"port"`
-	Bind    string `json:"bind"`
+	Port int    `json:"port"`
+	Bind string `json:"bind"`
 }

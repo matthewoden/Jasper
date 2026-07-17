@@ -90,13 +90,11 @@ func toWireConfig(c config.Config) Config {
 		Port:    c.Server.Port,
 	}
 	mcp := struct {
-		Bind    string `json:"bind"`
-		Enabled bool   `json:"enabled"`
-		Port    int    `json:"port"`
+		Bind string `json:"bind"`
+		Port int    `json:"port"`
 	}{
-		Bind:    c.MCP.Bind,
-		Enabled: c.MCP.Enabled,
-		Port:    c.MCP.Port,
+		Bind: c.MCP.Bind,
+		Port: c.MCP.Port,
 	}
 	var displayName *string
 	if c.DisplayName != "" {
@@ -154,7 +152,7 @@ func fromWireConfig(w Config) config.Config {
 			VimMode:    w.Editor.VimMode,
 		},
 		Server: config.ServerConfig{Port: 6683, DataDir: "", Bind: "127.0.0.1"},
-		MCP:    config.MCPConfig{Enabled: false, Port: 6684, Bind: "127.0.0.1"},
+		MCP:    config.MCPConfig{Port: 6684, Bind: "127.0.0.1"},
 	}
 	if w.Accent != nil {
 		out.Accent = string(*w.Accent)
@@ -174,7 +172,6 @@ func fromWireConfig(w Config) config.Config {
 		}
 	}
 	if w.Mcp != nil {
-		out.MCP.Enabled = w.Mcp.Enabled
 		out.MCP.Port = w.Mcp.Port
 		out.MCP.Bind = w.Mcp.Bind
 		if out.MCP.Port == 0 {

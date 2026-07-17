@@ -34,9 +34,9 @@ func DefaultDataDir() string {
 // Server.Port is 6683 (T9 spelling of "NOTE"). Server.DataDir is
 // DefaultDataDir() so the binary boots into ~/.jasper without a wizard run.
 //
-// MCP defaults: Enabled=true (default-on so grant UI works out of the box),
-// Port=6684, Bind="127.0.0.1". Listener still only binds loopback; user
-// can disable via config.json or the settings UI.
+// MCP defaults: Port=6684, Bind="127.0.0.1". The listener always starts
+// on boot (Phase 24 D-06); write access is governed solely by per-folder
+// grants, not a listener toggle.
 func Defaults() Config {
 	return Config{
 		AppName: "Jasper",
@@ -59,9 +59,8 @@ func Defaults() Config {
 			Bind:    "127.0.0.1",
 		},
 		MCP: MCPConfig{
-			Enabled: true,
-			Port:    6684,
-			Bind:    "127.0.0.1",
+			Port: 6684,
+			Bind: "127.0.0.1",
 		},
 	}
 }
