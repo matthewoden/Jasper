@@ -1050,6 +1050,16 @@ export interface components {
              * @example 1247
              */
             notes_indexed?: number;
+            /** @description MCP listener status (port 6684); reported so the SPA can surface a banner when AI tools are unavailable. */
+            mcp?: {
+                /** @description Whether the MCP listener is currently bound and serving. */
+                up: boolean;
+                /**
+                 * @description Why the listener is down, e.g. 'port 6684 in use' (only set when up=false)
+                 * @example port 6684 in use
+                 */
+                reason?: string;
+            };
         };
         ReindexRequest: {
             /**

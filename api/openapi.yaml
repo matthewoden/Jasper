@@ -1702,6 +1702,18 @@ components:
           type: integer
           description: Count of rows currently in the `notes` table (informational)
           example: 1247
+        mcp:
+          type: object
+          description: MCP listener status (port 6684); reported so the SPA can surface a banner when AI tools are unavailable.
+          required: [up]
+          properties:
+            up:
+              type: boolean
+              description: Whether the MCP listener is currently bound and serving.
+            reason:
+              type: string
+              description: "Why the listener is down, e.g. 'port 6684 in use' (only set when up=false)"
+              example: "port 6684 in use"
     ReindexRequest:
       type: object
       properties:
