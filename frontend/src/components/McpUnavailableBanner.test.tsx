@@ -62,13 +62,13 @@ describe("<McpUnavailableBanner />", () => {
     ).toBeInTheDocument();
   });
 
-  it("MB4: falls back to generic port-6684 copy when reason is absent", () => {
+  it("MB4: falls back to cause-neutral copy when reason is absent", () => {
     render(
       <McpUnavailableBanner status={makeStatus({ mcp: { up: false } })} />,
     );
     expect(
       screen.getByText(
-        "Port 6684 in use — AI read/write tools are disabled this session.",
+        "AI read/write tools are unavailable this session.",
       ),
     ).toBeInTheDocument();
   });

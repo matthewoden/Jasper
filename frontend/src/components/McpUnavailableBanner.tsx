@@ -25,7 +25,7 @@ export function McpUnavailableBanner({ status }: Props) {
   const reason = status.mcp.reason;
   const body = reason
     ? `${reason} — AI read/write tools are disabled this session.`
-    : "Port 6684 in use — AI read/write tools are disabled this session.";
+    : "AI read/write tools are unavailable this session.";
 
   return (
     <div
