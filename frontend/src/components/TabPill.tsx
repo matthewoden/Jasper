@@ -79,6 +79,13 @@ const closeButtonStyle: CSSProperties = {
   color: "var(--color-muted)",
   borderRadius: 2,
   flexShrink: 0,
+  // Bottom-pin so the X center sits 16px above the strip bottom (6 + 20/2),
+  // co-centered with the new-tab + and overflow chevron (both 24px buttons
+  // bottom-pinned with 4px margin → 16px). Independent of the active pill's
+  // 2px accent top-border, which would otherwise shift a center-aligned X.
+  // (UAT-15.1-ALIGN 3-way co-centering contract.)
+  alignSelf: "flex-end",
+  marginBottom: 6,
 };
 
 export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
