@@ -150,7 +150,6 @@ export const vaultApi = {
     display_name?: string;
     theme: "dark" | "light";
     daily_template: string;
-    mcp_enabled: boolean;
   }): Promise<RecentVaultEntry> => {
     const validation = validateVaultPath(req.path);
     if (!validation.ok) {

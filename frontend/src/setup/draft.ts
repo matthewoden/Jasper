@@ -17,18 +17,11 @@
 
 export const SETUP_DRAFT_KEY = "jasper.setup.draft";
 
-export interface SetupGrantDraft {
-  folder: string;
-  level: 1 | 2;
-}
-
 export interface SetupDraft {
   dataDir: string;
   // theme dropped — dark-only (D-01); submit hardcodes "dark"
   accent: string;
   readingFont: "sans" | "serif";
-  mcpEnabled: boolean;
-  mcpGrants: SetupGrantDraft[];
   dailyTemplate: string;
   createTodayDailyNote: boolean;
 }
@@ -48,8 +41,6 @@ export const DEFAULT_DRAFT: SetupDraft = {
   dataDir: "",
   accent: "purple",
   readingFont: "sans",
-  mcpEnabled: true,
-  mcpGrants: [],
   dailyTemplate: "# {{date}}\n\n",
   createTodayDailyNote: false,
 };

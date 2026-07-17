@@ -1,6 +1,7 @@
 /**
  * VaultCreatePane tests — 3 sections (vault path / theme / daily template).
- * Path validation gates submit; theme radio live-applies; mcp_enabled always false on create.
+ * Path validation gates submit; theme radio live-applies. MCP grants are
+ * managed post-creation via the folder right-click menu, not at create time.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -82,7 +83,7 @@ describe("<VaultCreatePane />", () => {
     expect(applyThemeMock).toHaveBeenLastCalledWith("dark");
   });
 
-  it("calls vaultApi.create with assembled payload (mcp_enabled always false)", async () => {
+  it("calls vaultApi.create with assembled payload", async () => {
     Object.defineProperty(window, "location", {
       value: { reload: vi.fn() },
       writable: true,
@@ -99,7 +100,6 @@ describe("<VaultCreatePane />", () => {
     const callArg = vi.mocked(vaultApi.create).mock.calls[0][0];
     expect(callArg.path).toBe("/Users/me/vault");
     expect(callArg.theme).toBe("dark");
-    expect(callArg.mcp_enabled).toBe(false);
     expect(callArg.daily_template).toBe("# {{date}}\n\n");
   });
 });

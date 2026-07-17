@@ -14,29 +14,11 @@
  */
 
 import { useEffect, useState } from "react";
-import {
-  loadDraft,
-  saveDraft,
-  clearDraft,
-  type SetupDraft,
-  type SetupGrantDraft,
-} from "./draft";
-import { submitSetup, type McpGrantSeed, type SetupRequest } from "./setupApi";
+import { loadDraft, saveDraft, clearDraft, type SetupDraft } from "./draft";
+import { submitSetup, type SetupRequest } from "./setupApi";
 import { applyAccent, applyReadingFont } from "../lib/useAccent";
-
-
-function dedupGrantsByFolder(grants: SetupGrantDraft[]): SetupGrantDraft[] {
-  const map = new Map<string, SetupGrantDraft>();
-  for (const g of grants) {
-    const key = g.folder.trim().toLowerCase();
-    if (key === "") continue;
-    map.set(key, g);
-  }
-  return Array.from(map.values());
-}
 import { DataDirSection } from "./sections/DataDirSection";
 import { ThemeSection } from "./sections/ThemeSection";
-import { McpSection } from "./sections/McpSection";
 import { DailyNoteSection } from "./sections/DailyNoteSection";
 
 export function SetupApp() {
@@ -70,19 +52,15 @@ export function SetupApp() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const grants: McpGrantSeed[] = dedupGrantsByFolder(draft.mcpGrants).map((g) => ({
-        folder: g.folder.trim(),
-        level: g.level,
-      }));
       // theme is pinned to "dark" (D-01); the server accepts it per D-02
       // back-compat. accent + readingFont are first-class optional fields on
       // SetupRequest — the backend persists them into config.json at vault
-      // creation (firstrun.RunSetup → vault.CreateVault).
+      // creation (firstrun.RunSetup → vault.CreateVault). The wizard no
+      // longer seeds MCP grants (D-03) — grants are managed post-setup via
+      // the folder right-click menu.
       const payload: SetupRequest = {
         data_dir: draft.dataDir,
         theme: "dark",
-        mcp_enabled: draft.mcpEnabled,
-        mcp_grants: grants,
         daily_template: draft.dailyTemplate,
         create_today_daily_note: draft.createTodayDailyNote,
         accent: draft.accent as SetupRequest["accent"],
@@ -141,12 +119,6 @@ export function SetupApp() {
           readingFont={draft.readingFont}
           onAccentChange={(a) => updateDraft({ accent: a })}
           onReadingFontChange={(rf) => updateDraft({ readingFont: rf })}
-        />
-        <McpSection
-          enabled={draft.mcpEnabled}
-          grants={draft.mcpGrants}
-          onEnabledChange={(v) => updateDraft({ mcpEnabled: v })}
-          onGrantsChange={(g) => updateDraft({ mcpGrants: g })}
         />
         <DailyNoteSection
           template={draft.dailyTemplate}

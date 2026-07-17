@@ -150,7 +150,6 @@ describe("vaultApi openapi-fetch wrappers", () => {
         path: "/path/../traversal",
         theme: "dark",
         daily_template: "",
-        mcp_enabled: false,
       }),
     ).rejects.toThrow(/\.\./);
     expect(mockPost).not.toHaveBeenCalled();

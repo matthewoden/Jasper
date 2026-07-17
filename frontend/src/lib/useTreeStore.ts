@@ -175,9 +175,7 @@ export interface TreeStore {
   setSaveState: (s: import("./saveStateMachine").SaveState) => void;
 
   mcpGrants: McpGrant[];
-  mcpEnabled: boolean;
   setMcpGrants: (grants: McpGrant[]) => void;
-  setMcpEnabled: (enabled: boolean) => void;
 
   vaultPickerOpen: boolean;
   setVaultPickerOpen: (v: boolean) => void;
@@ -324,9 +322,7 @@ export const useTreeStore = create<TreeStore>((set) => ({
   setSaveState: (s) => set({ saveState: s }),
 
   mcpGrants: [],
-  mcpEnabled: false,
   setMcpGrants: (grants) => set({ mcpGrants: grants }),
-  setMcpEnabled: (enabled) => set({ mcpEnabled: enabled }),
 
   vaultPickerOpen: false,
   setVaultPickerOpen: (v) => set({ vaultPickerOpen: v }),

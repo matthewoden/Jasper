@@ -52,8 +52,6 @@ describe("loadDraft", () => {
       dataDir: "~/Notes",
       accent: "sky",
       readingFont: "serif",
-      mcpEnabled: true,
-      mcpGrants: [{ folder: "projects", level: 1 }],
       dailyTemplate: "# CUSTOM\n",
       createTodayDailyNote: true,
     };
@@ -70,8 +68,6 @@ describe("loadDraft", () => {
     expect(out.dataDir).toBe("~/X");
     expect(out.accent).toBe("sky");
     expect(out.readingFont).toBe(DEFAULT_DRAFT.readingFont);
-    expect(out.mcpEnabled).toBe(DEFAULT_DRAFT.mcpEnabled);
-    expect(out.mcpGrants).toEqual(DEFAULT_DRAFT.mcpGrants);
     expect(out.dailyTemplate).toBe(DEFAULT_DRAFT.dailyTemplate);
     expect(out.createTodayDailyNote).toBe(DEFAULT_DRAFT.createTodayDailyNote);
   });
@@ -83,16 +79,15 @@ describe("saveDraft", () => {
     const stored = JSON.parse(localStorage.getItem(SETUP_DRAFT_KEY)!);
     expect(stored.dataDir).toBe("~/Notes");
     expect(stored.accent).toBe(DEFAULT_DRAFT.accent);
-    expect(stored.mcpEnabled).toBe(DEFAULT_DRAFT.mcpEnabled);
   });
 
   it("merges patches into the existing draft", () => {
     saveDraft({ dataDir: "~/Notes", accent: "sky" });
-    saveDraft({ mcpEnabled: true });
+    saveDraft({ readingFont: "serif" });
     const out = loadDraft();
     expect(out.dataDir).toBe("~/Notes");
     expect(out.accent).toBe("sky");
-    expect(out.mcpEnabled).toBe(true);
+    expect(out.readingFont).toBe("serif");
   });
 });
 

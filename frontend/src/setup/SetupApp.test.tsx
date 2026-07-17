@@ -2,7 +2,8 @@
  * Tests for SetupApp — the /setup wizard root.
  *
  * Coverage:
- *   - All 4 section headings render.
+ *   - All 3 section headings render (Phase 24 D-03: MCP section removed —
+ *     grants are managed post-setup via the folder right-click menu).
  *   - "Start Jasper" is disabled until DataDirSection reports valid=true.
  *   - Successful submit: calls clearDraft() and window.location.assign("/").
  *   - Failed submit: shows error banner with prefix and suffix copy.
@@ -73,7 +74,7 @@ afterEach(() => {
 });
 
 describe("SetupApp — rendering", () => {
-  it("renders all 4 section eyebrows + the locked page heading + subtitle", () => {
+  it("renders all 3 section eyebrows + the locked page heading + subtitle", () => {
     render(<SetupApp />);
     expect(
       screen.getByRole("heading", { level: 1, name: "Set up Jasper" }),
@@ -83,8 +84,8 @@ describe("SetupApp — rendering", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("DATA DIRECTORY · REQUIRED")).toBeInTheDocument();
     expect(screen.getByText("APPEARANCE")).toBeInTheDocument();
-    expect(screen.getByText("AI ACCESS (MCP)")).toBeInTheDocument();
     expect(screen.getByText("DAILY NOTES")).toBeInTheDocument();
+    expect(screen.queryByText("AI ACCESS (MCP)")).toBeNull();
   });
 
   it("renders Start Jasper button disabled by default", () => {

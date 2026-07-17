@@ -2,8 +2,8 @@
  * VaultCreatePane — "Create new" tab of VaultPicker.
  *
  * Three sections: vault folder path, theme (live-applies on radio change),
- * daily-note template. MCP grants belong on existing folders, not at creation
- * time — wizard posts mcp_enabled: false.
+ * daily-note template. MCP grants belong on existing folders, not at
+ * creation time — managed post-creation via the folder right-click menu.
  *
  * validateVaultPath runs client-side before POST; backend repeats every rule
  * (defense-in-depth).
@@ -64,7 +64,6 @@ export function VaultCreatePane({ onCreated }: VaultCreatePaneProps) {
         path,
         theme,
         daily_template: dailyTemplate,
-        mcp_enabled: false,
       });
       onCreated();
     } catch (e: unknown) {
