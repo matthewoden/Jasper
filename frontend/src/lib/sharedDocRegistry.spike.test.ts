@@ -37,40 +37,43 @@ describe("sharedDocRegistry spike — undo-history promotion via Compartment.rec
     const historyCompartmentA = new Compartment();
     const historyCompartmentB = new Compartment();
 
-    let viewA: EditorView;
-    let viewB: EditorView;
+    // Mutable holder so the two dispatch closures can forward-reference each
+    // other's (not-yet-constructed) EditorView without needing `let` bindings.
+    const refs: { a?: EditorView; b?: EditorView } = {};
 
     // Minimal local syncDispatch (per RESEARCH.md Pattern 1): apply the
     // transaction locally, then re-dispatch ONLY tr.changes (never selection)
     // to the other view, tagged so it does not re-broadcast.
     function dispatchA(tr: Transaction): void {
-      viewA.update([tr]);
+      refs.a!.update([tr]);
       if (tr.changes.empty || tr.annotation(syncAnnotation)) return;
-      viewB.dispatch({ changes: tr.changes, annotations: [syncAnnotation.of(true)] });
+      refs.b!.dispatch({ changes: tr.changes, annotations: [syncAnnotation.of(true)] });
     }
     function dispatchB(tr: Transaction): void {
-      viewB.update([tr]);
+      refs.b!.update([tr]);
       if (tr.changes.empty || tr.annotation(syncAnnotation)) return;
-      viewA.dispatch({ changes: tr.changes, annotations: [syncAnnotation.of(true)] });
+      refs.a!.dispatch({ changes: tr.changes, annotations: [syncAnnotation.of(true)] });
     }
 
     // View A is primary: owns history() in a Compartment.
-    viewA = new EditorView({
+    const viewA = new EditorView({
       state: EditorState.create({
         doc: initialDoc,
         extensions: [historyCompartmentA.of(history())],
       }),
       dispatch: dispatchA,
     });
+    refs.a = viewA;
 
     // View B is secondary: empty Compartment where history() would go.
-    viewB = new EditorView({
+    const viewB = new EditorView({
       state: EditorState.create({
         doc: initialDoc,
         extensions: [historyCompartmentB.of([])],
       }),
       dispatch: dispatchB,
     });
+    refs.b = viewB;
 
     // Edit through the primary (A); mirrors into B via syncDispatch.
     viewA.dispatch({ changes: { from: 5, insert: " world" } });
