@@ -9,12 +9,13 @@
  * Test environment: jsdom (better CM6 compatibility than happy-dom).
  */
 import { forwardRef, useImperativeHandle, useRef, useState, type ReactElement } from "react";
-import { render, act } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { render, act, waitFor } from "@testing-library/react";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
 
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
 import { ToastProvider } from "./Toast";
+import { useTreeStore } from "../lib/useTreeStore";
 
 
 interface ProbeRef {
@@ -271,6 +272,42 @@ describe("<MarkdownEditor />", () => {
       });
 
       expect(onHeadingsChangeB).toHaveBeenCalled();
+    });
+  });
+
+  describe("WR-04 regression (25-REVIEW.md): attachment resolution uses THIS pane's own noteId, not the global activeNoteId", () => {
+    afterEach(() => {
+      useTreeStore.setState({ activeNoteId: null });
+    });
+
+    it("renders an attachment image scoped to the pane's noteId even when a DIFFERENT note is globally active", async () => {
+      // Simulate a split layout: some OTHER pane is the globally-active one...
+      useTreeStore.setState({ activeNoteId: "note-ACTIVE-ELSEWHERE" });
+
+      // ...while THIS pane renders a different, inactive note.
+      const { container } = renderWithToast(
+        <Probe
+          noteId="note-THIS-PANE"
+          initialDoc="![alt](attachments/photo.png)"
+          onChange={vi.fn()}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(
+          container.querySelector('[data-testid="attachment-image-loaded"]'),
+        ).not.toBeNull();
+      });
+      const img = container.querySelector(
+        '[data-testid="attachment-image-loaded"]',
+      ) as HTMLImageElement;
+
+      // Before the fix, the image URL was built from the GLOBAL activeNoteId
+      // (whichever pane happened to be active), not this pane's own note —
+      // an inactive split pane rendered a broken image / wrong note's
+      // attachment until the user clicked to activate it.
+      expect(img.src).toContain("note-THIS-PANE");
+      expect(img.src).not.toContain("note-ACTIVE-ELSEWHERE");
     });
   });
 });

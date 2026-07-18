@@ -193,7 +193,6 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       }
     }, [titleSet, idMap]);
 
-    const activeNoteId = useTreeStore((s) => s.activeNoteId);
     const setActiveNote = useTreeStore((s) => s.setActiveNote);
     const setActiveTagFilter = useTreeStore((s) => s.setActiveTagFilter);
     const setTagBrowserExpanded = useTreeStore((s) => s.setTagBrowserExpanded);
@@ -201,11 +200,17 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
 
     const { tags: allTags } = useTagBrowser();
 
-    const noteIdRef = useRef<string | null>(activeNoteId);
-    noteIdRef.current = activeNoteId;
+    // WR-04 fix (25-REVIEW.md): keyed by THIS pane's own noteId prop, not the
+    // global useTreeStore.activeNoteId. In a split view, a visible-but-not-
+    // active pane shows a DIFFERENT note than the active pane, so resolving
+    // attachments/wikilinks against the global active note produced broken
+    // images and wrong link targets in every inactive pane until the user
+    // clicked to activate it.
+    const noteIdRef = useRef<string | null>(noteId);
+    noteIdRef.current = noteId;
 
-    const wikilinkCbRef = useRef({ activeNoteId, setActiveNote, tree });
-    wikilinkCbRef.current = { activeNoteId, setActiveNote, tree };
+    const wikilinkCbRef = useRef({ noteId, setActiveNote, tree });
+    wikilinkCbRef.current = { noteId, setActiveNote, tree };
 
     useEffect(() => {
       setWikilinkHandlerCallbacks({
@@ -213,8 +218,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           wikilinkCbRef.current.setActiveNote(id);
         },
         getCurrentSourceFolder: () => {
-          const { activeNoteId: noteId, tree: t } = wikilinkCbRef.current;
-          return getNoteFolder(noteId, t?.root ?? []);
+          const { noteId: currentNoteId, tree: t } = wikilinkCbRef.current;
+          return getNoteFolder(currentNoteId, t?.root ?? []);
         },
       });
       // Called once — the callbacks read fresh state from wikilinkCbRef.current.
@@ -236,8 +241,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           wikilinkCbRef.current.setActiveNote(data.id);
         },
         getCurrentSourceFolder: () => {
-          const { activeNoteId: noteId, tree: t } = wikilinkCbRef.current;
-          return getNoteFolder(noteId, t?.root ?? []);
+          const { noteId: currentNoteId, tree: t } = wikilinkCbRef.current;
+          return getNoteFolder(currentNoteId, t?.root ?? []);
         },
       });
       // Called once — callbacks read fresh state from wikilinkCbRef.current.
@@ -258,8 +263,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     }, [setActiveTagFilter, setTagBrowserExpanded]);
 
     const [dropActive, setDropActive] = useState(false);
+    // WR-04: scope drag/paste attachment uploads to THIS pane's own note, not
+    // the global active note — an inactive split pane must upload into its
+    // own note's attachments folder, not whichever note is currently active
+    // in a different pane.
     const { dragHandlers, pasteHandler, isDropTargetActive } = useAttachmentUpload(
-      activeNoteId
+      noteId
     );
     useEffect(() => {
       setDropActive(isDropTargetActive);
