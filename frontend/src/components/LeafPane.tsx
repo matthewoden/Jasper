@@ -34,6 +34,7 @@ import { EditorPane, type EditorPaneHandlers } from "./EditorPane";
 import { TabStrip } from "./TabStrip";
 import { FindReplaceBar, type FindToggleKind, type MatchCount } from "./FindReplaceBar";
 import { usePaneStore } from "../lib/usePaneStore";
+import { usePaneDragStore } from "../lib/usePaneDragStore";
 import type { LeafNode } from "../lib/paneTree";
 
 interface FindBarState {
@@ -57,6 +58,28 @@ const DEFAULT_FIND_BAR_STATE: FindBarState = {
 };
 
 const ZERO_MATCH_COUNT: MatchCount = { current: 0, total: 0 };
+
+/**
+ * Drop-region overlay geometry (UI-SPEC §"Drop-zone overlay", D-10): split
+ * regions cover the HALF of the pane that will become the new split; center
+ * covers the full pane. Shared base style below carries the accent
+ * fill/border/radius/transition, all pointer-events:none so the overlay
+ * never intercepts the drag it is previewing.
+ */
+function overlayRectStyle(region: "left" | "right" | "top" | "bottom" | "center"): React.CSSProperties {
+  switch (region) {
+    case "left":
+      return { top: 0, left: 0, bottom: 0, width: "50%" };
+    case "right":
+      return { top: 0, right: 0, bottom: 0, width: "50%" };
+    case "top":
+      return { top: 0, left: 0, right: 0, height: "50%" };
+    case "bottom":
+      return { bottom: 0, left: 0, right: 0, height: "50%" };
+    case "center":
+      return { inset: 0 };
+  }
+}
 
 export interface LeafPaneProps {
   leaf: LeafNode;
@@ -115,6 +138,14 @@ export function LeafPane({
   }
 
   const leafId = leaf.id;
+
+  // Cross-pane drag drop target (P26 / WS-01/WS-02, D-10): subscribe to the
+  // transient drag store so this leaf renders its translucent region overlay
+  // only while a drag is active AND the pointer is hovering THIS leaf's
+  // data-droppane rect (TabStrip's window pointermove hit-tests against it).
+  const hover = usePaneDragStore((s) => s.hover);
+  const isDragActive = usePaneDragStore((s) => s.activeDrag !== null);
+  const hoveredRegion = isDragActive && hover?.leafId === leafId ? hover.region : null;
 
   const handleSelectTab = useCallback(
     (tabId: string) => usePaneStore.getState().setActiveTabInLeaf(leafId, tabId),
@@ -262,6 +293,7 @@ export function LeafPane({
     <div
       data-testid="leaf-pane"
       data-active-pane={isActive}
+      data-droppane={leafId}
       onClickCapture={activate}
       onFocusCapture={activate}
       style={{
@@ -351,6 +383,23 @@ export function LeafPane({
               onOpenFindReplace={handleOpenFindReplace}
             />
           ))
+        )}
+        {hoveredRegion !== null && (
+          <div
+            data-testid="drop-overlay"
+            data-drop-region={hoveredRegion}
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              zIndex: 10,
+              background: "color-mix(in srgb, var(--color-accent) 18%, transparent)",
+              border: "2px solid color-mix(in srgb, var(--color-accent) 60%, transparent)",
+              borderRadius: 6,
+              transition: "all 0.08s",
+              pointerEvents: "none",
+              ...overlayRectStyle(hoveredRegion),
+            }}
+          />
         )}
       </div>
     </div>
