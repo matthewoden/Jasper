@@ -4,8 +4,13 @@
  * Resolves via REST rather than WebSocket because WS may not be connected
  * at boot time. Prefers ?note=<uuid> (rename-resilient) over ?path=<rel>.
  *
- * Gates on `treeReady` so setActiveNote runs after GET /tree resolves —
+ * Gates on `treeReady` so openInActivePane runs after GET /tree resolves —
  * hooks that consume activeNoteId assume the tree is populated.
+ *
+ * Opens the resolved note as a real tab in the active pane (Phase 25,
+ * WS-08's openInActivePane) rather than the retired setActiveNote +
+ * promoteActiveNote load-time-promotion path (D-18): a deep link now lands
+ * as a tab directly, so there is nothing left for promotion to do.
  *
  * On successful resolve, strips the params via history.replaceState so a
  * refresh doesn't re-resolve and race the daily-note-on-boot setting.
@@ -16,11 +21,9 @@
 
 import { useEffect } from "react";
 import { client } from "../api/client";
-import { useTreeStore } from "./useTreeStore";
+import { usePaneStore } from "./usePaneStore";
 
 export function useDeepLink(treeReady: boolean): void {
-  const setActiveNote = useTreeStore((s) => s.setActiveNote);
-
   useEffect(() => {
     if (!treeReady) return;
 
@@ -68,11 +71,11 @@ export function useDeepLink(treeReady: boolean): void {
           return;
         }
 
-        setActiveNote(resolvedId);
+        usePaneStore.getState().openInActivePane(resolvedId);
         cleanUrl();
       } catch {
         navigateNotFound();
       }
     })();
-  }, [treeReady, setActiveNote]);
+  }, [treeReady]);
 }
