@@ -583,6 +583,29 @@ describe("<EditorPane />", () => {
         }
     });
 
+    it("WR-05 regression (25-REVIEW.md): an INACTIVE pane keeps showing its own note, not the globally-active file preview", async () => {
+        getNoteMock.mockResolvedValue(okGet("own note body"));
+        useTreeStore.setState({
+            activeFilePath: "gallery/attachments/photo.png",
+        });
+        try {
+            // Before the fix, EVERY EditorPane gated on the single global
+            // activeFilePath, so a non-note-file preview opened from ANY pane
+            // hijacked every other mounted pane's content — including this
+            // pane, which should keep showing its own note.
+            render(
+                <EditorPane noteId={ScratchpadUUID} paneActive={false} />,
+            );
+            await flushMicrotasks();
+            await waitFor(() =>
+                expect(screen.getByLabelText("Note content")).toBeInTheDocument(),
+            );
+            expect(screen.queryByTestId("file-preview-view")).toBeNull();
+        } finally {
+            useTreeStore.setState({ activeFilePath: null });
+        }
+    });
+
     it("TestEditorPane_NoteIdChange_TriggersReload", async () => {
         getNoteMock.mockImplementation((id: string) =>
             Promise.resolve(okGet(`content for ${id}`)),

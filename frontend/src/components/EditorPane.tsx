@@ -629,7 +629,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     };
   }, [editorHandlersRef, onNoteUpdated, onNoteDeleted]);
 
-  if (activeFilePath !== null) {
+  // WR-05 fix (25-REVIEW.md): activeFilePath is a single GLOBAL value in
+  // useTreeStore, so without the paneActive gate every mounted EditorPane
+  // (every pane in a split layout) would render the SAME file preview,
+  // hijacking panes that should keep showing their own note. Scoping this
+  // to only the currently-active pane (paneActive, already threaded down
+  // from LeafPane's isActive) means previewing a non-note file replaces
+  // just the active pane's content — sibling panes keep their own note.
+  if (activeFilePath !== null && paneActive) {
     return (
       <section
         className="flex flex-col h-full bg-bg"

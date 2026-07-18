@@ -179,6 +179,7 @@ export function LeafPane({
           <EditorPane
             noteId={null}
             hidden={reindexing}
+            paneActive={isActive}
             reindexing={reindexing}
             editorHandlersRef={fallbackHandlerRef}
             autosaveMs={autosaveMs}
