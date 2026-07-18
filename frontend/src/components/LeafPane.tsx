@@ -14,8 +14,11 @@
  *
  * A pane becomes active on a click anywhere in its chrome (tab strip,
  * breadcrumb, or body) OR on focus entering it (D-04); the active leaf
- * carries a subtle `data-active-pane` cue only (D-05 — no heavy ring, real
- * styling lands wherever this is wired into the app shell).
+ * carries `data-active-pane` plus (P26 polish) a 2px accent bar along its
+ * top edge — but ONLY in a multi-pane layout (`multiPane`), since a single
+ * pane is trivially active and needs no cue. Every pane renders at full
+ * opacity; the earlier inactive-pane dim is gone (superseded by the accent
+ * bar as the sole active-pane signal).
  *
  * Per-tab `flushRef`/`editorHandlersRef` bookkeeping mirrors the pre-Phase-25
  * `App.tsx:239-266` pattern (TAB-13 close-flush contract), scoped to this
@@ -83,8 +86,10 @@ function overlayRectStyle(region: "left" | "right" | "top" | "bottom" | "center"
 
 export interface LeafPaneProps {
   leaf: LeafNode;
-  /** Whether THIS leaf is usePaneStore's activePaneId (D-05 subtle cue, D-04 click-to-focus target). */
+  /** Whether THIS leaf is usePaneStore's activePaneId (D-05 cue, D-04 click-to-focus target). */
   isActive: boolean;
+  /** Whether the layout currently has more than one leaf (P26 polish) — gates the active-pane accent bar. */
+  multiPane: boolean;
   reindexing: boolean;
   deletedTabIds: Set<string>;
   /** Derived from useFileTree by note UUID (TAB-12 live rename) — shared across every leaf. */
@@ -105,6 +110,7 @@ export interface LeafPaneProps {
 export function LeafPane({
   leaf,
   isActive,
+  multiPane,
   reindexing,
   deletedTabIds,
   titleForTab,
@@ -318,15 +324,26 @@ export function LeafPane({
         height: "100%",
         width: "100%",
         overflow: "hidden",
-        // D-05: subtle active-pane cue — no heavy border/ring, just a dim on
-        // inactive panes. 0.75 after two rounds of human UAT (0.92 → 0.82 →
-        // 0.75): each lighter value read as too hard to notice; 0.75 is
-        // clearly visible but still a soft, opacity-only cue — no border/ring,
-        // so it stays within D-05's "subtle, no ring" contract.
-        opacity: isActive ? 1 : 0.75,
+        position: "relative",
         ...style,
       }}
     >
+      {isActive && multiPane && (
+        <div
+          data-testid="active-pane-accent"
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background: "var(--color-accent)",
+            pointerEvents: "none",
+            zIndex: 20,
+          }}
+        />
+      )}
       {!hideTabStrip && (
         <TabStrip
           leafId={leafId}

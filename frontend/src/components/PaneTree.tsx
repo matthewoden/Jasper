@@ -6,7 +6,9 @@
  * between them. The divider keeps a 1px visual line but carries an
  * interactive ~8px invisible grab zone: pointer-drag resizes the split live
  * (WS-05, D-12/D-13/D-14, Phase 26). `{t:"leaf"}` nodes render one
- * `LeafPane`, marked active by comparing its id against `activePaneId`.
+ * `LeafPane`, marked active by comparing its id against `activePaneId`; each
+ * also gets `multiPane` (`_leaves(tree).length > 1`) so LeafPane can gate its
+ * active-pane accent bar (P26 polish) off single-pane layouts.
  *
  * This component is intentionally standalone in Phase 25 — wiring it into
  * `App.tsx` (replacing the current singleton TabStrip + stacked-EditorPane
@@ -15,7 +17,7 @@
 import { useRef, useState } from "react";
 
 import { usePaneStore } from "../lib/usePaneStore";
-import type { PaneNode, SplitNode } from "../lib/paneTree";
+import { _leaves, type PaneNode, type SplitNode } from "../lib/paneTree";
 import { LeafPane } from "./LeafPane";
 
 export interface PaneTreeProps {
@@ -181,11 +183,13 @@ function SplitRenderer({
   node,
   path,
   activePaneId,
+  multiPane,
   props,
 }: {
   node: SplitNode;
   path: ("a" | "b")[];
   activePaneId: string;
+  multiPane: boolean;
   props: NodeRenderProps;
 }) {
   const isRow = node.dir === "row";
@@ -221,7 +225,7 @@ function SplitRenderer({
           overflow: "hidden",
         }}
       >
-        {renderNode(node.a, activePaneId, props, [...path, "a"])}
+        {renderNode(node.a, activePaneId, multiPane, props, [...path, "a"])}
       </div>
       <PaneDivider isRow={isRow} path={path} ratio={node.ratio} containerRef={containerRef} />
       <div
@@ -233,7 +237,7 @@ function SplitRenderer({
           overflow: "hidden",
         }}
       >
-        {renderNode(node.b, activePaneId, props, [...path, "b"])}
+        {renderNode(node.b, activePaneId, multiPane, props, [...path, "b"])}
       </div>
     </div>
   );
@@ -242,6 +246,7 @@ function SplitRenderer({
 function renderNode(
   node: PaneNode,
   activePaneId: string,
+  multiPane: boolean,
   props: NodeRenderProps,
   path: ("a" | "b")[] = [],
 ): React.JSX.Element {
@@ -251,6 +256,7 @@ function renderNode(
         key={node.id}
         leaf={node}
         isActive={activePaneId === node.id}
+        multiPane={multiPane}
         reindexing={props.reindexing}
         deletedTabIds={props.deletedTabIds}
         titleForTab={props.titleForTab}
@@ -266,12 +272,21 @@ function renderNode(
     );
   }
 
-  return <SplitRenderer node={node} path={path} activePaneId={activePaneId} props={props} />;
+  return (
+    <SplitRenderer
+      node={node}
+      path={path}
+      activePaneId={activePaneId}
+      multiPane={multiPane}
+      props={props}
+    />
+  );
 }
 
 export function PaneTree({ style, ...rest }: PaneTreeProps) {
   const tree = usePaneStore((s) => s.tree);
   const activePaneId = usePaneStore((s) => s.activePaneId);
+  const multiPane = _leaves(tree).length > 1;
 
   return (
     <div
@@ -286,7 +301,7 @@ export function PaneTree({ style, ...rest }: PaneTreeProps) {
         ...style,
       }}
     >
-      {renderNode(tree, activePaneId, rest)}
+      {renderNode(tree, activePaneId, multiPane, rest)}
     </div>
   );
 }
