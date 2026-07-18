@@ -12,9 +12,12 @@ import {
   _leaves,
   _removeLeaf,
   _updLeaf,
+  moveTab,
   newLeaf,
   newTabId,
+  setRatioAtPath,
   splitPane,
+  splitWithTab,
   type LeafNode,
   type PaneNode,
 } from "./paneTree";
@@ -205,5 +208,114 @@ describe("tabsOf helper sanity", () => {
     ]);
     expect(tabsOf(leaf, "note-1")).toBe(2);
     expect(tabsOf(leaf, "note-2")).toBe(1);
+  });
+});
+
+describe("splitWithTab (WS-01, D-05)", () => {
+  it("placement 'first' puts the new sibling (holding the dragged tab) as `a`", () => {
+    const leaf = newLeaf("root");
+    const tab = { id: newTabId(), noteId: "note-1" };
+    const tree = asSplit(splitWithTab(leaf, "root", tab, "row", "first"));
+    expect(tree.dir).toBe("row");
+    expect(tree.ratio).toBe(0.5);
+    expect(asLeaf(tree.a).tabs).toEqual([tab]);
+    expect(asLeaf(tree.a).active).toBe(tab.id);
+    expect(asLeaf(tree.b).id).toBe("root");
+    expect(asLeaf(tree.b).tabs).toHaveLength(0);
+  });
+
+  it("placement 'second' puts the new sibling (holding the dragged tab) as `b`", () => {
+    const leaf = newLeaf("root");
+    const tab = { id: newTabId(), noteId: "note-1" };
+    const tree = asSplit(splitWithTab(leaf, "root", tab, "col", "second"));
+    expect(tree.dir).toBe("col");
+    expect(asLeaf(tree.b).tabs).toEqual([tab]);
+    expect(asLeaf(tree.b).active).toBe(tab.id);
+    expect(asLeaf(tree.a).id).toBe("root");
+  });
+
+  it("honors the explicit dir argument unconditionally", () => {
+    const leaf = newLeaf("root");
+    const tab = { id: newTabId(), noteId: "note-1" };
+    const tree = asSplit(splitWithTab(leaf, "root", tab, "col", "first"));
+    expect(tree.dir).toBe("col");
+  });
+
+  it("returns the tree unchanged when the target leaf id is absent", () => {
+    const leaf = newLeaf("root");
+    const tab = { id: newTabId(), noteId: "note-1" };
+    const result = splitWithTab(leaf, "missing", tab, "row", "first");
+    expect(result).toBe(leaf);
+  });
+
+  it("preserves object identity of untouched subtrees", () => {
+    const rowTree = asSplit(splitPane(newLeaf("root"), "root", "row", false));
+    const untouchedId = asLeaf(rowTree.b).id;
+    const tab = { id: newTabId(), noteId: "note-1" };
+    const result = asSplit(splitWithTab(rowTree, asLeaf(rowTree.a).id, tab, "col", "first"));
+    expect(result.b).toBe(rowTree.b);
+    expect(asLeaf(result.b).id).toBe(untouchedId);
+  });
+});
+
+describe("moveTab (WS-02, D-07)", () => {
+  it("appends the tab to the target leaf's tabs and activates it", () => {
+    const leaf = newLeaf("root");
+    const tab = { id: newTabId(), noteId: "note-1" };
+    const result = asLeaf(moveTab(leaf, "root", tab));
+    expect(result.tabs).toEqual([tab]);
+    expect(result.active).toBe(tab.id);
+  });
+
+  it("dedup (D-07): activates the existing tab with the same noteId instead of duplicating", () => {
+    const existingTab = { id: newTabId(), noteId: "note-1" };
+    const leaf = newLeaf("root", [existingTab], null);
+    const draggedTab = { id: newTabId(), noteId: "note-1" };
+    const result = asLeaf(moveTab(leaf, "root", draggedTab));
+    expect(result.tabs).toEqual([existingTab]);
+    expect(result.active).toBe(existingTab.id);
+  });
+
+  it("returns the tree unchanged when the target leaf id is absent", () => {
+    const leaf = newLeaf("root");
+    const tab = { id: newTabId(), noteId: "note-1" };
+    const result = moveTab(leaf, "missing", tab);
+    expect(result).toBe(leaf);
+  });
+});
+
+describe("setRatioAtPath (WS-05, D-13)", () => {
+  it("writes the ratio at the root split when path is empty", () => {
+    const tree = asSplit(splitPane(newLeaf("root"), "root", "row", false));
+    const result = asSplit(setRatioAtPath(tree, [], 0.35));
+    expect(result.ratio).toBe(0.35);
+  });
+
+  it("walks a path of a/b steps to a nested split", () => {
+    const rowTree = asSplit(splitPane(newLeaf("root"), "root", "row", false));
+    const tree = asSplit(splitPane(rowTree, asLeaf(rowTree.a).id, "col", false));
+    // tree: split(row){ a: split(col){...}, b: leaf }
+    const result = asSplit(setRatioAtPath(tree, ["a"], 0.7));
+    expect(asSplit(result.a).ratio).toBe(0.7);
+    expect(result.ratio).toBe(0.5); // root untouched
+  });
+
+  it("returns the same ref when the path does not resolve to a split node", () => {
+    const tree = asSplit(splitPane(newLeaf("root"), "root", "row", false));
+    const result = setRatioAtPath(tree, ["a", "a"], 0.7); // tree.a is a leaf, can't descend
+    expect(result).toBe(tree);
+  });
+
+  it("returns the same ref when the ratio is unchanged", () => {
+    const tree = asSplit(splitPane(newLeaf("root"), "root", "row", false));
+    const result = setRatioAtPath(tree, [], 0.5);
+    expect(result).toBe(tree);
+  });
+
+  it("preserves untouched-subtree identity", () => {
+    const rowTree = asSplit(splitPane(newLeaf("root"), "root", "row", false));
+    const untouched = rowTree.b;
+    const result = asSplit(setRatioAtPath(rowTree, [], 0.9));
+    expect(result.b).toBe(untouched);
   });
 });
