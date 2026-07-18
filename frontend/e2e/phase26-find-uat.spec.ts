@@ -28,7 +28,13 @@ import { test, expect, type Page, type Locator } from "@playwright/test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, "..", "..");
+const PARITY_SHOTS_DIR = path.join(repoRoot, ".parity-shots");
 
 // ─── Selector contract ────────────────────────────────────────────────────────
 
@@ -36,6 +42,8 @@ const SELECTORS = {
   leafPane: '[data-testid="leaf-pane"]',
   findBar: '[data-testid="find-bar"]',
   findMatchCount: '[data-testid="find-match-count"]',
+  breadcrumb: '[data-testid="note-breadcrumb"]',
+  cmHostShell: '[data-testid="cm-host-shell"]',
 } as const;
 
 // IMPORTANT: Playwright's `devices["Desktop Chrome"]` (playwright.config.ts's
@@ -136,6 +144,29 @@ async function runCommand(page: Page, label: string): Promise<void> {
   await row.click();
 }
 
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Resolves a bounding box, polling until layout settles to non-zero dimensions. */
+async function stableBox(locator: Locator): Promise<Box> {
+  let box: Box | null = null;
+  await expect
+    .poll(
+      async () => {
+        box = await locator.boundingBox();
+        return box !== null && box.width > 0 && box.height > 0;
+      },
+      { timeout: 5_000 },
+    )
+    .toBe(true);
+  if (box === null) throw new Error("bounding box unavailable");
+  return box;
+}
+
 // ─── @find — Find-only bar, match count, highlight-all ───────────────────────
 
 test.describe("@find phase26 Find/Replace bar", () => {
@@ -143,6 +174,7 @@ test.describe("@find phase26 Find/Replace bar", () => {
   let appHome: string;
   test.beforeAll(async () => {
     ({ jasper, appHome } = await spawnIsolated());
+    fs.mkdirSync(PARITY_SHOTS_DIR, { recursive: true });
   });
   test.afterAll(async () => {
     if (jasper) await jasper.kill();
@@ -261,5 +293,33 @@ test.describe("@find phase26 Find/Replace bar", () => {
     // leak into the right leaf, which never mounted a bar at all.
     await leftLeaf.locator(SELECTORS.findBar).getByPlaceholder("Find").fill("find-split");
     await expect(rightLeaf.locator(SELECTORS.findBar)).toHaveCount(0);
+  });
+
+  test("the find bar renders below the breadcrumb and above the note body (P26 polish, UI-SPEC line 151)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await waitForConnected(page, jasper.baseURL);
+
+    const idA = await apiCreateNote(page, jasper.baseURL, "find-position-alpha");
+    await openNoteFromTree(page, idA);
+
+    const leaf = leafPanes(page).first();
+    await activatePane(leaf);
+    await page.keyboard.press(FIND_KEY);
+
+    const bar = leaf.locator(SELECTORS.findBar);
+    await expect(bar).toBeVisible();
+
+    const breadcrumbBox = await stableBox(leaf.locator(SELECTORS.breadcrumb));
+    const findBarBox = await stableBox(bar);
+    const bodyBox = await stableBox(leaf.locator(SELECTORS.cmHostShell));
+
+    expect(breadcrumbBox.y).toBeLessThan(findBarBox.y);
+    expect(findBarBox.y).toBeLessThan(bodyBox.y);
+
+    await page.screenshot({
+      path: path.join(PARITY_SHOTS_DIR, "phase26-find-position.png"),
+    });
   });
 });

@@ -29,7 +29,10 @@
  * EditorPane's onOpenFind/onOpenFindReplace props) open it; it drives the
  * active tab's EditorView through handlerRefs — per-view CM6 search state
  * means this needs zero cross-pane coordination even for the same note open
- * in two panes.
+ * in two panes. Find state/handlers live HERE, but (P26 polish, UI-SPEC line
+ * 151) the bar element itself is passed as a `findBarSlot` prop into the
+ * active tab's own EditorPane, which renders it below ITS breadcrumb — not
+ * as a LeafPane-level sibling above the whole EditorPane stack.
  */
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { SearchQuery } from "@codemirror/search";
@@ -309,6 +312,31 @@ export function LeafPane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leaf.active]);
 
+  // Built once per render, passed as a slot into the ACTIVE tab's EditorPane
+  // (P26 polish, UI-SPEC line 151): the bar now renders below that pane's own
+  // breadcrumb instead of as a LeafPane-level sibling above it. State/handlers
+  // stay right here in LeafPane — this is pure slot injection, not a hoist.
+  const findBarEl =
+    findBar.open && leaf.active !== null ? (
+      <FindReplaceBar
+        mode={findBar.mode}
+        query={findBar.query}
+        replaceText={findBar.replaceText}
+        caseSensitive={findBar.caseSensitive}
+        regexp={findBar.regexp}
+        wholeWord={findBar.wholeWord}
+        matchCount={matchCount}
+        onQueryChange={handleQueryChange}
+        onReplaceTextChange={handleReplaceTextChange}
+        onToggle={handleToggle}
+        onFindNext={handleFindNext}
+        onFindPrev={handleFindPrev}
+        onReplaceNext={handleReplaceNext}
+        onReplaceAll={handleReplaceAllClick}
+        onClose={handleCloseFindBar}
+      />
+    ) : null;
+
   return (
     <div
       data-testid="leaf-pane"
@@ -361,25 +389,6 @@ export function LeafPane({
           onCycleTab={handleCycleTab}
         />
       )}
-      {findBar.open && leaf.active !== null && (
-        <FindReplaceBar
-          mode={findBar.mode}
-          query={findBar.query}
-          replaceText={findBar.replaceText}
-          caseSensitive={findBar.caseSensitive}
-          regexp={findBar.regexp}
-          wholeWord={findBar.wholeWord}
-          matchCount={matchCount}
-          onQueryChange={handleQueryChange}
-          onReplaceTextChange={handleReplaceTextChange}
-          onToggle={handleToggle}
-          onFindNext={handleFindNext}
-          onFindPrev={handleFindPrev}
-          onReplaceNext={handleReplaceNext}
-          onReplaceAll={handleReplaceAllClick}
-          onClose={handleCloseFindBar}
-        />
-      )}
       <div style={{ position: "relative", flex: 1, minHeight: 0, minWidth: 0 }}>
         {leaf.tabs.length === 0 ? (
           <EditorPane
@@ -412,6 +421,7 @@ export function LeafPane({
               autosaveMs={autosaveMs}
               onOpenFind={handleOpenFind}
               onOpenFindReplace={handleOpenFindReplace}
+              findBarSlot={tab.id === leaf.active ? findBarEl : undefined}
             />
           ))
         )}
