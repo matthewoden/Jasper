@@ -26,6 +26,10 @@ export interface CommandActions {
   onShareRevealCurrentNote?: () => void;
   onSwitchVault?: () => void;
   onToggleZen?: () => void;
+  onSplitRight?: () => void;
+  onSplitDown?: () => void;
+  onFocusNextPane?: () => void;
+  onFocusPrevPane?: () => void;
 }
 
 /**
@@ -67,6 +71,10 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       "share-reveal-current-note": actions.onShareRevealCurrentNote,
       "vault.switch": actions.onSwitchVault,
       "zen.toggle": actions.onToggleZen,
+      "split-right": actions.onSplitRight,
+      "split-down": actions.onSplitDown,
+      "focus-next-pane": actions.onFocusNextPane,
+      "focus-previous-pane": actions.onFocusPrevPane,
     }),
     [
       actions.onNewNote,
@@ -80,6 +88,10 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       actions.onShareRevealCurrentNote,
       actions.onSwitchVault,
       actions.onToggleZen,
+      actions.onSplitRight,
+      actions.onSplitDown,
+      actions.onFocusNextPane,
+      actions.onFocusPrevPane,
     ],
   );
 

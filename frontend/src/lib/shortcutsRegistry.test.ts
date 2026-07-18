@@ -7,7 +7,7 @@ import {
 } from "./shortcutsRegistry";
 
 describe("shortcutsRegistry", () => {
-  it("registry has all 11 locked Cmd+P palette entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode)", () => {
+  it("registry has all 15 locked Cmd+P palette entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode; Phase 25 Plan 08 added split/focus-pane commands)", () => {
     const labels = COMMAND_PALETTE_ENTRIES.map((s) => s.label);
     expect(labels).toContain("New note");
     expect(labels).toContain("Save");
@@ -21,7 +21,11 @@ describe("shortcutsRegistry", () => {
     expect(labels).toContain("Show current note in file manager");
     expect(labels).toContain("Switch vault…");
     expect(labels).toContain("Toggle Zen Mode");
-    expect(COMMAND_PALETTE_ENTRIES.length).toBe(11);
+    expect(labels).toContain("Split right");
+    expect(labels).toContain("Split down");
+    expect(labels).toContain("Focus next pane");
+    expect(labels).toContain("Focus previous pane");
+    expect(COMMAND_PALETTE_ENTRIES.length).toBe(15);
   });
 
   it("cheat-sheet contains CM6 built-in editor entries", () => {
@@ -45,6 +49,7 @@ describe("shortcutsRegistry", () => {
       "Sidebar",
       "Palette",
       "View",
+      "Pane",
       "Share",
       "Index",
       "Help",
@@ -73,8 +78,8 @@ describe("Plan 07-27 — Cmd+F removal (UAT-2 N6)", () => {
     expect(found).toBeUndefined();
   });
 
-  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 11 entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode; Find still removed)", () => {
-    expect(COMMAND_PALETTE_ENTRIES.length).toBe(11);
+  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 15 entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode; Phase 25 Plan 08 added split/focus-pane commands; Find still removed)", () => {
+    expect(COMMAND_PALETTE_ENTRIES.length).toBe(15);
   });
 });
 
