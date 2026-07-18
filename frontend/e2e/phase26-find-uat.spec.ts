@@ -322,4 +322,101 @@ test.describe("@find phase26 Find/Replace bar", () => {
       path: path.join(PARITY_SHOTS_DIR, "phase26-find-position.png"),
     });
   });
+
+  // ─── Highlight-clear-on-dismiss regression (260718-n6a Task 5) ────────────
+  //
+  // Root cause: FindReplaceBar's own Escape handling lives on ITS OWN
+  // container onKeyDown (bubble-phase) — it only fires when the keydown's
+  // target is inside the bar's own DOM subtree (the query/replace inputs).
+  // Clicking into the editor body to inspect a match (a natural thing to do
+  // while using Find) moves DOM focus into CM6's contentDOM — a SIBLING of
+  // the bar, not a descendant — so Escape pressed there never reached the
+  // bar's handler at all: the bar stayed open and its highlights stayed
+  // painted. Fixed via a leaf-root capture-phase Escape listener that funnels
+  // into the same close routine regardless of which element inside the leaf
+  // currently has focus.
+
+  test("Escape while focus is in the FIND INPUT clears every highlight", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await waitForConnected(page, jasper.baseURL);
+
+    const idA = await apiCreateNote(page, jasper.baseURL, "find-clear-input");
+    await openNoteFromTree(page, idA);
+
+    const editor = page.locator(".cm-content:visible");
+    await expect(editor).toBeVisible({ timeout: 8_000 });
+    await editor.click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("\napple banana apple cherry apple");
+
+    await page.keyboard.press(FIND_KEY);
+    const bar = page.locator(SELECTORS.findBar);
+    await expect(bar).toBeVisible();
+    await bar.getByPlaceholder("Find").fill("apple");
+    await expect(page.locator(".cm-jasper-search-match")).toHaveCount(3);
+
+    await page.keyboard.press("Escape");
+
+    await expect(bar).toHaveCount(0);
+    await expect(page.locator(".cm-jasper-search-match")).toHaveCount(0);
+  });
+
+  test("the close button clears every highlight", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await waitForConnected(page, jasper.baseURL);
+
+    const idA = await apiCreateNote(page, jasper.baseURL, "find-clear-close-btn");
+    await openNoteFromTree(page, idA);
+
+    const editor = page.locator(".cm-content:visible");
+    await expect(editor).toBeVisible({ timeout: 8_000 });
+    await editor.click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("\napple banana apple cherry apple");
+
+    await page.keyboard.press(FIND_KEY);
+    const bar = page.locator(SELECTORS.findBar);
+    await expect(bar).toBeVisible();
+    await bar.getByPlaceholder("Find").fill("apple");
+    await expect(page.locator(".cm-jasper-search-match")).toHaveCount(3);
+
+    await bar.getByLabel("Close find bar").click();
+
+    await expect(bar).toHaveCount(0);
+    await expect(page.locator(".cm-jasper-search-match")).toHaveCount(0);
+
+    await page.screenshot({
+      path: path.join(PARITY_SHOTS_DIR, "phase26-find-cleared.png"),
+    });
+  });
+
+  test("Escape while focus is in the EDITOR BODY (not the bar) still clears every highlight (root-cause repro)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await waitForConnected(page, jasper.baseURL);
+
+    const idA = await apiCreateNote(page, jasper.baseURL, "find-clear-editor-escape");
+    await openNoteFromTree(page, idA);
+
+    const editor = page.locator(".cm-content:visible");
+    await expect(editor).toBeVisible({ timeout: 8_000 });
+    await editor.click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("\napple banana apple cherry apple");
+
+    await page.keyboard.press(FIND_KEY);
+    const bar = page.locator(SELECTORS.findBar);
+    await expect(bar).toBeVisible();
+    await bar.getByPlaceholder("Find").fill("apple");
+    await expect(page.locator(".cm-jasper-search-match")).toHaveCount(3);
+
+    // Click into the editor body — moves DOM focus OUT of the find bar's own
+    // subtree — before pressing Escape (the exact repro for the bug).
+    await editor.click();
+    await page.keyboard.press("Escape");
+
+    await expect(bar).toHaveCount(0);
+    await expect(page.locator(".cm-jasper-search-match")).toHaveCount(0);
+  });
 });

@@ -298,6 +298,31 @@ export function LeafPane({
     setMatchCount(ZERO_MATCH_COUNT);
   }, [activeHandle]);
 
+  // Bug fix (260718-n6a Task 5): root-caused via a real-CM6 integration
+  // repro — FindReplaceBar's own Escape handling lives on ITS OWN container
+  // `onKeyDown` (bubble-phase), which only fires when the keydown's target
+  // is inside the bar's own DOM subtree (the query/replace inputs). Clicking
+  // into the editor body to inspect a match — a completely natural thing to
+  // do while using Find — moves DOM focus into a DIFFERENT subtree (CM6's
+  // contentDOM, a sibling of the bar, not a descendant of it), so Escape
+  // pressed there never reached the bar's handler: the bar stayed open and
+  // its highlights stayed painted, matching the reported "only emptying the
+  // input clears them" symptom. This leaf-root capture-phase listener is a
+  // second entry point into the SAME choke point (handleCloseFindBar) —
+  // it fires for Escape anywhere in the leaf's chrome (editor body included)
+  // while the bar is open, so dismissal no longer depends on which element
+  // inside the leaf currently has focus. Harmless if the bar's own handler
+  // ALSO fires for the same keypress (focus was in the bar) — the close
+  // routine is idempotent.
+  const handleLeafKeyDownCapture = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Escape" && findBar.open) {
+        handleCloseFindBar();
+      }
+    },
+    [findBar.open, handleCloseFindBar],
+  );
+
   // CR-03: re-apply the open bar's query/toggles to whichever tab just
   // became active (tab-strip click, Alt+]/Ctrl+Tab cycling, overflow
   // dropdown, or a fresh tab opening after the leaf's last tab was
@@ -344,6 +369,7 @@ export function LeafPane({
       data-droppane={leafId}
       onClickCapture={activate}
       onFocusCapture={activate}
+      onKeyDownCapture={handleLeafKeyDownCapture}
       style={{
         display: "flex",
         flexDirection: "column",
