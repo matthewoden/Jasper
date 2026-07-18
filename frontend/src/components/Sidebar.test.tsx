@@ -520,16 +520,19 @@ describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.
     expect(nav.style.borderRight).toBeFalsy();
   });
 
-  it("6.6-S3: inner card div has margin 8px, --color-surface bg, 1px border, borderRadius 8px", () => {
+  it("6.6-S3: inner panel is flush — --color-surface bg, border-right only, hidden overflow (owner-approved 23-03)", () => {
     renderWithProvider(<Sidebar />);
     const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
-    const card = nav.querySelector('div[style*="margin"]') as HTMLElement | null;
+    const card = nav.querySelector('div[style*="var(--color-surface)"]') as HTMLElement | null;
     expect(card).not.toBeNull();
-    expect(card!.style.margin).toBe("8px");
     expect(card!.style.background).toBe("var(--color-surface)");
-    expect(card!.style.border).toBe("1px solid var(--color-border)");
-    expect(card!.style.borderRadius).toBe("8px");
+    expect(card!.style.borderRight).toBe("1px solid var(--color-border)");
     expect(card!.style.overflow).toBe("hidden");
+    // Phase 23-03 flush redesign superseded the Phase 6.6 floating card:
+    // no margin, no full border shorthand, no border-radius.
+    expect(card!.style.margin).toBe("");
+    expect(card!.style.border).toBe("");
+    expect(card!.style.borderRadius).toBe("");
   });
 
   it("6.6-S4: when notesSidebarVisible=false, Sidebar returns null", () => {
@@ -543,10 +546,9 @@ describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.
     const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
     const handle = screen.getByTestId("sidebar-resize-handle");
     expect(nav.contains(handle)).toBe(true);
-    const card = nav.querySelector('div[style*="margin"]') as HTMLElement | null;
-    if (card) {
-      expect(card.contains(handle)).toBe(false);
-    }
+    const card = nav.querySelector('div[style*="var(--color-surface)"]') as HTMLElement | null;
+    expect(card).not.toBeNull();
+    expect(card!.contains(handle)).toBe(false);
   });
 
   it("6.6-S6: Sidebar accepts optional style prop (merges into outer nav)", () => {
