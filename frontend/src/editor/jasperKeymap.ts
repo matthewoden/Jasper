@@ -1,10 +1,14 @@
 /**
- * jasperKeymap — CM6 keymap factory for the Cmd+S save shortcut.
- * Find/Replace is provided by @codemirror/search's searchKeymap (already wired
- * in MarkdownEditor's extensions array) — this file does NOT re-bind Cmd+F.
+ * jasperKeymap — CM6 keymap factory for the Cmd+S save shortcut and (P26,
+ * WS-09/D-02) the Cmd+F / Cmd+Opt+F pane Find/Replace bar openers.
+ * Find/Replace is a custom per-pane React bar (FindReplaceBar.tsx) that
+ * drives @codemirror/search commands directly against the pane's EditorView
+ * — searchKeymap and the built-in search panel are not used. findBarKeymap
+ * reclaims Cmd+F (find-only) and Cmd+Opt+F (find+replace) from the browser's
+ * native find, preventDefault-ing both.
  *
- * The save callback is captured by closure; MarkdownEditor passes a stable
- * cbRef-routed callback so the keymap always calls the latest handler
+ * The save/find-open callbacks are captured by closure; MarkdownEditor passes
+ * stable cbRef-routed callbacks so the keymap always calls the latest handler
  * without rebuilding the EditorView.
  *
  * Also exports toggleBold and toggleItalic: wrap/unwrap selection with `**`/`*`.
@@ -113,6 +117,36 @@ export function saveKeymap(onSave: () => void): Extension {
       preventDefault: true,
       run: () => {
         onSave();
+        return true;
+      },
+    },
+  ]);
+}
+
+/**
+ * findBarKeymap — Cmd+F / Cmd+Opt+F bindings that open the pane's custom
+ * Find/Replace bar (P26, WS-09/D-02). Both preventDefault the browser's
+ * native find; the actual bar UI opens in React (LeafPane), so `run` always
+ * returns true regardless of the callback's own effect.
+ */
+export function findBarKeymap(
+  onOpenFind: () => void,
+  onOpenFindReplace: () => void,
+): Extension {
+  return keymap.of([
+    {
+      key: "Mod-f",
+      preventDefault: true,
+      run: () => {
+        onOpenFind();
+        return true;
+      },
+    },
+    {
+      key: "Mod-Alt-f",
+      preventDefault: true,
+      run: () => {
+        onOpenFindReplace();
         return true;
       },
     },

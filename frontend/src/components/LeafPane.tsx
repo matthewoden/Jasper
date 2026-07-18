@@ -20,12 +20,43 @@
  * Per-tab `flushRef`/`editorHandlersRef` bookkeeping mirrors the pre-Phase-25
  * `App.tsx:239-266` pattern (TAB-13 close-flush contract), scoped to this
  * leaf's own tabs only — a ref pair per open tab, dropped when a tab closes.
+ *
+ * P26 (WS-09/D-01): also hosts this leaf's own Find/Replace bar, scoped to
+ * the leaf's ACTIVE tab. Cmd+F/Cmd+Opt+F (jasperKeymap, routed via each
+ * EditorPane's onOpenFind/onOpenFindReplace props) open it; it drives the
+ * active tab's EditorView through handlerRefs — per-view CM6 search state
+ * means this needs zero cross-pane coordination even for the same note open
+ * in two panes.
  */
-import { useCallback, useRef, type MutableRefObject } from "react";
+import { useCallback, useRef, useState, type MutableRefObject } from "react";
+import { SearchQuery } from "@codemirror/search";
 import { EditorPane, type EditorPaneHandlers } from "./EditorPane";
 import { TabStrip } from "./TabStrip";
+import { FindReplaceBar, type FindToggleKind, type MatchCount } from "./FindReplaceBar";
 import { usePaneStore } from "../lib/usePaneStore";
 import type { LeafNode } from "../lib/paneTree";
+
+interface FindBarState {
+  open: boolean;
+  mode: "find" | "replace";
+  query: string;
+  replaceText: string;
+  caseSensitive: boolean;
+  regexp: boolean;
+  wholeWord: boolean;
+}
+
+const DEFAULT_FIND_BAR_STATE: FindBarState = {
+  open: false,
+  mode: "find",
+  query: "",
+  replaceText: "",
+  caseSensitive: false,
+  regexp: false,
+  wholeWord: false,
+};
+
+const ZERO_MATCH_COUNT: MatchCount = { current: 0, total: 0 };
 
 export interface LeafPaneProps {
   leaf: LeafNode;
@@ -134,6 +165,99 @@ export function LeafPane({
     usePaneStore.getState().setActivePane(leafId);
   }, [leafId]);
 
+  // Find/Replace bar (P26, WS-09/D-01) — leaf-local, scoped to this leaf's
+  // active tab. handlerRefs (above) already resolves to the active tab's
+  // EditorPaneHandlers, so the bar drives THAT tab's own EditorView.
+  const [findBar, setFindBar] = useState<FindBarState>(DEFAULT_FIND_BAR_STATE);
+  const [matchCount, setMatchCount] = useState<MatchCount>(ZERO_MATCH_COUNT);
+
+  const activeHandle = useCallback((): EditorPaneHandlers | null => {
+    if (leaf.active === null) return null;
+    return handlerRefs.current[leaf.active]?.current ?? null;
+  }, [leaf.active]);
+
+  const syncQuery = useCallback(
+    (next: FindBarState) => {
+      const handle = activeHandle();
+      if (!handle) return;
+      handle.setSearchQuery(
+        new SearchQuery({
+          search: next.query,
+          replace: next.replaceText,
+          caseSensitive: next.caseSensitive,
+          regexp: next.regexp,
+          wholeWord: next.wholeWord,
+        }),
+      );
+      setMatchCount(handle.matchInfo());
+    },
+    [activeHandle],
+  );
+
+  const handleOpenFind = useCallback(() => {
+    setFindBar((s) => ({ ...s, open: true, mode: "find" }));
+  }, []);
+  const handleOpenFindReplace = useCallback(() => {
+    setFindBar((s) => ({ ...s, open: true, mode: "replace" }));
+  }, []);
+
+  const handleQueryChange = useCallback(
+    (query: string) => {
+      const next = { ...findBar, query };
+      setFindBar(next);
+      syncQuery(next);
+    },
+    [findBar, syncQuery],
+  );
+  const handleReplaceTextChange = useCallback(
+    (replaceText: string) => {
+      const next = { ...findBar, replaceText };
+      setFindBar(next);
+      syncQuery(next);
+    },
+    [findBar, syncQuery],
+  );
+  const handleToggle = useCallback(
+    (kind: FindToggleKind) => {
+      const next = { ...findBar, [kind]: !findBar[kind] };
+      setFindBar(next);
+      syncQuery(next);
+    },
+    [findBar, syncQuery],
+  );
+
+  const handleFindNext = useCallback(() => {
+    const handle = activeHandle();
+    if (!handle) return;
+    handle.findNext();
+    setMatchCount(handle.matchInfo());
+  }, [activeHandle]);
+  const handleFindPrev = useCallback(() => {
+    const handle = activeHandle();
+    if (!handle) return;
+    handle.findPrevious();
+    setMatchCount(handle.matchInfo());
+  }, [activeHandle]);
+  const handleReplaceNext = useCallback(() => {
+    const handle = activeHandle();
+    if (!handle) return;
+    handle.replaceNext();
+    setMatchCount(handle.matchInfo());
+  }, [activeHandle]);
+  const handleReplaceAllClick = useCallback(() => {
+    const handle = activeHandle();
+    if (!handle) return;
+    handle.replaceAll();
+    setMatchCount(handle.matchInfo());
+  }, [activeHandle]);
+  const handleCloseFindBar = useCallback(() => {
+    const handle = activeHandle();
+    handle?.clearSearch();
+    handle?.focus();
+    setFindBar(DEFAULT_FIND_BAR_STATE);
+    setMatchCount(ZERO_MATCH_COUNT);
+  }, [activeHandle]);
+
   return (
     <div
       data-testid="leaf-pane"
@@ -174,6 +298,25 @@ export function LeafPane({
           onCycleTab={handleCycleTab}
         />
       )}
+      {findBar.open && leaf.active !== null && (
+        <FindReplaceBar
+          mode={findBar.mode}
+          query={findBar.query}
+          replaceText={findBar.replaceText}
+          caseSensitive={findBar.caseSensitive}
+          regexp={findBar.regexp}
+          wholeWord={findBar.wholeWord}
+          matchCount={matchCount}
+          onQueryChange={handleQueryChange}
+          onReplaceTextChange={handleReplaceTextChange}
+          onToggle={handleToggle}
+          onFindNext={handleFindNext}
+          onFindPrev={handleFindPrev}
+          onReplaceNext={handleReplaceNext}
+          onReplaceAll={handleReplaceAllClick}
+          onClose={handleCloseFindBar}
+        />
+      )}
       <div style={{ position: "relative", flex: 1, minHeight: 0, minWidth: 0 }}>
         {leaf.tabs.length === 0 ? (
           <EditorPane
@@ -183,6 +326,8 @@ export function LeafPane({
             reindexing={reindexing}
             editorHandlersRef={fallbackHandlerRef}
             autosaveMs={autosaveMs}
+            onOpenFind={handleOpenFind}
+            onOpenFindReplace={handleOpenFindReplace}
           />
         ) : (
           leaf.tabs.map((tab) => (
@@ -202,6 +347,8 @@ export function LeafPane({
               editorHandlersRef={handlerRefs.current[tab.id]}
               flushRef={flushRefs.current[tab.id]}
               autosaveMs={autosaveMs}
+              onOpenFind={handleOpenFind}
+              onOpenFindReplace={handleOpenFindReplace}
             />
           ))
         )}

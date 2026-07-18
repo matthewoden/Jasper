@@ -52,6 +52,7 @@ import { useOutlineStore } from "../lib/useOutlineStore";
 import { countWords, formatWordCount } from "../lib/wordCount";
 import type { HeadingInfo } from "../editor/outlineExtract";
 import type { components } from "../api/schema";
+import type { SearchQuery } from "@codemirror/search";
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
 import { expandAndScrollToFolder } from "./fileTree.utils";
 import { TitleElement } from "./TitleElement";
@@ -68,6 +69,20 @@ type WSNoteDeletedPayload = components["schemas"]["WSNoteDeletedPayload"];
 export interface EditorPaneHandlers {
   onNoteUpdated: (p: WSNoteUpdatedPayload) => void;
   onNoteDeleted: (p: WSNoteDeletedPayload) => void;
+  /**
+   * Search commands (P26, WS-09/D-01) — delegate straight to the internal
+   * MarkdownEditor ref, so the Find bar reaches THIS pane's own EditorView
+   * via LeafPane's handlerRefs map.
+   */
+  setSearchQuery: (query: SearchQuery) => void;
+  findNext: () => boolean;
+  findPrevious: () => boolean;
+  replaceNext: () => boolean;
+  replaceAll: () => boolean;
+  matchInfo: () => { current: number; total: number };
+  clearSearch: () => void;
+  /** Returns focus to this pane's editor (P26, D-02 — Esc closes the Find bar and refocuses). */
+  focus: () => void;
 }
 
 
@@ -105,6 +120,10 @@ interface EditorPaneProps {
   isDeleted?: boolean;
   /** tab-close awaits flush() to persist pending edits before the tab is removed (TAB-13). */
   flushRef?: MutableRefObject<{ flush: () => Promise<void> } | null>;
+  /** Cmd+F handler (P26, WS-09/D-02) — opens this pane's find-only bar. */
+  onOpenFind?: () => void;
+  /** Cmd+Opt+F handler (P26, WS-09/D-02) — opens this pane's find+replace bar. */
+  onOpenFindReplace?: () => void;
 }
 
 
@@ -137,7 +156,7 @@ function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
   return null;
 }
 
-export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style, autosaveMs, hidden = false, paneActive = true, isDeleted = false, flushRef }: EditorPaneProps) {
+export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style, autosaveMs, hidden = false, paneActive = true, isDeleted = false, flushRef, onOpenFind, onOpenFindReplace }: EditorPaneProps) {
   const autosaveMsRef = useRef(autosaveMs ?? AUTOSAVE_DEBOUNCE_MS);
   // Follow prop updates: panes mount before the async /config fetch resolves,
   // so a mount-only capture would pin them to the default interval forever.
@@ -615,11 +634,36 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     [controller],
   );
 
+  // Search commands (P26, WS-09/D-01) — thin delegates to the internal
+  // MarkdownEditor ref, exposed through editorHandlersRef so LeafPane's Find
+  // bar can reach THIS pane's own EditorView.
+  const setSearchQuery = useCallback((query: SearchQuery) => {
+    editorRef.current?.setSearchQuery(query);
+  }, []);
+  const findNext = useCallback(() => editorRef.current?.findNext() ?? false, []);
+  const findPrevious = useCallback(() => editorRef.current?.findPrevious() ?? false, []);
+  const replaceNext = useCallback(() => editorRef.current?.replaceNext() ?? false, []);
+  const replaceAll = useCallback(() => editorRef.current?.replaceAll() ?? false, []);
+  const matchInfo = useCallback(
+    () => editorRef.current?.matchInfo() ?? { current: 0, total: 0 },
+    [],
+  );
+  const clearSearch = useCallback(() => editorRef.current?.clearSearch(), []);
+  const focusEditor = useCallback(() => editorRef.current?.focus(), []);
+
   useEffect(() => {
     if (editorHandlersRef) {
       editorHandlersRef.current = {
         onNoteUpdated,
         onNoteDeleted,
+        setSearchQuery,
+        findNext,
+        findPrevious,
+        replaceNext,
+        replaceAll,
+        matchInfo,
+        clearSearch,
+        focus: focusEditor,
       };
     }
     return () => {
@@ -627,7 +671,19 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
         editorHandlersRef.current = null;
       }
     };
-  }, [editorHandlersRef, onNoteUpdated, onNoteDeleted]);
+  }, [
+    editorHandlersRef,
+    onNoteUpdated,
+    onNoteDeleted,
+    setSearchQuery,
+    findNext,
+    findPrevious,
+    replaceNext,
+    replaceAll,
+    matchInfo,
+    clearSearch,
+    focusEditor,
+  ]);
 
   // WR-05 fix (25-REVIEW.md): activeFilePath is a single GLOBAL value in
   // useTreeStore, so without the paneActive gate every mounted EditorPane
@@ -973,6 +1029,8 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           onSaveRequested={handleSaveRequested}
           onBlur={handleEditorBlur}
           readOnly={isDeleted}
+          onOpenFind={onOpenFind}
+          onOpenFindReplace={onOpenFindReplace}
         />
       </div>
     </section>

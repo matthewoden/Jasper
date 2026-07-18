@@ -11,12 +11,29 @@
  * Ref API: getContent / setContent / applyServerUpdate / focus / focusEnd.
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Annotation, Compartment, Prec, type Transaction } from "@codemirror/state";
+import { Annotation, Compartment, Prec, RangeSetBuilder, type Transaction } from "@codemirror/state";
 import { EditorState } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import {
+  Decoration,
+  type DecorationSet,
+  EditorView,
+  keymap,
+  ViewPlugin,
+  type ViewUpdate,
+} from "@codemirror/view";
 import { defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { autocompletion } from "@codemirror/autocomplete";
-import { search, openSearchPanel } from "@codemirror/search";
+import {
+  search,
+  openSearchPanel,
+  getSearchQuery,
+  SearchQuery,
+  setSearchQuery as cmSetSearchQuery,
+  findNext as cmFindNext,
+  findPrevious as cmFindPrevious,
+  replaceNext as cmReplaceNext,
+  replaceAll as cmReplaceAll,
+} from "@codemirror/search";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 
@@ -50,7 +67,7 @@ import {
   taskCheckboxPlugin,
 } from "../editor/taskCheckboxPlugin";
 import { useAttachmentUpload } from "../lib/useAttachmentUpload";
-import { saveKeymap, jasperKeymap, listEnterKeymap } from "../editor/jasperKeymap";
+import { saveKeymap, jasperKeymap, listEnterKeymap, findBarKeymap } from "../editor/jasperKeymap";
 import {
   getPrimaryView,
   historyExtensionFor,
@@ -105,6 +122,20 @@ export interface MarkdownEditorRef {
    * pathway). No-op if the doc has no H1 line (matches rewriteH1's contract).
    */
   setH1(next: string): void;
+  /**
+   * Search commands (P26, WS-09/D-01) — each guards viewRef.current and
+   * dispatches/queries against THIS view's own EditorView, so scoping is
+   * naturally per-pane even when the same note is open in two panes.
+   */
+  setSearchQuery(query: SearchQuery): void;
+  findNext(): boolean;
+  findPrevious(): boolean;
+  replaceNext(): boolean;
+  replaceAll(): boolean;
+  /** Derives {current, total} from a search cursor over the doc; {0,0} when the query is empty. */
+  matchInfo(): { current: number; total: number };
+  /** Clears the active search query (dismisses highlight-all). */
+  clearSearch(): void;
 }
 
 /** Transactions annotated with this are server-driven and skip the onChange callback. */
@@ -132,6 +163,10 @@ interface Props {
   onBlur?: () => void;
   /** When true, the document is read-only (deleted-tab keep-alive — D-10). */
   readOnly?: boolean;
+  /** Cmd+F handler (P26, WS-09/D-02) — opens the pane's find-only bar. */
+  onOpenFind?: () => void;
+  /** Cmd+Opt+F handler (P26, WS-09/D-02) — opens the pane's find+replace bar. */
+  onOpenFindReplace?: () => void;
 }
 
 /** Read-only extension toggled at runtime via a Compartment (view is mounted once). */
@@ -140,6 +175,57 @@ function readOnlyExtension(readOnly: boolean) {
     ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
     : [];
 }
+
+const jasperSearchMatchMark = Decoration.mark({ class: "cm-jasper-search-match" });
+const jasperSearchMatchCurrentMark = Decoration.mark({
+  class: "cm-jasper-search-match cm-jasper-search-match-current",
+});
+
+function buildSearchMatchDecorations(view: EditorView): DecorationSet {
+  const query = getSearchQuery(view.state);
+  if (!query.search || !query.valid) return Decoration.none;
+  const cursor = query.getCursor(view.state);
+  const builder = new RangeSetBuilder<Decoration>();
+  const sel = view.state.selection.main;
+  for (let r = cursor.next(); !r.done; r = cursor.next()) {
+    const isCurrent = r.value.from === sel.from && r.value.to === sel.to;
+    builder.add(
+      r.value.from,
+      r.value.to,
+      isCurrent ? jasperSearchMatchCurrentMark : jasperSearchMatchMark,
+    );
+  }
+  return builder.finish();
+}
+
+/**
+ * jasperSearchHighlight — highlight-all-matches with current-match emphasis
+ * (P26, WS-09/D-04). CM6's built-in searchHighlighter only paints decorations
+ * while its native search PANEL is open (a `panel != null` gate baked into
+ * @codemirror/search) — since P26 drives search entirely through the custom
+ * FindReplaceBar (no built-in panel is ever opened), this plugin re-derives
+ * highlighting directly from the live SearchQuery state field, independent
+ * of panel state.
+ */
+const jasperSearchHighlight = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = buildSearchMatchDecorations(view);
+    }
+    update(update: ViewUpdate) {
+      if (
+        update.docChanged ||
+        update.selectionSet ||
+        update.viewportChanged ||
+        getSearchQuery(update.state) !== getSearchQuery(update.startState)
+      ) {
+        this.decorations = buildSearchMatchDecorations(update.view);
+      }
+    }
+  },
+  { decorations: (v) => v.decorations },
+);
 
 /**
  * Walk the tree to find the folder path of a given note id.
@@ -174,15 +260,42 @@ function getNoteFolder(noteId: string | null, root: TreeNode[]): string {
 
 export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
   function MarkdownEditor(
-    { noteId, initialDoc, onChange, onH1Change, onHeadingsChange, onSaveRequested, onBlur, readOnly = false },
+    {
+      noteId,
+      initialDoc,
+      onChange,
+      onH1Change,
+      onHeadingsChange,
+      onSaveRequested,
+      onBlur,
+      readOnly = false,
+      onOpenFind,
+      onOpenFindReplace,
+    },
     ref
   ) {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const viewRef = useRef<EditorView | null>(null);
     const readOnlyCompartment = useRef(new Compartment());
 
-    const cbRef = useRef({ onChange, onH1Change, onHeadingsChange, onSaveRequested, onBlur });
-    cbRef.current = { onChange, onH1Change, onHeadingsChange, onSaveRequested, onBlur };
+    const cbRef = useRef({
+      onChange,
+      onH1Change,
+      onHeadingsChange,
+      onSaveRequested,
+      onBlur,
+      onOpenFind,
+      onOpenFindReplace,
+    });
+    cbRef.current = {
+      onChange,
+      onH1Change,
+      onHeadingsChange,
+      onSaveRequested,
+      onBlur,
+      onOpenFind,
+      onOpenFindReplace,
+    };
 
     const { titleSet, idMap } = useResolvedTitleSet();
     useEffect(() => {
@@ -317,7 +430,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           extensions: [
             readOnlyCompartment.current.of(readOnlyExtension(readOnly)),
             historyExtensionFor(noteId, isPrimary),
-            search({ top: true }), // searchKeymap omitted; browser native Cmd+F fires instead
+            search({ top: true }), // provides the SearchQuery state field; driven by the custom FindReplaceBar (P26, D-01), not the built-in panel
+            jasperSearchHighlight, // highlight-all + current-match emphasis, panel-independent (P26, D-04)
             // listEnterKeymap at Prec.high: runs before insertNewlineContinueMarkup (also Prec.high
             // from markdown()) because it is placed EARLIER in the extensions array.
             // Handles nested-empty-item de-indent; falls through to markdown() for all other Enter cases.
@@ -345,6 +459,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             dropIndicatorPlugin,  // ViewPlugin: dragover/dragleave/drop listeners
             autocompletion({ override: [wikilinkCompletionSource, tagCompletionSource, inlineTagCompletionSource] }),
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // BEFORE defaultKeymap so Cmd+S takes precedence
+            findBarKeymap( // Cmd+F / Cmd+Opt+F open the pane's Find/Replace bar (P26, D-02)
+              () => cbRef.current.onOpenFind?.(),
+              () => cbRef.current.onOpenFindReplace?.(),
+            ),
             frontmatterToggleKeymap, // Cmd-Shift-Y toggles raw frontmatter view
             codeblockExpand,
             keymap.of([...jasperKeymap, indentWithTab, ...defaultKeymap, ...historyKeymap]), // jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap; indentWithTab before defaultKeymap so Tab→indent wins
@@ -491,6 +609,52 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           v.dispatch({
             changes: { from: 0, to: v.state.doc.length, insert: rewritten },
           });
+        },
+        setSearchQuery(query: SearchQuery) {
+          const v = viewRef.current;
+          if (!v) return;
+          v.dispatch({ effects: cmSetSearchQuery.of(query) });
+        },
+        findNext(): boolean {
+          const v = viewRef.current;
+          return v ? cmFindNext(v) : false;
+        },
+        findPrevious(): boolean {
+          const v = viewRef.current;
+          return v ? cmFindPrevious(v) : false;
+        },
+        replaceNext(): boolean {
+          const v = viewRef.current;
+          return v ? cmReplaceNext(v) : false;
+        },
+        replaceAll(): boolean {
+          const v = viewRef.current;
+          return v ? cmReplaceAll(v) : false;
+        },
+        matchInfo(): { current: number; total: number } {
+          const v = viewRef.current;
+          if (!v) return { current: 0, total: 0 };
+          const query = getSearchQuery(v.state);
+          if (!query.search || !query.valid) return { current: 0, total: 0 };
+          const cursor = query.getCursor(v.state);
+          const selFrom = v.state.selection.main.from;
+          let total = 0;
+          let current = 0;
+          let foundCurrent = false;
+          for (let r = cursor.next(); !r.done; r = cursor.next()) {
+            total++;
+            if (!foundCurrent && r.value.to > selFrom) {
+              current = total;
+              foundCurrent = true;
+            }
+          }
+          if (!foundCurrent && total > 0) current = total;
+          return { current, total };
+        },
+        clearSearch() {
+          const v = viewRef.current;
+          if (!v) return;
+          v.dispatch({ effects: cmSetSearchQuery.of(new SearchQuery({ search: "" })) });
         },
       }),
       []

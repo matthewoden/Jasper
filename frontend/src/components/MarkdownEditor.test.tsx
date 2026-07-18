@@ -12,6 +12,7 @@ import { forwardRef, useImperativeHandle, useRef, useState, type ReactElement } 
 import { render, act, waitFor } from "@testing-library/react";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
+import { SearchQuery } from "@codemirror/search";
 
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
 import { ToastProvider } from "./Toast";
@@ -308,6 +309,81 @@ describe("<MarkdownEditor />", () => {
       // attachment until the user clicked to activate it.
       expect(img.src).toContain("note-THIS-PANE");
       expect(img.src).not.toContain("note-ACTIVE-ELSEWHERE");
+    });
+  });
+
+  describe("search commands (P26, WS-09/D-01)", () => {
+    it("matchInfo returns {0,0} before any search query is set", () => {
+      const probeRef = { current: null as ProbeRef | null };
+      renderWithToast(
+        <Probe ref={probeRef} noteId="search-note-1" initialDoc="the the the" onChange={vi.fn()} />,
+      );
+      expect(probeRef.current?.ed()?.matchInfo()).toEqual({ current: 0, total: 0 });
+    });
+
+    it("matchInfo({search:'the'}) over 'the the the' returns total 3", () => {
+      const probeRef = { current: null as ProbeRef | null };
+      renderWithToast(
+        <Probe ref={probeRef} noteId="search-note-2" initialDoc="the the the" onChange={vi.fn()} />,
+      );
+      act(() => {
+        probeRef.current?.ed()?.setSearchQuery(new SearchQuery({ search: "the" }));
+      });
+      expect(probeRef.current?.ed()?.matchInfo().total).toBe(3);
+    });
+
+    it("setSearchQuery updates highlight state (cm-jasper-search-match decorations render)", () => {
+      const probeRef = { current: null as ProbeRef | null };
+      const { container } = renderWithToast(
+        <Probe ref={probeRef} noteId="search-note-3" initialDoc="the the the" onChange={vi.fn()} />,
+      );
+      expect(container.querySelectorAll(".cm-jasper-search-match").length).toBe(0);
+      act(() => {
+        probeRef.current?.ed()?.setSearchQuery(new SearchQuery({ search: "the" }));
+      });
+      expect(container.querySelectorAll(".cm-jasper-search-match").length).toBe(3);
+    });
+
+    it("clearSearch removes the highlight and resets matchInfo to {0,0}", () => {
+      const probeRef = { current: null as ProbeRef | null };
+      const { container } = renderWithToast(
+        <Probe ref={probeRef} noteId="search-note-4" initialDoc="the the the" onChange={vi.fn()} />,
+      );
+      act(() => {
+        probeRef.current?.ed()?.setSearchQuery(new SearchQuery({ search: "the" }));
+      });
+      expect(container.querySelectorAll(".cm-jasper-search-match").length).toBe(3);
+      act(() => {
+        probeRef.current?.ed()?.clearSearch();
+      });
+      expect(container.querySelectorAll(".cm-jasper-search-match").length).toBe(0);
+      expect(probeRef.current?.ed()?.matchInfo()).toEqual({ current: 0, total: 0 });
+    });
+
+    it("findNext moves the selection to the next match", () => {
+      const probeRef = { current: null as ProbeRef | null };
+      renderWithToast(
+        <Probe ref={probeRef} noteId="search-note-5" initialDoc="the the the" onChange={vi.fn()} />,
+      );
+      act(() => {
+        probeRef.current?.ed()?.setSearchQuery(new SearchQuery({ search: "the" }));
+        probeRef.current?.ed()?.findNext();
+      });
+      expect(probeRef.current?.ed()?.matchInfo().current).toBe(1);
+    });
+
+    it("replaceAll replaces every match", () => {
+      const probeRef = { current: null as ProbeRef | null };
+      renderWithToast(
+        <Probe ref={probeRef} noteId="search-note-6" initialDoc="the the the" onChange={vi.fn()} />,
+      );
+      act(() => {
+        probeRef.current?.ed()?.setSearchQuery(
+          new SearchQuery({ search: "the", replace: "a" }),
+        );
+        probeRef.current?.ed()?.replaceAll();
+      });
+      expect(probeRef.current?.ed()?.getContent()).toBe("a a a");
     });
   });
 });
