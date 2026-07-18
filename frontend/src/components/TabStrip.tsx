@@ -632,6 +632,14 @@ export function TabStrip({
       drag.active = true;
       // Clear any text selection accumulated before the threshold was crossed.
       window.getSelection()?.removeAllRanges();
+      // React's delegated pointermove handler (this one) always runs BEFORE
+      // the window-level native listener below reaches `window` in the
+      // bubble phase — so when threshold-crossing happens while the cursor
+      // is still over the strip, THIS branch wins the race to flip
+      // drag.active. Call beginDrag here too (idempotent — both sites are
+      // guarded by the same `!drag.active` check) so usePaneDragStore is
+      // always populated, not just when the window listener wins.
+      usePaneDragStore.getState().beginDrag(leafId, drag.tabId);
     }
     if (drag.active) {
       // Compute strip-relative indicator x in one pass over the wrapper rects —
