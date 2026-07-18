@@ -272,6 +272,13 @@ export function TabStrip({
     (s) => s.setBacklinksRailExpanded,
   );
 
+  // Whether THIS strip's leaf is the active pane (D-05 active-pane cue): the
+  // active tab's top-accent reads purple (--color-accent) only in the active
+  // pane, and a neutral gray (--color-muted) in inactive panes — so the purple
+  // accent itself signals which pane is active. Subscribed (not getState) so
+  // the accent flips live when focus moves between panes.
+  const isActivePane = usePaneStore((s) => s.activePaneId === leafId);
+
   const sidebarLabel = notesSidebarVisible
     ? "Hide notes sidebar"
     : "Show notes sidebar";
@@ -683,6 +690,7 @@ export function TabStrip({
                 <TabPill
                   title={titleForTab(tab.noteId)}
                   isActive={tab.id === activeTabId}
+                  paneActive={isActivePane}
                   isDeleted={deletedTabIds.has(tab.noteId)}
                   isDragging={dragGhost?.tabId === tab.id}
                   onSelect={() => onSelectTab(tab.id)}
@@ -737,6 +745,7 @@ export function TabStrip({
           <TabPill
             title={dragGhost.title}
             isActive={dragGhost.isActive}
+            paneActive={isActivePane}
             isDeleted={dragGhost.isDeleted}
             onSelect={() => {}}
             onClose={() => {}}

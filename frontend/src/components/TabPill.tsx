@@ -23,6 +23,14 @@ import { MIN_TAB_WIDTH, MAX_TAB_WIDTH } from "../lib/tabOverflow";
 export interface TabPillProps {
   title: string;
   isActive: boolean;
+  /**
+   * Whether this pill's leaf is the active pane (WS-07 / D-05). The active
+   * tab's 2px top-accent reads purple (--color-accent) when its pane is
+   * active, and a neutral gray (--color-muted) when it is not — so the purple
+   * accent itself is the active-PANE signal. Defaults true so single-pane /
+   * non-LeafPane callers keep the original purple accent.
+   */
+  paneActive?: boolean;
   isDeleted: boolean;
   onSelect: () => void;
   onClose: () => void;
@@ -93,6 +101,7 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
     {
       title,
       isActive,
+      paneActive = true,
       isDeleted,
       onSelect,
       onClose,
@@ -102,6 +111,12 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
     ref,
   ) {
     const [hovering, setHovering] = useState(false);
+
+    // Active-tab top-accent color (D-05): purple in the active pane, neutral
+    // gray in an inactive pane — the purple is the active-PANE signal.
+    const activeAccentColor = paneActive
+      ? "var(--color-accent)"
+      : "var(--color-muted)";
 
     // Active: seated on the editor column below (--color-bg). Hovered inactive:
     // accent tint over the flush base. Idle inactive: flush with the tab bar
@@ -130,7 +145,7 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
           ...tabPillStyle,
           background,
           borderTop: isActive
-            ? "2px solid var(--color-accent)"
+            ? `2px solid ${activeAccentColor}`
             : "2px solid transparent",
           // Dim while dragging so the ghost is clearly the moving element.
           opacity: isDragging ? 0.4 : undefined,
