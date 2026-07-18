@@ -266,6 +266,43 @@ describe("onNoteUpdated — once-per-note WS reconciliation", () => {
     expect(c.getConflict()).toBeNull();
     expect(c.getContent()).toBe("initial");
   });
+
+  it("WR-02 regression (25-REVIEW.md): a silent adopt re-seeds lastH1Sent/lastNotePath so the NEXT edit does not trigger a spurious rename", async () => {
+    const c = getOrCreateController("note-1", 2000);
+    c.hydrate("# Original Title\n\nbody", "original-title.md");
+
+    // Another session renamed the note via its own H1 edit (H1<->filename
+    // binding already applied server-side). This controller has no pending
+    // local edit, so onNoteUpdated silently adopts the fresh server content.
+    getNoteMock.mockResolvedValueOnce(
+      okGet("# Renamed Title\n\nbody", "renamed-title.md"),
+    );
+    c.onNoteUpdated({
+      id: "note-1",
+      path: "renamed-title.md",
+      updated_at: "2026-01-02T00:00:00Z",
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(c.getContent()).toBe("# Renamed Title\n\nbody");
+    expect(c.getNotePath()).toBe("renamed-title.md");
+
+    // A later, UNRELATED edit keeping the SAME (already-adopted) H1 must not
+    // recompute a rename. Before the fix, lastH1Sent still held the STALE
+    // "Original Title" value from hydrate(), so this save would see
+    // currentH1 !== lastH1Sent and fire an unwanted postNoteMove — composed
+    // against the (also stale) pre-adopt lastNotePath, risking a 409 against
+    // the path the other session already renamed to.
+    c.handleEditorChange("# Renamed Title\n\nbody edited");
+    await c.flush();
+
+    expect(postNoteMoveMock).not.toHaveBeenCalled();
+    expect(updateNoteMock).toHaveBeenCalledWith(
+      "note-1",
+      "# Renamed Title\n\nbody edited",
+    );
+  });
 });
 
 describe("subscribeContentReplaced (Plan 05: uncontrolled CM6 ref push on silent WS adopt)", () => {

@@ -294,6 +294,15 @@ class NoteBufferControllerImpl implements NoteBufferController {
             return;
           }
           this.content = data.content;
+          // WR-02 fix (25-REVIEW.md): re-seed the H1-rename comparator (and
+          // the rename-comparator's path) from the JUST-adopted server
+          // content. Without this, lastH1Sent/lastNotePath keep pointing at
+          // this controller's stale pre-adopt values, so the next unrelated
+          // edit's performSave() sees a spurious currentH1 !== lastH1Sent
+          // mismatch and fires an unwanted postNoteMove against a path
+          // another session may have already renamed (409/case_collision).
+          this.lastH1Sent = extractH1FromContent(data.content);
+          if (data.path) this.lastNotePath = data.path;
           this.notify();
           for (const fn of Array.from(this.contentReplacedListeners)) {
             fn(this.content);
