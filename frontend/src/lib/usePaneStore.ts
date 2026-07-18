@@ -26,6 +26,7 @@ import {
   _removeLeaf,
   _updLeaf,
   newLeaf,
+  newLeafId,
   newTabId,
   splitPane,
   type LeafNode,
@@ -56,7 +57,7 @@ export const layoutKeyForVault = (vaultPath: string): string =>
   `jasper.layout.${encodeURIComponent(vaultPath)}`;
 
 function defaultLayout(): { tree: PaneNode; activePaneId: string } {
-  const id = newTabId();
+  const id = newLeafId();
   return { tree: newLeaf(id), activePaneId: id };
 }
 

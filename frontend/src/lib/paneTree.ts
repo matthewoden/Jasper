@@ -42,6 +42,17 @@ export function newTabId(): string {
   return crypto.randomUUID();
 }
 
+/**
+ * Generates a leaf/pane id. Functionally identical to newTabId() (both are
+ * just crypto.randomUUID()), but named separately per-call-site for
+ * readability (IN-02, 25-REVIEW.md): a leaf id and a tab id occupy distinct
+ * id spaces (D-16) and reusing one generator name for both obscured that
+ * distinction at call sites that mint a LEAF id, not a tab id.
+ */
+export function newLeafId(): string {
+  return crypto.randomUUID();
+}
+
 /** Builds a new empty leaf (default state: no tabs, no active tab). */
 export function newLeaf(id: string, tabs: Tab[] = [], active: string | null = null): LeafNode {
   return { t: "leaf", id, tabs, active };
@@ -70,7 +81,7 @@ export function splitPane(
 ): PaneNode {
   if (tree.t === "leaf") {
     if (tree.id !== leafId) return tree;
-    const siblingId = newTabId();
+    const siblingId = newLeafId();
     const activeTab = tree.tabs.find((t) => t.id === tree.active);
     const siblingTabs: Tab[] =
       cloneActiveTab && activeTab
@@ -127,7 +138,7 @@ export function _removeLeaf(tree: PaneNode, leafId: string): PaneNode {
   if (tree.t === "leaf") {
     if (tree.id === leafId) {
       // Removing the only remaining leaf — return a fresh empty default leaf.
-      return newLeaf(newTabId());
+      return newLeaf(newLeafId());
     }
     return tree;
   }
