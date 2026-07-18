@@ -91,12 +91,11 @@ vi.mock("./EditorPane", () => ({
 const tabA: Tab = { id: "tab-a", noteId: "note-a" };
 const leafA: LeafNode = { t: "leaf", id: "leaf-a", tabs: [tabA], active: "tab-a" };
 
-function renderLeaf(leaf: LeafNode = leafA, overrides?: { isActive?: boolean; multiPane?: boolean }) {
+function renderLeaf(leaf: LeafNode = leafA, overrides?: { isActive?: boolean }) {
   return render(
     <LeafPane
       leaf={leaf}
       isActive={overrides?.isActive ?? true}
-      multiPane={overrides?.multiPane ?? false}
       reindexing={false}
       deletedTabIds={new Set()}
       titleForTab={(noteId) => `Title ${noteId}`}
@@ -122,27 +121,12 @@ describe("<LeafPane /> data-droppane (WS-01/WS-02 hit-testing)", () => {
   });
 });
 
-describe("<LeafPane /> active-pane accent bar (P26 polish, D-05 supersession)", () => {
+describe("<LeafPane /> no inactive-pane dim (readability)", () => {
   it("an inactive pane's root carries no opacity dim", () => {
-    renderLeaf(leafA, { isActive: false, multiPane: true });
+    renderLeaf(leafA, { isActive: false });
     const root = screen.getByTestId("leaf-pane");
     const opacity = root.style.opacity;
     expect(opacity === "" || opacity === "1").toBe(true);
-  });
-
-  it("renders the accent bar when active AND multiPane", () => {
-    renderLeaf(leafA, { isActive: true, multiPane: true });
-    expect(screen.getByTestId("active-pane-accent")).toBeInTheDocument();
-  });
-
-  it("renders no accent bar when active but single-pane", () => {
-    renderLeaf(leafA, { isActive: true, multiPane: false });
-    expect(screen.queryByTestId("active-pane-accent")).not.toBeInTheDocument();
-  });
-
-  it("renders no accent bar when inactive, even in a multi-pane layout", () => {
-    renderLeaf(leafA, { isActive: false, multiPane: true });
-    expect(screen.queryByTestId("active-pane-accent")).not.toBeInTheDocument();
   });
 });
 
@@ -231,7 +215,6 @@ describe("<LeafPane /> Find/Replace bar re-syncs on active-tab change (CR-03)", 
       <LeafPane
         leaf={{ ...twoTabLeaf, active: "tab-b" }}
         isActive={true}
-        multiPane={false}
         reindexing={false}
         deletedTabIds={new Set()}
         titleForTab={(noteId) => `Title ${noteId}`}
@@ -256,7 +239,6 @@ describe("<LeafPane /> Find/Replace bar re-syncs on active-tab change (CR-03)", 
       <LeafPane
         leaf={{ ...twoTabLeaf, active: "tab-b" }}
         isActive={true}
-        multiPane={false}
         reindexing={false}
         deletedTabIds={new Set()}
         titleForTab={(noteId) => `Title ${noteId}`}

@@ -158,23 +158,6 @@ describe("<PaneTree /> single-leaf render (no split)", () => {
     expect(screen.getAllByTestId("leaf-pane")).toHaveLength(1);
     expect(screen.queryByTestId("pane-divider")).not.toBeInTheDocument();
   });
-
-  it("renders no active-pane-accent bar in a single-pane layout (P26 polish)", () => {
-    renderTree({ tree: leafA, activePaneId: "leaf-a" });
-    expect(screen.queryByTestId("active-pane-accent")).not.toBeInTheDocument();
-  });
-});
-
-describe("<PaneTree /> active-pane accent bar threading (P26 polish)", () => {
-  it("a two-leaf tree renders the accent bar on the active leaf only", () => {
-    renderTree({ activePaneId: "leaf-a" });
-    expect(screen.getAllByTestId("active-pane-accent")).toHaveLength(1);
-    const accent = screen.getByTestId("active-pane-accent");
-    const activeLeaf = screen
-      .getAllByTestId("leaf-pane")
-      .find((el) => el.dataset.activePane === "true")!;
-    expect(activeLeaf.contains(accent)).toBe(true);
-  });
 });
 
 describe("<PaneTree /> CR-01 regression (25-REVIEW.md): unrelated sibling survives a further split", () => {

@@ -14,11 +14,9 @@
  *
  * A pane becomes active on a click anywhere in its chrome (tab strip,
  * breadcrumb, or body) OR on focus entering it (D-04); the active leaf
- * carries `data-active-pane` plus (P26 polish) a 2px accent bar along its
- * top edge — but ONLY in a multi-pane layout (`multiPane`), since a single
- * pane is trivially active and needs no cue. Every pane renders at full
- * opacity; the earlier inactive-pane dim is gone (superseded by the accent
- * bar as the sole active-pane signal).
+ * carries `data-active-pane`. Every pane renders at full opacity — the
+ * earlier inactive-pane dim was removed for readability, and a pane-level
+ * active cue was dropped for now (may be revisited).
  *
  * Per-tab `flushRef`/`editorHandlersRef` bookkeeping mirrors the pre-Phase-25
  * `App.tsx:239-266` pattern (TAB-13 close-flush contract), scoped to this
@@ -89,10 +87,8 @@ function overlayRectStyle(region: "left" | "right" | "top" | "bottom" | "center"
 
 export interface LeafPaneProps {
   leaf: LeafNode;
-  /** Whether THIS leaf is usePaneStore's activePaneId (D-05 cue, D-04 click-to-focus target). */
+  /** Whether THIS leaf is usePaneStore's activePaneId (D-04 click-to-focus target). */
   isActive: boolean;
-  /** Whether the layout currently has more than one leaf (P26 polish) — gates the active-pane accent bar. */
-  multiPane: boolean;
   reindexing: boolean;
   deletedTabIds: Set<string>;
   /** Derived from useFileTree by note UUID (TAB-12 live rename) — shared across every leaf. */
@@ -113,7 +109,6 @@ export interface LeafPaneProps {
 export function LeafPane({
   leaf,
   isActive,
-  multiPane,
   reindexing,
   deletedTabIds,
   titleForTab,
@@ -382,20 +377,6 @@ export function LeafPane({
         ...style,
       }}
     >
-      {isActive && multiPane && (
-        <div
-          data-testid="active-pane-accent"
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: 0,
-            border:
-              "1px solid color-mix(in srgb, var(--color-accent) 50%, transparent)",
-            pointerEvents: "none",
-            zIndex: 20,
-          }}
-        />
-      )}
       {!hideTabStrip && (
         <TabStrip
           leafId={leafId}

@@ -87,7 +87,6 @@ function renderLeaf() {
       <LeafPane
         leaf={oneTabLeaf}
         isActive={true}
-        multiPane={false}
         reindexing={false}
         deletedTabIds={new Set()}
         titleForTab={() => "scratchpad"}
