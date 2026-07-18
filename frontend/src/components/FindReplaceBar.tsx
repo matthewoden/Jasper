@@ -93,7 +93,11 @@ const secondaryButtonStyle: React.CSSProperties = {
 const replaceAllButtonStyle: React.CSSProperties = {
   background: "color-mix(in srgb, var(--color-accent) 28%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-accent) 50%, transparent)",
-  color: "#fff",
+  // WR-04 (26-REVIEW.md): the translucent accent tint keeps this button's
+  // effective background dark, so it needs a bright foreground token, not
+  // --color-bg (the dark-on-solid-accent pattern used by
+  // .vault-picker-button-primary in theme.css, which doesn't apply here).
+  color: "var(--color-fg-title)",
   fontSize: 13,
   fontWeight: 400,
   borderRadius: 6,

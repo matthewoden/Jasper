@@ -55,6 +55,12 @@ describe("<FindReplaceBar />", () => {
     expect(screen.getByText("Replace All")).toBeInTheDocument();
   });
 
+  it("WR-04: Replace All button uses the design-token foreground, not a hardcoded hex", () => {
+    renderBar({ mode: "replace" });
+    const button = screen.getByText("Replace All").closest("button") as HTMLButtonElement;
+    expect(button.style.color).toBe("var(--color-fg-title)");
+  });
+
   it("match-count pluralization: 0 matches / 1 match / N matches", () => {
     const { rerender } = render(
       <FindReplaceBar mode="find" {...baseProps} matchCount={{ current: 0, total: 0 }} />,
