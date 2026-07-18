@@ -176,34 +176,37 @@ test.describe("@drag P26 polish: cross-pane tab-BAR positional insert (Obsidian 
     await page.setViewportSize({ width: 1600, height: 900 });
     await waitForConnected(page, jasper.baseURL);
 
-    const idA = await apiCreateNote(page, jasper.baseURL, "tabbar-a-alpha");
-    const idX = await apiCreateNote(page, jasper.baseURL, "tabbar-b-xray");
-    const idY = await apiCreateNote(page, jasper.baseURL, "tabbar-b-yankee");
+    const idAlpha = await apiCreateNote(page, jasper.baseURL, "tabbar-alpha");
+    const idBeta = await apiCreateNote(page, jasper.baseURL, "tabbar-beta");
+    const idXray = await apiCreateNote(page, jasper.baseURL, "tabbar-xray");
 
-    // Pane A: alpha. Pane B (split right): xray, yankee (in that order).
-    await openNoteFromTree(page, idA);
+    // Pane A: alpha + beta. "Split right" CLONES the active tab (beta) into
+    // pane B, so opening xray in B yields B = [beta, xray]. Dragging alpha
+    // (only in A) into B is a clean positional insert: alpha is not already in
+    // B (no D-07 dedup) and A keeps beta afterwards (no D-06 collapse).
+    await openNoteFromTree(page, idAlpha);
+    await openNoteFromTree(page, idBeta);
     await splitRight(page);
     await expect(leafPanes(page)).toHaveCount(2);
     const paneA = leafPanes(page).nth(0);
     const paneB = leafPanes(page).nth(1);
 
-    await openNoteFromTree(page, idX);
-    await openNoteFromTree(page, idY);
-    await expect(tabPillsFor(paneA)).toHaveCount(1);
+    await openNoteFromTree(page, idXray);
+    await expect(tabPillsFor(paneA)).toHaveCount(2);
     await expect(tabPillsFor(paneB)).toHaveCount(2);
-    await expect(tabPillsFor(paneB).nth(0)).toContainText("tabbar-b-xray");
-    await expect(tabPillsFor(paneB).nth(1)).toContainText("tabbar-b-yankee");
+    await expect(tabPillsFor(paneB).nth(0)).toContainText("tabbar-beta");
+    await expect(tabPillsFor(paneB).nth(1)).toContainText("tabbar-xray");
 
-    const alphaPill = tabPillsFor(paneA).filter({ hasText: "tabbar-a-alpha" });
+    const alphaPill = tabPillsFor(paneA).filter({ hasText: "tabbar-alpha" });
     const pillBox = await stableBox(alphaPill);
-    const xrayBox = await stableBox(tabPillsFor(paneB).nth(0));
+    const betaBoxB = await stableBox(tabPillsFor(paneB).nth(0));
 
     const fromX = pillBox.x + pillBox.width / 2;
     const fromY = pillBox.y + pillBox.height / 2;
-    // Left QUARTER of xray's pill — well inside its left half, so the
-    // midpoint test lands the caret BEFORE it (index 0).
-    const toX = xrayBox.x + xrayBox.width * 0.15;
-    const toY = xrayBox.y + xrayBox.height / 2;
+    // Left QUARTER of pane B's FIRST pill (beta) — well inside its left half,
+    // so the midpoint test lands the caret BEFORE it (index 0).
+    const toX = betaBoxB.x + betaBoxB.width * 0.15;
+    const toY = betaBoxB.y + betaBoxB.height / 2;
 
     await startDragToward(page, fromX, fromY, toX, toY);
 
@@ -216,15 +219,17 @@ test.describe("@drag P26 polish: cross-pane tab-BAR positional insert (Obsidian 
 
     await page.mouse.up();
 
-    // No new pane — this is a positional insert, not a split.
+    // No new pane — positional insert, not a split. A keeps beta (no collapse);
+    // alpha lands at index 0 in B.
     await expect(leafPanes(page)).toHaveCount(2);
-    await expect(tabPillsFor(paneA)).toHaveCount(0);
+    await expect(tabPillsFor(paneA)).toHaveCount(1);
+    await expect(tabPillsFor(paneA).nth(0)).toContainText("tabbar-beta");
     await expect(tabPillsFor(paneB)).toHaveCount(3);
 
     const orderedTitles = await tabPillsFor(paneB).allTextContents();
-    expect(orderedTitles[0]).toContain("tabbar-a-alpha");
-    expect(orderedTitles[1]).toContain("tabbar-b-xray");
-    expect(orderedTitles[2]).toContain("tabbar-b-yankee");
+    expect(orderedTitles[0]).toContain("tabbar-alpha");
+    expect(orderedTitles[1]).toContain("tabbar-beta");
+    expect(orderedTitles[2]).toContain("tabbar-xray");
   });
 
   test("dropping BETWEEN pane B's two pills inserts the dragged tab at index 1", async ({
@@ -233,31 +238,36 @@ test.describe("@drag P26 polish: cross-pane tab-BAR positional insert (Obsidian 
     await page.setViewportSize({ width: 1600, height: 900 });
     await waitForConnected(page, jasper.baseURL);
 
-    const idA = await apiCreateNote(page, jasper.baseURL, "tabbar2-a-alpha");
-    const idX = await apiCreateNote(page, jasper.baseURL, "tabbar2-b-xray");
-    const idY = await apiCreateNote(page, jasper.baseURL, "tabbar2-b-yankee");
+    const idAlpha = await apiCreateNote(page, jasper.baseURL, "tabbar2-alpha");
+    const idBeta = await apiCreateNote(page, jasper.baseURL, "tabbar2-beta");
+    const idXray = await apiCreateNote(page, jasper.baseURL, "tabbar2-xray");
 
-    await openNoteFromTree(page, idA);
+    // Same clean setup as the index-0 test: A = [alpha, beta]; split clones
+    // beta into B; open xray in B → B = [beta, xray]. Drag alpha between B's
+    // two pills to land it at index 1.
+    await openNoteFromTree(page, idAlpha);
+    await openNoteFromTree(page, idBeta);
     await splitRight(page);
     await expect(leafPanes(page)).toHaveCount(2);
     const paneA = leafPanes(page).nth(0);
     const paneB = leafPanes(page).nth(1);
 
-    await openNoteFromTree(page, idX);
-    await openNoteFromTree(page, idY);
-    await expect(tabPillsFor(paneA)).toHaveCount(1);
+    await openNoteFromTree(page, idXray);
+    await expect(tabPillsFor(paneA)).toHaveCount(2);
     await expect(tabPillsFor(paneB)).toHaveCount(2);
+    await expect(tabPillsFor(paneB).nth(0)).toContainText("tabbar2-beta");
+    await expect(tabPillsFor(paneB).nth(1)).toContainText("tabbar2-xray");
 
-    const alphaPill = tabPillsFor(paneA).filter({ hasText: "tabbar2-a-alpha" });
+    const alphaPill = tabPillsFor(paneA).filter({ hasText: "tabbar2-alpha" });
     const pillBox = await stableBox(alphaPill);
-    const yankeeBox = await stableBox(tabPillsFor(paneB).nth(1));
+    const xrayBoxB = await stableBox(tabPillsFor(paneB).nth(1));
 
     const fromX = pillBox.x + pillBox.width / 2;
     const fromY = pillBox.y + pillBox.height / 2;
-    // Left quarter of yankee's pill (the SECOND pill) — lands the caret
-    // between xray and yankee (index 1).
-    const toX = yankeeBox.x + yankeeBox.width * 0.15;
-    const toY = yankeeBox.y + yankeeBox.height / 2;
+    // Left quarter of B's SECOND pill (xray) — lands the caret between beta
+    // and xray (index 1).
+    const toX = xrayBoxB.x + xrayBoxB.width * 0.15;
+    const toY = xrayBoxB.y + xrayBoxB.height / 2;
 
     await startDragToward(page, fromX, fromY, toX, toY);
 
@@ -267,11 +277,12 @@ test.describe("@drag P26 polish: cross-pane tab-BAR positional insert (Obsidian 
     await page.mouse.up();
 
     await expect(leafPanes(page)).toHaveCount(2);
+    await expect(tabPillsFor(paneA)).toHaveCount(1);
     await expect(tabPillsFor(paneB)).toHaveCount(3);
 
     const orderedTitles = await tabPillsFor(paneB).allTextContents();
-    expect(orderedTitles[0]).toContain("tabbar2-b-xray");
-    expect(orderedTitles[1]).toContain("tabbar2-a-alpha");
-    expect(orderedTitles[2]).toContain("tabbar2-b-yankee");
+    expect(orderedTitles[0]).toContain("tabbar2-beta");
+    expect(orderedTitles[1]).toContain("tabbar2-alpha");
+    expect(orderedTitles[2]).toContain("tabbar2-xray");
   });
 });
