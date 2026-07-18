@@ -4,11 +4,16 @@ import {
   handleAppCmdDot,
   handleAppCmdK,
   handleAppCmdShiftF,
+  handleAppFocusNextPane,
+  handleAppFocusPrevPane,
   handleAppPanelShortcuts,
+  handleAppSplitDown,
+  handleAppSplitRight,
   subscribePhase7,
   type Phase7DispatchEvent,
 } from "./appShortcuts";
 import { useTreeStore } from "./useTreeStore";
+import { usePaneStore } from "./usePaneStore";
 
 describe("handleAppAltT (tab-new)", () => {
   it("dispatches 'newTab' and preventDefaults on plain Alt+T", () => {
@@ -312,5 +317,119 @@ describe("handleAppCmdDot (Phase 22 Plan 01 — zen toggle)", () => {
   it("no-ops without Cmd/Ctrl", () => {
     handleAppCmdDot(new KeyboardEvent("keydown", { key: "." }));
     expect(useTreeStore.getState().zen).toBe(false);
+  });
+});
+
+describe("Phase 25 Plan 08 — split-right/split-down/focus-cycle-pane shortcuts", () => {
+  beforeEach(() => {
+    usePaneStore.getState().clearAll();
+  });
+
+  it("Cmd+\\ splits the active pane right (row)", () => {
+    const splitSpy = vi.spyOn(usePaneStore.getState(), "splitActivePane");
+    const e = new KeyboardEvent("keydown", { key: "\\", metaKey: true });
+    const preventDefault = vi.spyOn(e, "preventDefault");
+    handleAppSplitRight(e);
+    expect(splitSpy).toHaveBeenCalledWith("row");
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it("Ctrl+\\ (non-Mac) also splits right", () => {
+    const splitSpy = vi.spyOn(usePaneStore.getState(), "splitActivePane");
+    handleAppSplitRight(new KeyboardEvent("keydown", { key: "\\", ctrlKey: true }));
+    expect(splitSpy).toHaveBeenCalledWith("row");
+  });
+
+  it("Cmd+\\ does NOT fire split-right when Shift is held (reserved for split-down)", () => {
+    const splitSpy = vi.spyOn(usePaneStore.getState(), "splitActivePane");
+    handleAppSplitRight(
+      new KeyboardEvent("keydown", { key: "\\", metaKey: true, shiftKey: true }),
+    );
+    expect(splitSpy).not.toHaveBeenCalled();
+  });
+
+  it("Cmd+\\ no-ops when the event target is an input (do-not-hijack-typing)", () => {
+    const splitSpy = vi.spyOn(usePaneStore.getState(), "splitActivePane");
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    try {
+      const e = new KeyboardEvent("keydown", { key: "\\", metaKey: true });
+      Object.defineProperty(e, "target", { value: input });
+      handleAppSplitRight(e);
+      expect(splitSpy).not.toHaveBeenCalled();
+    } finally {
+      input.remove();
+    }
+  });
+
+  it("Cmd+Shift+\\ splits the active pane down (col)", () => {
+    const splitSpy = vi.spyOn(usePaneStore.getState(), "splitActivePane");
+    const e = new KeyboardEvent("keydown", {
+      key: "\\",
+      metaKey: true,
+      shiftKey: true,
+    });
+    const preventDefault = vi.spyOn(e, "preventDefault");
+    handleAppSplitDown(e);
+    expect(splitSpy).toHaveBeenCalledWith("col");
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it("Cmd+\\ (no Shift) does NOT fire split-down", () => {
+    const splitSpy = vi.spyOn(usePaneStore.getState(), "splitActivePane");
+    handleAppSplitDown(new KeyboardEvent("keydown", { key: "\\", metaKey: true }));
+    expect(splitSpy).not.toHaveBeenCalled();
+  });
+
+  it("Cmd+Alt+Right cycles focus to the next pane", () => {
+    const focusSpy = vi.spyOn(usePaneStore.getState(), "focusCyclePane");
+    const e = new KeyboardEvent("keydown", {
+      key: "ArrowRight",
+      metaKey: true,
+      altKey: true,
+    });
+    const preventDefault = vi.spyOn(e, "preventDefault");
+    handleAppFocusNextPane(e);
+    expect(focusSpy).toHaveBeenCalledWith(1);
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it("Cmd+Alt+Left cycles focus to the previous pane", () => {
+    const focusSpy = vi.spyOn(usePaneStore.getState(), "focusCyclePane");
+    const e = new KeyboardEvent("keydown", {
+      key: "ArrowLeft",
+      metaKey: true,
+      altKey: true,
+    });
+    const preventDefault = vi.spyOn(e, "preventDefault");
+    handleAppFocusPrevPane(e);
+    expect(focusSpy).toHaveBeenCalledWith(-1);
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it("Cmd+Right (no Alt) does NOT fire focus-next-pane", () => {
+    const focusSpy = vi.spyOn(usePaneStore.getState(), "focusCyclePane");
+    handleAppFocusNextPane(
+      new KeyboardEvent("keydown", { key: "ArrowRight", metaKey: true }),
+    );
+    expect(focusSpy).not.toHaveBeenCalled();
+  });
+
+  it("focus-next-pane no-ops when the event target is a textarea (do-not-hijack-typing)", () => {
+    const focusSpy = vi.spyOn(usePaneStore.getState(), "focusCyclePane");
+    const textarea = document.createElement("textarea");
+    document.body.appendChild(textarea);
+    try {
+      const e = new KeyboardEvent("keydown", {
+        key: "ArrowRight",
+        metaKey: true,
+        altKey: true,
+      });
+      Object.defineProperty(e, "target", { value: textarea });
+      handleAppFocusNextPane(e);
+      expect(focusSpy).not.toHaveBeenCalled();
+    } finally {
+      textarea.remove();
+    }
   });
 });

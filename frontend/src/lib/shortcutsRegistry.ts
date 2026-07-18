@@ -8,6 +8,7 @@ export type ShortcutGroup =
   | "Sidebar"
   | "Palette"
   | "View"
+  | "Pane"
   | "Share"
   | "Index"
   | "Help"
@@ -192,6 +193,38 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: true,
     inCheatSheet: true,
   },
+  {
+    id: "split-right",
+    label: "Split right",
+    group: "Pane",
+    shortcut: `${mod}\\`,
+    inPalette: true,
+    inCheatSheet: true,
+  },
+  {
+    id: "split-down",
+    label: "Split down",
+    group: "Pane",
+    shortcut: `${mod}${shift}\\`,
+    inPalette: true,
+    inCheatSheet: true,
+  },
+  {
+    id: "focus-next-pane",
+    label: "Focus next pane",
+    group: "Pane",
+    shortcut: `${mod}⌥→`,
+    inPalette: true,
+    inCheatSheet: true,
+  },
+  {
+    id: "focus-previous-pane",
+    label: "Focus previous pane",
+    group: "Pane",
+    shortcut: `${mod}⌥←`,
+    inPalette: true,
+    inCheatSheet: true,
+  },
 ];
 
 export const COMMAND_PALETTE_ENTRIES = SHORTCUTS_REGISTRY.filter((s) => s.inPalette);
@@ -207,6 +240,7 @@ export const GROUP_ORDER: ShortcutGroup[] = [
   "Sidebar",
   "Palette",
   "View",
+  "Pane",
   "Share",
   "Index",
   "Help",

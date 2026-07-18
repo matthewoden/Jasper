@@ -58,7 +58,11 @@ import {
   handleAppCmdShiftF,
   handleAppCmdSlash,
   handleAppF2KeyDown,
+  handleAppFocusNextPane,
+  handleAppFocusPrevPane,
   handleAppPanelShortcuts,
+  handleAppSplitDown,
+  handleAppSplitRight,
   subscribePhase7,
 } from "./lib/appShortcuts";
 import {
@@ -314,6 +318,10 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     window.addEventListener("keydown", handleAppCmdI, true);
     window.addEventListener("keydown", handleAppCmdShiftF, true);
     window.addEventListener("keydown", handleAppAltT, true);
+    window.addEventListener("keydown", handleAppSplitRight, true);
+    window.addEventListener("keydown", handleAppSplitDown, true);
+    window.addEventListener("keydown", handleAppFocusNextPane, true);
+    window.addEventListener("keydown", handleAppFocusPrevPane, true);
     return () => {
       window.removeEventListener("keydown", handleAppCmdP, true);
       window.removeEventListener("keydown", handleAppCmdO, true);
@@ -325,6 +333,10 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       window.removeEventListener("keydown", handleAppCmdI, true);
       window.removeEventListener("keydown", handleAppCmdShiftF, true);
       window.removeEventListener("keydown", handleAppAltT, true);
+      window.removeEventListener("keydown", handleAppSplitRight, true);
+      window.removeEventListener("keydown", handleAppSplitDown, true);
+      window.removeEventListener("keydown", handleAppFocusNextPane, true);
+      window.removeEventListener("keydown", handleAppFocusPrevPane, true);
     };
   }, []);
 
@@ -630,6 +642,26 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       onToggleZen: () => {
         setPaletteOpen(false);
         toggleZenCommand();
+      },
+
+      onSplitRight: () => {
+        setPaletteOpen(false);
+        usePaneStore.getState().splitActivePane("row");
+      },
+
+      onSplitDown: () => {
+        setPaletteOpen(false);
+        usePaneStore.getState().splitActivePane("col");
+      },
+
+      onFocusNextPane: () => {
+        setPaletteOpen(false);
+        usePaneStore.getState().focusCyclePane(1);
+      },
+
+      onFocusPrevPane: () => {
+        setPaletteOpen(false);
+        usePaneStore.getState().focusCyclePane(-1);
       },
     }),
     [

@@ -5,6 +5,7 @@
  * components, satisfying react-refresh/only-export-components.
  */
 import { useTreeStore } from "./useTreeStore";
+import { usePaneStore } from "./usePaneStore";
 
 
 export type Phase7DispatchEvent = "openToday" | "newTab" | "focusSearch";
@@ -239,4 +240,72 @@ export function handleAppCmdI(e: KeyboardEvent): void {
   if (!isInsideEditor) {
     e.preventDefault();
   }
+}
+
+/**
+ * True when the event target is a form control that should keep receiving
+ * raw keystrokes (input / textarea / contenteditable) — shared guard for the
+ * Phase 25 split/focus-pane shortcuts below, mirroring handleAppF2KeyDown's
+ * do-not-hijack-typing check.
+ */
+function isTypingTarget(e: KeyboardEvent): boolean {
+  const target = e.target;
+  return (
+    target instanceof HTMLElement &&
+    target.matches("input, textarea, [contenteditable=true]")
+  );
+}
+
+/**
+ * Cmd+\ — Split right (D-14/D-15): new leaf to the right of the active pane,
+ * cloning its current note. Chosen to mirror VSCode's "split editor right"
+ * muscle memory; grep-audited against SHORTCUTS_REGISTRY for collisions.
+ */
+export function handleAppSplitRight(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey) || e.shiftKey) return;
+  if (e.key !== "\\") return;
+  if (isTypingTarget(e)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  usePaneStore.getState().splitActivePane("row");
+}
+
+/**
+ * Cmd+Shift+\ — Split down (D-14/D-15): new leaf below the active pane,
+ * cloning its current note.
+ */
+export function handleAppSplitDown(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey) || !e.shiftKey) return;
+  if (e.key !== "\\" && e.key !== "|") return;
+  if (isTypingTarget(e)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  usePaneStore.getState().splitActivePane("col");
+}
+
+/**
+ * Cmd+Alt+Right — Focus next pane (D-08), cycling activePaneId forward
+ * through the leaf order. No-ops (via usePaneStore.focusCyclePane) with a
+ * single leaf.
+ */
+export function handleAppFocusNextPane(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey) || !e.altKey) return;
+  if (e.key !== "ArrowRight") return;
+  if (isTypingTarget(e)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  usePaneStore.getState().focusCyclePane(1);
+}
+
+/**
+ * Cmd+Alt+Left — Focus previous pane (D-08), cycling activePaneId backward
+ * through the leaf order.
+ */
+export function handleAppFocusPrevPane(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey) || !e.altKey) return;
+  if (e.key !== "ArrowLeft") return;
+  if (isTypingTarget(e)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  usePaneStore.getState().focusCyclePane(-1);
 }
