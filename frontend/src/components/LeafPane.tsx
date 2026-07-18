@@ -388,11 +388,9 @@ export function LeafPane({
           aria-hidden="true"
           style={{
             position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 2,
-            background: "var(--color-accent)",
+            inset: 0,
+            border:
+              "1px solid color-mix(in srgb, var(--color-accent) 50%, transparent)",
             pointerEvents: "none",
             zIndex: 20,
           }}
