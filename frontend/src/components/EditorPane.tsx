@@ -288,12 +288,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   // it never goes stale.
   useEffect(() => {
     if (!controller) return;
-    controller.setSaveGate(
+    // WR-03 fix (25-REVIEW.md): setSaveGate is now multi-owner — it returns
+    // an unregister function scoped to THIS pane's gate only. Returning it
+    // directly as the effect cleanup means one pane's unmount can no longer
+    // null out a gate that a surviving sibling pane on the same note still
+    // relies on.
+    return controller.setSaveGate(
       () => !reindexingRef.current && connectionStatusRef.current === "connected",
     );
-    return () => {
-      controller.setSaveGate(null);
-    };
   }, [controller]);
 
   // WR-04: autosaveMs can arrive after mount (async /config fetch) — push it

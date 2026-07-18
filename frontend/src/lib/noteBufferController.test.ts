@@ -439,6 +439,37 @@ describe("setSaveGate (Plan 05: reindex/connectionStatus gating reintroduced at 
     expect(updateNoteMock).toHaveBeenCalledTimes(1);
     expect(updateNoteMock).toHaveBeenCalledWith("note-1", "edited again");
   });
+
+  it("WR-03 regression (25-REVIEW.md): setSaveGate is multi-owner — one pane's unregister must not clear another pane's gate", async () => {
+    const c = getOrCreateController("note-1", 2000);
+    c.hydrate("initial", "n1.md");
+
+    // Two panes on the SAME note each register their own gate — mirrors two
+    // EditorPanes showing note-1 in a split layout.
+    const unregisterPaneA = c.setSaveGate(() => true); // pane A: open/connected
+    const unregisterPaneB = c.setSaveGate(() => false); // pane B: e.g. reindexing
+
+    c.handleEditorChange("edited");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(updateNoteMock).not.toHaveBeenCalled(); // pane B's gate still blocks
+
+    // Pane A unmounts (e.g. its tab closes) — before the WR-03 fix, a
+    // single-slot `setSaveGate(null)` here would have cleared pane B's gate
+    // too, since both panes shared one setter. With multi-owner gates, only
+    // pane A's OWN predicate is removed.
+    unregisterPaneA();
+
+    c.handleEditorChange("edited again");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(updateNoteMock).not.toHaveBeenCalled(); // still blocked by pane B
+
+    // Pane B unmounts too — no gates remain, so the next save proceeds.
+    unregisterPaneB();
+    c.handleEditorChange("edited once more");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(updateNoteMock).toHaveBeenCalledTimes(1);
+    expect(updateNoteMock).toHaveBeenCalledWith("note-1", "edited once more");
+  });
 });
 
 describe("discardPendingEdit (WR-02: no cross-note PUT on fallback-pane note switch)", () => {

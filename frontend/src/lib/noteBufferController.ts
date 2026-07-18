@@ -103,8 +103,17 @@ export interface NoteBufferController {
    * This module stays React-free (see file header); Plan 05's EditorPane
    * call-site supplies the actual reindexing/connectionStatus check here,
    * reading its own refs so the predicate always sees CURRENT values.
+   *
+   * Multi-owner (WR-03 fix, 25-REVIEW.md): every EditorPane showing this
+   * note registers its OWN gate here (tracked in a Set); a save proceeds
+   * only when ALL registered gates pass. Returns an unregister function
+   * that removes ONLY this caller's gate — call it from the registering
+   * pane's effect cleanup. A single-slot `setSaveGate(null)`-style clear
+   * would let one of several panes on the same note null out the shared
+   * gate on its own unmount, silently bypassing the reindexing/disconnected
+   * guard for the surviving pane(s).
    */
-  setSaveGate(gate: (() => boolean) | null): void;
+  setSaveGate(gate: () => boolean): () => void;
   /**
    * Cancels any pending debounced save WITHOUT saving it — used when a pane
    * with no tab (the noteId-prop-driven fallback pane) switches to a
@@ -187,7 +196,8 @@ class NoteBufferControllerImpl implements NoteBufferController {
   private isRenameInProgress = false;
   private lastH1Sent: string | null = null;
   private lastNotePath = "";
-  private saveGate: (() => boolean) | null = null;
+  /** WR-03: multi-owner gate set — see setSaveGate's interface doc. */
+  private readonly saveGates = new Set<() => boolean>();
 
   /** Set true by releaseController; aborts any in-flight trailing chain. */
   private released = false;
@@ -328,8 +338,11 @@ class NoteBufferControllerImpl implements NoteBufferController {
     this.released = true;
   }
 
-  setSaveGate(gate: (() => boolean) | null): void {
-    this.saveGate = gate;
+  setSaveGate(gate: () => boolean): () => void {
+    this.saveGates.add(gate);
+    return () => {
+      this.saveGates.delete(gate);
+    };
   }
 
   discardPendingEdit(): void {
@@ -387,9 +400,10 @@ class NoteBufferControllerImpl implements NoteBufferController {
     // Gate check FIRST, before any state transition or inFlight coalescing —
     // matches the pre-Plan-04 EditorPane.performSave ordering exactly: a
     // blocked attempt (reindexing/disconnected) leaves saveState untouched
-    // and is never queued as a trailing save.
-    if (this.saveGate && !this.saveGate()) {
-      return { ok: false };
+    // and is never queued as a trailing save. WR-03: ALL registered gates
+    // (one per pane showing this note) must pass.
+    for (const gate of this.saveGates) {
+      if (!gate()) return { ok: false };
     }
     if (this.inFlight) {
       // A save is already running; this content rides out as the trailing
