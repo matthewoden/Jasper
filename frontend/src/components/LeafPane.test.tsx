@@ -15,7 +15,7 @@
  * full editor stack.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { LeafPane } from "./LeafPane";
 import { usePaneDragStore } from "../lib/usePaneDragStore";
 import type { LeafNode } from "../lib/paneTree";
@@ -65,10 +65,12 @@ vi.mock("./EditorPane", () => ({
     noteId,
     editorHandlersRef,
     onOpenFind,
+    findBarSlot,
   }: {
     noteId: string | null;
     editorHandlersRef?: { current: unknown };
     onOpenFind?: () => void;
+    findBarSlot?: React.ReactNode;
   }) => {
     if (noteId && editorHandlersRef) {
       editorHandlersRef.current = handleFor(noteId);
@@ -80,6 +82,7 @@ vi.mock("./EditorPane", () => ({
             open find
           </button>
         )}
+        {findBarSlot}
       </div>
     );
   },
@@ -88,11 +91,12 @@ vi.mock("./EditorPane", () => ({
 const tabA: Tab = { id: "tab-a", noteId: "note-a" };
 const leafA: LeafNode = { t: "leaf", id: "leaf-a", tabs: [tabA], active: "tab-a" };
 
-function renderLeaf(leaf: LeafNode = leafA) {
+function renderLeaf(leaf: LeafNode = leafA, overrides?: { isActive?: boolean; multiPane?: boolean }) {
   return render(
     <LeafPane
       leaf={leaf}
-      isActive={true}
+      isActive={overrides?.isActive ?? true}
+      multiPane={overrides?.multiPane ?? false}
       reindexing={false}
       deletedTabIds={new Set()}
       titleForTab={(noteId) => `Title ${noteId}`}
@@ -115,6 +119,30 @@ describe("<LeafPane /> data-droppane (WS-01/WS-02 hit-testing)", () => {
   it("the root carries data-droppane set to the leaf id", () => {
     renderLeaf();
     expect(screen.getByTestId("leaf-pane").dataset.droppane).toBe("leaf-a");
+  });
+});
+
+describe("<LeafPane /> active-pane accent bar (P26 polish, D-05 supersession)", () => {
+  it("an inactive pane's root carries no opacity dim", () => {
+    renderLeaf(leafA, { isActive: false, multiPane: true });
+    const root = screen.getByTestId("leaf-pane");
+    const opacity = root.style.opacity;
+    expect(opacity === "" || opacity === "1").toBe(true);
+  });
+
+  it("renders the accent bar when active AND multiPane", () => {
+    renderLeaf(leafA, { isActive: true, multiPane: true });
+    expect(screen.getByTestId("active-pane-accent")).toBeInTheDocument();
+  });
+
+  it("renders no accent bar when active but single-pane", () => {
+    renderLeaf(leafA, { isActive: true, multiPane: false });
+    expect(screen.queryByTestId("active-pane-accent")).not.toBeInTheDocument();
+  });
+
+  it("renders no accent bar when inactive, even in a multi-pane layout", () => {
+    renderLeaf(leafA, { isActive: false, multiPane: true });
+    expect(screen.queryByTestId("active-pane-accent")).not.toBeInTheDocument();
   });
 });
 
@@ -203,6 +231,7 @@ describe("<LeafPane /> Find/Replace bar re-syncs on active-tab change (CR-03)", 
       <LeafPane
         leaf={{ ...twoTabLeaf, active: "tab-b" }}
         isActive={true}
+        multiPane={false}
         reindexing={false}
         deletedTabIds={new Set()}
         titleForTab={(noteId) => `Title ${noteId}`}
@@ -227,6 +256,7 @@ describe("<LeafPane /> Find/Replace bar re-syncs on active-tab change (CR-03)", 
       <LeafPane
         leaf={{ ...twoTabLeaf, active: "tab-b" }}
         isActive={true}
+        multiPane={false}
         reindexing={false}
         deletedTabIds={new Set()}
         titleForTab={(noteId) => `Title ${noteId}`}
@@ -240,5 +270,29 @@ describe("<LeafPane /> Find/Replace bar re-syncs on active-tab change (CR-03)", 
 
     expect(handleFor("note-a").setSearchQuery).not.toHaveBeenCalled();
     expect(handleFor("note-b").setSearchQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("<LeafPane /> Find bar renders inside the active EditorPane (P26 polish, UI-SPEC line 151)", () => {
+  it("the find bar is a DESCENDANT of the active tab's editor-pane-stub, not a LeafPane-level sibling above it", () => {
+    renderLeaf();
+
+    // Before opening find, nothing to find at all.
+    expect(screen.queryByTestId("find-bar")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("open-find-note-a"));
+
+    const activeStub = screen.getByTestId("editor-pane-stub");
+    // Resolves via `within` — proves the bar is a DOM descendant of the
+    // stub (i.e. was passed through findBarSlot into EditorPane), not a
+    // sibling rendered above it at the LeafPane level (the pre-fix DOM
+    // order: FindReplaceBar between TabStrip and the EditorPane stack).
+    expect(within(activeStub).getByTestId("find-bar")).toBeInTheDocument();
+
+    // A direct query against the LeafPane root would ALSO find it (it's
+    // still in the document), but compareDocumentPosition confirms the bar
+    // is nested INSIDE the stub, not a preceding sibling of it.
+    const bar = screen.getByTestId("find-bar");
+    expect(activeStub.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_CONTAINED_BY).toBeTruthy();
   });
 });

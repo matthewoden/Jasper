@@ -14,8 +14,11 @@
  *
  * A pane becomes active on a click anywhere in its chrome (tab strip,
  * breadcrumb, or body) OR on focus entering it (D-04); the active leaf
- * carries a subtle `data-active-pane` cue only (D-05 — no heavy ring, real
- * styling lands wherever this is wired into the app shell).
+ * carries `data-active-pane` plus (P26 polish) a 2px accent bar along its
+ * top edge — but ONLY in a multi-pane layout (`multiPane`), since a single
+ * pane is trivially active and needs no cue. Every pane renders at full
+ * opacity; the earlier inactive-pane dim is gone (superseded by the accent
+ * bar as the sole active-pane signal).
  *
  * Per-tab `flushRef`/`editorHandlersRef` bookkeeping mirrors the pre-Phase-25
  * `App.tsx:239-266` pattern (TAB-13 close-flush contract), scoped to this
@@ -26,7 +29,10 @@
  * EditorPane's onOpenFind/onOpenFindReplace props) open it; it drives the
  * active tab's EditorView through handlerRefs — per-view CM6 search state
  * means this needs zero cross-pane coordination even for the same note open
- * in two panes.
+ * in two panes. Find state/handlers live HERE, but (P26 polish, UI-SPEC line
+ * 151) the bar element itself is passed as a `findBarSlot` prop into the
+ * active tab's own EditorPane, which renders it below ITS breadcrumb — not
+ * as a LeafPane-level sibling above the whole EditorPane stack.
  */
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { SearchQuery } from "@codemirror/search";
@@ -83,8 +89,10 @@ function overlayRectStyle(region: "left" | "right" | "top" | "bottom" | "center"
 
 export interface LeafPaneProps {
   leaf: LeafNode;
-  /** Whether THIS leaf is usePaneStore's activePaneId (D-05 subtle cue, D-04 click-to-focus target). */
+  /** Whether THIS leaf is usePaneStore's activePaneId (D-05 cue, D-04 click-to-focus target). */
   isActive: boolean;
+  /** Whether the layout currently has more than one leaf (P26 polish) — gates the active-pane accent bar. */
+  multiPane: boolean;
   reindexing: boolean;
   deletedTabIds: Set<string>;
   /** Derived from useFileTree by note UUID (TAB-12 live rename) — shared across every leaf. */
@@ -105,6 +113,7 @@ export interface LeafPaneProps {
 export function LeafPane({
   leaf,
   isActive,
+  multiPane,
   reindexing,
   deletedTabIds,
   titleForTab,
@@ -289,6 +298,31 @@ export function LeafPane({
     setMatchCount(ZERO_MATCH_COUNT);
   }, [activeHandle]);
 
+  // Bug fix (260718-n6a Task 5): root-caused via a real-CM6 integration
+  // repro — FindReplaceBar's own Escape handling lives on ITS OWN container
+  // `onKeyDown` (bubble-phase), which only fires when the keydown's target
+  // is inside the bar's own DOM subtree (the query/replace inputs). Clicking
+  // into the editor body to inspect a match — a completely natural thing to
+  // do while using Find — moves DOM focus into a DIFFERENT subtree (CM6's
+  // contentDOM, a sibling of the bar, not a descendant of it), so Escape
+  // pressed there never reached the bar's handler: the bar stayed open and
+  // its highlights stayed painted, matching the reported "only emptying the
+  // input clears them" symptom. This leaf-root capture-phase listener is a
+  // second entry point into the SAME choke point (handleCloseFindBar) —
+  // it fires for Escape anywhere in the leaf's chrome (editor body included)
+  // while the bar is open, so dismissal no longer depends on which element
+  // inside the leaf currently has focus. Harmless if the bar's own handler
+  // ALSO fires for the same keypress (focus was in the bar) — the close
+  // routine is idempotent.
+  const handleLeafKeyDownCapture = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Escape" && findBar.open) {
+        handleCloseFindBar();
+      }
+    },
+    [findBar.open, handleCloseFindBar],
+  );
+
   // CR-03: re-apply the open bar's query/toggles to whichever tab just
   // became active (tab-strip click, Alt+]/Ctrl+Tab cycling, overflow
   // dropdown, or a fresh tab opening after the leaf's last tab was
@@ -303,6 +337,31 @@ export function LeafPane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leaf.active]);
 
+  // Built once per render, passed as a slot into the ACTIVE tab's EditorPane
+  // (P26 polish, UI-SPEC line 151): the bar now renders below that pane's own
+  // breadcrumb instead of as a LeafPane-level sibling above it. State/handlers
+  // stay right here in LeafPane — this is pure slot injection, not a hoist.
+  const findBarEl =
+    findBar.open && leaf.active !== null ? (
+      <FindReplaceBar
+        mode={findBar.mode}
+        query={findBar.query}
+        replaceText={findBar.replaceText}
+        caseSensitive={findBar.caseSensitive}
+        regexp={findBar.regexp}
+        wholeWord={findBar.wholeWord}
+        matchCount={matchCount}
+        onQueryChange={handleQueryChange}
+        onReplaceTextChange={handleReplaceTextChange}
+        onToggle={handleToggle}
+        onFindNext={handleFindNext}
+        onFindPrev={handleFindPrev}
+        onReplaceNext={handleReplaceNext}
+        onReplaceAll={handleReplaceAllClick}
+        onClose={handleCloseFindBar}
+      />
+    ) : null;
+
   return (
     <div
       data-testid="leaf-pane"
@@ -310,6 +369,7 @@ export function LeafPane({
       data-droppane={leafId}
       onClickCapture={activate}
       onFocusCapture={activate}
+      onKeyDownCapture={handleLeafKeyDownCapture}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -318,15 +378,26 @@ export function LeafPane({
         height: "100%",
         width: "100%",
         overflow: "hidden",
-        // D-05: subtle active-pane cue — no heavy border/ring, just a dim on
-        // inactive panes. 0.75 after two rounds of human UAT (0.92 → 0.82 →
-        // 0.75): each lighter value read as too hard to notice; 0.75 is
-        // clearly visible but still a soft, opacity-only cue — no border/ring,
-        // so it stays within D-05's "subtle, no ring" contract.
-        opacity: isActive ? 1 : 0.75,
+        position: "relative",
         ...style,
       }}
     >
+      {isActive && multiPane && (
+        <div
+          data-testid="active-pane-accent"
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background: "var(--color-accent)",
+            pointerEvents: "none",
+            zIndex: 20,
+          }}
+        />
+      )}
       {!hideTabStrip && (
         <TabStrip
           leafId={leafId}
@@ -342,25 +413,6 @@ export function LeafPane({
           onReorder={handleReorder}
           onNewTab={handleNewTab}
           onCycleTab={handleCycleTab}
-        />
-      )}
-      {findBar.open && leaf.active !== null && (
-        <FindReplaceBar
-          mode={findBar.mode}
-          query={findBar.query}
-          replaceText={findBar.replaceText}
-          caseSensitive={findBar.caseSensitive}
-          regexp={findBar.regexp}
-          wholeWord={findBar.wholeWord}
-          matchCount={matchCount}
-          onQueryChange={handleQueryChange}
-          onReplaceTextChange={handleReplaceTextChange}
-          onToggle={handleToggle}
-          onFindNext={handleFindNext}
-          onFindPrev={handleFindPrev}
-          onReplaceNext={handleReplaceNext}
-          onReplaceAll={handleReplaceAllClick}
-          onClose={handleCloseFindBar}
         />
       )}
       <div style={{ position: "relative", flex: 1, minHeight: 0, minWidth: 0 }}>
@@ -395,6 +447,7 @@ export function LeafPane({
               autosaveMs={autosaveMs}
               onOpenFind={handleOpenFind}
               onOpenFindReplace={handleOpenFindReplace}
+              findBarSlot={tab.id === leaf.active ? findBarEl : undefined}
             />
           ))
         )}

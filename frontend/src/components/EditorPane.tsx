@@ -124,6 +124,13 @@ interface EditorPaneProps {
   onOpenFind?: () => void;
   /** Cmd+Opt+F handler (P26, WS-09/D-02) — opens this pane's find+replace bar. */
   onOpenFindReplace?: () => void;
+  /**
+   * Leaf-owned Find/Replace bar (P26 polish, UI-SPEC line 151), rendered
+   * between the breadcrumb header and the note body; passed only to the
+   * ACTIVE tab's pane by LeafPane (findBar state/handlers stay in LeafPane —
+   * this is pure slot injection, not a state hoist).
+   */
+  findBarSlot?: React.ReactNode;
 }
 
 
@@ -156,7 +163,7 @@ function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
   return null;
 }
 
-export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style, autosaveMs, hidden = false, paneActive = true, isDeleted = false, flushRef, onOpenFind, onOpenFindReplace }: EditorPaneProps) {
+export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style, autosaveMs, hidden = false, paneActive = true, isDeleted = false, flushRef, onOpenFind, onOpenFindReplace, findBarSlot }: EditorPaneProps) {
   const autosaveMsRef = useRef(autosaveMs ?? AUTOSAVE_DEBOUNCE_MS);
   // Follow prop updates: panes mount before the async /config fetch resolves,
   // so a mount-only capture would pin them to the default interval forever.
@@ -972,6 +979,11 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           </span>
         </nav>
       )}
+      {/* Leaf-owned Find/Replace bar slot (P26 polish, UI-SPEC line 151):
+          tabStrip -> breadcrumb (above) -> findBar (here) -> body (below).
+          Only the active tab's EditorPane receives a non-undefined slot
+          (LeafPane); every other tab renders nothing here. */}
+      {findBarSlot}
       {/* Title element (READ-01/D-01/D-02/D-04): inside the same 760px column,
           sharing its 56px horizontal padding (NOT --editor-content-x, which
           is the breadcrumb's pane-wide chrome padding, D-16). Reads/writes

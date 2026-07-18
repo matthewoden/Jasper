@@ -26,6 +26,7 @@ import {
   _removeLeaf,
   _updLeaf,
   moveTab,
+  moveTabToIndex,
   newLeaf,
   newLeafId,
   newTabId,
@@ -59,6 +60,12 @@ export interface PaneStore {
     tabId: string,
     targetLeafId: string,
     region: "left" | "right" | "top" | "bottom" | "center",
+  ) => void;
+  dropTabAtIndex: (
+    sourceLeafId: string,
+    tabId: string,
+    targetLeafId: string,
+    insertIndex: number,
   ) => void;
   setPaneRatio: (path: ("a" | "b")[], ratio: number) => void;
 }
@@ -233,6 +240,46 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
     }
 
     set({ tree: nextTree, activePaneId: nextActivePaneId });
+  },
+
+  /**
+   * dropTabAtIndex — the positional counterpart to dropTabOnPane's "center"
+   * branch (P26 Obsidian-parity foreign-strip drop, WS-01/WS-02 sibling):
+   * removes the dragged tab from the source leaf (retargeting its active tab
+   * and collapsing it if it empties and more than one leaf remains), then
+   * inserts it at `insertIndex` in the target leaf via moveTabToIndex
+   * (positional, not append-only) and activates that leaf. Always a
+   * cross-leaf move — same-leaf positional reorder is TabStrip's own
+   * in-strip drag path, not this action.
+   */
+  dropTabAtIndex: (sourceLeafId, tabId, targetLeafId, insertIndex) => {
+    if (sourceLeafId === targetLeafId) return;
+    const { tree } = get();
+    const sourceLeaf = _findLeaf(tree, sourceLeafId);
+    if (!sourceLeaf) return;
+    const tab = sourceLeaf.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    if (!_findLeaf(tree, targetLeafId)) return;
+
+    const idx = sourceLeaf.tabs.findIndex((t) => t.id === tabId);
+    const nextSourceTabs = sourceLeaf.tabs.filter((t) => t.id !== tabId);
+    const nextSourceActive =
+      sourceLeaf.active === tabId
+        ? (nextSourceTabs[Math.max(0, idx - 1)]?.id ?? null)
+        : sourceLeaf.active;
+
+    let intermediate = _updLeaf(tree, sourceLeafId, {
+      tabs: nextSourceTabs,
+      active: nextSourceActive,
+    });
+    if (nextSourceTabs.length === 0 && _leaves(intermediate).length > 1) {
+      intermediate = _removeLeaf(intermediate, sourceLeafId);
+    }
+
+    const nextTree = moveTabToIndex(intermediate, targetLeafId, tab, insertIndex);
+    if (nextTree === intermediate) return; // target vanished or no-op
+
+    set({ tree: nextTree, activePaneId: targetLeafId });
   },
 
   /**

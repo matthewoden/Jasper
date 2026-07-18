@@ -26,6 +26,7 @@ import type { CSSProperties, PointerEvent } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { usePaneStore } from "../lib/usePaneStore";
 import { usePaneDragStore, type DropRegion } from "../lib/usePaneDragStore";
+import { _findLeaf } from "../lib/paneTree";
 import type { Tab } from "../lib/useTabStore";
 import { useTreeStore } from "../lib/useTreeStore";
 import { TabPill } from "./TabPill";
@@ -280,6 +281,15 @@ export function TabStrip({
   // the accent flips live when focus moves between panes.
   const isActivePane = usePaneStore((s) => s.activePaneId === leafId);
 
+  // Foreign-strip insertion caret (P26 Obsidian parity): every mounted
+  // TabStrip subscribes to usePaneDragStore's stripHover, but only renders
+  // the caret when IT is the hovered foreign strip — a SEPARATE render
+  // branch from the source strip's own dragGhost/dropIndicatorX indicator
+  // below (whose dragGhost/dropIndicatorX are null on a foreign strip), so
+  // the two indicators never both fire on the same strip.
+  const foreignStripHover = usePaneDragStore((s) => s.stripHover);
+  const foreignInsert = foreignStripHover?.leafId === leafId ? foreignStripHover : null;
+
   const sidebarLabel = notesSidebarVisible
     ? "Hide notes sidebar"
     : "Show notes sidebar";
@@ -495,7 +505,54 @@ export function TabStrip({
       // own pane — is a genuine split/move target (WS-01/WS-02) and still
       // publishes, so a solo pane can be split by dragging its own tab out.
       const overStrip = hit?.closest('[data-testid="tab-strip"]') != null;
-      if (paneEl && targetLeafId && !overStrip) {
+      if (overStrip && targetLeafId && targetLeafId !== leafId) {
+        // Foreign-strip positional insert (P26 Obsidian parity): compute the
+        // insertion index/x from the FOREIGN strip's own visible pill rects
+        // — never from this (source) strip's data. Same-pane strip hover
+        // (targetLeafId === leafId) intentionally falls through to the final
+        // `else` below: that is the in-strip reorder path's own territory
+        // (CR-01 — no bogus split/insert overlay on the pane never left).
+        const foreignStripEl = hit!.closest(
+          '[data-testid="tab-strip"]',
+        ) as HTMLElement;
+        const stripRect = foreignStripEl.getBoundingClientRect();
+        const wrappers = foreignStripEl.querySelectorAll<HTMLElement>(
+          "[data-tab-wrapper]",
+        );
+        const visibleIds: string[] = [];
+        let targetId: string | null = null;
+        let indicatorX = 0;
+        let lastRight = 0;
+        let found = false;
+        for (const wrapper of wrappers) {
+          const id = wrapper.dataset.tabWrapper ?? "";
+          visibleIds.push(id);
+          if (found) continue;
+          const rect = wrapper.getBoundingClientRect();
+          lastRight = rect.right - stripRect.left;
+          if (e.clientX < rect.left + rect.width / 2) {
+            targetId = id || null;
+            indicatorX = rect.left - stripRect.left;
+            found = true;
+          }
+        }
+        if (!found) indicatorX = lastRight;
+
+        const foreignLeaf = _findLeaf(usePaneStore.getState().tree, targetLeafId);
+        const index = foreignLeaf
+          ? computeDropIndex({
+              tabIds: foreignLeaf.tabs.map((t) => t.id),
+              visibleTabIds: visibleIds,
+              targetId,
+            })
+          : -1;
+        if (index !== -1) {
+          usePaneDragStore.getState().setStripHover({ leafId: targetLeafId, index, indicatorX });
+        } else {
+          usePaneDragStore.getState().setStripHover(null);
+        }
+        usePaneDragStore.getState().setHover(null);
+      } else if (paneEl && targetLeafId && !overStrip) {
         const rect = paneEl.getBoundingClientRect();
         const px = (e.clientX - rect.left) / rect.width;
         const py = (e.clientY - rect.top) / rect.height;
@@ -506,8 +563,10 @@ export function TabStrip({
         else if (py > 0.78) region = "bottom";
         else region = "center";
         usePaneDragStore.getState().setHover({ leafId: targetLeafId, region });
+        usePaneDragStore.getState().setStripHover(null);
       } else {
         usePaneDragStore.getState().setHover(null);
+        usePaneDragStore.getState().setStripHover(null);
       }
     }
 
@@ -515,8 +574,12 @@ export function TabStrip({
       const drag = dragRef.current;
       if (drag === null) return;
       if (drag.active) {
-        const hover = usePaneDragStore.getState().hover;
-        if (hover !== null) {
+        const { hover, stripHover } = usePaneDragStore.getState();
+        if (stripHover !== null) {
+          usePaneStore
+            .getState()
+            .dropTabAtIndex(leafId, drag.tabId, stripHover.leafId, stripHover.index);
+        } else if (hover !== null) {
           usePaneStore.getState().dropTabOnPane(leafId, drag.tabId, hover.leafId, hover.region);
         }
       }
@@ -813,6 +876,17 @@ export function TabStrip({
           data-testid="tab-drop-indicator"
           aria-hidden="true"
           style={{ ...dropOverlayStyle, left: dropIndicatorX }}
+        />
+      )}
+      {/* Foreign-strip insertion caret (P26 Obsidian parity): renders on a
+          DIFFERENT strip than the one being dragged from — dragGhost/
+          dropIndicatorX are null here, so this never doubles up with the
+          source strip's own indicator above. */}
+      {foreignInsert !== null && (
+        <div
+          data-testid="tab-drop-indicator"
+          aria-hidden="true"
+          style={{ ...dropOverlayStyle, left: foreignInsert.indicatorX }}
         />
       )}
       {/* Ghost copy of the dragged tab that follows the cursor. position:fixed
