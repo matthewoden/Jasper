@@ -58,10 +58,13 @@ interface DividerDragState {
 function PaneDivider({
   isRow,
   path,
+  ratio,
   containerRef,
 }: {
   isRow: boolean;
   path: ("a" | "b")[];
+  /** The split node's current ratio (0-1) — surfaced as aria-valuenow (WR-01). */
+  ratio: number;
   containerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const [dragging, setDragging] = useState(false);
@@ -104,6 +107,12 @@ function PaneDivider({
       path,
       containerRect: container.getBoundingClientRect(),
     };
+    // WR-02 (26-REVIEW.md): mirrors TabStrip's tab-drag pattern
+    // (TabStrip.tsx:468,634) — a divider drag has no threshold step (it goes
+    // straight to dragging), so clear any accumulated text selection right
+    // here instead, before the drag can fight the browser's native
+    // drag-to-select over adjacent editor content.
+    window.getSelection()?.removeAllRanges();
     setDragging(true);
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
@@ -116,7 +125,6 @@ function PaneDivider({
   return (
     <div
       data-testid="pane-divider"
-      aria-hidden="true"
       style={{
         position: "relative",
         flexShrink: 0,
@@ -127,8 +135,24 @@ function PaneDivider({
           : "var(--color-border)",
       }}
     >
+      {/*
+       * WR-01 (26-REVIEW.md): expose the divider to assistive tech as a
+       * separator with its current split proportion. Deliberately NOT
+       * `tabIndex`/`onKeyDown` — D-15 locks resize to pointer-drag only, and
+       * WAI-ARIA's "focusable separator" pattern requires arrow-key support,
+       * so making this focusable without it would be a worse a11y experience
+       * (a dead tab stop) than leaving it out of the tab order entirely.
+       * `role="separator"` + `aria-valuenow` are still announced by a screen
+       * reader's browse-mode virtual cursor without requiring focus.
+       */}
       <div
         data-testid="pane-divider-handle"
+        role="separator"
+        aria-orientation={isRow ? "vertical" : "horizontal"}
+        aria-label={isRow ? "Resize columns" : "Resize rows"}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(ratio * 100)}
         onPointerDown={handlePointerDown}
         style={{
           position: "absolute",
@@ -199,7 +223,7 @@ function SplitRenderer({
       >
         {renderNode(node.a, activePaneId, props, [...path, "a"])}
       </div>
-      <PaneDivider isRow={isRow} path={path} containerRef={containerRef} />
+      <PaneDivider isRow={isRow} path={path} ratio={node.ratio} containerRef={containerRef} />
       <div
         style={{
           flex: 1 - node.ratio,

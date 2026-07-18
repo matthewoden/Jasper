@@ -104,6 +104,44 @@ describe("<PaneTree /> two-leaf render", () => {
   });
 });
 
+describe("<PaneTree /> divider accessibility (WR-01) and text-selection guard (WR-02)", () => {
+  it("WR-01: divider handle exposes role=separator, orientation, and the current ratio as aria-valuenow", () => {
+    renderTree(); // twoLeafTree: dir "row", ratio 0.5
+    const handle = screen.getByTestId("pane-divider-handle");
+    expect(handle.getAttribute("role")).toBe("separator");
+    expect(handle.getAttribute("aria-orientation")).toBe("vertical");
+    expect(handle.getAttribute("aria-valuenow")).toBe("50");
+    expect(handle.getAttribute("aria-valuemin")).toBe("0");
+    expect(handle.getAttribute("aria-valuemax")).toBe("100");
+    // D-15 (locked): pointer-drag only, no keyboard resize — deliberately
+    // NOT in the tab order (a focusable separator with no arrow-key support
+    // would be a worse a11y experience than one that's absent from Tab order
+    // but still announced to a screen reader's browse-mode cursor).
+    expect(handle.getAttribute("tabindex")).toBeNull();
+  });
+
+  it("WR-01: the pane-divider wrapper is no longer aria-hidden", () => {
+    renderTree();
+    expect(screen.getByTestId("pane-divider").getAttribute("aria-hidden")).toBeNull();
+  });
+
+  it("WR-02: pointerdown on the divider clears any accumulated text selection", () => {
+    renderTree();
+    const removeAllRanges = vi.fn();
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      removeAllRanges,
+    } as unknown as Selection);
+
+    fireEvent.pointerDown(screen.getByTestId("pane-divider-handle"), {
+      button: 0,
+      clientX: 100,
+      clientY: 50,
+    });
+
+    expect(removeAllRanges).toHaveBeenCalled();
+  });
+});
+
 describe("<PaneTree /> D-10 final-pane placeholder", () => {
   it("a leaf with zero tabs (active: null) renders without crashing, via EditorPane noteId=null", () => {
     const emptyLeaf: LeafNode = { t: "leaf", id: "leaf-empty", tabs: [], active: null };
