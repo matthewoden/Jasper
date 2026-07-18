@@ -61,7 +61,13 @@ function renderNode(
   const isRow = node.dir === "row";
   return (
     <div
-      key={`${node.a.t === "leaf" ? node.a.id : "split"}|${node.b.t === "leaf" ? node.b.id : "split"}`}
+      // Intentionally no key: this <div> is the single child returned by
+      // renderNode, not a list item, so React reconciles it in place across
+      // re-renders. A content-derived key here (e.g. keyed by whether a
+      // child is a leaf or a split) would change whenever a child transitions
+      // leaf<->split — forcing an unmount+remount of this entire subtree
+      // (destroying every descendant pane's CM6 view/cursor/undo, including
+      // UNRELATED sibling panes) on every split/collapse. See 25-REVIEW.md CR-01.
       style={{
         display: "flex",
         flexDirection: isRow ? "row" : "column",

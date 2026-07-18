@@ -551,3 +551,172 @@ test.describe("@phase25 WS-10: shared buffer across panes", () => {
     await expect(rightLeaf.getByTestId("conflict-banner")).toHaveCount(0);
   });
 });
+
+// ─── Gap-closure (25-10) — CR-01: unrelated sibling survives a split elsewhere ──
+//
+// Locks 25-REVIEW.md CR-01's fix: PaneTree's split-node wrapper is no longer
+// keyed by a content-derived string that flips whenever a child transitions
+// leaf<->split, which previously forced React to unmount+remount the ENTIRE
+// subtree (destroying every descendant pane's CM6 view/cursor/undo) on every
+// split/collapse — including panes completely uninvolved in the operation.
+//
+// Proxy for "cursor survives": type distinctive text, place the cursor via
+// keyboard (not a mouse click, so no coordinate precision needed) at a KNOWN
+// position, trigger an UNRELATED split elsewhere, reactivate the pane via its
+// TAB PILL (not its editor body, so reactivating never itself repositions the
+// cursor), then type one more character. If the cursor survived, the new
+// character lands exactly where it was left; if the pane was torn down and
+// recreated, CM6's fresh EditorView resets the cursor to start-of-doc and the
+// character lands at the front instead.
+
+test.describe("@phase25 CR-01 gap-closure: uninvolved pane survives a split elsewhere", () => {
+  let jasper: JasperHandle;
+  let appHome: string;
+  test.beforeAll(async () => {
+    ({ jasper, appHome } = await spawnIsolated());
+  });
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+    if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
+  });
+
+  test("splitting the right pane again does not remount the left pane's cursor/content — CR-01 (run 3x for flake-proofing)", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await waitForConnected(page, jasper.baseURL);
+
+    const idA = await apiCreateNote(page, jasper.baseURL, "cr01-left");
+
+    await openNoteFromTree(page, idA);
+    await runCommand(page, "Split right");
+    await expect(leafPanes(page)).toHaveCount(2);
+
+    // Both leaves show the SAME note (D-15's split-clones-active-tab), but
+    // they are structurally INDEPENDENT leaves/panes — each with its own CM6
+    // EditorView/cursor/undo (WS-10: content mirrors, selection never does).
+    // leftLeaf is completely uninvolved in the split that's about to happen
+    // to rightLeaf; only rightLeaf keeps a single tab throughout so its own
+    // (hidden, keep-alive) chrome never collides with activatePane's
+    // getByTestId('cm-host-shell') lookup.
+    const leftLeaf = leafPanes(page).nth(0);
+    const rightLeaf = leafPanes(page).nth(1);
+
+    // Left pane: type distinctive content, then place the cursor via
+    // keyboard exactly between "one " and "two" (4 chars in).
+    await activatePane(leftLeaf);
+    const leftEditor = leftLeaf.locator(".cm-content:visible");
+    await leftEditor.click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("one two three");
+    await expect(leftEditor).toContainText("one two three");
+    await page.keyboard.press("Home");
+    for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowRight");
+
+    // Split the RIGHT pane again — leftLeaf is completely uninvolved. This is
+    // the exact CR-01 trigger: rightLeaf transitions leaf -> split, which
+    // (pre-fix) flipped the ROOT split-node wrapper's content-derived key and
+    // remounted the whole subtree, including leftLeaf.
+    await activatePane(rightLeaf);
+    await runCommand(page, "Split right");
+    await expect(leafPanes(page)).toHaveCount(3);
+
+    // Reactivate the left pane via its TAB PILL (not the editor body) so
+    // reactivation itself can never reposition the cursor.
+    await tabPillsFor(leftLeaf).filter({ hasText: "cr01-left" }).click();
+    await expect(leftLeaf).toHaveAttribute("data-active-pane", "true");
+
+    // Typing now must insert exactly where the cursor was left (between
+    // "one " and "two"). Before the fix, the remount reset CM6's cursor to
+    // start-of-doc, so the character would land at the very front instead.
+    await page.keyboard.type("X");
+    await expect(leftEditor).toContainText("one Xtwo three");
+    await expect(leftEditor).not.toContainText("Xone two three");
+  });
+});
+
+// ─── Gap-closure (25-10) — CR-02: primary-first close leaks no state ────────
+//
+// Locks 25-REVIEW.md CR-02's fix: closing the ORIGINALLY-OPENED (primary)
+// pane before its sibling used to leak the detached primary EditorView, its
+// sharedDocRegistry entry, and the note's NoteBufferController forever. The
+// most user-visible symptom: a note fully closed everywhere and then REOPENED
+// got silently registered as a SECONDARY against the leaked (stale, off-DOM,
+// content-diverged) primary, so Undo/Redo routed to the WRONG view and did
+// nothing visible in the reopened pane.
+
+test.describe("@phase25 CR-02 gap-closure: primary-first close releases the note fully", () => {
+  let jasper: JasperHandle;
+  let appHome: string;
+  test.beforeAll(async () => {
+    ({ jasper, appHome } = await spawnIsolated());
+  });
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+    if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
+  });
+
+  test("closing the primary pane, then its sibling, then reopening the note leaves Undo fully functional — CR-02 (run 3x for flake-proofing)", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await waitForConnected(page, jasper.baseURL);
+
+    const idA = await apiCreateNote(page, jasper.baseURL, "cr02-note");
+    await openNoteFromTree(page, idA);
+    await expect(leafPanes(page)).toHaveCount(1);
+
+    // Split right (D-15): clones the active note — the ORIGINAL pane (left)
+    // registers as the note's PRIMARY EditorView; the new sibling (right)
+    // registers as a SECONDARY.
+    await runCommand(page, "Split right");
+    await expect(leafPanes(page)).toHaveCount(2);
+
+    const leftLeaf = leafPanes(page).nth(0);
+
+    // Close the ORIGINALLY-OPENED (primary) pane FIRST — an entirely
+    // ordinary user action, and the exact order CR-02 was broken for.
+    await tabPillsFor(leftLeaf)
+      .filter({ hasText: "cr02-note" })
+      .locator('button[aria-label^="Close"]')
+      .click();
+    await expect(leafPanes(page)).toHaveCount(1);
+
+    // Close the sole remaining pane's tab too — the note is now closed
+    // EVERYWHERE (D-10: the final pane itself survives, empty).
+    const survivor = leafPanes(page).nth(0);
+    await tabPillsFor(survivor)
+      .filter({ hasText: "cr02-note" })
+      .locator('button[aria-label^="Close"]')
+      .click();
+    await expect(survivor.getByTestId("editor-pane-placeholder")).toBeVisible();
+
+    // Reopen the SAME note in a single pane.
+    await openNoteFromTree(page, idA);
+    const reopened = leafPanes(page).nth(0);
+    const reopenedEditor = reopened.locator(".cm-content:visible");
+    await expect(reopenedEditor).toBeVisible({ timeout: 8_000 });
+
+    // Type, then Undo. Before the CR-02 fix, this reopened view was silently
+    // registered as a SECONDARY against the leaked, stale primary — Undo
+    // routed to that invisible, content-diverged view and did nothing to the
+    // text actually on screen.
+    await reopenedEditor.click();
+    await page.keyboard.press("End");
+    const before = (await reopenedEditor.textContent()) ?? "";
+    await page.keyboard.type(" undo-me");
+    await expect(reopenedEditor).toContainText("undo-me");
+
+    const isMac = process.platform === "darwin";
+    await page.keyboard.press(isMac ? "Meta+z" : "Control+z");
+    await expect
+      .poll(async () => (await reopenedEditor.textContent()) ?? "")
+      .toBe(before);
+
+    // Exactly one singleton save indicator — no orphaned/duplicate state.
+    await expect(page.locator("[data-save-state]")).toHaveCount(1);
+    await expect(reopened.getByTestId("conflict-banner")).toHaveCount(0);
+  });
+});

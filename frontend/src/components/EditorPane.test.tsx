@@ -472,7 +472,12 @@ describe("<EditorPane />", () => {
         });
     });
 
-    it("E7: Cmd+S during the saved-sticky window immediately re-saves", async () => {
+    it("E7: Cmd+S during the saved-sticky window is a no-op when there are no new edits (WR-01)", async () => {
+        // Pre-WR-01-fix, userHasEdited was never reset after a successful
+        // save, so a second Cmd+S with NO intervening edit fired a redundant
+        // PUT — see 25-REVIEW.md WR-01. Now userHasEdited resets to false on
+        // saveSucceeded, so the second Cmd+S (no new edits) is a silent no-op,
+        // and only a THIRD Cmd+S after a fresh edit issues another PUT.
         getNoteMock.mockResolvedValue(okGet("a"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -493,12 +498,24 @@ describe("<EditorPane />", () => {
         await flushMicrotasks();
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
 
+        // Second Cmd+S with no new edit since the successful save above:
+        // must NOT issue a redundant PUT.
+        await act(async () => {
+            window.__jasperMockEditorSave?.();
+            await Promise.resolve();
+        });
+        await flushMicrotasks();
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+
+        // A fresh edit + Cmd+S DOES save again.
+        fireEvent.change(editor, { target: { value: "x2" } });
         await act(async () => {
             window.__jasperMockEditorSave?.();
             await Promise.resolve();
         });
         await flushMicrotasks();
         expect(updateNoteMock).toHaveBeenCalledTimes(2);
+        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "x2");
     });
 
     it("ignores plain 's' and other non-save keys (verified via autosave non-trigger)", async () => {
@@ -561,6 +578,29 @@ describe("<EditorPane />", () => {
             ).toBeNull();
             expect(screen.queryByLabelText("Note content")).toBeNull();
             expect(getNoteMock).not.toHaveBeenCalled();
+        } finally {
+            useTreeStore.setState({ activeFilePath: null });
+        }
+    });
+
+    it("WR-05 regression (25-REVIEW.md): an INACTIVE pane keeps showing its own note, not the globally-active file preview", async () => {
+        getNoteMock.mockResolvedValue(okGet("own note body"));
+        useTreeStore.setState({
+            activeFilePath: "gallery/attachments/photo.png",
+        });
+        try {
+            // Before the fix, EVERY EditorPane gated on the single global
+            // activeFilePath, so a non-note-file preview opened from ANY pane
+            // hijacked every other mounted pane's content — including this
+            // pane, which should keep showing its own note.
+            render(
+                <EditorPane noteId={ScratchpadUUID} paneActive={false} />,
+            );
+            await flushMicrotasks();
+            await waitFor(() =>
+                expect(screen.getByLabelText("Note content")).toBeInTheDocument(),
+            );
+            expect(screen.queryByTestId("file-preview-view")).toBeNull();
         } finally {
             useTreeStore.setState({ activeFilePath: null });
         }

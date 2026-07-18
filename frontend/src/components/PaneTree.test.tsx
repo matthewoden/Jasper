@@ -14,7 +14,7 @@
  * full editor stack (covered exhaustively by EditorPane.test.tsx).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import { PaneTree } from "./PaneTree";
 import { usePaneStore } from "../lib/usePaneStore";
 import type { LeafNode, PaneNode } from "../lib/paneTree";
@@ -119,5 +119,39 @@ describe("<PaneTree /> single-leaf render (no split)", () => {
     renderTree({ tree: leafA, activePaneId: "leaf-a" });
     expect(screen.getAllByTestId("leaf-pane")).toHaveLength(1);
     expect(screen.queryByTestId("pane-divider")).not.toBeInTheDocument();
+  });
+});
+
+describe("<PaneTree /> CR-01 regression (25-REVIEW.md): unrelated sibling survives a further split", () => {
+  it("splitting leaf-a does NOT remount leaf-b's EditorPane (no content-derived split-node key)", () => {
+    renderTree({ tree: twoLeafTree, activePaneId: "leaf-a" });
+
+    const stubsBefore = screen.getAllByTestId("editor-pane-stub");
+    const leafBStubBefore = stubsBefore.find((el) => el.dataset.noteId === "note-b");
+    expect(leafBStubBefore).toBeDefined();
+
+    // Split the OTHER leaf (leaf-a, the active pane) — leaf-b is completely
+    // uninvolved in this operation. This is exactly the CR-01 trigger: a
+    // child transitioning leaf -> split.
+    act(() => {
+      usePaneStore.getState().splitActivePane("row");
+    });
+
+    // The tree now has 3 leaves (leaf-a split into two; leaf-b untouched).
+    expect(screen.getAllByTestId("leaf-pane")).toHaveLength(3);
+
+    const stubsAfter = screen.getAllByTestId("editor-pane-stub");
+    const leafBStubAfter = stubsAfter.find((el) => el.dataset.noteId === "note-b");
+    expect(leafBStubAfter).toBeDefined();
+
+    // Before the CR-01 fix, the split-node wrapper's content-derived key
+    // (`` `${a-is-leaf?}|${b-is-leaf?}` ``) flipped from "leafA|leafB" to
+    // "split|leafB" the moment leaf-a became a split node — forcing React to
+    // unmount + remount the ENTIRE outer subtree, including the untouched
+    // leaf-b, producing a brand-new DOM node (and, in the real app, a fresh
+    // shared-doc-registry registration / lost CM6 view+cursor+undo for
+    // leaf-b). With no content-derived key, React reconciles the wrapper in
+    // place and leaf-b's EditorPane survives as the SAME DOM node.
+    expect(leafBStubAfter).toBe(leafBStubBefore);
   });
 });

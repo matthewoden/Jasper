@@ -288,12 +288,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   // it never goes stale.
   useEffect(() => {
     if (!controller) return;
-    controller.setSaveGate(
+    // WR-03 fix (25-REVIEW.md): setSaveGate is now multi-owner — it returns
+    // an unregister function scoped to THIS pane's gate only. Returning it
+    // directly as the effect cleanup means one pane's unmount can no longer
+    // null out a gate that a surviving sibling pane on the same note still
+    // relies on.
+    return controller.setSaveGate(
       () => !reindexingRef.current && connectionStatusRef.current === "connected",
     );
-    return () => {
-      controller.setSaveGate(null);
-    };
   }, [controller]);
 
   // WR-04: autosaveMs can arrive after mount (async /config fetch) — push it
@@ -627,7 +629,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     };
   }, [editorHandlersRef, onNoteUpdated, onNoteDeleted]);
 
-  if (activeFilePath !== null) {
+  // WR-05 fix (25-REVIEW.md): activeFilePath is a single GLOBAL value in
+  // useTreeStore, so without the paneActive gate every mounted EditorPane
+  // (every pane in a split layout) would render the SAME file preview,
+  // hijacking panes that should keep showing their own note. Scoping this
+  // to only the currently-active pane (paneActive, already threaded down
+  // from LeafPane's isActive) means previewing a non-note file replaces
+  // just the active pane's content — sibling panes keep their own note.
+  if (activeFilePath !== null && paneActive) {
     return (
       <section
         className="flex flex-col h-full bg-bg"
