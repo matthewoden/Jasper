@@ -182,6 +182,16 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     subscribeController,
     () => controller?.getH1RenameError() ?? null,
   );
+  // notePath sourced from THIS pane's own controller (seeded by its getNote()
+  // load, kept fresh by the tree-sync effect below) rather than from the
+  // per-pane useFileTree() fetch. This makes the breadcrumb + word-count
+  // metadata bar appear atomically with the note content — independent of the
+  // async tree fetch and of which pane is active — so an inactive or
+  // freshly-split pane always shows its OWN metadata bar (Phase 25 UAT-4).
+  const controllerNotePath = useSyncExternalStore(
+    subscribeController,
+    () => controller?.getNotePath() ?? "",
+  );
 
   // Hook must run unconditionally (rules-of-hooks) — placed before the
   // component's later conditional early returns (activeFilePath / noteId null).
@@ -667,8 +677,11 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }
 
   // Per-segment interactive breadcrumb above the note body. Clicking a folder
-  // segment reveals it in the tree; clicking the title segment pulses the note row.
-  const notePath = findNotePathInTree(tree, noteId);
+  // segment reveals it in the tree; clicking the title segment pulses the note
+  // row. Sourced from the pane's own controller (getNotePath, above) so it is
+  // present as soon as the note loads — never gated on the async per-pane tree
+  // fetch or on which pane is active.
+  const notePath = controllerNotePath !== "" ? controllerNotePath : null;
 
   // Inline title (D-01/D-02): the H1 IS the title. When a note has no H1
   // (API/MCP-created, imported, or not-yet-headed), fall back to the note's

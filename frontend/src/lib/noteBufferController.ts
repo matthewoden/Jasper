@@ -56,6 +56,15 @@ export interface NoteBufferController {
   getConflict(): ConflictState | null;
   getDeleted(): DeletedState | null;
   getH1RenameError(): string | null;
+  /**
+   * The note's current path (relative), as seeded by hydrate()'s server load
+   * and kept fresh by setNotePath() on rename/move. This is the pane-local,
+   * active-state-independent source for the breadcrumb + word-count metadata
+   * bar: it is available the moment the note loads (same getNote() as the
+   * content), so the metadata bar never waits on — or diverges with — the
+   * separate per-pane useFileTree() fetch. Returns "" before the first load.
+   */
+  getNotePath(): string;
   /** Seeds content/path from the server load path (EditorPane's initial getNote). */
   hydrate(serverContent: string, path: string): void;
   /** External-store style subscription — notified on any save-state transition. */
@@ -208,6 +217,10 @@ class NoteBufferControllerImpl implements NoteBufferController {
     return this.h1RenameError;
   }
 
+  getNotePath(): string {
+    return this.lastNotePath;
+  }
+
   hydrate(serverContent: string, path: string): void {
     this.content = serverContent;
     this.lastNotePath = path;
@@ -342,7 +355,11 @@ class NoteBufferControllerImpl implements NoteBufferController {
   }
 
   setNotePath(path: string): void {
+    if (path === this.lastNotePath) return;
     this.lastNotePath = path;
+    // Notify so the breadcrumb re-renders when the live tree reports a fresher
+    // path (rename/move) — getNotePath() is a subscribed snapshot in EditorPane.
+    this.notify();
   }
 
   private setSaveState(event: SaveEvent): void {
