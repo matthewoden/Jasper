@@ -318,7 +318,16 @@ function isValidNode(node: unknown, depth: number): node is PaneNode {
   if (n.t === "split") {
     return (
       (n.dir === "row" || n.dir === "col") &&
+      // WR-03 (26-REVIEW.md): a bare `typeof n.ratio === "number"` check let
+      // a corrupted/hand-edited payload's out-of-range ratio (e.g. -4, 99)
+      // through verbatim — SplitRenderer applies it straight to `flex`,
+      // producing a degenerate split that only the divider-drag clamp
+      // (MIN_PANE_PX) would ever start enforcing, and only once the user
+      // grabs the divider.
       typeof n.ratio === "number" &&
+      Number.isFinite(n.ratio) &&
+      n.ratio > 0 &&
+      n.ratio < 1 &&
       isValidNode(n.a, depth + 1) &&
       isValidNode(n.b, depth + 1)
     );

@@ -160,6 +160,46 @@ describe("usePaneStore — per-vault persistence (WS-08, T-25-V5)", () => {
     expect(s.tree.t).toBe("leaf");
     expect(_leaves(s.tree)).toHaveLength(1);
   });
+
+  it.each([-4, 0, 1, 99, NaN, Infinity])(
+    "WR-03: a split with an out-of-range ratio (%s) is rejected to a default leaf",
+    (badRatio) => {
+      const vault = `/vault/bad-ratio-${badRatio}`;
+      const tree: PaneNode = {
+        t: "split",
+        dir: "row",
+        ratio: badRatio,
+        a: { t: "leaf", id: "leaf-a", tabs: [], active: null },
+        b: { t: "leaf", id: "leaf-b", tabs: [], active: null },
+      };
+      localStorage.setItem(
+        layoutKeyForVault(vault),
+        JSON.stringify({ tree, activePaneId: "leaf-a" }),
+      );
+      expect(() => usePaneStore.getState().initForVault(vault)).not.toThrow();
+      const s = usePaneStore.getState();
+      // Before the fix, `typeof n.ratio === "number"` alone let all of
+      // these through, and SplitRenderer would apply the raw ratio (e.g.
+      // -4 or 99) straight to `flex`, producing a degenerate split.
+      expect(s.tree.t).toBe("leaf");
+      expect(_leaves(s.tree)).toHaveLength(1);
+    },
+  );
+
+  it("WR-03: an in-range ratio (0.35) still round-trips normally", () => {
+    const vault = "/vault/good-ratio";
+    const tree: PaneNode = {
+      t: "split",
+      dir: "row",
+      ratio: 0.35,
+      a: { t: "leaf", id: "leaf-a", tabs: [], active: null },
+      b: { t: "leaf", id: "leaf-b", tabs: [], active: null },
+    };
+    localStorage.setItem(layoutKeyForVault(vault), JSON.stringify({ tree, activePaneId: "leaf-a" }));
+    usePaneStore.getState().initForVault(vault);
+    const s = usePaneStore.getState();
+    expect(s.tree.t === "split" ? s.tree.ratio : undefined).toBe(0.35);
+  });
 });
 
 describe("usePaneStore — openInActivePane per-pane dedup (D-16/D-17)", () => {
