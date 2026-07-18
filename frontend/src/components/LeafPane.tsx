@@ -28,7 +28,7 @@
  * means this needs zero cross-pane coordination even for the same note open
  * in two panes.
  */
-import { useCallback, useRef, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { SearchQuery } from "@codemirror/search";
 import { EditorPane, type EditorPaneHandlers } from "./EditorPane";
 import { TabStrip } from "./TabStrip";
@@ -288,6 +288,20 @@ export function LeafPane({
     setFindBar(DEFAULT_FIND_BAR_STATE);
     setMatchCount(ZERO_MATCH_COUNT);
   }, [activeHandle]);
+
+  // CR-03: re-apply the open bar's query/toggles to whichever tab just
+  // became active (tab-strip click, Alt+]/Ctrl+Tab cycling, overflow
+  // dropdown, or a fresh tab opening after the leaf's last tab was
+  // closed) — without this, the bar's own input handlers are the ONLY
+  // place syncQuery ran, so switching tabs left the new tab's EditorView
+  // with no SearchQuery applied while the bar kept showing a now-stale
+  // query/match-count. Deliberately keyed on `leaf.active` alone: a
+  // `findBar` dep would re-run this on every keystroke, which the
+  // existing input handlers already handle via their own syncQuery call.
+  useEffect(() => {
+    if (findBar.open) syncQuery(findBar);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaf.active]);
 
   return (
     <div
