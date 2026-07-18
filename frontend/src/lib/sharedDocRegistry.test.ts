@@ -231,4 +231,56 @@ describe("sharedDocRegistry — Task 2: single undo-history owner + promotion-on
     viewB.destroy();
     viewC.destroy();
   });
+
+  it("CR-02 regression (25-REVIEW.md): closing the PRIMARY pane before its sibling releases the entry — no leaked detached primary", () => {
+    const noteId = "note-cr02";
+    const viewA = makeHistoryView(noteId, "hello", true); // primary
+    const viewB = makeHistoryView(noteId, "hello", false); // survivor
+
+    // Ordinary user action: close the ORIGINALLY-OPENED (primary) pane first,
+    // leaving a later split's sibling open. Per the spike outcome, the
+    // primary is kept alive off-DOM (not destroyed) while a survivor remains.
+    unregisterView(noteId, viewA);
+    expect(getPrimaryView(noteId)).toBe(viewA);
+
+    // Now the only remaining pane (the survivor, viewB) closes too — this is
+    // the SINGLE unregisterView call MarkdownEditor's own unmount cleanup
+    // actually makes per view; nothing else ever calls unregisterView a
+    // second time for the departed primary in production. Before the CR-02
+    // fix, this left `viewA` (and the registry entry) permanently leaked —
+    // getPrimaryView(noteId) kept returning the detached, undestroyed viewA
+    // forever, and (via EditorPane's getPrimaryView(id) === null gate) the
+    // note's NoteBufferController never released either.
+    unregisterView(noteId, viewB);
+
+    expect(getPrimaryView(noteId)).toBeNull();
+
+    // A fresh open of the same note registers a brand-new primary — it must
+    // NOT be silently adopted as a secondary against the leaked dead primary.
+    const viewC = makeHistoryView(noteId, "hello", true);
+    expect(getPrimaryView(noteId)).toBe(viewC);
+
+    unregisterView(noteId, viewC);
+    expect(getPrimaryView(noteId)).toBeNull();
+    viewA.destroy();
+    viewB.destroy();
+    viewC.destroy();
+  });
+
+  it("CR-02 regression: the ORIGINAL (secondary-then-primary) close order still fully releases the entry", () => {
+    // Documents that the fix does not regress the already-correct order —
+    // only the previously-broken primary-first order needed a code change.
+    const noteId = "note-cr02b";
+    const viewA = makeHistoryView(noteId, "x", true); // primary
+    const viewB = makeHistoryView(noteId, "x", false); // secondary
+
+    unregisterView(noteId, viewB); // secondary closes first — always worked
+    expect(getPrimaryView(noteId)).toBe(viewA);
+
+    unregisterView(noteId, viewA); // primary closes last, no survivors left
+    expect(getPrimaryView(noteId)).toBeNull();
+
+    viewA.destroy();
+    viewB.destroy();
+  });
 });

@@ -88,6 +88,19 @@ export function unregisterView(noteId: string, view: EditorView): void {
   }
 
   entry.views.delete(view);
+  // CR-02 fix (25-REVIEW.md): if the primary was already detached (its own
+  // pane closed while a survivor remained) and the view just removed here
+  // was the LAST survivor, no live view depends on the detached primary's
+  // history any longer — release it too so the registry entry, the primary
+  // EditorView, and (via EditorPane's getPrimaryView(id) === null gate) the
+  // note's NoteBufferController all get torn down. Without this, closing the
+  // originally-opened (primary) pane before its siblings leaked the detached
+  // primary + registry entry + controller forever.
+  if (entry.primaryDetached && entry.views.size === 1 && entry.views.has(entry.primary!)) {
+    entry.views.delete(entry.primary!);
+    registry.delete(noteId);
+    return;
+  }
   if (entry.views.size === 0) registry.delete(noteId);
 }
 
