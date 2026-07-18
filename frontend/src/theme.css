@@ -97,6 +97,14 @@
      settings apply on reload even if Settings is never opened (SET-04). */
   --editor-font-size:   15px;
   --editor-line-height: 1.45;
+
+  /* Phase 26 (WS-09 / D-01) — per-pane Find/Replace bar tokens.
+     Exact UI-SPEC §Color values; the find/replace <input> border reuses the
+     EXISTING --color-border-input (#34343a) rather than a new token. */
+  --color-surface-raised: #202024; /* find bar container background */
+  --color-btn-secondary-bg: #2c2c32; /* "Replace" button background */
+  --color-btn-secondary-border: #3a3a42; /* "Replace" button border */
+  --color-btn-secondary-fg: #c4c4ca; /* "Replace" button text */
 }
 
 @theme {
@@ -123,6 +131,11 @@
   --color-code-inline-bg:   var(--color-code-inline-bg);
   --color-code-inline-text: var(--color-code-inline-text);
   --font-reading:           var(--font-reading);
+  /* Phase 26 new tokens — Tailwind utility bridge */
+  --color-surface-raised:       var(--color-surface-raised);
+  --color-btn-secondary-bg:     var(--color-btn-secondary-bg);
+  --color-btn-secondary-border: var(--color-btn-secondary-border);
+  --color-btn-secondary-fg:     var(--color-btn-secondary-fg);
 }
 
 /* Phase 2 — indeterminate progress stripe for ReindexProgress (Surface 3).
@@ -849,5 +862,20 @@ body {
 [data-zen="true"] .cm-content {
   max-width: 700px;
   padding: 64px 32px;
+}
+
+/* ── Phase 26 — Find/Replace highlight-all + current-match (WS-09/D-04) ──
+   CM6's built-in searchHighlighter only paints while its native panel is
+   open; jasperSearchHighlight (MarkdownEditor.tsx) re-derives highlighting
+   directly from the live SearchQuery state field instead, independent of
+   panel state, so these classes are the sole highlight styling. */
+.cm-jasper-search-match {
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  border-radius: 2px;
+}
+.cm-jasper-search-match-current {
+  background: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  outline: 1px solid var(--color-accent);
+  outline-offset: -1px;
 }
 
