@@ -90,6 +90,17 @@ interface EditorPaneProps {
   autosaveMs?: number;
   /** display:none when true; CM6 stays mounted so cursor/scroll/undo survive (keep-alive, D-01). */
   hidden?: boolean;
+  /**
+   * True when this pane's leaf is the active pane (WS-07). Gates programmatic
+   * autofocus: only the ACTIVE pane's editor steals DOM focus when a note
+   * finishes loading. Without this gate, EVERY visible pane's editor focuses
+   * on mount, so on a reload with a restored two-pane layout the last note to
+   * load would win DOM focus and (via LeafPane's onFocusCapture → setActivePane)
+   * override the restored active pane — making WS-08's active-pane restore
+   * non-deterministic (D-12). Defaults true so single-pane / non-LeafPane
+   * callers keep today's autofocus behavior.
+   */
+  paneActive?: boolean;
   /** Read-only + suppress the in-pane deletion banner; the tab pill owns the "(deleted)" indicator (D-10). */
   isDeleted?: boolean;
   /** tab-close awaits flush() to persist pending edits before the tab is removed (TAB-13). */
@@ -126,7 +137,7 @@ function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
   return null;
 }
 
-export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style, autosaveMs, hidden = false, isDeleted = false, flushRef }: EditorPaneProps) {
+export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style, autosaveMs, hidden = false, paneActive = true, isDeleted = false, flushRef }: EditorPaneProps) {
   const autosaveMsRef = useRef(autosaveMs ?? AUTOSAVE_DEBOUNCE_MS);
   // Follow prop updates: panes mount before the async /config fetch resolves,
   // so a mount-only capture would pin them to the default interval forever.
@@ -388,10 +399,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [noteId]);
 
   useEffect(() => {
-    if (!hidden && loadStatus === "loaded" && noteId !== null) {
+    if (!hidden && paneActive && loadStatus === "loaded" && noteId !== null) {
       editorRef.current?.focus();
     }
-  }, [hidden, loadStatus, noteId]);
+  }, [hidden, paneActive, loadStatus, noteId]);
 
   const prevConnectionStatusRef = useRef(connectionStatus);
 
