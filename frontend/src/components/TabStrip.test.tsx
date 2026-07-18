@@ -18,6 +18,7 @@ import { TabStrip } from "./TabStrip";
 import type { Tab } from "../lib/useTabStore";
 import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
+import { usePaneDragStore } from "../lib/usePaneDragStore";
 
 const tabs: Tab[] = [
   { id: "a", noteId: "a" },
@@ -432,6 +433,47 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     // The indicator must be a strip-level child, not inside any tab wrapper
     // (it is an overlay, not an inline flex-child that would shift other pills).
     expect(indicator.closest("[data-tab-wrapper]")).toBeNull();
+  });
+
+  it("CR-01: elementFromPoint resolving back to the drag's own source leaf does not publish a self-hover", () => {
+    const handlers = {
+      onSelectTab: vi.fn(),
+      onRequestClose: vi.fn(),
+      onCloseOthers: vi.fn(),
+      onCloseToRight: vi.fn(),
+      onOpenRight: vi.fn(),
+      onReorder: vi.fn(),
+      onNewTab: vi.fn(),
+      onCycleTab: vi.fn(),
+    };
+    // Mirror LeafPane's real DOM shape: TabStrip is nested inside its own
+    // pane's `[data-droppane]` wrapper (LeafPane.tsx:296).
+    render(
+      <div data-droppane={LEAF_ID}>
+        <TabStrip
+          leafId={LEAF_ID}
+          tabs={tabs}
+          activeTabId="a"
+          deletedTabIds={new Set()}
+          titleForTab={titleForTab}
+          {...handlers}
+        />
+      </div>,
+    );
+    const strip = screen.getByRole("tablist");
+    const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
+
+    // Real browsers: during an ordinary in-strip reorder, elementFromPoint
+    // resolves back into THIS leaf's own subtree (cursor never left the
+    // pane). jsdom does not implement elementFromPoint at all (the source
+    // feature-detects it away, TabStrip.tsx:485), so define it before spying.
+    document.elementFromPoint = () => null;
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(strip);
+
+    fireEvent.pointerDown(wrapper, { button: 0, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(strip, { clientX: 120, clientY: 10, pointerId: 1, buttons: 1 });
+
+    expect(usePaneDragStore.getState().hover).toBeNull();
   });
 });
 
