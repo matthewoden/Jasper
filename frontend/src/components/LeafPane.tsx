@@ -149,10 +149,11 @@ export function LeafPane({
         width: "100%",
         overflow: "hidden",
         // D-05: subtle active-pane cue — no heavy border/ring, just a dim on
-        // inactive panes. 0.82 (was 0.92) after the first human UAT found the
-        // lighter dim too hard to notice; still opacity-only and clearly
-        // non-heavy, so it stays within D-05's "subtle, no ring" contract.
-        opacity: isActive ? 1 : 0.82,
+        // inactive panes. 0.75 after two rounds of human UAT (0.92 → 0.82 →
+        // 0.75): each lighter value read as too hard to notice; 0.75 is
+        // clearly visible but still a soft, opacity-only cue — no border/ring,
+        // so it stays within D-05's "subtle, no ring" contract.
+        opacity: isActive ? 1 : 0.75,
         ...style,
       }}
     >
