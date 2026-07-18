@@ -25,6 +25,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { usePaneStore } from "../lib/usePaneStore";
+import { usePaneDragStore, type DropRegion } from "../lib/usePaneDragStore";
 import type { Tab } from "../lib/useTabStore";
 import { useTreeStore } from "../lib/useTreeStore";
 import { TabPill } from "./TabPill";
@@ -443,26 +444,100 @@ export function TabStrip({
     return () => window.removeEventListener("keydown", handler, true);
   }, [leafId]);
 
-  // Clear the ghost if the window loses focus mid-drag, or if the button is
-  // released anywhere in the window, so a drag can never get stranded (gap 5 /
-  // CR-02). The window pointerup is a safety-net dismiss for releases outside
-  // the strip — it never fires a reorder; the strip's own onPointerUp still
-  // owns in-strip drops.
+  // Cross-pane drag tracking (P26 / WS-01/WS-02, D-10/D-11): once a drag is
+  // active, the strip's own onPointerMove/onPointerUp only fire while the
+  // cursor is physically over THIS strip's DOM subtree — as soon as it
+  // leaves (over another pane's body, another leaf's strip, or this leaf's
+  // own body outside the strip), no more React synthetic events reach us.
+  // These WINDOW-level listeners pick up the slack: pointermove keeps the
+  // reused ghost pill (D-11) tracking the cursor and hit-tests
+  // `elementFromPoint` against `[data-droppane]` (LeafPane root, added in
+  // Task 2) to publish the hovered region to usePaneDragStore; pointerup
+  // routes the drop. Native window listeners bubble AFTER React's delegated
+  // handlers reach the root container, so when a release lands back inside
+  // THIS strip, handleStripPointerUp already clears dragRef.current before
+  // this window handler runs — naturally preserving the in-strip reorder
+  // path (computeDropTarget) without any leaf-id bookkeeping here.
   useEffect(() => {
-    function dismissStrandedDrag() {
+    function handleWindowPointerMove(e: globalThis.PointerEvent) {
+      const drag = dragRef.current;
+      if (drag === null) return;
+      if (!drag.active) {
+        if (Math.abs(e.clientX - drag.startX) <= DRAG_THRESHOLD) return;
+        drag.active = true;
+        window.getSelection()?.removeAllRanges();
+        usePaneDragStore.getState().beginDrag(leafId, drag.tabId);
+      }
+      setDragGhost({
+        tabId: drag.tabId,
+        title: drag.title,
+        x: e.clientX,
+        y: e.clientY,
+        isActive: drag.isActive,
+        isDeleted: drag.isDeleted,
+      });
+
+      // jsdom (unit tests) does not implement elementFromPoint — real browsers
+      // (and the E2E Playwright suite, Task 3) always do. Feature-detect so
+      // the drag lifecycle degrades to "no cross-pane hover" instead of
+      // throwing under test.
+      const hit =
+        typeof document.elementFromPoint === "function"
+          ? document.elementFromPoint(e.clientX, e.clientY)
+          : null;
+      const paneEl = hit?.closest("[data-droppane]") as HTMLElement | null;
+      const targetLeafId = paneEl?.dataset.droppane;
+      if (paneEl && targetLeafId) {
+        const rect = paneEl.getBoundingClientRect();
+        const px = (e.clientX - rect.left) / rect.width;
+        const py = (e.clientY - rect.top) / rect.height;
+        let region: DropRegion;
+        if (px < 0.22) region = "left";
+        else if (px > 0.78) region = "right";
+        else if (py < 0.22) region = "top";
+        else if (py > 0.78) region = "bottom";
+        else region = "center";
+        usePaneDragStore.getState().setHover({ leafId: targetLeafId, region });
+      } else {
+        usePaneDragStore.getState().setHover(null);
+      }
+    }
+
+    function handleWindowPointerUp() {
+      const drag = dragRef.current;
+      if (drag === null) return;
+      if (drag.active) {
+        const hover = usePaneDragStore.getState().hover;
+        if (hover !== null) {
+          usePaneStore.getState().dropTabOnPane(leafId, drag.tabId, hover.leafId, hover.region);
+        }
+      }
+      dragRef.current = null;
+      setDropIndicatorX(null);
+      setDragGhost(null);
+      suppressClickRef.current = false;
+      usePaneDragStore.getState().endDrag();
+    }
+
+    // Focus loss mid-drag is always an abandon — never route a drop (gap 5 / CR-02).
+    function handleWindowBlur() {
       if (dragRef.current === null) return;
       dragRef.current = null;
       setDropIndicatorX(null);
       setDragGhost(null);
       suppressClickRef.current = false;
+      usePaneDragStore.getState().endDrag();
     }
-    window.addEventListener("blur", dismissStrandedDrag);
-    window.addEventListener("pointerup", dismissStrandedDrag);
+
+    window.addEventListener("pointermove", handleWindowPointerMove);
+    window.addEventListener("pointerup", handleWindowPointerUp);
+    window.addEventListener("blur", handleWindowBlur);
     return () => {
-      window.removeEventListener("blur", dismissStrandedDrag);
-      window.removeEventListener("pointerup", dismissStrandedDrag);
+      window.removeEventListener("pointermove", handleWindowPointerMove);
+      window.removeEventListener("pointerup", handleWindowPointerUp);
+      window.removeEventListener("blur", handleWindowBlur);
     };
-  }, []);
+  }, [leafId]);
 
   // Single source for the + button so the empty-state and normal branches share
   // identical markup.
@@ -557,6 +632,14 @@ export function TabStrip({
       drag.active = true;
       // Clear any text selection accumulated before the threshold was crossed.
       window.getSelection()?.removeAllRanges();
+      // React's delegated pointermove handler (this one) always runs BEFORE
+      // the window-level native listener below reaches `window` in the
+      // bubble phase — so when threshold-crossing happens while the cursor
+      // is still over the strip, THIS branch wins the race to flip
+      // drag.active. Call beginDrag here too (idempotent — both sites are
+      // guarded by the same `!drag.active` check) so usePaneDragStore is
+      // always populated, not just when the window listener wins.
+      usePaneDragStore.getState().beginDrag(leafId, drag.tabId);
     }
     if (drag.active) {
       // Compute strip-relative indicator x in one pass over the wrapper rects —
@@ -626,6 +709,7 @@ export function TabStrip({
       setDragGhost(null);
       dragRef.current = null;
     }
+    usePaneDragStore.getState().endDrag();
   }
 
   function handleStripPointerCancel() {
@@ -635,6 +719,7 @@ export function TabStrip({
     // An abandoned/cancelled drag must never leave a later legitimate click
     // suppressed (gap 5 / CR-02).
     suppressClickRef.current = false;
+    usePaneDragStore.getState().endDrag();
   }
 
   return (
