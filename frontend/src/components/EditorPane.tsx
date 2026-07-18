@@ -81,6 +81,8 @@ export interface EditorPaneHandlers {
   replaceAll: () => boolean;
   matchInfo: () => { current: number; total: number };
   clearSearch: () => void;
+  /** Returns focus to this pane's editor (P26, D-02 — Esc closes the Find bar and refocuses). */
+  focus: () => void;
 }
 
 
@@ -647,6 +649,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     [],
   );
   const clearSearch = useCallback(() => editorRef.current?.clearSearch(), []);
+  const focusEditor = useCallback(() => editorRef.current?.focus(), []);
 
   useEffect(() => {
     if (editorHandlersRef) {
@@ -660,6 +663,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
         replaceAll,
         matchInfo,
         clearSearch,
+        focus: focusEditor,
       };
     }
     return () => {
@@ -678,6 +682,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     replaceAll,
     matchInfo,
     clearSearch,
+    focusEditor,
   ]);
 
   // WR-05 fix (25-REVIEW.md): activeFilePath is a single GLOBAL value in
