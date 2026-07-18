@@ -148,10 +148,12 @@ export function LeafPane({
         height: "100%",
         width: "100%",
         overflow: "hidden",
-        // D-05: subtle active-pane cue — no heavy border/ring, just a slight
-        // dim on inactive panes (final visual polish is Claude's discretion
-        // at the wiring site).
-        opacity: isActive ? 1 : 0.92,
+        // D-05: subtle active-pane cue — no heavy border/ring, just a dim on
+        // inactive panes. 0.75 after two rounds of human UAT (0.92 → 0.82 →
+        // 0.75): each lighter value read as too hard to notice; 0.75 is
+        // clearly visible but still a soft, opacity-only cue — no border/ring,
+        // so it stays within D-05's "subtle, no ring" contract.
+        opacity: isActive ? 1 : 0.75,
         ...style,
       }}
     >
@@ -193,6 +195,7 @@ export function LeafPane({
               key={`${leafId}:${tab.id}`}
               noteId={tab.noteId}
               hidden={reindexing || tab.id !== leaf.active}
+              paneActive={isActive}
               isDeleted={deletedTabIds.has(tab.noteId)}
               reindexing={reindexing}
               editorHandlersRef={handlerRefs.current[tab.id]}

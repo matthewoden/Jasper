@@ -90,6 +90,17 @@ interface EditorPaneProps {
   autosaveMs?: number;
   /** display:none when true; CM6 stays mounted so cursor/scroll/undo survive (keep-alive, D-01). */
   hidden?: boolean;
+  /**
+   * True when this pane's leaf is the active pane (WS-07). Gates programmatic
+   * autofocus: only the ACTIVE pane's editor steals DOM focus when a note
+   * finishes loading. Without this gate, EVERY visible pane's editor focuses
+   * on mount, so on a reload with a restored two-pane layout the last note to
+   * load would win DOM focus and (via LeafPane's onFocusCapture → setActivePane)
+   * override the restored active pane — making WS-08's active-pane restore
+   * non-deterministic (D-12). Defaults true so single-pane / non-LeafPane
+   * callers keep today's autofocus behavior.
+   */
+  paneActive?: boolean;
   /** Read-only + suppress the in-pane deletion banner; the tab pill owns the "(deleted)" indicator (D-10). */
   isDeleted?: boolean;
   /** tab-close awaits flush() to persist pending edits before the tab is removed (TAB-13). */
@@ -126,7 +137,7 @@ function findNotePathInTree(tree: Tree | null, noteId: string): string | null {
   return null;
 }
 
-export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style, autosaveMs, hidden = false, isDeleted = false, flushRef }: EditorPaneProps) {
+export function EditorPane({ noteId, reindexing = false, editorHandlersRef, style, autosaveMs, hidden = false, paneActive = true, isDeleted = false, flushRef }: EditorPaneProps) {
   const autosaveMsRef = useRef(autosaveMs ?? AUTOSAVE_DEBOUNCE_MS);
   // Follow prop updates: panes mount before the async /config fetch resolves,
   // so a mount-only capture would pin them to the default interval forever.
@@ -170,6 +181,16 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   const h1RenameError = useSyncExternalStore(
     subscribeController,
     () => controller?.getH1RenameError() ?? null,
+  );
+  // notePath sourced from THIS pane's own controller (seeded by its getNote()
+  // load, kept fresh by the tree-sync effect below) rather than from the
+  // per-pane useFileTree() fetch. This makes the breadcrumb + word-count
+  // metadata bar appear atomically with the note content — independent of the
+  // async tree fetch and of which pane is active — so an inactive or
+  // freshly-split pane always shows its OWN metadata bar (Phase 25 UAT-4).
+  const controllerNotePath = useSyncExternalStore(
+    subscribeController,
+    () => controller?.getNotePath() ?? "",
   );
 
   // Hook must run unconditionally (rules-of-hooks) — placed before the
@@ -388,10 +409,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [noteId]);
 
   useEffect(() => {
-    if (!hidden && loadStatus === "loaded" && noteId !== null) {
+    if (!hidden && paneActive && loadStatus === "loaded" && noteId !== null) {
       editorRef.current?.focus();
     }
-  }, [hidden, loadStatus, noteId]);
+  }, [hidden, paneActive, loadStatus, noteId]);
 
   const prevConnectionStatusRef = useRef(connectionStatus);
 
@@ -656,8 +677,11 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }
 
   // Per-segment interactive breadcrumb above the note body. Clicking a folder
-  // segment reveals it in the tree; clicking the title segment pulses the note row.
-  const notePath = findNotePathInTree(tree, noteId);
+  // segment reveals it in the tree; clicking the title segment pulses the note
+  // row. Sourced from the pane's own controller (getNotePath, above) so it is
+  // present as soon as the note loads — never gated on the async per-pane tree
+  // fetch or on which pane is active.
+  const notePath = controllerNotePath !== "" ? controllerNotePath : null;
 
   // Inline title (D-01/D-02): the H1 IS the title. When a note has no H1
   // (API/MCP-created, imported, or not-yet-headed), fall back to the note's
