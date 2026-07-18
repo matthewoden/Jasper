@@ -472,7 +472,12 @@ describe("<EditorPane />", () => {
         });
     });
 
-    it("E7: Cmd+S during the saved-sticky window immediately re-saves", async () => {
+    it("E7: Cmd+S during the saved-sticky window is a no-op when there are no new edits (WR-01)", async () => {
+        // Pre-WR-01-fix, userHasEdited was never reset after a successful
+        // save, so a second Cmd+S with NO intervening edit fired a redundant
+        // PUT — see 25-REVIEW.md WR-01. Now userHasEdited resets to false on
+        // saveSucceeded, so the second Cmd+S (no new edits) is a silent no-op,
+        // and only a THIRD Cmd+S after a fresh edit issues another PUT.
         getNoteMock.mockResolvedValue(okGet("a"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -493,12 +498,24 @@ describe("<EditorPane />", () => {
         await flushMicrotasks();
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
 
+        // Second Cmd+S with no new edit since the successful save above:
+        // must NOT issue a redundant PUT.
+        await act(async () => {
+            window.__jasperMockEditorSave?.();
+            await Promise.resolve();
+        });
+        await flushMicrotasks();
+        expect(updateNoteMock).toHaveBeenCalledTimes(1);
+
+        // A fresh edit + Cmd+S DOES save again.
+        fireEvent.change(editor, { target: { value: "x2" } });
         await act(async () => {
             window.__jasperMockEditorSave?.();
             await Promise.resolve();
         });
         await flushMicrotasks();
         expect(updateNoteMock).toHaveBeenCalledTimes(2);
+        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "x2");
     });
 
     it("ignores plain 's' and other non-save keys (verified via autosave non-trigger)", async () => {

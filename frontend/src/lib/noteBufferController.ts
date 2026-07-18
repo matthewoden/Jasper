@@ -446,6 +446,15 @@ class NoteBufferControllerImpl implements NoteBufferController {
         type: "saveSucceeded",
         updatedAt: new Date(data.updated_at),
       });
+      // WR-01 fix (25-REVIEW.md): the buffer now matches the server, so
+      // clear the dirty flag. Without this, userHasEdited stayed true for
+      // the life of the buffer after the FIRST edit ever made, which (a)
+      // made onNoteUpdated's silent-adopt guard permanently false — every
+      // later WS update from another session raised a spurious conflict
+      // banner — and (b) made flush() re-PUT on every blur/tab-close/
+      // reconnect even when nothing had changed since the last save. A
+      // later keystroke re-sets this via handleEditorChange, same as today.
+      this.userHasEdited = false;
       dispatchTagEvent("tags:updated");
       if (this.savedTimer !== null) {
         window.clearTimeout(this.savedTimer);
