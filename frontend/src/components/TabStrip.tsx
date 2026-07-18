@@ -487,12 +487,15 @@ export function TabStrip({
           : null;
       const paneEl = hit?.closest("[data-droppane]") as HTMLElement | null;
       const targetLeafId = paneEl?.dataset.droppane;
-      // Exclude the drag's own source leaf (CR-01): the strip lives inside
-      // its own pane's `[data-droppane]` subtree, so ordinary in-strip
-      // reordering (cursor stays near the top of the pane) would otherwise
-      // hit-test back onto itself and publish a bogus "drop here to split"
-      // hover on the pane the user never left.
-      if (paneEl && targetLeafId && targetLeafId !== leafId) {
+      // Suppress the split/move hover while the cursor is over a tab strip
+      // (CR-01): every strip lives inside its own pane's `[data-droppane]`
+      // subtree, so an ordinary in-strip reorder (cursor near the top of the
+      // pane) would otherwise hit-test as a bogus "top" split on the pane the
+      // user never left. Dragging into a pane *body* — including the drag's
+      // own pane — is a genuine split/move target (WS-01/WS-02) and still
+      // publishes, so a solo pane can be split by dragging its own tab out.
+      const overStrip = hit?.closest('[data-testid="tab-strip"]') != null;
+      if (paneEl && targetLeafId && !overStrip) {
         const rect = paneEl.getBoundingClientRect();
         const px = (e.clientX - rect.left) / rect.width;
         const py = (e.clientY - rect.top) / rect.height;
