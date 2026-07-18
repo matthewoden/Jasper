@@ -25,10 +25,13 @@ import {
   _leaves,
   _removeLeaf,
   _updLeaf,
+  moveTab,
   newLeaf,
   newLeafId,
   newTabId,
+  setRatioAtPath,
   splitPane,
+  splitWithTab,
   type LeafNode,
   type PaneNode,
 } from "./paneTree";
@@ -51,6 +54,13 @@ export interface PaneStore {
   markDeleted: (noteId: string) => void;
   initForVault: (vaultPath: string) => void;
   clearAll: () => void;
+  dropTabOnPane: (
+    sourceLeafId: string,
+    tabId: string,
+    targetLeafId: string,
+    region: "left" | "right" | "top" | "bottom" | "center",
+  ) => void;
+  setPaneRatio: (path: ("a" | "b")[], ratio: number) => void;
 }
 
 export const layoutKeyForVault = (vaultPath: string): string =>
@@ -148,6 +158,86 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
     }
     const tab: Tab = { id: newTabId(), noteId };
     set({ tree: _updLeaf(tree, activePaneId, { tabs: [...leaf.tabs, tab], active: tab.id }) });
+  },
+
+  /**
+   * dropTabOnPane — orchestrates a cross-pane tab drag (WS-01/WS-02): moves
+   * (not clones, D-05) the dragged tab out of the source leaf and either
+   * appends+activates it in the target leaf (region "center", per-leaf
+   * dedup D-07 via moveTab) or splits the target leaf to host it in a new
+   * sibling (edge regions, via splitWithTab). If the source leaf empties as
+   * a result and more than one leaf remains, it is collapsed and
+   * activePaneId retargets to a survivor (D-06); the final pane never
+   * collapses (D-10, `_removeLeaf`'s own invariant). Same-pane center drops
+   * are a no-op (D-08). Bails (no `set()`) if source/target is absent, or
+   * the drop resolves to no tree change.
+   */
+  dropTabOnPane: (sourceLeafId, tabId, targetLeafId, region) => {
+    const { tree, activePaneId } = get();
+    const sourceLeaf = _findLeaf(tree, sourceLeafId);
+    if (!sourceLeaf) return;
+    const tab = sourceLeaf.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    if (!_findLeaf(tree, targetLeafId)) return;
+    if (region === "center" && sourceLeafId === targetLeafId) return; // D-08
+
+    const idx = sourceLeaf.tabs.findIndex((t) => t.id === tabId);
+    const nextSourceTabs = sourceLeaf.tabs.filter((t) => t.id !== tabId);
+    const nextSourceActive =
+      sourceLeaf.active === tabId
+        ? (nextSourceTabs[Math.max(0, idx - 1)]?.id ?? null)
+        : sourceLeaf.active;
+
+    let intermediate = _updLeaf(tree, sourceLeafId, {
+      tabs: nextSourceTabs,
+      active: nextSourceActive,
+    });
+    if (nextSourceTabs.length === 0 && _leaves(intermediate).length > 1) {
+      // D-06: source emptied by the move — collapse + rebalance.
+      intermediate = _removeLeaf(intermediate, sourceLeafId);
+    }
+
+    const prevLeafIds = new Set(_leaves(intermediate).map((l) => l.id));
+    const nextTree =
+      region === "center"
+        ? moveTab(intermediate, targetLeafId, tab)
+        : splitWithTab(
+            intermediate,
+            targetLeafId,
+            tab,
+            region === "left" || region === "right" ? "row" : "col",
+            region === "left" || region === "top" ? "first" : "second",
+          );
+
+    if (nextTree === intermediate) return; // target vanished or no-op
+
+    let nextActivePaneId: string;
+    if (region === "center") {
+      nextActivePaneId = targetLeafId;
+    } else {
+      const newSibling = _leaves(nextTree).find((l) => !prevLeafIds.has(l.id));
+      nextActivePaneId = newSibling ? newSibling.id : activePaneId;
+    }
+    if (!_findLeaf(nextTree, nextActivePaneId)) {
+      const survivors = _leaves(nextTree);
+      nextActivePaneId = survivors[0]?.id ?? activePaneId;
+    }
+
+    set({ tree: nextTree, activePaneId: nextActivePaneId });
+  },
+
+  /**
+   * setPaneRatio — writes a split node's ratio by a/b path (D-13). The
+   * caller (divider drag handler) owns pixel-to-ratio conversion and
+   * clamping (D-14) — this action just applies the value and bails when
+   * unchanged. No new persistence code: ratio rides the existing debounced
+   * per-vault subscribe (snapshotOf serializes the whole tree).
+   */
+  setPaneRatio: (path, ratio) => {
+    const { tree } = get();
+    const next = setRatioAtPath(tree, path, ratio);
+    if (next === tree) return;
+    set({ tree: next });
   },
 
   markDeleted: (noteId) =>

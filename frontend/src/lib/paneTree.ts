@@ -153,6 +153,79 @@ export function _removeLeaf(tree: PaneNode, leafId: string): PaneNode {
   return tree;
 }
 
+/**
+ * Splits the leaf identified by `targetLeafId` into a split node, with the
+ * dragged `tab` (MOVED, not cloned — caller removes it from the source leaf)
+ * landing in a fresh sibling leaf. `placement` controls which side the new
+ * sibling occupies: "first" -> `a`, "second" -> `b` (drop-zone geometry:
+ * left/top -> first, right/bottom -> second).
+ *
+ * Honors the explicit `dir` argument unconditionally, same as `splitPane`.
+ * Returns the tree unchanged if `targetLeafId` is not found.
+ */
+export function splitWithTab(
+  tree: PaneNode,
+  targetLeafId: string,
+  tab: Tab,
+  dir: "row" | "col",
+  placement: "first" | "second",
+): PaneNode {
+  if (tree.t === "leaf") {
+    if (tree.id !== targetLeafId) return tree;
+    const sibling = newLeaf(newLeafId(), [tab], tab.id);
+    return placement === "first"
+      ? { t: "split", dir, ratio: DEFAULT_RATIO, a: sibling, b: tree }
+      : { t: "split", dir, ratio: DEFAULT_RATIO, a: tree, b: sibling };
+  }
+
+  const a = splitWithTab(tree.a, targetLeafId, tab, dir, placement);
+  if (a !== tree.a) return { ...tree, a };
+  const b = splitWithTab(tree.b, targetLeafId, tab, dir, placement);
+  if (b !== tree.b) return { ...tree, b };
+  return tree;
+}
+
+/**
+ * Appends `tab` to the target leaf's tabs and activates it. Per-leaf dedup
+ * (D-07): if the target leaf already holds a tab with the same `noteId`,
+ * activates that existing tab instead of adding a duplicate.
+ *
+ * Returns the tree unchanged if `targetLeafId` is not found.
+ */
+export function moveTab(tree: PaneNode, targetLeafId: string, tab: Tab): PaneNode {
+  const leaf = _findLeaf(tree, targetLeafId);
+  if (!leaf) return tree;
+  const existing = leaf.tabs.find((t) => t.noteId === tab.noteId);
+  if (existing) {
+    return _updLeaf(tree, targetLeafId, { active: existing.id });
+  }
+  return _updLeaf(tree, targetLeafId, { tabs: [...leaf.tabs, tab], active: tab.id });
+}
+
+/**
+ * Walks `path` (a sequence of "a"|"b" steps from `tree`) to a split node and
+ * writes its `ratio`. No clamping here — that is the caller's job (store
+ * owns pixel dimensions). Returns the tree unchanged when the path does not
+ * resolve to a split node, or the ratio is already the requested value.
+ */
+export function setRatioAtPath(tree: PaneNode, path: ("a" | "b")[], ratio: number): PaneNode {
+  if (path.length === 0) {
+    if (tree.t !== "split" || tree.ratio === ratio) return tree;
+    return { ...tree, ratio };
+  }
+  if (tree.t !== "split") return tree;
+
+  const [step, ...rest] = path;
+  if (step === "a") {
+    const a = setRatioAtPath(tree.a, rest, ratio);
+    if (a === tree.a) return tree;
+    return { ...tree, a };
+  }
+  const b = setRatioAtPath(tree.b, rest, ratio);
+  if (b === tree.b) return tree;
+  return { ...tree, b };
+}
+
 /** Locates the leaf with the given id, or null if absent. */
 export function _findLeaf(tree: PaneNode, leafId: string): LeafNode | null {
   if (tree.t === "leaf") return tree.id === leafId ? tree : null;
