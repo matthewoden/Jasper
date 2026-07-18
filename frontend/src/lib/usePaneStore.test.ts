@@ -466,6 +466,88 @@ describe("usePaneStore — dropTabOnPane (WS-01/WS-02, D-05/D-06/D-07/D-08/D-10)
   });
 });
 
+describe("usePaneStore — dropTabAtIndex (P26 polish — positional foreign-strip drop)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStore();
+  });
+
+  it("inserts the dragged tab at the requested index in the target leaf's order", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const sourceLeafId = usePaneStore.getState().activePaneId;
+    usePaneStore.getState().splitActivePane("row"); // clones note-1 into sibling
+    const targetLeafId = _leaves(usePaneStore.getState().tree).find((l) => l.id !== sourceLeafId)!.id;
+    usePaneStore.getState().setActivePane(targetLeafId);
+    usePaneStore.getState().openInActivePane("note-2"); // target now [note-1(clone), note-2]
+    usePaneStore.getState().setActivePane(sourceLeafId);
+    usePaneStore.getState().openInActivePane("note-3"); // source now [note-1, note-3]
+    const sourceLeaf = _leaves(usePaneStore.getState().tree).find((l) => l.id === sourceLeafId)!;
+    const draggedTab = sourceLeaf.tabs.find((t) => t.noteId === "note-3")!;
+
+    usePaneStore.getState().dropTabAtIndex(sourceLeafId, draggedTab.id, targetLeafId, 1);
+
+    const target = _leaves(usePaneStore.getState().tree).find((l) => l.id === targetLeafId)!;
+    expect(target.tabs.map((t) => t.noteId)).toEqual(["note-1", "note-3", "note-2"]);
+  });
+
+  it("removes the tab from the source leaf and retargets its active tab", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const sourceLeafId = usePaneStore.getState().activePaneId;
+    usePaneStore.getState().splitActivePane("row");
+    const targetLeafId = _leaves(usePaneStore.getState().tree).find((l) => l.id !== sourceLeafId)!.id;
+    usePaneStore.getState().setActivePane(sourceLeafId);
+    usePaneStore.getState().openInActivePane("note-2"); // source: [note-1, note-2], active note-2
+    const sourceLeaf = _leaves(usePaneStore.getState().tree).find((l) => l.id === sourceLeafId)!;
+    const draggedTab = sourceLeaf.tabs.find((t) => t.noteId === "note-2")!;
+
+    usePaneStore.getState().dropTabAtIndex(sourceLeafId, draggedTab.id, targetLeafId, 0);
+
+    const source = _leaves(usePaneStore.getState().tree).find((l) => l.id === sourceLeafId)!;
+    expect(source.tabs.map((t) => t.noteId)).toEqual(["note-1"]);
+    expect(source.active).toBe(source.tabs[0].id);
+  });
+
+  it("collapses the source leaf when its last tab is dragged out (leaf count drops)", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const sourceLeafId = usePaneStore.getState().activePaneId;
+    usePaneStore.getState().splitActivePane("row"); // clones note-1 into sibling — sibling becomes active
+    const targetLeafId = usePaneStore.getState().activePaneId;
+    const sourceLeaf = _leaves(usePaneStore.getState().tree).find((l) => l.id === sourceLeafId)!;
+    const draggedTab = sourceLeaf.tabs[0]; // source's ONLY tab
+
+    const before = _leaves(usePaneStore.getState().tree).length;
+    usePaneStore.getState().dropTabAtIndex(sourceLeafId, draggedTab.id, targetLeafId, 0);
+
+    expect(_leaves(usePaneStore.getState().tree)).toHaveLength(before - 1);
+  });
+
+  it("is a no-op when source and target are the same leaf", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const leafId = usePaneStore.getState().activePaneId;
+    const tab = _leaves(usePaneStore.getState().tree)[0].tabs[0];
+    const before = usePaneStore.getState().tree;
+
+    usePaneStore.getState().dropTabAtIndex(leafId, tab.id, leafId, 0);
+
+    expect(usePaneStore.getState().tree).toBe(before);
+  });
+
+  it("sets activePaneId to the target leaf", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const sourceLeafId = usePaneStore.getState().activePaneId;
+    usePaneStore.getState().splitActivePane("row");
+    const targetLeafId = _leaves(usePaneStore.getState().tree).find((l) => l.id !== sourceLeafId)!.id;
+    usePaneStore.getState().setActivePane(sourceLeafId);
+    usePaneStore.getState().openInActivePane("note-2");
+    const sourceLeaf = _leaves(usePaneStore.getState().tree).find((l) => l.id === sourceLeafId)!;
+    const draggedTab = sourceLeaf.tabs.find((t) => t.noteId === "note-2")!;
+
+    usePaneStore.getState().dropTabAtIndex(sourceLeafId, draggedTab.id, targetLeafId, 0);
+
+    expect(usePaneStore.getState().activePaneId).toBe(targetLeafId);
+  });
+});
+
 describe("usePaneStore — setPaneRatio (WS-05, D-13)", () => {
   beforeEach(() => {
     localStorage.clear();

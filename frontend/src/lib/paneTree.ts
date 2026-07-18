@@ -203,6 +203,33 @@ export function moveTab(tree: PaneNode, targetLeafId: string, tab: Tab): PaneNod
 }
 
 /**
+ * Inserts `tab` at `insertIndex` (clamped to [0, tabs.length]) in the target
+ * leaf's tabs and activates it — the positional counterpart to `moveTab`'s
+ * append-only insert, used by TabStrip's foreign-strip drop (P26 Obsidian
+ * parity: dropping onto a specific pill position lands there, not at the
+ * end). Per-leaf dedup (D-07) still applies: an existing same-noteId tab is
+ * activated in place rather than duplicated.
+ *
+ * Returns the tree unchanged if `targetLeafId` is not found.
+ */
+export function moveTabToIndex(
+  tree: PaneNode,
+  targetLeafId: string,
+  tab: Tab,
+  insertIndex: number,
+): PaneNode {
+  const leaf = _findLeaf(tree, targetLeafId);
+  if (!leaf) return tree;
+  const existing = leaf.tabs.find((t) => t.noteId === tab.noteId);
+  if (existing) {
+    return _updLeaf(tree, targetLeafId, { active: existing.id });
+  }
+  const idx = Math.max(0, Math.min(insertIndex, leaf.tabs.length));
+  const tabs = [...leaf.tabs.slice(0, idx), tab, ...leaf.tabs.slice(idx)];
+  return _updLeaf(tree, targetLeafId, { tabs, active: tab.id });
+}
+
+/**
  * Walks `path` (a sequence of "a"|"b" steps from `tree`) to a split node and
  * writes its `ratio`. No clamping here — that is the caller's job (store
  * owns pixel dimensions). Returns the tree unchanged when the path does not

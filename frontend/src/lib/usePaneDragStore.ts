@@ -23,22 +23,34 @@ export interface Hover {
   region: DropRegion;
 }
 
+/** Foreign-strip positional insertion target (P26 Obsidian-parity tab-bar drop). */
+export interface StripHover {
+  leafId: string;
+  index: number;
+  indicatorX: number;
+}
+
 export interface PaneDragStore {
   activeDrag: ActiveDrag | null;
   hover: Hover | null;
+  stripHover: StripHover | null;
   beginDrag: (sourceLeafId: string, tabId: string) => void;
   setHover: (hover: Hover | null) => void;
+  setStripHover: (stripHover: StripHover | null) => void;
   endDrag: () => void;
 }
 
 export const usePaneDragStore = create<PaneDragStore>((set) => ({
   activeDrag: null,
   hover: null,
+  stripHover: null,
 
   beginDrag: (sourceLeafId, tabId) =>
-    set({ activeDrag: { sourceLeafId, tabId }, hover: null }),
+    set({ activeDrag: { sourceLeafId, tabId }, hover: null, stripHover: null }),
 
   setHover: (hover) => set({ hover }),
 
-  endDrag: () => set({ activeDrag: null, hover: null }),
+  setStripHover: (stripHover) => set({ stripHover }),
+
+  endDrag: () => set({ activeDrag: null, hover: null, stripHover: null }),
 }));

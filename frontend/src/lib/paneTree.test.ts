@@ -13,6 +13,7 @@ import {
   _removeLeaf,
   _updLeaf,
   moveTab,
+  moveTabToIndex,
   newLeaf,
   newTabId,
   setRatioAtPath,
@@ -280,6 +281,66 @@ describe("moveTab (WS-02, D-07)", () => {
     const leaf = newLeaf("root");
     const tab = { id: newTabId(), noteId: "note-1" };
     const result = moveTab(leaf, "missing", tab);
+    expect(result).toBe(leaf);
+  });
+});
+
+describe("moveTabToIndex (P26 polish — positional cross-leaf insert)", () => {
+  it("inserts at index 0 (before every existing tab)", () => {
+    const existing = { id: newTabId(), noteId: "note-1" };
+    const leaf = newLeaf("root", [existing], existing.id);
+    const dragged = { id: newTabId(), noteId: "note-2" };
+    const result = asLeaf(moveTabToIndex(leaf, "root", dragged, 0));
+    expect(result.tabs.map((t) => t.noteId)).toEqual(["note-2", "note-1"]);
+    expect(result.active).toBe(dragged.id);
+  });
+
+  it("inserts in the middle of a multi-tab leaf", () => {
+    const t1 = { id: newTabId(), noteId: "note-1" };
+    const t2 = { id: newTabId(), noteId: "note-2" };
+    const leaf = newLeaf("root", [t1, t2], t1.id);
+    const dragged = { id: newTabId(), noteId: "note-3" };
+    const result = asLeaf(moveTabToIndex(leaf, "root", dragged, 1));
+    expect(result.tabs.map((t) => t.noteId)).toEqual(["note-1", "note-3", "note-2"]);
+  });
+
+  it("inserts at the end when index === tabs.length", () => {
+    const t1 = { id: newTabId(), noteId: "note-1" };
+    const leaf = newLeaf("root", [t1], t1.id);
+    const dragged = { id: newTabId(), noteId: "note-2" };
+    const result = asLeaf(moveTabToIndex(leaf, "root", dragged, 1));
+    expect(result.tabs.map((t) => t.noteId)).toEqual(["note-1", "note-2"]);
+  });
+
+  it("clamps a negative index to 0", () => {
+    const t1 = { id: newTabId(), noteId: "note-1" };
+    const leaf = newLeaf("root", [t1], t1.id);
+    const dragged = { id: newTabId(), noteId: "note-2" };
+    const result = asLeaf(moveTabToIndex(leaf, "root", dragged, -5));
+    expect(result.tabs.map((t) => t.noteId)).toEqual(["note-2", "note-1"]);
+  });
+
+  it("clamps an out-of-range index (> length) to the end", () => {
+    const t1 = { id: newTabId(), noteId: "note-1" };
+    const leaf = newLeaf("root", [t1], t1.id);
+    const dragged = { id: newTabId(), noteId: "note-2" };
+    const result = asLeaf(moveTabToIndex(leaf, "root", dragged, 99));
+    expect(result.tabs.map((t) => t.noteId)).toEqual(["note-1", "note-2"]);
+  });
+
+  it("dedup (D-07): activates the existing same-noteId tab instead of inserting a duplicate", () => {
+    const existing = { id: newTabId(), noteId: "note-1" };
+    const leaf = newLeaf("root", [existing], null);
+    const dragged = { id: newTabId(), noteId: "note-1" };
+    const result = asLeaf(moveTabToIndex(leaf, "root", dragged, 0));
+    expect(result.tabs).toEqual([existing]);
+    expect(result.active).toBe(existing.id);
+  });
+
+  it("returns the tree unchanged when the target leaf id is absent", () => {
+    const leaf = newLeaf("root");
+    const tab = { id: newTabId(), noteId: "note-1" };
+    const result = moveTabToIndex(leaf, "missing", tab, 0);
     expect(result).toBe(leaf);
   });
 });
