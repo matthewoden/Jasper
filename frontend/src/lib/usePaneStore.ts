@@ -192,8 +192,17 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
       tabs: nextSourceTabs,
       active: nextSourceActive,
     });
-    if (nextSourceTabs.length === 0 && _leaves(intermediate).length > 1) {
-      // D-06: source emptied by the move — collapse + rebalance.
+    if (
+      nextSourceTabs.length === 0 &&
+      _leaves(intermediate).length > 1 &&
+      sourceLeafId !== targetLeafId
+    ) {
+      // D-06: source emptied by the move — collapse + rebalance. Skipped
+      // when source === target (CR-02): an edge-region drop of a leaf's
+      // only tab onto its OWN pane must still find that leaf when
+      // splitWithTab runs below — collapsing it here (as "the emptied
+      // source") would delete the very leaf we're about to split, so
+      // splitWithTab silently no-ops and the tab vanishes.
       intermediate = _removeLeaf(intermediate, sourceLeafId);
     }
 

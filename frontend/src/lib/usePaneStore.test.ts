@@ -361,6 +361,27 @@ describe("usePaneStore — dropTabOnPane (WS-01/WS-02, D-05/D-06/D-07/D-08/D-10)
     expect(_leaves(s.tree).length).toBeGreaterThanOrEqual(1);
   });
 
+  it("CR-02: dropping a leaf's only tab onto an edge region of ITS OWN pane (2-leaf tree) still splits — does not vanish", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const leafAId = usePaneStore.getState().activePaneId;
+    usePaneStore.getState().splitActivePane("row"); // clones note-1 into sibling leaf B
+    const leafBId = _leaves(usePaneStore.getState().tree).find((l) => l.id !== leafAId)!.id;
+    const leafA = _leaves(usePaneStore.getState().tree).find((l) => l.id === leafAId)!;
+    expect(leafA.tabs).toHaveLength(1); // leaf A's ONLY tab — the repro precondition
+    const tab = leafA.tabs[0];
+
+    usePaneStore.getState().dropTabOnPane(leafAId, tab.id, leafAId, "left");
+
+    const s = usePaneStore.getState();
+    // Before the fix, source-leaf-collapse ran first (2 leaves > 1), deleting
+    // leaf A — the very leaf splitWithTab was about to target — so the whole
+    // tree came back unchanged and the tab silently vanished from the drop.
+    expect(_leaves(s.tree)).toHaveLength(3); // leaf B (untouched) + emptied leaf A + new sibling holding the tab
+    expect(_leaves(s.tree).some((l) => l.id === leafBId)).toBe(true);
+    const allNoteIds = _leaves(s.tree).flatMap((l) => l.tabs.map((t) => t.noteId));
+    expect(allNoteIds.filter((id) => id === "note-1")).toHaveLength(2); // leaf B's clone + the moved tab, nothing lost
+  });
+
   it("same-pane center drop is a no-op (D-08): reference identity preserved", () => {
     usePaneStore.getState().openInActivePane("note-1");
     const leafId = usePaneStore.getState().activePaneId;
