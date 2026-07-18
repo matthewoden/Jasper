@@ -9,8 +9,17 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _leaves, newLeaf, newTabId, type PaneNode } from "./paneTree";
+import { _leaves, newLeaf, newTabId, type PaneNode, type SplitNode } from "./paneTree";
 import { layoutKeyForVault, pruneLayoutForMissingNotes, usePaneStore } from "./usePaneStore";
+
+/** Finds the nearest ancestor SplitNode whose direct child (a or b) is the given leaf. */
+function findSplitContainingLeaf(tree: PaneNode, leafId: string): SplitNode | null {
+  if (tree.t !== "split") return null;
+  if ((tree.a.t === "leaf" && tree.a.id === leafId) || (tree.b.t === "leaf" && tree.b.id === leafId)) {
+    return tree;
+  }
+  return findSplitContainingLeaf(tree.a, leafId) ?? findSplitContainingLeaf(tree.b, leafId);
+}
 
 function resetStore() {
   const id = newTabId();
@@ -269,6 +278,156 @@ describe("usePaneStore — pruneLayoutForMissingNotes (D-13)", () => {
     usePaneStore.getState().openInActivePane("note-1");
     const before = usePaneStore.getState().tree;
     pruneLayoutForMissingNotes(new Set(["note-1"]));
+    expect(usePaneStore.getState().tree).toBe(before);
+  });
+});
+
+describe("usePaneStore — dropTabOnPane (WS-01/WS-02, D-05/D-06/D-07/D-08/D-10)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStore();
+  });
+
+  it("region 'left' splits the target: the moved tab's leaf becomes child `a` (row dir)", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const sourceLeafId = usePaneStore.getState().activePaneId;
+    usePaneStore.getState().splitActivePane("row"); // empty sibling, no active tab pre-split... actually clones note-1
+    const leaves = _leaves(usePaneStore.getState().tree);
+    const targetLeafId = leaves.find((l) => l.id !== sourceLeafId)!.id;
+    // Give the source leaf a second distinct tab so it doesn't collapse.
+    usePaneStore.getState().setActivePane(sourceLeafId);
+    usePaneStore.getState().openInActivePane("note-2");
+    const sourceLeaf = _leaves(usePaneStore.getState().tree).find((l) => l.id === sourceLeafId)!;
+    const draggedTab = sourceLeaf.tabs.find((t) => t.noteId === "note-2")!;
+
+    usePaneStore.getState().dropTabOnPane(sourceLeafId, draggedTab.id, targetLeafId, "left");
+
+    const targetNode = findSplitContainingLeaf(usePaneStore.getState().tree, targetLeafId);
+    expect(targetNode?.dir).toBe("row");
+    expect(targetNode?.a.t).toBe("leaf");
+    if (targetNode?.a.t === "leaf") {
+      expect(targetNode.a.tabs.map((t) => t.noteId)).toEqual(["note-2"]);
+    }
+  });
+
+  it("region 'bottom' splits the target: the moved tab's leaf becomes child `b` (col dir)", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const sourceLeafId = usePaneStore.getState().activePaneId;
+    usePaneStore.getState().splitActivePane("row");
+    const leaves = _leaves(usePaneStore.getState().tree);
+    const targetLeafId = leaves.find((l) => l.id !== sourceLeafId)!.id;
+    usePaneStore.getState().setActivePane(sourceLeafId);
+    usePaneStore.getState().openInActivePane("note-2");
+    const sourceLeaf = _leaves(usePaneStore.getState().tree).find((l) => l.id === sourceLeafId)!;
+    const draggedTab = sourceLeaf.tabs.find((t) => t.noteId === "note-2")!;
+
+    usePaneStore.getState().dropTabOnPane(sourceLeafId, draggedTab.id, targetLeafId, "bottom");
+
+    const targetNode = findSplitContainingLeaf(usePaneStore.getState().tree, targetLeafId);
+    expect(targetNode?.dir).toBe("col");
+    expect(targetNode?.b.t).toBe("leaf");
+    if (targetNode?.b.t === "leaf") {
+      expect(targetNode.b.tabs.map((t) => t.noteId)).toEqual(["note-2"]);
+    }
+  });
+
+  it("dragging the ONLY tab out of leaf A onto leaf B collapses A and activates a survivor (D-06)", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const leafAId = usePaneStore.getState().activePaneId;
+    usePaneStore.getState().splitActivePane("row"); // clones note-1 into sibling B, activates B
+    const leaves = _leaves(usePaneStore.getState().tree);
+    const leafBId = leaves.find((l) => l.id !== leafAId)!.id;
+    const leafA = leaves.find((l) => l.id === leafAId)!;
+    const tabInA = leafA.tabs[0];
+
+    const before = _leaves(usePaneStore.getState().tree).length;
+    usePaneStore.getState().dropTabOnPane(leafAId, tabInA.id, leafBId, "center");
+
+    const s = usePaneStore.getState();
+    expect(_leaves(s.tree)).toHaveLength(before - 1);
+    const survivor = _leaves(s.tree).find((l) => l.id === leafBId)!;
+    expect(survivor.tabs.map((t) => t.noteId)).toContain("note-1");
+    expect(_leaves(s.tree).some((l) => l.id === s.activePaneId)).toBe(true);
+  });
+
+  it("final-pane invariant: with 1 leaf total, dropping onto itself never collapses to zero leaves", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const onlyLeafId = usePaneStore.getState().activePaneId;
+    const tab = _leaves(usePaneStore.getState().tree)[0].tabs[0];
+
+    usePaneStore.getState().dropTabOnPane(onlyLeafId, tab.id, onlyLeafId, "left");
+
+    const s = usePaneStore.getState();
+    expect(_leaves(s.tree).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("same-pane center drop is a no-op (D-08): reference identity preserved", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const leafId = usePaneStore.getState().activePaneId;
+    const tab = _leaves(usePaneStore.getState().tree)[0].tabs[0];
+    const before = usePaneStore.getState().tree;
+
+    usePaneStore.getState().dropTabOnPane(leafId, tab.id, leafId, "center");
+
+    expect(usePaneStore.getState().tree).toBe(before);
+  });
+
+  it("center drop onto a pane already showing the noteId does NOT duplicate the tab (D-07)", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const leafAId = usePaneStore.getState().activePaneId;
+    usePaneStore.getState().splitActivePane("row"); // clones note-1 into leaf B
+    const leaves = _leaves(usePaneStore.getState().tree);
+    const leafBId = leaves.find((l) => l.id !== leafAId)!.id;
+    const leafA = leaves.find((l) => l.id === leafAId)!;
+    const tabInA = leafA.tabs[0];
+
+    usePaneStore.getState().dropTabOnPane(leafAId, tabInA.id, leafBId, "center");
+
+    const survivor = _leaves(usePaneStore.getState().tree)[0];
+    const note1Tabs = survivor.tabs.filter((t) => t.noteId === "note-1");
+    expect(note1Tabs).toHaveLength(1);
+  });
+
+  it("bails (no-op) when the source leaf is absent", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const before = usePaneStore.getState().tree;
+    usePaneStore.getState().dropTabOnPane("missing-leaf", "missing-tab", usePaneStore.getState().activePaneId, "center");
+    expect(usePaneStore.getState().tree).toBe(before);
+  });
+
+  it("bails (no-op) when the target leaf is absent", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const leafId = usePaneStore.getState().activePaneId;
+    const tab = _leaves(usePaneStore.getState().tree)[0].tabs[0];
+    const before = usePaneStore.getState().tree;
+    usePaneStore.getState().dropTabOnPane(leafId, tab.id, "missing-target", "center");
+    expect(usePaneStore.getState().tree).toBe(before);
+  });
+});
+
+describe("usePaneStore — setPaneRatio (WS-05, D-13)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStore();
+  });
+
+  it("writes the ratio at the given path and set()s a new tree", () => {
+    usePaneStore.getState().splitActivePane("row");
+    const before = usePaneStore.getState().tree;
+
+    usePaneStore.getState().setPaneRatio([], 0.3);
+
+    const after = usePaneStore.getState().tree;
+    expect(after).not.toBe(before);
+    expect(after.t === "split" ? after.ratio : undefined).toBe(0.3);
+  });
+
+  it("bails (no-op) when the ratio is unchanged", () => {
+    usePaneStore.getState().splitActivePane("row");
+    const before = usePaneStore.getState().tree;
+
+    usePaneStore.getState().setPaneRatio([], 0.5); // DEFAULT_RATIO, already set
+
     expect(usePaneStore.getState().tree).toBe(before);
   });
 });
