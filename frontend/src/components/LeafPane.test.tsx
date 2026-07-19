@@ -278,3 +278,54 @@ describe("<LeafPane /> Find bar renders inside the active EditorPane (P26 polish
     expect(activeStub.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_CONTAINED_BY).toBeTruthy();
   });
 });
+
+describe("<LeafPane /> find chevrons/Enter no-op on empty query (Phase 27 follow-up fix round, item 6)", () => {
+  // @codemirror/search's findNext/findPrevious open CM6's own built-in
+  // search panel when given an invalid/empty query — Jasper replaces that
+  // panel with FindReplaceBar, so it must never surface. LeafPane guards
+  // handleFindNext/handleFindPrev BEFORE they ever reach the CM6 handle
+  // (EditorPaneHandlers.findNext/findPrevious, mocked here), so asserting
+  // the mock was never called is equivalent to asserting CM6's panel never
+  // opened.
+  it("pressing Enter in the find input with an empty query does not call the CM6 handle's findNext", () => {
+    renderLeaf();
+    fireEvent.click(screen.getByTestId("open-find-note-a"));
+
+    fireEvent.keyDown(screen.getByPlaceholderText("Find"), { key: "Enter" });
+
+    expect(handleFor("note-a").findNext).not.toHaveBeenCalled();
+  });
+
+  it("pressing Shift+Enter in the find input with an empty query does not call the CM6 handle's findPrevious", () => {
+    renderLeaf();
+    fireEvent.click(screen.getByTestId("open-find-note-a"));
+
+    fireEvent.keyDown(screen.getByPlaceholderText("Find"), { key: "Enter", shiftKey: true });
+
+    expect(handleFor("note-a").findPrevious).not.toHaveBeenCalled();
+  });
+
+  it("clicking the Next/Previous match chevrons with an empty query does not call the CM6 handle", () => {
+    renderLeaf();
+    fireEvent.click(screen.getByTestId("open-find-note-a"));
+
+    // The chevrons are also visually disabled on an empty query (real DOM
+    // `disabled` attribute), so a raw click never reaches onClick — this
+    // proves the end-to-end path, not just LeafPane's own guard.
+    fireEvent.click(screen.getByLabelText("Next match"));
+    fireEvent.click(screen.getByLabelText("Previous match"));
+
+    expect(handleFor("note-a").findNext).not.toHaveBeenCalled();
+    expect(handleFor("note-a").findPrevious).not.toHaveBeenCalled();
+  });
+
+  it("pressing Enter once a query is typed DOES call the CM6 handle's findNext (guard doesn't over-fire)", () => {
+    renderLeaf();
+    fireEvent.click(screen.getByTestId("open-find-note-a"));
+
+    fireEvent.change(screen.getByPlaceholderText("Find"), { target: { value: "hello" } });
+    fireEvent.keyDown(screen.getByPlaceholderText("Find"), { key: "Enter" });
+
+    expect(handleFor("note-a").findNext).toHaveBeenCalledTimes(1);
+  });
+});

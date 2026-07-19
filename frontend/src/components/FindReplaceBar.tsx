@@ -237,6 +237,13 @@ export function FindReplaceBar({
     findInputRef.current?.select();
   }, []);
 
+  // Item 6 (Phase 27 follow-up fix round): an empty query has nothing to
+  // step through, and stepping it would otherwise round-trip into CM6's
+  // findNext/findPrevious with an invalid SearchQuery — LeafPane guards
+  // that at the handler level, but the chevrons should also visually read
+  // as inactive rather than clickable-looking with no query typed.
+  const queryEmpty = query.trim() === "";
+
   return (
     <div
       data-testid="find-bar"
@@ -284,11 +291,18 @@ export function FindReplaceBar({
           type="button"
           aria-label="Previous match"
           onClick={onFindPrev}
-          style={{ ...iconToggleBase }}
+          disabled={queryEmpty}
+          style={{
+            ...iconToggleBase,
+            opacity: queryEmpty ? 0.4 : 1,
+            cursor: queryEmpty ? "default" : "pointer",
+          }}
           onMouseEnter={(e) => {
+            if (queryEmpty) return;
             (e.currentTarget as HTMLButtonElement).style.color = "var(--color-fg)";
           }}
           onMouseLeave={(e) => {
+            if (queryEmpty) return;
             (e.currentTarget as HTMLButtonElement).style.color = "var(--color-muted)";
           }}
         >
@@ -298,11 +312,18 @@ export function FindReplaceBar({
           type="button"
           aria-label="Next match"
           onClick={onFindNext}
-          style={{ ...iconToggleBase }}
+          disabled={queryEmpty}
+          style={{
+            ...iconToggleBase,
+            opacity: queryEmpty ? 0.4 : 1,
+            cursor: queryEmpty ? "default" : "pointer",
+          }}
           onMouseEnter={(e) => {
+            if (queryEmpty) return;
             (e.currentTarget as HTMLButtonElement).style.color = "var(--color-fg)";
           }}
           onMouseLeave={(e) => {
+            if (queryEmpty) return;
             (e.currentTarget as HTMLButtonElement).style.color = "var(--color-muted)";
           }}
         >
