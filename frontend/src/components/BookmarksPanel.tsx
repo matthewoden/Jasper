@@ -37,7 +37,7 @@ import { useBookmarks } from "../lib/useBookmarks";
 import { useFileTree } from "../lib/useFileTree";
 import { usePaneStore } from "../lib/usePaneStore";
 import type { TreeNode } from "../lib/treeApi";
-import type { Bookmark, BookmarkFolder } from "../lib/useTreeStore";
+import { useTreeStore, type Bookmark, type BookmarkFolder } from "../lib/useTreeStore";
 import { BookmarksEmptyState } from "./BookmarksEmptyState";
 import { NewBookmarkFolderInput } from "./NewBookmarkFolderInput";
 
@@ -89,11 +89,19 @@ const separatorStyle: CSSProperties = {
   border: "none",
 };
 
+// Row height + hover language mirrors TreeRow.tsx (32px rows, 4%-fg hover
+// tint via the same Tailwind arbitrary-value class) so Bookmarks reads as
+// the same list surface as Notes (Phase 27 follow-up item 5). Indent base
+// (8px) matches TreeRow's own post-follow-up-item-3 base offset.
+const ROW_HOVER_CLASS = "hover:bg-[rgba(255,255,255,0.04)] group";
+
 const rowStyle: CSSProperties = {
+  position: "relative",
   display: "flex",
   alignItems: "center",
   gap: 8,
-  padding: "4px 8px",
+  height: 32,
+  padding: "0 8px",
   fontSize: 14,
   fontWeight: 400,
   color: "var(--color-fg)",
@@ -104,13 +112,14 @@ const rowStyle: CSSProperties = {
   textAlign: "left",
   minWidth: 0,
 };
-const nestedRowStyle: CSSProperties = { ...rowStyle, padding: "4px 8px 4px 24px" };
+const nestedRowStyle: CSSProperties = { ...rowStyle, padding: "0 8px 0 24px" };
 
 const folderRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 4,
-  padding: "4px 8px",
+  height: 32,
+  padding: "0 8px",
   fontSize: 12,
   fontWeight: 600,
   color: "var(--color-fg)",
@@ -128,10 +137,35 @@ const rowTitleStyle: CSSProperties = {
   minWidth: 0,
 };
 
+const toolbarRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  height: 40,
+  padding: "0 8px",
+  borderBottom: "1px solid var(--color-border)",
+  flexShrink: 0,
+};
+
+const toolbarButtonBase: CSSProperties = {
+  width: 24,
+  height: 24,
+  padding: 4,
+  background: "transparent",
+  border: "none",
+  color: "var(--color-muted)",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 4,
+};
+
 interface BookmarkRowProps {
   bookmark: Bookmark;
   title: string;
   nested: boolean;
+  isActive: boolean;
   folders: BookmarkFolder[];
   onOpen: () => void;
   onRemove: () => void;
@@ -143,6 +177,7 @@ function BookmarkRow({
   bookmark,
   title,
   nested,
+  isActive,
   folders,
   onOpen,
   onRemove,
@@ -150,12 +185,45 @@ function BookmarkRow({
   onNewFolderRequested,
 }: BookmarkRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  // Active-note accent highlight — same formula + 2px left bar as TreeRow's
+  // isActive treatment (Phase 27 follow-up item 5).
+  const activeBackground = isActive
+    ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+    : undefined;
   return (
     <div
-      style={{ display: "flex", alignItems: "center", minWidth: 0 }}
+      style={{
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        minWidth: 0,
+        background: activeBackground,
+      }}
+      className={ROW_HOVER_CLASS}
       data-testid={`bookmark-row-${bookmark.id}`}
+      data-active={isActive ? "true" : undefined}
     >
-      <button type="button" style={nested ? nestedRowStyle : rowStyle} onClick={onOpen}>
+      {isActive && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 2,
+            background: "var(--color-accent)",
+          }}
+        />
+      )}
+      <button
+        type="button"
+        style={{
+          ...(nested ? nestedRowStyle : rowStyle),
+          color: isActive ? "var(--color-fg-title)" : "var(--color-fg)",
+        }}
+        onClick={onOpen}
+      >
         <span style={rowTitleStyle}>{title}</span>
       </button>
       <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
@@ -241,24 +309,52 @@ function FolderRow({ folder, expanded, onToggle }: FolderRowProps) {
     <button
       type="button"
       style={folderRowStyle}
+      className={ROW_HOVER_CLASS}
       onClick={onToggle}
       aria-expanded={expanded}
       data-testid={`bookmark-folder-${folder.id}`}
     >
+      {/* 16px chevron matches TreeRow's chevron size (was 14px) so the
+          expand/collapse glyph reads identically across Notes + Bookmarks. */}
       {expanded ? (
         <ChevronDown
-          size={14}
+          size={16}
           aria-hidden="true"
           style={{ color: "var(--color-muted)", flexShrink: 0 }}
         />
       ) : (
         <ChevronRight
-          size={14}
+          size={16}
           aria-hidden="true"
           style={{ color: "var(--color-muted)", flexShrink: 0 }}
         />
       )}
       <span style={rowTitleStyle}>{folder.name}</span>
+    </button>
+  );
+}
+
+/** "New bookmark folder" toolbar trigger — SidebarToolbar-sized (24x24, muted
+ *  FolderPlus) with the same fg-8%-tint hover convention as SidebarTabRow's
+ *  collapse button / ActivityRibbon's RibbonButton. */
+function NewBookmarkFolderButton({ onClick }: { onClick: () => void }) {
+  const [hovering, setHovering] = useState(false);
+  return (
+    <button
+      type="button"
+      title="New bookmark folder"
+      aria-label="New bookmark folder"
+      onClick={onClick}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+      style={{
+        ...toolbarButtonBase,
+        background: hovering
+          ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+          : "transparent",
+      }}
+    >
+      <FolderPlus size={16} aria-hidden="true" />
     </button>
   );
 }
@@ -272,6 +368,7 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
   const { bookmarks, bookmarkFolders, toggleBookmark, moveToFolder, createFolder } =
     useBookmarks();
   const { tree } = useFileTree();
+  const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [creatingFolder, setCreatingFolder] = useState(false);
 
@@ -330,6 +427,7 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
       bookmark={bookmark}
       title={titleFor(bookmark.note_id)}
       nested={nested}
+      isActive={activeNoteId !== null && bookmark.note_id === activeNoteId}
       folders={bookmarkFolders}
       onOpen={() => handleOpen(bookmark.note_id)}
       onRemove={() => handleRemove(bookmark.note_id)}
@@ -338,35 +436,12 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     />
   );
 
+  // Bordered 40px toolbar row — mirrors Sidebar.tsx's Notes-panel toolbar
+  // chrome (same height/padding/borderBottom) so Bookmarks presents the same
+  // panel-top interface as Notes (Phase 27 follow-up item 5).
   const header = (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "flex-end",
-        padding: "8px 8px 4px",
-        flexShrink: 0,
-      }}
-    >
-      <button
-        type="button"
-        title="New bookmark folder"
-        aria-label="New bookmark folder"
-        onClick={() => setCreatingFolder(true)}
-        style={{
-          width: 24,
-          height: 24,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "transparent",
-          border: "none",
-          borderRadius: 4,
-          color: "var(--color-muted)",
-          cursor: "pointer",
-        }}
-      >
-        <FolderPlus size={14} aria-hidden="true" />
-      </button>
+    <div style={toolbarRowStyle}>
+      <NewBookmarkFolderButton onClick={() => setCreatingFolder(true)} />
     </div>
   );
 
