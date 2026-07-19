@@ -73,6 +73,13 @@ func (nopBroadcaster) Broadcast(_ string, _ any, _ string) {}
 // control T-27-01) WITHOUT persisting. Rejects a non-nil folderID that
 // does not exist in the loaded document with ErrFolderNotFound.
 func (s *Service) Add(ctx context.Context, noteID uuid.UUID, folderID *string) (Bookmark, error) {
+	// WR-03: a nil registry means notesSvc was nil at construction (Server's
+	// documented graceful-degradation contract) — nothing resolves, so
+	// treat it the same as "note not found" rather than panicking on
+	// registry.Lookup's nil receiver.
+	if s.registry == nil {
+		return Bookmark{}, fmt.Errorf("bookmarks.Add(%s): %w", noteID, ErrNoteNotFound)
+	}
 	if _, ok := s.registry.Lookup(noteID); !ok {
 		return Bookmark{}, fmt.Errorf("bookmarks.Add(%s): %w", noteID, ErrNoteNotFound)
 	}

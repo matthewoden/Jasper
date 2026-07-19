@@ -8,6 +8,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/matthewoden/jasper/backend/internal/bookmarks"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 // GetBookmarks implements GET /api/v1/bookmarks.
@@ -21,7 +22,17 @@ func (s *Server) GetBookmarks(
 	ctx context.Context,
 	_ GetBookmarksRequestObject,
 ) (GetBookmarksResponseObject, error) {
-	doc, err := bookmarks.Load(s.dataDir, s.notes.Registry(), s.log)
+	// WR-03: s.notes can be nil (Server's documented graceful-degradation
+	// contract, exercised by NewServerWithIndex(nil, ...) in tests
+	// elsewhere in this package) — s.notes.Registry() would panic on a nil
+	// receiver reading a field. bookmarks.Load itself already treats a nil
+	// registry as "nothing resolves"; pass nil explicitly rather than
+	// dereferencing s.notes.
+	var registry *notes.Registry
+	if s.notes != nil {
+		registry = s.notes.Registry()
+	}
+	doc, err := bookmarks.Load(s.dataDir, registry, s.log)
 	if err != nil {
 		s.log.Error("GetBookmarks: domain error", "err", err)
 		return nil, errors.New("could not load bookmarks")

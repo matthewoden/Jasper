@@ -352,6 +352,51 @@ func TestCreateBookmarkFolder_EmptyName_400(t *testing.T) {
 	}
 }
 
+// TestGetBookmarks_NilNotesService_DoesNotPanic guards WR-03:
+// NewServerWithIndex(nil, ...) is a supported, tested pattern elsewhere in
+// this package (Server's doc comment promises handlers degrade gracefully
+// when notes is nil). Before the fix, GetBookmarks called
+// s.notes.Registry() unconditionally — a nil *notes.Service receiver
+// reading a field — and POST's Service.Add called s.registry.Lookup
+// unconditionally — a nil *notes.Registry receiver locking r.mu — both of
+// which panic.
+func TestGetBookmarks_NilNotesService_DoesNotPanic(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dataDir, ".jasper"), 0o755); err != nil {
+		t.Fatalf("MkdirAll .jasper: %v", err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv := NewServerWithIndex(nil, nil, nil, nil, nil, logger, dataDir)
+	si := NewStrictHandler(srv, nil)
+	r := chi.NewRouter()
+	r.Route("/api/v1", func(r chi.Router) {
+		HandlerFromMux(si, r)
+	})
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	resp, body := http200Get(t, ts, "/api/v1/bookmarks")
+	if resp.StatusCode != 200 {
+		t.Fatalf("GET /bookmarks with nil notes service: status = %d, want 200 (no panic); body=%s", resp.StatusCode, body)
+	}
+	var doc BookmarksDocument
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("unmarshal: %v; body=%s", err, body)
+	}
+	if len(doc.Bookmarks) != 0 || len(doc.Folders) != 0 {
+		t.Errorf("GetBookmarks with nil notes service = %+v, want empty document", doc)
+	}
+
+	// POST must not panic on registry.Lookup either — expect a graceful
+	// "not found" response (nothing can resolve without a registry), not a
+	// crash.
+	resp, body = mustPostJSON(t, ts, "/api/v1/bookmarks", `{"note_id":"`+uuid.NewString()+`"}`)
+	if resp.StatusCode != 404 {
+		t.Fatalf("POST /bookmarks with nil notes service: status = %d, want 404; body=%s", resp.StatusCode, body)
+	}
+}
+
 func mustCreateBookmarkFolder(t *testing.T, ts *httptest.Server, name string) string {
 	t.Helper()
 	resp, body := mustPostJSON(t, ts, "/api/v1/bookmark-folders", `{"name":"`+name+`"}`)

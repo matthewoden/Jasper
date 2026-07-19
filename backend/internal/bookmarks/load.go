@@ -30,6 +30,12 @@ import (
 //     in registry (or fails to parse as a UUID) is dropped (D-04
 //     auto-prune-on-read). If any row was dropped, the pruned document is
 //     re-Saved to disk (best-effort) so the file stays clean.
+//   - registry == nil (WR-03: Server's documented graceful-degradation
+//     contract when notesSvc is nil): auto-prune is skipped entirely — a
+//     nil registry cannot legitimately resolve anything, so pruning against
+//     it would wipe every valid row and re-Save that empty result, which
+//     would be a real data-loss bug of the exact CR-01 shape. The document
+//     is returned as-is, unpruned.
 //
 // Returns an error ONLY when the disk is unreadable for non-not-exist
 // reasons (permission denied, I/O error).
@@ -51,6 +57,10 @@ func Load(dataDir string, registry *notes.Registry, log *slog.Logger) (Bookmarks
 		log.Warn("bookmarks: malformed; falling back to empty set",
 			"path", path, "err", err)
 		return Bookmarks{}, nil
+	}
+
+	if registry == nil {
+		return doc, nil
 	}
 
 	pruned := make([]Bookmark, 0, len(doc.Bookmarks))
