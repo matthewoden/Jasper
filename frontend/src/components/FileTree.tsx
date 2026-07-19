@@ -19,7 +19,7 @@
  * the editor's direction-A round-trips).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Tree, type NodeApi, type TreeApi } from "react-arborist";
+import type { NodeApi, TreeApi } from "react-arborist";
 
 import { extractH1FromContent, rewriteH1 } from "../lib/h1Extract";
 import { getNote, updateNote } from "../lib/notesApi";
@@ -36,6 +36,7 @@ import { useTreeCreateActions } from "../lib/useTreeCreateActions";
 import type { TreeNode as WireTreeNode } from "../lib/treeApi";
 import { listTagNotes, type NoteSummary } from "../lib/tagsApi";
 import { TreeRow, type TreeRowData } from "./TreeRow";
+import { TreeView } from "./TreeView";
 import { TreeEmptyState } from "./TreeEmptyState";
 import { TreeErrorState } from "./TreeErrorState";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
@@ -92,34 +93,6 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   // source no longer exists at its old path. Dedupe identical moves fired within
   // a short window so only the first runs.
   const lastMoveRef = useRef<{ key: string; t: number } | null>(null);
-
-  const observerRef = useRef<ResizeObserver | null>(null);
-  const treeAreaRef = useRef<HTMLDivElement | null>(null);
-  const [treeHeight, setTreeHeight] = useState(400);
-  const setTreeAreaEl = useCallback((el: HTMLDivElement | null) => {
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-      observerRef.current = null;
-    }
-    treeAreaRef.current = el;
-    if (!el) return;
-    const measure = () => {
-      const h = el.getBoundingClientRect().height;
-      if (h > 0) setTreeHeight(Math.floor(h));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    observerRef.current = ro;
-  }, []);
-  useEffect(() => {
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-        observerRef.current = null;
-      }
-    };
-  }, []);
 
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
   const activeNoteIdForFlatList = useTreeStore((s) => s.activeNoteId);
@@ -258,9 +231,16 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       useTreeStore.getState().startRename("file", d.path);
       return;
     }
-    useTreeStore
-      .getState()
-      .startRename(d.kind, d.kind === "folder" ? d.path : d.id);
+    if (d.kind === "folder") {
+      useTreeStore.getState().startRename("folder", d.path);
+      return;
+    }
+    if (d.kind === "note") {
+      useTreeStore.getState().startRename("note", d.id);
+      return;
+    }
+    // bookmark / bookmark-folder rows never trigger rename here —
+    // BookmarksPanel never wires onRequestRename to bookmark-kind rows.
   }, []);
 
   const handleCommitRename = useCallback(
@@ -331,7 +311,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
               rewriteErr,
             );
           }
-        } else {
+        } else if (d.kind === "folder") {
           const parent = (() => {
             const i = d.path.lastIndexOf("/");
             return i === -1 ? "" : d.path.slice(0, i);
@@ -343,6 +323,8 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           }
           await muts.moveFolder(d.path, newPath);
         }
+        // bookmark / bookmark-folder rows never reach handleCommitRename —
+        // BookmarksPanel never wires commitRename to bookmark-kind rows.
         useTreeStore.getState().endRename();
       } catch (e) {
         surfaceError(e, "rename");
@@ -388,7 +370,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           name: d.name,
           path: d.path,
         });
-      } else {
+      } else if (d.kind === "folder") {
         const counts = countDescendants(tree, d.path);
         setDeleteTarget({
           kind: "folder",
@@ -398,6 +380,9 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           subfolderCount: counts.folders,
         });
       }
+      // bookmark / bookmark-folder rows never reach handleRequestDelete —
+      // BookmarksPanel wires bookmark removal through bookmarkMenu.onRemove,
+      // not onRequestDelete.
     },
     [tree],
   );
@@ -494,11 +479,19 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     }) => {
       if (args.dragNodes.length === 0) return;
 
-      const sources = args.dragNodes.map((dn) => ({
-        kind: dn.data.data.kind,
-        id: dn.data.data.kind === "note" ? dn.data.data.id : null,
-        path: dn.data.data.path,
-      }));
+      const sources = args.dragNodes.map((dn) => {
+        const d = dn.data.data;
+        return {
+          kind: d.kind,
+          id: d.kind === "note" ? d.id : null,
+          // FileTree only ever adapts folder/note/file wire data (never
+          // bookmark rows) — the fallback is inert, kept for exhaustiveness.
+          path:
+            d.kind === "folder" || d.kind === "note" || d.kind === "file"
+              ? d.path
+              : "",
+        };
+      });
 
       // Dedupe the native-listener + arborist-onMove double dispatch: same
       // sources + same target folder within 1s is always the spurious repeat
@@ -830,11 +823,11 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       .filter((s: NodeApi<ArboristNode>) => s.data.data.kind === nodeKind)
       .map((s: NodeApi<ArboristNode>) => {
         const sd = s.data.data;
-        if (sd.kind === "folder") return sd.name;
-        if (sd.kind === "file") return sd.name;
-        return sd.title.endsWith(".md")
-          ? sd.title.slice(0, -3)
-          : sd.title;
+        if (sd.kind === "folder" || sd.kind === "file") return sd.name;
+        if (sd.kind === "bookmark-folder") return sd.name;
+        // note | bookmark — both carry a `.title`. FileTree only ever adapts
+        // note-kind siblings in practice (bookmark rows never appear here).
+        return sd.title.endsWith(".md") ? sd.title.slice(0, -3) : sd.title;
       });
   };
 
@@ -943,9 +936,10 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
 
   return (
     <>
-      {/* Tree-area wrap — fills the sidebar column. flexShrink:1 + minHeight:0 lets it shrink. */}
+      {/* Tree-area wrap — fills the sidebar column. flexShrink:1 + minHeight:0 lets it shrink.
+          Native-window drag listeners (markdown/file drops from outside the browser) stay
+          here at the FileTree level — TreeView itself has no notion of external file drops. */}
       <div
-        ref={setTreeAreaEl}
         onDragOverCapture={handleSidebarDragOver}
         onDragEnterCapture={handleSidebarDragOver}
         onDropCapture={handleSidebarFileDrop}
@@ -956,47 +950,31 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           flexDirection: "column",
         }}
       >
-      <Tree<ArboristNode>
-        ref={treeRef}
-        data={data}
-        idAccessor="id"
-        childrenAccessor="children"
-        initialOpenState={initialOpenState}
-        openByDefault={false}
-        onToggle={handleToggle}
-        onMove={handleMove}
-        onSelect={handleSelect}
-        onDelete={handleArboristDelete}
-        disableDrop={handleDisableDrop}
-        disableDrag={() => false}
-        rowHeight={32}
-        width="100%"
-        height={treeHeight}
-      >
-        {(props) => (
-          <TreeRow
-            node={
-              new Proxy(props.node, {
-                get(target, prop) {
-                  if (prop === "data") return target.data.data;
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const v = (target as any)[prop];
-                  return typeof v === "function" ? v.bind(target) : v;
-                },
-              }) as unknown as NodeApi<TreeRowData>
-            }
-            style={props.style}
-            dragHandle={props.dragHandle}
-            onSelectNote={onSelectNote}
-            onRequestRename={handleRequestRename}
-            onRequestDelete={handleRequestDelete}
-            onRequestNewNote={handleRequestNewNote}
-            onRequestNewFolder={handleRequestNewFolder}
-            siblingNames={siblingNamesFor(props.node)}
-            commitRename={handleCommitRename}
-          />
-        )}
-      </Tree>
+        <TreeView<ArboristNode>
+          data={data}
+          treeRef={treeRef}
+          initialOpenState={initialOpenState}
+          onMove={handleMove}
+          onToggle={handleToggle}
+          onSelect={handleSelect}
+          onDelete={handleArboristDelete}
+          disableDrop={handleDisableDrop}
+          disableDrag={() => false}
+          renderRow={({ node, rawNode, style, dragHandle }) => (
+            <TreeRow
+              node={node}
+              style={style}
+              dragHandle={dragHandle}
+              onSelectNote={onSelectNote}
+              onRequestRename={handleRequestRename}
+              onRequestDelete={handleRequestDelete}
+              onRequestNewNote={handleRequestNewNote}
+              onRequestNewFolder={handleRequestNewFolder}
+              siblingNames={siblingNamesFor(rawNode)}
+              commitRename={handleCommitRename}
+            />
+          )}
+        />
       </div>
       <DeleteConfirmDialog
         open={deleteTarget !== null}

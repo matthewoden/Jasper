@@ -673,18 +673,22 @@ describe("handleMove same-parent no-op (Gap 2)", () => {
     data: TreeRowData;
     parent?: ReturnType<typeof nodeStub> | null;
   }): NodeApi<ArboristNode> {
+    // Test-only stub: this describe block only ever constructs folder/note/
+    // file TreeRowData (never bookmark kinds) — the trailing casts are
+    // type-only, no behavior/assertion change (TreeRowData widened for
+    // quick task 260719-jv1's shared-tree-component work).
     const arboristNode: ArboristNode = {
       id:
         args.data.kind === "folder"
           ? "folder:" + args.data.path
           : args.data.kind === "note"
             ? "note:" + args.data.id
-            : "file:" + args.data.path,
+            : "file:" + (args.data as { path: string }).path,
       name: args.data.kind === "folder"
         ? args.data.name
         : args.data.kind === "note"
           ? args.data.title
-          : args.data.name, // "file" nodes
+          : (args.data as { name: string }).name, // "file" nodes
       data: args.data,
     };
     const stub = {
@@ -1221,7 +1225,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     ): NodeApi<ArboristNode> => {
       const arborist: ArboristNode = {
         id: arboristId,
-        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : data.name,
+        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : (data as { name: string }).name,
         data,
       };
       return {
@@ -1253,7 +1257,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     const sources = dragNodes.map((dn) => ({
       kind: dn.data.data.kind,
       id: dn.data.data.kind === "note" ? dn.data.data.id : null,
-      path: dn.data.data.path,
+      path: (dn.data.data as { path: string }).path,
     }));
     for (const src of sources) {
       const target = computeMoveTarget({
@@ -1285,7 +1289,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     ): NodeApi<ArboristNode> => {
       const arborist: ArboristNode = {
         id: arboristId,
-        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : data.name,
+        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : (data as { name: string }).name,
         data,
       };
       return {
@@ -1317,7 +1321,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     const sources = dragNodes.map((dn) => ({
       kind: dn.data.data.kind,
       id: dn.data.data.kind === "note" ? dn.data.data.id : null,
-      path: dn.data.data.path,
+      path: (dn.data.data as { path: string }).path,
     }));
     for (const src of sources) {
       const target = computeMoveTarget({
@@ -1346,7 +1350,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     ): NodeApi<ArboristNode> => {
       const arborist: ArboristNode = {
         id: arboristId,
-        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : data.name,
+        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : (data as { name: string }).name,
         data,
       };
       return {
@@ -1367,7 +1371,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     const sources = [fileNode].map((dn) => ({
       kind: dn.data.data.kind,
       id: dn.data.data.kind === "note" ? dn.data.data.id : null,
-      path: dn.data.data.path,
+      path: (dn.data.data as { path: string }).path,
     }));
     for (const src of sources) {
       const target = computeMoveTarget({ sourcePath: src.path, parentNode });
@@ -1398,7 +1402,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     ): NodeApi<ArboristNode> => {
       const arborist: ArboristNode = {
         id: arboristId,
-        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : data.name,
+        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : (data as { name: string }).name,
         data,
       };
       return {
@@ -1470,7 +1474,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     ): NodeApi<ArboristNode> => {
       const arborist: ArboristNode = {
         id: arboristId,
-        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : data.name,
+        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : (data as { name: string }).name,
         data,
       };
       return {
@@ -1515,7 +1519,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     ): NodeApi<ArboristNode> => {
       const arborist: ArboristNode = {
         id: arboristId,
-        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : data.name,
+        name: data.kind === "folder" ? data.name : data.kind === "note" ? data.title : (data as { name: string }).name,
         data,
       };
       return {

@@ -8,11 +8,15 @@
  *   DELETE /api/v1/bookmarks/{id}        → deleteBookmark(id): void
  *   POST   /api/v1/bookmarks/{id}/folder → postBookmarkMove(id, folderId): {id, folder_id}
  *   POST   /api/v1/bookmark-folders      → postBookmarkFolder(name): BookmarkFolder
+ *   POST   /api/v1/bookmarks/reorder     → reorderBookmarks(folderId, orderedIds): void
  *
- * Each wrapper throws on non-2xx so callers can use try/catch, except
- * getBookmarks() which returns an empty document on error — mirrors
- * listGrants()'s never-throws-to-refresh()-caller contract so a transient
- * backend hiccup doesn't wipe previously-cached bookmarks from the store.
+ * Every wrapper throws on non-2xx so callers can use try/catch — including
+ * getBookmarks(), which used to swallow errors and return an empty document
+ * (27-UI-REVIEW finding #1: a failed fetch silently rendered the SAME empty
+ * state as "no bookmarks yet", with no way to tell the difference). The
+ * distinction between "surface an error" and "keep the last-known-good
+ * cache on a transient hiccup" now lives one layer up, in useBookmarks.ts —
+ * this file's contract is simply "throw on failure, always."
  */
 
 import { client } from "../api/client";
@@ -31,7 +35,9 @@ function unwrapErrorMessage(error: unknown, fallback: string): string {
 
 export async function getBookmarks(): Promise<BookmarksDocument> {
   const { data, error } = await client.GET("/bookmarks");
-  if (error || !data) return { folders: [], bookmarks: [] };
+  if (error || !data) {
+    throw new Error(unwrapErrorMessage(error, "could not load bookmarks"));
+  }
   return data as BookmarksDocument;
 }
 
@@ -81,4 +87,22 @@ export async function postBookmarkFolder(
     throw new Error(unwrapErrorMessage(error, "create folder failed"));
   }
   return data as BookmarkFolder;
+}
+
+/**
+ * Sets the explicit display order for EVERY bookmark in one folder scope
+ * (folderId null = top-level). orderedIds must be exactly the current
+ * membership of that scope — the backend rejects a mismatch with 404
+ * (T-JV1-01) and an unknown folderId with 400 (T-JV1-02).
+ */
+export async function reorderBookmarks(
+  folderId: string | null,
+  orderedIds: string[],
+): Promise<void> {
+  const { error } = await client.POST("/bookmarks/reorder", {
+    body: { folder_id: folderId, ordered_ids: orderedIds },
+  });
+  if (error) {
+    throw new Error(unwrapErrorMessage(error, "reorder bookmarks failed"));
+  }
 }

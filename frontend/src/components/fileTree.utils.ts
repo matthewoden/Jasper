@@ -187,9 +187,12 @@ export async function executeBatchDelete(
     try {
       if (data.kind === "note") {
         await muts.deleteNote(data.id);
-      } else {
+      } else if (data.kind === "folder" || data.kind === "file") {
         await muts.deleteFolder(data.path, true);
       }
+      // bookmark / bookmark-folder rows are never selectable in the Notes
+      // tree's batch-delete flow (FileTree only ever adapts folder/note/
+      // file wire data into ArboristNode).
       succeeded += 1;
     } catch (err) {
       console.warn(
