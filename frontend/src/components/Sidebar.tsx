@@ -1,21 +1,28 @@
 /**
- * Sidebar — layout shell: floating card with a 40px header, below which one
- * of FileTree / SidebarSearchPanel / BookmarksPanel renders (Phase 27 NAV-01).
+ * Sidebar — layout shell: floating card with a 40px header hosting the
+ * SidebarTabRow (Notes/Search/Bookmarks icon tabs + collapse control), below
+ * which one of FileTree / SidebarSearchPanel / BookmarksPanel renders
+ * (Phase 27 NAV-01/NAV-03).
  *
  * Structure:
  *   <nav width=sidebarWidth>
  *     <card>
- *       <header>SidebarToolbar (Task 2 swaps this for the SidebarTabRow)</header>   (40px, shared chrome)
- *       {sidebarPanel === "notes" ? <FileTree/> : sidebarPanel === "search" ? <SidebarSearchPanel/> : <BookmarksPanel/>}   (flex: 1; scrolls)
+ *       <header><SidebarTabRow /></header>   (40px, shared chrome — same header for every panel)
+ *       {sidebarPanel === "notes" ? <SidebarToolbar/> + <FileTree/> : sidebarPanel === "search" ? <SidebarSearchPanel/> : <BookmarksPanel/>}   (flex: 1; scrolls)
  *     </card>
  *     <SidebarResizeHandle />  (outside card — overlays the column boundary)
  *   </nav>
  *
  * The 40px header is shared chrome — it does NOT swap when the panel
- * switches; only the area below it does. `sidebarPanel` is driven by the
- * sidebar tab row (Task 2) and Cmd+Shift+F. This panel complements — never
+ * switches; only the area below it does. `sidebarPanel` is driven by
+ * SidebarTabRow's tab clicks and Cmd+Shift+F. This panel complements — never
  * replaces — the existing Cmd+P/Cmd+Shift+F CommandMenu palette, which still
  * exists as a second, faster entry point into search.
+ *
+ * SidebarToolbar (New note / New folder) moved from the shared header down
+ * to the Notes panel's own top edge — it is note-scoped chrome, not global,
+ * and the shared header no longer has room for it once the tab row + collapse
+ * control occupy it (Phase 27 D-07 / Task 2 discretion).
  *
  * Toolbar wiring:
  *   - New note / New folder → useTreeCreateActions().createNoteAt/FolderAt(parent),
@@ -31,12 +38,12 @@ import type React from "react";
 import { FileTree } from "./FileTree";
 import { SidebarResizeHandle } from "./SidebarResizeHandle";
 import { SidebarSearchPanel } from "./SidebarSearchPanel";
+import { SidebarTabRow } from "./SidebarTabRow";
 import { SidebarToolbar } from "./SidebarToolbar";
 import type { Tree, TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeCreateActions } from "../lib/useTreeCreateActions";
 import { useTreeStore, type SelectedRow } from "../lib/useTreeStore";
-import { useVaultPicker } from "../lib/useVaultPicker";
 
 export interface SidebarProps {
   onSelectNote?: (id: string) => void;
@@ -94,8 +101,6 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
   const sidebarWidth = useTreeStore((s) => s.sidebarWidth);
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
   const sidebarPanel = useTreeStore((s) => s.sidebarPanel);
-  const { current } = useVaultPicker();
-  const displayName = current?.display_name ?? "Notes";
 
   const handleNewNote = useCallback(() => {
     const sr = useTreeStore.getState().selectedRow;
@@ -147,24 +152,7 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
             flexShrink: 0,
           }}
         >
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              lineHeight: 1.4,
-              color: "var(--color-fg)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {displayName}
-          </span>
-          <SidebarToolbar
-            onNewNote={handleNewNote}
-            onNewFolder={handleNewFolder}
-            creating={isCreating}
-          />
+          <SidebarTabRow />
         </header>
         {/*
           Tree-area shell — overflow:hidden because react-arborist's
@@ -181,7 +169,37 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
           }}
         >
           {sidebarPanel === "notes" ? (
-            <FileTree onSelectNote={onSelectNote} />
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                flex: 1,
+                minHeight: 0,
+              }}
+            >
+              {/*
+                New note / New folder are note-scoped chrome, not global —
+                they now sit at the Notes panel's own top edge rather than
+                the shared tab-row header (Phase 27 D-07/Task 2 discretion).
+              */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  padding: "8px 16px 4px",
+                  flexShrink: 0,
+                }}
+              >
+                <SidebarToolbar
+                  onNewNote={handleNewNote}
+                  onNewFolder={handleNewFolder}
+                  creating={isCreating}
+                />
+              </div>
+              <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+                <FileTree onSelectNote={onSelectNote} />
+              </div>
+            </div>
           ) : sidebarPanel === "search" ? (
             <SidebarSearchPanel onSelectNote={onSelectNote} />
           ) : (

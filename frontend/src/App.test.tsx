@@ -294,7 +294,10 @@ describe("<App /> — shell composition", () => {
       "48px 260px minmax(0, 1fr) 280px",
     );
 
-    expect(screen.getByText("Notes")).toBeInTheDocument();
+    // Phase 27: the sidebar's 40px header now hosts the SidebarTabRow
+    // (icon-only Notes/Search/Bookmarks tabs), replacing the old vault-name
+    // text header — assert the Notes tab renders instead of literal text.
+    expect(screen.getByRole("button", { name: "Notes" })).toBeInTheDocument();
     expect(screen.getByTestId("tree-empty-state")).toBeInTheDocument();
   });
 
