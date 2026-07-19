@@ -485,22 +485,6 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
     });
   });
 
-  it("shows aria-label 'Hide notes sidebar' when notesSidebarVisible is true", () => {
-    useTreeStore.setState({ notesSidebarVisible: true });
-    renderStrip();
-    expect(
-      screen.getByRole("button", { name: "Hide notes sidebar" }),
-    ).toBeInTheDocument();
-  });
-
-  it("shows aria-label 'Show notes sidebar' when notesSidebarVisible is false", () => {
-    useTreeStore.setState({ notesSidebarVisible: false });
-    renderStrip();
-    expect(
-      screen.getByRole("button", { name: "Show notes sidebar" }),
-    ).toBeInTheDocument();
-  });
-
   it("shows aria-label 'Hide panels' when backlinksRailExpanded is true", () => {
     useTreeStore.setState({ backlinksRailExpanded: true });
     renderStrip();
@@ -513,13 +497,6 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
     expect(screen.getByRole("button", { name: "Show panels" })).toBeInTheDocument();
   });
 
-  it("clicking the left toggle calls setNotesSidebarVisible(!notesSidebarVisible)", () => {
-    useTreeStore.setState({ notesSidebarVisible: true });
-    renderStrip();
-    fireEvent.click(screen.getByRole("button", { name: "Hide notes sidebar" }));
-    expect(useTreeStore.getState().notesSidebarVisible).toBe(false);
-  });
-
   it("clicking the right toggle calls setBacklinksRailExpanded(!backlinksRailExpanded)", () => {
     useTreeStore.setState({ backlinksRailExpanded: true });
     renderStrip();
@@ -527,34 +504,34 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
     expect(useTreeStore.getState().backlinksRailExpanded).toBe(false);
   });
 
-  // Gap 3 / TABUI-02 (owner revision 2026-07-02): split placement supersedes
-  // the original D-04 right-hand cluster — left-sidebar toggle moves to the
-  // far-left cluster; right-sidebar toggle stays in the far-right cluster.
-  // Phase 20 (D-01): the panel-selector dropdown was removed — the
-  // right-sidebar toggle is now the single control in that cluster.
-  it("SPLIT-PLACEMENT: left-sidebar toggle is inside tab-strip-left-cluster", () => {
+  // Phase 27 NAV-03 cleanup: the redundant left-sidebar toggle was removed from
+  // the tab strip — the sidebar collapses from its own header (SidebarTabRow)
+  // and reopens via PaneCornerReopenButton. The tab strip must NOT carry a
+  // left-sidebar toggle in EITHER state.
+  it("NAV-03: no left-sidebar toggle in the tab strip when the sidebar is OPEN", () => {
+    useTreeStore.setState({ notesSidebarVisible: true });
     renderStrip();
-    const leftCluster = screen.getByTestId("tab-strip-left-cluster");
-    expect(leftCluster).toBeInTheDocument();
     expect(
-      within(leftCluster).getByRole("button", { name: "Hide notes sidebar" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Hide notes sidebar" }),
+    ).toBeNull();
+    expect(screen.queryByTestId("tab-strip-left-cluster")).toBeNull();
   });
 
-  it("SPLIT-PLACEMENT: right-sidebar toggle is inside tab-strip-right-cluster, not the left cluster", () => {
+  it("NAV-03: no left-sidebar toggle in the tab strip when the sidebar is CLOSED", () => {
+    useTreeStore.setState({ notesSidebarVisible: false });
+    renderStrip();
+    expect(
+      screen.queryByRole("button", { name: "Show notes sidebar" }),
+    ).toBeNull();
+    expect(screen.queryByTestId("tab-strip-left-cluster")).toBeNull();
+  });
+
+  it("SPLIT-PLACEMENT: right-sidebar toggle is inside tab-strip-right-cluster", () => {
     renderStrip();
     const rightCluster = screen.getByTestId("tab-strip-right-cluster");
     expect(
       within(rightCluster).getByRole("button", { name: "Hide panels" }),
     ).toBeInTheDocument();
-
-    const leftCluster = screen.getByTestId("tab-strip-left-cluster");
-    expect(
-      within(leftCluster).queryByRole("button", { name: "Hide panels" }),
-    ).toBeNull();
-    expect(
-      within(leftCluster).queryByRole("button", { name: "Open panel" }),
-    ).toBeNull();
   });
 
   // D-04: the old chrome wrapper gated the right-rail toggle behind the
@@ -568,7 +545,7 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
     ).not.toBeNull();
   });
 
-  it("right cluster and left cluster are both present in the zero-tab empty state too", () => {
+  it("right cluster is present in the zero-tab empty state (no left cluster)", () => {
     render(
       <TabStrip
         leafId={LEAF_ID}
@@ -587,6 +564,6 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
       />,
     );
     expect(screen.getByTestId("tab-strip-right-cluster")).toBeInTheDocument();
-    expect(screen.getByTestId("tab-strip-left-cluster")).toBeInTheDocument();
+    expect(screen.queryByTestId("tab-strip-left-cluster")).toBeNull();
   });
 });

@@ -267,8 +267,6 @@ export function TabStrip({
   // removed in Phase 20, D-01). The right toggle is ALWAYS rendered (no
   // panel-selector gating — that gate belonged to the old chrome wrapper and
   // is intentionally dropped, see TabStrip.test.tsx).
-  const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
-  const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);
   const backlinksRailExpanded = useTreeStore((s) => s.backlinksRailExpanded);
   const setBacklinksRailExpanded = useTreeStore(
     (s) => s.setBacklinksRailExpanded,
@@ -290,37 +288,12 @@ export function TabStrip({
   const foreignStripHover = usePaneDragStore((s) => s.stripHover);
   const foreignInsert = foreignStripHover?.leafId === leafId ? foreignStripHover : null;
 
-  const sidebarLabel = notesSidebarVisible
-    ? "Hide notes sidebar"
-    : "Show notes sidebar";
   const railLabel = backlinksRailExpanded ? "Hide panels" : "Show panels";
 
-  const leftCluster = (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
-        borderRight: "1px solid var(--color-border-inner)",
-        paddingRight: 8,
-        flexShrink: 0,
-      }}
-      data-testid="tab-strip-left-cluster"
-    >
-      <RightClusterToggle
-        ariaLabel={sidebarLabel}
-        onClick={() => setNotesSidebarVisible(!notesSidebarVisible)}
-        icon={
-          notesSidebarVisible ? (
-            <ChevronLeft size={16} aria-hidden="true" />
-          ) : (
-            <ChevronRight size={16} aria-hidden="true" />
-          )
-        }
-      />
-    </div>
-  );
-
+  // The left sidebar is collapsed from its own header (SidebarTabRow) and
+  // reopened via PaneCornerReopenButton — the tab strip no longer carries a
+  // redundant left-sidebar toggle (Phase 27 NAV-03; mock shows a tab-bar left
+  // toggle only when the sidebar is closed, never when it's open).
   const rightCluster = (
     <div
       style={{
@@ -638,7 +611,6 @@ export function TabStrip({
         style={{ ...tabStripStyle, ...style }}
         data-testid="tab-strip"
       >
-        {leftCluster}
         <EmptyStateNewTabButton onNewTab={onNewTab} />
         <div style={{ flex: "1 1 auto" }} />
         {rightCluster}
@@ -817,7 +789,6 @@ export function TabStrip({
         }
       }}
     >
-      {leftCluster}
       {/* Visible tabs in their own flex child so trailing controls always reserve space. */}
       <div
         style={{
