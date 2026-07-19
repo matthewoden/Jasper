@@ -210,13 +210,23 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
                 note-scoped chrome (not global), so they live here rather than
                 the shared tab-row header (Phase 27 D-07). The sort-order menu
                 the mock also shows in this row is Phase 29 scope (SORT-01).
+
+                Left inset is 19px (not the header's 16px) so SidebarToolbar's
+                first button — which adds its own 4px button padding before
+                the FilePlus icon — lands its icon's left edge at 23px from
+                the sidebar's left edge, matching SidebarTabRow's Notes tab
+                icon column directly above it (16px header padding + (30-16)/2
+                button inset = 23px). Only the left side moves; Collapse-all
+                keeps its original 8px right inset (Phase 27 follow-up fix
+                round, item 3 revision).
               */}
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   height: 40,
-                  padding: "0 8px",
+                  paddingLeft: 19,
+                  paddingRight: 8,
                   borderBottom: "1px solid var(--color-border)",
                   flexShrink: 0,
                 }}
