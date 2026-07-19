@@ -9,15 +9,12 @@
  * Same PanelLeft glyph as the sidebar header's collapse icon so collapse and
  * reopen read as one affordance toggling state.
  *
- * Glyph is HARD-LEFT within the 40px-wide cell, inset ~8px to match
- * ActivityRibbon's own internal cell margin (`ribbonStyle.padding: "10px 0"`
- * plus each `RibbonButton`'s own edge) so the icon sits snug against the
- * ribbon's right border with no visible gap (rejected: centering the glyph
- * in the cell read as floating/disconnected — Phase 27 follow-up fix round,
- * item 2 revision). Hover is a compact 28x28 rounded-square tint hugging the
- * glyph at that same hard-left position, not centered in the 40px cell and
- * not a full-height rectangle — so the hover reads as a small tag on the
- * glyph itself rather than filling the reserved tab-strip cell.
+ * Glyph is CENTERED within the 40px-wide cell (owner-picked placement, Phase
+ * 27 follow-up final polish) — symmetric margins rather than hard-left, so the
+ * reopen affordance reads as balanced in its reserved tab-strip cell. Hover is
+ * a compact 28x28 rounded-square tint centered on the glyph (not a full-height
+ * rectangle), so the hover reads as a small tag on the glyph itself rather than
+ * filling the whole cell.
  */
 import { useState } from "react";
 import { PanelLeft } from "lucide-react";
@@ -43,7 +40,6 @@ export function PaneCornerReopenButton(): React.JSX.Element | null {
         flexShrink: 0,
         width: 40,
         padding: 0,
-        paddingLeft: 8,
         borderTop: "none",
         borderBottom: "none",
         borderLeft: "none",
@@ -53,7 +49,7 @@ export function PaneCornerReopenButton(): React.JSX.Element | null {
         cursor: "pointer",
         display: "inline-flex",
         alignItems: "center",
-        justifyContent: "flex-start",
+        justifyContent: "center",
       }}
     >
       <span
