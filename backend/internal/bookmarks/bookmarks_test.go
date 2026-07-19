@@ -75,6 +75,51 @@ func TestLoad_MalformedFile_ReturnsEmptyAndWarns(t *testing.T) {
 	}
 }
 
+// TestLoad_UnknownField_RoundTripsWithoutDataLoss guards CR-01: a
+// well-formed bookmarks.json carrying an extra/unrecognized field (e.g.
+// written by a newer binary, or hand-edited) must NOT be treated the same
+// as corrupt JSON. Before the fix, DisallowUnknownFields() rejected this
+// file, Load fell back to Bookmarks{}, and the next mutation's Save would
+// have permanently overwritten the file with that empty document —
+// silently destroying every bookmark and folder.
+func TestLoad_UnknownField_RoundTripsWithoutDataLoss(t *testing.T) {
+	dir := t.TempDir()
+	mustMkdirJasper(t, dir)
+	noteID := uuid.New()
+	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+
+	path := bookmarksPath(dir)
+	raw := `{
+		"folders": [],
+		"bookmarks": [{"id": "bm-1", "noteId": "` + noteID.String() + `", "folderId": null, "order": 0}],
+		"futureField": "added by a newer Jasper binary"
+	}`
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write file with unknown field: %v", err)
+	}
+
+	got, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil (unknown field must not error)", err)
+	}
+	if len(got.Bookmarks) != 1 || got.Bookmarks[0].ID != "bm-1" {
+		t.Fatalf("Load() bookmarks = %+v, want the pre-existing bookmark preserved, not wiped", got.Bookmarks)
+	}
+
+	// The bug manifested on the NEXT write: confirm a mutation-triggered
+	// Save does not clobber the file with an empty document.
+	if err := Save(dir, got); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	reloaded, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() (reload) error = %v", err)
+	}
+	if len(reloaded.Bookmarks) != 1 || reloaded.Bookmarks[0].ID != "bm-1" {
+		t.Fatalf("reloaded bookmarks = %+v, want bookmark still present after Save round-trip", reloaded.Bookmarks)
+	}
+}
+
 func TestSaveLoad_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirJasper(t, dir)

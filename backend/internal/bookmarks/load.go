@@ -17,8 +17,15 @@ import (
 // Load reads the persisted bookmarks document. Behavior on edge cases:
 //   - File missing: returns an empty Bookmarks{} (NOT a default-emit — an
 //     empty vault legitimately has no bookmarks yet) with nil error.
-//   - File present but malformed (invalid JSON): logs a WARN and returns
-//     an empty Bookmarks{}, never an error to the caller.
+//   - File present but malformed (genuinely unparseable JSON): logs a WARN
+//     and returns an empty Bookmarks{}, never an error to the caller.
+//   - File present and valid — including a well-formed document carrying an
+//     extra/unrecognized field (e.g. written by a newer binary, or hand-
+//     edited): unknown fields are ignored, matching normal Go JSON decode
+//     semantics (CR-01 / mirrors the SET-05 forward-compat lesson —
+//     an unknown field must never be treated the same as corrupt JSON and
+//     coerced to an empty document, which would silently wipe every
+//     bookmark and folder on the next write).
 //   - File present and valid: any bookmark whose NoteID no longer resolves
 //     in registry (or fails to parse as a UUID) is dropped (D-04
 //     auto-prune-on-read). If any row was dropped, the pruned document is
@@ -38,7 +45,8 @@ func Load(dataDir string, registry *notes.Registry, log *slog.Logger) (Bookmarks
 
 	var doc Bookmarks
 	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
+	// No DisallowUnknownFields(): an unrecognized field must not be treated
+	// the same as corrupt JSON — see CR-01 doc comment above.
 	if err := dec.Decode(&doc); err != nil {
 		log.Warn("bookmarks: malformed; falling back to empty set",
 			"path", path, "err", err)
