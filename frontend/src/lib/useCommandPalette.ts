@@ -30,6 +30,7 @@ export interface CommandActions {
   onSplitDown?: () => void;
   onFocusNextPane?: () => void;
   onFocusPrevPane?: () => void;
+  onToggleSidebar?: () => void;
 }
 
 /**
@@ -75,6 +76,7 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       "split-down": actions.onSplitDown,
       "focus-next-pane": actions.onFocusNextPane,
       "focus-previous-pane": actions.onFocusPrevPane,
+      "sidebar.toggle": actions.onToggleSidebar,
     }),
     [
       actions.onNewNote,
@@ -92,6 +94,7 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       actions.onSplitDown,
       actions.onFocusNextPane,
       actions.onFocusPrevPane,
+      actions.onToggleSidebar,
     ],
   );
 

@@ -210,6 +210,23 @@ export function handleAppCmdShiftF(e: KeyboardEvent): void {
 }
 
 /**
+ * Cmd+Shift+E — toggle the left sidebar (Phase 27 NAV-03, D-13).
+ * The header collapse control (Plan 03) and PaneCornerReopenButton (Plan 04
+ * Task 1) both read/write the same notesSidebarVisible flag; this is the
+ * keyboard path so removing the ribbon Files/Search toggles doesn't leave
+ * keyboard users without a way to collapse/reopen the sidebar.
+ */
+export function handleAppSidebarToggle(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  if (!e.shiftKey) return;
+  if (e.key !== "e" && e.key !== "E") return;
+  e.preventDefault();
+  e.stopPropagation();
+  const s = useTreeStore.getState();
+  s.setNotesSidebarVisible(!s.notesSidebarVisible);
+}
+
+/**
  * Cmd+B — bold (CM6 owns this via jasperKeymap.ts toggleBold).
  *
  * Brave/Chromium extensions intercept Cmd+B before CM6 at the window level.
