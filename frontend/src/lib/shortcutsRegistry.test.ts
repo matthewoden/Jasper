@@ -7,7 +7,7 @@ import {
 } from "./shortcutsRegistry";
 
 describe("shortcutsRegistry", () => {
-  it("registry has all 16 locked Cmd+P palette entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode; Phase 25 Plan 08 added split/focus-pane commands; Phase 27 Plan 04 added Toggle left sidebar)", () => {
+  it("registry has all 17 locked Cmd+P palette entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode; Phase 25 Plan 08 added split/focus-pane commands; Phase 27 Plan 04 added Toggle left sidebar; Phase 27 Plan 07 added Bookmark current note)", () => {
     const labels = COMMAND_PALETTE_ENTRIES.map((s) => s.label);
     expect(labels).toContain("New note");
     expect(labels).toContain("Save");
@@ -26,7 +26,8 @@ describe("shortcutsRegistry", () => {
     expect(labels).toContain("Focus next pane");
     expect(labels).toContain("Focus previous pane");
     expect(labels).toContain("Toggle left sidebar");
-    expect(COMMAND_PALETTE_ENTRIES.length).toBe(16);
+    expect(labels).toContain("Bookmark current note");
+    expect(COMMAND_PALETTE_ENTRIES.length).toBe(17);
   });
 
   it("cheat-sheet contains CM6 built-in editor entries", () => {
@@ -79,8 +80,8 @@ describe("Plan 07-27 — Cmd+F removal (UAT-2 N6)", () => {
     expect(found).toBeUndefined();
   });
 
-  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 16 entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode; Phase 25 Plan 08 added split/focus-pane commands; Phase 27 Plan 04 added Toggle left sidebar; Find still removed)", () => {
-    expect(COMMAND_PALETTE_ENTRIES.length).toBe(16);
+  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 17 entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode; Phase 25 Plan 08 added split/focus-pane commands; Phase 27 Plan 04 added Toggle left sidebar; Phase 27 Plan 07 added Bookmark current note; Find still removed)", () => {
+    expect(COMMAND_PALETTE_ENTRIES.length).toBe(17);
   });
 });
 

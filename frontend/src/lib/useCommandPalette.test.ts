@@ -137,6 +137,13 @@ describe("useCommandPalette — execute()", () => {
     act(() => { result.current.execute("zen.toggle"); });
     expect(onToggleZen).toHaveBeenCalledOnce();
   });
+
+  it("calls onBookmarkCurrent when execute('bookmark.toggle') is called (Phase 27 BOOK-01)", () => {
+    const onBookmarkCurrent = vi.fn();
+    const { result } = renderHook(() => useCommandPalette({ onBookmarkCurrent }));
+    act(() => { result.current.execute("bookmark.toggle"); });
+    expect(onBookmarkCurrent).toHaveBeenCalledOnce();
+  });
 });
 
 describe("useCommandPalette — execute() closeOnExecute verdict (UAT #5)", () => {

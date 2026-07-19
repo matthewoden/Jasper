@@ -233,6 +233,14 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: true,
     inCheatSheet: true,
   },
+  {
+    id: "bookmark.toggle",
+    label: "Bookmark current note",
+    group: "Sidebar",
+    shortcut: `${mod}${shift}B`,
+    inPalette: true,
+    inCheatSheet: true,
+  },
 ];
 
 export const COMMAND_PALETTE_ENTRIES = SHORTCUTS_REGISTRY.filter((s) => s.inPalette);

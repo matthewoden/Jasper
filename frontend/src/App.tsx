@@ -41,6 +41,7 @@ import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
 import { useVaultSwitch } from "./lib/useVaultSwitch";
 import { VaultSwitchOverlay } from "./components/VaultSwitchOverlay";
 import { useTreeStore } from "./lib/useTreeStore";
+import { useBookmarks } from "./lib/useBookmarks";
 import type { Tab } from "./lib/useTabStore";
 import { usePaneStore, pruneLayoutForMissingNotes } from "./lib/usePaneStore";
 import { _findLeaf, _updLeaf, newTabId } from "./lib/paneTree";
@@ -48,6 +49,7 @@ import { getOrCreateController } from "./lib/noteBufferController";
 import { useTreeMutations } from "./lib/useTreeMutations";
 import {
   handleAppAltT,
+  handleAppBookmarkToggle,
   handleAppCmdB,
   handleAppCmdDot,
   handleAppCmdI,
@@ -324,6 +326,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     window.addEventListener("keydown", handleAppFocusNextPane, true);
     window.addEventListener("keydown", handleAppFocusPrevPane, true);
     window.addEventListener("keydown", handleAppSidebarToggle, true);
+    window.addEventListener("keydown", handleAppBookmarkToggle, true);
     return () => {
       window.removeEventListener("keydown", handleAppCmdP, true);
       window.removeEventListener("keydown", handleAppCmdO, true);
@@ -340,15 +343,21 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       window.removeEventListener("keydown", handleAppFocusNextPane, true);
       window.removeEventListener("keydown", handleAppFocusPrevPane, true);
       window.removeEventListener("keydown", handleAppSidebarToggle, true);
+      window.removeEventListener("keydown", handleAppBookmarkToggle, true);
     };
   }, []);
 
   const { openToday } = useDailyNote();
+  const { toggleBookmark } = useBookmarks();
   useEffect(() => {
     return subscribePhase7((ev) => {
       if (ev === "openToday") void openToday();
+      if (ev === "bookmarkCurrent") {
+        const noteId = useTreeStore.getState().activeNoteId;
+        if (noteId != null) void toggleBookmark(noteId);
+      }
     });
-  }, [openToday]);
+  }, [openToday, toggleBookmark]);
 
   const fireReindex = useCallback(async () => {
     setReindexPhase("running");
@@ -675,6 +684,18 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         const s = useTreeStore.getState();
         s.setNotesSidebarVisible(!s.notesSidebarVisible);
       },
+
+      // Palette invocation should NOT depend on the keyboard handler
+      // (Task 2, mirrors onToggleSidebar) — both this and
+      // handleAppBookmarkToggle (via the phase7 bus) call toggleBookmark
+      // independently against the active pane's active note.
+      onBookmarkCurrent:
+        activeNoteId != null
+          ? () => {
+              setPaletteOpen(false);
+              void toggleBookmark(activeNoteId);
+            }
+          : undefined,
     }),
     [
       openToday,
@@ -684,6 +705,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       activeNoteId,
       reveal,
       tree,
+      toggleBookmark,
       // switchVaultCommand/toggleZenCommand are stable module-level fns; included to satisfy exhaustive-deps.
     ],
   );

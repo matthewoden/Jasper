@@ -48,11 +48,13 @@ import { getPrimaryView } from "../lib/sharedDocRegistry";
 import { type Tree, type TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
+import { useBookmarks } from "../lib/useBookmarks";
 import { useOutlineStore } from "../lib/useOutlineStore";
 import { countWords, formatWordCount } from "../lib/wordCount";
 import type { HeadingInfo } from "../editor/outlineExtract";
 import type { components } from "../api/schema";
 import type { SearchQuery } from "@codemirror/search";
+import { Star } from "lucide-react";
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
 import { expandAndScrollToFolder } from "./fileTree.utils";
 import { TitleElement } from "./TitleElement";
@@ -234,6 +236,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const zen = useTreeStore((s) => s.zen);
+
+  // Breadcrumb bookmark star (BOOK-01, D-14/D-15). The bookmarked-state read
+  // is a cheap pure derive, safe in every mounted EditorPane instance
+  // (RESEARCH Pitfall 4); the clickable star itself only renders on the
+  // active, non-hidden pane (must_haves.truths).
+  const { isBookmarked, toggleBookmark } = useBookmarks();
+  const bookmarked = noteId !== null && isBookmarked(noteId);
+  const showBookmarkStar = !hidden && paneActive && noteId !== null;
 
   const handleBreadcrumbClick = useCallback((seg: BreadcrumbSegment) => {
     if (seg.kind === "folder") {
@@ -967,16 +977,53 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
               </Fragment>
             ))}
           </div>
-          <span
-            data-testid="word-count"
+          <div
             style={{
               flexShrink: 0,
-              fontSize: 12,
-              color: "var(--color-muted)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
             }}
           >
-            {formatWordCount(wordCount)}
-          </span>
+            <span
+              data-testid="word-count"
+              style={{
+                fontSize: 12,
+                color: "var(--color-muted)",
+              }}
+            >
+              {formatWordCount(wordCount)}
+            </span>
+            {showBookmarkStar && noteId !== null && (
+              <button
+                type="button"
+                data-testid="bookmark-star"
+                aria-label={bookmarked ? "Remove bookmark" : "Bookmark this note"}
+                title={bookmarked ? "Remove bookmark" : "Bookmark this note"}
+                onClick={() => {
+                  void toggleBookmark(noteId);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  color: bookmarked
+                    ? "var(--color-accent)"
+                    : "var(--color-muted)",
+                }}
+              >
+                <Star
+                  size={16}
+                  aria-hidden="true"
+                  fill={bookmarked ? "currentColor" : "none"}
+                />
+              </button>
+            )}
+          </div>
         </nav>
       )}
       {/* Leaf-owned Find/Replace bar slot (P26 polish, UI-SPEC line 151):
