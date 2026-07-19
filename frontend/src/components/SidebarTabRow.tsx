@@ -13,7 +13,7 @@
  */
 import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { FolderClosed, Search, Bookmark, PanelLeftClose } from "lucide-react";
+import { FolderClosed, Search, Bookmark, PanelLeft } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 
 type SidebarPanel = "notes" | "search" | "bookmarks";
@@ -141,7 +141,7 @@ export function SidebarTabRow(): React.JSX.Element {
             : "transparent",
         }}
       >
-        <PanelLeftClose size={16} aria-hidden="true" />
+        <PanelLeft size={16} aria-hidden="true" />
       </button>
     </div>
   );
