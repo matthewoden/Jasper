@@ -85,6 +85,20 @@ export interface TreeViewProps<T extends TreeViewNode> {
     index: number;
   }) => boolean;
   disableDrag?: (node: T) => boolean;
+  /**
+   * OPT-IN empty-area root drop (drag-to-root, quick task 260719-jv1
+   * follow-up). react-arborist's onMove never fires for a drop in the
+   * tree's empty area below the last row (Bug A — same root cause
+   * FileTree's own window-level native-drag listeners work around). When
+   * provided, TreeView installs an analogous window-level listener set
+   * SCOPED to this tree instance's own `[role="tree"]` element, and calls
+   * onRootDrop with the dragged nodes when the drop lands inside this
+   * tree but not on any row. Omit this prop to leave the listener
+   * dormant — FileTree does not pass it (it owns its own root-drop path
+   * with note/folder cycle-guard logic) so Notes' drag-drop is
+   * unaffected.
+   */
+  onRootDrop?: (dragNodes: NodeApi<T>[]) => void;
   renderRow: (props: TreeViewRenderRowProps<T>) => ReactNode;
 }
 
@@ -99,6 +113,7 @@ export function TreeView<T extends TreeViewNode>({
   onDelete,
   disableDrop,
   disableDrag,
+  onRootDrop,
   renderRow,
 }: TreeViewProps<T>) {
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -128,6 +143,63 @@ export function TreeView<T extends TreeViewNode>({
       }
     };
   }, []);
+
+  // Empty-area root drop — dormant unless the caller passes onRootDrop.
+  // Mirrors FileTree's window-level native-drag pattern but stays generic
+  // (no note/folder cycle logic — bookmarks have no cycles) and scopes
+  // itself to THIS tree instance's `[role="tree"]` element so a page with
+  // both a FileTree and a BookmarksPanel mounted never cross-fires.
+  const rootDropDragNodesRef = useRef<NodeApi<T>[] | null>(null);
+  useEffect(() => {
+    if (!onRootDrop) return;
+
+    const getTreeEl = (): Element | null =>
+      treeAreaRef.current?.querySelector('[role="tree"]') ?? null;
+
+    const handleDragStart = () => {
+      const nodes = treeRef.current?.dragNodes;
+      rootDropDragNodesRef.current = nodes && nodes.length > 0 ? nodes : null;
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      if (!rootDropDragNodesRef.current) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const treeEl = getTreeEl();
+      if (!treeEl || !treeEl.contains(target)) return;
+      if (target.closest("[data-tree-row]")) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      const nodes = rootDropDragNodesRef.current;
+      rootDropDragNodesRef.current = null;
+      if (!nodes || nodes.length === 0) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const treeEl = getTreeEl();
+      if (!treeEl || !treeEl.contains(target)) return;
+      if (target.closest("[data-tree-row]")) return;
+      e.preventDefault();
+      onRootDrop(nodes);
+    };
+
+    const handleDragEnd = () => {
+      rootDropDragNodesRef.current = null;
+    };
+
+    window.addEventListener("dragstart", handleDragStart);
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("drop", handleDrop);
+    window.addEventListener("dragend", handleDragEnd);
+    return () => {
+      window.removeEventListener("dragstart", handleDragStart);
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("drop", handleDrop);
+      window.removeEventListener("dragend", handleDragEnd);
+    };
+  }, [onRootDrop, treeRef]);
 
   return (
     <div

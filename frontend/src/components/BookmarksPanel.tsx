@@ -229,6 +229,31 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     [],
   );
 
+  /**
+   * onRootDrop — drag-to-root (quick task 260719-jv1 follow-up). Fires
+   * when a bookmark is dropped in the tree's empty area (react-arborist's
+   * onMove never fires there — TreeView's window-level listener catches
+   * it instead). Reuses the same moveToFolder(bookmarkId, null) mutation
+   * the kebab's "(No folder)" entry already uses. Bookmarks already at
+   * top level are skipped (no-op) rather than re-dispatching a move.
+   */
+  const handleRootDrop = useCallback(
+    (dragNodes: NodeApi<ArboristNode>[]) => {
+      const draggedBookmarkIds = dragNodes
+        .map((n) => n.data.data)
+        .filter((d) => d.kind === "bookmark")
+        .map((d) => (d as { bookmarkId: string }).bookmarkId);
+
+      for (const bookmarkId of draggedBookmarkIds) {
+        const current = bookmarks.find((b) => b.id === bookmarkId);
+        if (current && current.folder_id !== null) {
+          void moveToFolder(bookmarkId, null);
+        }
+      }
+    },
+    [bookmarks, moveToFolder],
+  );
+
   // Bordered 40px toolbar row — mirrors Sidebar.tsx's Notes-panel toolbar
   // chrome (same height/padding/borderBottom) so Bookmarks presents the same
   // panel-top interface as Notes (Phase 27 follow-up item 5).
@@ -276,6 +301,7 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
         openByDefault
         onMove={handleMove}
         disableDrop={disableDrop}
+        onRootDrop={handleRootDrop}
         renderRow={({ node, style, dragHandle }) => (
           <TreeRow
             node={node}
