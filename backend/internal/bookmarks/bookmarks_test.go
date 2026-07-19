@@ -402,6 +402,75 @@ func TestService_MoveToFolder_UnknownFolderID_ReturnsErrFolderNotFound(t *testin
 	}
 }
 
+// TestService_Order_RenumberedAcrossFoldersOnMove guards WR-02's
+// MoveToFolder path: moving a bookmark out of a folder must close the
+// gap it leaves behind (source folder renumbered), and moving it in must
+// not carry over its old, now-meaningless Order value (destination
+// folder renumbered too).
+func TestService_Order_RenumberedAcrossFoldersOnMove(t *testing.T) {
+	dir := t.TempDir()
+	noteA, noteB, noteC := uuid.New(), uuid.New(), uuid.New()
+	registry := newTestRegistry(map[uuid.UUID]string{
+		noteA: "notes/a.md", noteB: "notes/b.md", noteC: "notes/c.md",
+	})
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	folder, err := svc.CreateFolder(context.Background(), "Work")
+	if err != nil {
+		t.Fatalf("CreateFolder() error = %v", err)
+	}
+
+	bmA, err := svc.Add(context.Background(), noteA, nil) // top-level, Order 0
+	if err != nil {
+		t.Fatalf("Add(A) error = %v", err)
+	}
+	if _, err := svc.Add(context.Background(), noteB, nil); err != nil { // top-level, Order 1
+		t.Fatalf("Add(B) error = %v", err)
+	}
+	bmC, err := svc.Add(context.Background(), noteC, &folder.ID) // in folder, Order 0
+	if err != nil {
+		t.Fatalf("Add(C) error = %v", err)
+	}
+	if bmC.Order != 0 {
+		t.Fatalf("bmC.Order = %d, want 0 (first bookmark in folder)", bmC.Order)
+	}
+
+	// Move A from top-level into the folder: top-level should close its
+	// gap (B renumbered 1->0), and the folder should gain A alongside C
+	// without either sharing an Order value.
+	if err := svc.MoveToFolder(context.Background(), bmA.ID, &folder.ID); err != nil {
+		t.Fatalf("MoveToFolder(A) error = %v", err)
+	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	topLevelOrders := map[int]bool{}
+	folderOrders := map[int]bool{}
+	for _, bm := range doc.Bookmarks {
+		if bm.FolderID == nil {
+			if topLevelOrders[bm.Order] {
+				t.Fatalf("Load() bookmarks = %+v, want no duplicate top-level Order", doc.Bookmarks)
+			}
+			topLevelOrders[bm.Order] = true
+		} else {
+			if folderOrders[bm.Order] {
+				t.Fatalf("Load() bookmarks = %+v, want no duplicate in-folder Order", doc.Bookmarks)
+			}
+			folderOrders[bm.Order] = true
+		}
+	}
+	if len(topLevelOrders) != 1 || !topLevelOrders[0] {
+		t.Fatalf("top-level orders = %v, want exactly {0} (B renumbered after A moved out)", topLevelOrders)
+	}
+	if len(folderOrders) != 2 {
+		t.Fatalf("folder orders = %v, want 2 distinct values (C and moved-in A)", folderOrders)
+	}
+}
+
 func TestService_CreateFolder_AppendsAndBroadcasts(t *testing.T) {
 	dir := t.TempDir()
 	registry := newTestRegistry(nil)
@@ -464,6 +533,99 @@ func TestService_Add_ConcurrentCallsDoNotLoseUpdates(t *testing.T) {
 	}
 	if len(doc.Bookmarks) != n {
 		t.Fatalf("Load() bookmarks = %d rows, want %d (a race lost at least one concurrent Add)", len(doc.Bookmarks), n)
+	}
+}
+
+// TestService_Order_ScopedPerFolderNotGlobal guards WR-02: Order must be
+// computed per-folder, not as a global count across every bookmark. A
+// top-level Add and a same-moment in-folder Add must each independently
+// start at Order 0.
+func TestService_Order_ScopedPerFolderNotGlobal(t *testing.T) {
+	dir := t.TempDir()
+	noteA := uuid.New()
+	noteB := uuid.New()
+	registry := newTestRegistry(map[uuid.UUID]string{
+		noteA: "notes/a.md",
+		noteB: "notes/b.md",
+	})
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	folder, err := svc.CreateFolder(context.Background(), "Work")
+	if err != nil {
+		t.Fatalf("CreateFolder() error = %v", err)
+	}
+
+	bmA, err := svc.Add(context.Background(), noteA, nil)
+	if err != nil {
+		t.Fatalf("Add(A, top-level) error = %v", err)
+	}
+	if bmA.Order != 0 {
+		t.Fatalf("bmA.Order = %d, want 0 (first top-level bookmark)", bmA.Order)
+	}
+
+	bmB, err := svc.Add(context.Background(), noteB, &folder.ID)
+	if err != nil {
+		t.Fatalf("Add(B, in folder) error = %v", err)
+	}
+	if bmB.Order != 0 {
+		t.Fatalf("bmB.Order = %d, want 0 (per-folder scope, not a global count across bmA)", bmB.Order)
+	}
+}
+
+// TestService_Order_RenumberedOnRemove guards WR-02: after removing an
+// earlier sibling, the remaining bookmarks in that folder must be
+// renumbered contiguously so a subsequent Add never collides with an
+// existing Order value.
+func TestService_Order_RenumberedOnRemove(t *testing.T) {
+	dir := t.TempDir()
+	noteA, noteB, noteC, noteD := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	registry := newTestRegistry(map[uuid.UUID]string{
+		noteA: "notes/a.md", noteB: "notes/b.md", noteC: "notes/c.md", noteD: "notes/d.md",
+	})
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	bmA, err := svc.Add(context.Background(), noteA, nil)
+	if err != nil {
+		t.Fatalf("Add(A) error = %v", err)
+	}
+	if _, err := svc.Add(context.Background(), noteB, nil); err != nil {
+		t.Fatalf("Add(B) error = %v", err)
+	}
+	if _, err := svc.Add(context.Background(), noteC, nil); err != nil {
+		t.Fatalf("Add(C) error = %v", err)
+	}
+	// A(0), B(1), C(2).
+
+	if err := svc.Remove(context.Background(), bmA.ID); err != nil {
+		t.Fatalf("Remove(A) error = %v", err)
+	}
+	// Without renumbering: B stays 1, C stays 2 (a stale gap at 0).
+
+	bmD, err := svc.Add(context.Background(), noteD, nil)
+	if err != nil {
+		t.Fatalf("Add(D) error = %v", err)
+	}
+	// Before the WR-02 fix: len(doc.Bookmarks) == 2 at this point, so D
+	// would get Order 2, colliding with C's stale Order 2.
+	if bmD.Order != 2 {
+		t.Fatalf("bmD.Order = %d, want 2 (B and C must have been renumbered to 0,1 on Remove)", bmD.Order)
+	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	seen := map[int]bool{}
+	for _, bm := range doc.Bookmarks {
+		if seen[bm.Order] {
+			t.Fatalf("Load() bookmarks = %+v, want no duplicate Order values", doc.Bookmarks)
+		}
+		seen[bm.Order] = true
+	}
+	if len(seen) != 3 {
+		t.Fatalf("Load() bookmarks = %+v, want 3 distinct Order values (0,1,2)", doc.Bookmarks)
 	}
 }
 

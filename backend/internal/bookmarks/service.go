@@ -93,7 +93,10 @@ func (s *Service) Add(ctx context.Context, noteID uuid.UUID, folderID *string) (
 		ID:       uuid.NewString(),
 		NoteID:   noteID.String(),
 		FolderID: folderID,
-		Order:    len(doc.Bookmarks),
+		// Order is scoped per-folder (WR-02), matching the OpenAPI contract's
+		// "display order among sibling bookmarks" — NOT a global counter,
+		// which would collide across unrelated folders and after removals.
+		Order: countInFolder(doc.Bookmarks, folderID),
 	}
 	doc.Bookmarks = append(doc.Bookmarks, bm)
 
@@ -122,7 +125,12 @@ func (s *Service) Remove(ctx context.Context, id string) error {
 		return fmt.Errorf("bookmarks.Remove(%s): %w", id, ErrNotFound)
 	}
 
+	removedFolderID := doc.Bookmarks[idx].FolderID
 	doc.Bookmarks = append(doc.Bookmarks[:idx], doc.Bookmarks[idx+1:]...)
+	// WR-02: close the Order gap left in the removed row's folder so
+	// remaining siblings stay contiguous (0..n-1) instead of colliding
+	// with the next Add's per-folder count.
+	renumberFolder(doc.Bookmarks, removedFolderID)
 
 	if err := Save(s.dataDir, doc); err != nil {
 		return fmt.Errorf("bookmarks.Remove: %w", err)
@@ -155,7 +163,16 @@ func (s *Service) MoveToFolder(ctx context.Context, id string, folderID *string)
 		return fmt.Errorf("bookmarks.MoveToFolder: folder %s: %w", *folderID, ErrFolderNotFound)
 	}
 
+	oldFolderID := doc.Bookmarks[idx].FolderID
 	doc.Bookmarks[idx].FolderID = folderID
+	// WR-02: renumber the source folder to close the gap left behind, and
+	// (if the bookmark actually changed folders) the destination folder so
+	// the moved row gets a contiguous per-folder Order rather than a stale
+	// value carried over from its previous folder.
+	renumberFolder(doc.Bookmarks, oldFolderID)
+	if folderKey(oldFolderID) != folderKey(folderID) {
+		renumberFolder(doc.Bookmarks, folderID)
+	}
 
 	if err := Save(s.dataDir, doc); err != nil {
 		return fmt.Errorf("bookmarks.MoveToFolder: %w", err)
@@ -212,4 +229,41 @@ func folderExists(folders []Folder, id string) bool {
 		}
 	}
 	return false
+}
+
+// folderKey converts a *string FolderID into a comparable map/switch key —
+// nil (top-level/ungrouped) and a concrete folder id are distinct keys.
+func folderKey(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return *id
+}
+
+// countInFolder returns how many bookmarks currently share folderID's
+// scope (WR-02: Order is per-folder, not a global counter).
+func countInFolder(bookmarks []Bookmark, folderID *string) int {
+	key := folderKey(folderID)
+	n := 0
+	for _, bm := range bookmarks {
+		if folderKey(bm.FolderID) == key {
+			n++
+		}
+	}
+	return n
+}
+
+// renumberFolder reassigns contiguous 0..n-1 Order values, in existing
+// slice order, to every bookmark sharing folderID's scope. Called after
+// Remove/MoveToFolder so sibling Order values never carry a gap or a
+// stale value that could collide with a subsequent Add's countInFolder.
+func renumberFolder(bookmarks []Bookmark, folderID *string) {
+	key := folderKey(folderID)
+	order := 0
+	for i := range bookmarks {
+		if folderKey(bookmarks[i].FolderID) == key {
+			bookmarks[i].Order = order
+			order++
+		}
+	}
 }
