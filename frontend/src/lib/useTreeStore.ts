@@ -102,6 +102,8 @@ export interface TreeStore {
   setSidebarWidth: (w: number) => void;
 
   toggleExpanded: (path: string) => void;
+  /** Collapse every expanded folder (clears the expanded set; auto-persists). */
+  collapseAllFolders: () => void;
   setActiveNote: (id: string | null) => void;
   /**
    * startRename — enter inline-rename mode for the node at kind + target.
@@ -234,6 +236,8 @@ export const useTreeStore = create<TreeStore>((set) => ({
       else next.add(path);
       return { expanded: next };
     }),
+  collapseAllFolders: () =>
+    set((s) => (s.expanded.size === 0 ? s : { expanded: new Set<string>() })),
   setActiveNote: (id) => set({ activeNoteId: id }),
   startRename: (kind, target, isNew) =>
     set({ pendingRename: { kind, target, ...(isNew ? { isNew: true } : {}) } }),

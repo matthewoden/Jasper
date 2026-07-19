@@ -34,6 +34,7 @@
  */
 import { useCallback } from "react";
 import type React from "react";
+import { ChevronsDownUp } from "lucide-react";
 
 import { BookmarksPanel } from "./BookmarksPanel";
 import { FileTree } from "./FileTree";
@@ -179,15 +180,20 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
               }}
             >
               {/*
-                New note / New folder are note-scoped chrome, not global —
-                they now sit at the Notes panel's own top edge rather than
-                the shared tab-row header (Phase 27 D-07/Task 2 discretion).
+                Notes-panel toolbar row — mock parity (Vault.dc.html §left
+                panel): a bordered 40px row with New note / New folder on the
+                left and Collapse-all on the right. New note / New folder are
+                note-scoped chrome (not global), so they live here rather than
+                the shared tab-row header (Phase 27 D-07). The sort-order menu
+                the mock also shows in this row is Phase 29 scope (SORT-01).
               */}
               <div
                 style={{
                   display: "flex",
-                  justifyContent: "flex-end",
-                  padding: "8px 16px 4px",
+                  alignItems: "center",
+                  height: 40,
+                  padding: "0 8px",
+                  borderBottom: "1px solid var(--color-border)",
                   flexShrink: 0,
                 }}
               >
@@ -196,6 +202,28 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
                   onNewFolder={handleNewFolder}
                   creating={isCreating}
                 />
+                <div style={{ flex: 1 }} />
+                <button
+                  type="button"
+                  title="Collapse all"
+                  aria-label="Collapse all"
+                  onClick={() => useTreeStore.getState().collapseAllFolders()}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    padding: 4,
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--color-muted)",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 4,
+                  }}
+                >
+                  <ChevronsDownUp size={16} aria-hidden="true" />
+                </button>
               </div>
               <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
                 <FileTree onSelectNote={onSelectNote} />

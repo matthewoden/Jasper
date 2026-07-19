@@ -64,6 +64,25 @@ describe("useTreeStore — default + mutators", () => {
     expect(result.current.expanded.has("projects")).toBe(true);
   });
 
+  it("TestStore_CollapseAllFolders: clears every expanded path in one call", () => {
+    const { result } = renderHook(() => useTreeStore());
+    act(() => {
+      result.current.toggleExpanded("projects");
+      result.current.toggleExpanded("archive");
+      result.current.toggleExpanded("projects/2026");
+    });
+    expect(result.current.expanded.size).toBe(3);
+    act(() => result.current.collapseAllFolders());
+    expect(result.current.expanded.size).toBe(0);
+  });
+
+  it("TestStore_CollapseAllFolders_NoopWhenEmpty: keeps the same Set reference when already empty", () => {
+    const { result } = renderHook(() => useTreeStore());
+    const before = result.current.expanded;
+    act(() => result.current.collapseAllFolders());
+    expect(result.current.expanded).toBe(before);
+  });
+
   it("TestStore_ToggleExpanded_Removes: toggling a path twice removes it", () => {
     const { result } = renderHook(() => useTreeStore());
     act(() => {
