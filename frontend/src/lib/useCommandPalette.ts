@@ -12,6 +12,7 @@ import { COMMAND_PALETTE_ENTRIES, type Shortcut } from "./shortcutsRegistry";
 
 const DISABLEABLE_IDS: ReadonlySet<string> = new Set([
   "share-reveal-current-note",
+  "bookmark.toggle",
 ]);
 
 export interface CommandActions {

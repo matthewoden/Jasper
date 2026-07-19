@@ -146,6 +146,31 @@ describe("useCommandPalette — execute()", () => {
   });
 });
 
+describe("useCommandPalette — isDisabled() (WR-04)", () => {
+  it("reports bookmark.toggle disabled when onBookmarkCurrent is not provided (no active note)", () => {
+    const { result } = renderHook(() => useCommandPalette({}));
+    expect(result.current.isDisabled("bookmark.toggle")).toBe(true);
+  });
+
+  it("reports bookmark.toggle enabled when onBookmarkCurrent is provided (active note)", () => {
+    const onBookmarkCurrent = vi.fn();
+    const { result } = renderHook(() =>
+      useCommandPalette({ onBookmarkCurrent }),
+    );
+    expect(result.current.isDisabled("bookmark.toggle")).toBe(false);
+  });
+
+  it("reports share-reveal-current-note disabled when its action is not provided", () => {
+    const { result } = renderHook(() => useCommandPalette({}));
+    expect(result.current.isDisabled("share-reveal-current-note")).toBe(true);
+  });
+
+  it("reports a non-disableable id as never disabled, even with no action", () => {
+    const { result } = renderHook(() => useCommandPalette({}));
+    expect(result.current.isDisabled("new-note")).toBe(false);
+  });
+});
+
 describe("useCommandPalette — execute() closeOnExecute verdict (UAT #5)", () => {
   it("switch-note returns false (keep palette open)", () => {
     const onSwitchNote = vi.fn();
