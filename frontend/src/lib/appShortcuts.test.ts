@@ -115,7 +115,7 @@ describe("handleAppAltT (tab-new)", () => {
 describe("handleAppCmdShiftF (Phase 19 D-05 re-point)", () => {
   beforeEach(() => {
     useTreeStore.setState({
-      sidebarPanel: "files",
+      sidebarPanel: "notes",
       notesSidebarVisible: false,
     });
   });

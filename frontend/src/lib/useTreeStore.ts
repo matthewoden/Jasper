@@ -147,9 +147,9 @@ export interface TreeStore {
   setZen: (v: boolean) => void;
   toggleZen: () => void;
 
-  /** Which left-sidebar panel is active — Files or the in-sidebar Search (D-04). */
-  sidebarPanel: "files" | "search";
-  setSidebarPanel: (p: "files" | "search") => void;
+  /** Which left-sidebar panel is active — Notes, Search, or Bookmarks (Phase 27 D-08). */
+  sidebarPanel: "notes" | "search" | "bookmarks";
+  setSidebarPanel: (p: "notes" | "search" | "bookmarks") => void;
 
   pulseTarget: { kind: "folder" | "note"; target: string } | null;
   setPulseTarget: (t: { kind: "folder" | "note"; target: string } | null) => void;
@@ -288,7 +288,7 @@ export const useTreeStore = create<TreeStore>((set) => ({
   setZen: (v) => set({ zen: v }),
   toggleZen: () => set((s) => ({ zen: !s.zen })),
 
-  sidebarPanel: "files",
+  sidebarPanel: "notes",
   setSidebarPanel: (p) => set({ sidebarPanel: p }),
 
   pulseTarget: null,
@@ -502,8 +502,10 @@ if (typeof window !== "undefined") {
   }
   try {
     const raw = window.localStorage.getItem(LS_KEY_SIDEBAR_PANEL);
-    if (raw === "search") useTreeStore.setState({ sidebarPanel: "search" });
-    // any other value (including missing/corrupt) keeps the default "files"
+    if (raw === "search" || raw === "bookmarks") {
+      useTreeStore.setState({ sidebarPanel: raw });
+    }
+    // any other value (including missing/corrupt) keeps the default "notes"
   } catch {
     /* localStorage unavailable */
   }

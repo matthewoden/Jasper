@@ -132,7 +132,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     expect(screen.getByLabelText("Notes navigation")).toBeInTheDocument();
   });
 
-  it("TestSidebar_RendersVaultNameHeader — 40px header shows the vault display name (LSIDE-01)", () => {
+  it("TestSidebar_RendersTabRowHeader — 40px header hosts the SidebarTabRow (Phase 27 NAV-01, replaces the vault-name header)", () => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -141,7 +141,8 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
-    expect(screen.getByText("work-vault")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-tab-row")).toBeInTheDocument();
+    expect(screen.queryByText("work-vault")).toBeNull();
     expect(screen.queryByText("NOTES")).toBeNull();
   });
 

@@ -294,7 +294,10 @@ describe("<App /> — shell composition", () => {
       "48px 260px minmax(0, 1fr) 280px",
     );
 
-    expect(screen.getByText("Notes")).toBeInTheDocument();
+    // Phase 27: the sidebar's 40px header now hosts the SidebarTabRow
+    // (icon-only Notes/Search/Bookmarks tabs), replacing the old vault-name
+    // text header — assert the Notes tab renders instead of literal text.
+    expect(screen.getByRole("button", { name: "Notes" })).toBeInTheDocument();
     expect(screen.getByTestId("tree-empty-state")).toBeInTheDocument();
   });
 
@@ -1265,7 +1268,7 @@ describe("handleAppCmdShiftF (Phase 19 D-05: opens sidebar Search panel, not pal
     useTreeStore.setState({
       paletteOpen: false,
       paletteMode: "notes",
-      sidebarPanel: "files",
+      sidebarPanel: "notes",
       notesSidebarVisible: false,
     });
   });
@@ -1291,7 +1294,7 @@ describe("handleAppCmdShiftF (Phase 19 D-05: opens sidebar Search panel, not pal
     const e = makeEvent("f", { meta: true });
     handleAppCmdShiftF(e);
     expect(e._preventDefaultCalls).toBe(0);
-    expect(useTreeStore.getState().sidebarPanel).toBe("files");
+    expect(useTreeStore.getState().sidebarPanel).toBe("notes");
     expect(useTreeStore.getState().notesSidebarVisible).toBe(false);
   });
 
@@ -1299,7 +1302,7 @@ describe("handleAppCmdShiftF (Phase 19 D-05: opens sidebar Search panel, not pal
     const e = makeEvent("f", { shift: true });
     handleAppCmdShiftF(e);
     expect(e._preventDefaultCalls).toBe(0);
-    expect(useTreeStore.getState().sidebarPanel).toBe("files");
+    expect(useTreeStore.getState().sidebarPanel).toBe("notes");
     expect(useTreeStore.getState().notesSidebarVisible).toBe(false);
   });
 
