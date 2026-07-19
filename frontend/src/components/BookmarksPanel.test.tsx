@@ -68,6 +68,25 @@ async function renderPanel(ui: ReactElement) {
   return result;
 }
 
+/**
+ * BookmarksPanel now renders bookmark rows through the shared TreeRow
+ * (quick task 260719-jv1) — there's no `data-testid="bookmark-row-*"`
+ * anymore. TreeRow exposes `data-tree-row` (bookmarkId/folderId) +
+ * `data-tree-row-kind` ("bookmark"/"bookmark-folder") instead; these
+ * helpers query by those attributes so the DOM-structure change doesn't
+ * force every test to hand-roll a selector.
+ */
+function bookmarkRow(bookmarkId: string): HTMLElement {
+  return document.querySelector(
+    `[data-tree-row-kind="bookmark"][data-tree-row="${bookmarkId}"]`,
+  ) as HTMLElement;
+}
+function bookmarkFolderRow(folderId: string): HTMLElement {
+  return document.querySelector(
+    `[data-tree-row-kind="bookmark-folder"][data-tree-row="${folderId}"]`,
+  ) as HTMLElement;
+}
+
 describe("BookmarksPanel", () => {
   beforeEach(() => {
     getBookmarksMock.mockReset().mockResolvedValue({ folders: [], bookmarks: [] });
@@ -92,6 +111,22 @@ describe("BookmarksPanel", () => {
     expect(screen.getByTestId("bookmarks-empty-state")).toBeDefined();
   });
 
+  it("renders BookmarksErrorState (not the empty state) when the initial fetch fails, and Try again retries", async () => {
+    getBookmarksMock.mockReset().mockRejectedValue(new Error("backend unreachable"));
+    await renderPanel(<BookmarksPanel />);
+
+    expect(screen.getByTestId("bookmarks-error-state")).toBeDefined();
+    expect(screen.queryByTestId("bookmarks-empty-state")).toBeNull();
+
+    getBookmarksMock.mockResolvedValueOnce({ folders: [], bookmarks: [bookmarkA] });
+    fireEvent.click(screen.getByText("Try again"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Alpha Note")).toBeDefined();
+    });
+    expect(screen.queryByTestId("bookmarks-error-state")).toBeNull();
+  });
+
   it("(b) renders a row with the resolved title for a bookmarked note present in a mock tree", async () => {
     getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
     await renderPanel(<BookmarksPanel />);
@@ -105,7 +140,7 @@ describe("BookmarksPanel", () => {
     });
     await renderPanel(<BookmarksPanel />);
     expect(screen.getByText("Alpha Note")).toBeDefined();
-    expect(screen.queryByTestId("bookmark-row-bm-3")).toBeNull();
+    expect(bookmarkRow("bm-3")).toBeNull();
   });
 
   it("(c) clicking a row calls openInActivePane with the noteId", async () => {
@@ -122,10 +157,10 @@ describe("BookmarksPanel", () => {
     await renderPanel(<BookmarksPanel />);
     expect(screen.getByText("Beta Note")).toBeDefined();
 
-    fireEvent.click(screen.getByTestId("bookmark-folder-f-1"));
+    fireEvent.click(bookmarkFolderRow("f-1"));
     expect(screen.queryByText("Beta Note")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("bookmark-folder-f-1"));
+    fireEvent.click(bookmarkFolderRow("f-1"));
     expect(screen.getByText("Beta Note")).toBeDefined();
   });
 
@@ -143,8 +178,10 @@ describe("BookmarksPanel", () => {
   // --- Task 2: "…" menu (Remove / Move to folder), inline new-folder input ---
 
   function openRowMenu(bookmarkId: string) {
-    const trigger = screen.getByTestId(`bookmark-row-${bookmarkId}`).querySelector(
-      "button[aria-label='Bookmark options']",
+    // TreeRow's kebab is aria-label="Row menu" (shared with Notes), not the
+    // bespoke BookmarkRow's "Bookmark options".
+    const trigger = bookmarkRow(bookmarkId).querySelector(
+      "button[aria-label='Row menu']",
     ) as HTMLElement;
     fireEvent.pointerDown(trigger, { button: 0 });
     fireEvent.click(trigger);
@@ -238,7 +275,7 @@ describe("BookmarksPanel", () => {
     it("folder rows are 32px tall, matching TreeRow's row height", async () => {
       getBookmarksMock.mockResolvedValue({ folders: [folder1], bookmarks: [bookmarkB] });
       await renderPanel(<BookmarksPanel />);
-      const folderRow = screen.getByTestId("bookmark-folder-f-1") as HTMLElement;
+      const folderRow = bookmarkFolderRow("f-1");
       expect(folderRow.style.height).toBe("32px");
     });
 
@@ -246,7 +283,7 @@ describe("BookmarksPanel", () => {
       getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
       useTreeStore.setState({ activeNoteId: "note-a" });
       await renderPanel(<BookmarksPanel />);
-      const row = screen.getByTestId("bookmark-row-bm-1") as HTMLElement;
+      const row = bookmarkRow("bm-1");
       expect(row.getAttribute("data-active")).toBe("true");
       expect(row.style.background).toContain("var(--color-accent)");
     });
@@ -255,7 +292,7 @@ describe("BookmarksPanel", () => {
       getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
       useTreeStore.setState({ activeNoteId: "note-b" });
       await renderPanel(<BookmarksPanel />);
-      const row = screen.getByTestId("bookmark-row-bm-1") as HTMLElement;
+      const row = bookmarkRow("bm-1");
       expect(row.getAttribute("data-active")).toBeNull();
     });
   });

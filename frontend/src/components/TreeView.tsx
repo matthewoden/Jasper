@@ -59,6 +59,16 @@ export interface TreeViewProps<T extends TreeViewNode> {
   data: T[];
   treeRef: RefObject<TreeApi<T> | null>;
   initialOpenState?: Record<string, boolean>;
+  /**
+   * Default open state for a node NOT covered by initialOpenState (e.g. one
+   * created after mount). Defaults to false, matching FileTree's Notes
+   * behavior (folders start collapsed, tracked in useTreeStore.expanded).
+   * BookmarksPanel passes true — bookmark folders have always started
+   * expanded by default (pre-existing UX), and there's no persisted
+   * expanded-state store for them to seed initialOpenState from on every
+   * new folder.
+   */
+  openByDefault?: boolean;
   onMove?: (args: {
     dragIds: string[];
     dragNodes: NodeApi<T>[];
@@ -82,6 +92,7 @@ export function TreeView<T extends TreeViewNode>({
   data,
   treeRef,
   initialOpenState,
+  openByDefault = false,
   onMove,
   onToggle,
   onSelect,
@@ -129,7 +140,7 @@ export function TreeView<T extends TreeViewNode>({
         idAccessor="id"
         childrenAccessor="children"
         initialOpenState={initialOpenState}
-        openByDefault={false}
+        openByDefault={openByDefault}
         onToggle={onToggle}
         onMove={onMove}
         onSelect={onSelect}
