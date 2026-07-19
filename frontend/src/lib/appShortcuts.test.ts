@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   handleAppAltT,
   handleAppBookmarkToggle,
+  handleAppCmdB,
   handleAppCmdDot,
+  handleAppCmdI,
   handleAppCmdK,
   handleAppCmdShiftF,
   handleAppFocusNextPane,
@@ -270,6 +272,44 @@ describe("handleAppBookmarkToggle (Phase 27 BOOK-01, D-14)", () => {
     } finally {
       unsubscribe();
     }
+  });
+});
+
+describe("handleAppCmdB / handleAppCmdI shift-exclusion (WR-05)", () => {
+  it("handleAppCmdB does NOT preventDefault on Cmd+Shift+B (owned by handleAppBookmarkToggle)", () => {
+    const e = new KeyboardEvent("keydown", {
+      key: "B",
+      metaKey: true,
+      shiftKey: true,
+    });
+    const preventDefault = vi.spyOn(e, "preventDefault");
+    handleAppCmdB(e);
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("handleAppCmdB still preventDefaults on plain Cmd+B (outside the editor)", () => {
+    const e = new KeyboardEvent("keydown", { key: "b", metaKey: true });
+    const preventDefault = vi.spyOn(e, "preventDefault");
+    handleAppCmdB(e);
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it("handleAppCmdI does NOT preventDefault on Cmd+Shift+I", () => {
+    const e = new KeyboardEvent("keydown", {
+      key: "I",
+      metaKey: true,
+      shiftKey: true,
+    });
+    const preventDefault = vi.spyOn(e, "preventDefault");
+    handleAppCmdI(e);
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("handleAppCmdI still preventDefaults on plain Cmd+I (outside the editor)", () => {
+    const e = new KeyboardEvent("keydown", { key: "i", metaKey: true });
+    const preventDefault = vi.spyOn(e, "preventDefault");
+    handleAppCmdI(e);
+    expect(preventDefault).toHaveBeenCalledOnce();
   });
 });
 

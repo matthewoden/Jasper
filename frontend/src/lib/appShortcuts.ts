@@ -254,9 +254,15 @@ export function handleAppBookmarkToggle(e: KeyboardEvent): void {
  * Only preventDefault when the event does NOT originate inside the CM6 editor —
  * unconditional preventDefault sets event.defaultPrevented and CM6's
  * eventBelongsToEditor returns false, causing toggleBold to be skipped.
+ *
+ * e.shiftKey is explicitly excluded (WR-05) so this handler never matches
+ * Cmd+Shift+B, which handleAppBookmarkToggle owns independently on the same
+ * window listener list; without the guard both handlers would run on the
+ * same keystroke.
  */
 export function handleAppCmdB(e: KeyboardEvent): void {
   if (!(e.metaKey || e.ctrlKey)) return;
+  if (e.shiftKey) return;
   if (e.key !== "b" && e.key !== "B") return;
   const isInsideEditor =
     (e.target as HTMLElement | null)?.closest?.(".cm-editor") != null;
@@ -268,10 +274,14 @@ export function handleAppCmdB(e: KeyboardEvent): void {
 
 /**
  * Cmd+I — italic (CM6 owns via jasperKeymap.ts toggleItalic).
- * Same Brave/Chromium interception fix as handleAppCmdB.
+ * Same Brave/Chromium interception fix as handleAppCmdB. Same e.shiftKey
+ * exclusion rationale as handleAppCmdB (WR-05) — no Shift-I shortcut exists
+ * today, but the guard keeps the two Cmd/Shift-prefixed handler families
+ * disjoint on principle.
  */
 export function handleAppCmdI(e: KeyboardEvent): void {
   if (!(e.metaKey || e.ctrlKey)) return;
+  if (e.shiftKey) return;
   if (e.key !== "i" && e.key !== "I") return;
   const isInsideEditor =
     (e.target as HTMLElement | null)?.closest?.(".cm-editor") != null;
