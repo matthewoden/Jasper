@@ -126,6 +126,38 @@ func (s *Server) MoveBookmark(
 	}, nil
 }
 
+// ReorderBookmarks implements POST /api/v1/bookmarks/reorder.
+//
+//nolint:revive // generated interface name
+func (s *Server) ReorderBookmarks(
+	ctx context.Context,
+	req ReorderBookmarksRequestObject,
+) (ReorderBookmarksResponseObject, error) {
+	defer s.trackWrite()()
+	if req.Body == nil {
+		return ReorderBookmarks400JSONResponse(newError("invalid_request", "request body required")), nil
+	}
+
+	folderID := uuidPtrToStringPtr(req.Body.FolderId)
+	orderedIDs := make([]string, 0, len(req.Body.OrderedIds))
+	for _, id := range req.Body.OrderedIds {
+		orderedIDs = append(orderedIDs, id.String())
+	}
+
+	if err := s.bookmarks.Reorder(ctx, folderID, orderedIDs); err != nil {
+		s.log.Error("ReorderBookmarks: domain error", "err", err)
+		switch {
+		case errors.Is(err, bookmarks.ErrNotFound):
+			return ReorderBookmarks404JSONResponse(newError("not_found", "ordered_ids does not match folder membership")), nil
+		case errors.Is(err, bookmarks.ErrFolderNotFound):
+			return ReorderBookmarks400JSONResponse(newError("invalid_request", "folder not found")), nil
+		}
+		return nil, errors.New("could not reorder bookmarks")
+	}
+
+	return ReorderBookmarks204Response{}, nil
+}
+
 // CreateBookmarkFolder implements POST /api/v1/bookmark-folders.
 //
 //nolint:revive // generated interface name

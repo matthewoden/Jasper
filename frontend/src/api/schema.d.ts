@@ -723,6 +723,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bookmarks/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set explicit display order for every bookmark in one folder scope (BOOK-03, drag-to-reorder)
+         * @description Given the FULL ordered list of bookmark ids for one folder scope
+         *     (folder_id null = top-level), assigns order = index for each and
+         *     persists. ordered_ids must be EXACTLY the current membership of
+         *     that folder scope — a missing id, an extra id, or a foreign id
+         *     is rejected wholesale with 404 and no partial write (T-JV1-01,
+         *     same forged-id posture as postBookmark's T-27-01). An unknown
+         *     folder_id is rejected with 400 (T-JV1-02). Broadcasts
+         *     `bookmark:changed` on success.
+         */
+        post: operations["reorderBookmarks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/bookmark-folders": {
         parameters: {
             query?: never;
@@ -1736,6 +1763,21 @@ export interface components {
             id: string;
             /** Format: uuid */
             folder_id: string | null;
+        };
+        /**
+         * @description The FULL ordered list of bookmark ids for one folder scope.
+         *     folder_id is a top-level field (not per-row) because order is
+         *     scoped per folder, not global (WR-02) — every id in ordered_ids
+         *     must belong to that same scope.
+         */
+        BookmarkReorderRequest: {
+            /**
+             * Format: uuid
+             * @description Folder scope being reordered, or null for top-level.
+             */
+            folder_id: string | null;
+            /** @description Every bookmark id currently in folder_id's scope, in the desired display order. */
+            ordered_ids: string[];
         };
         BookmarkFolderCreateRequest: {
             /** @description Display name. Trimmed server-side; empty/whitespace-only rejected with 400. */
@@ -3435,6 +3477,46 @@ export interface operations {
                 };
             };
             /** @description Unknown bookmark id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    reorderBookmarks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookmarkReorderRequest"];
+            };
+        };
+        responses: {
+            /** @description Order persisted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown folder_id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description ordered_ids is not exactly the current membership of the folder scope */
             404: {
                 headers: {
                     [name: string]: unknown;

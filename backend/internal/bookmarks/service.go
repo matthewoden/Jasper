@@ -220,6 +220,61 @@ func (s *Service) CreateFolder(ctx context.Context, name string) (Folder, error)
 	return f, nil
 }
 
+// Reorder assigns Order = index for each id in orderedIDs, scoped to
+// folderID (nil = top-level), and persists. orderedIDs must be EXACTLY
+// the current membership of that folder scope — a missing id, an extra
+// id, or a foreign id not currently in that scope is rejected wholesale
+// with ErrNotFound and no write (T-JV1-01: do not trust client-supplied
+// ids, same forged-id posture as T-27-01). A non-nil folderID that does
+// not exist in the document returns ErrFolderNotFound (T-JV1-02).
+func (s *Service) Reorder(ctx context.Context, folderID *string, orderedIDs []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	doc, err := Load(s.dataDir, s.registry, s.log)
+	if err != nil {
+		return fmt.Errorf("bookmarks.Reorder: %w", err)
+	}
+
+	if folderID != nil && !folderExists(doc.Folders, *folderID) {
+		return fmt.Errorf("bookmarks.Reorder: folder %s: %w", *folderID, ErrFolderNotFound)
+	}
+
+	key := folderKey(folderID)
+	currentIndex := make(map[string]int, len(doc.Bookmarks))
+	for i, bm := range doc.Bookmarks {
+		if folderKey(bm.FolderID) == key {
+			currentIndex[bm.ID] = i
+		}
+	}
+
+	if len(orderedIDs) != len(currentIndex) {
+		return fmt.Errorf("bookmarks.Reorder: membership mismatch: %w", ErrNotFound)
+	}
+	seen := make(map[string]bool, len(orderedIDs))
+	for _, id := range orderedIDs {
+		if seen[id] {
+			return fmt.Errorf("bookmarks.Reorder: duplicate id %s: %w", id, ErrNotFound)
+		}
+		seen[id] = true
+		if _, ok := currentIndex[id]; !ok {
+			return fmt.Errorf("bookmarks.Reorder: unknown id %s: %w", id, ErrNotFound)
+		}
+	}
+
+	for order, id := range orderedIDs {
+		doc.Bookmarks[currentIndex[id]].Order = order
+	}
+
+	if err := Save(s.dataDir, doc); err != nil {
+		return fmt.Errorf("bookmarks.Reorder: %w", err)
+	}
+
+	s.broadcaster.Broadcast(EventBookmarkChanged, map[string]any{}, notes.SessionIDFromContext(ctx))
+
+	return nil
+}
+
 func indexOfBookmark(bookmarks []Bookmark, id string) int {
 	for i, bm := range bookmarks {
 		if bm.ID == id {
