@@ -16,7 +16,7 @@
  *   - isBookmarked(noteId):         convenience lookup for UI state
  */
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useToast } from "../components/toast.utils";
 import {
   useTreeStore,
@@ -84,48 +84,68 @@ export function useBookmarks(): UseBookmarksResult {
     [bookmarks],
   );
 
+  // WR-07: tracks noteIds with an in-flight add/remove mutation. Guards
+  // toggleBookmark against a rapid double-click racing itself — without
+  // it, a second toggle before the first's network call resolves treats
+  // the still-`pending-${noteId}` placeholder as `existing` and issues a
+  // DELETE for an id the backend never created; that DELETE fails, state
+  // reverts, and then the FIRST call's postBookmark resolves and
+  // unconditionally re-adds the bookmark — silently overriding the
+  // user's second click.
+  const inFlightNoteIds = useRef<Set<string>>(new Set());
+
   /**
    * toggleBookmark — the single entry-point seam. Reads the current slice
    * to decide add vs remove. Both branches optimistically update the local
    * slice before the network call resolves and revert + toast on failure.
+   * Ignores re-entrant calls for the same noteId while a mutation is
+   * already in flight (WR-07) rather than racing it.
    */
   const toggleBookmark = useCallback(
     async (noteId: string) => {
-      const existing = bookmarks.find((b) => b.note_id === noteId);
-      const previous = bookmarks;
+      if (inFlightNoteIds.current.has(noteId)) {
+        return;
+      }
+      inFlightNoteIds.current.add(noteId);
+      try {
+        const existing = bookmarks.find((b) => b.note_id === noteId);
+        const previous = bookmarks;
 
-      if (existing) {
-        setBookmarks(bookmarks.filter((b) => b.id !== existing.id));
+        if (existing) {
+          setBookmarks(bookmarks.filter((b) => b.id !== existing.id));
+          try {
+            await deleteBookmark(existing.id);
+          } catch (e) {
+            setBookmarks(previous);
+            toast({
+              title: "Couldn't remove bookmark",
+              description: String(e instanceof Error ? e.message : e),
+              variant: "error",
+            });
+          }
+          return;
+        }
+
+        const optimistic: Bookmark = {
+          id: `pending-${noteId}`,
+          note_id: noteId,
+          folder_id: null,
+          order: bookmarks.length,
+        };
+        setBookmarks([...bookmarks, optimistic]);
         try {
-          await deleteBookmark(existing.id);
+          const created = await postBookmark(noteId);
+          setBookmarks([...previous, created]);
         } catch (e) {
           setBookmarks(previous);
           toast({
-            title: "Couldn't remove bookmark",
+            title: "Couldn't add bookmark",
             description: String(e instanceof Error ? e.message : e),
             variant: "error",
           });
         }
-        return;
-      }
-
-      const optimistic: Bookmark = {
-        id: `pending-${noteId}`,
-        note_id: noteId,
-        folder_id: null,
-        order: bookmarks.length,
-      };
-      setBookmarks([...bookmarks, optimistic]);
-      try {
-        const created = await postBookmark(noteId);
-        setBookmarks([...previous, created]);
-      } catch (e) {
-        setBookmarks(previous);
-        toast({
-          title: "Couldn't add bookmark",
-          description: String(e instanceof Error ? e.message : e),
-          variant: "error",
-        });
+      } finally {
+        inFlightNoteIds.current.delete(noteId);
       }
     },
     [bookmarks, setBookmarks, toast],

@@ -180,6 +180,55 @@ describe("useBookmarks", () => {
     );
   });
 
+  it("B9: rapid double-toggle for the same noteId ignores the second call while the first is in flight (WR-07)", async () => {
+    getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [] });
+
+    const { result } = renderHook(() => useBookmarks(), { wrapper });
+    await waitFor(() => expect(result.current.bookmarks).toEqual([]));
+
+    let resolvePost!: (value: typeof bookmarkA) => void;
+    const pending = new Promise<typeof bookmarkA>((resolve) => {
+      resolvePost = resolve;
+    });
+    postBookmarkMock.mockReturnValueOnce(pending);
+
+    await act(async () => {
+      const first = result.current.toggleBookmark("note-a");
+      // Rapid second click before the first network call resolves — under
+      // the pre-fix behavior this would target the "pending-note-a"
+      // placeholder and race a DELETE against the in-flight POST.
+      const second = result.current.toggleBookmark("note-a");
+      resolvePost(bookmarkA);
+      await Promise.all([first, second]);
+    });
+
+    // Only the first toggle's mutation should have gone out; the second
+    // call was ignored while a mutation for the same noteId was in flight.
+    expect(postBookmarkMock).toHaveBeenCalledTimes(1);
+    expect(deleteBookmarkMock).not.toHaveBeenCalled();
+    expect(result.current.bookmarks).toEqual([bookmarkA]);
+  });
+
+  it("B10: after an in-flight add resolves, toggling the same noteId again is honored (not permanently locked out)", async () => {
+    getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [] });
+
+    const { result } = renderHook(() => useBookmarks(), { wrapper });
+    await waitFor(() => expect(result.current.bookmarks).toEqual([]));
+
+    postBookmarkMock.mockResolvedValueOnce(bookmarkA);
+    await act(async () => {
+      await result.current.toggleBookmark("note-a");
+    });
+    expect(result.current.bookmarks).toEqual([bookmarkA]);
+
+    deleteBookmarkMock.mockResolvedValueOnce(undefined);
+    await act(async () => {
+      await result.current.toggleBookmark("note-a");
+    });
+    expect(result.current.bookmarks).toEqual([]);
+    expect(deleteBookmarkMock).toHaveBeenCalledWith("bm-1");
+  });
+
   it("B7: createFolder calls postBookmarkFolder and refreshes", async () => {
     getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [] });
 
