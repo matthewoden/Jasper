@@ -9,10 +9,13 @@
  *   POST   /api/v1/bookmarks/{id}/folder → postBookmarkMove(id, folderId): {id, folder_id}
  *   POST   /api/v1/bookmark-folders      → postBookmarkFolder(name): BookmarkFolder
  *
- * Each wrapper throws on non-2xx so callers can use try/catch, except
- * getBookmarks() which returns an empty document on error — mirrors
- * listGrants()'s never-throws-to-refresh()-caller contract so a transient
- * backend hiccup doesn't wipe previously-cached bookmarks from the store.
+ * Every wrapper throws on non-2xx so callers can use try/catch — including
+ * getBookmarks(), which used to swallow errors and return an empty document
+ * (27-UI-REVIEW finding #1: a failed fetch silently rendered the SAME empty
+ * state as "no bookmarks yet", with no way to tell the difference). The
+ * distinction between "surface an error" and "keep the last-known-good
+ * cache on a transient hiccup" now lives one layer up, in useBookmarks.ts —
+ * this file's contract is simply "throw on failure, always."
  */
 
 import { client } from "../api/client";
@@ -31,7 +34,9 @@ function unwrapErrorMessage(error: unknown, fallback: string): string {
 
 export async function getBookmarks(): Promise<BookmarksDocument> {
   const { data, error } = await client.GET("/bookmarks");
-  if (error || !data) return { folders: [], bookmarks: [] };
+  if (error || !data) {
+    throw new Error(unwrapErrorMessage(error, "could not load bookmarks"));
+  }
   return data as BookmarksDocument;
 }
 

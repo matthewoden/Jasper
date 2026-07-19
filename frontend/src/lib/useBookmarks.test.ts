@@ -253,6 +253,64 @@ describe("useBookmarks", () => {
     });
   });
 
+  it("B11: initial hydrate failure surfaces error=true and loading=false (27-UI-REVIEW #1)", async () => {
+    getBookmarksMock.mockRejectedValue(new Error("backend unreachable"));
+
+    const { result } = renderHook(() => useBookmarks(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe(true);
+    });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.bookmarks).toEqual([]);
+  });
+
+  it("B12: successful hydrate sets error=false and loading=false", async () => {
+    getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
+
+    const { result } = renderHook(() => useBookmarks(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.bookmarks).toEqual([bookmarkA]);
+    });
+    expect(result.current.error).toBe(false);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it("B13: a transient refresh failure AFTER a successful hydrate does not regress error or wipe the cache", async () => {
+    getBookmarksMock.mockResolvedValueOnce({ folders: [], bookmarks: [bookmarkA] });
+
+    const { result } = renderHook(() => useBookmarks(), { wrapper });
+    await waitFor(() => expect(result.current.bookmarks).toEqual([bookmarkA]));
+    expect(result.current.error).toBe(false);
+
+    getBookmarksMock.mockRejectedValueOnce(new Error("transient hiccup"));
+    act(() => {
+      dispatchBookmarksEvent();
+    });
+
+    await waitFor(() => {
+      expect(getBookmarksMock).toHaveBeenCalledTimes(2);
+    });
+    expect(result.current.error).toBe(false);
+    expect(result.current.bookmarks).toEqual([bookmarkA]);
+  });
+
+  it("B14: retrying refresh() after an initial-hydrate failure clears the error on success", async () => {
+    getBookmarksMock.mockRejectedValueOnce(new Error("backend unreachable"));
+
+    const { result } = renderHook(() => useBookmarks(), { wrapper });
+    await waitFor(() => expect(result.current.error).toBe(true));
+
+    getBookmarksMock.mockResolvedValueOnce({ folders: [], bookmarks: [bookmarkA] });
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.error).toBe(false);
+    expect(result.current.bookmarks).toEqual([bookmarkA]);
+  });
+
   it("B8: moveToFolder calls postBookmarkMove and refreshes", async () => {
     getBookmarksMock.mockResolvedValue({
       folders: [],
