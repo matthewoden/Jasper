@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import { Search, CalendarDays, Command, Settings } from "lucide-react";
+import { FileSearch, CalendarDays, Command, Settings } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useDailyNote } from "../lib/useDailyNote";
 import { useVaultPicker } from "../lib/useVaultPicker";
@@ -143,7 +143,7 @@ export function ActivityRibbon({
           s.setPaletteMode("notes");
           s.setPaletteOpen(true);
         }}
-        icon={<Search size={16} aria-hidden="true" />}
+        icon={<FileSearch size={16} aria-hidden="true" />}
       />
 
       <RibbonButton

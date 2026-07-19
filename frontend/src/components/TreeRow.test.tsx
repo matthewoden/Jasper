@@ -323,7 +323,7 @@ describe("<TreeRow />", () => {
     ).toBe("projects/jasper");
   });
 
-  it("TestRow_IndentScalesWithLevel — level=2 → paddingLeft=48", () => {
+  it("TestRow_IndentScalesWithLevel — level=2 → paddingLeft=40 (base=8 + 16*level, Phase 27 follow-up item 3)", () => {
     const node = makeFolderNode({ level: 2 });
     const { container } = render(
       <TreeRow
@@ -334,7 +334,46 @@ describe("<TreeRow />", () => {
       />,
     );
     const row = container.querySelector("[data-tree-row]") as HTMLElement;
-    expect(row.style.paddingLeft).toBe("48px");
+    expect(row.style.paddingLeft).toBe("40px");
+  });
+
+  it("TestRow_IndentBaseOffset — level=0 → paddingLeft=8 (reduced base moves icon column closer to ribbon inset)", () => {
+    const node = makeFolderNode({ level: 0 });
+    const { container } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={node as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const row = container.querySelector("[data-tree-row]") as HTMLElement;
+    expect(row.style.paddingLeft).toBe("8px");
+  });
+
+  it("TestRow_NoteAndFolderShareBaseIndent — note row's base offset matches folder's (label alignment preserved)", () => {
+    const folderNode = makeFolderNode({ level: 1 });
+    const { container: fc } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={folderNode as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const noteNode = makeNoteNode({ level: 1 });
+    const { container: nc } = render(
+      <TreeRow
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node={noteNode as any}
+        style={{}}
+        onSelectNote={vi.fn()}
+      />,
+    );
+    const folderRow = fc.querySelector("[data-tree-row]") as HTMLElement;
+    const noteRow = nc.querySelector("[data-tree-row]") as HTMLElement;
+    expect(folderRow.style.paddingLeft).toBe(noteRow.style.paddingLeft);
+    expect(folderRow.style.paddingLeft).toBe("24px");
   });
 
   it("TestRow_DoesNotUseDangerouslySetInnerHTML — XSS hardening per T-03-04-05/T-03-06-01", () => {
