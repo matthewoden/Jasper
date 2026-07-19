@@ -24,6 +24,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { PaneCornerReopenButton } from "./PaneCornerReopenButton";
 import { usePaneStore } from "../lib/usePaneStore";
 import { usePaneDragStore, type DropRegion } from "../lib/usePaneDragStore";
 import { _findLeaf } from "../lib/paneTree";
@@ -127,6 +128,8 @@ export interface TabStripProps {
   onNewTab: () => void;
   /** Cycle this leaf's active tab (Alt+]/Alt+[/Ctrl+Tab/Ctrl+Shift+Tab) — leaf-scoped, not workspace-wide. */
   onCycleTab: (direction: 1 | -1) => void;
+  /** True only for the top-left leaf — hosts the collapsed-sidebar reopen cell. */
+  isTopLeftLeaf?: boolean;
   /** Test-only: force a set of tab ids into the overflow dropdown. */
   forceHiddenTabIds?: Set<string>;
   style?: CSSProperties;
@@ -257,6 +260,7 @@ export function TabStrip({
   onReorder,
   onNewTab,
   onCycleTab,
+  isTopLeftLeaf = false,
   forceHiddenTabIds,
   style,
 }: TabStripProps) {
@@ -611,6 +615,7 @@ export function TabStrip({
         style={{ ...tabStripStyle, ...style }}
         data-testid="tab-strip"
       >
+        {isTopLeftLeaf && <PaneCornerReopenButton />}
         <EmptyStateNewTabButton onNewTab={onNewTab} />
         <div style={{ flex: "1 1 auto" }} />
         {rightCluster}
@@ -789,6 +794,7 @@ export function TabStrip({
         }
       }}
     >
+      {isTopLeftLeaf && <PaneCornerReopenButton />}
       {/* Visible tabs in their own flex child so trailing controls always reserve space. */}
       <div
         style={{

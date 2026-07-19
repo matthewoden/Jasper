@@ -1,13 +1,13 @@
 /**
- * PaneCornerReopenButton — net-new reopen affordance for the collapsed left
- * sidebar (NAV-03, D-12). Rendered by `PaneTree` inside the top-left leaf
- * ONLY (see `PaneTree.tsx`'s `topLeftLeafId` threading) — this component
- * itself gates on `notesSidebarVisible` so PaneTree only has to decide WHICH
- * leaf may host it, not whether it's currently visible.
+ * PaneCornerReopenButton — reopen affordance for the collapsed left sidebar
+ * (NAV-03). Rendered IN-FLOW as the first cell of the top-left leaf's tab
+ * strip (see `TabStrip.tsx` / `isTopLeftLeaf`), so it reserves space and the
+ * tabs sit beside it instead of under it. Gates on `notesSidebarVisible` —
+ * renders nothing when the sidebar is open, matching the mock (a tab-bar left
+ * toggle appears only while the sidebar is closed).
  *
- * Same PanelLeft-family glyph as the sidebar header's collapse icon (D-11,
- * Plan 03) so collapse/reopen reads as one toggle affordance, not two
- * different controls (UI-SPEC "Component Inventory" row).
+ * Same PanelLeft glyph as the sidebar header's collapse icon so collapse and
+ * reopen read as one affordance toggling state.
  */
 import { useState } from "react";
 import { PanelLeft } from "lucide-react";
@@ -29,18 +29,17 @@ export function PaneCornerReopenButton(): React.JSX.Element | null {
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
       style={{
-        position: "absolute",
-        top: 8,
-        left: 8,
-        zIndex: 5,
-        width: 28,
-        height: 28,
-        padding: 4,
+        alignSelf: "stretch",
+        flexShrink: 0,
+        width: 40,
+        padding: 0,
+        borderTop: "none",
+        borderBottom: "none",
+        borderLeft: "none",
+        borderRight: "1px solid var(--color-border-inner)",
         background: hovering
           ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
           : "transparent",
-        border: "none",
-        borderRadius: 4,
         color: "var(--color-muted)",
         cursor: "pointer",
         display: "inline-flex",

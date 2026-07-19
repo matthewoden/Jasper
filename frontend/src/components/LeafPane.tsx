@@ -103,6 +103,8 @@ export interface LeafPaneProps {
   autosaveMs?: number;
   /** Zen mode (ZEN-01): the tab strip genuinely unmounts; the editor body fills the pane. */
   hideTabStrip?: boolean;
+  /** True only for the top-left leaf — its tab strip hosts the reopen cell. */
+  isTopLeftLeaf?: boolean;
   style?: React.CSSProperties;
 }
 
@@ -119,6 +121,7 @@ export function LeafPane({
   onNewTab,
   autosaveMs,
   hideTabStrip,
+  isTopLeftLeaf,
   style,
 }: LeafPaneProps) {
   // Per-tab ref bookkeeping, scoped to THIS leaf's own open tabs (mirrors the
@@ -392,6 +395,7 @@ export function LeafPane({
           onReorder={handleReorder}
           onNewTab={handleNewTab}
           onCycleTab={handleCycleTab}
+          isTopLeftLeaf={isTopLeftLeaf}
         />
       )}
       <div style={{ position: "relative", flex: 1, minHeight: 0, minWidth: 0 }}>

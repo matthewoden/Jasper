@@ -17,7 +17,6 @@ import { useRef, useState } from "react";
 import { usePaneStore } from "../lib/usePaneStore";
 import { _leaves, type PaneNode, type SplitNode } from "../lib/paneTree";
 import { LeafPane } from "./LeafPane";
-import { PaneCornerReopenButton } from "./PaneCornerReopenButton";
 
 export interface PaneTreeProps {
   reindexing: boolean;
@@ -252,13 +251,9 @@ function renderNode(
 ): React.JSX.Element {
   if (node.t === "leaf") {
     return (
-      // Wrapper carries `position:relative` so PaneCornerReopenButton's
-      // `top:8px; left:8px` (D-12) anchors to THIS leaf's box, not the
-      // whole PaneTree. LeafPane already renders its own inner
-      // `position:relative` root, but that div is owned by LeafPane
-      // (files_modified for this plan does not touch LeafPane.tsx) — the
-      // corner button lives at the PaneTree level instead, matching how
-      // `topLeftLeafId` is computed/threaded here.
+      // The collapsed-sidebar reopen affordance now lives IN the top-left
+      // leaf's tab strip (isTopLeftLeaf → TabStrip → PaneCornerReopenButton),
+      // so it reserves space beside the tabs instead of floating over them.
       <div
         key={node.id}
         style={{ position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 }}
@@ -276,9 +271,9 @@ function renderNode(
           onNewTab={props.onNewTab}
           autosaveMs={props.autosaveMs}
           hideTabStrip={props.hideTabStrip}
+          isTopLeftLeaf={node.id === topLeftLeafId}
           style={{ flex: 1, minHeight: 0, minWidth: 0 }}
         />
-        {node.id === topLeftLeafId && <PaneCornerReopenButton />}
       </div>
     );
   }

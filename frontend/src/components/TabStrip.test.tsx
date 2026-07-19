@@ -567,3 +567,41 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
     expect(screen.queryByTestId("tab-strip-left-cluster")).toBeNull();
   });
 });
+
+describe("<TabStrip /> collapsed-sidebar reopen cell (Phase 27 NAV-03)", () => {
+  const baseProps = {
+    leafId: LEAF_ID,
+    tabs: [] as Tab[],
+    activeTabId: null,
+    deletedTabIds: new Set<string>(),
+    titleForTab,
+    onSelectTab: vi.fn(),
+    onRequestClose: vi.fn(),
+    onCloseOthers: vi.fn(),
+    onCloseToRight: vi.fn(),
+    onOpenRight: vi.fn(),
+    onReorder: vi.fn(),
+    onNewTab: vi.fn(),
+    onCycleTab: vi.fn(),
+  };
+
+  it("shows the reopen cell on the top-left leaf when the sidebar is COLLAPSED", () => {
+    useTreeStore.setState({ notesSidebarVisible: false });
+    render(<TabStrip {...baseProps} isTopLeftLeaf />);
+    expect(
+      screen.getByRole("button", { name: "Show sidebar" }),
+    ).toBeInTheDocument();
+  });
+
+  it("hides the reopen cell on the top-left leaf when the sidebar is OPEN", () => {
+    useTreeStore.setState({ notesSidebarVisible: true });
+    render(<TabStrip {...baseProps} isTopLeftLeaf />);
+    expect(screen.queryByRole("button", { name: "Show sidebar" })).toBeNull();
+  });
+
+  it("never shows the reopen cell on a non-top-left leaf, even when collapsed", () => {
+    useTreeStore.setState({ notesSidebarVisible: false });
+    render(<TabStrip {...baseProps} isTopLeftLeaf={false} />);
+    expect(screen.queryByRole("button", { name: "Show sidebar" })).toBeNull();
+  });
+});
