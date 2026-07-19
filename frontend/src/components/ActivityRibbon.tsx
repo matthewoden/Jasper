@@ -26,6 +26,8 @@ const ribbonStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
+  gap: 3,
+  padding: "10px 0",
 };
 
 const buttonBase: CSSProperties = {
@@ -119,7 +121,7 @@ export function ActivityRibbon({
           width: 30,
           height: 30,
           borderRadius: 6,
-          marginTop: 8,
+          marginBottom: 10,
           background:
             "color-mix(in srgb, var(--color-accent) 16%, var(--color-surface-ribbon))",
           color: "var(--color-accent)",
@@ -142,7 +144,6 @@ export function ActivityRibbon({
           s.setPaletteOpen(true);
         }}
         icon={<Search size={16} aria-hidden="true" />}
-        style={{ marginTop: 8 }}
       />
 
       <RibbonButton
@@ -152,7 +153,6 @@ export function ActivityRibbon({
         disabled={todayLoading}
         icon={<CalendarDays size={16} aria-hidden="true" />}
         style={{
-          marginTop: 16,
           opacity: todayLoading ? 0.5 : 1,
           cursor: todayLoading ? "wait" : "pointer",
         }}
@@ -167,7 +167,6 @@ export function ActivityRibbon({
           s.setPaletteOpen(true);
         }}
         icon={<Command size={16} aria-hidden="true" />}
-        style={{ marginTop: 16 }}
       />
 
       <div style={{ flex: 1 }} />
@@ -177,7 +176,6 @@ export function ActivityRibbon({
         title="Settings"
         onClick={() => setSettingsOpen(true)}
         icon={<Settings size={16} aria-hidden="true" />}
-        style={{ marginBottom: 8 }}
       />
       {/* Mount only when open so we don't double-fetch config alongside the
           StatusBar's own SettingsDialog instance. */}
