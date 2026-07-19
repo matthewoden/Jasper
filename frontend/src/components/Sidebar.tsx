@@ -35,6 +35,7 @@
 import { useCallback } from "react";
 import type React from "react";
 
+import { BookmarksPanel } from "./BookmarksPanel";
 import { FileTree } from "./FileTree";
 import { SidebarResizeHandle } from "./SidebarResizeHandle";
 import { SidebarSearchPanel } from "./SidebarSearchPanel";
@@ -203,8 +204,7 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
           ) : sidebarPanel === "search" ? (
             <SidebarSearchPanel onSelectNote={onSelectNote} />
           ) : (
-            // Interim placeholder — Plan 06 replaces this with <BookmarksPanel/>.
-            <div data-testid="bookmarks-panel-placeholder" />
+            <BookmarksPanel onSelectNote={onSelectNote} />
           )}
         </div>
         {/* Tag browser panel relocated to right-rail; left sidebar is file-tree-only. */}
