@@ -642,6 +642,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bookmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the whole bookmarks document (folders + bookmarks, auto-pruned) (BOOK-01)
+         * @description Returns every bookmark folder and bookmark row persisted in
+         *     <vault>/.jasper/bookmarks.json. Bookmarks whose noteId no longer
+         *     resolves in the notes registry are silently dropped before this
+         *     response is built (D-04 prune-on-read, BOOK-04) — the frontend
+         *     never sees a bookmark pointing at a deleted note.
+         */
+        get: operations["getBookmarks"];
+        put?: never;
+        /**
+         * Bookmark a note by UUID, optionally into a folder (BOOK-01, BOOK-03)
+         * @description Adds a new bookmark row for note_id. Rejects an unknown/forged
+         *     note_id with 404 (T-27-01 — validated against the notes registry,
+         *     not trusted client input). Rejects an unknown folder_id with 400.
+         *     Broadcasts `bookmark:changed` on success.
+         */
+        post: operations["postBookmark"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookmarks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque UUID of the bookmark row (not a note UUID). */
+                id: components["parameters"]["BookmarkId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a bookmark by id (BOOK-01)
+         * @description Deletes the bookmark row matching id. Broadcasts `bookmark:changed`
+         *     on success.
+         */
+        delete: operations["deleteBookmark"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookmarks/{id}/folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque UUID of the bookmark row (not a note UUID). */
+                id: components["parameters"]["BookmarkId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a bookmark into a folder, or to top-level when folder_id is null (BOOK-03)
+         * @description Sets the bookmark's folder_id. A null folder_id moves the
+         *     bookmark back to the top level (ungrouped). Rejects an unknown
+         *     bookmark id with 404 and an unknown folder_id with 400.
+         *     Broadcasts `bookmark:changed` on success.
+         */
+        post: operations["moveBookmark"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookmark-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a new bookmark folder (virtual grouping label) (BOOK-03)
+         * @description Creates a new bookmark folder with the given name. name is
+         *     trimmed server-side; empty/whitespace-only names are rejected
+         *     with 400. Bookmark folders are virtual labels, not filesystem
+         *     folders — no filesystem-legal-character validation applies.
+         *     Broadcasts `bookmark:changed` on success.
+         */
+        post: operations["createBookmarkFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/setup/status": {
         parameters: {
             query?: never;
@@ -1435,7 +1540,7 @@ export interface components {
          */
         WSEnvelope: {
             /** @enum {string} */
-            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "file:created" | "file:deleted" | "file:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed" | "vault.switching" | "vault.switched";
+            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "file:created" | "file:deleted" | "file:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed" | "bookmark:changed" | "vault.switching" | "vault.switched";
             /**
              * @description UUID of the session that originated the mutation. Empty
              *     string for server-originated events (reindex:*,
@@ -1574,6 +1679,67 @@ export interface components {
             folder_path: string;
             /** @enum {integer} */
             level: 1 | 2;
+        };
+        /** @description A single pinned note (Phase 27 BOOK-01). Keyed by its own opaque id, not the note's UUID. */
+        Bookmark: {
+            /**
+             * Format: uuid
+             * @description Opaque id of the bookmark row.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the bookmarked note (survives note rename/move — BOOK-04).
+             */
+            note_id: string;
+            /**
+             * Format: uuid
+             * @description id of the containing BookmarkFolder, or null for a top-level (ungrouped) bookmark.
+             */
+            folder_id: string | null;
+            /** @description Display order among sibling bookmarks. */
+            order: number;
+        };
+        /** @description A virtual grouping label for bookmarks (BOOK-03) — NOT a filesystem folder. */
+        BookmarkFolder: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        /** @description Whole-document read shape returned by GET /bookmarks. */
+        BookmarksDocument: {
+            folders: components["schemas"]["BookmarkFolder"][];
+            bookmarks: components["schemas"]["Bookmark"][];
+        };
+        BookmarkCreateRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the note to bookmark. Validated against the notes registry server-side (T-27-01).
+             */
+            note_id: string;
+            /**
+             * Format: uuid
+             * @description Optional BookmarkFolder id to file the bookmark into on creation.
+             */
+            folder_id?: string | null;
+        };
+        BookmarkMoveRequest: {
+            /**
+             * Format: uuid
+             * @description Target BookmarkFolder id, or null to move the bookmark to the top level.
+             */
+            folder_id: string | null;
+        };
+        /** @description Minimal ack shape for a successful move — echoes the mutated fields. */
+        BookmarkMoveResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            folder_id: string | null;
+        };
+        BookmarkFolderCreateRequest: {
+            /** @description Display name. Trimmed server-side; empty/whitespace-only rejected with 400. */
+            name: string;
         };
         SetupStatus: {
             /** @description True when the first-run wizard has not yet been completed (D-04). */
@@ -1733,6 +1899,8 @@ export interface components {
     parameters: {
         /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
         NoteId: string;
+        /** @description Opaque UUID of the bookmark row (not a note UUID). */
+        BookmarkId: string;
         /**
          * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
          *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
@@ -3131,6 +3299,176 @@ export interface operations {
             };
             /** @description No grant exists for that folder_path */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getBookmarks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bookmarks document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookmarksDocument"];
+                };
+            };
+        };
+    };
+    postBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookmarkCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Bookmark created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Bookmark"];
+                };
+            };
+            /** @description Unknown folder_id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown or forged note_id (not present in the notes registry) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque UUID of the bookmark row (not a note UUID). */
+                id: components["parameters"]["BookmarkId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bookmark deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown bookmark id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    moveBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque UUID of the bookmark row (not a note UUID). */
+                id: components["parameters"]["BookmarkId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookmarkMoveRequest"];
+            };
+        };
+        responses: {
+            /** @description Bookmark moved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookmarkMoveResponse"];
+                };
+            };
+            /** @description Unknown folder_id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown bookmark id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createBookmarkFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookmarkFolderCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Bookmark folder created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookmarkFolder"];
+                };
+            };
+            /** @description Invalid (empty/whitespace) name */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -25,6 +25,7 @@ tags:
   - { name: backlinks, description: "Backlinks panel and wiki-link autocomplete (LINKS-06, LINKS-08)" }
   - { name: sharing, description: "OS file-manager integration: reveal a note path in Finder / Explorer (Phase 8 SHARE-01, D-26)" }
   - { name: mcp, description: "MCP write-grant ACL: per-folder grants with two-tier model (Phase 8 MCP-01, D-13, D-17)" }
+  - { name: bookmarks, description: "Note bookmarks + bookmark folders: pin notes by UUID, group into virtual folders (Phase 27 BOOK-01, BOOK-03, BOOK-04)" }
   - { name: setup, description: "First-run wizard: status, data-dir validation, submit (Phase 8 INSTALL-07, D-04, D-08, D-10)" }
   - { name: vault, description: "Vault registry: current vault, recent vaults, open/create/forget (ADR-001, VAULT-01)" }
 paths:
@@ -1191,6 +1192,144 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /bookmarks:
+    get:
+      tags: [bookmarks]
+      operationId: getBookmarks
+      summary: Read the whole bookmarks document (folders + bookmarks, auto-pruned) (BOOK-01)
+      description: |
+        Returns every bookmark folder and bookmark row persisted in
+        <vault>/.jasper/bookmarks.json. Bookmarks whose noteId no longer
+        resolves in the notes registry are silently dropped before this
+        response is built (D-04 prune-on-read, BOOK-04) — the frontend
+        never sees a bookmark pointing at a deleted note.
+      responses:
+        "200":
+          description: Bookmarks document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookmarksDocument"
+    post:
+      tags: [bookmarks]
+      operationId: postBookmark
+      summary: Bookmark a note by UUID, optionally into a folder (BOOK-01, BOOK-03)
+      description: |
+        Adds a new bookmark row for note_id. Rejects an unknown/forged
+        note_id with 404 (T-27-01 — validated against the notes registry,
+        not trusted client input). Rejects an unknown folder_id with 400.
+        Broadcasts `bookmark:changed` on success.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookmarkCreateRequest"
+      responses:
+        "201":
+          description: Bookmark created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bookmark"
+        "400":
+          description: Unknown folder_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Unknown or forged note_id (not present in the notes registry)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /bookmarks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/BookmarkId"
+    delete:
+      tags: [bookmarks]
+      operationId: deleteBookmark
+      summary: Remove a bookmark by id (BOOK-01)
+      description: |
+        Deletes the bookmark row matching id. Broadcasts `bookmark:changed`
+        on success.
+      responses:
+        "204":
+          description: Bookmark deleted
+        "404":
+          description: Unknown bookmark id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /bookmarks/{id}/folder:
+    parameters:
+      - $ref: "#/components/parameters/BookmarkId"
+    post:
+      tags: [bookmarks]
+      operationId: moveBookmark
+      summary: Move a bookmark into a folder, or to top-level when folder_id is null (BOOK-03)
+      description: |
+        Sets the bookmark's folder_id. A null folder_id moves the
+        bookmark back to the top level (ungrouped). Rejects an unknown
+        bookmark id with 404 and an unknown folder_id with 400.
+        Broadcasts `bookmark:changed` on success.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookmarkMoveRequest"
+      responses:
+        "200":
+          description: Bookmark moved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookmarkMoveResponse"
+        "400":
+          description: Unknown folder_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Unknown bookmark id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /bookmark-folders:
+    post:
+      tags: [bookmarks]
+      operationId: createBookmarkFolder
+      summary: Create a new bookmark folder (virtual grouping label) (BOOK-03)
+      description: |
+        Creates a new bookmark folder with the given name. name is
+        trimmed server-side; empty/whitespace-only names are rejected
+        with 400. Bookmark folders are virtual labels, not filesystem
+        folders — no filesystem-legal-character validation applies.
+        Broadcasts `bookmark:changed` on success.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookmarkFolderCreateRequest"
+      responses:
+        "201":
+          description: Bookmark folder created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookmarkFolder"
+        "400":
+          description: Invalid (empty/whitespace) name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /setup/status:
     get:
       tags: [setup]
@@ -1570,6 +1709,14 @@ components:
       in: path
       required: true
       description: UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code)
+      schema:
+        type: string
+        format: uuid
+    BookmarkId:
+      name: id
+      in: path
+      required: true
+      description: Opaque UUID of the bookmark row (not a note UUID).
       schema:
         type: string
         format: uuid
@@ -2253,6 +2400,7 @@ components:
             - "reindex:complete"
             - "migration:status"
             - "mcp:grant_changed"
+            - "bookmark:changed"
             - "vault.switching"
             - "vault.switched"
         origin_session_id:
@@ -2449,6 +2597,92 @@ components:
         level:
           type: integer
           enum: [1, 2]
+    Bookmark:
+      type: object
+      required: [id, note_id, folder_id, order]
+      description: A single pinned note (Phase 27 BOOK-01). Keyed by its own opaque id, not the note's UUID.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Opaque id of the bookmark row.
+        note_id:
+          type: string
+          format: uuid
+          description: UUID of the bookmarked note (survives note rename/move — BOOK-04).
+        folder_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: id of the containing BookmarkFolder, or null for a top-level (ungrouped) bookmark.
+        order:
+          type: integer
+          minimum: 0
+          description: Display order among sibling bookmarks.
+    BookmarkFolder:
+      type: object
+      required: [id, name]
+      description: A virtual grouping label for bookmarks (BOOK-03) — NOT a filesystem folder.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+    BookmarksDocument:
+      type: object
+      required: [folders, bookmarks]
+      description: Whole-document read shape returned by GET /bookmarks.
+      properties:
+        folders:
+          type: array
+          items: { $ref: "#/components/schemas/BookmarkFolder" }
+        bookmarks:
+          type: array
+          items: { $ref: "#/components/schemas/Bookmark" }
+    BookmarkCreateRequest:
+      type: object
+      required: [note_id]
+      properties:
+        note_id:
+          type: string
+          format: uuid
+          description: UUID of the note to bookmark. Validated against the notes registry server-side (T-27-01).
+        folder_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional BookmarkFolder id to file the bookmark into on creation.
+    BookmarkMoveRequest:
+      type: object
+      required: [folder_id]
+      properties:
+        folder_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Target BookmarkFolder id, or null to move the bookmark to the top level.
+    BookmarkMoveResponse:
+      type: object
+      required: [id, folder_id]
+      description: Minimal ack shape for a successful move — echoes the mutated fields.
+      properties:
+        id:
+          type: string
+          format: uuid
+        folder_id:
+          type: string
+          format: uuid
+          nullable: true
+    BookmarkFolderCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Display name. Trimmed server-side; empty/whitespace-only rejected with 400.
     SetupStatus:
       type: object
       required: [first_run]
