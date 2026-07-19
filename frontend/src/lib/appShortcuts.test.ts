@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   handleAppAltT,
+  handleAppBookmarkToggle,
   handleAppCmdDot,
   handleAppCmdK,
   handleAppCmdShiftF,
@@ -208,6 +209,67 @@ describe("handleAppSidebarToggle (Phase 27 NAV-03, D-13)", () => {
   it("no-ops without Cmd/Ctrl", () => {
     handleAppSidebarToggle(new KeyboardEvent("keydown", { key: "e", shiftKey: true }));
     expect(useTreeStore.getState().notesSidebarVisible).toBe(true);
+  });
+});
+
+describe("handleAppBookmarkToggle (Phase 27 BOOK-01, D-14)", () => {
+  it("Cmd+Shift+B dispatches 'bookmarkCurrent' and preventDefaults/stopPropagates", () => {
+    const received: Phase7DispatchEvent[] = [];
+    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    try {
+      const e = new KeyboardEvent("keydown", {
+        key: "b",
+        metaKey: true,
+        shiftKey: true,
+      });
+      const preventDefault = vi.spyOn(e, "preventDefault");
+      const stopPropagation = vi.spyOn(e, "stopPropagation");
+      handleAppBookmarkToggle(e);
+      expect(received).toEqual(["bookmarkCurrent"]);
+      expect(preventDefault).toHaveBeenCalledOnce();
+      expect(stopPropagation).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("Ctrl+Shift+B (non-Mac) also dispatches", () => {
+    const received: Phase7DispatchEvent[] = [];
+    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    try {
+      handleAppBookmarkToggle(
+        new KeyboardEvent("keydown", { key: "B", ctrlKey: true, shiftKey: true }),
+      );
+      expect(received).toEqual(["bookmarkCurrent"]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("no-ops without the Shift modifier", () => {
+    const received: Phase7DispatchEvent[] = [];
+    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    try {
+      handleAppBookmarkToggle(
+        new KeyboardEvent("keydown", { key: "b", metaKey: true }),
+      );
+      expect(received).toEqual([]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("no-ops without Cmd/Ctrl", () => {
+    const received: Phase7DispatchEvent[] = [];
+    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    try {
+      handleAppBookmarkToggle(
+        new KeyboardEvent("keydown", { key: "b", shiftKey: true }),
+      );
+      expect(received).toEqual([]);
+    } finally {
+      unsubscribe();
+    }
   });
 });
 

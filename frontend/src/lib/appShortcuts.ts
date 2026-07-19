@@ -8,7 +8,11 @@ import { useTreeStore } from "./useTreeStore";
 import { usePaneStore } from "./usePaneStore";
 
 
-export type Phase7DispatchEvent = "openToday" | "newTab" | "focusSearch";
+export type Phase7DispatchEvent =
+  | "openToday"
+  | "newTab"
+  | "focusSearch"
+  | "bookmarkCurrent";
 
 const phase7Subscribers = new Set<(ev: Phase7DispatchEvent) => void>();
 
@@ -224,6 +228,23 @@ export function handleAppSidebarToggle(e: KeyboardEvent): void {
   e.stopPropagation();
   const s = useTreeStore.getState();
   s.setNotesSidebarVisible(!s.notesSidebarVisible);
+}
+
+/**
+ * Cmd+Shift+B — bookmark/un-bookmark the active pane's active note
+ * (Phase 27 BOOK-01, D-14). toggleBookmark lives inside the useBookmarks
+ * hook (React state + a WS subscriber), unreachable from this window-level
+ * handler — dispatched via the same phase7 event bus handleAppCmdShiftD
+ * uses for openToday, so App.tsx's subscriber (which HAS toggleBookmark in
+ * scope) performs the actual mutation.
+ */
+export function handleAppBookmarkToggle(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  if (!e.shiftKey) return;
+  if (e.key !== "b" && e.key !== "B") return;
+  e.preventDefault();
+  e.stopPropagation();
+  dispatchPhase7("bookmarkCurrent");
 }
 
 /**

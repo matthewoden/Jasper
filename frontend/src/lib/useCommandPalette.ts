@@ -31,6 +31,7 @@ export interface CommandActions {
   onFocusNextPane?: () => void;
   onFocusPrevPane?: () => void;
   onToggleSidebar?: () => void;
+  onBookmarkCurrent?: () => void;
 }
 
 /**
@@ -77,6 +78,7 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       "focus-next-pane": actions.onFocusNextPane,
       "focus-previous-pane": actions.onFocusPrevPane,
       "sidebar.toggle": actions.onToggleSidebar,
+      "bookmark.toggle": actions.onBookmarkCurrent,
     }),
     [
       actions.onNewNote,
@@ -95,6 +97,7 @@ export function useCommandPalette(actions: CommandActions): CommandPaletteResult
       actions.onFocusNextPane,
       actions.onFocusPrevPane,
       actions.onToggleSidebar,
+      actions.onBookmarkCurrent,
     ],
   );
 
