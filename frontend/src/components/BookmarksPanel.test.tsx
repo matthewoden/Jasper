@@ -83,7 +83,7 @@ describe("BookmarksPanel", () => {
       refresh: vi.fn(),
       mutate: vi.fn(),
     });
-    useTreeStore.setState({ bookmarks: [], bookmarkFolders: [] });
+    useTreeStore.setState({ bookmarks: [], bookmarkFolders: [], activeNoteId: null });
     usePaneStore.setState({ openInActivePane: vi.fn() });
   });
 
@@ -212,5 +212,51 @@ describe("BookmarksPanel", () => {
 
     expect(screen.queryByTestId("new-bookmark-folder-input")).toBeNull();
     expect(postBookmarkFolderMock).not.toHaveBeenCalled();
+  });
+
+  // --- Phase 27 follow-up item 5: Notes-panel chrome parity ---
+
+  describe("Notes-panel chrome parity (Phase 27 follow-up item 5)", () => {
+    it("renders a bordered 40px toolbar row hosting the New-bookmark-folder action", async () => {
+      getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
+      await renderPanel(<BookmarksPanel />);
+
+      const button = screen.getByLabelText("New bookmark folder");
+      const toolbarRow = button.parentElement as HTMLElement;
+      expect(toolbarRow.style.height).toBe("40px");
+      expect(toolbarRow.style.borderBottom).toBe("1px solid var(--color-border)");
+    });
+
+    it("renders the bordered toolbar row even in the empty state", async () => {
+      await renderPanel(<BookmarksPanel />);
+      expect(screen.getByTestId("bookmarks-empty-state")).toBeDefined();
+      const button = screen.getByLabelText("New bookmark folder");
+      const toolbarRow = button.parentElement as HTMLElement;
+      expect(toolbarRow.style.height).toBe("40px");
+    });
+
+    it("folder rows are 32px tall, matching TreeRow's row height", async () => {
+      getBookmarksMock.mockResolvedValue({ folders: [folder1], bookmarks: [bookmarkB] });
+      await renderPanel(<BookmarksPanel />);
+      const folderRow = screen.getByTestId("bookmark-folder-f-1") as HTMLElement;
+      expect(folderRow.style.height).toBe("32px");
+    });
+
+    it("a bookmark whose note is the active note gets the accent highlight + left bar", async () => {
+      getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
+      useTreeStore.setState({ activeNoteId: "note-a" });
+      await renderPanel(<BookmarksPanel />);
+      const row = screen.getByTestId("bookmark-row-bm-1") as HTMLElement;
+      expect(row.getAttribute("data-active")).toBe("true");
+      expect(row.style.background).toContain("var(--color-accent)");
+    });
+
+    it("a bookmark whose note is NOT the active note has no accent highlight", async () => {
+      getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
+      useTreeStore.setState({ activeNoteId: "note-b" });
+      await renderPanel(<BookmarksPanel />);
+      const row = screen.getByTestId("bookmark-row-bm-1") as HTMLElement;
+      expect(row.getAttribute("data-active")).toBeNull();
+    });
   });
 });

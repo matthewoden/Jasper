@@ -102,6 +102,16 @@ describe("ActivityRibbon", () => {
     expect(screen.queryByRole("button", { name: "Search notes" })).toBeNull();
   });
 
+  it("Phase 27 follow-up item 4: quick-switcher icon is distinct from the sidebar Search tab's Search glyph", () => {
+    render(<ActivityRibbon />);
+    const btn = screen.getByRole("button", { name: "Quick switcher" });
+    const svg = btn.querySelector("svg");
+    expect(svg).not.toBeNull();
+    // SidebarTabRow's Search tab renders lucide-react's <Search> (class "lucide-search").
+    // The ribbon's quick switcher must NOT share that exact glyph.
+    expect(svg?.classList.contains("lucide-search")).toBe(false);
+  });
+
   it("D-10: clicking the quick-switcher sets paletteMode('notes') then paletteOpen(true)", () => {
     render(<ActivityRibbon />);
     fireEvent.click(screen.getByRole("button", { name: "Quick switcher" }));

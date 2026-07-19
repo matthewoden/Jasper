@@ -11,7 +11,7 @@
  * accent border + 20% box-shadow ring, and a muted→fg hover X close button.
  */
 import { useEffect, useRef, useState } from "react";
-import { CaseSensitive, Regex, WholeWord, X } from "lucide-react";
+import { CaseSensitive, ChevronDown, ChevronUp, Regex, WholeWord, X } from "lucide-react";
 
 export type FindReplaceMode = "find" | "replace";
 export type FindToggleKind = "caseSensitive" | "regexp" | "wholeWord";
@@ -277,6 +277,37 @@ export function FindReplaceBar({
         >
           {formatMatchCount(matchCount)}
         </span>
+        {/* Prev/next match navigation (Phase 27 follow-up item 6) — steps the
+            active-match cursor exactly like Enter/Shift+Enter already do.
+            Does NOT change @codemirror/search's all-matches highlighting. */}
+        <button
+          type="button"
+          aria-label="Previous match"
+          onClick={onFindPrev}
+          style={{ ...iconToggleBase }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--color-fg)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--color-muted)";
+          }}
+        >
+          <ChevronUp size={15} strokeWidth={2} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          aria-label="Next match"
+          onClick={onFindNext}
+          style={{ ...iconToggleBase }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--color-fg)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--color-muted)";
+          }}
+        >
+          <ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
+        </button>
         <ToggleButton
           active={caseSensitive}
           ariaLabel="Match case"

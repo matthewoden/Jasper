@@ -34,7 +34,7 @@
  */
 import { useCallback } from "react";
 import type React from "react";
-import { ChevronsDownUp } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 
 import { BookmarksPanel } from "./BookmarksPanel";
 import { FileTree } from "./FileTree";
@@ -97,12 +97,36 @@ function findNotePathById(tree: Tree | null, id: string): string | null {
   return null;
 }
 
+/** Walk the tree and collect every folder path, for Collapse-all's expand-all reverse. */
+function collectFolderPaths(tree: Tree | null): string[] {
+  if (tree === null) return [];
+  const paths: string[] = [];
+  const visit = (node: TreeNode) => {
+    if (node.kind !== "folder") return;
+    paths.push(node.path);
+    if (node.children) {
+      for (const child of node.children) visit(child);
+    }
+  };
+  for (const node of tree.root) visit(node);
+  return paths;
+}
+
 export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
   const { tree } = useFileTree();
   const { createNoteAt, createFolderAt, isCreating } = useTreeCreateActions();
   const sidebarWidth = useTreeStore((s) => s.sidebarWidth);
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
   const sidebarPanel = useTreeStore((s) => s.sidebarPanel);
+  const allCollapsed = useTreeStore((s) => s.allCollapsed);
+
+  const handleToggleCollapseAll = useCallback(() => {
+    if (allCollapsed) {
+      useTreeStore.getState().expandAllFolders(collectFolderPaths(tree));
+    } else {
+      useTreeStore.getState().collapseAllFolders();
+    }
+  }, [allCollapsed, tree]);
 
   const handleNewNote = useCallback(() => {
     const sr = useTreeStore.getState().selectedRow;
@@ -205,9 +229,9 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
                 <div style={{ flex: 1 }} />
                 <button
                   type="button"
-                  title="Collapse all"
-                  aria-label="Collapse all"
-                  onClick={() => useTreeStore.getState().collapseAllFolders()}
+                  title={allCollapsed ? "Expand all" : "Collapse all"}
+                  aria-label={allCollapsed ? "Expand all" : "Collapse all"}
+                  onClick={handleToggleCollapseAll}
                   style={{
                     width: 24,
                     height: 24,
@@ -222,7 +246,11 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
                     borderRadius: 4,
                   }}
                 >
-                  <ChevronsDownUp size={16} aria-hidden="true" />
+                  {allCollapsed ? (
+                    <ChevronsUpDown size={16} aria-hidden="true" />
+                  ) : (
+                    <ChevronsDownUp size={16} aria-hidden="true" />
+                  )}
                 </button>
               </div>
               {/* display:flex + column so FileTree's flex:1 tree-area actually

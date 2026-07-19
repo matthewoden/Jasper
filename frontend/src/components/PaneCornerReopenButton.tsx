@@ -8,6 +8,13 @@
  *
  * Same PanelLeft glyph as the sidebar header's collapse icon so collapse and
  * reopen read as one affordance toggling state.
+ *
+ * Glyph is left-aligned (not centered) with a left inset matching
+ * ActivityRibbon's own icon inset (~16px: 8px flex-center margin from the
+ * 48px-wide ribbon centering a 32px button + 8px centering a 16px icon
+ * inside that button) so the reopen icon reads as a continuation of the
+ * ribbon's icon column rather than sitting with an oversized left margin
+ * (Phase 27 follow-up item 2).
  */
 import { useState } from "react";
 import { PanelLeft } from "lucide-react";
@@ -32,7 +39,10 @@ export function PaneCornerReopenButton(): React.JSX.Element | null {
         alignSelf: "stretch",
         flexShrink: 0,
         width: 40,
-        padding: 0,
+        paddingLeft: 16,
+        paddingRight: 0,
+        paddingTop: 0,
+        paddingBottom: 0,
         borderTop: "none",
         borderBottom: "none",
         borderLeft: "none",
@@ -44,7 +54,7 @@ export function PaneCornerReopenButton(): React.JSX.Element | null {
         cursor: "pointer",
         display: "inline-flex",
         alignItems: "center",
-        justifyContent: "center",
+        justifyContent: "flex-start",
       }}
     >
       <PanelLeft size={16} aria-hidden="true" />

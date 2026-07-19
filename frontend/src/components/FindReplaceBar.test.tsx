@@ -150,4 +150,32 @@ describe("<FindReplaceBar />", () => {
     fireEvent.click(screen.getByText("Replace"));
     expect(onReplaceNext).toHaveBeenCalledTimes(1);
   });
+
+  // --- Phase 27 follow-up item 6: prev/next match chevron buttons ---
+
+  it("renders Previous match / Next match chevron buttons", () => {
+    renderBar();
+    expect(screen.getByLabelText("Previous match")).toBeInTheDocument();
+    expect(screen.getByLabelText("Next match")).toBeInTheDocument();
+  });
+
+  it("clicking the Previous match chevron fires onFindPrev", () => {
+    const onFindPrev = vi.fn();
+    renderBar({ onFindPrev });
+    fireEvent.click(screen.getByLabelText("Previous match"));
+    expect(onFindPrev).toHaveBeenCalledTimes(1);
+  });
+
+  it("clicking the Next match chevron fires onFindNext", () => {
+    const onFindNext = vi.fn();
+    renderBar({ onFindNext });
+    fireEvent.click(screen.getByLabelText("Next match"));
+    expect(onFindNext).toHaveBeenCalledTimes(1);
+  });
+
+  it("prev/next chevrons are present in replace mode too", () => {
+    renderBar({ mode: "replace" });
+    expect(screen.getByLabelText("Previous match")).toBeInTheDocument();
+    expect(screen.getByLabelText("Next match")).toBeInTheDocument();
+  });
 });

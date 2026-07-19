@@ -111,6 +111,12 @@ beforeEach(() => {
   mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
   useTreeStore.setState({ sidebarWidth: SIDEBAR_WIDTH_DEFAULT });
   useTreeStore.setState({ selectedRow: null });
+  useTreeStore.setState({
+    allCollapsed: false,
+    expanded: new Set(),
+    collapseAllNonce: 0,
+    expandAllNonce: 0,
+  });
 });
 
 afterEach(() => {
@@ -286,6 +292,70 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     fireEvent.click(screen.getByRole("button", { name: "New folder" }));
     await waitFor(() => {
       expect(muts.createFolder).toHaveBeenCalledWith("", "untitled");
+    });
+  });
+
+  describe("Phase 27 follow-up item 1 — Collapse-all becomes a toggle", () => {
+    it("renders ChevronsDownUp (Collapse all) by default", () => {
+      mockedUseFileTree.mockReturnValue({
+        tree: { root: [] },
+        loading: false,
+        error: null,
+        refresh: () => Promise.resolve(),
+        mutate: noopMutate,
+      });
+      renderWithProvider(<Sidebar />);
+      expect(
+        screen.getByRole("button", { name: "Collapse all" }),
+      ).toBeInTheDocument();
+    });
+
+    it("clicking Collapse-all calls collapseAllFolders and flips the icon to Expand all", () => {
+      mockedUseFileTree.mockReturnValue({
+        tree: { root: [] },
+        loading: false,
+        error: null,
+        refresh: () => Promise.resolve(),
+        mutate: noopMutate,
+      });
+      renderWithProvider(<Sidebar />);
+      fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+      expect(useTreeStore.getState().allCollapsed).toBe(true);
+      expect(
+        screen.getByRole("button", { name: "Expand all" }),
+      ).toBeInTheDocument();
+    });
+
+    it("clicking again (while allCollapsed) calls expandAllFolders with every folder path and flips the icon back", () => {
+      mockedUseFileTree.mockReturnValue({
+        tree: {
+          root: [
+            {
+              kind: "folder",
+              path: "projects",
+              name: "projects",
+              children: [
+                { kind: "folder", path: "projects/2026", name: "2026", children: [] },
+              ],
+            },
+          ],
+        },
+        loading: false,
+        error: null,
+        refresh: () => Promise.resolve(),
+        mutate: noopMutate,
+      });
+      useTreeStore.setState({ allCollapsed: true, expanded: new Set() });
+      renderWithProvider(<Sidebar />);
+      fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+      expect(useTreeStore.getState().allCollapsed).toBe(false);
+      expect([...useTreeStore.getState().expanded].sort()).toEqual([
+        "projects",
+        "projects/2026",
+      ]);
+      expect(
+        screen.getByRole("button", { name: "Collapse all" }),
+      ).toBeInTheDocument();
     });
   });
 

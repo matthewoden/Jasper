@@ -149,7 +149,12 @@ export function TreeRow({
   const isSelected = node.isSelected === true;
   const isDailyFolder = isFolder && (data as FolderNodeData).path === "daily";
   const isAttachmentsFolder = isFolder && (data as FolderNodeData).name === "attachments";
-  const indent = 16 + 16 * node.level;
+  // Base offset reduced from 16 -> 8 (Phase 27 follow-up item 3) so the
+  // folder/file icon column reads closer to the activity-ribbon's own
+  // ~16px icon inset instead of sitting an extra chevron+gap (20px) further
+  // right. Per-level step (16 * node.level) and the note-row 16px spacer
+  // (below) are unchanged, so nesting and note/folder label alignment hold.
+  const indent = 8 + 16 * node.level;
 
   const grantLevel = isFolder
     ? directLevelFor((data as FolderNodeData).path)
