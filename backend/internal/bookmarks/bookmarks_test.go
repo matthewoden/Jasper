@@ -645,3 +645,157 @@ func TestService_CreateFolder_EmptyName_ReturnsErrInvalidName(t *testing.T) {
 		t.Fatalf("CreateFolder() broadcast calls = %v, want none on rejection", bc.calls)
 	}
 }
+
+// TestService_Reorder_PersistsExplicitOrderWithinTopLevel guards the
+// Task-1 reorder endpoint's happy path: an explicit ordered_ids list for
+// the top-level scope (folderID == nil) is assigned Order = index and
+// persisted, and a subsequent Load reflects it.
+func TestService_Reorder_PersistsExplicitOrderWithinTopLevel(t *testing.T) {
+	dir := t.TempDir()
+	noteA, noteB, noteC := uuid.New(), uuid.New(), uuid.New()
+	registry := newTestRegistry(map[uuid.UUID]string{
+		noteA: "notes/a.md", noteB: "notes/b.md", noteC: "notes/c.md",
+	})
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	bmA, err := svc.Add(context.Background(), noteA, nil)
+	if err != nil {
+		t.Fatalf("Add(A) error = %v", err)
+	}
+	bmB, err := svc.Add(context.Background(), noteB, nil)
+	if err != nil {
+		t.Fatalf("Add(B) error = %v", err)
+	}
+	bmC, err := svc.Add(context.Background(), noteC, nil)
+	if err != nil {
+		t.Fatalf("Add(C) error = %v", err)
+	}
+	// A(0), B(1), C(2) by append order.
+	bc.calls = nil
+
+	if err := svc.Reorder(context.Background(), nil, []string{bmC.ID, bmA.ID, bmB.ID}); err != nil {
+		t.Fatalf("Reorder() error = %v", err)
+	}
+	if len(bc.calls) != 1 || bc.calls[0] != EventBookmarkChanged {
+		t.Fatalf("Reorder() broadcast calls = %v, want exactly one %s", bc.calls, EventBookmarkChanged)
+	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	orders := map[string]int{}
+	for _, bm := range doc.Bookmarks {
+		orders[bm.ID] = bm.Order
+	}
+	if orders[bmC.ID] != 0 || orders[bmA.ID] != 1 || orders[bmB.ID] != 2 {
+		t.Fatalf("orders = %+v, want C=0, A=1, B=2", orders)
+	}
+}
+
+// TestService_Reorder_WithinFolderScope guards a non-nil folder scope.
+func TestService_Reorder_WithinFolderScope(t *testing.T) {
+	dir := t.TempDir()
+	noteA, noteB := uuid.New(), uuid.New()
+	registry := newTestRegistry(map[uuid.UUID]string{
+		noteA: "notes/a.md", noteB: "notes/b.md",
+	})
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	folder, err := svc.CreateFolder(context.Background(), "Work")
+	if err != nil {
+		t.Fatalf("CreateFolder() error = %v", err)
+	}
+	bmA, err := svc.Add(context.Background(), noteA, &folder.ID)
+	if err != nil {
+		t.Fatalf("Add(A) error = %v", err)
+	}
+	bmB, err := svc.Add(context.Background(), noteB, &folder.ID)
+	if err != nil {
+		t.Fatalf("Add(B) error = %v", err)
+	}
+
+	if err := svc.Reorder(context.Background(), &folder.ID, []string{bmB.ID, bmA.ID}); err != nil {
+		t.Fatalf("Reorder() error = %v", err)
+	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	orders := map[string]int{}
+	for _, bm := range doc.Bookmarks {
+		orders[bm.ID] = bm.Order
+	}
+	if orders[bmB.ID] != 0 || orders[bmA.ID] != 1 {
+		t.Fatalf("orders = %+v, want B=0, A=1", orders)
+	}
+}
+
+// TestService_Reorder_MembershipMismatch_ReturnsErrNotFoundNoWrite guards
+// T-JV1-01: an ordered_ids set that is missing a member, includes a
+// foreign id, or both, is rejected wholesale (no partial write) with
+// ErrNotFound.
+func TestService_Reorder_MembershipMismatch_ReturnsErrNotFoundNoWrite(t *testing.T) {
+	dir := t.TempDir()
+	noteA, noteB := uuid.New(), uuid.New()
+	registry := newTestRegistry(map[uuid.UUID]string{
+		noteA: "notes/a.md", noteB: "notes/b.md",
+	})
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	bmA, err := svc.Add(context.Background(), noteA, nil)
+	if err != nil {
+		t.Fatalf("Add(A) error = %v", err)
+	}
+	bmB, err := svc.Add(context.Background(), noteB, nil)
+	if err != nil {
+		t.Fatalf("Add(B) error = %v", err)
+	}
+	bc.calls = nil
+
+	cases := [][]string{
+		{bmA.ID},                      // missing B
+		{bmA.ID, bmB.ID, "forged-id"}, // extra foreign id
+		{"forged-id"},                 // wholly foreign
+	}
+	for _, orderedIDs := range cases {
+		err := svc.Reorder(context.Background(), nil, orderedIDs)
+		if !errors.Is(err, ErrNotFound) {
+			t.Fatalf("Reorder(%v) error = %v, want ErrNotFound", orderedIDs, err)
+		}
+	}
+	if len(bc.calls) != 0 {
+		t.Fatalf("Reorder() broadcast calls = %v, want none on rejection", bc.calls)
+	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	orders := map[string]int{}
+	for _, bm := range doc.Bookmarks {
+		orders[bm.ID] = bm.Order
+	}
+	if orders[bmA.ID] != 0 || orders[bmB.ID] != 1 {
+		t.Fatalf("orders = %+v, want unchanged A=0, B=1 (no partial write on rejection)", orders)
+	}
+}
+
+// TestService_Reorder_UnknownFolderID_ReturnsErrFolderNotFound guards
+// T-JV1-02.
+func TestService_Reorder_UnknownFolderID_ReturnsErrFolderNotFound(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(nil)
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	bogus := "does-not-exist"
+	err := svc.Reorder(context.Background(), &bogus, nil)
+	if !errors.Is(err, ErrFolderNotFound) {
+		t.Fatalf("Reorder() error = %v, want ErrFolderNotFound", err)
+	}
+}
