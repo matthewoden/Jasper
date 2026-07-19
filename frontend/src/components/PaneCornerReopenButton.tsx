@@ -9,12 +9,14 @@
  * Same PanelLeft glyph as the sidebar header's collapse icon so collapse and
  * reopen read as one affordance toggling state.
  *
- * Glyph is left-aligned (not centered) with a left inset matching
- * ActivityRibbon's own icon inset (~16px: 8px flex-center margin from the
- * 48px-wide ribbon centering a 32px button + 8px centering a 16px icon
- * inside that button) so the reopen icon reads as a continuation of the
- * ribbon's icon column rather than sitting with an oversized left margin
- * (Phase 27 follow-up item 2).
+ * Glyph is CENTERED in the 40px-wide cell (mirrors the mock's `leftToggle`
+ * cell — `Vault.dc.html` line ~795 — which centers its icon inside a
+ * full-height 40px-wide button, not left-aligned with an inset). Hover is a
+ * compact 32x32 rounded-square tint around the glyph, mirroring
+ * ActivityRibbon's own `RibbonButton` (32x32, borderRadius 6) rather than a
+ * full-height 40px rectangle — so the affordance reads as a continuation of
+ * the ribbon's own icon column instead of an oversized left-offset glyph
+ * (Phase 27 follow-up fix round, item 2).
  */
 import { useState } from "react";
 import { PanelLeft } from "lucide-react";
@@ -39,25 +41,35 @@ export function PaneCornerReopenButton(): React.JSX.Element | null {
         alignSelf: "stretch",
         flexShrink: 0,
         width: 40,
-        paddingLeft: 16,
-        paddingRight: 0,
-        paddingTop: 0,
-        paddingBottom: 0,
+        padding: 0,
         borderTop: "none",
         borderBottom: "none",
         borderLeft: "none",
         borderRight: "1px solid var(--color-border-inner)",
-        background: hovering
-          ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-          : "transparent",
+        background: "transparent",
         color: "var(--color-muted)",
         cursor: "pointer",
         display: "inline-flex",
         alignItems: "center",
-        justifyContent: "flex-start",
+        justifyContent: "center",
       }}
     >
-      <PanelLeft size={16} aria-hidden="true" />
+      <span
+        aria-hidden="true"
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 6,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: hovering
+            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+            : "transparent",
+        }}
+      >
+        <PanelLeft size={16} aria-hidden="true" />
+      </span>
     </button>
   );
 }
