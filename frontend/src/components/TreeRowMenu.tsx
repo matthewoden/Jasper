@@ -11,13 +11,16 @@
  *   folder     → New note · New folder · sep · Rename(F2) · Delete(⌫)
  *   empty-area → New note · New folder
  *   file       → Rename(F2) · Delete(⌫)  (files can't host children; click opens preview)
+ *   bookmark   → Remove (destructive) · Move to folder (submenu: (No folder) ·
+ *                existing folders · sep · New folder…) — NEVER rename, MCP-grant,
+ *                reveal, or delete-note (quick task 260719-jv1, item 5).
  */
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { FolderOpen, Sparkles } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 
-export type TreeRowMenuKind = "note" | "folder" | "empty-area" | "file";
+export type TreeRowMenuKind = "note" | "folder" | "empty-area" | "file" | "bookmark";
 
 export interface TreeRowMenuProps {
   rowKind: TreeRowMenuKind;
@@ -63,6 +66,19 @@ export interface TreeRowMenuProps {
    * Revoke is reachable. Omitted on note/file/empty-area rows.
    */
   inheritedGrant?: InheritedGrant | null;
+
+  /**
+   * Bookmark-row menu data (rowKind === "bookmark" only). folders lists
+   * every bookmark folder for the "Move to folder" submenu; the submenu
+   * always leads with "(No folder)" (top-level) and ends with
+   * "New folder…" below a separator — mirrors the pre-existing bespoke
+   * BookmarkRow menu verbatim (D-18 discretion), just hosted on the
+   * shared TreeRowMenu chrome now.
+   */
+  bookmarkFolders?: Array<{ id: string; name: string }>;
+  onRemoveBookmark?: () => void;
+  onMoveBookmarkToFolder?: (folderId: string | null) => void;
+  onNewBookmarkFolder?: () => void;
 }
 
 /**
@@ -175,6 +191,10 @@ function MenuItems({
   onGrant,
   onRevoke,
   inheritedGrant,
+  bookmarkFolders,
+  onRemoveBookmark,
+  onMoveBookmarkToFolder,
+  onNewBookmarkFolder,
   ItemComp,
   SepComp,
   SubComp,
@@ -196,6 +216,7 @@ function MenuItems({
   const Portal = PortalComp as any;
 
   const isFile = rowKind === "file";
+  const isBookmark = rowKind === "bookmark";
 
   const revealLabel = "Show in file manager";
   const revealAria =
@@ -205,12 +226,51 @@ function MenuItems({
         ? "Show folder in file manager"
         : "Show file in file manager";
   const revealItem =
-    rowKind !== "empty-area" && onReveal ? (
+    rowKind !== "empty-area" && rowKind !== "bookmark" && onReveal ? (
       <Item style={itemStyle} aria-label={revealAria} onSelect={() => onReveal()}>
         <FolderOpen size={16} aria-hidden="true" />
         <span>{revealLabel}</span>
       </Item>
     ) : null;
+
+  if (isBookmark) {
+    // Bookmark rows: Remove / Move to folder (submenu) ONLY — never rename,
+    // MCP-grant, reveal, or delete-note (locked item set, see file header).
+    const folders = bookmarkFolders ?? [];
+    return (
+      <>
+        <Item style={destructiveItemStyle} onSelect={() => onRemoveBookmark?.()}>
+          <span>Remove</span>
+        </Item>
+        <Sub>
+          <SubTrigger style={itemStyle}>
+            <span>Move to folder</span>
+          </SubTrigger>
+          <Portal>
+            <SubContent style={menuContainerStyle}>
+              <Item style={itemStyle} onSelect={() => onMoveBookmarkToFolder?.(null)}>
+                <span>(No folder)</span>
+              </Item>
+              {folders.length > 0 && <Sep style={separatorStyle} />}
+              {folders.map((f) => (
+                <Item
+                  key={f.id}
+                  style={itemStyle}
+                  onSelect={() => onMoveBookmarkToFolder?.(f.id)}
+                >
+                  <span>{f.name}</span>
+                </Item>
+              ))}
+              <Sep style={separatorStyle} />
+              <Item style={itemStyle} onSelect={() => onNewBookmarkFolder?.()}>
+                <span>New folder…</span>
+              </Item>
+            </SubContent>
+          </Portal>
+        </Sub>
+      </>
+    );
+  }
 
   return (
     <>

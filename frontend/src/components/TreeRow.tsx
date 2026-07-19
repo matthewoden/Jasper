@@ -49,6 +49,7 @@ import { RenameInput } from "./RenameInput";
 import {
   TreeRowContextMenu,
   TreeRowDropdownMenu,
+  type TreeRowMenuKind,
 } from "./TreeRowMenu";
 
 export type FolderNodeData = {
@@ -72,7 +73,44 @@ export type FileNodeData = {
   parentNoteId?: string;
 };
 
-export type TreeRowData = FolderNodeData | NoteNodeData | FileNodeData;
+/**
+ * A bookmarked note row (quick task 260719-jv1, item 5). id is the
+ * bookmark's own opaque id (NOT the note's id) — Remove/reorder act on
+ * bookmarkId; activation and title resolution act on noteId.
+ */
+export type BookmarkNodeData = {
+  kind: "bookmark";
+  bookmarkId: string;
+  noteId: string;
+  title: string;
+};
+
+/** A virtual bookmark-grouping folder — NOT a filesystem folder. */
+export type BookmarkFolderNodeData = {
+  kind: "bookmark-folder";
+  folderId: string;
+  name: string;
+};
+
+export type TreeRowData =
+  | FolderNodeData
+  | NoteNodeData
+  | FileNodeData
+  | BookmarkNodeData
+  | BookmarkFolderNodeData;
+
+/**
+ * Bookmark-row menu descriptor — injected so TreeRow can render the
+ * Remove / Move-to-folder / New-folder menu (TreeRowMenu's "bookmark"
+ * branch) without importing bookmarks-specific hooks itself. Only
+ * meaningful for `kind: "bookmark"` rows.
+ */
+export interface BookmarkMenuDescriptor {
+  onRemove: (noteId: string) => void;
+  onMoveToFolder: (bookmarkId: string, folderId: string | null) => void;
+  folders: Array<{ id: string; name: string }>;
+  onNewFolder: () => void;
+}
 
 export interface TreeRowProps {
   node: NodeApi<TreeRowData>;
@@ -90,6 +128,14 @@ export interface TreeRowProps {
    * unit tests that omit it stay valid; react-arborist always provides it at runtime.
    */
   dragHandle?: (el: HTMLDivElement | null) => void;
+  /**
+   * Bookmark-row activation seam (BOOK-02/D-16) — routes to
+   * usePaneStore.openInActivePane instead of onSelectNote/setActiveNote.
+   * Only consulted for `kind: "bookmark"` rows.
+   */
+  onActivate?: (noteId: string) => void;
+  /** Present iff this row (or its caller) is bookmark-capable. */
+  bookmarkMenu?: BookmarkMenuDescriptor;
 }
 
 const muted: CSSProperties = { color: "var(--color-muted)", flexShrink: 0 };
@@ -126,6 +172,8 @@ export function TreeRow({
   siblingNames = [],
   commitRename,
   dragHandle,
+  onActivate,
+  bookmarkMenu,
 }: TreeRowProps) {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const pendingRename = useTreeStore((s) => s.pendingRename);
@@ -145,7 +193,11 @@ export function TreeRow({
   const data = node.data;
   const isFolder = data.kind === "folder";
   const isFile = data.kind === "file";
-  const isActive = !isFolder && !isFile && data.kind === "note" && activeNoteId === data.id;
+  const isBookmark = data.kind === "bookmark";
+  const isBookmarkFolder = data.kind === "bookmark-folder";
+  const isActive =
+    (data.kind === "note" && activeNoteId === data.id) ||
+    (isBookmark && activeNoteId === (data as BookmarkNodeData).noteId);
   const isSelected = node.isSelected === true;
   const isDailyFolder = isFolder && (data as FolderNodeData).path === "daily";
   const isAttachmentsFolder = isFolder && (data as FolderNodeData).name === "attachments";
@@ -164,7 +216,13 @@ export function TreeRow({
     ? directLevelFor((data as FolderNodeData).path)
     : null;
 
-  const effectiveAiLevel: 1 | 2 | null = levelFor(data.path);
+  // MCP AI-grant concept only applies to real filesystem paths (folder/note/
+  // file rows) — bookmark and bookmark-folder rows are virtual and never
+  // carry a grant.
+  const effectiveAiLevel: 1 | 2 | null =
+    data.kind === "folder" || data.kind === "note" || data.kind === "file"
+      ? levelFor(data.path)
+      : null;
 
   const [kebabOpen, setKebabOpen] = useState(false);
 
@@ -185,6 +243,9 @@ export function TreeRow({
       }
     : undefined;
 
+  // Rename never applies to bookmark / bookmark-folder rows — pendingRename.kind
+  // is typed RenameKind ("note" | "folder" | "file"), so the equality check
+  // below already narrows data.kind away from the bookmark kinds entirely.
   const isRenamingThis =
     pendingRename != null &&
     pendingRename.kind === data.kind &&
@@ -201,9 +262,11 @@ export function TreeRow({
       try {
         if (data.kind === "note") {
           await muts.deleteNote(data.id);
-        } else {
+        } else if (data.kind === "folder" || data.kind === "file") {
           await muts.deleteFolder(data.path, true);
         }
+        // bookmark / bookmark-folder rows never enter the ephemeral
+        // (isNew) rename flow — nothing to clean up on cancel.
       } catch (err) {
         console.warn(
           "TreeRow: failed to delete ephemeral node on cancel; tree may show stale row until next refresh",
@@ -229,6 +292,21 @@ export function TreeRow({
 
     if (isFile) {
       useTreeStore.getState().setActiveFilePath(data.path);
+      return;
+    }
+
+    // Bookmark rows activate via the injected onActivate seam (BOOK-02/
+    // D-16 — usePaneStore.openInActivePane), never onSelectNote/
+    // setActiveNote. Bookmark-folder rows just toggle open/closed, same
+    // gesture as a real folder but without touching useTreeStore's
+    // selectedRow (that store is note-tree-specific).
+    if (isBookmarkFolder) {
+      node.toggle();
+      return;
+    }
+    if (isBookmark) {
+      useTreeStore.getState().setActiveFilePath(null);
+      onActivate?.((data as BookmarkNodeData).noteId);
       return;
     }
 
@@ -276,21 +354,32 @@ export function TreeRow({
       : undefined;
   const rowBackground = activeBackground ?? selectedBackground;
 
-  const dataTreeRowValue = isFolder
-    ? data.path
-    : isFile
+  const dataTreeRowValue =
+    data.kind === "folder" || data.kind === "file"
       ? data.path
-      : (data as NoteNodeData).id;
+      : data.kind === "note"
+        ? data.id
+        : data.kind === "bookmark"
+          ? data.bookmarkId
+          : data.folderId;
 
   const isPulseTarget =
     !isFile &&
+    !isBookmark &&
+    !isBookmarkFolder &&
     pulseTarget !== null &&
     pulseTarget.kind === data.kind &&
     pulseTarget.target === (data.kind === "folder" ? data.path : (data as NoteNodeData).id);
 
-  const parentPathForCreate = isFolder
-    ? data.path
-    : parentDirOf(data.path);
+  // "New note" / "New folder" only ever target real filesystem paths —
+  // bookmark rows never offer create actions (their kebab menu is Remove /
+  // Move-to-folder / New-folder-for-bookmarks, wired separately below).
+  const parentPathForCreate =
+    data.kind === "folder"
+      ? data.path
+      : data.kind === "note" || data.kind === "file"
+        ? parentDirOf(data.path)
+        : "";
 
   const renameInitial =
     data.kind === "folder"
@@ -299,14 +388,18 @@ export function TreeRow({
         ? data.title.endsWith(".md")
           ? data.title.slice(0, -3)
           : data.title
-        : data.name;
+        : data.kind === "bookmark"
+          ? data.title
+          : data.name; // file | bookmark-folder
 
   const displayLabel =
-    isFolder
+    data.kind === "folder" || data.kind === "file"
       ? data.name
-      : isFile
-        ? data.name
-        : (liveLabel ?? (data as NoteNodeData).title);
+      : data.kind === "note"
+        ? (liveLabel ?? data.title)
+        : data.kind === "bookmark"
+          ? data.title
+          : data.name; // bookmark-folder
 
   const labelOrInput = isRenamingThis ? (
     <RenameInput
@@ -341,6 +434,36 @@ export function TreeRow({
     </span>
   );
 
+  // "Show in file manager" only ever applies to a real filesystem path.
+  const revealPath =
+    data.kind === "folder" || data.kind === "note" || data.kind === "file"
+      ? data.path
+      : undefined;
+
+  // Menu rowKind mapping. bookmark-folder rows get NO menu at all (kebab or
+  // context) — mirrors the pre-existing bespoke FolderRow, which was a bare
+  // toggle button with zero affordances.
+  const menuRowKind: TreeRowMenuKind | null = isFile
+    ? "file"
+    : isFolder
+      ? "folder"
+      : data.kind === "note"
+        ? "note"
+        : isBookmark
+          ? "bookmark"
+          : null;
+
+  const bookmarkData = isBookmark ? (data as BookmarkNodeData) : null;
+  const bookmarkMenuHandlers = bookmarkData
+    ? {
+        bookmarkFolders: bookmarkMenu?.folders ?? [],
+        onRemoveBookmark: () => bookmarkMenu?.onRemove(bookmarkData.noteId),
+        onMoveBookmarkToFolder: (folderId: string | null) =>
+          bookmarkMenu?.onMoveToFolder(bookmarkData.bookmarkId, folderId),
+        onNewBookmarkFolder: () => bookmarkMenu?.onNewFolder(),
+      }
+    : {};
+
   const rowContent = (
     <div
       ref={dragHandle}
@@ -368,7 +491,7 @@ export function TreeRow({
       onDoubleClick={handleDoubleClick}
       onKeyDown={handleKeyDown}
       role="treeitem"
-      aria-expanded={isFolder ? node.isOpen : undefined}
+      aria-expanded={isFolder || isBookmarkFolder ? node.isOpen : undefined}
       aria-current={isActive ? "page" : undefined}
       tabIndex={0}
       title={isDailyFolder ? "Daily notes" : undefined}
@@ -386,8 +509,9 @@ export function TreeRow({
           }}
         />
       )}
-      {/* Chevron (folders only) or 16px spacer (notes — keeps labels aligned with folder labels). */}
-      {isFolder ? (
+      {/* Chevron (folders + bookmark-folders) or 16px spacer (notes/bookmarks —
+          keeps labels aligned with parent folder labels). */}
+      {isFolder || isBookmarkFolder ? (
         node.isOpen ? (
           <ChevronDown size={16} style={muted} aria-hidden="true" />
         ) : (
@@ -398,9 +522,10 @@ export function TreeRow({
       )}
       {/* 4px gap between chevron/spacer and icon/label */}
       <span aria-hidden="true" style={{ width: 4, flexShrink: 0 }} />
-      {/* Folder icon — folders only; notes render label only.
-          daily/ folder → CalendarDays (accent); attachments/ → Paperclip (muted). */}
-      {isFolder && (
+      {/* Folder icon — folders + bookmark-folders; notes/bookmarks render label only.
+          daily/ folder → CalendarDays (accent); attachments/ → Paperclip (muted);
+          bookmark-folders always get the generic Folder/FolderOpen glyph. */}
+      {(isFolder || isBookmarkFolder) && (
         <>
           {isDailyFolder ? (
             <CalendarDays
@@ -436,71 +561,81 @@ export function TreeRow({
       {/* Label OR inline-rename input. React text-content escapes by default — XSS gate. */}
       {labelOrInput}
       {/* data-ai-level drives the violet tint on granted folders via theme.css */}
-      {/* Kebab — wraps TreeRowDropdownMenu; hidden until row hover or focus-within. */}
-      <TreeRowDropdownMenu
-        rowKind={isFile ? "file" : isFolder ? "folder" : "note"}
-        noteId={data.kind === "note" ? data.id : undefined}
-        parentPath={parentPathForCreate}
-        onOpen={
-          data.kind === "note"
-            ? () => onSelectNote((data as NoteNodeData).id)
-            : undefined
-        }
-        onNewNote={() =>
-          onRequestNewNote ? onRequestNewNote(parentPathForCreate) : noop()
-        }
-        onNewFolder={
-          isFolder
-            ? () =>
-                onRequestNewFolder
-                  ? onRequestNewFolder(parentPathForCreate)
-                  : noop()
-            : undefined
-        }
-        onRename={() =>
-          onRequestRename ? onRequestRename(data) : noop()
-        }
-        onDelete={() =>
-          onRequestDelete ? onRequestDelete(data) : noop()
-        }
-        onReveal={() => void reveal(data.path)}
-        activeLevel={isFolder ? grantLevel : null}
-        onGrant={handleGrant}
-        onRevoke={handleRevoke}
-        inheritedGrant={inheritedGrant}
-        open={kebabOpen}
-        onOpenChange={setKebabOpen}
-      >
-        <button
-          type="button"
-          data-tree-row-kebab
-          aria-label="Row menu"
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          className="invisible group-hover:visible group-focus-within:visible"
-          style={{
-            background: "transparent",
-            border: "none",
-            padding: 4,
-            color: "var(--color-muted)",
-            cursor: "pointer",
-            width: 24,
-            height: 24,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
+      {/* Kebab — wraps TreeRowDropdownMenu; hidden until row hover or focus-within.
+          Omitted entirely for bookmark-folder rows (menuRowKind === null). */}
+      {menuRowKind !== null && (
+        <TreeRowDropdownMenu
+          rowKind={menuRowKind}
+          noteId={data.kind === "note" ? data.id : undefined}
+          parentPath={parentPathForCreate}
+          onOpen={
+            data.kind === "note"
+              ? () => onSelectNote((data as NoteNodeData).id)
+              : undefined
+          }
+          onNewNote={() =>
+            onRequestNewNote ? onRequestNewNote(parentPathForCreate) : noop()
+          }
+          onNewFolder={
+            isFolder
+              ? () =>
+                  onRequestNewFolder
+                    ? onRequestNewFolder(parentPathForCreate)
+                    : noop()
+              : undefined
+          }
+          onRename={() =>
+            onRequestRename ? onRequestRename(data) : noop()
+          }
+          onDelete={() =>
+            onRequestDelete ? onRequestDelete(data) : noop()
+          }
+          onReveal={revealPath !== undefined ? () => void reveal(revealPath) : undefined}
+          activeLevel={isFolder ? grantLevel : null}
+          onGrant={handleGrant}
+          onRevoke={handleRevoke}
+          inheritedGrant={inheritedGrant}
+          {...bookmarkMenuHandlers}
+          open={kebabOpen}
+          onOpenChange={setKebabOpen}
         >
-          <MoreHorizontal size={16} aria-hidden="true" />
-        </button>
-      </TreeRowDropdownMenu>
+          <button
+            type="button"
+            data-tree-row-kebab
+            aria-label="Row menu"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            className="invisible group-hover:visible group-focus-within:visible"
+            style={{
+              background: "transparent",
+              border: "none",
+              padding: 4,
+              color: "var(--color-muted)",
+              cursor: "pointer",
+              width: 24,
+              height: 24,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <MoreHorizontal size={16} aria-hidden="true" />
+          </button>
+        </TreeRowDropdownMenu>
+      )}
     </div>
   );
 
+  if (menuRowKind === null) {
+    // bookmark-folder rows: no context menu either (matches the
+    // pre-existing bare-toggle FolderRow — zero affordances).
+    return rowContent;
+  }
+
   return (
     <TreeRowContextMenu
-      rowKind={isFile ? "file" : isFolder ? "folder" : "note"}
+      rowKind={menuRowKind}
       noteId={data.kind === "note" ? data.id : undefined}
       parentPath={parentPathForCreate}
       onOpen={
@@ -525,11 +660,12 @@ export function TreeRow({
       onDelete={() =>
         onRequestDelete ? onRequestDelete(data) : noop()
       }
-      onReveal={() => void reveal(data.path)}
+      onReveal={revealPath !== undefined ? () => void reveal(revealPath) : undefined}
       activeLevel={isFolder ? grantLevel : null}
       onGrant={handleGrant}
       onRevoke={handleRevoke}
       inheritedGrant={inheritedGrant}
+      {...bookmarkMenuHandlers}
     >
       {rowContent}
     </TreeRowContextMenu>
