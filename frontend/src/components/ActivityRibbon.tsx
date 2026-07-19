@@ -1,22 +1,20 @@
 /**
- * ActivityRibbon — the 48px far-left activity bar: vault badge, Files/Search
- * toggles, daily-note button, and the command-palette button.
+ * ActivityRibbon — the 48px far-left activity bar: vault badge, a
+ * quick-switcher button, daily-note button, and the command-palette button.
  *
- * Files/Search toggles implement the symmetric open/switch-in-place/collapse
- * model (D-01/D-02/D-03): each button opens the sidebar to its panel; the
- * active one collapses on repeat click; clicking the other switches panels
- * in place. Accent active-state is derived from `sidebarPanel` + sidebar
- * visibility (D-07), replacing the old palette-mode-derived check — see
- * 19-04 (LSIDE-02).
+ * Phase 27 NAV-02 (D-09/D-10): the Files/Search toggles are gone — panel
+ * selection now lives entirely in the sidebar's SidebarTabRow. The single
+ * quick-switcher button here opens today's existing unmodified Cmd+O
+ * switcher (mode="notes"); its restyle + create/split modifiers are
+ * Phase 28 (QUICK-*), out of scope here.
  */
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import { Folder, Search, CalendarDays, Command } from "lucide-react";
+import { Search, CalendarDays, Command } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useDailyNote } from "../lib/useDailyNote";
 import { useVaultPicker } from "../lib/useVaultPicker";
 import { mod, shift } from "../lib/shortcutsRegistry";
-import { dispatchPhase7 } from "../lib/appShortcuts";
 
 const ribbonStyle: CSSProperties = {
   width: 48,
@@ -99,11 +97,6 @@ interface ActivityRibbonProps {
 export function ActivityRibbon({
   style = {},
 }: ActivityRibbonProps = {}): React.JSX.Element {
-  const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
-  const setNotesSidebarVisible = useTreeStore((s) => s.setNotesSidebarVisible);
-  const sidebarPanel = useTreeStore((s) => s.sidebarPanel);
-  const setSidebarPanel = useTreeStore((s) => s.setSidebarPanel);
-
   const { openToday, isLoading: todayLoading } = useDailyNote();
   const { current } = useVaultPicker();
 
@@ -113,9 +106,6 @@ export function ActivityRibbon({
     trimmedDisplayName.length > 0
       ? ([...trimmedDisplayName][0]?.toUpperCase() ?? "J")
       : "J";
-
-  const searchActive = notesSidebarVisible && sidebarPanel === "search";
-  const filesActive = notesSidebarVisible && sidebarPanel === "notes";
 
   return (
     <nav style={{ ...ribbonStyle, ...style }} aria-label="Activity ribbon">
@@ -141,42 +131,15 @@ export function ActivityRibbon({
       </div>
 
       <RibbonButton
-        ariaLabel="Files"
-        active={filesActive}
+        ariaLabel="Quick switcher"
+        title={`Quick switcher (${mod}O)`}
         onClick={() => {
-          if (filesActive) {
-            setNotesSidebarVisible(false);
-          } else {
-            setSidebarPanel("notes");
-            setNotesSidebarVisible(true);
-          }
-        }}
-        icon={<Folder size={16} aria-hidden="true" />}
-        style={{ marginTop: 8 }}
-      />
-
-      <RibbonButton
-        ariaLabel="Search notes"
-        title={`Search notes (${mod}${shift}F)`}
-        active={searchActive}
-        onClick={() => {
-          if (searchActive) {
-            setNotesSidebarVisible(false);
-          } else {
-            setSidebarPanel("search");
-            setNotesSidebarVisible(true);
-            // Switching from Files (or opening from closed) mounts
-            // SidebarSearchPanel for the first time in this same tick;
-            // its subscribePhase7 effect only registers after React commits
-            // and runs passive effects, which happens AFTER this handler
-            // returns. Dispatching synchronously here would fire into an
-            // empty subscriber set and silently drop the focus request.
-            // Defer one frame so the panel has mounted and subscribed.
-            requestAnimationFrame(() => dispatchPhase7("focusSearch"));
-          }
+          const s = useTreeStore.getState();
+          s.setPaletteMode("notes");
+          s.setPaletteOpen(true);
         }}
         icon={<Search size={16} aria-hidden="true" />}
-        style={{ marginTop: 4 }}
+        style={{ marginTop: 8 }}
       />
 
       <RibbonButton
