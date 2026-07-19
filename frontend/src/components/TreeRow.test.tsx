@@ -323,7 +323,7 @@ describe("<TreeRow />", () => {
     ).toBe("projects/jasper");
   });
 
-  it("TestRow_IndentScalesWithLevel — level=2 → paddingLeft=40 (base=8 + 16*level, Phase 27 follow-up item 3)", () => {
+  it("TestRow_IndentScalesWithLevel — level=2 → paddingLeft=35 (base=3 + 16*level, Phase 27 follow-up fix round item 3)", () => {
     const node = makeFolderNode({ level: 2 });
     const { container } = render(
       <TreeRow
@@ -334,10 +334,10 @@ describe("<TreeRow />", () => {
       />,
     );
     const row = container.querySelector("[data-tree-row]") as HTMLElement;
-    expect(row.style.paddingLeft).toBe("40px");
+    expect(row.style.paddingLeft).toBe("35px");
   });
 
-  it("TestRow_IndentBaseOffset — level=0 → paddingLeft=8 (reduced base moves icon column closer to ribbon inset)", () => {
+  it("TestRow_IndentBaseOffset — level=0 → paddingLeft=3 (base derived from SidebarTabRow's 23px icon column minus the row's 20px chevron+gap offset)", () => {
     const node = makeFolderNode({ level: 0 });
     const { container } = render(
       <TreeRow
@@ -348,7 +348,7 @@ describe("<TreeRow />", () => {
       />,
     );
     const row = container.querySelector("[data-tree-row]") as HTMLElement;
-    expect(row.style.paddingLeft).toBe("8px");
+    expect(row.style.paddingLeft).toBe("3px");
   });
 
   it("TestRow_NoteAndFolderShareBaseIndent — note row's base offset matches folder's (label alignment preserved)", () => {
@@ -373,7 +373,7 @@ describe("<TreeRow />", () => {
     const folderRow = fc.querySelector("[data-tree-row]") as HTMLElement;
     const noteRow = nc.querySelector("[data-tree-row]") as HTMLElement;
     expect(folderRow.style.paddingLeft).toBe(noteRow.style.paddingLeft);
-    expect(folderRow.style.paddingLeft).toBe("24px");
+    expect(folderRow.style.paddingLeft).toBe("19px");
   });
 
   it("TestRow_DoesNotUseDangerouslySetInnerHTML — XSS hardening per T-03-04-05/T-03-06-01", () => {

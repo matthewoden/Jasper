@@ -161,14 +161,16 @@ describe("<FindReplaceBar />", () => {
 
   it("clicking the Previous match chevron fires onFindPrev", () => {
     const onFindPrev = vi.fn();
-    renderBar({ onFindPrev });
+    // Non-empty query — the chevrons are disabled (item 6 fix round) when
+    // the query is blank, which would otherwise suppress the click.
+    renderBar({ query: "hello", onFindPrev });
     fireEvent.click(screen.getByLabelText("Previous match"));
     expect(onFindPrev).toHaveBeenCalledTimes(1);
   });
 
   it("clicking the Next match chevron fires onFindNext", () => {
     const onFindNext = vi.fn();
-    renderBar({ onFindNext });
+    renderBar({ query: "hello", onFindNext });
     fireEvent.click(screen.getByLabelText("Next match"));
     expect(onFindNext).toHaveBeenCalledTimes(1);
   });
@@ -177,5 +179,40 @@ describe("<FindReplaceBar />", () => {
     renderBar({ mode: "replace" });
     expect(screen.getByLabelText("Previous match")).toBeInTheDocument();
     expect(screen.getByLabelText("Next match")).toBeInTheDocument();
+  });
+
+  // --- Phase 27 follow-up fix round, item 6: chevrons no-op / read as
+  // inactive when the query is empty ---
+
+  it("Previous match / Next match chevrons are disabled when the query is empty", () => {
+    renderBar({ query: "" });
+    expect(screen.getByLabelText("Previous match")).toBeDisabled();
+    expect(screen.getByLabelText("Next match")).toBeDisabled();
+  });
+
+  it("Previous match / Next match chevrons are disabled when the query is whitespace-only", () => {
+    renderBar({ query: "   " });
+    expect(screen.getByLabelText("Previous match")).toBeDisabled();
+    expect(screen.getByLabelText("Next match")).toBeDisabled();
+  });
+
+  it("Previous match / Next match chevrons are enabled once a query is typed", () => {
+    renderBar({ query: "hello" });
+    expect(screen.getByLabelText("Previous match")).not.toBeDisabled();
+    expect(screen.getByLabelText("Next match")).not.toBeDisabled();
+  });
+
+  it("clicking a disabled Next match chevron does not fire onFindNext", () => {
+    const onFindNext = vi.fn();
+    renderBar({ query: "", onFindNext });
+    fireEvent.click(screen.getByLabelText("Next match"));
+    expect(onFindNext).not.toHaveBeenCalled();
+  });
+
+  it("clicking a disabled Previous match chevron does not fire onFindPrev", () => {
+    const onFindPrev = vi.fn();
+    renderBar({ query: "", onFindPrev });
+    fireEvent.click(screen.getByLabelText("Previous match"));
+    expect(onFindPrev).not.toHaveBeenCalled();
   });
 });

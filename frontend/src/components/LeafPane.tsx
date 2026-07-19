@@ -264,18 +264,27 @@ export function LeafPane({
     [findBar, syncQuery],
   );
 
+  // Item 6 bug fix (Phase 27 follow-up fix round): @codemirror/search's
+  // findNext/findPrevious open CM6's own built-in search panel when the
+  // query is invalid/empty — Jasper deliberately replaces that panel with
+  // this custom FindReplaceBar, so it must never appear. No-op on a blank
+  // (or whitespace-only) query BEFORE touching the CM6 handle. This also
+  // covers Enter/Shift+Enter (FindReplaceBar's FindInput routes both through
+  // these same handlers).
   const handleFindNext = useCallback(() => {
+    if (findBar.query.trim() === "") return;
     const handle = activeHandle();
     if (!handle) return;
     handle.findNext();
     setMatchCount(handle.matchInfo());
-  }, [activeHandle]);
+  }, [activeHandle, findBar.query]);
   const handleFindPrev = useCallback(() => {
+    if (findBar.query.trim() === "") return;
     const handle = activeHandle();
     if (!handle) return;
     handle.findPrevious();
     setMatchCount(handle.matchInfo());
-  }, [activeHandle]);
+  }, [activeHandle, findBar.query]);
   const handleReplaceNext = useCallback(() => {
     const handle = activeHandle();
     if (!handle) return;
