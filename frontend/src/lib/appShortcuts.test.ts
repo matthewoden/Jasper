@@ -7,6 +7,7 @@ import {
   handleAppFocusNextPane,
   handleAppFocusPrevPane,
   handleAppPanelShortcuts,
+  handleAppSidebarToggle,
   handleAppSplitDown,
   handleAppSplitRight,
   subscribePhase7,
@@ -163,6 +164,50 @@ describe("handleAppCmdShiftF (Phase 19 D-05 re-point)", () => {
     } finally {
       unsubscribe();
     }
+  });
+});
+
+describe("handleAppSidebarToggle (Phase 27 NAV-03, D-13)", () => {
+  beforeEach(() => {
+    useTreeStore.setState({ notesSidebarVisible: true });
+  });
+
+  it("Cmd+Shift+E flips notesSidebarVisible false and preventDefaults/stopPropagates", () => {
+    const e = new KeyboardEvent("keydown", { key: "e", metaKey: true, shiftKey: true });
+    const preventDefault = vi.spyOn(e, "preventDefault");
+    const stopPropagation = vi.spyOn(e, "stopPropagation");
+    handleAppSidebarToggle(e);
+    expect(useTreeStore.getState().notesSidebarVisible).toBe(false);
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(stopPropagation).toHaveBeenCalledOnce();
+  });
+
+  it("a second Cmd+Shift+E flips notesSidebarVisible back on", () => {
+    handleAppSidebarToggle(
+      new KeyboardEvent("keydown", { key: "e", metaKey: true, shiftKey: true }),
+    );
+    expect(useTreeStore.getState().notesSidebarVisible).toBe(false);
+    handleAppSidebarToggle(
+      new KeyboardEvent("keydown", { key: "E", metaKey: true, shiftKey: true }),
+    );
+    expect(useTreeStore.getState().notesSidebarVisible).toBe(true);
+  });
+
+  it("Ctrl+Shift+E (non-Mac) also toggles", () => {
+    handleAppSidebarToggle(
+      new KeyboardEvent("keydown", { key: "e", ctrlKey: true, shiftKey: true }),
+    );
+    expect(useTreeStore.getState().notesSidebarVisible).toBe(false);
+  });
+
+  it("no-ops without the Shift modifier", () => {
+    handleAppSidebarToggle(new KeyboardEvent("keydown", { key: "e", metaKey: true }));
+    expect(useTreeStore.getState().notesSidebarVisible).toBe(true);
+  });
+
+  it("no-ops without Cmd/Ctrl", () => {
+    handleAppSidebarToggle(new KeyboardEvent("keydown", { key: "e", shiftKey: true }));
+    expect(useTreeStore.getState().notesSidebarVisible).toBe(true);
   });
 });
 

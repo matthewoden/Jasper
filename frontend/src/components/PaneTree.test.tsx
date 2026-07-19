@@ -17,6 +17,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import { PaneTree } from "./PaneTree";
 import { usePaneStore } from "../lib/usePaneStore";
+import { useTreeStore } from "../lib/useTreeStore";
 import type { LeafNode, PaneNode } from "../lib/paneTree";
 import type { Tab } from "../lib/useTabStore";
 
@@ -63,6 +64,21 @@ beforeEach(() => {
   // jsdom does not implement setPointerCapture / releasePointerCapture (TabStrip drag).
   Element.prototype.setPointerCapture = vi.fn();
   Element.prototype.releasePointerCapture = vi.fn();
+  useTreeStore.setState({ notesSidebarVisible: true });
+});
+
+describe("<PaneTree /> pane-corner reopen button (Phase 27 D-12)", () => {
+  it("with a 2-leaf split + collapsed sidebar, exactly one 'Show sidebar' button renders (top-left leaf only)", () => {
+    useTreeStore.setState({ notesSidebarVisible: false });
+    renderTree();
+    expect(screen.getAllByRole("button", { name: "Show sidebar" })).toHaveLength(1);
+  });
+
+  it("renders zero reopen buttons when notesSidebarVisible is true", () => {
+    useTreeStore.setState({ notesSidebarVisible: true });
+    renderTree();
+    expect(screen.queryAllByRole("button", { name: "Show sidebar" })).toHaveLength(0);
+  });
 });
 
 describe("<PaneTree /> two-leaf render", () => {

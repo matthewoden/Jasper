@@ -15,8 +15,9 @@
 import { useRef, useState } from "react";
 
 import { usePaneStore } from "../lib/usePaneStore";
-import { type PaneNode, type SplitNode } from "../lib/paneTree";
+import { _leaves, type PaneNode, type SplitNode } from "../lib/paneTree";
 import { LeafPane } from "./LeafPane";
+import { PaneCornerReopenButton } from "./PaneCornerReopenButton";
 
 export interface PaneTreeProps {
   reindexing: boolean;
@@ -182,11 +183,14 @@ function SplitRenderer({
   path,
   activePaneId,
   props,
+  topLeftLeafId,
 }: {
   node: SplitNode;
   path: ("a" | "b")[];
   activePaneId: string;
   props: NodeRenderProps;
+  /** The pre-order-first leaf id (D-12) — threaded down so only that leaf hosts PaneCornerReopenButton. */
+  topLeftLeafId: string;
 }) {
   const isRow = node.dir === "row";
   const containerRef = useRef<HTMLDivElement>(null);
@@ -221,7 +225,7 @@ function SplitRenderer({
           overflow: "hidden",
         }}
       >
-        {renderNode(node.a, activePaneId, props, [...path, "a"])}
+        {renderNode(node.a, activePaneId, props, topLeftLeafId, [...path, "a"])}
       </div>
       <PaneDivider isRow={isRow} path={path} ratio={node.ratio} containerRef={containerRef} />
       <div
@@ -233,7 +237,7 @@ function SplitRenderer({
           overflow: "hidden",
         }}
       >
-        {renderNode(node.b, activePaneId, props, [...path, "b"])}
+        {renderNode(node.b, activePaneId, props, topLeftLeafId, [...path, "b"])}
       </div>
     </div>
   );
@@ -243,26 +247,39 @@ function renderNode(
   node: PaneNode,
   activePaneId: string,
   props: NodeRenderProps,
+  topLeftLeafId: string,
   path: ("a" | "b")[] = [],
 ): React.JSX.Element {
   if (node.t === "leaf") {
     return (
-      <LeafPane
+      // Wrapper carries `position:relative` so PaneCornerReopenButton's
+      // `top:8px; left:8px` (D-12) anchors to THIS leaf's box, not the
+      // whole PaneTree. LeafPane already renders its own inner
+      // `position:relative` root, but that div is owned by LeafPane
+      // (files_modified for this plan does not touch LeafPane.tsx) — the
+      // corner button lives at the PaneTree level instead, matching how
+      // `topLeftLeafId` is computed/threaded here.
+      <div
         key={node.id}
-        leaf={node}
-        isActive={activePaneId === node.id}
-        reindexing={props.reindexing}
-        deletedTabIds={props.deletedTabIds}
-        titleForTab={props.titleForTab}
-        onRequestClose={props.onRequestClose}
-        onCloseOthers={props.onCloseOthers}
-        onCloseToRight={props.onCloseToRight}
-        onOpenRight={props.onOpenRight}
-        onNewTab={props.onNewTab}
-        autosaveMs={props.autosaveMs}
-        hideTabStrip={props.hideTabStrip}
-        style={{ flex: 1, minHeight: 0, minWidth: 0 }}
-      />
+        style={{ position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 }}
+      >
+        <LeafPane
+          leaf={node}
+          isActive={activePaneId === node.id}
+          reindexing={props.reindexing}
+          deletedTabIds={props.deletedTabIds}
+          titleForTab={props.titleForTab}
+          onRequestClose={props.onRequestClose}
+          onCloseOthers={props.onCloseOthers}
+          onCloseToRight={props.onCloseToRight}
+          onOpenRight={props.onOpenRight}
+          onNewTab={props.onNewTab}
+          autosaveMs={props.autosaveMs}
+          hideTabStrip={props.hideTabStrip}
+          style={{ flex: 1, minHeight: 0, minWidth: 0 }}
+        />
+        {node.id === topLeftLeafId && <PaneCornerReopenButton />}
+      </div>
     );
   }
 
@@ -272,6 +289,7 @@ function renderNode(
       path={path}
       activePaneId={activePaneId}
       props={props}
+      topLeftLeafId={topLeftLeafId}
     />
   );
 }
@@ -279,6 +297,9 @@ function renderNode(
 export function PaneTree({ style, ...rest }: PaneTreeProps) {
   const tree = usePaneStore((s) => s.tree);
   const activePaneId = usePaneStore((s) => s.activePaneId);
+  // D-12: the pre-order-first leaf is "top-left" — reuse usePaneStore's own
+  // leaf ordering (_leaves) rather than inventing a geometry calc (Pitfall 3).
+  const topLeftLeafId = _leaves(tree)[0]?.id ?? "";
 
   return (
     <div
@@ -293,7 +314,7 @@ export function PaneTree({ style, ...rest }: PaneTreeProps) {
         ...style,
       }}
     >
-      {renderNode(tree, activePaneId, rest)}
+      {renderNode(tree, activePaneId, rest, topLeftLeafId)}
     </div>
   );
 }

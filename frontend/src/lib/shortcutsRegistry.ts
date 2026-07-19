@@ -225,6 +225,14 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     inPalette: true,
     inCheatSheet: true,
   },
+  {
+    id: "sidebar.toggle",
+    label: "Toggle left sidebar",
+    group: "Sidebar",
+    shortcut: `${mod}${shift}E`,
+    inPalette: true,
+    inCheatSheet: true,
+  },
 ];
 
 export const COMMAND_PALETTE_ENTRIES = SHORTCUTS_REGISTRY.filter((s) => s.inPalette);

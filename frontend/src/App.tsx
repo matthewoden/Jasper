@@ -61,6 +61,7 @@ import {
   handleAppFocusNextPane,
   handleAppFocusPrevPane,
   handleAppPanelShortcuts,
+  handleAppSidebarToggle,
   handleAppSplitDown,
   handleAppSplitRight,
   subscribePhase7,
@@ -322,6 +323,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     window.addEventListener("keydown", handleAppSplitDown, true);
     window.addEventListener("keydown", handleAppFocusNextPane, true);
     window.addEventListener("keydown", handleAppFocusPrevPane, true);
+    window.addEventListener("keydown", handleAppSidebarToggle, true);
     return () => {
       window.removeEventListener("keydown", handleAppCmdP, true);
       window.removeEventListener("keydown", handleAppCmdO, true);
@@ -337,6 +339,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       window.removeEventListener("keydown", handleAppSplitDown, true);
       window.removeEventListener("keydown", handleAppFocusNextPane, true);
       window.removeEventListener("keydown", handleAppFocusPrevPane, true);
+      window.removeEventListener("keydown", handleAppSidebarToggle, true);
     };
   }, []);
 
@@ -662,6 +665,15 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       onFocusPrevPane: () => {
         setPaletteOpen(false);
         usePaneStore.getState().focusCyclePane(-1);
+      },
+
+      // Palette invocation should NOT depend on the keyboard handler (Task 2,
+      // D-13) — both this and handleAppSidebarToggle call the same store
+      // action independently.
+      onToggleSidebar: () => {
+        setPaletteOpen(false);
+        const s = useTreeStore.getState();
+        s.setNotesSidebarVisible(!s.notesSidebarVisible);
       },
     }),
     [
