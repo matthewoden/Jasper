@@ -17,10 +17,21 @@
  *
  * Folder collapse state is view-only client state (a local Set of collapsed
  * folder ids) — not persisted, not synced to the server.
+ *
+ * Per-row "…" menu (Radix DropdownMenu, self-contained per D-17 — reuses
+ * TreeRowMenu's menuContainerStyle/itemStyle/destructiveItemStyle chrome, not
+ * the whole component): "Remove" (destructive, calls toggleBookmark to
+ * un-bookmark — no confirm dialog, instantly reversible per UI-SPEC) and
+ * "Move to folder" (a Sub listing existing folders + "(No folder)" +
+ * "New folder…"). Both the panel-level "New bookmark folder" trigger and the
+ * per-row menu's "New folder…" item reveal the SAME inline
+ * NewBookmarkFolderInput at the top of the panel (single input surface,
+ * D-18 discretion — see SUMMARY).
  */
 import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderPlus, MoreHorizontal } from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
 import { useBookmarks } from "../lib/useBookmarks";
 import { useFileTree } from "../lib/useFileTree";
@@ -28,6 +39,7 @@ import { usePaneStore } from "../lib/usePaneStore";
 import type { TreeNode } from "../lib/treeApi";
 import type { Bookmark, BookmarkFolder } from "../lib/useTreeStore";
 import { BookmarksEmptyState } from "./BookmarksEmptyState";
+import { NewBookmarkFolderInput } from "./NewBookmarkFolderInput";
 
 export interface BookmarksPanelProps {
   onSelectNote?: (id: string) => void;
@@ -44,6 +56,38 @@ function findNoteTitle(nodes: ReadonlyArray<TreeNode>, id: string): string | nul
   }
   return null;
 }
+
+const menuContainerStyle: CSSProperties = {
+  background: "var(--color-surface)",
+  border: "1px solid var(--color-border)",
+  borderRadius: 6,
+  paddingTop: 4,
+  paddingBottom: 4,
+  minWidth: 200,
+  maxWidth: 320,
+  boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+  zIndex: 50,
+};
+const itemStyle: CSSProperties = {
+  height: 32,
+  display: "flex",
+  alignItems: "center",
+  padding: "0 16px",
+  gap: 8,
+  fontSize: 14,
+  fontWeight: 400,
+  color: "var(--color-fg)",
+  cursor: "pointer",
+  outline: "none",
+  userSelect: "none",
+};
+const destructiveItemStyle: CSSProperties = { ...itemStyle, color: "var(--color-destructive)" };
+const separatorStyle: CSSProperties = {
+  height: 1,
+  background: "var(--color-border)",
+  margin: "4px 0",
+  border: "none",
+};
 
 const rowStyle: CSSProperties = {
   display: "flex",
@@ -88,10 +132,24 @@ interface BookmarkRowProps {
   bookmark: Bookmark;
   title: string;
   nested: boolean;
+  folders: BookmarkFolder[];
   onOpen: () => void;
+  onRemove: () => void;
+  onMoveToFolder: (folderId: string | null) => void;
+  onNewFolderRequested: () => void;
 }
 
-function BookmarkRow({ bookmark, title, nested, onOpen }: BookmarkRowProps) {
+function BookmarkRow({
+  bookmark,
+  title,
+  nested,
+  folders,
+  onOpen,
+  onRemove,
+  onMoveToFolder,
+  onNewFolderRequested,
+}: BookmarkRowProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div
       style={{ display: "flex", alignItems: "center", minWidth: 0 }}
@@ -100,6 +158,74 @@ function BookmarkRow({ bookmark, title, nested, onOpen }: BookmarkRowProps) {
       <button type="button" style={nested ? nestedRowStyle : rowStyle} onClick={onOpen}>
         <span style={rowTitleStyle}>{title}</span>
       </button>
+      <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Bookmark options"
+            style={{
+              flexShrink: 0,
+              padding: 4,
+              marginRight: 4,
+              background: "transparent",
+              border: "none",
+              color: "var(--color-muted)",
+              cursor: "pointer",
+            }}
+          >
+            <MoreHorizontal size={14} aria-hidden="true" />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            style={menuContainerStyle}
+            side="right"
+            align="start"
+            sideOffset={4}
+          >
+            <DropdownMenu.Item
+              style={destructiveItemStyle}
+              onSelect={() => onRemove()}
+            >
+              <span>Remove</span>
+            </DropdownMenu.Item>
+            <DropdownMenu.Sub>
+              <DropdownMenu.SubTrigger style={itemStyle}>
+                <span>Move to folder</span>
+              </DropdownMenu.SubTrigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.SubContent style={menuContainerStyle}>
+                  <DropdownMenu.Item
+                    style={itemStyle}
+                    onSelect={() => onMoveToFolder(null)}
+                  >
+                    <span>(No folder)</span>
+                  </DropdownMenu.Item>
+                  {folders.length > 0 && (
+                    <DropdownMenu.Separator style={separatorStyle} />
+                  )}
+                  {folders.map((f) => (
+                    <DropdownMenu.Item
+                      key={f.id}
+                      style={itemStyle}
+                      onSelect={() => onMoveToFolder(f.id)}
+                    >
+                      <span>{f.name}</span>
+                    </DropdownMenu.Item>
+                  ))}
+                  <DropdownMenu.Separator style={separatorStyle} />
+                  <DropdownMenu.Item
+                    style={itemStyle}
+                    onSelect={() => onNewFolderRequested()}
+                  >
+                    <span>New folder…</span>
+                  </DropdownMenu.Item>
+                </DropdownMenu.SubContent>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Sub>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     </div>
   );
 }
@@ -143,9 +269,11 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
   // directly (BOOK-02/D-16), so this callback is currently unused.
   void onSelectNote;
 
-  const { bookmarks, bookmarkFolders } = useBookmarks();
+  const { bookmarks, bookmarkFolders, toggleBookmark, moveToFolder, createFolder } =
+    useBookmarks();
   const { tree } = useFileTree();
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  const [creatingFolder, setCreatingFolder] = useState(false);
 
   const titleFor = useCallback(
     (noteId: string): string =>
@@ -174,55 +302,117 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     usePaneStore.getState().openInActivePane(noteId);
   }, []);
 
+  const handleRemove = useCallback(
+    (noteId: string) => {
+      void toggleBookmark(noteId);
+    },
+    [toggleBookmark],
+  );
+
+  const handleMoveToFolder = useCallback(
+    (bookmarkId: string, folderId: string | null) => {
+      void moveToFolder(bookmarkId, folderId);
+    },
+    [moveToFolder],
+  );
+
+  const handleCreateFolder = useCallback(
+    async (name: string) => {
+      await createFolder(name);
+      setCreatingFolder(false);
+    },
+    [createFolder],
+  );
+
+  const renderRow = (bookmark: Bookmark, nested: boolean) => (
+    <BookmarkRow
+      key={bookmark.id}
+      bookmark={bookmark}
+      title={titleFor(bookmark.note_id)}
+      nested={nested}
+      folders={bookmarkFolders}
+      onOpen={() => handleOpen(bookmark.note_id)}
+      onRemove={() => handleRemove(bookmark.note_id)}
+      onMoveToFolder={(folderId) => handleMoveToFolder(bookmark.id, folderId)}
+      onNewFolderRequested={() => setCreatingFolder(true)}
+    />
+  );
+
+  const header = (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        padding: "8px 8px 4px",
+        flexShrink: 0,
+      }}
+    >
+      <button
+        type="button"
+        title="New bookmark folder"
+        aria-label="New bookmark folder"
+        onClick={() => setCreatingFolder(true)}
+        style={{
+          width: 24,
+          height: 24,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "transparent",
+          border: "none",
+          borderRadius: 4,
+          color: "var(--color-muted)",
+          cursor: "pointer",
+        }}
+      >
+        <FolderPlus size={14} aria-hidden="true" />
+      </button>
+    </div>
+  );
+
+  const newFolderInput = creatingFolder && (
+    <NewBookmarkFolderInput
+      onCommit={handleCreateFolder}
+      onCancel={() => setCreatingFolder(false)}
+    />
+  );
+
   if (bookmarks.length === 0) {
-    return <BookmarksEmptyState />;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        {header}
+        {newFolderInput}
+        <BookmarksEmptyState />
+      </div>
+    );
   }
 
   const topLevelBookmarks = visibleBookmarks.filter((b) => b.folder_id === null);
 
   return (
     <div
-      style={{
-        flex: 1,
-        minHeight: 0,
-        overflowY: "auto",
-        display: "flex",
-        flexDirection: "column",
-      }}
+      style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
       data-testid="bookmarks-panel"
     >
-      {bookmarkFolders.map((folder) => {
-        const expanded = !collapsedFolders.has(folder.id);
-        const children = visibleBookmarks.filter((b) => b.folder_id === folder.id);
-        return (
-          <div key={folder.id}>
-            <FolderRow
-              folder={folder}
-              expanded={expanded}
-              onToggle={() => toggleFolder(folder.id)}
-            />
-            {expanded &&
-              children.map((b) => (
-                <BookmarkRow
-                  key={b.id}
-                  bookmark={b}
-                  title={titleFor(b.note_id)}
-                  nested
-                  onOpen={() => handleOpen(b.note_id)}
-                />
-              ))}
-          </div>
-        );
-      })}
-      {topLevelBookmarks.map((b) => (
-        <BookmarkRow
-          key={b.id}
-          bookmark={b}
-          title={titleFor(b.note_id)}
-          nested={false}
-          onOpen={() => handleOpen(b.note_id)}
-        />
-      ))}
+      {header}
+      {newFolderInput}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        {bookmarkFolders.map((folder) => {
+          const expanded = !collapsedFolders.has(folder.id);
+          const children = visibleBookmarks.filter((b) => b.folder_id === folder.id);
+          return (
+            <div key={folder.id}>
+              <FolderRow
+                folder={folder}
+                expanded={expanded}
+                onToggle={() => toggleFolder(folder.id)}
+              />
+              {expanded && children.map((b) => renderRow(b, true))}
+            </div>
+          );
+        })}
+        {topLevelBookmarks.map((b) => renderRow(b, false))}
+      </div>
     </div>
   );
 }

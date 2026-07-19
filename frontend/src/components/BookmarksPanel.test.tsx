@@ -6,7 +6,7 @@
  * "New bookmark folder" input, Sidebar wiring assertions live in Sidebar.test.tsx.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 
 import { BookmarksPanel } from "./BookmarksPanel";
@@ -138,5 +138,79 @@ describe("BookmarksPanel", () => {
     expect(screen.getByText("Alpha Note")).toBeDefined();
     expect(screen.getByText("Beta Note")).toBeDefined();
     expect(screen.getByText("Work")).toBeDefined();
+  });
+
+  // --- Task 2: "…" menu (Remove / Move to folder), inline new-folder input ---
+
+  function openRowMenu(bookmarkId: string) {
+    const trigger = screen.getByTestId(`bookmark-row-${bookmarkId}`).querySelector(
+      "button[aria-label='Bookmark options']",
+    ) as HTMLElement;
+    fireEvent.pointerDown(trigger, { button: 0 });
+    fireEvent.click(trigger);
+    return trigger;
+  }
+
+  it('"…" menu renders Remove + Move to folder; Remove calls the bookmark-remove path', async () => {
+    getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
+    await renderPanel(<BookmarksPanel />);
+
+    openRowMenu("bm-1");
+    const removeItem = await screen.findByText("Remove");
+    expect(screen.getByText("Move to folder")).toBeDefined();
+
+    deleteBookmarkMock.mockResolvedValueOnce(undefined);
+    fireEvent.click(removeItem);
+
+    await waitFor(() => {
+      expect(deleteBookmarkMock).toHaveBeenCalledWith("bm-1");
+    });
+  });
+
+  it('"Move to folder" submenu calls moveToFolder', async () => {
+    getBookmarksMock.mockResolvedValue({ folders: [folder1], bookmarks: [bookmarkA] });
+    await renderPanel(<BookmarksPanel />);
+
+    openRowMenu("bm-1");
+    const subTrigger = await screen.findByText("Move to folder");
+    fireEvent.pointerDown(subTrigger, { button: 0 });
+    fireEvent.click(subTrigger);
+
+    const folderItem = await screen.findByRole("menuitem", { name: "Work" });
+    postBookmarkMoveMock.mockResolvedValueOnce({ id: "bm-1", folder_id: "f-1" });
+    fireEvent.click(folderItem);
+
+    await waitFor(() => {
+      expect(postBookmarkMoveMock).toHaveBeenCalledWith("bm-1", "f-1");
+    });
+  });
+
+  it('typing a name + Enter in the inline "New bookmark folder" input calls createFolder(name)', async () => {
+    getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
+    await renderPanel(<BookmarksPanel />);
+
+    fireEvent.click(screen.getByLabelText("New bookmark folder"));
+    const input = screen.getByLabelText("New bookmark folder name");
+    fireEvent.change(input, { target: { value: "Work" } });
+
+    postBookmarkFolderMock.mockResolvedValueOnce({ id: "f-1", name: "Work" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(postBookmarkFolderMock).toHaveBeenCalledWith("Work");
+    });
+  });
+
+  it("Esc cancels the inline new-folder input without creating", async () => {
+    getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
+    await renderPanel(<BookmarksPanel />);
+
+    fireEvent.click(screen.getByLabelText("New bookmark folder"));
+    const input = screen.getByLabelText("New bookmark folder name");
+    fireEvent.change(input, { target: { value: "Work" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(screen.queryByTestId("new-bookmark-folder-input")).toBeNull();
+    expect(postBookmarkFolderMock).not.toHaveBeenCalled();
   });
 });

@@ -654,3 +654,27 @@ describe("<Sidebar /> — Plan 07-40 reversal of Sidebar Search UI (UAT-6)", () 
     expect(useTreeStore.getState().searchActive).toBe(false);
   });
 });
+
+describe("<Sidebar /> — Phase 27 Plan 06: BookmarksPanel wiring", () => {
+  beforeEach(() => {
+    mockedUseFileTree.mockReturnValue({
+      tree: { root: [] },
+      loading: false,
+      error: null,
+      refresh: () => Promise.resolve(),
+      mutate: noopMutate,
+    });
+    useTreeStore.setState({
+      notesSidebarVisible: true,
+      sidebarPanel: "bookmarks",
+      bookmarks: [],
+      bookmarkFolders: [],
+    });
+  });
+
+  it("renders <BookmarksPanel/> (bookmarks empty state), not the Plan 03 placeholder", () => {
+    renderWithProvider(<Sidebar />);
+    expect(screen.queryByTestId("bookmarks-panel-placeholder")).toBeNull();
+    expect(screen.getByTestId("bookmarks-empty-state")).toBeDefined();
+  });
+});
