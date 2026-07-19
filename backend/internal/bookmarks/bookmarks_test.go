@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -424,6 +425,45 @@ func TestService_CreateFolder_AppendsAndBroadcasts(t *testing.T) {
 	}
 	if len(doc.Folders) != 1 {
 		t.Fatalf("Load() folders = %+v, want persisted CreateFolder", doc.Folders)
+	}
+}
+
+// TestService_Add_ConcurrentCallsDoNotLoseUpdates guards WR-01: without a
+// mutex serializing Load->mutate->Save, two concurrent Add calls can both
+// Load the same pre-mutation document and one Save clobbers the other's
+// bookmark row. With the fix, all N concurrent adds must survive.
+func TestService_Add_ConcurrentCallsDoNotLoseUpdates(t *testing.T) {
+	dir := t.TempDir()
+	const n = 20
+	noteIDs := make([]uuid.UUID, n)
+	entries := make(map[uuid.UUID]string, n)
+	for i := range noteIDs {
+		id := uuid.New()
+		noteIDs[i] = id
+		entries[id] = "notes/concurrent.md"
+	}
+	registry := newTestRegistry(entries)
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for _, id := range noteIDs {
+		go func(id uuid.UUID) {
+			defer wg.Done()
+			if _, err := svc.Add(context.Background(), id, nil); err != nil {
+				t.Errorf("Add(%s) error = %v", id, err)
+			}
+		}(id)
+	}
+	wg.Wait()
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(doc.Bookmarks) != n {
+		t.Fatalf("Load() bookmarks = %d rows, want %d (a race lost at least one concurrent Add)", len(doc.Bookmarks), n)
 	}
 }
 

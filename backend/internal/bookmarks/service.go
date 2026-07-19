@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 
@@ -36,6 +37,13 @@ type Service struct {
 	registry    *notes.Registry
 	broadcaster notes.Broadcaster
 	log         *slog.Logger
+
+	// mu serializes every mutation method's Load -> mutate -> Save cycle
+	// (WR-01). Without it, two concurrent requests against the same shared
+	// bookmarks.json — e.g. two browser tabs, an explicit multi-session
+	// Jasper feature — can both Load the same pre-mutation document and
+	// have one Save silently clobber the other's change.
+	mu sync.Mutex
 }
 
 // New constructs the service. Passing nil for broadcaster substitutes a
@@ -69,6 +77,9 @@ func (s *Service) Add(ctx context.Context, noteID uuid.UUID, folderID *string) (
 		return Bookmark{}, fmt.Errorf("bookmarks.Add(%s): %w", noteID, ErrNoteNotFound)
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	doc, err := Load(s.dataDir, s.registry, s.log)
 	if err != nil {
 		return Bookmark{}, fmt.Errorf("bookmarks.Add: %w", err)
@@ -98,6 +109,9 @@ func (s *Service) Add(ctx context.Context, noteID uuid.UUID, folderID *string) (
 // Remove drops the bookmark row matching id and persists. Unknown id
 // returns ErrNotFound WITHOUT persisting.
 func (s *Service) Remove(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	doc, err := Load(s.dataDir, s.registry, s.log)
 	if err != nil {
 		return fmt.Errorf("bookmarks.Remove: %w", err)
@@ -124,6 +138,9 @@ func (s *Service) Remove(ctx context.Context, id string) error {
 // non-nil folderID that does not exist in the document returns
 // ErrFolderNotFound. Neither error persists a change.
 func (s *Service) MoveToFolder(ctx context.Context, id string, folderID *string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	doc, err := Load(s.dataDir, s.registry, s.log)
 	if err != nil {
 		return fmt.Errorf("bookmarks.MoveToFolder: %w", err)
@@ -158,6 +175,9 @@ func (s *Service) CreateFolder(ctx context.Context, name string) (Folder, error)
 	if trimmed == "" {
 		return Folder{}, fmt.Errorf("bookmarks.CreateFolder: %w", ErrInvalidName)
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	doc, err := Load(s.dataDir, s.registry, s.log)
 	if err != nil {
