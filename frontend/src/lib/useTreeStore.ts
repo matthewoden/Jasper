@@ -177,6 +177,11 @@ export interface TreeStore {
   mcpGrants: McpGrant[];
   setMcpGrants: (grants: McpGrant[]) => void;
 
+  bookmarks: Bookmark[];
+  setBookmarks: (bookmarks: Bookmark[]) => void;
+  bookmarkFolders: BookmarkFolder[];
+  setBookmarkFolders: (folders: BookmarkFolder[]) => void;
+
   vaultPickerOpen: boolean;
   setVaultPickerOpen: (v: boolean) => void;
 
@@ -190,6 +195,20 @@ export interface McpGrant {
   level: 1 | 2;
   granted_at: string;
   granted_via: string;
+}
+
+/** A single pinned note (BOOK-01). Keyed by its own opaque id, not the note's UUID. */
+export interface Bookmark {
+  id: string;
+  note_id: string;
+  folder_id: string | null;
+  order: number;
+}
+
+/** A virtual grouping label for bookmarks (BOOK-03) — NOT a filesystem folder. */
+export interface BookmarkFolder {
+  id: string;
+  name: string;
 }
 
 export const useTreeStore = create<TreeStore>((set) => ({
@@ -323,6 +342,11 @@ export const useTreeStore = create<TreeStore>((set) => ({
 
   mcpGrants: [],
   setMcpGrants: (grants) => set({ mcpGrants: grants }),
+
+  bookmarks: [],
+  setBookmarks: (bookmarks) => set({ bookmarks }),
+  bookmarkFolders: [],
+  setBookmarkFolders: (folders) => set({ bookmarkFolders: folders }),
 
   vaultPickerOpen: false,
   setVaultPickerOpen: (v) => set({ vaultPickerOpen: v }),
