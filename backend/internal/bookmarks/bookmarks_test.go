@@ -1,6 +1,8 @@
 package bookmarks
 
 import (
+	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -150,5 +152,249 @@ func TestSave_WritesFileToDisk(t *testing.T) {
 	path := filepath.Join(dir, ".jasper", "bookmarks.json")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected file at %s after Save(); stat err = %v", path, err)
+	}
+}
+
+// --- Service ---
+
+type fakeBroadcaster struct {
+	calls []string
+}
+
+func (f *fakeBroadcaster) Broadcast(event string, _ any, _ string) {
+	f.calls = append(f.calls, event)
+}
+
+func newTestService(t *testing.T, dir string, registry *notes.Registry, bc notes.Broadcaster) *Service {
+	t.Helper()
+	mustMkdirJasper(t, dir)
+	return New(dir, registry, bc, testLogger())
+}
+
+func TestService_Add_CreatesBookmarkAndBroadcasts(t *testing.T) {
+	dir := t.TempDir()
+	noteID := uuid.New()
+	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	bm, err := svc.Add(context.Background(), noteID, nil)
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	if bm.NoteID != noteID.String() {
+		t.Fatalf("Add() bookmark.NoteID = %s, want %s", bm.NoteID, noteID)
+	}
+	if bm.Order != 0 {
+		t.Fatalf("Add() bookmark.Order = %d, want 0", bm.Order)
+	}
+	if len(bc.calls) != 1 || bc.calls[0] != EventBookmarkChanged {
+		t.Fatalf("Add() broadcast calls = %v, want exactly one %s", bc.calls, EventBookmarkChanged)
+	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(doc.Bookmarks) != 1 {
+		t.Fatalf("Load() bookmarks = %+v, want persisted Add", doc.Bookmarks)
+	}
+}
+
+func TestService_Add_UnregisteredNoteID_RejectsAndDoesNotPersist(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(nil)
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	unknownID := uuid.New()
+	_, err := svc.Add(context.Background(), unknownID, nil)
+	if !errors.Is(err, ErrNoteNotFound) {
+		t.Fatalf("Add() error = %v, want ErrNoteNotFound", err)
+	}
+	if len(bc.calls) != 0 {
+		t.Fatalf("Add() broadcast calls = %v, want none on rejection", bc.calls)
+	}
+	if _, statErr := os.Stat(bookmarksPath(dir)); !os.IsNotExist(statErr) {
+		t.Fatalf("Add() with unregistered noteId must NOT persist a file; stat err = %v", statErr)
+	}
+}
+
+func TestService_Add_UnknownFolderID_RejectsWithErrFolderNotFound(t *testing.T) {
+	dir := t.TempDir()
+	noteID := uuid.New()
+	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	bogus := "does-not-exist"
+	_, err := svc.Add(context.Background(), noteID, &bogus)
+	if !errors.Is(err, ErrFolderNotFound) {
+		t.Fatalf("Add() error = %v, want ErrFolderNotFound", err)
+	}
+	if len(bc.calls) != 0 {
+		t.Fatalf("Add() broadcast calls = %v, want none on rejection", bc.calls)
+	}
+}
+
+func TestService_Remove_DropsRowAndBroadcasts(t *testing.T) {
+	dir := t.TempDir()
+	noteID := uuid.New()
+	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	bm, err := svc.Add(context.Background(), noteID, nil)
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	bc.calls = nil // reset — only assert on Remove's broadcast
+
+	if err := svc.Remove(context.Background(), bm.ID); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	if len(bc.calls) != 1 || bc.calls[0] != EventBookmarkChanged {
+		t.Fatalf("Remove() broadcast calls = %v, want exactly one %s", bc.calls, EventBookmarkChanged)
+	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(doc.Bookmarks) != 0 {
+		t.Fatalf("Load() bookmarks = %+v, want empty after Remove", doc.Bookmarks)
+	}
+}
+
+func TestService_Remove_UnknownID_ReturnsErrNotFound(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(nil)
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	err := svc.Remove(context.Background(), "does-not-exist")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Remove() error = %v, want ErrNotFound", err)
+	}
+	if len(bc.calls) != 0 {
+		t.Fatalf("Remove() broadcast calls = %v, want none on rejection", bc.calls)
+	}
+}
+
+func TestService_MoveToFolder_SetsFolderIDAndBroadcasts(t *testing.T) {
+	dir := t.TempDir()
+	noteID := uuid.New()
+	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	bm, err := svc.Add(context.Background(), noteID, nil)
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	folder, err := svc.CreateFolder(context.Background(), "Work")
+	if err != nil {
+		t.Fatalf("CreateFolder() error = %v", err)
+	}
+	bc.calls = nil
+
+	if err := svc.MoveToFolder(context.Background(), bm.ID, &folder.ID); err != nil {
+		t.Fatalf("MoveToFolder() error = %v", err)
+	}
+	if len(bc.calls) != 1 || bc.calls[0] != EventBookmarkChanged {
+		t.Fatalf("MoveToFolder() broadcast calls = %v, want exactly one %s", bc.calls, EventBookmarkChanged)
+	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(doc.Bookmarks) != 1 || doc.Bookmarks[0].FolderID == nil || *doc.Bookmarks[0].FolderID != folder.ID {
+		t.Fatalf("Load() bookmarks = %+v, want FolderID = %s", doc.Bookmarks, folder.ID)
+	}
+
+	// Moving back to top level: nil folderID.
+	if err := svc.MoveToFolder(context.Background(), bm.ID, nil); err != nil {
+		t.Fatalf("MoveToFolder(nil) error = %v", err)
+	}
+	doc, err = Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if doc.Bookmarks[0].FolderID != nil {
+		t.Fatalf("Load() bookmarks[0].FolderID = %v, want nil after top-level move", doc.Bookmarks[0].FolderID)
+	}
+}
+
+func TestService_MoveToFolder_UnknownBookmarkID_ReturnsErrNotFound(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(nil)
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	err := svc.MoveToFolder(context.Background(), "does-not-exist", nil)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("MoveToFolder() error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestService_MoveToFolder_UnknownFolderID_ReturnsErrFolderNotFound(t *testing.T) {
+	dir := t.TempDir()
+	noteID := uuid.New()
+	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	bm, err := svc.Add(context.Background(), noteID, nil)
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	bogus := "does-not-exist"
+	err = svc.MoveToFolder(context.Background(), bm.ID, &bogus)
+	if !errors.Is(err, ErrFolderNotFound) {
+		t.Fatalf("MoveToFolder() error = %v, want ErrFolderNotFound", err)
+	}
+}
+
+func TestService_CreateFolder_AppendsAndBroadcasts(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(nil)
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	f, err := svc.CreateFolder(context.Background(), "Work")
+	if err != nil {
+		t.Fatalf("CreateFolder() error = %v", err)
+	}
+	if f.Name != "Work" || f.ID == "" {
+		t.Fatalf("CreateFolder() = %+v, want non-empty ID and Name=Work", f)
+	}
+	if len(bc.calls) != 1 || bc.calls[0] != EventBookmarkChanged {
+		t.Fatalf("CreateFolder() broadcast calls = %v, want exactly one %s", bc.calls, EventBookmarkChanged)
+	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(doc.Folders) != 1 {
+		t.Fatalf("Load() folders = %+v, want persisted CreateFolder", doc.Folders)
+	}
+}
+
+func TestService_CreateFolder_EmptyName_ReturnsErrInvalidName(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(nil)
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	for _, name := range []string{"", "   ", "\t\n"} {
+		_, err := svc.CreateFolder(context.Background(), name)
+		if !errors.Is(err, ErrInvalidName) {
+			t.Fatalf("CreateFolder(%q) error = %v, want ErrInvalidName", name, err)
+		}
+	}
+	if len(bc.calls) != 0 {
+		t.Fatalf("CreateFolder() broadcast calls = %v, want none on rejection", bc.calls)
 	}
 }

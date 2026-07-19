@@ -1,0 +1,195 @@
+package bookmarks
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+
+	"github.com/google/uuid"
+
+	"github.com/matthewoden/jasper/backend/internal/notes"
+)
+
+// Sentinel errors returned by Service mutation methods.
+var (
+	// ErrNotFound is returned by Remove/MoveToFolder when the bookmark id
+	// does not exist in the loaded document.
+	ErrNotFound = errors.New("bookmarks: not found")
+	// ErrNoteNotFound is returned by Add when noteID does not resolve in
+	// the notes.Registry (T-27-01: reject forged/unknown noteId).
+	ErrNoteNotFound = errors.New("bookmarks: note not found")
+	// ErrFolderNotFound is returned when a non-nil folderId does not exist
+	// in the loaded document's Folders.
+	ErrFolderNotFound = errors.New("bookmarks: folder not found")
+	// ErrInvalidName is returned by CreateFolder for an empty/whitespace name.
+	ErrInvalidName = errors.New("bookmarks: invalid name")
+)
+
+// Service is the bookmarks domain service. Every mutation follows a
+// read-modify-write shape over the flat-file document: Load(dataDir,
+// registry, log) -> mutate in-memory -> Save(dataDir, doc) -> broadcast.
+// Mirrors notes.Service's Delete/Move/CreateFolder shape (notes/service.go).
+type Service struct {
+	dataDir     string
+	registry    *notes.Registry
+	broadcaster notes.Broadcaster
+	log         *slog.Logger
+}
+
+// New constructs the service. Passing nil for broadcaster substitutes a
+// nopBroadcaster no-op, exactly like notes.NewService. A nil log is
+// replaced with slog.Default().
+func New(dataDir string, registry *notes.Registry, broadcaster notes.Broadcaster, log *slog.Logger) *Service {
+	if log == nil {
+		log = slog.Default()
+	}
+	if broadcaster == nil {
+		broadcaster = nopBroadcaster{}
+	}
+	return &Service{
+		dataDir:     dataDir,
+		registry:    registry,
+		broadcaster: broadcaster,
+		log:         log,
+	}
+}
+
+type nopBroadcaster struct{}
+
+func (nopBroadcaster) Broadcast(_ string, _ any, _ string) {}
+
+// Add appends a new Bookmark for noteID and persists it. Rejects a noteID
+// that does not resolve in the registry with ErrNoteNotFound (security
+// control T-27-01) WITHOUT persisting. Rejects a non-nil folderID that
+// does not exist in the loaded document with ErrFolderNotFound.
+func (s *Service) Add(ctx context.Context, noteID uuid.UUID, folderID *string) (Bookmark, error) {
+	if _, ok := s.registry.Lookup(noteID); !ok {
+		return Bookmark{}, fmt.Errorf("bookmarks.Add(%s): %w", noteID, ErrNoteNotFound)
+	}
+
+	doc, err := Load(s.dataDir, s.registry, s.log)
+	if err != nil {
+		return Bookmark{}, fmt.Errorf("bookmarks.Add: %w", err)
+	}
+
+	if folderID != nil && !folderExists(doc.Folders, *folderID) {
+		return Bookmark{}, fmt.Errorf("bookmarks.Add: folder %s: %w", *folderID, ErrFolderNotFound)
+	}
+
+	bm := Bookmark{
+		ID:       uuid.NewString(),
+		NoteID:   noteID.String(),
+		FolderID: folderID,
+		Order:    len(doc.Bookmarks),
+	}
+	doc.Bookmarks = append(doc.Bookmarks, bm)
+
+	if err := Save(s.dataDir, doc); err != nil {
+		return Bookmark{}, fmt.Errorf("bookmarks.Add: %w", err)
+	}
+
+	s.broadcaster.Broadcast(EventBookmarkChanged, map[string]any{}, notes.SessionIDFromContext(ctx))
+
+	return bm, nil
+}
+
+// Remove drops the bookmark row matching id and persists. Unknown id
+// returns ErrNotFound WITHOUT persisting.
+func (s *Service) Remove(ctx context.Context, id string) error {
+	doc, err := Load(s.dataDir, s.registry, s.log)
+	if err != nil {
+		return fmt.Errorf("bookmarks.Remove: %w", err)
+	}
+
+	idx := indexOfBookmark(doc.Bookmarks, id)
+	if idx == -1 {
+		return fmt.Errorf("bookmarks.Remove(%s): %w", id, ErrNotFound)
+	}
+
+	doc.Bookmarks = append(doc.Bookmarks[:idx], doc.Bookmarks[idx+1:]...)
+
+	if err := Save(s.dataDir, doc); err != nil {
+		return fmt.Errorf("bookmarks.Remove: %w", err)
+	}
+
+	s.broadcaster.Broadcast(EventBookmarkChanged, map[string]any{}, notes.SessionIDFromContext(ctx))
+
+	return nil
+}
+
+// MoveToFolder sets the bookmark row's FolderID (nil moves it to top
+// level) and persists. Unknown bookmark id returns ErrNotFound; a
+// non-nil folderID that does not exist in the document returns
+// ErrFolderNotFound. Neither error persists a change.
+func (s *Service) MoveToFolder(ctx context.Context, id string, folderID *string) error {
+	doc, err := Load(s.dataDir, s.registry, s.log)
+	if err != nil {
+		return fmt.Errorf("bookmarks.MoveToFolder: %w", err)
+	}
+
+	idx := indexOfBookmark(doc.Bookmarks, id)
+	if idx == -1 {
+		return fmt.Errorf("bookmarks.MoveToFolder(%s): %w", id, ErrNotFound)
+	}
+
+	if folderID != nil && !folderExists(doc.Folders, *folderID) {
+		return fmt.Errorf("bookmarks.MoveToFolder: folder %s: %w", *folderID, ErrFolderNotFound)
+	}
+
+	doc.Bookmarks[idx].FolderID = folderID
+
+	if err := Save(s.dataDir, doc); err != nil {
+		return fmt.Errorf("bookmarks.MoveToFolder: %w", err)
+	}
+
+	s.broadcaster.Broadcast(EventBookmarkChanged, map[string]any{}, notes.SessionIDFromContext(ctx))
+
+	return nil
+}
+
+// CreateFolder appends a new Folder and persists it. name is trimmed;
+// empty/whitespace-only names return ErrInvalidName WITHOUT persisting.
+// No filesystem-legal-character validation is applied — these are
+// virtual labels, not filesystem folders.
+func (s *Service) CreateFolder(ctx context.Context, name string) (Folder, error) {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return Folder{}, fmt.Errorf("bookmarks.CreateFolder: %w", ErrInvalidName)
+	}
+
+	doc, err := Load(s.dataDir, s.registry, s.log)
+	if err != nil {
+		return Folder{}, fmt.Errorf("bookmarks.CreateFolder: %w", err)
+	}
+
+	f := Folder{ID: uuid.NewString(), Name: trimmed}
+	doc.Folders = append(doc.Folders, f)
+
+	if err := Save(s.dataDir, doc); err != nil {
+		return Folder{}, fmt.Errorf("bookmarks.CreateFolder: %w", err)
+	}
+
+	s.broadcaster.Broadcast(EventBookmarkChanged, map[string]any{}, notes.SessionIDFromContext(ctx))
+
+	return f, nil
+}
+
+func indexOfBookmark(bookmarks []Bookmark, id string) int {
+	for i, bm := range bookmarks {
+		if bm.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func folderExists(folders []Folder, id string) bool {
+	for _, f := range folders {
+		if f.ID == id {
+			return true
+		}
+	}
+	return false
+}
