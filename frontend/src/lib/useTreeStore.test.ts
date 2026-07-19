@@ -1011,10 +1011,10 @@ describe("useTreeStore — activeFilePath slice (Plan 07-32b)", () => {
 });
 
 
-describe("Phase 19 Plan 04 — sidebarPanel persisted slice (LSIDE-02)", () => {
+describe("Phase 19 Plan 04 / Phase 27 Plan 03 — sidebarPanel persisted slice (LSIDE-02, NAV-01)", () => {
   beforeEach(() => {
     localStorage.clear();
-    useTreeStore.setState({ sidebarPanel: "files" });
+    useTreeStore.setState({ sidebarPanel: "notes" });
   });
 
   afterEach(() => {
@@ -1022,17 +1022,22 @@ describe("Phase 19 Plan 04 — sidebarPanel persisted slice (LSIDE-02)", () => {
     vi.resetModules();
   });
 
-  it("SP-1: fresh store defaults sidebarPanel to 'files'", async () => {
+  it("SP-1: fresh store defaults sidebarPanel to 'notes'", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
-    expect(mod.useTreeStore.getState().sidebarPanel).toBe("files");
+    expect(mod.useTreeStore.getState().sidebarPanel).toBe("notes");
   });
 
   it("SP-2: setSidebarPanel('search') updates the state to 'search'", () => {
     useTreeStore.getState().setSidebarPanel("search");
     expect(useTreeStore.getState().sidebarPanel).toBe("search");
-    useTreeStore.getState().setSidebarPanel("files");
-    expect(useTreeStore.getState().sidebarPanel).toBe("files");
+    useTreeStore.getState().setSidebarPanel("notes");
+    expect(useTreeStore.getState().sidebarPanel).toBe("notes");
+  });
+
+  it("SP-2b: setSidebarPanel('bookmarks') updates the state to 'bookmarks'", () => {
+    useTreeStore.getState().setSidebarPanel("bookmarks");
+    expect(useTreeStore.getState().sidebarPanel).toBe("bookmarks");
   });
 
   it("SP-3: pre-seeded LS_KEY_SIDEBAR_PANEL='search' hydrates sidebarPanel on module load", async () => {
@@ -1042,17 +1047,24 @@ describe("Phase 19 Plan 04 — sidebarPanel persisted slice (LSIDE-02)", () => {
     expect(mod.useTreeStore.getState().sidebarPanel).toBe("search");
   });
 
-  it("SP-3: corrupt/unknown LS value falls back to default 'files'", async () => {
+  it("SP-3b: pre-seeded LS_KEY_SIDEBAR_PANEL='bookmarks' hydrates sidebarPanel on module load", async () => {
+    localStorage.setItem("jasper.chrome.sidebar.panel", "bookmarks");
+    vi.resetModules();
+    const mod = await import("./useTreeStore");
+    expect(mod.useTreeStore.getState().sidebarPanel).toBe("bookmarks");
+  });
+
+  it("SP-3: corrupt/unknown LS value falls back to default 'notes'", async () => {
     localStorage.setItem("jasper.chrome.sidebar.panel", "garbage");
     vi.resetModules();
     const mod = await import("./useTreeStore");
-    expect(mod.useTreeStore.getState().sidebarPanel).toBe("files");
+    expect(mod.useTreeStore.getState().sidebarPanel).toBe("notes");
   });
 
-  it("SP-3: absent LS key → sidebarPanel defaults to 'files'", async () => {
+  it("SP-3: absent LS key → sidebarPanel defaults to 'notes'", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
-    expect(mod.useTreeStore.getState().sidebarPanel).toBe("files");
+    expect(mod.useTreeStore.getState().sidebarPanel).toBe("notes");
   });
 
   it("SP-4: setSidebarPanel('search') immediately writes to localStorage[LS_KEY_SIDEBAR_PANEL] (no debounce)", async () => {

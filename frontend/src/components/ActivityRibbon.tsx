@@ -115,7 +115,7 @@ export function ActivityRibbon({
       : "J";
 
   const searchActive = notesSidebarVisible && sidebarPanel === "search";
-  const filesActive = notesSidebarVisible && sidebarPanel === "files";
+  const filesActive = notesSidebarVisible && sidebarPanel === "notes";
 
   return (
     <nav style={{ ...ribbonStyle, ...style }} aria-label="Activity ribbon">
@@ -147,7 +147,7 @@ export function ActivityRibbon({
           if (filesActive) {
             setNotesSidebarVisible(false);
           } else {
-            setSidebarPanel("files");
+            setSidebarPanel("notes");
             setNotesSidebarVisible(true);
           }
         }}

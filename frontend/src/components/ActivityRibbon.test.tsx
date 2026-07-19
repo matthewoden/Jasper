@@ -17,7 +17,7 @@ const mockSetPaletteOpen = vi.fn();
 const mockSetSidebarPanel = vi.fn();
 
 let mockNotesSidebarVisible = true;
-let mockSidebarPanel: "files" | "search" = "files";
+let mockSidebarPanel: "notes" | "search" = "notes";
 
 vi.mock("../lib/useTreeStore", () => {
   const state = () => ({
@@ -68,7 +68,7 @@ describe("ActivityRibbon", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockNotesSidebarVisible = true;
-    mockSidebarPanel = "files";
+    mockSidebarPanel = "notes";
     mockTodayLoading = false;
     mockDisplayName = "My Vault";
   });
@@ -113,7 +113,7 @@ describe("ActivityRibbon", () => {
 
   it("Files toggle: active when notesSidebarVisible && sidebarPanel==='files' (D-07)", () => {
     mockNotesSidebarVisible = true;
-    mockSidebarPanel = "files";
+    mockSidebarPanel = "notes";
     render(<ActivityRibbon />);
     const btn = screen.getByRole("button", { name: "Files" });
     expect(btn.style.color).toBe("var(--color-accent)");
@@ -136,7 +136,7 @@ describe("ActivityRibbon", () => {
 
   it("D-01: Search click with sidebar closed opens it to Search panel + focuses input", async () => {
     mockNotesSidebarVisible = false;
-    mockSidebarPanel = "files";
+    mockSidebarPanel = "notes";
     render(<ActivityRibbon />);
     fireEvent.click(screen.getByRole("button", { name: "Search notes" }));
     expect(mockSetSidebarPanel).toHaveBeenCalledWith("search");
@@ -162,13 +162,13 @@ describe("ActivityRibbon", () => {
     mockSidebarPanel = "search";
     render(<ActivityRibbon />);
     fireEvent.click(screen.getByRole("button", { name: "Files" }));
-    expect(mockSetSidebarPanel).toHaveBeenCalledWith("files");
+    expect(mockSetSidebarPanel).toHaveBeenCalledWith("notes");
     expect(mockSetNotesSidebarVisible).toHaveBeenCalledWith(true);
   });
 
   it("D-03: Files click while Files panel already active + sidebar open collapses the sidebar", () => {
     mockNotesSidebarVisible = true;
-    mockSidebarPanel = "files";
+    mockSidebarPanel = "notes";
     render(<ActivityRibbon />);
     fireEvent.click(screen.getByRole("button", { name: "Files" }));
     expect(mockSetNotesSidebarVisible).toHaveBeenCalledWith(false);
@@ -185,7 +185,7 @@ describe("ActivityRibbon", () => {
 
   it("D-07: Search icon inactive when sidebar visible but panel is 'files'", () => {
     mockNotesSidebarVisible = true;
-    mockSidebarPanel = "files";
+    mockSidebarPanel = "notes";
     render(<ActivityRibbon />);
     const btn = screen.getByRole("button", { name: "Search notes" });
     expect(btn.style.color).toBe("var(--color-muted)");

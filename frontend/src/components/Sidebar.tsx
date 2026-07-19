@@ -1,21 +1,21 @@
 /**
- * Sidebar — layout shell: floating card with a 40px vault-name header, below
- * which either the FileTree or SidebarSearchPanel renders (LSIDE-02).
+ * Sidebar — layout shell: floating card with a 40px header, below which one
+ * of FileTree / SidebarSearchPanel / BookmarksPanel renders (Phase 27 NAV-01).
  *
  * Structure:
  *   <nav width=sidebarWidth>
  *     <card>
- *       <header>{vault display name} + SidebarToolbar</header>   (40px, shared chrome)
- *       {sidebarPanel === "files" ? <FileTree /> : <SidebarSearchPanel />}   (flex: 1; scrolls)
+ *       <header>SidebarToolbar (Task 2 swaps this for the SidebarTabRow)</header>   (40px, shared chrome)
+ *       {sidebarPanel === "notes" ? <FileTree/> : sidebarPanel === "search" ? <SidebarSearchPanel/> : <BookmarksPanel/>}   (flex: 1; scrolls)
  *     </card>
  *     <SidebarResizeHandle />  (outside card — overlays the column boundary)
  *   </nav>
  *
- * The 40px header is shared chrome (D-15) — it does NOT swap when the panel
- * switches to Search; only the area below it does. `sidebarPanel` is driven
- * by the ribbon Files/Search toggle and Cmd+Shift+F (Plan 04). This panel
- * complements — never replaces — the existing Cmd+P/Cmd+Shift+F CommandMenu
- * palette, which still exists as a second, faster entry point into search.
+ * The 40px header is shared chrome — it does NOT swap when the panel
+ * switches; only the area below it does. `sidebarPanel` is driven by the
+ * sidebar tab row (Task 2) and Cmd+Shift+F. This panel complements — never
+ * replaces — the existing Cmd+P/Cmd+Shift+F CommandMenu palette, which still
+ * exists as a second, faster entry point into search.
  *
  * Toolbar wiring:
  *   - New note / New folder → useTreeCreateActions().createNoteAt/FolderAt(parent),
@@ -180,10 +180,13 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
             position: "relative",
           }}
         >
-          {sidebarPanel === "files" ? (
+          {sidebarPanel === "notes" ? (
             <FileTree onSelectNote={onSelectNote} />
-          ) : (
+          ) : sidebarPanel === "search" ? (
             <SidebarSearchPanel onSelectNote={onSelectNote} />
+          ) : (
+            // Interim placeholder — Plan 06 replaces this with <BookmarksPanel/>.
+            <div data-testid="bookmarks-panel-placeholder" />
           )}
         </div>
         {/* Tag browser panel relocated to right-rail; left sidebar is file-tree-only. */}
