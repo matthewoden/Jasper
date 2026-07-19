@@ -76,11 +76,11 @@ describe("useTreeStore — default + mutators", () => {
     expect(result.current.expanded.size).toBe(0);
   });
 
-  it("TestStore_CollapseAllFolders_NoopWhenEmpty: keeps the same Set reference when already empty", () => {
+  it("TestStore_CollapseAllFolders_BumpsNonce: increments collapseAllNonce so FileTree can closeAll()", () => {
     const { result } = renderHook(() => useTreeStore());
-    const before = result.current.expanded;
+    const before = result.current.collapseAllNonce;
     act(() => result.current.collapseAllFolders());
-    expect(result.current.expanded).toBe(before);
+    expect(result.current.collapseAllNonce).toBe(before + 1);
   });
 
   it("TestStore_ToggleExpanded_Removes: toggling a path twice removes it", () => {

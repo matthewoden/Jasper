@@ -77,6 +77,9 @@ export type SelectedRow = { kind: RenameKind; target: string };
 
 export interface TreeStore {
   expanded: Set<string>;
+  /** Bumped by collapseAllFolders() — FileTree watches it to call the
+   *  react-arborist TreeApi.closeAll() imperatively (state alone can't). */
+  collapseAllNonce: number;
   activeNoteId: string | null;
 
   activeFilePath: string | null;
@@ -215,6 +218,7 @@ export interface BookmarkFolder {
 
 export const useTreeStore = create<TreeStore>((set) => ({
   expanded: new Set<string>(),
+  collapseAllNonce: 0,
   activeNoteId: null,
   activeFilePath: null,
   setActiveFilePath: (p) =>
@@ -237,7 +241,10 @@ export const useTreeStore = create<TreeStore>((set) => ({
       return { expanded: next };
     }),
   collapseAllFolders: () =>
-    set((s) => (s.expanded.size === 0 ? s : { expanded: new Set<string>() })),
+    set((s) => ({
+      expanded: new Set<string>(),
+      collapseAllNonce: s.collapseAllNonce + 1,
+    })),
   setActiveNote: (id) => set({ activeNoteId: id }),
   startRename: (kind, target, isNew) =>
     set({ pendingRename: { kind, target, ...(isNew ? { isNew: true } : {}) } }),

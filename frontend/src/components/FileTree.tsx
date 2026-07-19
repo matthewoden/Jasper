@@ -123,6 +123,14 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
 
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
   const activeNoteIdForFlatList = useTreeStore((s) => s.activeNoteId);
+
+  // Collapse-all: the toolbar button clears the store's expanded set and bumps
+  // this nonce; react-arborist owns its own open state, so we must close it
+  // imperatively via the TreeApi (initialOpenState is read once at mount).
+  const collapseAllNonce = useTreeStore((s) => s.collapseAllNonce);
+  useEffect(() => {
+    if (collapseAllNonce > 0) treeRef.current?.closeAll();
+  }, [collapseAllNonce]);
   const [flatNotes, setFlatNotes] = useState<NoteSummary[] | null>(null);
   const [flatLoading, setFlatLoading] = useState(false);
 
