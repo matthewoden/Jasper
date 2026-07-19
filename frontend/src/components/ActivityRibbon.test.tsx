@@ -125,6 +125,25 @@ describe("ActivityRibbon", () => {
     ).toBeDisabled();
   });
 
+  it("mock parity: renders the command palette and a bottom Settings gear", () => {
+    render(<ActivityRibbon />);
+    expect(
+      screen.getByRole("button", { name: "Open command palette" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Settings" }),
+    ).toBeInTheDocument();
+  });
+
+  it("command palette button sets paletteMode('commands') then paletteOpen(true)", () => {
+    render(<ActivityRibbon />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open command palette" }),
+    );
+    expect(mockSetPaletteMode).toHaveBeenCalledWith("commands");
+    expect(mockSetPaletteOpen).toHaveBeenCalledWith(true);
+  });
+
   it("RibbonButton: hover tint clears when the button becomes disabled mid-hover (IN-01)", () => {
     const { rerender } = render(<ActivityRibbon />);
     const btn = screen.getByRole("button", { name: "Open today's daily note" });

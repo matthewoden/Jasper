@@ -1,6 +1,7 @@
 /**
- * ActivityRibbon — the 48px far-left activity bar: vault badge, a
- * quick-switcher button, daily-note button, and the command-palette button.
+ * ActivityRibbon — the 48px far-left activity bar. Top cluster (matching the
+ * Vault.dc.html mock): vault badge, quick-switcher, daily-note, command
+ * palette. Bottom (flex-pushed): a Settings gear that opens SettingsDialog.
  *
  * Phase 27 NAV-02 (D-09/D-10): the Files/Search toggles are gone — panel
  * selection now lives entirely in the sidebar's SidebarTabRow. The single
@@ -10,11 +11,12 @@
  */
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import { Search, CalendarDays, Command } from "lucide-react";
+import { Search, CalendarDays, Command, Settings } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useDailyNote } from "../lib/useDailyNote";
 import { useVaultPicker } from "../lib/useVaultPicker";
 import { mod, shift } from "../lib/shortcutsRegistry";
+import { SettingsDialog } from "./SettingsDialog";
 
 const ribbonStyle: CSSProperties = {
   width: 48,
@@ -99,6 +101,7 @@ export function ActivityRibbon({
 }: ActivityRibbonProps = {}): React.JSX.Element {
   const { openToday, isLoading: todayLoading } = useDailyNote();
   const { current } = useVaultPicker();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const displayName = current?.display_name ?? "";
   const trimmedDisplayName = displayName.trim();
@@ -155,8 +158,6 @@ export function ActivityRibbon({
         }}
       />
 
-      <div style={{ flex: 1 }} />
-
       <RibbonButton
         ariaLabel="Open command palette"
         title={`Command palette (${mod}P)`}
@@ -166,8 +167,23 @@ export function ActivityRibbon({
           s.setPaletteOpen(true);
         }}
         icon={<Command size={16} aria-hidden="true" />}
+        style={{ marginTop: 16 }}
+      />
+
+      <div style={{ flex: 1 }} />
+
+      <RibbonButton
+        ariaLabel="Settings"
+        title="Settings"
+        onClick={() => setSettingsOpen(true)}
+        icon={<Settings size={16} aria-hidden="true" />}
         style={{ marginBottom: 8 }}
       />
+      {/* Mount only when open so we don't double-fetch config alongside the
+          StatusBar's own SettingsDialog instance. */}
+      {settingsOpen && (
+        <SettingsDialog open onOpenChange={setSettingsOpen} />
+      )}
     </nav>
   );
 }
