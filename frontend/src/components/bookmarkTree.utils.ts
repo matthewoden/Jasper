@@ -110,3 +110,66 @@ export function buildBookmarkMenu(
     onNewFolder: handlers.onNewFolder,
   };
 }
+
+/** Discriminated dispatch decision for a bookmark drag-drop, computed by
+ *  computeBookmarkMoveDispatch — mirrors fileTree.utils.ts's
+ *  computeMoveTarget role (a pure, directly-testable core so the real drag
+ *  gesture itself only needs proving once, in a real browser — Task 7 /
+ *  the "verify DnD with real mouse" memory). */
+export type BookmarkMoveDispatch =
+  | { action: "noop" }
+  | { action: "moveToFolder"; bookmarkIds: string[]; folderId: string | null }
+  | {
+      action: "reorder";
+      folderId: string | null;
+      orderedIds: string[];
+    };
+
+/**
+ * Decides what a bookmark drag-drop means: cross-folder file (destination
+ * folder differs from the dragged bookmarks' current folder_id) vs a
+ * within-folder reorder (destination folder is unchanged — compute the new
+ * full ordered id list for that scope from the drop `index`).
+ *
+ * Multi-drag is assumed to share one source scope — react-arborist only
+ * groups same-parent rows into a single drag gesture, matching the
+ * pre-existing bespoke panel (which never supported cross-folder
+ * multi-select drag either).
+ */
+export function computeBookmarkMoveDispatch(
+  bookmarks: readonly Bookmark[],
+  draggedBookmarkIds: readonly string[],
+  destFolderId: string | null,
+  index: number,
+): BookmarkMoveDispatch {
+  if (draggedBookmarkIds.length === 0) {
+    return { action: "noop" };
+  }
+
+  const sourceFolderId =
+    bookmarks.find((b) => b.id === draggedBookmarkIds[0])?.folder_id ?? null;
+
+  if (sourceFolderId !== destFolderId) {
+    return {
+      action: "moveToFolder",
+      bookmarkIds: [...draggedBookmarkIds],
+      folderId: destFolderId,
+    };
+  }
+
+  const remainingScopeIds = bookmarks
+    .filter((b) => b.folder_id === destFolderId)
+    .filter((b) => !draggedBookmarkIds.includes(b.id))
+    .slice()
+    .sort(byOrder)
+    .map((b) => b.id);
+
+  const insertAt = Math.min(Math.max(index, 0), remainingScopeIds.length);
+  const orderedIds = [
+    ...remainingScopeIds.slice(0, insertAt),
+    ...draggedBookmarkIds,
+    ...remainingScopeIds.slice(insertAt),
+  ];
+
+  return { action: "reorder", folderId: destFolderId, orderedIds };
+}

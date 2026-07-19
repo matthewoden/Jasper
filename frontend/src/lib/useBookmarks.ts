@@ -21,6 +21,9 @@
  *                                   context menu all hang off this one call)
  *   - moveToFolder(id, folderId):   POST /bookmarks/{id}/folder, then refresh
  *   - createFolder(name):           POST /bookmark-folders, then refresh
+ *   - reorder(folderId, orderedIds): POST /bookmarks/reorder — optimistic
+ *                                    in-scope reorder with revert-on-failure
+ *                                    (mirrors toggleBookmark's optimistic shape)
  *   - isBookmarked(noteId):         convenience lookup for UI state
  */
 
@@ -37,6 +40,7 @@ import {
   deleteBookmark,
   postBookmarkMove,
   postBookmarkFolder,
+  reorderBookmarks,
 } from "./bookmarksApi";
 
 const bookmarksSubscribers = new Set<() => void>();
@@ -60,6 +64,7 @@ export interface UseBookmarksResult {
   toggleBookmark: (noteId: string) => Promise<void>;
   moveToFolder: (id: string, folderId: string | null) => Promise<void>;
   createFolder: (name: string) => Promise<void>;
+  reorder: (folderId: string | null, orderedIds: string[]) => Promise<void>;
   isBookmarked: (noteId: string) => boolean;
 }
 
@@ -208,6 +213,37 @@ export function useBookmarks(): UseBookmarksResult {
     [refresh, toast],
   );
 
+  /**
+   * reorder — optimistically reassigns Order = index (within orderedIds)
+   * for exactly the bookmarks named in orderedIds, leaving every bookmark
+   * OUTSIDE that scope untouched (mirrors the backend's per-folder Order
+   * semantics, WR-02). Reverts to the pre-mutation slice and toasts on
+   * failure — same shape as toggleBookmark's optimistic-mutate-then-revert.
+   */
+  const reorder = useCallback(
+    async (folderId: string | null, orderedIds: string[]) => {
+      const previous = bookmarks;
+      const orderIndex = new Map(orderedIds.map((id, index) => [id, index]));
+      const optimistic = bookmarks.map((b) => {
+        const index = orderIndex.get(b.id);
+        return index === undefined ? b : { ...b, order: index };
+      });
+      setBookmarks(optimistic);
+      try {
+        await reorderBookmarks(folderId, orderedIds);
+        await refresh();
+      } catch (e) {
+        setBookmarks(previous);
+        toast({
+          title: "Couldn't reorder bookmarks",
+          description: String(e instanceof Error ? e.message : e),
+          variant: "error",
+        });
+      }
+    },
+    [bookmarks, setBookmarks, refresh, toast],
+  );
+
   return {
     bookmarks,
     bookmarkFolders,
@@ -217,6 +253,7 @@ export function useBookmarks(): UseBookmarksResult {
     toggleBookmark,
     moveToFolder,
     createFolder,
+    reorder,
     isBookmarked,
   };
 }

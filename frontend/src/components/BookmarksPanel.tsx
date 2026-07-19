@@ -19,7 +19,7 @@
  * Branch order: error (27-UI-REVIEW #1) → empty (BOOK-05) → populated tree.
  */
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { TreeApi } from "react-arborist";
+import type { NodeApi, TreeApi } from "react-arborist";
 
 import { useBookmarks } from "../lib/useBookmarks";
 import { useFileTree } from "../lib/useFileTree";
@@ -29,7 +29,12 @@ import { TreeRow } from "./TreeRow";
 import { BookmarksEmptyState } from "./BookmarksEmptyState";
 import { BookmarksErrorState } from "./BookmarksErrorState";
 import { NewBookmarkFolderInput } from "./NewBookmarkFolderInput";
-import { adaptBookmarks, buildBookmarkMenu, findNoteTitle } from "./bookmarkTree.utils";
+import {
+  adaptBookmarks,
+  buildBookmarkMenu,
+  computeBookmarkMoveDispatch,
+  findNoteTitle,
+} from "./bookmarkTree.utils";
 import type { ArboristNode } from "./fileTree.utils";
 import { FolderPlus } from "lucide-react";
 import type { CSSProperties } from "react";
@@ -108,6 +113,7 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     toggleBookmark,
     moveToFolder,
     createFolder,
+    reorder,
   } = useBookmarks();
   const { tree } = useFileTree();
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -169,6 +175,60 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     /* bookmark rows activate via onActivate, never onSelectNote */
   }, []);
 
+  /**
+   * onMove — react-arborist reports { dragNodes, parentNode, index }.
+   * Destination folder scope: parentNode kind "bookmark-folder" -> its
+   * folderId; anything else (null / top-level container) -> top-level
+   * (null). The actual cross-folder-vs-reorder decision + new-order
+   * computation lives in the pure, directly-unit-tested
+   * computeBookmarkMoveDispatch (bookmarkTree.utils.ts) — this handler
+   * just resolves react-arborist's node args into plain ids and dispatches
+   * the resulting action. Real drag-gesture correctness is proven with a
+   * real mouse in Task 7 (browser), per the "verify DnD with real mouse"
+   * memory.
+   */
+  const handleMove = useCallback(
+    (args: {
+      dragNodes: NodeApi<ArboristNode>[];
+      parentNode: NodeApi<ArboristNode> | null;
+      index: number;
+    }) => {
+      const destFolderId =
+        args.parentNode?.data.data.kind === "bookmark-folder"
+          ? args.parentNode.data.data.folderId
+          : null;
+
+      const draggedBookmarkIds = args.dragNodes
+        .map((n) => n.data.data)
+        .filter((d) => d.kind === "bookmark")
+        .map((d) => (d as { bookmarkId: string }).bookmarkId);
+
+      const dispatch = computeBookmarkMoveDispatch(
+        bookmarks,
+        draggedBookmarkIds,
+        destFolderId,
+        args.index,
+      );
+
+      if (dispatch.action === "moveToFolder") {
+        for (const bookmarkId of dispatch.bookmarkIds) {
+          void moveToFolder(bookmarkId, dispatch.folderId);
+        }
+      } else if (dispatch.action === "reorder") {
+        void reorder(dispatch.folderId, dispatch.orderedIds);
+      }
+    },
+    [bookmarks, moveToFolder, reorder],
+  );
+
+  /** Bookmarks never nest inside a bookmark leaf — only into a bookmark
+   *  folder or the top level. */
+  const disableDrop = useCallback(
+    (args: { parentNode: NodeApi<ArboristNode> }): boolean =>
+      args.parentNode.data.data.kind === "bookmark",
+    [],
+  );
+
   // Bordered 40px toolbar row — mirrors Sidebar.tsx's Notes-panel toolbar
   // chrome (same height/padding/borderBottom) so Bookmarks presents the same
   // panel-top interface as Notes (Phase 27 follow-up item 5).
@@ -214,6 +274,8 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
         treeRef={treeRef}
         initialOpenState={initialOpenState}
         openByDefault
+        onMove={handleMove}
+        disableDrop={disableDrop}
         renderRow={({ node, style, dragHandle }) => (
           <TreeRow
             node={node}

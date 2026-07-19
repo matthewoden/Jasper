@@ -13,6 +13,7 @@ const postBookmarkMock = vi.fn();
 const deleteBookmarkMock = vi.fn();
 const postBookmarkMoveMock = vi.fn();
 const postBookmarkFolderMock = vi.fn();
+const reorderBookmarksMock = vi.fn();
 
 vi.mock("./bookmarksApi", () => ({
   getBookmarks: (...args: unknown[]) => getBookmarksMock(...args),
@@ -20,6 +21,7 @@ vi.mock("./bookmarksApi", () => ({
   deleteBookmark: (...args: unknown[]) => deleteBookmarkMock(...args),
   postBookmarkMove: (...args: unknown[]) => postBookmarkMoveMock(...args),
   postBookmarkFolder: (...args: unknown[]) => postBookmarkFolderMock(...args),
+  reorderBookmarks: (...args: unknown[]) => reorderBookmarksMock(...args),
 }));
 
 const toastSpy = vi.fn();
@@ -52,6 +54,7 @@ describe("useBookmarks", () => {
     deleteBookmarkMock.mockReset();
     postBookmarkMoveMock.mockReset();
     postBookmarkFolderMock.mockReset();
+    reorderBookmarksMock.mockReset();
     toastSpy.mockReset();
     useTreeStore.setState({ bookmarks: [], bookmarkFolders: [] });
   });
@@ -334,5 +337,60 @@ describe("useBookmarks", () => {
     await waitFor(() => {
       expect(result.current.bookmarks[0].folder_id).toBe("f-1");
     });
+  });
+
+  it("B15: reorder optimistically reassigns Order for the given scope and calls reorderBookmarks", async () => {
+    const bookmarkC = { id: "bm-3", note_id: "note-c", folder_id: null, order: 2 };
+    getBookmarksMock.mockResolvedValue({
+      folders: [],
+      bookmarks: [bookmarkA, { id: "bm-2", note_id: "note-b", folder_id: null, order: 1 }, bookmarkC],
+    });
+
+    const { result } = renderHook(() => useBookmarks(), { wrapper });
+    await waitFor(() => expect(result.current.bookmarks.length).toBe(3));
+
+    reorderBookmarksMock.mockResolvedValueOnce(undefined);
+    getBookmarksMock.mockResolvedValueOnce({
+      folders: [],
+      bookmarks: [
+        { ...bookmarkC, order: 0 },
+        { ...bookmarkA, order: 1 },
+        { id: "bm-2", note_id: "note-b", folder_id: null, order: 2 },
+      ],
+    });
+
+    await act(async () => {
+      await result.current.reorder(null, ["bm-3", "bm-1", "bm-2"]);
+    });
+
+    expect(reorderBookmarksMock).toHaveBeenCalledWith(null, ["bm-3", "bm-1", "bm-2"]);
+    await waitFor(() => {
+      const byId = Object.fromEntries(result.current.bookmarks.map((b) => [b.id, b.order]));
+      expect(byId).toEqual({ "bm-3": 0, "bm-1": 1, "bm-2": 2 });
+    });
+  });
+
+  it("B16: reorder failure reverts the optimistic order and toasts", async () => {
+    getBookmarksMock.mockResolvedValue({
+      folders: [],
+      bookmarks: [bookmarkA, { id: "bm-2", note_id: "note-b", folder_id: null, order: 1 }],
+    });
+
+    const { result } = renderHook(() => useBookmarks(), { wrapper });
+    await waitFor(() => expect(result.current.bookmarks.length).toBe(2));
+
+    reorderBookmarksMock.mockRejectedValueOnce(new Error("backend went away"));
+    await act(async () => {
+      await result.current.reorder(null, ["bm-2", "bm-1"]);
+    });
+
+    expect(result.current.bookmarks[0].id).toBe("bm-1");
+    expect(result.current.bookmarks[0].order).toBe(0);
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't reorder bookmarks",
+        variant: "error",
+      }),
+    );
   });
 });

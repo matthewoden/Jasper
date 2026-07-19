@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { adaptBookmarks, buildBookmarkMenu, findNoteTitle } from "./bookmarkTree.utils";
+import {
+  adaptBookmarks,
+  buildBookmarkMenu,
+  computeBookmarkMoveDispatch,
+  findNoteTitle,
+} from "./bookmarkTree.utils";
 import type { Bookmark, BookmarkFolder } from "../lib/useTreeStore";
 import type { TreeNode } from "../lib/treeApi";
 
@@ -104,5 +109,54 @@ describe("buildBookmarkMenu", () => {
     expect(onMoveToFolder).toHaveBeenCalledWith("bm-1", "f-1");
     menu.onNewFolder();
     expect(onNewFolder).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("computeBookmarkMoveDispatch", () => {
+  const topA: Bookmark = { id: "bm-a", note_id: "note-a", folder_id: null, order: 0 };
+  const topB: Bookmark = { id: "bm-b", note_id: "note-b", folder_id: null, order: 1 };
+  const topC: Bookmark = { id: "bm-c", note_id: "note-c", folder_id: null, order: 2 };
+  const inFolder: Bookmark = { id: "bm-d", note_id: "note-d", folder_id: "f-1", order: 0 };
+
+  it("returns noop when no bookmarks are dragged", () => {
+    const result = computeBookmarkMoveDispatch([topA], [], null, 0);
+    expect(result).toEqual({ action: "noop" });
+  });
+
+  it("dispatches moveToFolder when the destination folder differs from the source", () => {
+    const result = computeBookmarkMoveDispatch([topA, inFolder], ["bm-a"], "f-1", 0);
+    expect(result).toEqual({
+      action: "moveToFolder",
+      bookmarkIds: ["bm-a"],
+      folderId: "f-1",
+    });
+  });
+
+  it("dispatches moveToFolder when dragging OUT of a folder to top-level (destFolderId null)", () => {
+    const result = computeBookmarkMoveDispatch([inFolder], ["bm-d"], null, 0);
+    expect(result).toEqual({
+      action: "moveToFolder",
+      bookmarkIds: ["bm-d"],
+      folderId: null,
+    });
+  });
+
+  it("dispatches reorder with the new ordered id list when the destination folder is unchanged", () => {
+    // A(0) B(1) C(2), dragging C to index 0 (before A).
+    const result = computeBookmarkMoveDispatch([topA, topB, topC], ["bm-c"], null, 0);
+    expect(result).toEqual({
+      action: "reorder",
+      folderId: null,
+      orderedIds: ["bm-c", "bm-a", "bm-b"],
+    });
+  });
+
+  it("reorder clamps an out-of-range index into the valid range", () => {
+    const result = computeBookmarkMoveDispatch([topA, topB], ["bm-a"], null, 99);
+    expect(result).toEqual({
+      action: "reorder",
+      folderId: null,
+      orderedIds: ["bm-b", "bm-a"],
+    });
   });
 });

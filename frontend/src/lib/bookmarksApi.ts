@@ -8,6 +8,7 @@
  *   DELETE /api/v1/bookmarks/{id}        → deleteBookmark(id): void
  *   POST   /api/v1/bookmarks/{id}/folder → postBookmarkMove(id, folderId): {id, folder_id}
  *   POST   /api/v1/bookmark-folders      → postBookmarkFolder(name): BookmarkFolder
+ *   POST   /api/v1/bookmarks/reorder     → reorderBookmarks(folderId, orderedIds): void
  *
  * Every wrapper throws on non-2xx so callers can use try/catch — including
  * getBookmarks(), which used to swallow errors and return an empty document
@@ -86,4 +87,22 @@ export async function postBookmarkFolder(
     throw new Error(unwrapErrorMessage(error, "create folder failed"));
   }
   return data as BookmarkFolder;
+}
+
+/**
+ * Sets the explicit display order for EVERY bookmark in one folder scope
+ * (folderId null = top-level). orderedIds must be exactly the current
+ * membership of that scope — the backend rejects a mismatch with 404
+ * (T-JV1-01) and an unknown folderId with 400 (T-JV1-02).
+ */
+export async function reorderBookmarks(
+  folderId: string | null,
+  orderedIds: string[],
+): Promise<void> {
+  const { error } = await client.POST("/bookmarks/reorder", {
+    body: { folder_id: folderId, ordered_ids: orderedIds },
+  });
+  if (error) {
+    throw new Error(unwrapErrorMessage(error, "reorder bookmarks failed"));
+  }
 }
