@@ -6,6 +6,7 @@ import { useFileTree } from "./useFileTree";
 import { dispatchTagEvent } from "./useTagBrowser";
 import { dispatchLinksEvent } from "./useBacklinks";
 import { dispatchMcpGrantsEvent } from "./useMcpGrants";
+import { dispatchBookmarksEvent } from "./useBookmarks";
 import type { components } from "../api/schema";
 
 type WSEnvelope = components["schemas"]["WSEnvelope"];
@@ -163,6 +164,9 @@ export function useSessionSync(
             break;
           case "mcp:grant_changed":
             dispatchMcpGrantsEvent();
+            break;
+          case "bookmark:changed":
+            dispatchBookmarksEvent();
             break;
           case "vault.switching": {
             const vaultSwitchingPayload = env.payload as {
