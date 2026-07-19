@@ -138,6 +138,22 @@ vi.mock("../lib/treeApi", () => ({
     getTree: vi.fn(),
 }));
 
+
+const toggleBookmarkMock = vi.fn();
+let bookmarkedNoteIds = new Set<string>();
+
+vi.mock("../lib/useBookmarks", () => ({
+    useBookmarks: () => ({
+        bookmarks: [],
+        bookmarkFolders: [],
+        refresh: vi.fn(),
+        toggleBookmark: toggleBookmarkMock,
+        moveToFolder: vi.fn(),
+        createFolder: vi.fn(),
+        isBookmarked: (noteId: string) => bookmarkedNoteIds.has(noteId),
+    }),
+}));
+
 import { ScratchpadUUID, getNote, updateNote } from "../lib/notesApi";
 import { getTree, postNoteMove } from "../lib/treeApi";
 import { __testing__ as fileTreeTesting } from "../lib/useFileTree";
@@ -236,6 +252,8 @@ beforeEach(() => {
     getTreeMock.mockResolvedValue(okTree("scratchpad.md"));
     useTreeStore.setState({ connectionStatus: "connected" });
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    toggleBookmarkMock.mockReset();
+    bookmarkedNoteIds = new Set<string>();
 });
 
 afterEach(() => {
@@ -3003,6 +3021,76 @@ describe("<EditorPane /> breadcrumb (TAB-18)", () => {
         expect(segments[0].textContent).toBe("note");
         const separators = crumb.querySelectorAll('[data-testid="breadcrumb-separator"]');
         expect(separators).toHaveLength(0);
+    });
+});
+
+
+describe("<EditorPane /> breadcrumb bookmark star (BOOK-01, D-14/D-15)", () => {
+    it("shows an unfilled star when the note is not bookmarked", async () => {
+        getNoteMock.mockResolvedValue(okGet("# note"));
+        getTreeMock.mockResolvedValue(okTree("note.md"));
+        bookmarkedNoteIds = new Set();
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const star = await screen.findByTestId("bookmark-star");
+        expect(star.getAttribute("aria-label")).toBe("Bookmark this note");
+        const svg = star.querySelector("svg");
+        expect(svg?.getAttribute("fill")).toBe("none");
+    });
+
+    it("shows a filled, accent-colored star when the note IS bookmarked", async () => {
+        getNoteMock.mockResolvedValue(okGet("# note"));
+        getTreeMock.mockResolvedValue(okTree("note.md"));
+        bookmarkedNoteIds = new Set([ScratchpadUUID]);
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const star = await screen.findByTestId("bookmark-star");
+        expect(star.getAttribute("aria-label")).toBe("Remove bookmark");
+        const svg = star.querySelector("svg");
+        expect(svg?.getAttribute("fill")).toBe("currentColor");
+        expect(star.getAttribute("style") ?? "").toContain(
+            "var(--color-accent)",
+        );
+    });
+
+    it("clicking the star calls toggleBookmark with the active note's id", async () => {
+        getNoteMock.mockResolvedValue(okGet("# note"));
+        getTreeMock.mockResolvedValue(okTree("note.md"));
+        bookmarkedNoteIds = new Set();
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const star = await screen.findByTestId("bookmark-star");
+        fireEvent.click(star);
+
+        expect(toggleBookmarkMock).toHaveBeenCalledWith(ScratchpadUUID);
+    });
+
+    it("does not render a clickable star when the pane is hidden", async () => {
+        getNoteMock.mockResolvedValue(okGet("# note"));
+        getTreeMock.mockResolvedValue(okTree("note.md"));
+
+        render(<EditorPane noteId={ScratchpadUUID} hidden />);
+        await flushMicrotasks();
+
+        await screen.findByTestId("note-breadcrumb");
+        expect(screen.queryByTestId("bookmark-star")).not.toBeInTheDocument();
+    });
+
+    it("does not render a clickable star when the pane is not the active pane", async () => {
+        getNoteMock.mockResolvedValue(okGet("# note"));
+        getTreeMock.mockResolvedValue(okTree("note.md"));
+
+        render(<EditorPane noteId={ScratchpadUUID} paneActive={false} />);
+        await flushMicrotasks();
+
+        await screen.findByTestId("note-breadcrumb");
+        expect(screen.queryByTestId("bookmark-star")).not.toBeInTheDocument();
     });
 });
 
