@@ -149,12 +149,16 @@ export function TreeRow({
   const isSelected = node.isSelected === true;
   const isDailyFolder = isFolder && (data as FolderNodeData).path === "daily";
   const isAttachmentsFolder = isFolder && (data as FolderNodeData).name === "attachments";
-  // Base offset reduced from 16 -> 8 (Phase 27 follow-up item 3) so the
-  // folder/file icon column reads closer to the activity-ribbon's own
-  // ~16px icon inset instead of sitting an extra chevron+gap (20px) further
-  // right. Per-level step (16 * node.level) and the note-row 16px spacer
-  // (below) are unchanged, so nesting and note/folder label alignment hold.
-  const indent = 8 + 16 * node.level;
+  // Base offset computed from SidebarTabRow's actual icon column (Phase 27
+  // follow-up fix round, item 3): the tab icon's left edge sits at the
+  // header's 16px paddingLeft + half the 30x30 tab button's own
+  // (30-16)/2=7px icon-centering inset = 23px. This row's own
+  // chevron/spacer (16px) + the 4px chevron-to-icon gap (below) always
+  // contribute 20px between the row's paddingLeft and its folder icon /
+  // note label, so the base must be 23 - 20 = 3 for those to land on the
+  // same column at level 0. (A prior 8px base undershot the tabs' column
+  // by 5px.) Per-level step (16 * node.level) is unchanged.
+  const indent = 3 + 16 * node.level;
 
   const grantLevel = isFolder
     ? directLevelFor((data as FolderNodeData).path)
