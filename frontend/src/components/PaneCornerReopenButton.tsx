@@ -15,6 +15,12 @@
  * a compact 28x28 rounded-square tint centered on the glyph (not a full-height
  * rectangle), so the hover reads as a small tag on the glyph itself rather than
  * filling the whole cell.
+ *
+ * `marginLeft: -4` cancels the parent tab strip's `padding: "0 4px"` (see
+ * `tabStripStyle` in TabStrip.tsx): without it the strip's 4px left padding
+ * shoves this first cell 4px off the activity ribbon's edge, so the centered
+ * glyph landed 4px too far right. Absorbing that padding seats the cell flush
+ * against the ribbon so the glyph centers in the intended 40px column.
  */
 import { useState } from "react";
 import { PanelLeft } from "lucide-react";
@@ -39,6 +45,7 @@ export function PaneCornerReopenButton(): React.JSX.Element | null {
         alignSelf: "stretch",
         flexShrink: 0,
         width: 40,
+        marginLeft: -4,
         padding: 0,
         borderTop: "none",
         borderBottom: "none",
