@@ -131,6 +131,13 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   useEffect(() => {
     if (collapseAllNonce > 0) treeRef.current?.closeAll();
   }, [collapseAllNonce]);
+
+  // Expand-all: same imperative pattern as collapse-all above (the toggle
+  // button in Sidebar bumps this after repopulating the store's expanded set).
+  const expandAllNonce = useTreeStore((s) => s.expandAllNonce);
+  useEffect(() => {
+    if (expandAllNonce > 0) treeRef.current?.openAll();
+  }, [expandAllNonce]);
   const [flatNotes, setFlatNotes] = useState<NoteSummary[] | null>(null);
   const [flatLoading, setFlatLoading] = useState(false);
 
@@ -175,7 +182,14 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   const handleToggle = useCallback((id: string) => {
     if (id.startsWith("folder:")) {
       const path = id.slice("folder:".length);
-      useTreeStore.getState().toggleExpanded(path);
+      // react-arborist's internal open-state has already flipped by the time
+      // onToggle fires (dispatch happens before the callback) — read it back
+      // deterministically rather than blindly toggling. onToggle fires for
+      // BOTH individual clicks AND bulk openAll()/closeAll(); a blind toggle
+      // would fight expandAllFolders()/collapseAllFolders() (Rule 1 fix,
+      // Phase 27 follow-up item 1).
+      const isOpen = treeRef.current?.isOpen(id) ?? true;
+      useTreeStore.getState().setFolderExpanded(path, isOpen);
     }
   }, []);
 

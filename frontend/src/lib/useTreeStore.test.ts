@@ -83,6 +83,39 @@ describe("useTreeStore — default + mutators", () => {
     expect(result.current.collapseAllNonce).toBe(before + 1);
   });
 
+  it("TestStore_CollapseAllFolders_SetsAllCollapsed: sets allCollapsed true (Phase 27 follow-up item 1)", () => {
+    const { result } = renderHook(() => useTreeStore());
+    act(() => {
+      result.current.toggleExpanded("projects");
+      result.current.collapseAllFolders();
+    });
+    expect(result.current.allCollapsed).toBe(true);
+  });
+
+  it("TestStore_ExpandAllFolders_RepopulatesExpandedAndBumpsNonce: second toggle reverses collapse-all", () => {
+    const { result } = renderHook(() => useTreeStore());
+    act(() => result.current.collapseAllFolders());
+    expect(result.current.allCollapsed).toBe(true);
+    const beforeExpandNonce = result.current.expandAllNonce;
+
+    act(() => result.current.expandAllFolders(["projects", "archive"]));
+
+    expect(result.current.expandAllNonce).toBe(beforeExpandNonce + 1);
+    expect(result.current.allCollapsed).toBe(false);
+    expect([...result.current.expanded].sort()).toEqual(["archive", "projects"]);
+  });
+
+  it("TestStore_ToggleExpanded_ResetsAllCollapsed: a manual expand while allCollapsed keeps the button icon honest", () => {
+    const { result } = renderHook(() => useTreeStore());
+    act(() => result.current.collapseAllFolders());
+    expect(result.current.allCollapsed).toBe(true);
+
+    act(() => result.current.toggleExpanded("projects"));
+
+    expect(result.current.allCollapsed).toBe(false);
+    expect(result.current.expanded.has("projects")).toBe(true);
+  });
+
   it("TestStore_ToggleExpanded_Removes: toggling a path twice removes it", () => {
     const { result } = renderHook(() => useTreeStore());
     act(() => {

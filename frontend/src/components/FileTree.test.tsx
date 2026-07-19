@@ -8,6 +8,7 @@
  * (react-window) mounts the visible window of rows synchronously at finite height.
  */
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -81,6 +82,9 @@ beforeEach(() => {
     activeNoteId: null,
     pendingRename: null,
     draftCreate: null,
+    collapseAllNonce: 0,
+    expandAllNonce: 0,
+    allCollapsed: false,
   });
   mockedGetNote.mockReset();
   mockedUpdateNote.mockReset();
@@ -221,6 +225,48 @@ describe("<FileTree />", () => {
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByText("projects")).toBeInTheDocument();
+      expect(screen.getByText("Readme")).toBeInTheDocument();
+    });
+  });
+
+  it("TestFileTree_ExpandAllNonce_OpensAllFolders — expand-all toggle repopulates the tree open state", async () => {
+    const tree: Tree = {
+      root: [
+        {
+          kind: "folder",
+          path: "projects",
+          name: "projects",
+          children: [
+            {
+              kind: "note",
+              id: "uuid-readme",
+              path: "projects/readme.md",
+              title: "Readme",
+              updated_at: new Date().toISOString(),
+            },
+          ],
+        },
+      ],
+    };
+    mockedUseFileTree.mockReturnValue({
+      tree,
+      loading: false,
+      error: null,
+      refresh: noopRefresh,
+      mutate: noopMutate,
+    });
+    mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
+    renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("projects")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Readme")).toBeNull();
+
+    act(() => {
+      useTreeStore.getState().expandAllFolders(["projects"]);
+    });
+
+    await waitFor(() => {
       expect(screen.getByText("Readme")).toBeInTheDocument();
     });
   });

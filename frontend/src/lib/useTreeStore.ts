@@ -80,6 +80,13 @@ export interface TreeStore {
   /** Bumped by collapseAllFolders() — FileTree watches it to call the
    *  react-arborist TreeApi.closeAll() imperatively (state alone can't). */
   collapseAllNonce: number;
+  /** Bumped by expandAllFolders() — FileTree watches it to call the
+   *  react-arborist TreeApi.openAll() imperatively (state alone can't). */
+  expandAllNonce: number;
+  /** True immediately after collapseAllFolders(); flips false on expandAllFolders()
+   *  or any manual folder expand (toggleExpanded). Drives the Collapse-all button's
+   *  icon — ephemeral view state, never persisted (Phase 27 follow-up item 1). */
+  allCollapsed: boolean;
   activeNoteId: string | null;
 
   activeFilePath: string | null;
@@ -105,8 +112,20 @@ export interface TreeStore {
   setSidebarWidth: (w: number) => void;
 
   toggleExpanded: (path: string) => void;
+  /**
+   * Deterministically set a single folder's expand/collapse membership.
+   * Used by FileTree's onToggle (fired for BOTH user clicks and programmatic
+   * openAll()/closeAll()) — a blind toggle would fight bulk operations
+   * (e.g. expandAllFolders() sets a path, then openAll()'s onToggle flips
+   * it back off). No-op when already in sync.
+   */
+  setFolderExpanded: (path: string, isOpen: boolean) => void;
   /** Collapse every expanded folder (clears the expanded set; auto-persists). */
   collapseAllFolders: () => void;
+  /** Expand every folder in the tree (caller supplies the full folder-path list
+   *  since the store doesn't own the tree shape). Repopulates `expanded` so
+   *  localStorage persistence + next-mount initialOpenState stay consistent. */
+  expandAllFolders: (allFolderPaths: string[]) => void;
   setActiveNote: (id: string | null) => void;
   /**
    * startRename — enter inline-rename mode for the node at kind + target.
@@ -219,6 +238,8 @@ export interface BookmarkFolder {
 export const useTreeStore = create<TreeStore>((set) => ({
   expanded: new Set<string>(),
   collapseAllNonce: 0,
+  expandAllNonce: 0,
+  allCollapsed: false,
   activeNoteId: null,
   activeFilePath: null,
   setActiveFilePath: (p) =>
@@ -236,14 +257,41 @@ export const useTreeStore = create<TreeStore>((set) => ({
   toggleExpanded: (path) =>
     set((s) => {
       const next = new Set(s.expanded);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return { expanded: next };
+      let opened = false;
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+        opened = true;
+      }
+      // A manual expand while "all collapsed" is showing means the icon is
+      // no longer honest — flip it back to the collapse affordance.
+      return opened && s.allCollapsed
+        ? { expanded: next, allCollapsed: false }
+        : { expanded: next };
+    }),
+  setFolderExpanded: (path, isOpen) =>
+    set((s) => {
+      const has = s.expanded.has(path);
+      if (isOpen === has) return s;
+      const next = new Set(s.expanded);
+      if (isOpen) next.add(path);
+      else next.delete(path);
+      return isOpen && s.allCollapsed
+        ? { expanded: next, allCollapsed: false }
+        : { expanded: next };
     }),
   collapseAllFolders: () =>
     set((s) => ({
       expanded: new Set<string>(),
       collapseAllNonce: s.collapseAllNonce + 1,
+      allCollapsed: true,
+    })),
+  expandAllFolders: (allFolderPaths) =>
+    set((s) => ({
+      expanded: new Set<string>(allFolderPaths),
+      expandAllNonce: s.expandAllNonce + 1,
+      allCollapsed: false,
     })),
   setActiveNote: (id) => set({ activeNoteId: id }),
   startRename: (kind, target, isNew) =>
