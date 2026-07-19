@@ -225,7 +225,19 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
                   <ChevronsDownUp size={16} aria-hidden="true" />
                 </button>
               </div>
-              <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+              {/* display:flex + column so FileTree's flex:1 tree-area actually
+                  stretches to fill (its ResizeObserver-measured height drives
+                  react-arborist's virtual list — without this it collapses to a
+                  fixed ~400px and the note list stops short of the bottom). */}
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  position: "relative",
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
                 <FileTree onSelectNote={onSelectNote} />
               </div>
             </div>
