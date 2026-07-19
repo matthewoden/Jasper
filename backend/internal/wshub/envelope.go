@@ -74,6 +74,20 @@ const (
 	// drift here breaks the schema-typed fixture sentinel above.
 	EventMcpGrantChanged = "mcp:grant_changed"
 
+	// EventBookmarkChanged is broadcast by the /bookmarks* CRUD handlers
+	// whenever a bookmark or bookmark folder is added, removed, moved, or
+	// created. Payload carries NO data (T-27-04 — no payload-trust
+	// surface); clients refetch GET /bookmarks on receipt. Unlike
+	// EventMcpGrantChanged, this is a per-user content mutation like
+	// note:*/folder:*, so callers broadcast with the mutating session's
+	// own origin_session_id (SessionIDFromContext(ctx)), NOT the
+	// ""-origin server-wide pattern. Matches the openapi.yaml
+	// WSEnvelope.event enum entry "bookmark:changed" — drift here breaks
+	// the schema-typed fixture sentinel above. Mirrors the local const of
+	// the same name in backend/internal/bookmarks/events.go (cycle
+	// avoidance — bookmarks cannot import wshub).
+	EventBookmarkChanged = "bookmark:changed"
+
 	// EventVaultSwitching is broadcast at the start of a hot-swap.
 	// Payload: {"target_path": string, "target_display_name": string}.
 	// The SPA mounts VaultSwitchOverlay on receipt.

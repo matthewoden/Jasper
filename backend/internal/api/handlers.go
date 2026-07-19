@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/matthewoden/jasper/backend/internal/bookmarks"
 	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/mcp"
 	"github.com/matthewoden/jasper/backend/internal/notes"
@@ -41,6 +42,8 @@ type Server struct {
 	index       notes.Index
 	broadcaster notes.Broadcaster
 	log         *slog.Logger
+
+	bookmarks *bookmarks.Service
 
 	dataDir string
 
@@ -94,6 +97,10 @@ func NewServerWithIndex(
 	if status == nil {
 		status = nilStatusProvider{}
 	}
+	var registry *notes.Registry
+	if notesSvc != nil {
+		registry = notesSvc.Registry()
+	}
 	return &Server{
 		notes:       notesSvc,
 		status:      status,
@@ -102,6 +109,7 @@ func NewServerWithIndex(
 		broadcaster: broadcaster,
 		log:         log,
 		dataDir:     dataDir,
+		bookmarks:   bookmarks.New(dataDir, registry, broadcaster, log),
 	}
 }
 
