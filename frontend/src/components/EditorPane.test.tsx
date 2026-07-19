@@ -3082,7 +3082,7 @@ describe("<EditorPane /> breadcrumb bookmark star (BOOK-01, D-14/D-15)", () => {
         expect(screen.queryByTestId("bookmark-star")).not.toBeInTheDocument();
     });
 
-    it("does not render a clickable star when the pane is not the active pane", async () => {
+    it("renders the star even when the pane is NOT active (bookmark from any pane)", async () => {
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
 
@@ -3090,7 +3090,7 @@ describe("<EditorPane /> breadcrumb bookmark star (BOOK-01, D-14/D-15)", () => {
         await flushMicrotasks();
 
         await screen.findByTestId("note-breadcrumb");
-        expect(screen.queryByTestId("bookmark-star")).not.toBeInTheDocument();
+        expect(await screen.findByTestId("bookmark-star")).toBeInTheDocument();
     });
 });
 

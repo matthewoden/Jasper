@@ -237,13 +237,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const zen = useTreeStore((s) => s.zen);
 
-  // Breadcrumb bookmark star (BOOK-01, D-14/D-15). The bookmarked-state read
-  // is a cheap pure derive, safe in every mounted EditorPane instance
-  // (RESEARCH Pitfall 4); the clickable star itself only renders on the
-  // active, non-hidden pane (must_haves.truths).
+  // Breadcrumb bookmark star (BOOK-01, D-14). Renders in every visible pane's
+  // breadcrumb (not just the active pane) so a note can be bookmarked from any
+  // pane; each pane's star reflects and toggles its OWN note's bookmark state.
   const { isBookmarked, toggleBookmark } = useBookmarks();
   const bookmarked = noteId !== null && isBookmarked(noteId);
-  const showBookmarkStar = !hidden && paneActive && noteId !== null;
+  const showBookmarkStar = !hidden && noteId !== null;
 
   const handleBreadcrumbClick = useCallback((seg: BreadcrumbSegment) => {
     if (seg.kind === "folder") {
