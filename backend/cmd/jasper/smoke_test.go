@@ -260,7 +260,15 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 	addr := pickFreePort(t)
 
 	overrideDir := t.TempDir()
+	// Baseline mirrors the full shipped migration set (through 006_birthtime,
+	// Phase 29) so the post-rollback schema matches a real deployment's
+	// last-known-good state — GET /api/v1/notes reads birthtime_unix.
 	copyFile(t, "../../migrations/001_initial.sql", filepath.Join(overrideDir, "001_initial.sql"))
+	copyFile(t, "../../migrations/002_tags_backlinks.sql", filepath.Join(overrideDir, "002_tags_backlinks.sql"))
+	copyFile(t, "../../migrations/003_fts.sql", filepath.Join(overrideDir, "003_fts.sql"))
+	copyFile(t, "../../migrations/004_mcp_grants.sql", filepath.Join(overrideDir, "004_mcp_grants.sql"))
+	copyFile(t, "../../migrations/005_backlink_multi_excerpt.sql", filepath.Join(overrideDir, "005_backlink_multi_excerpt.sql"))
+	copyFile(t, "../../migrations/006_birthtime.sql", filepath.Join(overrideDir, "006_birthtime.sql"))
 
 	env1 := []string{"JASPER_TEST_MIGRATIONS_DIR=" + overrideDir}
 	cmd, log := spawn(t, dataDir, addr, env1)
@@ -277,9 +285,9 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 	}
 	killAndWait(t, cmd, log)
 
-	if err := os.WriteFile(filepath.Join(overrideDir, "002_break.sql"),
+	if err := os.WriteFile(filepath.Join(overrideDir, "007_break.sql"),
 		[]byte("THIS IS NOT VALID SQL;"), 0o644); err != nil {
-		t.Fatalf("write 002_break.sql: %v", err)
+		t.Fatalf("write 007_break.sql: %v", err)
 	}
 
 	addr2 := pickFreePort(t)
@@ -305,8 +313,8 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 	if st.State != "rolled_back" {
 		t.Errorf("state: got %q, want rolled_back; body=%s", st.State, body)
 	}
-	if st.FailedMigration != "002_break.sql" {
-		t.Errorf("failed_migration: got %q, want 002_break.sql", st.FailedMigration)
+	if st.FailedMigration != "007_break.sql" {
+		t.Errorf("failed_migration: got %q, want 007_break.sql", st.FailedMigration)
 	}
 	if st.LogsPath == "" {
 		t.Errorf("logs_path empty; want a path under data dir")

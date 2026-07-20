@@ -50,6 +50,17 @@ func (s *Server) SearchNotes(
 		limit = 100
 	}
 
+	sort := "relevance"
+	if req.Params.Sort != nil {
+		sort = string(*req.Params.Sort)
+	}
+	switch sort {
+	case "relevance", "modified", "created":
+		// valid
+	default:
+		return SearchNotes400JSONResponse(newError("invalid_query", "Invalid sort value.")), nil
+	}
+
 	if len(q) < 2 && len(tags) == 0 {
 		return SearchNotes200JSONResponse{Results: []SearchResult{}}, nil
 	}
@@ -58,12 +69,12 @@ func (s *Server) SearchNotes(
 		return SearchNotes200JSONResponse{Results: []SearchResult{}}, nil
 	}
 
-	hits, err := s.index.SearchFTS(ctx, q, tags, limit)
+	hits, err := s.index.SearchFTS(ctx, q, tags, limit, sort)
 	if err != nil {
 		if errors.Is(err, notes.ErrFTSQuerySyntax) {
 			return SearchNotes400JSONResponse(newError("invalid_query", "Invalid search query.")), nil
 		}
-		s.log.Error("SearchNotes: index error", "q", q, "tags", tags, "err", err)
+		s.log.Error("SearchNotes: index error", "q", q, "tags", tags, "sort", sort, "err", err)
 		return nil, errors.New("search failed")
 	}
 
@@ -73,6 +84,7 @@ func (s *Server) SearchNotes(
 
 	results := make([]SearchResult, 0, len(hits))
 	for _, h := range hits {
+		createdAt := h.CreatedAt
 		results = append(results, SearchResult{
 			Id:           h.ID,
 			Title:        h.Title,
@@ -81,6 +93,7 @@ func (s *Server) SearchNotes(
 			MatchingTags: h.MatchingTags,
 			Rank:         float32(h.Rank),
 			ModifiedAt:   h.ModifiedAt,
+			Created:      &createdAt,
 		})
 	}
 	return SearchNotes200JSONResponse{Results: results}, nil

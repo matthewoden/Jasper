@@ -95,7 +95,7 @@ func (f *blIdx) SearchTitles(_ context.Context, _ string, _ int) ([]notes.Search
 	return f.searchResults, f.searchErr
 }
 
-func (f *blIdx) SearchFTS(_ context.Context, _ string, _ []string, _ int) ([]notes.SearchHit, error) {
+func (f *blIdx) SearchFTS(_ context.Context, _ string, _ []string, _ int, _ string) ([]notes.SearchHit, error) {
 	return []notes.SearchHit{}, nil
 }
 

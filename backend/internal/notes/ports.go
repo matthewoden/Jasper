@@ -23,6 +23,7 @@ type SearchHit struct {
 	MatchingTags []string
 	Rank         float64 // bm25 + recency blend; lower is better
 	ModifiedAt   time.Time
+	CreatedAt    time.Time // COALESCE(NULLIF(birthtime_unix,0), created_at) — see D-04
 }
 
 // FileStore is the port over the filesystem adapter (internal/fsstore).
@@ -199,11 +200,13 @@ type Index interface {
 	SearchTitles(ctx context.Context, q string, limit int) ([]SearchResult, error)
 
 	// SearchFTS runs an FTS5 query against notes body+tag_names with
-	// optional AND-combined tag filters. Sort = bm25 + recency blend
-	// (weight 0.002). Returns up to `limit` results (capped at 100).
-	// Returns ErrFTSQuerySyntax on FTS5 syntax errors so the handler
-	// can map to HTTP 400.
-	SearchFTS(ctx context.Context, q string, tags []string, limit int) ([]SearchHit, error)
+	// optional AND-combined tag filters. sort selects the ORDER BY:
+	// "relevance" (default, bm25 + recency blend, weight 0.002),
+	// "modified" (n.updated_at DESC), or "created"
+	// (COALESCE(NULLIF(birthtime_unix,0), created_at) DESC). Returns up to
+	// `limit` results (capped at 100). Returns ErrFTSQuerySyntax on FTS5
+	// syntax errors so the handler can map to HTTP 400.
+	SearchFTS(ctx context.Context, q string, tags []string, limit int, sort string) ([]SearchHit, error)
 }
 
 // BacklinkRow is the projection returned by Index.GetBacklinks.
@@ -272,7 +275,9 @@ type NoteRecord struct {
 
 // NoteSummary is the projection returned by Index.List for the
 // file-tree / notes-list UI. UpdatedAt is the file's mtime (NOT the
-// index-touch time) so the UI shows file-relevant timestamps.
+// index-touch time) so the UI shows file-relevant timestamps. CreatedAt
+// is COALESCE(NULLIF(birthtime_unix,0), created_at) — see D-04 — used by
+// the tree projection (BuildTree) to expose a "created" sort data point.
 //
 // The wire shape (api.Note in openapi.yaml) is a subset of this struct;
 // the API handler translates NoteSummary -> api.Note, keeping internal-only
@@ -282,4 +287,5 @@ type NoteSummary struct {
 	Path      string
 	Title     string
 	UpdatedAt time.Time
+	CreatedAt time.Time
 }

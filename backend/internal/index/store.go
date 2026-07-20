@@ -104,9 +104,13 @@ func (x *Indexer) Delete(ctx context.Context, id uuid.UUID) error {
 // UpdatedAt in the projection is mtime_unix converted to time.Time —
 // the file's last-modified time, NOT the indexer's row-touch time.
 // The index-touch time is internal-only and never escapes the package.
+//
+// CreatedAt is COALESCE(NULLIF(birthtime_unix, 0), created_at) — see D-04 —
+// consumed by BuildTree to expose a "created" sort data point on tree nodes.
 func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 	rows, err := x.Pair.Reader.QueryContext(ctx,
-		`SELECT id, path, title, mtime_unix FROM notes ORDER BY path ASC`)
+		`SELECT id, path, title, mtime_unix, COALESCE(NULLIF(birthtime_unix, 0), created_at)
+		 FROM notes ORDER BY path ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list query: %w", err)
 	}
@@ -114,8 +118,8 @@ func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 	var out []notes.NoteSummary
 	for rows.Next() {
 		var idStr, path, title string
-		var mtime int64
-		if err := rows.Scan(&idStr, &path, &title, &mtime); err != nil {
+		var mtime, createdAt int64
+		if err := rows.Scan(&idStr, &path, &title, &mtime, &createdAt); err != nil {
 			return nil, fmt.Errorf("list scan: %w", err)
 		}
 		id, err := uuid.Parse(idStr)
@@ -127,6 +131,7 @@ func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 			Path:      path,
 			Title:     title,
 			UpdatedAt: time.Unix(mtime, 0).UTC(),
+			CreatedAt: time.Unix(createdAt, 0).UTC(),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -381,16 +386,37 @@ func buildTagClauses(tags []string, startIdx int) (string, []any) {
 	return strings.Join(clauses, ""), args
 }
 
+// searchOrderClause returns the hardcoded ORDER BY fragment for the given
+// sort value. The raw `sort` string is NEVER interpolated into SQL — only
+// one of these fixed literal fragments is ever spliced into a query
+// (T-29-06: same discipline as the MATCH ?1 positional-bind contract above).
+func searchOrderClause(sort string) string {
+	switch sort {
+	case "modified":
+		return "n.updated_at DESC"
+	case "created":
+		return "COALESCE(NULLIF(n.birthtime_unix, 0), n.created_at) DESC"
+	default: // "relevance" or "" — existing bm25 + recency blend
+		return "bm25(notes_fts) + (julianday('now') - julianday(datetime(n.updated_at,'unixepoch'))) * 0.002"
+	}
+}
+
 // SearchFTS runs an FTS5 MATCH query against the notes_fts virtual table with
-// optional AND-combined tag filters. Results are ordered by a bm25 +
-// recency blend.
+// optional AND-combined tag filters. sort selects the ORDER BY (D-14: the
+// SQL-level order runs BEFORE the LIMIT, so "modified"/"created" reflect the
+// true full match set, not a client reshuffle of a relevance top-N):
+//   - "relevance" (default/""): bm25 + recency blend
+//   - "modified": n.updated_at DESC
+//   - "created": COALESCE(NULLIF(n.birthtime_unix, 0), n.created_at) DESC
 //
 // Security: the MATCH clause always uses a positional bind parameter (?1) —
-// NEVER string concatenation.
+// NEVER string concatenation. The ORDER BY is chosen by searchOrderClause's
+// closed switch over hardcoded literals — the raw sort string never reaches
+// the query text.
 //
 // FTS5 syntax errors (unbalanced parentheses, etc.) are caught and wrapped as
 // notes.ErrFTSQuerySyntax so the handler maps to HTTP 400.
-func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit int) ([]notes.SearchHit, error) {
+func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit int, sort string) ([]notes.SearchHit, error) {
 	if limit < 1 {
 		limit = 1
 	}
@@ -403,7 +429,7 @@ func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit 
 	// query still needs to work, so route empty-q requests through a
 	// non-FTS tag-only lookup instead of the MATCH path below.
 	if strings.TrimSpace(q) == "" {
-		return x.searchTagsOnly(ctx, tags, limit)
+		return x.searchTagsOnly(ctx, tags, limit, sort)
 	}
 
 	tagClauseSQL, tagArgs := buildTagClauses(tags, 2)
@@ -415,16 +441,16 @@ func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit 
 			n.title,
 			n.path,
 			n.updated_at,
+			COALESCE(NULLIF(n.birthtime_unix, 0), n.created_at),
 			snippet(notes_fts, 0, '<mark>', '</mark>', '…', 24) AS excerpt_html,
 			bm25(notes_fts) AS rank
 		FROM notes_fts
 		JOIN notes n ON notes_fts.rowid = n.rowid
 		WHERE notes_fts MATCH ?1
 		%s
-		ORDER BY
-			bm25(notes_fts) + (julianday('now') - julianday(datetime(n.updated_at,'unixepoch'))) * 0.002
+		ORDER BY %s
 		LIMIT ?%d
-	`, tagClauseSQL, limitIdx)
+	`, tagClauseSQL, searchOrderClause(sort), limitIdx)
 
 	matchQuery := prefixWrap(q)
 
@@ -445,19 +471,25 @@ func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit 
 	var hits []notes.SearchHit
 	for rows.Next() {
 		var h notes.SearchHit
-		var updatedAt int64
-		if err := rows.Scan(&h.ID, &h.Title, &h.Path, &updatedAt, &h.ExcerptHTML, &h.Rank); err != nil {
+		var updatedAt, createdAt int64
+		if err := rows.Scan(&h.ID, &h.Title, &h.Path, &updatedAt, &createdAt, &h.ExcerptHTML, &h.Rank); err != nil {
 			return nil, fmt.Errorf("searchfts scan: %w", err)
 		}
 		h.ModifiedAt = time.Unix(updatedAt, 0).UTC()
+		h.CreatedAt = time.Unix(createdAt, 0).UTC()
 		hits = append(hits, h)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("searchfts iter: %w", err)
 	}
 
+	// Pitfall 4 (RESEARCH): the title-LIKE fallback appends rows in its own
+	// order, which would reshuffle the SQL-level modified/created ordering
+	// above. Skip it entirely for time sorts — D-14's "no reshuffle"
+	// contract only needs the relevance path to backfill via LIKE.
 	trimmed := strings.TrimSpace(q)
-	if trimmed != "" && !strings.ContainsAny(trimmed, `"():`) && !fts5OperatorKeywordRE.MatchString(trimmed) && len(hits) <= limit {
+	isRelevanceSort := sort == "" || sort == "relevance"
+	if isRelevanceSort && trimmed != "" && !strings.ContainsAny(trimmed, `"():`) && !fts5OperatorKeywordRE.MatchString(trimmed) && len(hits) <= limit {
 		existing := make(map[string]bool, len(hits))
 		for _, h := range hits {
 			existing[h.ID] = true
@@ -490,21 +522,29 @@ func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit 
 // MATCH, so ExcerptHTML stays empty on every hit. If tags yields zero
 // non-empty clauses, returns (nil, nil) — an unfiltered empty-q dump would be
 // an information-disclosure risk (T-SM6-03), so there is nothing to list.
-func (x *Indexer) searchTagsOnly(ctx context.Context, tags []string, limit int) ([]notes.SearchHit, error) {
+// sort follows the same closed set as SearchFTS (D-14 parity for the
+// empty-q branch); this path has no bm25 rank so "relevance" here falls
+// back to n.updated_at DESC (its prior behavior), same as "modified".
+func (x *Indexer) searchTagsOnly(ctx context.Context, tags []string, limit int, sort string) ([]notes.SearchHit, error) {
 	tagClauseSQL, tagArgs := buildTagClauses(tags, 1)
 	if len(tagArgs) == 0 {
 		return nil, nil
 	}
 	limitIdx := 1 + len(tagArgs)
 
+	orderClause := "n.updated_at DESC"
+	if sort == "created" {
+		orderClause = "COALESCE(NULLIF(n.birthtime_unix, 0), n.created_at) DESC"
+	}
+
 	sqlText := fmt.Sprintf(`
-		SELECT n.id, n.title, n.path, n.updated_at
+		SELECT n.id, n.title, n.path, n.updated_at, COALESCE(NULLIF(n.birthtime_unix, 0), n.created_at)
 		FROM notes n
 		WHERE 1=1
 		%s
-		ORDER BY n.updated_at DESC
+		ORDER BY %s
 		LIMIT ?%d
-	`, tagClauseSQL, limitIdx)
+	`, tagClauseSQL, orderClause, limitIdx)
 
 	args := make([]any, 0, len(tagArgs)+1)
 	args = append(args, tagArgs...)
@@ -519,11 +559,12 @@ func (x *Indexer) searchTagsOnly(ctx context.Context, tags []string, limit int) 
 	var hits []notes.SearchHit
 	for rows.Next() {
 		var h notes.SearchHit
-		var updatedAt int64
-		if err := rows.Scan(&h.ID, &h.Title, &h.Path, &updatedAt); err != nil {
+		var updatedAt, createdAt int64
+		if err := rows.Scan(&h.ID, &h.Title, &h.Path, &updatedAt, &createdAt); err != nil {
 			return nil, fmt.Errorf("searchtagsonly scan: %w", err)
 		}
 		h.ModifiedAt = time.Unix(updatedAt, 0).UTC()
+		h.CreatedAt = time.Unix(createdAt, 0).UTC()
 		hits = append(hits, h)
 	}
 	if err := rows.Err(); err != nil {
@@ -551,7 +592,7 @@ func (x *Indexer) searchTitlePathLike(
 	limitIdx := 2 + len(tagArgs)
 
 	sqlText := fmt.Sprintf(`
-		SELECT n.id, n.title, n.path, n.updated_at
+		SELECT n.id, n.title, n.path, n.updated_at, COALESCE(NULLIF(n.birthtime_unix, 0), n.created_at)
 		FROM notes n
 		WHERE (n.title LIKE '%%' || ?1 || '%%' OR n.path LIKE '%%' || ?1 || '%%')
 		%s
@@ -578,14 +619,15 @@ func (x *Indexer) searchTitlePathLike(
 			break
 		}
 		var h notes.SearchHit
-		var updatedAt int64
-		if err := rows.Scan(&h.ID, &h.Title, &h.Path, &updatedAt); err != nil {
+		var updatedAt, createdAt int64
+		if err := rows.Scan(&h.ID, &h.Title, &h.Path, &updatedAt, &createdAt); err != nil {
 			return nil, fmt.Errorf("searchlike scan: %w", err)
 		}
 		if existing[h.ID] {
 			continue
 		}
 		h.ModifiedAt = time.Unix(updatedAt, 0).UTC()
+		h.CreatedAt = time.Unix(createdAt, 0).UTC()
 		h.Rank = 999
 		hits = append(hits, h)
 	}

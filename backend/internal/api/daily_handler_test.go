@@ -311,7 +311,7 @@ func (f *fakeIndexForDaily) SearchTitles(_ context.Context, _ string, _ int) ([]
 	return nil, nil
 }
 
-func (f *fakeIndexForDaily) SearchFTS(_ context.Context, _ string, _ []string, _ int) ([]notes.SearchHit, error) {
+func (f *fakeIndexForDaily) SearchFTS(_ context.Context, _ string, _ []string, _ int, _ string) ([]notes.SearchHit, error) {
 	return nil, nil
 }
 
@@ -591,7 +591,7 @@ func TestGetDailyNote_FTSSearchableWithoutReconcile(t *testing.T) {
 		t.Fatalf("expected 201, got %T", resp)
 	}
 
-	hits, err := idx.SearchFTS(context.Background(), "zqxdailytoken", nil, 10)
+	hits, err := idx.SearchFTS(context.Background(), "zqxdailytoken", nil, 10, "relevance")
 	if err != nil {
 		t.Fatalf("SearchFTS: %v", err)
 	}

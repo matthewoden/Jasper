@@ -83,7 +83,7 @@ func (f *fakeIndexForAttachments) SearchTitles(_ context.Context, _ string, _ in
 	return nil, nil
 }
 
-func (f *fakeIndexForAttachments) SearchFTS(_ context.Context, _ string, _ []string, _ int) ([]notes.SearchHit, error) {
+func (f *fakeIndexForAttachments) SearchFTS(_ context.Context, _ string, _ []string, _ int, _ string) ([]notes.SearchHit, error) {
 	return nil, nil
 }
 

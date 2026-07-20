@@ -97,7 +97,7 @@ func (f *tagFakeIndex) SearchTitles(_ context.Context, _ string, _ int) ([]notes
 	return []notes.SearchResult{}, nil
 }
 
-func (f *tagFakeIndex) SearchFTS(_ context.Context, _ string, _ []string, _ int) ([]notes.SearchHit, error) {
+func (f *tagFakeIndex) SearchFTS(_ context.Context, _ string, _ []string, _ int, _ string) ([]notes.SearchHit, error) {
 	return []notes.SearchHit{}, nil
 }
 
