@@ -575,6 +575,43 @@ describe("usePaneStore — setPaneRatio (WS-05, D-13)", () => {
   });
 });
 
+describe("usePaneStore — openNoteInNewSplit (P28 QUICK-03)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStore();
+  });
+
+  it("opens an arbitrary note in a NEW sibling leaf without cloning the active tab", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const activeBefore = usePaneStore.getState().activePaneId;
+
+    usePaneStore.getState().openNoteInNewSplit("note-2", "row");
+
+    const s = usePaneStore.getState();
+    expect(_leaves(s.tree)).toHaveLength(2);
+    const newSibling = _leaves(s.tree).find((l) => l.id !== activeBefore)!;
+    expect(newSibling.tabs.map((t) => t.noteId)).toEqual(["note-2"]);
+    expect(s.activePaneId).toBe(newSibling.id);
+
+    const prevLeaf = _leaves(s.tree).find((l) => l.id === activeBefore)!;
+    expect(prevLeaf.tabs.map((t) => t.noteId)).toEqual(["note-1"]); // unchanged, no clone
+  });
+
+  it("falls back to the active pane when the active pane already sits at MAX_DEPTH (32) nesting", () => {
+    const deepTree = buildDeepSplit(32);
+    usePaneStore.setState({ tree: deepTree, activePaneId: "leaf-0", deletedTabIds: new Set<string>() });
+    const leafCountBefore = _leaves(deepTree).length;
+
+    usePaneStore.getState().openNoteInNewSplit("note-x", "row");
+
+    const s = usePaneStore.getState();
+    expect(_leaves(s.tree)).toHaveLength(leafCountBefore); // no new leaf added
+    const leaf = _leaves(s.tree).find((l) => l.id === "leaf-0")!;
+    expect(leaf.tabs.map((t) => t.noteId)).toContain("note-x");
+    expect(s.activePaneId).toBe("leaf-0");
+  });
+});
+
 describe("usePaneStore — focusCyclePane (D-08)", () => {
   beforeEach(() => {
     localStorage.clear();

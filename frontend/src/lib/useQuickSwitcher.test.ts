@@ -190,6 +190,29 @@ describe("useQuickSwitcher — non-empty query (fuzzysort)", () => {
   });
 });
 
+describe("useQuickSwitcher — matchIndexes (D-15 highlight primitive)", () => {
+  it("a non-empty query yields hits with matchIndexes as a non-empty array of numbers", () => {
+    const notes = [{ id: "a", title: "Alpha Notes", path: "alpha.md" }];
+    mockUseFileTree.mockReturnValue({ tree: makeTree(notes), loading: false, error: null });
+    mockUseTreeStore.mockReturnValue([]);
+
+    const { result } = renderHook(() => useQuickSwitcher("alpha"));
+    expect(result.current.length).toBeGreaterThan(0);
+    expect(Array.isArray(result.current[0].matchIndexes)).toBe(true);
+    expect(result.current[0].matchIndexes!.length).toBeGreaterThan(0);
+    expect(result.current[0].matchIndexes!.every((i) => typeof i === "number")).toBe(true);
+  });
+
+  it("the empty-query recency branch yields hits with matchIndexes undefined", () => {
+    const notes = [{ id: "a", title: "Alpha", path: "alpha.md" }];
+    mockUseFileTree.mockReturnValue({ tree: makeTree(notes), loading: false, error: null });
+    mockUseTreeStore.mockReturnValue([]);
+
+    const { result } = renderHook(() => useQuickSwitcher(""));
+    expect(result.current[0].matchIndexes).toBeUndefined();
+  });
+});
+
 describe("useQuickSwitcher — NoteHit shape", () => {
   it("each hit has id, title, and path", () => {
     const notes = [{ id: "n1", title: "My Note", path: "my-note.md" }];
