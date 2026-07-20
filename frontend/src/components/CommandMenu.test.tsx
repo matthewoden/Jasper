@@ -103,6 +103,16 @@ beforeEach(() => {
   setupMocks();
 });
 
+/**
+ * The palette input is role="textbox" in commands/search mode but
+ * role="combobox" in notes mode (D-13/D-16 ARIA wiring, 28-04). Tests that
+ * don't care which mode is under test query via this helper instead of a
+ * hardcoded role.
+ */
+function getPaletteInput(): HTMLElement {
+  return (screen.queryByRole("textbox") ?? screen.getByRole("combobox")) as HTMLElement;
+}
+
 
 const defaultNoteProps = {
   open: true,
@@ -122,7 +132,7 @@ const defaultCmdProps = {
 describe("CommandMenu — open/close", () => {
   it("renders dialog content when open=true", () => {
     render(<CommandMenu {...defaultNoteProps} />);
-    expect(screen.getByRole("textbox")).toBeTruthy();
+    expect(getPaletteInput()).toBeTruthy();
   });
 
   it("does not render dialog content when open=false", () => {
@@ -132,9 +142,9 @@ describe("CommandMenu — open/close", () => {
 });
 
 describe("CommandMenu — mode prop (notes)", () => {
-  it("shows 'Switch to note…' placeholder in notes mode", () => {
+  it("shows 'Find or create a note…' placeholder in notes mode", () => {
     render(<CommandMenu {...defaultNoteProps} />);
-    expect(screen.getByPlaceholderText("Switch to note…")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Find or create a note…")).toBeTruthy();
   });
 
   it("shows Quick switcher aria-label in notes mode", () => {
@@ -169,7 +179,7 @@ describe("CommandMenu — empty states (commands mode)", () => {
     mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: vi.fn() });
 
     render(<CommandMenu {...defaultCmdProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "xyz" } });
 
     expect(screen.getByText('No commands match "xyz"')).toBeTruthy();
@@ -196,7 +206,7 @@ describe("CommandMenu — notes results + keyboard navigation", () => {
     mockUseQuickSwitcher.mockReturnValue(notes);
     render(<CommandMenu {...defaultNoteProps} />);
 
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(mockOpenInActivePane).toHaveBeenCalledWith("n2");
@@ -207,7 +217,7 @@ describe("CommandMenu — notes results + keyboard navigation", () => {
     mockUseQuickSwitcher.mockReturnValue(notes);
     render(<CommandMenu {...defaultNoteProps} />);
 
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.keyDown(input, { key: "ArrowUp" });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(mockOpenInActivePane).toHaveBeenCalledWith("n1");
@@ -219,7 +229,7 @@ describe("CommandMenu — notes results + keyboard navigation", () => {
     mockUseQuickSwitcher.mockReturnValue(notes);
 
     render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(mockOpenInActivePane).toHaveBeenCalledWith("n1");
@@ -253,7 +263,7 @@ describe("CommandMenu — commands results + keyboard navigation", () => {
     mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: mockExecute });
 
     render(<CommandMenu {...defaultCmdProps} onOpenChange={onOpenChange} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(mockExecute).toHaveBeenCalledWith("new-note");
@@ -267,7 +277,7 @@ describe("CommandMenu — XSS safety", () => {
     mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: vi.fn() });
 
     render(<CommandMenu {...defaultCmdProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: '<script>alert("xss")</script>' } });
 
     const emptyState = screen.getByText(/No commands match/);
@@ -282,13 +292,13 @@ describe("CommandMenu — query resets on close", () => {
     mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: vi.fn().mockReturnValue(true) });
 
     const { rerender } = render(<CommandMenu {...defaultCmdProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "hello" } });
     expect((input as HTMLInputElement).value).toBe("hello");
 
     rerender(<CommandMenu {...defaultCmdProps} open={false} />);
     rerender(<CommandMenu {...defaultCmdProps} open={true} />);
-    const newInput = screen.getByRole("textbox");
+    const newInput = getPaletteInput();
     expect((newInput as HTMLInputElement).value).toBe("");
   });
 });
@@ -304,7 +314,7 @@ describe("CommandMenu — closeOnExecute behavior", () => {
     mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: mockExecute });
 
     render(<CommandMenu {...defaultCmdProps} onOpenChange={onOpenChange} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(mockExecute).toHaveBeenCalledWith("switch-note");
@@ -321,7 +331,7 @@ describe("CommandMenu — closeOnExecute behavior", () => {
     mockUseCommandPalette.mockReturnValue({ filtered: mockFiltered, execute: mockExecute });
 
     render(<CommandMenu {...defaultCmdProps} onOpenChange={onOpenChange} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(mockExecute).toHaveBeenCalledWith("new-note");
@@ -334,7 +344,7 @@ describe("CommandMenu — closeOnExecute behavior", () => {
     mockUseQuickSwitcher.mockReturnValue(notes);
 
     render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(mockOpenInActivePane).toHaveBeenCalledWith("n1");
@@ -352,7 +362,7 @@ describe("CMM-mode-reset — query clears on mode change while open", () => {
       <CommandMenu open={true} onOpenChange={vi.fn()} mode="commands" actions={{}} />
     );
 
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "fi" } });
     expect((input as HTMLInputElement).value).toBe("fi");
 
@@ -360,7 +370,7 @@ describe("CMM-mode-reset — query clears on mode change while open", () => {
       <CommandMenu open={true} onOpenChange={vi.fn()} mode="notes" actions={{}} />
     );
 
-    const updatedInput = screen.getByRole("textbox");
+    const updatedInput = getPaletteInput();
     expect((updatedInput as HTMLInputElement).value).toBe("");
   });
 });
@@ -373,7 +383,7 @@ describe("CMM-NAV — single-section navigation", () => {
     mockUseQuickSwitcher.mockReturnValue([MOCK_TITLE_HIT]);
 
     render(<CommandMenu {...defaultNoteProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "te" } });
 
     fireEvent.keyDown(input, { key: "ArrowUp" });
@@ -386,7 +396,7 @@ describe("CMM-NAV — single-section navigation", () => {
     const onOpenChange = vi.fn();
 
     render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
@@ -399,7 +409,7 @@ describe("CMM-INIT — selectedIdx starts at first selectable", () => {
     const onOpenChange = vi.fn();
 
     render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "te" } });
 
     fireEvent.keyDown(input, { key: "Enter" });
@@ -425,7 +435,7 @@ describe("CMM-N11-SPLIT — switcher is title-fuzzy only", () => {
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
 
     render(<CommandMenu {...defaultNoteProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
+    fireEvent.change(getPaletteInput(), { target: { value: "al" } });
 
     const searchEyebrow = document.querySelector(
       '[data-row-kind="group"][data-group-id="group:search"]',
@@ -437,7 +447,7 @@ describe("CMM-N11-SPLIT — switcher is title-fuzzy only", () => {
   it("CMM-N11-SPLIT-2: notes mode does NOT feed query into useSearch (always called with '')", () => {
     mockUseQuickSwitcher.mockReturnValue([TITLE_HIT]);
     render(<CommandMenu {...defaultNoteProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
+    fireEvent.change(getPaletteInput(), { target: { value: "al" } });
     for (const call of mockUseSearch.mock.calls) {
       expect(call[0]).toBe("");
     }
@@ -448,7 +458,7 @@ describe("CMM-N11-SPLIT — switcher is title-fuzzy only", () => {
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
 
     render(<CommandMenu {...defaultNoteProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
+    fireEvent.change(getPaletteInput(), { target: { value: "al" } });
 
     const searchRow = document.querySelector('[data-row-kind="search-result"]');
     expect(searchRow).toBeNull();
@@ -460,7 +470,7 @@ describe("CMM-N11-SPLIT — switcher is title-fuzzy only", () => {
     mockUseSearch.mockReturnValue({ results: [], isSearching: false });
 
     render(<CommandMenu {...defaultNoteProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "al" } });
+    fireEvent.change(getPaletteInput(), { target: { value: "al" } });
 
     expect(screen.getByText("alpha")).toBeTruthy();
     expect(
@@ -498,7 +508,7 @@ describe("CMM-SEARCH-MODE — CommandMenu mode='search'", () => {
   it("CMM-SEARCH-MODE-2: typing < 2 chars renders an indicator or empty hint (post UAT-8)", () => {
     mockUseSearch.mockReturnValue({ results: [], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "a" } });
     expect(screen.queryByText(/at least 2 characters/i)).toBeNull();
     expect(screen.getByText("Searching…")).toBeTruthy();
@@ -507,7 +517,7 @@ describe("CMM-SEARCH-MODE — CommandMenu mode='search'", () => {
   it("CMM-SEARCH-MODE-3: typing >= 2 chars triggers useSearch and renders SearchResultRow rows", () => {
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "he" } });
     expect(screen.getByText("Hello World")).toBeTruthy();
     expect(mockUseSearch).toHaveBeenCalled();
@@ -516,7 +526,7 @@ describe("CMM-SEARCH-MODE — CommandMenu mode='search'", () => {
   it("CMM-SEARCH-MODE-4: SearchResultRow shows the snippet excerpt with <mark>", () => {
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "he" } });
+    fireEvent.change(getPaletteInput(), { target: { value: "he" } });
     const mark = document.querySelector("mark");
     expect(mark).not.toBeNull();
     expect(mark?.textContent).toBe("hello");
@@ -526,7 +536,7 @@ describe("CMM-SEARCH-MODE — CommandMenu mode='search'", () => {
     const onOpenChange = vi.fn();
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} onOpenChange={onOpenChange} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "he" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(mockOpenInActivePane).toHaveBeenCalledWith(FTS5_HIT.id);
@@ -548,7 +558,7 @@ describe("CMM-SEARCH-MODE — CommandMenu mode='search'", () => {
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
 
     render(<CommandMenu {...defaultSearchProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "he" } });
+    fireEvent.change(getPaletteInput(), { target: { value: "he" } });
 
     expect(screen.getByText("Hello World")).toBeTruthy();
     expect(screen.queryByText("Fuzzy Hit")).toBeNull();
@@ -578,7 +588,7 @@ describe("CMM-UAT7-MEASURE — virtualizer measures search-result rows", () => {
   it("CMM-UAT7-MEASURE-1: search-result row container has a ref AND a data-index attribute", () => {
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "ma" } });
+    fireEvent.change(getPaletteInput(), { target: { value: "ma" } });
 
     const row = document.querySelector('[data-row-kind="search-result"]') as HTMLElement | null;
     expect(row).not.toBeNull();
@@ -588,7 +598,7 @@ describe("CMM-UAT7-MEASURE — virtualizer measures search-result rows", () => {
   it("CMM-UAT7-MEASURE-2: useVirtualizer is called with a measureElement option (function)", () => {
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "ma" } });
+    fireEvent.change(getPaletteInput(), { target: { value: "ma" } });
 
     const calls = mockUseVirtualizer.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
@@ -649,7 +659,7 @@ describe("CMM-UAT8FU — measureElement gated on search-result rows only", () =>
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
 
     render(<CommandMenu open={true} onOpenChange={vi.fn()} mode="search" actions={{}} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "ma" } });
+    fireEvent.change(getPaletteInput(), { target: { value: "ma" } });
 
     const row = document.querySelector('[data-row-kind="search-result"]') as HTMLElement | null;
     expect(row).not.toBeNull();
@@ -678,7 +688,7 @@ describe("CMM-UAT8FU — measureElement gated on search-result rows only", () =>
     const { rerender } = render(
       <CommandMenu open={true} onOpenChange={vi.fn()} mode="search" actions={{}} />,
     );
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "ma" } });
+    fireEvent.change(getPaletteInput(), { target: { value: "ma" } });
 
     measureSpy.mockClear();
 
@@ -718,7 +728,7 @@ describe("CMM-UAT8 — activity indicator + empty-state copy", () => {
   it("CMM-UAT8-2: 1-char query renders the activity indicator (Loader2 + 'Searching…')", () => {
     mockUseSearch.mockReturnValue({ results: [], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "t" } });
     expect(screen.getByText("Searching…")).toBeTruthy();
     const indicator = screen.getByText("Searching…").closest("div");
@@ -728,7 +738,7 @@ describe("CMM-UAT8 — activity indicator + empty-state copy", () => {
   it("CMM-UAT8-3: query >= 2 chars AND isSearching=true renders the activity indicator", () => {
     mockUseSearch.mockReturnValue({ results: [], isSearching: true });
     render(<CommandMenu {...defaultSearchProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "test" } });
     expect(screen.getByText("Searching…")).toBeTruthy();
     expect(screen.queryByText(/No notes match/i)).toBeNull();
@@ -737,7 +747,7 @@ describe("CMM-UAT8 — activity indicator + empty-state copy", () => {
   it("CMM-UAT8-4: query >= 2 chars AND isSearching=false AND results=[] renders existing 'No notes match' state", () => {
     mockUseSearch.mockReturnValue({ results: [], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "zz" } });
     expect(screen.getByText(/No notes match "zz"/)).toBeTruthy();
     expect(screen.queryByText("Searching…")).toBeNull();
@@ -746,7 +756,7 @@ describe("CMM-UAT8 — activity indicator + empty-state copy", () => {
   it("CMM-UAT8-5: query >= 2 chars AND isSearching=false AND results.length>0 renders results (no indicator, no empty state)", () => {
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "he" } });
     expect(screen.getByText("Hello World")).toBeTruthy();
     expect(screen.queryByText("Searching…")).toBeNull();
@@ -777,7 +787,7 @@ describe("CMM-UAT8FU2 — input-row activity indicator + stale-state preservatio
   it("CMM-UAT8FU2-1: mode='search' + isSearching=true renders a Loader2 spinner with aria-label 'Searching' inside the input row", () => {
     mockUseSearch.mockReturnValue({ results: [], isSearching: true });
     render(<CommandMenu {...defaultSearchProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "te" } });
 
     const inputRow = input.parentElement;
@@ -790,7 +800,7 @@ describe("CMM-UAT8FU2 — input-row activity indicator + stale-state preservatio
   it("CMM-UAT8FU2-2: mode='search' + isSearching=false renders NO spinner in the input row", () => {
     mockUseSearch.mockReturnValue({ results: [], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "te" } });
 
     const inputRow = input.parentElement;
@@ -807,7 +817,7 @@ describe("CMM-UAT8FU2 — input-row activity indicator + stale-state preservatio
     });
 
     render(<CommandMenu {...defaultCmdProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
 
     const inputRow = input.parentElement;
     expect(inputRow).not.toBeNull();
@@ -818,7 +828,7 @@ describe("CMM-UAT8FU2 — input-row activity indicator + stale-state preservatio
   it("CMM-UAT8FU2-4: mode='search' + isSearching=true + results.length>0 keeps the prior result list rendered (stale-state preserved)", () => {
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: true });
     render(<CommandMenu {...defaultSearchProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "st" } });
 
     expect(screen.getByText("Stale Hit")).toBeTruthy();
@@ -831,7 +841,7 @@ describe("CMM-UAT8FU2 — input-row activity indicator + stale-state preservatio
   it("CMM-UAT8FU2-5: mode='search' + isSearching=true + results.length===0 (first-search fallback) renders the result-area ActivityIndicator", () => {
     mockUseSearch.mockReturnValue({ results: [], isSearching: true });
     render(<CommandMenu {...defaultSearchProps} />);
-    const input = screen.getByRole("textbox");
+    const input = getPaletteInput();
     fireEvent.change(input, { target: { value: "zz" } });
 
     expect(screen.getByText("Searching…")).toBeTruthy();
@@ -843,7 +853,7 @@ describe("CommandMenu — regression: scoped modes stay isolated", () => {
   it("mode='notes' still shows only note rows for a matching query (no cmd rows)", () => {
     mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Only Note", path: "only.md" }]);
     render(<CommandMenu {...defaultNoteProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "on" } });
+    fireEvent.change(getPaletteInput(), { target: { value: "on" } });
     expect(screen.getByText("Only Note")).toBeTruthy();
     expect(document.querySelector('[data-row-kind="cmd"]')).toBeNull();
   });
@@ -923,6 +933,73 @@ describe("CMM-28-04-ROWS — two-line notes rows, match highlight, Vault subtitl
 });
 
 
+describe("CMM-28-04-FOOTER — always-on footer legend (D-13)", () => {
+  it("renders the footer legend in notes mode with open/create/split labels", () => {
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Note A", path: "a.md" }]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    expect(screen.getByText("open")).toBeTruthy();
+    expect(screen.getByText("create")).toBeTruthy();
+    expect(screen.getByText("split")).toBeTruthy();
+  });
+
+  it("does NOT render the footer legend in commands mode", () => {
+    render(<CommandMenu {...defaultCmdProps} />);
+    expect(screen.queryByText("open")).toBeNull();
+    expect(screen.queryByText("create")).toBeNull();
+    expect(screen.queryByText("split")).toBeNull();
+  });
+});
+
+
+describe("CMM-28-04-ARIA — combobox/listbox/option roles (notes mode)", () => {
+  it("input has role=combobox, aria-controls=quick-switcher-listbox, aria-expanded", () => {
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Note A", path: "a.md" }]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    const input = screen.getByRole("combobox");
+    expect(input.getAttribute("aria-controls")).toBe("quick-switcher-listbox");
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("input aria-activedescendant points at the selected option's id", () => {
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Note A", path: "a.md" }]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    const input = screen.getByRole("combobox");
+    expect(input.getAttribute("aria-activedescendant")).toBe("qs-option-n1");
+  });
+
+  it("list container has id=quick-switcher-listbox and role=listbox", () => {
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Note A", path: "a.md" }]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    const listbox = document.getElementById("quick-switcher-listbox");
+    expect(listbox).not.toBeNull();
+    expect(listbox?.getAttribute("role")).toBe("listbox");
+  });
+
+  it("each note row has role=option, id=qs-option-{id}, aria-selected", () => {
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Note A", path: "a.md" }]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    const option = document.getElementById("qs-option-n1");
+    expect(option).not.toBeNull();
+    expect(option?.getAttribute("role")).toBe("option");
+    expect(option?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("commands mode does NOT get combobox/listbox roles", () => {
+    const cmds = [
+      { id: "new-note", label: "New note", group: "File", inPalette: true, inCheatSheet: true },
+    ];
+    mockUseCommandPalette.mockReturnValue({
+      filtered: vi.fn().mockReturnValue(cmds),
+      execute: vi.fn(),
+      isDisabled: vi.fn().mockReturnValue(false),
+    });
+    render(<CommandMenu {...defaultCmdProps} />);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(document.getElementById("quick-switcher-listbox")).toBeNull();
+  });
+});
+
+
 describe("CMM-CLICK — mouse-click activation path (IN-02)", () => {
   it("CMM-CLICK-1: clicking a note row calls openTab(id) and never setActiveNote", () => {
     const onOpenChange = vi.fn();
@@ -956,7 +1033,7 @@ describe("CMM-CLICK — mouse-click activation path (IN-02)", () => {
     render(
       <CommandMenu open={true} onOpenChange={onOpenChange} mode="search" actions={{}} />,
     );
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "he" } });
+    fireEvent.change(getPaletteInput(), { target: { value: "he" } });
 
     const searchRow = document.querySelector('[data-row-kind="search-result"]') as HTMLElement | null;
     expect(searchRow).not.toBeNull();

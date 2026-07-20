@@ -18,7 +18,7 @@ import { usePaneStore } from "../lib/usePaneStore";
 import { KeyboardChip } from "./KeyboardChip";
 import { SearchResultRow } from "./SearchResultRow";
 import { parentDir } from "../lib/treeNoteLookup";
-import type { Shortcut } from "../lib/shortcutsRegistry";
+import { mod, shift, type Shortcut } from "../lib/shortcutsRegistry";
 import type { SearchResult } from "../lib/searchApi";
 
 
@@ -289,6 +289,13 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
 
   const recordOpenedNote = useTreeStore((s) => s.recordOpenedNote);
 
+  // ARIA combobox/listbox wiring (notes mode only, per UI-SPEC Accessibility).
+  const selectedItem = items[selectedIdx];
+  const selectedOptionId =
+    mode === "notes" && selectedItem && selectedItem.kind === "note"
+      ? `qs-option-${selectedItem.id}`
+      : undefined;
+
   const activate = (i: number) => {
     const item = items[i];
     if (!item) return;
@@ -330,7 +337,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   } else if (mode === "search") {
     placeholder = "Search notes…";
   } else {
-    placeholder = "Switch to note…";
+    placeholder = "Find or create a note…";
   }
   let ariaLabel: string;
   if (mode === "commands") {
@@ -445,6 +452,14 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
               placeholder={placeholder}
               aria-label={ariaLabel}
               autoFocus
+              {...(mode === "notes"
+                ? {
+                    role: "combobox" as const,
+                    "aria-expanded": items.length > 0,
+                    "aria-controls": "quick-switcher-listbox",
+                    "aria-activedescendant": selectedOptionId,
+                  }
+                : {})}
               style={{
                 flex: 1,
                 background: "transparent",
@@ -480,7 +495,13 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
           </div>
 
           {/* Result list — max-height 50vh */}
-          <div ref={parentRef} style={{ maxHeight: "50vh", overflowY: "auto" }}>
+          <div
+            ref={parentRef}
+            id={mode === "notes" ? "quick-switcher-listbox" : undefined}
+            role={mode === "notes" ? "listbox" : undefined}
+            aria-label={mode === "notes" ? ariaLabel : undefined}
+            style={{ maxHeight: "50vh", overflowY: "auto" }}
+          >
             {/* search-mode surface (empty hint / activity indicator / no-matches)
                 takes precedence over the generic emptyText path. */}
             {searchSurfaceContent !== null && searchSurfaceContent}
@@ -615,6 +636,9 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                       data-row-kind={item.kind}
                       data-disabled={cmdDisabled ? "true" : undefined}
                       aria-disabled={cmdDisabled || undefined}
+                      role={isNoteRow ? "option" : undefined}
+                      id={isNoteRow ? `qs-option-${item.id}` : undefined}
+                      aria-selected={isNoteRow ? selected : undefined}
                       style={rowStyle}
                       onMouseEnter={() => setSelectedIdx(vi.index)}
                       onClick={() => activate(vi.index)}
@@ -643,6 +667,31 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
               </div>
             )}
           </div>
+
+          {/* Footer legend (D-13) — always-on, notes mode only, sibling AFTER the scrollable list. */}
+          {mode === "notes" && (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 16,
+                padding: "8px 16px",
+                borderTop: "1px solid var(--color-border)",
+                background: "var(--color-surface-raised)",
+              }}
+            >
+              {[
+                { glyph: "↵", label: "open" },
+                { glyph: `${shift}↵`, label: "create" },
+                { glyph: `${mod}${shift}↵`, label: "split" },
+              ].map(({ glyph, label }) => (
+                <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <KeyboardChip>{glyph}</KeyboardChip>
+                  <span style={{ fontSize: 12, color: "var(--color-muted)" }}>{label}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
