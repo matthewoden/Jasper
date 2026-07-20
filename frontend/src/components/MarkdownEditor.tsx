@@ -50,6 +50,7 @@ import { codeblockExpand } from "../editor/codeblockExpand";
 import {
   frontmatterHideExtension,
   frontmatterToggleKeymap,
+  frontmatterBackspaceGuardKeymap,
 } from "../editor/frontmatterHidePlugin";
 import { firstH1HideExtension } from "../editor/firstH1HidePlugin";
 import { calloutFoldExtension } from "../editor/calloutFoldField";
@@ -433,6 +434,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
               () => cbRef.current.onOpenFindReplace?.(),
             ),
             frontmatterToggleKeymap, // Cmd-Shift-Y toggles raw frontmatter view
+            frontmatterBackspaceGuardKeymap, // D-23: no-ops Backspace at the hidden-frontmatter boundary
             codeblockExpand,
             keymap.of([...jasperKeymap, indentWithTab, ...defaultKeymap, ...historyKeymap]), // jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap; indentWithTab before defaultKeymap so Tab→indent wins
             EditorView.lineWrapping,
