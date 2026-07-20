@@ -101,8 +101,8 @@ import { useTagBrowser } from "../lib/useTagBrowser";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useFileTree } from "../lib/useFileTree";
 import { postNotes } from "../lib/treeApi";
-import type { TreeNode } from "../lib/treeApi";
 import { extractHeadings, type HeadingInfo } from "../editor/outlineExtract";
+import { getNoteFolder } from "../lib/treeNoteLookup";
 
 export interface MarkdownEditorRef {
   /** Replace the entire document. Triggers onChange (user-driven). */
@@ -226,37 +226,6 @@ const jasperSearchHighlight = ViewPlugin.fromClass(
   },
   { decorations: (v) => v.decorations },
 );
-
-/**
- * Walk the tree to find the folder path of a given note id.
- * Returns the parent folder path (the directory part of note.path),
- * or "" (vault root) if the note is at the top level or not found.
- */
-function getNoteFolder(noteId: string | null, root: TreeNode[]): string {
-  if (!noteId) return "";
-  const visit = (node: TreeNode): string | null => {
-    if (node.kind === "note") {
-      if (node.id === noteId) {
-        const parts = node.path.split("/");
-        parts.pop();
-        return parts.join("/");
-      }
-      return null;
-    }
-    if (node.kind === "folder" && node.children) {
-      for (const child of node.children) {
-        const hit = visit(child);
-        if (hit !== null) return hit;
-      }
-    }
-    return null;
-  };
-  for (const node of root) {
-    const hit = visit(node);
-    if (hit !== null) return hit;
-  }
-  return "";
-}
 
 export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
   function MarkdownEditor(
