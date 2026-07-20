@@ -12,6 +12,7 @@ import {
   _leaves,
   _removeLeaf,
   _updLeaf,
+  depthAtLeaf,
   moveTab,
   moveTabToIndex,
   newLeaf,
@@ -342,6 +343,34 @@ describe("moveTabToIndex (P26 polish — positional cross-leaf insert)", () => {
     const tab = { id: newTabId(), noteId: "note-1" };
     const result = moveTabToIndex(leaf, "missing", tab, 0);
     expect(result).toBe(leaf);
+  });
+});
+
+describe("depthAtLeaf (P28 QUICK-03 max-depth guard)", () => {
+  it("returns 0 for a root leaf", () => {
+    const leaf = newLeaf("root");
+    expect(depthAtLeaf(leaf, "root")).toBe(0);
+  });
+
+  it("returns 1 for a leaf one split deep", () => {
+    const tree = asSplit(splitPane(newLeaf("root"), "root", "row", false));
+    expect(depthAtLeaf(tree, asLeaf(tree.a).id)).toBe(1);
+    expect(depthAtLeaf(tree, asLeaf(tree.b).id)).toBe(1);
+  });
+
+  it("returns the correct depth for leaves nested multiple splits deep", () => {
+    const rowTree = asSplit(splitPane(newLeaf("root"), "root", "row", false));
+    const tree = asSplit(splitPane(rowTree, asLeaf(rowTree.a).id, "col", false));
+    // tree: split(row){ a: split(col){a: leafA, b: leafB}, b: leafC }
+    const inner = asSplit(tree.a);
+    expect(depthAtLeaf(tree, asLeaf(inner.a).id)).toBe(2);
+    expect(depthAtLeaf(tree, asLeaf(inner.b).id)).toBe(2);
+    expect(depthAtLeaf(tree, asLeaf(tree.b).id)).toBe(1);
+  });
+
+  it("returns 0 when the leaf id is absent (safe default, no guard block)", () => {
+    const tree = splitPane(newLeaf("root"), "root", "row", false);
+    expect(depthAtLeaf(tree, "missing")).toBe(0);
   });
 });
 
