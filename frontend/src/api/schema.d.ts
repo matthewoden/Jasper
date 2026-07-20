@@ -988,6 +988,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vault/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the per-vault workspace preferences document (SORT-01, SORT-02, SORT-03)
+         * @description Returns the persisted {notesSort, searchSort} document from
+         *     <vault>/.jasper/workspace.json. A missing or malformed file falls
+         *     back to zero-value defaults (empty string means "default sort"),
+         *     never a 500.
+         */
+        get: operations["getVaultWorkspace"];
+        /**
+         * Persist a sort preference to the workspace document (SORT-01, SORT-02, SORT-03)
+         * @description Persists whichever of notesSort/searchSort are present in the body
+         *     via the workspace Service (each setter loads the full doc, mutates
+         *     only its own field, and saves — the other field is left
+         *     untouched). Rejects an unrecognized enum value with 400 before
+         *     touching disk. Broadcasts `workspace:changed` on success.
+         */
+        put: operations["putVaultWorkspace"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/fs/mkdir": {
         parameters: {
             query?: never;
@@ -1567,7 +1598,7 @@ export interface components {
          */
         WSEnvelope: {
             /** @enum {string} */
-            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "file:created" | "file:deleted" | "file:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed" | "bookmark:changed" | "vault.switching" | "vault.switched";
+            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "file:created" | "file:deleted" | "file:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed" | "bookmark:changed" | "workspace:changed" | "vault.switching" | "vault.switched";
             /**
              * @description UUID of the session that originated the mutation. Empty
              *     string for server-originated events (reindex:*,
@@ -1737,6 +1768,18 @@ export interface components {
         BookmarksDocument: {
             folders: components["schemas"]["BookmarkFolder"][];
             bookmarks: components["schemas"]["Bookmark"][];
+        };
+        /**
+         * @description Per-vault workspace preferences, persisted to
+         *     <vault>/.jasper/workspace.json (SORT-01, SORT-02, SORT-03). Both
+         *     fields are optional strings; an empty/absent value means "use the
+         *     default sort" (D-06) rather than an explicit user choice.
+         */
+        Workspace: {
+            /** @enum {string} */
+            notesSort?: "" | "name-asc" | "name-desc" | "modified-desc" | "modified-asc" | "created-desc" | "created-asc";
+            /** @enum {string} */
+            searchSort?: "" | "relevance" | "modified" | "created";
         };
         BookmarkCreateRequest: {
             /**
@@ -3830,6 +3873,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VaultSwitchInProgressResponse"];
+                };
+            };
+        };
+    };
+    getVaultWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace preferences document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
+            };
+        };
+    };
+    putVaultWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Workspace"];
+            };
+        };
+        responses: {
+            /** @description Updated workspace preferences document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            /** @description Unrecognized notesSort/searchSort enum value */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
