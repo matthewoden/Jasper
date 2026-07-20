@@ -20,11 +20,16 @@ import (
 //   - Size is the file size in bytes from fs.DirEntry.Info.
 //   - MTimeUnix is the file mtime in UNIX seconds (change-detection signal;
 //     checksum fallback is not implemented).
+//   - BirthtimeUnix is the true filesystem creation time in UNIX seconds,
+//     captured via the platform-tagged birthtimeFromPath helper; 0 when
+//     the platform/filesystem cannot report it (D-04 sentinel — resolved
+//     to created_at at query time, not here).
 type FileMeta struct {
 	CanonicalRelPath string
 	AbsPath          string
 	Size             int64
 	MTimeUnix        int64
+	BirthtimeUnix    int64
 }
 
 // WalkVault walks notesDir, calling yield for every .md file under it.
@@ -86,6 +91,7 @@ func WalkVault(ctx context.Context, notesDir string, yield func(FileMeta) error)
 		if err != nil {
 			return nil
 		}
+		birthtimeUnix, _ := birthtimeFromPath(canonical, info)
 
 		canonRel, err := filepath.Rel(notesDir, canonical)
 		if err != nil {
@@ -98,6 +104,7 @@ func WalkVault(ctx context.Context, notesDir string, yield func(FileMeta) error)
 			AbsPath:          canonical,
 			Size:             info.Size(),
 			MTimeUnix:        info.ModTime().Unix(),
+			BirthtimeUnix:    birthtimeUnix,
 		})
 	})
 }
