@@ -971,13 +971,6 @@ describe("Phase 7 ADD-only slices", () => {
     expect(useTreeStore.getState().paletteOpen).toBe(true);
   });
 
-  it("Phase 22: setPaletteMode accepts 'all' as a fourth value", () => {
-    useTreeStore.getState().setPaletteMode("all");
-    expect(useTreeStore.getState().paletteMode).toBe("all");
-    useTreeStore.getState().setPaletteMode("notes");
-    expect(useTreeStore.getState().paletteMode).toBe("notes");
-  });
-
   it("recordOpenedNote pushes new id to front", () => {
     const { recordOpenedNote } = useTreeStore.getState();
     recordOpenedNote("a");

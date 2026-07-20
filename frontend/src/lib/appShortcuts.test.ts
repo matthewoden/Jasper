@@ -5,7 +5,8 @@ import {
   handleAppCmdB,
   handleAppCmdDot,
   handleAppCmdI,
-  handleAppCmdK,
+  handleAppCmdO,
+  handleAppCmdP,
   handleAppCmdShiftF,
   handleAppFocusNextPane,
   handleAppFocusPrevPane,
@@ -410,32 +411,67 @@ describe("handleAppPanelShortcuts (Phase 20 D-01 re-point onto per-section colla
   });
 });
 
-describe("handleAppCmdK (Phase 22 Plan 01 — unified palette)", () => {
+describe("handleAppCmdK is retired (Phase 28 QUICK-04 — two-role palette)", () => {
   beforeEach(() => {
     useTreeStore.setState({ paletteOpen: false, paletteMode: "notes" });
   });
 
-  it("Cmd+K opens the palette in unified 'all' mode and preventDefaults/stopPropagates", () => {
+  it("Cmd+K is unbound: dispatching a Cmd+K keydown leaves the palette closed and mode unchanged", () => {
     const e = new KeyboardEvent("keydown", { key: "k", metaKey: true });
+    window.dispatchEvent(e);
+    expect(useTreeStore.getState().paletteOpen).toBe(false);
+    expect(useTreeStore.getState().paletteMode).not.toBe("all");
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+  });
+
+  it("Ctrl+K (non-Mac) is also unbound", () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "K", ctrlKey: true }));
+    expect(useTreeStore.getState().paletteOpen).toBe(false);
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
+  });
+});
+
+describe("handleAppCmdO (Phase 28 QUICK-04 — notes quick switcher)", () => {
+  beforeEach(() => {
+    useTreeStore.setState({ paletteOpen: false, paletteMode: "commands" });
+  });
+
+  it("Cmd+O sets mode 'notes' and opens the palette, preventDefaults/stopPropagates", () => {
+    const e = new KeyboardEvent("keydown", { key: "o", metaKey: true });
     const preventDefault = vi.spyOn(e, "preventDefault");
     const stopPropagation = vi.spyOn(e, "stopPropagation");
-    handleAppCmdK(e);
-    expect(useTreeStore.getState().paletteMode).toBe("all");
+    handleAppCmdO(e);
+    expect(useTreeStore.getState().paletteMode).toBe("notes");
     expect(useTreeStore.getState().paletteOpen).toBe(true);
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(stopPropagation).toHaveBeenCalledOnce();
   });
 
-  it("Ctrl+K (non-Mac) also opens the palette in 'all' mode", () => {
-    handleAppCmdK(new KeyboardEvent("keydown", { key: "K", ctrlKey: true }));
-    expect(useTreeStore.getState().paletteMode).toBe("all");
+  it("no-ops without Cmd/Ctrl", () => {
+    handleAppCmdO(new KeyboardEvent("keydown", { key: "o" }));
+    expect(useTreeStore.getState().paletteOpen).toBe(false);
+  });
+});
+
+describe("handleAppCmdP (Phase 28 QUICK-04 — command palette)", () => {
+  beforeEach(() => {
+    useTreeStore.setState({ paletteOpen: false, paletteMode: "notes" });
+  });
+
+  it("Cmd+P sets mode 'commands' and opens the palette, preventDefaults/stopPropagates", () => {
+    const e = new KeyboardEvent("keydown", { key: "p", metaKey: true });
+    const preventDefault = vi.spyOn(e, "preventDefault");
+    const stopPropagation = vi.spyOn(e, "stopPropagation");
+    handleAppCmdP(e);
+    expect(useTreeStore.getState().paletteMode).toBe("commands");
     expect(useTreeStore.getState().paletteOpen).toBe(true);
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(stopPropagation).toHaveBeenCalledOnce();
   });
 
   it("no-ops without Cmd/Ctrl", () => {
-    handleAppCmdK(new KeyboardEvent("keydown", { key: "k" }));
+    handleAppCmdP(new KeyboardEvent("keydown", { key: "p" }));
     expect(useTreeStore.getState().paletteOpen).toBe(false);
-    expect(useTreeStore.getState().paletteMode).toBe("notes");
   });
 });
 

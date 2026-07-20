@@ -7,13 +7,13 @@ import {
 } from "./shortcutsRegistry";
 
 describe("shortcutsRegistry", () => {
-  it("registry has all 17 locked Cmd+P palette entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode; Phase 25 Plan 08 added split/focus-pane commands; Phase 27 Plan 04 added Toggle left sidebar; Phase 27 Plan 07 added Bookmark current note)", () => {
+  it("registry has all 17 locked Cmd+P palette entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode; Phase 25 Plan 08 added split/focus-pane commands; Phase 27 Plan 04 added Toggle left sidebar; Phase 27 Plan 07 added Bookmark current note; Phase 28 Plan 03 relabeled Switch/search notes to Quick switcher)", () => {
     const labels = COMMAND_PALETTE_ENTRIES.map((s) => s.label);
     expect(labels).toContain("New note");
     expect(labels).toContain("Save");
     expect(labels).not.toContain("Find in note");
     expect(labels).toContain("Today");
-    expect(labels).toContain("Switch / search notes");
+    expect(labels).toContain("Quick switcher (notes)");
     expect(labels).toContain("Toggle theme");
     expect(labels).toContain("Refresh index");
     expect(labels).toContain("Reset and rebuild…");

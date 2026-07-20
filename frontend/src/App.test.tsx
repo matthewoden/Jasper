@@ -1238,7 +1238,7 @@ describe("commandActions rewire", () => {
 
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
 
-    const switchRow = within(palette).getByText("Switch / search notes");
+    const switchRow = within(palette).getByText("Quick switcher (notes)");
     fireEvent.click(switchRow);
 
     expect(useTreeStore.getState().paletteMode).toBe("notes");
