@@ -54,8 +54,8 @@ func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO notes(id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at, body_fts, tag_names_fts)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO notes(id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at, body_fts, tag_names_fts, birthtime_unix)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
              path = excluded.path,
              title = excluded.title,
@@ -64,10 +64,11 @@ func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
              checksum_sha256 = excluded.checksum_sha256,
              updated_at = excluded.updated_at,
              body_fts = excluded.body_fts,
-             tag_names_fts = excluded.tag_names_fts`,
+             tag_names_fts = excluded.tag_names_fts,
+             birthtime_unix = excluded.birthtime_unix`,
 		rec.ID.String(), rec.Path, rec.Title, rec.MTimeUnix,
 		rec.SizeBytes, rec.Checksum, rec.UpdatedAtUnix, rec.UpdatedAtUnix,
-		rec.BodyFTS, rec.TagNamesFTS)
+		rec.BodyFTS, rec.TagNamesFTS, rec.BirthtimeUnix)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed: notes.path") {
 			return fmt.Errorf("upsert: %w (path=%s)", notes.ErrCaseCollision, rec.Path)
@@ -141,14 +142,14 @@ func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 // the moved file).
 func (x *Indexer) LookupByPath(ctx context.Context, canonicalPath string) (notes.NoteRecord, error) {
 	var (
-		idStr, path, title, checksum      string
-		bodyFTS, tagNamesFTS              string
-		mtime, size, createdAt, updatedAt int64
+		idStr, path, title, checksum                     string
+		bodyFTS, tagNamesFTS                             string
+		mtime, size, createdAt, updatedAt, birthtimeUnix int64
 	)
 	err := x.Pair.Reader.QueryRowContext(ctx,
-		`SELECT id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at, body_fts, tag_names_fts
+		`SELECT id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at, body_fts, tag_names_fts, birthtime_unix
          FROM notes WHERE path = ?`,
-		canonicalPath).Scan(&idStr, &path, &title, &mtime, &size, &checksum, &createdAt, &updatedAt, &bodyFTS, &tagNamesFTS)
+		canonicalPath).Scan(&idStr, &path, &title, &mtime, &size, &checksum, &createdAt, &updatedAt, &bodyFTS, &tagNamesFTS, &birthtimeUnix)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return notes.NoteRecord{}, fmt.Errorf("LookupByPath(%q): %w", canonicalPath, notes.ErrNotFound)
@@ -169,6 +170,7 @@ func (x *Indexer) LookupByPath(ctx context.Context, canonicalPath string) (notes
 		UpdatedAtUnix: updatedAt,
 		BodyFTS:       bodyFTS,
 		TagNamesFTS:   tagNamesFTS,
+		BirthtimeUnix: birthtimeUnix,
 	}, nil
 }
 

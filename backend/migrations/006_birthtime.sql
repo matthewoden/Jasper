@@ -1,0 +1,15 @@
+-- 006_birthtime.sql — Phase 29 true filesystem creation-time capture
+-- (SORT-01/SORT-02, D-03).
+--
+-- notes.created_at means "first-seen-by-indexer" and MUST keep that
+-- meaning (see CLAUDE.md's "Filesystem as source of truth" constraint and
+-- 29-RESEARCH.md Pitfall 3) — it is NOT the same concept as the file's
+-- actual on-disk creation time (birthtime), which a moved file or a
+-- post-index-wipe rebuild would otherwise silently corrupt if reused.
+--
+-- birthtime_unix is a NEW column, populated by internal/index/walk.go's
+-- platform-tagged birthtimeFromPath helper. 0 is the sentinel meaning
+-- "the underlying filesystem/platform cannot report a true birthtime" —
+-- resolved to created_at at query time via
+-- COALESCE(NULLIF(birthtime_unix, 0), created_at), NOT here.
+ALTER TABLE notes ADD COLUMN birthtime_unix INTEGER NOT NULL DEFAULT 0;

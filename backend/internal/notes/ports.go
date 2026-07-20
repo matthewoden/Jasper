@@ -252,6 +252,11 @@ type TagWithCount struct {
 // TagNamesFTS is the space-joined list of normalized tag names for the note
 // (enabling tag-name FTS matches in addition to note_tags joins). Both are
 // “” for callers without content available; the next reconcile pass repopulates.
+//
+// BirthtimeUnix is the true filesystem creation time in UNIX seconds
+// (index/birthtimeFromPath), a SEPARATE concept from UpdatedAtUnix/
+// created_at's "first-seen-by-indexer" semantics — see Phase 29 D-03/D-04.
+// 0 is the sentinel meaning "platform/filesystem cannot report birthtime".
 type NoteRecord struct {
 	ID            uuid.UUID
 	Path          string // canonical relpath (NFC + lowercase) under notes/
@@ -262,6 +267,7 @@ type NoteRecord struct {
 	UpdatedAtUnix int64  // index-touch time (NOT file mtime)
 	BodyFTS       string
 	TagNamesFTS   string
+	BirthtimeUnix int64
 }
 
 // NoteSummary is the projection returned by Index.List for the

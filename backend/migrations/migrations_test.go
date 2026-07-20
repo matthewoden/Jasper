@@ -346,6 +346,50 @@ ORDER BY name`
 	}
 }
 
+// TestMigration006_BirthtimeColumnAdded verifies that applying all embedded
+// migrations produces a notes.birthtime_unix column defaulting to 0 (the
+// D-04 sentinel meaning "birthtime unavailable") for pre-existing rows.
+func TestMigration006_BirthtimeColumnAdded(t *testing.T) {
+	db := applyAllMigrations(t)
+	ctx := context.Background()
+
+	const noteID = "00000000-0000-4000-a000-000000000020"
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO notes(id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at)
+VALUES(?, 'birthtime.md', 'Birthtime', 1000, 0, '', 1000, 1000)`, noteID); err != nil {
+		t.Fatalf("insert note: %v", err)
+	}
+
+	var birthtime int64
+	if err := db.QueryRowContext(ctx,
+		`SELECT birthtime_unix FROM notes WHERE id = ?`, noteID,
+	).Scan(&birthtime); err != nil {
+		t.Fatalf("select birthtime_unix: %v", err)
+	}
+	if birthtime != 0 {
+		t.Errorf("expected default birthtime_unix=0, got %d", birthtime)
+	}
+}
+
+// TestMigration006_EmbeddedFSListsFile verifies the migration runner will
+// discover 006_birthtime.sql via the embedded FS.
+func TestMigration006_EmbeddedFSListsFile(t *testing.T) {
+	entries, err := fs.ReadDir(migrations.FS, ".")
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	var found bool
+	for _, e := range entries {
+		if e.Name() == "006_birthtime.sql" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("006_birthtime.sql not found in migrations.FS")
+	}
+}
+
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {

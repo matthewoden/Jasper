@@ -27,7 +27,7 @@ func newTestIndexer(t *testing.T) (*Indexer, string) {
 	}
 	t.Cleanup(func() { _ = pair.Close() })
 
-	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql", "005_backlink_multi_excerpt.sql"} {
+	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql", "005_backlink_multi_excerpt.sql", "006_birthtime.sql"} {
 		data, err := migrations.FS.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read migration %s: %v", name, err)

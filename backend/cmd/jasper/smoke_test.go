@@ -463,6 +463,7 @@ func TestSmoke_ResetAndRebuild_FullPath2Flow(t *testing.T) {
 	copyFile(t, "../../migrations/001_initial.sql", filepath.Join(overrideDir, "001_initial.sql"))
 	copyFile(t, "../../migrations/002_tags_backlinks.sql", filepath.Join(overrideDir, "002_tags_backlinks.sql"))
 	copyFile(t, "../../migrations/003_fts.sql", filepath.Join(overrideDir, "003_fts.sql"))
+	copyFile(t, "../../migrations/006_birthtime.sql", filepath.Join(overrideDir, "006_birthtime.sql"))
 	addr := pickFreePort(t)
 	cmd, log := spawn(t, dataDir, addr, []string{"JASPER_TEST_MIGRATIONS_DIR=" + overrideDir})
 	if err := waitForListener(t, addr, 10*time.Second); err != nil {

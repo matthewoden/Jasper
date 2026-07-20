@@ -15,6 +15,7 @@ require (
 	github.com/yuin/goldmark v1.8.2
 	go.abhg.dev/goldmark/frontmatter v0.3.0
 	go.abhg.dev/goldmark/wikilink v0.6.0
+	golang.org/x/sys v0.42.0
 	golang.org/x/text v0.34.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.50.0
@@ -100,7 +101,6 @@ require (
 	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.28.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
