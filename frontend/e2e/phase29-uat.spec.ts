@@ -527,6 +527,24 @@ test.describe("@phase29 @history HIST-01/02: search history hints — MRU, keybo
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
+
+    // Self-contained fixture notes (this test must pass standalone —
+    // fresh browser context means fresh localStorage history too).
+    await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "clickone.md",
+      "",
+      "# clickone\n\nclickone target text.\n",
+    );
+    await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "clicktwo.md",
+      "",
+      "# clicktwo\n\nclicktwo target text.\n",
+    );
+
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
     await tabRow(page).getByRole("button", { name: "Search", exact: true }).click();
@@ -534,16 +552,14 @@ test.describe("@phase29 @history HIST-01/02: search history hints — MRU, keybo
     const input = searchPanelInput(page);
     await input.click();
 
-    // Fresh browser context per test — rebuild the two-entry history against
-    // the vault's existing meetingroom/budgetplan notes.
-    await input.fill("meeting");
-    await expect(page.getByRole("button", { name: "Open note: meetingroom" })).toBeVisible({
+    await input.fill("clickone");
+    await expect(page.getByRole("button", { name: "Open note: clickone" })).toBeVisible({
       timeout: 5_000,
     });
     await page.keyboard.press("Enter");
     await input.fill("");
-    await input.fill("budget");
-    await expect(page.getByRole("button", { name: "Open note: budgetplan" })).toBeVisible({
+    await input.fill("clicktwo");
+    await expect(page.getByRole("button", { name: "Open note: clicktwo" })).toBeVisible({
       timeout: 5_000,
     });
     await page.keyboard.press("Enter");
@@ -556,8 +572,8 @@ test.describe("@phase29 @history HIST-01/02: search history hints — MRU, keybo
     // unmounts the dropdown unless default-prevented) before click ever
     // lands. Synthetic unit-test clicks skip that focus cycle and
     // false-pass, so this must stay a real-mouse assertion.
-    await listbox.getByRole("option").filter({ hasText: "meeting" }).click();
-    await expect(input).toHaveValue("meeting");
+    await listbox.getByRole("option").filter({ hasText: "clickone" }).click();
+    await expect(input).toHaveValue("clickone");
     await expect(listbox).not.toBeVisible();
 
     // Blur + refocus to re-open the layer, then clear so both entries show.
@@ -566,13 +582,13 @@ test.describe("@phase29 @history HIST-01/02: search history hints — MRU, keybo
     await input.fill("");
     await expect(listbox).toBeVisible({ timeout: 5_000 });
     const hintOptions = listbox.getByRole("option");
-    await expect.poll(() => hintOptions.allTextContents()).toEqual(["meeting", "budget"]);
+    await expect.poll(() => hintOptions.allTextContents()).toEqual(["clickone", "clicktwo"]);
 
     // D-21: hover reveals the row's X; a real mouse click on it removes just
     // that entry while the dropdown stays open and the input keeps focus.
-    await hintOptions.filter({ hasText: "budget" }).hover();
-    await listbox.getByRole("button", { name: 'Remove "budget" from search history' }).click();
-    await expect.poll(() => hintOptions.allTextContents()).toEqual(["meeting"]);
+    await hintOptions.filter({ hasText: "clicktwo" }).hover();
+    await listbox.getByRole("button", { name: 'Remove "clicktwo" from search history' }).click();
+    await expect.poll(() => hintOptions.allTextContents()).toEqual(["clickone"]);
     await expect(listbox).toBeVisible();
     await expect(input).toBeFocused();
   });
