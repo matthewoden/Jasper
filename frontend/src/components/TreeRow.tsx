@@ -63,6 +63,17 @@ export type NoteNodeData = {
   id: string;
   path: string;
   title: string;
+  /**
+   * Wall-clock UTC of last filesystem mtime (wire TreeNode.updated_at).
+   * Threaded through so sortTree (fileTree.utils.ts) can order by
+   * "modified" without a second lookup pass over the wire tree (SORT-01).
+   */
+  updated_at?: string;
+  /**
+   * True filesystem birthtime when available, else undefined (wire
+   * TreeNode.created — SORT-01/D-04). Read by sortTree's "created" order.
+   */
+  created?: string;
 };
 
 

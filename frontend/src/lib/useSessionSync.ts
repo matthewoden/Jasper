@@ -7,6 +7,7 @@ import { dispatchTagEvent } from "./useTagBrowser";
 import { dispatchLinksEvent } from "./useBacklinks";
 import { dispatchMcpGrantsEvent } from "./useMcpGrants";
 import { dispatchBookmarksEvent } from "./useBookmarks";
+import { dispatchWorkspaceEvent } from "./useWorkspace";
 import type { components } from "../api/schema";
 
 type WSEnvelope = components["schemas"]["WSEnvelope"];
@@ -167,6 +168,9 @@ export function useSessionSync(
             break;
           case "bookmark:changed":
             dispatchBookmarksEvent();
+            break;
+          case "workspace:changed":
+            dispatchWorkspaceEvent();
             break;
           case "vault.switching": {
             const vaultSwitchingPayload = env.payload as {

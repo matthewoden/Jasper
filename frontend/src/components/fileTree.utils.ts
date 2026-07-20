@@ -10,8 +10,14 @@ import type {
   Tree as WireTree,
   TreeNode as WireTreeNode,
 } from "../lib/treeApi";
-import { useTreeStore } from "../lib/useTreeStore";
+import {
+  useTreeStore,
+  type NotesSortOrder,
+  type SearchSortOrder,
+} from "../lib/useTreeStore";
 import type { TreeRowData } from "./TreeRow";
+
+export type { NotesSortOrder, SearchSortOrder };
 
 /**
  * The shape react-arborist actually walks: id is unique across
@@ -109,6 +115,8 @@ export function adaptToArborist(
       id: node.id,
       path: node.path,
       title: node.title,
+      updated_at: node.updated_at,
+      created: node.created,
     },
   };
 }
@@ -323,4 +331,78 @@ export function expandAndScrollToFolder(folderPath: string): void {
     // step above is sufficient; ignore.
   }
   state.setNotesSidebarVisible(true);
+}
+
+/**
+ * Reads a note node's updated_at/created ISO timestamp and returns its
+ * epoch milliseconds, or 0 when absent/unparseable (folders, file nodes,
+ * and notes with no captured birthtime all fall back to 0 — comparatorFor's
+ * name tie-break then decides their relative order deterministically).
+ */
+function timestampOf(
+  node: ArboristNode,
+  field: "updated_at" | "created",
+): number {
+  if (node.data.kind !== "note") return 0;
+  const value = node.data[field];
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * comparatorFor — the non-folder (notes + files) half of sortTree's D-02
+ * six-order contract. Every branch tie-breaks on name A→Z for stable,
+ * deterministic ordering when timestamps are equal or absent.
+ */
+export function comparatorFor(
+  order: NotesSortOrder,
+): (a: ArboristNode, b: ArboristNode) => number {
+  switch (order) {
+    case "name-asc":
+      return (a, b) => a.name.localeCompare(b.name);
+    case "name-desc":
+      return (a, b) => b.name.localeCompare(a.name);
+    case "modified-desc":
+      return (a, b) =>
+        timestampOf(b, "updated_at") - timestampOf(a, "updated_at") ||
+        a.name.localeCompare(b.name);
+    case "modified-asc":
+      return (a, b) =>
+        timestampOf(a, "updated_at") - timestampOf(b, "updated_at") ||
+        a.name.localeCompare(b.name);
+    case "created-desc":
+      return (a, b) =>
+        timestampOf(b, "created") - timestampOf(a, "created") ||
+        a.name.localeCompare(b.name);
+    case "created-asc":
+      return (a, b) =>
+        timestampOf(a, "created") - timestampOf(b, "created") ||
+        a.name.localeCompare(b.name);
+    default:
+      return (a, b) => a.name.localeCompare(b.name);
+  }
+}
+
+/**
+ * sortTree — folder-grouping comparator (D-01/D-02). Folders ALWAYS sort
+ * A→Z and ALWAYS precede notes/files at every level; only the non-folder
+ * group reorders per `order`. Recurses into every folder's children so
+ * nested levels apply the same order. Returns new arrays/objects rather
+ * than mutating the input nodes (safe to call from a React render/memo).
+ */
+export function sortTree(
+  nodes: ArboristNode[],
+  order: NotesSortOrder,
+): ArboristNode[] {
+  const folders = nodes.filter((n) => n.data.kind === "folder");
+  const rest = nodes.filter((n) => n.data.kind !== "folder"); // notes + files
+  const sortedFolders = [...folders].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  const sortedRest = [...rest].sort(comparatorFor(order));
+  const recursedFolders = sortedFolders.map((f) =>
+    f.children ? { ...f, children: sortTree(f.children, order) } : f,
+  );
+  return [...recursedFolders, ...sortedRest];
 }

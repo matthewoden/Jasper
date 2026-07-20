@@ -334,6 +334,8 @@ describe("<FileTree />", () => {
       id: "uuid-1",
       path: "scratchpad.md",
       title: "Scratchpad",
+      updated_at: "2026-01-01T00:00:00Z",
+      created: undefined,
     });
     expect(note.children).toBeUndefined();
   });
