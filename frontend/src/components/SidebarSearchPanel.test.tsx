@@ -7,6 +7,11 @@ import { usePaneStore } from "../lib/usePaneStore";
 import { dispatchPhase7 } from "../lib/appShortcuts";
 import * as searchApi from "./../lib/searchApi";
 import type { SearchResult } from "../lib/searchApi";
+import {
+  initForVault as initSearchHistoryForVault,
+  getHistory,
+  recordSearchHistory,
+} from "../lib/searchHistory";
 
 vi.mock("../lib/workspaceApi", () => ({
   getWorkspace: vi.fn().mockResolvedValue({}),
@@ -36,6 +41,11 @@ beforeEach(() => {
   useTreeStore.setState({ searchQuery: "", searchResults: [], searchSort: "relevance" });
   usePaneStore.getState().clearAll();
   vi.spyOn(searchApi, "searchNotes").mockResolvedValue([]);
+  // searchHistory is a module-level singleton (not a zustand store) — reset it
+  // per test so recordSearchHistory calls in one test don't leak hint matches
+  // into a later test's SearchHistoryHints render.
+  window.localStorage.clear();
+  initSearchHistoryForVault("/test-vault");
 });
 
 afterEach(() => {
@@ -192,7 +202,9 @@ describe("SidebarSearchPanel", () => {
     const input = screen.getByPlaceholderText(
       "Search notes… (tag:name to filter)",
     ) as HTMLInputElement;
-    input.focus();
+    act(() => {
+      input.focus();
+    });
     expect(document.activeElement).toBe(input);
     fireEvent.keyDown(input, { key: "Escape" });
     expect(document.activeElement).not.toBe(input);
@@ -231,5 +243,83 @@ describe("SidebarSearchPanel", () => {
     ) as HTMLInputElement;
     expect(remountedInput.value).toBe("hello");
     expect(screen.getByText("1 result")).toBeDefined();
+  });
+
+  describe("search history (HIST-01/02)", () => {
+    it("focusing the input opens the hints layer when history has prefix-matches", () => {
+      recordSearchHistory("hello world");
+      renderPanel();
+      const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
+      act(() => {
+        input.focus();
+      });
+      expect(screen.getByRole("listbox", { name: "Recent searches" })).toBeDefined();
+      expect(screen.getByRole("option", { name: /hello world/ })).toBeDefined();
+    });
+
+    it("does NOT record history from the debounced fetch effect", async () => {
+      vi.spyOn(searchApi, "searchNotes").mockResolvedValue([mkResult("1", "Hello")]);
+      renderPanel();
+      const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
+      fireEvent.change(input, { target: { value: "hello" } });
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(getHistory()).toEqual([]);
+    });
+
+    it("Enter-opens-result records the committed query into history", async () => {
+      vi.spyOn(searchApi, "searchNotes").mockResolvedValue([mkResult("1", "Hello")]);
+      const openInActivePane = vi.fn();
+      usePaneStore.setState({ openInActivePane });
+      renderPanel();
+      const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
+      fireEvent.change(input, { target: { value: "hello" } });
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(openInActivePane).toHaveBeenCalledWith("1");
+      expect(getHistory()).toEqual(["hello"]);
+    });
+
+    it("while hints are open with matches, ArrowDown/Enter act on the hint and results nav is suspended", () => {
+      recordSearchHistory("hello world");
+      const openInActivePane = vi.fn();
+      usePaneStore.setState({ openInActivePane });
+      renderPanel();
+      const input = screen.getByPlaceholderText(
+        "Search notes… (tag:name to filter)",
+      ) as HTMLInputElement;
+      act(() => {
+        input.focus();
+      });
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(input.value).toBe("hello world");
+      expect(openInActivePane).not.toHaveBeenCalled();
+      expect(getHistory()[0]).toBe("hello world");
+    });
+
+    it("Esc while hints are open dismisses hints only; a second Esc runs the existing clear/blur behavior", () => {
+      recordSearchHistory("hello world");
+      renderPanel();
+      const input = screen.getByPlaceholderText(
+        "Search notes… (tag:name to filter)",
+      ) as HTMLInputElement;
+      act(() => {
+        input.focus();
+      });
+      expect(screen.getByRole("listbox", { name: "Recent searches" })).toBeDefined();
+
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(screen.queryByRole("listbox", { name: "Recent searches" })).toBeNull();
+      // First Escape dismissed hints only — did not blur or clear the (empty) query.
+      expect(document.activeElement).toBe(input);
+
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(document.activeElement).not.toBe(input);
+    });
   });
 });

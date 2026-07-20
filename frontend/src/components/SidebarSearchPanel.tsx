@@ -11,7 +11,7 @@
  * instead of local state, and gates on the tokenized free-text length (a
  * tag-only query still searches once a tag: term is present).
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
@@ -19,8 +19,15 @@ import { useWorkspace } from "../lib/useWorkspace";
 import { subscribePhase7 } from "../lib/appShortcuts";
 import { parseSearchQuery } from "../lib/searchQueryTokenizer";
 import { searchNotes } from "../lib/searchApi";
+import {
+  filterSearchHistory,
+  recordSearchHistory,
+  removeHistoryEntry,
+  useSearchHistory,
+} from "../lib/searchHistory";
 import { SidebarSearchResultRow } from "./SidebarSearchResultRow";
 import { SearchSortDropdown } from "./SearchSortDropdown";
+import { SearchHistoryHints } from "./SearchHistoryHints";
 
 const DEBOUNCE_MS = 250;
 const MIN_TEXT_LENGTH = 2;
@@ -45,6 +52,15 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const cancelled = useRef(false);
+
+  const [hintsOpen, setHintsOpen] = useState(false);
+  const [activeHintIndex, setActiveHintIndex] = useState(-1);
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const historyEntries = useSearchHistory();
+  const hintMatches = useMemo(
+    () => filterSearchHistory(historyEntries, searchQuery),
+    [historyEntries, searchQuery],
+  );
 
   const parsed = parseSearchQuery(searchQuery);
   const canSearch = parsed.tags.length > 0 || parsed.text.length >= MIN_TEXT_LENGTH;
@@ -85,6 +101,12 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
     setSelectedIdx(0);
   }, [searchResults]);
 
+  // D-19: reset the keyboard-highlighted hint whenever the match set changes
+  // (query typed, history mutated) — mirrors the selectedIdx/searchResults effect above.
+  useEffect(() => {
+    setActiveHintIndex(0);
+  }, [hintMatches]);
+
   useEffect(
     () =>
       subscribePhase7((ev) => {
@@ -96,7 +118,57 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
     [],
   );
 
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current !== undefined) clearTimeout(blurTimeoutRef.current);
+    };
+  }, []);
+
+  const onSelectHint = (hint: string) => {
+    setSearchQuery(hint);
+    recordSearchHistory(hint);
+    setHintsOpen(false);
+    setActiveHintIndex(-1);
+    inputRef.current?.focus();
+  };
+
+  const onRemoveHint = (hint: string) => {
+    removeHistoryEntry(hint);
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const hintsActive = hintsOpen && hintMatches.length > 0;
+
+    // D-20: hints-priority branch — while hints are open with matches, arrows/Enter
+    // act on the hints list and results keyboard nav is suspended.
+    if (hintsActive) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveHintIndex((i) => Math.min(i + 1, hintMatches.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveHintIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const idx = activeHintIndex >= 0 ? activeHintIndex : 0;
+        const hint = hintMatches[idx];
+        if (hint) onSelectHint(hint);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        // Dismiss hints ONLY this keystroke — arrows return to results on the
+        // NEXT Esc/interaction, matching the existing Esc double-behavior below.
+        setHintsOpen(false);
+        setActiveHintIndex(-1);
+        return;
+      }
+    }
+
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setSelectedIdx((i) =>
@@ -108,7 +180,10 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
     } else if (e.key === "Enter") {
       e.preventDefault();
       const result = searchResults[selectedIdx];
-      if (result) usePaneStore.getState().openInActivePane(result.id);
+      if (result) {
+        recordSearchHistory(searchQuery);
+        usePaneStore.getState().openInActivePane(result.id);
+      }
     } else if (e.key === "Escape") {
       e.preventDefault();
       if (searchQuery !== "") {
@@ -142,6 +217,7 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
       >
         <div
           style={{
+            position: "relative",
             display: "flex",
             alignItems: "center",
             gap: 8,
@@ -157,6 +233,18 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={onKeyDown}
+            onFocus={() => {
+              if (blurTimeoutRef.current !== undefined) {
+                clearTimeout(blurTimeoutRef.current);
+                blurTimeoutRef.current = undefined;
+              }
+              setHintsOpen(true);
+            }}
+            onBlur={() => {
+              // Defer close so a click on a hint row registers first (its
+              // click handler fires before this macrotask runs).
+              blurTimeoutRef.current = setTimeout(() => setHintsOpen(false), 0);
+            }}
             placeholder="Search notes… (tag:name to filter)"
             aria-label="Search notes"
             style={{
@@ -170,6 +258,14 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
             }}
           />
           <SearchSortDropdown value={searchSort} onSelect={setSearchSort} />
+          {hintsOpen && (
+            <SearchHistoryHints
+              query={searchQuery}
+              activeIndex={activeHintIndex}
+              onSelectHint={onSelectHint}
+              onRemoveHint={onRemoveHint}
+            />
+          )}
         </div>
       </div>
 
