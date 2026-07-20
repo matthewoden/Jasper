@@ -93,17 +93,28 @@ const kindBadgeBaseStyle: React.CSSProperties = {
   fontSize: 11,
   fontWeight: 600,
   lineHeight: "16px",
+  // D28.1: mock badges are uppercase with slight tracking (Vault.dc.html:1050).
+  textTransform: "uppercase",
+  letterSpacing: "0.03em",
   flexShrink: 0,
 };
 
-const cmdKindBadgeStyle: React.CSSProperties = {
+// D28.1: Note rows carry the accent badge (mock's leading "Note" badge = accent).
+const noteKindBadgeStyle: React.CSSProperties = {
   ...kindBadgeBaseStyle,
   background: "color-mix(in srgb, var(--color-accent) 12%, transparent)",
   color: "var(--color-accent)",
 };
 
-// D28.1: note rows share the accent badge treatment (mock's leading "Note"
-// badge); the +2 marginTop centers the 16px badge on the ~20px title line so it
+// D28.1: the palette "Cmd" badge is neutral grey (mock #8a8a92 on #2c2c32),
+// not accent — only note rows get the accent tint.
+const cmdKindBadgeStyle: React.CSSProperties = {
+  ...kindBadgeBaseStyle,
+  background: "color-mix(in srgb, var(--color-muted) 16%, transparent)",
+  color: "var(--color-muted)",
+};
+
+// D28.1: the +2 marginTop centers the 16px badge on the ~20px title line so it
 // aligns to the first line, not the vertical middle, of the two-line row.
 const leadingBadgeTopAlign: React.CSSProperties = {
   alignSelf: "flex-start",
@@ -835,7 +846,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                     >
                       {item.kind === "note" ? (
                         <>
-                          <span style={{ ...cmdKindBadgeStyle, ...leadingBadgeTopAlign }}>
+                          <span style={{ ...noteKindBadgeStyle, ...leadingBadgeTopAlign }}>
                             Note
                           </span>
                           <div
