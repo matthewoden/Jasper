@@ -15,10 +15,12 @@ import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
+import { useWorkspace } from "../lib/useWorkspace";
 import { subscribePhase7 } from "../lib/appShortcuts";
 import { parseSearchQuery } from "../lib/searchQueryTokenizer";
 import { searchNotes } from "../lib/searchApi";
 import { SidebarSearchResultRow } from "./SidebarSearchResultRow";
+import { SearchSortDropdown } from "./SearchSortDropdown";
 
 const DEBOUNCE_MS = 250;
 const MIN_TEXT_LENGTH = 2;
@@ -37,6 +39,7 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
   const setSearchQuery = useTreeStore((s) => s.setSearchQuery);
   const searchResults = useTreeStore((s) => s.searchResults);
   const setSearchResults = useTreeStore((s) => s.setSearchResults);
+  const { searchSort, setSearchSort } = useWorkspace();
 
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +65,7 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
       return;
     }
     const handle = setTimeout(() => {
-      searchNotes(text, tags.length ? tags : undefined, 50)
+      searchNotes(text, tags.length ? tags : undefined, 50, searchSort)
         .then((r) => {
           if (cancelled.current) return;
           setSearchResults(r);
@@ -76,7 +79,7 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
     }, DEBOUNCE_MS);
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
+  }, [searchQuery, searchSort]);
 
   useEffect(() => {
     setSelectedIdx(0);
@@ -166,6 +169,7 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
               minWidth: 0,
             }}
           />
+          <SearchSortDropdown value={searchSort} onSelect={setSearchSort} />
         </div>
       </div>
 

@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { SidebarSearchPanel } from "./SidebarSearchPanel";
+import { ToastProvider } from "./Toast";
 import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
 import { dispatchPhase7 } from "../lib/appShortcuts";
 import * as searchApi from "./../lib/searchApi";
 import type { SearchResult } from "../lib/searchApi";
+
+vi.mock("../lib/workspaceApi", () => ({
+  getWorkspace: vi.fn().mockResolvedValue({}),
+  putWorkspace: vi.fn().mockResolvedValue({}),
+}));
 
 const mkResult = (id: string, title: string): SearchResult => ({
   id,
@@ -17,9 +23,17 @@ const mkResult = (id: string, title: string): SearchResult => ({
   modified_at: "2026-01-01T00:00:00Z",
 });
 
+function renderPanel() {
+  return render(
+    <ToastProvider>
+      <SidebarSearchPanel onSelectNote={() => {}} />
+    </ToastProvider>,
+  );
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
-  useTreeStore.setState({ searchQuery: "", searchResults: [] });
+  useTreeStore.setState({ searchQuery: "", searchResults: [], searchSort: "relevance" });
   usePaneStore.getState().clearAll();
   vi.spyOn(searchApi, "searchNotes").mockResolvedValue([]);
 });
@@ -31,19 +45,19 @@ afterEach(() => {
 
 describe("SidebarSearchPanel", () => {
   it("renders the input with the exact contract placeholder", () => {
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     expect(
       screen.getByPlaceholderText("Search notes… (tag:name to filter)"),
     ).toBeDefined();
   });
 
   it("shows the quiet hint when the query is empty", () => {
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     expect(screen.getByText("Search your notes")).toBeDefined();
   });
 
   it("fires no searchNotes call and shows the quiet hint for a <2-char free-text query", async () => {
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
     fireEvent.change(input, { target: { value: "a" } });
     await act(async () => {
@@ -55,7 +69,7 @@ describe("SidebarSearchPanel", () => {
 
   it("debounces a >=2-char query and fires exactly one searchNotes call after settle", async () => {
     vi.spyOn(searchApi, "searchNotes").mockResolvedValue([mkResult("1", "Hello")]);
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
     fireEvent.change(input, { target: { value: "hello" } });
 
@@ -68,23 +82,42 @@ describe("SidebarSearchPanel", () => {
       vi.advanceTimersByTime(150);
     });
     expect(searchApi.searchNotes).toHaveBeenCalledTimes(1);
-    expect(searchApi.searchNotes).toHaveBeenCalledWith("hello", undefined, 50);
+    expect(searchApi.searchNotes).toHaveBeenCalledWith("hello", undefined, 50, "relevance");
   });
 
-  it("parses tag: terms and calls searchNotes(text, tags, limit)", async () => {
+  it("parses tag: terms and calls searchNotes(text, tags, limit, sort)", async () => {
     vi.spyOn(searchApi, "searchNotes").mockResolvedValue([]);
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
     fireEvent.change(input, { target: { value: "tag:work budget" } });
     await act(async () => {
       vi.advanceTimersByTime(300);
     });
-    expect(searchApi.searchNotes).toHaveBeenCalledWith("budget", ["work"], 50);
+    expect(searchApi.searchNotes).toHaveBeenCalledWith("budget", ["work"], 50, "relevance");
+  });
+
+  it("re-fetches with the new sort when searchSort changes", async () => {
+    vi.spyOn(searchApi, "searchNotes").mockResolvedValue([]);
+    renderPanel();
+    const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
+    fireEvent.change(input, { target: { value: "hello" } });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(searchApi.searchNotes).toHaveBeenLastCalledWith("hello", undefined, 50, "relevance");
+
+    act(() => {
+      useTreeStore.getState().setSearchSort("modified");
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(searchApi.searchNotes).toHaveBeenLastCalledWith("hello", undefined, 50, "modified");
   });
 
   it("shows the singular-aware count label with results", async () => {
     vi.spyOn(searchApi, "searchNotes").mockResolvedValue([mkResult("1", "Hello")]);
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
     fireEvent.change(input, { target: { value: "hello" } });
     await act(async () => {
@@ -98,7 +131,7 @@ describe("SidebarSearchPanel", () => {
       mkResult("1", "Hello"),
       mkResult("2", "World"),
     ]);
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
     fireEvent.change(input, { target: { value: "hello" } });
     await act(async () => {
@@ -109,7 +142,7 @@ describe("SidebarSearchPanel", () => {
 
   it('shows "No matches for ..." when a >=2-char query returns zero results', async () => {
     vi.spyOn(searchApi, "searchNotes").mockResolvedValue([]);
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
     fireEvent.change(input, { target: { value: "zzz" } });
     await act(async () => {
@@ -125,7 +158,7 @@ describe("SidebarSearchPanel", () => {
     ]);
     const openInActivePane = vi.fn();
     usePaneStore.setState({ openInActivePane });
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
     fireEvent.change(input, { target: { value: "hello" } });
     await act(async () => {
@@ -141,7 +174,7 @@ describe("SidebarSearchPanel", () => {
 
   it("first Escape (non-empty query) clears the query and results", async () => {
     vi.spyOn(searchApi, "searchNotes").mockResolvedValue([mkResult("1", "Hello")]);
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     const input = screen.getByPlaceholderText(
       "Search notes… (tag:name to filter)",
     ) as HTMLInputElement;
@@ -155,7 +188,7 @@ describe("SidebarSearchPanel", () => {
   });
 
   it("second Escape (empty query) blurs the input", () => {
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     const input = screen.getByPlaceholderText(
       "Search notes… (tag:name to filter)",
     ) as HTMLInputElement;
@@ -167,7 +200,7 @@ describe("SidebarSearchPanel", () => {
 
   it("dispatching the focusSearch phase7 event focuses the input and selects existing text", () => {
     useTreeStore.setState({ searchQuery: "hello" });
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     const input = screen.getByPlaceholderText(
       "Search notes… (tag:name to filter)",
     ) as HTMLInputElement;
@@ -181,7 +214,7 @@ describe("SidebarSearchPanel", () => {
 
   it("persists query + results in the store across unmount/remount (D-18)", async () => {
     vi.spyOn(searchApi, "searchNotes").mockResolvedValue([mkResult("1", "Hello")]);
-    const { unmount } = render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    const { unmount } = renderPanel();
     const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
     fireEvent.change(input, { target: { value: "hello" } });
     await act(async () => {
@@ -192,7 +225,7 @@ describe("SidebarSearchPanel", () => {
     expect(useTreeStore.getState().searchQuery).toBe("hello");
     expect(useTreeStore.getState().searchResults.length).toBe(1);
 
-    render(<SidebarSearchPanel onSelectNote={() => {}} />);
+    renderPanel();
     const remountedInput = screen.getByPlaceholderText(
       "Search notes… (tag:name to filter)",
     ) as HTMLInputElement;
