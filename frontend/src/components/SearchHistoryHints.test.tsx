@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, createEvent } from "@testing-library/react";
 import { SearchHistoryHints } from "./SearchHistoryHints";
 import { initForVault, recordSearchHistory } from "../lib/searchHistory";
 
@@ -86,6 +86,29 @@ describe("SearchHistoryHints", () => {
     fireEvent.click(screen.getByLabelText('Remove "hello world" from search history'));
     expect(onRemoveHint).toHaveBeenCalledWith("hello world");
     expect(onSelectHint).not.toHaveBeenCalled();
+  });
+
+  it("default-prevents mousedown anywhere in the listbox so the input never blurs (CR-02)", () => {
+    recordSearchHistory("hello world");
+    render(
+      <SearchHistoryHints query="" activeIndex={-1} onSelectHint={() => {}} onRemoveHint={() => {}} />,
+    );
+    // A real browser fires mousedown (focus would leave the input → blur →
+    // dropdown unmounts) before click ever lands. Preventing mousedown's
+    // default keeps focus on the input, so the click survives.
+    const onRow = createEvent.mouseDown(screen.getByRole("option"), {
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(screen.getByRole("option"), onRow);
+    expect(onRow.defaultPrevented).toBe(true);
+
+    const onX = createEvent.mouseDown(
+      screen.getByLabelText('Remove "hello world" from search history'),
+      { bubbles: true, cancelable: true },
+    );
+    fireEvent(screen.getByLabelText('Remove "hello world" from search history'), onX);
+    expect(onX.defaultPrevented).toBe(true);
   });
 
   it("applies the accent-12% tint to the row at activeIndex", () => {

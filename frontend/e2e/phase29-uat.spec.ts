@@ -522,4 +522,58 @@ test.describe("@phase29 @history HIST-01/02: search history hints — MRU, keybo
       .poll(() => listboxAfterReload.getByRole("option").allTextContents())
       .toEqual(["meeting", "budget"]);
   });
+
+  test("mouse-only: clicking a hint row re-runs it; clicking a row's X removes it (CR-02, D-21)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1512, height: 944 });
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+    await tabRow(page).getByRole("button", { name: "Search", exact: true }).click();
+
+    const input = searchPanelInput(page);
+    await input.click();
+
+    // Fresh browser context per test — rebuild the two-entry history against
+    // the vault's existing meetingroom/budgetplan notes.
+    await input.fill("meeting");
+    await expect(page.getByRole("button", { name: "Open note: meetingroom" })).toBeVisible({
+      timeout: 5_000,
+    });
+    await page.keyboard.press("Enter");
+    await input.fill("");
+    await input.fill("budget");
+    await expect(page.getByRole("button", { name: "Open note: budgetplan" })).toBeVisible({
+      timeout: 5_000,
+    });
+    await page.keyboard.press("Enter");
+
+    await input.fill("");
+    const listbox = recentSearchesListbox(page);
+    await expect(listbox).toBeVisible({ timeout: 5_000 });
+
+    // CR-02: a REAL mouse press fires mousedown (which blurs the input and
+    // unmounts the dropdown unless default-prevented) before click ever
+    // lands. Synthetic unit-test clicks skip that focus cycle and
+    // false-pass, so this must stay a real-mouse assertion.
+    await listbox.getByRole("option").filter({ hasText: "meeting" }).click();
+    await expect(input).toHaveValue("meeting");
+    await expect(listbox).not.toBeVisible();
+
+    // Blur + refocus to re-open the layer, then clear so both entries show.
+    await page.keyboard.press("Tab");
+    await input.click();
+    await input.fill("");
+    await expect(listbox).toBeVisible({ timeout: 5_000 });
+    const hintOptions = listbox.getByRole("option");
+    await expect.poll(() => hintOptions.allTextContents()).toEqual(["meeting", "budget"]);
+
+    // D-21: hover reveals the row's X; a real mouse click on it removes just
+    // that entry while the dropdown stays open and the input keeps focus.
+    await hintOptions.filter({ hasText: "budget" }).hover();
+    await listbox.getByRole("button", { name: 'Remove "budget" from search history' }).click();
+    await expect.poll(() => hintOptions.allTextContents()).toEqual(["meeting"]);
+    await expect(listbox).toBeVisible();
+    await expect(input).toBeFocused();
+  });
 });

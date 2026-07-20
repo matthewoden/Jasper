@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, createEvent } from "@testing-library/react";
 import { SidebarSearchPanel } from "./SidebarSearchPanel";
 import { ToastProvider } from "./Toast";
 import { useTreeStore } from "../lib/useTreeStore";
@@ -300,6 +300,52 @@ describe("SidebarSearchPanel", () => {
       expect(input.value).toBe("hello world");
       expect(openInActivePane).not.toHaveBeenCalled();
       expect(getHistory()[0]).toBe("hello world");
+    });
+
+    // CR-02: replay the real browser event order for a mouse click on the
+    // dropdown — mousedown (focus leaves the input unless default-prevented,
+    // firing blur and queueing the 0ms close timer) … mouseup → click. jsdom's
+    // bare fireEvent.click skips the focus cycle and false-passes, so these
+    // tests drive the sequence explicitly and only skip the blur when the
+    // component default-prevented the mousedown (what a browser would do).
+    function mouseDownThenBlurThenClick(target: HTMLElement, input: HTMLElement) {
+      const md = createEvent.mouseDown(target, { bubbles: true, cancelable: true });
+      fireEvent(target, md);
+      if (!md.defaultPrevented) {
+        fireEvent.blur(input);
+        act(() => {
+          vi.advanceTimersByTime(0);
+        });
+      }
+      fireEvent.click(target);
+    }
+
+    it("clicking a hint row survives the mousedown→blur→click browser sequence (CR-02)", () => {
+      recordSearchHistory("hello world");
+      renderPanel();
+      const input = screen.getByPlaceholderText(
+        "Search notes… (tag:name to filter)",
+      ) as HTMLInputElement;
+      act(() => {
+        input.focus();
+      });
+      const row = screen.getByRole("option", { name: /hello world/ });
+      mouseDownThenBlurThenClick(row, input);
+      expect(useTreeStore.getState().searchQuery).toBe("hello world");
+    });
+
+    it("clicking a hint's remove-X survives the mousedown→blur→click browser sequence (D-21)", () => {
+      recordSearchHistory("hello world");
+      renderPanel();
+      const input = screen.getByPlaceholderText(
+        "Search notes… (tag:name to filter)",
+      ) as HTMLInputElement;
+      act(() => {
+        input.focus();
+      });
+      const x = screen.getByLabelText('Remove "hello world" from search history');
+      mouseDownThenBlurThenClick(x, input);
+      expect(getHistory()).toEqual([]);
     });
 
     it("Esc while hints are open dismisses hints only; a second Esc runs the existing clear/blur behavior", () => {

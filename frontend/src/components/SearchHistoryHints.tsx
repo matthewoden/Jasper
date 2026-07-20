@@ -42,6 +42,10 @@ export function SearchHistoryHints({
     <div
       role="listbox"
       aria-label="Recent searches"
+      // Keep focus on the search input: without this, mousedown on a row
+      // blurs the input, the 0ms close timer unmounts the dropdown mid-press,
+      // and the click never lands (CR-02).
+      onMouseDown={(e) => e.preventDefault()}
       style={{
         position: "absolute",
         top: "100%",
