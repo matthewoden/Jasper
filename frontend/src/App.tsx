@@ -77,21 +77,10 @@ import { useFileTree } from "./lib/useFileTree";
 import { useConfig } from "./lib/useConfig";
 import type { CommandActions } from "./lib/useCommandPalette";
 import type { TreeNode } from "./lib/treeApi";
-
-
-function findActiveNotePath(
-  nodes: ReadonlyArray<TreeNode>,
-  id: string,
-): string | null {
-  for (const node of nodes) {
-    if (node.kind === "note" && node.id === id) return node.path;
-    if (node.kind === "folder" && Array.isArray(node.children)) {
-      const found = findActiveNotePath(node.children, id);
-      if (found) return found;
-    }
-  }
-  return null;
-}
+import {
+  findNotePath as findActiveNotePath,
+  parentDir,
+} from "./lib/treeNoteLookup";
 
 /** Live note title by UUID for a tab pill (TAB-12 — follows server-side renames). */
 function findNoteTitle(
@@ -106,11 +95,6 @@ function findNoteTitle(
     }
   }
   return null;
-}
-
-function parentDir(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i === -1 ? "" : path.slice(0, i);
 }
 
 /**
