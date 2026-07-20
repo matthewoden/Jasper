@@ -18,6 +18,7 @@ import (
 
 func setupConfigServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
+	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, vault.SubdirName), 0o755); err != nil {
 		t.Fatal(err)
@@ -200,7 +201,6 @@ func TestPutConfig_DisplayName(t *testing.T) {
 // preserve float64 precision for lineHeight: 1.6 must come back as exactly
 // 1.6, not the float32-truncated 1.5999999046325684.
 func TestLineHeightRoundTrip_Precision(t *testing.T) {
-	t.Parallel()
 	ts, _ := setupConfigServer(t)
 	defer ts.Close()
 

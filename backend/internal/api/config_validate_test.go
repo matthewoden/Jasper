@@ -17,6 +17,7 @@ import (
 
 func setupValidateServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, vault.SubdirName), 0o755); err != nil {
 		t.Fatal(err)
