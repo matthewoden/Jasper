@@ -99,4 +99,52 @@ describe("searchApi.searchNotes", () => {
     });
     await expect(searchNotes("(")).rejects.toThrow("searchNotes:");
   });
+
+  it("sends sort=modified as a query param", async () => {
+    (client.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { results: [] },
+      error: null,
+    });
+    await searchNotes("hello", undefined, 50, "modified");
+    expect(client.GET).toHaveBeenCalledWith("/search", {
+      params: { query: { q: "hello", limit: 50, sort: "modified" } },
+    });
+  });
+
+  it("sends sort=created as a query param", async () => {
+    (client.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { results: [] },
+      error: null,
+    });
+    await searchNotes("hello", undefined, 50, "created");
+    expect(client.GET).toHaveBeenCalledWith("/search", {
+      params: { query: { q: "hello", limit: 50, sort: "created" } },
+    });
+  });
+
+  it("omits sort param when 'relevance' (keeps default requests unchanged)", async () => {
+    (client.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { results: [] },
+      error: null,
+    });
+    await searchNotes("hello", undefined, 50, "relevance");
+    const call = (client.GET as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      { params: { query: Record<string, unknown> } },
+    ];
+    expect(call[1].params.query.sort).toBeUndefined();
+  });
+
+  it("omits sort param when undefined", async () => {
+    (client.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { results: [] },
+      error: null,
+    });
+    await searchNotes("hello");
+    const call = (client.GET as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      { params: { query: Record<string, unknown> } },
+    ];
+    expect(call[1].params.query.sort).toBeUndefined();
+  });
 });
