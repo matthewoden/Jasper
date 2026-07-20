@@ -932,6 +932,44 @@ describe("CommandMenu — kind badges (D-01 restyle)", () => {
 });
 
 
+describe("CMM-28.1-03-CATEGORY — command palette category sub-label", () => {
+  it("renders item.category as a muted sub-label AND still renders the 'Cmd' badge", () => {
+    const cmds = [
+      {
+        id: "split-right",
+        label: "Split right",
+        group: "Pane",
+        category: "Layout",
+        inPalette: true,
+        inCheatSheet: true,
+      },
+    ];
+    mockUseCommandPalette.mockReturnValue({
+      filtered: vi.fn().mockReturnValue(cmds),
+      execute: vi.fn(),
+      isDisabled: vi.fn().mockReturnValue(false),
+    });
+    render(<CommandMenu {...defaultCmdProps} />);
+    expect(screen.getByText("Layout", { exact: true })).toBeTruthy();
+    expect(screen.getByText("Cmd")).toBeTruthy();
+  });
+
+  it("rows without a category render unchanged (no stray category text, 'Cmd' badge still present)", () => {
+    const cmds = [
+      { id: "new-note", label: "New note", group: "File", inPalette: true, inCheatSheet: true },
+    ];
+    mockUseCommandPalette.mockReturnValue({
+      filtered: vi.fn().mockReturnValue(cmds),
+      execute: vi.fn(),
+      isDisabled: vi.fn().mockReturnValue(false),
+    });
+    render(<CommandMenu {...defaultCmdProps} />);
+    expect(screen.getByText("New note")).toBeTruthy();
+    expect(screen.getByText("Cmd")).toBeTruthy();
+  });
+});
+
+
 describe("CMM-28-04-ROWS — two-line notes rows, match highlight, Vault subtitle (D-14/D-15/D-16)", () => {
   it("a note row's folder path renders as a second-line subtitle, not a same-line badge/right-align", () => {
     mockUseQuickSwitcher.mockReturnValue([
@@ -969,20 +1007,24 @@ describe("CMM-28-04-ROWS — two-line notes rows, match highlight, Vault subtitl
 });
 
 
-describe("CMM-28-04-FOOTER — always-on footer legend (D-13)", () => {
-  it("renders the footer legend in notes mode with open/create/split labels", () => {
+describe("CMM-28-04-FOOTER — always-on footer legend (D-13, D28.1-01: 5 hints)", () => {
+  it("renders the footer legend in notes mode with all five labels: navigate/open/create/split/dismiss", () => {
     mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Note A", path: "a.md" }]);
     render(<CommandMenu {...defaultNoteProps} />);
-    expect(screen.getByText("open")).toBeTruthy();
-    expect(screen.getByText("create")).toBeTruthy();
-    expect(screen.getByText("split")).toBeTruthy();
+    expect(screen.getByText("navigate", { exact: true })).toBeTruthy();
+    expect(screen.getByText("open", { exact: true })).toBeTruthy();
+    expect(screen.getByText("create", { exact: true })).toBeTruthy();
+    expect(screen.getByText("split", { exact: true })).toBeTruthy();
+    expect(screen.getByText("dismiss", { exact: true })).toBeTruthy();
   });
 
   it("does NOT render the footer legend in commands mode", () => {
     render(<CommandMenu {...defaultCmdProps} />);
+    expect(screen.queryByText("navigate")).toBeNull();
     expect(screen.queryByText("open")).toBeNull();
     expect(screen.queryByText("create")).toBeNull();
     expect(screen.queryByText("split")).toBeNull();
+    expect(screen.queryByText("dismiss")).toBeNull();
   });
 });
 
@@ -1042,6 +1084,31 @@ describe("CMM-28-05-CREATE — create row (D-07/D-08)", () => {
     render(<CommandMenu {...defaultNoteProps} />);
     fireEvent.change(getPaletteInput(), { target: { value: "Brand New" } });
     expect(screen.getByText('Create "Brand New"')).toBeTruthy();
+  });
+
+  it("D28.1-02: renders a green 'New' badge on the create row", () => {
+    mockUseQuickSwitcher.mockReturnValue([]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "Brand New" } });
+    expect(screen.getByText("New", { exact: true })).toBeTruthy();
+  });
+
+  it("D28.1-02: the create title is NOT colored green (uses --color-fg, not --color-success)", () => {
+    mockUseQuickSwitcher.mockReturnValue([]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "Brand New" } });
+    const title = screen.getByText('Create "Brand New"');
+    expect(title.getAttribute("style")).toContain("var(--color-fg)");
+    expect(title.getAttribute("style")).not.toContain("var(--color-success)");
+  });
+
+  it("D28.1-02: the create row renders no leading Plus/green icon", () => {
+    mockUseQuickSwitcher.mockReturnValue([]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "Brand New" } });
+    const createRow = document.querySelector('[data-row-kind="create"]');
+    expect(createRow).not.toBeNull();
+    expect(createRow?.querySelector("svg")).toBeNull();
   });
 
   it("hides the create row when the query exactly (case-insensitively) matches an existing title", () => {
