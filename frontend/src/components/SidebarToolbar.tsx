@@ -1,13 +1,22 @@
 /**
- * SidebarToolbar — note-navigation controls: New note, New folder. Today and
- * Search moved to the activity ribbon (Phase 18); global controls
- * (connection dot, refresh, settings) live in StatusBar.
+ * SidebarToolbar — note-navigation controls: New note, New folder, Sort
+ * (SORT-01). Today and Search moved to the activity ribbon (Phase 18);
+ * global controls (connection dot, refresh, settings) live in StatusBar.
  *
  * `creating` prop disables New note + New folder while a create is in flight
  * (opacity 0.5, cursor wait, disabled attribute). Parent reads isCreating from
  * useTreeCreateActions and threads it through.
+ *
+ * The sort trigger (NotesSortMenu) wires itself directly to useTreeStore's
+ * notesSort slice + useWorkspace's setNotesSort (optimistic PUT + revert) —
+ * self-contained, not threaded through props, so this component stays the
+ * single place callers need to touch for the toolbar's sort affordance.
  */
 import { FilePlus, FolderPlus } from "lucide-react";
+
+import { NotesSortMenu } from "./NotesSortMenu";
+import { useTreeStore } from "../lib/useTreeStore";
+import { useWorkspace } from "../lib/useWorkspace";
 
 export interface SidebarToolbarProps {
   onNewNote: () => void;
@@ -37,6 +46,9 @@ export function SidebarToolbar({
   onNewFolder,
   creating = false,
 }: SidebarToolbarProps) {
+  const notesSort = useTreeStore((s) => s.notesSort);
+  const { setNotesSort } = useWorkspace();
+
   return (
     <div
       style={{ display: "flex", alignItems: "center", gap: 8 }}
@@ -70,6 +82,10 @@ export function SidebarToolbar({
       >
         <FolderPlus size={16} aria-hidden="true" />
       </button>
+      <NotesSortMenu
+        value={notesSort}
+        onSelect={(order) => void setNotesSort(order)}
+      />
     </div>
   );
 }

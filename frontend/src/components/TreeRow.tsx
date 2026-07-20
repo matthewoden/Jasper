@@ -10,6 +10,15 @@
  *
  * Hover: reveals the kebab (MoreHorizontal) button via group-hover.
  *
+ * Drop indicator (D-07, Phase 29): folder rows get an inset accent
+ * box-shadow while `node.willReceiveDrop` is true (the drop resolves to
+ * "into this folder", not a between-rows insertion) — the sole drag
+ * feedback once FileTree suppresses react-arborist's default insertion-line
+ * cursor via `renderCursor={() => null}` (TreeView.tsx). BookmarksPanel
+ * does not pass that prop, so its rows still get the default insertion
+ * line for in-folder reordering; this box-shadow is additive there too but
+ * inert unless a bookmark-folder is the live drop target.
+ *
  * Wiring:
  *   - Right-click → TreeRowContextMenu wrapping the row.
  *   - Kebab → TreeRowDropdownMenu (controlled open state).
@@ -365,6 +374,14 @@ export function TreeRow({
       : undefined;
   const rowBackground = activeBackground ?? selectedBackground;
 
+  // D-07 (Phase 29): react-arborist's willReceiveDrop getter is only ever
+  // true for the folder currently acting as the drop's destination parent
+  // AND when the drop resolves to "into the folder" rather than a
+  // between-rows insertion index (see tree-api.js willReceiveDrop) — so
+  // this box-shadow naturally only ever appears on folder rows, with no
+  // extra isFolder guard needed.
+  const willReceiveDrop = node.willReceiveDrop === true;
+
   const dataTreeRowValue =
     data.kind === "folder" || data.kind === "file"
       ? data.path
@@ -488,6 +505,9 @@ export function TreeRow({
         paddingRight: 16,
         cursor: "pointer",
         background: rowBackground,
+        boxShadow: willReceiveDrop
+          ? "inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 50%, transparent)"
+          : undefined,
       }}
       className={
         "hover:bg-[rgba(255,255,255,0.04)] group" +

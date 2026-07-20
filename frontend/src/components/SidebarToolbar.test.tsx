@@ -1,8 +1,13 @@
 /**
- * SidebarToolbar tests — note-navigation controls: New note, New folder.
- * Today and Search moved to the activity ribbon (Phase 18/19).
+ * SidebarToolbar tests — note-navigation controls: New note, New folder,
+ * Sort notes (Phase 29, SORT-01). Today and Search moved to the activity
+ * ribbon (Phase 18/19).
+ *
+ * SidebarToolbar now self-wires NotesSortMenu via useWorkspace(), which
+ * calls useToast() — every render() below must be wrapped in <ToastProvider>.
  */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, type RenderOptions, type RenderResult } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../api/client", () => ({
@@ -24,10 +29,21 @@ vi.mock("../api/client", () => ({
 }));
 
 import { SidebarToolbar } from "./SidebarToolbar";
+import { ToastProvider } from "./Toast";
+
+function renderToolbar(
+  ui: ReactElement,
+  options?: RenderOptions,
+): RenderResult {
+  return render(ui, {
+    wrapper: ({ children }) => <ToastProvider>{children}</ToastProvider>,
+    ...options,
+  });
+}
 
 describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phase 7 + Phase 19)", () => {
   it("TestToolbar_RendersNewNoteButton", () => {
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
@@ -37,7 +53,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
   });
 
   it("TestToolbar_RendersNewFolderButton", () => {
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
@@ -48,7 +64,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
 
   it("TestToolbar_NewNote_OnClick", () => {
     const onNewNote = vi.fn();
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={onNewNote}
         onNewFolder={vi.fn()}
@@ -60,7 +76,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
 
   it("TestToolbar_NewFolder_OnClick", () => {
     const onNewFolder = vi.fn();
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={onNewFolder}
@@ -71,7 +87,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
   });
 
   it("TestToolbar_NativeTooltips_NewNoteAndNewFolder", () => {
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
@@ -86,7 +102,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
   });
 
   it("TestToolbar_CreatingFalse_ButtonsEnabled — default state", () => {
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
@@ -102,7 +118,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
   });
 
   it("TestToolbar_CreatingTrue_DisablesNewNoteAndNewFolder", () => {
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
@@ -122,7 +138,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
   it("TestToolbar_CreatingTrue_PreventsClicks — onClick spies are not called", () => {
     const onNewNote = vi.fn();
     const onNewFolder = vi.fn();
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={onNewNote}
         onNewFolder={onNewFolder}
@@ -136,7 +152,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
   });
 
   it("TestToolbar_CreatingDefaultsToFalse — omitting prop keeps existing behavior", () => {
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
@@ -147,7 +163,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
   });
 
   it("TestToolbar_DoesNotRenderConnectionStatusDot (D-08)", () => {
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
@@ -157,7 +173,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
   });
 
   it("TestToolbar_DoesNotRenderReindexButton (D-08)", () => {
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
@@ -168,7 +184,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
   });
 
   it("TestToolbar_DoesNotRenderSettingsMenu (D-08)", () => {
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
@@ -178,7 +194,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
   });
 
   it("TestToolbar_DoesNotRenderTodayButton (Phase 19: ribbon owns Today)", () => {
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
@@ -190,7 +206,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
   });
 
   it("TestToolbar_DoesNotRenderSearchButton (Phase 19: ribbon owns Search)", () => {
-    render(
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
@@ -199,16 +215,17 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(screen.queryByLabelText("Search notes")).toBeNull();
   });
 
-  it("TestToolbar_RendersExactlyTwoButtons — New note + New folder only", () => {
-    render(
+  it("TestToolbar_RendersExactlyThreeButtons — New note + New folder + Sort notes (Phase 29)", () => {
+    renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
         onNewFolder={vi.fn()}
       />,
     );
     const buttons = screen.getAllByRole("button");
-    expect(buttons).toHaveLength(2);
+    expect(buttons).toHaveLength(3);
     expect(buttons[0].getAttribute("aria-label")).toBe("New note");
     expect(buttons[1].getAttribute("aria-label")).toBe("New folder");
+    expect(buttons[2].getAttribute("aria-label")).toBe("Sort notes");
   });
 });
