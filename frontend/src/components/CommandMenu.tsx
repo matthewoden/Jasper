@@ -9,7 +9,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Search, Command, Loader2, Plus } from "lucide-react";
+import { Search, Command, Loader2 } from "lucide-react";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette, type CommandActions } from "../lib/useCommandPalette";
 import { useSearch } from "../lib/useSearch";
@@ -100,6 +100,14 @@ const cmdKindBadgeStyle: React.CSSProperties = {
   color: "var(--color-accent)",
 };
 
+// D28.1-02: mirrors cmdKindBadgeStyle recolored to success — the create row's
+// "New" badge is the sole green accent now that the row title is neutral.
+const createKindBadgeStyle: React.CSSProperties = {
+  ...kindBadgeBaseStyle,
+  background: "color-mix(in srgb, var(--color-success) 14%, transparent)",
+  color: "var(--color-success)",
+};
+
 // D-14: notes-mode rows are two-line 56px, no kind badge (unlike commands mode).
 const noteRowTitleStyle: React.CSSProperties = {
   fontSize: 14,
@@ -119,12 +127,12 @@ const noteRowSubtitleStyle: React.CSSProperties = {
   textOverflow: "ellipsis",
 };
 
-// D-08: create row uses var(--color-success) for the title (not --color-fg)
-// as the distinguishing "this is an action, not a note" signal.
+// D28.1-02: neutral title (was var(--color-success)) — the "this is an
+// action, not a note" signal now lives solely in the trailing "New" badge.
 const createRowTitleStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 600,
-  color: "var(--color-success)",
+  color: "var(--color-fg)",
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -771,7 +779,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                       fontSize: 14,
                       cursor: "pointer",
                       background: selected
-                        ? "color-mix(in srgb, var(--color-success) 12%, transparent)"
+                        ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
                         : "transparent",
                       userSelect: "none",
                     };
@@ -823,22 +831,19 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                         </>
                       ) : item.kind === "create" ? (
                         <>
-                          <Plus
-                            size={16}
-                            style={{ color: "var(--color-success)", flexShrink: 0 }}
-                            aria-hidden="true"
-                          />
                           <div
                             style={{
                               display: "flex",
                               flexDirection: "column",
                               gap: 4,
+                              flex: 1,
                               minWidth: 0,
                             }}
                           >
                             <div style={createRowTitleStyle}>{`Create "${query}"`}</div>
                             <div style={createRowSubtitleStyle}>{`New note · ${folderLabel}`}</div>
                           </div>
+                          <span style={createKindBadgeStyle}>New</span>
                         </>
                       ) : (
                         <>
@@ -869,9 +874,11 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
               }}
             >
               {[
+                { glyph: "↑↓", label: "navigate" },
                 { glyph: "↵", label: "open" },
                 { glyph: `${shift}↵`, label: "create" },
                 { glyph: `${mod}${shift}↵`, label: "split" },
+                { glyph: "esc", label: "dismiss" },
               ].map(({ glyph, label }) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <KeyboardChip>{glyph}</KeyboardChip>
