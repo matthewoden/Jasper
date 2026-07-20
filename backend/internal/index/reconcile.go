@@ -92,8 +92,9 @@ func (x *Indexer) reconcileIncrementalWithRegistry(ctx context.Context, registry
 			Checksum:      "",
 			UpdatedAtUnix: x.nowUnix(),
 
-			BodyFTS:     markdown.ExtractBodyForFTS(content),
-			TagNamesFTS: markdown.JoinTagNamesForFTS(tags),
+			BodyFTS:       markdown.ExtractBodyForFTS(content),
+			TagNamesFTS:   markdown.JoinTagNamesForFTS(tags),
+			BirthtimeUnix: fm.BirthtimeUnix,
 		}
 		if err := x.Upsert(ctx, rec); err != nil {
 			if errors.Is(err, notes.ErrCaseCollision) {
@@ -149,8 +150,9 @@ func (x *Indexer) reconcileFullWithRegistry(ctx context.Context, registry *notes
 			Checksum:      "",
 			UpdatedAtUnix: x.nowUnix(),
 
-			BodyFTS:     markdown.ExtractBodyForFTS(content),
-			TagNamesFTS: markdown.JoinTagNamesForFTS(tags),
+			BodyFTS:       markdown.ExtractBodyForFTS(content),
+			TagNamesFTS:   markdown.JoinTagNamesForFTS(tags),
+			BirthtimeUnix: fm.BirthtimeUnix,
 		}
 		if err := x.Upsert(ctx, rec); err != nil {
 			if errors.Is(err, notes.ErrCaseCollision) {
