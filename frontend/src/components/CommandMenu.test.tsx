@@ -32,14 +32,6 @@ vi.mock("../lib/useSearch", () => ({
   useSearch: vi.fn(),
 }));
 
-vi.mock("fuzzysort", () => ({
-  default: {
-    single: vi.fn(),
-    go: vi.fn(),
-  },
-}));
-
-
 const mockMeasureElement = vi.fn();
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: vi.fn().mockImplementation(({ count }: { count: number }) => ({
@@ -65,7 +57,6 @@ import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette } from "../lib/useCommandPalette";
 import { useSearch } from "../lib/useSearch";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import fuzzysort from "fuzzysort";
 
 const mockUseFileTree = useFileTree as unknown as ReturnType<typeof vi.fn>;
 const mockUseTreeStore = useTreeStore as unknown as ReturnType<typeof vi.fn>;
@@ -74,7 +65,6 @@ const mockUseQuickSwitcher = useQuickSwitcher as unknown as ReturnType<typeof vi
 const mockUseCommandPalette = useCommandPalette as unknown as ReturnType<typeof vi.fn>;
 const mockUseSearch = useSearch as unknown as ReturnType<typeof vi.fn>;
 const mockUseVirtualizer = useVirtualizer as unknown as ReturnType<typeof vi.fn>;
-const mockFuzzysortSingle = fuzzysort.single as unknown as ReturnType<typeof vi.fn>;
 
 
 const mockSetActiveNote = vi.fn();
@@ -849,78 +839,7 @@ describe("CMM-UAT8FU2 — input-row activity indicator + stale-state preservatio
 });
 
 
-describe("CommandMenu — mode='all' unified list (PALETTE-01/02)", () => {
-  const defaultAllProps = { open: true, onOpenChange: vi.fn(), mode: "all" as const, actions: {} };
-
-  it("CMM-ALL-1: empty query renders note rows (recents) with no group-header rows", () => {
-    mockUseQuickSwitcher.mockReturnValue([
-      { id: "n1", title: "Recent Note", path: "recent.md" },
-    ]);
-    mockUseCommandPalette.mockReturnValue({
-      filtered: vi.fn().mockReturnValue([]),
-      execute: vi.fn(),
-      isDisabled: vi.fn().mockReturnValue(false),
-    });
-
-    render(<CommandMenu {...defaultAllProps} />);
-    expect(screen.getByText("Recent Note")).toBeTruthy();
-    expect(document.querySelector('[data-row-kind="group"]')).toBeNull();
-  });
-
-  it("CMM-ALL-2: matching query renders both a note and a command, kind-badged, no section headers, ordered by score", () => {
-    mockUseQuickSwitcher.mockReturnValue([
-      { id: "n1", title: "Best Match Note", path: "best.md", score: -1 },
-    ]);
-    mockFuzzysortSingle.mockReturnValue({ score: -9999 });
-    mockUseCommandPalette.mockReturnValue({
-      filtered: vi.fn().mockReturnValue([
-        { id: "today", label: "Today", group: "Navigation", shortcut: "⌘⇧D", inPalette: true, inCheatSheet: true },
-      ]),
-      execute: vi.fn(),
-      isDisabled: vi.fn().mockReturnValue(false),
-    });
-
-    render(<CommandMenu {...defaultAllProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "match" } });
-
-    expect(screen.getByText("Best Match Note")).toBeTruthy();
-    expect(screen.getByText("Today")).toBeTruthy();
-    expect(document.querySelector('[data-row-kind="group"]')).toBeNull();
-
-    const rows = Array.from(document.querySelectorAll("[data-row-kind]"));
-    const kinds = rows.map((r) => r.getAttribute("data-row-kind"));
-    expect(kinds.indexOf("note")).toBeLessThan(kinds.indexOf("cmd"));
-  });
-
-  it("CMM-ALL-3: zero-match query renders 'No matching notes or commands for \"{query}\"' copy", () => {
-    mockUseQuickSwitcher.mockReturnValue([]);
-    mockUseCommandPalette.mockReturnValue({
-      filtered: vi.fn().mockReturnValue([]),
-      execute: vi.fn(),
-      isDisabled: vi.fn().mockReturnValue(false),
-    });
-
-    render(<CommandMenu {...defaultAllProps} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "zzz" } });
-    expect(screen.getByText('No matching notes or commands for "zzz"')).toBeTruthy();
-  });
-
-  it("CMM-ALL-4: aria-label and placeholder are unified-mode specific", () => {
-    mockUseQuickSwitcher.mockReturnValue([]);
-    mockUseCommandPalette.mockReturnValue({
-      filtered: vi.fn().mockReturnValue([]),
-      execute: vi.fn(),
-      isDisabled: vi.fn().mockReturnValue(false),
-    });
-
-    render(<CommandMenu {...defaultAllProps} />);
-    expect(screen.getByPlaceholderText("Search notes and commands…")).toBeTruthy();
-    expect(screen.getByRole("dialog", { name: "Search everything" })).toBeTruthy();
-  });
-});
-
-
-describe("CommandMenu — regression: scoped modes unaffected by unified mode addition", () => {
+describe("CommandMenu — regression: scoped modes stay isolated", () => {
   it("mode='notes' still shows only note rows for a matching query (no cmd rows)", () => {
     mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Only Note", path: "only.md" }]);
     render(<CommandMenu {...defaultNoteProps} />);
