@@ -14,6 +14,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/mcp"
 	"github.com/matthewoden/jasper/backend/internal/notes"
+	"github.com/matthewoden/jasper/backend/internal/workspace"
 )
 
 type nilStatusProvider struct{}
@@ -44,6 +45,7 @@ type Server struct {
 	log         *slog.Logger
 
 	bookmarks *bookmarks.Service
+	workspace *workspace.Service
 
 	dataDir string
 
@@ -110,6 +112,7 @@ func NewServerWithIndex(
 		log:         log,
 		dataDir:     dataDir,
 		bookmarks:   bookmarks.New(dataDir, registry, broadcaster, log),
+		workspace:   workspace.New(dataDir, broadcaster, log),
 	}
 }
 
