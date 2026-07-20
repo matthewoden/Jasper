@@ -358,19 +358,51 @@ function timestampOf(
 export function comparatorFor(
   order: NotesSortOrder,
 ): (a: ArboristNode, b: ArboristNode) => number {
-  // TODO(29-04 RED): not implemented yet — always returns 0 (stable no-op).
-  void order;
-  return () => 0;
+  switch (order) {
+    case "name-asc":
+      return (a, b) => a.name.localeCompare(b.name);
+    case "name-desc":
+      return (a, b) => b.name.localeCompare(a.name);
+    case "modified-desc":
+      return (a, b) =>
+        timestampOf(b, "updated_at") - timestampOf(a, "updated_at") ||
+        a.name.localeCompare(b.name);
+    case "modified-asc":
+      return (a, b) =>
+        timestampOf(a, "updated_at") - timestampOf(b, "updated_at") ||
+        a.name.localeCompare(b.name);
+    case "created-desc":
+      return (a, b) =>
+        timestampOf(b, "created") - timestampOf(a, "created") ||
+        a.name.localeCompare(b.name);
+    case "created-asc":
+      return (a, b) =>
+        timestampOf(a, "created") - timestampOf(b, "created") ||
+        a.name.localeCompare(b.name);
+    default:
+      return (a, b) => a.name.localeCompare(b.name);
+  }
 }
 
 /**
- * sortTree — folder-grouping comparator (D-01/D-02).
- * TODO(29-04 RED): not implemented yet — returns nodes unchanged.
+ * sortTree — folder-grouping comparator (D-01/D-02). Folders ALWAYS sort
+ * A→Z and ALWAYS precede notes/files at every level; only the non-folder
+ * group reorders per `order`. Recurses into every folder's children so
+ * nested levels apply the same order. Returns new arrays/objects rather
+ * than mutating the input nodes (safe to call from a React render/memo).
  */
 export function sortTree(
   nodes: ArboristNode[],
   order: NotesSortOrder,
 ): ArboristNode[] {
-  void order;
-  return nodes;
+  const folders = nodes.filter((n) => n.data.kind === "folder");
+  const rest = nodes.filter((n) => n.data.kind !== "folder"); // notes + files
+  const sortedFolders = [...folders].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  const sortedRest = [...rest].sort(comparatorFor(order));
+  const recursedFolders = sortedFolders.map((f) =>
+    f.children ? { ...f, children: sortTree(f.children, order) } : f,
+  );
+  return [...recursedFolders, ...sortedRest];
 }
