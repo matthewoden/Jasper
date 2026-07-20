@@ -43,6 +43,16 @@ var validSearchSort = map[string]bool{
 	"created":   true,
 }
 
+// IsValidNotesSort reports whether v is inside the closed notesSort enum.
+// Exposed so the API handler can validate ALL request fields up front and
+// reject atomically before any setter persists or broadcasts (WR-01); the
+// setters keep their own checks as defense-in-depth.
+func IsValidNotesSort(v string) bool { return validNotesSort[v] }
+
+// IsValidSearchSort reports whether v is inside the closed searchSort
+// enum. See IsValidNotesSort for why this is exported.
+func IsValidSearchSort(v string) bool { return validSearchSort[v] }
+
 // workspacePath returns <dataDir>/.jasper/workspace.json — the on-disk
 // location of the per-vault workspace-preferences file. Mirrors
 // bookmarks.bookmarksPath.

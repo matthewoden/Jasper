@@ -43,6 +43,16 @@ func (s *Server) PutVaultWorkspace(
 		return PutVaultWorkspace400JSONResponse(newError("invalid_request", "request body required")), nil
 	}
 
+	// Validate every present field BEFORE invoking any setter — the setters
+	// persist+broadcast individually, so a late rejection would leave a
+	// partial mutation behind an error response (WR-01).
+	if req.Body.NotesSort != nil && !workspace.IsValidNotesSort(string(*req.Body.NotesSort)) {
+		return PutVaultWorkspace400JSONResponse(newError("invalid_request", "invalid notesSort value")), nil
+	}
+	if req.Body.SearchSort != nil && !workspace.IsValidSearchSort(string(*req.Body.SearchSort)) {
+		return PutVaultWorkspace400JSONResponse(newError("invalid_request", "invalid searchSort value")), nil
+	}
+
 	var doc workspace.Workspace
 	if req.Body.NotesSort != nil {
 		updated, err := s.workspace.SetNotesSort(ctx, string(*req.Body.NotesSort))

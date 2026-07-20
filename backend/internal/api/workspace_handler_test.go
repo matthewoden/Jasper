@@ -146,6 +146,46 @@ func TestPutVaultWorkspace_SearchSortOnly_LeavesNotesSortUntouched(t *testing.T)
 	}
 }
 
+// TestPutVaultWorkspace_MixedValidInvalid_400_NothingPersisted (WR-01) —
+// a body mixing a valid notesSort with an invalid searchSort must be
+// rejected atomically: 400, NEITHER field persisted, no broadcast. The
+// per-field-setter shape would otherwise persist+broadcast notesSort and
+// then 400 on searchSort — a partial mutation on an error response,
+// contradicting the OpenAPI "before touching disk" contract.
+func TestPutVaultWorkspace_MixedValidInvalid_400_NothingPersisted(t *testing.T) {
+	t.Parallel()
+	ts, bc := setupWorkspaceTestServer(t)
+	defer ts.Close()
+
+	resp, body := mustPutJSON(t, ts, "/api/v1/vault/workspace",
+		`{"notesSort":"name-desc","searchSort":"bogus"}`)
+	if resp.StatusCode != 400 {
+		t.Fatalf("status: got %d, want 400; body=%s", resp.StatusCode, body)
+	}
+
+	resp, body = http200Get(t, ts, "/api/v1/vault/workspace")
+	if resp.StatusCode != 200 {
+		t.Fatalf("GET status: got %d; body=%s", resp.StatusCode, body)
+	}
+	var reloaded Workspace
+	if err := json.Unmarshal(body, &reloaded); err != nil {
+		t.Fatalf("unmarshal: %v; body=%s", err, body)
+	}
+	if reloaded.NotesSort != nil {
+		t.Errorf("NotesSort = %q, want nil (rejected PUT must persist nothing)", *reloaded.NotesSort)
+	}
+	if reloaded.SearchSort != nil {
+		t.Errorf("SearchSort = %q, want nil (rejected PUT must persist nothing)", *reloaded.SearchSort)
+	}
+
+	bc.mu.Lock()
+	n := len(bc.events)
+	bc.mu.Unlock()
+	if n != 0 {
+		t.Errorf("broadcast count = %d, want 0 (rejected PUT must not broadcast)", n)
+	}
+}
+
 // TestPutVaultWorkspace_InvalidEnum_400_NoDiskWrite — an out-of-enum value
 // is rejected with 400 and never reaches disk.
 func TestPutVaultWorkspace_InvalidEnum_400_NoDiskWrite(t *testing.T) {
