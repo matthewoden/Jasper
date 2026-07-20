@@ -302,6 +302,39 @@ describe("SidebarSearchPanel", () => {
       expect(getHistory()[0]).toBe("hello world");
     });
 
+    it("Enter-committing a result closes the hints layer instead of reopening it over the results (WR-02)", async () => {
+      vi.spyOn(searchApi, "searchNotes").mockResolvedValue([
+        mkResult("1", "Hello"),
+        mkResult("2", "World"),
+      ]);
+      const openInActivePane = vi.fn();
+      usePaneStore.setState({ openInActivePane });
+      renderPanel();
+      const input = screen.getByPlaceholderText(
+        "Search notes… (tag:name to filter)",
+      ) as HTMLInputElement;
+      act(() => {
+        input.focus(); // hintsOpen=true; history empty so no dropdown yet
+      });
+      fireEvent.change(input, { target: { value: "hello" } });
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+
+      // Commit the search. The just-recorded "hello" prefix-matches itself,
+      // so without an explicit close the dropdown reopens over the input
+      // and hijacks the arrow keys from results nav.
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(openInActivePane).toHaveBeenLastCalledWith("1");
+      expect(screen.queryByRole("listbox", { name: "Recent searches" })).toBeNull();
+
+      // Arrows must still drive results nav: ArrowDown + Enter opens the
+      // SECOND result, not a hint re-selection of "hello".
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(openInActivePane).toHaveBeenLastCalledWith("2");
+    });
+
     // CR-02: replay the real browser event order for a mouse click on the
     // dropdown — mousedown (focus leaves the input unless default-prevented,
     // firing blur and queueing the 0ms close timer) … mouseup → click. jsdom's

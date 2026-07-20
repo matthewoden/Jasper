@@ -182,6 +182,11 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
       const result = searchResults[selectedIdx];
       if (result) {
         recordSearchHistory(searchQuery);
+        // Close hints at the commit point: the just-recorded query
+        // prefix-matches itself, so leaving hintsOpen true would reopen the
+        // dropdown over the results and hijack arrow-key nav (WR-02).
+        setHintsOpen(false);
+        setActiveHintIndex(-1);
         usePaneStore.getState().openInActivePane(result.id);
       }
     } else if (e.key === "Escape") {
