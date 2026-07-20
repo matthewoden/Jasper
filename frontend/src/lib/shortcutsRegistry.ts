@@ -14,6 +14,9 @@ export type ShortcutGroup =
   | "Help"
   | "Vault";
 
+/** D28.1-03: mock's palette row `sub` category (Vault.dc.html:1031-1050). */
+export type CommandCategory = "Layout" | "Navigate" | "Create" | "Organize" | "App";
+
 export interface Shortcut {
   /** Stable identifier; commands wire actions by id. */
   id: string;
@@ -28,6 +31,9 @@ export interface Shortcut {
   /** Whether this entry appears in the Cmd+/ cheat-sheet (most do; CM6 built-ins
    *  appear here but NOT in the palette). */
   inCheatSheet: boolean;
+  /** Muted right-aligned sub-label rendered on palette rows (D28.1-03). Set on
+   *  every inPalette:true entry; unset for cheat-sheet-only entries. */
+  category?: CommandCategory;
 }
 
 
@@ -45,6 +51,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}N`,
     inPalette: true,
     inCheatSheet: true,
+    category: "Create",
   },
   {
     id: "save",
@@ -53,6 +60,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}S`,
     inPalette: true,
     inCheatSheet: true,
+    category: "Create",
   },
   {
     id: "bold",
@@ -85,6 +93,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}${shift}D`,
     inPalette: true,
     inCheatSheet: true,
+    category: "Create",
   },
   {
     id: "switch-note",
@@ -93,6 +102,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}O`,
     inPalette: true,
     inCheatSheet: true,
+    category: "Navigate",
   },
   {
     id: "command-palette",
@@ -148,6 +158,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     group: "View",
     inPalette: true,
     inCheatSheet: true,
+    category: "App",
   },
   {
     id: "vault.switch",
@@ -155,6 +166,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     group: "Vault",
     inPalette: true,
     inCheatSheet: false,
+    category: "App",
   },
   {
     id: "zen.toggle",
@@ -163,6 +175,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}.`,
     inPalette: true,
     inCheatSheet: true,
+    category: "Layout",
   },
   {
     id: "share-reveal-current-note",
@@ -170,6 +183,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     group: "Share",
     inPalette: true,
     inCheatSheet: false,
+    category: "Organize",
   },
   {
     id: "refresh-index",
@@ -177,6 +191,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     group: "Index",
     inPalette: true,
     inCheatSheet: false,
+    category: "App",
   },
   {
     id: "rebuild-index",
@@ -184,6 +199,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     group: "Index",
     inPalette: true,
     inCheatSheet: false,
+    category: "App",
   },
   {
     id: "show-shortcuts",
@@ -192,6 +208,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}/`,
     inPalette: true,
     inCheatSheet: true,
+    category: "App",
   },
   {
     id: "split-right",
@@ -200,6 +217,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}\\`,
     inPalette: true,
     inCheatSheet: true,
+    category: "Layout",
   },
   {
     id: "split-down",
@@ -208,6 +226,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}${shift}\\`,
     inPalette: true,
     inCheatSheet: true,
+    category: "Layout",
   },
   {
     id: "focus-next-pane",
@@ -216,6 +235,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}⌥→`,
     inPalette: true,
     inCheatSheet: true,
+    category: "Layout",
   },
   {
     id: "focus-previous-pane",
@@ -224,6 +244,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}⌥←`,
     inPalette: true,
     inCheatSheet: true,
+    category: "Layout",
   },
   {
     id: "sidebar.toggle",
@@ -232,6 +253,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}${shift}E`,
     inPalette: true,
     inCheatSheet: true,
+    category: "Layout",
   },
   {
     id: "bookmark.toggle",
@@ -240,6 +262,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
     shortcut: `${mod}${shift}B`,
     inPalette: true,
     inCheatSheet: true,
+    category: "Organize",
   },
 ];
 

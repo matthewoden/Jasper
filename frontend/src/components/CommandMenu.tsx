@@ -41,6 +41,8 @@ interface CmdItem {
   label: string;
   shortcut?: string;
   group: string;
+  /** D28.1-03: muted right-aligned sub-label, sourced from Shortcut.category. */
+  category?: string;
   disabled?: boolean;
 }
 
@@ -273,6 +275,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       label: c.label,
       shortcut: c.shortcut,
       group: c.group,
+      category: c.category,
       disabled: cmd.isDisabled?.(c.id) ?? false,
     }));
   } else if (mode === "search") {
@@ -850,6 +853,17 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                           <span style={{ flex: 1 }}>{item.label}</span>
                           {item.shortcut !== undefined && !cmdDisabled && (
                             <KeyboardChip>{item.shortcut}</KeyboardChip>
+                          )}
+                          {item.category !== undefined && (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: "var(--color-muted)",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {item.category}
+                            </span>
                           )}
                           <span style={cmdKindBadgeStyle}>Cmd</span>
                         </>
