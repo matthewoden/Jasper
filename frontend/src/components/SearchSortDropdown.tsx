@@ -97,7 +97,7 @@ export function SearchSortDropdown({
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content style={menuContainerStyle} side="bottom" align="end" sideOffset={4}>
+        <DropdownMenu.Content style={menuContainerStyle} side="bottom" align="start" sideOffset={4}>
           {OPTIONS.map((option) => (
             <DropdownMenu.Item
               key={option.value}

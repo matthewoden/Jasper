@@ -114,7 +114,7 @@ export function NotesSortMenu({
         <DropdownMenu.Content
           style={menuContainerStyle}
           side="bottom"
-          align="end"
+          align="start"
           sideOffset={4}
         >
           {SORT_ITEMS.map((item) => (
