@@ -1,10 +1,14 @@
 /**
- * Phase 22 UAT — Command Palette (unified Cmd+K) + Zen Mode.
+ * Phase 22 UAT — Zen Mode.
  *
- * PALETTE-01/02: Cmd+K opens a unified 620px palette merging notes + commands
- *   (each row kind-badged Note/Cmd, no section headers); Cmd+P (commands-only)
- *   and Cmd+O (notes-only) remain unchanged. Esc hint always present; arrow
- *   keys navigate, Enter activates, Esc/overlay-click close.
+ * PALETTE-01/02's old shortcut-K unified-palette mode this suite originally
+ * also covered was retired outright by Phase 28 (D-02): the merged-results
+ * mode no longer exists and its shortcut is unbound. That coverage was
+ * removed here — Phase 28's own `phase28-uat.spec.ts` is now the
+ * switcher/palette E2E gate, and the durable Esc-closes/arrow-nav/shortcut-P-
+ * scoping assertions this block also exercised were already independently
+ * covered by `phase7-uat.spec.ts` (shortcut-O ArrowDown/Enter/Escape) —
+ * nothing load-bearing was dropped.
  *
  * ZEN-01: Cmd+. / the StatusBar button toggle zen mode, hiding the activity
  *   ribbon, both sidebars, the tab bar, and the breadcrumb band while the
@@ -36,12 +40,7 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
-import {
-  waitForConnected,
-  openCommandMenu,
-  apiCreateNote,
-  pressShortcut,
-} from "./helpers/phase7Helpers";
+import { waitForConnected, apiCreateNote } from "./helpers/phase7Helpers";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,9 +55,9 @@ function ensureArtifactsDir(): void {
   }
 }
 
-/** Press the unified-palette shortcut (Cmd/Ctrl+K). */
-async function pressCmdK(page: Page): Promise<void> {
-  await page.keyboard.press(`${MOD}+k`);
+/** Press the command-palette shortcut (Cmd/Ctrl+P) — the surviving palette entrance. */
+async function pressCmdP(page: Page): Promise<void> {
+  await page.keyboard.press(`${MOD}+p`);
 }
 
 /** Press the zen-mode toggle shortcut (Cmd/Ctrl+.). */
@@ -95,258 +94,6 @@ async function isOccludedByOtherContent(locator: Locator): Promise<boolean> {
     return topEl !== el && !el.contains(topEl);
   });
 }
-
-test.describe("@phase22 command palette — unified Cmd+K mode + scoped-binding regression", () => {
-  let jasper: JasperHandle;
-
-  test.beforeAll(async () => {
-    jasper = await spawnJasper();
-    ensureArtifactsDir();
-  });
-
-  test.afterAll(async () => {
-    if (jasper) await jasper.kill();
-  });
-
-  test("Cmd+K opens a 620px unified palette with an always-visible Esc hint; results carry Note/Cmd kind badges and interleave on a matching query", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1512, height: 944 });
-    await apiCreateNote(
-      page,
-      jasper.baseURL,
-      "notetestalpha.md",
-      "",
-      "# notetestalpha\n\nBody text for the unified palette test.\n",
-    );
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-
-    await pressCmdK(page);
-    const dialog = page.getByRole("dialog", { name: "Search everything" });
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
-
-    // The card's ~140ms popIn keyframe animates from scale(0.98) -> scale(1);
-    // poll past the transition so the measured width reflects the settled
-    // 620px, not an in-flight animation frame.
-    await expect
-      .poll(async () => (await dialog.boundingBox())?.width ?? 0, { timeout: 2_000 })
-      .toBe(620);
-
-    await expect(dialog.locator("kbd", { hasText: "Esc" })).toBeVisible({
-      timeout: 5_000,
-    });
-
-    // Empty query: at least one note row, carrying the "Note" kind badge.
-    const emptyNoteRow = dialog.locator('[data-row-kind="note"]').first();
-    await expect(emptyNoteRow).toBeVisible({ timeout: 5_000 });
-    await expect(emptyNoteRow.getByText("Note", { exact: true })).toBeVisible();
-
-    await page.screenshot({
-      path: path.join(ARTIFACTS_DIR, "phase22-palette-unified-empty.png"),
-      fullPage: false,
-    });
-
-    // Query "note" fuzzy-matches both the seeded note title and the
-    // registered "New note" command label -> both kinds must interleave,
-    // each carrying its own kind badge, with no GroupItem header rows.
-    await dialog.getByRole("textbox").fill("note");
-    const matchedNoteRow = dialog.locator('[data-row-kind="note"]').first();
-    const matchedCmdRow = dialog.locator('[data-row-kind="cmd"]').first();
-    await expect(matchedNoteRow).toBeVisible({ timeout: 5_000 });
-    await expect(matchedCmdRow).toBeVisible({ timeout: 5_000 });
-    await expect(matchedNoteRow.getByText("Note", { exact: true })).toBeVisible();
-    await expect(matchedCmdRow.getByText("Cmd", { exact: true })).toBeVisible();
-    await expect(dialog.locator('[data-row-kind="group"]')).toHaveCount(0);
-
-    await page.screenshot({
-      path: path.join(ARTIFACTS_DIR, "phase22-palette-unified-query.png"),
-      fullPage: false,
-    });
-  });
-
-  test("empty-query palette is notes-first; ArrowDown moves the selection and Enter activates the newly selected note", async ({
-    page,
-  }) => {
-    // apiCreateNote's create-then-PUT sequence gives both notes an
-    // updated_at within the same second, so which of the two sorts first
-    // under the recency tiebreaker is not guaranteed -- the assertions
-    // below read each row's own title dynamically rather than assuming a
-    // fixed alpha/beta order.
-    await apiCreateNote(
-      page,
-      jasper.baseURL,
-      "arrow-note-alpha.md",
-      "",
-      "# arrow-note-alpha\n\nAlpha body.\n",
-    );
-    await apiCreateNote(
-      page,
-      jasper.baseURL,
-      "arrow-note-beta.md",
-      "",
-      "# arrow-note-beta\n\nBeta body.\n",
-    );
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-
-    await pressCmdK(page);
-    const dialog = page.getByRole("dialog", { name: "Search everything" });
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
-
-    // A fresh vault always seeds one "scratchpad.md" note (older than
-    // anything created in-test); scope to our two uniquely-named notes so
-    // the count assertion is unaffected by that pre-existing note. Both
-    // notes' updated_at postdates scratchpad's vault-init timestamp, so
-    // they occupy indices 0/1 in the full (unfiltered) selection order --
-    // scratchpad is guaranteed to sort after them.
-    const rows = dialog
-      .locator('[data-row-kind="note"]')
-      .filter({ hasText: /arrow-note-(alpha|beta)/ });
-    await expect(rows).toHaveCount(2, { timeout: 5_000 });
-    const firstRow = rows.nth(0);
-    const secondRow = rows.nth(1);
-
-    const TRANSPARENT = "rgba(0, 0, 0, 0)";
-    await expect
-      .poll(() => firstRow.evaluate((el) => getComputedStyle(el).backgroundColor))
-      .not.toBe(TRANSPARENT);
-
-    await page.keyboard.press("ArrowDown");
-    await expect
-      .poll(() => secondRow.evaluate((el) => getComputedStyle(el).backgroundColor))
-      .not.toBe(TRANSPARENT);
-    await expect
-      .poll(() => firstRow.evaluate((el) => getComputedStyle(el).backgroundColor))
-      .toBe(TRANSPARENT);
-
-    // Read the ArrowDown-selected row's own title span (not the whole row's
-    // concatenated text, which also includes the path suffix + kind badge)
-    // before activating -- this is what Enter must open.
-    const expectedTitle = await secondRow.locator("span").first().innerText();
-
-    await page.keyboard.press("Enter");
-    await expect(dialog).toHaveCount(0, { timeout: 5_000 });
-    await expect(page.getByTestId("editor-title-element")).toHaveText(
-      expectedTitle,
-      { timeout: 5_000 },
-    );
-  });
-
-  test("with a tab already open, palette-selecting a different note switches the visible editor (CR-01)", async ({
-    page,
-  }) => {
-    const idA = await apiCreateNote(
-      page,
-      jasper.baseURL,
-      "cr01-note-a.md",
-      "",
-      "# cr01-note-a\n\nNote A body.\n",
-    );
-    await apiCreateNote(
-      page,
-      jasper.baseURL,
-      "cr01-note-b.md",
-      "",
-      "# cr01-note-b\n\nNote B body.\n",
-    );
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-
-    // App.tsx keeps one EditorPane mounted per open tab (hidden via CSS for
-    // inactive tabs, never unmounted -- TAB-13 flush-on-close discipline), so
-    // once two tabs are open, `editor-title-element` resolves to more than
-    // one DOM node; scope to the one that is actually visible to the user.
-    const visibleEditorTitle = page
-      .getByTestId("editor-title-element")
-      .and(page.locator(":visible"));
-
-    // Establish the tabs-open precondition: open note A from the tree first,
-    // which the zero-tab Enter-activation test above never reaches.
-    await openNoteFromTree(page, idA);
-    await expect(visibleEditorTitle).toHaveText("cr01-note-a", {
-      timeout: 5_000,
-    });
-
-    await pressCmdK(page);
-    const dialog = page.getByRole("dialog", { name: "Search everything" });
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
-
-    await dialog.getByRole("textbox").fill("cr01-note-b");
-    const noteBRow = dialog
-      .locator('[data-row-kind="note"]')
-      .filter({ hasText: "cr01-note-b" });
-    await expect(noteBRow).toHaveCount(1, { timeout: 5_000 });
-    await noteBRow.click();
-
-    await expect(dialog).toHaveCount(0, { timeout: 5_000 });
-    await expect(visibleEditorTitle).toHaveText("cr01-note-b", {
-      timeout: 5_000,
-    });
-  });
-
-  test("Esc and overlay-click both close the unified palette", async ({ page }) => {
-    await page.setViewportSize({ width: 1512, height: 944 });
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-
-    const dialog = page.getByRole("dialog", { name: "Search everything" });
-
-    await pressCmdK(page);
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
-    await page.keyboard.press("Escape");
-    await expect(dialog).toHaveCount(0, { timeout: 5_000 });
-
-    await pressCmdK(page);
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
-    // Radix's DismissableLayer attaches its outside-pointerdown listener in
-    // an effect that runs a tick after the Content mounts; a click fired in
-    // that narrow window can be missed (confirmed via a same-point
-    // elementFromPoint check: the overlay IS the topmost element, but the
-    // very first click can still race the listener attach). Retry the click
-    // inside expect.poll rather than adding a fixed sleep -- deterministic,
-    // no arbitrary wait.
-    await expect
-      .poll(
-        async () => {
-          await page.mouse.click(5, 5);
-          return await dialog.count();
-        },
-        { timeout: 5_000 },
-      )
-      .toBe(0);
-  });
-
-  test("Cmd+P remains commands-only and Cmd+O remains notes-only (D-02 scoped-binding regression)", async ({
-    page,
-  }) => {
-    await apiCreateNote(
-      page,
-      jasper.baseURL,
-      "regression-note.md",
-      "",
-      "# regression-note\n\nBody.\n",
-    );
-    await page.goto(jasper.baseURL);
-    await waitForConnected(page);
-
-    await openCommandMenu(page, "commands");
-    const commandsDialog = page.getByRole("dialog", { name: "Command palette" });
-    await expect(commandsDialog.locator('[data-row-kind="cmd"]').first()).toBeVisible({
-      timeout: 5_000,
-    });
-    await expect(commandsDialog.locator('[data-row-kind="note"]')).toHaveCount(0);
-    await pressShortcut(page, "EscKey");
-    await expect(commandsDialog).toHaveCount(0, { timeout: 5_000 });
-
-    await openCommandMenu(page, "notes");
-    const notesDialog = page.getByRole("dialog", { name: "Quick switcher" });
-    await expect(notesDialog.locator('[data-row-kind="note"]').first()).toBeVisible({
-      timeout: 5_000,
-    });
-    await expect(notesDialog.locator('[data-row-kind="cmd"]')).toHaveCount(0);
-  });
-});
 
 test.describe("@phase22 zen mode", () => {
   let jasper: JasperHandle;
@@ -492,7 +239,7 @@ test.describe("@phase22 zen mode", () => {
       .toBeLessThanOrEqual(ZEN_WIDTH_TOLERANCE_PX);
   });
 
-  test("the command palette still opens (Cmd+K) while zen mode is active", async ({
+  test("the command palette still opens (Cmd+P) while zen mode is active", async ({
     page,
   }) => {
     await page.goto(jasper.baseURL);
@@ -501,8 +248,8 @@ test.describe("@phase22 zen mode", () => {
     await pressZenToggle(page);
     await expect(page.locator('[data-zen="true"]')).toHaveCount(1, { timeout: 5_000 });
 
-    await pressCmdK(page);
-    const dialog = page.getByRole("dialog", { name: "Search everything" });
+    await pressCmdP(page);
+    const dialog = page.getByRole("dialog", { name: "Command palette" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
   });
 });
