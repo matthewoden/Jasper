@@ -253,6 +253,23 @@ export function setRatioAtPath(tree: PaneNode, path: ("a" | "b")[], ratio: numbe
   return { ...tree, b };
 }
 
+/**
+ * depthAtLeaf — counts split-node ancestors between `tree` and the leaf
+ * identified by `leafId` (P28 QUICK-03 max-depth guard). A root leaf (no
+ * ancestor splits) is depth 0; each split traversed on the way down adds 1.
+ * Returns 0 (a safe non-blocking default) when `leafId` is not found —
+ * callers only use this to gate a split action, and a missing leaf id is
+ * itself an unrelated no-op case handled elsewhere (e.g. `splitPane`
+ * returning the tree unchanged).
+ */
+export function depthAtLeaf(tree: PaneNode, leafId: string): number {
+  function walk(node: PaneNode, depth: number): number | null {
+    if (node.t === "leaf") return node.id === leafId ? depth : null;
+    return walk(node.a, depth + 1) ?? walk(node.b, depth + 1);
+  }
+  return walk(tree, 0) ?? 0;
+}
+
 /** Locates the leaf with the given id, or null if absent. */
 export function _findLeaf(tree: PaneNode, leafId: string): LeafNode | null {
   if (tree.t === "leaf") return tree.id === leafId ? tree : null;

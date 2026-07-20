@@ -25,6 +25,7 @@ import {
   _leaves,
   _removeLeaf,
   _updLeaf,
+  depthAtLeaf,
   moveTab,
   moveTabToIndex,
   newLeaf,
@@ -52,6 +53,7 @@ export interface PaneStore {
   reorderTabsInLeaf: (leafId: string, fromIndex: number, toIndex: number) => void;
   focusCyclePane: (dir: 1 | -1) => void;
   openInActivePane: (noteId: string) => void;
+  openNoteInNewSplit: (noteId: string, dir: "row" | "col") => void;
   markDeleted: (noteId: string) => void;
   initForVault: (vaultPath: string) => void;
   clearAll: () => void;
@@ -165,6 +167,39 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
     }
     const tab: Tab = { id: newTabId(), noteId };
     set({ tree: _updLeaf(tree, activePaneId, { tabs: [...leaf.tabs, tab], active: tab.id }) });
+  },
+
+  /**
+   * openNoteInNewSplit — quick-switcher's split-modifier primitive (QUICK-03):
+   * opens an arbitrary note (not necessarily the active tab) into a NEW
+   * sibling leaf, distinct from `splitActivePane` which clones the active
+   * tab. Guards against unbounded nesting: when the active pane already sits
+   * at MAX_DEPTH, or `splitPane` is otherwise a no-op, falls back to
+   * `openInActivePane` instead of silently doing nothing.
+   */
+  openNoteInNewSplit: (noteId, dir) => {
+    const { tree, activePaneId } = get();
+    if (depthAtLeaf(tree, activePaneId) >= MAX_DEPTH) {
+      get().openInActivePane(noteId);
+      return;
+    }
+
+    const prevLeafIds = new Set(_leaves(tree).map((l) => l.id));
+    const nextTree = splitPane(tree, activePaneId, dir, /* cloneActiveTab */ false);
+    if (nextTree === tree) {
+      get().openInActivePane(noteId);
+      return;
+    }
+
+    const newSibling = _leaves(nextTree).find((l) => !prevLeafIds.has(l.id));
+    if (!newSibling) {
+      get().openInActivePane(noteId);
+      return;
+    }
+
+    const tab: Tab = { id: newTabId(), noteId };
+    const finalTree = _updLeaf(nextTree, newSibling.id, { tabs: [tab], active: tab.id });
+    set({ tree: finalTree, activePaneId: newSibling.id });
   },
 
   /**
