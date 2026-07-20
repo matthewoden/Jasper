@@ -88,7 +88,7 @@ export const SHORTCUTS_REGISTRY: Shortcut[] = [
   },
   {
     id: "switch-note",
-    label: "Switch / search notes",
+    label: "Quick switcher (notes)",
     group: "Navigation",
     shortcut: `${mod}O`,
     inPalette: true,
