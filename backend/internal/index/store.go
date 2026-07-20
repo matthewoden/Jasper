@@ -35,6 +35,11 @@ var fts5OperatorKeywordRE = regexp.MustCompile(`\b(AND|OR|NOT|NEAR)\b`)
 // `checksum_sha256` is rec.Checksum, which the indexer currently always
 // sets to "" — the column exists in the schema but checksum computation
 // is deferred; callers should not rely on it being populated.
+//
+// rec.BirthtimeUnix == 0 means "unknown" (API save paths don't stat the
+// file), so the conflict clause only overwrites a stored birthtime when
+// the incoming value is positive — otherwise every interactive save would
+// clobber the captured birthtime and degrade the "created" sort.
 func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {
@@ -65,7 +70,9 @@ func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
              updated_at = excluded.updated_at,
              body_fts = excluded.body_fts,
              tag_names_fts = excluded.tag_names_fts,
-             birthtime_unix = excluded.birthtime_unix`,
+             birthtime_unix = CASE WHEN excluded.birthtime_unix > 0
+                                   THEN excluded.birthtime_unix
+                                   ELSE notes.birthtime_unix END`,
 		rec.ID.String(), rec.Path, rec.Title, rec.MTimeUnix,
 		rec.SizeBytes, rec.Checksum, rec.UpdatedAtUnix, rec.UpdatedAtUnix,
 		rec.BodyFTS, rec.TagNamesFTS, rec.BirthtimeUnix)

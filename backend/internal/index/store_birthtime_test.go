@@ -6,6 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 // TestReconcile_BirthtimeUnix_PersistsAndIsIdempotent verifies both full
@@ -67,6 +71,59 @@ func TestReconcile_BirthtimeUnix_PersistsAndIsIdempotent(t *testing.T) {
 	// incremental path isn't calling the helper at all.
 	if (first == 0) != (bIncrementalBirthtime == 0) {
 		t.Errorf("full vs incremental birthtime sentinel mismatch: a.md=%d b.md=%d", first, bIncrementalBirthtime)
+	}
+}
+
+// TestUpsert_ZeroBirthtime_DoesNotClobberStored is the CR-01 regression:
+// Service.Update builds its NoteRecord with BirthtimeUnix left at the zero
+// sentinel (the API save path has no cheap access to the on-disk birthtime).
+// Upsert's ON CONFLICT clause must therefore treat excluded.birthtime_unix=0
+// as "unknown — keep what we have", not as a value to store. A real positive
+// birthtime (reconcile refresh) must still win.
+func TestUpsert_ZeroBirthtime_DoesNotClobberStored(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+
+	// Reconcile-equivalent seeding: alpha birthtime=5000, gamma birthtime=4000.
+	alpha := upsertSortFixtureNote(t, idx, "alpha.md", "Alpha", "alpha widget note", 1000, 5000)
+	gamma := upsertSortFixtureNote(t, idx, "gamma.md", "Gamma", "gamma widget note", 3000, 4000)
+
+	// Interactive save of alpha (PUT /notes/{id} shape): same id/path, newer
+	// mtime/updated_at, BirthtimeUnix zero value.
+	edited := notes.NoteRecord{
+		ID:            alpha,
+		Path:          "alpha.md",
+		Title:         "Alpha",
+		MTimeUnix:     6000,
+		SizeBytes:     43,
+		UpdatedAtUnix: 6000,
+		BodyFTS:       "alpha widget note edited",
+	}
+	if err := idx.Upsert(context.Background(), edited); err != nil {
+		t.Fatalf("upsert edited alpha: %v", err)
+	}
+
+	if got := queryBirthtimeUnix(t, idx, "alpha.md"); got != 5000 {
+		t.Errorf("birthtime_unix after zero-birthtime upsert = %d; want stored 5000 preserved", got)
+	}
+
+	// The user-visible symptom: sort=created must still rank alpha (birth
+	// 5000) above gamma (birth 4000) after the edit. With the clobber, alpha
+	// falls back to created_at=1000 and sorts last.
+	hits, err := idx.SearchFTS(context.Background(), "widget", nil, 50, "created")
+	if err != nil {
+		t.Fatalf("SearchFTS(sort=created): %v", err)
+	}
+	assertHitOrder(t, hits, []uuid.UUID{alpha, gamma})
+
+	// A real positive birthtime (full-reconcile refresh) must still update.
+	refreshed := edited
+	refreshed.BirthtimeUnix = 7000
+	if err := idx.Upsert(context.Background(), refreshed); err != nil {
+		t.Fatalf("upsert refreshed alpha: %v", err)
+	}
+	if got := queryBirthtimeUnix(t, idx, "alpha.md"); got != 7000 {
+		t.Errorf("birthtime_unix after positive-birthtime upsert = %d; want refreshed 7000", got)
 	}
 }
 
