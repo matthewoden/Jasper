@@ -27,12 +27,15 @@ type TreeFolder struct {
 
 // TreeNote is a leaf note node. UpdatedAt is derived from the index's
 // mtime_unix column (NOT the filesystem) so the tree projection is a
-// consistent snapshot from a single SELECT.
+// consistent snapshot from a single SELECT. Created is
+// COALESCE(NULLIF(birthtime_unix,0), created_at) — see D-04 — exposed so
+// the client can offer a "Created" notes sort (SORT-01).
 type TreeNote struct {
 	ID        uuid.UUID
 	Path      string
 	Title     string
 	UpdatedAt time.Time
+	Created   time.Time
 }
 
 // TreeFile is a leaf non-markdown file node. These are files that exist
@@ -105,6 +108,7 @@ func (x *Indexer) BuildTree(ctx context.Context) (*Tree, error) {
 				Path:      s.Path,
 				Title:     s.Title,
 				UpdatedAt: s.UpdatedAt,
+				Created:   s.CreatedAt,
 			},
 		})
 	}

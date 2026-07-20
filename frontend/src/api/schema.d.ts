@@ -1328,6 +1328,11 @@ export interface components {
              * @description Wall-clock UTC of last filesystem mtime observed by the indexer.
              */
             updated_at: string;
+            /**
+             * Format: date-time
+             * @description COALESCE(NULLIF(birthtime_unix,0), created_at) — true filesystem creation time when available (SORT-01/D-04).
+             */
+            created?: string;
         };
         /**
          * @description A non-markdown file inside notes/. Surfaced in the tree response so users
@@ -1678,6 +1683,11 @@ export interface components {
             rank: number;
             /** Format: date-time */
             modified_at: string;
+            /**
+             * Format: date-time
+             * @description COALESCE(NULLIF(birthtime_unix,0), created_at) — true filesystem creation time when available (SORT-01/D-04).
+             */
+            created?: string;
         };
         SearchResults: {
             results: components["schemas"]["SearchResult"][];
@@ -2654,6 +2664,8 @@ export interface operations {
                 /** @description AND-combine with one or more tag filters (D-05). May be repeated (?tag=a&tag=b) to require all listed tags; capped at 8 tags. */
                 tag?: string[];
                 limit?: number;
+                /** @description Result ordering (SORT-02). "relevance" (default) is the existing bm25 + recency blend; "modified"/"created" order the full match set by the respective timestamp DESC before the limit is applied (D-14 — not a client reshuffle of the relevance results). */
+                sort?: "relevance" | "modified" | "created";
             };
             header?: never;
             path?: never;
@@ -2670,7 +2682,7 @@ export interface operations {
                     "application/json": components["schemas"]["SearchResults"];
                 };
             };
-            /** @description Invalid FTS5 query syntax. */
+            /** @description Invalid FTS5 query syntax, or an unrecognized sort value. */
             400: {
                 headers: {
                     [name: string]: unknown;

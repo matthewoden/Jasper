@@ -569,6 +569,18 @@ paths:
           in: query
           required: false
           schema: { type: integer, default: 50, minimum: 1, maximum: 100 }
+        - name: sort
+          in: query
+          required: false
+          description: >-
+            Result ordering (SORT-02). "relevance" (default) is the existing
+            bm25 + recency blend; "modified"/"created" order the full match
+            set by the respective timestamp DESC before the limit is applied
+            (D-14 — not a client reshuffle of the relevance results).
+          schema:
+            type: string
+            enum: [relevance, modified, created]
+            default: relevance
       responses:
         "200":
           description: Result list (empty array when no matches).
@@ -576,7 +588,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SearchResults" }
         "400":
-          description: Invalid FTS5 query syntax.
+          description: Invalid FTS5 query syntax, or an unrecognized sort value.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2057,6 +2069,10 @@ components:
           type: string
           format: date-time
           description: Wall-clock UTC of last filesystem mtime observed by the indexer.
+        created:
+          type: string
+          format: date-time
+          description: "COALESCE(NULLIF(birthtime_unix,0), created_at) — true filesystem creation time when available (SORT-01/D-04)."
     FileNode:
       type: object
       description: |
@@ -2586,6 +2602,10 @@ components:
         matching_tags: { type: array, items: { type: string } }
         rank:          { type: number, description: "bm25 + recency score; lower is better (negative floats)." }
         modified_at:   { type: string, format: date-time }
+        created:
+          type: string
+          format: date-time
+          description: "COALESCE(NULLIF(birthtime_unix,0), created_at) — true filesystem creation time when available (SORT-01/D-04)."
     SearchResults:
       type: object
       required: [results]

@@ -71,12 +71,14 @@ func translateNodeToWire(n index.TreeNode) TreeNode {
 		return wire
 	}
 	if n.Note != nil {
+		created := n.Note.Created
 		note := NoteNode{
 			Kind:      NoteNodeKind("note"),
 			Id:        openapi_types.UUID(n.Note.ID),
 			Path:      n.Note.Path,
 			Title:     n.Note.Title,
 			UpdatedAt: n.Note.UpdatedAt,
+			Created:   &created,
 		}
 		var wire TreeNode
 		_ = wire.FromNoteNode(note)
