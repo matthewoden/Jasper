@@ -88,6 +88,16 @@ func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
 	return nil
 }
 
+// setBirthtime writes a captured birthtime for an existing row. Used by
+// the incremental reconcile's skip branch to backfill migration 006's 0
+// sentinel for files whose mtime is unchanged (upgraded vaults would
+// otherwise never capture a birthtime without a manual full reindex).
+func (x *Indexer) setBirthtime(ctx context.Context, id uuid.UUID, birthtimeUnix int64) error {
+	_, err := x.Pair.Writer.ExecContext(ctx,
+		`UPDATE notes SET birthtime_unix = ? WHERE id = ?`, birthtimeUnix, id.String())
+	return err
+}
+
 // Delete removes the index row for the given UUID. Idempotent — a
 // missing row is not an error (file-deletes can race with the indexer
 // scan).
@@ -673,12 +683,13 @@ func escapeLike(s string) string {
 }
 
 type existingRow struct {
-	ID    uuid.UUID
-	MTime int64
+	ID        uuid.UUID
+	MTime     int64
+	Birthtime int64
 }
 
 func (x *Indexer) existing(ctx context.Context) (map[string]existingRow, error) {
-	rows, err := x.Pair.Reader.QueryContext(ctx, `SELECT id, path, mtime_unix FROM notes`)
+	rows, err := x.Pair.Reader.QueryContext(ctx, `SELECT id, path, mtime_unix, birthtime_unix FROM notes`)
 	if err != nil {
 		return nil, fmt.Errorf("existing query: %w", err)
 	}
@@ -686,15 +697,15 @@ func (x *Indexer) existing(ctx context.Context) (map[string]existingRow, error) 
 	out := map[string]existingRow{}
 	for rows.Next() {
 		var idStr, path string
-		var mtime int64
-		if err := rows.Scan(&idStr, &path, &mtime); err != nil {
+		var mtime, birthtime int64
+		if err := rows.Scan(&idStr, &path, &mtime, &birthtime); err != nil {
 			return nil, fmt.Errorf("existing scan: %w", err)
 		}
 		id, err := uuid.Parse(idStr)
 		if err != nil {
 			return nil, fmt.Errorf("existing parse uuid %q: %w", idStr, err)
 		}
-		out[path] = existingRow{ID: id, MTime: mtime}
+		out[path] = existingRow{ID: id, MTime: mtime, Birthtime: birthtime}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("existing rows: %w", err)

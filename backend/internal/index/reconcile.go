@@ -65,6 +65,17 @@ func (x *Indexer) reconcileIncrementalWithRegistry(ctx context.Context, registry
 		cur, ok := existing[fm.CanonicalRelPath]
 
 		if ok && cur.MTime == fm.MTimeUnix {
+			// Heal migration 006's 0 sentinel for otherwise-untouched files:
+			// the walk already statted the file, so backfilling costs one
+			// UPDATE and only when a real birthtime is newly available.
+			// Without this, an upgraded vault's "created" sort runs on
+			// first-seen timestamps until a manual full reindex.
+			if cur.Birthtime == 0 && fm.BirthtimeUnix > 0 {
+				if err := x.setBirthtime(ctx, cur.ID, fm.BirthtimeUnix); err != nil {
+					x.Log.Warn("indexer: birthtime backfill failed (non-fatal)",
+						"path", fm.CanonicalRelPath, "err", err)
+				}
+			}
 			return nil
 		}
 

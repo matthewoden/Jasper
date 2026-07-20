@@ -74,6 +74,56 @@ func TestReconcile_BirthtimeUnix_PersistsAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestReconcileIncremental_BackfillsZeroBirthtime_ForUpToDateRows is the
+// WR-04 regression: migration 006 leaves every pre-existing row at the 0
+// sentinel, and the startup incremental reconcile used to skip any file
+// whose mtime matched the index — so upgraded vaults never captured a
+// birthtime and the "created" sort silently ran on first-seen timestamps.
+// The skip branch must heal the sentinel using the walk's already-statted
+// birthtime.
+func TestReconcileIncremental_BackfillsZeroBirthtime_ForUpToDateRows(t *testing.T) {
+	t.Parallel()
+	idx, notesDir := newReconcileFixture(t)
+
+	mtime := time.Unix(1700000000, 0)
+	writeNote(t, notesDir, "old.md", "# Old", mtime)
+
+	absPath := filepath.Join(notesDir, "old.md")
+	info, err := os.Stat(absPath)
+	if err != nil {
+		t.Fatalf("stat old.md: %v", err)
+	}
+	wantBirthtime, wantOK := birthtimeFromPath(absPath, info)
+	if !wantOK {
+		t.Skip("platform does not report birthtime; backfill is a deterministic no-op here")
+	}
+
+	// Simulate the pre-phase-29 index row: mtime matches disk (so the
+	// incremental walk takes the skip branch), birthtime at the 0 sentinel.
+	rec := notes.NoteRecord{
+		ID:            uuid.New(),
+		Path:          "old.md",
+		Title:         "Old",
+		MTimeUnix:     mtime.Unix(),
+		SizeBytes:     info.Size(),
+		UpdatedAtUnix: mtime.Unix(),
+		BodyFTS:       "Old",
+	}
+	if err := idx.Upsert(context.Background(), rec); err != nil {
+		t.Fatalf("seed upsert: %v", err)
+	}
+	if got := queryBirthtimeUnix(t, idx, "old.md"); got != 0 {
+		t.Fatalf("precondition: birthtime_unix = %d, want 0 sentinel", got)
+	}
+
+	if _, err := idx.Reconcile(context.Background(), ModeIncremental); err != nil {
+		t.Fatalf("incremental reconcile: %v", err)
+	}
+	if got := queryBirthtimeUnix(t, idx, "old.md"); got != wantBirthtime {
+		t.Errorf("birthtime_unix after incremental reconcile = %d, want backfilled %d", got, wantBirthtime)
+	}
+}
+
 // TestUpsert_ZeroBirthtime_DoesNotClobberStored is the CR-01 regression:
 // Service.Update builds its NoteRecord with BirthtimeUnix left at the zero
 // sentinel (the API save path has no cheap access to the on-disk birthtime).
