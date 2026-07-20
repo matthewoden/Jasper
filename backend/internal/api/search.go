@@ -58,7 +58,7 @@ func (s *Server) SearchNotes(
 		return SearchNotes200JSONResponse{Results: []SearchResult{}}, nil
 	}
 
-	hits, err := s.index.SearchFTS(ctx, q, tags, limit)
+	hits, err := s.index.SearchFTS(ctx, q, tags, limit, "relevance")
 	if err != nil {
 		if errors.Is(err, notes.ErrFTSQuerySyntax) {
 			return SearchNotes400JSONResponse(newError("invalid_query", "Invalid search query.")), nil

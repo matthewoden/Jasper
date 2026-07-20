@@ -637,7 +637,7 @@ func TestSearchFTS_PrefixMatch(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	hits, err := idx.SearchFTS(context.Background(), "te", nil, 50)
+	hits, err := idx.SearchFTS(context.Background(), "te", nil, 50, "relevance")
 	if err != nil {
 		t.Fatalf("SearchFTS: %v", err)
 	}
@@ -684,7 +684,7 @@ func TestSearchFTS_MultiTagAND(t *testing.T) {
 	oneTag := upsertTaggedNote(t, idx, "other-document.md", "another budget document", []string{"work"})
 	upsertTaggedNote(t, idx, "unrelated-note.md", "unrelated content here", []string{"work", "draft"})
 
-	hits, err := idx.SearchFTS(context.Background(), "budget", []string{"work", "draft"}, 50)
+	hits, err := idx.SearchFTS(context.Background(), "budget", []string{"work", "draft"}, 50, "relevance")
 	if err != nil {
 		t.Fatalf("SearchFTS(tags=[work,draft]): %v", err)
 	}
@@ -692,7 +692,7 @@ func TestSearchFTS_MultiTagAND(t *testing.T) {
 		t.Fatalf("SearchFTS(tags=[work,draft]): got %+v, want exactly note %s", hits, both)
 	}
 
-	hits, err = idx.SearchFTS(context.Background(), "budget", []string{"work"}, 50)
+	hits, err = idx.SearchFTS(context.Background(), "budget", []string{"work"}, 50, "relevance")
 	if err != nil {
 		t.Fatalf("SearchFTS(tags=[work]): %v", err)
 	}
@@ -719,7 +719,7 @@ func TestSearchFTS_TagOnly(t *testing.T) {
 	work2 := upsertTaggedNote(t, idx, "work-2.md", "", []string{"work"})
 	upsertTaggedNote(t, idx, "draft-only.md", "a draft note", []string{"draft"})
 
-	hits, err := idx.SearchFTS(context.Background(), "", []string{"work"}, 50)
+	hits, err := idx.SearchFTS(context.Background(), "", []string{"work"}, 50, "relevance")
 	if err != nil {
 		t.Fatalf("SearchFTS(q=\"\", tags=[work]): unexpected error: %v", err)
 	}
@@ -731,7 +731,7 @@ func TestSearchFTS_TagOnly(t *testing.T) {
 		t.Fatalf("SearchFTS(q=\"\", tags=[work]): got %+v, want exactly work-1 and work-2 (%s, %s)", hits, work1, work2)
 	}
 
-	hits, err = idx.SearchFTS(context.Background(), "", []string{"work", "draft"}, 50)
+	hits, err = idx.SearchFTS(context.Background(), "", []string{"work", "draft"}, 50, "relevance")
 	if err != nil {
 		t.Fatalf("SearchFTS(q=\"\", tags=[work,draft]): unexpected error: %v", err)
 	}
@@ -739,7 +739,7 @@ func TestSearchFTS_TagOnly(t *testing.T) {
 		t.Fatalf("SearchFTS(q=\"\", tags=[work,draft]): got %d hits, want 0 (AND semantics — no note carries both)", len(hits))
 	}
 
-	hits, err = idx.SearchFTS(context.Background(), "", nil, 50)
+	hits, err = idx.SearchFTS(context.Background(), "", nil, 50, "relevance")
 	if err != nil {
 		t.Fatalf("SearchFTS(q=\"\", tags=nil): unexpected error: %v", err)
 	}
@@ -747,7 +747,7 @@ func TestSearchFTS_TagOnly(t *testing.T) {
 		t.Fatalf("SearchFTS(q=\"\", tags=nil): got %d hits, want 0 (empty-q + no-tags guard)", len(hits))
 	}
 
-	hits, err = idx.SearchFTS(context.Background(), "   ", []string{"work"}, 50)
+	hits, err = idx.SearchFTS(context.Background(), "   ", []string{"work"}, 50, "relevance")
 	if err != nil {
 		t.Fatalf("SearchFTS(q=\"   \", tags=[work]): unexpected error: %v", err)
 	}
@@ -766,7 +766,7 @@ func TestSearchFTS_TagSQLMetacharacter(t *testing.T) {
 
 	upsertTaggedNote(t, idx, "victim.md", "budget report", []string{"work"})
 
-	hits, err := idx.SearchFTS(context.Background(), "budget", []string{"a' OR '1'='1"}, 50)
+	hits, err := idx.SearchFTS(context.Background(), "budget", []string{"a' OR '1'='1"}, 50, "relevance")
 	if err != nil {
 		t.Fatalf("SearchFTS with SQL-metacharacter tag: unexpected error %v", err)
 	}

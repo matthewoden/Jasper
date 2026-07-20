@@ -177,7 +177,7 @@ func (f *fakeIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchRe
 }
 
 // fakeIndex stub for SearchFTS.
-func (f *fakeIndex) SearchFTS(_ context.Context, _ string, _ []string, _ int) ([]SearchHit, error) {
+func (f *fakeIndex) SearchFTS(_ context.Context, _ string, _ []string, _ int, _ string) ([]SearchHit, error) {
 	return []SearchHit{}, nil
 }
 
@@ -671,7 +671,7 @@ func (s *stubIndex) SearchTitles(_ context.Context, _ string, _ int) ([]SearchRe
 }
 
 // stubIndex no-op for SearchFTS.
-func (s *stubIndex) SearchFTS(_ context.Context, _ string, _ []string, _ int) ([]SearchHit, error) {
+func (s *stubIndex) SearchFTS(_ context.Context, _ string, _ []string, _ int, _ string) ([]SearchHit, error) {
 	return []SearchHit{}, nil
 }
 

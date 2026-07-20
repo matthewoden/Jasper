@@ -84,7 +84,7 @@ func (f *fakeIndex) SearchTitles(_ context.Context, _ string, _ int) ([]notes.Se
 	return []notes.SearchResult{}, nil
 }
 
-func (f *fakeIndex) SearchFTS(_ context.Context, _ string, _ []string, _ int) ([]notes.SearchHit, error) {
+func (f *fakeIndex) SearchFTS(_ context.Context, _ string, _ []string, _ int, _ string) ([]notes.SearchHit, error) {
 	return []notes.SearchHit{}, nil
 }
 
@@ -389,7 +389,7 @@ func (r *realIndex) SearchTitles(_ context.Context, _ string, _ int) ([]notes.Se
 	return []notes.SearchResult{}, nil
 }
 
-func (r *realIndex) SearchFTS(_ context.Context, _ string, _ []string, _ int) ([]notes.SearchHit, error) {
+func (r *realIndex) SearchFTS(_ context.Context, _ string, _ []string, _ int, _ string) ([]notes.SearchHit, error) {
 	return []notes.SearchHit{}, nil
 }
 
