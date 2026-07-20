@@ -11,6 +11,8 @@
 import { useState } from "react";
 import { sanitizeHtml } from "../lib/sanitize";
 import { usePaneStore } from "../lib/usePaneStore";
+import { useTreeStore } from "../lib/useTreeStore";
+import { recordSearchHistory } from "../lib/searchHistory";
 import type { SearchResult } from "../lib/searchApi";
 
 interface SidebarSearchResultRowProps {
@@ -34,6 +36,7 @@ export function SidebarSearchResultRow({
   const [hovered, setHovered] = useState(false);
 
   const handleClick = () => {
+    recordSearchHistory(useTreeStore.getState().searchQuery);
     usePaneStore.getState().openInActivePane(result.id);
   };
 

@@ -44,6 +44,7 @@ import { useTreeStore } from "./lib/useTreeStore";
 import { useBookmarks } from "./lib/useBookmarks";
 import type { Tab } from "./lib/useTabStore";
 import { usePaneStore, pruneLayoutForMissingNotes } from "./lib/usePaneStore";
+import * as searchHistory from "./lib/searchHistory";
 import { _findLeaf, _updLeaf, newTabId } from "./lib/paneTree";
 import { getOrCreateController } from "./lib/noteBufferController";
 import { useTreeMutations } from "./lib/useTreeMutations";
@@ -419,6 +420,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   useEffect(() => {
     if (vaultPath === null) return;
     usePaneStore.getState().initForVault(vaultPath);
+    searchHistory.initForVault(vaultPath);
   }, [vaultPath]);
 
   // After the first tree fetch, drop any persisted tab whose note no longer
