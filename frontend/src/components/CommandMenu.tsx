@@ -102,6 +102,14 @@ const cmdKindBadgeStyle: React.CSSProperties = {
   color: "var(--color-accent)",
 };
 
+// D28.1: note rows share the accent badge treatment (mock's leading "Note"
+// badge); the +2 marginTop centers the 16px badge on the ~20px title line so it
+// aligns to the first line, not the vertical middle, of the two-line row.
+const leadingBadgeTopAlign: React.CSSProperties = {
+  alignSelf: "flex-start",
+  marginTop: 2,
+};
+
 // D28.1-02: mirrors cmdKindBadgeStyle recolored to success — the create row's
 // "New" badge is the sole green accent now that the row title is neutral.
 const createKindBadgeStyle: React.CSSProperties = {
@@ -754,9 +762,10 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                       height: vi.size,
                       padding: "8px 16px",
                       display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                      justifyContent: "center",
+                      // D28.1: leading badge column — align the badge to the first
+                      // (title) line, not the vertical middle of the two-line block.
+                      alignItems: "flex-start",
+                      gap: 12,
                       fontSize: 14,
                       color: "var(--color-fg)",
                       cursor: "pointer",
@@ -776,7 +785,8 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                       height: vi.size,
                       padding: "8px 16px",
                       display: "flex",
-                      alignItems: "center",
+                      // D28.1: badge aligns to the first (title) line, matching note rows.
+                      alignItems: "flex-start",
                       gap: 12,
                       borderTop: "1px solid var(--color-border)",
                       fontSize: 14,
@@ -825,15 +835,31 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                     >
                       {item.kind === "note" ? (
                         <>
-                          <div style={noteRowTitleStyle}>
-                            {renderHighlightedTitle(item.title, item.matchIndexes)}
-                          </div>
-                          <div style={noteRowSubtitleStyle}>
-                            {parentDir(item.path) || "Vault"}
+                          <span style={{ ...cmdKindBadgeStyle, ...leadingBadgeTopAlign }}>
+                            Note
+                          </span>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 4,
+                              flex: 1,
+                              minWidth: 0,
+                            }}
+                          >
+                            <div style={noteRowTitleStyle}>
+                              {renderHighlightedTitle(item.title, item.matchIndexes)}
+                            </div>
+                            <div style={noteRowSubtitleStyle}>
+                              {parentDir(item.path) || "Vault"}
+                            </div>
                           </div>
                         </>
                       ) : item.kind === "create" ? (
                         <>
+                          <span style={{ ...createKindBadgeStyle, ...leadingBadgeTopAlign }}>
+                            New
+                          </span>
                           <div
                             style={{
                               display: "flex",
@@ -846,11 +872,21 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                             <div style={createRowTitleStyle}>{`Create "${query}"`}</div>
                             <div style={createRowSubtitleStyle}>{`New note · ${folderLabel}`}</div>
                           </div>
-                          <span style={createKindBadgeStyle}>New</span>
                         </>
                       ) : (
                         <>
-                          <span style={{ flex: 1 }}>{item.label}</span>
+                          <span style={cmdKindBadgeStyle}>Cmd</span>
+                          <span
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {item.label}
+                          </span>
                           {item.shortcut !== undefined && !cmdDisabled && (
                             <KeyboardChip>{item.shortcut}</KeyboardChip>
                           )}
@@ -865,7 +901,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                               {item.category}
                             </span>
                           )}
-                          <span style={cmdKindBadgeStyle}>Cmd</span>
                         </>
                       )}
                     </div>

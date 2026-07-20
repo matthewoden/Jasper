@@ -911,10 +911,12 @@ describe("CommandMenu — regression: scoped modes stay isolated", () => {
 
 
 describe("CommandMenu — kind badges (D-01 restyle)", () => {
-  it("note rows carry NO 'Note' kind badge (D-14)", () => {
+  // D28.1 reverses D-14: owner mock-reconciliation adds a leading "Note" badge
+  // so every quick-switcher row shares an aligned leading badge column.
+  it("note rows carry a leading 'Note' kind badge (D28.1, reverses D-14)", () => {
     mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Meeting Notes", path: "meeting.md" }]);
     render(<CommandMenu {...defaultNoteProps} />);
-    expect(screen.queryByText("Note")).toBeNull();
+    expect(screen.getByText("Note", { exact: true })).toBeTruthy();
   });
 
   it("command rows carry a 'Cmd' kind badge", () => {
@@ -991,8 +993,10 @@ describe("CMM-28-04-ROWS — two-line notes rows, match highlight, Vault subtitl
       { id: "n1", title: "alpha", path: "alpha.md", matchIndexes: [0, 1] },
     ]);
     render(<CommandMenu {...defaultNoteProps} />);
+    // Scope past the leading "Note" badge (accent color-mix background) to the
+    // title's highlight span, which carries a bare `color: var(--color-accent)`.
     const highlighted = document.querySelector(
-      'span[style*="var(--color-accent)"]',
+      'span[style*="var(--color-accent)"]:not([style*="color-mix"])',
     ) as HTMLElement | null;
     expect(highlighted).not.toBeNull();
     expect(highlighted?.textContent).toBe("al");
@@ -1002,7 +1006,19 @@ describe("CMM-28-04-ROWS — two-line notes rows, match highlight, Vault subtitl
     mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Recent Note", path: "recent.md" }]);
     render(<CommandMenu {...defaultNoteProps} />);
     expect(screen.getByText("Recent Note")).toBeTruthy();
-    expect(document.querySelector('span[style*="var(--color-accent)"]')).toBeNull();
+    // The leading "Note" badge legitimately uses accent (color-mix bg); exclude
+    // it — this asserts no title *highlight* span exists.
+    expect(
+      document.querySelector('span[style*="var(--color-accent)"]:not([style*="color-mix"])'),
+    ).toBeNull();
+  });
+
+  it("D28.1: a note row renders a leading 'Note' badge", () => {
+    mockUseQuickSwitcher.mockReturnValue([
+      { id: "n1", title: "Meeting Notes", path: "Work/meeting.md" },
+    ]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    expect(screen.getByText("Note", { exact: true })).toBeTruthy();
   });
 });
 
