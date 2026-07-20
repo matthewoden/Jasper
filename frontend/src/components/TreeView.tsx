@@ -23,10 +23,11 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ElementType,
   type ReactNode,
   type RefObject,
 } from "react";
-import { Tree, type NodeApi, type TreeApi } from "react-arborist";
+import { Tree, type CursorProps, type NodeApi, type TreeApi } from "react-arborist";
 
 import type { TreeRowData } from "./TreeRow";
 
@@ -99,6 +100,15 @@ export interface TreeViewProps<T extends TreeViewNode> {
    * unaffected.
    */
   onRootDrop?: (dragNodes: NodeApi<T>[]) => void;
+  /**
+   * D-07 (Phase 29, FileTree only): pass `() => null` to suppress
+   * react-arborist's default between-rows insertion-line cursor, replacing
+   * it with a target-folder-only highlight (rendered per-row via
+   * NodeApi.willReceiveDrop in TreeRow). Omit to keep the default
+   * insertion-line behavior — BookmarksPanel relies on it for in-folder
+   * reordering (quick task 260719-jv1) and does not pass this prop.
+   */
+  renderCursor?: ElementType<CursorProps>;
   renderRow: (props: TreeViewRenderRowProps<T>) => ReactNode;
 }
 
@@ -114,6 +124,7 @@ export function TreeView<T extends TreeViewNode>({
   disableDrop,
   disableDrag,
   onRootDrop,
+  renderCursor,
   renderRow,
 }: TreeViewProps<T>) {
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -219,6 +230,7 @@ export function TreeView<T extends TreeViewNode>({
         onDelete={onDelete}
         disableDrop={disableDrop}
         disableDrag={disableDrag ?? (() => false)}
+        renderCursor={renderCursor}
         rowHeight={32}
         width="100%"
         height={treeHeight}

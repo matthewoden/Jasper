@@ -17,6 +17,12 @@
  * handleCommitRename rewrites the H1 to match the new basename (no-op when
  * the file has no H1 or when H1 already matches — loop guard against
  * the editor's direction-A round-trips).
+ *
+ * Sort (SORT-01, Phase 29): the tree-data memo applies sortTree(...,
+ * notesSort) — folders always A→Z, notes/files reorder per the six D-02
+ * orders. `renderCursor={() => null}` on <TreeView> suppresses react-
+ * arborist's between-rows insertion line (D-07); the remaining drag
+ * feedback is TreeRow's willReceiveDrop-driven folder highlight.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NodeApi, TreeApi } from "react-arborist";
@@ -55,6 +61,7 @@ import {
   isCycleDrop,
   resetTreeListLayout,
   setCurrentTreeRef,
+  sortTree,
   type ArboristNode,
 } from "./fileTree.utils";
 
@@ -96,6 +103,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
 
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
   const activeNoteIdForFlatList = useTreeStore((s) => s.activeNoteId);
+  const notesSort = useTreeStore((s) => s.notesSort);
 
   // Collapse-all: the toolbar button clears the store's expanded set and bumps
   // this nonce; react-arborist owns its own open state, so we must close it
@@ -139,7 +147,17 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     };
   }, [activeTagFilter]);
 
-  const data = useMemo(() => (tree ? adaptTree(tree) : []), [tree]);
+  // D-08: no in-tree fuzzy filter exists here to gate against (confirmed via
+  // grep — Cmd+O's fuzzysort ranking lives entirely in useQuickSwitcher.ts,
+  // a separate overlay component that never consumes this tree's `data`).
+  // The activeTagFilter branch below bypasses <TreeView>/`data` altogether
+  // (renders its own flat `flatNotes` list), so sortTree here can never
+  // double-apply against another ordering — SORT-01's D-02 order is safe
+  // to apply unconditionally.
+  const data = useMemo(
+    () => (tree ? sortTree(adaptTree(tree), notesSort) : []),
+    [tree, notesSort],
+  );
 
   useEffect(() => {
     resetTreeListLayout(treeRef);
@@ -960,6 +978,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           onDelete={handleArboristDelete}
           disableDrop={handleDisableDrop}
           disableDrag={() => false}
+          renderCursor={() => null}
           renderRow={({ node, rawNode, style, dragHandle }) => (
             <TreeRow
               node={node}
