@@ -453,7 +453,7 @@ describe("CMM-N11-SPLIT — switcher is title-fuzzy only", () => {
     }
   });
 
-  it("CMM-N11-SPLIT-3: a body-only match (no title fuzzy hit) shows nothing in switcher", () => {
+  it("CMM-N11-SPLIT-3: a body-only match (no title fuzzy hit) shows the create row, not a search result (28-05: create row replaces the old 'no matches' empty state per UI-SPEC)", () => {
     mockUseQuickSwitcher.mockReturnValue([]);
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
 
@@ -462,7 +462,7 @@ describe("CMM-N11-SPLIT — switcher is title-fuzzy only", () => {
 
     const searchRow = document.querySelector('[data-row-kind="search-result"]');
     expect(searchRow).toBeNull();
-    expect(screen.getByText(/No notes match "al"/)).toBeTruthy();
+    expect(screen.getByText('Create "al"')).toBeTruthy();
   });
 
   it("CMM-N11-SPLIT-4: a title-only match shows ONLY title rows; no second section", () => {
@@ -996,6 +996,77 @@ describe("CMM-28-04-ARIA — combobox/listbox/option roles (notes mode)", () => 
     render(<CommandMenu {...defaultCmdProps} />);
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(document.getElementById("quick-switcher-listbox")).toBeNull();
+  });
+});
+
+
+describe("CMM-28-05-CREATE — create row (D-07/D-08)", () => {
+  it("shows the create row for a novel query with no exact title match", () => {
+    mockUseQuickSwitcher.mockReturnValue([]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "Brand New" } });
+    expect(screen.getByText('Create "Brand New"')).toBeTruthy();
+  });
+
+  it("hides the create row when the query exactly (case-insensitively) matches an existing title", () => {
+    mockUseFileTree.mockReturnValue({
+      tree: {
+        root: [{ kind: "note", id: "n1", title: "Existing Note", path: "existing.md" }],
+      },
+      loading: false,
+      error: null,
+    });
+    mockUseQuickSwitcher.mockReturnValue([]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "existing note" } });
+    expect(screen.queryByText(/Create "/)).toBeNull();
+  });
+
+  it("hides the create row when the query is empty", () => {
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Note A", path: "a.md" }]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    expect(screen.queryByText(/Create "/)).toBeNull();
+  });
+
+  it("renders 'New note · in vault root' subtitle when no active note is open", () => {
+    mockUseQuickSwitcher.mockReturnValue([]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "Brand New" } });
+    expect(screen.getByText("New note · in vault root")).toBeTruthy();
+  });
+
+  it("renders 'New note · in {folder}' subtitle when the active note lives in a folder", () => {
+    mockUseTreeStore.mockImplementation((selector: (s: Record<string, unknown>) => unknown) => {
+      const state = {
+        setActiveNote: mockSetActiveNote,
+        recordOpenedNote: mockRecordOpenedNote,
+        recentlyOpenedNoteIds: [],
+        activeTagFilter: null,
+        setSearchActive: vi.fn(),
+        setSearchQuery: vi.fn(),
+        setSearchResults: vi.fn(),
+        activeNoteId: "n1",
+      };
+      return selector(state);
+    });
+    mockUseFileTree.mockReturnValue({
+      tree: {
+        root: [
+          {
+            kind: "folder",
+            path: "Work",
+            name: "Work",
+            children: [{ kind: "note", id: "n1", title: "Existing", path: "Work/existing.md" }],
+          },
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+    mockUseQuickSwitcher.mockReturnValue([]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "Brand New" } });
+    expect(screen.getByText("New note · in Work")).toBeTruthy();
   });
 });
 

@@ -9,15 +9,17 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Search, Command, Loader2 } from "lucide-react";
+import { Search, Command, Loader2, Plus } from "lucide-react";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette, type CommandActions } from "../lib/useCommandPalette";
 import { useSearch } from "../lib/useSearch";
 import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
+import { useFileTree } from "../lib/useFileTree";
+import { useResolvedTitleSet, resolveWikilinkTitle } from "../editor/wikilinkResolver";
 import { KeyboardChip } from "./KeyboardChip";
 import { SearchResultRow } from "./SearchResultRow";
-import { parentDir } from "../lib/treeNoteLookup";
+import { getNoteFolder, parentDir } from "../lib/treeNoteLookup";
 import { mod, shift, type Shortcut } from "../lib/shortcutsRegistry";
 import type { SearchResult } from "../lib/searchApi";
 
@@ -54,7 +56,13 @@ interface GroupItem {
   label: string;
 }
 
-type Item = NoteItem | CmdItem | SearchHitItem | GroupItem;
+/** D-08 synthetic row — action, not a note. Always the last item when eligible. */
+interface CreateItem {
+  kind: "create";
+  id: "create";
+}
+
+type Item = NoteItem | CmdItem | SearchHitItem | GroupItem | CreateItem;
 
 export type PaletteMode = "notes" | "commands" | "search";
 
@@ -101,6 +109,26 @@ const noteRowTitleStyle: React.CSSProperties = {
 };
 
 const noteRowSubtitleStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 400,
+  color: "var(--color-muted)",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+// D-08: create row uses var(--color-success) for the title (not --color-fg)
+// as the distinguishing "this is an action, not a note" signal.
+const createRowTitleStyle: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: "var(--color-success)",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const createRowSubtitleStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 400,
   color: "var(--color-muted)",
@@ -214,6 +242,19 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     mode === "search" ? activeTagFilter : null,
   );
 
+  // D-06/D-07/D-08 create-row support (notes mode only) — REUSE only, no new
+  // title-matching or tree-walk logic lives in this component.
+  const { tree } = useFileTree();
+  const activeNoteId = useTreeStore((s) => s.activeNoteId);
+  const { titleSet, idMap } = useResolvedTitleSet();
+  const exactMatch =
+    mode === "notes" && query !== ""
+      ? resolveWikilinkTitle(query, titleSet, idMap)
+      : { resolved: false, targetId: null };
+  const activeFolder = getNoteFolder(activeNoteId, tree?.root ?? []);
+  const folderLabel =
+    activeFolder === "" ? "in vault root" : `in ${activeFolder.split("/").pop()}`;
+
   let items: Item[];
   if (mode === "commands") {
     items = cmdHits.map((c) => ({
@@ -238,6 +279,9 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       path: h.path,
       matchIndexes: h.matchIndexes,
     }));
+    if (query !== "" && !exactMatch.resolved) {
+      items = [...items, { kind: "create" as const, id: "create" as const }];
+    }
   }
 
   useEffect(() => {
@@ -269,7 +313,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       if (!it) return 36;
       if (it.kind === "group") return 24;
       if (it.kind === "search-result") return 88;
-      if (it.kind === "note") return 56;
+      if (it.kind === "note" || it.kind === "create") return 56;
       return 36;
     },
     overscan: 5,
@@ -292,7 +336,9 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   // ARIA combobox/listbox wiring (notes mode only, per UI-SPEC Accessibility).
   const selectedItem = items[selectedIdx];
   const selectedOptionId =
-    mode === "notes" && selectedItem && selectedItem.kind === "note"
+    mode === "notes" &&
+    selectedItem &&
+    (selectedItem.kind === "note" || selectedItem.kind === "create")
       ? `qs-option-${selectedItem.id}`
       : undefined;
 
@@ -586,49 +632,75 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
 
                   const cmdDisabled = item.kind === "cmd" && item.disabled === true;
                   const isNoteRow = item.kind === "note";
-                  const rowStyle: React.CSSProperties = isNoteRow
-                    ? {
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        width: "100%",
-                        boxSizing: "border-box",
-                        transform: `translateY(${vi.start}px)`,
-                        height: vi.size,
-                        padding: "8px 16px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 4,
-                        justifyContent: "center",
-                        fontSize: 14,
-                        color: "var(--color-fg)",
-                        cursor: "pointer",
-                        background: selected
-                          ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
-                          : "transparent",
-                        userSelect: "none",
-                      }
-                    : {
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        width: "100%",
-                        boxSizing: "border-box",
-                        transform: `translateY(${vi.start}px)`,
-                        height: vi.size,
-                        padding: "0 16px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        fontSize: 14,
-                        color: cmdDisabled ? "var(--color-muted)" : "var(--color-fg)",
-                        cursor: cmdDisabled ? "default" : "pointer",
-                        background: selected
-                          ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
-                          : "transparent",
-                        userSelect: "none",
-                        opacity: cmdDisabled ? 0.55 : 1,
-                      };
+                  const isCreateRow = item.kind === "create";
+                  const isNotesSelectableRow = isNoteRow || isCreateRow;
+                  let rowStyle: React.CSSProperties;
+                  if (isNoteRow) {
+                    rowStyle = {
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      boxSizing: "border-box",
+                      transform: `translateY(${vi.start}px)`,
+                      height: vi.size,
+                      padding: "8px 16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      justifyContent: "center",
+                      fontSize: 14,
+                      color: "var(--color-fg)",
+                      cursor: "pointer",
+                      background: selected
+                        ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+                        : "transparent",
+                      userSelect: "none",
+                    };
+                  } else if (isCreateRow) {
+                    rowStyle = {
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      boxSizing: "border-box",
+                      transform: `translateY(${vi.start}px)`,
+                      height: vi.size,
+                      padding: "8px 16px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      borderTop: "1px solid var(--color-border)",
+                      fontSize: 14,
+                      cursor: "pointer",
+                      background: selected
+                        ? "color-mix(in srgb, var(--color-success) 12%, transparent)"
+                        : "transparent",
+                      userSelect: "none",
+                    };
+                  } else {
+                    rowStyle = {
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      boxSizing: "border-box",
+                      transform: `translateY(${vi.start}px)`,
+                      height: vi.size,
+                      padding: "0 16px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 14,
+                      color: cmdDisabled ? "var(--color-muted)" : "var(--color-fg)",
+                      cursor: cmdDisabled ? "default" : "pointer",
+                      background: selected
+                        ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+                        : "transparent",
+                      userSelect: "none",
+                      opacity: cmdDisabled ? 0.55 : 1,
+                    };
+                  }
 
                   return (
                     <div
@@ -636,9 +708,9 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                       data-row-kind={item.kind}
                       data-disabled={cmdDisabled ? "true" : undefined}
                       aria-disabled={cmdDisabled || undefined}
-                      role={isNoteRow ? "option" : undefined}
-                      id={isNoteRow ? `qs-option-${item.id}` : undefined}
-                      aria-selected={isNoteRow ? selected : undefined}
+                      role={isNotesSelectableRow ? "option" : undefined}
+                      id={isNotesSelectableRow ? `qs-option-${item.id}` : undefined}
+                      aria-selected={isNotesSelectableRow ? selected : undefined}
                       style={rowStyle}
                       onMouseEnter={() => setSelectedIdx(vi.index)}
                       onClick={() => activate(vi.index)}
@@ -650,6 +722,25 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                           </div>
                           <div style={noteRowSubtitleStyle}>
                             {parentDir(item.path) || "Vault"}
+                          </div>
+                        </>
+                      ) : item.kind === "create" ? (
+                        <>
+                          <Plus
+                            size={16}
+                            style={{ color: "var(--color-success)", flexShrink: 0 }}
+                            aria-hidden="true"
+                          />
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 4,
+                              minWidth: 0,
+                            }}
+                          >
+                            <div style={createRowTitleStyle}>{`Create "${query}"`}</div>
+                            <div style={createRowSubtitleStyle}>{`New note · ${folderLabel}`}</div>
                           </div>
                         </>
                       ) : (
