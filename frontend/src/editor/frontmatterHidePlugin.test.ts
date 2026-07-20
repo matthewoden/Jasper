@@ -10,7 +10,7 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { EditorView, keymap } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
-import { defaultKeymap } from "@codemirror/commands";
+import { cursorCharLeft, defaultKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { syntaxTree } from "@codemirror/language";
@@ -440,11 +440,15 @@ function makeViewWithGuard(doc: string): EditorView {
  * Returns true if a handler called preventDefault() (i.e. the key was "swallowed").
  */
 function pressBackspace(view: EditorView): boolean {
+  return pressKey(view, "Backspace", 8);
+}
+
+function pressKey(view: EditorView, key: string, keyCode: number): boolean {
   const event = new KeyboardEvent("keydown", {
-    key: "Backspace",
-    code: "Backspace",
-    keyCode: 8,
-    which: 8,
+    key,
+    code: key,
+    keyCode,
+    which: keyCode,
     cancelable: true,
     bubbles: true,
   });
@@ -522,6 +526,94 @@ describe("frontmatterBackspaceGuardKeymap — D-23 boundary guard", () => {
 
     expect(view.state.doc.toString()).toBe(docBefore);
     expect(hasReplaceDecoration(view)).toBe(true);
+  });
+});
+
+
+describe("frontmatter hidden-block edit protection — WR-03", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  it("cursorCharLeft at the boundary skips OVER the hidden block (atomicRanges); Backspace then leaves the doc intact", () => {
+    const view = makeViewWithGuard(DOC_WITH_TWO_TAGS);
+    views.push(view);
+
+    const boundary = findFrontmatterBoundary(view);
+    expect(boundary).not.toBeNull();
+    view.dispatch({ selection: { anchor: boundary! } });
+
+    // Without atomicRanges this lands at boundary-1 — INSIDE the hidden
+    // block — where Backspace/typing silently mutate invisible YAML.
+    cursorCharLeft(view);
+    const head = view.state.selection.main.head;
+    // Never strictly inside (1..boundary-1): atomic skip lands on an edge.
+    expect(head === 0 || head === boundary).toBe(true);
+
+    const docBefore = view.state.doc.toString();
+    pressBackspace(view);
+    expect(view.state.doc.toString()).toBe(docBefore);
+  });
+
+  it("Delete at position 0 (empty cursor before the hidden block) is swallowed — no invisible whole-block deletion", () => {
+    const view = makeViewWithGuard(DOC_WITH_TWO_TAGS);
+    views.push(view);
+
+    view.dispatch({ selection: { anchor: 0 } });
+    const docBefore = view.state.doc.toString();
+    pressKey(view, "Delete", 46);
+    expect(view.state.doc.toString()).toBe(docBefore);
+  });
+
+  it("Backspace with a range selection reaching into the hidden block is swallowed", () => {
+    const view = makeViewWithGuard(DOC_WITH_TWO_TAGS);
+    views.push(view);
+
+    const bodyStart = view.state.doc.toString().indexOf("# Body");
+    view.dispatch({ selection: { anchor: bodyStart, head: 0 } });
+    const docBefore = view.state.doc.toString();
+    pressBackspace(view);
+    expect(view.state.doc.toString()).toBe(docBefore);
+  });
+
+  it("a user-input change entirely inside the hidden block is filtered out (caret restored inside programmatically)", () => {
+    const view = makeViewWithGuard(DOC_WITH_TWO_TAGS);
+    views.push(view);
+
+    const boundary = findFrontmatterBoundary(view)!;
+    const docBefore = view.state.doc.toString();
+    view.dispatch({
+      changes: { from: boundary - 1, insert: "x" },
+      userEvent: "input.type",
+    });
+    expect(view.state.doc.toString()).toBe(docBefore);
+  });
+
+  it("a NON-user programmatic change inside the block still applies (server-driven rewrites must not be blocked)", () => {
+    const view = makeViewWithGuard(DOC_WITH_TWO_TAGS);
+    views.push(view);
+
+    const boundary = findFrontmatterBoundary(view)!;
+    const docBefore = view.state.doc.toString();
+    view.dispatch({ changes: { from: boundary - 1, insert: "x" } });
+    expect(view.state.doc.toString()).not.toBe(docBefore);
+  });
+
+  it("raw view (hidden=false): user input inside the frontmatter is NOT filtered", () => {
+    const view = makeViewWithGuard(DOC_WITH_TWO_TAGS);
+    views.push(view);
+
+    view.dispatch({ effects: toggleFrontmatterVisibility.of(undefined) });
+    const boundary = findFrontmatterBoundary(view)!;
+    const docBefore = view.state.doc.toString();
+    view.dispatch({
+      changes: { from: boundary - 1, insert: "x" },
+      userEvent: "input.type",
+    });
+    expect(view.state.doc.toString()).not.toBe(docBefore);
   });
 });
 

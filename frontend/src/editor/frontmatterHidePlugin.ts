@@ -23,8 +23,8 @@ import {
   WidgetType,
   keymap,
 } from "@codemirror/view";
-import { StateEffect, StateField, RangeSetBuilder } from "@codemirror/state";
-import type { EditorState, Transaction, Extension } from "@codemirror/state";
+import { EditorState, StateEffect, StateField, RangeSetBuilder } from "@codemirror/state";
+import type { Transaction, Extension } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { FRONTMATTER_NODE_NAME, FRONTMATTER_LINE_CLASS } from "./frontmatterPlugin";
 
@@ -177,11 +177,64 @@ export const frontmatterHidePlugin = ViewPlugin.fromClass(
 );
 
 
+/** Returns the frontmatter node's `.to` boundary, or null when the doc has none. */
+function frontmatterBoundary(state: EditorState): number | null {
+  let boundary: number | null = null;
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name === FRONTMATTER_NODE_NAME) boundary = node.to;
+    },
+  });
+  return boundary;
+}
+
+
+/**
+ * frontmatterAtomicRanges — while hidden, the replaced block is atomic so
+ * cursor-motion commands can never place the caret strictly inside it
+ * (WR-03: an inside caret let Backspace/Delete/typing silently mutate the
+ * invisible YAML one keystroke past the boundary guard).
+ */
+const frontmatterAtomicRanges = EditorView.atomicRanges.of((view) => {
+  const { hidden, decos } = view.state.field(frontmatterDecoField);
+  return hidden ? decos : Decoration.none;
+});
+
+
+/**
+ * frontmatterHiddenEditFilter — drops user-initiated (input/delete/move)
+ * changes that fall ENTIRELY inside the hidden block, e.g. a caret restored
+ * inside programmatically and then typed at. Changes that extend past the
+ * boundary (select-all replace) and non-user programmatic changes
+ * (server-driven rewrites, note-switch doc swaps) pass through untouched.
+ */
+const frontmatterHiddenEditFilter = EditorState.transactionFilter.of((tr) => {
+  if (!tr.docChanged) return tr;
+  if (!tr.isUserEvent("input") && !tr.isUserEvent("delete") && !tr.isUserEvent("move")) return tr;
+  if (!tr.startState.field(frontmatterDecoField).hidden) return tr;
+  const boundary = frontmatterBoundary(tr.startState);
+  if (boundary === null) return tr;
+
+  let invisibleEdit = false;
+  tr.changes.iterChangedRanges((fromA, toA) => {
+    if (fromA < boundary && toA <= boundary) invisibleEdit = true;
+  });
+  return invisibleEdit ? [] : tr;
+});
+
+
 /**
  * frontmatterHideExtension — full extension set for MarkdownEditor.
- * Combines the StateField (block decorations) and the ViewPlugin (test introspection).
+ * Combines the StateField (block decorations), the ViewPlugin (test
+ * introspection), the atomic range (caret can't enter the hidden block),
+ * and the hidden-edit transaction filter.
  */
-export const frontmatterHideExtension: Extension = [frontmatterDecoField, frontmatterHidePlugin];
+export const frontmatterHideExtension: Extension = [
+  frontmatterDecoField,
+  frontmatterHidePlugin,
+  frontmatterAtomicRanges,
+  frontmatterHiddenEditFilter,
+];
 
 
 /** CM6 keymap binding for Cmd-Shift-Y (Mod-Shift-y). Place before defaultKeymap. */
@@ -198,33 +251,38 @@ export const frontmatterToggleKeymap = keymap.of([
 
 
 /**
- * frontmatterBackspaceGuardKeymap — swallows Backspace at the hidden-frontmatter
- * boundary (D-23). `frontmatterDecoField`'s Decoration.replace hides the block
- * visually but registers no atomicRanges, so CM6's default deleteCharBackward
- * deletes the last raw character of the hidden block. This guard no-ops the
- * keystroke when hidden=true, selection is empty, and head sits exactly at the
- * frontmatter node's `.to` boundary; otherwise it falls through to defaultKeymap.
- * Place before defaultKeymap (same extensions-array slot as frontmatterToggleKeymap).
+ * guardHiddenFrontmatterDelete — shared Backspace/Delete guard (D-23, WR-03).
+ * With frontmatterAtomicRanges the caret only ever sits on the block's edges
+ * (0 or boundary), but CM6's delete commands skip atomic ranges by consuming
+ * them WHOLE: Backspace at the boundary or Delete at 0 would silently erase
+ * the entire hidden YAML. Also swallows deletes whose selection reaches into
+ * the hidden block (Shift-Home from the first body line).
+ */
+function guardHiddenFrontmatterDelete(view: EditorView, forward: boolean): boolean {
+  const { hidden } = view.state.field(frontmatterDecoField);
+  if (!hidden) return false;
+
+  const boundary = frontmatterBoundary(view.state);
+  if (boundary === null) return false;
+
+  const { main } = view.state.selection;
+  if (!main.empty) return main.from < boundary;
+  return forward ? main.head < boundary : main.head <= boundary;
+}
+
+/**
+ * frontmatterBackspaceGuardKeymap — no-ops Backspace/Delete keystrokes that
+ * would erase hidden frontmatter (D-23 boundary case plus the WR-03 atomic
+ * edge cases); otherwise falls through to defaultKeymap. Place before
+ * defaultKeymap (same extensions-array slot as frontmatterToggleKeymap).
  */
 export const frontmatterBackspaceGuardKeymap = keymap.of([
   {
     key: "Backspace",
-    run(view: EditorView): boolean {
-      const { hidden } = view.state.field(frontmatterDecoField);
-      if (!hidden) return false;
-
-      let boundary: number | null = null;
-      syntaxTree(view.state).iterate({
-        enter(node) {
-          if (node.name === FRONTMATTER_NODE_NAME) boundary = node.to;
-        },
-      });
-
-      const { main } = view.state.selection;
-      if (boundary !== null && main.empty && main.head === boundary) {
-        return true;
-      }
-      return false;
-    },
+    run: (view: EditorView) => guardHiddenFrontmatterDelete(view, false),
+  },
+  {
+    key: "Delete",
+    run: (view: EditorView) => guardHiddenFrontmatterDelete(view, true),
   },
 ]);
