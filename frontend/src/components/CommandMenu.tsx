@@ -90,10 +90,10 @@ const kindBadgeBaseStyle: React.CSSProperties = {
   height: 16,
   padding: "0 6px",
   borderRadius: 8,
-  fontSize: 11,
+  // D28.1: mock badges are 10px uppercase with slight tracking (Vault.dc.html:1050).
+  fontSize: 10,
   fontWeight: 600,
   lineHeight: "16px",
-  // D28.1: mock badges are uppercase with slight tracking (Vault.dc.html:1050).
   textTransform: "uppercase",
   letterSpacing: "0.03em",
   flexShrink: 0,
