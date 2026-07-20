@@ -23,6 +23,7 @@ import (
 
 func setupSetupTestServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
+	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	dataDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
@@ -39,7 +40,6 @@ func setupSetupTestServer(t *testing.T) (*httptest.Server, string) {
 
 // SH1: no config.json on disk → FirstRun:true.
 func TestGetSetupStatus_NoConfigJSON_FirstRunTrue(t *testing.T) {
-	t.Parallel()
 	ts, _ := setupSetupTestServer(t)
 	defer ts.Close()
 
@@ -64,7 +64,6 @@ func TestGetSetupStatus_NoConfigJSON_FirstRunTrue(t *testing.T) {
 
 // SH2: config.json present on disk → FirstRun:false.
 func TestGetSetupStatus_ConfigJSONPresent_FirstRunFalse(t *testing.T) {
-	t.Parallel()
 	ts, dataDir := setupSetupTestServer(t)
 	defer ts.Close()
 
@@ -114,7 +113,6 @@ func postValidate(t *testing.T, ts *httptest.Server, path string) (int, struct {
 
 // SH3: valid path returns 200 + valid:true.
 func TestPostSetupValidateDataDir_Valid(t *testing.T) {
-	t.Parallel()
 	ts, _ := setupSetupTestServer(t)
 	defer ts.Close()
 	tmpBase := t.TempDir()
@@ -228,7 +226,6 @@ func TestPostSetupValidateDataDir_RefusalCases(t *testing.T) {
 
 // SH5: empty body returns valid:false + the "Pick a data-dir path." hint.
 func TestPostSetupValidateDataDir_EmptyBody(t *testing.T) {
-	t.Parallel()
 	ts, _ := setupSetupTestServer(t)
 	defer ts.Close()
 
@@ -246,7 +243,6 @@ func TestPostSetupValidateDataDir_EmptyBody(t *testing.T) {
 // SH6: happy path — request body submitted, full pipeline runs,
 // returns 200 + ok:true, on-disk state matches.
 func TestPostSetup_HappyPath(t *testing.T) {
-	t.Parallel()
 	ts, _ := setupSetupTestServer(t)
 	defer ts.Close()
 
@@ -296,7 +292,6 @@ func TestPostSetup_HappyPath(t *testing.T) {
 // the MCP listener config (port/bind) must still persist to disk so the
 // listener has something to bind on the next (always-on) boot.
 func TestPostSetup_McpConfigAlwaysPersisted(t *testing.T) {
-	t.Parallel()
 	ts, _ := setupSetupTestServer(t)
 	defer ts.Close()
 
@@ -334,7 +329,6 @@ func TestPostSetup_McpConfigAlwaysPersisted(t *testing.T) {
 
 // SH8: empty body → 400.
 func TestPostSetup_EmptyBody_400(t *testing.T) {
-	t.Parallel()
 	ts, _ := setupSetupTestServer(t)
 	defer ts.Close()
 
@@ -352,7 +346,7 @@ func TestPostSetup_EmptyBody_400(t *testing.T) {
 // "setup_misconfigured" — guards against tests / future callers that
 // forget to wire migrationsFS.
 func TestPostSetup_MissingMigrationsFS_500(t *testing.T) {
-	t.Parallel()
+	t.Setenv("JASPER_APP_HOME", t.TempDir())
 	dataDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
