@@ -8,17 +8,21 @@
  * (no button, no chevron, no label text).
  */
 import { describe, expect, it, afterEach } from "vitest";
-import { EditorView } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
+import { defaultKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
+import { syntaxTree } from "@codemirror/language";
 import {
   frontmatterHidePlugin,
   frontmatterHideExtension,
   toggleFrontmatterVisibility,
   frontmatterToggleKeymap,
+  frontmatterBackspaceGuardKeymap,
   countTagsInFrontmatter,
 } from "./frontmatterHidePlugin";
+import { FRONTMATTER_NODE_NAME } from "./frontmatterPlugin";
 
 
 function makeView(doc: string): EditorView {
@@ -392,6 +396,132 @@ describe("frontmatterHidePlugin — IME composition gate", () => {
     expect(count).toBeGreaterThan(0);
 
     view.destroy();
+  });
+});
+
+
+/** Find the frontmatter node's `.to` boundary (first editable position) via syntaxTree. */
+function findFrontmatterBoundary(view: EditorView): number | null {
+  let boundary: number | null = null;
+  syntaxTree(view.state).iterate({
+    enter(node) {
+      if (node.name === FRONTMATTER_NODE_NAME) boundary = node.to;
+    },
+  });
+  return boundary;
+}
+
+/**
+ * Mount a view with the guard keymap (and defaultKeymap as the fallback layer)
+ * so pressBackspace exercises the exact CM6 conflict-resolution path used in
+ * MarkdownEditor.tsx (guard keymap registered before defaultKeymap).
+ */
+function makeViewWithGuard(doc: string): EditorView {
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  return new EditorView({
+    parent,
+    state: EditorState.create({
+      doc,
+      extensions: [
+        yamlFrontmatter({ content: markdown() }),
+        frontmatterHideExtension,
+        frontmatterBackspaceGuardKeymap,
+        keymap.of(defaultKeymap),
+      ],
+    }),
+  });
+}
+
+/**
+ * Dispatch a real "Backspace" keydown event at view.contentDOM — the same
+ * mechanism CM6's own DOM observer uses internally (see @codemirror/view's
+ * private `dispatchKey` helper, which drives Enter/Backspace/Delete this way).
+ * Returns true if a handler called preventDefault() (i.e. the key was "swallowed").
+ */
+function pressBackspace(view: EditorView): boolean {
+  const event = new KeyboardEvent("keydown", {
+    key: "Backspace",
+    code: "Backspace",
+    keyCode: 8,
+    which: 8,
+    cancelable: true,
+    bubbles: true,
+  });
+  view.contentDOM.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+describe("frontmatterBackspaceGuardKeymap — D-23 boundary guard", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  it("hidden=true, cursor at the frontmatter boundary, Backspace → swallowed (true), doc unchanged", () => {
+    const view = makeViewWithGuard(DOC_WITH_TWO_TAGS);
+    views.push(view);
+
+    const boundary = findFrontmatterBoundary(view);
+    expect(boundary).not.toBeNull();
+    view.dispatch({ selection: { anchor: boundary! } });
+
+    const docBefore = view.state.doc.toString();
+    const handled = pressBackspace(view);
+
+    expect(handled).toBe(true);
+    expect(view.state.doc.toString()).toBe(docBefore);
+  });
+
+  it("hidden=true, cursor NOT at the boundary (mid-body), Backspace → not swallowed, normal deletion occurs", () => {
+    const view = makeViewWithGuard(DOC_WITH_TWO_TAGS);
+    views.push(view);
+
+    const bodyPos = view.state.doc.toString().indexOf("Body") + 2;
+    view.dispatch({ selection: { anchor: bodyPos } });
+
+    const docBefore = view.state.doc.toString();
+    const handled = pressBackspace(view);
+
+    expect(handled).toBe(true); // defaultKeymap's deleteCharBackward handles+prevents it
+    expect(view.state.doc.toString()).not.toBe(docBefore);
+    expect(view.state.doc.toString().length).toBe(docBefore.length - 1);
+  });
+
+  it("hidden=false (raw view), Backspace at the same boundary position → not swallowed, normal deletion occurs", () => {
+    const view = makeViewWithGuard(DOC_WITH_TWO_TAGS);
+    views.push(view);
+
+    const boundary = findFrontmatterBoundary(view);
+    expect(boundary).not.toBeNull();
+
+    view.dispatch({ effects: toggleFrontmatterVisibility.of(undefined) });
+    view.dispatch({ selection: { anchor: boundary! } });
+
+    const docBefore = view.state.doc.toString();
+    const handled = pressBackspace(view);
+
+    expect(handled).toBe(true); // handled by defaultKeymap, not the guard — guard returned false
+    expect(view.state.doc.toString().length).toBe(docBefore.length - 1);
+  });
+
+  it("hidden=true, ArrowLeft/Home at the boundary do not corrupt frontmatter (no guard needed for movement keys)", () => {
+    const view = makeViewWithGuard(DOC_WITH_TWO_TAGS);
+    views.push(view);
+
+    const boundary = findFrontmatterBoundary(view);
+    expect(boundary).not.toBeNull();
+    const docBefore = view.state.doc.toString();
+
+    view.dispatch({ selection: { anchor: boundary! } });
+    view.dispatch({ selection: { anchor: 0 } }); // simulates Home: cursor move only, no doc change
+    view.dispatch({ selection: { anchor: boundary! } });
+    view.dispatch({ selection: { anchor: Math.max(0, boundary! - 1) } }); // simulates ArrowLeft
+
+    expect(view.state.doc.toString()).toBe(docBefore);
+    expect(hasReplaceDecoration(view)).toBe(true);
   });
 });
 
