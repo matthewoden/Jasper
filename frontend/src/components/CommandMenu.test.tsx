@@ -32,6 +32,20 @@ vi.mock("../lib/useSearch", () => ({
   useSearch: vi.fn(),
 }));
 
+vi.mock("../lib/useTreeMutations", async () => {
+  const actual = await vi.importActual<
+    typeof import("../lib/useTreeMutations")
+  >("../lib/useTreeMutations");
+  return {
+    ...actual,
+    useTreeMutations: vi.fn(),
+  };
+});
+
+vi.mock("./toast.utils", () => ({
+  useToast: vi.fn(),
+}));
+
 const mockMeasureElement = vi.fn();
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: vi.fn().mockImplementation(({ count }: { count: number }) => ({
@@ -56,6 +70,8 @@ import { usePaneStore } from "../lib/usePaneStore";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette } from "../lib/useCommandPalette";
 import { useSearch } from "../lib/useSearch";
+import { useTreeMutations } from "../lib/useTreeMutations";
+import { useToast } from "./toast.utils";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 const mockUseFileTree = useFileTree as unknown as ReturnType<typeof vi.fn>;
@@ -64,12 +80,17 @@ const mockUsePaneStoreGetState = usePaneStore.getState as unknown as ReturnType<
 const mockUseQuickSwitcher = useQuickSwitcher as unknown as ReturnType<typeof vi.fn>;
 const mockUseCommandPalette = useCommandPalette as unknown as ReturnType<typeof vi.fn>;
 const mockUseSearch = useSearch as unknown as ReturnType<typeof vi.fn>;
+const mockUseTreeMutations = useTreeMutations as unknown as ReturnType<typeof vi.fn>;
+const mockUseToast = useToast as unknown as ReturnType<typeof vi.fn>;
 const mockUseVirtualizer = useVirtualizer as unknown as ReturnType<typeof vi.fn>;
 
 
 const mockSetActiveNote = vi.fn();
 const mockRecordOpenedNote = vi.fn();
 const mockOpenInActivePane = vi.fn();
+const mockOpenNoteInNewSplit = vi.fn();
+const mockCreateNote = vi.fn();
+const mockToast = vi.fn();
 
 function setupMocks() {
   mockUseFileTree.mockReturnValue({ tree: null, loading: false, error: null });
@@ -83,11 +104,15 @@ function setupMocks() {
       setSearchActive: vi.fn(),
       setSearchQuery: vi.fn(),
       setSearchResults: vi.fn(),
+      activeNoteId: null,
     };
     return selector(state);
   });
 
-  mockUsePaneStoreGetState.mockReturnValue({ openInActivePane: mockOpenInActivePane });
+  mockUsePaneStoreGetState.mockReturnValue({
+    openInActivePane: mockOpenInActivePane,
+    openNoteInNewSplit: mockOpenNoteInNewSplit,
+  });
 
   mockUseQuickSwitcher.mockReturnValue([]);
   mockUseCommandPalette.mockReturnValue({
@@ -96,6 +121,17 @@ function setupMocks() {
     isDisabled: vi.fn().mockReturnValue(false),
   });
   mockUseSearch.mockReturnValue({ results: [], isSearching: false });
+
+  mockUseTreeMutations.mockReturnValue({
+    createNote: mockCreateNote,
+    deleteNote: vi.fn(),
+    moveNote: vi.fn(),
+    createFolder: vi.fn(),
+    deleteFolder: vi.fn(),
+    moveFolder: vi.fn(),
+    moveFile: vi.fn(),
+  });
+  mockUseToast.mockReturnValue({ toast: mockToast });
 }
 
 beforeEach(() => {
@@ -1067,6 +1103,140 @@ describe("CMM-28-05-CREATE — create row (D-07/D-08)", () => {
     render(<CommandMenu {...defaultNoteProps} />);
     fireEvent.change(getPaletteInput(), { target: { value: "Brand New" } });
     expect(screen.getByText("New note · in Work")).toBeTruthy();
+  });
+});
+
+
+describe("CMM-28-05-KEYS — Enter/Shift+Enter/Cmd+Shift+Enter wiring (D-05/07/09/10/11)", () => {
+  it("plain Enter on the create row creates + opens in the active pane, then closes", async () => {
+    const onOpenChange = vi.fn();
+    mockCreateNote.mockResolvedValue({ id: "new-1", title: "Brand New", path: "Brand New.md" });
+    mockUseQuickSwitcher.mockReturnValue([]);
+
+    render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "Brand New" } });
+    fireEvent.keyDown(getPaletteInput(), { key: "Enter" });
+
+    await vi.waitFor(() => {
+      expect(mockCreateNote).toHaveBeenCalledWith("", "Brand New");
+    });
+    expect(mockOpenInActivePane).toHaveBeenCalledWith("new-1");
+    expect(mockRecordOpenedNote).toHaveBeenCalledWith("new-1");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("Shift+Enter with a novel query calls createNote with the active folder + query, then opens + closes", async () => {
+    const onOpenChange = vi.fn();
+    mockCreateNote.mockResolvedValue({ id: "new-2", title: "Another", path: "Another.md" });
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n0", title: "Unrelated", path: "u.md" }]);
+
+    render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "Another" } });
+    fireEvent.keyDown(getPaletteInput(), { key: "Enter", shiftKey: true });
+
+    await vi.waitFor(() => {
+      expect(mockCreateNote).toHaveBeenCalledWith("", "Another");
+    });
+    expect(mockOpenInActivePane).toHaveBeenCalledWith("new-2");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("Shift+Enter with an existing (differently-cased) title opens it instead of creating a duplicate", () => {
+    const onOpenChange = vi.fn();
+    mockUseFileTree.mockReturnValue({
+      tree: {
+        root: [{ kind: "note", id: "n1", title: "Existing Note", path: "existing.md" }],
+      },
+      loading: false,
+      error: null,
+    });
+    mockUseQuickSwitcher.mockReturnValue([]);
+
+    render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "existing note" } });
+    fireEvent.keyDown(getPaletteInput(), { key: "Enter", shiftKey: true });
+
+    expect(mockOpenInActivePane).toHaveBeenCalledWith("n1");
+    expect(mockCreateNote).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("Cmd/Ctrl+Shift+Enter on a note row opens it in a new split (unconditional, even if already open)", () => {
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Meeting Notes", path: "meeting.md" }]);
+
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "Meeting" } });
+    fireEvent.keyDown(getPaletteInput(), { key: "Enter", ctrlKey: true, shiftKey: true });
+
+    expect(mockOpenNoteInNewSplit).toHaveBeenCalledWith("n1", "row");
+    expect(mockOpenInActivePane).not.toHaveBeenCalled();
+  });
+
+  it("Cmd/Ctrl+Shift+Enter on the create row creates the note, then opens it in a new split", async () => {
+    mockCreateNote.mockResolvedValue({ id: "new-3", title: "Split Note", path: "Split Note.md" });
+    mockUseQuickSwitcher.mockReturnValue([]);
+
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "Split Note" } });
+    fireEvent.keyDown(getPaletteInput(), { key: "Enter", ctrlKey: true, shiftKey: true });
+
+    await vi.waitFor(() => {
+      expect(mockCreateNote).toHaveBeenCalledWith("", "Split Note");
+    });
+    expect(mockOpenNoteInNewSplit).toHaveBeenCalledWith("new-3", "row");
+  });
+
+  it("empty query makes Shift+Enter a no-op (no create, no open, does not close)", () => {
+    const onOpenChange = vi.fn();
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Note A", path: "a.md" }]);
+
+    render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
+    fireEvent.keyDown(getPaletteInput(), { key: "Enter", shiftKey: true });
+
+    expect(mockCreateNote).not.toHaveBeenCalled();
+    expect(mockOpenInActivePane).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("empty query makes Cmd/Ctrl+Shift+Enter a no-op (no split, does not close)", () => {
+    const onOpenChange = vi.fn();
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Note A", path: "a.md" }]);
+
+    render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
+    fireEvent.keyDown(getPaletteInput(), { key: "Enter", ctrlKey: true, shiftKey: true });
+
+    expect(mockOpenNoteInNewSplit).not.toHaveBeenCalled();
+    expect(mockCreateNote).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("plain Enter on a note row is unchanged: opens + records + closes (no create wiring interference)", () => {
+    const onOpenChange = vi.fn();
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Meeting Notes", path: "meeting.md" }]);
+
+    render(<CommandMenu {...defaultNoteProps} onOpenChange={onOpenChange} />);
+    fireEvent.keyDown(getPaletteInput(), { key: "Enter" });
+
+    expect(mockOpenInActivePane).toHaveBeenCalledWith("n1");
+    expect(mockCreateNote).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("a 409 case-collision from createNote surfaces via the shared toast without crashing", async () => {
+    const { TreeMutationError } = await import("../lib/useTreeMutations");
+    mockCreateNote.mockRejectedValue(new TreeMutationError("case_collision", "boom", 409));
+    mockUseQuickSwitcher.mockReturnValue([]);
+
+    render(<CommandMenu {...defaultNoteProps} />);
+    fireEvent.change(getPaletteInput(), { target: { value: "Dup" } });
+    fireEvent.keyDown(getPaletteInput(), { key: "Enter", shiftKey: true });
+
+    await vi.waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "That name already exists." }),
+      );
+    });
+    expect(mockOpenInActivePane).not.toHaveBeenCalled();
   });
 });
 
