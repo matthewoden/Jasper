@@ -21,6 +21,13 @@ export interface NoteHit {
   /** ISO 8601 UTC string — used for updated_at desc fallback sort. */
   updated_at: string;
   score?: number;
+  /**
+   * 0-based character positions in `title` that matched the query
+   * (fuzzysort's `Result.indexes`), for D-15 match highlighting. Only
+   * populated for non-empty queries — the empty-query recency branch has no
+   * query to match against, so this stays undefined there.
+   */
+  matchIndexes?: readonly number[];
 }
 
 /** Flatten the tree into a note list for search; folders are excluded. */
@@ -75,7 +82,7 @@ export function useQuickSwitcher(query: string): NoteHit[] {
 
     const recencyIndex = new Map(recentlyOpenedNoteIds.map((id, i) => [id, i]));
     return results
-      .map((r) => ({ ...r.obj, score: r.score }))
+      .map((r) => ({ ...r.obj, score: r.score, matchIndexes: r.indexes }))
       .sort((a, b) => {
         const aScore = a.score ?? -Infinity;
         const bScore = b.score ?? -Infinity;
