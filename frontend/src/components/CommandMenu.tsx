@@ -1,6 +1,5 @@
 /**
- * CommandMenu — shared modal shell for four palette modes:
- *   - mode="all"      (Cmd+K)         — unified notes + commands, kind-badged
+ * CommandMenu — shared modal shell for three palette modes:
  *   - mode="notes"    (Cmd+O)         — title-fuzzy quick switcher only
  *   - mode="commands" (Cmd+P)         — command palette
  *   - mode="search"   (Cmd+Shift+F)  — FTS5 body search + snippet excerpts
@@ -11,7 +10,6 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, Command, Loader2 } from "lucide-react";
-import fuzzysort from "fuzzysort";
 import { useQuickSwitcher } from "../lib/useQuickSwitcher";
 import { useCommandPalette, type CommandActions } from "../lib/useCommandPalette";
 import { useSearch } from "../lib/useSearch";
@@ -55,7 +53,7 @@ interface GroupItem {
 
 type Item = NoteItem | CmdItem | SearchHitItem | GroupItem;
 
-export type PaletteMode = "notes" | "commands" | "search" | "all";
+export type PaletteMode = "notes" | "commands" | "search";
 
 export interface CommandMenuProps {
   open: boolean;
@@ -144,10 +142,10 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
   const [query, setQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
 
-  const noteHits = useQuickSwitcher(mode === "notes" || mode === "all" ? query : "");
+  const noteHits = useQuickSwitcher(mode === "notes" ? query : "");
 
   const cmd = useCommandPalette(actions);
-  const cmdHits: Shortcut[] = mode === "commands" || mode === "all" ? cmd.filtered(query) : [];
+  const cmdHits: Shortcut[] = mode === "commands" ? cmd.filtered(query) : [];
 
   const activeTagFilter = useTreeStore((s) => s.activeTagFilter);
   const { results: searchHits, isSearching } = useSearch(
@@ -171,44 +169,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       id: r.id,
       result: r,
     }));
-  } else if (mode === "all") {
-    // Unified mode (D-01/D-03): notes + commands merged into one list, no
-    // GroupItem header rows — the kind badge is the sole differentiator.
-    // Empty query: notes (recents) first, then commands. Non-empty query:
-    // single list ordered by match score across both kinds. Commands don't
-    // carry a fuzzysort score of their own (cmd.filtered is substring-based),
-    // so score them the same way useQuickSwitcher scores notes for a
-    // comparable ranking key.
-    const noteEntries = noteHits.map((h) => ({
-      item: {
-        kind: "note" as const,
-        id: h.id,
-        title: h.title,
-        path: h.path,
-      },
-      score: h.score ?? 0,
-    }));
-    const cmdEntries = cmdHits.map((c) => {
-      const scored = query ? fuzzysort.single(query, c.label) : null;
-      return {
-        item: {
-          kind: "cmd" as const,
-          id: c.id,
-          label: c.label,
-          shortcut: c.shortcut,
-          group: c.group,
-          disabled: cmd.isDisabled?.(c.id) ?? false,
-        },
-        score: scored?.score ?? -10000,
-      };
-    });
-    if (!query) {
-      items = [...noteEntries, ...cmdEntries].map((e) => e.item);
-    } else {
-      items = [...noteEntries, ...cmdEntries]
-        .sort((a, b) => b.score - a.score)
-        .map((e) => e.item);
-    }
   } else {
     items = noteHits.map((h) => ({
       kind: "note" as const,
@@ -306,8 +266,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     placeholder = "Type a command…";
   } else if (mode === "search") {
     placeholder = "Search notes…";
-  } else if (mode === "all") {
-    placeholder = "Search notes and commands…";
   } else {
     placeholder = "Switch to note…";
   }
@@ -316,8 +274,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     ariaLabel = "Command palette";
   } else if (mode === "search") {
     ariaLabel = "Search notes";
-  } else if (mode === "all") {
-    ariaLabel = "Search everything";
   } else {
     ariaLabel = "Quick switcher";
   }
@@ -367,10 +323,6 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       emptyText = "Start typing to switch notes";
     } else if (mode === "commands" && query !== "") {
       emptyText = `No commands match "${query}"`;
-    } else if (mode === "all" && query === "") {
-      emptyText = "Start typing to search notes and commands";
-    } else if (mode === "all" && query !== "") {
-      emptyText = `No matching notes or commands for "${query}"`;
     }
     // commands mode + empty query → full list is shown; no empty state needed
   }

@@ -186,8 +186,8 @@ export interface TreeStore {
   setSearchActive: (v: boolean) => void;
   paletteOpen: boolean;
   setPaletteOpen: (v: boolean) => void;
-  paletteMode: "notes" | "commands" | "search" | "all";
-  setPaletteMode: (m: "notes" | "commands" | "search" | "all") => void;
+  paletteMode: "notes" | "commands" | "search";
+  setPaletteMode: (m: "notes" | "commands" | "search") => void;
   recentlyOpenedNoteIds: string[];
   recordOpenedNote: (id: string) => void;
   dailyNoteLoading: boolean;
