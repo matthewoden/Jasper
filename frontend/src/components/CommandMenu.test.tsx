@@ -865,10 +865,10 @@ describe("CommandMenu — regression: scoped modes stay isolated", () => {
 
 
 describe("CommandMenu — kind badges (D-01 restyle)", () => {
-  it("note rows carry a 'Note' kind badge", () => {
+  it("note rows carry NO 'Note' kind badge (D-14)", () => {
     mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Meeting Notes", path: "meeting.md" }]);
     render(<CommandMenu {...defaultNoteProps} />);
-    expect(screen.getByText("Note")).toBeTruthy();
+    expect(screen.queryByText("Note")).toBeNull();
   });
 
   it("command rows carry a 'Cmd' kind badge", () => {
@@ -882,6 +882,43 @@ describe("CommandMenu — kind badges (D-01 restyle)", () => {
     });
     render(<CommandMenu {...defaultCmdProps} />);
     expect(screen.getByText("Cmd")).toBeTruthy();
+  });
+});
+
+
+describe("CMM-28-04-ROWS — two-line notes rows, match highlight, Vault subtitle (D-14/D-15/D-16)", () => {
+  it("a note row's folder path renders as a second-line subtitle, not a same-line badge/right-align", () => {
+    mockUseQuickSwitcher.mockReturnValue([
+      { id: "n1", title: "Meeting Notes", path: "Work/meeting.md" },
+    ]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    expect(screen.getByText("Meeting Notes")).toBeTruthy();
+    expect(screen.getByText("Work")).toBeTruthy();
+  });
+
+  it("a root-level note's subtitle renders the string 'Vault'", () => {
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Root Note", path: "root-note.md" }]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    expect(screen.getByText("Vault")).toBeTruthy();
+  });
+
+  it("a title with matched query characters renders at least one accent-colored span", () => {
+    mockUseQuickSwitcher.mockReturnValue([
+      { id: "n1", title: "alpha", path: "alpha.md", matchIndexes: [0, 1] },
+    ]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    const highlighted = document.querySelector(
+      'span[style*="var(--color-accent)"]',
+    ) as HTMLElement | null;
+    expect(highlighted).not.toBeNull();
+    expect(highlighted?.textContent).toBe("al");
+  });
+
+  it("empty-query rows (no matchIndexes) render the title plainly, no highlight span", () => {
+    mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Recent Note", path: "recent.md" }]);
+    render(<CommandMenu {...defaultNoteProps} />);
+    expect(screen.getByText("Recent Note")).toBeTruthy();
+    expect(document.querySelector('span[style*="var(--color-accent)"]')).toBeNull();
   });
 });
 

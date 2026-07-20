@@ -17,6 +17,7 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
 import { KeyboardChip } from "./KeyboardChip";
 import { SearchResultRow } from "./SearchResultRow";
+import { parentDir } from "../lib/treeNoteLookup";
 import type { Shortcut } from "../lib/shortcutsRegistry";
 import type { SearchResult } from "../lib/searchApi";
 
@@ -26,6 +27,8 @@ interface NoteItem {
   id: string;
   title: string;
   path: string;
+  /** 0-based char positions in `title` matched by the fuzzy query (D-15); undefined for the empty-query recency list. */
+  matchIndexes?: readonly number[];
 }
 
 interface CmdItem {
@@ -81,17 +84,75 @@ const kindBadgeBaseStyle: React.CSSProperties = {
   flexShrink: 0,
 };
 
-const noteKindBadgeStyle: React.CSSProperties = {
-  ...kindBadgeBaseStyle,
-  background: "color-mix(in srgb, var(--color-fg) 10%, transparent)",
-  color: "var(--color-muted)",
-};
-
 const cmdKindBadgeStyle: React.CSSProperties = {
   ...kindBadgeBaseStyle,
   background: "color-mix(in srgb, var(--color-accent) 12%, transparent)",
   color: "var(--color-accent)",
 };
+
+// D-14: notes-mode rows are two-line 56px, no kind badge (unlike commands mode).
+const noteRowTitleStyle: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: "var(--color-fg)",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const noteRowSubtitleStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 400,
+  color: "var(--color-muted)",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+/**
+ * D-15: builds contiguous matched/unmatched runs from fuzzysort's 0-based
+ * `matchIndexes`, wrapping matched runs in an accent-colored span. Plain
+ * string return for empty-query rows (no indexes to highlight).
+ */
+function renderHighlightedTitle(
+  title: string,
+  matchIndexes?: readonly number[],
+): React.ReactNode {
+  if (!matchIndexes || matchIndexes.length === 0) return title;
+  const idxSet = new Set(matchIndexes);
+  const parts: React.ReactNode[] = [];
+  let buffer = "";
+  let bufferMatched = false;
+  for (let i = 0; i < title.length; i++) {
+    const matched = idxSet.has(i);
+    if (matched !== bufferMatched && buffer) {
+      parts.push(
+        bufferMatched ? (
+          <span key={parts.length} style={{ color: "var(--color-accent)" }}>
+            {buffer}
+          </span>
+        ) : (
+          buffer
+        ),
+      );
+      buffer = "";
+    }
+    buffer += title[i];
+    bufferMatched = matched;
+  }
+  if (buffer) {
+    parts.push(
+      bufferMatched ? (
+        <span key={parts.length} style={{ color: "var(--color-accent)" }}>
+          {buffer}
+        </span>
+      ) : (
+        buffer
+      ),
+    );
+  }
+  return parts;
+}
 
 function nextSelectable(items: Item[], from: number, direction: 1 | -1): number {
   let i = from + direction;
@@ -175,6 +236,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       id: h.id,
       title: h.title,
       path: h.path,
+      matchIndexes: h.matchIndexes,
     }));
   }
 
@@ -207,6 +269,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       if (!it) return 36;
       if (it.kind === "group") return 24;
       if (it.kind === "search-result") return 88;
+      if (it.kind === "note") return 56;
       return 36;
     },
     overscan: 5,
@@ -501,26 +564,50 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                   }
 
                   const cmdDisabled = item.kind === "cmd" && item.disabled === true;
-                  const rowStyle: React.CSSProperties = {
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translateY(${vi.start}px)`,
-                    height: vi.size,
-                    padding: "0 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    fontSize: 14,
-                    color: cmdDisabled ? "var(--color-muted)" : "var(--color-fg)",
-                    cursor: cmdDisabled ? "default" : "pointer",
-                    background: selected
-                      ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
-                      : "transparent",
-                    userSelect: "none",
-                    opacity: cmdDisabled ? 0.55 : 1,
-                  };
+                  const isNoteRow = item.kind === "note";
+                  const rowStyle: React.CSSProperties = isNoteRow
+                    ? {
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        boxSizing: "border-box",
+                        transform: `translateY(${vi.start}px)`,
+                        height: vi.size,
+                        padding: "8px 16px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 4,
+                        justifyContent: "center",
+                        fontSize: 14,
+                        color: "var(--color-fg)",
+                        cursor: "pointer",
+                        background: selected
+                          ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+                          : "transparent",
+                        userSelect: "none",
+                      }
+                    : {
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        boxSizing: "border-box",
+                        transform: `translateY(${vi.start}px)`,
+                        height: vi.size,
+                        padding: "0 16px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 14,
+                        color: cmdDisabled ? "var(--color-muted)" : "var(--color-fg)",
+                        cursor: cmdDisabled ? "default" : "pointer",
+                        background: selected
+                          ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+                          : "transparent",
+                        userSelect: "none",
+                        opacity: cmdDisabled ? 0.55 : 1,
+                      };
 
                   return (
                     <div
@@ -534,31 +621,12 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                     >
                       {item.kind === "note" ? (
                         <>
-                          <span
-                            style={{
-                              flex: 1,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {item.title}
-                          </span>
-                          <span
-                            style={{
-                              marginLeft: "auto",
-                              color: "var(--color-muted)",
-                              fontSize: 12,
-                              flexShrink: 0,
-                              maxWidth: "40%",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {item.path}
-                          </span>
-                          <span style={noteKindBadgeStyle}>Note</span>
+                          <div style={noteRowTitleStyle}>
+                            {renderHighlightedTitle(item.title, item.matchIndexes)}
+                          </div>
+                          <div style={noteRowSubtitleStyle}>
+                            {parentDir(item.path) || "Vault"}
+                          </div>
                         </>
                       ) : (
                         <>
