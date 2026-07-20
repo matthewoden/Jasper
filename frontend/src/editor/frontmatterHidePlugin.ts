@@ -195,3 +195,36 @@ export const frontmatterToggleKeymap = keymap.of([
     },
   },
 ]);
+
+
+/**
+ * frontmatterBackspaceGuardKeymap — swallows Backspace at the hidden-frontmatter
+ * boundary (D-23). `frontmatterDecoField`'s Decoration.replace hides the block
+ * visually but registers no atomicRanges, so CM6's default deleteCharBackward
+ * deletes the last raw character of the hidden block. This guard no-ops the
+ * keystroke when hidden=true, selection is empty, and head sits exactly at the
+ * frontmatter node's `.to` boundary; otherwise it falls through to defaultKeymap.
+ * Place before defaultKeymap (same extensions-array slot as frontmatterToggleKeymap).
+ */
+export const frontmatterBackspaceGuardKeymap = keymap.of([
+  {
+    key: "Backspace",
+    run(view: EditorView): boolean {
+      const { hidden } = view.state.field(frontmatterDecoField);
+      if (!hidden) return false;
+
+      let boundary: number | null = null;
+      syntaxTree(view.state).iterate({
+        enter(node) {
+          if (node.name === FRONTMATTER_NODE_NAME) boundary = node.to;
+        },
+      });
+
+      const { main } = view.state.selection;
+      if (boundary !== null && main.empty && main.head === boundary) {
+        return true;
+      }
+      return false;
+    },
+  },
+]);
