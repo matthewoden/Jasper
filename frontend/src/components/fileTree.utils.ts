@@ -10,8 +10,14 @@ import type {
   Tree as WireTree,
   TreeNode as WireTreeNode,
 } from "../lib/treeApi";
-import { useTreeStore } from "../lib/useTreeStore";
+import {
+  useTreeStore,
+  type NotesSortOrder,
+  type SearchSortOrder,
+} from "../lib/useTreeStore";
 import type { TreeRowData } from "./TreeRow";
+
+export type { NotesSortOrder, SearchSortOrder };
 
 /**
  * The shape react-arborist actually walks: id is unique across
@@ -109,6 +115,8 @@ export function adaptToArborist(
       id: node.id,
       path: node.path,
       title: node.title,
+      updated_at: node.updated_at,
+      created: node.created,
     },
   };
 }
@@ -323,4 +331,46 @@ export function expandAndScrollToFolder(folderPath: string): void {
     // step above is sufficient; ignore.
   }
   state.setNotesSidebarVisible(true);
+}
+
+/**
+ * Reads a note node's updated_at/created ISO timestamp and returns its
+ * epoch milliseconds, or 0 when absent/unparseable (folders, file nodes,
+ * and notes with no captured birthtime all fall back to 0 — comparatorFor's
+ * name tie-break then decides their relative order deterministically).
+ */
+function timestampOf(
+  node: ArboristNode,
+  field: "updated_at" | "created",
+): number {
+  if (node.data.kind !== "note") return 0;
+  const value = node.data[field];
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * comparatorFor — the non-folder (notes + files) half of sortTree's D-02
+ * six-order contract. Every branch tie-breaks on name A→Z for stable,
+ * deterministic ordering when timestamps are equal or absent.
+ */
+export function comparatorFor(
+  order: NotesSortOrder,
+): (a: ArboristNode, b: ArboristNode) => number {
+  // TODO(29-04 RED): not implemented yet — always returns 0 (stable no-op).
+  void order;
+  return () => 0;
+}
+
+/**
+ * sortTree — folder-grouping comparator (D-01/D-02).
+ * TODO(29-04 RED): not implemented yet — returns nodes unchanged.
+ */
+export function sortTree(
+  nodes: ArboristNode[],
+  order: NotesSortOrder,
+): ArboristNode[] {
+  void order;
+  return nodes;
 }

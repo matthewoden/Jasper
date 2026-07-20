@@ -56,6 +56,22 @@ export const LS_KEY_SIDEBAR_PANEL = "jasper.chrome.sidebar.panel";
 
 export const LS_KEY_SWITCHER_RECENCY = "jasper:switcher:recency";
 
+/**
+ * Notes-panel sort order (SORT-01) + search-result sort order (SORT-02).
+ * Backend-persisted via workspace.json (useWorkspace.ts) — deliberately
+ * NOT an LS_KEY_* localStorage slice like its siblings above (D-09).
+ */
+export type NotesSortOrder =
+  | "name-asc"
+  | "name-desc"
+  | "modified-desc"
+  | "modified-asc"
+  | "created-desc"
+  | "created-asc";
+export type SearchSortOrder = "relevance" | "modified" | "created";
+export const NOTES_SORT_DEFAULT: NotesSortOrder = "name-asc"; // D-06
+export const SEARCH_SORT_DEFAULT: SearchSortOrder = "relevance";
+
 
 const EDITOR_MIN = 320;
 
@@ -211,6 +227,16 @@ export interface TreeStore {
 
   vaultSwitching: { active: boolean; targetName: string };
   setVaultSwitching: (s: { active: boolean; targetName: string }) => void;
+
+  /**
+   * Notes/search sort preferences (SORT-01/02/03). Backend-persisted via
+   * workspace.json — no localStorage debounce/persistence block below,
+   * unlike every other slice in this file (D-09/D-12).
+   */
+  notesSort: NotesSortOrder;
+  setNotesSort: (v: NotesSortOrder) => void;
+  searchSort: SearchSortOrder;
+  setSearchSort: (v: SearchSortOrder) => void;
 }
 
 
@@ -412,6 +438,11 @@ export const useTreeStore = create<TreeStore>((set) => ({
 
   vaultSwitching: { active: false, targetName: "" },
   setVaultSwitching: (s) => set({ vaultSwitching: s }),
+
+  notesSort: NOTES_SORT_DEFAULT,
+  setNotesSort: (v) => set({ notesSort: v }),
+  searchSort: SEARCH_SORT_DEFAULT,
+  setSearchSort: (v) => set({ searchSort: v }),
 }));
 
 /**
