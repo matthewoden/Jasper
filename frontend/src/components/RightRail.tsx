@@ -12,8 +12,15 @@
  *     <header 40px>
  *       <RightRailTabRow />
  *     </header>
- *     <RightRailSubHeader title=.../> + <ActivePanel />   ← exactly one
+ *     <ActivePanel />   ← exactly one of Outline / Linked mentions / Tags
  *   </aside>
+ *
+ * The Tags tab (TAGS-02, D-06..D-10) is the one exception to "single
+ * section": it stacks TWO sections — NoteTagsSection (active note's live
+ * tags, sub-header "Note tags") on top of a divider on top of
+ * RightRailTagsPanel (vault-wide list, now owns its own "Tags" sub-header
+ * internally per Plan 08). Outline and Linked mentions remain single
+ * sub-header + panel, as built in Plan 05.
  *
  * This REPLACES the Phase 20 three-section stacked/collapsible/resizable
  * layout (independent SectionHeader collapse state per section,
@@ -34,11 +41,12 @@ import {
   RAIL_MIN_WIDTH,
 } from "../lib/useTreeStore";
 import { useBacklinks } from "../lib/useBacklinks";
-import { useTagBrowser } from "../lib/useTagBrowser";
+import { useNoteTagsStore } from "../lib/useNoteTagsFromDoc";
 import { useOutlineStore } from "../lib/useOutlineStore";
 import { RightRailTabRow, RightRailSubHeader } from "./RightRailTabRow";
 import { OutlinePanel } from "./OutlinePanel";
 import { LinkedMentionsPanel } from "./LinkedMentionsPanel";
+import { NoteTagsSection } from "./NoteTagsSection";
 import { RightRailTagsPanel } from "./RightRailTagsPanel";
 
 interface Props {
@@ -63,7 +71,8 @@ export function RightRail({ activeNoteId, style }: Props) {
     error: backlinksError,
   } = useBacklinks(activeNoteId);
   const linkedMentionsCount = backlinks?.length ?? 0;
-  const { tags } = useTagBrowser();
+  const noteTags = useNoteTagsStore((s) => s.noteTags);
+  const noteTagsCount = activeNoteId === null ? 0 : noteTags.length;
   const outlineHeadingsCount = useOutlineStore((s) => s.outlineHeadings.length);
 
   const draggingRef = useRef(false);
@@ -188,14 +197,34 @@ export function RightRail({ activeNoteId, style }: Props) {
         )}
 
         {rightPanel === "tags" && (
-          <>
-            {/* Single mounted section for now — Plan 08 upgrades this to the
-                two-section (note tags + vault tags) Tags tab layout. */}
-            <RightRailSubHeader title="Tags" count={tags.length} />
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            {/* Upper: active note's live tags (D-06, flex: none). */}
+            <RightRailSubHeader title="Note tags" count={noteTagsCount} />
+            <NoteTagsSection activeNoteId={activeNoteId} />
+
+            {/* Divider between the two sections (D-06). */}
+            <div
+              style={{
+                height: 1,
+                background: "var(--color-border)",
+                flexShrink: 0,
+              }}
+            />
+
+            {/* Lower: vault-wide tag list — owns its own "Tags" sub-header
+                internally (flex: 1, absorbs remaining space). */}
             <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
               <RightRailTagsPanel />
             </div>
-          </>
+          </div>
         )}
       </div>
     </aside>
