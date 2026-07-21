@@ -542,8 +542,11 @@ export function TabStrip({
         // D-15/D-16: an unpinned dragged tab can never land inside the
         // FOREIGN leaf's pinned region, and a pinned dragged tab can never
         // land outside it — pinnedCount counts the foreign leaf's OWN pinned
-        // tabs (the dragged tab is not yet a member of it).
-        const draggedIsPinned = tabs.find((t) => t.id === drag.tabId)?.pinned === true;
+        // tabs (the dragged tab is not yet a member of it). This effect only
+        // re-registers on [leafId] (below), so read the source tab's pinned
+        // flag through tabsRef (kept fresh every render) rather than closing
+        // over the `tabs` prop directly — a raw closure would go stale.
+        const draggedIsPinned = tabsRef.current.find((t) => t.id === drag.tabId)?.pinned === true;
         const pinnedCount = foreignLeaf
           ? foreignLeaf.tabs.filter((t) => t.pinned).length
           : 0;
