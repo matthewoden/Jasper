@@ -1,15 +1,17 @@
 /**
- * useWorkspace — composes the notesSort/searchSort store slices with
- * GET/PUT /vault/workspace calls and a WS refresh subscription on
+ * useWorkspace — composes the notesSort/searchSort/rightPanel store slices
+ * with GET/PUT /vault/workspace calls and a WS refresh subscription on
  * `workspace:changed`. Mirrors useBookmarks.ts's hydrate + subscriber-bus +
  * optimistic-mutate shape (D-12).
  *
  * Public surface:
- *   - notesSort / searchSort: current store slices (hydrated from the
- *                              backend, never localStorage — D-09)
+ *   - notesSort / searchSort / rightPanel: current store slices (hydrated
+ *                              from the backend, never localStorage — D-09)
  *   - setNotesSort(value):    optimistic write, NO debounce (D-12) — one
  *                              PUT per selection. Reverts + toasts on failure.
  *   - setSearchSort(value):   same shape as setNotesSort, other field.
+ *   - setRightPanel(value):   same shape as setNotesSort, rightPanel field
+ *                              (TAGS-01).
  *
  * dispatchWorkspaceEvent() is called by useSessionSync when a
  * `workspace:changed` WS event arrives (origin-filtered server-side), so a
@@ -22,8 +24,11 @@ import {
   useTreeStore,
   type NotesSortOrder,
   type SearchSortOrder,
+  type RightPanelTab,
 } from "./useTreeStore";
 import { getWorkspace, putWorkspace } from "./workspaceApi";
+
+export type { RightPanelTab };
 
 const workspaceSubscribers = new Set<() => void>();
 
@@ -40,8 +45,10 @@ export function dispatchWorkspaceEvent(): void {
 export interface UseWorkspaceResult {
   notesSort: NotesSortOrder;
   searchSort: SearchSortOrder;
+  rightPanel: RightPanelTab;
   setNotesSort: (value: NotesSortOrder) => Promise<void>;
   setSearchSort: (value: SearchSortOrder) => Promise<void>;
+  setRightPanel: (value: RightPanelTab) => Promise<void>;
 }
 
 export function useWorkspace(): UseWorkspaceResult {
@@ -49,6 +56,8 @@ export function useWorkspace(): UseWorkspaceResult {
   const setNotesSortSlice = useTreeStore((s) => s.setNotesSort);
   const searchSort = useTreeStore((s) => s.searchSort);
   const setSearchSortSlice = useTreeStore((s) => s.setSearchSort);
+  const rightPanel = useTreeStore((s) => s.rightPanel);
+  const setRightPanelSlice = useTreeStore((s) => s.setRightPanel);
   const { toast } = useToast();
   // True once the first hydrate has run. Not currently branched on, but
   // kept for parity with useBookmarks.ts's hydratedRef shape and as a
@@ -66,12 +75,15 @@ export function useWorkspace(): UseWorkspaceResult {
       if (doc.searchSort) {
         setSearchSortSlice(doc.searchSort as SearchSortOrder);
       }
+      if (doc.rightPanel) {
+        setRightPanelSlice(doc.rightPanel as RightPanelTab);
+      }
       hydratedRef.current = true;
     } catch {
       // Swallow — keep whatever default/last-known-good slice is in
       // place rather than surfacing an error for a background refresh.
     }
-  }, [setNotesSortSlice, setSearchSortSlice]);
+  }, [setNotesSortSlice, setSearchSortSlice, setRightPanelSlice]);
 
   useEffect(() => {
     void refresh();
@@ -117,7 +129,32 @@ export function useWorkspace(): UseWorkspaceResult {
     [setSearchSortSlice, toast],
   );
 
-  return { notesSort, searchSort, setNotesSort, setSearchSort };
+  const setRightPanel = useCallback(
+    async (value: RightPanelTab) => {
+      const previous = useTreeStore.getState().rightPanel;
+      setRightPanelSlice(value);
+      try {
+        await putWorkspace({ rightPanel: value });
+      } catch (e) {
+        setRightPanelSlice(previous);
+        toast({
+          title: "Couldn't save panel selection. Try again.",
+          description: String(e instanceof Error ? e.message : e),
+          variant: "error",
+        });
+      }
+    },
+    [setRightPanelSlice, toast],
+  );
+
+  return {
+    notesSort,
+    searchSort,
+    rightPanel,
+    setNotesSort,
+    setSearchSort,
+    setRightPanel,
+  };
 }
 
 export const __testing__ = {

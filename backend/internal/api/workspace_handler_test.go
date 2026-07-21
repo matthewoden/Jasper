@@ -217,3 +217,67 @@ func TestPutVaultWorkspace_InvalidEnum_400_NoDiskWrite(t *testing.T) {
 		t.Errorf("NotesSort = %v, want nil (invalid PUT must not persist)", reloaded.NotesSort)
 	}
 }
+
+// TestPutVaultWorkspace_InvalidRightPanel_400_NoDiskWrite — an out-of-enum
+// rightPanel value is rejected with 400 and never reaches disk (TAGS-01).
+func TestPutVaultWorkspace_InvalidRightPanel_400_NoDiskWrite(t *testing.T) {
+	t.Parallel()
+	ts, _ := setupWorkspaceTestServer(t)
+	defer ts.Close()
+
+	resp, body := mustPutJSON(t, ts, "/api/v1/vault/workspace", `{"rightPanel":"bogus"}`)
+	if resp.StatusCode != 400 {
+		t.Fatalf("status: got %d, want 400; body=%s", resp.StatusCode, body)
+	}
+	var got Error
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("unmarshal: %v; body=%s", err, body)
+	}
+	if got.Code != "invalid_request" {
+		t.Errorf("Code: got %q, want %q", got.Code, "invalid_request")
+	}
+
+	resp, body = http200Get(t, ts, "/api/v1/vault/workspace")
+	if resp.StatusCode != 200 {
+		t.Fatalf("GET status: got %d; body=%s", resp.StatusCode, body)
+	}
+	var reloaded Workspace
+	if err := json.Unmarshal(body, &reloaded); err != nil {
+		t.Fatalf("unmarshal: %v; body=%s", err, body)
+	}
+	if reloaded.RightPanel != nil {
+		t.Errorf("RightPanel = %v, want nil (invalid PUT must not persist)", reloaded.RightPanel)
+	}
+}
+
+// TestPutVaultWorkspace_RightPanel_RoundTrip_200 — PUT persists rightPanel,
+// GET reflects it (TAGS-01).
+func TestPutVaultWorkspace_RightPanel_RoundTrip_200(t *testing.T) {
+	t.Parallel()
+	ts, _ := setupWorkspaceTestServer(t)
+	defer ts.Close()
+
+	resp, body := mustPutJSON(t, ts, "/api/v1/vault/workspace", `{"rightPanel":"tags"}`)
+	if resp.StatusCode != 200 {
+		t.Fatalf("PUT status: got %d, want 200; body=%s", resp.StatusCode, body)
+	}
+	var got Workspace
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("unmarshal: %v; body=%s", err, body)
+	}
+	if got.RightPanel == nil || *got.RightPanel != "tags" {
+		t.Fatalf("PUT response RightPanel = %v, want tags", got.RightPanel)
+	}
+
+	resp, body = http200Get(t, ts, "/api/v1/vault/workspace")
+	if resp.StatusCode != 200 {
+		t.Fatalf("GET status: got %d; body=%s", resp.StatusCode, body)
+	}
+	var reloaded Workspace
+	if err := json.Unmarshal(body, &reloaded); err != nil {
+		t.Fatalf("unmarshal: %v; body=%s", err, body)
+	}
+	if reloaded.RightPanel == nil || *reloaded.RightPanel != "tags" {
+		t.Fatalf("GET after PUT RightPanel = %v, want tags", reloaded.RightPanel)
+	}
+}
