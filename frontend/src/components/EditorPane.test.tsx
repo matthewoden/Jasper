@@ -154,6 +154,17 @@ vi.mock("../lib/useBookmarks", () => ({
     }),
 }));
 
+// NoteOptionsMenu (mounted beside the bookmark star, Plan 30-09) pulls in
+// useReveal(), which calls useToast() unconditionally at the top level —
+// this file's existing render() calls never wrap in a <ToastProvider>, so
+// without this stub every test in this file would throw
+// "useToast must be used inside <ToastProvider>" as soon as the menu's
+// trigger button mounts. Mirrors the same stub added to TabStrip.test.tsx/
+// PaneTree.test.tsx/LeafPane.test.tsx in Plan 30-02 for the same reason.
+vi.mock("./toast.utils", () => ({
+    useToast: () => ({ toast: vi.fn() }),
+}));
+
 import { ScratchpadUUID, getNote, updateNote } from "../lib/notesApi";
 import { getTree, postNoteMove } from "../lib/treeApi";
 import { __testing__ as fileTreeTesting } from "../lib/useFileTree";

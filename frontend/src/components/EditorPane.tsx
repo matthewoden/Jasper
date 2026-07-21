@@ -58,6 +58,7 @@ import type { SearchQuery } from "@codemirror/search";
 import { Star } from "lucide-react";
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
 import { expandAndScrollToFolder } from "./fileTree.utils";
+import { NoteOptionsMenu } from "./NoteOptionsMenu";
 import { TitleElement } from "./TitleElement";
 
 import { FilePreviewView } from "./FilePreviewView";
@@ -264,6 +265,21 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [toggleExpanded, setPulseTarget, setNotesSidebarVisible, activeNoteId]);
 
   const editorRef = useRef<MarkdownEditorRef>(null);
+  // Note-options "Rename" (CTX-03, D-22) reuses the existing inline-title
+  // rename affordance (H1-is-the-filename binding, TitleElement) rather than
+  // a separate rename modal — focusing + selecting the title's text lets the
+  // user immediately start typing a replacement, same as clicking into it.
+  const titleWrapperRef = useRef<HTMLDivElement>(null);
+  const handleRequestRename = useCallback(() => {
+    const el = titleWrapperRef.current?.querySelector<HTMLElement>(".editor-title-element");
+    if (!el) return;
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }, []);
   // Mirrors `content` for synchronous-closure call sites (keepalive/blur/
   // reconnect handlers below) that cannot re-subscribe on every keystroke.
   const latestContentRef = useRef("");
@@ -447,7 +463,21 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [noteId]);
 
   useEffect(() => {
-    if (!hidden && paneActive && loadStatus === "loaded" && noteId !== null) {
+    // paletteOpen guard (Phase 30 WS-06 fix): without it, a note that
+    // finishes loading into a JUST-split pane (e.g. splitPane's cloneActiveTab
+    // path, or a slow getNote() resolving late) steals DOM focus out from
+    // under the Cmd+O/Cmd+P/Cmd+Shift+F palette if the user opened it in the
+    // same beat — reproduced by a real-browser flake where Cmd+Shift+Enter
+    // landed on whatever this effect had just refocused instead of the
+    // palette's own input. The palette already autofocuses itself on mount;
+    // this pane must not fight it for focus while it's open.
+    if (
+      !hidden &&
+      paneActive &&
+      loadStatus === "loaded" &&
+      noteId !== null &&
+      !useTreeStore.getState().paletteOpen
+    ) {
       editorRef.current?.focus();
     }
   }, [hidden, paneActive, loadStatus, noteId]);
@@ -1033,6 +1063,15 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
                 />
               </button>
             )}
+            {!hidden && notePath && (
+              <NoteOptionsMenu
+                noteId={noteId}
+                notePath={notePath}
+                onOpenFind={onOpenFind}
+                onOpenFindReplace={onOpenFindReplace}
+                onRequestRename={handleRequestRename}
+              />
+            )}
           </div>
         </nav>
       )}
@@ -1047,6 +1086,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           through the EXISTING onH1Change/rewriteH1 binding via the
           MarkdownEditor ref's setH1 — no second rename pathway. */}
       <div
+        ref={titleWrapperRef}
         className="editor-title-wrapper"
         style={{
           width: "100%",
