@@ -295,6 +295,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   // handleEditorHeadingsChange) must be able to flush a cached, already-computed
   // heading list into the shared store without waiting on another doc change.
   const latestHeadingsRef = useRef<HeadingInfo[]>([]);
+  // Tags (TAGS-02, CR-01 gap closure): cache of the last-computed tag list
+  // for THIS pane, mirroring latestHeadingsRef above. Needed for the same
+  // reason — a pure tab-switch-to-already-mounted-pane never fires a
+  // docChanged transaction, so without a cache the become-active flush
+  // effect below would have nothing fresh to push into useNoteTagsStore.
+  const latestTagsRef = useRef<string[]>([]);
   // Mirrors the controller's internal userHasEdited flag for synchronous
   // call sites (keepalive/blur/reconnect/note-switch decisions) that read it
   // outside a render.
@@ -539,8 +545,11 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   // Tags (TAGS-02): only the pane whose noteId IS the active tab writes into
   // the shared tag store — mirrors the Outline gate above so keep-alive
   // background panes don't clobber the Tags tab with their (invisible)
-  // content.
+  // content. latestTagsRef is always updated (even when the guard below
+  // drops the write) so the become-active flush effect can push a cached,
+  // already-computed tag list without waiting on another doc-changed event.
   const handleEditorTagsChange = useCallback((tags: string[]) => {
+    latestTagsRef.current = tags;
     if (noteIdRef.current === null) return;
     if (noteIdRef.current !== useTreeStore.getState().activeNoteId) return;
     useNoteTagsStore.getState().setNoteTags(tags);
@@ -580,6 +589,33 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       if (useOutlineStore.getState().scrollToHeading === scrollHandler) {
         useOutlineStore.getState().setScrollToHeading(null);
         useOutlineStore.getState().setOutlineHeadings([]);
+      }
+    };
+  }, [hidden, noteId, activeNoteId]);
+
+  // Tags (TAGS-02, CR-01 gap closure): mirrors the outline become-active
+  // flush effect above — the Tags tab is written only from a CM6 docChanged
+  // transaction (handleEditorTagsChange) or on editor mount, so switching
+  // between two already-open, already-mounted tabs with NO intervening edit
+  // never fires either path and the rail is left showing the previously
+  // active note's tags. Flushing latestTagsRef.current here, gated on this
+  // effect's own [hidden, noteId, activeNoteId] settling on "this pane is
+  // now active", closes that gap without depending on another doc change.
+  useEffect(() => {
+    if (hidden || noteId === null || noteId !== activeNoteId) return;
+    useNoteTagsStore.getState().setNoteTags(latestTagsRef.current);
+    return () => {
+      // The outline effect guards its cleanup on "am I still the registered
+      // scrollToHeading handler" — the tag store has no handler to register,
+      // so the ownership-equivalent check is "is this note still the active
+      // one". If another pane has already become active by the time this
+      // cleanup runs (the common case: a newly-active pane's effect already
+      // flushed ITS tags before this stale cleanup fires), activeNoteId no
+      // longer equals noteId and we must NOT clobber the new pane's tags.
+      // Only clear to [] when we're genuinely deactivating with nothing else
+      // claiming ownership (e.g. the last open tab was just closed).
+      if (useTreeStore.getState().activeNoteId !== noteId) {
+        useNoteTagsStore.getState().setNoteTags([]);
       }
     };
   }, [hidden, noteId, activeNoteId]);
