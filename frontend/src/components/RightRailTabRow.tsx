@@ -163,7 +163,9 @@ export function RightRailTabRow(): React.JSX.Element {
 /** Ported verbatim from SectionHeader.tsx — chevron/onToggle/aria-expanded removed. */
 const subHeaderStyle: CSSProperties = {
   height: 32,
-  padding: "0 12px",
+  // 24px matches the outline content's text line — rail-wide inset so the
+  // icon tabs, sub-header title, and panel content share one alignment edge.
+  padding: "0 24px",
   background: "var(--color-surface)",
   display: "flex",
   alignItems: "center",

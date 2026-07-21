@@ -29,11 +29,11 @@ import { RightRailSubHeader } from "./RightRailTabRow";
 import { useToast } from "./toast.utils";
 
 
-/** Panel card shell — shared treatment per Surface 1-NEW. */
+/** Panel shell — flat inside the tabbed rail. The floating-card chrome
+ * (border + radius) predates the Phase 30 rail rewrite; inside the flat rail
+ * body it read as a double border with rounded inner corners. */
 const panelCardStyle: CSSProperties = {
   background: "var(--color-surface)",
-  border: "1px solid var(--color-border)",
-  borderRadius: 8,
   overflow: "hidden",
   display: "flex",
   flexDirection: "column",
@@ -65,7 +65,7 @@ const rowBaseStyle: CSSProperties = {
   height: 32,
   display: "flex",
   alignItems: "center",
-  padding: "0 8px 0 16px",
+  padding: "0 16px 0 24px",
   gap: 8,
   cursor: "pointer",
   border: "none",

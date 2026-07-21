@@ -92,10 +92,15 @@ describe("RightRailTagsPanel — body-only (no own header/close/filter)", () => 
     expect(screen.getByTestId("tag-row-project")).toBeInTheDocument();
   });
 
-  it("panel card has borderRadius: 8 style", () => {
+  it("panel shell is flat — no floating-card border/radius inside the tabbed rail", () => {
     const { container } = renderPanel();
-    const panel = container.querySelector('[style*="border-radius: 8px"]');
-    expect(panel).toBeTruthy();
+    expect(container.querySelector('[style*="border-radius: 8px"]')).toBeNull();
+    const list = screen.getAllByRole("list")[0];
+    let node: HTMLElement | null = list;
+    while (node && node !== container) {
+      expect(node.style.border === "" || node.style.border === "none").toBe(true);
+      node = node.parentElement;
+    }
   });
 
   it("renders its own 'Tags' sub-header + count pill", () => {

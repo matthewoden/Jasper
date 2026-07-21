@@ -93,7 +93,7 @@ export function LinkedMentionsPanel({ noteId, backlinks, loading, error }: Props
               key={row.sourceId}
               className="backlinks-row"
               style={{
-                padding: "8px 16px",
+                padding: "8px 24px",
                 display: "flex",
                 flexDirection: "column",
                 gap: 8,

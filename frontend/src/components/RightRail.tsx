@@ -156,8 +156,8 @@ export function RightRail({ activeNoteId, style }: Props) {
       <header
         style={{
           height: 40,
-          paddingLeft: 16,
-          paddingRight: 16,
+          paddingLeft: 24,
+          paddingRight: 24,
           borderBottom: "1px solid var(--color-border)",
           flexShrink: 0,
           display: "flex",

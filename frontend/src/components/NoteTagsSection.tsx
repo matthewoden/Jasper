@@ -30,7 +30,7 @@ const sectionStyle: CSSProperties = {
 const rowStyle: CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
-  padding: "8px 12px",
+  padding: "8px 24px",
   gap: 8,
 };
 

@@ -121,7 +121,7 @@ export function OutlinePanel() {
           display: "flex",
           alignItems: "center",
           paddingLeft: indentForLevel(heading.level),
-          paddingRight: 16,
+          paddingRight: 24,
           cursor: "pointer",
         }}
       >
