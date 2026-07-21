@@ -4,8 +4,9 @@
  * Closes the Wave 0 E2E gap identified in 28-VALIDATION.md: proves the
  * restyled Cmd+O quick switcher end-to-end against the embedded binary.
  *
- *   QUICK-01  Restyle smoke: `#quick-switcher-listbox` renders; rows carry
- *             NO "Note" kind badge (D-14); a matched query highlights
+ *   QUICK-01  Restyle smoke: `#quick-switcher-listbox` renders; note rows
+ *             carry a leading "Note" kind badge (D28.1, reverses Phase 28
+ *             D-14); a matched query highlights
  *             characters via inline `<span>` nodes (D-15); the input
  *             placeholder reads "Find or create a note…"; the always-on
  *             footer legend (D-13) shows "open"/"create"/"split".
@@ -112,7 +113,7 @@ test.describe("@phase28 QUICK-01: quick switcher restyle smoke", () => {
     if (jasper) await jasper.kill();
   });
 
-  test("Cmd+O opens the restyled switcher: listbox renders, no kind badge, matched query highlights characters, placeholder + footer legend copy", async ({
+  test("Cmd+O opens the restyled switcher: listbox renders, leading kind badge, matched query highlights characters, placeholder + footer legend copy", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
@@ -130,11 +131,12 @@ test.describe("@phase28 QUICK-01: quick switcher restyle smoke", () => {
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    // D-14: listbox exists with the contracted id/role and carries no kind badge.
+    // D28.1 (reverses Phase 28 D-14): listbox exists with the contracted
+    // id/role, and note rows carry a leading accent "Note" kind badge.
     const listbox = dialog.locator("#quick-switcher-listbox");
     await expect(listbox).toBeVisible({ timeout: 5_000 });
     await expect(listbox).toHaveAttribute("role", "listbox");
-    await expect(listbox.getByText("Note", { exact: true })).toHaveCount(0);
+    await expect(listbox.getByText("Note", { exact: true }).first()).toBeVisible();
 
     // Placeholder copy (Copywriting Contract).
     await expect(dialog.getByPlaceholder("Find or create a note…")).toBeVisible();
@@ -149,8 +151,8 @@ test.describe("@phase28 QUICK-01: quick switcher restyle smoke", () => {
     const matchedRow = dialog.locator('[data-row-kind="note"]').filter({ hasText: "restylealphaqs" }).first();
     await expect(matchedRow).toBeVisible({ timeout: 5_000 });
     await expect(matchedRow.locator("span").first()).toBeVisible();
-    // Still no kind badge on the matched row.
-    await expect(matchedRow.getByText("Note", { exact: true })).toHaveCount(0);
+    // The matched row still carries the leading "Note" badge (D28.1).
+    await expect(matchedRow.getByText("Note", { exact: true })).toHaveCount(1);
 
     // D-13: the always-on footer legend, sibling AFTER the scrollable listbox.
     await expect(dialog.getByText("open", { exact: true })).toBeVisible();
