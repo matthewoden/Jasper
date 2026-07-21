@@ -247,6 +247,52 @@ describe("<TabPill />", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it("D-14 / CR-02: middle-click on a PINNED pill calls onPinnedClickRefused, NOT onClose", () => {
+    const onClose = vi.fn();
+    const onPinnedClickRefused = vi.fn();
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        isPinned={true}
+        onSelect={vi.fn()}
+        onClose={onClose}
+        onPinnedClickRefused={onPinnedClickRefused}
+      />,
+    );
+    const pill = screen.getByRole("tab");
+    fireEvent(
+      pill,
+      new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }),
+    );
+    expect(onPinnedClickRefused).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("D-14 / CR-02: middle-click on an UNpinned pill still calls onClose (no regression)", () => {
+    const onClose = vi.fn();
+    const onPinnedClickRefused = vi.fn();
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        isPinned={false}
+        onSelect={vi.fn()}
+        onClose={onClose}
+        onPinnedClickRefused={onPinnedClickRefused}
+      />,
+    );
+    const pill = screen.getByRole("tab");
+    fireEvent(
+      pill,
+      new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }),
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onPinnedClickRefused).not.toHaveBeenCalled();
+  });
+
   it("pill root carries user-select:none so tab titles are never selectable", () => {
     render(
       <TabPill

@@ -284,6 +284,28 @@ describe("<TabStrip /> keyboard shortcuts (Task 2 — TAB-11 / TAB-05)", () => {
     expect(h.onRequestClose).not.toHaveBeenCalled();
   });
 
+  it("D-14 / CR-02: Alt+W on a pinned active tab does NOT call onRequestClose", () => {
+    const pinnedTabs: Tab[] = [
+      { id: "a", noteId: "a" },
+      { id: "b", noteId: "b", pinned: true },
+      { id: "c", noteId: "c" },
+    ];
+    const h = renderStrip({ tabs: pinnedTabs, activeTabId: "b" });
+    fireEvent.keyDown(window, { code: "KeyW", key: "∑", altKey: true });
+    expect(h.onRequestClose).not.toHaveBeenCalled();
+  });
+
+  it("D-14 / CR-02: Alt+W on an UNpinned active tab still calls onRequestClose", () => {
+    const pinnedTabs: Tab[] = [
+      { id: "a", noteId: "a" },
+      { id: "b", noteId: "b", pinned: true },
+      { id: "c", noteId: "c" },
+    ];
+    const h = renderStrip({ tabs: pinnedTabs, activeTabId: "c" });
+    fireEvent.keyDown(window, { code: "KeyW", key: "∑", altKey: true });
+    expect(h.onRequestClose).toHaveBeenCalledWith("c");
+  });
+
   it("no-op when there are zero tabs", () => {
     const h = renderStrip({ tabs: [], activeTabId: null });
     fireEvent.keyDown(window, { code: "BracketRight", key: "'", altKey: true });

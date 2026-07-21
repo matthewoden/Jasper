@@ -164,8 +164,15 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
         onClick={onSelect}
         onAuxClick={(e) => {
           if (e.button === 1) {
-            // Middle-click closes the tab (TAB-05 / D-14).
             e.preventDefault();
+            // D-14/CR-02: a pinned tab refuses the middle-click close, mirroring
+            // the pin-glyph button's own guard — never call onClose() for a
+            // pinned tab, only onPinnedClickRefused.
+            if (isPinned) {
+              onPinnedClickRefused?.();
+              return;
+            }
+            // Middle-click closes the tab (TAB-05 / D-14).
             onClose();
           }
         }}
