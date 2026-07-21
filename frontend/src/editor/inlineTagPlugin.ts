@@ -27,6 +27,8 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
+import type { Text } from "@codemirror/state";
+import type { Tree } from "@lezer/common";
 import { useTreeStore } from "../lib/useTreeStore";
 
 
@@ -34,17 +36,24 @@ import { useTreeStore } from "../lib/useTreeStore";
  * Matches #tagname where tagname = [a-z0-9_-]+. Lowercase only — the backend
  * normalizes to lowercase on save, so uppercase tags won't exist in practice,
  * but the frontend also enforces it so `#FOO` is never decorated.
+ *
+ * Exported so tagExtract.ts (the pure, whole-document extractor backing the
+ * Tags tab, TAGS-02) reuses the exact same pattern rather than redeclaring it.
  */
-const INLINE_TAG_RE = /#([a-z0-9_-]+)/g;
+export const INLINE_TAG_RE = /#([a-z0-9_-]+)/g;
 
 
 /**
  * Returns true when the position is inside code or frontmatter (FencedCode,
  * CodeBlock, InlineCode, Frontmatter). Copied from wikilinkPlugin for
  * independent testability.
+ *
+ * Takes a `Tree` (not a view) so tagExtract.ts can pass in a fully-parsed
+ * whole-document tree (via ensureSyntaxTree, mirroring outlineExtract.ts)
+ * instead of the viewport-scoped tree this plugin's own decorate() sees.
  */
-function isInsideCodeOrFrontmatter(view: EditorView, from: number): boolean {
-  let node = syntaxTree(view.state).resolveInner(from);
+export function isInsideCodeOrFrontmatter(tree: Tree, from: number): boolean {
+  let node = tree.resolveInner(from);
   while (node) {
     const name = node.name;
     if (
@@ -64,10 +73,11 @@ function isInsideCodeOrFrontmatter(view: EditorView, from: number): boolean {
 
 /**
  * Returns true when the position is on a markdown heading line (starts with `# ` or `## `).
- * Prevents `## todo` from decorating the second `#todo` as a tag.
+ * Prevents a `#tag`-looking token elsewhere on the same heading line (e.g.
+ * `# Meeting #notes`) from being treated as a tag.
  */
-function isHeadingLine(view: EditorView, from: number): boolean {
-  const line = view.state.doc.lineAt(from);
+export function isHeadingLine(doc: Text, from: number): boolean {
+  const line = doc.lineAt(from);
   const text = line.text;
   if (text.length === 0 || text[0] !== "#") return false;
   return text[1] === " " || text[1] === "#";
@@ -77,8 +87,8 @@ function isHeadingLine(view: EditorView, from: number): boolean {
 const inlineTagMatcher = new MatchDecorator({
   regexp: INLINE_TAG_RE,
   decorate(add, from, to, match, view) {
-    if (isInsideCodeOrFrontmatter(view, from)) return;
-    if (isHeadingLine(view, from)) return;
+    if (isInsideCodeOrFrontmatter(syntaxTree(view.state), from)) return;
+    if (isHeadingLine(view.state.doc, from)) return;
 
     const tagName = match[1];
     add(
