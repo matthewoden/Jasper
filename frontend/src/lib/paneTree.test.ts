@@ -285,6 +285,25 @@ describe("moveTab (WS-02, D-07)", () => {
     const result = moveTab(leaf, "missing", tab);
     expect(result).toBe(leaf);
   });
+
+  it("D-15: a PINNED dragged tab lands at the END of the target leaf's pinned group, not appended past its unpinned tabs", () => {
+    const p1 = { id: "p1", noteId: "note-p1", pinned: true };
+    const u1 = { id: "u1", noteId: "note-u1" };
+    const leaf = newLeaf("root", [p1, u1], u1.id);
+    const dragged = { id: newTabId(), noteId: "note-dragged", pinned: true };
+    const result = asLeaf(moveTab(leaf, "root", dragged));
+    expect(result.tabs.map((t) => t.id)).toEqual(["p1", dragged.id, "u1"]);
+    expect(result.active).toBe(dragged.id);
+  });
+
+  it("an UNPINNED dragged tab still appends at the end unchanged (no regression)", () => {
+    const p1 = { id: "p1", noteId: "note-p1", pinned: true };
+    const u1 = { id: "u1", noteId: "note-u1" };
+    const leaf = newLeaf("root", [p1, u1], u1.id);
+    const dragged = { id: newTabId(), noteId: "note-dragged" };
+    const result = asLeaf(moveTab(leaf, "root", dragged));
+    expect(result.tabs.map((t) => t.id)).toEqual(["p1", "u1", dragged.id]);
+  });
 });
 
 describe("moveTabToIndex (P26 polish — positional cross-leaf insert)", () => {

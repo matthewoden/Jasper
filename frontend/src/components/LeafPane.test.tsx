@@ -21,6 +21,12 @@ import { usePaneDragStore } from "../lib/usePaneDragStore";
 import type { LeafNode } from "../lib/paneTree";
 import type { Tab } from "../lib/useTabStore";
 
+// LeafPane mounts TabStrip, which now calls useToast() (D-14 pinned refuse
+// toast) — stub it so no render site here needs a real <ToastProvider>.
+vi.mock("./toast.utils", () => ({
+  useToast: () => ({ toast: vi.fn() }),
+}));
+
 // CR-03 needs each mocked EditorPane to expose a controllable
 // EditorPaneHandlers instance (per noteId, stable across re-renders so a
 // mock's call history survives a tab-switch rerender) and a way to trigger

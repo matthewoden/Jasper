@@ -188,7 +188,10 @@ export function splitWithTab(
 /**
  * Appends `tab` to the target leaf's tabs and activates it. Per-leaf dedup
  * (D-07): if the target leaf already holds a tab with the same `noteId`,
- * activates that existing tab instead of adding a duplicate.
+ * activates that existing tab instead of adding a duplicate. A PINNED `tab`
+ * (D-15) does not append past the leaf's unpinned tabs — it lands at the end
+ * of the target leaf's own pinned group instead, so a cross-pane center-drop
+ * of a pinned tab never breaks the left-grouped invariant.
  *
  * Returns the tree unchanged if `targetLeafId` is not found.
  */
@@ -198,6 +201,11 @@ export function moveTab(tree: PaneNode, targetLeafId: string, tab: Tab): PaneNod
   const existing = leaf.tabs.find((t) => t.noteId === tab.noteId);
   if (existing) {
     return _updLeaf(tree, targetLeafId, { active: existing.id });
+  }
+  if (tab.pinned) {
+    const boundary = leaf.tabs.filter((t) => t.pinned).length;
+    const tabs = [...leaf.tabs.slice(0, boundary), tab, ...leaf.tabs.slice(boundary)];
+    return _updLeaf(tree, targetLeafId, { tabs, active: tab.id });
   }
   return _updLeaf(tree, targetLeafId, { tabs: [...leaf.tabs, tab], active: tab.id });
 }

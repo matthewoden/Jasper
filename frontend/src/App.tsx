@@ -46,6 +46,7 @@ import type { Tab } from "./lib/useTabStore";
 import { usePaneStore, pruneLayoutForMissingNotes } from "./lib/usePaneStore";
 import * as searchHistory from "./lib/searchHistory";
 import { _findLeaf, _updLeaf, newTabId } from "./lib/paneTree";
+import { clampIndexToPinnedBoundary } from "./lib/tabOverflow";
 import { getOrCreateController } from "./lib/noteBufferController";
 import { useTreeMutations } from "./lib/useTreeMutations";
 import {
@@ -102,8 +103,15 @@ function findNoteTitle(
  * a leaf-targeted sibling of usePaneStore's own openInActivePane, needed by
  * per-leaf "open to the right" / "new tab" context actions (D-16/D-17 dedup
  * rules apply identically, just scoped to an explicit leafId).
+ *
+ * `afterTabId`, when given, inserts the new (always-unpinned) tab
+ * immediately after that tab's position instead of appending at the end —
+ * used by "New note to the right" (openRightInLeaf). Per D-16/Phase 30, the
+ * insertion index is clamped to the pinned/unpinned boundary so a new
+ * unpinned tab can never land inside a leaf's pinned group, even when
+ * `afterTabId` itself is pinned (with more pinned tabs after it).
  */
-function openNoteInLeaf(leafId: string, noteId: string): void {
+export function openNoteInLeaf(leafId: string, noteId: string, afterTabId?: string): void {
   const { tree } = usePaneStore.getState();
   const leaf = _findLeaf(tree, leafId);
   if (!leaf) return;
@@ -113,8 +121,16 @@ function openNoteInLeaf(leafId: string, noteId: string): void {
     return;
   }
   const tab: Tab = { id: newTabId(), noteId };
+  let insertIndex = leaf.tabs.length; // default: append at the end
+  if (afterTabId !== undefined) {
+    const afterIdx = leaf.tabs.findIndex((t) => t.id === afterTabId);
+    if (afterIdx !== -1) insertIndex = afterIdx + 1;
+  }
+  const pinnedCount = leaf.tabs.filter((t) => t.pinned).length;
+  insertIndex = clampIndexToPinnedBoundary(insertIndex, pinnedCount, /* draggedIsPinned */ false);
+  const tabs = [...leaf.tabs.slice(0, insertIndex), tab, ...leaf.tabs.slice(insertIndex)];
   usePaneStore.setState({
-    tree: _updLeaf(tree, leafId, { tabs: [...leaf.tabs, tab], active: tab.id }),
+    tree: _updLeaf(tree, leafId, { tabs, active: tab.id }),
   });
 }
 
@@ -551,7 +567,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       void (async () => {
         try {
           const created = await createNote(parent, uniqueUntitledTitle(parent));
-          openNoteInLeaf(leafId, created.id);
+          openNoteInLeaf(leafId, created.id, tabId);
         } catch {
           // Creation failures surface via the shared tree-mutation toast path;
           // nothing tab-specific to recover here.

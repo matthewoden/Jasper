@@ -20,6 +20,12 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
 import { usePaneDragStore } from "../lib/usePaneDragStore";
 
+// TabStrip now calls useToast() (pinned-tab refuse-click toast, D-14) — stub
+// it so every render site in this file doesn't need a real <ToastProvider>.
+vi.mock("./toast.utils", () => ({
+  useToast: () => ({ toast: vi.fn() }),
+}));
+
 const tabs: Tab[] = [
   { id: "a", noteId: "a" },
   { id: "b", noteId: "b" },

@@ -30,10 +30,16 @@ import { usePaneDragStore, type DropRegion } from "../lib/usePaneDragStore";
 import { _findLeaf } from "../lib/paneTree";
 import type { Tab } from "../lib/useTabStore";
 import { useTreeStore } from "../lib/useTreeStore";
+import { useToast } from "./toast.utils";
 import { TabPill } from "./TabPill";
 import { TabContextMenu } from "./TabContextMenu";
 import { TabOverflowDropdown } from "./TabOverflowDropdown";
-import { computeHiddenTabIds, computeDropIndex, MIN_TAB_WIDTH } from "../lib/tabOverflow";
+import {
+  computeHiddenTabIds,
+  computeDropIndex,
+  clampIndexToPinnedBoundary,
+  MIN_TAB_WIDTH,
+} from "../lib/tabOverflow";
 
 /** Set equality used to preserve state identity (avoid re-render churn). */
 function sameSet(a: Set<string>, b: Set<string>): boolean {
@@ -279,6 +285,13 @@ export function TabStrip({
     (s) => s.setBacklinksRailExpanded,
   );
 
+  // Pinned tabs refuse a direct pin-glyph click with a toast (D-14) rather
+  // than closing — same toast-on-refusal idiom as useWorkspace.ts/useReveal.ts.
+  const { toast } = useToast();
+  const handlePinnedClickRefused = () => {
+    toast({ title: "This tab is pinned — right-click to unpin" });
+  };
+
   // Whether THIS strip's leaf is the active pane (D-05 active-pane cue): the
   // active tab's top-accent reads purple (--color-accent) only in the active
   // pane, and a neutral gray (--color-muted) in inactive panes — so the purple
@@ -519,13 +532,22 @@ export function TabStrip({
         if (!found) indicatorX = lastRight;
 
         const foreignLeaf = _findLeaf(usePaneStore.getState().tree, targetLeafId);
-        const index = foreignLeaf
+        const rawIndex = foreignLeaf
           ? computeDropIndex({
               tabIds: foreignLeaf.tabs.map((t) => t.id),
               visibleTabIds: visibleIds,
               targetId,
             })
           : -1;
+        // D-15/D-16: an unpinned dragged tab can never land inside the
+        // FOREIGN leaf's pinned region, and a pinned dragged tab can never
+        // land outside it — pinnedCount counts the foreign leaf's OWN pinned
+        // tabs (the dragged tab is not yet a member of it).
+        const draggedIsPinned = tabs.find((t) => t.id === drag.tabId)?.pinned === true;
+        const pinnedCount = foreignLeaf
+          ? foreignLeaf.tabs.filter((t) => t.pinned).length
+          : 0;
+        const index = clampIndexToPinnedBoundary(rawIndex, pinnedCount, draggedIsPinned);
         if (index !== -1) {
           usePaneDragStore.getState().setStripHover({ leafId: targetLeafId, index, indicatorX });
         } else {
@@ -752,8 +774,15 @@ export function TabStrip({
       // (splice-first), so a left-to-right drop must compensate by one to
       // land where the left-edge indicator promised (gap 6 / WR-01).
       const adjusted = drag.fromIndex < toIdx ? toIdx - 1 : toIdx;
-      if (toIdx !== -1 && adjusted !== drag.fromIndex) {
-        onReorder(drag.fromIndex, adjusted);
+      // D-15/D-16: `adjusted` is already an index into the array with the
+      // dragged tab spliced OUT, so pinnedCount (this leaf's OTHER pinned
+      // tabs) clamps it directly — an unpinned tab can never land inside the
+      // pinned region, a pinned tab can never land outside it.
+      const draggedIsPinned = tabs.find((t) => t.id === drag.tabId)?.pinned === true;
+      const pinnedCount = tabs.filter((t) => t.pinned && t.id !== drag.tabId).length;
+      const clampedAdjusted = clampIndexToPinnedBoundary(adjusted, pinnedCount, draggedIsPinned);
+      if (toIdx !== -1 && clampedAdjusted !== drag.fromIndex) {
+        onReorder(drag.fromIndex, clampedAdjusted);
       }
     } else {
       setDropIndicatorX(null);
@@ -829,8 +858,10 @@ export function TabStrip({
                   paneActive={isActivePane}
                   isDeleted={deletedTabIds.has(tab.noteId)}
                   isDragging={dragGhost?.tabId === tab.id}
+                  isPinned={tab.pinned === true}
                   onSelect={() => onSelectTab(tab.id)}
                   onClose={() => onRequestClose(tab.id)}
+                  onPinnedClickRefused={handlePinnedClickRefused}
                 />
               </TabContextMenu>
             </div>

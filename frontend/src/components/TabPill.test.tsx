@@ -188,6 +188,65 @@ describe("<TabPill />", () => {
     expect(pill.hasAttribute("isdragging")).toBe(false);
   });
 
+  it("isPinned renders the Pin glyph in place of the close-× button", () => {
+    const onClose = vi.fn();
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        isPinned={true}
+        onSelect={vi.fn()}
+        onClose={onClose}
+        onPinnedClickRefused={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Close note.md" })).toBeNull();
+    const pinBtn = screen.getByRole("button", {
+      name: "Pinned tab — right-click to unpin",
+    });
+    expect(pinBtn).toBeInTheDocument();
+  });
+
+  it("isPinned=false (default) still renders the close-× button (no regression)", () => {
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Pinned tab — right-click to unpin" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Close note.md" })).toBeInTheDocument();
+  });
+
+  it("clicking the pin glyph calls onPinnedClickRefused, NOT onClose, and does not select the tab", () => {
+    const onClose = vi.fn();
+    const onSelect = vi.fn();
+    const onPinnedClickRefused = vi.fn();
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        isPinned={true}
+        onSelect={onSelect}
+        onClose={onClose}
+        onPinnedClickRefused={onPinnedClickRefused}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Pinned tab — right-click to unpin" }),
+    );
+    expect(onPinnedClickRefused).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("pill root carries user-select:none so tab titles are never selectable", () => {
     render(
       <TabPill

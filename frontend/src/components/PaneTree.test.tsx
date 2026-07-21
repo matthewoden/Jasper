@@ -18,6 +18,12 @@ import { render, screen, fireEvent, cleanup, act } from "@testing-library/react"
 import { PaneTree } from "./PaneTree";
 import { usePaneStore } from "../lib/usePaneStore";
 import { useTreeStore } from "../lib/useTreeStore";
+
+// PaneTree nests TabStrip, which now calls useToast() (D-14 pinned refuse
+// toast) — stub it so no render site here needs a real <ToastProvider>.
+vi.mock("./toast.utils", () => ({
+  useToast: () => ({ toast: vi.fn() }),
+}));
 import type { LeafNode, PaneNode } from "../lib/paneTree";
 import type { Tab } from "../lib/useTabStore";
 
