@@ -77,9 +77,32 @@ function outlineList(page: Page) {
   return page.getByRole("group", { name: "Note outline" });
 }
 
-/** Section-header button (whole-row-clickable, D-03) — matched by its visible title text. */
-function sectionHeaderButton(page: Page, title: string) {
-  return page.locator("button").filter({ hasText: title }).first();
+/**
+ * Right-rail icon-tab row (Phase 30 TAGS-01 rework — replaces the Phase 20
+ * three-collapsible-sections rail). Exactly one panel is mounted at a time,
+ * selected by clicking one of these three icon-only tab buttons.
+ */
+function railTabRow(page: Page) {
+  return page.getByTestId("right-rail-tab-row");
+}
+
+function railTab(page: Page, name: "Outline" | "Linked mentions" | "Tags") {
+  return railTabRow(page).getByRole("button", { name });
+}
+
+/**
+ * RightRailSubHeader (RightRailTabRow.tsx) is a non-clickable div rendering
+ * `<span>{title}</span><span>{count}</span>` for the active panel — the
+ * Phase 20 SectionHeader's clickable/aria-expanded button was removed
+ * entirely in the Phase 30 tab-row rework (panels are no longer
+ * independently collapsible). Locate the count pill via its exact-text
+ * label sibling rather than a "button" role, which no longer exists here.
+ */
+function subHeaderCountBadge(page: Page, title: string) {
+  return page
+    .locator("span")
+    .filter({ hasText: new RegExp(`^${title}$`) })
+    .locator("xpath=following-sibling::span[1]");
 }
 
 async function repeatLines(n: number, text: string): Promise<string> {
@@ -252,7 +275,12 @@ test.describe("@phase20 RSIDE-02: Linked-mentions cards, count badge, openTab, e
     await expect(targetRow).toBeVisible({ timeout: 10_000 });
     await targetRow.click();
 
-    const countBadge = sectionHeaderButton(page, "Linked mentions").locator("span").last();
+    // Linked mentions is not the default rail tab (Outline is) — switch to
+    // it before asserting the panel's count badge/cards (Phase 30 TAGS-01
+    // single-mounted-panel tab-row model).
+    await railTab(page, "Linked mentions").click();
+
+    const countBadge = subHeaderCountBadge(page, "Linked mentions");
     await expect
       .poll(async () => (await countBadge.textContent())?.trim(), { timeout: 10_000 })
       .toBe("1");
@@ -281,6 +309,10 @@ test.describe("@phase20 RSIDE-02: Linked-mentions cards, count badge, openTab, e
     await waitForConnected(page, jasper.baseURL);
     await openNoteFromTree(page, noteId);
 
+    // Explicit switch (not relying on tab persistence from a prior test in
+    // this describe block) — Outline is the tab-row default.
+    await railTab(page, "Linked mentions").click();
+
     await expect(page.getByText("No backlinks found", { exact: true })).toBeVisible({
       timeout: 10_000,
     });
@@ -290,9 +322,25 @@ test.describe("@phase20 RSIDE-02: Linked-mentions cards, count badge, openTab, e
   });
 });
 
-// ─── Chrome model: default-visible sidebar + independent section collapse ──
-
-test.describe("@phase20 chrome: right sidebar visible by default; sections collapse independently", () => {
+// ─── Chrome model: default-visible rail + single-mounted-panel tab-row ──
+//
+// The Phase 20 three-collapsible-sections rail (independent SectionHeader
+// aria-expanded state per section, all three stacked and visible at once)
+// was REPLACED by the Phase 30 TAGS-01 tab-row rework (RightRail.tsx):
+// exactly ONE panel (Outline / Linked mentions / Tags) is mounted at a
+// time, selected by a 30x30 icon-tab row, with no per-section collapse
+// affordance left anywhere in the rail. This test is rewritten to guard
+// the current equivalent of the same user value this Phase 20 test
+// protected — "the right rail renders by default and its panel-switching
+// affordance works" — using the icon-tab row instead of section headers.
+//
+// NOTE for owner review: this now materially overlaps
+// phase30-rail-uat.spec.ts's "TAGS-01" test, which already exercises the
+// same single-mounted-panel tab-row contract (plus workspace.json
+// persistence across reload). Consider retiring one of the two once
+// confirmed redundant — left both in place per Rule 3 (no deletions
+// without owner sign-off).
+test.describe("@phase20 chrome: right rail visible by default; icon-tab row mounts exactly one panel at a time", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -303,31 +351,47 @@ test.describe("@phase20 chrome: right sidebar visible by default; sections colla
     if (jasper) await jasper.kill();
   });
 
-  test("all three sections render expanded on a fresh profile with no note open; clicking a section header collapses it", async ({
+  test("the rail + all three icon tabs render on a fresh profile with no note open; each tab click mounts exactly that panel", async ({
     page,
   }) => {
     await waitForConnected(page, jasper.baseURL);
 
-    const outlineHeader = sectionHeaderButton(page, "Outline");
-    const mentionsHeader = sectionHeaderButton(page, "Linked mentions");
-    const tagsHeader = sectionHeaderButton(page, "Tags");
-    await expect(outlineHeader).toBeVisible({ timeout: 10_000 });
-    await expect(mentionsHeader).toBeVisible();
-    await expect(tagsHeader).toBeVisible();
+    await expect(railTabRow(page)).toBeVisible({ timeout: 10_000 });
+    const outlineTab = railTab(page, "Outline");
+    const mentionsTab = railTab(page, "Linked mentions");
+    const tagsTab = railTab(page, "Tags");
+    await expect(outlineTab).toBeVisible();
+    await expect(mentionsTab).toBeVisible();
+    await expect(tagsTab).toBeVisible();
 
-    await expect(outlineHeader).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByText("No headings", { exact: true })).toBeVisible();
-
-    await outlineHeader.click();
-    await expect(outlineHeader).toHaveAttribute("aria-expanded", "false");
-    await expect(page.getByText("No headings", { exact: true })).toHaveCount(0, {
-      timeout: 5_000,
+    const outlinePanel = outlineList(page);
+    const linkedPanel = page.getByRole("region", {
+      name: "Notes that link to this note",
     });
+    const tagsEmptyState = page.getByText("No tags in this vault");
 
-    await outlineHeader.click();
-    await expect(outlineHeader).toHaveAttribute("aria-expanded", "true");
+    // Default tab: Outline — "No headings" empty state (no note open yet).
+    await expect(page.getByText("No headings", { exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(linkedPanel).not.toBeVisible();
+    await expect(tagsEmptyState).not.toBeVisible();
+
+    await mentionsTab.click();
+    await expect(linkedPanel).toBeVisible({ timeout: 5_000 });
+    await expect(outlinePanel).toHaveCount(0);
+    await expect(tagsEmptyState).not.toBeVisible();
+
+    await tagsTab.click();
+    await expect(tagsEmptyState).toBeVisible({ timeout: 5_000 });
+    await expect(outlinePanel).toHaveCount(0);
+    await expect(linkedPanel).not.toBeVisible();
+
+    await outlineTab.click();
     await expect(page.getByText("No headings", { exact: true })).toBeVisible({
       timeout: 5_000,
     });
+    await expect(linkedPanel).not.toBeVisible();
+    await expect(tagsEmptyState).not.toBeVisible();
   });
 });

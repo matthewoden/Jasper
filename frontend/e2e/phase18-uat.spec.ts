@@ -10,9 +10,13 @@
  * TABUI-01: tabs are 40px tall, square-cornered (no border-radius), each has
  *   a leading file icon + a close X, and the active tab shows a 2px accent
  *   TOP border (moved from the old bottom-border position).
- * RIBBON-01..04: the 48px activity ribbon renders with the vault-initial
- *   badge, and its Files/Search/daily-note/command-palette buttons drive
- *   their already-shipped actions.
+ * RIBBON-01/03/04: the 48px activity ribbon renders with the vault-initial
+ *   badge, and its daily-note/command-palette buttons drive their
+ *   already-shipped actions. RIBBON-02/03/04 (button-wiring describe block
+ *   below) originally also covered standalone ribbon Files/Search TOGGLE
+ *   buttons; those were removed in Phase 27 NAV-02 (D-09/D-10) — panel
+ *   selection now lives entirely in the sidebar's SidebarTabRow, and the
+ *   two rewritten tests below guard that current equivalent instead.
  * TABUI-02: each sidebar owns its own toggle placement — the left sidebar's
  *   collapse control lives in its header row (SidebarTabRow) with reopen via
  *   a pane-corner button (Phase 27 NAV-03); the right rail's collapse
@@ -381,7 +385,23 @@ test.describe("@phase18 RIBBON-01: activity ribbon presence + vault badge", () =
 });
 
 // ─── RIBBON-02/03/04: ribbon button wiring ───────────────────────────────────
-
+//
+// The ribbon's standalone Files/Search TOGGLE buttons this describe block
+// originally guarded were REMOVED entirely in Phase 27 NAV-02 (D-09/D-10) —
+// see ActivityRibbon.tsx's header comment: "panel selection now lives
+// entirely in the sidebar's SidebarTabRow." The Activity ribbon today has
+// exactly one quick-switcher button plus daily-note/command-palette/
+// settings; no Files or Search button exists on it anymore. The equivalent
+// user value (a panel selector that is accent-colored while its panel is
+// active, and a Search entry point that focuses the sidebar's search input)
+// now lives on SidebarTabRow's "Notes"/"Search" tabs (Sidebar's own 40px
+// header row), which these two tests are rewritten to guard.
+//
+// NOTE for owner review: this now overlaps phase27-uat.spec.ts's NAV-01/
+// NAV-02 test, which already exercises SidebarTabRow panel-switching and
+// asserts the ribbon has no Files/Search buttons. Consider retiring one of
+// the two once confirmed redundant — left both per Rule 3 (no deletions
+// without owner sign-off).
 test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
   let jasper: JasperHandle;
 
@@ -393,62 +413,104 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
     if (jasper) await jasper.kill();
   });
 
-  test("Files toggle drives notes-sidebar visibility and is accent-colored while the sidebar is visible", async ({
+  test("Notes tab (SidebarTabRow) is accent-colored while active; the ribbon no longer carries a Files toggle", async ({
     page,
   }) => {
     await waitForConnected(page, jasper.baseURL);
     const ribbon = page.locator('nav[aria-label="Activity ribbon"]');
-    const filesBtn = ribbon.getByRole("button", { name: "Files" });
     const sidebarNav = page.locator('nav[aria-label="Notes navigation"]');
+    const tabRow = sidebarNav.getByTestId("sidebar-tab-row");
+    const notesTab = tabRow.getByRole("button", { name: "Notes", exact: true });
+    const searchTab = tabRow.getByRole("button", { name: "Search", exact: true });
 
-    // Default state: notesSidebarVisible === true.
+    // The ribbon's Files toggle is gone (Phase 27 NAV-02) — no such button
+    // exists anywhere on the page anymore.
+    await expect(ribbon.getByRole("button", { name: "Files", exact: true })).toHaveCount(0);
+
+    // Default state: sidebar visible, Notes panel active + accent-colored.
     await expect(sidebarNav).toBeVisible({ timeout: 10_000 });
     await expect
-      .poll(() => filesBtn.evaluate((el) => getComputedStyle(el).color))
+      .poll(() => notesTab.evaluate((el) => getComputedStyle(el).color))
       .toBe("rgb(167, 139, 250)"); // --color-accent
 
-    await filesBtn.click();
-    await expect(sidebarNav).toHaveCount(0, { timeout: 5_000 });
+    // Switching to Search: Notes goes muted, Search becomes accent — the
+    // tab row now drives panel SELECTION, not visibility (visibility is a
+    // separate "Collapse sidebar"/"Show sidebar" affordance, TABUI-02).
+    await searchTab.click();
+    await expect(sidebarNav).toBeVisible();
     await expect
-      .poll(() => filesBtn.evaluate((el) => getComputedStyle(el).color))
+      .poll(() => notesTab.evaluate((el) => getComputedStyle(el).color))
       .toBe("rgb(106, 106, 114)"); // --color-muted
-
-    await filesBtn.click();
-    await expect(sidebarNav).toBeVisible({ timeout: 5_000 });
     await expect
-      .poll(() => filesBtn.evaluate((el) => getComputedStyle(el).color))
+      .poll(() => searchTab.evaluate((el) => getComputedStyle(el).color))
+      .toBe("rgb(167, 139, 250)");
+
+    await notesTab.click();
+    await expect
+      .poll(() => notesTab.evaluate((el) => getComputedStyle(el).color))
       .toBe("rgb(167, 139, 250)");
   });
 
-  test("Search toggle opens the sidebar Search panel (not the command palette) and is accent-colored while it is open", async ({
+  test("Search tab (SidebarTabRow) opens the sidebar Search panel (not the command palette) and is accent-colored while active", async ({
     page,
   }) => {
-    // Phase 19 D-01/D-02/D-07 re-point: the ribbon Search button now opens
-    // the in-sidebar Search panel, not the CommandMenu palette (which the
-    // Phase 18 stopgap originally wired it to). See 19-CONTEXT.md D-01.
+    // Phase 27 NAV-02 re-point: the standalone ribbon Search TOGGLE this
+    // test originally guarded was removed; SidebarTabRow's "Search" tab is
+    // its current equivalent for OPENING the panel (Phase 19 D-01/D-02/D-07's
+    // in-sidebar Search panel is still the current design — only the
+    // entry-point button moved). FOCUSING the input, however, is no longer
+    // wired to the tab click at all (SidebarTabRow.tsx's selectPanel() only
+    // calls setSidebarPanel + setNotesSidebarVisible — no focus dispatch);
+    // that concern moved entirely to the Cmd+Shift+F shortcut
+    // (appShortcuts.ts's handleAppCmdShiftF, whose own docstring says
+    // "opens the sidebar Search panel + focuses its input (D-05)") — the
+    // literal current-code equivalent of "opens Search focused" this test
+    // originally asserted via the ribbon button.
     await waitForConnected(page, jasper.baseURL);
     const ribbon = page.locator('nav[aria-label="Activity ribbon"]');
-    const searchBtn = ribbon.locator('button[aria-label="Search notes"]');
+    const sidebarNav = page.locator('nav[aria-label="Notes navigation"]');
+    const tabRow = sidebarNav.getByTestId("sidebar-tab-row");
+    const searchTab = tabRow.getByRole("button", { name: "Search", exact: true });
     const sidebarSearchInput = page.getByPlaceholder(
       "Search notes… (tag:name to filter)",
     );
 
-    await expect
-      .poll(() => searchBtn.evaluate((el) => getComputedStyle(el).color))
-      .toBe("rgb(106, 106, 114)"); // muted before open
+    // The ribbon's Search toggle is gone (Phase 27 NAV-02) — no such button
+    // exists anywhere on the page anymore.
+    await expect(ribbon.locator('button[aria-label="Search notes"]')).toHaveCount(0);
 
-    await searchBtn.click();
+    await expect
+      .poll(() => searchTab.evaluate((el) => getComputedStyle(el).color))
+      .toBe("rgb(106, 106, 114)"); // muted before selection (Notes is default)
+
+    // Cmd+Shift+F (Control+Shift+F here — the handler checks metaKey OR
+    // ctrlKey directly, deterministic regardless of Playwright's Desktop
+    // Chrome device spoofing navigator.platform, mirroring phase27-uat's
+    // Cmd+Shift+E pattern): opens the Search panel AND focuses its input.
+    await page.keyboard.press("Control+Shift+F");
     await expect(sidebarSearchInput).toBeVisible({ timeout: 5_000 });
     await expect(sidebarSearchInput).toBeFocused();
-    // The palette dialog must NOT open via this button anymore.
-    await expect(page.getByRole("dialog", { name: "Search notes" })).toHaveCount(0);
+    // The command-palette dialog must NOT open via this path.
+    await expect(page.getByRole("dialog", { name: "Command palette" })).toHaveCount(0);
     await expect
-      .poll(() => searchBtn.evaluate((el) => getComputedStyle(el).color))
-      .toBe("rgb(167, 139, 250)"); // accent while open
+      .poll(() => searchTab.evaluate((el) => getComputedStyle(el).color))
+      .toBe("rgb(167, 139, 250)"); // accent while active
 
-    // D-02 honest toggle: clicking Search again collapses the sidebar.
-    await searchBtn.click();
-    await expect(sidebarSearchInput).toHaveCount(0, { timeout: 3_000 });
+    // The SidebarTabRow "Search" tab itself is still a valid (unfocused)
+    // entry point to the same panel — switch away and back via the tab
+    // click to prove the click path also works, independent of the
+    // shortcut's focus behavior.
+    await tabRow.getByRole("button", { name: "Notes", exact: true }).click();
+    await expect(sidebarSearchInput).toHaveCount(0);
+    await searchTab.click();
+    await expect(sidebarSearchInput).toBeVisible({ timeout: 5_000 });
+
+    // Unlike the old ribbon toggle, clicking Search again does NOT hide the
+    // sidebar — SidebarTabRow tabs only ever SELECT a panel (SidebarTabRow.tsx
+    // selectPanel() always calls setNotesSidebarVisible(true)); the panel
+    // switches away only when a different tab is clicked.
+    await searchTab.click();
+    await expect(sidebarSearchInput).toBeVisible();
   });
 
   test("daily-note button opens today's daily note as a NEW tab when a note is already open", async ({
