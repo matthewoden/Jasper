@@ -495,7 +495,14 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
   });
 });
 
-describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", () => {
+describe("<TabStrip /> right-hand cluster removed (30-13 gap closure)", () => {
+  // 30-13: the tab-bar "Show panels"/"Hide panels" toggle duplicated the
+  // right rail's own collapse/reopen control — owner UAT rejected two
+  // controls governing the same rail state. The right rail now owns its
+  // SINGLE open/close affordance entirely within its own region (header
+  // collapse button when expanded, collapsed-strip reopen button when
+  // collapsed — see RightRail.tsx/RightRailTabRow.tsx). The tab strip must
+  // never render a rail toggle in either state.
   beforeEach(() => {
     useTreeStore.setState({
       notesSidebarVisible: true,
@@ -503,23 +510,25 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
     });
   });
 
-  it("shows aria-label 'Hide panels' when backlinksRailExpanded is true", () => {
+  it("no rail toggle button in the tab strip when backlinksRailExpanded is true", () => {
     useTreeStore.setState({ backlinksRailExpanded: true });
     renderStrip();
-    expect(screen.getByRole("button", { name: "Hide panels" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /hide panels|show panels/i }),
+    ).toBeNull();
   });
 
-  it("shows aria-label 'Show panels' when backlinksRailExpanded is false", () => {
+  it("no rail toggle button in the tab strip when backlinksRailExpanded is false", () => {
     useTreeStore.setState({ backlinksRailExpanded: false });
     renderStrip();
-    expect(screen.getByRole("button", { name: "Show panels" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /hide panels|show panels/i }),
+    ).toBeNull();
   });
 
-  it("clicking the right toggle calls setBacklinksRailExpanded(!backlinksRailExpanded)", () => {
-    useTreeStore.setState({ backlinksRailExpanded: true });
+  it("no tab-strip-right-cluster testid in either rail state", () => {
     renderStrip();
-    fireEvent.click(screen.getByRole("button", { name: "Hide panels" }));
-    expect(useTreeStore.getState().backlinksRailExpanded).toBe(false);
+    expect(screen.queryByTestId("tab-strip-right-cluster")).toBeNull();
   });
 
   // Phase 27 NAV-03 cleanup: the redundant left-sidebar toggle was removed from
@@ -544,26 +553,7 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
     expect(screen.queryByTestId("tab-strip-left-cluster")).toBeNull();
   });
 
-  it("SPLIT-PLACEMENT: right-sidebar toggle is inside tab-strip-right-cluster", () => {
-    renderStrip();
-    const rightCluster = screen.getByTestId("tab-strip-right-cluster");
-    expect(
-      within(rightCluster).getByRole("button", { name: "Hide panels" }),
-    ).toBeInTheDocument();
-  });
-
-  // D-04: the old chrome wrapper gated the right-rail toggle behind the
-  // now-retired panel-selector slice (TBR-N3-3/4a/4b, RR-T-1). That gate was
-  // intentionally dropped — the right toggle is ALWAYS rendered, and the
-  // panel-selector slice itself was fully removed in Phase 20 (D-01).
-  it("D-04: right-rail toggle is ALWAYS rendered (no gating condition)", () => {
-    renderStrip();
-    expect(
-      screen.queryByRole("button", { name: /hide panels|show panels/i }),
-    ).not.toBeNull();
-  });
-
-  it("right cluster is present in the zero-tab empty state (no left cluster)", () => {
+  it("neither cluster testid is present in the zero-tab empty state", () => {
     render(
       <TabStrip
         leafId={LEAF_ID}
@@ -583,7 +573,7 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
         onCycleTab={vi.fn()}
       />,
     );
-    expect(screen.getByTestId("tab-strip-right-cluster")).toBeInTheDocument();
+    expect(screen.queryByTestId("tab-strip-right-cluster")).toBeNull();
     expect(screen.queryByTestId("tab-strip-left-cluster")).toBeNull();
   });
 });
