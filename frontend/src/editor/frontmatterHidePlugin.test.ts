@@ -558,14 +558,20 @@ describe("frontmatter hidden-block edit protection — WR-03", () => {
     expect(view.state.doc.toString()).toBe(docBefore);
   });
 
-  it("Delete at position 0 (empty cursor before the hidden block) is swallowed — no invisible whole-block deletion", () => {
+  it("a selection dispatched to position 0 clamps to the visible boundary — the caret can never park inside the hidden block (structurally prevents invisible whole-block deletion)", () => {
     const view = makeViewWithGuard(DOC_WITH_TWO_TAGS);
     views.push(view);
 
     view.dispatch({ selection: { anchor: 0 } });
+    // frontmatterSelectionClamp (phase12.1 U6 fix): the caret lands on the
+    // first visible line, not absolute 0, so line-anchored commands resolve
+    // against what the user sees and forward-Delete can never eat the block.
+    const bodyStart = view.state.doc.toString().indexOf("# Body");
+    expect(view.state.selection.main.head).toBe(bodyStart);
+    // The hidden block itself is untouched by the clamped-cursor Delete path:
     const docBefore = view.state.doc.toString();
     pressKey(view, "Delete", 46);
-    expect(view.state.doc.toString()).toBe(docBefore);
+    expect(view.state.doc.toString().startsWith(docBefore.slice(0, bodyStart))).toBe(true);
   });
 
   it("Backspace with a range selection reaching into the hidden block is swallowed", () => {

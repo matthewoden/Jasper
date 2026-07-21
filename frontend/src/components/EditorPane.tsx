@@ -497,10 +497,20 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       // while disconnected never fired; retry once the gate re-opens.
       // flush() itself no-ops when there is nothing pending.
       if (controller) {
+        controller.reportConnectionChange(true);
         void controller.flush().catch(() => {
           // Best-effort retry — failures already surface via saveState.
         });
       }
+    } else if (
+      prev !== connectionStatus &&
+      prev === "connected" &&
+      connectionStatus !== "connected"
+    ) {
+      // Disconnect half — symmetric with the reconnect-flush above. Flips
+      // saveState to "paused" so SaveIndicator shows the CloudOff state
+      // (dropped by the 25-05 controller-bridging refactor).
+      controller?.reportConnectionChange(false);
     }
     prevConnectionStatusRef.current = connectionStatus;
   }, [connectionStatus, controller]);

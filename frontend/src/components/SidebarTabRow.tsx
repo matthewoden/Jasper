@@ -15,6 +15,7 @@ import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { FolderClosed, Search, Bookmark, PanelLeft } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
+import { dispatchPhase7 } from "../lib/appShortcuts";
 
 type SidebarPanel = "notes" | "search" | "bookmarks";
 
@@ -92,6 +93,12 @@ export function SidebarTabRow(): React.JSX.Element {
   const selectPanel = (panel: SidebarPanel) => {
     setSidebarPanel(panel);
     setNotesSidebarVisible(true);
+    // The pre-Phase-27 ribbon Search button focused the query input on open;
+    // the tab must too. rAF defers past React's commit so SidebarSearchPanel's
+    // focusSearch subscriber exists (same reasoning as handleAppCmdShiftF).
+    if (panel === "search") {
+      requestAnimationFrame(() => dispatchPhase7("focusSearch"));
+    }
   };
 
   return (

@@ -224,16 +224,39 @@ const frontmatterHiddenEditFilter = EditorState.transactionFilter.of((tr) => {
 
 
 /**
+ * frontmatterSelectionClamp — cursorDocStart (Ctrl/Cmd-Home) sets the
+ * selection to absolute position 0, INSIDE the hidden block: atomic ranges
+ * only guard incremental cursor motion, not absolute jumps. A caret parked
+ * there makes every line-anchored command (Tab indent, etc.) resolve against
+ * the frontmatter's own first line, which frontmatterHiddenEditFilter then
+ * silently drops (phase12.1 U6 regression). Clamp selections that fall
+ * ENTIRELY inside the hidden block to the boundary — the first visible line.
+ * Selections that extend past the boundary (select-all) pass through so the
+ * documented select-all-replace behavior is preserved.
+ */
+const frontmatterSelectionClamp = EditorState.transactionFilter.of((tr) => {
+  if (!tr.selection) return tr;
+  if (!tr.state.field(frontmatterDecoField).hidden) return tr;
+  const boundary = frontmatterBoundary(tr.state);
+  if (boundary === null) return tr;
+  const main = tr.newSelection.main;
+  if (main.anchor >= boundary || main.head >= boundary) return tr;
+  return [tr, { selection: { anchor: boundary } }];
+});
+
+
+/**
  * frontmatterHideExtension — full extension set for MarkdownEditor.
  * Combines the StateField (block decorations), the ViewPlugin (test
  * introspection), the atomic range (caret can't enter the hidden block),
- * and the hidden-edit transaction filter.
+ * the hidden-edit transaction filter, and the doc-start selection clamp.
  */
 export const frontmatterHideExtension: Extension = [
   frontmatterDecoField,
   frontmatterHidePlugin,
   frontmatterAtomicRanges,
   frontmatterHiddenEditFilter,
+  frontmatterSelectionClamp,
 ];
 
 

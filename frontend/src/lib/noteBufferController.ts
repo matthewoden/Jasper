@@ -140,6 +140,14 @@ export interface NoteBufferController {
    */
   reportSaveFailed(error: string): void;
   /**
+   * Drives the connectionLost/connectionRestored save-state transitions from
+   * the pane's WS connectionStatus watcher. The pre-25-05 EditorPane
+   * dispatched connectionLost directly; the controller-bridging refactor
+   * dropped it, leaving SaveIndicator's "paused" state unreachable on
+   * disconnect (260721-suite cluster A finding).
+   */
+  reportConnectionChange(connected: boolean): void;
+  /**
    * Raw setters for the EditorPane conflict-banner "Save anyway"/"Discard"/
    * dismiss UI flow, which intentionally drives updateNote/getNote directly
    * (an explicit If-Match override, and a manual re-fetch) rather than
@@ -359,6 +367,12 @@ class NoteBufferControllerImpl implements NoteBufferController {
 
   reportSaveFailed(error: string): void {
     this.setSaveState({ type: "saveFailed", error });
+  }
+
+  reportConnectionChange(connected: boolean): void {
+    this.setSaveState({
+      type: connected ? "connectionRestored" : "connectionLost",
+    });
   }
 
   setConflict(c: ConflictState | null): void {
