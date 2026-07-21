@@ -25,7 +25,10 @@ export interface PaneTreeProps {
   onRequestClose: (leafId: string, tabId: string) => void;
   onCloseOthers: (leafId: string, tabId: string) => void;
   onCloseToRight: (leafId: string, tabId: string) => void;
+  onCloseAll: (leafId: string) => void;
   onOpenRight: (leafId: string, tabId: string) => void;
+  /** Pin/unpin a tab (D-14). Threaded to the tab-menu invocation site; ignored until Plan 07 renders the menu item. */
+  onTogglePin: (leafId: string, tabId: string) => void;
   onNewTab: (leafId: string) => void;
   autosaveMs?: number;
   /** Zen mode (ZEN-01): every leaf's tab strip unmounts; the editor body fills the pane. */
@@ -267,7 +270,9 @@ function renderNode(
           onRequestClose={props.onRequestClose}
           onCloseOthers={props.onCloseOthers}
           onCloseToRight={props.onCloseToRight}
+          onCloseAll={props.onCloseAll}
           onOpenRight={props.onOpenRight}
+          onTogglePin={props.onTogglePin}
           onNewTab={props.onNewTab}
           autosaveMs={props.autosaveMs}
           hideTabStrip={props.hideTabStrip}

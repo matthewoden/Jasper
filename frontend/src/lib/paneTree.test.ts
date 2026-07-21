@@ -20,6 +20,7 @@ import {
   setRatioAtPath,
   splitPane,
   splitWithTab,
+  togglePinInTabs,
   type LeafNode,
   type PaneNode,
 } from "./paneTree";
@@ -407,5 +408,50 @@ describe("setRatioAtPath (WS-05, D-13)", () => {
     const untouched = rowTree.b;
     const result = asSplit(setRatioAtPath(rowTree, [], 0.9));
     expect(result.b).toBe(untouched);
+  });
+});
+
+describe("togglePinInTabs (D-14 — pin toggle + left-grouping)", () => {
+  it("pins an unpinned tab (pinned: undefined -> true)", () => {
+    const a = { id: "a", noteId: "note-a" };
+    const b = { id: "b", noteId: "note-b" };
+    const result = togglePinInTabs([a, b], "a");
+    expect(result.find((t) => t.id === "a")?.pinned).toBe(true);
+  });
+
+  it("unpins a pinned tab on the second toggle (round-trip)", () => {
+    const a = { id: "a", noteId: "note-a", pinned: true };
+    const b = { id: "b", noteId: "note-b" };
+    const result = togglePinInTabs([a, b], "a");
+    expect(result.find((t) => t.id === "a")?.pinned).toBe(false);
+  });
+
+  it("pinning moves the tab to the END of the existing pinned group (left-grouped, D-14)", () => {
+    const p1 = { id: "p1", noteId: "note-p1", pinned: true };
+    const p2 = { id: "p2", noteId: "note-p2", pinned: true };
+    const u1 = { id: "u1", noteId: "note-u1" };
+    const u2 = { id: "u2", noteId: "note-u2" };
+    // Pin u2, which currently sits after u1 — it must land right after p2,
+    // before u1 (the pinned/unpinned boundary), not at its original spot.
+    const result = togglePinInTabs([p1, p2, u1, u2], "u2");
+    expect(result.map((t) => t.id)).toEqual(["p1", "p2", "u2", "u1"]);
+    expect(result.find((t) => t.id === "u2")?.pinned).toBe(true);
+  });
+
+  it("unpinning moves the tab to the START of the unpinned group (out of the pinned region)", () => {
+    const p1 = { id: "p1", noteId: "note-p1", pinned: true };
+    const p2 = { id: "p2", noteId: "note-p2", pinned: true };
+    const u1 = { id: "u1", noteId: "note-u1" };
+    // Unpin p1 (the first pinned tab) — it must land right after p2 (now the
+    // sole pinned tab), before u1.
+    const result = togglePinInTabs([p1, p2, u1], "p1");
+    expect(result.map((t) => t.id)).toEqual(["p2", "p1", "u1"]);
+    expect(result.find((t) => t.id === "p1")?.pinned).toBe(false);
+  });
+
+  it("returns the SAME array reference when tabId is not found (no-op)", () => {
+    const a = { id: "a", noteId: "note-a" };
+    const tabs = [a];
+    expect(togglePinInTabs(tabs, "missing")).toBe(tabs);
   });
 });

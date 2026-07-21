@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _leaves, newLeaf, newTabId, type PaneNode, type SplitNode } from "./paneTree";
+import { _findLeaf, _leaves, newLeaf, newTabId, type PaneNode, type SplitNode } from "./paneTree";
 import { layoutKeyForVault, pruneLayoutForMissingNotes, usePaneStore } from "./usePaneStore";
 
 /** Finds the nearest ancestor SplitNode whose direct child (a or b) is the given leaf. */
@@ -639,5 +639,100 @@ describe("usePaneStore — focusCyclePane (D-08)", () => {
     const before = usePaneStore.getState().activePaneId;
     usePaneStore.getState().focusCyclePane(1);
     expect(usePaneStore.getState().activePaneId).toBe(before);
+  });
+});
+
+describe("usePaneStore — togglePinTab (D-14)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStore();
+  });
+
+  it("Test 1: sets pinned=true then false on repeat toggle", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const leafId = usePaneStore.getState().activePaneId;
+    const tabId = _leaves(usePaneStore.getState().tree)[0].tabs[0].id;
+
+    usePaneStore.getState().togglePinTab(leafId, tabId);
+    expect(_findLeaf(usePaneStore.getState().tree, leafId)?.tabs[0].pinned).toBe(true);
+
+    usePaneStore.getState().togglePinTab(leafId, tabId);
+    expect(_findLeaf(usePaneStore.getState().tree, leafId)?.tabs[0].pinned).toBe(false);
+  });
+
+  it("Test 1: the pinned change is written through the persisted layout (survives an initForVault reload)", () => {
+    vi.useFakeTimers();
+    const vault = "/vault/pin-persist";
+    usePaneStore.getState().initForVault(vault);
+    usePaneStore.getState().openInActivePane("note-1");
+    const leafId = usePaneStore.getState().activePaneId;
+    const tabId = _leaves(usePaneStore.getState().tree)[0].tabs[0].id;
+    usePaneStore.getState().togglePinTab(leafId, tabId);
+
+    vi.advanceTimersByTime(260);
+    usePaneStore.getState().initForVault(vault); // reload from the same key
+
+    const reloaded = _findLeaf(usePaneStore.getState().tree, leafId);
+    expect(reloaded?.tabs.find((t) => t.id === tabId)?.pinned).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("is a no-op when the leaf id is not found", () => {
+    const before = usePaneStore.getState().tree;
+    usePaneStore.getState().togglePinTab("missing-leaf", "missing-tab");
+    expect(usePaneStore.getState().tree).toBe(before);
+  });
+});
+
+describe("usePaneStore — isValidNode pinned validation (T-30-03)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStore();
+  });
+
+  it("Test 4: accepts a persisted leaf whose tabs carry pinned: true", () => {
+    const vault = "/vault/pinned-valid";
+    const tree: PaneNode = {
+      t: "leaf",
+      id: "leaf-a",
+      tabs: [{ id: "t1", noteId: "note-1", pinned: true }],
+      active: "t1",
+    };
+    localStorage.setItem(layoutKeyForVault(vault), JSON.stringify({ tree, activePaneId: "leaf-a" }));
+    usePaneStore.getState().initForVault(vault);
+    const s = usePaneStore.getState();
+    expect(s.tree.t).toBe("leaf");
+    expect(_leaves(s.tree)[0].tabs[0].pinned).toBe(true);
+  });
+
+  it("Test 4: accepts a persisted leaf whose tabs omit pinned entirely (undefined)", () => {
+    const vault = "/vault/pinned-omitted";
+    const tree: PaneNode = {
+      t: "leaf",
+      id: "leaf-a",
+      tabs: [{ id: "t1", noteId: "note-1" }],
+      active: "t1",
+    };
+    localStorage.setItem(layoutKeyForVault(vault), JSON.stringify({ tree, activePaneId: "leaf-a" }));
+    usePaneStore.getState().initForVault(vault);
+    const s = usePaneStore.getState();
+    expect(s.tree.t).toBe("leaf");
+    expect(_leaves(s.tree)[0].tabs[0].pinned).toBeUndefined();
+  });
+
+  it("Test 4: rejects a non-boolean pinned value, falling back to a single default leaf", () => {
+    const vault = "/vault/pinned-invalid";
+    const tree = {
+      t: "leaf",
+      id: "leaf-a",
+      tabs: [{ id: "t1", noteId: "note-1", pinned: "yes" }],
+      active: "t1",
+    };
+    localStorage.setItem(layoutKeyForVault(vault), JSON.stringify({ tree, activePaneId: "leaf-a" }));
+    expect(() => usePaneStore.getState().initForVault(vault)).not.toThrow();
+    const s = usePaneStore.getState();
+    expect(s.tree.t).toBe("leaf");
+    expect(_leaves(s.tree)).toHaveLength(1);
+    expect(_leaves(s.tree)[0].tabs).toHaveLength(0);
   });
 });

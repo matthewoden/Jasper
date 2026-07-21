@@ -97,7 +97,10 @@ export interface LeafPaneProps {
   onRequestClose: (leafId: string, tabId: string) => void;
   onCloseOthers: (leafId: string, tabId: string) => void;
   onCloseToRight: (leafId: string, tabId: string) => void;
+  onCloseAll: (leafId: string) => void;
   onOpenRight: (leafId: string, tabId: string) => void;
+  /** Pin/unpin a tab (D-14). Threaded to the tab-menu invocation site; ignored until Plan 07 renders the menu item. */
+  onTogglePin: (leafId: string, tabId: string) => void;
   /** Create a new untitled note and open it in THIS leaf (TAB-14, + button / ⌥T). */
   onNewTab: (leafId: string) => void;
   autosaveMs?: number;
@@ -117,7 +120,9 @@ export function LeafPane({
   onRequestClose,
   onCloseOthers,
   onCloseToRight,
+  onCloseAll,
   onOpenRight,
+  onTogglePin,
   onNewTab,
   autosaveMs,
   hideTabStrip,
@@ -190,9 +195,14 @@ export function LeafPane({
     (tabId: string) => onCloseToRight(leafId, tabId),
     [leafId, onCloseToRight],
   );
+  const handleCloseAll = useCallback(() => onCloseAll(leafId), [leafId, onCloseAll]);
   const handleOpenRight = useCallback(
     (tabId: string) => onOpenRight(leafId, tabId),
     [leafId, onOpenRight],
+  );
+  const handleTogglePin = useCallback(
+    (tabId: string) => onTogglePin(leafId, tabId),
+    [leafId, onTogglePin],
   );
   const handleNewTab = useCallback(() => onNewTab(leafId), [leafId, onNewTab]);
 
@@ -400,7 +410,9 @@ export function LeafPane({
           onRequestClose={handleRequestClose}
           onCloseOthers={handleCloseOthers}
           onCloseToRight={handleCloseToRight}
+          onCloseAll={handleCloseAll}
           onOpenRight={handleOpenRight}
+          onTogglePin={handleTogglePin}
           onReorder={handleReorder}
           onNewTab={handleNewTab}
           onCycleTab={handleCycleTab}

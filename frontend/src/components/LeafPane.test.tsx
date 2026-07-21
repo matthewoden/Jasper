@@ -102,7 +102,9 @@ function renderLeaf(leaf: LeafNode = leafA, overrides?: { isActive?: boolean }) 
       onRequestClose={vi.fn()}
       onCloseOthers={vi.fn()}
       onCloseToRight={vi.fn()}
+      onCloseAll={vi.fn()}
       onOpenRight={vi.fn()}
+      onTogglePin={vi.fn()}
       onNewTab={vi.fn()}
     />,
   );
@@ -221,7 +223,9 @@ describe("<LeafPane /> Find/Replace bar re-syncs on active-tab change (CR-03)", 
         onRequestClose={vi.fn()}
         onCloseOthers={vi.fn()}
         onCloseToRight={vi.fn()}
+        onCloseAll={vi.fn()}
         onOpenRight={vi.fn()}
+        onTogglePin={vi.fn()}
         onNewTab={vi.fn()}
       />,
     );
@@ -245,7 +249,9 @@ describe("<LeafPane /> Find/Replace bar re-syncs on active-tab change (CR-03)", 
         onRequestClose={vi.fn()}
         onCloseOthers={vi.fn()}
         onCloseToRight={vi.fn()}
+        onCloseAll={vi.fn()}
         onOpenRight={vi.fn()}
+        onTogglePin={vi.fn()}
         onNewTab={vi.fn()}
       />,
     );

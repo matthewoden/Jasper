@@ -122,7 +122,10 @@ export interface TabStripProps {
   onRequestClose: (tabId: string) => void;
   onCloseOthers: (tabId: string) => void;
   onCloseToRight: (tabId: string) => void;
+  onCloseAll: () => void;
   onOpenRight: (tabId: string) => void;
+  /** Pin/unpin a tab (D-14). Threaded through to the tab-menu invocation site; Plan 07 wires it into TabContextMenu's Pin item. */
+  onTogglePin: (tabId: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
   /** Create a new untitled note and open it as a tab (TAB-14, + button / ⌥T). */
   onNewTab: () => void;

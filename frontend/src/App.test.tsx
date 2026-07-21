@@ -4,6 +4,7 @@
  */
 import { StrictMode } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   afterEach,
   beforeEach,
@@ -1482,6 +1483,109 @@ describe("close-last-tab clears activeNoteId (BUG 3b)", () => {
       const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
       expect(leaf?.tabs).toHaveLength(0);
       expect(useTreeStore.getState().activeNoteId).toBeNull();
+    });
+  });
+});
+
+
+// Test 2 (30-02): closeOthersInLeaf / closeToRightInLeaf must skip pinned
+// tabs (D-14). Every tab is pre-marked deleted so the close routes straight
+// through closeTabInLeaf (no flush/save round-trip needed) — mirrors the
+// "close-last-tab clears activeNoteId" suite's own deletedTabIds trick.
+describe("closeOthersInLeaf / closeToRightInLeaf skip pinned tabs (D-14, Phase 30)", () => {
+  beforeEach(() => {
+    getAdminStatusMock.mockReset();
+    postAdminReindexMock.mockReset();
+    getAdminStatusMock.mockResolvedValue({
+      data: { state: "ok" },
+      error: undefined,
+    });
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: null,
+      pendingRename: null,
+      draftCreate: null,
+      paletteOpen: false,
+      cheatSheetOpen: false,
+    });
+    usePaneStore.getState().clearAll();
+  });
+
+  afterEach(() => {
+    usePaneStore.getState().clearAll();
+  });
+
+  it("'Close other tabs' closes every unpinned tab but leaves the pinned tab open", async () => {
+    const user = userEvent.setup();
+    const leafId = usePaneStore.getState().activePaneId;
+    usePaneStore.setState({
+      tree: {
+        t: "leaf",
+        id: leafId,
+        tabs: [
+          { id: "p", noteId: "p", pinned: true },
+          { id: "b", noteId: "b" },
+          { id: "c", noteId: "c" },
+        ],
+        active: "b",
+      },
+    });
+    usePaneStore.getState().markDeleted("p");
+    usePaneStore.getState().markDeleted("b");
+    usePaneStore.getState().markDeleted("c");
+
+    render(<AppShell />);
+
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs).toHaveLength(3);
+
+    fireEvent.contextMenu(tabs[1]); // right-click the middle (target) tab "b"
+    const closeOthersItem = await screen.findByRole("menuitem", {
+      name: "Close other tabs",
+    });
+    await user.click(closeOthersItem);
+
+    await waitFor(() => {
+      const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
+      // "c" (unpinned, not the target) closes; "p" (pinned) and "b" (target) survive.
+      expect(leaf?.tabs.map((t) => t.id)).toEqual(["p", "b"]);
+    });
+  });
+
+  it("'Close tabs to the right' closes trailing unpinned tabs but leaves a trailing pinned tab open", async () => {
+    const user = userEvent.setup();
+    const leafId = usePaneStore.getState().activePaneId;
+    usePaneStore.setState({
+      tree: {
+        t: "leaf",
+        id: leafId,
+        tabs: [
+          { id: "a", noteId: "a" },
+          { id: "p", noteId: "p", pinned: true },
+          { id: "c", noteId: "c" },
+        ],
+        active: "a",
+      },
+    });
+    usePaneStore.getState().markDeleted("a");
+    usePaneStore.getState().markDeleted("p");
+    usePaneStore.getState().markDeleted("c");
+
+    render(<AppShell />);
+
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs).toHaveLength(3);
+
+    fireEvent.contextMenu(tabs[0]); // right-click "a" — everything after it is a candidate
+    const closeToRightItem = await screen.findByRole("menuitem", {
+      name: "Close tabs to the right",
+    });
+    await user.click(closeToRightItem);
+
+    await waitFor(() => {
+      const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
+      // "c" (unpinned, to the right) closes; "p" (pinned, to the right) survives.
+      expect(leaf?.tabs.map((t) => t.id)).toEqual(["a", "p"]);
     });
   });
 });

@@ -34,6 +34,7 @@ import {
   setRatioAtPath,
   splitPane,
   splitWithTab,
+  togglePinInTabs,
   type LeafNode,
   type PaneNode,
 } from "./paneTree";
@@ -48,6 +49,7 @@ export interface PaneStore {
 
   splitActivePane: (dir: "row" | "col") => void;
   closeTabInLeaf: (leafId: string, tabId: string) => void;
+  togglePinTab: (leafId: string, tabId: string) => void;
   setActivePane: (leafId: string) => void;
   setActiveTabInLeaf: (leafId: string, tabId: string) => void;
   reorderTabsInLeaf: (leafId: string, fromIndex: number, toIndex: number) => void;
@@ -123,6 +125,22 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 
     // D-10: final pane never collapses — keep it, empty, active=null.
     set({ tree: _updLeaf(tree, leafId, { tabs: nextTabs, active: null }) });
+  },
+
+  /**
+   * togglePinTab — flips a tab's pinned flag (D-14) and repositions it to
+   * the pinned/unpinned boundary via paneTree's togglePinInTabs, so pinned
+   * tabs stay auto-grouped at the left of the strip. Synchronous/pure, like
+   * every other tree-shape mutation in this store — persistence rides the
+   * existing debounced per-vault subscribe.
+   */
+  togglePinTab: (leafId, tabId) => {
+    const { tree } = get();
+    const leaf = _findLeaf(tree, leafId);
+    if (!leaf) return;
+    const nextTabs = togglePinInTabs(leaf.tabs, tabId);
+    if (nextTabs === leaf.tabs) return;
+    set({ tree: _updLeaf(tree, leafId, { tabs: nextTabs }) });
   },
 
   setActivePane: (leafId) => {
@@ -391,7 +409,11 @@ function isValidNode(node: unknown, depth: number): node is PaneNode {
           typeof t === "object" &&
           t !== null &&
           typeof (t as Record<string, unknown>).id === "string" &&
-          typeof (t as Record<string, unknown>).noteId === "string",
+          typeof (t as Record<string, unknown>).noteId === "string" &&
+          // T-30-03: reject a malformed persisted `pinned` (anything but
+          // boolean-or-undefined) rather than silently coercing it.
+          ((t as Record<string, unknown>).pinned === undefined ||
+            typeof (t as Record<string, unknown>).pinned === "boolean"),
       ) &&
       (n.active === null || typeof n.active === "string")
     );

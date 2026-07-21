@@ -479,7 +479,10 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       void (async () => {
         const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
         if (!leaf) return;
-        const targets = leaf.tabs.filter((t) => t.id !== tabId).map((t) => t.id);
+        const targets = leaf.tabs
+          .filter((t) => t.id !== tabId)
+          .filter((t) => !t.pinned)
+          .map((t) => t.id);
         for (const id of targets) {
           try {
             await flushAndCloseInLeaf(leafId, id);
@@ -499,7 +502,31 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         if (!leaf) return;
         const idx = leaf.tabs.findIndex((t) => t.id === tabId);
         if (idx === -1) return;
-        const targets = leaf.tabs.slice(idx + 1).map((t) => t.id);
+        const targets = leaf.tabs
+          .slice(idx + 1)
+          .filter((t) => !t.pinned)
+          .map((t) => t.id);
+        for (const id of targets) {
+          try {
+            await flushAndCloseInLeaf(leafId, id);
+          } catch {
+            return;
+          }
+        }
+      })();
+    },
+    [flushAndCloseInLeaf],
+  );
+
+  // closeAllInLeaf — closes every non-pinned tab in the leaf (D-14: pinned
+  // tabs are immune to every bulk-close path), mirroring closeOthersInLeaf's
+  // sequential flush-then-close loop verbatim.
+  const closeAllInLeaf = useCallback(
+    (leafId: string): void => {
+      void (async () => {
+        const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
+        if (!leaf) return;
+        const targets = leaf.tabs.filter((t) => !t.pinned).map((t) => t.id);
         for (const id of targets) {
           try {
             await flushAndCloseInLeaf(leafId, id);
@@ -814,7 +841,11 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
           }
           onCloseOthers={closeOthersInLeaf}
           onCloseToRight={closeToRightInLeaf}
+          onCloseAll={closeAllInLeaf}
           onOpenRight={openRightInLeaf}
+          onTogglePin={(leafId, tabId) =>
+            usePaneStore.getState().togglePinTab(leafId, tabId)
+          }
           onNewTab={newTabInLeaf}
           hideTabStrip={zen}
           autosaveMs={config?.editor.autosaveMs ?? 2000}

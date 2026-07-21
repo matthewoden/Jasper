@@ -52,7 +52,9 @@ function renderTree(overrides?: { tree?: PaneNode; activePaneId?: string }) {
       onRequestClose={vi.fn()}
       onCloseOthers={vi.fn()}
       onCloseToRight={vi.fn()}
+      onCloseAll={vi.fn()}
       onOpenRight={vi.fn()}
+      onTogglePin={vi.fn()}
       onNewTab={vi.fn()}
     />,
   );
