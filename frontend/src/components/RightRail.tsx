@@ -31,14 +31,25 @@
  * Background is --color-surface, filling the rail edge-to-edge so the tab
  * row and sub-header sit flush against border-left (mock parity, unchanged
  * from Phase 23 owner D-06).
+ *
+ * Collapsed state (30-13 gap closure): rather than unmounting entirely,
+ * `!expanded` now renders a slim RAIL_COLLAPSED_WIDTH-wide strip holding
+ * ONLY a reopen button (same PanelRight glyph as RightRailTabRow's collapse
+ * button, so collapse/reopen read as one affordance toggling state — same
+ * idiom as PaneCornerReopenButton/SidebarTabRow on the left). This affordance
+ * lives entirely within the rail's own region — the tab strip carries NO
+ * rail toggle (owner UAT rejected the prior tab-bar "Show/Hide panels"
+ * button duplicating this rail's own control).
  */
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type React from "react";
+import { PanelRight } from "lucide-react";
 
 import {
   useTreeStore,
   RAIL_MAX_WIDTH,
   RAIL_MIN_WIDTH,
+  RAIL_COLLAPSED_WIDTH,
 } from "../lib/useTreeStore";
 import { useBacklinks } from "../lib/useBacklinks";
 import { useNoteTagsStore } from "../lib/useNoteTagsFromDoc";
@@ -60,7 +71,9 @@ export function RightRail({ activeNoteId, style }: Props) {
   const expanded = useTreeStore((s) => s.backlinksRailExpanded);
   const width = useTreeStore((s) => s.backlinksRailWidth);
   const setWidth = useTreeStore((s) => s.setBacklinksRailWidth);
+  const setExpanded = useTreeStore((s) => s.setBacklinksRailExpanded);
   const rightPanel = useTreeStore((s) => s.rightPanel);
+  const [reopenHovering, setReopenHovering] = useState(false);
 
   // Single shared fetch: the count badge and LinkedMentionsPanel's cards
   // must render the same snapshot, so the panel receives this result as
@@ -113,7 +126,64 @@ export function RightRail({ activeNoteId, style }: Props) {
     };
   }, [onPointerMove, onPointerUp]);
 
-  if (!expanded) return null;
+  if (!expanded) {
+    return (
+      <aside
+        style={{
+          width: RAIL_COLLAPSED_WIDTH,
+          height: "100%",
+          background: "var(--color-surface)",
+          borderLeft: "1px solid var(--color-border)",
+          display: "flex",
+          flexDirection: "column",
+          flexShrink: 0,
+          boxSizing: "border-box",
+          ...style,
+        }}
+        data-testid="right-rail-collapsed"
+      >
+        <button
+          type="button"
+          aria-label="Show panels"
+          title="Show panels"
+          onClick={() => setExpanded(true)}
+          onMouseEnter={() => setReopenHovering(true)}
+          onMouseLeave={() => setReopenHovering(false)}
+          style={{
+            width: RAIL_COLLAPSED_WIDTH,
+            height: 40,
+            padding: 0,
+            border: "none",
+            borderBottom: "1px solid var(--color-border)",
+            background: "transparent",
+            color: "var(--color-muted)",
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: reopenHovering
+                ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+                : "transparent",
+            }}
+          >
+            <PanelRight size={16} aria-hidden="true" />
+          </span>
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside

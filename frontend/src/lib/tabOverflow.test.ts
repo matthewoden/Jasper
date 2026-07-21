@@ -117,15 +117,16 @@ describe("computeHiddenTabIds", () => {
     ).toEqual(new Set());
   });
 
-  it("(g) drift guard: TabStrip's RESERVED matches its right-cluster arithmetic (post-D-01 panel-selector removal)", () => {
-    // Right cluster: 1 (borderLeft) + 8 (paddingLeft) + 4 (flex gap) + 28
-    // (right toggle) = 41 — panel-selector dropdown removed (Phase 20, D-01).
-    // Left cluster: 28 + 8 + 1 = 37. Strip chrome: 8 (padding) + 26 (new-tab button).
-    const rightCluster = 1 + 8 + 4 + 28;
+  it("(g) drift guard: TabStrip's RESERVED matches its left-cluster arithmetic (30-13: right-cluster toggle removed)", () => {
+    // Left cluster: 28 + 8 + 1 = 37. Strip chrome: 8 (padding) + 26 (new-tab
+    // button). The tab-bar right cluster (rail open/close toggle) was
+    // removed in 30-13 — the right rail now owns its own single
+    // collapse/reopen control entirely within its own region, so the tab
+    // strip no longer reserves space for a right-cluster toggle.
     const leftCluster = 37;
-    const expectedReserved = 8 + 26 + rightCluster + leftCluster;
+    const expectedReserved = 8 + 26 + leftCluster;
 
-    expect(expectedReserved).toBe(112);
+    expect(expectedReserved).toBe(71);
     expect(RESERVED).toBe(expectedReserved);
   });
 });

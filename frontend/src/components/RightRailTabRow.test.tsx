@@ -7,10 +7,14 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 let mockRightPanel: "outline" | "backlinks" | "tags" = "outline";
 const mockSetRightPanel = vi.fn();
+const mockSetBacklinksRailExpanded = vi.fn();
 
 vi.mock("../lib/useTreeStore", () => ({
   useTreeStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({ rightPanel: mockRightPanel }),
+    selector({
+      rightPanel: mockRightPanel,
+      setBacklinksRailExpanded: mockSetBacklinksRailExpanded,
+    }),
 }));
 
 vi.mock("../lib/useWorkspace", () => ({
@@ -29,15 +33,24 @@ import { RightRailTabRow, RightRailSubHeader } from "./RightRailTabRow";
 beforeEach(() => {
   mockRightPanel = "outline";
   mockSetRightPanel.mockReset();
+  mockSetBacklinksRailExpanded.mockReset();
 });
 
 describe("RightRailTabRow", () => {
-  it("renders exactly three icon tabs with title attrs Outline/Linked mentions/Tags", () => {
+  it("renders exactly three icon tabs plus a collapse control", () => {
     render(<RightRailTabRow />);
     expect(screen.getByTitle("Outline")).toBeInTheDocument();
     expect(screen.getByTitle("Linked mentions")).toBeInTheDocument();
     expect(screen.getByTitle("Tags")).toBeInTheDocument();
-    expect(screen.getAllByRole("button")).toHaveLength(3);
+    expect(screen.getAllByRole("button")).toHaveLength(4);
+  });
+
+  it("renders a collapse control with aria-label 'Collapse panels' that calls setBacklinksRailExpanded(false)", () => {
+    render(<RightRailTabRow />);
+    const collapseButton = screen.getByLabelText("Collapse panels");
+    expect(collapseButton).toBeInTheDocument();
+    fireEvent.click(collapseButton);
+    expect(mockSetBacklinksRailExpanded).toHaveBeenCalledWith(false);
   });
 
   it("clicking a tab calls setRightPanel with the matching value", () => {

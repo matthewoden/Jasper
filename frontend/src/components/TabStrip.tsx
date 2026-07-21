@@ -23,7 +23,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { PaneCornerReopenButton } from "./PaneCornerReopenButton";
 import { usePaneStore } from "../lib/usePaneStore";
 import { usePaneDragStore, type DropRegion } from "../lib/usePaneDragStore";
@@ -50,68 +50,19 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 
 // Reserved strip chrome that is never available to tabs:
 //   strip horizontal padding (8) + pinned new-tab button (26) + the tab-bar
-//   right cluster + the tab-bar left cluster (37).
-//   Right cluster: 1 (borderLeft) + 8 (paddingLeft) + 4 (flex gap) + 28
-//   (right toggle) = 41. The old panel-selector dropdown trigger was removed
-//   in Phase 20 (D-01) — the right-sidebar toggle is now the sole control in
-//   this cluster. Left cluster: 28 (left toggle) + 8 (paddingRight) + 1
-//   (borderRight) = 37. Split placement supersedes the original single
-//   right-hand cluster (owner revision 2026-07-02, gap 3 / TABUI-02). The
-//   overflow dropdown trigger (28px) is reserved separately, inside
-//   computeHiddenTabIds, ONLY when overflow occurs.
-const RIGHT_CLUSTER = 1 + 8 + 4 + 28;
+//   left cluster (37).
+//   Left cluster: 28 (left toggle) + 8 (paddingRight) + 1 (borderRight) = 37.
+//   The tab-bar right cluster (rail open/close toggle) was removed in 30-13
+//   (gap closure): the right rail now owns its OWN single collapse/reopen
+//   control (RightRailTabRow's collapse button when expanded; RightRail's
+//   own collapsed-strip reopen button when collapsed) so the tab bar no
+//   longer duplicates that affordance — owner UAT rejected two controls
+//   governing the same rail state. The overflow dropdown trigger (28px) is
+//   reserved separately, inside computeHiddenTabIds, ONLY when overflow
+//   occurs.
 const LEFT_CLUSTER = 37;
-export const RESERVED = 8 + 26 + RIGHT_CLUSTER + LEFT_CLUSTER;
+export const RESERVED = 8 + 26 + LEFT_CLUSTER;
 const OVERFLOW_BTN = 28;
-
-/** 28x28 icon button shared by the tab-bar's far-left and far-right clusters —
- *  same hover-fill idiom (originally hosted in the now-dissolved chrome
- *  wrapper, D-04). */
-const rightClusterButtonBase: CSSProperties = {
-  width: 28,
-  height: 28,
-  padding: 6,
-  background: "transparent",
-  border: "none",
-  color: "var(--color-muted)",
-  cursor: "pointer",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 4,
-};
-
-interface RightClusterToggleProps {
-  ariaLabel: string;
-  onClick: () => void;
-  icon: React.ReactNode;
-}
-
-function RightClusterToggle({
-  ariaLabel,
-  onClick,
-  icon,
-}: RightClusterToggleProps): React.JSX.Element {
-  const [hovering, setHovering] = useState(false);
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      title={ariaLabel}
-      onClick={onClick}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      style={{
-        ...rightClusterButtonBase,
-        background: hovering
-          ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-          : "transparent",
-      }}
-    >
-      {icon}
-    </button>
-  );
-}
 
 // Movement threshold (px) before a pointerdown is treated as a drag.
 // Small enough to feel responsive; large enough to not fire on a click.
@@ -277,18 +228,6 @@ export function TabStrip({
   forceHiddenTabIds,
   style,
 }: TabStripProps) {
-  // Split placement (owner revision 2026-07-02, gap 3 / TABUI-02, supersedes
-  // the original D-04 right-hand cluster): the left-sidebar toggle sits alone
-  // in a far-left cluster; the right-sidebar toggle sits alone in a far-right
-  // cluster (the panel-selector dropdown that used to share this cluster was
-  // removed in Phase 20, D-01). The right toggle is ALWAYS rendered (no
-  // panel-selector gating — that gate belonged to the old chrome wrapper and
-  // is intentionally dropped, see TabStrip.test.tsx).
-  const backlinksRailExpanded = useTreeStore((s) => s.backlinksRailExpanded);
-  const setBacklinksRailExpanded = useTreeStore(
-    (s) => s.setBacklinksRailExpanded,
-  );
-
   // Pinned tabs refuse a direct pin-glyph click with a toast (D-14) rather
   // than closing — same toast-on-refusal idiom as useWorkspace.ts/useReveal.ts.
   const { toast } = useToast();
@@ -331,37 +270,14 @@ export function TabStrip({
   const foreignStripHover = usePaneDragStore((s) => s.stripHover);
   const foreignInsert = foreignStripHover?.leafId === leafId ? foreignStripHover : null;
 
-  const railLabel = backlinksRailExpanded ? "Hide panels" : "Show panels";
-
   // The left sidebar is collapsed from its own header (SidebarTabRow) and
   // reopened via PaneCornerReopenButton — the tab strip no longer carries a
   // redundant left-sidebar toggle (Phase 27 NAV-03; mock shows a tab-bar left
-  // toggle only when the sidebar is closed, never when it's open).
-  const rightCluster = (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
-        borderLeft: "1px solid var(--color-border-inner)",
-        paddingLeft: 8,
-        flexShrink: 0,
-      }}
-      data-testid="tab-strip-right-cluster"
-    >
-      <RightClusterToggle
-        ariaLabel={railLabel}
-        onClick={() => setBacklinksRailExpanded(!backlinksRailExpanded)}
-        icon={
-          backlinksRailExpanded ? (
-            <ChevronRight size={16} aria-hidden="true" />
-          ) : (
-            <ChevronLeft size={16} aria-hidden="true" />
-          )
-        }
-      />
-    </div>
-  );
+  // toggle only when the sidebar is closed, never when it's open). The right
+  // rail follows the same principle as of 30-13: its own header owns the
+  // collapse control, and its own collapsed-strip owns the reopen control —
+  // the tab strip carries neither (owner UAT rejected the tab-bar toggle
+  // duplicating the rail's own control).
 
   // Render-only ghost state: tracks cursor position while drag is active.
   // dragRef remains the authoritative drag source; this is purely for display.
@@ -682,7 +598,6 @@ export function TabStrip({
         {isTopLeftLeaf && <PaneCornerReopenButton />}
         <EmptyStateNewTabButton onNewTab={onNewTab} />
         <div style={{ flex: "1 1 auto" }} />
-        {rightCluster}
       </div>
     );
   }
@@ -926,7 +841,6 @@ export function TabStrip({
         />
       )}
       {newTabButton}
-      {rightCluster}
       {/* Single absolute overlay bar at the drop boundary — moves without shifting
           any pill's layout position. zIndex below the fixed ghost (1000). */}
       {dragGhost !== null && dropIndicatorX !== null && (

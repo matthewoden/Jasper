@@ -1,15 +1,24 @@
 /**
- * RightRailTabRow — icon-only Outline / Linked mentions / Tags tab row for
- * the right rail's tab-row shell (Phase 30 TAGS-01, D-01/D-02).
+ * RightRailTabRow — icon-only Outline / Linked mentions / Tags tab row +
+ * collapse control for the right rail's tab-row shell (Phase 30 TAGS-01,
+ * D-01/D-02; collapse control added in 30-13 gap closure per owner UAT).
  *
- * Mirrors SidebarTabRow.tsx pixel-for-pixel (same tabBase, same
- * active/hover color-mix formula, same 8px gap) — no collapse button here;
- * rail collapse is a separate affordance from this row (D-05).
+ * Mirrors SidebarTabRow.tsx: same tabBase, same active/hover color-mix
+ * formula, same 8px gap, same space-between + collapse-button pattern —
+ * but horizontally mirrored. The left rail has its icon tabs at the app
+ * edge (left) and its collapse control at the inner edge (right); this row
+ * puts its icon tabs at the app edge (right) and its collapse control at
+ * the inner edge (left), producing a mirror image of the left rail.
  *
  * Active tab is driven by the persisted rightPanel field (useTreeStore
  * rightPanel slice, hydrated by useWorkspace — Plan 01). Clicking a tab
  * calls useWorkspace().setRightPanel(value), which optimistically updates
  * the slice and persists to workspace.json.
+ *
+ * The collapse control reuses the existing backlinksRailExpanded slice
+ * (useTreeStore) — already persisted to localStorage by App.tsx — so no
+ * new persistence or workspace.json field is introduced. Reopening a
+ * collapsed rail is handled by TabStrip's existing "Show panels" button.
  *
  * Also exports RightRailSubHeader — a small in-panel sub-header used below
  * the tab row by the active panel (ported from SectionHeader.tsx with the
@@ -18,7 +27,7 @@
  */
 import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { List, Link2, Tag } from "lucide-react";
+import { List, Link2, Tag, PanelRight } from "lucide-react";
 import { useTreeStore, type RightPanelTab } from "../lib/useTreeStore";
 import { useWorkspace } from "../lib/useWorkspace";
 
@@ -73,9 +82,25 @@ function TabButton({
   );
 }
 
+const collapseButtonBase: CSSProperties = {
+  width: 30,
+  height: 30,
+  padding: 0,
+  background: "transparent",
+  border: "none",
+  color: "var(--color-muted)",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 6,
+};
+
 export function RightRailTabRow(): React.JSX.Element {
   const rightPanel = useTreeStore((s) => s.rightPanel);
+  const setBacklinksRailExpanded = useTreeStore((s) => s.setBacklinksRailExpanded);
   const { setRightPanel } = useWorkspace();
+  const [collapseHovering, setCollapseHovering] = useState(false);
 
   const selectPanel = (panel: RightPanelTab) => {
     void setRightPanel(panel);
@@ -86,31 +111,50 @@ export function RightRailTabRow(): React.JSX.Element {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 8,
+        justifyContent: "space-between",
+        width: "100%",
       }}
       data-testid="right-rail-tab-row"
     >
-      <TabButton
-        ariaLabel="Outline"
-        title="Outline"
-        active={rightPanel === "outline"}
-        onClick={() => selectPanel("outline")}
-        icon={<List size={16} aria-hidden="true" />}
-      />
-      <TabButton
-        ariaLabel="Linked mentions"
-        title="Linked mentions"
-        active={rightPanel === "backlinks"}
-        onClick={() => selectPanel("backlinks")}
-        icon={<Link2 size={16} aria-hidden="true" />}
-      />
-      <TabButton
-        ariaLabel="Tags"
-        title="Tags"
-        active={rightPanel === "tags"}
-        onClick={() => selectPanel("tags")}
-        icon={<Tag size={16} aria-hidden="true" />}
-      />
+      <button
+        type="button"
+        aria-label="Collapse panels"
+        title="Collapse panels"
+        onClick={() => setBacklinksRailExpanded(false)}
+        onMouseEnter={() => setCollapseHovering(true)}
+        onMouseLeave={() => setCollapseHovering(false)}
+        style={{
+          ...collapseButtonBase,
+          background: collapseHovering
+            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+            : "transparent",
+        }}
+      >
+        <PanelRight size={16} aria-hidden="true" />
+      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <TabButton
+          ariaLabel="Outline"
+          title="Outline"
+          active={rightPanel === "outline"}
+          onClick={() => selectPanel("outline")}
+          icon={<List size={16} aria-hidden="true" />}
+        />
+        <TabButton
+          ariaLabel="Linked mentions"
+          title="Linked mentions"
+          active={rightPanel === "backlinks"}
+          onClick={() => selectPanel("backlinks")}
+          icon={<Link2 size={16} aria-hidden="true" />}
+        />
+        <TabButton
+          ariaLabel="Tags"
+          title="Tags"
+          active={rightPanel === "tags"}
+          onClick={() => selectPanel("tags")}
+          icon={<Tag size={16} aria-hidden="true" />}
+        />
+      </div>
     </div>
   );
 }

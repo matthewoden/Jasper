@@ -40,7 +40,7 @@ import { useReveal } from "./lib/useReveal";
 import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
 import { useVaultSwitch } from "./lib/useVaultSwitch";
 import { VaultSwitchOverlay } from "./components/VaultSwitchOverlay";
-import { useTreeStore } from "./lib/useTreeStore";
+import { useTreeStore, RAIL_COLLAPSED_WIDTH } from "./lib/useTreeStore";
 import { useBookmarks } from "./lib/useBookmarks";
 import { usePaneStore, pruneLayoutForMissingNotes } from "./lib/usePaneStore";
 import * as searchHistory from "./lib/searchHistory";
@@ -194,6 +194,18 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   const backlinksRailWidth = useTreeStore((s) => s.backlinksRailWidth);
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
   const zen = useTreeStore((s) => s.zen);
+
+  // 30-13: the right rail no longer fully unmounts when collapsed — it
+  // renders a slim RAIL_COLLAPSED_WIDTH strip holding its own reopen
+  // button (mirrors the left rail's single-control idiom; see
+  // RightRail.tsx). The grid column reserves that width instead of 0 so the
+  // strip has somewhere to render. Zen mode still collapses the column to 0
+  // (all chrome hidden), matching the other rails' zen behavior.
+  const rightRailColumnWidth = zen
+    ? 0
+    : backlinksRailExpanded
+      ? backlinksRailWidth
+      : RAIL_COLLAPSED_WIDTH;
 
   const paletteOpen = useTreeStore((s) => s.paletteOpen);
   const paletteMode = useTreeStore((s) => s.paletteMode);
@@ -774,7 +786,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: `${zen ? 0 : 48}px ${!zen && notesSidebarVisible ? sidebarWidth : 0}px minmax(0, 1fr) ${!zen && backlinksRailExpanded ? backlinksRailWidth : 0}px`,
+          gridTemplateColumns: `${zen ? 0 : 48}px ${!zen && notesSidebarVisible ? sidebarWidth : 0}px minmax(0, 1fr) ${rightRailColumnWidth}px`,
           gridTemplateRows: "auto minmax(0, 1fr)",
           flex: 1,
           minHeight: 0,
