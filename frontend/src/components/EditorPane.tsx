@@ -50,6 +50,7 @@ import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useBookmarks } from "../lib/useBookmarks";
 import { useOutlineStore } from "../lib/useOutlineStore";
+import { useNoteTagsStore } from "../lib/useNoteTagsFromDoc";
 import { countWords, formatWordCount } from "../lib/wordCount";
 import type { HeadingInfo } from "../editor/outlineExtract";
 import type { components } from "../api/schema";
@@ -504,6 +505,16 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     },
     [],
   );
+
+  // Tags (TAGS-02): only the pane whose noteId IS the active tab writes into
+  // the shared tag store — mirrors the Outline gate above so keep-alive
+  // background panes don't clobber the Tags tab with their (invisible)
+  // content.
+  const handleEditorTagsChange = useCallback((tags: string[]) => {
+    if (noteIdRef.current === null) return;
+    if (noteIdRef.current !== useTreeStore.getState().activeNoteId) return;
+    useNoteTagsStore.getState().setNoteTags(tags);
+  }, []);
 
   // Register this pane's scrollToHeading into the shared outline store, and
   // flush its cached heading list, whenever it becomes (or is) the active
@@ -1084,6 +1095,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           onChange={handleEditorChange}
           onH1Change={handleEditorH1Change}
           onHeadingsChange={handleEditorHeadingsChange}
+          onTagsChange={handleEditorTagsChange}
           onSaveRequested={handleSaveRequested}
           onBlur={handleEditorBlur}
           readOnly={isDeleted}
