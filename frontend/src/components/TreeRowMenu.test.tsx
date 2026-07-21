@@ -299,6 +299,108 @@ describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => 
       stopSpy.mockRestore();
     }
   });
+
+  it("Phase 30: Open in split onSelect calls event.stopPropagation() (note rows)", () => {
+    const onOpenInSplit = vi.fn();
+    render(
+      <TreeRowDropdownMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenInSplit={onOpenInSplit}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    const item = screen.getByText("Open in split").closest('[role="menuitem"]');
+    expect(item).not.toBeNull();
+    const stopSpy = vi.spyOn(Event.prototype, "stopPropagation");
+    try {
+      fireEvent.click(item as HTMLElement);
+      expect(stopSpy).toHaveBeenCalled();
+      expect(onOpenInSplit).toHaveBeenCalledTimes(1);
+    } finally {
+      stopSpy.mockRestore();
+    }
+  });
+
+  it("Phase 30: Bookmark onSelect calls event.stopPropagation() (note rows)", () => {
+    const onToggleBookmark = vi.fn();
+    render(
+      <TreeRowDropdownMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        isBookmarked={false}
+        onToggleBookmark={onToggleBookmark}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    const item = screen.getByText("Bookmark").closest('[role="menuitem"]');
+    expect(item).not.toBeNull();
+    const stopSpy = vi.spyOn(Event.prototype, "stopPropagation");
+    try {
+      fireEvent.click(item as HTMLElement);
+      expect(stopSpy).toHaveBeenCalled();
+      expect(onToggleBookmark).toHaveBeenCalledTimes(1);
+    } finally {
+      stopSpy.mockRestore();
+    }
+  });
+
+  // D-19/D-20 regression guard: every bulk-menu item's onSelect must call
+  // event.stopPropagation() — react-arborist's DefaultRow wrapper listens
+  // for a bubbled click (React portals bubble through the REACT tree, not
+  // the DOM tree) and calls node.handleClick -> node.select(), which would
+  // collapse the live multi-selection down to just the row the context
+  // menu was opened on before the bulk action's mutation ever runs. Each
+  // case opens its own menu instance since Radix dismisses on select.
+  it.each([
+    ["Open (3 tabs)", "onBulkOpenTabs"],
+    ["Open in split", "onBulkOpenInSplit"],
+    ["Bookmark 3 notes", "onBulkBookmark"],
+    ["Delete 3 notes", "onBulkDelete"],
+  ] as const)(
+    "Phase 30: bulk item %s calls event.stopPropagation()",
+    (label, handlerKey) => {
+      const handler = vi.fn();
+      render(
+        <TreeRowContextMenu
+          rowKind="note"
+          noteId="uuid-1"
+          parentPath=""
+          onOpen={vi.fn()}
+          onNewNote={vi.fn()}
+          selectionCount={3}
+          {...{ [handlerKey]: handler }}
+        >
+          <div data-testid="row">row</div>
+        </TreeRowContextMenu>,
+      );
+      fireEvent.contextMenu(screen.getByTestId("row"));
+      const item = screen.getByText(label).closest('[role="menuitem"]');
+      expect(item).not.toBeNull();
+      const stopSpy = vi.spyOn(Event.prototype, "stopPropagation");
+      try {
+        fireEvent.click(item as HTMLElement);
+        expect(stopSpy).toHaveBeenCalled();
+        expect(handler).toHaveBeenCalledTimes(1);
+      } finally {
+        stopSpy.mockRestore();
+      }
+    },
+  );
 });
 
 

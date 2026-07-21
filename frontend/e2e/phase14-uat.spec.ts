@@ -96,15 +96,16 @@ async function apiCreateFolder(
 }
 
 /**
- * Delete a tree item (note or folder) via the kebab menu and confirm the dialog.
- *
- * row: a Playwright Locator for the tree row element (note or folder).
- * confirmLabel: text on the confirm button ("Delete note" | "Delete folder").
+ * Delete a tree item (note or folder) via the kebab menu and confirm the
+ * dialog. Both single-target variants (note/folder) share the SAME
+ * "Delete" confirm-button label per Phase 30's universal delete-confirm
+ * dialog (D-26, UI-SPEC §7 Copywriting Contract) — the dialog's TITLE
+ * ("Delete note?" / "Delete folder?") is what disambiguates, not the
+ * confirm button.
  */
 async function deleteViaKebab(
   page: Page,
   rowLocator: ReturnType<Page["locator"]>,
-  confirmLabel: string,
 ): Promise<void> {
   await expect(rowLocator).toBeVisible({ timeout: 10_000 });
 
@@ -115,7 +116,7 @@ async function deleteViaKebab(
 
   await page.getByText("Delete", { exact: true }).click({ timeout: 5_000 });
 
-  const confirmBtn = page.getByRole("button", { name: confirmLabel });
+  const confirmBtn = page.getByRole("button", { name: "Delete", exact: true });
   await expect(confirmBtn).toBeVisible({ timeout: 5_000 });
   await confirmBtn.click();
 }
@@ -138,7 +139,7 @@ test.describe("@phase14 TRASH-01: note soft-delete", () => {
     );
     await expect(noteRow).toBeVisible({ timeout: 10_000 });
 
-    await deleteViaKebab(page, noteRow, "Delete note");
+    await deleteViaKebab(page, noteRow);
 
     await expect(noteRow).toBeHidden({ timeout: 10_000 });
 
@@ -175,7 +176,7 @@ test.describe("@phase14 TRASH-02: folder soft-delete", () => {
 
     await folderRow.click();
 
-    await deleteViaKebab(page, folderRow, "Delete folder");
+    await deleteViaKebab(page, folderRow);
 
     await expect(folderRow).toBeHidden({ timeout: 10_000 });
 

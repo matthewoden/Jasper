@@ -54,7 +54,6 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { useTreeMutations } from "../lib/useTreeMutations";
 import { useReveal } from "../lib/useReveal";
 import { useMcpGrants } from "../lib/useMcpGrants";
-import { useBookmarks } from "../lib/useBookmarks";
 import { usePaneStore } from "../lib/usePaneStore";
 import { RenameInput } from "./RenameInput";
 import {
@@ -171,6 +170,23 @@ export interface TreeRowProps {
   onBulkOpenInSplit?: () => void;
   onBulkBookmark?: () => void;
   onBulkDelete?: () => void;
+
+  /**
+   * Note-row Bookmark toggle wiring (CTX-02, D-17). FileTree.tsx owns the
+   * SINGLE `useBookmarks()` hydrate/subscribe instance and threads its
+   * `isBookmarked`/`toggleBookmark` down here — TreeRow deliberately does
+   * NOT call `useBookmarks()` itself (unlike useReveal/useMcpGrants/
+   * useTreeMutations above): react-arborist renders one TreeRow per visible
+   * row, and `useBookmarks()` fires its own GET /bookmarks + WS-subscriber
+   * registration on every mount, so calling it per-row multiplied that
+   * hydrate fetch by the row count and caused a burst of near-simultaneous
+   * store writes (every row re-renders on every OTHER row's fetch
+   * resolving) — this both wasted bandwidth and produced enough render
+   * churn during virtualized mount/scroll to detach rows mid-interaction
+   * in E2E (Rule 1 fix). Only meaningful for note rows.
+   */
+  isNoteBookmarked?: (noteId: string) => boolean;
+  onToggleNoteBookmark?: (noteId: string) => void;
 }
 
 const muted: CSSProperties = { color: "var(--color-muted)", flexShrink: 0 };
@@ -214,6 +230,8 @@ export function TreeRow({
   onBulkOpenInSplit,
   onBulkBookmark,
   onBulkDelete,
+  isNoteBookmarked,
+  onToggleNoteBookmark,
 }: TreeRowProps) {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const pendingRename = useTreeStore((s) => s.pendingRename);
@@ -225,7 +243,6 @@ export function TreeRow({
     revoke: revokeMcp,
     inheritedGrantOn,
   } = useMcpGrants();
-  const { isBookmarked, toggleBookmark } = useBookmarks();
   const [contextSelectionCount, setContextSelectionCount] = useState(0);
   const pulseTarget = useTreeStore((s) => s.pulseTarget);
   const liveLabel = useTreeStore((s) =>
@@ -272,12 +289,14 @@ export function TreeRow({
   // shared usePaneStore action directly (same pattern as useTreeMutations/
   // useReveal/useMcpGrants above — TreeRow owns its own hook wiring rather
   // than having FileTree drill single-target callbacks through). Bookmark
-  // state/toggle reads "bookmarked anywhere" (root or any folder).
+  // state/toggle is prop-driven instead (see isNoteBookmarked/
+  // onToggleNoteBookmark doc comment on TreeRowProps — per-row
+  // useBookmarks() calls caused a hydrate-fetch storm).
   const noteIsBookmarked =
-    data.kind === "note" ? isBookmarked(data.id) : undefined;
+    data.kind === "note" ? isNoteBookmarked?.(data.id) : undefined;
   const handleToggleBookmark =
     data.kind === "note"
-      ? () => void toggleBookmark((data as NoteNodeData).id)
+      ? () => onToggleNoteBookmark?.((data as NoteNodeData).id)
       : undefined;
   const handleOpenInSplit =
     data.kind === "note"

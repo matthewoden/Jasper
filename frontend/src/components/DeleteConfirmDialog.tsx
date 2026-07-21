@@ -1,12 +1,17 @@
 /**
  * DeleteConfirmDialog — Radix AlertDialog for note/folder/file/multi deletion.
  *
+ * The single, universal delete-confirm dialog (D-26) — every delete entry
+ * point (tree menu, tree bulk-selection, ⌫, and Plan 09's note-options
+ * menu) renders this same component. Copy is derived entirely from `target`
+ * via `buildDeleteCopy` (deleteConfirmDialog.utils.ts) so no call site
+ * duplicates the locked trash-based strings.
+ *
  * Confirm button uses bg-destructive because deletion is irreversible.
  */
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 
-
-import { buildFolderBody } from "./deleteConfirmDialog.utils";
+import { buildDeleteCopy } from "./deleteConfirmDialog.utils";
 import type { DeleteTarget } from "./deleteConfirmDialog.utils";
 
 export interface DeleteConfirmDialogProps {
@@ -52,19 +57,6 @@ const bodyLineStyle: React.CSSProperties = {
   marginTop: 16,
 };
 
-const bodyLine2Style: React.CSSProperties = {
-  fontSize: 14,
-  fontWeight: 400,
-  color: "var(--color-fg)",
-  lineHeight: 1.5,
-  marginTop: 12,
-};
-
-const destructiveLine2Style: React.CSSProperties = {
-  ...bodyLine2Style,
-  color: "var(--color-destructive)",
-};
-
 const actionsRowStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "flex-end",
@@ -103,51 +95,7 @@ export function DeleteConfirmDialog({
   target,
   onConfirm,
 }: DeleteConfirmDialogProps) {
-  let title: string;
-  let confirmLabel: string;
-  if (target.kind === "note") {
-    title = "Delete this note?";
-    confirmLabel = "Delete note";
-  } else if (target.kind === "folder") {
-    title = "Delete this folder?";
-    confirmLabel = "Delete folder";
-  } else if (target.kind === "multi") {
-    title = `Delete ${target.count} items?`;
-    confirmLabel = `Delete ${target.count} items`;
-  } else if (target.kind === "file") {
-    title = "Delete this file?";
-    confirmLabel = "Delete file";
-  } else {
-    title = "Delete?";
-    confirmLabel = "Delete";
-  }
-
-  let line1 = "";
-  let line2 = "";
-  let line2IsDestructive = false;
-  if (target.kind === "note") {
-    line1 = `${target.name} will be permanently removed from disk and from the index.`;
-    line2 =
-      "Your other notes are not touched — only this file is affected.";
-    line2IsDestructive = false;
-  } else if (target.kind === "folder") {
-    const body = buildFolderBody(
-      target.name,
-      target.noteCount,
-      target.subfolderCount,
-    );
-    line1 = body.line1;
-    line2 = body.line2;
-    line2IsDestructive = body.line2IsDestructive;
-  } else if (target.kind === "multi") {
-    line1 = `This will permanently delete the selected ${target.count} items from disk and from the index.`;
-    line2 = "This cannot be undone.";
-    line2IsDestructive = true;
-  } else if (target.kind === "file") {
-    line1 = `${target.name} will be permanently removed from disk.`;
-    line2 = "This cannot be undone.";
-    line2IsDestructive = true;
-  }
+  const { title, body, confirmLabel } = buildDeleteCopy(target);
 
   const handleConfirm = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -161,15 +109,8 @@ export function DeleteConfirmDialog({
         <AlertDialog.Content style={contentStyle}>
           <AlertDialog.Title style={titleStyle}>{title}</AlertDialog.Title>
           <AlertDialog.Description style={bodyLineStyle}>
-            {line1}
+            {body}
           </AlertDialog.Description>
-          <div
-            style={
-              line2IsDestructive ? destructiveLine2Style : bodyLine2Style
-            }
-          >
-            {line2}
-          </div>
           <div style={actionsRowStyle}>
             <AlertDialog.Cancel asChild>
               <button type="button" style={cancelBtnStyle}>

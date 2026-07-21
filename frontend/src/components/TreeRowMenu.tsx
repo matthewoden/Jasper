@@ -33,7 +33,7 @@ import {
   SplitSquareHorizontal,
   Sparkles,
 } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 
 export type TreeRowMenuKind = "note" | "folder" | "empty-area" | "file" | "bookmark";
 
@@ -286,22 +286,48 @@ function MenuItems({
     // Bulk-selection variant (D-19) — completely replaces the rowKind-
     // specific body; single-target items (Rename, Show in file manager)
     // are hidden entirely, not disabled.
+    //
+    // event.stopPropagation() is required on BOTH onClick and onSelect here
+    // (bulkItemHandlers below) — this is stronger than the pre-existing
+    // "New note"/"New folder" UX-12/Pitfall-7 defense (onSelect only),
+    // because that defense turned out to be insufficient in a real browser
+    // for THIS interaction: Radix's onSelect fires from an internal
+    // custom-event dispatch, not the originating click, so calling
+    // stopPropagation() only there does not stop the real click's SEPARATE
+    // React-synthetic bubble path. Radix composes any consumer-supplied
+    // onClick with its own internal click handling (consumer's onClick
+    // runs first), so stopping propagation THERE reliably prevents the
+    // click from reaching react-arborist's DefaultRow wrapper one level up
+    // (`onClick={node.handleClick}` → `node.select()`), which would
+    // otherwise collapse the live multi-selection down to just the row the
+    // context menu was opened on — silently truncating every bulk action
+    // to N=1 between menu-open and the actual mutation. Verified against
+    // the real-browser regression this fixes (D-19/D-20), not just JSDOM.
+    const bulkItemHandlers = (
+      onSelectHandler?: () => void,
+    ): { onClick: (e: MouseEvent) => void; onSelect: (e: Event) => void } => ({
+      onClick: (e: MouseEvent) => e.stopPropagation(),
+      onSelect: (e: Event) => {
+        e.stopPropagation();
+        onSelectHandler?.();
+      },
+    });
     return (
       <>
-        <Item style={itemStyle} onSelect={() => onBulkOpenTabs?.()}>
+        <Item style={itemStyle} {...bulkItemHandlers(onBulkOpenTabs)}>
           <span>Open ({selectionCount} tabs)</span>
         </Item>
-        <Item style={itemStyle} onSelect={() => onBulkOpenInSplit?.()}>
+        <Item style={itemStyle} {...bulkItemHandlers(onBulkOpenInSplit)}>
           <SplitSquareHorizontal size={16} aria-hidden="true" />
           <span>Open in split</span>
         </Item>
         <Sep style={separatorStyle} />
-        <Item style={itemStyle} onSelect={() => onBulkBookmark?.()}>
+        <Item style={itemStyle} {...bulkItemHandlers(onBulkBookmark)}>
           <Bookmark size={16} aria-hidden="true" />
           <span>Bookmark {selectionCount} notes</span>
         </Item>
         <Sep style={separatorStyle} />
-        <Item style={destructiveItemStyle} onSelect={() => onBulkDelete?.()}>
+        <Item style={destructiveItemStyle} {...bulkItemHandlers(onBulkDelete)}>
           <span>Delete {selectionCount} notes</span>
         </Item>
       </>
@@ -354,9 +380,18 @@ function MenuItems({
           <span>Open</span>
         </Item>
       )}
-      {/* Note rows: Open in split, below "Open" (D-13). */}
+      {/* Note rows: Open in split, below "Open" (D-13). stopPropagation
+          mirrors the UX-12/Pitfall-7 defense (see bulk-variant comment
+          above) — harmless here (single-target select+activate would be a
+          no-op re-select of the same row) but kept consistent. */}
       {rowKind === "note" && onOpenInSplit && (
-        <Item style={itemStyle} onSelect={() => onOpenInSplit()}>
+        <Item
+          style={itemStyle}
+          onSelect={(event: Event) => {
+            event.stopPropagation();
+            onOpenInSplit();
+          }}
+        >
           <SplitSquareHorizontal size={16} aria-hidden="true" />
           <span>Open in split</span>
         </Item>
@@ -382,7 +417,13 @@ function MenuItems({
       {rowKind === "note" && onToggleBookmark && (
         <>
           <Sep style={separatorStyle} />
-          <Item style={itemStyle} onSelect={() => onToggleBookmark()}>
+          <Item
+            style={itemStyle}
+            onSelect={(event: Event) => {
+              event.stopPropagation();
+              onToggleBookmark();
+            }}
+          >
             {isBookmarked ? (
               <BookmarkCheck size={16} aria-hidden="true" />
             ) : (

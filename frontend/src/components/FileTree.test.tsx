@@ -444,9 +444,9 @@ describe("<FileTree /> — Plan 03-07 wiring", () => {
     ) as HTMLElement;
     fireEvent.keyDown(row, { key: "Backspace" });
     await waitFor(() => {
-      expect(screen.getByText("Delete this note?")).toBeInTheDocument();
+      expect(screen.getByText("Delete note?")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Delete note" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => {
       expect(muts.deleteNote).toHaveBeenCalledWith("uuid-1");
     });
@@ -505,9 +505,9 @@ describe("<FileTree /> — Plan 03-07 wiring", () => {
     ) as HTMLElement;
     fireEvent.keyDown(row, { key: "Backspace" });
     await waitFor(() => {
-      expect(screen.getByText(/3 notes/)).toBeInTheDocument();
+      expect(screen.getByText("Delete folder?")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Delete folder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => {
       expect(muts.deleteFolder).toHaveBeenCalledWith("projects", true);
     });
@@ -1735,9 +1735,9 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
     ) as HTMLElement;
     fireEvent.keyDown(row, { key: "Backspace" });
     await waitFor(() => {
-      expect(screen.getByText("Delete this note?")).toBeInTheDocument();
+      expect(screen.getByText("Delete note?")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Delete note" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => {
       expect(muts.deleteNote).toHaveBeenCalledWith("note-canonical-id");
     });
@@ -1782,9 +1782,9 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
     ) as HTMLElement;
     fireEvent.keyDown(row, { key: "Backspace" });
     await waitFor(() => {
-      expect(screen.getByText("Delete this folder?")).toBeInTheDocument();
+      expect(screen.getByText("Delete folder?")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Delete folder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => {
       expect(muts.deleteFolder).toHaveBeenCalledWith(
         "deeply/nested/folder",
@@ -1854,9 +1854,9 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
     ) as HTMLElement;
     fireEvent.keyDown(subdirRow, { key: "Backspace" });
     await waitFor(() => {
-      expect(screen.getByText("Delete this note?")).toBeInTheDocument();
+      expect(screen.getByText("Delete note?")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Delete note" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => {
       expect(muts.deleteNote).toHaveBeenCalledWith("subdir-foo-id");
     });

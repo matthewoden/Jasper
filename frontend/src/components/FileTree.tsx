@@ -1049,6 +1049,8 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
               onBulkOpenInSplit={handleBulkOpenInSplit}
               onBulkBookmark={handleBulkBookmark}
               onBulkDelete={handleBulkDelete}
+              isNoteBookmarked={isBookmarked}
+              onToggleNoteBookmark={toggleBookmark}
             />
           )}
         />

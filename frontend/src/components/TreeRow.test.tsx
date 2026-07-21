@@ -29,17 +29,6 @@ vi.mock("../lib/useMcpGrants", () => ({
   }),
 }));
 
-// useBookmarks() internally calls useToast(), which throws outside a
-// <ToastProvider>. Stubbed the same way useReveal/useMcpGrants are above —
-// TreeRow's own bookmark wiring (isBookmarked/toggleBookmark) is exercised
-// via the props-driven TreeRowMenu tests, not here.
-vi.mock("../lib/useBookmarks", () => ({
-  useBookmarks: () => ({
-    isBookmarked: () => false,
-    toggleBookmark: vi.fn(),
-  }),
-}));
-
 import { useTreeStore } from "../lib/useTreeStore";
 import { TreeRow } from "./TreeRow";
 
@@ -1322,6 +1311,51 @@ describe("<TreeRow />", () => {
       );
       expect(label.style.color).not.toBe("var(--color-fg-title)");
       expect(label.style.color).toBe("var(--color-fg)");
+    });
+  });
+
+  describe("Phase 30 — Bookmark toggle is prop-driven, not a per-row useBookmarks() call (Rule 1 fix)", () => {
+    it("passes isNoteBookmarked(id) through to the kebab menu's Bookmark item label", async () => {
+      const node = makeNoteNode({ id: "uuid-1" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+          isNoteBookmarked={(id) => id === "uuid-1"}
+          onToggleNoteBookmark={vi.fn()}
+        />,
+      );
+      const kebab = container.querySelector(
+        "[data-tree-row-kebab]",
+      ) as HTMLElement;
+      fireEvent.pointerDown(kebab, { button: 0 });
+      fireEvent.click(kebab);
+      expect(await screen.findByText("Remove bookmark")).toBeInTheDocument();
+    });
+
+    it("calls onToggleNoteBookmark(id) when the Bookmark item is clicked", async () => {
+      const onToggleNoteBookmark = vi.fn();
+      const node = makeNoteNode({ id: "uuid-1" });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+          isNoteBookmarked={() => false}
+          onToggleNoteBookmark={onToggleNoteBookmark}
+        />,
+      );
+      const kebab = container.querySelector(
+        "[data-tree-row-kebab]",
+      ) as HTMLElement;
+      fireEvent.pointerDown(kebab, { button: 0 });
+      fireEvent.click(kebab);
+      const bookmarkItem = await screen.findByText("Bookmark", { exact: true });
+      fireEvent.click(bookmarkItem);
+      expect(onToggleNoteBookmark).toHaveBeenCalledWith("uuid-1");
     });
   });
 });
