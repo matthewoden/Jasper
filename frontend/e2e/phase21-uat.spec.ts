@@ -414,12 +414,17 @@ test.describe("@phase21 callouts", () => {
 // ─── READ-04: Token styling — headings, wiki-links, tag pills, snippet ─────
 // parity with the editor's ==highlight== accent tint (D-12/D-13/D-18).
 
-function ribbon(page: Page) {
-  return page.locator('nav[aria-label="Activity ribbon"]');
-}
-
-function ribbonSearchBtn(page: Page) {
-  return ribbon(page).locator('button[aria-label="Search notes"]');
+/**
+ * The standalone ribbon Search TOGGLE this test originally clicked was
+ * removed in Phase 27 NAV-02 (D-09/D-10) — panel selection now lives
+ * entirely in the sidebar's SidebarTabRow (see ActivityRibbon.tsx's header
+ * comment). Its current equivalent is the sidebar's own "Search" tab.
+ */
+function sidebarSearchTab(page: Page) {
+  return page
+    .locator('nav[aria-label="Notes navigation"]')
+    .getByTestId("sidebar-tab-row")
+    .getByRole("button", { name: "Search", exact: true });
 }
 
 function searchPanelInput(page: Page) {
@@ -510,7 +515,7 @@ test.describe("@phase21 typography", () => {
       (el) => getComputedStyle(el).backgroundColor,
     );
 
-    await ribbonSearchBtn(page).click();
+    await sidebarSearchTab(page).click();
     const input = searchPanelInput(page);
     await expect(input).toBeVisible({ timeout: 5_000 });
     await input.fill(uniqueToken);
