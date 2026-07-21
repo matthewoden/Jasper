@@ -136,6 +136,9 @@ export function SidebarTabRow(): React.JSX.Element {
         onMouseLeave={() => setCollapseHovering(false)}
         style={{
           ...collapseButtonBase,
+          // Optical alignment: center this 30px control on the 24px
+          // collapse-all-folders toolbar button below it (center x 287).
+          marginRight: -11,
           background: collapseHovering
             ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
             : "transparent",

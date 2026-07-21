@@ -126,6 +126,9 @@ export function RightRailTabRow(): React.JSX.Element {
         onMouseLeave={() => setCollapseHovering(false)}
         style={{
           ...collapseButtonBase,
+          // Optical alignment: pull the button left so the 16px glyph's left
+          // edge (7px inside the 30px box) sits on the rail's 24px title line.
+          marginLeft: -7,
           background: collapseHovering
             ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
             : "transparent",
