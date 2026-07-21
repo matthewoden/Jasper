@@ -114,6 +114,9 @@ export interface LeafPaneProps {
   hideTabStrip?: boolean;
   /** True only for the top-left leaf — its tab strip hosts the reopen cell. */
   isTopLeftLeaf?: boolean;
+  /** True only for the rightmost leaf (pre-order-last) — its tab strip hosts
+   *  the collapsed right-rail reopen toggle (260721-cjt). */
+  isRightmostLeaf?: boolean;
   style?: React.CSSProperties;
 }
 
@@ -134,6 +137,7 @@ export function LeafPane({
   autosaveMs,
   hideTabStrip,
   isTopLeftLeaf,
+  isRightmostLeaf,
   style,
 }: LeafPaneProps) {
   // Per-tab ref bookkeeping, scoped to THIS leaf's own open tabs (mirrors the
@@ -434,6 +438,7 @@ export function LeafPane({
           onNewTab={handleNewTab}
           onCycleTab={handleCycleTab}
           isTopLeftLeaf={isTopLeftLeaf}
+          isRightmostLeaf={isRightmostLeaf}
         />
       )}
       <div style={{ position: "relative", flex: 1, minHeight: 0, minWidth: 0 }}>

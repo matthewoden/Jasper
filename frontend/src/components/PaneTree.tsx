@@ -187,6 +187,7 @@ function SplitRenderer({
   multi,
   props,
   topLeftLeafId,
+  rightmostLeafId,
 }: {
   node: SplitNode;
   path: ("a" | "b")[];
@@ -196,6 +197,8 @@ function SplitRenderer({
   props: NodeRenderProps;
   /** The pre-order-first leaf id (D-12) — threaded down so only that leaf hosts PaneCornerReopenButton. */
   topLeftLeafId: string;
+  /** The pre-order-last leaf id (260721-cjt) — threaded down so only that leaf hosts the collapsed right-rail reopen toggle. */
+  rightmostLeafId: string;
 }) {
   const isRow = node.dir === "row";
   const containerRef = useRef<HTMLDivElement>(null);
@@ -230,7 +233,10 @@ function SplitRenderer({
           overflow: "hidden",
         }}
       >
-        {renderNode(node.a, activePaneId, multi, props, topLeftLeafId, [...path, "a"])}
+        {renderNode(node.a, activePaneId, multi, props, topLeftLeafId, rightmostLeafId, [
+          ...path,
+          "a",
+        ])}
       </div>
       <PaneDivider isRow={isRow} path={path} ratio={node.ratio} containerRef={containerRef} />
       <div
@@ -242,7 +248,10 @@ function SplitRenderer({
           overflow: "hidden",
         }}
       >
-        {renderNode(node.b, activePaneId, multi, props, topLeftLeafId, [...path, "b"])}
+        {renderNode(node.b, activePaneId, multi, props, topLeftLeafId, rightmostLeafId, [
+          ...path,
+          "b",
+        ])}
       </div>
     </div>
   );
@@ -254,6 +263,7 @@ function renderNode(
   multi: boolean,
   props: NodeRenderProps,
   topLeftLeafId: string,
+  rightmostLeafId: string,
   path: ("a" | "b")[] = [],
 ): React.JSX.Element {
   if (node.t === "leaf") {
@@ -282,6 +292,7 @@ function renderNode(
           autosaveMs={props.autosaveMs}
           hideTabStrip={props.hideTabStrip}
           isTopLeftLeaf={node.id === topLeftLeafId}
+          isRightmostLeaf={node.id === rightmostLeafId}
           style={{ flex: 1, minHeight: 0, minWidth: 0 }}
         />
       </div>
@@ -296,6 +307,7 @@ function renderNode(
       multi={multi}
       props={props}
       topLeftLeafId={topLeftLeafId}
+      rightmostLeafId={rightmostLeafId}
     />
   );
 }
@@ -305,11 +317,17 @@ export function PaneTree({ style, ...rest }: PaneTreeProps) {
   const activePaneId = usePaneStore((s) => s.activePaneId);
   // D-12: the pre-order-first leaf is "top-left" — reuse usePaneStore's own
   // leaf ordering (_leaves) rather than inventing a geometry calc (Pitfall 3).
-  const topLeftLeafId = _leaves(tree)[0]?.id ?? "";
+  const leaves = _leaves(tree);
+  const topLeftLeafId = leaves[0]?.id ?? "";
+  // 260721-cjt: the pre-order-last leaf is "rightmost" — same approximation
+  // topLeftLeafId already uses (accepted by the owner as "complicated with
+  // multiple panels"); guarantees exactly one leaf hosts the collapsed
+  // right-rail reopen toggle.
+  const rightmostLeafId = leaves[leaves.length - 1]?.id ?? "";
   // D-27/D-28: whether the layout has more than one leaf — gates LeafPane's
   // active-pane inset accent cue off single-pane layouts (nothing to
   // disambiguate with only one pane).
-  const multi = _leaves(tree).length > 1;
+  const multi = leaves.length > 1;
 
   return (
     <div
@@ -324,7 +342,7 @@ export function PaneTree({ style, ...rest }: PaneTreeProps) {
         ...style,
       }}
     >
-      {renderNode(tree, activePaneId, multi, rest, topLeftLeafId)}
+      {renderNode(tree, activePaneId, multi, rest, topLeftLeafId, rightmostLeafId)}
     </div>
   );
 }

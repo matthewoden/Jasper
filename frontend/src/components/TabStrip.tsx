@@ -23,7 +23,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
-import { Plus } from "lucide-react";
+import { Plus, PanelRight } from "lucide-react";
 import { PaneCornerReopenButton } from "./PaneCornerReopenButton";
 import { usePaneStore } from "../lib/usePaneStore";
 import { usePaneDragStore, type DropRegion } from "../lib/usePaneDragStore";
@@ -52,17 +52,21 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 //   strip horizontal padding (8) + pinned new-tab button (26) + the tab-bar
 //   left cluster (37).
 //   Left cluster: 28 (left toggle) + 8 (paddingRight) + 1 (borderRight) = 37.
-//   The tab-bar right cluster (rail open/close toggle) was removed in 30-13
-//   (gap closure): the right rail now owns its OWN single collapse/reopen
-//   control (RightRailTabRow's collapse button when expanded; RightRail's
-//   own collapsed-strip reopen button when collapsed) so the tab bar no
-//   longer duplicates that affordance — owner UAT rejected two controls
-//   governing the same rail state. The overflow dropdown trigger (28px) is
-//   reserved separately, inside computeHiddenTabIds, ONLY when overflow
-//   occurs.
+//   RESERVED itself stays a static constant — it does NOT include the
+//   right-cluster rail-reopen toggle (260721-cjt), because that toggle is
+//   CONDITIONAL (collapsed rail AND rightmost leaf only). Its width
+//   (RIGHT_CLUSTER, below) is subtracted dynamically inside the overflow
+//   measurement effect only when the toggle actually renders. The overflow
+//   dropdown trigger (28px) is reserved separately, inside
+//   computeHiddenTabIds, ONLY when overflow occurs.
 const LEFT_CLUSTER = 37;
 export const RESERVED = 8 + 26 + LEFT_CLUSTER;
 const OVERFLOW_BTN = 28;
+// Right-cluster rail-reopen toggle width: 1 (borderLeft) + 8 (paddingLeft) +
+// 4 (flex gap) + 28 (button) — adapted from the pre-30-13 RightClusterToggle
+// (git show e1f59f1d^:frontend/src/components/TabStrip.tsx). Only occupies
+// strip width when `showRailToggle` is true (collapsed rail + rightmost leaf).
+const RIGHT_CLUSTER = 1 + 8 + 4 + 28;
 
 // Movement threshold (px) before a pointerdown is treated as a drag.
 // Small enough to feel responsive; large enough to not fire on a click.
@@ -92,6 +96,9 @@ export interface TabStripProps {
   onCycleTab: (direction: 1 | -1) => void;
   /** True only for the top-left leaf — hosts the collapsed-sidebar reopen cell. */
   isTopLeftLeaf?: boolean;
+  /** True only for the rightmost leaf (pre-order-last) — hosts the collapsed
+   *  right-rail reopen toggle when the rail is collapsed (260721-cjt). */
+  isRightmostLeaf?: boolean;
   /** Test-only: force a set of tab ids into the overflow dropdown. */
   forceHiddenTabIds?: Set<string>;
   style?: CSSProperties;
@@ -153,6 +160,41 @@ function EmptyStateNewTabButton({ onNewTab }: { onNewTab: () => void }) {
       }}
     >
       <Plus size={16} aria-hidden="true" />
+    </button>
+  );
+}
+
+/** 28x28 icon button for the tab-bar right cluster's rail-reopen toggle —
+ *  own hover state so it tints like the pre-30-13 RightClusterToggle
+ *  (git show e1f59f1d^:frontend/src/components/TabStrip.tsx) without leaking
+ *  a hook into TabStrip's normal render path. */
+function RailReopenToggle({ onClick }: { onClick: () => void }) {
+  const [hovering, setHovering] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label="Show panels"
+      title="Show panels"
+      onClick={onClick}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+      style={{
+        width: 28,
+        height: 28,
+        padding: 6,
+        background: hovering
+          ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+          : "transparent",
+        border: "none",
+        color: "var(--color-muted)",
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 4,
+      }}
+    >
+      <PanelRight size={16} aria-hidden="true" />
     </button>
   );
 }
@@ -225,6 +267,7 @@ export function TabStrip({
   onNewTab,
   onCycleTab,
   isTopLeftLeaf = false,
+  isRightmostLeaf = false,
   forceHiddenTabIds,
   style,
 }: TabStripProps) {
@@ -273,11 +316,19 @@ export function TabStrip({
   // The left sidebar is collapsed from its own header (SidebarTabRow) and
   // reopened via PaneCornerReopenButton — the tab strip no longer carries a
   // redundant left-sidebar toggle (Phase 27 NAV-03; mock shows a tab-bar left
-  // toggle only when the sidebar is closed, never when it's open). The right
-  // rail follows the same principle as of 30-13: its own header owns the
-  // collapse control, and its own collapsed-strip owns the reopen control —
-  // the tab strip carries neither (owner UAT rejected the tab-bar toggle
-  // duplicating the rail's own control).
+  // toggle only when the sidebar is closed, never when it's open).
+  //
+  // The right rail is DIFFERENT as of 260721-cjt: while expanded, its own
+  // header owns the sole collapse control (unchanged from 30-13) — the tab
+  // strip carries no toggle. But collapsing the rail now unmounts it
+  // entirely (0 width, flush editor) instead of leaving a collapsed strip,
+  // so the reopen affordance moves into the tab bar's right cluster —
+  // rendered ONLY when the rail is collapsed AND this strip belongs to the
+  // rightmost leaf (pre-order-last, mirrors isTopLeftLeaf's approximation
+  // for split layouts). Exactly one rail toggle is visible at any time.
+  const backlinksRailExpanded = useTreeStore((s) => s.backlinksRailExpanded);
+  const setBacklinksRailExpanded = useTreeStore((s) => s.setBacklinksRailExpanded);
+  const showRailToggle = !backlinksRailExpanded && isRightmostLeaf;
 
   // Render-only ghost state: tracks cursor position while drag is active.
   // dragRef remains the authoritative drag source; this is purely for display.
@@ -327,7 +378,7 @@ export function TabStrip({
         setMeasuredHiddenIds((prev) => (prev.size === 0 ? prev : new Set()));
         return;
       }
-      const available = strip.clientWidth - RESERVED;
+      const available = strip.clientWidth - RESERVED - (showRailToggle ? RIGHT_CLUSTER : 0);
       const hidden = computeHiddenTabIds({
         tabIds: tabs.map((t) => t.id),
         activeTabId,
@@ -342,7 +393,7 @@ export function TabStrip({
     const ro = new ResizeObserver(measure);
     ro.observe(strip);
     return () => ro.disconnect();
-  }, [tabs, activeTabId]);
+  }, [tabs, activeTabId, showRailToggle]);
 
   // Capture-phase keyboard shortcuts (D-13), gated to the ACTIVE pane
   // (Pitfall 3 / T-25-06-Dup): every mounted leaf's TabStrip registers this
@@ -582,6 +633,28 @@ export function TabStrip({
     </button>
   );
 
+  // Rail-reopen toggle (260721-cjt): shown ONLY when the right rail is
+  // collapsed AND this strip belongs to the rightmost leaf (showRailToggle,
+  // computed above). Uses the same PanelRight glyph as RightRailTabRow's
+  // collapse control so collapse/reopen read as one affordance toggling
+  // state. Adapted from the pre-30-13 RightClusterToggle (see RIGHT_CLUSTER
+  // comment above).
+  const rightCluster = showRailToggle ? (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        borderLeft: "1px solid var(--color-border-inner)",
+        paddingLeft: 8,
+        flexShrink: 0,
+      }}
+      data-testid="tab-strip-right-cluster"
+    >
+      <RailReopenToggle onClick={() => setBacklinksRailExpanded(true)} />
+    </div>
+  ) : null;
+
   // Empty state (TAB-14): instead of returning null, render the strip with ONLY
   // the + button. An always-visible + means there is never a state with no way
   // to create a tab (discoverability + bootstrap). Consequence: grid row 2 is
@@ -598,6 +671,7 @@ export function TabStrip({
         {isTopLeftLeaf && <PaneCornerReopenButton />}
         <EmptyStateNewTabButton onNewTab={onNewTab} />
         <div style={{ flex: "1 1 auto" }} />
+        {rightCluster}
       </div>
     );
   }
@@ -841,6 +915,7 @@ export function TabStrip({
         />
       )}
       {newTabButton}
+      {rightCluster}
       {/* Single absolute overlay bar at the drop boundary — moves without shifting
           any pill's layout position. zIndex below the fixed ghost (1000). */}
       {dragGhost !== null && dropIndicatorX !== null && (

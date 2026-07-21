@@ -5,7 +5,7 @@
  * rightPanel slice. No independent per-section collapse/divider/ratio
  * machinery remains.
  */
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mockSetWidth = vi.fn();
@@ -120,49 +120,29 @@ beforeEach(() => {
   });
 });
 
-describe("RightRail — collapsed rail renders a slim single-control reopen strip (30-13)", () => {
+describe("RightRail — collapsed rail unmounts to 0 width (260721-cjt)", () => {
   beforeEach(() => {
     mockExpanded = false;
   });
 
-  it("when backlinksRailExpanded=false, RightRail renders a collapsed strip (not null)", () => {
+  it("when backlinksRailExpanded=false, RightRail renders null (flush editor, no collapsed strip)", () => {
     const { container } = render(<RightRail activeNoteId={null} />);
-    expect(container.firstChild).not.toBeNull();
-    expect(screen.getByTestId("right-rail-collapsed")).toBeInTheDocument();
+    expect(container.firstChild).toBeNull();
   });
 
-  it("collapsed strip is RAIL_COLLAPSED_WIDTH wide", () => {
+  it("does not render the legacy right-rail-collapsed strip testid", () => {
     render(<RightRail activeNoteId={null} />);
-    const strip = screen.getByTestId("right-rail-collapsed");
-    expect(strip).toHaveStyle({ width: "32px" });
+    expect(screen.queryByTestId("right-rail-collapsed")).toBeNull();
   });
 
-  it("collapsed strip renders exactly ONE reopen control (aria-label 'Show panels')", () => {
+  it("does not render a 'Show panels' button inside the rail", () => {
     render(<RightRail activeNoteId={null} />);
-    const strip = screen.getByTestId("right-rail-collapsed");
-    expect(within(strip).getAllByRole("button")).toHaveLength(1);
-    expect(within(strip).getByLabelText("Show panels")).toBeInTheDocument();
-  });
-
-  it("clicking the collapsed strip's reopen control calls setBacklinksRailExpanded(true)", () => {
-    render(<RightRail activeNoteId={null} />);
-    fireEvent.click(screen.getByLabelText("Show panels"));
-    expect(mockSetExpanded).toHaveBeenCalledWith(true);
+    expect(screen.queryByLabelText("Show panels")).toBeNull();
   });
 
   it("does NOT render RightRailTabRow or any panel content while collapsed", () => {
     render(<RightRail activeNoteId={null} />);
     expect(screen.queryByTestId("right-rail-tab-row")).toBeNull();
-  });
-
-  it("style prop is merged onto the collapsed strip for grid placement", () => {
-    const { container } = render(
-      <RightRail activeNoteId={null} style={{ gridRow: "1 / 3", gridColumn: "4" }} />,
-    );
-    const strip = container.querySelector('[data-testid="right-rail-collapsed"]') as HTMLElement;
-    expect(strip).toBeTruthy();
-    expect(strip.style.gridRow).toBe("1 / 3");
-    expect(strip.style.gridColumn).toBe("4");
   });
 });
 

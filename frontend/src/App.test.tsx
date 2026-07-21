@@ -236,7 +236,7 @@ import {
 } from "./lib/appShortcuts";
 
 
-import { useTreeStore, RAIL_COLLAPSED_WIDTH } from "./lib/useTreeStore";
+import { useTreeStore } from "./lib/useTreeStore";
 import { COMMAND_PALETTE_ENTRIES } from "./lib/shortcutsRegistry";
 import { siblingNamesForCreate } from "./lib/useTreeCreateActions";
 import { nextUntitledName } from "./lib/nextUntitledName";
@@ -863,14 +863,14 @@ describe("<App /> — two-row grid + chrome mounts", () => {
     expect(grid!.style.gridTemplateColumns).toMatch(/^48px 0px/);
   });
 
-  it("A6.6-6: when backlinksRailExpanded=false, rail column is RAIL_COLLAPSED_WIDTH px (30-13: slim reopen strip, not fully unmounted)", async () => {
+  it("A6.6-6: when backlinksRailExpanded=false, rail column is 0px (flush editor, rail unmounted)", async () => {
     useTreeStore.setState({ backlinksRailExpanded: false });
     render(<AppShell />);
     const grid = document.querySelector(
       'div[style*="grid-template-columns"]',
     ) as HTMLElement | null;
     expect(grid).not.toBeNull();
-    expect(grid!.style.gridTemplateColumns).toMatch(new RegExp(`${RAIL_COLLAPSED_WIDTH}px$`));
+    expect(grid!.style.gridTemplateColumns).toMatch(/0px$/);
   });
 
   it("A6.6-6b: zen mode still collapses the rail column to 0px regardless of backlinksRailExpanded", async () => {

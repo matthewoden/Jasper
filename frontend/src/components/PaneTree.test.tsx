@@ -72,7 +72,7 @@ beforeEach(() => {
   // jsdom does not implement setPointerCapture / releasePointerCapture (TabStrip drag).
   Element.prototype.setPointerCapture = vi.fn();
   Element.prototype.releasePointerCapture = vi.fn();
-  useTreeStore.setState({ notesSidebarVisible: true });
+  useTreeStore.setState({ notesSidebarVisible: true, backlinksRailExpanded: true });
 });
 
 describe("<PaneTree /> pane-corner reopen button (Phase 27 D-12)", () => {
@@ -86,6 +86,26 @@ describe("<PaneTree /> pane-corner reopen button (Phase 27 D-12)", () => {
     useTreeStore.setState({ notesSidebarVisible: true });
     renderTree();
     expect(screen.queryAllByRole("button", { name: "Show sidebar" })).toHaveLength(0);
+  });
+});
+
+describe("<PaneTree /> right-rail reopen toggle threading (260721-cjt)", () => {
+  it("single-leaf tree: the sole leaf's strip is the rightmost — gets the collapsed toggle when the rail is collapsed", () => {
+    useTreeStore.setState({ backlinksRailExpanded: false });
+    renderTree({ tree: leafA, activePaneId: "leaf-a" });
+    expect(screen.getAllByTestId("tab-strip-right-cluster")).toHaveLength(1);
+  });
+
+  it("row-split tree: exactly ONE strip (the pre-order-last leaf) carries tab-strip-right-cluster when the rail is collapsed", () => {
+    useTreeStore.setState({ backlinksRailExpanded: false });
+    renderTree();
+    expect(screen.getAllByTestId("tab-strip-right-cluster")).toHaveLength(1);
+  });
+
+  it("row-split tree: no strip carries tab-strip-right-cluster when the rail is expanded", () => {
+    useTreeStore.setState({ backlinksRailExpanded: true });
+    renderTree();
+    expect(screen.queryAllByTestId("tab-strip-right-cluster")).toHaveLength(0);
   });
 });
 

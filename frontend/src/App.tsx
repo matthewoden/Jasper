@@ -40,7 +40,7 @@ import { useReveal } from "./lib/useReveal";
 import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
 import { useVaultSwitch } from "./lib/useVaultSwitch";
 import { VaultSwitchOverlay } from "./components/VaultSwitchOverlay";
-import { useTreeStore, RAIL_COLLAPSED_WIDTH } from "./lib/useTreeStore";
+import { useTreeStore } from "./lib/useTreeStore";
 import { useBookmarks } from "./lib/useBookmarks";
 import { usePaneStore, pruneLayoutForMissingNotes } from "./lib/usePaneStore";
 import * as searchHistory from "./lib/searchHistory";
@@ -195,17 +195,12 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
   const zen = useTreeStore((s) => s.zen);
 
-  // 30-13: the right rail no longer fully unmounts when collapsed — it
-  // renders a slim RAIL_COLLAPSED_WIDTH strip holding its own reopen
-  // button (mirrors the left rail's single-control idiom; see
-  // RightRail.tsx). The grid column reserves that width instead of 0 so the
-  // strip has somewhere to render. Zen mode still collapses the column to 0
-  // (all chrome hidden), matching the other rails' zen behavior.
-  const rightRailColumnWidth = zen
-    ? 0
-    : backlinksRailExpanded
-      ? backlinksRailWidth
-      : RAIL_COLLAPSED_WIDTH;
+  // 260721-cjt: collapsed rail unmounts entirely (RightRail.tsx returns
+  // null), so the grid column reserves 0 width and the editor sits flush
+  // with the right window edge. The reopen affordance lives in the
+  // rightmost pane's tab bar instead (TabStrip.tsx). Zen mode still
+  // collapses the column to 0 regardless, matching the other rails.
+  const rightRailColumnWidth = zen || !backlinksRailExpanded ? 0 : backlinksRailWidth;
 
   const paletteOpen = useTreeStore((s) => s.paletteOpen);
   const paletteMode = useTreeStore((s) => s.paletteMode);
