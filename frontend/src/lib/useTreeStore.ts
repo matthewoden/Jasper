@@ -72,6 +72,14 @@ export type SearchSortOrder = "relevance" | "modified" | "created";
 export const NOTES_SORT_DEFAULT: NotesSortOrder = "name-asc"; // D-06
 export const SEARCH_SORT_DEFAULT: SearchSortOrder = "relevance";
 
+/**
+ * Right-rail active tab (TAGS-01). Backend-persisted via workspace.json
+ * (useWorkspace.ts) — same "no localStorage" treatment as
+ * notesSort/searchSort above (D-09).
+ */
+export type RightPanelTab = "outline" | "backlinks" | "tags";
+export const RIGHT_PANEL_DEFAULT: RightPanelTab = "outline";
+
 
 const EDITOR_MIN = 320;
 
@@ -237,6 +245,13 @@ export interface TreeStore {
   setNotesSort: (v: NotesSortOrder) => void;
   searchSort: SearchSortOrder;
   setSearchSort: (v: SearchSortOrder) => void;
+
+  /**
+   * Right-rail active tab (TAGS-01). Backend-persisted via workspace.json,
+   * sibling to notesSort/searchSort above.
+   */
+  rightPanel: RightPanelTab;
+  setRightPanel: (v: RightPanelTab) => void;
 }
 
 
@@ -443,6 +458,9 @@ export const useTreeStore = create<TreeStore>((set) => ({
   setNotesSort: (v) => set({ notesSort: v }),
   searchSort: SEARCH_SORT_DEFAULT,
   setSearchSort: (v) => set({ searchSort: v }),
+
+  rightPanel: RIGHT_PANEL_DEFAULT,
+  setRightPanel: (v) => set({ rightPanel: v }),
 }));
 
 /**
