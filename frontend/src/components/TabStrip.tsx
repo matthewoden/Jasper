@@ -31,6 +31,8 @@ import { _findLeaf } from "../lib/paneTree";
 import type { Tab } from "../lib/useTabStore";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useToast } from "./toast.utils";
+import { useReveal } from "../lib/useReveal";
+import { getNote } from "../lib/notesApi";
 import { TabPill } from "./TabPill";
 import { TabContextMenu } from "./TabContextMenu";
 import { TabOverflowDropdown } from "./TabOverflowDropdown";
@@ -265,7 +267,9 @@ export function TabStrip({
   onRequestClose,
   onCloseOthers,
   onCloseToRight,
+  onCloseAll,
   onOpenRight,
+  onTogglePin,
   onReorder,
   onNewTab,
   onCycleTab,
@@ -290,6 +294,25 @@ export function TabStrip({
   const { toast } = useToast();
   const handlePinnedClickRefused = () => {
     toast({ title: "This tab is pinned — right-click to unpin" });
+  };
+
+  // "Show in file manager" (CTX-01) — the tab menu only has a noteId, not a
+  // vault-relative path, so the lookup is a lazy getNote() at click time
+  // rather than a mount-time useFileTree() subscription (which would add a
+  // second /tree fetcher per open leaf for no render-time benefit).
+  const { reveal } = useReveal();
+  const handleRevealTab = (noteId: string) => {
+    void (async () => {
+      const { data } = await getNote(noteId);
+      if (data?.path) void reveal(data.path);
+    })();
+  };
+
+  // "Rename" (CTX-01) — Jasper has no tab-only rename; this reuses the tree's
+  // own inline-rename entry point (same one TreeRowMenu's Rename item drives)
+  // against the tab's underlying note.
+  const handleRenameTab = (noteId: string) => {
+    useTreeStore.getState().startRename("note", noteId);
   };
 
   // Whether THIS strip's leaf is the active pane (D-05 active-pane cue): the
@@ -854,6 +877,14 @@ export function TabStrip({
                 onClose={() => onRequestClose(tab.id)}
                 onCloseOthers={() => onCloseOthers(tab.id)}
                 onCloseToRight={() => onCloseToRight(tab.id)}
+                onCloseAll={() => onCloseAll()}
+                onOpenSplit={() =>
+                  usePaneStore.getState().openNoteInNewSplit(tab.noteId, "row")
+                }
+                isPinned={tab.pinned === true}
+                onTogglePin={() => onTogglePin(tab.id)}
+                onRename={() => handleRenameTab(tab.noteId)}
+                onReveal={() => handleRevealTab(tab.noteId)}
               >
                 <TabPill
                   title={titleForTab(tab.noteId)}
