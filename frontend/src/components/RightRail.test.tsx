@@ -1,41 +1,26 @@
 /**
- * RightRail tests — Phase 20 three-section shell (Outline → Linked
- * mentions → Tags), each behind an independent SectionHeader collapse
- * boolean; no legacy panel-selector gating remains.
+ * RightRail tests — Phase 30 tab-row + single-mounted-panel shell (TAGS-01,
+ * D-01..D-05): RightRailTabRow at the top, exactly ONE of
+ * Outline/LinkedMentions/RightRailTagsPanel mounted below it, driven by the
+ * rightPanel slice. No independent per-section collapse/divider/ratio
+ * machinery remains.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-
 const mockSetWidth = vi.fn();
-const mockSetOutlinePanelExpanded = vi.fn();
-const mockSetLinkedMentionsPanelExpanded = vi.fn();
-const mockSetTagsPanelExpanded = vi.fn();
-const mockSetOutlineHeightRatio = vi.fn();
-const mockSetLinkedMentionsHeightRatio = vi.fn();
+const mockSetRightPanel = vi.fn();
 
 let mockExpanded = true;
 let mockWidth = 280;
-let mockOutlinePanelExpanded = true;
-let mockLinkedMentionsPanelExpanded = true;
-let mockTagsPanelExpanded = true;
-let mockOutlineHeightRatio = 0.34;
-let mockLinkedMentionsHeightRatio = 0.34;
+let mockRightPanel: "outline" | "backlinks" | "tags" = "outline";
+let mockOutlineHeadingsCount = 0;
 
 const mockStoreState = () => ({
   backlinksRailExpanded: mockExpanded,
   backlinksRailWidth: mockWidth,
   setBacklinksRailWidth: mockSetWidth,
-  outlinePanelExpanded: mockOutlinePanelExpanded,
-  setOutlinePanelExpanded: mockSetOutlinePanelExpanded,
-  linkedMentionsPanelExpanded: mockLinkedMentionsPanelExpanded,
-  setLinkedMentionsPanelExpanded: mockSetLinkedMentionsPanelExpanded,
-  tagsPanelExpanded: mockTagsPanelExpanded,
-  setTagsPanelExpanded: mockSetTagsPanelExpanded,
-  outlineHeightRatio: mockOutlineHeightRatio,
-  setOutlineHeightRatio: mockSetOutlineHeightRatio,
-  linkedMentionsHeightRatio: mockLinkedMentionsHeightRatio,
-  setLinkedMentionsHeightRatio: mockSetLinkedMentionsHeightRatio,
+  rightPanel: mockRightPanel,
 });
 
 vi.mock("../lib/useTreeStore", () => ({
@@ -48,6 +33,17 @@ vi.mock("../lib/useTreeStore", () => ({
   RAIL_COLLAPSED_WIDTH: 32,
 }));
 
+vi.mock("../lib/useWorkspace", () => ({
+  useWorkspace: () => ({
+    notesSort: "name-asc",
+    searchSort: "relevance",
+    rightPanel: mockRightPanel,
+    setNotesSort: vi.fn(),
+    setSearchSort: vi.fn(),
+    setRightPanel: mockSetRightPanel,
+  }),
+}));
+
 const mockUseBacklinks = vi.fn();
 vi.mock("../lib/useBacklinks", () => ({
   useBacklinks: (...args: unknown[]) => mockUseBacklinks(...args),
@@ -56,6 +52,11 @@ vi.mock("../lib/useBacklinks", () => ({
 const mockUseTagBrowser = vi.fn();
 vi.mock("../lib/useTagBrowser", () => ({
   useTagBrowser: () => mockUseTagBrowser(),
+}));
+
+vi.mock("../lib/useOutlineStore", () => ({
+  useOutlineStore: (selector: (s: { outlineHeadings: unknown[] }) => unknown) =>
+    selector({ outlineHeadings: new Array(mockOutlineHeadingsCount).fill(0) }),
 }));
 
 vi.mock("./OutlinePanel", () => ({
@@ -78,37 +79,26 @@ vi.mock("./LinkedMentionsPanel", () => ({
 vi.mock("./RightRailTagsPanel", () => ({
   RightRailTagsPanel: () => <div data-testid="mock-tags-panel">Tags Panel</div>,
 }));
-const interPanelDividerProps: Array<{
-  getRatio: () => number;
-  setRatio: (r: number) => void;
-}> = [];
-vi.mock("./InterPanelDivider", () => ({
-  InterPanelDivider: (props: {
-    getRatio: () => number;
-    setRatio: (r: number) => void;
-  }) => {
-    interPanelDividerProps.push(props);
-    return (
-      <div
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Resize panels"
-        data-testid="inter-panel-divider"
-      />
-    );
-  },
-}));
-
 
 import { RightRail } from "./RightRail";
 
 beforeEach(() => {
+  mockExpanded = true;
+  mockWidth = 280;
+  mockRightPanel = "outline";
+  mockOutlineHeadingsCount = 0;
+  mockSetWidth.mockReset();
+  mockSetRightPanel.mockReset();
+  linkedMentionsPanelProps.length = 0;
+
+  mockUseBacklinks.mockReset();
   mockUseBacklinks.mockReturnValue({
     backlinks: [],
     loading: false,
     error: null,
     refresh: vi.fn(),
   });
+  mockUseTagBrowser.mockReset();
   mockUseTagBrowser.mockReturnValue({
     tags: [],
     loading: false,
@@ -120,8 +110,6 @@ beforeEach(() => {
 describe("RightRail — collapsed rail returns null", () => {
   beforeEach(() => {
     mockExpanded = false;
-    mockWidth = 280;
-    mockSetWidth.mockReset();
   });
 
   it("when backlinksRailExpanded=false, RightRail renders null (no aside)", () => {
@@ -130,53 +118,53 @@ describe("RightRail — collapsed rail returns null", () => {
   });
 });
 
-describe("RightRail — three-section shell", () => {
-  beforeEach(() => {
-    mockExpanded = true;
-    mockWidth = 280;
-    mockOutlinePanelExpanded = true;
-    mockLinkedMentionsPanelExpanded = true;
-    mockTagsPanelExpanded = true;
-    mockOutlineHeightRatio = 0.34;
-    mockLinkedMentionsHeightRatio = 0.34;
-    mockSetWidth.mockReset();
-    mockSetOutlinePanelExpanded.mockReset();
-    mockSetLinkedMentionsPanelExpanded.mockReset();
-    mockSetTagsPanelExpanded.mockReset();
-    mockUseBacklinks.mockReset();
+describe("RightRail — tab row + single-panel shell", () => {
+  it("renders the RightRailTabRow icon-tab row", () => {
+    render(<RightRail activeNoteId="note-1" />);
+    expect(screen.getByTestId("right-rail-tab-row")).toBeInTheDocument();
+  });
+
+  it("rightPanel='outline' mounts ONLY OutlinePanel", () => {
+    mockRightPanel = "outline";
+    render(<RightRail activeNoteId="note-1" />);
+    expect(screen.getByTestId("mock-outline-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("mock-linked-mentions-panel")).toBeNull();
+    expect(screen.queryByTestId("mock-tags-panel")).toBeNull();
+    expect(screen.getByText("Outline")).toBeInTheDocument();
+  });
+
+  it("rightPanel='backlinks' mounts ONLY LinkedMentionsPanel", () => {
+    mockRightPanel = "backlinks";
     mockUseBacklinks.mockReturnValue({
       backlinks: [{ sourceId: "a" }, { sourceId: "b" }],
       loading: false,
       error: null,
       refresh: vi.fn(),
     });
-    mockUseTagBrowser.mockReset();
+    render(<RightRail activeNoteId="note-1" />);
+    expect(screen.queryByTestId("mock-outline-panel")).toBeNull();
+    expect(screen.getByTestId("mock-linked-mentions-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("mock-tags-panel")).toBeNull();
+    expect(screen.getByText("Linked mentions")).toBeInTheDocument();
+  });
+
+  it("rightPanel='tags' mounts ONLY RightRailTagsPanel", () => {
+    mockRightPanel = "tags";
     mockUseTagBrowser.mockReturnValue({
       tags: [{ name: "alpha", count: 1 }],
       loading: false,
       error: null,
       refresh: vi.fn(),
     });
-  });
-
-  it("renders all three sections in order Outline → Linked mentions → Tags", () => {
     render(<RightRail activeNoteId="note-1" />);
-    const labels = screen.getAllByText(/^(Outline|Linked mentions|Tags)$/);
-    expect(labels.map((el) => el.textContent)).toEqual([
-      "Outline",
-      "Linked mentions",
-      "Tags",
-    ]);
-  });
-
-  it("renders OutlinePanel, LinkedMentionsPanel, and RightRailTagsPanel bodies when all expanded", () => {
-    render(<RightRail activeNoteId="note-1" />);
-    expect(screen.getByTestId("mock-outline-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("mock-linked-mentions-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("mock-outline-panel")).toBeNull();
+    expect(screen.queryByTestId("mock-linked-mentions-panel")).toBeNull();
     expect(screen.getByTestId("mock-tags-panel")).toBeInTheDocument();
+    expect(screen.getByText("Tags")).toBeInTheDocument();
   });
 
   it("LinkedMentionsPanel receives activeNoteId prop", () => {
+    mockRightPanel = "backlinks";
     render(<RightRail activeNoteId="abc-123" />);
     expect(screen.getByTestId("mock-linked-mentions-panel")).toHaveAttribute(
       "data-noteid",
@@ -185,6 +173,7 @@ describe("RightRail — three-section shell", () => {
   });
 
   it("fetches backlinks ONCE and passes the same rows to LinkedMentionsPanel (no duplicate useBacklinks instance)", () => {
+    mockRightPanel = "backlinks";
     const rows = [{ sourceId: "a" }, { sourceId: "b" }];
     mockUseBacklinks.mockReturnValue({
       backlinks: rows,
@@ -192,12 +181,9 @@ describe("RightRail — three-section shell", () => {
       error: null,
       refresh: vi.fn(),
     });
-    linkedMentionsPanelProps.length = 0;
 
     render(<RightRail activeNoteId="note-1" />);
 
-    // One shared fetch: the count badge and the card list read the SAME
-    // snapshot instead of two independent useBacklinks instances.
     expect(mockUseBacklinks).toHaveBeenCalledTimes(1);
     expect(mockUseBacklinks).toHaveBeenCalledWith("note-1");
     const last = linkedMentionsPanelProps.at(-1) as {
@@ -210,42 +196,35 @@ describe("RightRail — three-section shell", () => {
     expect(last.error).toBeNull();
   });
 
-  it("Linked-mentions header shows the distinct-source count (backlinks.length)", () => {
-    render(<RightRail activeNoteId="note-1" />);
-    const header = screen.getByRole("button", {
-      name: /collapse linked mentions panel/i,
+  it("Linked-mentions sub-header shows the distinct-source count (backlinks.length)", () => {
+    mockRightPanel = "backlinks";
+    mockUseBacklinks.mockReturnValue({
+      backlinks: [{ sourceId: "a" }, { sourceId: "b" }],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
     });
-    expect(header).toHaveTextContent("2");
-  });
-
-  it("Tags header shows tags.length count", () => {
     render(<RightRail activeNoteId="note-1" />);
-    const header = screen.getByRole("button", { name: /collapse tags panel/i });
-    expect(header).toHaveTextContent("1");
+    expect(screen.getByText("2")).toBeInTheDocument();
   });
 
-  it("Outline header has no count badge", () => {
+  it("Tags sub-header shows tags.length count", () => {
+    mockRightPanel = "tags";
+    mockUseTagBrowser.mockReturnValue({
+      tags: [{ name: "alpha", count: 1 }],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
     render(<RightRail activeNoteId="note-1" />);
-    const header = screen.getByRole("button", { name: /collapse outline panel/i });
-    // Header text is exactly "Outline" plus chevron — no numeric badge appended.
-    expect(header.textContent).toBe("Outline");
+    expect(screen.getByText("1")).toBeInTheDocument();
   });
 
-  it("renders two InterPanelDividers when all three sections are expanded", () => {
+  it("Outline sub-header shows the heading count", () => {
+    mockRightPanel = "outline";
+    mockOutlineHeadingsCount = 3;
     render(<RightRail activeNoteId="note-1" />);
-    expect(screen.getAllByTestId("inter-panel-divider")).toHaveLength(2);
-  });
-
-  it("clicking a SectionHeader calls its setter with the toggled value", () => {
-    render(<RightRail activeNoteId="note-1" />);
-    fireEvent.click(screen.getByRole("button", { name: /collapse outline panel/i }));
-    expect(mockSetOutlinePanelExpanded).toHaveBeenCalledWith(false);
-  });
-
-  it("no legacy panel-selector references remain — RightRail renders without that prop/state", () => {
-    // Compile-time: RightRail no longer imports the legacy panel-selector slice;
-    // runtime smoke check that rendering succeeds without any such mock state.
-    expect(() => render(<RightRail activeNoteId={null} />)).not.toThrow();
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 
   it("expanded rail still has vertical resize handle", () => {
@@ -263,8 +242,6 @@ describe("RightRail — three-section shell", () => {
     const aside = container.querySelector("aside");
     expect(aside).toBeTruthy();
     const styleAttr = aside?.getAttribute("style") ?? "";
-    // Owner adjudicated the floating-cards inset away (D-06): the rail is now a
-    // flush --color-surface panel with headers edge-to-edge, no 8px inset.
     expect(styleAttr).toContain("var(--color-surface)");
     expect(styleAttr).not.toContain("padding: 8px");
   });
@@ -298,129 +275,42 @@ describe("RightRail — three-section shell", () => {
     expect(aside!.style.gridRow).toBe("1 / 3");
     expect(aside!.style.gridColumn).toBe("3");
   });
-});
 
-describe("RightRail — collapse hides body + removes adjacent divider", () => {
-  beforeEach(() => {
-    mockExpanded = true;
-    mockWidth = 280;
-    mockOutlineHeightRatio = 0.34;
-    mockLinkedMentionsHeightRatio = 0.34;
-    mockSetWidth.mockReset();
-    mockSetOutlinePanelExpanded.mockReset();
-    mockSetLinkedMentionsPanelExpanded.mockReset();
-    mockSetTagsPanelExpanded.mockReset();
-    mockSetOutlineHeightRatio.mockReset();
-    mockSetLinkedMentionsHeightRatio.mockReset();
-    mockUseBacklinks.mockReset();
-    mockUseBacklinks.mockReturnValue({
-      backlinks: [],
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
-    mockUseTagBrowser.mockReset();
-    mockUseTagBrowser.mockReturnValue({
-      tags: [],
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
-  });
-
-  it("collapsing Outline hides its body and removes the Outline↔Linked-mentions divider", () => {
-    mockOutlinePanelExpanded = false;
-    mockLinkedMentionsPanelExpanded = true;
-    mockTagsPanelExpanded = true;
-
-    render(<RightRail activeNoteId={null} />);
-    expect(screen.queryByTestId("mock-outline-panel")).toBeNull();
-    expect(screen.getByTestId("mock-linked-mentions-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("mock-tags-panel")).toBeInTheDocument();
-    // Only the Linked-mentions↔Tags divider remains.
-    expect(screen.getAllByTestId("inter-panel-divider")).toHaveLength(1);
-  });
-
-  it("collapsing Linked mentions keeps Outline↔Tags resizable via one divider driving outlineHeightRatio", () => {
-    mockOutlinePanelExpanded = true;
-    mockLinkedMentionsPanelExpanded = false;
-    mockTagsPanelExpanded = true;
-    interPanelDividerProps.length = 0;
-
-    render(<RightRail activeNoteId={null} />);
-    expect(screen.getByTestId("mock-outline-panel")).toBeInTheDocument();
-    expect(screen.queryByTestId("mock-linked-mentions-panel")).toBeNull();
-    expect(screen.getByTestId("mock-tags-panel")).toBeInTheDocument();
-    // Outline and Tags are consecutively expanded — their split must stay
-    // adjustable even while Linked mentions is collapsed.
-    expect(screen.getAllByTestId("inter-panel-divider")).toHaveLength(1);
-    const divider = interPanelDividerProps.at(-1)!;
-    expect(divider.getRatio()).toBe(mockOutlineHeightRatio);
-    divider.setRatio(0.5);
-    expect(mockSetOutlineHeightRatio).toHaveBeenCalledWith(0.5);
-    expect(mockSetLinkedMentionsHeightRatio).not.toHaveBeenCalled();
-  });
-
-  it("collapsing Tags AND Linked mentions leaves zero dividers (Outline is the remainder)", () => {
-    mockOutlinePanelExpanded = true;
-    mockLinkedMentionsPanelExpanded = false;
-    mockTagsPanelExpanded = false;
-
-    render(<RightRail activeNoteId={null} />);
-    expect(screen.getByTestId("mock-outline-panel")).toBeInTheDocument();
-    expect(screen.queryByTestId("inter-panel-divider")).toBeNull();
-  });
-
-  it("collapsing all three sections renders zero bodies and zero dividers", () => {
-    mockOutlinePanelExpanded = false;
-    mockLinkedMentionsPanelExpanded = false;
-    mockTagsPanelExpanded = false;
-
-    render(<RightRail activeNoteId={null} />);
-    expect(screen.queryByTestId("mock-outline-panel")).toBeNull();
-    expect(screen.queryByTestId("mock-linked-mentions-panel")).toBeNull();
-    expect(screen.queryByTestId("mock-tags-panel")).toBeNull();
-    expect(screen.queryByTestId("inter-panel-divider")).toBeNull();
-    // Headers still render (32px rows) even when every section is collapsed.
-    expect(screen.getByRole("button", { name: /expand outline panel/i })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /expand linked mentions panel/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /expand tags panel/i })).toBeInTheDocument();
+  it("no retired stacked-sections machinery remains — renders without any per-section collapse/divider mocks", () => {
+    // Compile-time: RightRail no longer imports InterPanelDivider or the
+    // per-section collapse booleans; runtime smoke check that rendering
+    // succeeds with only the tab-row + single-panel mocks above.
+    expect(() => render(<RightRail activeNoteId={null} />)).not.toThrow();
   });
 });
 
-describe("RightRail — no-note-open empty states (D-07)", () => {
+describe("RightRail — no-note-open empty states", () => {
   beforeEach(() => {
-    mockExpanded = true;
-    mockWidth = 280;
-    mockOutlinePanelExpanded = true;
-    mockLinkedMentionsPanelExpanded = true;
-    mockTagsPanelExpanded = true;
-    mockOutlineHeightRatio = 0.34;
-    mockLinkedMentionsHeightRatio = 0.34;
-    mockUseBacklinks.mockReset();
     mockUseBacklinks.mockReturnValue({
       backlinks: null,
       loading: false,
       error: null,
       refresh: vi.fn(),
     });
-    mockUseTagBrowser.mockReset();
-    mockUseTagBrowser.mockReturnValue({
-      tags: [],
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
   });
 
-  it("no note open: Outline shows 'No headings', Linked mentions shows 'No backlinks found', Tags still renders", () => {
+  it("no note open, Outline tab active: OutlinePanel still renders its own 'No headings' empty state", () => {
+    mockRightPanel = "outline";
     render(<RightRail activeNoteId={null} />);
     expect(screen.getByTestId("mock-outline-panel")).toHaveTextContent("No headings");
+  });
+
+  it("no note open, Linked mentions tab active: LinkedMentionsPanel still renders its own 'No backlinks found' empty state", () => {
+    mockRightPanel = "backlinks";
+    render(<RightRail activeNoteId={null} />);
     expect(screen.getByTestId("mock-linked-mentions-panel")).toHaveTextContent(
       "No backlinks found",
     );
+  });
+
+  it("no note open, Tags tab active: RightRailTagsPanel still renders", () => {
+    mockRightPanel = "tags";
+    render(<RightRail activeNoteId={null} />);
     expect(screen.getByTestId("mock-tags-panel")).toBeInTheDocument();
   });
 });

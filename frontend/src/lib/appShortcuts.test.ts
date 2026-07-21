@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const putWorkspaceMock = vi.fn().mockResolvedValue({});
+vi.mock("./workspaceApi", () => ({
+  putWorkspace: (...args: unknown[]) => putWorkspaceMock(...args),
+}));
+
 import {
   handleAppAltT,
   handleAppBookmarkToggle,
@@ -314,17 +320,16 @@ describe("handleAppCmdB / handleAppCmdI shift-exclusion (WR-05)", () => {
   });
 });
 
-describe("handleAppPanelShortcuts (Phase 20 D-01 re-point onto per-section collapse booleans)", () => {
+describe("handleAppPanelShortcuts (Phase 30 TAGS-01 re-point onto the rightPanel tab slice)", () => {
   beforeEach(() => {
+    putWorkspaceMock.mockClear();
     useTreeStore.setState({
-      tagsPanelExpanded: true,
-      linkedMentionsPanelExpanded: true,
+      rightPanel: "outline",
       backlinksRailExpanded: false,
     });
   });
 
-  it("Cmd+Alt+T toggles tagsPanelExpanded and reveals the rail when expanding", () => {
-    useTreeStore.setState({ tagsPanelExpanded: false, backlinksRailExpanded: false });
+  it("Cmd+Alt+T selects the Tags tab and reveals the rail when collapsed", () => {
     const e = new KeyboardEvent("keydown", {
       key: "t",
       code: "KeyT",
@@ -333,16 +338,16 @@ describe("handleAppPanelShortcuts (Phase 20 D-01 re-point onto per-section colla
     });
     const preventDefault = vi.spyOn(e, "preventDefault");
     handleAppPanelShortcuts(e);
-    expect(useTreeStore.getState().tagsPanelExpanded).toBe(true);
+    expect(useTreeStore.getState().rightPanel).toBe("tags");
     expect(useTreeStore.getState().backlinksRailExpanded).toBe(true);
     expect(preventDefault).toHaveBeenCalledOnce();
+    expect(putWorkspaceMock).toHaveBeenCalledWith({ rightPanel: "tags" });
   });
 
-  it("REGRESSION: macOS Cmd+Option+T (key:'†', code:'KeyT') still toggles the Tags section", () => {
+  it("REGRESSION: macOS Cmd+Option+T (key:'†', code:'KeyT') still selects the Tags tab", () => {
     // On macOS, Option transforms the key value even with Cmd held —
     // Option+T reports key:"†" while code stays "KeyT". Matching e.key
     // made this shortcut dead on the project's primary platform.
-    useTreeStore.setState({ tagsPanelExpanded: false, backlinksRailExpanded: false });
     handleAppPanelShortcuts(
       new KeyboardEvent("keydown", {
         key: "†",
@@ -351,15 +356,11 @@ describe("handleAppPanelShortcuts (Phase 20 D-01 re-point onto per-section colla
         metaKey: true,
       }),
     );
-    expect(useTreeStore.getState().tagsPanelExpanded).toBe(true);
+    expect(useTreeStore.getState().rightPanel).toBe("tags");
     expect(useTreeStore.getState().backlinksRailExpanded).toBe(true);
   });
 
-  it("REGRESSION: macOS Cmd+Option+B (key:'∫', code:'KeyB') still toggles the Linked-mentions section", () => {
-    useTreeStore.setState({
-      linkedMentionsPanelExpanded: false,
-      backlinksRailExpanded: false,
-    });
+  it("REGRESSION: macOS Cmd+Option+B (key:'∫', code:'KeyB') still selects the Linked-mentions tab", () => {
     handleAppPanelShortcuts(
       new KeyboardEvent("keydown", {
         key: "∫",
@@ -368,12 +369,12 @@ describe("handleAppPanelShortcuts (Phase 20 D-01 re-point onto per-section colla
         metaKey: true,
       }),
     );
-    expect(useTreeStore.getState().linkedMentionsPanelExpanded).toBe(true);
+    expect(useTreeStore.getState().rightPanel).toBe("backlinks");
     expect(useTreeStore.getState().backlinksRailExpanded).toBe(true);
   });
 
-  it("Cmd+Alt+T collapsing the section does NOT force the rail open", () => {
-    useTreeStore.setState({ tagsPanelExpanded: true, backlinksRailExpanded: true });
+  it("Cmd+Alt+T on the already-active Tags tab collapses the rail instead of re-selecting", () => {
+    useTreeStore.setState({ rightPanel: "tags", backlinksRailExpanded: true });
     handleAppPanelShortcuts(
       new KeyboardEvent("keydown", {
         key: "t",
@@ -382,15 +383,12 @@ describe("handleAppPanelShortcuts (Phase 20 D-01 re-point onto per-section colla
         metaKey: true,
       }),
     );
-    expect(useTreeStore.getState().tagsPanelExpanded).toBe(false);
-    expect(useTreeStore.getState().backlinksRailExpanded).toBe(true);
+    expect(useTreeStore.getState().rightPanel).toBe("tags");
+    expect(useTreeStore.getState().backlinksRailExpanded).toBe(false);
+    expect(putWorkspaceMock).not.toHaveBeenCalled();
   });
 
-  it("Cmd+Alt+B toggles linkedMentionsPanelExpanded and reveals the rail when expanding", () => {
-    useTreeStore.setState({
-      linkedMentionsPanelExpanded: false,
-      backlinksRailExpanded: false,
-    });
+  it("Cmd+Alt+B selects the Linked-mentions tab and reveals the rail when collapsed", () => {
     handleAppPanelShortcuts(
       new KeyboardEvent("keydown", {
         key: "b",
@@ -399,15 +397,16 @@ describe("handleAppPanelShortcuts (Phase 20 D-01 re-point onto per-section colla
         metaKey: true,
       }),
     );
-    expect(useTreeStore.getState().linkedMentionsPanelExpanded).toBe(true);
+    expect(useTreeStore.getState().rightPanel).toBe("backlinks");
     expect(useTreeStore.getState().backlinksRailExpanded).toBe(true);
+    expect(putWorkspaceMock).toHaveBeenCalledWith({ rightPanel: "backlinks" });
   });
 
   it("no-ops on Alt+T without Cmd/Ctrl (leaves tab-new shortcut untouched)", () => {
     handleAppPanelShortcuts(
       new KeyboardEvent("keydown", { key: "t", code: "KeyT", altKey: true }),
     );
-    expect(useTreeStore.getState().tagsPanelExpanded).toBe(true);
+    expect(useTreeStore.getState().rightPanel).toBe("outline");
   });
 });
 

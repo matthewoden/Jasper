@@ -1,16 +1,17 @@
 /**
  * RightRailTagsPanel — body-only tag browser section in the right rail
- * (Phase 20 trim, D-08/D-09).
+ * (Phase 20 trim, D-08/D-09; mounted as the Tags tab's single section by
+ * RightRail.tsx's Phase 30 tab-row rework — see RightRailTabRow.tsx's
+ * RightRailSubHeader for the sub-header treatment above this panel).
  *
- * Differences from the legacy left-sidebar TagBrowserSection:
- *   - Uses `tagsPanelExpanded` store slice (unified SectionHeader owns the
- *     header row + collapse toggle — see RightRail.tsx)
- *   - No own header, no × close button, no substring filter input — this
- *     component renders only the tag list, click-to-filter, and the
- *     rename/delete ContextMenu flow
- *   - List uses `flex: 1` to fill the panel card (no fixed maxHeight)
+ * No own header, no × close button, no substring filter input — this
+ * component renders only the tag list, click-to-filter, and the
+ * rename/delete ContextMenu flow. List uses `flex: 1` to fill the panel
+ * card (no fixed maxHeight).
  *
- * TagBrowserSection.tsx is left in the repo as dead code; this is the active impl.
+ * The legacy left-sidebar TagBrowserSection.tsx (superseded by this
+ * component in Phase 20) was deleted in Phase 30 Plan 05 as confirmed
+ * dead code.
  */
 import { type CSSProperties, useState } from "react";
 

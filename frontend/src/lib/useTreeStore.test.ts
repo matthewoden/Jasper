@@ -20,8 +20,6 @@ import {
 import {
   LS_KEY_ACTIVE_NOTE,
   LS_KEY_EXPANDED,
-  LS_KEY_LINKED_MENTIONS_HEIGHT_RATIO,
-  LS_KEY_OUTLINE_HEIGHT_RATIO,
   LS_KEY_SIDEBAR_WIDTH,
   pruneStaleTreeState,
   SIDEBAR_WIDTH_DEFAULT,
@@ -1169,127 +1167,13 @@ describe("Phase 20 Plan 03 — unified right-rail collapse booleans + split rati
     expect(mod.useTreeStore.getState().backlinksRailExpanded).toBe(false);
   });
 
-  it("RR-3: fresh install — outlinePanelExpanded, linkedMentionsPanelExpanded, tagsPanelExpanded all default true", async () => {
-    vi.resetModules();
-    const mod = await import("./useTreeStore");
-    const s = mod.useTreeStore.getState();
-    expect(s.outlinePanelExpanded).toBe(true);
-    expect(s.linkedMentionsPanelExpanded).toBe(true);
-    expect(s.tagsPanelExpanded).toBe(true);
-  });
-
-  it("RR-4: outlinePanelExpanded hydrates false from stored 'false'", async () => {
-    localStorage.setItem(
-      "jasper.rightrail.outline.expanded",
-      "false",
-    );
-    vi.resetModules();
-    const mod = await import("./useTreeStore");
-    expect(mod.useTreeStore.getState().outlinePanelExpanded).toBe(false);
-  });
-
-  it("RR-5: linkedMentionsPanelExpanded hydrates false from stored 'false'", async () => {
-    localStorage.setItem(
-      "jasper.rightrail.linkedmentions.expanded",
-      "false",
-    );
-    vi.resetModules();
-    const mod = await import("./useTreeStore");
-    expect(mod.useTreeStore.getState().linkedMentionsPanelExpanded).toBe(false);
-  });
-
-  it("RR-6: tagsPanelExpanded hydrates false from stored 'false'", async () => {
-    localStorage.setItem(
-      "jasper.rightrail.tags.expanded",
-      "false",
-    );
-    vi.resetModules();
-    const mod = await import("./useTreeStore");
-    expect(mod.useTreeStore.getState().tagsPanelExpanded).toBe(false);
-  });
-
-  it("RR-7: setOutlinePanelExpanded/setLinkedMentionsPanelExpanded/setTagsPanelExpanded update state and write immediately (no debounce)", async () => {
-    vi.resetModules();
-    const mod = await import("./useTreeStore");
-    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
-    try {
-      mod.useTreeStore.getState().setOutlinePanelExpanded(false);
-      expect(mod.useTreeStore.getState().outlinePanelExpanded).toBe(false);
-      mod.useTreeStore.getState().setLinkedMentionsPanelExpanded(false);
-      expect(mod.useTreeStore.getState().linkedMentionsPanelExpanded).toBe(false);
-      mod.useTreeStore.getState().setTagsPanelExpanded(false);
-      expect(mod.useTreeStore.getState().tagsPanelExpanded).toBe(false);
-
-      const writeKeys = setItemSpy.mock.calls.map((c) => c[0]);
-      expect(writeKeys).toContain(mod.LS_KEY_OUTLINE_PANEL_EXPANDED);
-      expect(writeKeys).toContain(mod.LS_KEY_LINKED_MENTIONS_PANEL_EXPANDED);
-      expect(writeKeys).toContain(mod.LS_KEY_TAGS_PANEL_EXPANDED);
-    } finally {
-      setItemSpy.mockRestore();
-    }
-  });
-
-  it("RR-8: outlineHeightRatio + linkedMentionsHeightRatio default to 0.34 and clamp within [0.2, 0.8]", async () => {
-    vi.resetModules();
-    const mod = await import("./useTreeStore");
-    const s = mod.useTreeStore.getState();
-    expect(s.outlineHeightRatio).toBe(0.34);
-    expect(s.linkedMentionsHeightRatio).toBe(0.34);
-
-    mod.useTreeStore.getState().setOutlineHeightRatio(0.05);
-    expect(mod.useTreeStore.getState().outlineHeightRatio).toBe(mod.RIGHT_RAIL_RATIO_MIN);
-    mod.useTreeStore.getState().setOutlineHeightRatio(0.95);
-    expect(mod.useTreeStore.getState().outlineHeightRatio).toBe(mod.RIGHT_RAIL_RATIO_MAX);
-
-    mod.useTreeStore.getState().setLinkedMentionsHeightRatio(0.05);
-    expect(mod.useTreeStore.getState().linkedMentionsHeightRatio).toBe(mod.RIGHT_RAIL_RATIO_MIN);
-    mod.useTreeStore.getState().setLinkedMentionsHeightRatio(0.95);
-    expect(mod.useTreeStore.getState().linkedMentionsHeightRatio).toBe(mod.RIGHT_RAIL_RATIO_MAX);
-  });
-
-  it("RR-9: setOutlineHeightRatio/setLinkedMentionsHeightRatio persist to LS after 250ms debounce", () => {
-    vi.useFakeTimers();
-    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
-    try {
-      act(() => {
-        useTreeStore.getState().setOutlineHeightRatio(0.4);
-        useTreeStore.getState().setLinkedMentionsHeightRatio(0.45);
-      });
-      const writesBeforeFlush = setItemSpy.mock.calls.filter(
-        (c) => c[0] === LS_KEY_OUTLINE_HEIGHT_RATIO || c[0] === LS_KEY_LINKED_MENTIONS_HEIGHT_RATIO,
-      ).length;
-      expect(writesBeforeFlush).toBe(0);
-      act(() => {
-        vi.advanceTimersByTime(260);
-      });
-      const outlineWrites = setItemSpy.mock.calls.filter(
-        (c) => c[0] === LS_KEY_OUTLINE_HEIGHT_RATIO,
-      );
-      const linkedMentionsWrites = setItemSpy.mock.calls.filter(
-        (c) => c[0] === LS_KEY_LINKED_MENTIONS_HEIGHT_RATIO,
-      );
-      expect(outlineWrites.length).toBeGreaterThan(0);
-      expect(outlineWrites[outlineWrites.length - 1][1]).toBe("0.4");
-      expect(linkedMentionsWrites.length).toBeGreaterThan(0);
-      expect(linkedMentionsWrites[linkedMentionsWrites.length - 1][1]).toBe("0.45");
-    } finally {
-      setItemSpy.mockRestore();
-      vi.useRealTimers();
-    }
-  });
-
-  it("RR-10: pre-seeded outlineHeightRatio hydrates on module load; out-of-range falls back to default", async () => {
-    localStorage.setItem(LS_KEY_OUTLINE_HEIGHT_RATIO, "0.6");
-    vi.resetModules();
-    const mod = await import("./useTreeStore");
-    expect(mod.useTreeStore.getState().outlineHeightRatio).toBe(0.6);
-
-    localStorage.clear();
-    localStorage.setItem(LS_KEY_OUTLINE_HEIGHT_RATIO, "1.5");
-    vi.resetModules();
-    const mod2 = await import("./useTreeStore");
-    expect(mod2.useTreeStore.getState().outlineHeightRatio).toBe(0.34);
-  });
+  // RR-3..RR-10 (Phase 20 Plan 03) covered the per-section collapse booleans
+  // (outlinePanelExpanded/linkedMentionsPanelExpanded/tagsPanelExpanded) and
+  // split ratios (outlineHeightRatio/linkedMentionsHeightRatio) — that entire
+  // slice was removed by Plan 05 (D-01 fold onto the single-panel rightPanel
+  // tab model, see RightRail.tsx + RightRailTabRow.tsx), so those assertions
+  // no longer apply. rightPanel itself is covered in useWorkspace.test.ts
+  // (it is backend-persisted via workspace.json, not a localStorage slice).
 
   // RR-11 (Phase 20 Plan 03) asserted the legacy panel-selector slice was
   // unaffected by the additive-only plan; the slice itself was removed by

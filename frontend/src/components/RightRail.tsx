@@ -1,52 +1,32 @@
 /**
- * RightRail — three-section right sidebar shell (Phase 20 rework, D-01/D-02/
- * D-03/D-04/D-07): Outline → Linked mentions → Tags, each behind a unified
- * SectionHeader with independent collapse state.
+ * RightRail — tab-row + single-mounted-panel right sidebar shell (Phase 30
+ * rework, TAGS-01 D-01..D-05): a 30x30 icon-tab row (RightRailTabRow)
+ * mirroring the left sidebar's SidebarTabRow, with exactly ONE panel
+ * mounted below it at a time — Outline, Linked mentions, or Tags — driven
+ * by the persisted rightPanel field (workspace.json via useWorkspace,
+ * Plan 01).
  *
  * Structure:
- *   <aside bg=--color-bg>                 ← floating-panel container
+ *   <aside bg=--color-surface>            ← flush panel container
  *     <ResizeHandle left-edge />           ← left-edge width resize
- *     <div flex-column>                   ← Outline section
- *       <SectionHeader />
- *       <OutlinePanel /> (when expanded)
- *     </div>
- *     <InterPanelDivider /> (when Outline + a LATER section are expanded)
- *     <div flex-column>                   ← Linked mentions section
- *       <SectionHeader count={distinct linking notes} />
- *       <LinkedMentionsPanel noteId /> (when expanded)
- *     </div>
- *     <InterPanelDivider /> (when Linked mentions + Tags are expanded)
- *     <div flex-column>                   ← Tags section
- *       <SectionHeader count={tags.length} />
- *       <RightRailTagsPanel /> (when expanded)
- *     </div>
+ *     <header 40px>
+ *       <RightRailTabRow />
+ *     </header>
+ *     <RightRailSubHeader title=.../> + <ActivePanel />   ← exactly one
  *   </aside>
  *
- * Background is --color-surface, filling the rail edge-to-edge so section
- * headers sit flush against border-left (mock parity, 23-03 owner D-06 — the
- * earlier 8px inset over --color-bg "floating cards" look was adjudicated flush).
+ * This REPLACES the Phase 20 three-section stacked/collapsible/resizable
+ * layout (independent SectionHeader collapse state per section,
+ * InterPanelDivider-driven height ratios) — that machinery has no analog
+ * in the one-panel-at-a-time tab model and has been removed entirely,
+ * along with its useTreeStore slices (see useTreeStore.ts).
  *
- * Space model (D-04): the LAST expanded section (in Outline → Linked
- * mentions → Tags order) always absorbs the remaining height via flex: 1;
- * every EARLIER expanded section uses its own dedicated ratio
- * (outlineHeightRatio / linkedMentionsHeightRatio) via a calc() flex-basis.
- * A collapsed section renders only its 32px header and takes no share of
- * the drag ratio. Because Tags is structurally last, it is always the
- * remainder-taker whenever it is expanded — matching "Tags takes the
- * remainder" without any special-casing.
- *
- * A divider renders after every ratio-driven section (i.e. whenever a later
- * section is also expanded), so any two consecutively expanded sections stay
- * mutually resizable — including Outline↔Tags when Linked mentions is
- * collapsed. The divider allowance is subtracted from a ratio flex-basis
- * only when that section's divider is actually rendered.
- *
- * All three sections are ALWAYS MOUNTED; only the whole rail (gated on
- * backlinksRailExpanded) can disappear entirely.
+ * Background is --color-surface, filling the rail edge-to-edge so the tab
+ * row and sub-header sit flush against border-left (mock parity, unchanged
+ * from Phase 23 owner D-06).
  */
 import { useCallback, useEffect, useRef } from "react";
 import type React from "react";
-import type { CSSProperties } from "react";
 
 import {
   useTreeStore,
@@ -55,11 +35,11 @@ import {
 } from "../lib/useTreeStore";
 import { useBacklinks } from "../lib/useBacklinks";
 import { useTagBrowser } from "../lib/useTagBrowser";
-import { SectionHeader } from "./SectionHeader";
+import { useOutlineStore } from "../lib/useOutlineStore";
+import { RightRailTabRow, RightRailSubHeader } from "./RightRailTabRow";
 import { OutlinePanel } from "./OutlinePanel";
 import { LinkedMentionsPanel } from "./LinkedMentionsPanel";
 import { RightRailTagsPanel } from "./RightRailTagsPanel";
-import { InterPanelDivider } from "./InterPanelDivider";
 
 interface Props {
   /** UUID of the currently open note. Null when no note is open. */
@@ -68,55 +48,15 @@ interface Props {
   style?: React.CSSProperties;
 }
 
-/** Offset subtracted from a ratio-driven flex-basis to leave room for an adjacent divider. */
-const DIVIDER_FLEX_ADJUST = 10;
-
-type SectionKey = "outline" | "mentions" | "tags";
-
-function sectionFlexStyle(
-  expanded: boolean,
-  isRemainder: boolean,
-  ratio: number,
-  hasAdjacentDivider: boolean,
-): CSSProperties {
-  if (!expanded) {
-    return { flex: "0 0 auto" };
-  }
-  if (isRemainder) {
-    return { flex: 1, minHeight: 0, overflow: "hidden" };
-  }
-  const dividerAdjust = hasAdjacentDivider ? DIVIDER_FLEX_ADJUST : 0;
-  return {
-    flex: `0 0 calc(${ratio * 100}% - ${dividerAdjust}px)`,
-    minHeight: 0,
-    overflow: "hidden",
-  };
-}
-
 export function RightRail({ activeNoteId, style }: Props) {
   const expanded = useTreeStore((s) => s.backlinksRailExpanded);
   const width = useTreeStore((s) => s.backlinksRailWidth);
   const setWidth = useTreeStore((s) => s.setBacklinksRailWidth);
+  const rightPanel = useTreeStore((s) => s.rightPanel);
 
-  const outlinePanelExpanded = useTreeStore((s) => s.outlinePanelExpanded);
-  const setOutlinePanelExpanded = useTreeStore((s) => s.setOutlinePanelExpanded);
-  const linkedMentionsPanelExpanded = useTreeStore((s) => s.linkedMentionsPanelExpanded);
-  const setLinkedMentionsPanelExpanded = useTreeStore(
-    (s) => s.setLinkedMentionsPanelExpanded,
-  );
-  const tagsPanelExpanded = useTreeStore((s) => s.tagsPanelExpanded);
-  const setTagsPanelExpanded = useTreeStore((s) => s.setTagsPanelExpanded);
-
-  const outlineHeightRatio = useTreeStore((s) => s.outlineHeightRatio);
-  const setOutlineHeightRatio = useTreeStore((s) => s.setOutlineHeightRatio);
-  const linkedMentionsHeightRatio = useTreeStore((s) => s.linkedMentionsHeightRatio);
-  const setLinkedMentionsHeightRatio = useTreeStore(
-    (s) => s.setLinkedMentionsHeightRatio,
-  );
-
-  // Single shared fetch (WR-07): the count badge and LinkedMentionsPanel's
-  // cards must render the same snapshot, so the panel receives this result
-  // as props instead of mounting its own useBacklinks instance.
+  // Single shared fetch: the count badge and LinkedMentionsPanel's cards
+  // must render the same snapshot, so the panel receives this result as
+  // props instead of mounting its own useBacklinks instance.
   const {
     backlinks,
     loading: backlinksLoading,
@@ -124,6 +64,7 @@ export function RightRail({ activeNoteId, style }: Props) {
   } = useBacklinks(activeNoteId);
   const linkedMentionsCount = backlinks?.length ?? 0;
   const { tags } = useTagBrowser();
+  const outlineHeadingsCount = useOutlineStore((s) => s.outlineHeadings.length);
 
   const draggingRef = useRef(false);
   const railRef = useRef<HTMLElement>(null);
@@ -165,32 +106,12 @@ export function RightRail({ activeNoteId, style }: Props) {
 
   if (!expanded) return null;
 
-  const order: Array<{ key: SectionKey; expanded: boolean }> = [
-    { key: "outline", expanded: outlinePanelExpanded },
-    { key: "mentions", expanded: linkedMentionsPanelExpanded },
-    { key: "tags", expanded: tagsPanelExpanded },
-  ];
-  const expandedKeys = order.filter((o) => o.expanded).map((o) => o.key);
-  const lastExpandedKey = expandedKeys[expandedKeys.length - 1] ?? null;
-
-  // A divider follows every ratio-driven section: one after Outline whenever
-  // any LATER section is expanded (so Outline↔Tags stays resizable when
-  // Linked mentions is collapsed), and one after Linked mentions when Tags
-  // is expanded. Each divider drags the ratio of the section ABOVE it.
-  const dividerAfterOutline =
-    outlinePanelExpanded && (linkedMentionsPanelExpanded || tagsPanelExpanded);
-  const dividerAfterMentions = linkedMentionsPanelExpanded && tagsPanelExpanded;
-
   return (
     <aside
       ref={railRef as React.RefObject<HTMLDivElement>}
       style={{
         width,
         height: "100%",
-        // Flush panel (mock parity, 23-03 owner D-06): --color-surface fills the
-        // rail edge-to-edge and section headers sit flush against border-left,
-        // matching the mock's #1a1a1c file-tree/right rail. (Was an 8px inset
-        // over --color-bg for a floating-cards look; owner adjudicated it flush.)
         background: "var(--color-surface)",
         borderLeft: "1px solid var(--color-border)",
         position: "relative",
@@ -220,104 +141,61 @@ export function RightRail({ activeNoteId, style }: Props) {
         }}
       />
 
-      {/* Outline section */}
-      <div
+      <header
         style={{
+          height: 40,
+          paddingLeft: 16,
+          paddingRight: 16,
+          borderBottom: "1px solid var(--color-border)",
+          flexShrink: 0,
           display: "flex",
-          flexDirection: "column",
-          ...sectionFlexStyle(
-            outlinePanelExpanded,
-            lastExpandedKey === "outline",
-            outlineHeightRatio,
-            dividerAfterOutline,
-          ),
+          alignItems: "center",
         }}
       >
-        <SectionHeader
-          title="Outline"
-          expanded={outlinePanelExpanded}
-          onToggle={() => setOutlinePanelExpanded(!outlinePanelExpanded)}
-          ariaCollapsedLabel="Expand Outline panel"
-          ariaExpandedLabel="Collapse Outline panel"
-        />
-        {outlinePanelExpanded && (
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-            <OutlinePanel />
-          </div>
+        <RightRailTabRow />
+      </header>
+
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        {rightPanel === "outline" && (
+          <>
+            <RightRailSubHeader title="Outline" count={outlineHeadingsCount} />
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+              <OutlinePanel />
+            </div>
+          </>
         )}
-      </div>
 
-      {dividerAfterOutline && (
-        <InterPanelDivider
-          railRef={railRef as React.RefObject<HTMLElement>}
-          getRatio={() => useTreeStore.getState().outlineHeightRatio}
-          setRatio={setOutlineHeightRatio}
-        />
-      )}
-
-      {/* Linked mentions section */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          ...sectionFlexStyle(
-            linkedMentionsPanelExpanded,
-            lastExpandedKey === "mentions",
-            linkedMentionsHeightRatio,
-            dividerAfterMentions,
-          ),
-        }}
-      >
-        <SectionHeader
-          title="Linked mentions"
-          expanded={linkedMentionsPanelExpanded}
-          onToggle={() => setLinkedMentionsPanelExpanded(!linkedMentionsPanelExpanded)}
-          count={linkedMentionsCount}
-          ariaCollapsedLabel="Expand Linked mentions panel"
-          ariaExpandedLabel="Collapse Linked mentions panel"
-        />
-        {linkedMentionsPanelExpanded && (
-          <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-            <LinkedMentionsPanel
-              noteId={activeNoteId}
-              backlinks={backlinks}
-              loading={backlinksLoading}
-              error={backlinksError}
-            />
-          </div>
+        {rightPanel === "backlinks" && (
+          <>
+            <RightRailSubHeader title="Linked mentions" count={linkedMentionsCount} />
+            <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+              <LinkedMentionsPanel
+                noteId={activeNoteId}
+                backlinks={backlinks}
+                loading={backlinksLoading}
+                error={backlinksError}
+              />
+            </div>
+          </>
         )}
-      </div>
 
-      {dividerAfterMentions && (
-        <InterPanelDivider
-          railRef={railRef as React.RefObject<HTMLElement>}
-          getRatio={() => useTreeStore.getState().linkedMentionsHeightRatio}
-          setRatio={setLinkedMentionsHeightRatio}
-        />
-      )}
-
-      {/* Tags section */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          // Tags is structurally last: remainder whenever expanded, so its
-          // ratio/divider params are inert.
-          ...sectionFlexStyle(tagsPanelExpanded, lastExpandedKey === "tags", 1, false),
-        }}
-      >
-        <SectionHeader
-          title="Tags"
-          expanded={tagsPanelExpanded}
-          onToggle={() => setTagsPanelExpanded(!tagsPanelExpanded)}
-          count={tags.length}
-          ariaCollapsedLabel="Expand Tags panel"
-          ariaExpandedLabel="Collapse Tags panel"
-        />
-        {tagsPanelExpanded && (
-          <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-            <RightRailTagsPanel />
-          </div>
+        {rightPanel === "tags" && (
+          <>
+            {/* Single mounted section for now — Plan 08 upgrades this to the
+                two-section (note tags + vault tags) Tags tab layout. */}
+            <RightRailSubHeader title="Tags" count={tags.length} />
+            <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+              <RightRailTagsPanel />
+            </div>
+          </>
         )}
       </div>
     </aside>
