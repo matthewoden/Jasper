@@ -77,7 +77,8 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   const muts = useTreeMutations();
   const { createNoteAt, createFolderAt } = useTreeCreateActions();
   const { toast } = useToast();
-  const { toggleBookmark, isBookmarked } = useBookmarks();
+  const { toggleBookmark, isBookmarked, refresh: refreshBookmarks } =
+    useBookmarks();
 
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(
     null,
@@ -453,13 +454,24 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     for (const id of toAdd) {
       await toggleBookmark(id);
     }
+    // Belt-and-suspenders on top of the useBookmarks.toggleBookmark
+    // live-state fix: pull authoritative server state so any optimistic
+    // `pending-*` ids left over from a mid-loop failure/retry reconcile
+    // to real server ids and the store reflects all N adds.
+    await refreshBookmarks();
     toast({
       title:
         skipped > 0
           ? `Bookmarked ${toAdd.length} notes (${skipped} already bookmarked)`
           : `Bookmarked ${toAdd.length} notes`,
     });
-  }, [getSelectedNoteIds, isBookmarked, toggleBookmark, toast]);
+  }, [
+    getSelectedNoteIds,
+    isBookmarked,
+    toggleBookmark,
+    refreshBookmarks,
+    toast,
+  ]);
 
   const handleBulkDelete = useCallback(() => {
     const count = treeRef.current?.selectedIds.size ?? 0;
