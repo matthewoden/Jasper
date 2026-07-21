@@ -140,6 +140,34 @@ describe("useBookmarks", () => {
     expect(deleteBookmarkMock).toHaveBeenCalledWith("bm-1");
   });
 
+  it("B17: sequential toggleBookmark calls for two distinct notes accumulate in the store (CTX-02 bulk-bookmark clobber fix)", async () => {
+    getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [] });
+
+    const { result } = renderHook(() => useBookmarks(), { wrapper });
+    await waitFor(() => expect(result.current.bookmarks).toEqual([]));
+
+    const bookmarkB = {
+      id: "bm-2",
+      note_id: "note-b",
+      folder_id: null,
+      order: 1,
+    };
+    postBookmarkMock.mockResolvedValueOnce(bookmarkA);
+    postBookmarkMock.mockResolvedValueOnce(bookmarkB);
+
+    await act(async () => {
+      await result.current.toggleBookmark("note-a");
+    });
+    await act(async () => {
+      await result.current.toggleBookmark("note-b");
+    });
+
+    expect(result.current.bookmarks).toEqual(
+      expect.arrayContaining([bookmarkA, bookmarkB]),
+    );
+    expect(result.current.bookmarks.length).toBe(2);
+  });
+
   it("B5: toggleBookmark add failure reverts the optimistic entry and toasts", async () => {
     getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [] });
 

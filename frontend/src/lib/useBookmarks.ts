@@ -125,11 +125,15 @@ export function useBookmarks(): UseBookmarksResult {
   const inFlightNoteIds = useRef<Set<string>>(new Set());
 
   /**
-   * toggleBookmark — the single entry-point seam. Reads the current slice
-   * to decide add vs remove. Both branches optimistically update the local
-   * slice before the network call resolves and revert + toast on failure.
-   * Ignores re-entrant calls for the same noteId while a mutation is
-   * already in flight (WR-07) rather than racing it.
+   * toggleBookmark — the single entry-point seam. Reads the LIVE store
+   * slice (via useTreeStore.getState()) at each decision/mutation point
+   * rather than the render-time closure — sequential calls (e.g. a bulk
+   * "Bookmark N notes" loop) each see the previous call's committed write
+   * and accumulate instead of clobbering it with a stale snapshot. Both
+   * branches optimistically update the local slice before the network
+   * call resolves and revert + toast on failure. Ignores re-entrant calls
+   * for the same noteId while a mutation is already in flight (WR-07)
+   * rather than racing it.
    */
   const toggleBookmark = useCallback(
     async (noteId: string) => {
@@ -138,11 +142,12 @@ export function useBookmarks(): UseBookmarksResult {
       }
       inFlightNoteIds.current.add(noteId);
       try {
-        const existing = bookmarks.find((b) => b.note_id === noteId);
-        const previous = bookmarks;
+        const live = useTreeStore.getState().bookmarks;
+        const existing = live.find((b) => b.note_id === noteId);
+        const previous = live;
 
         if (existing) {
-          setBookmarks(bookmarks.filter((b) => b.id !== existing.id));
+          setBookmarks(live.filter((b) => b.id !== existing.id));
           try {
             await deleteBookmark(existing.id);
           } catch (e) {
@@ -160,12 +165,16 @@ export function useBookmarks(): UseBookmarksResult {
           id: `pending-${noteId}`,
           note_id: noteId,
           folder_id: null,
-          order: bookmarks.length,
+          order: live.length,
         };
-        setBookmarks([...bookmarks, optimistic]);
+        setBookmarks([...live, optimistic]);
         try {
           const created = await postBookmark(noteId);
-          setBookmarks([...previous, created]);
+          const liveAtSuccess = useTreeStore.getState().bookmarks;
+          setBookmarks([
+            ...liveAtSuccess.filter((b) => b.id !== optimistic.id),
+            created,
+          ]);
         } catch (e) {
           setBookmarks(previous);
           toast({
@@ -178,7 +187,7 @@ export function useBookmarks(): UseBookmarksResult {
         inFlightNoteIds.current.delete(noteId);
       }
     },
-    [bookmarks, setBookmarks, toast],
+    [setBookmarks, toast],
   );
 
   const moveToFolder = useCallback(
