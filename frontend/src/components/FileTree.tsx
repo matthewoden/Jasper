@@ -53,7 +53,6 @@ import { ActiveTagFilterChip } from "./ActiveTagFilterChip";
 import { useToast } from "./toast.utils";
 import {
   adaptTree,
-  basename,
   buildMultiDeleteTarget,
   composeNewPath,
   computeMoveTarget,
@@ -383,7 +382,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       if (d.kind === "note") {
         setDeleteTarget({
           kind: "note",
-          name: basename(d.path),
+          name: d.title,
           id: d.id,
         });
       } else if (d.kind === "file") {

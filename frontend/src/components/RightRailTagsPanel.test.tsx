@@ -173,11 +173,11 @@ describe("RightRailTagsPanel — tag list behaviors (kept unchanged)", () => {
     expect(style).toContain("8%");
   });
 
-  it("the '#tagname' span has color var(--color-accent)", () => {
+  it("inactive '#tagname' spans render plain fg — only the active tag gets accent (UI-SPEC)", () => {
     renderPanel();
 
     const hashSpan = screen.getByText("#project");
-    expect(hashSpan).toHaveStyle({ color: "var(--color-accent)" });
+    expect(hashSpan).toHaveStyle({ color: "var(--color-fg)" });
   });
 
   it("the count badge has muted text color and aria-label='<N> notes'", () => {

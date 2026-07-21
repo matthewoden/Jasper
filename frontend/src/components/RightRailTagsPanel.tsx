@@ -298,14 +298,11 @@ export function RightRailTagsPanel() {
                               />
                             ) : (
                               <>
-                                {/* #tagname in accent color; count as a pill badge */}
+                                {/* plain fg text; only the active tag gets accent (UI-SPEC: vault list stays plain) */}
                                 <span
-                                  style={{
-                                    ...(isActive
-                                      ? tagNameActiveStyle
-                                      : tagNameStyle),
-                                    color: "var(--color-accent)",
-                                  }}
+                                  style={
+                                    isActive ? tagNameActiveStyle : tagNameStyle
+                                  }
                                 >
                                   #{tag.name}
                                 </span>
