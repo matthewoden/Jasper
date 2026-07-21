@@ -7,18 +7,33 @@
  * are passed as ItemComp / SepComp props.
  *
  * Item set (locked):
- *   note       → Open · sep · New note · sep · Rename(F2) · Delete(⌫)
+ *   note       → Open · Open in split · sep · New note · sep · Bookmark
+ *                (Remove bookmark) · sep · Rename(F2) · Delete(⌫)
  *   folder     → New note · New folder · sep · Rename(F2) · Delete(⌫)
  *   empty-area → New note · New folder
  *   file       → Rename(F2) · Delete(⌫)  (files can't host children; click opens preview)
  *   bookmark   → Remove (destructive) · Move to folder (submenu: (No folder) ·
  *                existing folders · sep · New folder…) — NEVER rename, MCP-grant,
  *                reveal, or delete-note (quick task 260719-jv1, item 5).
+ *
+ * Bulk variant (D-19, CTX-02): when `selectionCount` (a prop independent of
+ * rowKind) is > 1, MenuItems renders a COMPLETELY different body — Open
+ * ({N} tabs) · Open in split · sep · Bookmark {N} notes · sep · Delete
+ * {N} notes — and every single-target item above is hidden entirely (not
+ * disabled). Callers read the live selection at menu-open time (not
+ * row-render time — see TreeRow.tsx's onOpenChange wiring) so a stale
+ * selectionCount never leaks into an already-open menu.
  */
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { FolderOpen, Sparkles } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import {
+  Bookmark,
+  BookmarkCheck,
+  FolderOpen,
+  SplitSquareHorizontal,
+  Sparkles,
+} from "lucide-react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 
 export type TreeRowMenuKind = "note" | "folder" | "empty-area" | "file" | "bookmark";
 
@@ -79,6 +94,32 @@ export interface TreeRowMenuProps {
   onRemoveBookmark?: () => void;
   onMoveBookmarkToFolder?: (folderId: string | null) => void;
   onNewBookmarkFolder?: () => void;
+
+  /** note rows only: single right/row split (D-13), same target as the
+   *  quick-switcher's Cmd+Shift+Enter and the note-options split-right item. */
+  onOpenInSplit?: () => void;
+  /** note rows only: true when bookmarked anywhere (root or any folder) —
+   *  drives the "Bookmark" / "Remove bookmark" label + icon. */
+  isBookmarked?: boolean;
+  /** note rows only: toggles the bookmark (always adds to the bookmarks
+   *  root when turning on — D-17, no folder-picker submenu here). */
+  onToggleBookmark?: () => void;
+
+  /**
+   * Bulk-selection variant (D-19). When set to a number > 1, MenuItems
+   * renders ONLY the bulk item set below, ignoring rowKind entirely.
+   * Meaningless (omit or leave <= 1) outside a multi-select right-click.
+   */
+  selectionCount?: number;
+  /** Bulk: opens all N selected notes as tabs in the active pane. */
+  onBulkOpenTabs?: () => void;
+  /** Bulk: opens ONE new split pane containing all N selected notes as tabs. */
+  onBulkOpenInSplit?: () => void;
+  /** Bulk: adds all N selected notes to the bookmarks root (skips
+   *  already-bookmarked, toasts the outcome). */
+  onBulkBookmark?: () => void;
+  /** Bulk: opens the shared delete-confirm dialog with bulk copy. */
+  onBulkDelete?: () => void;
 }
 
 /**
@@ -195,6 +236,14 @@ function MenuItems({
   onRemoveBookmark,
   onMoveBookmarkToFolder,
   onNewBookmarkFolder,
+  onOpenInSplit,
+  isBookmarked,
+  onToggleBookmark,
+  selectionCount,
+  onBulkOpenTabs,
+  onBulkOpenInSplit,
+  onBulkBookmark,
+  onBulkDelete,
   ItemComp,
   SepComp,
   SubComp,
@@ -232,6 +281,58 @@ function MenuItems({
         <span>{revealLabel}</span>
       </Item>
     ) : null;
+
+  if (selectionCount !== undefined && selectionCount > 1) {
+    // Bulk-selection variant (D-19) — completely replaces the rowKind-
+    // specific body; single-target items (Rename, Show in file manager)
+    // are hidden entirely, not disabled.
+    //
+    // event.stopPropagation() is required on BOTH onClick and onSelect here
+    // (bulkItemHandlers below) — this is stronger than the pre-existing
+    // "New note"/"New folder" UX-12/Pitfall-7 defense (onSelect only),
+    // because that defense turned out to be insufficient in a real browser
+    // for THIS interaction: Radix's onSelect fires from an internal
+    // custom-event dispatch, not the originating click, so calling
+    // stopPropagation() only there does not stop the real click's SEPARATE
+    // React-synthetic bubble path. Radix composes any consumer-supplied
+    // onClick with its own internal click handling (consumer's onClick
+    // runs first), so stopping propagation THERE reliably prevents the
+    // click from reaching react-arborist's DefaultRow wrapper one level up
+    // (`onClick={node.handleClick}` → `node.select()`), which would
+    // otherwise collapse the live multi-selection down to just the row the
+    // context menu was opened on — silently truncating every bulk action
+    // to N=1 between menu-open and the actual mutation. Verified against
+    // the real-browser regression this fixes (D-19/D-20), not just JSDOM.
+    const bulkItemHandlers = (
+      onSelectHandler?: () => void,
+    ): { onClick: (e: MouseEvent) => void; onSelect: (e: Event) => void } => ({
+      onClick: (e: MouseEvent) => e.stopPropagation(),
+      onSelect: (e: Event) => {
+        e.stopPropagation();
+        onSelectHandler?.();
+      },
+    });
+    return (
+      <>
+        <Item style={itemStyle} {...bulkItemHandlers(onBulkOpenTabs)}>
+          <span>Open ({selectionCount} tabs)</span>
+        </Item>
+        <Item style={itemStyle} {...bulkItemHandlers(onBulkOpenInSplit)}>
+          <SplitSquareHorizontal size={16} aria-hidden="true" />
+          <span>Open in split</span>
+        </Item>
+        <Sep style={separatorStyle} />
+        <Item style={itemStyle} {...bulkItemHandlers(onBulkBookmark)}>
+          <Bookmark size={16} aria-hidden="true" />
+          <span>Bookmark {selectionCount} notes</span>
+        </Item>
+        <Sep style={separatorStyle} />
+        <Item style={destructiveItemStyle} {...bulkItemHandlers(onBulkDelete)}>
+          <span>Delete {selectionCount} notes</span>
+        </Item>
+      </>
+    );
+  }
 
   if (isBookmark) {
     // Bookmark rows: Remove / Move to folder (submenu) ONLY — never rename,
@@ -279,7 +380,23 @@ function MenuItems({
           <span>Open</span>
         </Item>
       )}
-      {/* Note rows: Reveal below "Open", before first separator. */}
+      {/* Note rows: Open in split, below "Open" (D-13). stopPropagation
+          mirrors the UX-12/Pitfall-7 defense (see bulk-variant comment
+          above) — harmless here (single-target select+activate would be a
+          no-op re-select of the same row) but kept consistent. */}
+      {rowKind === "note" && onOpenInSplit && (
+        <Item
+          style={itemStyle}
+          onSelect={(event: Event) => {
+            event.stopPropagation();
+            onOpenInSplit();
+          }}
+        >
+          <SplitSquareHorizontal size={16} aria-hidden="true" />
+          <span>Open in split</span>
+        </Item>
+      )}
+      {/* Note rows: Reveal below "Open in split", before first separator. */}
       {rowKind === "note" && revealItem}
       {rowKind === "note" && <Sep style={separatorStyle} />}
       {/* File rows: Reveal at top, before Rename + Delete. */}
@@ -294,6 +411,27 @@ function MenuItems({
         >
           <span>New note</span>
         </Item>
+      )}
+      {/* Note rows: Bookmark toggle, below "New note" (D-17 — always adds to
+          the bookmarks root; no folder-picker submenu here). */}
+      {rowKind === "note" && onToggleBookmark && (
+        <>
+          <Sep style={separatorStyle} />
+          <Item
+            style={itemStyle}
+            onSelect={(event: Event) => {
+              event.stopPropagation();
+              onToggleBookmark();
+            }}
+          >
+            {isBookmarked ? (
+              <BookmarkCheck size={16} aria-hidden="true" />
+            ) : (
+              <Bookmark size={16} aria-hidden="true" />
+            )}
+            <span>{isBookmarked ? "Remove bookmark" : "Bookmark"}</span>
+          </Item>
+        </>
       )}
       {rowKind !== "note" && !isFile && (
         <Item

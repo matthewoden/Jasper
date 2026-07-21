@@ -54,6 +54,7 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { useTreeMutations } from "../lib/useTreeMutations";
 import { useReveal } from "../lib/useReveal";
 import { useMcpGrants } from "../lib/useMcpGrants";
+import { usePaneStore } from "../lib/usePaneStore";
 import { RenameInput } from "./RenameInput";
 import {
   TreeRowContextMenu,
@@ -156,6 +157,36 @@ export interface TreeRowProps {
   onActivate?: (noteId: string) => void;
   /** Present iff this row (or its caller) is bookmark-capable. */
   bookmarkMenu?: BookmarkMenuDescriptor;
+
+  /**
+   * Bulk-selection wiring (D-19, CTX-02). FileTree.tsx computes these
+   * against its own treeRef (react-arborist's live selection) and threads
+   * them down here; only wired into the right-click ContextMenu variant —
+   * the kebab DropdownMenu is always single-row-scoped, per UI-SPEC's
+   * "right-click with a multi-selection" framing.
+   */
+  getSelectionCount?: () => number;
+  onBulkOpenTabs?: () => void;
+  onBulkOpenInSplit?: () => void;
+  onBulkBookmark?: () => void;
+  onBulkDelete?: () => void;
+
+  /**
+   * Note-row Bookmark toggle wiring (CTX-02, D-17). FileTree.tsx owns the
+   * SINGLE `useBookmarks()` hydrate/subscribe instance and threads its
+   * `isBookmarked`/`toggleBookmark` down here — TreeRow deliberately does
+   * NOT call `useBookmarks()` itself (unlike useReveal/useMcpGrants/
+   * useTreeMutations above): react-arborist renders one TreeRow per visible
+   * row, and `useBookmarks()` fires its own GET /bookmarks + WS-subscriber
+   * registration on every mount, so calling it per-row multiplied that
+   * hydrate fetch by the row count and caused a burst of near-simultaneous
+   * store writes (every row re-renders on every OTHER row's fetch
+   * resolving) — this both wasted bandwidth and produced enough render
+   * churn during virtualized mount/scroll to detach rows mid-interaction
+   * in E2E (Rule 1 fix). Only meaningful for note rows.
+   */
+  isNoteBookmarked?: (noteId: string) => boolean;
+  onToggleNoteBookmark?: (noteId: string) => void;
 }
 
 const muted: CSSProperties = { color: "var(--color-muted)", flexShrink: 0 };
@@ -194,6 +225,13 @@ export function TreeRow({
   dragHandle,
   onActivate,
   bookmarkMenu,
+  getSelectionCount,
+  onBulkOpenTabs,
+  onBulkOpenInSplit,
+  onBulkBookmark,
+  onBulkDelete,
+  isNoteBookmarked,
+  onToggleNoteBookmark,
 }: TreeRowProps) {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const pendingRename = useTreeStore((s) => s.pendingRename);
@@ -205,6 +243,7 @@ export function TreeRow({
     revoke: revokeMcp,
     inheritedGrantOn,
   } = useMcpGrants();
+  const [contextSelectionCount, setContextSelectionCount] = useState(0);
   const pulseTarget = useTreeStore((s) => s.pulseTarget);
   const liveLabel = useTreeStore((s) =>
     node.data.kind === "note" ? s.liveLabels[node.data.id] : undefined,
@@ -245,6 +284,39 @@ export function TreeRow({
       : null;
 
   const [kebabOpen, setKebabOpen] = useState(false);
+
+  // Note-row-only menu wiring (CTX-02/WS-06): Open in split targets the
+  // shared usePaneStore action directly (same pattern as useTreeMutations/
+  // useReveal/useMcpGrants above — TreeRow owns its own hook wiring rather
+  // than having FileTree drill single-target callbacks through). Bookmark
+  // state/toggle is prop-driven instead (see isNoteBookmarked/
+  // onToggleNoteBookmark doc comment on TreeRowProps — per-row
+  // useBookmarks() calls caused a hydrate-fetch storm).
+  const noteIsBookmarked =
+    data.kind === "note" ? isNoteBookmarked?.(data.id) : undefined;
+  const handleToggleBookmark =
+    data.kind === "note"
+      ? () => onToggleNoteBookmark?.((data as NoteNodeData).id)
+      : undefined;
+  const handleOpenInSplit =
+    data.kind === "note"
+      ? () =>
+          usePaneStore
+            .getState()
+            .openNoteInNewSplit((data as NoteNodeData).id, "row")
+      : undefined;
+
+  // D-19/Pitfall 5: read the live selection at menu-OPEN time (not
+  // row-render time) so a stale count never leaks into an already-open
+  // menu. Only the right-click ContextMenu variant is bulk-aware.
+  const handleContextMenuOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        setContextSelectionCount(getSelectionCount ? getSelectionCount() : 0);
+      }
+    },
+    [getSelectionCount],
+  );
 
   const inheritedGrant = isFolder
     ? inheritedGrantOn((data as FolderNodeData).path)
@@ -626,6 +698,9 @@ export function TreeRow({
           onGrant={handleGrant}
           onRevoke={handleRevoke}
           inheritedGrant={inheritedGrant}
+          onOpenInSplit={handleOpenInSplit}
+          isBookmarked={noteIsBookmarked}
+          onToggleBookmark={handleToggleBookmark}
           {...bookmarkMenuHandlers}
           open={kebabOpen}
           onOpenChange={setKebabOpen}
@@ -696,6 +771,15 @@ export function TreeRow({
       onGrant={handleGrant}
       onRevoke={handleRevoke}
       inheritedGrant={inheritedGrant}
+      onOpenInSplit={handleOpenInSplit}
+      isBookmarked={noteIsBookmarked}
+      onToggleBookmark={handleToggleBookmark}
+      selectionCount={contextSelectionCount > 1 ? contextSelectionCount : undefined}
+      onBulkOpenTabs={onBulkOpenTabs}
+      onBulkOpenInSplit={onBulkOpenInSplit}
+      onBulkBookmark={onBulkBookmark}
+      onBulkDelete={onBulkDelete}
+      onOpenChange={handleContextMenuOpenChange}
       {...bookmarkMenuHandlers}
     >
       {rowContent}

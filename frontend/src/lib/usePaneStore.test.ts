@@ -612,6 +612,53 @@ describe("usePaneStore — openNoteInNewSplit (P28 QUICK-03)", () => {
   });
 });
 
+describe("usePaneStore — openNotesInNewSplit (D-19, CTX-02 bulk menu)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStore();
+  });
+
+  it("creates ONE new sibling leaf containing all N noteIds as tabs (not N separate splits)", () => {
+    usePaneStore.getState().openInActivePane("note-1");
+    const activeBefore = usePaneStore.getState().activePaneId;
+
+    usePaneStore.getState().openNotesInNewSplit(["note-a", "note-b", "note-c"], "row");
+
+    const s = usePaneStore.getState();
+    expect(_leaves(s.tree)).toHaveLength(2); // ONE new split, not three
+    const newSibling = _leaves(s.tree).find((l) => l.id !== activeBefore)!;
+    expect(newSibling.tabs.map((t) => t.noteId)).toEqual(["note-a", "note-b", "note-c"]);
+    expect(newSibling.active).toBe(newSibling.tabs[0].id);
+    expect(s.activePaneId).toBe(newSibling.id);
+
+    const prevLeaf = _leaves(s.tree).find((l) => l.id === activeBefore)!;
+    expect(prevLeaf.tabs.map((t) => t.noteId)).toEqual(["note-1"]); // unchanged
+  });
+
+  it("is a no-op for an empty noteIds array", () => {
+    const before = usePaneStore.getState();
+    usePaneStore.getState().openNotesInNewSplit([], "row");
+    const after = usePaneStore.getState();
+    expect(after.tree).toBe(before.tree);
+    expect(after.activePaneId).toBe(before.activePaneId);
+  });
+
+  it("falls back to opening every note in the active pane when at MAX_DEPTH (32) nesting", () => {
+    const deepTree = buildDeepSplit(32);
+    usePaneStore.setState({ tree: deepTree, activePaneId: "leaf-0", deletedTabIds: new Set<string>() });
+    const leafCountBefore = _leaves(deepTree).length;
+
+    usePaneStore.getState().openNotesInNewSplit(["note-x", "note-y"], "row");
+
+    const s = usePaneStore.getState();
+    expect(_leaves(s.tree)).toHaveLength(leafCountBefore); // no new leaf added
+    const leaf = _leaves(s.tree).find((l) => l.id === "leaf-0")!;
+    expect(leaf.tabs.map((t) => t.noteId)).toContain("note-x");
+    expect(leaf.tabs.map((t) => t.noteId)).toContain("note-y");
+    expect(s.activePaneId).toBe("leaf-0");
+  });
+});
+
 describe("usePaneStore — focusCyclePane (D-08)", () => {
   beforeEach(() => {
     localStorage.clear();

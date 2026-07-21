@@ -591,9 +591,9 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
 
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible({ timeout: 3_000 });
-    await expect(dialog).toContainText(/delete 2 items/i);
+    await expect(dialog).toContainText(/delete 2 notes/i);
 
-    await dialog.getByRole("button", { name: /^delete 2 items/i }).click();
+    await dialog.getByRole("button", { name: /^delete 2 notes/i }).click();
 
     await expect(noteRows).toHaveCount(1, { timeout: 5_000 });
   });
@@ -719,10 +719,10 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
 
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible({ timeout: 3_000 });
-    await expect(dialog).toContainText(/delete 2 items/i);
+    await expect(dialog).toContainText(/delete 2 notes/i);
 
     await dialog
-      .getByRole("button", { name: /^delete\s+2\s+items?$/i })
+      .getByRole("button", { name: /^delete\s+2\s+notes?$/i })
       .click();
 
     await expect(noteRows).toHaveCount(1, { timeout: 5_000 });

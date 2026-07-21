@@ -39,9 +39,11 @@ import {
   useTreeMutations,
 } from "../lib/useTreeMutations";
 import { useTreeCreateActions } from "../lib/useTreeCreateActions";
+import { useBookmarks } from "../lib/useBookmarks";
+import { usePaneStore } from "../lib/usePaneStore";
 import type { TreeNode as WireTreeNode } from "../lib/treeApi";
 import { listTagNotes, type NoteSummary } from "../lib/tagsApi";
-import { TreeRow, type TreeRowData } from "./TreeRow";
+import { TreeRow, type NoteNodeData, type TreeRowData } from "./TreeRow";
 import { TreeView } from "./TreeView";
 import { TreeEmptyState } from "./TreeEmptyState";
 import { TreeErrorState } from "./TreeErrorState";
@@ -75,6 +77,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   const muts = useTreeMutations();
   const { createNoteAt, createFolderAt } = useTreeCreateActions();
   const { toast } = useToast();
+  const { toggleBookmark, isBookmarked } = useBookmarks();
 
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(
     null,
@@ -413,6 +416,56 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     },
     [handleRequestDelete],
   );
+
+  // Bulk-selection menu wiring (D-19, CTX-02) — reads react-arborist's live
+  // selection off treeRef at call time (Pitfall 5: TreeRow's onOpenChange
+  // calls getSelectionCount at menu-OPEN time, not row-render time).
+  const getSelectionCount = useCallback(
+    (): number => treeRef.current?.selectedIds.size ?? 0,
+    [],
+  );
+
+  const getSelectedNoteIds = useCallback((): string[] => {
+    const nodes = treeRef.current?.selectedNodes ?? [];
+    return nodes
+      .filter((n) => n.data.data.kind === "note")
+      .map((n) => (n.data.data as NoteNodeData).id);
+  }, []);
+
+  const handleBulkOpenTabs = useCallback(() => {
+    const ids = getSelectedNoteIds();
+    for (const id of ids) {
+      usePaneStore.getState().openInActivePane(id);
+    }
+  }, [getSelectedNoteIds]);
+
+  const handleBulkOpenInSplit = useCallback(() => {
+    const ids = getSelectedNoteIds();
+    if (ids.length === 0) return;
+    usePaneStore.getState().openNotesInNewSplit(ids, "row");
+  }, [getSelectedNoteIds]);
+
+  const handleBulkBookmark = useCallback(async () => {
+    const ids = getSelectedNoteIds();
+    if (ids.length === 0) return;
+    const toAdd = ids.filter((id) => !isBookmarked(id));
+    const skipped = ids.length - toAdd.length;
+    for (const id of toAdd) {
+      await toggleBookmark(id);
+    }
+    toast({
+      title:
+        skipped > 0
+          ? `Bookmarked ${toAdd.length} notes (${skipped} already bookmarked)`
+          : `Bookmarked ${toAdd.length} notes`,
+    });
+  }, [getSelectedNoteIds, isBookmarked, toggleBookmark, toast]);
+
+  const handleBulkDelete = useCallback(() => {
+    const count = treeRef.current?.selectedIds.size ?? 0;
+    if (count === 0) return;
+    setDeleteTarget({ kind: "multi", count });
+  }, []);
 
   useEffect(() => {
     const isInsideEditableSurface = (el: HTMLElement): boolean =>
@@ -991,6 +1044,13 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
               onRequestNewFolder={handleRequestNewFolder}
               siblingNames={siblingNamesFor(rawNode)}
               commitRename={handleCommitRename}
+              getSelectionCount={getSelectionCount}
+              onBulkOpenTabs={handleBulkOpenTabs}
+              onBulkOpenInSplit={handleBulkOpenInSplit}
+              onBulkBookmark={handleBulkBookmark}
+              onBulkDelete={handleBulkDelete}
+              isNoteBookmarked={isBookmarked}
+              onToggleNoteBookmark={toggleBookmark}
             />
           )}
         />

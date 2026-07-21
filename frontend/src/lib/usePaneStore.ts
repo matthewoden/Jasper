@@ -56,6 +56,7 @@ export interface PaneStore {
   focusCyclePane: (dir: 1 | -1) => void;
   openInActivePane: (noteId: string) => void;
   openNoteInNewSplit: (noteId: string, dir: "row" | "col") => void;
+  openNotesInNewSplit: (noteIds: string[], dir: "row" | "col") => void;
   markDeleted: (noteId: string) => void;
   initForVault: (vaultPath: string) => void;
   clearAll: () => void;
@@ -217,6 +218,40 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 
     const tab: Tab = { id: newTabId(), noteId };
     const finalTree = _updLeaf(nextTree, newSibling.id, { tabs: [tab], active: tab.id });
+    set({ tree: finalTree, activePaneId: newSibling.id });
+  },
+
+  /**
+   * openNotesInNewSplit — bulk-selection sibling to openNoteInNewSplit
+   * (D-19, CTX-02): opens ONE new split pane containing ALL of `noteIds` as
+   * tabs (not N separate splits). Mirrors openNoteInNewSplit's MAX_DEPTH /
+   * no-op fallback exactly, falling back to opening each note in the active
+   * pane (via openInActivePane, per-leaf deduped) when a new sibling can't
+   * be created. A no-op for an empty `noteIds` array.
+   */
+  openNotesInNewSplit: (noteIds, dir) => {
+    if (noteIds.length === 0) return;
+    const { tree, activePaneId } = get();
+    if (depthAtLeaf(tree, activePaneId) >= MAX_DEPTH) {
+      for (const noteId of noteIds) get().openInActivePane(noteId);
+      return;
+    }
+
+    const prevLeafIds = new Set(_leaves(tree).map((l) => l.id));
+    const nextTree = splitPane(tree, activePaneId, dir, /* cloneActiveTab */ false);
+    if (nextTree === tree) {
+      for (const noteId of noteIds) get().openInActivePane(noteId);
+      return;
+    }
+
+    const newSibling = _leaves(nextTree).find((l) => !prevLeafIds.has(l.id));
+    if (!newSibling) {
+      for (const noteId of noteIds) get().openInActivePane(noteId);
+      return;
+    }
+
+    const tabs: Tab[] = noteIds.map((noteId) => ({ id: newTabId(), noteId }));
+    const finalTree = _updLeaf(nextTree, newSibling.id, { tabs, active: tabs[0].id });
     set({ tree: finalTree, activePaneId: newSibling.id });
   },
 

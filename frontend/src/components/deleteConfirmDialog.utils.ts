@@ -1,10 +1,17 @@
 /**
- * DeleteConfirmDialog data shapes + body-text builder.
+ * DeleteConfirmDialog data shapes + copy builder (D-26, UI-SPEC §7
+ * Copywriting Contract).
+ *
+ * Every delete entry point (tree menu single-target, tree bulk-selection,
+ * the ⌫ keyboard shortcut, and Plan 09's note-options menu) renders the
+ * SAME <DeleteConfirmDialog> against `buildDeleteCopy(target)` so no call
+ * site duplicates the locked strings — the dialog derives title/body/
+ * confirm-label from `target` internally (D-26's "generalization"
+ * requirement).
  *
  * Extracted so the component file only exports React components, which
  * satisfies react-refresh/only-export-components and keeps Fast Refresh.
  */
-
 
 export type DeleteTarget =
   | { kind: "note"; name: string; id: string }
@@ -18,41 +25,50 @@ export type DeleteTarget =
   | { kind: "multi"; count: number }
   | { kind: "file"; name: string; path: string };
 
-export interface FolderBody {
-  line1: string;
-  line2: string;
-  line2IsDestructive: boolean;
+export interface DeleteCopy {
+  title: string;
+  body: string;
+  confirmLabel: string;
 }
 
-/** Returns "1 note" / "{N} notes" / null (when n === 0). */
-function pluralize(n: number, one: string, many: string): string | null {
-  if (n === 0) return null;
-  if (n === 1) return `1 ${one}`;
-  return `${n} ${many}`;
-}
-
-export function buildFolderBody(
-  name: string,
-  noteCount: number,
-  subfolderCount: number,
-): FolderBody {
-  const parts = [
-    pluralize(noteCount, "note", "notes"),
-    pluralize(subfolderCount, "subfolder", "subfolders"),
-  ].filter(Boolean) as string[];
-  if (parts.length === 0) {
-    return {
-      line1: `${name} will be permanently removed from disk and from the index.`,
-      line2:
-        "Your other notes are not touched — only this folder is affected.",
-      line2IsDestructive: false,
-    };
+/**
+ * Locked copy per the Copywriting Contract (Phase 30 UI-SPEC §7, D-26):
+ * note/folder/bulk deletes move the target to Trash — Phase 14's
+ * soft-delete-to-`.trash/` behavior is unchanged underneath; this dialog
+ * only gates the UI trigger (the ⌫ shortcut now opens this dialog instead
+ * of deleting immediately).
+ *
+ * `file` targets (vault attachments, e.g. images dropped into an
+ * attachments/ folder) have no `.trash/` path on the backend — FileStore
+ * hard-deletes them (`fsstore.Store.DeleteFile`, not `TrashFile`) — so that
+ * variant keeps copy describing an immediate, non-restorable delete rather
+ * than a Trash promise the backend can't keep for this kind.
+ */
+export function buildDeleteCopy(target: DeleteTarget): DeleteCopy {
+  switch (target.kind) {
+    case "note":
+      return {
+        title: "Delete note?",
+        body: `"${target.name}" will be moved to Trash. You can restore it from Trash later.`,
+        confirmLabel: "Delete",
+      };
+    case "folder":
+      return {
+        title: "Delete folder?",
+        body: `"${target.name}" and everything inside it will be moved to Trash. You can restore it from Trash later.`,
+        confirmLabel: "Delete",
+      };
+    case "multi":
+      return {
+        title: `Delete ${target.count} notes?`,
+        body: "They will be moved to Trash. You can restore them from Trash later.",
+        confirmLabel: `Delete ${target.count} notes`,
+      };
+    case "file":
+      return {
+        title: "Delete this file?",
+        body: `"${target.name}" will be deleted immediately. This cannot be undone.`,
+        confirmLabel: "Delete file",
+      };
   }
-  const contents =
-    parts.length === 2 ? `${parts[0]} and ${parts[1]}` : parts[0];
-  return {
-    line1: `${name} contains ${contents}. All of them will be permanently removed from disk and from the index.`,
-    line2: "This cannot be undone.",
-    line2IsDestructive: true,
-  };
 }
