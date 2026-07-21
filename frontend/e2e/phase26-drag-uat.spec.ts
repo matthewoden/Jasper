@@ -32,6 +32,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
+import { openNoteFromTree } from "./helpers/openNoteFromTree";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,17 +75,6 @@ async function apiCreateNote(page: Page, baseURL: string, title: string): Promis
     throw new Error(`apiCreateNote ${title}: ${String(resp.status())} ${body}`);
   }
   return ((await resp.json()) as { id: string }).id;
-}
-
-function noteRow(page: Page, id: string): Locator {
-  return page.locator(`[data-tree-row="${id}"][data-tree-row-kind="note"]`);
-}
-
-/** Open a tree note by clicking its row; waits for the row to be visible first. */
-async function openNoteFromTree(page: Page, id: string): Promise<void> {
-  const row = noteRow(page, id);
-  await expect(row).toBeVisible({ timeout: 10_000 });
-  await row.click();
 }
 
 /** All leaf panes currently rendered, in tree order (a before b, per paneTree.ts). */

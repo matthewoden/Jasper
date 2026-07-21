@@ -47,6 +47,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
+import { openNoteFromTree, noteRow } from "./helpers/openNoteFromTree";
 
 // ─── Shared helpers (mirrors phase25/26-uat.spec.ts's isolation pattern) ────
 
@@ -87,19 +88,8 @@ async function apiCreateNote(
   return ((await resp.json()) as { id: string }).id;
 }
 
-function noteRow(page: Page, id: string): Locator {
-  return page.locator(`[data-tree-row="${id}"][data-tree-row-kind="note"]`);
-}
-
 function folderRow(page: Page, name: string): Locator {
   return page.locator('[data-tree-row-kind="folder"]').filter({ hasText: name });
-}
-
-/** Open a tree note by clicking its row; waits for the row to be visible first. */
-async function openNoteFromTree(page: Page, id: string): Promise<void> {
-  const row = noteRow(page, id);
-  await expect(row).toBeVisible({ timeout: 10_000 });
-  await row.click();
 }
 
 /**

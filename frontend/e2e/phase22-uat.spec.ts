@@ -41,6 +41,7 @@ import { fileURLToPath } from "url";
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 import { waitForConnected, apiCreateNote } from "./helpers/phase7Helpers";
+import { openNoteFromTree } from "./helpers/openNoteFromTree";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,17 +64,6 @@ async function pressCmdP(page: Page): Promise<void> {
 /** Press the zen-mode toggle shortcut (Cmd/Ctrl+.). */
 async function pressZenToggle(page: Page): Promise<void> {
   await page.keyboard.press(`${MOD}+.`);
-}
-
-function noteRow(page: Page, id: string) {
-  return page.locator(`[data-tree-row="${id}"][data-tree-row-kind="note"]`);
-}
-
-/** Open a tree note by clicking its row; waits for the row to be visible first. */
-async function openNoteFromTree(page: Page, id: string): Promise<void> {
-  const row = noteRow(page, id);
-  await expect(row).toBeVisible({ timeout: 10_000 });
-  await row.click();
 }
 
 /**
