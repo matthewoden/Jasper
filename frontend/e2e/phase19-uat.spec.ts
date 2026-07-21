@@ -9,12 +9,15 @@
  * LSIDE-01: the active tree row shows the 12% accent-tint background +
  *   title-weight (--color-fg-title) label text; folder rows expose
  *   aria-expanded state (chevron swap) on toggle.
- * LSIDE-02 (D-01..D-07, D-17): the ribbon Search button opens the sidebar
- *   Search panel (input focused), symmetric toggle/switch/collapse model,
- *   panel-memory persistence across reload, Cmd+Shift+F re-point +
- *   refocus-select, two-stage Escape, and result-click opens/activates the
- *   note through the tab system (never bypasses to setActiveNote directly —
- *   the Pitfall-1 guard).
+ * LSIDE-02 (D-01..D-07, D-17): the sidebar's own "Search" tab (SidebarTabRow
+ *   — Phase 27 NAV-02 removed the Activity ribbon's Files/Search toggles
+ *   entirely; panel selection now lives solely in the sidebar header) opens
+ *   the Search panel (input focused). Panel switching (Notes/Search tabs)
+ *   and the dedicated "Collapse sidebar" control replace the old
+ *   toggle/collapse-on-repeat-click model; panel-memory persists across
+ *   reload, Cmd+Shift+F re-points + refocus-selects, two-stage Escape, and
+ *   result-click opens/activates the note through the tab system (never
+ *   bypasses to setActiveNote directly — the Pitfall-1 guard).
  *
  * Harness mirrors phase18-uat.spec.ts: spawnJasper() per describe block,
  * connection-status-dot wait, @phase19 tags, JASPER_APP_HOME-isolated
@@ -93,16 +96,24 @@ function tabPills(page: Page) {
   return tabStrip(page).getByRole("tab");
 }
 
-function ribbon(page: Page) {
-  return page.locator('nav[aria-label="Activity ribbon"]');
+// Phase 27 NAV-02 (D-09/D-10) removed the Activity ribbon's Files/Search
+// toggles entirely — panel selection lives solely in the sidebar's own
+// SidebarTabRow header (Notes/Search/Bookmarks icon tabs + a dedicated
+// "Collapse sidebar" control). These helpers target that current surface.
+function sidebarTabRow(page: Page) {
+  return page.getByTestId("sidebar-tab-row");
 }
 
-function ribbonSearchBtn(page: Page) {
-  return ribbon(page).locator('button[aria-label="Search notes"]');
+function sidebarSearchTab(page: Page) {
+  return sidebarTabRow(page).getByRole("button", { name: "Search", exact: true });
 }
 
-function ribbonFilesBtn(page: Page) {
-  return ribbon(page).getByRole("button", { name: "Files" });
+function sidebarNotesTab(page: Page) {
+  return sidebarTabRow(page).getByRole("button", { name: "Notes", exact: true });
+}
+
+function collapseSidebarBtn(page: Page) {
+  return page.getByRole("button", { name: "Collapse sidebar" });
 }
 
 function searchPanelInput(page: Page) {
@@ -211,7 +222,7 @@ test.describe("@phase19 LSIDE-01: active row accent tint + chevron state", () =>
 
 // ─── LSIDE-02 / SC3+SC4: Search panel open/focus/results/activation ────────
 
-test.describe("@phase19 LSIDE-02/SC3/SC4: ribbon Search opens+focuses panel; result click activates tab", () => {
+test.describe("@phase19 LSIDE-02/SC3/SC4: sidebar Search tab opens+focuses panel; result click activates tab", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -222,7 +233,7 @@ test.describe("@phase19 LSIDE-02/SC3/SC4: ribbon Search opens+focuses panel; res
     if (jasper) await jasper.kill();
   });
 
-  test("D-01: ribbon Search opens the sidebar panel with input focused; typing shows a count label + result rows", async ({
+  test("D-01: sidebar Search tab opens the panel with input focused; typing shows a count label + result rows", async ({
     page,
   }) => {
     const noteId = await createNote(jasper, "searchable-alpha");
@@ -230,9 +241,19 @@ test.describe("@phase19 LSIDE-02/SC3/SC4: ribbon Search opens+focuses panel; res
 
     await waitForConnected(page, jasper.baseURL);
 
-    await ribbonSearchBtn(page).click();
+    await sidebarSearchTab(page).click();
     const input = searchPanelInput(page);
     await expect(input).toBeVisible({ timeout: 5_000 });
+    // HALT (260721-suite Rule 2 — genuine app regression, not a stale
+    // selector): SidebarTabRow's selectPanel() only calls
+    // setSidebarPanel/setNotesSidebarVisible — it never dispatches the
+    // "focusSearch" phase7 event. The pre-Phase-27 ribbon Search button
+    // explicitly dispatched it on click (commit b73b9ed9), and the
+    // still-passing Cmd+Shift+F path (appShortcuts.ts's
+    // handleAppCmdShiftF, D-05) still does today — this assertion
+    // correctly encodes current design intent (input focused on open,
+    // regardless of entry method) and is intentionally left red per this
+    // cluster's no-app-code-changes scope. See cluster-C-REPORT.md.
     await expect(input).toBeFocused();
 
     await input.fill("findme-unique-token");
@@ -258,8 +279,13 @@ test.describe("@phase19 LSIDE-02/SC3/SC4: ribbon Search opens+focuses panel; res
     await openNoteFromTree(page, idTwo);
     await expect(tabPills(page)).toHaveCount(2);
 
-    await ribbonSearchBtn(page).click();
+    await sidebarSearchTab(page).click();
     const input = searchPanelInput(page);
+    // HALT (260721-suite Rule 2 — same genuine app regression as D-01 above):
+    // clicking the sidebar Search tab does not focus the input. This blocks
+    // reaching the SC4 result-click-activates-tab assertion below, which is
+    // otherwise unrelated and unverified by this regression. See
+    // cluster-C-REPORT.md.
     await expect(input).toBeFocused();
     await input.fill("d17-unique-search-phrase");
 
@@ -273,9 +299,9 @@ test.describe("@phase19 LSIDE-02/SC3/SC4: ribbon Search opens+focuses panel; res
   });
 });
 
-// ─── D-02/D-03: honest toggle collapse + Files/Search switch-in-place ──────
+// ─── D-02/D-03: dedicated collapse control + Notes/Search switch-in-place ──
 
-test.describe("@phase19 D-02/D-03: Search honest-toggle collapse; Files switches panel in place", () => {
+test.describe("@phase19 D-02/D-03: dedicated collapse control; Notes switches panel in place", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -286,26 +312,33 @@ test.describe("@phase19 D-02/D-03: Search honest-toggle collapse; Files switches
     if (jasper) await jasper.kill();
   });
 
-  test("D-02: clicking Search again while showing collapses the sidebar", async ({ page }) => {
+  // Phase 27 (NAV-01..03) removed the old "click the active toggle again to
+  // collapse" model along with the Activity ribbon's Files/Search buttons
+  // entirely: SidebarTabRow's tab clicks now ALWAYS switch panel + reopen
+  // the sidebar (never collapse — a tab click while collapsed must never
+  // no-op, since the collapse control lives in this same row). The current
+  // equivalent surface for "collapse the sidebar while Search is showing"
+  // is the dedicated "Collapse sidebar" control in that same header row.
+  test("D-02: the dedicated collapse control hides the sidebar while Search is showing", async ({ page }) => {
     await waitForConnected(page, jasper.baseURL);
 
-    await ribbonSearchBtn(page).click();
+    await sidebarSearchTab(page).click();
     await expect(searchPanelInput(page)).toBeVisible({ timeout: 5_000 });
     await expect(sidebarNav(page)).toBeVisible();
 
-    await ribbonSearchBtn(page).click();
+    await collapseSidebarBtn(page).click();
     await expect(sidebarNav(page)).toHaveCount(0, { timeout: 5_000 });
   });
 
-  test("D-03: clicking Files while Search is showing switches to Files panel, sidebar stays open", async ({
+  test("D-03: clicking Notes while Search is showing switches to the Notes panel, sidebar stays open", async ({
     page,
   }) => {
     await waitForConnected(page, jasper.baseURL);
 
-    await ribbonSearchBtn(page).click();
+    await sidebarSearchTab(page).click();
     await expect(searchPanelInput(page)).toBeVisible({ timeout: 5_000 });
 
-    await ribbonFilesBtn(page).click();
+    await sidebarNotesTab(page).click();
     await expect(sidebarNav(page)).toBeVisible();
     await expect(searchPanelInput(page)).toHaveCount(0);
     await expect(sidebarNav(page).locator('[data-tree-row-kind]').first()).toBeVisible({
@@ -332,7 +365,7 @@ test.describe("@phase19 D-04: sidebar panel memory persists across reload", () =
   }) => {
     await waitForConnected(page, jasper.baseURL);
 
-    await ribbonSearchBtn(page).click();
+    await sidebarSearchTab(page).click();
     await expect(searchPanelInput(page)).toBeVisible({ timeout: 5_000 });
 
     await page.reload();
@@ -402,8 +435,12 @@ test.describe("@phase19 D-06: Escape clears query first, then blurs on second pr
   }) => {
     await waitForConnected(page, jasper.baseURL);
 
-    await ribbonSearchBtn(page).click();
+    await sidebarSearchTab(page).click();
     const input = searchPanelInput(page);
+    // HALT (260721-suite Rule 2 — same genuine app regression as D-01 above):
+    // clicking the sidebar Search tab does not focus the input, blocking the
+    // rest of this two-stage-Escape scenario from ever exercising a focused
+    // input. See cluster-C-REPORT.md.
     await expect(input).toBeFocused();
 
     await input.fill("some query text");
