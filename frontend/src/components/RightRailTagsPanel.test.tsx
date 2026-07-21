@@ -94,20 +94,25 @@ describe("RightRailTagsPanel — body-only (no own header/close/filter)", () => 
 
   it("panel card has borderRadius: 8 style", () => {
     const { container } = renderPanel();
-    const panel = container.querySelector("div");
+    const panel = container.querySelector('[style*="border-radius: 8px"]');
     expect(panel).toBeTruthy();
-    const styleAttr = panel?.getAttribute("style") ?? "";
-    expect(styleAttr).toContain("border-radius: 8px");
+  });
+
+  it("renders its own 'Tags' sub-header + count pill", () => {
+    renderPanel();
+    expect(screen.getByText("Tags")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 });
 
 describe("RightRailTagsPanel — tag list behaviors (kept unchanged)", () => {
-  it("rows sorted alphabetically with name + count badge", () => {
+  it("rows sorted count-desc with alphabetical ties, name + count badge (D-09)", () => {
     renderPanel();
 
     const tagItems = screen.getAllByRole("listitem");
-    expect(tagItems[0]).toHaveTextContent("alpha");
-    expect(tagItems[1]).toHaveTextContent("beta");
+    expect(tagItems[0]).toHaveTextContent("project");
+    expect(tagItems[1]).toHaveTextContent("alpha");
+    expect(tagItems[2]).toHaveTextContent("beta");
     const alphaRow = screen.getByTestId("tag-row-alpha");
     const betaRow = screen.getByTestId("tag-row-beta");
     expect(alphaRow).toHaveTextContent("5");
@@ -189,7 +194,7 @@ describe("RightRailTagsPanel — tag list behaviors (kept unchanged)", () => {
 });
 
 describe("RightRailTagsPanel — empty state (vault has zero tags)", () => {
-  it("empty state uses body-first 'Type #tagname' copy", () => {
+  it("empty state uses the mock-literal 'No tags in this vault' copy (D-10)", () => {
     mockedUseTagBrowser.mockReturnValue({
       tags: [],
       loading: false,
@@ -198,9 +203,7 @@ describe("RightRailTagsPanel — empty state (vault has zero tags)", () => {
     });
     renderPanel();
 
-    expect(
-      screen.getByText(/No tags yet\. Type #tagname in any note to add a tag\./),
-    ).toBeInTheDocument();
+    expect(screen.getByText("No tags in this vault")).toBeInTheDocument();
   });
 
   it("empty state does NOT show old frontmatter copy", () => {

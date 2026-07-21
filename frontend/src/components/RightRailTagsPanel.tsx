@@ -1,13 +1,15 @@
 /**
  * RightRailTagsPanel — body-only tag browser section in the right rail
- * (Phase 20 trim, D-08/D-09; mounted as the Tags tab's single section by
- * RightRail.tsx's Phase 30 tab-row rework — see RightRailTabRow.tsx's
- * RightRailSubHeader for the sub-header treatment above this panel).
+ * (Phase 20 trim, D-08/D-09; mounted as the Tags tab's LOWER (vault-wide)
+ * section by RightRail.tsx's Phase 30 two-section rework — see §2 of
+ * 30-UI-SPEC.md. The upper (active-note) section is NoteTagsSection.tsx.
  *
- * No own header, no × close button, no substring filter input — this
- * component renders only the tag list, click-to-filter, and the
- * rename/delete ContextMenu flow. List uses `flex: 1` to fill the panel
- * card (no fixed maxHeight).
+ * Owns its own "Tags" + count sub-header (RightRailSubHeader, ported from
+ * SectionHeader.tsx) since Phase 20's external SectionHeader no longer
+ * supplies it in the tab-row model — no × close button, no substring filter
+ * input. Body renders only the tag list, click-to-filter, and the
+ * rename/delete ContextMenu flow. List uses `flex: 1` to fill the remaining
+ * panel space (no fixed maxHeight).
  *
  * The legacy left-sidebar TagBrowserSection.tsx (superseded by this
  * component in Phase 20) was deleted in Phase 30 Plan 05 as confirmed
@@ -20,8 +22,10 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useTagBrowser } from "../lib/useTagBrowser";
 import { renameTag, deleteTag } from "../lib/tagsApi";
+import { sortTagsByCountDesc } from "../lib/tagSort";
 import { TagDeleteConfirmDialog } from "./TagDeleteConfirmDialog";
 import { RenameInput } from "./RenameInput";
+import { RightRailSubHeader } from "./RightRailTabRow";
 import { useToast } from "./toast.utils";
 
 
@@ -33,7 +37,18 @@ const panelCardStyle: CSSProperties = {
   overflow: "hidden",
   display: "flex",
   flexDirection: "column",
+  flex: 1,
+  minHeight: 0,
+};
+
+/** Wraps the sub-header + card so this component fills whatever flex space
+ * its RightRail.tsx parent gives it (height: "100%" would be wrong here
+ * now that the sub-header is a sibling, not external). */
+const rootStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
   height: "100%",
+  minHeight: 0,
 };
 
 /** Tag list: flex-1 fills panel card height. */
@@ -131,7 +146,7 @@ export function RightRailTagsPanel() {
   const [softSelected, setSoftSelected] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const sortedTags = [...tags].sort((a, b) => a.name.localeCompare(b.name));
+  const sortedTags = sortTagsByCountDesc(tags);
 
   const handleRenameCommit = async (oldName: string, newName: string) => {
     if (!TAG_CHARSET_REGEX.test(newName)) {
@@ -208,16 +223,18 @@ export function RightRailTagsPanel() {
 
   return (
     <>
-      <div style={panelCardStyle}>
-        <ul role="list" style={listStyle}>
-          {/* Empty state: vault has zero tags */}
-          {sortedTags.length === 0 ? (
-            <li>
-              <p role="status" style={emptyStateStyle}>
-                No tags yet. Type #tagname in any note to add a tag.
-              </p>
-            </li>
-          ) : (
+      <div style={rootStyle}>
+        <RightRailSubHeader title="Tags" count={tags.length} />
+        <div style={panelCardStyle}>
+          <ul role="list" style={listStyle}>
+            {/* Empty state: vault has zero tags (D-10, mock-literal copy) */}
+            {sortedTags.length === 0 ? (
+              <li>
+                <p role="status" style={emptyStateStyle}>
+                  No tags in this vault
+                </p>
+              </li>
+            ) : (
             sortedTags.map((tag) => {
                   const isActive = activeTagFilter === tag.name;
                   const isRenaming = renaming === tag.name;
@@ -339,8 +356,9 @@ export function RightRailTagsPanel() {
                     </li>
                   );
             })
-          )}
-        </ul>
+            )}
+          </ul>
+        </div>
       </div>
 
       {/* Confirmation dialog — only shown when tag count > 5 */}

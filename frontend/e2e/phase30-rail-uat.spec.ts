@@ -16,12 +16,20 @@
  * ... survives"). It proves the Wave-0 harness (spawn + tree open) works
  * end-to-end before the tab-row markup exists.
  *
- * TAGS-01 is now a real, passing test (Plan 05): clicks each icon tab,
+ * TAGS-01 is a real, passing test (Plan 05): clicks each icon tab,
  * asserts exactly one panel is mounted (role-scoped locators, not just
  * visual visibility), waits for the PUT /vault/workspace persist request,
- * then reloads and re-asserts the same tab survives. TAGS-02 remains
- * test.fixme until Plan 08 lands the two-section Tags tab body — do not
- * assert unbuilt behavior as passing.
+ * then reloads and re-asserts the same tab survives. Its Tags-tab empty
+ * state locator uses the LOWER (vault-wide) section's "No tags in this
+ * vault" copy (D-10, mock-literal — replaces the pre-Plan-08 "No tags
+ * yet..." copy) since Plan 08 upgraded the Tags tab to two sections.
+ *
+ * TAGS-02 (Plan 08) is now a real, passing test: opens a tagless note,
+ * asserts the upper section's "No tags on this note" empty state, types
+ * `#livetag` into the live CM6 doc and asserts the chip appears in the
+ * upper section without a save round-trip (D-08 live parse), then clicks
+ * the chip and asserts the left sidebar switches to the Search panel with
+ * a `tag:livetag` query seeded (D-07).
  *
  * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
  * build`) before Playwright — the spec runs against the EMBEDDED binary.
@@ -87,9 +95,7 @@ test.describe("@tags-rail Phase 30: right rail Tags tab", () => {
     const linkedPanel = page.getByRole("region", {
       name: "Notes that link to this note",
     });
-    const tagsEmptyState = page.getByText(
-      "No tags yet. Type #tagname in any note to add a tag.",
-    );
+    const tagsEmptyState = page.getByText("No tags in this vault");
 
     // Default on first load: Outline tab is active, exactly one panel mounted.
     await expect(outlinePanel).toBeVisible({ timeout: 5_000 });
@@ -126,8 +132,49 @@ test.describe("@tags-rail Phase 30: right rail Tags tab", () => {
     await expect(linkedPanel).not.toBeVisible();
   });
 
-  test.fixme(
-    "TAGS-02: the Tags tab shows the active note's tags above the vault tag list, both count-desc ordered with alphabetical ties — filled by Plan 08",
-    async () => {},
-  );
+  test("TAGS-02: the Tags tab shows the active note's live tags above the vault tag list; a chip click seeds a tag: search query", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1512, height: 944 });
+    const noteId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "rail-tags-live.md",
+      "",
+      "# rail-tags-live\n\nBody text for the Phase 30 TAGS-02 UAT.\n",
+    );
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+    await openNoteFromTree(page, noteId);
+
+    const tabRow = page.getByTestId("right-rail-tab-row");
+    await tabRow.getByRole("button", { name: "Tags" }).click();
+
+    // Two sections: upper "Note tags" sub-header, lower "Tags" sub-header,
+    // both mounted at once (D-06) — unlike Outline/Linked mentions,
+    // which are exclusive with Tags.
+    await expect(page.getByText("Note tags")).toBeVisible({ timeout: 5_000 });
+
+    // Upper section empty state: this note has no tags yet.
+    const noteTagsEmptyState = page.getByText("No tags on this note");
+    await expect(noteTagsEmptyState).toBeVisible({ timeout: 5_000 });
+
+    // Live-parse (D-08): typing #livetag in the editor shows a chip in the
+    // upper section immediately — no save round-trip required.
+    const editor = page.locator(".cm-content:visible").first();
+    await editor.click();
+    const gotoEndKey = process.platform === "darwin" ? "Meta+End" : "Control+End";
+    await page.keyboard.press(gotoEndKey);
+    await page.keyboard.type(" #livetag");
+
+    const liveTagChip = page.getByTestId("note-tag-chip-livetag");
+    await expect(liveTagChip).toBeVisible({ timeout: 5_000 });
+    await expect(noteTagsEmptyState).not.toBeVisible();
+
+    // Tag click (D-07): opens the left Search panel seeded with tag:{name}.
+    await liveTagChip.click();
+    const searchInput = page.getByRole("textbox", { name: "Search notes" });
+    await expect(searchInput).toBeVisible({ timeout: 5_000 });
+    await expect(searchInput).toHaveValue("tag:livetag");
+  });
 });
