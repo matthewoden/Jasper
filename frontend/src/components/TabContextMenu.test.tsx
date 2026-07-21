@@ -1,25 +1,38 @@
 /**
- * TabContextMenu tests (TAB-06):
- *   - exactly 4 menu items with the spec labels, in order
- *   - a separator renders after item 1
+ * TabContextMenu tests (CTX-01, D-11/D-12 — Phase 30 Plan 06):
+ *   - all 9 menu items render in the locked UI-SPEC §3 order, with 3 separators
+ *   - the Pin/Unpin item label toggles on `isPinned`
  *   - selecting each item fires its corresponding callback
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { TabContextMenu } from "./TabContextMenu";
+import { TabContextMenu, type TabContextMenuProps } from "./TabContextMenu";
 
-function renderMenu(overrides?: {
-  onOpenRight?: () => void;
-  onClose?: () => void;
-  onCloseOthers?: () => void;
-  onCloseToRight?: () => void;
-}) {
-  const props = {
+const LOCKED_ORDER = [
+  "Close",
+  "Close others",
+  "Close to the right",
+  "Close all",
+  "Open in split",
+  "New note to the right",
+  "Pin tab",
+  "Rename",
+  "Show in file manager",
+];
+
+function renderMenu(overrides?: Partial<Omit<TabContextMenuProps, "children">>) {
+  const props: Omit<TabContextMenuProps, "children"> = {
     onOpenRight: vi.fn(),
     onClose: vi.fn(),
     onCloseOthers: vi.fn(),
     onCloseToRight: vi.fn(),
+    onCloseAll: vi.fn(),
+    onOpenSplit: vi.fn(),
+    isPinned: false,
+    onTogglePin: vi.fn(),
+    onRename: vi.fn(),
+    onReveal: vi.fn(),
     ...overrides,
   };
   render(
@@ -33,39 +46,93 @@ function renderMenu(overrides?: {
 async function openMenu() {
   fireEvent.contextMenu(screen.getByTestId("trigger"));
   await waitFor(() => {
-    expect(screen.getAllByRole("menuitem").length).toBeGreaterThanOrEqual(4);
+    expect(screen.getAllByRole("menuitem").length).toBeGreaterThanOrEqual(9);
   });
 }
 
 describe("<TabContextMenu />", () => {
-  it("TAB-06: renders exactly 4 menu items with the spec labels in order", async () => {
+  it("CTX-01: renders all 9 items in the locked UI-SPEC order", async () => {
     renderMenu();
     await openMenu();
     const items = screen.getAllByRole("menuitem");
-    expect(items.length).toBe(4);
-    expect(items.map((i) => i.textContent)).toEqual([
-      "New note to the right",
-      "Close tab",
-      "Close other tabs",
-      "Close tabs to the right",
-    ]);
+    expect(items.length).toBe(9);
+    expect(items.map((i) => i.textContent)).toEqual(LOCKED_ORDER);
   });
 
-  it("TAB-06: renders a separator after item 1", async () => {
+  it("CTX-01: renders 3 separators at the locked grouping boundaries", async () => {
     renderMenu();
     await openMenu();
     const separators = screen.getAllByRole("separator");
-    expect(separators.length).toBe(1);
-    // Separator sits between item 1 (New note to the right) and item 2 (Close tab).
+    expect(separators.length).toBe(3);
     const menu = screen.getByRole("menu");
     const children = Array.from(menu.children);
-    const firstItemIdx = children.findIndex(
-      (c) => c.textContent === "New note to the right",
+    const idxOf = (text: string) =>
+      children.findIndex((c) => c.textContent === text);
+    const sepIdxs = children
+      .map((c, i) => (c.getAttribute("role") === "separator" ? i : -1))
+      .filter((i) => i !== -1);
+    // sep 1: after "Close all", before "Open in split"
+    expect(idxOf("Close all")).toBeLessThan(sepIdxs[0]);
+    expect(sepIdxs[0]).toBeLessThan(idxOf("Open in split"));
+    // sep 2: after "New note to the right", before "Pin tab"
+    expect(idxOf("New note to the right")).toBeLessThan(sepIdxs[1]);
+    expect(sepIdxs[1]).toBeLessThan(idxOf("Pin tab"));
+    // sep 3: after "Pin tab", before "Rename"
+    expect(idxOf("Pin tab")).toBeLessThan(sepIdxs[2]);
+    expect(sepIdxs[2]).toBeLessThan(idxOf("Rename"));
+  });
+
+  it("CTX-01/D-14: shows 'Unpin tab' when isPinned is true", async () => {
+    renderMenu({ isPinned: true });
+    await openMenu();
+    expect(
+      screen.getByRole("menuitem", { name: "Unpin tab" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Pin tab" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("selecting 'Close' fires onClose", async () => {
+    const user = userEvent.setup();
+    const props = renderMenu();
+    await openMenu();
+    await user.click(screen.getByRole("menuitem", { name: "Close" }));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("selecting 'Close others' fires onCloseOthers", async () => {
+    const user = userEvent.setup();
+    const props = renderMenu();
+    await openMenu();
+    await user.click(screen.getByRole("menuitem", { name: "Close others" }));
+    expect(props.onCloseOthers).toHaveBeenCalledTimes(1);
+  });
+
+  it("selecting 'Close to the right' fires onCloseToRight", async () => {
+    const user = userEvent.setup();
+    const props = renderMenu();
+    await openMenu();
+    await user.click(
+      screen.getByRole("menuitem", { name: "Close to the right" }),
     );
-    const sepIdx = children.findIndex((c) => c.getAttribute("role") === "separator");
-    const closeIdx = children.findIndex((c) => c.textContent === "Close tab");
-    expect(firstItemIdx).toBeLessThan(sepIdx);
-    expect(sepIdx).toBeLessThan(closeIdx);
+    expect(props.onCloseToRight).toHaveBeenCalledTimes(1);
+  });
+
+  it("selecting 'Close all' fires onCloseAll", async () => {
+    const user = userEvent.setup();
+    const props = renderMenu();
+    await openMenu();
+    await user.click(screen.getByRole("menuitem", { name: "Close all" }));
+    expect(props.onCloseAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("selecting 'Open in split' fires onOpenSplit", async () => {
+    const user = userEvent.setup();
+    const props = renderMenu();
+    await openMenu();
+    await user.click(screen.getByRole("menuitem", { name: "Open in split" }));
+    expect(props.onOpenSplit).toHaveBeenCalledTimes(1);
   });
 
   it("selecting 'New note to the right' fires onOpenRight", async () => {
@@ -78,29 +145,37 @@ describe("<TabContextMenu />", () => {
     expect(props.onOpenRight).toHaveBeenCalledTimes(1);
   });
 
-  it("selecting 'Close tab' fires onClose", async () => {
+  it("selecting 'Pin tab' fires onTogglePin", async () => {
     const user = userEvent.setup();
     const props = renderMenu();
     await openMenu();
-    await user.click(screen.getByRole("menuitem", { name: "Close tab" }));
-    expect(props.onClose).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("menuitem", { name: "Pin tab" }));
+    expect(props.onTogglePin).toHaveBeenCalledTimes(1);
   });
 
-  it("selecting 'Close other tabs' fires onCloseOthers", async () => {
+  it("selecting 'Unpin tab' fires onTogglePin", async () => {
+    const user = userEvent.setup();
+    const props = renderMenu({ isPinned: true });
+    await openMenu();
+    await user.click(screen.getByRole("menuitem", { name: "Unpin tab" }));
+    expect(props.onTogglePin).toHaveBeenCalledTimes(1);
+  });
+
+  it("selecting 'Rename' fires onRename", async () => {
     const user = userEvent.setup();
     const props = renderMenu();
     await openMenu();
-    await user.click(screen.getByRole("menuitem", { name: "Close other tabs" }));
-    expect(props.onCloseOthers).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    expect(props.onRename).toHaveBeenCalledTimes(1);
   });
 
-  it("selecting 'Close tabs to the right' fires onCloseToRight", async () => {
+  it("selecting 'Show in file manager' fires onReveal", async () => {
     const user = userEvent.setup();
     const props = renderMenu();
     await openMenu();
     await user.click(
-      screen.getByRole("menuitem", { name: "Close tabs to the right" }),
+      screen.getByRole("menuitem", { name: "Show in file manager" }),
     );
-    expect(props.onCloseToRight).toHaveBeenCalledTimes(1);
+    expect(props.onReveal).toHaveBeenCalledTimes(1);
   });
 });

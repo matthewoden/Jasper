@@ -1541,7 +1541,7 @@ describe("closeOthersInLeaf / closeToRightInLeaf skip pinned tabs (D-14, Phase 3
 
     fireEvent.contextMenu(tabs[1]); // right-click the middle (target) tab "b"
     const closeOthersItem = await screen.findByRole("menuitem", {
-      name: "Close other tabs",
+      name: "Close others",
     });
     await user.click(closeOthersItem);
 
@@ -1578,7 +1578,7 @@ describe("closeOthersInLeaf / closeToRightInLeaf skip pinned tabs (D-14, Phase 3
 
     fireEvent.contextMenu(tabs[0]); // right-click "a" — everything after it is a candidate
     const closeToRightItem = await screen.findByRole("menuitem", {
-      name: "Close tabs to the right",
+      name: "Close to the right",
     });
     await user.click(closeToRightItem);
 
