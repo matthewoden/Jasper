@@ -337,3 +337,93 @@ func TestReconcileIncremental_MTimeAdvanced_Reupserts(t *testing.T) {
 		t.Errorf("updated_at: got %d, want 1740000000", updatedAt)
 	}
 }
+
+// TestReconcileFull_IndexesInlineBodyTags — a note with tags ONLY as
+// inline #hashtags in the body (no frontmatter) is indexed by reconcile:
+// the tag appears in ListTags and carries the correct note count. This is
+// the gap-closure case (30-14): a cold vault never saved through the app
+// must still surface inline #tags in the vault-wide Tags list.
+func TestReconcileFull_IndexesInlineBodyTags(t *testing.T) {
+	t.Parallel()
+	idx, notesDir := newReconcileFixture(t)
+
+	mtime := time.Unix(1700000000, 0)
+	writeNote(t, notesDir, "a.md", "# Alpha\n\nSome text #foo bar #bar.\n", mtime)
+
+	if _, err := idx.Reconcile(context.Background(), ModeFull); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	tagsList, err := idx.ListTags(context.Background())
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	got := map[string]int{}
+	for _, tw := range tagsList {
+		got[tw.Name] = tw.Count
+	}
+	if got["foo"] != 1 {
+		t.Errorf("tag foo count: got %d, want 1 (tags: %v)", got["foo"], tagsList)
+	}
+	if got["bar"] != 1 {
+		t.Errorf("tag bar count: got %d, want 1 (tags: %v)", got["bar"], tagsList)
+	}
+}
+
+// TestReconcileFull_UnionsFrontmatterAndBodyTags — a note with frontmatter
+// `tags: [x]` AND an inline `#foo` body tag yields the deduplicated union
+// {x, foo} in the index — no duplicate row when a tag appears in both
+// (e.g. frontmatter `tags: [foo]` and inline `#foo` collapse to one).
+func TestReconcileFull_UnionsFrontmatterAndBodyTags(t *testing.T) {
+	t.Parallel()
+	idx, notesDir := newReconcileFixture(t)
+
+	mtime := time.Unix(1700000000, 0)
+	writeNote(t, notesDir, "a.md",
+		"---\ntags: [x, foo]\n---\n\n# Alpha\n\nSome text #foo #bar.\n", mtime)
+
+	if _, err := idx.Reconcile(context.Background(), ModeFull); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	tagsList, err := idx.ListTags(context.Background())
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	got := map[string]int{}
+	for _, tw := range tagsList {
+		got[tw.Name] = tw.Count
+	}
+	want := map[string]int{"x": 1, "foo": 1, "bar": 1}
+	if len(got) != len(want) {
+		t.Fatalf("tag set: got %v, want %v", got, want)
+	}
+	for name, count := range want {
+		if got[name] != count {
+			t.Errorf("tag %q count: got %d, want %d", name, got[name], count)
+		}
+	}
+}
+
+// TestReconcileFull_SkipsHeadingHashesAsTags — heading lines (# Heading)
+// are NOT indexed as tags, matching the pinned ExtractBodyTags contract
+// (tags_test.go TestExtractBodyTags "heading" cases).
+func TestReconcileFull_SkipsHeadingHashesAsTags(t *testing.T) {
+	t.Parallel()
+	idx, notesDir := newReconcileFixture(t)
+
+	mtime := time.Unix(1700000000, 0)
+	writeNote(t, notesDir, "a.md", "# Heading\n\nBody text #realtag.\n", mtime)
+
+	if _, err := idx.Reconcile(context.Background(), ModeFull); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	tagsList, err := idx.ListTags(context.Background())
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	if len(tagsList) != 1 || tagsList[0].Name != "realtag" {
+		t.Errorf("tags: got %v, want only [realtag]", tagsList)
+	}
+}
