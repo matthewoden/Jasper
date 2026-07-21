@@ -85,18 +85,32 @@ test.describe("@phase23 design parity fixes", () => {
       .toBe("solid");
   });
 
-  test("section header: a right-rail SectionHeader label renders uppercase with letter-spacing", async ({
+  test("section header: a right-rail sub-header label renders uppercase with letter-spacing", async ({
     page,
   }) => {
+    // The clickable SectionHeader ("Collapse Outline panel" button, with
+    // its own chevron/aria-expanded collapse state) this test originally
+    // targeted was REMOVED in the Phase 30 TAGS-01 tab-row rework — panels
+    // are no longer independently collapsible (RightRail.tsx header
+    // comment: "that machinery has no analog in the one-panel-at-a-time tab
+    // model and has been removed entirely"). Its current equivalent is
+    // RightRailSubHeader (RightRailTabRow.tsx): a non-clickable div with a
+    // label <span> — chevron/onToggle/aria-expanded machinery explicitly
+    // stripped (ported "verbatim from SectionHeader.tsx" minus that piece).
+    // The uppercase + letter-spacing styling this test guards survived the
+    // rework unchanged (subHeaderLabelStyle).
     await page.setViewportSize({ width: 1512, height: 944 });
     await waitForConnected(page, jasper.baseURL);
 
-    // Outline section-header is always present when the rail is expanded
-    // (D-06 default), independent of any open note.
-    const outlineHeader = page.getByRole("button", { name: "Collapse Outline panel" });
-    await expect(outlineHeader).toBeVisible({ timeout: 10_000 });
-    const label = outlineHeader.locator("span").first();
-    await expect(label).toHaveText("Outline");
+    // Outline is the rightPanel default (RIGHT_PANEL_DEFAULT), so its
+    // sub-header is always present when the rail is expanded (D-06
+    // default), independent of any open note.
+    const label = page.locator("span").filter({ hasText: /^Outline$/ });
+    await expect(label).toBeVisible({ timeout: 10_000 });
+
+    // Confirm it's the non-clickable sub-header, not wrapped in a button —
+    // the Phase 20 collapse affordance is gone.
+    await expect(page.getByRole("button", { name: "Collapse Outline panel" })).toHaveCount(0);
 
     await expect
       .poll(() => label.evaluate((el) => getComputedStyle(el).textTransform))
