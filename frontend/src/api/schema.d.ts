@@ -996,20 +996,20 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read the per-vault workspace preferences document (SORT-01, SORT-02, SORT-03)
-         * @description Returns the persisted {notesSort, searchSort} document from
-         *     <vault>/.jasper/workspace.json. A missing or malformed file falls
-         *     back to zero-value defaults (empty string means "default sort"),
+         * Read the per-vault workspace preferences document (SORT-01, SORT-02, SORT-03, TAGS-01)
+         * @description Returns the persisted {notesSort, searchSort, rightPanel} document
+         *     from <vault>/.jasper/workspace.json. A missing or malformed file
+         *     falls back to zero-value defaults (empty string means "default"),
          *     never a 500.
          */
         get: operations["getVaultWorkspace"];
         /**
-         * Persist a sort preference to the workspace document (SORT-01, SORT-02, SORT-03)
-         * @description Persists whichever of notesSort/searchSort are present in the body
-         *     via the workspace Service (each setter loads the full doc, mutates
-         *     only its own field, and saves — the other field is left
-         *     untouched). Rejects an unrecognized enum value with 400 before
-         *     touching disk. Broadcasts `workspace:changed` on success.
+         * Persist a sort/panel preference to the workspace document (SORT-01, SORT-02, SORT-03, TAGS-01)
+         * @description Persists whichever of notesSort/searchSort/rightPanel are present
+         *     in the body via the workspace Service (each setter loads the full
+         *     doc, mutates only its own field, and saves — the other fields are
+         *     left untouched). Rejects an unrecognized enum value with 400
+         *     before touching disk. Broadcasts `workspace:changed` on success.
          */
         put: operations["putVaultWorkspace"];
         post?: never;
@@ -1781,15 +1781,17 @@ export interface components {
         };
         /**
          * @description Per-vault workspace preferences, persisted to
-         *     <vault>/.jasper/workspace.json (SORT-01, SORT-02, SORT-03). Both
-         *     fields are optional strings; an empty/absent value means "use the
-         *     default sort" (D-06) rather than an explicit user choice.
+         *     <vault>/.jasper/workspace.json (SORT-01, SORT-02, SORT-03, TAGS-01).
+         *     All fields are optional strings; an empty/absent value means "use
+         *     the default" (D-06) rather than an explicit user choice.
          */
         Workspace: {
             /** @enum {string} */
             notesSort?: "" | "name-asc" | "name-desc" | "modified-desc" | "modified-asc" | "created-desc" | "created-asc";
             /** @enum {string} */
             searchSort?: "" | "relevance" | "modified" | "created";
+            /** @enum {string} */
+            rightPanel?: "" | "outline" | "backlinks" | "tags";
         };
         BookmarkCreateRequest: {
             /**
@@ -3931,7 +3933,7 @@ export interface operations {
                     "application/json": components["schemas"]["Workspace"];
                 };
             };
-            /** @description Unrecognized notesSort/searchSort enum value */
+            /** @description Unrecognized notesSort/searchSort/rightPanel enum value */
             400: {
                 headers: {
                     [name: string]: unknown;

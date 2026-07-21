@@ -16,6 +16,7 @@ import (
 type Workspace struct {
 	NotesSort  string `json:"notesSort"`
 	SearchSort string `json:"searchSort"`
+	RightPanel string `json:"rightPanel"`
 }
 
 // ErrInvalidSort is returned by Service setters when the requested value
@@ -43,6 +44,16 @@ var validSearchSort = map[string]bool{
 	"created":   true,
 }
 
+// validRightPanel is the closed enum of accepted rightPanel values. Empty
+// string is allowed and means "default" (D-06; UI-SPEC §1 default is
+// "outline").
+var validRightPanel = map[string]bool{
+	"":          true,
+	"outline":   true,
+	"backlinks": true,
+	"tags":      true,
+}
+
 // IsValidNotesSort reports whether v is inside the closed notesSort enum.
 // Exposed so the API handler can validate ALL request fields up front and
 // reject atomically before any setter persists or broadcasts (WR-01); the
@@ -52,6 +63,10 @@ func IsValidNotesSort(v string) bool { return validNotesSort[v] }
 // IsValidSearchSort reports whether v is inside the closed searchSort
 // enum. See IsValidNotesSort for why this is exported.
 func IsValidSearchSort(v string) bool { return validSearchSort[v] }
+
+// IsValidRightPanel reports whether v is inside the closed rightPanel
+// enum. See IsValidNotesSort for why this is exported.
+func IsValidRightPanel(v string) bool { return validRightPanel[v] }
 
 // workspacePath returns <dataDir>/.jasper/workspace.json — the on-disk
 // location of the per-vault workspace-preferences file. Mirrors

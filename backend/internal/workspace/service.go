@@ -74,6 +74,33 @@ func (s *Service) SetNotesSort(ctx context.Context, value string) (Workspace, er
 	return doc, nil
 }
 
+// SetRightPanel loads the existing doc, sets ONLY RightPanel, saves, and
+// broadcasts. NotesSort/SearchSort are left untouched. Rejects a value
+// outside the closed enum set with ErrInvalidSort WITHOUT touching disk.
+func (s *Service) SetRightPanel(ctx context.Context, value string) (Workspace, error) {
+	if !validRightPanel[value] {
+		return Workspace{}, fmt.Errorf("workspace.SetRightPanel(%q): %w", value, ErrInvalidSort)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	doc, err := Load(s.dataDir, s.log)
+	if err != nil {
+		return Workspace{}, fmt.Errorf("workspace.SetRightPanel: %w", err)
+	}
+
+	doc.RightPanel = value
+
+	if err := Save(s.dataDir, doc); err != nil {
+		return Workspace{}, fmt.Errorf("workspace.SetRightPanel: %w", err)
+	}
+
+	s.broadcaster.Broadcast(EventWorkspaceChanged, map[string]any{}, notes.SessionIDFromContext(ctx))
+
+	return doc, nil
+}
+
 // SetSearchSort loads the existing doc, sets ONLY SearchSort, saves, and
 // broadcasts. NotesSort is left untouched. Rejects a value outside the
 // closed enum set with ErrInvalidSort WITHOUT touching disk.
