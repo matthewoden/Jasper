@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/google/uuid"
 
@@ -92,7 +93,7 @@ func (x *Indexer) reconcileIncrementalWithRegistry(ctx context.Context, registry
 			return nil
 		}
 
-		tags := markdown.ExtractTags(content)
+		tags := unionTags(markdown.ExtractTags(content), markdown.ExtractBodyTags(content))
 
 		rec := notes.NoteRecord{
 			ID:            id,
@@ -149,7 +150,7 @@ func (x *Indexer) reconcileFullWithRegistry(ctx context.Context, registry *notes
 			return nil
 		}
 
-		tags := markdown.ExtractTags(content)
+		tags := unionTags(markdown.ExtractTags(content), markdown.ExtractBodyTags(content))
 
 		id := chooseID(uuid.Nil, fm.CanonicalRelPath)
 		rec := notes.NoteRecord{
@@ -182,6 +183,23 @@ func (x *Indexer) reconcileFullWithRegistry(ctx context.Context, registry *notes
 		return upserts, fmt.Errorf("reconcile full: walk: %w", walkErr)
 	}
 	return upserts, nil
+}
+
+// unionTags returns the deduplicated, sorted union of frontmatter tags (a)
+// and inline body tags (b) — matching the same union the live save path
+// applies (notes.Service.unionTags) so reconcile and save produce identical
+// tag sets for a given file's content.
+func unionTags(a, b []string) []string {
+	seen := make(map[string]struct{}, len(a)+len(b))
+	out := make([]string, 0, len(a)+len(b))
+	for _, t := range append(append([]string(nil), a...), b...) {
+		if _, ok := seen[t]; !ok {
+			seen[t] = struct{}{}
+			out = append(out, t)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (x *Indexer) syncDerivedDataWithTags(ctx context.Context, id uuid.UUID, path string, content []byte, tags []string, registry *notes.Registry) {
