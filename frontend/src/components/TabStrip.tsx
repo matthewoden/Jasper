@@ -191,7 +191,9 @@ function RailReopenToggle({ onClick }: { onClick: () => void }) {
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        borderRadius: 4,
+        // radius 6 matches PaneCornerReopenButton's hover tint — the two
+        // rail toggles must read as mirror images.
+        borderRadius: 6,
       }}
     >
       <PanelRight size={16} aria-hidden="true" />
@@ -643,6 +645,10 @@ export function TabStrip({
     <div
       style={{
         display: "flex",
+        // Stretch + center mirrors PaneCornerReopenButton's counter to the
+        // strip's alignItems:"flex-end" — without it the 28px toggle seats at
+        // the strip bottom and sits visibly lower than the left rail's glyph.
+        alignSelf: "stretch",
         alignItems: "center",
         gap: 4,
         borderLeft: "1px solid var(--color-border-inner)",
