@@ -4,8 +4,9 @@
  * inside AppInner. Extracted from App.tsx so that file exports only React
  * components, satisfying react-refresh/only-export-components.
  */
-import { useTreeStore } from "./useTreeStore";
+import { useTreeStore, type RightPanelTab } from "./useTreeStore";
 import { usePaneStore } from "./usePaneStore";
+import { putWorkspace } from "./workspaceApi";
 
 
 export type Phase7DispatchEvent =
@@ -58,12 +59,31 @@ export function handleAppF2KeyDown(e: KeyboardEvent): void {
 }
 
 /**
- * Global panel-toggle shortcuts.
- * Cmd+Alt+T — toggle the right-rail Tags section; Cmd+Alt+B — toggle the
- * right-rail Linked-mentions section. Cmd+Alt prefix avoids collisions with
- * the heavily-used Cmd-only namespace. Repointed (Phase 20, D-01) from the
- * retired panel-selector slice onto the per-section collapse booleans; still
- * reveals the rail when expanding a section.
+ * Best-effort optimistic switch + persist for the right-rail's active tab,
+ * used by handleAppPanelShortcuts below — mirrors useWorkspace.ts's
+ * setRightPanel shape (optimistic slice update, PUT /vault/workspace,
+ * revert on failure), but without a toast since this fires from a
+ * window-level handler with no React context.
+ */
+function selectRightPanel(panel: RightPanelTab): void {
+  const previous = useTreeStore.getState().rightPanel;
+  useTreeStore.getState().setRightPanel(panel);
+  if (previous === panel) return;
+  void putWorkspace({ rightPanel: panel }).catch(() => {
+    useTreeStore.getState().setRightPanel(previous);
+  });
+}
+
+/**
+ * Global panel-select shortcuts.
+ * Cmd+Alt+T — select the right-rail Tags tab; Cmd+Alt+B — select the
+ * right-rail Linked-mentions tab. Cmd+Alt prefix avoids collisions with
+ * the heavily-used Cmd-only namespace. Repointed (Phase 30, TAGS-01) from
+ * the retired per-section collapse booleans onto the tab-row's persisted
+ * rightPanel field: pressing the shortcut for the ALREADY-active tab while
+ * the rail is visible collapses the rail (closest available analog to the
+ * old "toggle" behavior in a one-panel-at-a-time model); otherwise it
+ * switches to that tab and reveals the rail if collapsed.
  *
  * Matches the PHYSICAL KeyT/KeyB codes, not the produced key value: on macOS
  * Option+T emits key:"†" and Option+B emits key:"∫" (holding Cmd does not
@@ -76,14 +96,14 @@ export function handleAppPanelShortcuts(e: KeyboardEvent): void {
   e.preventDefault();
   e.stopPropagation();
   const s = useTreeStore.getState();
-  if (e.code === "KeyT") {
-    const next = !s.tagsPanelExpanded;
-    s.setTagsPanelExpanded(next);
-    if (next && !s.backlinksRailExpanded) s.setBacklinksRailExpanded(true);
-  } else {
-    const next = !s.linkedMentionsPanelExpanded;
-    s.setLinkedMentionsPanelExpanded(next);
-    if (next && !s.backlinksRailExpanded) s.setBacklinksRailExpanded(true);
+  const target: RightPanelTab = e.code === "KeyT" ? "tags" : "backlinks";
+  if (s.rightPanel === target && s.backlinksRailExpanded) {
+    s.setBacklinksRailExpanded(false);
+    return;
+  }
+  selectRightPanel(target);
+  if (!useTreeStore.getState().backlinksRailExpanded) {
+    useTreeStore.getState().setBacklinksRailExpanded(true);
   }
 }
 

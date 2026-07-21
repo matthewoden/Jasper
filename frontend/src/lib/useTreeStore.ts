@@ -39,17 +39,6 @@ export const RAIL_MIN_WIDTH = 220;
 export const RAIL_MAX_WIDTH = 480;
 export const RAIL_COLLAPSED_WIDTH = 32;
 
-/** Phase 20 unified right-rail sections (Outline / Linked mentions / Tags). */
-export const LS_KEY_OUTLINE_PANEL_EXPANDED = "jasper.rightrail.outline.expanded";
-export const LS_KEY_LINKED_MENTIONS_PANEL_EXPANDED = "jasper.rightrail.linkedmentions.expanded";
-export const LS_KEY_TAGS_PANEL_EXPANDED = "jasper.rightrail.tags.expanded";
-export const LS_KEY_OUTLINE_HEIGHT_RATIO = "jasper.rightrail.outline.height.ratio";
-export const LS_KEY_LINKED_MENTIONS_HEIGHT_RATIO = "jasper.rightrail.linkedmentions.height.ratio";
-export const RIGHT_RAIL_RATIO_DEFAULT = 0.34;
-export const RIGHT_RAIL_RATIO_MIN = 0.2;
-export const RIGHT_RAIL_RATIO_MAX = 0.8;
-
-
 export const LS_KEY_SIDEBAR_VISIBLE = "jasper.chrome.sidebar.visible";
 export const LS_KEY_SIDEBAR_PANEL = "jasper.chrome.sidebar.panel";
 
@@ -171,18 +160,6 @@ export interface TreeStore {
   setBacklinksRailExpanded: (v: boolean) => void;
   backlinksRailWidth: number;
   setBacklinksRailWidth: (w: number) => void;
-
-  /** Phase 20 unified right-rail per-section collapse booleans + split ratios. */
-  outlinePanelExpanded: boolean;
-  setOutlinePanelExpanded: (v: boolean) => void;
-  linkedMentionsPanelExpanded: boolean;
-  setLinkedMentionsPanelExpanded: (v: boolean) => void;
-  tagsPanelExpanded: boolean;
-  setTagsPanelExpanded: (v: boolean) => void;
-  outlineHeightRatio: number;
-  setOutlineHeightRatio: (r: number) => void;
-  linkedMentionsHeightRatio: number;
-  setLinkedMentionsHeightRatio: (r: number) => void;
 
   notesSidebarVisible: boolean;
   setNotesSidebarVisible: (v: boolean) => void;
@@ -377,29 +354,6 @@ export const useTreeStore = create<TreeStore>((set) => ({
   setBacklinksRailWidth: (w) =>
     set({ backlinksRailWidth: Math.min(RAIL_MAX_WIDTH, Math.max(RAIL_MIN_WIDTH, w)) }),
 
-  outlinePanelExpanded: true,
-  setOutlinePanelExpanded: (v) => set({ outlinePanelExpanded: v }),
-  linkedMentionsPanelExpanded: true,
-  setLinkedMentionsPanelExpanded: (v) => set({ linkedMentionsPanelExpanded: v }),
-  tagsPanelExpanded: true,
-  setTagsPanelExpanded: (v) => set({ tagsPanelExpanded: v }),
-  outlineHeightRatio: RIGHT_RAIL_RATIO_DEFAULT,
-  setOutlineHeightRatio: (r) =>
-    set({
-      outlineHeightRatio: Math.min(
-        RIGHT_RAIL_RATIO_MAX,
-        Math.max(RIGHT_RAIL_RATIO_MIN, r),
-      ),
-    }),
-  linkedMentionsHeightRatio: RIGHT_RAIL_RATIO_DEFAULT,
-  setLinkedMentionsHeightRatio: (r) =>
-    set({
-      linkedMentionsHeightRatio: Math.min(
-        RIGHT_RAIL_RATIO_MAX,
-        Math.max(RIGHT_RAIL_RATIO_MIN, r),
-      ),
-    }),
-
   notesSidebarVisible: true,
   setNotesSidebarVisible: (v) => set({ notesSidebarVisible: v }),
 
@@ -572,60 +526,6 @@ if (typeof window !== "undefined") {
   }
 
   try {
-    const raw = window.localStorage.getItem(LS_KEY_OUTLINE_PANEL_EXPANDED);
-    if (raw === "false") useTreeStore.setState({ outlinePanelExpanded: false });
-    // any other value (including missing) keeps the default `true`
-  } catch {
-    /* localStorage unavailable */
-  }
-  try {
-    const raw = window.localStorage.getItem(LS_KEY_LINKED_MENTIONS_PANEL_EXPANDED);
-    if (raw === "false") useTreeStore.setState({ linkedMentionsPanelExpanded: false });
-    // any other value (including missing) keeps the default `true`
-  } catch {
-    /* localStorage unavailable */
-  }
-  try {
-    const raw = window.localStorage.getItem(LS_KEY_TAGS_PANEL_EXPANDED);
-    if (raw === "false") useTreeStore.setState({ tagsPanelExpanded: false });
-    // any other value (including missing) keeps the default `true`
-  } catch {
-    /* localStorage unavailable */
-  }
-  try {
-    const raw = window.localStorage.getItem(LS_KEY_OUTLINE_HEIGHT_RATIO);
-    if (raw !== null) {
-      const n = Number.parseFloat(raw);
-      if (
-        Number.isFinite(n) &&
-        n >= RIGHT_RAIL_RATIO_MIN &&
-        n <= RIGHT_RAIL_RATIO_MAX
-      ) {
-        useTreeStore.setState({ outlineHeightRatio: n });
-      }
-      // Out-of-range or non-finite → silently fall through to RIGHT_RAIL_RATIO_DEFAULT.
-    }
-  } catch {
-    /* localStorage unavailable — keep default */
-  }
-  try {
-    const raw = window.localStorage.getItem(LS_KEY_LINKED_MENTIONS_HEIGHT_RATIO);
-    if (raw !== null) {
-      const n = Number.parseFloat(raw);
-      if (
-        Number.isFinite(n) &&
-        n >= RIGHT_RAIL_RATIO_MIN &&
-        n <= RIGHT_RAIL_RATIO_MAX
-      ) {
-        useTreeStore.setState({ linkedMentionsHeightRatio: n });
-      }
-      // Out-of-range or non-finite → silently fall through to RIGHT_RAIL_RATIO_DEFAULT.
-    }
-  } catch {
-    /* localStorage unavailable — keep default */
-  }
-
-  try {
     const raw = window.localStorage.getItem(LS_KEY_SIDEBAR_VISIBLE);
     if (raw === "false") useTreeStore.setState({ notesSidebarVisible: false });
     // any other value (including missing) keeps the default `true`
@@ -670,14 +570,6 @@ if (typeof window !== "undefined") {
   let lastBacklinksRailExpanded = useTreeStore.getState().backlinksRailExpanded;
   let lastRailWidth = useTreeStore.getState().backlinksRailWidth;
   let railWidthTimer: ReturnType<typeof setTimeout> | undefined;
-
-  let lastOutlinePanelExpanded = useTreeStore.getState().outlinePanelExpanded;
-  let lastLinkedMentionsPanelExpanded = useTreeStore.getState().linkedMentionsPanelExpanded;
-  let lastTagsPanelExpanded = useTreeStore.getState().tagsPanelExpanded;
-  let lastOutlineHeightRatio = useTreeStore.getState().outlineHeightRatio;
-  let lastLinkedMentionsHeightRatio = useTreeStore.getState().linkedMentionsHeightRatio;
-  let outlineHeightRatioTimer: ReturnType<typeof setTimeout> | undefined;
-  let linkedMentionsHeightRatioTimer: ReturnType<typeof setTimeout> | undefined;
 
   let lastNotesSidebarVisible = useTreeStore.getState().notesSidebarVisible;
   let lastSidebarPanel = useTreeStore.getState().sidebarPanel;
@@ -748,68 +640,6 @@ if (typeof window !== "undefined") {
       railWidthTimer = setTimeout(() => {
         try {
           window.localStorage.setItem(LS_KEY_BACKLINKS_RAIL_WIDTH, String(state.backlinksRailWidth));
-        } catch {
-          // Quota / private mode — best-effort.
-        }
-      }, 250);
-    }
-
-    if (state.outlinePanelExpanded !== lastOutlinePanelExpanded) {
-      lastOutlinePanelExpanded = state.outlinePanelExpanded;
-      try {
-        window.localStorage.setItem(
-          LS_KEY_OUTLINE_PANEL_EXPANDED,
-          String(state.outlinePanelExpanded),
-        );
-      } catch {
-        // Quota / private mode — best-effort.
-      }
-    }
-    if (state.linkedMentionsPanelExpanded !== lastLinkedMentionsPanelExpanded) {
-      lastLinkedMentionsPanelExpanded = state.linkedMentionsPanelExpanded;
-      try {
-        window.localStorage.setItem(
-          LS_KEY_LINKED_MENTIONS_PANEL_EXPANDED,
-          String(state.linkedMentionsPanelExpanded),
-        );
-      } catch {
-        // Quota / private mode — best-effort.
-      }
-    }
-    if (state.tagsPanelExpanded !== lastTagsPanelExpanded) {
-      lastTagsPanelExpanded = state.tagsPanelExpanded;
-      try {
-        window.localStorage.setItem(
-          LS_KEY_TAGS_PANEL_EXPANDED,
-          String(state.tagsPanelExpanded),
-        );
-      } catch {
-        // Quota / private mode — best-effort.
-      }
-    }
-    if (state.outlineHeightRatio !== lastOutlineHeightRatio) {
-      lastOutlineHeightRatio = state.outlineHeightRatio;
-      if (outlineHeightRatioTimer !== undefined) clearTimeout(outlineHeightRatioTimer);
-      outlineHeightRatioTimer = setTimeout(() => {
-        try {
-          window.localStorage.setItem(
-            LS_KEY_OUTLINE_HEIGHT_RATIO,
-            String(state.outlineHeightRatio),
-          );
-        } catch {
-          // Quota / private mode — best-effort.
-        }
-      }, 250);
-    }
-    if (state.linkedMentionsHeightRatio !== lastLinkedMentionsHeightRatio) {
-      lastLinkedMentionsHeightRatio = state.linkedMentionsHeightRatio;
-      if (linkedMentionsHeightRatioTimer !== undefined) clearTimeout(linkedMentionsHeightRatioTimer);
-      linkedMentionsHeightRatioTimer = setTimeout(() => {
-        try {
-          window.localStorage.setItem(
-            LS_KEY_LINKED_MENTIONS_HEIGHT_RATIO,
-            String(state.linkedMentionsHeightRatio),
-          );
         } catch {
           // Quota / private mode — best-effort.
         }
