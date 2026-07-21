@@ -21,16 +21,23 @@
  *   S10 (@breadcrumbs) : Nested note → breadcrumbs shows path; click folder → sidebar.
  *   S11 (@phase-6.5-regression): Phase 6.5 features still work.
  *
- * Selector notes:
+ * Selector notes (current as of Phase 30's rail rework — 30-05/30-13):
  *   - CM6 editor is contenteditable — use keyboard.type(), not .fill().
  *   - TopBar: data-testid="top-bar"
  *   - StatusBar: data-testid="status-bar" aria-label="Status bar"
  *   - Refresh button: aria-label="Reindex notes"
- *   - Sidebar toggle: aria-label="Hide notes sidebar" / "Show notes sidebar"
- *   - Right-rail toggle: aria-label="Hide panels" / "Show panels"
- *   - Panel selector trigger: aria-label="Select panels"
+ *   - Left sidebar collapse/reopen: aria-label="Collapse sidebar" (header,
+ *     SidebarTabRow) / "Show sidebar" (pane-corner reopen button, Phase 27
+ *     NAV-03)
+ *   - Right rail collapse/reopen: aria-label="Collapse panels" (header,
+ *     RightRailTabRow) / "Show panels" (tab-strip right cluster, rendered
+ *     only while collapsed — Phase 30-13 / quick task 260721-cjt)
+ *   - Right rail tab row: data-testid="right-rail-tab-row"; tabs are
+ *     aria-label "Outline" / "Linked mentions" / "Tags" — exactly ONE panel
+ *     is mounted at a time (no independent per-panel collapse anymore; the
+ *     Phase 20 SectionHeader/InterPanelDivider machinery was removed
+ *     entirely in 30-05)
  *   - Tag row: data-testid="tag-row-{name}"
- *   - InterPanelDivider: data-testid="inter-panel-divider"
  *   - ActiveTagFilterChip: role="status" aria-label="Active filter: #tagname"
  *   - Breadcrumbs nav: aria-label="Note path"
  */
@@ -111,45 +118,45 @@ async function apiCreateNote(
 /**
  * Ensure the right rail is expanded.
  *
- * Post-v1.2 UI (Phase 20, D-01): the panel-selector dropdown and per-panel ×
- * close buttons were removed. The whole right rail is now shown/hidden via a
- * single toggle in the TabStrip ("Show panels" / "Hide panels"), and the rail
- * hosts three ALWAYS-MOUNTED sections (Outline / Linked mentions / Tags), each
- * behind a unified SectionHeader whose whole 32px row is a collapse toggle
- * (aria-label "Expand Tags panel" / "Collapse Tags panel"). The rail defaults
- * to expanded, so this is normally a no-op.
+ * Phase 30 (30-05/30-13) replaced the Phase 20 always-mounted three-section
+ * stacked layout (independent SectionHeader collapse per section) with a
+ * tab row + single-mounted-panel model: RightRailTabRow hosts Outline /
+ * Linked mentions / Tags icon tabs (exactly one panel renders at a time) plus
+ * a single whole-rail collapse control (aria-label "Collapse panels"). When
+ * collapsed, the rail unmounts entirely and a "Show panels" reopen button
+ * renders in the tab strip's right cluster instead. The rail defaults to
+ * expanded, so this is normally a no-op.
  */
 async function ensureRailExpanded(page: Page): Promise<void> {
-  // If the rail toggle shows "Show panels", click it to expand the rail.
+  // If the rail is collapsed, the tab-strip's right cluster shows "Show panels".
   const showBtn = page.getByRole("button", { name: "Show panels" });
   if ((await showBtn.count()) > 0 && (await showBtn.isVisible())) {
     await showBtn.click();
     await page.waitForTimeout(300);
   }
 
-  // Rail is mounted once its Tags SectionHeader toggle is present (in either
-  // collapsed or expanded state).
-  await expect(
-    page.getByRole("button", { name: /Expand Tags panel|Collapse Tags panel/ }),
-  ).toBeVisible({ timeout: 5_000 });
+  // Rail is mounted once its tab row is present.
+  await expect(page.getByTestId("right-rail-tab-row")).toBeVisible({
+    timeout: 5_000,
+  });
 }
 
 /**
- * Ensure the Tags section is expanded in the right rail.
- * Expands the rail first, then opens the Tags section via its SectionHeader.
+ * Ensure the Tags panel is the one mounted in the right rail.
+ * Expands the rail first, then switches to it via RightRailTabRow's "Tags" tab.
  */
 async function ensureTagsPanelVisible(page: Page): Promise<void> {
   await ensureRailExpanded(page);
 
-  const expandTags = page.getByRole("button", { name: "Expand Tags panel" });
-  if ((await expandTags.count()) > 0 && (await expandTags.isVisible())) {
-    await expandTags.click();
-    await page.waitForTimeout(200);
-  }
+  const tagsTab = page
+    .getByTestId("right-rail-tab-row")
+    .getByRole("button", { name: "Tags", exact: true });
+  await tagsTab.click();
 
-  await expect(
-    page.getByRole("button", { name: "Collapse Tags panel" }),
-  ).toBeVisible({ timeout: 5_000 });
+  // The Tags panel owns a "Tags" sub-header (RightRailSubHeader) once mounted.
+  await expect(page.getByText("Tags", { exact: true })).toBeVisible({
+    timeout: 5_000,
+  });
 }
 
 /**
@@ -166,20 +173,23 @@ async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
 test("S1 @UX-CHROME-01: chrome affordances render; sidebar toggle hides/shows notes sidebar", async ({ page }) => {
   await openApp(page, true);
 
-  // Phase 20 (D-04) dissolved the single `top-bar` shell: the sidebar/rail
-  // toggles moved into the TabStrip's left/right clusters, and the old
-  // panel-selector "Open panel" dropdown was removed entirely (D-01). Assert
-  // the surviving chrome affordances directly rather than the removed shell.
-  const sidebarToggle = page.getByRole("button", { name: /hide notes sidebar|show notes sidebar/i });
+  // Phase 20 (D-04) dissolved the single `top-bar` shell, and Phase 27/30
+  // (NAV-03, 30-13) moved each sidebar's own collapse control into its own
+  // tab-row header — "Collapse sidebar" (left, SidebarTabRow) / "Collapse
+  // panels" (right, RightRailTabRow) — with dedicated reopen affordances
+  // ("Show sidebar" pane-corner button / "Show panels" tab-strip right
+  // cluster). Assert the surviving chrome affordances directly rather than
+  // the removed shell (mirrors phase18-uat.spec.ts's TABUI-02 selectors).
+  const sidebarToggle = page.getByRole("button", { name: /collapse sidebar|show sidebar/i });
   await expect(sidebarToggle).toBeVisible({ timeout: 5_000 });
 
-  const railToggle = page.getByRole("button", { name: /hide panels|show panels/i });
+  const railToggle = page.getByRole("button", { name: /collapse panels|show panels/i });
   await expect(railToggle).toBeVisible({ timeout: 5_000 });
 
   const breadcrumbsNav = page.getByRole("navigation", { name: "Note path" });
   await expect(breadcrumbsNav).toBeVisible({ timeout: 5_000 });
 
-  const hideBtn = page.getByRole("button", { name: "Hide notes sidebar" });
+  const hideBtn = page.getByRole("button", { name: "Collapse sidebar" });
   await expect(hideBtn).toBeVisible({ timeout: 3_000 });
   await hideBtn.click();
   await page.waitForTimeout(300);
@@ -187,7 +197,7 @@ test("S1 @UX-CHROME-01: chrome affordances render; sidebar toggle hides/shows no
   const sidebarNav = page.getByRole("navigation", { name: "Notes navigation" });
   await expect(sidebarNav).not.toBeVisible({ timeout: 3_000 });
 
-  const showBtn = page.getByRole("button", { name: "Show notes sidebar" });
+  const showBtn = page.getByRole("button", { name: "Show sidebar" });
   await expect(showBtn).toBeVisible({ timeout: 3_000 });
 
   await showBtn.click();
@@ -196,42 +206,41 @@ test("S1 @UX-CHROME-01: chrome affordances render; sidebar toggle hides/shows no
 });
 
 
-test("S2 @panel-selector: SectionHeaders collapse/expand panels; rail toggle hides/shows the rail", async ({ page }) => {
+test("S2 @panel-selector: RightRailTabRow switches panels; rail toggle hides/shows the rail", async ({ page }) => {
   // Phase 20 (D-01) removed the panel-selector dropdown and per-panel × close
-  // buttons. Panel visibility is now managed by (a) each section's unified
-  // SectionHeader collapse toggle and (b) a single rail toggle in the TabStrip.
-  // This re-point preserves the original intent — a user can open and close
-  // right-rail panels — against the new mechanism.
+  // buttons. Phase 30 (30-05) went further and removed the always-mounted
+  // three-section stacked layout entirely (each section's independent
+  // SectionHeader collapse toggle has no analog anymore) in favor of a tab
+  // row + single-mounted-panel model: RightRailTabRow's Outline/Linked
+  // mentions/Tags tabs switch which ONE panel is rendered, and a single
+  // whole-rail collapse control replaces the old per-section collapse. This
+  // re-point preserves the original scenario's intent — a user can open,
+  // close, and switch right-rail panels — against the current mechanism.
   await openApp(page, false);
   await ensureRailExpanded(page);
-  await ensureTagsPanelVisible(page);
 
-  // Collapse the Tags section via its whole-row SectionHeader toggle.
-  const collapseTags = page.getByRole("button", { name: "Collapse Tags panel" });
-  await expect(collapseTags).toBeVisible({ timeout: 5_000 });
-  await collapseTags.click();
-  await expect(
-    page.getByRole("button", { name: "Expand Tags panel" }),
-  ).toBeVisible({ timeout: 3_000 });
+  const railTabRow = page.getByTestId("right-rail-tab-row");
 
-  // Re-expand it.
-  await page.getByRole("button", { name: "Expand Tags panel" }).click();
-  await expect(
-    page.getByRole("button", { name: "Collapse Tags panel" }),
-  ).toBeVisible({ timeout: 5_000 });
+  // Switch to Tags — its sub-header renders "Tags" (default panel is Outline).
+  await railTabRow.getByRole("button", { name: "Tags", exact: true }).click();
+  await expect(page.getByText("Tags", { exact: true })).toBeVisible({ timeout: 5_000 });
+
+  // Switch back to Outline — the Tags panel (and its "Tags" sub-header) unmounts.
+  await railTabRow.getByRole("button", { name: "Outline", exact: true }).click();
+  await expect(page.getByText("Outline", { exact: true })).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Tags", { exact: true })).toHaveCount(0);
 
   // The rail toggle collapses the entire right rail (replacing the old
-  // "auto-collapse when all panels closed" behavior). The three section
-  // headers unmount with the rail; the toggle flips to "Show panels".
-  const hidePanels = page.getByRole("button", { name: "Hide panels" });
-  await expect(hidePanels).toBeVisible({ timeout: 5_000 });
-  await hidePanels.click();
-  await expect(
-    page.getByRole("button", { name: /Collapse Tags panel|Expand Tags panel/ }),
-  ).toHaveCount(0, { timeout: 5_000 });
-  await expect(
-    page.getByRole("button", { name: "Show panels" }),
-  ).toBeVisible({ timeout: 3_000 });
+  // "auto-collapse when all panels closed" behavior). The tab row unmounts
+  // with the rail; reopening is via the tab strip's right-cluster "Show
+  // panels" button (rendered only while collapsed).
+  await railTabRow.getByRole("button", { name: "Collapse panels" }).click();
+  await expect(railTabRow).toHaveCount(0, { timeout: 5_000 });
+
+  const reopenBtn = page.getByRole("button", { name: "Show panels" });
+  await expect(reopenBtn).toBeVisible({ timeout: 5_000 });
+  await reopenBtn.click();
+  await expect(page.getByTestId("right-rail-tab-row")).toBeVisible({ timeout: 5_000 });
 });
 
 
@@ -347,53 +356,46 @@ test("S5 @UX-CHROME-03: sidebar is a flush panel — border-right only, no radiu
 });
 
 
-test("S6 @UX-CHROME-04: inter-panel divider has row-resize cursor; no visible background band", async ({ page }) => {
+test("S6 @UX-CHROME-04: resize-handle cursor affordances have no visible background band (row-resize inter-panel divider removed in 30-05)", async ({ page }) => {
+  // Phase 30 (30-05) replaced the three-section stacked/resizable rail with
+  // a tab row + single-mounted-panel model. The draggable row-resize
+  // InterPanelDivider between adjacent sections has no analog in that model
+  // and was removed entirely (RightRail.tsx's Phase 30 rework header comment
+  // documents this explicitly) — there is no longer any row-resize divider
+  // anywhere in the app. [owner review: possibly obsolete — no current
+  // surface offers row-resize panel-height adjustment at all.] The nearest
+  // surviving "cursor-only, no visible background" resize affordances are
+  // the left sidebar's and right rail's WIDTH resize handles (col-resize,
+  // not row-resize); this guards that they kept the same invisible-band
+  // styling contract the original row-resize divider established.
   await openApp(page, false);
   await ensureRailExpanded(page);
 
-  // An InterPanelDivider renders between any two adjacent expanded sections.
-  // Outline / Linked mentions / Tags all default to expanded; make Outline and
-  // Tags explicitly expanded (idempotent) so at least one divider exists.
-  const expandOutline = page.getByRole("button", { name: "Expand Outline panel" });
-  if ((await expandOutline.count()) > 0 && (await expandOutline.isVisible())) {
-    await expandOutline.click();
-    await page.waitForTimeout(150);
-  }
-  const expandTags = page.getByRole("button", { name: "Expand Tags panel" });
-  if ((await expandTags.count()) > 0 && (await expandTags.isVisible())) {
-    await expandTags.click();
-    await page.waitForTimeout(150);
-  }
-
-  // Multiple dividers may render (one per adjacent expanded pair); assert on
-  // the first.
-  const divider = page.getByTestId("inter-panel-divider").first();
-  await expect(divider).toBeVisible({ timeout: 10_000 });
-
-  const cursor = await divider.evaluate(
+  const sidebarHandle = page.getByRole("separator", { name: "Resize sidebar" });
+  await expect(sidebarHandle).toBeVisible({ timeout: 5_000 });
+  const sidebarCursor = await sidebarHandle.evaluate(
     (el) => window.getComputedStyle(el).cursor,
   );
-  expect(cursor).toBe("row-resize");
-
-  const bg = await divider.evaluate(
+  expect(sidebarCursor).toBe("col-resize");
+  const sidebarBg = await sidebarHandle.evaluate(
     (el) => window.getComputedStyle(el).backgroundColor,
   );
-  const isTransparent =
-    bg === "transparent" ||
-    bg === "rgba(0, 0, 0, 0)" ||
-    bg === "" ||
-    bg === "none";
-  expect(isTransparent).toBe(true);
+  const sidebarTransparent =
+    sidebarBg === "transparent" || sidebarBg === "rgba(0, 0, 0, 0)" || sidebarBg === "";
+  expect(sidebarTransparent).toBe(true);
 
-  const sidebarHandle = page.getByRole("separator", {
-    name: "Resize sidebar",
-  });
-  if ((await sidebarHandle.count()) > 0) {
-    const sidebarCursor = await sidebarHandle.evaluate(
-      (el) => window.getComputedStyle(el).cursor,
-    );
-    expect(sidebarCursor).toBe("col-resize");
-  }
+  const railHandle = page.getByRole("separator", { name: "Resize backlinks panel" });
+  await expect(railHandle).toBeVisible({ timeout: 5_000 });
+  const railCursor = await railHandle.evaluate(
+    (el) => window.getComputedStyle(el).cursor,
+  );
+  expect(railCursor).toBe("col-resize");
+  const railBg = await railHandle.evaluate(
+    (el) => window.getComputedStyle(el).backgroundColor,
+  );
+  const railTransparent =
+    railBg === "transparent" || railBg === "rgba(0, 0, 0, 0)" || railBg === "";
+  expect(railTransparent).toBe(true);
 });
 
 
@@ -498,9 +500,11 @@ test("S8 @UX-CHROME-06: tag rows render '#tagname' + badge count; no Key icon in
   );
   expect(hashColor).toBeTruthy();
 
-  // The Tags panel header is now the unified SectionHeader — its whole 32px row
-  // is the collapse toggle (aria-label "Collapse Tags panel" when expanded).
-  const panelHeader = page.getByRole("button", { name: "Collapse Tags panel" });
+  // Phase 30 (30-05/30-08) replaced the old collapsible SectionHeader with a
+  // static, non-interactive RightRailSubHeader (title + count pill only —
+  // no chevron/collapse/icon machinery). Scope to its container (the "Tags"
+  // label's parent div) to check for a stray Key icon.
+  const panelHeader = page.getByText("Tags", { exact: true }).locator("..");
   await expect(panelHeader).toBeVisible({ timeout: 5_000 });
 
   const hasKeyIcon = await panelHeader.evaluate((hdr) => {
