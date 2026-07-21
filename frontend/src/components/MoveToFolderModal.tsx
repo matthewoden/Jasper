@@ -149,9 +149,10 @@ export function MoveToFolderModal({ noteId, open, onOpenChange }: MoveToFolderMo
     return results.map((r) => r.obj);
   }, [query, candidates]);
 
-  useEffect(() => {
+  const handleQueryChange = (next: string) => {
+    setQuery(next);
     setSelectedIdx(0);
-  }, [query]);
+  };
 
   const handleMove = async (targetPath: string) => {
     try {
@@ -194,7 +195,7 @@ export function MoveToFolderModal({ noteId, open, onOpenChange }: MoveToFolderMo
             <input
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => handleQueryChange(e.target.value)}
               placeholder="Move to folder…"
               aria-label="Move to folder"
               autoFocus

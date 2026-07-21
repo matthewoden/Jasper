@@ -334,6 +334,34 @@ export function expandAndScrollToFolder(folderPath: string): void {
 }
 
 /**
+ * Scroll the file tree to a note's row (D-25, note-options "Reveal in
+ * navigation"). Unlike expandAndScrollToFolder, ancestor expansion is not
+ * done manually here — react-arborist's own scrollTo() already calls
+ * openParents() internally (tree-api.ts), which dispatches onToggle for
+ * each opened ancestor; FileTree's onToggle handler mirrors that back into
+ * useTreeStore's persisted `expanded` set, so the ancestor chain ends up
+ * expanded AND persisted with no separate step.
+ *
+ * Retries briefly (bounded, no fixed sleep) if the tree isn't mounted yet —
+ * e.g. the left sidebar was showing Search/Bookmarks a moment ago and the
+ * caller just flipped sidebarPanel to "notes"; FileTree registers
+ * currentTreeRef on mount, one render after that state change.
+ */
+export function scrollToNoteRow(noteId: string, retriesLeft = 10): void {
+  const id = "note:" + noteId;
+  if (currentTreeRef) {
+    try {
+      void currentTreeRef.scrollTo(id, "auto");
+    } catch {
+      // FileTree may be unmounted or arborist API mismatch — ignore.
+    }
+    return;
+  }
+  if (retriesLeft <= 0) return;
+  setTimeout(() => scrollToNoteRow(noteId, retriesLeft - 1), 30);
+}
+
+/**
  * Reads a note node's updated_at/created ISO timestamp and returns its
  * epoch milliseconds, or 0 when absent/unparseable (folders, file nodes,
  * and notes with no captured birthtime all fall back to 0 — comparatorFor's

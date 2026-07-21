@@ -70,15 +70,20 @@ vi.mock("./lib/adminApi", () => ({
 }));
 
 
-vi.mock("./lib/useFileTree", () => ({
-  useFileTree: () => ({
-    tree: { root: [] },
-    loading: false,
-    error: null,
-    refresh: () => Promise.resolve(),
-    mutate: () => {},
-  }),
-}));
+vi.mock("./lib/useFileTree", async () => {
+  const actual =
+    await vi.importActual<typeof import("./lib/useFileTree")>("./lib/useFileTree");
+  return {
+    ...actual,
+    useFileTree: () => ({
+      tree: { root: [] },
+      loading: false,
+      error: null,
+      refresh: () => Promise.resolve(),
+      mutate: () => {},
+    }),
+  };
+});
 
 
 import type { SessionSyncHandlers } from "./lib/useSessionSync";

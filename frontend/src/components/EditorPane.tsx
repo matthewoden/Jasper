@@ -58,6 +58,7 @@ import type { SearchQuery } from "@codemirror/search";
 import { Star } from "lucide-react";
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
 import { expandAndScrollToFolder } from "./fileTree.utils";
+import { NoteOptionsMenu } from "./NoteOptionsMenu";
 import { TitleElement } from "./TitleElement";
 
 import { FilePreviewView } from "./FilePreviewView";
@@ -264,6 +265,21 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [toggleExpanded, setPulseTarget, setNotesSidebarVisible, activeNoteId]);
 
   const editorRef = useRef<MarkdownEditorRef>(null);
+  // Note-options "Rename" (CTX-03, D-22) reuses the existing inline-title
+  // rename affordance (H1-is-the-filename binding, TitleElement) rather than
+  // a separate rename modal — focusing + selecting the title's text lets the
+  // user immediately start typing a replacement, same as clicking into it.
+  const titleWrapperRef = useRef<HTMLDivElement>(null);
+  const handleRequestRename = useCallback(() => {
+    const el = titleWrapperRef.current?.querySelector<HTMLElement>(".editor-title-element");
+    if (!el) return;
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }, []);
   // Mirrors `content` for synchronous-closure call sites (keepalive/blur/
   // reconnect handlers below) that cannot re-subscribe on every keystroke.
   const latestContentRef = useRef("");
@@ -1033,6 +1049,15 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
                 />
               </button>
             )}
+            {!hidden && notePath && (
+              <NoteOptionsMenu
+                noteId={noteId}
+                notePath={notePath}
+                onOpenFind={onOpenFind}
+                onOpenFindReplace={onOpenFindReplace}
+                onRequestRename={handleRequestRename}
+              />
+            )}
           </div>
         </nav>
       )}
@@ -1047,6 +1072,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           through the EXISTING onH1Change/rewriteH1 binding via the
           MarkdownEditor ref's setH1 — no second rename pathway. */}
       <div
+        ref={titleWrapperRef}
         className="editor-title-wrapper"
         style={{
           width: "100%",
