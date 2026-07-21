@@ -13,9 +13,13 @@
  * RIBBON-01..04: the 48px activity ribbon renders with the vault-initial
  *   badge, and its Files/Search/daily-note/command-palette buttons drive
  *   their already-shipped actions.
- * TABUI-02: the left/right sidebar toggles live in the tab-bar's right-hand
- *   cluster (relocated from the now-dissolved ChromeBar) and toggle their
- *   respective sidebars.
+ * TABUI-02: each sidebar owns its own toggle placement — the left sidebar's
+ *   collapse control lives in its header row (SidebarTabRow) with reopen via
+ *   a pane-corner button (Phase 27 NAV-03); the right rail's collapse
+ *   control lives in its own tab row (RightRailTabRow) with reopen via the
+ *   tab strip's right cluster, rendered only while collapsed AND on the
+ *   rightmost leaf (Phase 30-13 / quick task 260721-cjt). Each toggle only
+ *   affects its own sidebar.
  *
  * Harness mirrors phase17-uat.spec.ts: spawnJasper per describe block,
  * beforeAll/afterAll. Every binary-backed describe gets its own ephemeral
@@ -579,9 +583,9 @@ test.describe("@phase18 POLISH-09: center-column vertical geometry pin", () => {
   });
 });
 
-// ─── TABUI-02: tab-bar split toggle placement (far-left / far-right) ────────
+// ─── TABUI-02: each sidebar's own collapse control + corner/tab-strip reopen ─
 
-test.describe("@phase18 TABUI-02: tab-bar split toggle placement", () => {
+test.describe("@phase18 TABUI-02: sidebar toggle placement", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -592,46 +596,40 @@ test.describe("@phase18 TABUI-02: tab-bar split toggle placement", () => {
     if (jasper) await jasper.kill();
   });
 
-  test("left-sidebar toggle sits in the far-left cluster, right-sidebar toggle in the far-right cluster, and each toggles its own sidebar", async ({
+  test("left sidebar collapses via its header control and reopens via the pane-corner button; the right rail collapses via its own tab row and reopens via the tab strip's right cluster — each toggles only its own sidebar", async ({
     page,
   }) => {
     await waitForConnected(page, jasper.baseURL);
 
-    // Owner revision (2026-07-02, gap 3): the toggles are SPLIT, not
-    // co-located in a single right-hand cluster — left toggle far-left,
-    // right toggle far-right, superseding CONTEXT D-04.
-    const leftCluster = tabStrip(page).getByTestId("tab-strip-left-cluster");
-    const rightCluster = tabStrip(page).getByTestId("tab-strip-right-cluster");
-    await expect(leftCluster).toBeVisible({ timeout: 10_000 });
-    await expect(rightCluster).toBeVisible({ timeout: 10_000 });
-
-    // Default states: notesSidebarVisible=true, backlinksRailExpanded=true
-    // (Phase 20 D-06 flips the right rail to open-by-default on a fresh
-    // profile — previously false; see the Phase 20 RESEARCH.md Pitfall 4
-    // hydration-idiom note).
-    const leftToggle = leftCluster.getByRole("button", { name: "Hide notes sidebar" });
-    const rightToggle = rightCluster.getByRole("button", { name: "Hide panels" });
-    await expect(leftToggle).toBeVisible();
-    await expect(rightToggle).toBeVisible();
-
+    // LEFT sidebar (Phase 27 NAV-03): default notesSidebarVisible=true.
     const sidebarNav = page.locator('nav[aria-label="Notes navigation"]');
-    await expect(sidebarNav).toBeVisible();
-    await leftToggle.click();
-    await expect(sidebarNav).toHaveCount(0, { timeout: 5_000 });
-    await expect(
-      leftCluster.getByRole("button", { name: "Show notes sidebar" }),
-    ).toBeVisible();
+    await expect(sidebarNav).toBeVisible({ timeout: 10_000 });
 
-    // The right toggle shows/hides the whole right rail (Outline / Linked
-    // mentions / Tags) — its resize handle only renders while the rail is
-    // expanded (RightRail returns null otherwise). Starts expanded (D-06);
-    // this click COLLAPSES it, then re-click to restore expanded.
+    await page.getByRole("button", { name: "Collapse sidebar" }).click();
+    await expect(sidebarNav).toHaveCount(0, { timeout: 5_000 });
+
+    const reopenLeftBtn = page.getByRole("button", { name: "Show sidebar" });
+    await expect(reopenLeftBtn).toBeVisible();
+    await reopenLeftBtn.click();
+    await expect(sidebarNav).toBeVisible();
+
+    // RIGHT rail (Phase 30-13 / 260721-cjt): expanded by default — the
+    // rail's own tab row owns the sole collapse control; no reopen cluster
+    // renders while expanded.
     const railHandle = page.getByRole("separator", { name: "Resize backlinks panel" });
     await expect(railHandle).toBeVisible();
-    await rightToggle.click();
+    const railTabRow = page.getByTestId("right-rail-tab-row");
+    await expect(railTabRow).toBeVisible();
+    await expect(tabStrip(page).getByTestId("tab-strip-right-cluster")).toHaveCount(0);
+
+    await railTabRow.getByRole("button", { name: "Collapse panels" }).click();
     await expect(railHandle).toHaveCount(0, { timeout: 5_000 });
-    await expect(
-      rightCluster.getByRole("button", { name: "Show panels" }),
-    ).toBeVisible();
+    await expect(railTabRow).toHaveCount(0, { timeout: 5_000 });
+
+    const rightCluster = tabStrip(page).getByTestId("tab-strip-right-cluster");
+    const reopenRightBtn = rightCluster.getByRole("button", { name: "Show panels" });
+    await expect(reopenRightBtn).toBeVisible({ timeout: 5_000 });
+    await reopenRightBtn.click();
+    await expect(page.getByTestId("right-rail-tab-row")).toBeVisible({ timeout: 5_000 });
   });
 });

@@ -28,8 +28,8 @@
  *   - Ribbon quick switch:  aria-label="Quick switcher" (Activity ribbon)
  *   - Bookmark star:        [data-testid="bookmark-star"] (EditorPane breadcrumb)
  *   - Bookmarks panel:      [data-testid="bookmarks-panel"]
- *   - Bookmark row:         [data-testid^="bookmark-row-"]
- *   - Bookmark folder row:  [data-testid^="bookmark-folder-"]
+ *   - Bookmark row:         [data-tree-row-kind="bookmark"]
+ *   - Bookmark folder row:  [data-tree-row-kind="bookmark-folder"]
  *   - Empty state:          [data-testid="bookmarks-empty-state"]
  *   - New folder trigger:   aria-label="New bookmark folder"
  *   - New folder input:     aria-label="New bookmark folder name"
@@ -145,7 +145,7 @@ async function openSidebarTab(
 /** Locate a bookmark row by its currently-displayed (live-resolved) title. */
 function bookmarkRowByTitle(page: Page, title: string): Locator {
   return page
-    .locator('[data-testid^="bookmark-row-"]')
+    .locator('[data-tree-row-kind="bookmark"]')
     .filter({ hasText: title });
 }
 
@@ -376,13 +376,22 @@ test.describe("@phase27 BOOK-03: bookmark folder organization", () => {
     await folderInput.press("Enter");
 
     const bookmarkFolderRow = page
-      .locator('[data-testid^="bookmark-folder-"]')
+      .locator('[data-tree-row-kind="bookmark-folder"]')
       .filter({ hasText: "Work" });
     await expect(bookmarkFolderRow).toBeVisible({ timeout: 5_000 });
     await expect(bookmarkFolderRow).toHaveAttribute("aria-expanded", "true");
 
-    // Move the bookmark into the folder via its "…" menu.
-    await rowA.getByRole("button", { name: "Bookmark options" }).click();
+    // Move the bookmark into the folder via its "…" menu. TreeRow's shared
+    // kebab trigger is aria-label="Row menu" (BookmarksPanel.test.tsx
+    // openRowMenu()) — the old bespoke BookmarkRow's "Bookmark options"
+    // label was removed along with the rest of that component in 260719-jv1.
+    // The kebab is CSS hover-revealed (invisible group-hover:visible, mirrors
+    // phase14-uat.spec.ts's kebab pattern) — hover the row first so Playwright's
+    // actionability check sees it visible before clicking.
+    await rowA.hover();
+    const rowAKebab = rowA.getByRole("button", { name: "Row menu" });
+    await expect(rowAKebab).toBeVisible({ timeout: 5_000 });
+    await rowAKebab.click();
     await expect(page.getByRole("menuitem", { name: "Remove" })).toBeVisible();
     await page.getByRole("menuitem", { name: "Move to folder" }).click();
     await expect(page.getByRole("menuitem", { name: "Work" })).toBeVisible({
@@ -485,7 +494,7 @@ test.describe("@phase27 BOOK-04: bookmark persistence + identity survives rename
     await expect(bookmarkRowByTitle(page, "book04-renamed")).toBeVisible({
       timeout: 5_000,
     });
-    await expect(page.locator('[data-testid^="bookmark-row-"]')).toHaveCount(1);
+    await expect(page.locator('[data-tree-row-kind="bookmark"]')).toHaveCount(1);
 
     // (c) Move the note into a new folder via real tree drag-and-drop (same
     // CDP-driven page.dragAndDrop mechanic already proven non-flaky against
@@ -531,7 +540,7 @@ test.describe("@phase27 BOOK-04: bookmark persistence + identity survives rename
     await openSidebarTab(page, "Bookmarks");
     const movedRow = bookmarkRowByTitle(page, "book04-renamed");
     await expect(movedRow).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('[data-testid^="bookmark-row-"]')).toHaveCount(1);
+    await expect(page.locator('[data-tree-row-kind="bookmark"]')).toHaveCount(1);
 
     // Clicking it opens the moved+renamed note in the active pane — full
     // identity round-trip proof (D-02): same noteId, new path, new title.
@@ -556,7 +565,7 @@ test.describe("@phase27 BOOK-04: bookmark persistence + identity survives rename
     await openSidebarTab(page, "Bookmarks");
     const survivedRow = bookmarkRowByTitle(page, "book04-renamed");
     await expect(survivedRow).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('[data-testid^="bookmark-row-"]')).toHaveCount(1);
+    await expect(page.locator('[data-tree-row-kind="bookmark"]')).toHaveCount(1);
     await survivedRow.getByText("book04-renamed").click();
     await expect(
       page.locator('[data-testid="note-breadcrumb"]:visible').getByTestId("breadcrumb-segment"),
