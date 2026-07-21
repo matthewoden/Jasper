@@ -381,6 +381,10 @@ export function TabStrip({
   // empty-ish dep array, keyed only on leafId).
   const requestCloseRef = useRef(onRequestClose);
   requestCloseRef.current = onRequestClose;
+  // Kept fresh so the stable window keydown listener always refuses via the
+  // CURRENT toast closure (handlePinnedClickRefused is redefined every render).
+  const handlePinnedClickRefusedRef = useRef(handlePinnedClickRefused);
+  handlePinnedClickRefusedRef.current = handlePinnedClickRefused;
   const onCycleTabRef = useRef(onCycleTab);
   onCycleTabRef.current = onCycleTab;
   const tabsRef = useRef(tabs);
@@ -436,9 +440,18 @@ export function TabStrip({
 
       // Alt+W → request close of the active tab (flush-aware via prop).
       // Never bind plain Cmd/Ctrl+W — the browser owns it.
+      // D-14 / CR-02 gap closure: a pinned active tab refuses the close (same
+      // toast the x-path and middle-click already surface) instead of
+      // reaching requestCloseRef — read through tabsRef so the stable window
+      // listener always sees the current pin state.
       if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === "KeyW") {
         e.preventDefault();
         e.stopPropagation();
+        const activeTab = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
+        if (activeTab?.pinned === true) {
+          handlePinnedClickRefusedRef.current();
+          return;
+        }
         if (activeTabIdRef.current !== null) requestCloseRef.current(activeTabIdRef.current);
         return;
       }
