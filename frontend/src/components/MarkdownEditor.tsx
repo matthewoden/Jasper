@@ -103,6 +103,7 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { useFileTree } from "../lib/useFileTree";
 import { postNotes } from "../lib/treeApi";
 import { extractHeadings, type HeadingInfo } from "../editor/outlineExtract";
+import { extractTags } from "../editor/tagExtract";
 import { getNoteFolder } from "../lib/treeNoteLookup";
 
 export interface MarkdownEditorRef {
@@ -158,6 +159,8 @@ interface Props {
   onH1Change?: (h1: string | null) => void;
   /** Fires with the live H1-H6 heading list after every doc change, and once on mount (RSIDE-01). */
   onHeadingsChange?: (headings: HeadingInfo[]) => void;
+  /** Fires with the live #tag list after every doc change, and once on mount (TAGS-02). */
+  onTagsChange?: (tags: string[]) => void;
   /** Cmd+S handler. */
   onSaveRequested?: () => void;
   /** Fires when CM6's contenteditable loses focus to any element OUTSIDE the editor. */
@@ -236,6 +239,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       onChange,
       onH1Change,
       onHeadingsChange,
+      onTagsChange,
       onSaveRequested,
       onBlur,
       readOnly = false,
@@ -252,6 +256,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       onChange,
       onH1Change,
       onHeadingsChange,
+      onTagsChange,
       onSaveRequested,
       onBlur,
       onOpenFind,
@@ -261,6 +266,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       onChange,
       onH1Change,
       onHeadingsChange,
+      onTagsChange,
       onSaveRequested,
       onBlur,
       onOpenFind,
@@ -464,6 +470,13 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
               if (cbRef.current.onHeadingsChange) {
                 cbRef.current.onHeadingsChange(extractHeadings(u.state));
               }
+              // Tags (TAGS-02): same "every docChanged transaction, including
+              // server-driven ones" rationale as the heading push above — the
+              // Tags tab must reflect a freshly-loaded/reloaded note's tags
+              // immediately, not just after the user's next keystroke.
+              if (cbRef.current.onTagsChange) {
+                cbRef.current.onTagsChange(extractTags(u.state));
+              }
               for (const tr of u.transactions) {
                 // ServerUpdateAnnotation: silent WS/initial-load reload (existing).
                 // syncAnnotation: a change MIRRORED INTO this view by another
@@ -495,6 +508,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       // Fire once on mount so the outline populates before the first edit.
       if (cbRef.current.onHeadingsChange) {
         cbRef.current.onHeadingsChange(extractHeadings(view.state));
+      }
+      // Fire once on mount so the Tags tab populates before the first edit (TAGS-02).
+      if (cbRef.current.onTagsChange) {
+        cbRef.current.onTagsChange(extractTags(view.state));
       }
 
       // E2E hook: expose openSearchPanel so tests can open the CM6 find panel
