@@ -6,8 +6,11 @@
  * visible to later scenarios. Use unique tag/title names to avoid interference.
  *
  * Scenarios:
- *   S1 (@UX-T-01) : Rail visible, two panel cards, inter-panel divider exists,
- *                   divider draggable, ratio persists across reload
+ *   S1 (@UX-T-01) : REWRITTEN (Phase 30 tab-row rework removed the original
+ *                   "panel cards + draggable inter-panel divider" design) —
+ *                   now guards the current equivalent: right-rail tab
+ *                   switching (Outline/Linked mentions/Tags swap the single
+ *                   mounted panel) + the active tab persists across reload.
  *   S2 (@UX-T-02) : Type `#blue` in body → cm-inline-tag rendered; `# heading`
  *                   does NOT render as inline tag
  *   S3 (@UX-T-03) : Type `#newtag` in body → save → Tags panel shows newtag
@@ -25,19 +28,19 @@
  *   S9 (@autocomplete-polish) : `[[` popup and `#` popup have border-radius 8px
  *                               and foreground-contrast text
  *
- * Selector notes (v1.2 redesigned chrome):
+ * Selector notes (Phase 30 right-rail tab-row rework, 30-05/30-08):
  *   - CM6 editor is contenteditable — use keyboard.type(), not .fill(). Tabs
  *     keep every open note's EditorPane mounted (inactive = display:none), so
  *     `.cm-content` can match several elements — target `.cm-content:visible`.
  *   - Tags panel uses data-testid="tag-row-{name}".
- *   - Inter-panel divider: data-testid="inter-panel-divider" (now TWO of them —
- *     after Outline and after Linked mentions; first drags the Outline ratio,
- *     persisted at jasper.rightrail.outline.height.ratio).
  *   - Frontmatter affordance: button.cm-frontmatter-affordance
- *   - Right-rail sections (Phase 20): each is a SectionHeader <button> with
- *     aria-label "Collapse <Title> panel" (expanded) / "Expand <Title> panel"
- *     (collapsed), for Title ∈ {Outline, Linked mentions, Tags}. The legacy
- *     PanelSelectorDropdown ("Open panel") and "Close … panel" × are gone.
+ *   - Right-rail panels: RightRailTabRow renders icon-only Outline / Linked
+ *     mentions / Tags tab buttons (aria-label = the panel name); exactly ONE
+ *     panel is mounted below at a time, driven by the persisted rightPanel
+ *     field (useWorkspace). The Phase 20 three-section stacked/collapsible
+ *     rail (independent SectionHeader "Collapse/Expand <Title> panel"
+ *     toggles, InterPanelDivider height-ratio persistence) was removed
+ *     entirely — no per-section collapse state, no inter-panel divider.
  *   - The tag-list substring filter input ("Filter tag list") was removed.
  */
 import { test, expect, type Page } from "@playwright/test";
@@ -112,51 +115,41 @@ async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
   ).toBeVisible({ timeout: timeoutMs });
 }
 
-const PANEL_MOD = process.platform === "darwin" ? "Meta" : "Control";
-
 /**
- * Ensure a named right-rail section is expanded.
+ * Select a right-rail tab (Outline / Linked mentions / Tags) and reveal the
+ * rail first if it is collapsed.
  *
- * Post-redesign (Phase 20 RightRail) the right rail is a floating three-section
- * sidebar — Outline / Linked mentions / Tags — each behind a unified
- * SectionHeader button whose aria-label is "Collapse <Title> panel" when
- * expanded and "Expand <Title> panel" when collapsed. The legacy
- * PanelSelectorDropdown ("Open panel") and per-panel "Close … panel" × buttons
- * were removed (D-01). The whole rail plus all three sections are expanded by
- * default. If a section is collapsed, click its header. If the rail itself is
- * hidden, Cmd/Ctrl+Alt+T reveals it (and expands Tags).
+ * Phase 30's tab-row rework (30-05/30-08, TAGS-01 D-01/D-02) replaced the
+ * Phase 20 three-section stacked/collapsible rail (independent SectionHeader
+ * "Expand/Collapse <Title> panel" toggles, two draggable inter-panel
+ * dividers) with a single-panel-at-a-time model: RightRailTabRow renders
+ * icon-only Outline / Linked mentions / Tags tabs (aria-label = the panel
+ * name), and exactly one panel is mounted below at a time, driven by the
+ * persisted rightPanel field (useWorkspace, PUT /api/v1/workspace). There is
+ * no more per-section collapse state or inter-panel divider — that machinery
+ * was removed entirely. If the whole rail is collapsed, "Show panels" (the
+ * TabStrip right-cluster reopen control, rendered on the rightmost pane) is
+ * clicked first.
  */
-async function ensureSectionExpanded(page: Page, title: string): Promise<void> {
-  const collapse = page.getByRole("button", { name: `Collapse ${title} panel` });
-  const expand = page.getByRole("button", { name: `Expand ${title} panel` });
-
-  // Neither header present → the whole rail is hidden; reveal it.
-  if ((await collapse.count()) === 0 && (await expand.count()) === 0) {
-    await page.keyboard.press(`${PANEL_MOD}+Alt+t`);
-    await page.waitForTimeout(300);
+async function selectRightRailTab(
+  page: Page,
+  tab: "Outline" | "Linked mentions" | "Tags",
+): Promise<void> {
+  const showPanels = page.getByRole("button", { name: "Show panels" });
+  if (await showPanels.isVisible().catch(() => false)) {
+    await showPanels.click();
   }
-
-  // Section collapsed → click its header to expand.
-  if (
-    (await page.getByRole("button", { name: `Collapse ${title} panel` }).count()) === 0 &&
-    (await expand.count()) > 0
-  ) {
-    await expand.first().click();
-    await page.waitForTimeout(200);
-  }
-
-  await expect(
-    page.getByRole("button", { name: `Collapse ${title} panel` }),
-  ).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("button", { name: tab, exact: true }).click();
 }
 
 /**
- * Ensure the right rail is expanded with the Linked mentions + Tags sections
- * visible (the two panel cards these scenarios assert against).
+ * Ensure the Linked mentions panel is the active right-rail tab (BUG-02).
  */
 async function ensureRailExpanded(page: Page): Promise<void> {
-  await ensureSectionExpanded(page, "Linked mentions");
-  await ensureSectionExpanded(page, "Tags");
+  await selectRightRailTab(page, "Linked mentions");
+  await expect(
+    page.getByRole("region", { name: "Notes that link to this note" }),
+  ).toBeVisible({ timeout: 8_000 });
 }
 
 /**
@@ -200,73 +193,62 @@ async function apiCreateNote(
 }
 
 /**
- * Ensure the Tags section is expanded in the right rail.
+ * Ensure the Tags panel is the active right-rail tab (S3, BUG-01).
  *
- * The Tags panel is a SectionHeader-gated section (Phase 20). Expanding it
- * exposes the tag rows (data-testid="tag-row-{name}").
+ * The Tags panel is one of three tab-driven right-rail panels (Phase 30
+ * tab-row rework). Selecting it mounts NoteTagsSection ("Note tags"
+ * sub-header) above RightRailTagsPanel's vault-wide tag rows
+ * (data-testid="tag-row-{name}").
  */
 async function ensureTagsPanelExpanded(page: Page): Promise<void> {
-  await ensureSectionExpanded(page, "Tags");
+  await selectRightRailTab(page, "Tags");
+  await expect(page.getByText("Note tags", { exact: true })).toBeVisible({ timeout: 5_000 });
 }
 
 
-test("S1 @UX-T-01: rail has panel cards + draggable inter-panel divider + ratio persists", async ({ page }) => {
+test("S1 @UX-T-01: right-rail tab row switches panels; active tab persists across reload", async ({ page }) => {
+  // REWRITTEN (Rule 3): the Phase 20 "panel cards + draggable inter-panel
+  // divider" design this scenario originally guarded was removed by Phase
+  // 30's tab-row rework (30-05/30-08) — RightRail.tsx now mounts exactly one
+  // panel at a time (no stacked cards, no InterPanelDivider, no per-section
+  // height-ratio persistence). The nearest current equivalent of the same
+  // user value ("the rail's layout is navigable and remembers what you were
+  // looking at") is: tab switching moves between panels, and the active tab
+  // (rightPanel) persists across a reload via workspace.json.
   await openApp(page, false);
 
-  await ensureRailExpanded(page);
+  // Default panel is Outline (RIGHT_PANEL_DEFAULT).
+  await selectRightRailTab(page, "Outline");
+  await expect(page.getByText("Outline", { exact: true })).toBeVisible({ timeout: 8_000 });
+  await expect(
+    page.getByRole("region", { name: "Notes that link to this note" }),
+  ).toHaveCount(0);
 
-  // Two of the rail's panel cards: the Tags section (its collapse header) and
-  // the Linked mentions section (its region). No legacy "Close … panel" × in
-  // the redesigned rail — sections toggle via their whole-row SectionHeader.
-  await expect(page.getByRole("button", { name: "Collapse Tags panel" })).toBeVisible({ timeout: 8_000 });
+  // Switching to Tags swaps the mounted panel — Outline's content unmounts,
+  // Note tags + vault-wide tag list mount in its place.
+  await selectRightRailTab(page, "Tags");
+  await expect(page.getByText("Note tags", { exact: true })).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Outline", { exact: true })).toHaveCount(0);
+
+  // Switching to Linked mentions swaps again.
+  await selectRightRailTab(page, "Linked mentions");
   await expect(
     page.getByRole("region", { name: "Notes that link to this note" }),
   ).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByText("Note tags", { exact: true })).toHaveCount(0);
 
-  // Post-redesign there are two inter-panel dividers (after Outline, after
-  // Linked mentions). The first drags the Outline section's height ratio,
-  // persisted under jasper.rightrail.outline.height.ratio.
-  const RATIO_KEY = "jasper.rightrail.outline.height.ratio";
-  const divider = page.getByTestId("inter-panel-divider").first();
-  await expect(divider).toBeVisible({ timeout: 5_000 });
-
-  const dividerBox = await divider.boundingBox();
-  if (!dividerBox) throw new Error("S1: inter-panel-divider has no bounding box");
-
-  await page.mouse.move(
-    dividerBox.x + dividerBox.width / 2,
-    dividerBox.y + dividerBox.height / 2,
-  );
-  await page.mouse.down();
-  await page.mouse.move(
-    dividerBox.x + dividerBox.width / 2,
-    dividerBox.y + dividerBox.height / 2 + 60,
-    { steps: 10 },
-  );
-  await page.mouse.up();
-
-  await expect
-    .poll(
-      () => page.evaluate((k) => window.localStorage.getItem(k), RATIO_KEY),
-      { timeout: 2_000 },
-    )
-    .not.toBeNull();
-
-  const ratioAfter = await page.evaluate((k) => window.localStorage.getItem(k), RATIO_KEY);
-  expect(ratioAfter).not.toBeNull();
-
+  // Reload — the persisted rightPanel field should restore Linked mentions
+  // as the active tab without re-selecting it.
   await page.reload();
   await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
     "data-status",
     "connected",
     { timeout: 10_000 },
   );
-  await ensureRailExpanded(page);
-
-  const ratioAfterReload = await page.evaluate((k) => window.localStorage.getItem(k), RATIO_KEY);
-  expect(ratioAfterReload).toEqual(ratioAfter);
-
-  await expect(page.getByRole("button", { name: "Collapse Tags panel" })).toBeVisible({ timeout: 8_000 });
+  const showPanelsAfterReload = page.getByRole("button", { name: "Show panels" });
+  if (await showPanelsAfterReload.isVisible().catch(() => false)) {
+    await showPanelsAfterReload.click();
+  }
   await expect(
     page.getByRole("region", { name: "Notes that link to this note" }),
   ).toBeVisible({ timeout: 8_000 });

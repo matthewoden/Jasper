@@ -202,48 +202,41 @@ async function openTabInContext(
 }
 
 /**
- * Reveal the right-rail Tags section (Phase 20 RightRail rework).
+ * Reveal the right-rail Tags panel (Phase 30 TAGS-01 tab-row rework,
+ * 30-05/30-08).
  *
- * The legacy "Open panel" dropdown + panel-selector were removed (D-01). Panels
- * now live in the always-mounted RightRail behind unified SectionHeader toggles.
- * The rail (TabStrip "Show/Hide panels" toggle) and each section default to
- * expanded, so normally there is nothing to click — but a prior test in the same
- * context could have collapsed either, so re-expand defensively before asserting
- * the Tags SectionHeader is showing (which means the tag rows are rendered).
+ * The Phase 20 three-section stacked/collapsible rail (independent
+ * SectionHeader "Expand/Collapse <Title> panel" toggles per section) was
+ * replaced by a single-panel-at-a-time tab row: RightRailTabRow renders
+ * icon-only Outline / Linked mentions / Tags tabs (aria-label = the panel
+ * name), and exactly one panel is mounted below at a time, driven by the
+ * persisted rightPanel field. The rail itself still defaults to expanded
+ * (backlinksRailExpanded); if a prior test collapsed it, "Show panels" (the
+ * TabStrip right-cluster reopen control) reveals it first.
  */
 async function expandTagBrowser(page: Page): Promise<void> {
   const showPanels = page.getByRole("button", { name: "Show panels" });
   if (await showPanels.isVisible().catch(() => false)) {
     await showPanels.click();
   }
-  const expandTags = page.getByRole("button", { name: "Expand Tags panel" });
-  if (await expandTags.isVisible().catch(() => false)) {
-    await expandTags.click();
-  }
-  await expect(
-    page.getByRole("button", { name: "Collapse Tags panel" }),
-  ).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("button", { name: "Tags", exact: true }).click();
+  await expect(page.getByText("Note tags", { exact: true })).toBeVisible({ timeout: 5_000 });
 }
 
 /**
- * Reveal the right-rail Backlinks section — now the "Linked mentions" section of
- * the RightRail (Phase 20 rename, RSIDE-02). Same open/collapse toggle model as
- * expandTagBrowser; the backlinks region (role="region" aria-label="Notes that
- * link to this note") lives inside once the section is expanded.
+ * Reveal the right-rail Linked mentions panel (Phase 20 rename, RSIDE-02;
+ * Phase 30 tab-row rework). Same reopen model as expandTagBrowser; the
+ * backlinks region (role="region" aria-label="Notes that link to this note")
+ * lives inside once the Linked mentions tab is selected.
  */
 async function openBacklinks(page: Page): Promise<void> {
   const showPanels = page.getByRole("button", { name: "Show panels" });
   if (await showPanels.isVisible().catch(() => false)) {
     await showPanels.click();
   }
-  const expandMentions = page.getByRole("button", {
-    name: "Expand Linked mentions panel",
-  });
-  if (await expandMentions.isVisible().catch(() => false)) {
-    await expandMentions.click();
-  }
+  await page.getByRole("button", { name: "Linked mentions", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Collapse Linked mentions panel" }),
+    page.getByRole("region", { name: "Notes that link to this note" }),
   ).toBeVisible({ timeout: 5_000 });
 }
 
