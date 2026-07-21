@@ -3,7 +3,9 @@
  *   - typing a query fuzzy-filters the vault folder list; "No matching
  *     folders" shows when nothing matches
  *   - a "Vault root" row is present and selectable (moves to the vault root)
- *   - Enter on the highlighted folder calls moveNote(noteId, path) and
+ *   - Enter on the highlighted folder calls moveNote(noteId, composedPath)
+ *     — POST /notes/{id}/move's new_path wants the FULL destination path
+ *     (target folder + the note's own basename), not just the folder — and
  *     closes; Esc dismisses without moving
  */
 import { render, screen, waitFor } from "@testing-library/react";
@@ -59,7 +61,14 @@ const FAKE_TREE: Tree = {
 
 function renderModal(overrides?: { onOpenChange?: (open: boolean) => void }) {
   const onOpenChange = overrides?.onOpenChange ?? vi.fn();
-  render(<MoveToFolderModal noteId="note-1" open={true} onOpenChange={onOpenChange} />);
+  render(
+    <MoveToFolderModal
+      noteId="note-1"
+      notePath="Projects/note.md"
+      open={true}
+      onOpenChange={onOpenChange}
+    />,
+  );
   return { onOpenChange };
 }
 
@@ -103,18 +112,18 @@ describe("<MoveToFolderModal />", () => {
     expect(await screen.findByText("No matching folders")).toBeInTheDocument();
   });
 
-  it("clicking the Vault root row moves the note to the vault root", async () => {
+  it("clicking the Vault root row moves the note to the vault root, preserving its filename", async () => {
     const user = userEvent.setup();
     const { onOpenChange } = renderModal();
     const root = await screen.findByText("Vault root");
     await user.click(root);
     await waitFor(() => {
-      expect(moveNoteMock).toHaveBeenCalledWith("note-1", "");
+      expect(moveNoteMock).toHaveBeenCalledWith("note-1", "note.md");
       expect(onOpenChange).toHaveBeenCalledWith(false);
     });
   });
 
-  it("pressing Enter on the highlighted folder moves the note and closes", async () => {
+  it("pressing Enter on the highlighted folder moves the note (composing folder + filename) and closes", async () => {
     const user = userEvent.setup();
     const { onOpenChange } = renderModal();
     const input = await screen.findByRole("textbox");
@@ -124,7 +133,7 @@ describe("<MoveToFolderModal />", () => {
     });
     await user.keyboard("{Enter}");
     await waitFor(() => {
-      expect(moveNoteMock).toHaveBeenCalledWith("note-1", "Projects/Archive");
+      expect(moveNoteMock).toHaveBeenCalledWith("note-1", "Projects/Archive/note.md");
       expect(onOpenChange).toHaveBeenCalledWith(false);
     });
   });

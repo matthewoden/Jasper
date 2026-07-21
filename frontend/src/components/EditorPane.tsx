@@ -463,7 +463,21 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [noteId]);
 
   useEffect(() => {
-    if (!hidden && paneActive && loadStatus === "loaded" && noteId !== null) {
+    // paletteOpen guard (Phase 30 WS-06 fix): without it, a note that
+    // finishes loading into a JUST-split pane (e.g. splitPane's cloneActiveTab
+    // path, or a slow getNote() resolving late) steals DOM focus out from
+    // under the Cmd+O/Cmd+P/Cmd+Shift+F palette if the user opened it in the
+    // same beat — reproduced by a real-browser flake where Cmd+Shift+Enter
+    // landed on whatever this effect had just refocused instead of the
+    // palette's own input. The palette already autofocuses itself on mount;
+    // this pane must not fight it for focus while it's open.
+    if (
+      !hidden &&
+      paneActive &&
+      loadStatus === "loaded" &&
+      noteId !== null &&
+      !useTreeStore.getState().paletteOpen
+    ) {
       editorRef.current?.focus();
     }
   }, [hidden, paneActive, loadStatus, noteId]);

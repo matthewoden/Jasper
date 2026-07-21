@@ -240,7 +240,12 @@ export function NoteOptionsMenu({
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
-      <MoveToFolderModal noteId={noteId} open={moveOpen} onOpenChange={setMoveOpen} />
+      <MoveToFolderModal
+        noteId={noteId}
+        notePath={notePath}
+        open={moveOpen}
+        onOpenChange={setMoveOpen}
+      />
       <DeleteConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}

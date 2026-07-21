@@ -20,11 +20,16 @@ import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } 
 
 import { useFileTree, walkTreeCollect } from "../lib/useFileTree";
 import { useTreeMutations } from "../lib/useTreeMutations";
+import { basename, composeNewPath } from "./fileTree.utils";
 import { KeyboardChip } from "./KeyboardChip";
 import { useToast } from "./toast.utils";
 
 export interface MoveToFolderModalProps {
   noteId: string;
+  /** Note's current vault-relative path — its basename is preserved when
+   *  composing the new path (POST /notes/{id}/move's new_path field wants
+   *  the full destination path, not just the target folder). */
+  notePath: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -115,7 +120,12 @@ function rowStyle(selected: boolean): CSSProperties {
   };
 }
 
-export function MoveToFolderModal({ noteId, open, onOpenChange }: MoveToFolderModalProps) {
+export function MoveToFolderModal({
+  noteId,
+  notePath,
+  open,
+  onOpenChange,
+}: MoveToFolderModalProps) {
   const { tree } = useFileTree();
   const { moveNote } = useTreeMutations();
   const { toast } = useToast();
@@ -154,9 +164,10 @@ export function MoveToFolderModal({ noteId, open, onOpenChange }: MoveToFolderMo
     setSelectedIdx(0);
   };
 
-  const handleMove = async (targetPath: string) => {
+  const handleMove = async (targetFolderPath: string) => {
+    const newPath = composeNewPath(targetFolderPath, basename(notePath));
     try {
-      await moveNote(noteId, targetPath);
+      await moveNote(noteId, newPath);
       onOpenChange(false);
     } catch {
       toast({ title: "Couldn't move note. Try again.", variant: "error" });
