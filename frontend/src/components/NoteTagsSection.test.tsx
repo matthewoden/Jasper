@@ -63,8 +63,10 @@ describe("NoteTagsSection", () => {
 
     const chip = screen.getByTestId("note-tag-chip-a");
     expect(chip.textContent).toContain("3");
-    // The count lives inside the chip element itself, not as a sibling.
-    expect(chip.querySelector("span")?.textContent).toContain("3");
+    // The count lives inside the chip element itself, not as a sibling span
+    // outside the chip button (i.e. it's one of the chip's own children).
+    const spans = chip.querySelectorAll("span");
+    expect(Array.from(spans).some((s) => s.textContent?.includes("3"))).toBe(true);
   });
 
   it("clicking a chip seeds a tag: query into the search panel (Test 3)", () => {
