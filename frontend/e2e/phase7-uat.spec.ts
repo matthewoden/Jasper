@@ -254,7 +254,10 @@ test.describe("Phase 7 — Cmd+O quick switcher (S5)", () => {
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    const input = dialog.getByRole("textbox", { name: "Quick switcher" });
+    // Quick switcher input carries role="combobox" (aria-expanded +
+    // aria-controls listbox wiring added after this test was written) —
+    // the Command palette / Search inputs remain plain role="textbox".
+    const input = dialog.getByRole("combobox", { name: "Quick switcher" });
     await expect(input).toBeVisible({ timeout: 3_000 });
 
 
@@ -841,15 +844,19 @@ test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#3,#5)", () 
     const commandDialog = page.getByRole("dialog", { name: "Command palette" });
     await expect(commandDialog).toBeVisible({ timeout: 3_000 });
 
-    const switchCmd = page.getByText("Switch / search notes", { exact: true }).first();
+    // Phase 28 Plan 03 relabeled "Switch / search notes" to
+    // "Quick switcher (notes)" (shortcutsRegistry.ts id "switch-note").
+    const switchCmd = page.getByText("Quick switcher (notes)", { exact: true }).first();
     await expect(switchCmd).toBeVisible({ timeout: 5_000 });
     await switchCmd.click();
 
     const switcherDialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(switcherDialog).toBeVisible({ timeout: 3_000 });
 
-    const input = switcherDialog.getByRole("textbox");
-    await expect(input).toHaveAttribute("placeholder", "Switch to note…", { timeout: 3_000 });
+    // role="combobox" (not "textbox") in notes mode; placeholder is now
+    // "Find or create a note…" (CommandMenu.tsx's mode==="notes" branch).
+    const input = switcherDialog.getByRole("combobox");
+    await expect(input).toHaveAttribute("placeholder", "Find or create a note…", { timeout: 3_000 });
 
     await page.keyboard.press("Escape");
     await expect(switcherDialog).not.toBeVisible({ timeout: 3_000 });
@@ -1055,7 +1062,10 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
 
     await expect(page.getByText("New note", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
 
-    await expectPaletteVisibleWithNCommands(page, 8);
+    // Palette entry count grew from 8 to 17 across Phase 22/25/27/28 (Toggle
+    // Zen Mode, split/focus-pane commands, Toggle left sidebar, Bookmark
+    // current note, etc.) — see shortcutsRegistry.test.ts's locked-count test.
+    await expectPaletteVisibleWithNCommands(page, 17);
 
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
@@ -1097,17 +1107,21 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
     await cmdInput.fill("sw");
     await expect(cmdInput).toHaveValue("sw");
 
-    const switchCmd = page.getByText("Switch / search notes", { exact: true }).first();
+    // Phase 28 Plan 03 relabeled "Switch / search notes" to
+    // "Quick switcher (notes)".
+    const switchCmd = page.getByText("Quick switcher (notes)", { exact: true }).first();
     await expect(switchCmd).toBeVisible({ timeout: 3_000 });
     await switchCmd.click();
 
     const switcherDialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(switcherDialog).toBeVisible({ timeout: 3_000 });
 
-    const switcherInput = switcherDialog.getByRole("textbox");
+    // role="combobox" in notes mode; placeholder is now "Find or create a
+    // note…" (CommandMenu.tsx's mode==="notes" branch).
+    const switcherInput = switcherDialog.getByRole("combobox");
     await page.waitForFunction(
       () => {
-        const input = document.querySelector('input[placeholder="Switch to note…"]') as HTMLInputElement | null;
+        const input = document.querySelector('input[placeholder="Find or create a note…"]') as HTMLInputElement | null;
         return input !== null && input.value === "";
       },
       { timeout: 3_000 },
@@ -1808,20 +1822,36 @@ test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop s
   test("S24b — clicking Search icon in activity ribbon opens the in-sidebar Search panel", async ({ page }) => {
     // v1.2 redesign: the Search affordance moved from SidebarToolbar to the
     // activity ribbon (Phase 18), and it now opens the in-sidebar Search panel
-    // (SidebarSearchPanel) rather than an FTS5 modal dialog. Clicking the ribbon
-    // Search button toggles the panel: first click opens it (input visible),
-    // repeat click on the active button collapses the sidebar (input gone).
+    // (SidebarSearchPanel) rather than an FTS5 modal dialog.
+    //
+    // Phase 27 NAV-02 (D-09/D-10) then removed the ribbon's Files/Search
+    // toggles entirely — panel selection now lives in the sidebar's own
+    // SidebarTabRow (Notes / Search / Bookmarks icon tabs, aria-label
+    // "Search"), which this test now drives instead. That row also does NOT
+    // auto-focus the input on tab switch (SidebarTabRow.tsx doc comment;
+    // matches phase29-uat.spec.ts's established pattern) — a real click is
+    // required before the input is interactive.
+    //
+    // owner review: possibly obsolete — the old premise "repeat click on the
+    // active toggle collapses the sidebar" has no current analog. SidebarTabRow's
+    // own doc comment states a tab click must NEVER no-op/collapse (the
+    // collapse control lives in the same row as a separate "Collapse sidebar"
+    // button), so re-clicking the active "Search" tab intentionally stays on
+    // the Search panel. This test asserts the closest current equivalent —
+    // switching to the "Notes" tab unmounts the Search panel/input.
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    const searchBtn = page.getByRole("button", { name: "Search notes" });
-    await expect(searchBtn).toBeVisible({ timeout: 5_000 });
-    await searchBtn.click();
+    const tabRow = page.getByTestId("sidebar-tab-row");
+    const searchTab = tabRow.getByRole("button", { name: "Search", exact: true });
+    await expect(searchTab).toBeVisible({ timeout: 5_000 });
+    await searchTab.click();
 
     const searchInput = page.getByRole("textbox", { name: "Search notes" });
+    await searchInput.click();
     await expect(searchInput).toBeVisible({ timeout: 5_000 });
 
-    await searchBtn.click();
+    await tabRow.getByRole("button", { name: "Notes", exact: true }).click();
     await expect(searchInput).not.toBeVisible({ timeout: 3_000 });
   });
 
@@ -1843,10 +1873,12 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
   });
 
   test("S26a — right-rail toggle is visible when panels are selected; adding a tag populates the Tags panel", async ({ page }) => {
-    // Design change: the rail toggle (Hide/Show panels) visibility is gated on
-    // panelSelector state, not on note content. Both panels are selected by default
-    // so the toggle is always visible. This test verifies the toggle is present and
-    // that typing a tag in the editor populates the Tags panel.
+    // Design change: the rail toggle (Collapse/Show panels — Phase 30 split
+    // this into two separate buttons, RightRailTabRow's "Collapse panels"
+    // when expanded and the tab-strip's "Show panels" when collapsed, rather
+    // than one dynamically-named toggle) is always present regardless of
+    // note content. This test verifies the toggle is present and that
+    // typing a tag in the editor populates the Tags panel.
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -1868,7 +1900,7 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
 
     // The toggle is gated on panelSelector (defaults both on), so it should be visible.
     await expect(
-      page.getByRole("button", { name: /hide panels|show panels/i }),
+      page.getByRole("button", { name: /collapse panels|show panels/i }),
     ).toBeVisible({ timeout: 3_000 });
 
     // Type a tag and auto-save; the Tags panel should populate.
@@ -1880,7 +1912,7 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
 
     // Rail toggle still visible after tag is added.
     await expect(
-      page.getByRole("button", { name: /hide panels|show panels/i }),
+      page.getByRole("button", { name: /collapse panels|show panels/i }),
     ).toBeVisible({ timeout: 8_000 });
 
     void noteId;
@@ -1927,7 +1959,11 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
       a.y < b.y + b.height &&
       a.y + a.height > b.y;
 
-    const toggleLocator = page.getByRole("button", { name: /hide notes sidebar|show notes sidebar/i });
+    // Phase 27 NAV-01/NAV-03 split the old single dynamically-named toggle
+    // into two buttons: SidebarTabRow's "Collapse sidebar" (shown while
+    // expanded) and PaneCornerReopenButton's "Show sidebar" (shown while
+    // collapsed).
+    const toggleLocator = page.getByRole("button", { name: /collapse sidebar|show sidebar/i });
     await expect(toggleLocator).toBeVisible({ timeout: 3_000 });
 
     const toggleBox = await toggleLocator.boundingBox();
@@ -1938,12 +1974,12 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
 
     expect(rectsIntersect(toggleBox!, editorBox!)).toBe(false);
 
-    const openToggle = page.getByRole("button", { name: "Hide notes sidebar" });
+    const openToggle = page.getByRole("button", { name: "Collapse sidebar" });
     if (await openToggle.isVisible()) {
       await openToggle.click();
       await page.waitForTimeout(300);
 
-      const closedToggle = page.getByRole("button", { name: "Show notes sidebar" });
+      const closedToggle = page.getByRole("button", { name: "Show sidebar" });
       const toggleBoxClosed = await closedToggle.boundingBox();
       const editorBoxClosed = await page.locator(".cm-content").first().boundingBox();
 
@@ -1970,7 +2006,8 @@ test.describe("Phase 7 — Switcher title-fuzzy only (S28 / UAT-5 N11 split)", (
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    const input = dialog.getByRole("textbox");
+    // role="combobox" in notes mode (Quick switcher).
+    const input = dialog.getByRole("combobox");
     await input.fill("te");
 
     await page.waitForTimeout(200);
@@ -2181,7 +2218,8 @@ test.describe("Phase 7 — Switcher/Search split (S32 / UAT-5 N11 / D-57)", () =
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    const switcherInput = dialog.getByRole("textbox");
+    // role="combobox" in notes mode (Quick switcher).
+    const switcherInput = dialog.getByRole("combobox");
     await switcherInput.fill("uat5n11needle");
     await page.waitForTimeout(300);
 

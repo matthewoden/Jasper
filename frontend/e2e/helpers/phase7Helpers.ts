@@ -159,18 +159,28 @@ export async function openCommandMenuAndType(
   const dialog = page.getByRole("dialog", { name: ariaLabel });
   await dialog.waitFor({ state: "visible", timeout: 5_000 });
   if (query) {
-    const input = dialog.getByRole("textbox");
+    // Quick switcher (mode="notes") input has role="combobox" (aria-expanded
+    // + aria-controls listbox wiring, added after this helper was written);
+    // the Command palette (mode="commands") input remains a plain textbox.
+    const input = mode === "switch" ? dialog.getByRole("combobox") : dialog.getByRole("textbox");
     await input.fill(query);
   }
 }
 
 /**
- * expectPaletteVisibleWithNCommands — asserts all 8 expected commands are
+ * expectPaletteVisibleWithNCommands — asserts all expected commands are
  * visible in the Command palette dialog.
  *
- * The 8 palette-visible commands (inPalette: true in shortcutsRegistry.ts):
- *   New note, Save, Today, Switch / search notes,
- *   Toggle theme, Refresh index, Reset and rebuild…, Show keyboard shortcuts.
+ * The 17 palette-visible commands (inPalette: true in shortcutsRegistry.ts,
+ * locked by shortcutsRegistry.test.ts's "registry has all 17 locked Cmd+P
+ * palette entries" test — updated here as more commands were added across
+ * Phase 22/25/27/28 and "Switch / search notes" was relabeled to
+ * "Quick switcher (notes)" in Phase 28 Plan 03):
+ *   New note, Save, Today, Quick switcher (notes), Toggle theme,
+ *   Refresh index, Reset and rebuild…, Show keyboard shortcuts,
+ *   Show current note in file manager, Switch vault…, Toggle Zen Mode,
+ *   Split right, Split down, Focus next pane, Focus previous pane,
+ *   Toggle left sidebar, Bookmark current note.
  *
  * "Find in note" is absent — browser native Cmd+F fires instead.
  *
@@ -189,21 +199,57 @@ export async function expectPaletteVisibleWithNCommands(
     "New note",
     "Save",
     "Today",
-    "Switch / search notes",
+    "Quick switcher (notes)",
     "Toggle theme",
     "Refresh index",
     "Reset and rebuild…",
     "Show keyboard shortcuts",
+    "Show current note in file manager",
+    "Switch vault…",
+    "Toggle Zen Mode",
+    "Split right",
+    "Split down",
+    "Focus next pane",
+    "Focus previous pane",
+    "Toggle left sidebar",
+    "Bookmark current note",
   ];
   if (n !== expectedLabels.length) {
     throw new Error(
       `expectPaletteVisibleWithNCommands: n=${n} does not match expectedLabels.length=${expectedLabels.length}`,
     );
   }
+
+  // Cold-open (this test's original intent, Plan 07-27): the very first
+  // command must render immediately — proves the palette isn't stuck on an
+  // empty/null-tree state before the first fetch resolves.
+  await expect(
+    page.getByText(expectedLabels[0], { exact: true }).first(),
+  ).toBeVisible({ timeout: 5_000 });
+
+  // The palette list is virtualized (@tanstack/react-virtual, 36px rows,
+  // 50vh max-height) — since the registry grew from 8 to 17 entries
+  // (Phase 22/25/27/28), the tail entries no longer render in the DOM
+  // without scrolling. ArrowDown moves selectedIdx, which the component's
+  // own effect feeds into virtualizer.scrollToIndex — drive that real user
+  // interaction and record every label as it becomes visible, bounded by
+  // the list length (no fixed sleeps).
+  const seen = new Set<string>();
+  for (let i = 0; i < expectedLabels.length; i++) {
+    for (const label of expectedLabels) {
+      if (seen.has(label)) continue;
+      if (await page.getByText(label, { exact: true }).first().isVisible().catch(() => false)) {
+        seen.add(label);
+      }
+    }
+    if (seen.size === expectedLabels.length) break;
+    await page.keyboard.press("ArrowDown");
+  }
   for (const label of expectedLabels) {
-    await expect(page.getByText(label, { exact: false }).first()).toBeVisible({
-      timeout: 5_000,
-    });
+    expect(
+      seen.has(label),
+      `expected command "${label}" to become visible while scrolling the palette`,
+    ).toBe(true);
   }
 }
 
@@ -322,14 +368,19 @@ export async function seedNoteWithMtime(
 }
 
 /**
- * activateTagFilterChip — clicks a tag row in the right-rail Tags panel to
+ * activateTagFilterChip — clicks a tag row in the right-rail Tags tab to
  * set the active tag filter, then waits for the ActiveTagFilterChip to render.
  *
- * Locator chain (audited from RightRailTagsPanel.tsx + ActiveTagFilterChip.tsx):
- *   1. Each tag row exposes data-testid="tag-row-${tag.name}".
- *   2. If the panel is collapsed (aria-label matches "Tags panel, collapsed.*"),
- *      click the header button to expand it first.
- *   3. After click, ActiveTagFilterChip renders with aria-label
+ * Locator chain (audited from RightRail.tsx / RightRailTabRow.tsx / Right-
+ * RailTagsPanel.tsx + ActiveTagFilterChip.tsx, current as of the Phase 30
+ * rail rewrite — the rail is a one-panel-at-a-time icon-tab row, not the
+ * old Phase 20 stacked/collapsible-sections layout):
+ *   1. If the rail is collapsed, the rightmost pane's tab-strip carries a
+ *      "Show panels" reopen button — click it first.
+ *   2. Click the "Tags" tab in the right-rail-tab-row testid to mount
+ *      RightRailTagsPanel (there is no more per-section collapse header).
+ *   3. Each tag row exposes data-testid="tag-row-${tag.name}".
+ *   4. After click, ActiveTagFilterChip renders with aria-label
  *      "Active filter: #${tagName}" — wait for it.
  *
  * @param page    - Playwright Page
@@ -347,13 +398,8 @@ export async function activateTagFilterChip(
     await expect(showPanelsBtn).toHaveCount(0, { timeout: 3_000 });
   }
 
-  const collapsedHeader = page.getByRole("button", {
-    name: /^Tags panel, collapsed/,
-  });
-  if ((await collapsedHeader.count()) > 0) {
-    await collapsedHeader.click();
-    await expect(collapsedHeader).toHaveCount(0, { timeout: 3_000 });
-  }
+  const tabRow = page.getByTestId("right-rail-tab-row");
+  await tabRow.getByRole("button", { name: "Tags" }).click();
 
   const row = page.getByTestId(`tag-row-${tagName}`);
   await row.waitFor({ state: "visible", timeout: 5_000 });
