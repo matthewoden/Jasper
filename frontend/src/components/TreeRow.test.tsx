@@ -29,6 +29,17 @@ vi.mock("../lib/useMcpGrants", () => ({
   }),
 }));
 
+// useBookmarks() internally calls useToast(), which throws outside a
+// <ToastProvider>. Stubbed the same way useReveal/useMcpGrants are above —
+// TreeRow's own bookmark wiring (isBookmarked/toggleBookmark) is exercised
+// via the props-driven TreeRowMenu tests, not here.
+vi.mock("../lib/useBookmarks", () => ({
+  useBookmarks: () => ({
+    isBookmarked: () => false,
+    toggleBookmark: vi.fn(),
+  }),
+}));
+
 import { useTreeStore } from "../lib/useTreeStore";
 import { TreeRow } from "./TreeRow";
 

@@ -407,6 +407,281 @@ describe("<TreeRowDropdownMenu /> — file rowKind (Plan 07-38 R7b)", () => {
   });
 });
 
+describe("<TreeRowDropdownMenu /> — note-row locked order + Open in split + Bookmark (CTX-02, D-13/D-17)", () => {
+  it("TestMenu_NoteRow_LockedOrder_OpenSplitRevealNewNoteBookmarkRenameDelete", () => {
+    render(
+      <TreeRowDropdownMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        onReveal={vi.fn()}
+        onOpenInSplit={vi.fn()}
+        isBookmarked={false}
+        onToggleBookmark={vi.fn()}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    const items = screen.getAllByRole("menuitem").map((el) => el.textContent);
+    const openIdx = items.findIndex((t) => t === "Open");
+    const splitIdx = items.findIndex((t) => t === "Open in split");
+    const revealIdx = items.findIndex((t) => t === "Show in file manager");
+    const newNoteIdx = items.findIndex((t) => t === "New note");
+    const bookmarkIdx = items.findIndex((t) => t === "Bookmark");
+    const renameIdx = items.findIndex((t) => t?.startsWith("Rename"));
+    const deleteIdx = items.findIndex((t) => t?.startsWith("Delete"));
+    expect(openIdx).toBeGreaterThanOrEqual(0);
+    expect(openIdx).toBeLessThan(splitIdx);
+    expect(splitIdx).toBeLessThan(revealIdx);
+    expect(revealIdx).toBeLessThan(newNoteIdx);
+    expect(newNoteIdx).toBeLessThan(bookmarkIdx);
+    expect(bookmarkIdx).toBeLessThan(renameIdx);
+    expect(renameIdx).toBeLessThan(deleteIdx);
+  });
+
+  it("TestMenu_NoteRow_Bookmark_ReadsBookmarkWhenNotBookmarked", () => {
+    render(
+      <TreeRowDropdownMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        isBookmarked={false}
+        onToggleBookmark={vi.fn()}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    expect(screen.getByText("Bookmark")).toBeInTheDocument();
+    expect(screen.queryByText("Remove bookmark")).toBeNull();
+  });
+
+  it("TestMenu_NoteRow_Bookmark_ReadsRemoveBookmarkWhenBookmarked", () => {
+    render(
+      <TreeRowDropdownMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        isBookmarked={true}
+        onToggleBookmark={vi.fn()}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    expect(screen.getByText("Remove bookmark")).toBeInTheDocument();
+    expect(screen.queryByText(/^Bookmark$/)).toBeNull();
+  });
+
+  it("TestMenu_NoteRow_OnOpenInSplit_Triggered", () => {
+    const onOpenInSplit = vi.fn();
+    render(
+      <TreeRowDropdownMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenInSplit={onOpenInSplit}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    fireEvent.click(screen.getByText("Open in split"));
+    expect(onOpenInSplit).toHaveBeenCalledTimes(1);
+  });
+
+  it("TestMenu_NoteRow_OnToggleBookmark_Triggered", () => {
+    const onToggleBookmark = vi.fn();
+    render(
+      <TreeRowDropdownMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        isBookmarked={false}
+        onToggleBookmark={onToggleBookmark}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    fireEvent.click(screen.getByText("Bookmark"));
+    expect(onToggleBookmark).toHaveBeenCalledTimes(1);
+  });
+
+  it("TestMenu_FolderRow_HasRevealBelowNewFolder (pre-existing, unchanged by this plan)", () => {
+    render(
+      <TreeRowDropdownMenu
+        rowKind="folder"
+        parentPath="projects"
+        onNewNote={vi.fn()}
+        onNewFolder={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        onReveal={vi.fn()}
+        open={true}
+      >
+        <button>trigger</button>
+      </TreeRowDropdownMenu>,
+    );
+    expect(screen.getByText("Show in file manager")).toBeInTheDocument();
+  });
+});
+
+describe("<TreeRowContextMenu /> — bulk-selection variant (D-19, selectionCount > 1)", () => {
+  it("TestMenu_Bulk_RendersExactlyFourItems_HidesRenameAndReveal", () => {
+    render(
+      <TreeRowContextMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        onReveal={vi.fn()}
+        selectionCount={3}
+        onBulkOpenTabs={vi.fn()}
+        onBulkOpenInSplit={vi.fn()}
+        onBulkBookmark={vi.fn()}
+        onBulkDelete={vi.fn()}
+      >
+        <div data-testid="row">row</div>
+      </TreeRowContextMenu>,
+    );
+    fireEvent.contextMenu(screen.getByTestId("row"));
+    expect(screen.getByText("Open (3 tabs)")).toBeInTheDocument();
+    expect(screen.getByText("Open in split")).toBeInTheDocument();
+    expect(screen.getByText("Bookmark 3 notes")).toBeInTheDocument();
+    expect(screen.getByText("Delete 3 notes")).toBeInTheDocument();
+    expect(screen.queryByText("Rename")).toBeNull();
+    expect(screen.queryByText("Show in file manager")).toBeNull();
+    expect(screen.queryByText("Open", { exact: true })).toBeNull();
+    expect(screen.queryByText("New note")).toBeNull();
+  });
+
+  it("TestMenu_Bulk_OnBulkOpenTabs_Triggered", () => {
+    const onBulkOpenTabs = vi.fn();
+    render(
+      <TreeRowContextMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        selectionCount={2}
+        onBulkOpenTabs={onBulkOpenTabs}
+      >
+        <div data-testid="row">row</div>
+      </TreeRowContextMenu>,
+    );
+    fireEvent.contextMenu(screen.getByTestId("row"));
+    fireEvent.click(screen.getByText("Open (2 tabs)"));
+    expect(onBulkOpenTabs).toHaveBeenCalledTimes(1);
+  });
+
+  it("TestMenu_Bulk_OnBulkOpenInSplit_Triggered", () => {
+    const onBulkOpenInSplit = vi.fn();
+    render(
+      <TreeRowContextMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        selectionCount={2}
+        onBulkOpenInSplit={onBulkOpenInSplit}
+      >
+        <div data-testid="row">row</div>
+      </TreeRowContextMenu>,
+    );
+    fireEvent.contextMenu(screen.getByTestId("row"));
+    fireEvent.click(screen.getByText("Open in split"));
+    expect(onBulkOpenInSplit).toHaveBeenCalledTimes(1);
+  });
+
+  it("TestMenu_Bulk_OnBulkBookmark_Triggered", () => {
+    const onBulkBookmark = vi.fn();
+    render(
+      <TreeRowContextMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        selectionCount={4}
+        onBulkBookmark={onBulkBookmark}
+      >
+        <div data-testid="row">row</div>
+      </TreeRowContextMenu>,
+    );
+    fireEvent.contextMenu(screen.getByTestId("row"));
+    fireEvent.click(screen.getByText("Bookmark 4 notes"));
+    expect(onBulkBookmark).toHaveBeenCalledTimes(1);
+  });
+
+  it("TestMenu_Bulk_OnBulkDelete_Triggered", () => {
+    const onBulkDelete = vi.fn();
+    render(
+      <TreeRowContextMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        selectionCount={4}
+        onBulkDelete={onBulkDelete}
+      >
+        <div data-testid="row">row</div>
+      </TreeRowContextMenu>,
+    );
+    fireEvent.contextMenu(screen.getByTestId("row"));
+    fireEvent.click(screen.getByText("Delete 4 notes"));
+    expect(onBulkDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("TestMenu_SelectionCountOne_RendersNormalSingleTargetMenu_NotBulk", () => {
+    render(
+      <TreeRowContextMenu
+        rowKind="note"
+        noteId="uuid-1"
+        parentPath=""
+        onOpen={vi.fn()}
+        onNewNote={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        selectionCount={1}
+      >
+        <div data-testid="row">row</div>
+      </TreeRowContextMenu>,
+    );
+    fireEvent.contextMenu(screen.getByTestId("row"));
+    expect(screen.getByText("Open", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText("Rename")).toBeInTheDocument();
+    expect(screen.queryByText(/Open \(\d+ tabs\)/)).toBeNull();
+  });
+});
+
 describe("<TreeRowContextMenu /> — right-click trigger", () => {
   it("TestMenu_RightClickTrigger", async () => {
     render(
