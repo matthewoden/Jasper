@@ -178,70 +178,79 @@ test.describe("@tags-rail Phase 30: right rail Tags tab", () => {
     await expect(searchInput).toHaveValue("tag:livetag");
   });
 
-  test("30-13: the right rail has exactly ONE collapse/reopen control, entirely within its own region, and it persists across reload", async ({
+  test("260721-cjt: collapsing the right rail leaves the editor flush with the right edge; the rightmost pane's tab bar carries the sole reopen toggle, and it persists across reload", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1512, height: 944 });
+    const VIEWPORT_WIDTH = 1512;
+    await page.setViewportSize({ width: VIEWPORT_WIDTH, height: 944 });
     const noteId = await apiCreateNote(
       page,
       jasper.baseURL,
-      "rail-single-control.md",
+      "rail-flush-collapse.md",
       "",
-      "# rail-single-control\n\nBody text for the 30-13 single-control UAT.\n",
+      "# rail-flush-collapse\n\nBody text for the 260721-cjt flush-collapse UAT.\n",
     );
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
     await openNoteFromTree(page, noteId);
 
-    // The old tab-bar rail toggle (TABUI-02) was removed in 30-13 — the tab
-    // strip must never carry a rail-open/close control, in either state.
+    // (1) Expanded (default): no tab-bar toggle; the rail's own header owns
+    // the sole collapse control (unchanged from 30-13).
     await expect(page.getByTestId("tab-strip-right-cluster")).toHaveCount(0);
-
     const tabRow = page.getByTestId("right-rail-tab-row");
     await expect(tabRow).toBeVisible({ timeout: 5_000 });
-
-    // Collapse via the rail's OWN control (inner-edge PanelRight button,
-    // mirroring SidebarTabRow's collapse button).
     const collapseBtn = tabRow.getByRole("button", { name: "Collapse panels" });
     await expect(collapseBtn).toBeVisible();
+
+    // (2) Collapse via the rail's own control — the rail unmounts ENTIRELY
+    // (no collapsed strip of any kind), and the editor becomes flush with
+    // the right window edge.
     await collapseBtn.click();
-
-    // The full rail unmounts; a slim collapsed strip with exactly ONE
-    // reopen control takes its place — never the tab bar.
     await expect(tabRow).toHaveCount(0, { timeout: 5_000 });
-    const collapsedStrip = page.getByTestId("right-rail-collapsed");
-    await expect(collapsedStrip).toBeVisible({ timeout: 5_000 });
-    const reopenBtn = collapsedStrip.getByRole("button", { name: "Show panels" });
+    await expect(page.getByTestId("right-rail-collapsed")).toHaveCount(0);
+    await expect(page.locator("aside")).toHaveCount(0);
+
+    const paneTree = page.getByTestId("pane-tree");
+    await expect
+      .poll(
+        async () => {
+          const box = await paneTree.boundingBox();
+          return box === null ? null : Math.round(box.x + box.width);
+        },
+        { timeout: 5_000 },
+      )
+      .toBeGreaterThanOrEqual(VIEWPORT_WIDTH - 2);
+
+    // (3) The rightmost pane's tab bar now shows exactly one reopen toggle
+    // — the sole rail-state affordance on the whole page.
+    const rightCluster = page.getByTestId("tab-strip-right-cluster");
+    await expect(rightCluster).toHaveCount(1);
+    const reopenBtn = rightCluster.getByRole("button", { name: "Show panels" });
     await expect(reopenBtn).toBeVisible();
+    await expect(page.getByRole("button", { name: /show panels/i })).toHaveCount(1);
 
-    // Exactly one "Show panels"/"Collapse panels" affordance exists on the
-    // whole page — no duplicate control in the tab bar.
-    await expect(
-      page.getByRole("button", { name: /show panels|collapse panels/i }),
-    ).toHaveCount(1);
-    await expect(page.getByTestId("tab-strip-right-cluster")).toHaveCount(0);
-
-    // Reopen via the rail's own control.
+    // (4) Click the tab-bar toggle — the rail reopens, the tab-bar cluster
+    // unmounts.
     await reopenBtn.click();
     await expect(tabRow).toBeVisible({ timeout: 5_000 });
-    await expect(collapsedStrip).toHaveCount(0);
+    await expect(rightCluster).toHaveCount(0);
 
-    // Re-collapse, then reload — the collapsed state (and single-control
-    // contract) must survive the reload.
-    await tabRow.getByRole("button", { name: "Collapse panels" }).click();
-    await expect(collapsedStrip).toBeVisible({ timeout: 5_000 });
+    // (5) Re-collapse, reload — collapsed state (and the flush/toggle
+    // contract) survives the reload.
+    await collapseBtn.click();
+    await expect(tabRow).toHaveCount(0, { timeout: 5_000 });
+    await expect(rightCluster).toHaveCount(1);
 
     await page.reload();
     await waitForConnected(page);
-    await expect(page.getByTestId("right-rail-collapsed")).toBeVisible({
+    await expect(page.getByTestId("right-rail-tab-row")).toHaveCount(0);
+    await expect(page.getByTestId("tab-strip-right-cluster")).toHaveCount(1, {
       timeout: 8_000,
     });
-    await expect(page.getByTestId("right-rail-tab-row")).toHaveCount(0);
-    await expect(page.getByTestId("tab-strip-right-cluster")).toHaveCount(0);
 
     // Leave the rail expanded for any subsequent test in this file.
     await page
-      .getByTestId("right-rail-collapsed")
+      .getByTestId("tab-strip-right-cluster")
       .getByRole("button", { name: "Show panels" })
       .click();
     await expect(page.getByTestId("right-rail-tab-row")).toBeVisible({

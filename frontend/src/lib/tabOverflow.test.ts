@@ -117,12 +117,13 @@ describe("computeHiddenTabIds", () => {
     ).toEqual(new Set());
   });
 
-  it("(g) drift guard: TabStrip's RESERVED matches its left-cluster arithmetic (30-13: right-cluster toggle removed)", () => {
+  it("(g) drift guard: TabStrip's RESERVED matches its left-cluster arithmetic (260721-cjt: right-cluster toggle is conditional)", () => {
     // Left cluster: 28 + 8 + 1 = 37. Strip chrome: 8 (padding) + 26 (new-tab
-    // button). The tab-bar right cluster (rail open/close toggle) was
-    // removed in 30-13 — the right rail now owns its own single
-    // collapse/reopen control entirely within its own region, so the tab
-    // strip no longer reserves space for a right-cluster toggle.
+    // button). RESERVED itself stays 71 and does NOT include the right
+    // cluster: the rail-reopen toggle is conditional (collapsed rail AND
+    // rightmost leaf only, 260721-cjt) and reserved dynamically inside the
+    // component's overflow-measurement effect (RIGHT_CLUSTER, subtracted
+    // only when the toggle actually renders), not baked into this constant.
     const leftCluster = 37;
     const expectedReserved = 8 + 26 + leftCluster;
 

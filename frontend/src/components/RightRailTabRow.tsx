@@ -18,7 +18,8 @@
  * The collapse control reuses the existing backlinksRailExpanded slice
  * (useTreeStore) — already persisted to localStorage by App.tsx — so no
  * new persistence or workspace.json field is introduced. Reopening a
- * collapsed rail is handled by TabStrip's existing "Show panels" button.
+ * collapsed rail (260721-cjt: the rail unmounts to 0 width when collapsed)
+ * is handled by the rightmost pane's own tab-bar toggle, not by this row.
  *
  * Also exports RightRailSubHeader — a small in-panel sub-header used below
  * the tab row by the active panel (ported from SectionHeader.tsx with the

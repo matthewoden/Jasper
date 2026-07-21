@@ -55,6 +55,7 @@ function renderStrip(overrides?: {
   activeTabId?: string | null;
   deletedTabIds?: Set<string>;
   forceHiddenTabIds?: Set<string>;
+  isRightmostLeaf?: boolean;
 }): Handlers {
   const handlers: Handlers = {
     onSelectTab: vi.fn(),
@@ -76,6 +77,7 @@ function renderStrip(overrides?: {
       deletedTabIds={overrides?.deletedTabIds ?? new Set()}
       titleForTab={titleForTab}
       forceHiddenTabIds={overrides?.forceHiddenTabIds}
+      isRightmostLeaf={overrides?.isRightmostLeaf}
       {...handlers}
     />,
   );
@@ -517,14 +519,13 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
   });
 });
 
-describe("<TabStrip /> right-hand cluster removed (30-13 gap closure)", () => {
-  // 30-13: the tab-bar "Show panels"/"Hide panels" toggle duplicated the
-  // right rail's own collapse/reopen control — owner UAT rejected two
-  // controls governing the same rail state. The right rail now owns its
-  // SINGLE open/close affordance entirely within its own region (header
-  // collapse button when expanded, collapsed-strip reopen button when
-  // collapsed — see RightRail.tsx/RightRailTabRow.tsx). The tab strip must
-  // never render a rail toggle in either state.
+describe("<TabStrip /> right-hand cluster — state-dependent rail toggle (260721-cjt)", () => {
+  // 260721-cjt: collapsing the right rail now unmounts it entirely (flush
+  // editor, 0 width) instead of leaving a collapsed strip, so the reopen
+  // affordance moved into the tab bar's right cluster — but ONLY on the
+  // rightmost leaf's strip, and ONLY while the rail is collapsed. Expanded
+  // rail: the rail's own header owns the sole collapse control; the tab
+  // strip carries nothing (unchanged from 30-13).
   beforeEach(() => {
     useTreeStore.setState({
       notesSidebarVisible: true,
@@ -532,23 +533,42 @@ describe("<TabStrip /> right-hand cluster removed (30-13 gap closure)", () => {
     });
   });
 
-  it("no rail toggle button in the tab strip when backlinksRailExpanded is true", () => {
+  it("expanded (any leaf): no tab-strip-right-cluster, no 'Show panels' button", () => {
     useTreeStore.setState({ backlinksRailExpanded: true });
-    renderStrip();
-    expect(
-      screen.queryByRole("button", { name: /hide panels|show panels/i }),
-    ).toBeNull();
+    renderStrip({ isRightmostLeaf: true });
+    expect(screen.queryByTestId("tab-strip-right-cluster")).toBeNull();
+    expect(screen.queryByRole("button", { name: /show panels/i })).toBeNull();
   });
 
-  it("no rail toggle button in the tab strip when backlinksRailExpanded is false", () => {
+  it("expanded, non-rightmost leaf: no tab-strip-right-cluster either", () => {
+    useTreeStore.setState({ backlinksRailExpanded: true });
+    renderStrip({ isRightmostLeaf: false });
+    expect(screen.queryByTestId("tab-strip-right-cluster")).toBeNull();
+  });
+
+  it("collapsed + rightmost leaf: exactly ONE tab-strip-right-cluster with a 'Show panels' button", () => {
     useTreeStore.setState({ backlinksRailExpanded: false });
-    renderStrip();
-    expect(
-      screen.queryByRole("button", { name: /hide panels|show panels/i }),
-    ).toBeNull();
+    renderStrip({ isRightmostLeaf: true });
+    expect(screen.getAllByTestId("tab-strip-right-cluster")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Show panels" })).toBeInTheDocument();
   });
 
-  it("no tab-strip-right-cluster testid in either rail state", () => {
+  it("collapsed + rightmost leaf: clicking 'Show panels' calls setBacklinksRailExpanded(true)", () => {
+    useTreeStore.setState({ backlinksRailExpanded: false });
+    renderStrip({ isRightmostLeaf: true });
+    fireEvent.click(screen.getByRole("button", { name: "Show panels" }));
+    expect(useTreeStore.getState().backlinksRailExpanded).toBe(true);
+  });
+
+  it("collapsed + NOT rightmost leaf: no toggle renders", () => {
+    useTreeStore.setState({ backlinksRailExpanded: false });
+    renderStrip({ isRightmostLeaf: false });
+    expect(screen.queryByTestId("tab-strip-right-cluster")).toBeNull();
+    expect(screen.queryByRole("button", { name: /show panels/i })).toBeNull();
+  });
+
+  it("collapsed, isRightmostLeaf undefined (default false): no toggle renders", () => {
+    useTreeStore.setState({ backlinksRailExpanded: false });
     renderStrip();
     expect(screen.queryByTestId("tab-strip-right-cluster")).toBeNull();
   });
@@ -597,6 +617,31 @@ describe("<TabStrip /> right-hand cluster removed (30-13 gap closure)", () => {
     );
     expect(screen.queryByTestId("tab-strip-right-cluster")).toBeNull();
     expect(screen.queryByTestId("tab-strip-left-cluster")).toBeNull();
+  });
+
+  it("zero-tab empty state STILL shows the toggle when collapsed + rightmost leaf", () => {
+    useTreeStore.setState({ backlinksRailExpanded: false });
+    render(
+      <TabStrip
+        leafId={LEAF_ID}
+        tabs={[]}
+        activeTabId={null}
+        deletedTabIds={new Set()}
+        titleForTab={titleForTab}
+        onSelectTab={vi.fn()}
+        onRequestClose={vi.fn()}
+        onCloseOthers={vi.fn()}
+        onCloseToRight={vi.fn()}
+        onCloseAll={vi.fn()}
+        onOpenRight={vi.fn()}
+        onTogglePin={vi.fn()}
+        onReorder={vi.fn()}
+        onNewTab={vi.fn()}
+        onCycleTab={vi.fn()}
+        isRightmostLeaf
+      />,
+    );
+    expect(screen.getByTestId("tab-strip-right-cluster")).toBeInTheDocument();
   });
 });
 
