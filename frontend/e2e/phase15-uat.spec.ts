@@ -30,6 +30,7 @@ import * as path from "node:path";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
+import { openNoteFromTree, noteRow } from "./helpers/openNoteFromTree";
 
 // ─── Shared helpers (single-vault path) ──────────────────────────────────────
 
@@ -98,17 +99,6 @@ function tabStrip(page: Page): Locator {
 /** All tab pills currently rendered in the strip (excludes overflow-hidden). */
 function tabPills(page: Page): Locator {
   return tabStrip(page).getByRole("tab");
-}
-
-function noteRow(page: Page, id: string): Locator {
-  return page.locator(`[data-tree-row="${id}"][data-tree-row-kind="note"]`);
-}
-
-/** Open a tree note by clicking its row; waits for the row to be visible first. */
-async function openNoteFromTree(page: Page, id: string): Promise<void> {
-  const row = noteRow(page, id);
-  await expect(row).toBeVisible({ timeout: 10_000 });
-  await row.click();
 }
 
 // ─── TAB-01/02 — open + dedup + active switch ────────────────────────────────

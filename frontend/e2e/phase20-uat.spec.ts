@@ -25,6 +25,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
+import { openNoteFromTree } from "./helpers/openNoteFromTree";
 
 async function waitForConnected(page: Page, baseURL: string): Promise<void> {
   await page.goto(baseURL);
@@ -58,17 +59,6 @@ async function setNoteContent(
     body: JSON.stringify({ content }),
   });
   if (!resp.ok) throw new Error(`set content ${id}: ${resp.status}`);
-}
-
-function noteRow(page: Page, id: string) {
-  return page.locator(`[data-tree-row="${id}"][data-tree-row-kind="note"]`);
-}
-
-/** Open a tree note by clicking its row; waits for the row to be visible first. */
-async function openNoteFromTree(page: Page, id: string): Promise<void> {
-  const row = noteRow(page, id);
-  await expect(row).toBeVisible({ timeout: 10_000 });
-  await row.click();
 }
 
 function tabStrip(page: Page) {

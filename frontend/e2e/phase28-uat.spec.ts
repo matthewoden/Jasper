@@ -35,6 +35,7 @@ import { fileURLToPath } from "url";
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 import { waitForConnected, apiCreateNote } from "./helpers/phase7Helpers";
+import { openNoteFromTree } from "./helpers/openNoteFromTree";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,17 +57,6 @@ async function pressCmdO(page: Page): Promise<void> {
 /** Press the retired unified-palette shortcut (Cmd/Ctrl+K) — QUICK-04 expects a no-op. */
 async function pressCmdK(page: Page): Promise<void> {
   await page.keyboard.press(`${MOD}+k`);
-}
-
-function noteRow(page: Page, id: string): Locator {
-  return page.locator(`[data-tree-row="${id}"][data-tree-row-kind="note"]`);
-}
-
-/** Open a tree note by clicking its row; waits for the row to be visible first. */
-async function openNoteFromTree(page: Page, id: string): Promise<void> {
-  const row = noteRow(page, id);
-  await expect(row).toBeVisible({ timeout: 10_000 });
-  await row.click();
 }
 
 /** All leaf panes currently rendered (mirrors phase26-divider-uat.spec.ts's selector contract). */
