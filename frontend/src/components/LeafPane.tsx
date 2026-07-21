@@ -15,8 +15,12 @@
  * A pane becomes active on a click anywhere in its chrome (tab strip,
  * breadcrumb, or body) OR on focus entering it (D-04); the active leaf
  * carries `data-active-pane`. Every pane renders at full opacity — the
- * earlier inactive-pane dim was removed for readability, and a pane-level
- * active cue was dropped for now (may be revisited).
+ * earlier inactive-pane dim was removed for readability and is NOT
+ * reintroduced. In a MULTI-pane layout (`multi`), the active pane also
+ * carries a 1px inset accent outline at 35% opacity (folded todo D-27/D-28,
+ * Phase 30) — corrected from an earlier 50%-opacity trial (260718-n6a) that
+ * the owner found distracting; a single-pane layout shows no cue (nothing to
+ * disambiguate).
  *
  * Per-tab `flushRef`/`editorHandlersRef` bookkeeping mirrors the pre-Phase-25
  * `App.tsx:239-266` pattern (TAB-13 close-flush contract), scoped to this
@@ -89,6 +93,8 @@ export interface LeafPaneProps {
   leaf: LeafNode;
   /** Whether THIS leaf is usePaneStore's activePaneId (D-04 click-to-focus target). */
   isActive: boolean;
+  /** Whether the layout currently has more than one leaf (D-27/D-28, Phase 30) — gates the active-pane inset accent outline off single-pane layouts. Defaults false. */
+  multi?: boolean;
   reindexing: boolean;
   deletedTabIds: Set<string>;
   /** Derived from useFileTree by note UUID (TAB-12 live rename) — shared across every leaf. */
@@ -97,7 +103,10 @@ export interface LeafPaneProps {
   onRequestClose: (leafId: string, tabId: string) => void;
   onCloseOthers: (leafId: string, tabId: string) => void;
   onCloseToRight: (leafId: string, tabId: string) => void;
+  onCloseAll: (leafId: string) => void;
   onOpenRight: (leafId: string, tabId: string) => void;
+  /** Pin/unpin a tab (D-14). Threaded to the tab-menu invocation site; ignored until Plan 07 renders the menu item. */
+  onTogglePin: (leafId: string, tabId: string) => void;
   /** Create a new untitled note and open it in THIS leaf (TAB-14, + button / ⌥T). */
   onNewTab: (leafId: string) => void;
   autosaveMs?: number;
@@ -111,13 +120,16 @@ export interface LeafPaneProps {
 export function LeafPane({
   leaf,
   isActive,
+  multi = false,
   reindexing,
   deletedTabIds,
   titleForTab,
   onRequestClose,
   onCloseOthers,
   onCloseToRight,
+  onCloseAll,
   onOpenRight,
+  onTogglePin,
   onNewTab,
   autosaveMs,
   hideTabStrip,
@@ -190,9 +202,14 @@ export function LeafPane({
     (tabId: string) => onCloseToRight(leafId, tabId),
     [leafId, onCloseToRight],
   );
+  const handleCloseAll = useCallback(() => onCloseAll(leafId), [leafId, onCloseAll]);
   const handleOpenRight = useCallback(
     (tabId: string) => onOpenRight(leafId, tabId),
     [leafId, onOpenRight],
+  );
+  const handleTogglePin = useCallback(
+    (tabId: string) => onTogglePin(leafId, tabId),
+    [leafId, onTogglePin],
   );
   const handleNewTab = useCallback(() => onNewTab(leafId), [leafId, onNewTab]);
 
@@ -386,6 +403,16 @@ export function LeafPane({
         width: "100%",
         overflow: "hidden",
         position: "relative",
+        // D-27/D-28 (Phase 30): the active pane in a split shows a 1px inset
+        // accent outline at 35% opacity — corrected from the rejected 50%
+        // trial (260718-n6a). Single-pane layouts (multi=false) show none;
+        // inactive panes in a split show no dimming (readability, unchanged).
+        ...(isActive && multi
+          ? {
+              boxShadow:
+                "inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 35%, transparent)",
+            }
+          : {}),
         ...style,
       }}
     >
@@ -400,7 +427,9 @@ export function LeafPane({
           onRequestClose={handleRequestClose}
           onCloseOthers={handleCloseOthers}
           onCloseToRight={handleCloseToRight}
+          onCloseAll={handleCloseAll}
           onOpenRight={handleOpenRight}
+          onTogglePin={handleTogglePin}
           onReorder={handleReorder}
           onNewTab={handleNewTab}
           onCycleTab={handleCycleTab}

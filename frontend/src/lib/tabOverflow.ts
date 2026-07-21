@@ -104,3 +104,28 @@ export function computeDropIndex(input: DropIndexInput): number {
   const prevFullIdx = tabIds.findIndex((id) => id === prevVisibleId);
   return prevFullIdx === -1 ? 0 : prevFullIdx + 1;
 }
+
+/**
+ * clampIndexToPinnedBoundary — enforces the pinned/unpinned region boundary
+ * (D-15/D-16) on any computed insertion index (drag drop-index, foreign-strip
+ * insert, or "New note to the right"). `pinnedCount` is the number of OTHER
+ * pinned tabs already in the TARGET leaf — i.e. NOT counting the tab being
+ * moved, whether or not it is currently a member of that leaf. Under that
+ * convention the boundary is symmetric: a pinned mover must land at or before
+ * the boundary (`<= pinnedCount`, becoming the newest last-pinned tab), and
+ * an unpinned mover must land at or after it (`>= pinnedCount`) — an unpinned
+ * tab can never land inside the pinned region, and a pinned tab can never
+ * land outside it. A sentinel `-1` (no valid drop target) passes through
+ * unchanged — clamping only applies to a real index.
+ */
+export function clampIndexToPinnedBoundary(
+  index: number,
+  pinnedCount: number,
+  draggedIsPinned: boolean,
+): number {
+  if (index === -1) return index;
+  if (draggedIsPinned) {
+    return Math.min(index, pinnedCount);
+  }
+  return Math.max(index, pinnedCount);
+}

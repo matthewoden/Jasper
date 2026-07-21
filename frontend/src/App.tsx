@@ -42,10 +42,10 @@ import { useVaultSwitch } from "./lib/useVaultSwitch";
 import { VaultSwitchOverlay } from "./components/VaultSwitchOverlay";
 import { useTreeStore } from "./lib/useTreeStore";
 import { useBookmarks } from "./lib/useBookmarks";
-import type { Tab } from "./lib/useTabStore";
 import { usePaneStore, pruneLayoutForMissingNotes } from "./lib/usePaneStore";
 import * as searchHistory from "./lib/searchHistory";
-import { _findLeaf, _updLeaf, newTabId } from "./lib/paneTree";
+import { _findLeaf } from "./lib/paneTree";
+import { openNoteInLeaf } from "./lib/openNoteInLeaf";
 import { getOrCreateController } from "./lib/noteBufferController";
 import { useTreeMutations } from "./lib/useTreeMutations";
 import {
@@ -95,27 +95,6 @@ function findNoteTitle(
     }
   }
   return null;
-}
-
-/**
- * Opens noteId as a tab in the given leaf (not necessarily the active pane) —
- * a leaf-targeted sibling of usePaneStore's own openInActivePane, needed by
- * per-leaf "open to the right" / "new tab" context actions (D-16/D-17 dedup
- * rules apply identically, just scoped to an explicit leafId).
- */
-function openNoteInLeaf(leafId: string, noteId: string): void {
-  const { tree } = usePaneStore.getState();
-  const leaf = _findLeaf(tree, leafId);
-  if (!leaf) return;
-  const existing = leaf.tabs.find((t) => t.noteId === noteId);
-  if (existing) {
-    usePaneStore.setState({ tree: _updLeaf(tree, leafId, { active: existing.id }) });
-    return;
-  }
-  const tab: Tab = { id: newTabId(), noteId };
-  usePaneStore.setState({
-    tree: _updLeaf(tree, leafId, { tabs: [...leaf.tabs, tab], active: tab.id }),
-  });
 }
 
 /** Collect every note UUID present in the tree (for tab pruning). */
@@ -479,7 +458,10 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       void (async () => {
         const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
         if (!leaf) return;
-        const targets = leaf.tabs.filter((t) => t.id !== tabId).map((t) => t.id);
+        const targets = leaf.tabs
+          .filter((t) => t.id !== tabId)
+          .filter((t) => !t.pinned)
+          .map((t) => t.id);
         for (const id of targets) {
           try {
             await flushAndCloseInLeaf(leafId, id);
@@ -499,7 +481,31 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         if (!leaf) return;
         const idx = leaf.tabs.findIndex((t) => t.id === tabId);
         if (idx === -1) return;
-        const targets = leaf.tabs.slice(idx + 1).map((t) => t.id);
+        const targets = leaf.tabs
+          .slice(idx + 1)
+          .filter((t) => !t.pinned)
+          .map((t) => t.id);
+        for (const id of targets) {
+          try {
+            await flushAndCloseInLeaf(leafId, id);
+          } catch {
+            return;
+          }
+        }
+      })();
+    },
+    [flushAndCloseInLeaf],
+  );
+
+  // closeAllInLeaf — closes every non-pinned tab in the leaf (D-14: pinned
+  // tabs are immune to every bulk-close path), mirroring closeOthersInLeaf's
+  // sequential flush-then-close loop verbatim.
+  const closeAllInLeaf = useCallback(
+    (leafId: string): void => {
+      void (async () => {
+        const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
+        if (!leaf) return;
+        const targets = leaf.tabs.filter((t) => !t.pinned).map((t) => t.id);
         for (const id of targets) {
           try {
             await flushAndCloseInLeaf(leafId, id);
@@ -524,7 +530,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       void (async () => {
         try {
           const created = await createNote(parent, uniqueUntitledTitle(parent));
-          openNoteInLeaf(leafId, created.id);
+          openNoteInLeaf(leafId, created.id, tabId);
         } catch {
           // Creation failures surface via the shared tree-mutation toast path;
           // nothing tab-specific to recover here.
@@ -814,7 +820,11 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
           }
           onCloseOthers={closeOthersInLeaf}
           onCloseToRight={closeToRightInLeaf}
+          onCloseAll={closeAllInLeaf}
           onOpenRight={openRightInLeaf}
+          onTogglePin={(leafId, tabId) =>
+            usePaneStore.getState().togglePinTab(leafId, tabId)
+          }
           onNewTab={newTabInLeaf}
           hideTabStrip={zen}
           autosaveMs={config?.editor.autosaveMs ?? 2000}

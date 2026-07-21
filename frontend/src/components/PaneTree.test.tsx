@@ -18,6 +18,12 @@ import { render, screen, fireEvent, cleanup, act } from "@testing-library/react"
 import { PaneTree } from "./PaneTree";
 import { usePaneStore } from "../lib/usePaneStore";
 import { useTreeStore } from "../lib/useTreeStore";
+
+// PaneTree nests TabStrip, which now calls useToast() (D-14 pinned refuse
+// toast) — stub it so no render site here needs a real <ToastProvider>.
+vi.mock("./toast.utils", () => ({
+  useToast: () => ({ toast: vi.fn() }),
+}));
 import type { LeafNode, PaneNode } from "../lib/paneTree";
 import type { Tab } from "../lib/useTabStore";
 
@@ -52,7 +58,9 @@ function renderTree(overrides?: { tree?: PaneNode; activePaneId?: string }) {
       onRequestClose={vi.fn()}
       onCloseOthers={vi.fn()}
       onCloseToRight={vi.fn()}
+      onCloseAll={vi.fn()}
       onOpenRight={vi.fn()}
+      onTogglePin={vi.fn()}
       onNewTab={vi.fn()}
     />,
   );
@@ -118,6 +126,15 @@ describe("<PaneTree /> two-leaf render", () => {
     const noteIds = stubs.map((s) => s.dataset.noteId).sort();
     expect(noteIds).toEqual(["note-a", "note-b"]);
   });
+
+  it("D-27/D-28: in a two-leaf split, the active leaf carries the inset accent box-shadow and the inactive one does not", () => {
+    renderTree({ activePaneId: "leaf-a" });
+    const leaves = screen.getAllByTestId("leaf-pane");
+    const active = leaves.find((el) => el.dataset.activePane === "true")!;
+    const inactive = leaves.find((el) => el.dataset.activePane === "false")!;
+    expect(active.style.boxShadow).toContain("inset 0 0 0 1px");
+    expect(inactive.style.boxShadow).toBe("");
+  });
 });
 
 describe("<PaneTree /> divider accessibility (WR-01) and text-selection guard (WR-02)", () => {
@@ -173,6 +190,13 @@ describe("<PaneTree /> single-leaf render (no split)", () => {
     renderTree({ tree: leafA, activePaneId: "leaf-a" });
     expect(screen.getAllByTestId("leaf-pane")).toHaveLength(1);
     expect(screen.queryByTestId("pane-divider")).not.toBeInTheDocument();
+  });
+
+  it("D-27/D-28: a single-pane layout shows no active-pane inset cue, even though it is trivially active", () => {
+    renderTree({ tree: leafA, activePaneId: "leaf-a" });
+    const leaf = screen.getByTestId("leaf-pane");
+    expect(leaf.dataset.activePane).toBe("true");
+    expect(leaf.style.boxShadow).toBe("");
   });
 });
 

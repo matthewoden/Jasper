@@ -17,7 +17,7 @@
  */
 import { useState, forwardRef } from "react";
 import type { CSSProperties, HTMLAttributes } from "react";
-import { X, FileText } from "lucide-react";
+import { X, FileText, Pin } from "lucide-react";
 import { MIN_TAB_WIDTH, MAX_TAB_WIDTH } from "../lib/tabOverflow";
 
 export interface TabPillProps {
@@ -36,6 +36,15 @@ export interface TabPillProps {
   onClose: () => void;
   /** Dim the pill while it is being dragged. NOT forwarded to the DOM. */
   isDragging?: boolean;
+  /**
+   * Pinned tabs (D-14/D-15, Phase 30): the trailing close-× slot renders a
+   * Pin glyph instead. Defaults false so every pre-existing caller keeps the
+   * original close-× behavior unchanged.
+   */
+  isPinned?: boolean;
+  /** Fired when the pin glyph is clicked directly — refuses the close and
+   *  surfaces a toast, rather than closing the tab. Required when isPinned. */
+  onPinnedClickRefused?: () => void;
 }
 
 // Passthrough: arbitrary DOM attributes Radix injects (onPointerDown, onContextMenu,
@@ -106,6 +115,8 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
       onSelect,
       onClose,
       isDragging = false,
+      isPinned = false,
+      onPinnedClickRefused,
       ...rest
     },
     ref,
@@ -177,18 +188,34 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
             {title}
           </span>
         )}
-        <button
-          type="button"
-          aria-label={`Close ${title}`}
-          onClick={(e) => {
-            // stopPropagation so closing the tab never also selects it.
-            e.stopPropagation();
-            onClose();
-          }}
-          style={closeButtonStyle}
-        >
-          <X size={12} aria-hidden="true" />
-        </button>
+        {isPinned ? (
+          <button
+            type="button"
+            aria-label="Pinned tab — right-click to unpin"
+            title="Pinned tab"
+            onClick={(e) => {
+              // stopPropagation so the refuse-click never also selects the tab.
+              e.stopPropagation();
+              onPinnedClickRefused?.();
+            }}
+            style={closeButtonStyle}
+          >
+            <Pin size={12} aria-hidden="true" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-label={`Close ${title}`}
+            onClick={(e) => {
+              // stopPropagation so closing the tab never also selects it.
+              e.stopPropagation();
+              onClose();
+            }}
+            style={closeButtonStyle}
+          >
+            <X size={12} aria-hidden="true" />
+          </button>
+        )}
       </div>
     );
   },

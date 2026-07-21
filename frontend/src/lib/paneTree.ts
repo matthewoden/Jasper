@@ -188,7 +188,10 @@ export function splitWithTab(
 /**
  * Appends `tab` to the target leaf's tabs and activates it. Per-leaf dedup
  * (D-07): if the target leaf already holds a tab with the same `noteId`,
- * activates that existing tab instead of adding a duplicate.
+ * activates that existing tab instead of adding a duplicate. A PINNED `tab`
+ * (D-15) does not append past the leaf's unpinned tabs — it lands at the end
+ * of the target leaf's own pinned group instead, so a cross-pane center-drop
+ * of a pinned tab never breaks the left-grouped invariant.
  *
  * Returns the tree unchanged if `targetLeafId` is not found.
  */
@@ -198,6 +201,11 @@ export function moveTab(tree: PaneNode, targetLeafId: string, tab: Tab): PaneNod
   const existing = leaf.tabs.find((t) => t.noteId === tab.noteId);
   if (existing) {
     return _updLeaf(tree, targetLeafId, { active: existing.id });
+  }
+  if (tab.pinned) {
+    const boundary = leaf.tabs.filter((t) => t.pinned).length;
+    const tabs = [...leaf.tabs.slice(0, boundary), tab, ...leaf.tabs.slice(boundary)];
+    return _updLeaf(tree, targetLeafId, { tabs, active: tab.id });
   }
   return _updLeaf(tree, targetLeafId, { tabs: [...leaf.tabs, tab], active: tab.id });
 }
@@ -268,6 +276,26 @@ export function depthAtLeaf(tree: PaneNode, leafId: string): number {
     return walk(node.a, depth + 1) ?? walk(node.b, depth + 1);
   }
   return walk(tree, 0) ?? 0;
+}
+
+/**
+ * Flips a tab's `pinned` flag and repositions it to the pinned/unpinned
+ * boundary (D-14) so pinned tabs stay auto-grouped at the left of the strip
+ * regardless of where the toggle was invoked from. Both directions land at
+ * the SAME index — the count of the tab's new sibling group (other pinned
+ * tabs when pinning, i.e. the tab becomes the last pinned tab; other pinned
+ * tabs when unpinning too, since that index is exactly where the unpinned
+ * group begins). Returns `tabs` unchanged (same reference) if `tabId` is not
+ * found, so callers can cheaply detect a no-op.
+ */
+export function togglePinInTabs(tabs: Tab[], tabId: string): Tab[] {
+  const idx = tabs.findIndex((t) => t.id === tabId);
+  if (idx === -1) return tabs;
+  const target = tabs[idx];
+  const updated: Tab = { ...target, pinned: !target.pinned };
+  const withoutTarget = [...tabs.slice(0, idx), ...tabs.slice(idx + 1)];
+  const boundary = withoutTarget.filter((t) => t.pinned).length;
+  return [...withoutTarget.slice(0, boundary), updated, ...withoutTarget.slice(boundary)];
 }
 
 /** Locates the leaf with the given id, or null if absent. */

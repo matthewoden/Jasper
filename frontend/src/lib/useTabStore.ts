@@ -25,6 +25,11 @@ export interface Tab {
   // would mean decoupling id from noteId and re-resolving content per tab.
   id: string;
   noteId: string;
+  // Pinned tabs (D-14/D-15/D-16, Phase 30): auto-group at the strip's left
+  // edge, skip every bulk-close path, and refuse a direct close (pin glyph
+  // replaces the close-×). Optional/undefined means "not pinned" — the vast
+  // majority of tabs never set this field.
+  pinned?: boolean;
 }
 
 export interface TabStore {

@@ -8,6 +8,7 @@ import { describe, it, expect } from "vitest";
 import {
   computeHiddenTabIds,
   computeDropIndex,
+  clampIndexToPinnedBoundary,
   MIN_TAB_WIDTH,
   MAX_TAB_WIDTH,
 } from "./tabOverflow";
@@ -211,5 +212,33 @@ describe("computeDropIndex", () => {
     expect(
       computeDropIndex({ tabIds: [], visibleTabIds: [], targetId: null }),
     ).toBe(0);
+  });
+});
+
+describe("clampIndexToPinnedBoundary (D-15/D-16 pinned-region drag/insert clamp)", () => {
+  it("an UNPINNED mover's index is clamped to >= pinnedCount (never lands inside the pinned region)", () => {
+    // Wants to land at index 1 (inside a 3-tab pinned group) — must clamp up to 3.
+    expect(clampIndexToPinnedBoundary(1, 3, false)).toBe(3);
+    // Already at/after the boundary — passes through unchanged.
+    expect(clampIndexToPinnedBoundary(3, 3, false)).toBe(3);
+    expect(clampIndexToPinnedBoundary(5, 3, false)).toBe(5);
+  });
+
+  it("a PINNED mover's index is clamped to <= pinnedCount (never lands outside the pinned region)", () => {
+    // Wants to land at index 5 (well past a 2-tab pinned group) — must clamp down to 2.
+    expect(clampIndexToPinnedBoundary(5, 2, true)).toBe(2);
+    // Already within the pinned region — passes through unchanged.
+    expect(clampIndexToPinnedBoundary(0, 2, true)).toBe(0);
+    expect(clampIndexToPinnedBoundary(2, 2, true)).toBe(2);
+  });
+
+  it("pinnedCount 0 (no pinned tabs): unpinned is never clamped, pinned is always forced to 0", () => {
+    expect(clampIndexToPinnedBoundary(4, 0, false)).toBe(4);
+    expect(clampIndexToPinnedBoundary(4, 0, true)).toBe(0);
+  });
+
+  it("the -1 sentinel (no valid drop target) passes through unchanged for both directions", () => {
+    expect(clampIndexToPinnedBoundary(-1, 3, false)).toBe(-1);
+    expect(clampIndexToPinnedBoundary(-1, 3, true)).toBe(-1);
   });
 });

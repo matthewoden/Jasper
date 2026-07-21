@@ -20,6 +20,12 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
 import { usePaneDragStore } from "../lib/usePaneDragStore";
 
+// TabStrip now calls useToast() (pinned-tab refuse-click toast, D-14) — stub
+// it so every render site in this file doesn't need a real <ToastProvider>.
+vi.mock("./toast.utils", () => ({
+  useToast: () => ({ toast: vi.fn() }),
+}));
+
 const tabs: Tab[] = [
   { id: "a", noteId: "a" },
   { id: "b", noteId: "b" },
@@ -35,7 +41,9 @@ interface Handlers {
   onRequestClose: ReturnType<typeof vi.fn>;
   onCloseOthers: ReturnType<typeof vi.fn>;
   onCloseToRight: ReturnType<typeof vi.fn>;
+  onCloseAll: ReturnType<typeof vi.fn>;
   onOpenRight: ReturnType<typeof vi.fn>;
+  onTogglePin: ReturnType<typeof vi.fn>;
   onReorder: ReturnType<typeof vi.fn>;
   onNewTab: ReturnType<typeof vi.fn>;
   onCycleTab: ReturnType<typeof vi.fn>;
@@ -53,7 +61,9 @@ function renderStrip(overrides?: {
     onRequestClose: vi.fn(),
     onCloseOthers: vi.fn(),
     onCloseToRight: vi.fn(),
+    onCloseAll: vi.fn(),
     onOpenRight: vi.fn(),
+    onTogglePin: vi.fn(),
     onReorder: vi.fn(),
     onNewTab: vi.fn(),
     onCycleTab: vi.fn(),
@@ -106,7 +116,9 @@ describe("<TabStrip /> rendering (Task 1)", () => {
         onRequestClose={vi.fn()}
         onCloseOthers={vi.fn()}
         onCloseToRight={vi.fn()}
+        onCloseAll={vi.fn()}
         onOpenRight={vi.fn()}
+        onTogglePin={vi.fn()}
         onReorder={vi.fn()}
         onNewTab={onNewTab}
         onCycleTab={vi.fn()}
@@ -129,7 +141,9 @@ describe("<TabStrip /> rendering (Task 1)", () => {
         onRequestClose={vi.fn()}
         onCloseOthers={vi.fn()}
         onCloseToRight={vi.fn()}
+        onCloseAll={vi.fn()}
         onOpenRight={vi.fn()}
+        onTogglePin={vi.fn()}
         onReorder={vi.fn()}
         onNewTab={vi.fn()}
         onCycleTab={vi.fn()}
@@ -153,7 +167,9 @@ describe("<TabStrip /> rendering (Task 1)", () => {
         onRequestClose={vi.fn()}
         onCloseOthers={vi.fn()}
         onCloseToRight={vi.fn()}
+        onCloseAll={vi.fn()}
         onOpenRight={vi.fn()}
+        onTogglePin={vi.fn()}
         onReorder={vi.fn()}
         onNewTab={onNewTab}
         onCycleTab={vi.fn()}
@@ -441,7 +457,9 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
       onRequestClose: vi.fn(),
       onCloseOthers: vi.fn(),
       onCloseToRight: vi.fn(),
+      onCloseAll: vi.fn(),
       onOpenRight: vi.fn(),
+      onTogglePin: vi.fn(),
       onReorder: vi.fn(),
       onNewTab: vi.fn(),
       onCycleTab: vi.fn(),
@@ -557,7 +575,9 @@ describe("<TabStrip /> right-hand cluster (Plan 18-02 — relocated per D-04)", 
         onRequestClose={vi.fn()}
         onCloseOthers={vi.fn()}
         onCloseToRight={vi.fn()}
+        onCloseAll={vi.fn()}
         onOpenRight={vi.fn()}
+        onTogglePin={vi.fn()}
         onReorder={vi.fn()}
         onNewTab={vi.fn()}
         onCycleTab={vi.fn()}
@@ -579,7 +599,9 @@ describe("<TabStrip /> collapsed-sidebar reopen cell (Phase 27 NAV-03)", () => {
     onRequestClose: vi.fn(),
     onCloseOthers: vi.fn(),
     onCloseToRight: vi.fn(),
+    onCloseAll: vi.fn(),
     onOpenRight: vi.fn(),
+    onTogglePin: vi.fn(),
     onReorder: vi.fn(),
     onNewTab: vi.fn(),
     onCycleTab: vi.fn(),
