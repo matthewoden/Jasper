@@ -216,7 +216,7 @@ vi.mock("@tanstack/react-virtual", () => ({
   })),
 }));
 
-import App, { AppShell, openNoteInLeaf } from "./App";
+import App, { AppShell } from "./App";
 import {
   handleAppCmdB,
   handleAppCmdI,
@@ -1591,86 +1591,10 @@ describe("closeOthersInLeaf / closeToRightInLeaf skip pinned tabs (D-14, Phase 3
 });
 
 
-// Test (30-02 Task 2): "New note to the right" (openNoteInLeaf, invoked by
-// openRightInLeaf) must clamp its insertion index to the pinned/unpinned
-// boundary (D-16) — a freshly created (always-unpinned) tab can never land
-// inside the pinned group, even when invoked on a pinned tab with more
-// pinned tabs after it. openNoteInLeaf is synchronous and store-only (no
-// React/async dependency), so it is exercised directly rather than through
-// the full create-note async flow.
-describe("openNoteInLeaf clamps insertion to the pinned boundary (D-16, Phase 30)", () => {
-  beforeEach(() => {
-    usePaneStore.getState().clearAll();
-  });
-
-  afterEach(() => {
-    usePaneStore.getState().clearAll();
-  });
-
-  it("invoked on a pinned tab with another pinned tab after it: the new tab lands AFTER the whole pinned group, not between the two pinned tabs", () => {
-    const leafId = usePaneStore.getState().activePaneId;
-    usePaneStore.setState({
-      tree: {
-        t: "leaf",
-        id: leafId,
-        tabs: [
-          { id: "p1", noteId: "p1", pinned: true },
-          { id: "p2", noteId: "p2", pinned: true },
-          { id: "u1", noteId: "u1" },
-        ],
-        active: "p1",
-      },
-    });
-
-    // "New note to the right" invoked on "p1" (afterTabId="p1") — naive
-    // "insert right after p1" would land the new tab AT index 1, between
-    // p1 and p2, inside the pinned group. The clamp must push it past p2.
-    openNoteInLeaf(leafId, "new-note", "p1");
-
-    const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
-    expect(leaf?.tabs.map((t) => t.noteId)).toEqual(["p1", "p2", "new-note", "u1"]);
-    expect(leaf?.tabs.find((t) => t.noteId === "new-note")?.pinned).not.toBe(true);
-    expect(leaf?.active).toBe(leaf?.tabs.find((t) => t.noteId === "new-note")?.id);
-  });
-
-  it("invoked on an unpinned tab: inserts immediately after it (unaffected by an unrelated pinned group)", () => {
-    const leafId = usePaneStore.getState().activePaneId;
-    usePaneStore.setState({
-      tree: {
-        t: "leaf",
-        id: leafId,
-        tabs: [
-          { id: "p1", noteId: "p1", pinned: true },
-          { id: "u1", noteId: "u1" },
-          { id: "u2", noteId: "u2" },
-        ],
-        active: "u1",
-      },
-    });
-
-    openNoteInLeaf(leafId, "new-note", "u1");
-
-    const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
-    expect(leaf?.tabs.map((t) => t.noteId)).toEqual(["p1", "u1", "new-note", "u2"]);
-  });
-
-  it("with no afterTabId (TAB-14 plain new-tab affordance), appends at the end unchanged", () => {
-    const leafId = usePaneStore.getState().activePaneId;
-    usePaneStore.setState({
-      tree: {
-        t: "leaf",
-        id: leafId,
-        tabs: [{ id: "p1", noteId: "p1", pinned: true }],
-        active: "p1",
-      },
-    });
-
-    openNoteInLeaf(leafId, "new-note");
-
-    const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
-    expect(leaf?.tabs.map((t) => t.noteId)).toEqual(["p1", "new-note"]);
-  });
-});
+// Test (30-02 Task 2): "New note to the right" pinned-boundary clamp (D-16)
+// now lives in frontend/src/lib/openNoteInLeaf.test.ts — openNoteInLeaf was
+// extracted out of App.tsx into its own lib module so App.tsx's exports stay
+// component-only (react-refresh/only-export-components).
 
 
 // IN-04: BootGate (App.tsx) was previously uncovered by any test that renders
