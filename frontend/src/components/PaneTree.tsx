@@ -184,12 +184,15 @@ function SplitRenderer({
   node,
   path,
   activePaneId,
+  multi,
   props,
   topLeftLeafId,
 }: {
   node: SplitNode;
   path: ("a" | "b")[];
   activePaneId: string;
+  /** Whether the layout has more than one leaf (D-27/D-28) — threaded to LeafPane's active-pane inset cue. */
+  multi: boolean;
   props: NodeRenderProps;
   /** The pre-order-first leaf id (D-12) — threaded down so only that leaf hosts PaneCornerReopenButton. */
   topLeftLeafId: string;
@@ -227,7 +230,7 @@ function SplitRenderer({
           overflow: "hidden",
         }}
       >
-        {renderNode(node.a, activePaneId, props, topLeftLeafId, [...path, "a"])}
+        {renderNode(node.a, activePaneId, multi, props, topLeftLeafId, [...path, "a"])}
       </div>
       <PaneDivider isRow={isRow} path={path} ratio={node.ratio} containerRef={containerRef} />
       <div
@@ -239,7 +242,7 @@ function SplitRenderer({
           overflow: "hidden",
         }}
       >
-        {renderNode(node.b, activePaneId, props, topLeftLeafId, [...path, "b"])}
+        {renderNode(node.b, activePaneId, multi, props, topLeftLeafId, [...path, "b"])}
       </div>
     </div>
   );
@@ -248,6 +251,7 @@ function SplitRenderer({
 function renderNode(
   node: PaneNode,
   activePaneId: string,
+  multi: boolean,
   props: NodeRenderProps,
   topLeftLeafId: string,
   path: ("a" | "b")[] = [],
@@ -264,6 +268,7 @@ function renderNode(
         <LeafPane
           leaf={node}
           isActive={activePaneId === node.id}
+          multi={multi}
           reindexing={props.reindexing}
           deletedTabIds={props.deletedTabIds}
           titleForTab={props.titleForTab}
@@ -288,6 +293,7 @@ function renderNode(
       node={node}
       path={path}
       activePaneId={activePaneId}
+      multi={multi}
       props={props}
       topLeftLeafId={topLeftLeafId}
     />
@@ -300,6 +306,10 @@ export function PaneTree({ style, ...rest }: PaneTreeProps) {
   // D-12: the pre-order-first leaf is "top-left" — reuse usePaneStore's own
   // leaf ordering (_leaves) rather than inventing a geometry calc (Pitfall 3).
   const topLeftLeafId = _leaves(tree)[0]?.id ?? "";
+  // D-27/D-28: whether the layout has more than one leaf — gates LeafPane's
+  // active-pane inset accent cue off single-pane layouts (nothing to
+  // disambiguate with only one pane).
+  const multi = _leaves(tree).length > 1;
 
   return (
     <div
@@ -314,7 +324,7 @@ export function PaneTree({ style, ...rest }: PaneTreeProps) {
         ...style,
       }}
     >
-      {renderNode(tree, activePaneId, rest, topLeftLeafId)}
+      {renderNode(tree, activePaneId, multi, rest, topLeftLeafId)}
     </div>
   );
 }

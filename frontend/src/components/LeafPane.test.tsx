@@ -97,11 +97,12 @@ vi.mock("./EditorPane", () => ({
 const tabA: Tab = { id: "tab-a", noteId: "note-a" };
 const leafA: LeafNode = { t: "leaf", id: "leaf-a", tabs: [tabA], active: "tab-a" };
 
-function renderLeaf(leaf: LeafNode = leafA, overrides?: { isActive?: boolean }) {
+function renderLeaf(leaf: LeafNode = leafA, overrides?: { isActive?: boolean; multi?: boolean }) {
   return render(
     <LeafPane
       leaf={leaf}
       isActive={overrides?.isActive ?? true}
+      multi={overrides?.multi}
       reindexing={false}
       deletedTabIds={new Set()}
       titleForTab={(noteId) => `Title ${noteId}`}
@@ -135,6 +136,35 @@ describe("<LeafPane /> no inactive-pane dim (readability)", () => {
     const root = screen.getByTestId("leaf-pane");
     const opacity = root.style.opacity;
     expect(opacity === "" || opacity === "1").toBe(true);
+  });
+});
+
+describe("<LeafPane /> active-pane inset accent cue (D-27/D-28, Phase 30)", () => {
+  it("multi=true active=true: the root carries the 35% inset box-shadow", () => {
+    renderLeaf(leafA, { isActive: true, multi: true });
+    const root = screen.getByTestId("leaf-pane");
+    expect(root.style.boxShadow).toContain("inset 0 0 0 1px");
+    expect(root.style.boxShadow).toContain("35%");
+  });
+
+  it("multi=false (single-pane layout): no box-shadow even when active", () => {
+    renderLeaf(leafA, { isActive: true, multi: false });
+    const root = screen.getByTestId("leaf-pane");
+    expect(root.style.boxShadow).toBe("");
+  });
+
+  it("multi=true but inactive: no box-shadow (no dimming either — readability unchanged)", () => {
+    renderLeaf(leafA, { isActive: false, multi: true });
+    const root = screen.getByTestId("leaf-pane");
+    expect(root.style.boxShadow).toBe("");
+    const opacity = root.style.opacity;
+    expect(opacity === "" || opacity === "1").toBe(true);
+  });
+
+  it("multi defaults to false when omitted (single-pane callers unaffected)", () => {
+    renderLeaf(leafA, { isActive: true });
+    const root = screen.getByTestId("leaf-pane");
+    expect(root.style.boxShadow).toBe("");
   });
 });
 
