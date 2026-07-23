@@ -37,9 +37,11 @@ export const jasperEditorTheme = EditorView.theme(
     ".cm-content": {
       // D-14/D-15/D-17: 760px centered col (margin:auto+border-box). P0 fix:
       // explicit fontFamily so .cm-line stops inheriting monospace from .cm-scroller.
+      // Padding matches Vault.dc.html's single-pane colStyle ("40px 56px 200px",
+      // Phase 31 D-17 — top tightened from 44px; horizontal gutter unchanged).
       maxWidth: "760px",
       margin: "0 auto",
-      padding: "44px 56px 200px",
+      padding: "40px 56px 200px",
       boxSizing: "border-box",
       caretColor: "var(--color-fg)",
       fontFamily: "var(--font-reading)",
