@@ -53,6 +53,7 @@ import {
   frontmatterBackspaceGuardKeymap,
 } from "../editor/frontmatterHidePlugin";
 import { firstH1HideExtension } from "../editor/firstH1HidePlugin";
+import { firstVisibleBodyLine, makeTitleBodyTraversalKeymap } from "../editor/titleBodyTraversal";
 import { calloutFoldExtension } from "../editor/calloutFoldField";
 import { tableWidgetExtension } from "../editor/tableWidgetPlugin";
 import { rewriteH1 } from "../lib/h1Extract";
@@ -125,6 +126,14 @@ export interface MarkdownEditorRef {
    */
   setH1(next: string): void;
   /**
+   * Enter the body from the title (D-19/D-20): focuses the view and places
+   * the caret on firstVisibleBodyLine() (skipping hidden frontmatter AND the
+   * hidden first-H1 line — 31-RESEARCH.md Pitfall 2), at the column nearest
+   * measuredX (a pixel X, not a character offset — Pitfall 3). Lands at
+   * doc end when there is no visible body content below the hidden regions.
+   */
+  enterFromTitle(measuredX: number): void;
+  /**
    * Search commands (P26, WS-09/D-01) — each guards viewRef.current and
    * dispatches/queries against THIS view's own EditorView, so scoping is
    * naturally per-pane even when the same note is open in two panes.
@@ -171,6 +180,8 @@ interface Props {
   onOpenFind?: () => void;
   /** Cmd+Opt+F handler (P26, WS-09/D-02) — opens the pane's find+replace bar. */
   onOpenFindReplace?: () => void;
+  /** ArrowUp from the body's first visible line (D-19/D-20/D-21) — hands off to the title with the measured pixel-X. */
+  onCrossToTitle?: (measuredX: number) => void;
 }
 
 /** Read-only extension toggled at runtime via a Compartment (view is mounted once). */
@@ -245,6 +256,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       readOnly = false,
       onOpenFind,
       onOpenFindReplace,
+      onCrossToTitle,
     },
     ref
   ) {
@@ -261,6 +273,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       onBlur,
       onOpenFind,
       onOpenFindReplace,
+      onCrossToTitle,
     });
     cbRef.current = {
       onChange,
@@ -271,6 +284,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       onBlur,
       onOpenFind,
       onOpenFindReplace,
+      onCrossToTitle,
     };
 
     const { titleSet, idMap } = useResolvedTitleSet();
@@ -441,6 +455,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             ),
             frontmatterToggleKeymap, // Cmd-Shift-Y toggles raw frontmatter view
             frontmatterBackspaceGuardKeymap, // D-23: no-ops Backspace at the hidden-frontmatter boundary
+            makeTitleBodyTraversalKeymap((x) => cbRef.current.onCrossToTitle?.(x)), // D-19/D-20/D-21: ArrowUp from the first visible body line hands off to the title
             codeblockExpand,
             keymap.of([...jasperKeymap, indentWithTab, ...defaultKeymap, ...historyKeymap]), // jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap; indentWithTab before defaultKeymap so Tab→indent wins
             EditorView.lineWrapping,
@@ -597,6 +612,31 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           v.dispatch({
             changes: { from: 0, to: v.state.doc.length, insert: rewritten },
           });
+        },
+        enterFromTitle(measuredX: number) {
+          const v = viewRef.current;
+          if (!v) return;
+          v.focus();
+          const target = firstVisibleBodyLine(v.state);
+          if (!target) {
+            const docLen = v.state.doc.length;
+            v.dispatch({ selection: { anchor: docLen, head: docLen } });
+            return;
+          }
+          // Pixel-coordinate column matching (31-RESEARCH.md Pitfall 3): the
+          // title's font size differs from the body's, so a character-index
+          // mapping would land at the wrong visual column.
+          let pos = target.from;
+          try {
+            const y = v.coordsAtPos(target.from)?.top;
+            if (y !== undefined) {
+              pos = v.posAtCoords({ x: measuredX, y }) ?? target.from;
+            }
+          } catch {
+            pos = target.from;
+          }
+          pos = Math.min(Math.max(pos, target.from), target.to);
+          v.dispatch({ selection: { anchor: pos, head: pos } });
         },
         setSearchQuery(query: SearchQuery) {
           const v = viewRef.current;

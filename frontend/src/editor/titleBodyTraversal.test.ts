@@ -43,12 +43,6 @@ function makeState(doc: string): EditorState {
   });
 }
 
-function makeView(doc: string): EditorView {
-  const parent = document.createElement("div");
-  document.body.append(parent);
-  return new EditorView({ parent, state: makeState(doc) });
-}
-
 describe("firstVisibleBodyLine", () => {
   it("frontmatter + H1 + body: returns 'body line 1', not the frontmatter or the hidden H1 line", () => {
     const state = makeState(DOC_FRONTMATTER_H1_BODY);

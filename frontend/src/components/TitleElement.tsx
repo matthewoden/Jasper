@@ -12,18 +12,34 @@
  * rendered (muted color) so the empty state is visible without a note
  * before the user has typed anything. Clicking/focusing clears it; blurring
  * on an empty div restores it.
+ *
+ * Focus (D-18): caret-only — no focus ring, no hover affordance. The title
+ * reads as an ordinary line of the note, not a form field.
+ *
+ * Enter/ArrowDown (D-19/D-20): both hand off focus to the body, column-
+ * preserving. Column preservation is pixel-based, not character-index — the
+ * title's much larger font would otherwise land at the wrong visual column
+ * (31-RESEARCH.md Pitfall 3). Tab is unchanged (out of scope, D-19).
  */
 import { useEffect, useRef } from "react";
 
 const PLACEHOLDER_TEXT = "Untitled";
+
+/** Reads the collapsed caret's pixel X within the title element, or 0 if unavailable. */
+function measureCaretX(): number {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return 0;
+  const rects = sel.getRangeAt(0).getClientRects();
+  return rects.length > 0 ? rects[0].left : 0;
+}
 
 export interface TitleElementProps {
   /** Current H1 text (already trimmed by the caller), or null/empty for no H1. */
   title: string | null;
   /** Fires on every input with the raw current text — write-through only, no debounce here. */
   onTitleChange: (next: string) => void;
-  /** Fires on Enter/Tab to move focus into the doc body. */
-  onFocusHandoff: () => void;
+  /** Fires on Enter/ArrowDown with the measured caret pixel-X, to move column-preserving focus into the doc body. */
+  onFocusHandoff: (measuredX: number) => void;
 }
 
 export const TitleElement = ({ title, onTitleChange, onFocusHandoff }: TitleElementProps) => {
@@ -42,57 +58,49 @@ export const TitleElement = ({ title, onTitleChange, onFocusHandoff }: TitleElem
   }, [trimmed, isEmpty]);
 
   return (
-    <>
-      <style>{`
-        .editor-title-element:focus {
-          box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
-          border-radius: 2px;
+    <div
+      ref={ref}
+      className="editor-title-element"
+      contentEditable
+      suppressContentEditableWarning
+      data-testid="editor-title-element"
+      aria-label="Note title"
+      onFocus={() => {
+        const el = ref.current;
+        if (el && isEmpty) {
+          el.textContent = "";
         }
-      `}</style>
-      <div
-        ref={ref}
-        className="editor-title-element"
-        contentEditable
-        suppressContentEditableWarning
-        data-testid="editor-title-element"
-        aria-label="Note title"
-        onFocus={() => {
-          const el = ref.current;
-          if (el && isEmpty) {
-            el.textContent = "";
-          }
-        }}
-        onBlur={() => {
-          const el = ref.current;
-          if (el && (el.textContent ?? "").trim() === "") {
-            el.textContent = PLACEHOLDER_TEXT;
-          }
-        }}
-        onInput={() => {
-          const el = ref.current;
-          if (!el) return;
-          onTitleChange(el.textContent ?? "");
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === "Tab") {
-            e.preventDefault();
-            onFocusHandoff();
-          }
-        }}
-        style={{
-          fontSize: 33,
-          fontWeight: 700,
-          lineHeight: 1.15,
-          letterSpacing: "-0.012em",
-          fontFamily: "var(--font-reading)",
-          color: isEmpty ? "var(--color-muted)" : "var(--color-fg-title)",
-          outline: "none",
-          border: "none",
-          cursor: "text",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-        }}
-      />
-    </>
+      }}
+      onBlur={() => {
+        const el = ref.current;
+        if (el && (el.textContent ?? "").trim() === "") {
+          el.textContent = PLACEHOLDER_TEXT;
+        }
+      }}
+      onInput={() => {
+        const el = ref.current;
+        if (!el) return;
+        onTitleChange(el.textContent ?? "");
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === "ArrowDown" || e.key === "Tab") {
+          e.preventDefault();
+          onFocusHandoff(measureCaretX());
+        }
+      }}
+      style={{
+        fontSize: 33,
+        fontWeight: 700,
+        lineHeight: 1.15,
+        letterSpacing: "-0.012em",
+        fontFamily: "var(--font-reading)",
+        color: isEmpty ? "var(--color-muted)" : "var(--color-fg-title)",
+        outline: "none",
+        border: "none",
+        cursor: "text",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+      }}
+    />
   );
 };

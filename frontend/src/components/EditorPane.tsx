@@ -279,6 +279,32 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     selection?.removeAllRanges();
     selection?.addRange(range);
   }, []);
+  // ArrowUp from the body's first visible line (D-19/D-20/D-21): places the
+  // DOM caret in the title at the measured pixel-X, column-preserving across
+  // the CM6-view <-> plain-contentEditable boundary (31-RESEARCH.md
+  // Pitfall 3). document.caretRangeFromPoint has no CM6 equivalent for a
+  // plain DOM element — it is the only way to convert a pixel X back into a
+  // Range/offset within the title's text node.
+  const handleCrossToTitle = useCallback((measuredX: number) => {
+    const el = titleWrapperRef.current?.querySelector<HTMLElement>(".editor-title-element");
+    if (!el) return;
+    el.focus();
+    const selection = window.getSelection();
+    const rect = el.getBoundingClientRect();
+    const titleMidY = rect.top + rect.height / 2;
+    const range = document.caretRangeFromPoint?.(measuredX, titleMidY);
+    if (range && selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return;
+    }
+    // Fallback (no caretRangeFromPoint support): land at the end of the title.
+    const fallbackRange = document.createRange();
+    fallbackRange.selectNodeContents(el);
+    fallbackRange.collapse(false);
+    selection?.removeAllRanges();
+    selection?.addRange(fallbackRange);
+  }, []);
   // Mirrors `content` for synchronous-closure call sites (keepalive/blur/
   // reconnect handlers below) that cannot re-subscribe on every keystroke.
   const latestContentRef = useRef("");
@@ -1091,9 +1117,8 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           width: "100%",
           maxWidth: zen ? 700 : 760,
           margin: "0 auto",
-          // paddingBottom keeps the title's 2px focus ring clear of the editor
-          // shell below (which starts flush at the wrapper's edge and would
-          // otherwise paint over the ring's bottom).
+          // paddingBottom keeps a small gap between the title and the editor
+          // shell below (which starts flush at the wrapper's edge).
           padding: zen ? "0 32px 6px" : "0 56px 6px",
           boxSizing: "border-box",
         }}
@@ -1101,7 +1126,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
         <TitleElement
           title={titleFallback}
           onTitleChange={(next) => editorRef.current?.setH1(next)}
-          onFocusHandoff={() => editorRef.current?.focus()}
+          onFocusHandoff={(measuredX) => editorRef.current?.enterFromTitle(measuredX)}
         />
       </div>
       {/* MarkdownEditor is uncontrolled — initialDoc captured once on mount;
@@ -1139,6 +1164,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           readOnly={isDeleted}
           onOpenFind={onOpenFind}
           onOpenFindReplace={onOpenFindReplace}
+          onCrossToTitle={handleCrossToTitle}
         />
       </div>
     </section>
