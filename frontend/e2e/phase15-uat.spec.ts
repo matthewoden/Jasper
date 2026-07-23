@@ -814,16 +814,17 @@ test.describe(
       ).toBeVisible({ timeout: 15_000 });
     }
 
-    test("UAT-15.1-TOOLTIP: overflow trigger has title='Show hidden tabs'", async ({
+    test("UAT-15.1-TOOLTIP: overflow trigger has an accessible 'Show hidden tabs' name", async ({
       page,
     }) => {
       await waitForConnected(page, jasper.baseURL);
       await openOverflowNotes(page);
+      // Phase 31 D-07: native title= migrated to a shared Radix Tooltip +
+      // aria-label (no more native title attribute on this control).
       const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
       await expect(overflowBtn).toBeVisible();
-      // Native title tooltip — no Radix Tooltip dependency.
-      const title = await overflowBtn.getAttribute("title");
-      expect(title).toBe("Show hidden tabs");
+      await expect(overflowBtn).toHaveAttribute("aria-label", "Show hidden tabs");
+      await expect(overflowBtn).not.toHaveAttribute("title", /.+/);
     });
 
     test("UAT-15.1-OVERLAP: overflow trigger does not intersect the last visible pill", async ({
