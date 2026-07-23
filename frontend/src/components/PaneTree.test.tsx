@@ -16,6 +16,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import { PaneTree } from "./PaneTree";
+import { TooltipProvider } from "./Tooltip";
 import { usePaneStore } from "../lib/usePaneStore";
 import { useTreeStore } from "../lib/useTreeStore";
 
@@ -51,18 +52,20 @@ function renderTree(overrides?: { tree?: PaneNode; activePaneId?: string }) {
     activePaneId: overrides?.activePaneId ?? "leaf-a",
   });
   return render(
-    <PaneTree
-      reindexing={false}
-      deletedTabIds={new Set()}
-      titleForTab={(noteId) => `Title ${noteId}`}
-      onRequestClose={vi.fn()}
-      onCloseOthers={vi.fn()}
-      onCloseToRight={vi.fn()}
-      onCloseAll={vi.fn()}
-      onOpenRight={vi.fn()}
-      onTogglePin={vi.fn()}
-      onNewTab={vi.fn()}
-    />,
+    <TooltipProvider>
+      <PaneTree
+        reindexing={false}
+        deletedTabIds={new Set()}
+        titleForTab={(noteId) => `Title ${noteId}`}
+        onRequestClose={vi.fn()}
+        onCloseOthers={vi.fn()}
+        onCloseToRight={vi.fn()}
+        onCloseAll={vi.fn()}
+        onOpenRight={vi.fn()}
+        onTogglePin={vi.fn()}
+        onNewTab={vi.fn()}
+      />
+    </TooltipProvider>,
   );
 }
 

@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { LeafPane } from "./LeafPane";
+import { TooltipProvider } from "./Tooltip";
 import { usePaneDragStore } from "../lib/usePaneDragStore";
 import type { LeafNode } from "../lib/paneTree";
 import type { Tab } from "../lib/useTabStore";
@@ -99,21 +100,23 @@ const leafA: LeafNode = { t: "leaf", id: "leaf-a", tabs: [tabA], active: "tab-a"
 
 function renderLeaf(leaf: LeafNode = leafA, overrides?: { isActive?: boolean; multi?: boolean }) {
   return render(
-    <LeafPane
-      leaf={leaf}
-      isActive={overrides?.isActive ?? true}
-      multi={overrides?.multi}
-      reindexing={false}
-      deletedTabIds={new Set()}
-      titleForTab={(noteId) => `Title ${noteId}`}
-      onRequestClose={vi.fn()}
-      onCloseOthers={vi.fn()}
-      onCloseToRight={vi.fn()}
-      onCloseAll={vi.fn()}
-      onOpenRight={vi.fn()}
-      onTogglePin={vi.fn()}
-      onNewTab={vi.fn()}
-    />,
+    <TooltipProvider>
+      <LeafPane
+        leaf={leaf}
+        isActive={overrides?.isActive ?? true}
+        multi={overrides?.multi}
+        reindexing={false}
+        deletedTabIds={new Set()}
+        titleForTab={(noteId) => `Title ${noteId}`}
+        onRequestClose={vi.fn()}
+        onCloseOthers={vi.fn()}
+        onCloseToRight={vi.fn()}
+        onCloseAll={vi.fn()}
+        onOpenRight={vi.fn()}
+        onTogglePin={vi.fn()}
+        onNewTab={vi.fn()}
+      />
+    </TooltipProvider>,
   );
 }
 
@@ -250,20 +253,22 @@ describe("<LeafPane /> Find/Replace bar re-syncs on active-tab change (CR-03)", 
     // Mirrors what the real app does on Alt+]/Ctrl+Tab/tab-pill click: the
     // parent re-renders LeafPane with `leaf.active` pointing at the new tab.
     rerender(
-      <LeafPane
-        leaf={{ ...twoTabLeaf, active: "tab-b" }}
-        isActive={true}
-        reindexing={false}
-        deletedTabIds={new Set()}
-        titleForTab={(noteId) => `Title ${noteId}`}
-        onRequestClose={vi.fn()}
-        onCloseOthers={vi.fn()}
-        onCloseToRight={vi.fn()}
-        onCloseAll={vi.fn()}
-        onOpenRight={vi.fn()}
-        onTogglePin={vi.fn()}
-        onNewTab={vi.fn()}
-      />,
+      <TooltipProvider>
+        <LeafPane
+          leaf={{ ...twoTabLeaf, active: "tab-b" }}
+          isActive={true}
+          reindexing={false}
+          deletedTabIds={new Set()}
+          titleForTab={(noteId) => `Title ${noteId}`}
+          onRequestClose={vi.fn()}
+          onCloseOthers={vi.fn()}
+          onCloseToRight={vi.fn()}
+          onCloseAll={vi.fn()}
+          onOpenRight={vi.fn()}
+          onTogglePin={vi.fn()}
+          onNewTab={vi.fn()}
+        />
+      </TooltipProvider>,
     );
 
     expect(handleB.setSearchQuery).toHaveBeenCalledTimes(1);
@@ -276,20 +281,22 @@ describe("<LeafPane /> Find/Replace bar re-syncs on active-tab change (CR-03)", 
     // Bar never opened — findBar.open stays false throughout.
 
     rerender(
-      <LeafPane
-        leaf={{ ...twoTabLeaf, active: "tab-b" }}
-        isActive={true}
-        reindexing={false}
-        deletedTabIds={new Set()}
-        titleForTab={(noteId) => `Title ${noteId}`}
-        onRequestClose={vi.fn()}
-        onCloseOthers={vi.fn()}
-        onCloseToRight={vi.fn()}
-        onCloseAll={vi.fn()}
-        onOpenRight={vi.fn()}
-        onTogglePin={vi.fn()}
-        onNewTab={vi.fn()}
-      />,
+      <TooltipProvider>
+        <LeafPane
+          leaf={{ ...twoTabLeaf, active: "tab-b" }}
+          isActive={true}
+          reindexing={false}
+          deletedTabIds={new Set()}
+          titleForTab={(noteId) => `Title ${noteId}`}
+          onRequestClose={vi.fn()}
+          onCloseOthers={vi.fn()}
+          onCloseToRight={vi.fn()}
+          onCloseAll={vi.fn()}
+          onOpenRight={vi.fn()}
+          onTogglePin={vi.fn()}
+          onNewTab={vi.fn()}
+        />
+      </TooltipProvider>,
     );
 
     expect(handleFor("note-a").setSearchQuery).not.toHaveBeenCalled();

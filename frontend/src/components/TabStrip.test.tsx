@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TabStrip } from "./TabStrip";
+import { TooltipProvider } from "./Tooltip";
 import type { Tab } from "../lib/useTabStore";
 import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
@@ -70,16 +71,18 @@ function renderStrip(overrides?: {
     onCycleTab: vi.fn(),
   };
   render(
-    <TabStrip
-      leafId={overrides?.leafId ?? LEAF_ID}
-      tabs={overrides?.tabs ?? tabs}
-      activeTabId={overrides?.activeTabId ?? "a"}
-      deletedTabIds={overrides?.deletedTabIds ?? new Set()}
-      titleForTab={titleForTab}
-      forceHiddenTabIds={overrides?.forceHiddenTabIds}
-      isRightmostLeaf={overrides?.isRightmostLeaf}
-      {...handlers}
-    />,
+    <TooltipProvider>
+      <TabStrip
+        leafId={overrides?.leafId ?? LEAF_ID}
+        tabs={overrides?.tabs ?? tabs}
+        activeTabId={overrides?.activeTabId ?? "a"}
+        deletedTabIds={overrides?.deletedTabIds ?? new Set()}
+        titleForTab={titleForTab}
+        forceHiddenTabIds={overrides?.forceHiddenTabIds}
+        isRightmostLeaf={overrides?.isRightmostLeaf}
+        {...handlers}
+      />
+    </TooltipProvider>,
   );
   return handlers;
 }
@@ -108,23 +111,25 @@ describe("<TabStrip /> rendering (Task 1)", () => {
   it("TAB-14: empty state renders the strip with the + new-tab button (not null)", () => {
     const onNewTab = vi.fn();
     render(
-      <TabStrip
-        leafId={LEAF_ID}
-        tabs={[]}
-        activeTabId={null}
-        deletedTabIds={new Set()}
-        titleForTab={titleForTab}
-        onSelectTab={vi.fn()}
-        onRequestClose={vi.fn()}
-        onCloseOthers={vi.fn()}
-        onCloseToRight={vi.fn()}
-        onCloseAll={vi.fn()}
-        onOpenRight={vi.fn()}
-        onTogglePin={vi.fn()}
-        onReorder={vi.fn()}
-        onNewTab={onNewTab}
-        onCycleTab={vi.fn()}
-      />,
+      <TooltipProvider>
+        <TabStrip
+          leafId={LEAF_ID}
+          tabs={[]}
+          activeTabId={null}
+          deletedTabIds={new Set()}
+          titleForTab={titleForTab}
+          onSelectTab={vi.fn()}
+          onRequestClose={vi.fn()}
+          onCloseOthers={vi.fn()}
+          onCloseToRight={vi.fn()}
+          onCloseAll={vi.fn()}
+          onOpenRight={vi.fn()}
+          onTogglePin={vi.fn()}
+          onReorder={vi.fn()}
+          onNewTab={onNewTab}
+          onCycleTab={vi.fn()}
+        />
+      </TooltipProvider>,
     );
     expect(screen.getByRole("tablist", { name: "Open tabs" })).toBeInTheDocument();
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
@@ -133,23 +138,25 @@ describe("<TabStrip /> rendering (Task 1)", () => {
 
   it("BUG 3c: empty-state new-tab button is tab-shaped (flush, square corners — not top-rounded)", () => {
     render(
-      <TabStrip
-        leafId={LEAF_ID}
-        tabs={[]}
-        activeTabId={null}
-        deletedTabIds={new Set()}
-        titleForTab={titleForTab}
-        onSelectTab={vi.fn()}
-        onRequestClose={vi.fn()}
-        onCloseOthers={vi.fn()}
-        onCloseToRight={vi.fn()}
-        onCloseAll={vi.fn()}
-        onOpenRight={vi.fn()}
-        onTogglePin={vi.fn()}
-        onReorder={vi.fn()}
-        onNewTab={vi.fn()}
-        onCycleTab={vi.fn()}
-      />,
+      <TooltipProvider>
+        <TabStrip
+          leafId={LEAF_ID}
+          tabs={[]}
+          activeTabId={null}
+          deletedTabIds={new Set()}
+          titleForTab={titleForTab}
+          onSelectTab={vi.fn()}
+          onRequestClose={vi.fn()}
+          onCloseOthers={vi.fn()}
+          onCloseToRight={vi.fn()}
+          onCloseAll={vi.fn()}
+          onOpenRight={vi.fn()}
+          onTogglePin={vi.fn()}
+          onReorder={vi.fn()}
+          onNewTab={vi.fn()}
+          onCycleTab={vi.fn()}
+        />
+      </TooltipProvider>,
     );
     const btn = screen.getByTestId("new-tab-button");
     // Loose silhouette check: flush square corners like a restyled TabPill (TABUI-01).
@@ -159,23 +166,25 @@ describe("<TabStrip /> rendering (Task 1)", () => {
   it("TAB-14: clicking the + button in the empty state calls onNewTab once", () => {
     const onNewTab = vi.fn();
     render(
-      <TabStrip
-        leafId={LEAF_ID}
-        tabs={[]}
-        activeTabId={null}
-        deletedTabIds={new Set()}
-        titleForTab={titleForTab}
-        onSelectTab={vi.fn()}
-        onRequestClose={vi.fn()}
-        onCloseOthers={vi.fn()}
-        onCloseToRight={vi.fn()}
-        onCloseAll={vi.fn()}
-        onOpenRight={vi.fn()}
-        onTogglePin={vi.fn()}
-        onReorder={vi.fn()}
-        onNewTab={onNewTab}
-        onCycleTab={vi.fn()}
-      />,
+      <TooltipProvider>
+        <TabStrip
+          leafId={LEAF_ID}
+          tabs={[]}
+          activeTabId={null}
+          deletedTabIds={new Set()}
+          titleForTab={titleForTab}
+          onSelectTab={vi.fn()}
+          onRequestClose={vi.fn()}
+          onCloseOthers={vi.fn()}
+          onCloseToRight={vi.fn()}
+          onCloseAll={vi.fn()}
+          onOpenRight={vi.fn()}
+          onTogglePin={vi.fn()}
+          onReorder={vi.fn()}
+          onNewTab={onNewTab}
+          onCycleTab={vi.fn()}
+        />
+      </TooltipProvider>,
     );
     fireEvent.click(screen.getByTestId("new-tab-button"));
     expect(onNewTab).toHaveBeenCalledTimes(1);
@@ -491,16 +500,18 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     // Mirror LeafPane's real DOM shape: TabStrip is nested inside its own
     // pane's `[data-droppane]` wrapper (LeafPane.tsx:296).
     render(
-      <div data-droppane={LEAF_ID}>
-        <TabStrip
-          leafId={LEAF_ID}
-          tabs={tabs}
-          activeTabId="a"
-          deletedTabIds={new Set()}
-          titleForTab={titleForTab}
-          {...handlers}
-        />
-      </div>,
+      <TooltipProvider>
+        <div data-droppane={LEAF_ID}>
+          <TabStrip
+            leafId={LEAF_ID}
+            tabs={tabs}
+            activeTabId="a"
+            deletedTabIds={new Set()}
+            titleForTab={titleForTab}
+            {...handlers}
+          />
+        </div>
+      </TooltipProvider>,
     );
     const strip = screen.getByRole("tablist");
     const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
@@ -597,23 +608,25 @@ describe("<TabStrip /> right-hand cluster — state-dependent rail toggle (26072
 
   it("neither cluster testid is present in the zero-tab empty state", () => {
     render(
-      <TabStrip
-        leafId={LEAF_ID}
-        tabs={[]}
-        activeTabId={null}
-        deletedTabIds={new Set()}
-        titleForTab={titleForTab}
-        onSelectTab={vi.fn()}
-        onRequestClose={vi.fn()}
-        onCloseOthers={vi.fn()}
-        onCloseToRight={vi.fn()}
-        onCloseAll={vi.fn()}
-        onOpenRight={vi.fn()}
-        onTogglePin={vi.fn()}
-        onReorder={vi.fn()}
-        onNewTab={vi.fn()}
-        onCycleTab={vi.fn()}
-      />,
+      <TooltipProvider>
+        <TabStrip
+          leafId={LEAF_ID}
+          tabs={[]}
+          activeTabId={null}
+          deletedTabIds={new Set()}
+          titleForTab={titleForTab}
+          onSelectTab={vi.fn()}
+          onRequestClose={vi.fn()}
+          onCloseOthers={vi.fn()}
+          onCloseToRight={vi.fn()}
+          onCloseAll={vi.fn()}
+          onOpenRight={vi.fn()}
+          onTogglePin={vi.fn()}
+          onReorder={vi.fn()}
+          onNewTab={vi.fn()}
+          onCycleTab={vi.fn()}
+        />
+      </TooltipProvider>,
     );
     expect(screen.queryByTestId("tab-strip-right-cluster")).toBeNull();
     expect(screen.queryByTestId("tab-strip-left-cluster")).toBeNull();
@@ -622,24 +635,26 @@ describe("<TabStrip /> right-hand cluster — state-dependent rail toggle (26072
   it("zero-tab empty state STILL shows the toggle when collapsed + rightmost leaf", () => {
     useTreeStore.setState({ backlinksRailExpanded: false });
     render(
-      <TabStrip
-        leafId={LEAF_ID}
-        tabs={[]}
-        activeTabId={null}
-        deletedTabIds={new Set()}
-        titleForTab={titleForTab}
-        onSelectTab={vi.fn()}
-        onRequestClose={vi.fn()}
-        onCloseOthers={vi.fn()}
-        onCloseToRight={vi.fn()}
-        onCloseAll={vi.fn()}
-        onOpenRight={vi.fn()}
-        onTogglePin={vi.fn()}
-        onReorder={vi.fn()}
-        onNewTab={vi.fn()}
-        onCycleTab={vi.fn()}
-        isRightmostLeaf
-      />,
+      <TooltipProvider>
+        <TabStrip
+          leafId={LEAF_ID}
+          tabs={[]}
+          activeTabId={null}
+          deletedTabIds={new Set()}
+          titleForTab={titleForTab}
+          onSelectTab={vi.fn()}
+          onRequestClose={vi.fn()}
+          onCloseOthers={vi.fn()}
+          onCloseToRight={vi.fn()}
+          onCloseAll={vi.fn()}
+          onOpenRight={vi.fn()}
+          onTogglePin={vi.fn()}
+          onReorder={vi.fn()}
+          onNewTab={vi.fn()}
+          onCycleTab={vi.fn()}
+          isRightmostLeaf
+        />
+      </TooltipProvider>,
     );
     expect(screen.getByTestId("tab-strip-right-cluster")).toBeInTheDocument();
   });
@@ -666,7 +681,11 @@ describe("<TabStrip /> collapsed-sidebar reopen cell (Phase 27 NAV-03)", () => {
 
   it("shows the reopen cell on the top-left leaf when the sidebar is COLLAPSED", () => {
     useTreeStore.setState({ notesSidebarVisible: false });
-    render(<TabStrip {...baseProps} isTopLeftLeaf />);
+    render(
+      <TooltipProvider>
+        <TabStrip {...baseProps} isTopLeftLeaf />
+      </TooltipProvider>,
+    );
     expect(
       screen.getByRole("button", { name: "Show sidebar" }),
     ).toBeInTheDocument();
@@ -674,13 +693,21 @@ describe("<TabStrip /> collapsed-sidebar reopen cell (Phase 27 NAV-03)", () => {
 
   it("hides the reopen cell on the top-left leaf when the sidebar is OPEN", () => {
     useTreeStore.setState({ notesSidebarVisible: true });
-    render(<TabStrip {...baseProps} isTopLeftLeaf />);
+    render(
+      <TooltipProvider>
+        <TabStrip {...baseProps} isTopLeftLeaf />
+      </TooltipProvider>,
+    );
     expect(screen.queryByRole("button", { name: "Show sidebar" })).toBeNull();
   });
 
   it("never shows the reopen cell on a non-top-left leaf, even when collapsed", () => {
     useTreeStore.setState({ notesSidebarVisible: false });
-    render(<TabStrip {...baseProps} isTopLeftLeaf={false} />);
+    render(
+      <TooltipProvider>
+        <TabStrip {...baseProps} isTopLeftLeaf={false} />
+      </TooltipProvider>,
+    );
     expect(screen.queryByRole("button", { name: "Show sidebar" })).toBeNull();
   });
 });

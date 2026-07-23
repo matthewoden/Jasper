@@ -7,6 +7,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import type React from "react";
+import { Tooltip } from "./Tooltip";
 
 export interface HiddenTab {
   id: string;
@@ -19,11 +20,13 @@ export interface TabOverflowDropdownProps {
   onSelectTab: (id: string) => void;
 }
 
-// Height 24 + marginBottom 4 matches the new-tab button (24px, margin "0 0 4px 2px"),
-// so all three trailing icon centers (pill X, new-tab +, overflow chevron) align at
-// ~16px above the strip bottom on the 36px flex-end strip.
+// D-14: square 24×24 hit area (NotesSortMenu.triggerButtonStyle treatment,
+// copied verbatim) — was 28×24 (not square, owner complaint). Height 24 +
+// marginBottom 4 still matches the new-tab button, so all three trailing icon
+// centers (pill X, new-tab +, overflow chevron) align at ~16px above the
+// strip bottom on the 36px flex-end strip.
 const triggerButtonStyle: React.CSSProperties = {
-  width: 28,
+  width: 24,
   height: 24,
   padding: 4,
   margin: "0 0 4px 0",
@@ -78,23 +81,24 @@ export function TabOverflowDropdown({
 
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          aria-label="Show hidden tabs"
-          title="Show hidden tabs"
-          style={{
-            ...triggerButtonStyle,
-            background: hovering
-              ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-              : "transparent",
-          }}
-          onMouseEnter={() => setHovering(true)}
-          onMouseLeave={() => setHovering(false)}
-        >
-          <ChevronDown size={14} aria-hidden="true" />
-        </button>
-      </DropdownMenu.Trigger>
+      <Tooltip label="Show hidden tabs">
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Show hidden tabs"
+            style={{
+              ...triggerButtonStyle,
+              background: hovering
+                ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+                : "transparent",
+            }}
+            onMouseEnter={() => setHovering(true)}
+            onMouseLeave={() => setHovering(false)}
+          >
+            <ChevronDown size={14} aria-hidden="true" />
+          </button>
+        </DropdownMenu.Trigger>
+      </Tooltip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="end" sideOffset={4} style={popoverStyle}>
           {hiddenTabs.map((tab) => (

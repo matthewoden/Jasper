@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { PaneCornerReopenButton } from "./PaneCornerReopenButton";
+import { TooltipProvider } from "./Tooltip";
 import { useTreeStore } from "../lib/useTreeStore";
 
 beforeEach(() => {
@@ -23,13 +24,21 @@ describe("<PaneCornerReopenButton />", () => {
 
   it("renders a 'Show sidebar' button when notesSidebarVisible is false", () => {
     useTreeStore.setState({ notesSidebarVisible: false });
-    render(<PaneCornerReopenButton />);
+    render(
+      <TooltipProvider>
+        <PaneCornerReopenButton />
+      </TooltipProvider>,
+    );
     expect(screen.getByRole("button", { name: "Show sidebar" })).toBeInTheDocument();
   });
 
   it("clicking the button sets notesSidebarVisible true", () => {
     useTreeStore.setState({ notesSidebarVisible: false });
-    render(<PaneCornerReopenButton />);
+    render(
+      <TooltipProvider>
+        <PaneCornerReopenButton />
+      </TooltipProvider>,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Show sidebar" }));
     expect(useTreeStore.getState().notesSidebarVisible).toBe(true);
   });

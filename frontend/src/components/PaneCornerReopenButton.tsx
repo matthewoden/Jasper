@@ -25,6 +25,7 @@
 import { useState } from "react";
 import { PanelLeft } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
+import { Tooltip } from "./Tooltip";
 
 export function PaneCornerReopenButton(): React.JSX.Element | null {
   const notesSidebarVisible = useTreeStore((s) => s.notesSidebarVisible);
@@ -34,47 +35,48 @@ export function PaneCornerReopenButton(): React.JSX.Element | null {
   if (notesSidebarVisible) return null;
 
   return (
-    <button
-      type="button"
-      aria-label="Show sidebar"
-      title="Show sidebar"
-      onClick={() => setNotesSidebarVisible(true)}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      style={{
-        alignSelf: "stretch",
-        flexShrink: 0,
-        width: 40,
-        marginLeft: -4,
-        padding: 0,
-        borderTop: "none",
-        borderBottom: "none",
-        borderLeft: "none",
-        borderRight: "1px solid var(--color-border-inner)",
-        background: "transparent",
-        color: "var(--color-muted)",
-        cursor: "pointer",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <span
-        aria-hidden="true"
+    <Tooltip label="Show sidebar">
+      <button
+        type="button"
+        aria-label="Show sidebar"
+        onClick={() => setNotesSidebarVisible(true)}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
         style={{
-          width: 28,
-          height: 28,
-          borderRadius: 6,
+          alignSelf: "stretch",
+          flexShrink: 0,
+          width: 40,
+          marginLeft: -4,
+          padding: 0,
+          borderTop: "none",
+          borderBottom: "none",
+          borderLeft: "none",
+          borderRight: "1px solid var(--color-border-inner)",
+          background: "transparent",
+          color: "var(--color-muted)",
+          cursor: "pointer",
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          background: hovering
-            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-            : "transparent",
         }}
       >
-        <PanelLeft size={16} aria-hidden="true" />
-      </span>
-    </button>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 6,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: hovering
+              ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+              : "transparent",
+          }}
+        >
+          <PanelLeft size={16} aria-hidden="true" />
+        </span>
+      </button>
+    </Tooltip>
   );
 }

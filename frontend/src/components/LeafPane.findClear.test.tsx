@@ -37,6 +37,7 @@ import { __testing__ as fileTreeTesting } from "../lib/useFileTree";
 import { __resetAllControllersForTest } from "../lib/noteBufferController";
 import { useTreeStore } from "../lib/useTreeStore";
 import { ToastProvider } from "./Toast";
+import { TooltipProvider } from "./Tooltip";
 import { LeafPane } from "./LeafPane";
 import type { LeafNode } from "../lib/paneTree";
 import type { Tab } from "../lib/useTabStore";
@@ -84,20 +85,22 @@ const oneTabLeaf: LeafNode = { t: "leaf", id: "leaf-a", tabs: [tabA], active: "t
 function renderLeaf() {
   return render(
     <ToastProvider>
-      <LeafPane
-        leaf={oneTabLeaf}
-        isActive={true}
-        reindexing={false}
-        deletedTabIds={new Set()}
-        titleForTab={() => "scratchpad"}
-        onRequestClose={vi.fn()}
-        onCloseOthers={vi.fn()}
-        onCloseToRight={vi.fn()}
-        onCloseAll={vi.fn()}
-        onOpenRight={vi.fn()}
-        onTogglePin={vi.fn()}
-        onNewTab={vi.fn()}
-      />
+      <TooltipProvider>
+        <LeafPane
+          leaf={oneTabLeaf}
+          isActive={true}
+          reindexing={false}
+          deletedTabIds={new Set()}
+          titleForTab={() => "scratchpad"}
+          onRequestClose={vi.fn()}
+          onCloseOthers={vi.fn()}
+          onCloseToRight={vi.fn()}
+          onCloseAll={vi.fn()}
+          onOpenRight={vi.fn()}
+          onTogglePin={vi.fn()}
+          onNewTab={vi.fn()}
+        />
+      </TooltipProvider>
     </ToastProvider>,
   );
 }

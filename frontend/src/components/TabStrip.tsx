@@ -36,6 +36,7 @@ import { getNote } from "../lib/notesApi";
 import { TabPill } from "./TabPill";
 import { TabContextMenu } from "./TabContextMenu";
 import { TabOverflowDropdown } from "./TabOverflowDropdown";
+import { Tooltip } from "./Tooltip";
 import {
   computeHiddenTabIds,
   computeDropIndex,
@@ -105,13 +106,14 @@ export interface TabStripProps {
 }
 
 /** + button styled like SidebarToolbar's icon buttons; pinned at the strip's
- *  right edge (flexShrink:0) so it survives tab overflow. */
+ *  right edge (flexShrink:0) so it survives tab overflow. D-14: square 24×24
+ *  hit area + rounded hover background (NotesSortMenu.triggerButtonStyle
+ *  treatment) — owner's "no hover state" complaint. */
 const newTabButtonStyle: CSSProperties = {
   width: 24,
   height: 24,
   padding: 4,
   margin: "0 0 4px 2px",
-  background: "transparent",
   border: "none",
   color: "var(--color-muted)",
   cursor: "pointer",
@@ -121,6 +123,32 @@ const newTabButtonStyle: CSSProperties = {
   borderRadius: 4,
   flexShrink: 0,
 };
+
+/** Own hover state so it tints on hover without leaking a hook into TabStrip's
+ *  normal render path (same idiom as EmptyStateNewTabButton/RailReopenToggle). */
+function NewTabButton({ onNewTab }: { onNewTab: () => void }) {
+  const [hovering, setHovering] = useState(false);
+  return (
+    <Tooltip label="New tab" shortcut="⌥T">
+      <button
+        type="button"
+        aria-label="New tab"
+        data-testid="new-tab-button"
+        onClick={onNewTab}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        style={{
+          ...newTabButtonStyle,
+          background: hovering
+            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+            : "transparent",
+        }}
+      >
+        <Plus size={16} aria-hidden="true" />
+      </button>
+    </Tooltip>
+  );
+}
 
 /** Tab-shaped + button for the zero-tab empty state — reads as a real tab
  *  silhouette (TabPill's 40px flush rectangular pill seated on the 40px strip)
@@ -144,23 +172,24 @@ const emptyStateNewTabButtonStyle: CSSProperties = {
 function EmptyStateNewTabButton({ onNewTab }: { onNewTab: () => void }) {
   const [hovering, setHovering] = useState(false);
   return (
-    <button
-      type="button"
-      title="New tab (⌥T)"
-      aria-label="New tab"
-      data-testid="new-tab-button"
-      onClick={onNewTab}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      style={{
-        ...emptyStateNewTabButtonStyle,
-        background: hovering
-          ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
-          : "var(--color-surface)",
-      }}
-    >
-      <Plus size={16} aria-hidden="true" />
-    </button>
+    <Tooltip label="New tab" shortcut="⌥T">
+      <button
+        type="button"
+        aria-label="New tab"
+        data-testid="new-tab-button"
+        onClick={onNewTab}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        style={{
+          ...emptyStateNewTabButtonStyle,
+          background: hovering
+            ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+            : "var(--color-surface)",
+        }}
+      >
+        <Plus size={16} aria-hidden="true" />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -171,33 +200,34 @@ function EmptyStateNewTabButton({ onNewTab }: { onNewTab: () => void }) {
 function RailReopenToggle({ onClick }: { onClick: () => void }) {
   const [hovering, setHovering] = useState(false);
   return (
-    <button
-      type="button"
-      aria-label="Show panels"
-      title="Show panels"
-      onClick={onClick}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      style={{
-        width: 28,
-        height: 28,
-        padding: 6,
-        background: hovering
-          ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-          : "transparent",
-        border: "none",
-        color: "var(--color-muted)",
-        cursor: "pointer",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        // radius 6 matches PaneCornerReopenButton's hover tint — the two
-        // rail toggles must read as mirror images.
-        borderRadius: 6,
-      }}
-    >
-      <PanelRight size={16} aria-hidden="true" />
-    </button>
+    <Tooltip label="Show panels">
+      <button
+        type="button"
+        aria-label="Show panels"
+        onClick={onClick}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        style={{
+          width: 28,
+          height: 28,
+          padding: 6,
+          background: hovering
+            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+            : "transparent",
+          border: "none",
+          color: "var(--color-muted)",
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          // radius 6 matches PaneCornerReopenButton's hover tint — the two
+          // rail toggles must read as mirror images.
+          borderRadius: 6,
+        }}
+      >
+        <PanelRight size={16} aria-hidden="true" />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -620,21 +650,6 @@ export function TabStrip({
     };
   }, [leafId]);
 
-  // Single source for the + button so the empty-state and normal branches share
-  // identical markup.
-  const newTabButton = (
-    <button
-      type="button"
-      title="New tab (⌥T)"
-      aria-label="New tab"
-      data-testid="new-tab-button"
-      onClick={onNewTab}
-      style={newTabButtonStyle}
-    >
-      <Plus size={16} aria-hidden="true" />
-    </button>
-  );
-
   // Rail-reopen toggle (260721-cjt): shown ONLY when the right rail is
   // collapsed AND this strip belongs to the rightmost leaf (showRailToggle,
   // computed above). Uses the same PanelRight glyph as RightRailTabRow's
@@ -920,7 +935,7 @@ export function TabStrip({
           onSelectTab={onSelectTab}
         />
       )}
-      {newTabButton}
+      <NewTabButton onNewTab={onNewTab} />
       {rightCluster}
       {/* Single absolute overlay bar at the drop boundary — moves without shifting
           any pill's layout position. zIndex below the fixed ghost (1000). */}
