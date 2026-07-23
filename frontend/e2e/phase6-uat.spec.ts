@@ -220,7 +220,13 @@ async function expandTagBrowser(page: Page): Promise<void> {
     await showPanels.click();
   }
   await page.getByRole("button", { name: "Tags", exact: true }).click();
-  await expect(page.getByText("Note tags", { exact: true })).toBeVisible({ timeout: 5_000 });
+  // Phase 31 D-01/D-03/D-05: the "Note tags" active-note section and the
+  // panel sub-header it lived under are both removed — the Tags tab is now
+  // a single vault-wide list (RightRailTagsPanel) with no header of its own.
+  // Wait for that list's <ul role="list"> to mount instead (scoped to `ul`
+  // — an unrelated `<ol role="list">` elsewhere on the page also matches a
+  // bare role query).
+  await expect(page.locator("ul[role='list']")).toBeVisible({ timeout: 5_000 });
 }
 
 /**
