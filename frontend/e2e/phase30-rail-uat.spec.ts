@@ -24,12 +24,12 @@
  * vault" copy (D-10, mock-literal — replaces the pre-Plan-08 "No tags
  * yet..." copy) since Plan 08 upgraded the Tags tab to two sections.
  *
- * TAGS-02 (Plan 08) is now a real, passing test: opens a tagless note,
- * asserts the upper section's "No tags on this note" empty state, types
- * `#livetag` into the live CM6 doc and asserts the chip appears in the
- * upper section without a save round-trip (D-08 live parse), then clicks
- * the chip and asserts the left sidebar switches to the Search panel with
- * a `tag:livetag` query seeded (D-07).
+ * TAGS-02 (Plan 08, reworked Phase 31 D-03/D-05): the Tags tab is now a
+ * single vault-wide tag list — the upper active-note "Note tags" section
+ * and its live-CM6 parse machinery (useNoteTagsStore) are fully deleted.
+ * The test creates a note with a tag in its body, asserts the vault-list
+ * row renders, then clicks it and asserts the left sidebar switches to the
+ * Search panel with a `tag:livetag` query seeded (D-07, unchanged).
  *
  * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
  * build`) before Playwright — the spec runs against the EMBEDDED binary.
@@ -132,16 +132,26 @@ test.describe("@tags-rail Phase 30: right rail Tags tab", () => {
     await expect(linkedPanel).not.toBeVisible();
   });
 
-  test("TAGS-02: the Tags tab shows the active note's live tags above the vault tag list; a chip click seeds a tag: search query", async ({
+  test("TAGS-02: the Tags tab is a single vault-wide tag list; a tag click filters the file tree", async ({
     page,
   }) => {
+    // Phase 31 D-03/D-05 collapsed the Phase 30 two-section Tags tab (an
+    // upper active-note "Note tags" live-CM6 section + a lower vault-wide
+    // list) into a single vault-wide list — the note-tags concept (and its
+    // live-parse machinery, useNoteTagsStore) is fully deleted. This test
+    // originally asserted the removed upper section and a "left Search
+    // panel with tag: query" that doesn't exist as a distinct UI — the
+    // actual (and unchanged, D-07) shipped mechanism is activeTagFilter:
+    // clicking a tag row filters the file tree and shows the
+    // ActiveTagFilterChip ("Filtered by: #name"), same contract phase6-uat
+    // S5 already covers for the left-sidebar tag browser.
     await page.setViewportSize({ width: 1512, height: 944 });
     const noteId = await apiCreateNote(
       page,
       jasper.baseURL,
       "rail-tags-live.md",
       "",
-      "# rail-tags-live\n\nBody text for the Phase 30 TAGS-02 UAT.\n",
+      "# rail-tags-live\n\nBody text with a #livetag for the Phase 31 TAGS-02 UAT.\n",
     );
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
@@ -150,32 +160,22 @@ test.describe("@tags-rail Phase 30: right rail Tags tab", () => {
     const tabRow = page.getByTestId("right-rail-tab-row");
     await tabRow.getByRole("button", { name: "Tags" }).click();
 
-    // Two sections: upper "Note tags" sub-header, lower "Tags" sub-header,
-    // both mounted at once (D-06) — unlike Outline/Linked mentions,
-    // which are exclusive with Tags.
-    await expect(page.getByText("Note tags")).toBeVisible({ timeout: 5_000 });
+    // Single vault-wide list — no "Note tags" sub-section, no panel header.
+    await expect(page.getByText("Note tags")).toHaveCount(0);
 
-    // Upper section empty state: this note has no tags yet.
-    const noteTagsEmptyState = page.getByText("No tags on this note");
-    await expect(noteTagsEmptyState).toBeVisible({ timeout: 5_000 });
+    const tagRow = page.getByTestId("tag-row-livetag");
+    await expect(tagRow).toBeVisible({ timeout: 5_000 });
+    await expect(tagRow).toContainText("#livetag");
 
-    // Live-parse (D-08): typing #livetag in the editor shows a chip in the
-    // upper section immediately — no save round-trip required.
-    const editor = page.locator(".cm-content:visible").first();
-    await editor.click();
-    const gotoEndKey = process.platform === "darwin" ? "Meta+End" : "Control+End";
-    await page.keyboard.press(gotoEndKey);
-    await page.keyboard.type(" #livetag");
+    // Tag click (D-07, unchanged): sets activeTagFilter, filtering the file
+    // tree and surfacing the dismissible "Filtered by: #livetag" chip.
+    await tagRow.click();
+    const chip = page.locator('[aria-label="Remove tag filter: #livetag"]');
+    await expect(chip).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Filtered by:")).toBeVisible();
 
-    const liveTagChip = page.getByTestId("note-tag-chip-livetag");
-    await expect(liveTagChip).toBeVisible({ timeout: 5_000 });
-    await expect(noteTagsEmptyState).not.toBeVisible();
-
-    // Tag click (D-07): opens the left Search panel seeded with tag:{name}.
-    await liveTagChip.click();
-    const searchInput = page.getByRole("textbox", { name: "Search notes" });
-    await expect(searchInput).toBeVisible({ timeout: 5_000 });
-    await expect(searchInput).toHaveValue("tag:livetag");
+    await chip.click();
+    await expect(chip).toHaveCount(0, { timeout: 5_000 });
   });
 
   test("260721-cjt: collapsing the right rail leaves the editor flush with the right edge; the rightmost pane's tab bar carries the sole reopen toggle, and it persists across reload", async ({
