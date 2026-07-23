@@ -3,9 +3,9 @@
  * TitleElement and the CM6 body (D-18 through D-21).
  *
  * "First visible body line" must skip BOTH independently-hidden regions:
- * the frontmatter block (frontmatterHidePlugin.ts, has its own atomicRanges
- * guard) AND the first ATX H1 line (firstH1HidePlugin.ts, hidden but NOT
- * atomic-range-guarded — TitleElement renders that H1 above the editor).
+ * the frontmatter block AND the first ATX H1 line (both hidden AND
+ * atomic-range-guarded, in frontmatterHidePlugin.ts and firstH1HidePlugin.ts
+ * respectively — TitleElement renders the H1 above the editor instead).
  * Computing the boundary from frontmatter alone would land Down/Enter-from-
  * title directly on the invisible H1 line instead of the true first visible
  * body line.
@@ -33,8 +33,19 @@ function frontmatterBoundary(state: EditorState): number | null {
 }
 
 /**
- * Returns the FIRST ATX H1 node's `.to`, or null when the doc has none.
- * Mirrors firstH1HidePlugin.ts's own hide-scan (first-match-wins, `done` gate).
+ * Returns the boundary of the FIRST ATX H1's HIDDEN region, or null when the
+ * doc has none. Mirrors firstH1HidePlugin.ts's own hide-scan (first-match-
+ * wins, `done` gate) for locating the node, but the returned boundary is
+ * NOT simply the node's `.to` — firstH1HidePlugin.ts's hide decoration
+ * extends through the H1's own trailing newline (required for CM6 to
+ * collapse the row's height correctly; a bare node-range replace leaves a
+ * normal-height phantom row behind, the Phase 31 UAT round-2 root cause).
+ * As an emergent CM6 rendering behavior, that one-character extension ALSO
+ * merges an immediately-following BLANK line (if any) into the same hidden
+ * block — a zero-length line starting exactly at that boundary never gets
+ * its own rendered row. firstVisibleBodyLine()'s own boundary-resolution
+ * step (below) is what actually accounts for that merged blank line; this
+ * function only computes the raw extended boundary.
  */
 function firstH1To(state: EditorState): number | null {
   let to: number | null = null;
@@ -44,7 +55,14 @@ function firstH1To(state: EditorState): number | null {
       to = node.to;
     },
   });
-  return to;
+  if (to === null) return null;
+  // +1: extend through the H1's own trailing newline, matching
+  // firstH1HidePlugin.ts's hide-decoration range exactly (required there
+  // for CM6 to collapse the row's height correctly). This makes firstH1To's
+  // return value the START of the next line, the same convention
+  // frontmatterBoundary() already uses — see firstVisibleBodyLine()'s own
+  // handling of a resulting boundary that lands on a zero-length line.
+  return Math.min(to + 1, state.doc.length);
 }
 
 /**
@@ -59,9 +77,20 @@ export function firstVisibleBodyLine(state: EditorState): Line | null {
   // bound can land exactly at a line's end (no more characters before its own
   // newline, e.g. a hidden region that consumes a whole line with nothing
   // else following on it) — in that case the first VISIBLE line is the next
-  // one, not the (fully-consumed) line bound resolves onto.
-  if (line.to <= bound) {
-    return line.number < state.doc.lines ? state.doc.line(line.number + 1) : null;
+  // one, not the (fully-consumed) line bound resolves onto. EXCEPT when that
+  // resolved line is the doc's own LAST line: never skip past it, even when
+  // blank — firstH1HidePlugin.ts's hide range extends through the H1's own
+  // trailing newline, which (as an emergent CM6 rendering merge) also
+  // collapses an immediately-following blank line into the same hidden
+  // block when one exists, making `bound` land exactly on that next line's
+  // (zero-length) start === end. For a fresh/near-empty note whose only
+  // remaining content IS that trailing blank line, skipping "past" it would
+  // incorrectly report null ("no visible body line") — there is nowhere
+  // left to skip TO, and the line is still a legitimate target (Phase 31
+  // UAT round 2: this previously broke ArrowUp entirely for a brand-new,
+  // not-yet-typed-into note).
+  if (line.to <= bound && line.number < state.doc.lines) {
+    return state.doc.line(line.number + 1);
   }
   return line;
 }
