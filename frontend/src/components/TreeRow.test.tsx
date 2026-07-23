@@ -280,6 +280,42 @@ describe("<TreeRow />", () => {
     expect(label.getAttribute("title")).toBe("Scratchpad");
   });
 
+  describe("D-15 indent guides", () => {
+    it("level-0 row renders no indent guides", () => {
+      const node = makeFolderNode({ path: "projects", name: "projects", level: 0 });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      expect(
+        container.querySelectorAll('[data-testid="tree-indent-guide"]'),
+      ).toHaveLength(0);
+    });
+
+    it("level-2 row renders exactly 2 indent guides at the expected left offsets", () => {
+      const node = makeFolderNode({ path: "a/b/projects", name: "projects", level: 2 });
+      const { container } = render(
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />,
+      );
+      const guides = Array.from(
+        container.querySelectorAll('[data-testid="tree-indent-guide"]'),
+      ) as HTMLElement[];
+      expect(guides).toHaveLength(2);
+      const lefts = guides.map((g) => g.style.left).sort();
+      // left = 3 + 16*L + 7, for L in 0..1
+      expect(lefts).toEqual(["10px", "26px"].sort());
+    });
+  });
+
   it("TestRow_KebabHasDataAttribute", () => {
     const node = makeNoteNode();
     const { container } = render(

@@ -599,6 +599,29 @@ export function TreeRow({
       tabIndex={0}
       title={isDailyFolder ? "Daily notes" : undefined}
     >
+      {/* D-15: flat per-level indent guides for nested rows — mock draws an
+          unconditional full-height vertical line at every ancestor level (no
+          VSCode-style last-child termination). Anchored to the same
+          `indent = 3 + 16*level` geometry as the row's own paddingLeft; +7
+          centers the 1px line under the folder/note icon column rather than
+          the chevron. Level 0 rows render none (nothing to guide against). */}
+      {node.level > 0 &&
+        Array.from({ length: node.level }, (_, level) => (
+          <span
+            key={`indent-guide-${level}`}
+            aria-hidden="true"
+            data-testid="tree-indent-guide"
+            style={{
+              position: "absolute",
+              left: 3 + 16 * level + 7,
+              top: 0,
+              bottom: 0,
+              width: 1,
+              background:
+                "color-mix(in srgb, var(--color-border) 70%, transparent)",
+            }}
+          />
+        ))}
       {isActive && (
         <span
           aria-hidden="true"
