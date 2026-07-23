@@ -179,25 +179,15 @@ function NewTabButton({ onNewTab }: { onNewTab: () => void }) {
   );
 }
 
-/** Tab-shaped + button for the zero-tab empty state — reads as a real tab
- *  silhouette (TabPill's 40px flush rectangular pill seated on the 40px strip)
- *  rather than a bare icon, so the empty state still looks like a tab row. */
-const emptyStateNewTabButtonStyle: CSSProperties = {
-  height: 40,
-  minWidth: 80,
-  padding: "0 8px",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  border: "1px solid var(--color-border)",
-  borderRadius: 0,
-  color: "var(--color-muted)",
-  cursor: "pointer",
-  flexShrink: 0,
-};
-
-/** Empty-state new-tab button: own hover state so it tints like a TabPill
- *  (accent-12%) without leaking a hook into TabStrip's normal render path. */
+/** Empty-state new-tab button (UAT round 2, item 5): the prior tab-shaped
+ *  silhouette (an 80px-wide bordered rectangle meant to read as a real tab)
+ *  is what the owner called out as "huge, because of all the left/right
+ *  padding" — it ballooned to fill the empty bar instead of reading as a
+ *  normal button. Reuses the SAME compact 24×24 icon-button footprint as the
+ *  normal add-tab button (`newTabButtonStyle`, below) rather than a bespoke
+ *  tab-shaped treatment, so an empty strip shows a normal-sized "+" at the
+ *  left instead of a giant one. Own hover state so it tints without leaking
+ *  a hook into TabStrip's normal render path. */
 function EmptyStateNewTabButton({ onNewTab }: { onNewTab: () => void }) {
   const [hovering, setHovering] = useState(false);
   return (
@@ -210,10 +200,10 @@ function EmptyStateNewTabButton({ onNewTab }: { onNewTab: () => void }) {
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
         style={{
-          ...emptyStateNewTabButtonStyle,
+          ...newTabButtonStyle,
           background: hovering
-            ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
-            : "var(--color-surface)",
+            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+            : "transparent",
         }}
       >
         <Plus size={16} aria-hidden="true" />
@@ -266,6 +256,12 @@ function RailReopenToggle({ onClick }: { onClick: () => void }) {
 // the editor column below" look that background is meant to convey.
 const tabStripStyle: CSSProperties = {
   position: "relative",
+  // UAT round 2 (item 6): "the bar needs to be full screen" — an explicit
+  // width:100% guarantees the strip spans its pane's full width regardless
+  // of parent flex context, rather than relying on an implicit cross-axis
+  // stretch that a future layout change could silently drop.
+  width: "100%",
+  boxSizing: "border-box",
   height: 40,
   background: "var(--color-surface)",
   padding: "0 4px",

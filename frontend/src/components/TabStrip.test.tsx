@@ -136,7 +136,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
     expect(screen.getByTestId("new-tab-button")).toBeInTheDocument();
   });
 
-  it("BUG 3c: empty-state new-tab button is tab-shaped (flush, square corners — not top-rounded)", () => {
+  it("UAT round 2 (item 5): empty-state new-tab button has the SAME compact 24x24 icon-button footprint as the normal add-tab button (not the old huge tab-shaped silhouette)", () => {
     render(
       <TooltipProvider>
         <TabStrip
