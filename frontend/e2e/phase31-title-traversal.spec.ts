@@ -516,4 +516,48 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
     expect(Math.abs(breadcrumbSegBox.x - titleBox.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(titleBox.x - paragraphBox.x)).toBeLessThanOrEqual(1);
   });
+
+  test("UAT round-2: responsive top-chrome cluster — word count + star hide at narrow pane widths, the ⋯ note-options menu never hides", async ({
+    page,
+  }) => {
+    const noteId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "responsive-chrome.md",
+      "",
+      NOTE_CONTENT_BLANK_AFTER_H1,
+    );
+
+    // Wide viewport: word count + star + ⋯ all show.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+    await openNoteInEditor(page, noteId);
+
+    await expect(page.getByTestId("word-count")).toBeVisible();
+    await expect(page.getByTestId("bookmark-star")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Note options" })).toBeVisible();
+
+    // Collapse the left sidebar so the editor pane's own width (what
+    // computeChromeVisibility actually measures via ResizeObserver on the
+    // bar — a per-pane width, not a window-width media query) tracks the
+    // viewport directly, then shrink the viewport itself to narrow the bar.
+    const collapseBtn = page.getByRole("button", { name: "Collapse sidebar" });
+    if (await collapseBtn.isVisible()) {
+      await collapseBtn.click();
+    }
+
+    await page.setViewportSize({ width: 360, height: 900 });
+
+    await expect(page.getByTestId("word-count")).toBeHidden();
+    await expect(page.getByTestId("bookmark-star")).toBeHidden();
+    await expect(page.getByRole("button", { name: "Note options" })).toBeVisible();
+
+    // Widen back out — both reappear (proves this is width-driven, not a
+    // one-way/sticky hide).
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(page.getByTestId("word-count")).toBeVisible();
+    await expect(page.getByTestId("bookmark-star")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Note options" })).toBeVisible();
+  });
 });

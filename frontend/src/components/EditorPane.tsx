@@ -25,6 +25,7 @@ import {
   type MutableRefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -35,6 +36,10 @@ import {
   breadcrumbSegments,
   type BreadcrumbSegment,
 } from "../lib/breadcrumbPrefix";
+import {
+  computeBreadcrumbReserve,
+  computeChromeVisibility,
+} from "../lib/editorChromeResponsive";
 import { extractH1FromContent } from "../lib/h1Extract";
 import { getNote, updateNote } from "../lib/notesApi";
 import { generateOrLoadSessionId } from "../lib/sessionId";
@@ -245,6 +250,57 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   const { isBookmarked, toggleBookmark } = useBookmarks();
   const bookmarked = noteId !== null && isBookmarked(noteId);
   const showBookmarkStar = !hidden && noteId !== null;
+
+  // Responsive top-chrome (31 UAT round 2): word count + star hide first at
+  // narrow bar widths, the ⋯ menu never hides. Widths are measured (not
+  // guessed from viewport) so split-pane layouts respond to THEIR OWN pane
+  // width, not the window's. computeChromeVisibility/computeBreadcrumbReserve
+  // are pure — the effect below only feeds them a measured clientWidth
+  // (mirrors TabStrip's ResizeObserver + pure-function split).
+  const chromeBarRef = useRef<HTMLDivElement>(null);
+  const chromeClusterRef = useRef<HTMLDivElement>(null);
+  const [chromeBarWidth, setChromeBarWidth] = useState(0);
+  const [chromeClusterWidth, setChromeClusterWidth] = useState(0);
+  const chromeVisibility = useMemo(
+    () => computeChromeVisibility(chromeBarWidth),
+    [chromeBarWidth],
+  );
+  const breadcrumbReserve = useMemo(
+    () =>
+      computeBreadcrumbReserve({
+        barWidth: chromeBarWidth,
+        clusterWidth: chromeClusterWidth,
+      }),
+    [chromeBarWidth, chromeClusterWidth],
+  );
+
+  useLayoutEffect(() => {
+    const bar = chromeBarRef.current;
+    const cluster = chromeClusterRef.current;
+    if (!bar || !cluster) return;
+
+    const measure = () => {
+      // clientWidth 0 (initial mount / jsdom, no real layout) — leave
+      // everything visible/unreserved rather than over-hiding against a
+      // zero-width budget (same escape hatch TabStrip's measure() uses).
+      setChromeBarWidth((prev) => (prev === bar.clientWidth ? prev : bar.clientWidth));
+      setChromeClusterWidth((prev) =>
+        prev === cluster.clientWidth ? prev : cluster.clientWidth,
+      );
+    };
+
+    measure();
+    // Guard against resize-frame thrash: ResizeObserver only ever writes
+    // state when a measurement actually changed (the prev===next checks
+    // above), so a flurry of same-size callback firings is a no-op re-render.
+    const ro = new ResizeObserver(measure);
+    ro.observe(bar);
+    ro.observe(cluster);
+    return () => ro.disconnect();
+    // controllerNotePath (not the later-derived `notePath`, which is computed
+    // after this hook to respect rules-of-hooks) re-attaches the observer
+    // whenever the bar/cluster DOM nodes remount for a new note.
+  }, [controllerNotePath]);
 
   const handleBreadcrumbClick = useCallback((seg: BreadcrumbSegment) => {
     if (seg.kind === "folder") {
@@ -984,103 +1040,154 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
         </div>
       )}
       {!zen && notePath && breadcrumbSegments(notePath).length > 0 && (
-        <nav
-          data-testid="note-breadcrumb"
-          aria-label="Note path"
-          style={{
-            // D-12: height matched to the mock's measured breadcrumb/header
-            // bar (Vault.dc.html:813, height: "40px") — was 26px pre-plan.
-            height: 40,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "0 var(--editor-content-x)",
-            boxSizing: "border-box",
-            // Constrained + centered to the SAME 760px reading column as the
-            // title wrapper and `.cm-content` below it — without this, the
-            // breadcrumb spans the full (uncapped) pane width, so its left
-            // edge drifts away from the title/body's left edge in any pane
-            // wider than 760px + 2*56px (visible as "things don't line up",
-            // Phase 31 UAT round 2 — title and body were already correctly
-            // aligned with EACH OTHER; the breadcrumb chrome above them was
-            // the piece drifting). `width: "100%"` is REQUIRED alongside
-            // maxWidth: this nav is a flex child of the pane's column flex
-            // container, and `margin: auto` on a flex item's cross axis
-            // cancels the default stretch behavior, falling back to
-            // content-based (shrink-to-fit) sizing unless width is pinned
-            // explicitly — the same pattern the title wrapper below already
-            // uses for this exact reason.
-            width: "100%",
-            maxWidth: 760,
-            margin: "0 auto",
-          }}
+        // Full-pane-width top-chrome bar (31 UAT round 2): the breadcrumb
+        // <nav> below keeps its OWN maxWidth:760 + margin:auto body-column
+        // alignment (D-12, untouched) — this wrapper only adds a
+        // position:relative anchor so the right cluster can pin to the
+        // BAR's true right edge (mirrors the mock's header/controls split,
+        // Vault.dc.html ~826, rather than living inside the 760 column).
+        <div
+          ref={chromeBarRef}
+          data-testid="editor-top-chrome"
+          style={{ position: "relative", height: 40, width: "100%", flexShrink: 0 }}
         >
-          <div
+          <nav
+            data-testid="note-breadcrumb"
+            aria-label="Note path"
             style={{
-              maxWidth: "70%",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              fontSize: 12,
+              // D-12: height matched to the mock's measured breadcrumb/header
+              // bar (Vault.dc.html:813, height: "40px") — was 26px pre-plan.
+              height: 40,
+              display: "flex",
+              alignItems: "center",
+              padding: "0 var(--editor-content-x)",
+              boxSizing: "border-box",
+              // Constrained + centered to the SAME 760px reading column as the
+              // title wrapper and `.cm-content` below it — without this, the
+              // breadcrumb spans the full (uncapped) pane width, so its left
+              // edge drifts away from the title/body's left edge in any pane
+              // wider than 760px + 2*56px (visible as "things don't line up",
+              // Phase 31 UAT round 2 — title and body were already correctly
+              // aligned with EACH OTHER; the breadcrumb chrome above them was
+              // the piece drifting). `width: "100%"` is REQUIRED alongside
+              // maxWidth: this nav is a flex child of the pane's column flex
+              // container, and `margin: auto` on a flex item's cross axis
+              // cancels the default stretch behavior, falling back to
+              // content-based (shrink-to-fit) sizing unless width is pinned
+              // explicitly — the same pattern the title wrapper below already
+              // uses for this exact reason.
+              width: "100%",
+              maxWidth: 760,
+              margin: "0 auto",
             }}
           >
-            {breadcrumbSegments(notePath).map((seg, i, arr) => (
-              <Fragment key={seg.folderPath}>
-                <button
-                  type="button"
-                  data-testid="breadcrumb-segment"
-                  aria-label={`Reveal ${seg.label} in Files`}
-                  onClick={() => handleBreadcrumbClick(seg)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "color-mix(in srgb, var(--color-fg) 75%, transparent)",
-                    fontSize: 12,
-                    fontFamily: "inherit",
-                    cursor: "pointer",
-                    padding: "0 2px",
-                    borderRadius: 2,
-                    lineHeight: "inherit",
-                  }}
-                >
-                  {seg.label}
-                </button>
-                {i < arr.length - 1 && (
-                  <span
-                    data-testid="breadcrumb-separator"
-                    aria-hidden="true"
-                    style={{
-                      color: "var(--color-muted)",
-                      margin: "0 4px",
-                      fontSize: 12,
-                      lineHeight: "inherit",
-                      userSelect: "none",
-                    }}
-                  >
-                    /
-                  </span>
-                )}
-              </Fragment>
-            ))}
-          </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                minWidth: 0,
+                overflow: "hidden",
+                width: "100%",
+                boxSizing: "border-box",
+                fontSize: 12,
+                // Reserves room for the right cluster once the bar narrows
+                // enough that this centered column would otherwise render
+                // underneath it (computeBreadcrumbReserve, UAT round 2) —
+                // zero at wide widths where the column's own natural gap to
+                // the bar edge already clears the cluster.
+                paddingRight: breadcrumbReserve,
+              }}
+            >
+              {breadcrumbSegments(notePath).map((seg, i, arr) => {
+                const isLast = i === arr.length - 1;
+                return (
+                  <Fragment key={seg.folderPath}>
+                    <button
+                      type="button"
+                      data-testid="breadcrumb-segment"
+                      aria-label={`Reveal ${seg.label} in Files`}
+                      onClick={() => handleBreadcrumbClick(seg)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "color-mix(in srgb, var(--color-fg) 75%, transparent)",
+                        fontSize: 12,
+                        fontFamily: "inherit",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        padding: "0 2px",
+                        borderRadius: 2,
+                        lineHeight: "inherit",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        flexGrow: 0,
+                        // Folder segments give way FIRST: a hard cap + a much
+                        // higher flex-shrink weight than the title's (below)
+                        // means the shrink algorithm drains almost all
+                        // negative space from folder segments before the
+                        // title loses any width — the title only truncates
+                        // once every folder segment has hit its own
+                        // ellipsis floor (minWidth), i.e. as a last resort.
+                        ...(isLast
+                          ? { flexShrink: 1, minWidth: 0 }
+                          : { flexShrink: 20, maxWidth: 140, minWidth: 20 }),
+                      }}
+                    >
+                      {seg.label}
+                    </button>
+                    {i < arr.length - 1 && (
+                      <span
+                        data-testid="breadcrumb-separator"
+                        aria-hidden="true"
+                        style={{
+                          color: "var(--color-muted)",
+                          margin: "0 4px",
+                          fontSize: 12,
+                          lineHeight: "inherit",
+                          userSelect: "none",
+                          flexShrink: 0,
+                        }}
+                      >
+                        /
+                      </span>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </div>
+          </nav>
+          {/* Right-pinned cluster (word count -> star -> ⋯, UAT round 2):
+              pinned to the BAR's true right edge, not the 760 column, so it
+              never travels with the breadcrumb's own centering — the ⋯ menu
+              is NEVER hidden; word count then the star hide first as the bar
+              narrows (computeChromeVisibility). */}
           <div
+            ref={chromeClusterRef}
+            data-testid="editor-top-chrome-cluster"
             style={{
-              flexShrink: 0,
+              position: "absolute",
+              right: "var(--editor-content-x)",
+              top: "50%",
+              transform: "translateY(-50%)",
               display: "flex",
               alignItems: "center",
               gap: 8,
             }}
           >
-            <span
-              data-testid="word-count"
-              style={{
-                fontSize: 12,
-                color: "var(--color-muted)",
-              }}
-            >
-              {formatWordCount(wordCount)}
-            </span>
-            {showBookmarkStar && noteId !== null && (
+            {chromeVisibility.showWordCount && (
+              <span
+                data-testid="word-count"
+                style={{
+                  fontSize: 12,
+                  color: "var(--color-muted)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {formatWordCount(wordCount)}
+              </span>
+            )}
+            {showBookmarkStar && chromeVisibility.showStar && noteId !== null && (
               <Tooltip label={bookmarked ? "Remove bookmark" : "Bookmark this note"} side="bottom">
                 <button
                   type="button"
@@ -1120,7 +1227,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
               />
             )}
           </div>
-        </nav>
+        </div>
       )}
       {/* Leaf-owned Find/Replace bar slot (P26 polish, UI-SPEC line 151):
           tabStrip -> breadcrumb (above) -> findBar (here) -> body (below).

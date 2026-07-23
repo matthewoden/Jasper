@@ -3123,6 +3123,95 @@ describe("<EditorPane /> breadcrumb bookmark star (BOOK-01, D-14/D-15)", () => {
 });
 
 
+// Overrides HTMLElement.prototype.clientWidth for the scope of one test so
+// EditorPane's ResizeObserver-driven measure() (jsdom never actually lays
+// out elements, so real clientWidth is always 0) reads a chosen "bar width"
+// synchronously on mount — the useLayoutEffect's first measure() call runs
+// before this override would need restoring. Restored in afterEach so it
+// never leaks into a later test.
+let restoreClientWidth: (() => void) | null = null;
+function mockBarWidth(width: number) {
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+        configurable: true,
+        get() {
+            return width;
+        },
+    });
+    restoreClientWidth = () => {
+        if (original) {
+            Object.defineProperty(HTMLElement.prototype, "clientWidth", original);
+        }
+    };
+}
+
+describe("<EditorPane /> responsive top-chrome cluster (31 UAT round 2)", () => {
+    afterEach(() => {
+        restoreClientWidth?.();
+        restoreClientWidth = null;
+    });
+
+    it("renders a right-pinned cluster containing word count, star, and the note-options menu, in order", async () => {
+        getNoteMock.mockResolvedValue(okGet("# note"));
+        getTreeMock.mockResolvedValue(okTree("note.md"));
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        const cluster = await screen.findByTestId("editor-top-chrome-cluster");
+        const testIds = Array.from(
+            cluster.querySelectorAll("[data-testid], button"),
+        ).map((el) => el.getAttribute("data-testid") ?? el.getAttribute("aria-label"));
+        // word-count, then bookmark-star, then the Note options trigger.
+        expect(testIds.indexOf("word-count")).toBeGreaterThanOrEqual(0);
+        expect(testIds.indexOf("word-count")).toBeLessThan(testIds.indexOf("bookmark-star"));
+        expect(testIds.indexOf("bookmark-star")).toBeLessThan(testIds.indexOf("Note options"));
+    });
+
+    it("wide bar: word count and star both show", async () => {
+        mockBarWidth(900);
+        getNoteMock.mockResolvedValue(okGet("# note"));
+        getTreeMock.mockResolvedValue(okTree("note.md"));
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        await screen.findByTestId("note-breadcrumb");
+        expect(screen.getByTestId("word-count")).toBeInTheDocument();
+        expect(screen.getByTestId("bookmark-star")).toBeInTheDocument();
+        expect(screen.getByLabelText("Note options")).toBeInTheDocument();
+    });
+
+    it("medium bar: word count hides, star and ⋯ stay visible", async () => {
+        mockBarWidth(420);
+        getNoteMock.mockResolvedValue(okGet("# note"));
+        getTreeMock.mockResolvedValue(okTree("note.md"));
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        await screen.findByTestId("note-breadcrumb");
+        expect(screen.queryByTestId("word-count")).not.toBeInTheDocument();
+        expect(screen.getByTestId("bookmark-star")).toBeInTheDocument();
+        expect(screen.getByLabelText("Note options")).toBeInTheDocument();
+    });
+
+    it("narrow bar: word count AND star hide — the ⋯ note-options menu is NEVER hidden", async () => {
+        mockBarWidth(300);
+        getNoteMock.mockResolvedValue(okGet("# note"));
+        getTreeMock.mockResolvedValue(okTree("note.md"));
+
+        render(<EditorPane noteId={ScratchpadUUID} />);
+        await flushMicrotasks();
+
+        await screen.findByTestId("note-breadcrumb");
+        expect(screen.queryByTestId("word-count")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("bookmark-star")).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Note options")).toBeInTheDocument();
+    });
+});
+
+
 describe("<EditorPane /> inline title fallback (READ-01 / Obsidian filename title)", () => {
     it("shows the H1 as the title when the note has one", async () => {
         getNoteMock.mockResolvedValue(okGet("# My Heading\n\nbody"));
