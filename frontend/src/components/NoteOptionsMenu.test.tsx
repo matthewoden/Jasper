@@ -50,6 +50,7 @@ vi.mock("./toast.utils", () => ({
 }));
 
 import { NoteOptionsMenu } from "./NoteOptionsMenu";
+import { TooltipProvider } from "./Tooltip";
 
 const LOCKED_ORDER = [
   "Rename",
@@ -77,7 +78,11 @@ function renderMenu(overrides?: {
     onRequestRename: overrides?.onRequestRename ?? vi.fn(),
     open: true,
   };
-  render(<NoteOptionsMenu {...props} />);
+  render(
+    <TooltipProvider>
+      <NoteOptionsMenu {...props} />
+    </TooltipProvider>,
+  );
   return props;
 }
 

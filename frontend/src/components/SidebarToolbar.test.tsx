@@ -30,13 +30,18 @@ vi.mock("../api/client", () => ({
 
 import { SidebarToolbar } from "./SidebarToolbar";
 import { ToastProvider } from "./Toast";
+import { TooltipProvider } from "./Tooltip";
 
 function renderToolbar(
   ui: ReactElement,
   options?: RenderOptions,
 ): RenderResult {
   return render(ui, {
-    wrapper: ({ children }) => <ToastProvider>{children}</ToastProvider>,
+    wrapper: ({ children }) => (
+      <ToastProvider>
+        <TooltipProvider>{children}</TooltipProvider>
+      </ToastProvider>
+    ),
     ...options,
   });
 }
@@ -86,7 +91,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(onNewFolder).toHaveBeenCalledTimes(1);
   });
 
-  it("TestToolbar_NativeTooltips_NewNoteAndNewFolder", () => {
+  it("TestToolbar_NoNativeTitle_NewNoteAndNewFolder (D-07: migrated to shared Tooltip)", () => {
     renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
@@ -95,10 +100,10 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     );
     expect(
       screen.getByRole("button", { name: "New note" }).getAttribute("title"),
-    ).toBe("New note");
+    ).toBeNull();
     expect(
       screen.getByRole("button", { name: "New folder" }).getAttribute("title"),
-    ).toBe("New folder");
+    ).toBeNull();
   });
 
   it("TestToolbar_CreatingFalse_ButtonsEnabled — default state", () => {

@@ -29,6 +29,7 @@ import { TreeRow } from "./TreeRow";
 import { BookmarksEmptyState } from "./BookmarksEmptyState";
 import { BookmarksErrorState } from "./BookmarksErrorState";
 import { NewBookmarkFolderInput } from "./NewBookmarkFolderInput";
+import { Tooltip } from "./Tooltip";
 import {
   adaptBookmarks,
   buildBookmarkMenu,
@@ -73,22 +74,23 @@ const toolbarButtonBase: CSSProperties = {
 function NewBookmarkFolderButton({ onClick }: { onClick: () => void }) {
   const [hovering, setHovering] = useState(false);
   return (
-    <button
-      type="button"
-      title="New bookmark folder"
-      aria-label="New bookmark folder"
-      onClick={onClick}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      style={{
-        ...toolbarButtonBase,
-        background: hovering
-          ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-          : "transparent",
-      }}
-    >
-      <FolderPlus size={16} aria-hidden="true" />
-    </button>
+    <Tooltip label="New bookmark folder" side="right">
+      <button
+        type="button"
+        aria-label="New bookmark folder"
+        onClick={onClick}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        style={{
+          ...toolbarButtonBase,
+          background: hovering
+            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+            : "transparent",
+        }}
+      >
+        <FolderPlus size={16} aria-hidden="true" />
+      </button>
+    </Tooltip>
   );
 }
 

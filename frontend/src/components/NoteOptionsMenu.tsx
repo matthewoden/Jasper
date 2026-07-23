@@ -42,6 +42,7 @@ import { revealInNavigation } from "../lib/revealInNavigation";
 import { useTreeMutations } from "../lib/useTreeMutations";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { MoveToFolderModal } from "./MoveToFolderModal";
+import { Tooltip } from "./Tooltip";
 import { useToast } from "./toast.utils";
 
 export interface NoteOptionsMenuProps {
@@ -159,16 +160,17 @@ export function NoteOptionsMenu({
   return (
     <>
       <DropdownMenu.Root open={open} onOpenChange={handleOpenChange}>
-        <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            aria-label="Note options"
-            title="More options"
-            style={triggerStyle}
-          >
-            <MoreHorizontal size={16} aria-hidden="true" />
-          </button>
-        </DropdownMenu.Trigger>
+        <Tooltip label="More options" side="bottom">
+          <DropdownMenu.Trigger asChild>
+            <button
+              type="button"
+              aria-label="Note options"
+              style={triggerStyle}
+            >
+              <MoreHorizontal size={16} aria-hidden="true" />
+            </button>
+          </DropdownMenu.Trigger>
+        </Tooltip>
         <DropdownMenu.Portal>
           <DropdownMenu.Content
             style={menuContainerStyle}

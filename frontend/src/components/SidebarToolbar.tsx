@@ -15,6 +15,7 @@
 import { FilePlus, FolderPlus } from "lucide-react";
 
 import { NotesSortMenu } from "./NotesSortMenu";
+import { Tooltip } from "./Tooltip";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useWorkspace } from "../lib/useWorkspace";
 
@@ -54,34 +55,36 @@ export function SidebarToolbar({
       style={{ display: "flex", alignItems: "center", gap: 8 }}
       data-testid="sidebar-toolbar"
     >
-      <button
-        type="button"
-        title="New note"
-        aria-label="New note"
-        onClick={onNewNote}
-        disabled={creating}
-        style={{
-          ...buttonBase,
-          opacity: creating ? 0.5 : 1,
-          cursor: creating ? "wait" : "pointer",
-        }}
-      >
-        <FilePlus size={16} aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        title="New folder"
-        aria-label="New folder"
-        onClick={onNewFolder}
-        disabled={creating}
-        style={{
-          ...buttonBase,
-          opacity: creating ? 0.5 : 1,
-          cursor: creating ? "wait" : "pointer",
-        }}
-      >
-        <FolderPlus size={16} aria-hidden="true" />
-      </button>
+      <Tooltip label="New note" side="right">
+        <button
+          type="button"
+          aria-label="New note"
+          onClick={onNewNote}
+          disabled={creating}
+          style={{
+            ...buttonBase,
+            opacity: creating ? 0.5 : 1,
+            cursor: creating ? "wait" : "pointer",
+          }}
+        >
+          <FilePlus size={16} aria-hidden="true" />
+        </button>
+      </Tooltip>
+      <Tooltip label="New folder" side="right">
+        <button
+          type="button"
+          aria-label="New folder"
+          onClick={onNewFolder}
+          disabled={creating}
+          style={{
+            ...buttonBase,
+            opacity: creating ? 0.5 : 1,
+            cursor: creating ? "wait" : "pointer",
+          }}
+        >
+          <FolderPlus size={16} aria-hidden="true" />
+        </button>
+      </Tooltip>
       <NotesSortMenu
         value={notesSort}
         onSelect={(order) => void setNotesSort(order)}

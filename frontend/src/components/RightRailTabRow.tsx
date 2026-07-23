@@ -26,6 +26,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { List, Link2, Tag, PanelRight } from "lucide-react";
 import { useTreeStore, type RightPanelTab } from "../lib/useTreeStore";
 import { useWorkspace } from "../lib/useWorkspace";
+import { Tooltip } from "./Tooltip";
 
 const tabBase: CSSProperties = {
   width: 30,
@@ -56,25 +57,26 @@ function TabButton({
 }: TabButtonProps): React.JSX.Element {
   const [hovering, setHovering] = useState(false);
   return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      title={title}
-      onClick={onClick}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      style={{
-        ...tabBase,
-        color: active ? "var(--color-accent)" : "var(--color-muted)",
-        background: active
-          ? "color-mix(in srgb, var(--color-accent) 14%, transparent)"
-          : hovering
-            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-            : "transparent",
-      }}
-    >
-      {icon}
-    </button>
+    <Tooltip label={title} side="left">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        onClick={onClick}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        style={{
+          ...tabBase,
+          color: active ? "var(--color-accent)" : "var(--color-muted)",
+          background: active
+            ? "color-mix(in srgb, var(--color-accent) 14%, transparent)"
+            : hovering
+              ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+              : "transparent",
+        }}
+      >
+        {icon}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -112,25 +114,26 @@ export function RightRailTabRow(): React.JSX.Element {
       }}
       data-testid="right-rail-tab-row"
     >
-      <button
-        type="button"
-        aria-label="Collapse panels"
-        title="Collapse panels"
-        onClick={() => setBacklinksRailExpanded(false)}
-        onMouseEnter={() => setCollapseHovering(true)}
-        onMouseLeave={() => setCollapseHovering(false)}
-        style={{
-          ...collapseButtonBase,
-          // Optical alignment: pull the button left so the 16px glyph's left
-          // edge (7px inside the 30px box) sits on the rail's 24px title line.
-          marginLeft: -7,
-          background: collapseHovering
-            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-            : "transparent",
-        }}
-      >
-        <PanelRight size={16} aria-hidden="true" />
-      </button>
+      <Tooltip label="Collapse panels" side="left">
+        <button
+          type="button"
+          aria-label="Collapse panels"
+          onClick={() => setBacklinksRailExpanded(false)}
+          onMouseEnter={() => setCollapseHovering(true)}
+          onMouseLeave={() => setCollapseHovering(false)}
+          style={{
+            ...collapseButtonBase,
+            // Optical alignment: pull the button left so the 16px glyph's left
+            // edge (7px inside the 30px box) sits on the rail's 24px title line.
+            marginLeft: -7,
+            background: collapseHovering
+              ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+              : "transparent",
+          }}
+        >
+          <PanelRight size={16} aria-hidden="true" />
+        </button>
+      </Tooltip>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <TabButton
           ariaLabel="Outline"

@@ -10,6 +10,7 @@ import { render, screen, fireEvent, act, waitFor } from "@testing-library/react"
 import type { ReactElement } from "react";
 
 import { BookmarksPanel } from "./BookmarksPanel";
+import { TooltipProvider } from "./Tooltip";
 import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
 import type { Tree } from "../lib/treeApi";
@@ -61,7 +62,7 @@ const folder1 = { id: "f-1", name: "Work" };
 
 /** Render + flush useBookmarks' mount-hydrate effect so it settles before assertions. */
 async function renderPanel(ui: ReactElement) {
-  const result = render(ui);
+  const result = render(<TooltipProvider>{ui}</TooltipProvider>);
   await act(async () => {
     await Promise.resolve();
   });

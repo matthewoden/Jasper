@@ -19,6 +19,7 @@ import type { ReactElement } from "react";
 import type { NodeApi } from "react-arborist";
 
 import { BookmarksPanel } from "./BookmarksPanel";
+import { TooltipProvider } from "./Tooltip";
 import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
 import type { Tree } from "../lib/treeApi";
@@ -81,7 +82,7 @@ const bookmarkInFolder = {
 const folder1 = { id: "f-1", name: "Work" };
 
 async function renderPanel(ui: ReactElement) {
-  const result = render(ui);
+  const result = render(<TooltipProvider>{ui}</TooltipProvider>);
   await act(async () => {
     await Promise.resolve();
   });

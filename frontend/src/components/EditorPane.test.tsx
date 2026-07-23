@@ -14,12 +14,29 @@ import {
     act,
     cleanup,
     fireEvent,
-    render,
+    render as rtlRender,
     screen,
     waitFor,
 } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "../api/schema";
+import { TooltipProvider } from "./Tooltip";
+
+// NoteOptionsMenu's trigger (mounted beside the bookmark star, Plan 31-06)
+// wraps in the shared Tooltip (D-07), which throws without a TooltipProvider
+// ancestor — every render() in this file goes through this wrapper so no
+// individual call site needs updating. rerender() is wrapped too, since RTL's
+// rerender replaces the whole tree at the root (it would otherwise drop the
+// TooltipProvider on any of this file's rerender(<EditorPane .../>) calls).
+function render(ui: ReactElement) {
+    const utils = rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
+    return {
+        ...utils,
+        rerender: (nextUi: ReactElement) =>
+            utils.rerender(<TooltipProvider>{nextUi}</TooltipProvider>),
+    };
+}
 
 
 declare global {

@@ -6,8 +6,17 @@
  * it, driven by the rightPanel slice. No independent per-section
  * collapse/divider/ratio machinery remains.
  */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+
+import { TooltipProvider } from "./Tooltip";
+
+/** Every RightRail render is wrapped in TooltipProvider — RightRailTabRow's
+ *  tab buttons now migrate to the shared Tooltip (D-07). */
+function render(ui: ReactElement) {
+  return rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
+}
 
 const mockSetWidth = vi.fn();
 const mockSetRightPanel = vi.fn();
