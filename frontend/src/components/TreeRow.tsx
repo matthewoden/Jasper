@@ -513,14 +513,24 @@ export function TreeRow({
   const noteDateTooltipContent =
     data.kind === "note" && (data.created != null || data.updated_at != null) ? (
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {/* UAT round 2: the date VALUES were unreadably dim at
+            --color-muted. Labels stay muted for hierarchy; the actual
+            date/time strings render at --color-fg (normal weight, 12px) so
+            they're clearly legible. */}
         {data.created != null && (
-          <span style={{ color: "var(--color-muted)", fontSize: 12 }}>
-            Created {new Date(data.created).toLocaleString()}
+          <span style={{ fontSize: 12 }}>
+            <span style={{ color: "var(--color-muted)" }}>Created </span>
+            <span style={{ color: "var(--color-fg)" }}>
+              {new Date(data.created).toLocaleString()}
+            </span>
           </span>
         )}
         {data.updated_at != null && (
-          <span style={{ color: "var(--color-muted)", fontSize: 12 }}>
-            Modified {new Date(data.updated_at).toLocaleString()}
+          <span style={{ fontSize: 12 }}>
+            <span style={{ color: "var(--color-muted)" }}>Modified </span>
+            <span style={{ color: "var(--color-fg)" }}>
+              {new Date(data.updated_at).toLocaleString()}
+            </span>
           </span>
         )}
       </div>

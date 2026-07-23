@@ -1424,10 +1424,31 @@ describe("UAT gap-closure group B, item 8: note-row created/modified hover toolt
 
     fireEvent.focus(label);
 
+    // UAT round 2: "Created"/"Modified" labels and their date values now
+    // render as separate nested spans (muted label, --color-fg date) so
+    // the date VALUES are no longer dim — assert both parts independently
+    // rather than the old single combined-text match.
     const expectedCreated = new Date(created).toLocaleString();
     const expectedModified = new Date(updatedAt).toLocaleString();
-    expect(screen.getByText(`Created ${expectedCreated}`)).toBeInTheDocument();
-    expect(screen.getByText(`Modified ${expectedModified}`)).toBeInTheDocument();
+    expect(screen.getByText("Created")).toBeInTheDocument();
+    expect(screen.getByText(expectedCreated)).toBeInTheDocument();
+    expect(screen.getByText("Modified")).toBeInTheDocument();
+    expect(screen.getByText(expectedModified)).toBeInTheDocument();
+
+    // UAT round 2 regression guard: the date VALUES must render at
+    // --color-fg (legible), while the labels stay muted for hierarchy.
+    expect(screen.getByText(expectedCreated).style.color).toBe(
+      "var(--color-fg)",
+    );
+    expect(screen.getByText(expectedModified).style.color).toBe(
+      "var(--color-fg)",
+    );
+    expect(screen.getByText("Created").style.color).toBe(
+      "var(--color-muted)",
+    );
+    expect(screen.getByText("Modified").style.color).toBe(
+      "var(--color-muted)",
+    );
   });
 
   it("shows Modified only when `created` is missing", () => {
@@ -1448,10 +1469,11 @@ describe("UAT gap-closure group B, item 8: note-row created/modified hover toolt
     ) as HTMLElement;
     fireEvent.focus(label);
 
+    expect(screen.getByText("Modified")).toBeInTheDocument();
     expect(
-      screen.getByText(`Modified ${new Date(updatedAt).toLocaleString()}`),
+      screen.getByText(new Date(updatedAt).toLocaleString()),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/^Created /)).not.toBeInTheDocument();
+    expect(screen.queryByText("Created")).not.toBeInTheDocument();
   });
 
   it("renders no tooltip (plain native title survives) when both dates are missing", () => {
