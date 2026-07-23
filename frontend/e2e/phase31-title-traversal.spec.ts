@@ -34,6 +34,30 @@ Body line one.
 Body line two.
 `;
 
+// UAT round-2 regression repro shape (Phase 31): H1 directly after the
+// frontmatter's closing "---" (no blank line — failure mode 2), followed by
+// a BLANK line before the first real paragraph (failure mode 1 — also the
+// exact default new-note scaffold shape, backend/internal/markdown/newnote.go's
+// "---\ntags: []\n---\n\n# {title}\n\n"). The earlier NOTE_CONTENT above has
+// NO blank line after the H1 either, which happened to sidestep BOTH
+// failure modes: (1) a bare `Decoration.replace` (no widget) over just the
+// H1 node's own range left a normal-height, fully clickable/caret-accessible
+// phantom empty row in its place whenever a blank line followed the H1 —
+// indistinguishable from the genuine blank line, so a click "at the top of
+// the body" could land on the WRONG (hidden H1's) line; (2) a
+// `Decoration.line` display:none approach fixed (1) but silently failed to
+// apply when the H1's hidden range started EXACTLY where the frontmatter's
+// own hidden range ended (no blank line between them). Either way, ArrowUp's
+// `curLine.number !== target.number` guard then silently no-opped (root
+// cause; see firstH1HidePlugin.ts).
+const NOTE_CONTENT_BLANK_AFTER_H1 = `---
+tags: [alpha]
+---
+# Traversal Test
+
+Some real paragraph here.
+`;
+
 // CR-01 (31-REVIEW.md): a title long enough to wrap the H1 across multiple
 // visual rows at 33px/700 (pre-wrap) inside the ~648px title column
 // (760px max-width - 2*56px padding), and a first body line long enough to
@@ -376,5 +400,120 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
     await expect(page.locator(".cm-content:visible")).toBeFocused();
     await page.keyboard.press("ArrowUp");
     await expect(page.getByTestId("editor-title-element")).toBeFocused();
+  });
+
+  test("UAT round-2 regression: ArrowUp from the genuine first visible line reaches the title even when the H1 is followed by a blank line", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1512, height: 944 });
+
+    const noteId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "uat2-blank-after-h1.md",
+      "",
+      NOTE_CONTENT_BLANK_AFTER_H1,
+    );
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+    await openNoteInEditor(page, noteId);
+
+    // Click the FIRST rendered `.cm-line` — the hidden H1 (plus the blank
+    // line immediately following it, an emergent CM6 rendering merge —
+    // firstH1HidePlugin.ts/titleBodyTraversal.ts header comments) is fully
+    // collapsed, so the genuine first VISIBLE row is the paragraph itself.
+    // Before the fix this area contained an extra, indistinguishable phantom
+    // row left behind by the hidden H1.
+    const firstLine = page.locator(".cm-content:visible .cm-line").first();
+    await expect(firstLine).toBeVisible({ timeout: 5_000 });
+    const box = await firstLine.boundingBox();
+    if (!box) throw new Error("first .cm-line has no bounding box");
+    await page.mouse.click(box.x + 2, box.y + box.height / 2);
+    await expect(page.locator(".cm-content:visible")).toBeFocused();
+
+    await page.keyboard.press("ArrowUp");
+
+    // Assert the TITLE is actually focused (document.activeElement), not
+    // merely "the body lost caret" — the prior agent's flagged false-pass
+    // risk (a focus-revert quirk could leave neither element meaningfully
+    // focused while still passing a weaker assertion).
+    const titleFocused = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="editor-title-element"]');
+      return el !== null && document.activeElement === el;
+    });
+    expect(titleFocused).toBe(true);
+    await expect(page.getByTestId("editor-title-element")).toBeFocused();
+
+    // No side-effect edit from the crossover itself.
+    await expect
+      .poll(async () => getNoteContent(page, jasper.baseURL, noteId), { timeout: 3_000 })
+      .toBe(NOTE_CONTENT_BLANK_AFTER_H1);
+  });
+
+  test("UAT round-2 regression: exact default new-note scaffold (frontmatter + H1 + trailing blank line, no typed body yet) — ArrowUp from the body reaches the title", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1512, height: 944 });
+
+    // Byte-identical to backend/internal/markdown/newnote.go's scaffoldFor().
+    const scaffold = "---\ntags: []\n---\n\n# Fresh Note\n\n";
+    const noteId = await apiCreateNote(page, jasper.baseURL, "uat2-scaffold.md", "", scaffold);
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+    await openNoteInEditor(page, noteId);
+
+    // Only the trailing blank line renders below the (fully hidden) H1 —
+    // clicking it exercises the "nothing left to skip to" edge case in
+    // firstVisibleBodyLine() (a fresh note with no typed body yet must
+    // still let ArrowUp reach the title).
+    const firstLine = page.locator(".cm-content:visible .cm-line").first();
+    await expect(firstLine).toBeVisible({ timeout: 5_000 });
+    const box = await firstLine.boundingBox();
+    if (!box) throw new Error("first .cm-line has no bounding box");
+    await page.mouse.click(box.x + 2, box.y + box.height / 2);
+    await expect(page.locator(".cm-content:visible")).toBeFocused();
+
+    await page.keyboard.press("ArrowUp");
+
+    await expect(page.getByTestId("editor-title-element")).toBeFocused();
+  });
+
+  test("UAT round-2 regression: title/body column stays left-edge-aligned with the breadcrumb chrome above it in a wide pane", async ({
+    page,
+  }) => {
+    // Wide viewport so the 760px reading column is well short of the full
+    // pane width — this is exactly the condition under which the
+    // breadcrumb's un-constrained (no maxWidth/centering) box previously
+    // drifted away from the title/body column beneath it.
+    await page.setViewportSize({ width: 1900, height: 944 });
+
+    const noteId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "uat2-align.md",
+      "",
+      NOTE_CONTENT_BLANK_AFTER_H1,
+    );
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+    await openNoteInEditor(page, noteId);
+
+    const breadcrumbSegBox = await page.getByTestId("breadcrumb-segment").first().boundingBox();
+    const titleBox = await page.getByTestId("editor-title-element").boundingBox();
+    const paragraphLine = page
+      .locator(".cm-content:visible .cm-line", { hasText: "Some real paragraph here." })
+      .first();
+    const paragraphBox = await paragraphLine.boundingBox();
+
+    if (!breadcrumbSegBox || !titleBox || !paragraphBox) {
+      throw new Error("missing bounding box for one of breadcrumb/title/body");
+    }
+
+    // All three share the same left edge (within 1px of layout rounding).
+    expect(Math.abs(breadcrumbSegBox.x - titleBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(titleBox.x - paragraphBox.x)).toBeLessThanOrEqual(1);
   });
 });

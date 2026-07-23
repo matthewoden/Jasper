@@ -996,6 +996,23 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
             alignItems: "center",
             padding: "0 var(--editor-content-x)",
             boxSizing: "border-box",
+            // Constrained + centered to the SAME 760px reading column as the
+            // title wrapper and `.cm-content` below it — without this, the
+            // breadcrumb spans the full (uncapped) pane width, so its left
+            // edge drifts away from the title/body's left edge in any pane
+            // wider than 760px + 2*56px (visible as "things don't line up",
+            // Phase 31 UAT round 2 — title and body were already correctly
+            // aligned with EACH OTHER; the breadcrumb chrome above them was
+            // the piece drifting). `width: "100%"` is REQUIRED alongside
+            // maxWidth: this nav is a flex child of the pane's column flex
+            // container, and `margin: auto` on a flex item's cross axis
+            // cancels the default stretch behavior, falling back to
+            // content-based (shrink-to-fit) sizing unless width is pinned
+            // explicitly — the same pattern the title wrapper below already
+            // uses for this exact reason.
+            width: "100%",
+            maxWidth: 760,
+            margin: "0 auto",
           }}
         >
           <div
