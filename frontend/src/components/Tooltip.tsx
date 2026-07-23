@@ -36,12 +36,20 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
 
 const contentStyle: CSSProperties = {
   background: "var(--color-surface)",
-  border: "1px solid var(--color-border)",
+  // UAT round 2 (caret-connection fix): a hard 1px border here would draw a
+  // line straight across the base of the Arrow (Radix renders the arrow
+  // OUTSIDE the Content's border box), making the caret look severed from
+  // the body. Dropping the border and defining the tooltip edge with
+  // box-shadow alone means there is no border line to intersect — the arrow
+  // (same solid fill, no border/shadow of its own) reads as one continuous
+  // shape with the body in both light and dark. The shadow is deliberately
+  // a bit stronger than the old `0 4px 12px rgba(0,0,0,0.10)` plus a tight
+  // near-0-blur pass, so the surface still reads as a distinct floating
+  // panel without a hairline border.
   borderRadius: 6,
   padding: "4px 8px",
-  // Matches .cm-tooltip-autocomplete (theme.css) — the project's established
-  // popup shadow convention.
-  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.10)",
+  boxShadow:
+    "0 0 0 1px rgba(0, 0, 0, 0.30), 0 4px 16px rgba(0, 0, 0, 0.35)",
   fontSize: 12,
   display: "flex",
   alignItems: "baseline",
@@ -53,11 +61,10 @@ const contentStyle: CSSProperties = {
 };
 
 const arrowStyle: CSSProperties = {
+  // Solid fill matching the body, no border/drop-shadow of its own — the
+  // caret is a flush extension of the Content surface, not a separately
+  // outlined shape (UAT round 2: caret was reading as dim/detached).
   fill: "var(--color-surface)",
-  // The Arrow can't inherit the Content's border, so a subtle drop-shadow
-  // along its lower silhouette keeps it defined against the surface color
-  // it shares (UAT gap-closure: caret was reading as invisible).
-  filter: "drop-shadow(0 1px 0 var(--color-border))",
 };
 
 const labelStyle: CSSProperties = {
