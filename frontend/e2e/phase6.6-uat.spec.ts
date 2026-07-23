@@ -153,8 +153,10 @@ async function ensureTagsPanelVisible(page: Page): Promise<void> {
     .getByRole("button", { name: "Tags", exact: true });
   await tagsTab.click();
 
-  // The Tags panel owns a "Tags" sub-header (RightRailSubHeader) once mounted.
-  await expect(page.getByText("Tags", { exact: true })).toBeVisible({
+  // Phase 31 D-01 retired the "Tags" sub-header (RightRailSubHeader) this
+  // helper originally waited on — the panel is now header-less, a single
+  // vault-wide `<ul role="list">`. Wait for that list to mount instead.
+  await expect(page.locator("ul[role='list']")).toBeVisible({
     timeout: 5_000,
   });
 }
@@ -221,14 +223,18 @@ test("S2 @panel-selector: RightRailTabRow switches panels; rail toggle hides/sho
 
   const railTabRow = page.getByTestId("right-rail-tab-row");
 
-  // Switch to Tags — its sub-header renders "Tags" (default panel is Outline).
+  // Switch to Tags — Phase 31 D-01 removed every right-rail sub-header
+  // (including the "Tags"/"Outline" labels this originally asserted); the
+  // Tags tab now mounts a single vault-wide `<ul role="list">` with no
+  // header of its own.
   await railTabRow.getByRole("button", { name: "Tags", exact: true }).click();
-  await expect(page.getByText("Tags", { exact: true })).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator("ul[role='list']")).toBeVisible({ timeout: 5_000 });
 
-  // Switch back to Outline — the Tags panel (and its "Tags" sub-header) unmounts.
+  // Switch back to Outline — the Tags panel unmounts; Outline's "No
+  // headings" empty state (no note is open in this scenario) mounts.
   await railTabRow.getByRole("button", { name: "Outline", exact: true }).click();
-  await expect(page.getByText("Outline", { exact: true })).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByText("Tags", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("No headings", { exact: true })).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator("ul[role='list']")).toHaveCount(0);
 
   // The rail toggle collapses the entire right rail (replacing the old
   // "auto-collapse when all panels closed" behavior). The tab row unmounts
@@ -500,23 +506,11 @@ test("S8 @UX-CHROME-06: tag rows render '#tagname' + badge count; no Key icon in
   );
   expect(hashColor).toBeTruthy();
 
-  // Phase 30 (30-05/30-08) replaced the old collapsible SectionHeader with a
-  // static, non-interactive RightRailSubHeader (title + count pill only —
-  // no chevron/collapse/icon machinery). Scope to its container (the "Tags"
-  // label's parent div) to check for a stray Key icon.
-  const panelHeader = page.getByText("Tags", { exact: true }).locator("..");
-  await expect(panelHeader).toBeVisible({ timeout: 5_000 });
-
-  const hasKeyIcon = await panelHeader.evaluate((hdr) => {
-    const svgs = hdr.querySelectorAll("svg");
-    for (const svg of Array.from(svgs)) {
-      const title = svg.querySelector("title");
-      if (title?.textContent?.toLowerCase().includes("key")) return true;
-      if (svg.getAttribute("aria-label")?.toLowerCase().includes("key")) return true;
-    }
-    return false;
-  });
-  expect(hasKeyIcon).toBe(false);
+  // Removed: the "no Key icon in panel header" assertion targeted the
+  // RightRailSubHeader container, which Phase 31 D-01 retired entirely —
+  // the Tags panel has no header of its own anymore, so there is no
+  // surviving container to scope a stray-icon check to. Tag-row rendering
+  // (checked above) is the coverage that remains in scope.
 });
 
 
