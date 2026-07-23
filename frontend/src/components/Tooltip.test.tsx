@@ -67,4 +67,20 @@ describe("<Tooltip />", () => {
     const trigger = screen.getByRole("button", { name: "Sort notes" });
     expect(trigger).not.toHaveAttribute("title");
   });
+
+  it("renders the rich `content` prop in place of label+shortcut when provided", () => {
+    render(
+      <TooltipProvider>
+        <Tooltip content={<span>Created Jul 22, 2026 at 3:04 PM</span>}>
+          <button aria-label="Note date">icon</button>
+        </Tooltip>
+      </TooltipProvider>,
+    );
+
+    fireEvent.focus(screen.getByRole("button", { name: "Note date" }));
+
+    expect(
+      screen.getByText("Created Jul 22, 2026 at 3:04 PM"),
+    ).toBeInTheDocument();
+  });
 });

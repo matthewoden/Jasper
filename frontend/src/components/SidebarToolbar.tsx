@@ -55,7 +55,7 @@ export function SidebarToolbar({
       style={{ display: "flex", alignItems: "center", gap: 8 }}
       data-testid="sidebar-toolbar"
     >
-      <Tooltip label="New note" side="right">
+      <Tooltip label="New note" side="bottom">
         <button
           type="button"
           aria-label="New note"
@@ -70,7 +70,7 @@ export function SidebarToolbar({
           <FilePlus size={16} aria-hidden="true" />
         </button>
       </Tooltip>
-      <Tooltip label="New folder" side="right">
+      <Tooltip label="New folder" side="bottom">
         <button
           type="button"
           aria-label="New folder"

@@ -74,7 +74,7 @@ const toolbarButtonBase: CSSProperties = {
 function NewBookmarkFolderButton({ onClick }: { onClick: () => void }) {
   const [hovering, setHovering] = useState(false);
   return (
-    <Tooltip label="New bookmark folder" side="right">
+    <Tooltip label="New bookmark folder" side="bottom">
       <button
         type="button"
         aria-label="New bookmark folder"

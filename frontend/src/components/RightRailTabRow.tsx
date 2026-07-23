@@ -57,7 +57,7 @@ function TabButton({
 }: TabButtonProps): React.JSX.Element {
   const [hovering, setHovering] = useState(false);
   return (
-    <Tooltip label={title} side="left">
+    <Tooltip label={title} side="bottom">
       <button
         type="button"
         aria-label={ariaLabel}
@@ -114,7 +114,7 @@ export function RightRailTabRow(): React.JSX.Element {
       }}
       data-testid="right-rail-tab-row"
     >
-      <Tooltip label="Collapse panels" side="left">
+      <Tooltip label="Collapse panels" side="bottom">
         <button
           type="button"
           aria-label="Collapse panels"

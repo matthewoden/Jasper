@@ -49,7 +49,7 @@ function TabButton({
 }: TabButtonProps): React.JSX.Element {
   const [hovering, setHovering] = useState(false);
   return (
-    <Tooltip label={title} side="right">
+    <Tooltip label={title} side="bottom">
       <button
         type="button"
         aria-label={ariaLabel}
@@ -136,7 +136,7 @@ export function SidebarTabRow(): React.JSX.Element {
           icon={<Bookmark size={16} aria-hidden="true" />}
         />
       </div>
-      <Tooltip label="Collapse sidebar" side="right">
+      <Tooltip label="Collapse sidebar" side="bottom">
         <button
           type="button"
           aria-label="Collapse sidebar"
