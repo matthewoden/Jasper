@@ -59,6 +59,7 @@ import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
 import { expandAndScrollToFolder } from "./fileTree.utils";
 import { NoteOptionsMenu } from "./NoteOptionsMenu";
 import { TitleElement } from "./TitleElement";
+import { Tooltip } from "./Tooltip";
 
 import { FilePreviewView } from "./FilePreviewView";
 
@@ -986,7 +987,9 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           data-testid="note-breadcrumb"
           aria-label="Note path"
           style={{
-            height: 26,
+            // D-12: height matched to the mock's measured breadcrumb/header
+            // bar (Vault.dc.html:813, height: "40px") — was 26px pre-plan.
+            height: 40,
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -1060,33 +1063,34 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
               {formatWordCount(wordCount)}
             </span>
             {showBookmarkStar && noteId !== null && (
-              <button
-                type="button"
-                data-testid="bookmark-star"
-                aria-label={bookmarked ? "Remove bookmark" : "Bookmark this note"}
-                title={bookmarked ? "Remove bookmark" : "Bookmark this note"}
-                onClick={() => {
-                  void toggleBookmark(noteId);
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background: "transparent",
-                  border: "none",
-                  padding: 0,
-                  cursor: "pointer",
-                  color: bookmarked
-                    ? "var(--color-accent)"
-                    : "var(--color-muted)",
-                }}
-              >
-                <Star
-                  size={16}
-                  aria-hidden="true"
-                  fill={bookmarked ? "currentColor" : "none"}
-                />
-              </button>
+              <Tooltip label={bookmarked ? "Remove bookmark" : "Bookmark this note"} side="bottom">
+                <button
+                  type="button"
+                  data-testid="bookmark-star"
+                  aria-label={bookmarked ? "Remove bookmark" : "Bookmark this note"}
+                  onClick={() => {
+                    void toggleBookmark(noteId);
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    color: bookmarked
+                      ? "var(--color-accent)"
+                      : "var(--color-muted)",
+                  }}
+                >
+                  <Star
+                    size={16}
+                    aria-hidden="true"
+                    fill={bookmarked ? "currentColor" : "none"}
+                  />
+                </button>
+              </Tooltip>
             )}
             {!hidden && notePath && (
               <NoteOptionsMenu
