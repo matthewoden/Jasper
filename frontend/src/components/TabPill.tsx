@@ -1,7 +1,7 @@
 /**
- * TabPill — a single editor tab: file icon, title (truncated), an
- * always-visible close (X), middle-click close, and a "(deleted)" read-only
- * indicator.
+ * TabPill — a single editor tab: title (truncated), an always-visible close
+ * (X), middle-click close, and a "(deleted)" read-only indicator. No file
+ * icon (D-10) — the title alone carries the tab identity, matching the mock.
  *
  * Pure props-in / callbacks-out. TabStrip owns pointer-event drag-to-reorder;
  * this pill only carries selection and close callbacks. Active styling uses
@@ -17,8 +17,9 @@
  */
 import { useState, forwardRef } from "react";
 import type { CSSProperties, HTMLAttributes } from "react";
-import { X, FileText, Pin } from "lucide-react";
+import { X, Pin } from "lucide-react";
 import { MIN_TAB_WIDTH, MAX_TAB_WIDTH } from "../lib/tabOverflow";
+import { Tooltip } from "./Tooltip";
 
 export interface TabPillProps {
   title: string;
@@ -103,6 +104,10 @@ const closeButtonStyle: CSSProperties = {
   // (UAT-15.1-ALIGN 3-way co-centering contract.)
   alignSelf: "flex-end",
   marginBottom: 6,
+  // D-11 optical centering: lineHeight:0 strips the inherited text-line strut
+  // an inline-flex button otherwise reserves around its SVG child, which was
+  // nudging the 12px X glyph a hair below true vertical center.
+  lineHeight: 0,
 };
 
 export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
@@ -138,13 +143,6 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
         ? "color-mix(in srgb, var(--color-accent) 12%, var(--color-surface))"
         : "var(--color-surface)";
 
-    // Icon/title share the same color branch; deleted tabs always read destructive.
-    const iconColor = isDeleted
-      ? "var(--color-destructive)"
-      : isActive
-        ? "var(--color-fg-title)"
-        : "var(--color-muted)";
-
     return (
       <div
         ref={ref}
@@ -179,7 +177,6 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
       >
-        <FileText size={14} aria-hidden="true" style={{ flexShrink: 0, color: iconColor }} />
         {isDeleted ? (
           <span style={{ ...titleStyle, color: "var(--color-destructive)" }}>
             (deleted)
@@ -196,19 +193,20 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
           </span>
         )}
         {isPinned ? (
-          <button
-            type="button"
-            aria-label="Pinned tab — right-click to unpin"
-            title="Pinned tab"
-            onClick={(e) => {
-              // stopPropagation so the refuse-click never also selects the tab.
-              e.stopPropagation();
-              onPinnedClickRefused?.();
-            }}
-            style={closeButtonStyle}
-          >
-            <Pin size={12} aria-hidden="true" />
-          </button>
+          <Tooltip label="Pinned tab">
+            <button
+              type="button"
+              aria-label="Pinned tab — right-click to unpin"
+              onClick={(e) => {
+                // stopPropagation so the refuse-click never also selects the tab.
+                e.stopPropagation();
+                onPinnedClickRefused?.();
+              }}
+              style={closeButtonStyle}
+            >
+              <Pin size={12} aria-hidden="true" />
+            </button>
+          </Tooltip>
         ) : (
           <button
             type="button"

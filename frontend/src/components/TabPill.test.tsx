@@ -11,9 +11,24 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { TabPill } from "./TabPill";
+import { TooltipProvider } from "./Tooltip";
 import { MIN_TAB_WIDTH, MAX_TAB_WIDTH } from "../lib/tabOverflow";
 
 describe("<TabPill />", () => {
+  it("D-10: never renders a FileText note icon", () => {
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    // lucide-react renders each icon as an <svg class="lucide lucide-{kebab-name}">.
+    expect(document.querySelector("svg.lucide-file-text")).toBeNull();
+  });
+
   it("TAB-16: pill shrinks (flexShrink:1, no flexGrow) between MIN and MAX width", () => {
     render(
       <TabPill
@@ -191,15 +206,17 @@ describe("<TabPill />", () => {
   it("isPinned renders the Pin glyph in place of the close-× button", () => {
     const onClose = vi.fn();
     render(
-      <TabPill
-        title="note.md"
-        isActive={false}
-        isDeleted={false}
-        isPinned={true}
-        onSelect={vi.fn()}
-        onClose={onClose}
-        onPinnedClickRefused={vi.fn()}
-      />,
+      <TooltipProvider>
+        <TabPill
+          title="note.md"
+          isActive={false}
+          isDeleted={false}
+          isPinned={true}
+          onSelect={vi.fn()}
+          onClose={onClose}
+          onPinnedClickRefused={vi.fn()}
+        />
+      </TooltipProvider>,
     );
     expect(screen.queryByRole("button", { name: "Close note.md" })).toBeNull();
     const pinBtn = screen.getByRole("button", {
@@ -229,15 +246,17 @@ describe("<TabPill />", () => {
     const onSelect = vi.fn();
     const onPinnedClickRefused = vi.fn();
     render(
-      <TabPill
-        title="note.md"
-        isActive={false}
-        isDeleted={false}
-        isPinned={true}
-        onSelect={onSelect}
-        onClose={onClose}
-        onPinnedClickRefused={onPinnedClickRefused}
-      />,
+      <TooltipProvider>
+        <TabPill
+          title="note.md"
+          isActive={false}
+          isDeleted={false}
+          isPinned={true}
+          onSelect={onSelect}
+          onClose={onClose}
+          onPinnedClickRefused={onPinnedClickRefused}
+        />
+      </TooltipProvider>,
     );
     fireEvent.click(
       screen.getByRole("button", { name: "Pinned tab — right-click to unpin" }),
@@ -251,15 +270,17 @@ describe("<TabPill />", () => {
     const onClose = vi.fn();
     const onPinnedClickRefused = vi.fn();
     render(
-      <TabPill
-        title="note.md"
-        isActive={false}
-        isDeleted={false}
-        isPinned={true}
-        onSelect={vi.fn()}
-        onClose={onClose}
-        onPinnedClickRefused={onPinnedClickRefused}
-      />,
+      <TooltipProvider>
+        <TabPill
+          title="note.md"
+          isActive={false}
+          isDeleted={false}
+          isPinned={true}
+          onSelect={vi.fn()}
+          onClose={onClose}
+          onPinnedClickRefused={onPinnedClickRefused}
+        />
+      </TooltipProvider>,
     );
     const pill = screen.getByRole("tab");
     fireEvent(
