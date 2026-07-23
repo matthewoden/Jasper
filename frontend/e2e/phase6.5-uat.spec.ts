@@ -196,13 +196,18 @@ async function apiCreateNote(
  * Ensure the Tags panel is the active right-rail tab (S3, BUG-01).
  *
  * The Tags panel is one of three tab-driven right-rail panels (Phase 30
- * tab-row rework). Selecting it mounts NoteTagsSection ("Note tags"
- * sub-header) above RightRailTagsPanel's vault-wide tag rows
- * (data-testid="tag-row-{name}").
+ * tab-row rework). Phase 31 D-03/D-05 deleted the upper active-note
+ * "Note tags" section this helper originally waited on (and its
+ * useNoteTagsStore live-parse machinery) — the Tags tab is now a single
+ * vault-wide list (RightRailTagsPanel, `<ul role="list">`, rows via
+ * data-testid="tag-row-{name}") with no header of its own. Wait for that
+ * list's `<ul role="list">` to mount instead (scoped to `ul` — an
+ * unrelated `<ol role="list">` elsewhere on the page also matches a bare
+ * role query).
  */
 async function ensureTagsPanelExpanded(page: Page): Promise<void> {
   await selectRightRailTab(page, "Tags");
-  await expect(page.getByText("Note tags", { exact: true })).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator("ul[role='list']")).toBeVisible({ timeout: 5_000 });
 }
 
 
@@ -217,25 +222,28 @@ test("S1 @UX-T-01: right-rail tab row switches panels; active tab persists acros
   // (rightPanel) persists across a reload via workspace.json.
   await openApp(page, false);
 
-  // Default panel is Outline (RIGHT_PANEL_DEFAULT).
+  // Default panel is Outline (RIGHT_PANEL_DEFAULT). No note is open in this
+  // scenario (openApp(page, false)), so the panel renders its "No headings"
+  // empty state (Phase 31 D-01 removed the "Outline" sub-header label this
+  // originally asserted — that heading no longer exists anywhere in the DOM).
   await selectRightRailTab(page, "Outline");
-  await expect(page.getByText("Outline", { exact: true })).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByText("No headings", { exact: true })).toBeVisible({ timeout: 8_000 });
   await expect(
     page.getByRole("region", { name: "Notes that link to this note" }),
   ).toHaveCount(0);
 
   // Switching to Tags swaps the mounted panel — Outline's content unmounts,
-  // Note tags + vault-wide tag list mount in its place.
+  // the single vault-wide tag list (Phase 31 D-03/D-05; no "Note tags"
+  // section — that concept is fully deleted) mounts in its place.
   await selectRightRailTab(page, "Tags");
-  await expect(page.getByText("Note tags", { exact: true })).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByText("Outline", { exact: true })).toHaveCount(0);
+  await expect(page.locator("ul[role='list']")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("No headings", { exact: true })).toHaveCount(0);
 
-  // Switching to Linked mentions swaps again.
+  // Switching to Linked mentions swaps again — the Tags list unmounts.
   await selectRightRailTab(page, "Linked mentions");
   await expect(
     page.getByRole("region", { name: "Notes that link to this note" }),
   ).toBeVisible({ timeout: 8_000 });
-  await expect(page.getByText("Note tags", { exact: true })).toHaveCount(0);
 
   // Reload — the persisted rightPanel field should restore Linked mentions
   // as the active tab without re-selecting it.
