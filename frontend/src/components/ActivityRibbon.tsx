@@ -82,7 +82,7 @@ function RibbonButton({
     if (disabled) setHovering(false);
   }, [disabled]);
   return (
-    <Tooltip label={tooltipLabel ?? ariaLabel} shortcut={tooltipShortcut} side="bottom">
+    <Tooltip label={tooltipLabel ?? ariaLabel} shortcut={tooltipShortcut} side="right">
       <button
         type="button"
         aria-label={ariaLabel}

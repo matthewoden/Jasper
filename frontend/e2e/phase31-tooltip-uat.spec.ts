@@ -83,8 +83,10 @@ test.describe("@phase31 D-07/D-08/D-09: shared Tooltip system (ribbon)", () => {
 
     // First hover: pays the full show-delay (Radix delayDuration, ~400ms
     // per Tooltip.tsx) before the tooltip appears. Start on "Today" (the
-    // middle ribbon button) — its bottom-side tooltip pops below itself,
-    // toward "Command palette", not toward "Quick switcher" above it.
+    // middle ribbon button) — the ribbon's tooltips open to the RIGHT
+    // (UAT gap-closure group A: below would collide with the next ribbon
+    // icon in the 48px-wide rail), so it pops beside itself, clear of
+    // "Quick switcher" above and "Command palette" below.
     await today.hover();
     const tooltip = page.getByRole("tooltip");
     await expect(tooltip).toBeVisible({ timeout: 2_000 });
@@ -94,11 +96,11 @@ test.describe("@phase31 D-07/D-08/D-09: shared Tooltip system (ribbon)", () => {
     // Move UP to the adjacent control (Quick switcher) without leaving the
     // ribbon's tooltip "group" — Radix's skipDelayDuration means this
     // second tooltip must reveal near-instantly instead of paying another
-    // full delayDuration wait. Moving upward (rather than down to Command
-    // palette) keeps the still-open "Today" tooltip (rendered below Today)
-    // from overlapping the next trigger and intercepting the hover. A tight
-    // timeout well below the show-delay proves the fast path fired
-    // (auto-retrying assertion, no fixed sleep).
+    // full delayDuration wait. The still-open "Today" tooltip renders to
+    // the right of the ribbon (pointerEvents: none besides), so it can't
+    // intercept the hover regardless of direction. A tight timeout well
+    // below the show-delay proves the fast path fired (auto-retrying
+    // assertion, no fixed sleep).
     const qsBox = await quickSwitcher.boundingBox();
     if (!qsBox) throw new Error("Quick switcher button has no bounding box");
     await page.mouse.move(qsBox.x + qsBox.width / 2, qsBox.y + qsBox.height / 2, {
