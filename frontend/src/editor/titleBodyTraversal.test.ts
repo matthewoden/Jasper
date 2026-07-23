@@ -7,6 +7,7 @@
  * first real body line, never the invisible H1 line.
  */
 import { describe, expect, it, vi, afterEach } from "vitest";
+import type { MockInstance } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
@@ -160,6 +161,121 @@ describe("makeTitleBodyTraversalKeymap — ArrowUp handoff", () => {
     const handled = dispatchArrowUp(view);
     expect(handled).toBe(false);
     expect(onCrossToTitle).not.toHaveBeenCalled();
+  });
+
+  describe("CR-01: wrapped first visible line — visual row gating", () => {
+    // jsdom has no real text-layout engine, so EditorView.moveVertically
+    // throws internally (it depends on coordsAtPos -> Range.getClientRects,
+    // unimplemented in jsdom). Mocking EditorView.prototype.moveVertically
+    // exercises this file's OWN gating logic deterministically — the
+    // production code path this test proves is real (only CM6's internal
+    // vertical-motion primitive is stubbed, not titleBodyTraversal.ts's own
+    // decision). Real-browser wrap geometry is proven end-to-end by
+    // phase31-title-traversal.spec.ts.
+    let moveVerticallySpy: MockInstance<typeof EditorView.prototype.moveVertically> | undefined;
+
+    afterEach(() => {
+      moveVerticallySpy?.mockRestore();
+      moveVerticallySpy = undefined;
+    });
+
+    it("caret on the SECOND visual row of a wrapped first line: run() returns false, does NOT cross (fails before CR-01 fix)", () => {
+      const onCrossToTitle = vi.fn();
+      const parent = document.createElement("div");
+      document.body.append(parent);
+      const view = new EditorView({
+        parent,
+        state: EditorState.create({
+          doc: DOC_FRONTMATTER_H1_BODY,
+          extensions: [
+            yamlFrontmatter({ content: markdown() }),
+            makeTitleBodyTraversalKeymap(onCrossToTitle),
+          ],
+        }),
+      });
+      views.push(view);
+
+      const target = firstVisibleBodyLine(view.state)!;
+      // Caret sits mid-line — logically still "the first visible line", but
+      // (per the mock below) on its SECOND wrapped visual row.
+      const caretPos = target.from + 3;
+      view.dispatch({ selection: { anchor: caretPos } });
+
+      // Simulate "one visual row up lands earlier in the SAME logical line"
+      // (a wrapped row above the caret's own row) — moveVertically returns a
+      // position still within [target.from, target.to), i.e. >= boundary
+      // and !== the current head.
+      const oneRowUpPos = target.from;
+      moveVerticallySpy = vi
+        .spyOn(EditorView.prototype, "moveVertically")
+        .mockImplementation(
+          () => ({ head: oneRowUpPos, anchor: oneRowUpPos, empty: true }) as never,
+        );
+
+      const handled = dispatchArrowUp(view);
+      expect(handled).toBe(false);
+      expect(onCrossToTitle).not.toHaveBeenCalled();
+    });
+
+    it("caret on the FIRST visual row (moveVertically would land before the boundary): run() returns true, crosses", () => {
+      const onCrossToTitle = vi.fn();
+      const parent = document.createElement("div");
+      document.body.append(parent);
+      const view = new EditorView({
+        parent,
+        state: EditorState.create({
+          doc: DOC_FRONTMATTER_H1_BODY,
+          extensions: [
+            yamlFrontmatter({ content: markdown() }),
+            makeTitleBodyTraversalKeymap(onCrossToTitle),
+          ],
+        }),
+      });
+      views.push(view);
+
+      const target = firstVisibleBodyLine(view.state)!;
+      view.dispatch({ selection: { anchor: target.from } });
+
+      // Simulate "one visual row up would leave this line entirely" — the
+      // mocked position lands inside the hidden H1/frontmatter region
+      // (< boundary), just as real moveVertically would when the caret is
+      // already on the line's topmost visual row.
+      moveVerticallySpy = vi
+        .spyOn(EditorView.prototype, "moveVertically")
+        .mockImplementation(() => ({ head: 0, anchor: 0, empty: true }) as never);
+
+      const handled = dispatchArrowUp(view);
+      expect(handled).toBe(true);
+      expect(onCrossToTitle).toHaveBeenCalledTimes(1);
+    });
+
+    it("caret already at the absolute doc top (moveVertically returns the same head): run() returns true, crosses", () => {
+      const onCrossToTitle = vi.fn();
+      const parent = document.createElement("div");
+      document.body.append(parent);
+      const view = new EditorView({
+        parent,
+        state: EditorState.create({
+          doc: DOC_FRONTMATTER_H1_BODY,
+          extensions: [
+            yamlFrontmatter({ content: markdown() }),
+            makeTitleBodyTraversalKeymap(onCrossToTitle),
+          ],
+        }),
+      });
+      views.push(view);
+
+      const target = firstVisibleBodyLine(view.state)!;
+      view.dispatch({ selection: { anchor: target.from } });
+
+      moveVerticallySpy = vi
+        .spyOn(EditorView.prototype, "moveVertically")
+        .mockImplementation((range) => range as never);
+
+      const handled = dispatchArrowUp(view);
+      expect(handled).toBe(true);
+      expect(onCrossToTitle).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

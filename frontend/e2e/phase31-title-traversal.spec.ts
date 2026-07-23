@@ -34,6 +34,24 @@ Body line one.
 Body line two.
 `;
 
+// CR-01 (31-REVIEW.md): a title long enough to wrap the H1 across multiple
+// visual rows at 33px/700 (pre-wrap) inside the ~648px title column
+// (760px max-width - 2*56px padding), and a first body line long enough to
+// wrap across multiple visual rows at the 15px/1.45 body font inside the
+// same column width.
+const WRAPPED_TITLE =
+  "This Is A Really Quite Long Traversal Test Title That Should Wrap Across At Least Two Visual Rows In The Editor Column";
+const WRAPPED_BODY_LINE =
+  "This is a really long first line of body content that should wrap across at least two visual rows so the ArrowUp visual-row gating can be proven against real browser layout, not just a unit-test mock.";
+
+const WRAPPED_NOTE_CONTENT = `---
+tags: [alpha]
+---
+# ${WRAPPED_TITLE}
+${WRAPPED_BODY_LINE}
+Body line two.
+`;
+
 async function openNoteInEditor(page: Page, noteId: string): Promise<void> {
   const row = page.locator(`[data-tree-row="${noteId}"][data-tree-row-kind="note"]`);
   await expect(row).toBeVisible({ timeout: 10_000 });
@@ -56,6 +74,73 @@ async function clickTitleStart(page: Page): Promise<void> {
   const box = await titleEl.boundingBox();
   if (!box) throw new Error("clickTitleStart: title element has no bounding box");
   await page.mouse.click(box.x + 4, box.y + box.height / 2);
+}
+
+interface RowRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Returns one rect PER WRAPPED VISUAL ROW of an element's text content, via
+ * Range.getClientRects() over the element's full contents — the standard
+ * technique for enumerating a wrapped block's individual visual lines
+ * (distinct from the element's own single bounding box, which spans all
+ * rows). Used by both the title (contentEditable div) and the body
+ * (`.cm-line`, a single DOM element CM6 also wraps visually via CSS) so
+ * ArrowDown/ArrowUp visual-row tests can click a SPECIFIC row deterministically
+ * instead of guessing a fraction of the element's overall bounding box (which
+ * risks landing on a padding/margin boundary between adjacent logical lines).
+ */
+async function getVisualRowRects(locator: ReturnType<Page["locator"]>): Promise<RowRect[]> {
+  return locator.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return Array.from(range.getClientRects()).map((r) => ({
+      x: r.left,
+      y: r.top,
+      width: r.width,
+      height: r.height,
+    }));
+  });
+}
+
+/** Clicks the FIRST or LAST wrapped visual row of the title element (CR-01). */
+async function clickTitleRow(page: Page, which: "first" | "last"): Promise<void> {
+  const titleEl = page.getByTestId("editor-title-element");
+  const rows = await getVisualRowRects(titleEl);
+  if (rows.length === 0) throw new Error("clickTitleRow: no visual rows measured");
+  const row = which === "first" ? rows[0] : rows[rows.length - 1];
+  await page.mouse.click(row.x + 4, row.y + row.height / 2);
+}
+
+/** Clicks the FIRST or LAST wrapped visual row of a `.cm-line` (matched by
+ *  contained text) — a single logical body line wrapped across multiple
+ *  visual rows (CR-01). */
+async function clickBodyLineRow(page: Page, lineText: string, which: "first" | "last"): Promise<void> {
+  const lineLocator = page.locator(".cm-content:visible .cm-line", { hasText: lineText }).first();
+  await expect(lineLocator).toBeVisible({ timeout: 5_000 });
+  const rows = await getVisualRowRects(lineLocator);
+  if (rows.length === 0) throw new Error("clickBodyLineRow: no visual rows measured");
+  const row = which === "first" ? rows[0] : rows[rows.length - 1];
+  await page.mouse.click(row.x + 2, row.y + row.height / 2);
+}
+
+/** Reads the current collapsed caret's own on-screen rect via the live
+ *  Selection API (reflects CM6's rendered cursor accurately while the body
+ *  has focus) — used to prove real vertical motion happened WITHIN the body
+ *  (CR-01), independent of which element currently holds DOM focus. */
+async function getCaretRect(page: Page): Promise<{ top: number; left: number } | null> {
+  return page.evaluate(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const range = sel.getRangeAt(0);
+    const rects = range.getClientRects();
+    const rect = rects.length > 0 ? rects[0] : range.getBoundingClientRect();
+    return rect ? { top: rect.top, left: rect.left } : null;
+  });
 }
 
 test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
@@ -178,5 +263,118 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
     await expect
       .poll(async () => getNoteContent(page, jasper.baseURL, noteId), { timeout: 3_000 })
       .toBe(NOTE_CONTENT);
+  });
+
+  test("CR-01: ArrowDown from a non-last title visual row stays in the title; from the last row crosses to the body", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1512, height: 944 });
+
+    const noteId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "cr01-title-wrap.md",
+      "",
+      WRAPPED_NOTE_CONTENT,
+    );
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+    await openNoteInEditor(page, noteId);
+
+    const titleEl = page.getByTestId("editor-title-element");
+    // Sanity: the title must actually wrap to >=2 visual rows for this test
+    // to prove anything.
+    const rows = await getVisualRowRects(titleEl);
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+
+    // Row 1 (top): ArrowDown must move the caret down WITHIN the title, not
+    // hand off to the body.
+    await clickTitleRow(page, "first");
+    await expect(titleEl).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(titleEl).toBeFocused();
+    await expect(page.locator(".cm-content:visible")).not.toBeFocused();
+
+    // Last row (bottom): ArrowDown now crosses to the body (D-19).
+    await clickTitleRow(page, "last");
+    await expect(titleEl).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.locator(".cm-content:visible")).toBeFocused();
+  });
+
+  test("CR-01: ArrowUp from a non-first body visual row stays in the body; from the first row crosses to the title", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1512, height: 944 });
+
+    const noteId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "cr01-body-wrap.md",
+      "",
+      WRAPPED_NOTE_CONTENT,
+    );
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+    await openNoteInEditor(page, noteId);
+
+    const wrappedLineText = "really long first line";
+    const wrappedLine = page
+      .locator(".cm-content:visible .cm-line", { hasText: wrappedLineText })
+      .first();
+    await expect(wrappedLine).toBeVisible({ timeout: 5_000 });
+    // Sanity: the line must actually wrap to >=2 visual rows for this test to
+    // prove anything.
+    const rows = await getVisualRowRects(wrappedLine);
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+
+    // Watches for the title ever receiving focus — the crossing handoff
+    // (EditorPane's handleCrossToTitle) focuses the title SYNCHRONOUSLY as
+    // part of the same keydown task, so "never fired" is a direct, timing-
+    // independent proof that no crossing was attempted (distinct from
+    // "title focused briefly then something else refocused the body" — this
+    // asserts the handoff path never ran at all).
+    await page.evaluate(() => {
+      (window as unknown as { __titleFocusEvents: number }).__titleFocusEvents = 0;
+      document
+        .querySelector('[data-testid="editor-title-element"]')
+        ?.addEventListener("focus", () => {
+          (window as unknown as { __titleFocusEvents: number }).__titleFocusEvents += 1;
+        });
+    });
+
+    // A non-first visual row of the wrapped line: ArrowUp must move the
+    // caret UP WITHIN the body (real CM6 vertical motion), never hand off to
+    // the title.
+    await clickBodyLineRow(page, wrappedLineText, "last");
+    await expect(page.locator(".cm-content:visible")).toBeFocused();
+    const caretBefore = await getCaretRect(page);
+    if (!caretBefore) throw new Error("no caret rect measured before ArrowUp");
+
+    await page.keyboard.press("ArrowUp");
+
+    // The caret's own on-screen row moved UP within the body — proving CM6's
+    // native vertical motion ran (not an intercepted-and-aborted crossing,
+    // which would leave the caret exactly where it started).
+    await expect
+      .poll(async () => {
+        const r = await getCaretRect(page);
+        return r ? r.top : null;
+      })
+      .toBeLessThan(caretBefore.top);
+    await expect(page.locator(".cm-content:visible")).toBeFocused();
+    const titleFocusEvents = await page.evaluate(
+      () => (window as unknown as { __titleFocusEvents: number }).__titleFocusEvents,
+    );
+    expect(titleFocusEvents).toBe(0);
+
+    // The first visual row of the wrapped line: ArrowUp now crosses to the
+    // title (D-19).
+    await clickBodyLineRow(page, wrappedLineText, "first");
+    await expect(page.locator(".cm-content:visible")).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await expect(page.getByTestId("editor-title-element")).toBeFocused();
   });
 });

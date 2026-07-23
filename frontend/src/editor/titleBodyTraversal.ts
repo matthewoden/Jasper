@@ -69,8 +69,10 @@ export function firstVisibleBodyLine(state: EditorState): Line | null {
 /**
  * makeTitleBodyTraversalKeymap — ArrowUp handoff (D-19/D-20/D-21). No-ops
  * (returns false, falls through to CM6's normal Up) unless the selection is
- * empty and the caret sits on the first visible body line; otherwise reads
- * the caret's pixel X (column preservation is coordinate-based, not
+ * empty AND the caret sits on the FIRST VISUAL ROW of the first visible body
+ * line (CR-01: gating on the logical line alone hijacks Up on any wrapped
+ * first line before the caret reaches its own top row). Otherwise reads the
+ * caret's pixel X (column preservation is coordinate-based, not
  * character-index — the title renders at a different font size, see
  * 31-RESEARCH.md Pitfall 3) and hands off to the title via the callback.
  */
@@ -86,6 +88,31 @@ export function makeTitleBodyTraversalKeymap(
       if (!target) return false;
       const curLine = view.state.doc.lineAt(sel.head);
       if (curLine.number !== target.number) return false;
+
+      // CR-01 visual-row gate: compute where one visual row up would land
+      // via CM6's own vertical-motion primitive (moveVertically uses
+      // goalColumn internally, so this is genuine "up one wrapped row", not
+      // "up one logical line"). Cross to the title ONLY when that motion
+      // would either not move at all (already at the absolute doc top) or
+      // land at/before the hidden frontmatter/H1 boundary (would park the
+      // caret inside the hidden region) — both signal the caret is already
+      // on the line's topmost visual row. Otherwise there is a wrapped row
+      // above within this same logical line; let CM6 move up normally.
+      //
+      // moveVertically depends on real text-layout measurement (coordsAtPos
+      // internally) and throws in environments without it (jsdom's Range has
+      // no getClientRects) — fall through to the always-cross behavior
+      // rather than let the exception swallow the whole keydown, same
+      // rationale as the coordsAtPos try/catch below.
+      try {
+        const boundary = Math.max(frontmatterBoundary(view.state) ?? 0, firstH1To(view.state) ?? 0);
+        const moved = view.moveVertically(sel, false);
+        if (moved.head !== sel.head && moved.head >= boundary) return false;
+      } catch {
+        // no real layout available — fall through to cross, matching the
+        // pre-CR-01-fix behavior for environments that can't measure rows.
+      }
+
       // coordsAtPos can throw in environments without real text-layout
       // support (jsdom's unit-test DOM) — fall back to 0 rather than let the
       // exception swallow the whole keydown (CM6 drops handled=false on throw).

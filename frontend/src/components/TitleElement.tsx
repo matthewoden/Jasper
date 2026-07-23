@@ -20,6 +20,12 @@
  * preserving. Column preservation is pixel-based, not character-index — the
  * title's much larger font would otherwise land at the wrong visual column
  * (31-RESEARCH.md Pitfall 3). Tab is unchanged (out of scope, D-19).
+ *
+ * ArrowDown crosses to the body ONLY when the caret is on the title's LAST
+ * visual row (CR-01) — the title is `white-space: pre-wrap` and any long
+ * enough note title wraps across multiple visual rows; hijacking every
+ * ArrowDown regardless of row broke ordinary in-title downward navigation.
+ * See caretOnLastVisualRow()/isLastVisualRow() below.
  */
 import { useEffect, useRef } from "react";
 
@@ -31,6 +37,44 @@ function measureCaretX(): number {
   if (!sel || sel.rangeCount === 0) return 0;
   const rects = sel.getRangeAt(0).getClientRects();
   return rects.length > 0 ? rects[0].left : 0;
+}
+
+/**
+ * Pure geometry check (CR-01, extracted for unit-testability): is the
+ * caret's bottom edge within one line-height of the element's own bottom
+ * edge? That is "last visual row" — the title wraps a long name across
+ * multiple visual rows (pre-wrap), and ArrowDown should only cross to the
+ * body once there is no wrapped row below the caret's own row.
+ */
+export function isLastVisualRow(caretBottom: number, elementBottom: number, lineHeight: number): boolean {
+  return elementBottom - caretBottom < lineHeight;
+}
+
+/**
+ * Whether the collapsed caret sits on the title's LAST visual row. Falls
+ * back to `true` (always treat as last row → cross, matching the prior
+ * always-cross behavior) whenever real caret/line-box geometry isn't
+ * available — no selection yet, jsdom's Range/getClientRects not
+ * implementing real layout (zero-height rects), or any thrown error from
+ * those DOM calls. This keeps unit tests without real text layout exercising
+ * the handoff path; the real per-row gating is proven by the E2E suite
+ * (phase31-title-traversal.spec.ts) against actual browser layout.
+ */
+function caretOnLastVisualRow(el: HTMLElement): boolean {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return true;
+  try {
+    const range = sel.getRangeAt(0);
+    const rects = range.getClientRects();
+    const caretRect = rects.length > 0 ? rects[0] : range.getBoundingClientRect();
+    if (!caretRect || caretRect.height === 0) return true;
+    const elRect = el.getBoundingClientRect();
+    const computedLineHeight = parseFloat(getComputedStyle(el).lineHeight);
+    const lineHeight = Number.isFinite(computedLineHeight) ? computedLineHeight : caretRect.height;
+    return isLastVisualRow(caretRect.bottom, elRect.bottom, lineHeight);
+  } catch {
+    return true;
+  }
 }
 
 export interface TitleElementProps {
@@ -83,7 +127,17 @@ export const TitleElement = ({ title, onTitleChange, onFocusHandoff }: TitleElem
         onTitleChange(el.textContent ?? "");
       }}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === "ArrowDown" || e.key === "Tab") {
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          onFocusHandoff(measureCaretX());
+          return;
+        }
+        if (e.key === "ArrowDown") {
+          const el = ref.current;
+          // Not on the last visual row — a wrapped row exists below the
+          // caret; let the browser move the caret down within the title
+          // normally instead of crossing to the body (CR-01).
+          if (el && !caretOnLastVisualRow(el)) return;
           e.preventDefault();
           onFocusHandoff(measureCaretX());
         }
