@@ -3,8 +3,9 @@
  * pane, not a workspace singleton).
  *
  * Composes the Plan-03 presentational pieces: each ordered tab renders a
- * `TabPill` wrapped in `TabContextMenu`, with a `TabOverflowDropdown` at the
- * right edge listing tabs that don't fit. Reorder uses pointer-event drag
+ * `TabPill` wrapped in `TabContextMenu`, with a `TabOverflowDropdown` always
+ * pinned at the right edge (UAT round 2, item 7) listing EVERY open tab, not
+ * just the ones the strip's own overflow hid. Reorder uses pointer-event drag
  * (pointerdown on the wrapper → pointermove/pointerup on the strip) because
  * native HTML5 DnD does not deliver drop events reliably in this context.
  * The strip div handles move/up so that setPointerCapture is unnecessary —
@@ -62,8 +63,10 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 //   CONDITIONAL (collapsed rail AND rightmost leaf only). Its width
 //   (RIGHT_CLUSTER, below) is subtracted dynamically inside the overflow
 //   measurement effect only when the toggle actually renders. The overflow
-//   dropdown trigger (28px) is reserved separately, inside
-//   computeHiddenTabIds, ONLY when overflow occurs.
+//   dropdown trigger's width (OVERFLOW_BTN, below) is reserved separately —
+//   passed straight through to computeHiddenTabIds, which (as of UAT round 2,
+//   item 7) now subtracts it UNCONDITIONALLY, since the dropdown trigger
+//   itself is always rendered rather than only appearing on overflow.
 const LEFT_CLUSTER = 37;
 export const RESERVED = 8 + 32 + LEFT_CLUSTER;
 // D-14 shrank the overflow-dropdown trigger to a square 24x24 hit area
@@ -74,7 +77,10 @@ export const RESERVED = 8 + 32 + LEFT_CLUSTER;
 // triggerButtonStyle comment), growing its true horizontal footprint back to
 // 32 (24 + 8 margin) — bumped here too so this stays accurate (same WR-01
 // drift class this constant exists to prevent).
-const OVERFLOW_BTN = 32;
+// UAT round 2 (item 7): the trigger this reserves for is now ALWAYS
+// rendered (not just on overflow) — computeHiddenTabIds subtracts this
+// unconditionally as a permanent reservation, not a conditional one.
+export const OVERFLOW_BTN = 32;
 // Right-cluster rail-reopen toggle width: 1 (borderLeft) + 8 (paddingLeft) +
 // 4 (flex gap) + 28 (button) — adapted from the pre-30-13 RightClusterToggle
 // (git show e1f59f1d^:frontend/src/components/TabStrip.tsx). Only occupies
@@ -717,6 +723,9 @@ export function TabStrip({
         {isTopLeftLeaf && <PaneCornerReopenButton />}
         <EmptyStateNewTabButton onNewTab={onNewTab} />
         <div style={{ flex: "1 1 auto" }} />
+        {/* UAT round 2 (item 7): the tab-list dropdown is always rendered,
+            pinned right, even with zero open tabs (its menu is simply empty). */}
+        <TabOverflowDropdown tabs={[]} onSelectTab={onSelectTab} />
         {rightCluster}
       </div>
     );
@@ -724,7 +733,6 @@ export function TabStrip({
 
   const hiddenIds = forceHiddenTabIds ?? measuredHiddenIds;
   const visibleTabs = tabs.filter((t) => !hiddenIds.has(t.id));
-  const hiddenTabs = tabs.filter((t) => hiddenIds.has(t.id));
 
   /** Compute which visible-tab id the dragged pill is hovering before, by comparing
    *  the current x position against each visible pill wrapper's horizontal midpoint. */
@@ -950,16 +958,17 @@ export function TabStrip({
           );
         })}
       </div>
-      {hiddenTabs.length > 0 && (
-        <TabOverflowDropdown
-          hiddenTabs={hiddenTabs.map((tab) => ({
-            id: tab.id,
-            title: titleForTab(tab.noteId),
-            isActive: tab.id === activeTabId,
-          }))}
-          onSelectTab={onSelectTab}
-        />
-      )}
+      {/* UAT round 2 (item 7): always rendered (not gated on hiddenTabs.length),
+          pinned right, and lists EVERY open tab — not just the ones
+          overflow-hidden from the pill row above. */}
+      <TabOverflowDropdown
+        tabs={tabs.map((tab) => ({
+          id: tab.id,
+          title: titleForTab(tab.noteId),
+          isActive: tab.id === activeTabId,
+        }))}
+        onSelectTab={onSelectTab}
+      />
       <NewTabButton onNewTab={onNewTab} />
       {rightCluster}
       {/* Single absolute overlay bar at the drop boundary — moves without shifting

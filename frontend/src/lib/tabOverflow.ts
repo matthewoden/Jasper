@@ -26,7 +26,14 @@ export interface OverflowInput {
   availableWidth: number;
   /** Minimum pill width; = MIN_TAB_WIDTH. */
   minTabWidth: number;
-  /** Width reserved for the dropdown trigger — counted ONLY when overflow occurs. */
+  /**
+   * Width reserved for the tab-list dropdown trigger. UAT round 2 (item 7)
+   * made that trigger ALWAYS rendered (previously it only appeared once
+   * overflow occurred) — so this is now subtracted unconditionally, not just
+   * inside the overflow branch. A tab-fit budget that ignored this reserved
+   * space would compute a `fitAll` wider than the strip actually offers once
+   * the always-present trigger claims its slice of it.
+   */
   overflowButtonWidth: number;
 }
 
@@ -35,11 +42,13 @@ export interface OverflowInput {
  *
  * Deterministic, no layout:
  *   1. availableWidth <= 0 → empty Set (jsdom / pre-layout escape hatch).
- *   2. If every tab fits at minTabWidth → empty Set.
- *   3. Overflow: reserve the dropdown trigger; keep the first `visibleCount`
- *      tabs. If the active tab falls outside that window, evict the last kept
- *      tab to keep the active one visible (active is never hidden).
- *   4. Everything not kept is hidden.
+ *   2. Subtract the ALWAYS-reserved dropdown-trigger width (item 7) up front;
+ *      if usableWidth <= 0 → empty Set.
+ *   3. If every tab fits at minTabWidth within usableWidth → empty Set.
+ *   4. Overflow: keep the first `visibleCount` tabs. If the active tab falls
+ *      outside that window, evict the last kept tab to keep the active one
+ *      visible (active is never hidden).
+ *   5. Everything not kept is hidden.
  */
 export function computeHiddenTabIds(input: OverflowInput): Set<string> {
   const { tabIds, activeTabId, availableWidth, minTabWidth, overflowButtonWidth } =
@@ -47,13 +56,15 @@ export function computeHiddenTabIds(input: OverflowInput): Set<string> {
 
   if (availableWidth <= 0) return new Set();
 
-  const fitAll = Math.floor(availableWidth / minTabWidth);
-  if (tabIds.length <= fitAll) return new Set();
+  // The dropdown trigger is now ALWAYS rendered (UAT round 2, item 7), so its
+  // width is a permanent reservation shared by both the "does everything
+  // already fit" check and the overflow visible-count below — not a cost
+  // paid only once overflow is already known to occur.
+  const usableWidth = availableWidth - overflowButtonWidth;
+  if (usableWidth <= 0) return new Set();
 
-  const visibleCount = Math.max(
-    1,
-    Math.floor((availableWidth - overflowButtonWidth) / minTabWidth),
-  );
+  const visibleCount = Math.max(1, Math.floor(usableWidth / minTabWidth));
+  if (tabIds.length <= visibleCount) return new Set();
 
   const kept = new Set(tabIds.slice(0, visibleCount));
 

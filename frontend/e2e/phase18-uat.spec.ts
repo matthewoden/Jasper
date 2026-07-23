@@ -219,7 +219,7 @@ test.describe("@phase18 WR-03: interleaved-hidden-tabs real-mouse drag does not 
     // [a,b,e] visible and hides {c,d} (active is never evicted from view).
     await expect(tabPills(page)).toHaveCount(3);
     const hiddenTrigger = tabStrip(page).getByRole("button", {
-      name: "Show hidden tabs",
+      name: "Show all tabs",
     });
     await expect(hiddenTrigger).toBeVisible({ timeout: 5_000 });
 
@@ -265,15 +265,21 @@ test.describe("@phase18 WR-03: interleaved-hidden-tabs real-mouse drag does not 
       )
       .toContain("wr03-a");
 
-    // Confirm the dragged tab was never swallowed into the overflow dropdown:
-    // open it and assert wr03-a is absent, with exactly 2 items remaining.
-    await hiddenTrigger.click();
-    const hiddenItems = page.getByRole("menuitem");
-    await expect(hiddenItems).toHaveCount(2, { timeout: 5_000 });
-    const hiddenTitles = (await hiddenItems.allTextContents()).map((t) =>
+    // Confirm the dragged tab was never swallowed into the overflow dropdown.
+    // UAT round 2 (item 7): the dropdown now always lists EVERY open tab, not
+    // just the hidden ones, so diff its full list against the currently-
+    // visible pill titles to find the collapsed ones and assert wr03-a isn't
+    // among them.
+    const visibleAfter = (await tabPills(page).allTextContents()).map((t) =>
       t.trim(),
     );
-    expect(hiddenTitles).not.toContain("wr03-a");
+    await hiddenTrigger.click();
+    const allItems = page.getByRole("menuitem");
+    await expect(allItems).toHaveCount(5, { timeout: 5_000 });
+    const allTitles = (await allItems.allTextContents()).map((t) => t.trim());
+    const collapsedTitles = allTitles.filter((t) => !visibleAfter.includes(t));
+    expect(collapsedTitles).toHaveLength(2);
+    expect(collapsedTitles).not.toContain("wr03-a");
     await page.keyboard.press("Escape");
   });
 });

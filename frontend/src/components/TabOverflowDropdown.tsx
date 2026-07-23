@@ -1,6 +1,11 @@
 /**
- * TabOverflowDropdown — Radix DropdownMenu listing tabs hidden by the strip's
- * overflow. Selecting an item activates that tab (TAB-07). The active row gets the
+ * TabOverflowDropdown — Radix DropdownMenu pinned to the tab strip's right
+ * edge, always rendered (UAT round 2, item 7 — the owner wants the tab-list
+ * dropdown "always visible, pinned to the right"). The trigger no longer
+ * gates on overflow: it renders even with zero or few tabs. The menu lists
+ * EVERY open tab in tab order (not just the ones currently hidden/collapsed
+ * behind overflow) — selecting any item activates that tab via the same
+ * onSelectTab handler the tab pills themselves use. The active row gets the
  * shared accent-12% tint.
  */
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -9,14 +14,15 @@ import { useState } from "react";
 import type React from "react";
 import { Tooltip } from "./Tooltip";
 
-export interface HiddenTab {
+export interface TabEntry {
   id: string;
   title: string;
   isActive: boolean;
 }
 
 export interface TabOverflowDropdownProps {
-  hiddenTabs: HiddenTab[];
+  /** EVERY open tab, in tab order — not just the ones hidden by overflow (item 7). */
+  tabs: TabEntry[];
   onSelectTab: (id: string) => void;
 }
 
@@ -44,6 +50,9 @@ const triggerButtonStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   borderRadius: 4,
+  // UAT round 2 (item 7): the trigger is now always rendered, so it must
+  // never shrink away even when the visible-tabs flex child grows to fill
+  // the strip — it stays pinned at the strip's right edge.
   flexShrink: 0,
 };
 
@@ -80,18 +89,18 @@ const activeItemStyle: React.CSSProperties = {
 };
 
 export function TabOverflowDropdown({
-  hiddenTabs,
+  tabs,
   onSelectTab,
 }: TabOverflowDropdownProps): React.JSX.Element {
   const [hovering, setHovering] = useState(false);
 
   return (
     <DropdownMenu.Root>
-      <Tooltip label="Show hidden tabs">
+      <Tooltip label="Show all tabs">
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            aria-label="Show hidden tabs"
+            aria-label="Show all tabs"
             style={{
               ...triggerButtonStyle,
               background: hovering
@@ -107,7 +116,7 @@ export function TabOverflowDropdown({
       </Tooltip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="end" sideOffset={4} style={popoverStyle}>
-          {hiddenTabs.map((tab) => (
+          {tabs.map((tab) => (
             <DropdownMenu.Item
               key={tab.id}
               style={tab.isActive ? activeItemStyle : itemStyle}

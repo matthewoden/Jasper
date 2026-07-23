@@ -159,8 +159,13 @@ describe("<TabStrip /> rendering (Task 1)", () => {
       </TooltipProvider>,
     );
     const btn = screen.getByTestId("new-tab-button");
-    // Loose silhouette check: flush square corners like a restyled TabPill (TABUI-01).
-    expect(btn.style.borderRadius).toBe("0");
+    // Compact icon-button footprint (newTabButtonStyle), not the old
+    // 80px-wide bordered tab silhouette the owner called "huge".
+    expect(btn.style.width).toBe("24px");
+    expect(btn.style.height).toBe("24px");
+    expect(btn.style.marginLeft).toBe("4px");
+    expect(btn.style.marginRight).toBe("4px");
+    expect(btn.style.borderRadius).toBe("4px");
   });
 
   it("TAB-14: clicking the + button in the empty state calls onNewTab once", () => {
@@ -244,33 +249,82 @@ describe("<TabStrip /> rendering (Task 1)", () => {
 
   it("TAB-17: jsdom escape hatch — clientWidth===0 hides nothing (all pills render)", () => {
     // jsdom reports clientWidth 0, so measure() bails and the pure overflow
-    // function returns an empty set: every tab stays visible, no dropdown.
+    // function returns an empty set: every tab stays visible. The tab-list
+    // dropdown itself is ALWAYS present now (UAT round 2, item 7), so it's
+    // still in the document even with nothing overflow-hidden.
     renderStrip();
     expect(screen.getAllByRole("tab")).toHaveLength(3);
     expect(
-      screen.queryByRole("button", { name: "Show hidden tabs" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Show all tabs" }),
+    ).toBeInTheDocument();
   });
 
-  it("overflow dropdown renders when tabs are forced hidden; selecting calls onSelectTab", async () => {
+  it("UAT round 2 (item 7): the tab-list dropdown is always rendered and lists EVERY open tab, not just the ones overflow-hidden", async () => {
     const user = userEvent.setup();
     const h = renderStrip({ forceHiddenTabIds: new Set(["c"]) });
-    // Only 2 visible pills; the overflow trigger appears.
+    // Only 2 visible pills — but the dropdown itself is always present.
     expect(screen.getAllByRole("tab")).toHaveLength(2);
-    const trigger = screen.getByRole("button", { name: "Show hidden tabs" });
+    const trigger = screen.getByRole("button", { name: "Show all tabs" });
     expect(trigger).toBeInTheDocument();
     await user.click(trigger);
-    const item = await screen.findByRole("menuitem", { name: /Title c/i });
-    await user.click(item);
+    // ALL 3 tabs list in the menu, including the two still visible as pills.
+    expect(await screen.findByRole("menuitem", { name: /Title a/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Title b/i })).toBeInTheDocument();
+    const hiddenItem = screen.getByRole("menuitem", { name: /Title c/i });
+    expect(hiddenItem).toBeInTheDocument();
+    await user.click(hiddenItem);
     await waitFor(() => expect(h.onSelectTab).toHaveBeenCalledWith("c"));
+  });
+
+  it("UAT round 2 (item 7): the active tab is marked in the always-visible dropdown menu", async () => {
+    const user = userEvent.setup();
+    renderStrip({ activeTabId: "a", forceHiddenTabIds: new Set(["c"]) });
+    const trigger = screen.getByRole("button", { name: "Show all tabs" });
+    await user.click(trigger);
+    expect(await screen.findByRole("menuitem", { name: /Title a \(active\)/i })).toBeInTheDocument();
+  });
+
+  it("UAT round 2 (item 7): the dropdown's menu is empty (but the trigger still renders) in the zero-tab empty state", async () => {
+    const user = userEvent.setup();
+    render(
+      <TooltipProvider>
+        <TabStrip
+          leafId={LEAF_ID}
+          tabs={[]}
+          activeTabId={null}
+          deletedTabIds={new Set()}
+          titleForTab={titleForTab}
+          onSelectTab={vi.fn()}
+          onRequestClose={vi.fn()}
+          onCloseOthers={vi.fn()}
+          onCloseToRight={vi.fn()}
+          onCloseAll={vi.fn()}
+          onOpenRight={vi.fn()}
+          onTogglePin={vi.fn()}
+          onReorder={vi.fn()}
+          onNewTab={vi.fn()}
+          onCycleTab={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: "Show all tabs" });
+    expect(trigger).toBeInTheDocument();
+    await user.click(trigger);
+    expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
   });
 
   it("UAT gap-closure group B (item 6): overflow trigger is vertically centered with L/R margin", () => {
     renderStrip({ forceHiddenTabIds: new Set(["c"]) });
-    const trigger = screen.getByRole("button", { name: "Show hidden tabs" });
+    const trigger = screen.getByRole("button", { name: "Show all tabs" });
     expect(trigger.style.alignSelf).toBe("center");
     expect(trigger.style.marginLeft).toBe("4px");
     expect(trigger.style.marginRight).toBe("4px");
+  });
+
+  it("UAT round 2 (item 6): the tab strip spans the full width of its container", () => {
+    renderStrip();
+    const strip = screen.getByRole("tablist");
+    expect(strip.style.width).toBe("100%");
   });
 });
 

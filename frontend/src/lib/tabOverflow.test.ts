@@ -12,7 +12,7 @@ import {
   MIN_TAB_WIDTH,
   MAX_TAB_WIDTH,
 } from "./tabOverflow";
-import { RESERVED } from "../components/TabStrip";
+import { RESERVED, OVERFLOW_BTN } from "../components/TabStrip";
 
 const OVERFLOW = 28;
 const base = {
@@ -68,8 +68,8 @@ describe("computeHiddenTabIds", () => {
   });
 
   it("(e) boundary: the dropdown reservation pushes one extra tab into overflow", () => {
-    // availableWidth 365: fitAll=floor(365/120)=3, but visibleCount=floor((365-28)/120)=2.
-    // 4 tabs > 3 → overflow; reservation shrinks the visible window to 2.
+    // usableWidth = 365-28 = 337; visibleCount = floor(337/120) = 2.
+    // 4 tabs > 2 → overflow; the reserved trigger width shrinks the visible window to 2.
     const hidden = computeHiddenTabIds({
       ...base,
       tabIds: ["a", "b", "c", "d"],
@@ -77,6 +77,25 @@ describe("computeHiddenTabIds", () => {
       availableWidth: 365,
     });
     expect(hidden).toEqual(new Set(["c", "d"]));
+  });
+
+  it("(e2) UAT round 2 (item 7): the trigger reservation is now UNCONDITIONAL — a width where the raw (unreserved) division would say 'fits' still overflows once the always-rendered trigger's width is subtracted", () => {
+    // Raw floor(365/120) = 3, which would (pre-item-7) have let all 3 tabs
+    // fit with NO reservation applied (the trigger only rendered on overflow
+    // back then). Now usableWidth = 365-28 = 337 → visibleCount=floor(337/120)=2,
+    // and 3 tabs > 2 → overflow — because the trigger is always on strip now,
+    // its width must always be subtracted, even to decide whether tabs fit at all.
+    const hidden = computeHiddenTabIds({
+      ...base,
+      tabIds: ["a", "b", "c"],
+      activeTabId: "a",
+      availableWidth: 365,
+    });
+    expect(hidden).toEqual(new Set(["c"]));
+  });
+
+  it("(e3) drift guard: OVERFLOW_BTN matches TabStrip's exported constant (32 — D-14 square 24x24 + '0 4px' L/R margin)", () => {
+    expect(OVERFLOW_BTN).toBe(32);
   });
 
   it("(f) activeTabId null → sensible first-N-visible split", () => {

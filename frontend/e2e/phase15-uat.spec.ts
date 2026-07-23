@@ -18,7 +18,7 @@
  * assertion (expect / expect.poll). Selectors:
  *   - Tab strip:      [data-testid="tab-strip"]
  *   - Tab pill:       role="tab" scoped inside the strip
- *   - Overflow btn:   [aria-label="Show hidden tabs"]
+ *   - Overflow btn:   [aria-label="Show all tabs"]
  *   - Tree note row:  [data-tree-row="<id>"][data-tree-row-kind="note"]
  *   - Connection dot: [data-testid="connection-status-dot"][data-status="connected"]
  */
@@ -205,21 +205,39 @@ test.describe("@phase15 TAB-07: overflow dropdown", () => {
     }
 
     // Overflow appears once the open tabs exceed the strip width (TAB-07).
-    const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
+    const overflowBtn = page.getByRole("button", { name: "Show all tabs" });
     await expect(overflowBtn).toBeVisible({ timeout: 10_000 });
 
-    // Open the dropdown and select the first overflow-hidden tab. The dropdown
-    // only lists hidden (non-fitting) tabs, so its first item is guaranteed to
-    // be a tab not currently shown in the strip.
+    // UAT round 2 (item 7): the dropdown is always visible and lists EVERY
+    // open tab now, not just the ones hidden by overflow — so find one whose
+    // title is NOT already shown as a pill to prove the click genuinely
+    // exercises the dropdown-select path for a collapsed tab.
+    const visiblePillTitles = new Set(
+      (await tabPills(page).allTextContents()).map((t) => t.trim()),
+    );
+
     await overflowBtn.click();
     const menu = page.getByRole("menu");
     await expect(menu).toBeVisible();
-    const firstHidden = menu.getByRole("menuitem").first();
-    await expect(firstHidden).toBeVisible();
-    const hiddenTitle = (await firstHidden.textContent())?.trim() ?? "";
+    const items = menu.getByRole("menuitem");
+    await expect(items).toHaveCount(ids.length);
+
+    let hiddenItem: Locator | null = null;
+    let hiddenTitle = "";
+    const itemCount = await items.count();
+    for (let i = 0; i < itemCount; i++) {
+      const item = items.nth(i);
+      const text = (await item.textContent())?.trim() ?? "";
+      if (!visiblePillTitles.has(text)) {
+        hiddenItem = item;
+        hiddenTitle = text;
+        break;
+      }
+    }
+    expect(hiddenItem).not.toBeNull();
     expect(hiddenTitle).toMatch(/^overflow-note-\d\d-wwwwww$/);
     const hiddenId = ids[Number(hiddenTitle.slice("overflow-note-".length, "overflow-note-".length + 2))];
-    await firstHidden.click();
+    await hiddenItem!.click();
 
     // Selecting a hidden tab activates it: the active tab drives
     // useTreeStore.activeNoteId, which marks the matching tree row active
@@ -810,20 +828,20 @@ test.describe(
         await openNoteFromTree(page, id);
       }
       await expect(
-        page.getByRole("button", { name: "Show hidden tabs" }),
+        page.getByRole("button", { name: "Show all tabs" }),
       ).toBeVisible({ timeout: 15_000 });
     }
 
-    test("UAT-15.1-TOOLTIP: overflow trigger has an accessible 'Show hidden tabs' name", async ({
+    test("UAT-15.1-TOOLTIP: overflow trigger has an accessible 'Show all tabs' name", async ({
       page,
     }) => {
       await waitForConnected(page, jasper.baseURL);
       await openOverflowNotes(page);
       // Phase 31 D-07: native title= migrated to a shared Radix Tooltip +
       // aria-label (no more native title attribute on this control).
-      const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
+      const overflowBtn = page.getByRole("button", { name: "Show all tabs" });
       await expect(overflowBtn).toBeVisible();
-      await expect(overflowBtn).toHaveAttribute("aria-label", "Show hidden tabs");
+      await expect(overflowBtn).toHaveAttribute("aria-label", "Show all tabs");
       await expect(overflowBtn).not.toHaveAttribute("title", /.+/);
     });
 
@@ -833,7 +851,7 @@ test.describe(
       await waitForConnected(page, jasper.baseURL);
       await openOverflowNotes(page);
 
-      const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
+      const overflowBtn = page.getByRole("button", { name: "Show all tabs" });
       await expect(overflowBtn).toBeVisible();
 
       // Poll layout until both bounding boxes are non-zero.
@@ -861,7 +879,7 @@ test.describe(
       await waitForConnected(page, jasper.baseURL);
       await openOverflowNotes(page);
 
-      const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
+      const overflowBtn = page.getByRole("button", { name: "Show all tabs" });
       await expect(overflowBtn).toBeVisible();
 
       // Poll until all three bounding boxes resolve to non-null.
@@ -1053,7 +1071,7 @@ test.describe("@phase15 UAT-15.1-WIDTH: responsive editor width", () => {
     }
 
     // Primary: overflow dropdown must appear — tabs shrank then overflowed.
-    const overflowBtn = page.getByRole("button", { name: "Show hidden tabs" });
+    const overflowBtn = page.getByRole("button", { name: "Show all tabs" });
     await expect(overflowBtn).toBeVisible({ timeout: 10_000 });
 
     // Secondary: active editor pane bounding box fits within viewport width.
