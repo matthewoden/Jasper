@@ -3,8 +3,10 @@
  * sweep item).
  *
  * PARITY-02: the right rail (Outline / Linked mentions / Tags) has a 1px
- *   left border separating it from the editor; right-rail section-header
- *   labels render uppercase with 0.05em letter-spacing.
+ *   left border separating it from the editor. (The right-rail
+ *   section-header uppercase/letter-spacing assertion this file originally
+ *   also carried was removed in Phase 31 — sub-headers no longer exist,
+ *   D-01.)
  * PARITY-03: the note title has -0.012em letter-spacing (sweep item).
  *
  * Harness mirrors phase21-uat.spec.ts: spawnJasper() per describe block
@@ -85,40 +87,12 @@ test.describe("@phase23 design parity fixes", () => {
       .toBe("solid");
   });
 
-  test("section header: a right-rail sub-header label renders uppercase with letter-spacing", async ({
-    page,
-  }) => {
-    // The clickable SectionHeader ("Collapse Outline panel" button, with
-    // its own chevron/aria-expanded collapse state) this test originally
-    // targeted was REMOVED in the Phase 30 TAGS-01 tab-row rework — panels
-    // are no longer independently collapsible (RightRail.tsx header
-    // comment: "that machinery has no analog in the one-panel-at-a-time tab
-    // model and has been removed entirely"). Its current equivalent is
-    // RightRailSubHeader (RightRailTabRow.tsx): a non-clickable div with a
-    // label <span> — chevron/onToggle/aria-expanded machinery explicitly
-    // stripped (ported "verbatim from SectionHeader.tsx" minus that piece).
-    // The uppercase + letter-spacing styling this test guards survived the
-    // rework unchanged (subHeaderLabelStyle).
-    await page.setViewportSize({ width: 1512, height: 944 });
-    await waitForConnected(page, jasper.baseURL);
-
-    // Outline is the rightPanel default (RIGHT_PANEL_DEFAULT), so its
-    // sub-header is always present when the rail is expanded (D-06
-    // default), independent of any open note.
-    const label = page.locator("span").filter({ hasText: /^Outline$/ });
-    await expect(label).toBeVisible({ timeout: 10_000 });
-
-    // Confirm it's the non-clickable sub-header, not wrapped in a button —
-    // the Phase 20 collapse affordance is gone.
-    await expect(page.getByRole("button", { name: "Collapse Outline panel" })).toHaveCount(0);
-
-    await expect
-      .poll(() => label.evaluate((el) => getComputedStyle(el).textTransform))
-      .toBe("uppercase");
-    await expect
-      .poll(() => label.evaluate((el) => getComputedStyle(el).letterSpacing))
-      .not.toBe("normal");
-  });
+  // Removed: right-rail sub-headers (RightRailSubHeader, including the
+  // uppercase/letter-spacing label this test guarded) were retired entirely
+  // in Phase 31 (D-01) — all three panels are now header-less, identified
+  // by the icon tab row alone. No sibling assertion survives; the
+  // PARITY-02 border-left assertion above and PARITY-03 title-tracking
+  // assertion below are unaffected and still cover this file's real scope.
 
   test("note title: the note-title element computes a non-normal (negative-tracking) letter-spacing", async ({
     page,
