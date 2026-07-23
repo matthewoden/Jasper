@@ -8,12 +8,14 @@
  *   `.cm-scroller`) + moves the cursor to that heading line (D-13).
  * RSIDE-02: Linked mentions renders one card per linking note (accent title,
  *   `useTabStore.getState().openTab` on click — D-15), stacked per-mention
- *   excerpts (D-16/D-17), a header count badge counting distinct linking
- *   notes (D-18), and "No backlinks found" when there are none (D-19).
+ *   excerpts (D-16/D-17), and "No backlinks found" when there are none
+ *   (D-19). The header count badge (D-18) was dropped in Phase 31
+ *   (D-01/D-02) along with all right-rail sub-headers — no longer asserted.
  * Chrome model (D-01..D-07): the tab-bar toggle is the sidebar's only
- *   show/hide control; the rail is visible by default on a fresh profile;
- *   each of the three sections (Outline / Linked mentions / Tags) collapses
- *   independently via its own clickable SectionHeader.
+ *   show/hide control; the rail is visible by default on a fresh profile.
+ *   The three sections (Outline / Linked mentions / Tags) are now exactly
+ *   one mounted panel at a time, switched via the icon tab row (Phase 30
+ *   TAGS-01 rework; superseded the original independent SectionHeaders).
  *
  * Harness mirrors phase19-uat.spec.ts: spawnJasper() per describe block
  * against a rebuilt binary (`make build` — see task verify command), real
@@ -88,21 +90,6 @@ function railTabRow(page: Page) {
 
 function railTab(page: Page, name: "Outline" | "Linked mentions" | "Tags") {
   return railTabRow(page).getByRole("button", { name });
-}
-
-/**
- * RightRailSubHeader (RightRailTabRow.tsx) is a non-clickable div rendering
- * `<span>{title}</span><span>{count}</span>` for the active panel — the
- * Phase 20 SectionHeader's clickable/aria-expanded button was removed
- * entirely in the Phase 30 tab-row rework (panels are no longer
- * independently collapsible). Locate the count pill via its exact-text
- * label sibling rather than a "button" role, which no longer exists here.
- */
-function subHeaderCountBadge(page: Page, title: string) {
-  return page
-    .locator("span")
-    .filter({ hasText: new RegExp(`^${title}$`) })
-    .locator("xpath=following-sibling::span[1]");
 }
 
 async function repeatLines(n: number, text: string): Promise<string> {
@@ -280,11 +267,9 @@ test.describe("@phase20 RSIDE-02: Linked-mentions cards, count badge, openTab, e
     // single-mounted-panel tab-row model).
     await railTab(page, "Linked mentions").click();
 
-    const countBadge = subHeaderCountBadge(page, "Linked mentions");
-    await expect
-      .poll(async () => (await countBadge.textContent())?.trim(), { timeout: 10_000 })
-      .toBe("1");
-
+    // Panel-level counts (the sub-header's count badge) were dropped
+    // entirely in Phase 31 (D-01/D-02) and do not relocate — only the
+    // cards/openTab/excerpts behavior below remains in scope.
     const cardTitle = page.getByRole("button", { name: "Open note: linking-note" });
     await expect(cardTitle).toBeVisible();
     const titleColor = await cardTitle.evaluate((el) => getComputedStyle(el).color);
