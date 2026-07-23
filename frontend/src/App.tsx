@@ -32,6 +32,7 @@ import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { ActivityRibbon } from "./components/ActivityRibbon";
 import { ToastProvider } from "./components/Toast";
+import { TooltipProvider } from "./components/Tooltip";
 import { postAdminReindex } from "./lib/adminApi";
 import { useDailyNote } from "./lib/useDailyNote";
 import { useDeepLink } from "./lib/useDeepLink";
@@ -156,7 +157,9 @@ function BootGate() {
   if (state === "noVault") return <VaultPicker mode="boot" />;
   return (
     <ToastProvider>
-      <AppInner vaultPath={vaultPath} />
+      <TooltipProvider>
+        <AppInner vaultPath={vaultPath} />
+      </TooltipProvider>
     </ToastProvider>
   );
 }
@@ -167,7 +170,9 @@ function BootGate() {
 export function AppShell() {
   return (
     <ToastProvider>
-      <AppInner />
+      <TooltipProvider>
+        <AppInner />
+      </TooltipProvider>
     </ToastProvider>
   );
 }
