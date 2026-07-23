@@ -1,15 +1,11 @@
 /**
- * RightRailTagsPanel — body-only tag browser section in the right rail
- * (Phase 20 trim, D-08/D-09; mounted as the Tags tab's LOWER (vault-wide)
- * section by RightRail.tsx's Phase 30 two-section rework — see §2 of
- * 30-UI-SPEC.md. The upper (active-note) section is NoteTagsSection.tsx.
- *
- * Owns its own "Tags" + count sub-header (RightRailSubHeader, ported from
- * SectionHeader.tsx) since Phase 20's external SectionHeader no longer
- * supplies it in the tab-row model — no × close button, no substring filter
- * input. Body renders only the tag list, click-to-filter, and the
- * rename/delete ContextMenu flow. List uses `flex: 1` to fill the remaining
- * panel space (no fixed maxHeight).
+ * RightRailTagsPanel — the entire Tags tab body: a single vault-wide tag
+ * list (Phase 31 D-01..D-05 collapse of the Phase 30 two-section split —
+ * the upper active-note section and its own sub-header are gone, this
+ * component owns no header of its own either). No × close button, no
+ * substring filter input. Body renders only the tag list, click-to-filter,
+ * and the rename/delete ContextMenu flow. List uses `flex: 1` to fill the
+ * remaining panel space (no fixed maxHeight).
  *
  * The legacy left-sidebar TagBrowserSection.tsx (superseded by this
  * component in Phase 20) was deleted in Phase 30 Plan 05 as confirmed
@@ -25,13 +21,13 @@ import { renameTag, deleteTag } from "../lib/tagsApi";
 import { sortTagsByCountDesc } from "../lib/tagSort";
 import { TagDeleteConfirmDialog } from "./TagDeleteConfirmDialog";
 import { RenameInput } from "./RenameInput";
-import { RightRailSubHeader } from "./RightRailTabRow";
 import { useToast } from "./toast.utils";
 
 
 /** Panel shell — flat inside the tabbed rail. The floating-card chrome
  * (border + radius) predates the Phase 30 rail rewrite; inside the flat rail
- * body it read as a double border with rounded inner corners. */
+ * body it read as a double border with rounded inner corners. paddingTop
+ * absorbs the vertical space the retired sub-header (D-01) used to occupy. */
 const panelCardStyle: CSSProperties = {
   background: "var(--color-surface)",
   overflow: "hidden",
@@ -39,11 +35,10 @@ const panelCardStyle: CSSProperties = {
   flexDirection: "column",
   flex: 1,
   minHeight: 0,
+  paddingTop: 16,
 };
 
-/** Wraps the sub-header + card so this component fills whatever flex space
- * its RightRail.tsx parent gives it (height: "100%" would be wrong here
- * now that the sub-header is a sibling, not external). */
+/** Fills whatever flex space its RightRail.tsx parent gives it. */
 const rootStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -224,7 +219,6 @@ export function RightRailTagsPanel() {
   return (
     <>
       <div style={rootStyle}>
-        <RightRailSubHeader title="Tags" count={tags.length} />
         <div style={panelCardStyle}>
           <ul role="list" style={listStyle}>
             {/* Empty state: vault has zero tags (D-10, mock-literal copy) */}
@@ -310,19 +304,10 @@ export function RightRailTagsPanel() {
                                   aria-label={`${tag.count} notes`}
                                   style={{
                                     marginLeft: 8,
-                                    padding: "0 6px",
-                                    height: 18,
-                                    minWidth: 18,
-                                    borderRadius: 9,
-                                    background:
-                                      "color-mix(in srgb, var(--color-fg) 10%, transparent)",
                                     color: "var(--color-muted)",
-                                    fontSize: 11,
-                                    fontWeight: 600,
-                                    lineHeight: "18px",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
+                                    fontSize: "11.5px",
+                                    fontWeight: 400,
+                                    textAlign: "right",
                                     flexShrink: 0,
                                   }}
                                 >

@@ -20,11 +20,6 @@
  * new persistence or workspace.json field is introduced. Reopening a
  * collapsed rail (260721-cjt: the rail unmounts to 0 width when collapsed)
  * is handled by the rightmost pane's own tab-bar toggle, not by this row.
- *
- * Also exports RightRailSubHeader — a small in-panel sub-header used below
- * the tab row by the active panel (ported from SectionHeader.tsx with the
- * chevron/onToggle/aria-expanded collapse machinery removed, since panels
- * are no longer independently collapsible in the tab-row model).
  */
 import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
@@ -159,68 +154,6 @@ export function RightRailTabRow(): React.JSX.Element {
           icon={<Tag size={16} aria-hidden="true" />}
         />
       </div>
-    </div>
-  );
-}
-
-/** Ported verbatim from SectionHeader.tsx — chevron/onToggle/aria-expanded removed. */
-const subHeaderStyle: CSSProperties = {
-  height: 32,
-  // 24px matches the outline content's text line — rail-wide inset so the
-  // icon tabs, sub-header title, and panel content share one alignment edge.
-  padding: "0 24px",
-  background: "var(--color-surface)",
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  border: "none",
-  borderBottom: "1px solid var(--color-border)",
-  width: "100%",
-  flexShrink: 0,
-};
-
-const subHeaderLabelStyle: CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: "var(--color-muted)",
-  letterSpacing: "0.05em",
-  textTransform: "uppercase",
-  lineHeight: 1.4,
-  flex: 1,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-/** Ported verbatim from SectionHeader.tsx's countPillStyle. */
-const subHeaderCountPillStyle: CSSProperties = {
-  padding: "0 6px",
-  height: 18,
-  minWidth: 18,
-  borderRadius: 9,
-  background: "color-mix(in srgb, var(--color-fg) 10%, transparent)",
-  color: "var(--color-muted)",
-  fontSize: 11,
-  fontWeight: 600,
-  lineHeight: "18px",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  flexShrink: 0,
-};
-
-export interface RightRailSubHeaderProps {
-  title: string;
-  /** Omitted entirely when undefined — e.g. Outline may render without a count. */
-  count?: number;
-}
-
-/** Non-clickable, always-visible in-panel sub-header for the active right-rail panel. */
-export function RightRailSubHeader({ title, count }: RightRailSubHeaderProps) {
-  return (
-    <div style={subHeaderStyle}>
-      <span style={subHeaderLabelStyle}>{title}</span>
-      {count !== undefined && <span style={subHeaderCountPillStyle}>{count}</span>}
     </div>
   );
 }

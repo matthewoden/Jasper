@@ -1,9 +1,10 @@
 /**
- * RightRail tests — Phase 30 tab-row + single-mounted-panel shell (TAGS-01,
- * D-01..D-05): RightRailTabRow at the top, exactly ONE of
- * Outline/LinkedMentions/RightRailTagsPanel mounted below it, driven by the
- * rightPanel slice. No independent per-section collapse/divider/ratio
- * machinery remains.
+ * RightRail tests — tab-row + single-mounted-panel shell (TAGS-01;
+ * Phase 31 D-01..D-05 collapsed the Tags tab to a single vault-wide list
+ * and retired all panel sub-headers/counts): RightRailTabRow at the top,
+ * exactly ONE of Outline/LinkedMentions/RightRailTagsPanel mounted below
+ * it, driven by the rightPanel slice. No independent per-section
+ * collapse/divider/ratio machinery remains.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -15,7 +16,6 @@ const mockSetExpanded = vi.fn();
 let mockExpanded = true;
 let mockWidth = 280;
 let mockRightPanel: "outline" | "backlinks" | "tags" = "outline";
-let mockOutlineHeadingsCount = 0;
 
 const mockStoreState = () => ({
   backlinksRailExpanded: mockExpanded,
@@ -51,30 +51,6 @@ vi.mock("../lib/useBacklinks", () => ({
   useBacklinks: (...args: unknown[]) => mockUseBacklinks(...args),
 }));
 
-let mockNoteTagsCount = 0;
-vi.mock("../lib/useNoteTagsFromDoc", () => ({
-  useNoteTagsStore: (selector: (s: { noteTags: string[] }) => unknown) =>
-    selector({ noteTags: new Array(mockNoteTagsCount).fill("t") }),
-}));
-
-vi.mock("../lib/useOutlineStore", () => ({
-  useOutlineStore: (selector: (s: { outlineHeadings: unknown[] }) => unknown) =>
-    selector({ outlineHeadings: new Array(mockOutlineHeadingsCount).fill(0) }),
-}));
-
-const noteTagsSectionProps: unknown[] = [];
-vi.mock("./NoteTagsSection", () => ({
-  NoteTagsSection: (props: { activeNoteId: string | null }) => {
-    noteTagsSectionProps.push(props);
-    return (
-      <div
-        data-testid="mock-note-tags-section"
-        data-noteid={props.activeNoteId ?? "null"}
-      />
-    );
-  },
-}));
-
 vi.mock("./OutlinePanel", () => ({
   OutlinePanel: () => <div data-testid="mock-outline-panel">No headings</div>,
 }));
@@ -102,14 +78,10 @@ beforeEach(() => {
   mockExpanded = true;
   mockWidth = 280;
   mockRightPanel = "outline";
-  mockOutlineHeadingsCount = 0;
   mockSetWidth.mockReset();
   mockSetRightPanel.mockReset();
   mockSetExpanded.mockReset();
   linkedMentionsPanelProps.length = 0;
-
-  mockNoteTagsCount = 0;
-  noteTagsSectionProps.length = 0;
 
   mockUseBacklinks.mockReset();
   mockUseBacklinks.mockReturnValue({
@@ -158,7 +130,6 @@ describe("RightRail — tab row + single-panel shell", () => {
     expect(screen.getByTestId("mock-outline-panel")).toBeInTheDocument();
     expect(screen.queryByTestId("mock-linked-mentions-panel")).toBeNull();
     expect(screen.queryByTestId("mock-tags-panel")).toBeNull();
-    expect(screen.getByText("Outline")).toBeInTheDocument();
   });
 
   it("rightPanel='backlinks' mounts ONLY LinkedMentionsPanel", () => {
@@ -173,26 +144,14 @@ describe("RightRail — tab row + single-panel shell", () => {
     expect(screen.queryByTestId("mock-outline-panel")).toBeNull();
     expect(screen.getByTestId("mock-linked-mentions-panel")).toBeInTheDocument();
     expect(screen.queryByTestId("mock-tags-panel")).toBeNull();
-    expect(screen.getByText("Linked mentions")).toBeInTheDocument();
   });
 
-  it("rightPanel='tags' mounts ONLY the two Tags-tab sections (NoteTagsSection + RightRailTagsPanel)", () => {
+  it("rightPanel='tags' mounts ONLY RightRailTagsPanel (single-list, no upper note-tags section)", () => {
     mockRightPanel = "tags";
     render(<RightRail activeNoteId="note-1" />);
     expect(screen.queryByTestId("mock-outline-panel")).toBeNull();
     expect(screen.queryByTestId("mock-linked-mentions-panel")).toBeNull();
-    expect(screen.getByTestId("mock-note-tags-section")).toBeInTheDocument();
     expect(screen.getByTestId("mock-tags-panel")).toBeInTheDocument();
-    expect(screen.getByText("Note tags")).toBeInTheDocument();
-  });
-
-  it("Tags tab passes activeNoteId through to NoteTagsSection", () => {
-    mockRightPanel = "tags";
-    render(<RightRail activeNoteId="note-42" />);
-    expect(screen.getByTestId("mock-note-tags-section")).toHaveAttribute(
-      "data-noteid",
-      "note-42",
-    );
   });
 
   it("LinkedMentionsPanel receives activeNoteId prop", () => {
@@ -226,39 +185,6 @@ describe("RightRail — tab row + single-panel shell", () => {
     expect(last.backlinks).toBe(rows);
     expect(last.loading).toBe(false);
     expect(last.error).toBeNull();
-  });
-
-  it("Linked-mentions sub-header shows the distinct-source count (backlinks.length)", () => {
-    mockRightPanel = "backlinks";
-    mockUseBacklinks.mockReturnValue({
-      backlinks: [{ sourceId: "a" }, { sourceId: "b" }],
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
-    render(<RightRail activeNoteId="note-1" />);
-    expect(screen.getByText("2")).toBeInTheDocument();
-  });
-
-  it("Note tags sub-header shows the active note's live tag count", () => {
-    mockRightPanel = "tags";
-    mockNoteTagsCount = 2;
-    render(<RightRail activeNoteId="note-1" />);
-    expect(screen.getByText("2")).toBeInTheDocument();
-  });
-
-  it("Note tags sub-header shows 0 when no note is open (does not leak a stale count)", () => {
-    mockRightPanel = "tags";
-    mockNoteTagsCount = 5;
-    render(<RightRail activeNoteId={null} />);
-    expect(screen.getByText("0")).toBeInTheDocument();
-  });
-
-  it("Outline sub-header shows the heading count", () => {
-    mockRightPanel = "outline";
-    mockOutlineHeadingsCount = 3;
-    render(<RightRail activeNoteId="note-1" />);
-    expect(screen.getByText("3")).toBeInTheDocument();
   });
 
   it("expanded rail still has vertical resize handle", () => {
@@ -316,6 +242,17 @@ describe("RightRail — tab row + single-panel shell", () => {
     // succeeds with only the tab-row + single-panel mocks above.
     expect(() => render(<RightRail activeNoteId={null} />)).not.toThrow();
   });
+
+  it.each(["outline", "backlinks", "tags"] as const)(
+    "rightPanel='%s' renders no in-panel sub-header (D-01 retired app-wide)",
+    (panel) => {
+      mockRightPanel = panel;
+      render(<RightRail activeNoteId="note-1" />);
+      expect(screen.queryByText("Outline")).toBeNull();
+      expect(screen.queryByText("Linked mentions")).toBeNull();
+      expect(screen.queryByText("Note tags")).toBeNull();
+    },
+  );
 });
 
 describe("RightRail — no-note-open empty states", () => {

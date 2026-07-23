@@ -28,7 +28,7 @@ vi.mock("../lib/useWorkspace", () => ({
   }),
 }));
 
-import { RightRailTabRow, RightRailSubHeader } from "./RightRailTabRow";
+import { RightRailTabRow } from "./RightRailTabRow";
 
 beforeEach(() => {
   mockRightPanel = "outline";
@@ -86,23 +86,5 @@ describe("RightRailTabRow", () => {
     render(<RightRailTabRow />);
     const tab = screen.getByTitle("Outline");
     expect(tab).toHaveStyle({ width: "30px", height: "30px", borderRadius: "6px" });
-  });
-});
-
-describe("RightRailSubHeader", () => {
-  it("renders the title and omits the count pill when count is undefined", () => {
-    render(<RightRailSubHeader title="Outline" />);
-    expect(screen.getByText("Outline")).toBeInTheDocument();
-  });
-
-  it("renders a count pill when count is provided", () => {
-    render(<RightRailSubHeader title="Tags" count={3} />);
-    expect(screen.getByText("Tags")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
-  });
-
-  it("is non-clickable — renders as a div, not a button", () => {
-    const { container } = render(<RightRailSubHeader title="Outline" />);
-    expect(container.querySelector("button")).toBeNull();
   });
 });

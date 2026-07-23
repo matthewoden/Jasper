@@ -1,10 +1,9 @@
 /**
  * RightRail — tab-row + single-mounted-panel right sidebar shell (Phase 30
- * rework, TAGS-01 D-01..D-05): a 30x30 icon-tab row (RightRailTabRow)
- * mirroring the left sidebar's SidebarTabRow, with exactly ONE panel
- * mounted below it at a time — Outline, Linked mentions, or Tags — driven
- * by the persisted rightPanel field (workspace.json via useWorkspace,
- * Plan 01).
+ * rework, TAGS-01): a 30x30 icon-tab row (RightRailTabRow) mirroring the
+ * left sidebar's SidebarTabRow, with exactly ONE panel mounted below it at
+ * a time — Outline, Linked mentions, or Tags — driven by the persisted
+ * rightPanel field (workspace.json via useWorkspace, Plan 01).
  *
  * Structure:
  *   <aside bg=--color-surface>            ← flush panel container
@@ -15,12 +14,11 @@
  *     <ActivePanel />   ← exactly one of Outline / Linked mentions / Tags
  *   </aside>
  *
- * The Tags tab (TAGS-02, D-06..D-10) is the one exception to "single
- * section": it stacks TWO sections — NoteTagsSection (active note's live
- * tags, sub-header "Note tags") on top of a divider on top of
- * RightRailTagsPanel (vault-wide list, now owns its own "Tags" sub-header
- * internally per Plan 08). Outline and Linked mentions remain single
- * sub-header + panel, as built in Plan 05.
+ * The Tags tab (TAGS-02, Phase 31 D-01..D-05) is now a single vault-wide
+ * list — `RightRailTagsPanel` mounted directly, no upper active-note
+ * section, no divider. All three panels (Outline, Linked mentions, Tags)
+ * are header-less: the shared in-panel sub-header component is retired
+ * app-wide (D-01), and no panel-level counts remain (D-02).
  *
  * This REPLACES the Phase 20 three-section stacked/collapsible/resizable
  * layout (independent SectionHeader collapse state per section,
@@ -29,8 +27,8 @@
  * along with its useTreeStore slices (see useTreeStore.ts).
  *
  * Background is --color-surface, filling the rail edge-to-edge so the tab
- * row and sub-header sit flush against border-left (mock parity, unchanged
- * from Phase 23 owner D-06).
+ * row sits flush against border-left (mock parity, unchanged from Phase 23
+ * owner D-06).
  *
  * Collapsed state (260721-cjt gap closure): `!expanded` now unmounts the
  * rail entirely (returns null) so the notes/editor area is flush with the
@@ -44,12 +42,9 @@ import type React from "react";
 
 import { useTreeStore, RAIL_MAX_WIDTH, RAIL_MIN_WIDTH } from "../lib/useTreeStore";
 import { useBacklinks } from "../lib/useBacklinks";
-import { useNoteTagsStore } from "../lib/useNoteTagsFromDoc";
-import { useOutlineStore } from "../lib/useOutlineStore";
-import { RightRailTabRow, RightRailSubHeader } from "./RightRailTabRow";
+import { RightRailTabRow } from "./RightRailTabRow";
 import { OutlinePanel } from "./OutlinePanel";
 import { LinkedMentionsPanel } from "./LinkedMentionsPanel";
-import { NoteTagsSection } from "./NoteTagsSection";
 import { RightRailTagsPanel } from "./RightRailTagsPanel";
 
 interface Props {
@@ -65,18 +60,11 @@ export function RightRail({ activeNoteId, style }: Props) {
   const setWidth = useTreeStore((s) => s.setBacklinksRailWidth);
   const rightPanel = useTreeStore((s) => s.rightPanel);
 
-  // Single shared fetch: the count badge and LinkedMentionsPanel's cards
-  // must render the same snapshot, so the panel receives this result as
-  // props instead of mounting its own useBacklinks instance.
   const {
     backlinks,
     loading: backlinksLoading,
     error: backlinksError,
   } = useBacklinks(activeNoteId);
-  const linkedMentionsCount = backlinks?.length ?? 0;
-  const noteTags = useNoteTagsStore((s) => s.noteTags);
-  const noteTagsCount = activeNoteId === null ? 0 : noteTags.length;
-  const outlineHeadingsCount = useOutlineStore((s) => s.outlineHeadings.length);
 
   const draggingRef = useRef(false);
   const railRef = useRef<HTMLElement>(null);
@@ -177,56 +165,25 @@ export function RightRail({ activeNoteId, style }: Props) {
         }}
       >
         {rightPanel === "outline" && (
-          <>
-            <RightRailSubHeader title="Outline" count={outlineHeadingsCount} />
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-              <OutlinePanel />
-            </div>
-          </>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingTop: 16 }}>
+            <OutlinePanel />
+          </div>
         )}
 
         {rightPanel === "backlinks" && (
-          <>
-            <RightRailSubHeader title="Linked mentions" count={linkedMentionsCount} />
-            <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-              <LinkedMentionsPanel
-                noteId={activeNoteId}
-                backlinks={backlinks}
-                loading={backlinksLoading}
-                error={backlinksError}
-              />
-            </div>
-          </>
+          <div style={{ flex: 1, minHeight: 0, overflow: "hidden", paddingTop: 16 }}>
+            <LinkedMentionsPanel
+              noteId={activeNoteId}
+              backlinks={backlinks}
+              loading={backlinksLoading}
+              error={backlinksError}
+            />
+          </div>
         )}
 
         {rightPanel === "tags" && (
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-            }}
-          >
-            {/* Upper: active note's live tags (D-06, flex: none). */}
-            <RightRailSubHeader title="Note tags" count={noteTagsCount} />
-            <NoteTagsSection activeNoteId={activeNoteId} />
-
-            {/* Divider between the two sections (D-06). */}
-            <div
-              style={{
-                height: 1,
-                background: "var(--color-border)",
-                flexShrink: 0,
-              }}
-            />
-
-            {/* Lower: vault-wide tag list — owns its own "Tags" sub-header
-                internally (flex: 1, absorbs remaining space). */}
-            <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-              <RightRailTagsPanel />
-            </div>
+          <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+            <RightRailTagsPanel />
           </div>
         )}
       </div>

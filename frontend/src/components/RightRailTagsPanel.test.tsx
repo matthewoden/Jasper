@@ -69,7 +69,7 @@ beforeEach(() => {
   mockDeleteTag.mockReset();
 });
 
-describe("RightRailTagsPanel — body-only (no own header/close/filter)", () => {
+describe("RightRailTagsPanel — body-only, single-list (D-01..D-05, no header/close/filter)", () => {
   it("does not render a header row", () => {
     renderPanel();
     expect(document.querySelector("header")).toBeNull();
@@ -103,10 +103,10 @@ describe("RightRailTagsPanel — body-only (no own header/close/filter)", () => 
     }
   });
 
-  it("renders its own 'Tags' sub-header + count pill", () => {
+  it("does not render its own 'Tags' sub-header or a count pill (D-01/D-02 retired)", () => {
     renderPanel();
-    expect(screen.getByText("Tags")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.queryByText("Tags")).toBeNull();
+    expect(screen.queryByText("3")).toBeNull();
   });
 });
 
@@ -180,13 +180,19 @@ describe("RightRailTagsPanel — tag list behaviors (kept unchanged)", () => {
     expect(hashSpan).toHaveStyle({ color: "var(--color-fg)" });
   });
 
-  it("the count badge has muted text color and aria-label='<N> notes'", () => {
+  it("the count is a plain muted number with aria-label='<N> notes' (D-04: no background pill)", () => {
     renderPanel();
 
     const row = screen.getByTestId("tag-row-project");
     const badge = row.querySelector('[aria-label="12 notes"]') as HTMLElement | null;
     expect(badge).not.toBeNull();
-    expect(badge!).toHaveStyle({ color: "var(--color-muted)" });
+    expect(badge!).toHaveStyle({
+      color: "var(--color-muted)",
+      fontSize: "11.5px",
+      fontWeight: "400",
+    });
+    expect(badge!.style.background).toBe("");
+    expect(badge!.style.borderRadius).toBe("");
   });
 
   it("setActiveTagFilter receives the BARE tagname (not '#project')", () => {
