@@ -42,6 +42,7 @@ import { SidebarResizeHandle } from "./SidebarResizeHandle";
 import { SidebarSearchPanel } from "./SidebarSearchPanel";
 import { SidebarTabRow } from "./SidebarTabRow";
 import { SidebarToolbar } from "./SidebarToolbar";
+import { Tooltip } from "./Tooltip";
 import type { Tree, TreeNode } from "../lib/treeApi";
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeCreateActions } from "../lib/useTreeCreateActions";
@@ -237,31 +238,32 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
                   creating={isCreating}
                 />
                 <div style={{ flex: 1 }} />
-                <button
-                  type="button"
-                  title={allCollapsed ? "Expand all" : "Collapse all"}
-                  aria-label={allCollapsed ? "Expand all" : "Collapse all"}
-                  onClick={handleToggleCollapseAll}
-                  style={{
-                    width: 24,
-                    height: 24,
-                    padding: 4,
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--color-muted)",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: 4,
-                  }}
-                >
-                  {allCollapsed ? (
-                    <ChevronsUpDown size={16} aria-hidden="true" />
-                  ) : (
-                    <ChevronsDownUp size={16} aria-hidden="true" />
-                  )}
-                </button>
+                <Tooltip label={allCollapsed ? "Expand all" : "Collapse all"} side="bottom">
+                  <button
+                    type="button"
+                    aria-label={allCollapsed ? "Expand all" : "Collapse all"}
+                    onClick={handleToggleCollapseAll}
+                    style={{
+                      width: 24,
+                      height: 24,
+                      padding: 4,
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--color-muted)",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: 4,
+                    }}
+                  >
+                    {allCollapsed ? (
+                      <ChevronsUpDown size={16} aria-hidden="true" />
+                    ) : (
+                      <ChevronsDownUp size={16} aria-hidden="true" />
+                    )}
+                  </button>
+                </Tooltip>
               </div>
               {/* display:flex + column so FileTree's flex:1 tree-area actually
                   stretches to fill (its ResizeObserver-measured height drives

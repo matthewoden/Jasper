@@ -79,6 +79,7 @@ import { useTreeMutations } from "../lib/useTreeMutations";
 import { useTreeStore, SIDEBAR_WIDTH_DEFAULT } from "../lib/useTreeStore";
 import { Sidebar } from "./Sidebar";
 import { ToastProvider } from "./Toast";
+import { TooltipProvider } from "./Tooltip";
 import { useSearch } from "../lib/useSearch";
 const mockedUseSearch = vi.mocked(useSearch);
 
@@ -101,7 +102,11 @@ function defaultMutsResult() {
 }
 
 function renderWithProvider(ui: React.ReactElement) {
-  return render(<ToastProvider>{ui}</ToastProvider>);
+  return render(
+    <ToastProvider>
+      <TooltipProvider>{ui}</TooltipProvider>
+    </ToastProvider>,
+  );
 }
 
 beforeEach(() => {

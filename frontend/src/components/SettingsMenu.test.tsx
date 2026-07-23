@@ -25,6 +25,15 @@ vi.mock("../api/client", () => ({
 }));
 
 import { SettingsMenu } from "./SettingsMenu";
+import { TooltipProvider } from "./Tooltip";
+
+function renderSettingsMenu() {
+  return render(
+    <TooltipProvider>
+      <SettingsMenu />
+    </TooltipProvider>,
+  );
+}
 
 beforeEach(() => {
   document.documentElement.removeAttribute("data-theme");
@@ -33,16 +42,16 @@ beforeEach(() => {
 });
 
 describe("<SettingsMenu />", () => {
-  it("renders the trigger button with locked aria-label + title", () => {
-    render(<SettingsMenu />);
+  it("renders the trigger button with locked aria-label, no native title (Tooltip-migrated, D-07)", () => {
+    renderSettingsMenu();
     const btn = screen.getByTestId("settings-menu-trigger");
     expect(btn).toHaveAttribute("aria-label", "Settings");
-    expect(btn).toHaveAttribute("title", "Settings");
+    expect(btn).not.toHaveAttribute("title");
   });
 
   it("clicking trigger opens the Settings dialog", async () => {
     const user = userEvent.setup();
-    render(<SettingsMenu />);
+    renderSettingsMenu();
     await user.click(screen.getByTestId("settings-menu-trigger"));
     expect(screen.getByRole("dialog", { name: "Settings" })).toBeInTheDocument();
   });

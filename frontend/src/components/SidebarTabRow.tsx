@@ -16,6 +16,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { FolderClosed, Search, Bookmark, PanelLeft } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { dispatchPhase7 } from "../lib/appShortcuts";
+import { Tooltip } from "./Tooltip";
 
 type SidebarPanel = "notes" | "search" | "bookmarks";
 
@@ -48,25 +49,26 @@ function TabButton({
 }: TabButtonProps): React.JSX.Element {
   const [hovering, setHovering] = useState(false);
   return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      title={title}
-      onClick={onClick}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      style={{
-        ...tabBase,
-        color: active ? "var(--color-accent)" : "var(--color-muted)",
-        background: active
-          ? "color-mix(in srgb, var(--color-accent) 14%, transparent)"
-          : hovering
-            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-            : "transparent",
-      }}
-    >
-      {icon}
-    </button>
+    <Tooltip label={title} side="right">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        onClick={onClick}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        style={{
+          ...tabBase,
+          color: active ? "var(--color-accent)" : "var(--color-muted)",
+          background: active
+            ? "color-mix(in srgb, var(--color-accent) 14%, transparent)"
+            : hovering
+              ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+              : "transparent",
+        }}
+      >
+        {icon}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -134,25 +136,26 @@ export function SidebarTabRow(): React.JSX.Element {
           icon={<Bookmark size={16} aria-hidden="true" />}
         />
       </div>
-      <button
-        type="button"
-        aria-label="Collapse sidebar"
-        title="Collapse sidebar"
-        onClick={() => setNotesSidebarVisible(false)}
-        onMouseEnter={() => setCollapseHovering(true)}
-        onMouseLeave={() => setCollapseHovering(false)}
-        style={{
-          ...collapseButtonBase,
-          // Optical alignment: center this 30px control on the 24px
-          // collapse-all-folders toolbar button below it (center x 287).
-          marginRight: -11,
-          background: collapseHovering
-            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-            : "transparent",
-        }}
-      >
-        <PanelLeft size={16} aria-hidden="true" />
-      </button>
+      <Tooltip label="Collapse sidebar" side="right">
+        <button
+          type="button"
+          aria-label="Collapse sidebar"
+          onClick={() => setNotesSidebarVisible(false)}
+          onMouseEnter={() => setCollapseHovering(true)}
+          onMouseLeave={() => setCollapseHovering(false)}
+          style={{
+            ...collapseButtonBase,
+            // Optical alignment: center this 30px control on the 24px
+            // collapse-all-folders toolbar button below it (center x 287).
+            marginRight: -11,
+            background: collapseHovering
+              ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+              : "transparent",
+          }}
+        >
+          <PanelLeft size={16} aria-hidden="true" />
+        </button>
+      </Tooltip>
     </div>
   );
 }

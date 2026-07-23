@@ -22,6 +22,15 @@ vi.mock("../lib/useTreeStore", () => {
 });
 
 import { SidebarTabRow } from "./SidebarTabRow";
+import { TooltipProvider } from "./Tooltip";
+
+function renderTabRow() {
+  return render(
+    <TooltipProvider>
+      <SidebarTabRow />
+    </TooltipProvider>,
+  );
+}
 
 describe("SidebarTabRow", () => {
   beforeEach(() => {
@@ -30,14 +39,14 @@ describe("SidebarTabRow", () => {
   });
 
   it("renders exactly 3 tab buttons with the correct aria-labels", () => {
-    render(<SidebarTabRow />);
+    renderTabRow();
     expect(screen.getByRole("button", { name: "Notes" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Bookmarks" })).toBeInTheDocument();
   });
 
   it("renders a collapse button", () => {
-    render(<SidebarTabRow />);
+    renderTabRow();
     expect(
       screen.getByRole("button", { name: "Collapse sidebar" }),
     ).toBeInTheDocument();
@@ -45,21 +54,21 @@ describe("SidebarTabRow", () => {
 
   it("clicking the Notes tab calls setSidebarPanel('notes') + reopens the sidebar", () => {
     mockSidebarPanel = "search";
-    render(<SidebarTabRow />);
+    renderTabRow();
     fireEvent.click(screen.getByRole("button", { name: "Notes" }));
     expect(mockSetSidebarPanel).toHaveBeenCalledWith("notes");
     expect(mockSetNotesSidebarVisible).toHaveBeenCalledWith(true);
   });
 
   it("clicking the Search tab calls setSidebarPanel('search') + reopens the sidebar", () => {
-    render(<SidebarTabRow />);
+    renderTabRow();
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
     expect(mockSetSidebarPanel).toHaveBeenCalledWith("search");
     expect(mockSetNotesSidebarVisible).toHaveBeenCalledWith(true);
   });
 
   it("clicking the Bookmarks tab sets sidebarPanel === 'bookmarks' + reopens the sidebar", () => {
-    render(<SidebarTabRow />);
+    renderTabRow();
     fireEvent.click(screen.getByRole("button", { name: "Bookmarks" }));
     expect(mockSetSidebarPanel).toHaveBeenCalledWith("bookmarks");
     expect(mockSetNotesSidebarVisible).toHaveBeenCalledWith(true);
@@ -67,7 +76,7 @@ describe("SidebarTabRow", () => {
 
   it("the active tab (Notes, default) has the accent treatment", () => {
     mockSidebarPanel = "notes";
-    render(<SidebarTabRow />);
+    renderTabRow();
     const btn = screen.getByRole("button", { name: "Notes" });
     expect(btn.style.color).toBe("var(--color-accent)");
     expect(btn.style.background).toBe(
@@ -77,7 +86,7 @@ describe("SidebarTabRow", () => {
 
   it("inactive tabs are muted, not accented", () => {
     mockSidebarPanel = "notes";
-    render(<SidebarTabRow />);
+    renderTabRow();
     const search = screen.getByRole("button", { name: "Search" });
     const bookmarks = screen.getByRole("button", { name: "Bookmarks" });
     expect(search.style.color).toBe("var(--color-muted)");
@@ -85,7 +94,7 @@ describe("SidebarTabRow", () => {
   });
 
   it("clicking the collapse button sets notesSidebarVisible === false", () => {
-    render(<SidebarTabRow />);
+    renderTabRow();
     fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
     expect(mockSetNotesSidebarVisible).toHaveBeenCalledWith(false);
     expect(mockSetSidebarPanel).not.toHaveBeenCalled();
@@ -93,7 +102,7 @@ describe("SidebarTabRow", () => {
 
   it("the Bookmarks tab is active when sidebarPanel === 'bookmarks'", () => {
     mockSidebarPanel = "bookmarks";
-    render(<SidebarTabRow />);
+    renderTabRow();
     const btn = screen.getByRole("button", { name: "Bookmarks" });
     expect(btn.style.color).toBe("var(--color-accent)");
   });

@@ -58,11 +58,20 @@ vi.mock("../lib/vaultApi", () => ({
 }));
 
 import { StatusBar } from "./StatusBar";
+import { TooltipProvider } from "./Tooltip";
 import { useVaultPicker } from "../lib/useVaultPicker";
+
+function renderStatusBar() {
+  return render(
+    <TooltipProvider>
+      <StatusBar />
+    </TooltipProvider>,
+  );
+}
 
 describe("<StatusBar />", () => {
   it("Test1_RendersFooterWithCorrectStyles", () => {
-    const { container } = render(<StatusBar />);
+    const { container } = renderStatusBar();
     const footer = container.querySelector("footer");
     expect(footer).not.toBeNull();
     expect(footer?.style.background).toBe("var(--color-surface)");
@@ -71,13 +80,13 @@ describe("<StatusBar />", () => {
   });
 
   it("Test2_RendersConnectionStatusDot", () => {
-    render(<StatusBar />);
+    renderStatusBar();
     const dot = screen.getByTestId("connection-status-dot");
     expect(dot).toBeInTheDocument();
   });
 
   it("Test3_RendersFlex1SpacerBetweenConnectionDotAndSettings", () => {
-    const { container } = render(<StatusBar />);
+    const { container } = renderStatusBar();
     const spacer = container.querySelector("[data-testid='status-bar-spacer']");
     expect(spacer).not.toBeNull();
     expect(spacer?.getAttribute("style") ?? "").toContain("flex: 1");
@@ -88,7 +97,7 @@ describe("<StatusBar />", () => {
   });
 
   it("Test4_RendersSettingsMenuAsRightmostElement", () => {
-    const { container } = render(<StatusBar />);
+    const { container } = renderStatusBar();
     const settingsTrigger = screen.getByTestId("settings-menu-trigger");
     expect(settingsTrigger).toBeInTheDocument();
     const spacer = container.querySelector("[data-testid='status-bar-spacer']");
@@ -99,7 +108,7 @@ describe("<StatusBar />", () => {
   });
 
   it("Test5_ContainerHasZIndex10", () => {
-    const { container } = render(<StatusBar />);
+    const { container } = renderStatusBar();
     const footer = container.querySelector("footer");
     expect(footer?.style.zIndex).toBe("10");
   });
@@ -108,12 +117,12 @@ describe("<StatusBar />", () => {
 
 describe("StatusBar — Plan 07-38 (UAT-4 N9) restored SaveIndicator-button", () => {
   it("SB-NO-REFRESH (preserved): no standalone 'Reindex notes' button is rendered (D-55 merge kept)", () => {
-    render(<StatusBar />);
+    renderStatusBar();
     expect(screen.queryByRole("button", { name: "Reindex notes" })).toBeNull();
   });
 
   it("SB-N9-1: StatusBar renders a SaveIndicator-button (button[data-save-state]) in the metadata zone", () => {
-    const { container } = render(<StatusBar />);
+    const { container } = renderStatusBar();
     const btn = container.querySelector("button[data-save-state]");
     expect(btn).not.toBeNull();
   });
@@ -126,7 +135,7 @@ describe("StatusBar — Plan 07-38 (UAT-4 N9) restored SaveIndicator-button", ()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
     try {
-      const { container } = render(<StatusBar />);
+      const { container } = renderStatusBar();
       const btn = container.querySelector(
         "button[data-save-state]",
       ) as HTMLButtonElement | null;
@@ -139,7 +148,7 @@ describe("StatusBar — Plan 07-38 (UAT-4 N9) restored SaveIndicator-button", ()
   });
 
   it("SB-N9-3: the standalone 'Reindex notes' button is NOT rendered (Plan 07-37 removal preserved)", () => {
-    render(<StatusBar />);
+    renderStatusBar();
     expect(screen.queryByTitle("Reindex notes")).toBeNull();
   });
 });
@@ -157,7 +166,7 @@ describe("StatusBar — Plan 08-17c vault segment", () => {
       isLoading: false,
       refresh: vi.fn(),
     });
-    render(<StatusBar />);
+    renderStatusBar();
     expect(screen.queryByTestId("status-bar-vault")).toBeNull();
   });
 
@@ -178,7 +187,7 @@ describe("StatusBar — Plan 08-17c vault segment", () => {
       isLoading: false,
       refresh: vi.fn(),
     });
-    render(<StatusBar />);
+    renderStatusBar();
     expect(screen.getByTestId("status-bar-vault")).toBeInTheDocument();
     expect(screen.getByTestId("status-bar-vault")).toHaveTextContent("My Notes");
   });
@@ -201,7 +210,7 @@ describe("StatusBar — Plan 08-17c vault segment", () => {
       isLoading: false,
       refresh: vi.fn(),
     });
-    render(<StatusBar />);
+    renderStatusBar();
     const segment = screen.getByTestId("status-bar-vault");
     segment.click();
     expect(openFn).toHaveBeenCalled();
@@ -218,13 +227,13 @@ describe("StatusBar — Phase 22 Plan 03 zen toggle button (ZEN-01)", () => {
   });
 
   it("ZEN-SB-1: renders a zen toggle button with aria-label 'Toggle zen mode'", () => {
-    render(<StatusBar />);
+    renderStatusBar();
     const btn = screen.getByLabelText("Toggle zen mode");
     expect(btn).toBeInTheDocument();
   });
 
   it("ZEN-SB-2: clicking the zen toggle button flips the zen store slice", () => {
-    render(<StatusBar />);
+    renderStatusBar();
     const btn = screen.getByLabelText("Toggle zen mode");
     expect(useTreeStore.getState().zen).toBe(false);
     btn.click();
@@ -233,14 +242,14 @@ describe("StatusBar — Phase 22 Plan 03 zen toggle button (ZEN-01)", () => {
 
   it("ZEN-SB-3: the zen button uses the accent color when zen is active (icon inherits via currentColor)", () => {
     useTreeStore.setState({ zen: true });
-    render(<StatusBar />);
+    renderStatusBar();
     const btn = screen.getByLabelText("Toggle zen mode");
     expect(btn.querySelector("svg")).not.toBeNull();
     expect((btn as HTMLButtonElement).style.color).toBe("var(--color-accent)");
   });
 
   it("ZEN-SB-4: the zen button uses the muted color when zen is inactive", () => {
-    render(<StatusBar />);
+    renderStatusBar();
     const btn = screen.getByLabelText("Toggle zen mode");
     expect(btn.querySelector("svg")).not.toBeNull();
     expect((btn as HTMLButtonElement).style.color).toBe("var(--color-muted)");
