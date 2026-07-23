@@ -8,10 +8,20 @@
  * verbatim rather than inventing new menu CSS.
  */
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ArrowDownAZ, Check } from "lucide-react";
+import {
+  ArrowDownAZ,
+  ArrowUpZA,
+  CalendarArrowDown,
+  CalendarArrowUp,
+  Check,
+  ClockArrowDown,
+  ClockArrowUp,
+  type LucideIcon,
+} from "lucide-react";
 import { useState, type CSSProperties } from "react";
 
 import type { NotesSortOrder } from "../lib/useTreeStore";
+import { Tooltip } from "./Tooltip";
 
 export interface NotesSortMenuProps {
   value: NotesSortOrder;
@@ -82,6 +92,16 @@ const SORT_ITEMS: ReadonlyArray<{ order: NotesSortOrder; label: string }> = [
   { order: "created-asc", label: "Created (old → new)" },
 ];
 
+/** D-16: trigger glyph reflects the active order, one of six distinct icons. */
+const SORT_ICONS: Record<NotesSortOrder, LucideIcon> = {
+  "name-asc": ArrowDownAZ,
+  "name-desc": ArrowUpZA,
+  "modified-desc": ClockArrowDown,
+  "modified-asc": ClockArrowUp,
+  "created-desc": CalendarArrowDown,
+  "created-asc": CalendarArrowUp,
+};
+
 export function NotesSortMenu({
   value,
   onSelect,
@@ -95,21 +115,24 @@ export function NotesSortMenu({
     onOpenChange?.(next);
   };
 
+  const SortIcon = SORT_ICONS[value];
+
   return (
     <DropdownMenu.Root open={open} onOpenChange={handleOpenChange}>
-      <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          title="Sort notes"
-          aria-label="Sort notes"
-          style={{
-            ...triggerButtonStyle,
-            color: open ? "var(--color-accent)" : "var(--color-muted)",
-          }}
-        >
-          <ArrowDownAZ size={16} aria-hidden="true" />
-        </button>
-      </DropdownMenu.Trigger>
+      <Tooltip label="Sort notes" side="bottom">
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Sort notes"
+            style={{
+              ...triggerButtonStyle,
+              color: open ? "var(--color-accent)" : "var(--color-muted)",
+            }}
+          >
+            <SortIcon size={16} aria-hidden="true" />
+          </button>
+        </DropdownMenu.Trigger>
+      </Tooltip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           style={menuContainerStyle}

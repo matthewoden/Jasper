@@ -6,10 +6,16 @@
  * without simulating a real pointer click.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { NotesSortMenu } from "./NotesSortMenu";
+import { TooltipProvider } from "./Tooltip";
 import type { NotesSortOrder } from "../lib/useTreeStore";
+
+function renderMenu(ui: ReactElement) {
+  return render(<TooltipProvider>{ui}</TooltipProvider>);
+}
 
 const ALL_ORDERS: NotesSortOrder[] = [
   "name-asc",
@@ -31,7 +37,7 @@ const LABELS: Record<NotesSortOrder, string> = {
 
 describe("<NotesSortMenu /> — item rendering", () => {
   it("TestSortMenu_RendersSixLabeledItems", () => {
-    render(
+    renderMenu(
       <NotesSortMenu value="name-asc" onSelect={vi.fn()} open={true} />,
     );
     for (const order of ALL_ORDERS) {
@@ -40,7 +46,7 @@ describe("<NotesSortMenu /> — item rendering", () => {
   });
 
   it("TestSortMenu_ActiveOrderShowsCheckmark", () => {
-    const { container } = render(
+    const { container } = renderMenu(
       <NotesSortMenu value="modified-desc" onSelect={vi.fn()} open={true} />,
     );
     const activeItem = screen
@@ -59,7 +65,7 @@ describe("<NotesSortMenu /> — item rendering", () => {
 
   it("TestSortMenu_OnSelectFiresWithCorrectOrder", () => {
     const onSelect = vi.fn();
-    render(<NotesSortMenu value="name-asc" onSelect={onSelect} open={true} />);
+    renderMenu(<NotesSortMenu value="name-asc" onSelect={onSelect} open={true} />);
 
     fireEvent.click(screen.getByText(LABELS["created-asc"]));
 
@@ -68,14 +74,14 @@ describe("<NotesSortMenu /> — item rendering", () => {
   });
 
   it("TestSortMenu_TriggerHasSortNotesLabel", () => {
-    render(<NotesSortMenu value="name-asc" onSelect={vi.fn()} />);
+    renderMenu(<NotesSortMenu value="name-asc" onSelect={vi.fn()} />);
     expect(
       screen.getByRole("button", { name: "Sort notes", hidden: true }),
     ).toBeInTheDocument();
   });
 
   it("TestSortMenu_TriggerIsAccentColoredWhileOpen", () => {
-    render(<NotesSortMenu value="name-asc" onSelect={vi.fn()} open={true} />);
+    renderMenu(<NotesSortMenu value="name-asc" onSelect={vi.fn()} open={true} />);
     // Radix wraps the rest of the tree (including the trigger) in
     // aria-hidden while the menu is open (focus-scope hide-others), so
     // `hidden: true` is required to still find it by role here.
@@ -87,8 +93,43 @@ describe("<NotesSortMenu /> — item rendering", () => {
   });
 
   it("TestSortMenu_TriggerIsMutedColoredWhileClosed", () => {
-    render(<NotesSortMenu value="name-asc" onSelect={vi.fn()} open={false} />);
+    renderMenu(<NotesSortMenu value="name-asc" onSelect={vi.fn()} open={false} />);
     const trigger = screen.getByRole("button", { name: "Sort notes" });
     expect(trigger.style.color).toBe("var(--color-muted)");
+  });
+});
+
+describe("<NotesSortMenu /> — order-reflecting trigger glyph (D-16)", () => {
+  /** Lucide's generated svg class, e.g. "lucide-clock-arrow-up". */
+  const GLYPH_CLASS: Record<NotesSortOrder, string> = {
+    "name-asc": "lucide-arrow-down-az",
+    "name-desc": "lucide-arrow-up-za",
+    "modified-desc": "lucide-clock-arrow-down",
+    "modified-asc": "lucide-clock-arrow-up",
+    "created-desc": "lucide-calendar-arrow-down",
+    "created-asc": "lucide-calendar-arrow-up",
+  };
+
+  it("shows the ClockArrowUp glyph when value is 'modified-asc'", () => {
+    renderMenu(<NotesSortMenu value="modified-asc" onSelect={vi.fn()} />);
+    const trigger = screen.getByRole("button", { name: "Sort notes" });
+    expect(trigger.querySelector("svg")).toHaveClass(GLYPH_CLASS["modified-asc"]);
+  });
+
+  it("shows the ArrowUpZA glyph when value is 'name-desc' (not a hardcoded ArrowDownAZ)", () => {
+    renderMenu(<NotesSortMenu value="name-desc" onSelect={vi.fn()} />);
+    const trigger = screen.getByRole("button", { name: "Sort notes" });
+    expect(trigger.querySelector("svg")).toHaveClass(GLYPH_CLASS["name-desc"]);
+  });
+
+  it("swaps among all six glyphs, one per NotesSortOrder", () => {
+    for (const order of ALL_ORDERS) {
+      const { unmount } = renderMenu(
+        <NotesSortMenu value={order} onSelect={vi.fn()} />,
+      );
+      const trigger = screen.getByRole("button", { name: "Sort notes" });
+      expect(trigger.querySelector("svg")).toHaveClass(GLYPH_CLASS[order]);
+      unmount();
+    }
   });
 });
