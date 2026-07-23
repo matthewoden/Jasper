@@ -14,6 +14,7 @@ import { postAdminReindex } from "../lib/adminApi";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
 import { SaveIndicator } from "./SaveIndicator";
 import { SettingsMenu } from "./SettingsMenu";
+import { Tooltip } from "./Tooltip";
 import { VaultPicker } from "./VaultPicker";
 
 const statusBarStyle: CSSProperties = {
@@ -73,39 +74,41 @@ export function StatusBar() {
       <ConnectionStatusDot />
       {/* Vault display_name; click opens vault picker in switch mode */}
       {current && (
-        <button
-          type="button"
-          className="status-bar__vault"
-          onClick={open}
-          title="Click to switch vault"
-          data-testid="status-bar-vault"
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "var(--color-muted)",
-            fontSize: 12,
-            cursor: "pointer",
-            padding: "0 4px",
-          }}
-        >
-          {current.display_name}
-        </button>
+        <Tooltip label="Click to switch vault" side="bottom">
+          <button
+            type="button"
+            className="status-bar__vault"
+            onClick={open}
+            data-testid="status-bar-vault"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--color-muted)",
+              fontSize: 12,
+              cursor: "pointer",
+              padding: "0 4px",
+            }}
+          >
+            {current.display_name}
+          </button>
+        </Tooltip>
       )}
       <div style={{ flex: 1 }} data-testid="status-bar-spacer" />
       <SaveIndicator state={saveState} onClick={handleRefresh} />
-      <button
-        type="button"
-        aria-label="Toggle zen mode"
-        title="Zen mode (⌘.)"
-        data-testid="zen-toggle-button"
-        style={{
-          ...zenButtonBase,
-          color: zen ? "var(--color-accent)" : "var(--color-muted)",
-        }}
-        onClick={() => toggleZen()}
-      >
-        <Focus size={16} aria-hidden="true" />
-      </button>
+      <Tooltip label="Zen mode" shortcut="⌘." side="bottom">
+        <button
+          type="button"
+          aria-label="Toggle zen mode"
+          data-testid="zen-toggle-button"
+          style={{
+            ...zenButtonBase,
+            color: zen ? "var(--color-accent)" : "var(--color-muted)",
+          }}
+          onClick={() => toggleZen()}
+        >
+          <Focus size={16} aria-hidden="true" />
+        </button>
+      </Tooltip>
       <SettingsMenu />
       {/* VaultPicker in switch mode — persistent modal */}
       <VaultPicker mode="switch" />

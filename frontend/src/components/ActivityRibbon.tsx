@@ -8,6 +8,13 @@
  * quick-switcher button here opens today's existing unmodified Cmd+O
  * switcher (mode="notes"); its restyle + create/split modifiers are
  * Phase 28 (QUICK-*), out of scope here.
+ *
+ * D-13 (Phase 31): the vault badge + its margin already consume more
+ * vertical space than SidebarTabRow's 40px header, so the first RibbonButton
+ * (Quick switcher) can't land pixel-perfect on that row's icon center without
+ * relocating the badge (out of scope). Tightened top padding + badge margin
+ * bring it closer; exact axis match is deferred to UI-review per this
+ * plan's own verification note.
  */
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
@@ -17,6 +24,7 @@ import { useDailyNote } from "../lib/useDailyNote";
 import { useVaultPicker } from "../lib/useVaultPicker";
 import { mod, shift } from "../lib/shortcutsRegistry";
 import { SettingsDialog } from "./SettingsDialog";
+import { Tooltip } from "./Tooltip";
 
 const ribbonStyle: CSSProperties = {
   width: 48,
@@ -27,7 +35,7 @@ const ribbonStyle: CSSProperties = {
   flexDirection: "column",
   alignItems: "center",
   gap: 3,
-  padding: "10px 0",
+  padding: "8px 0",
 };
 
 const buttonBase: CSSProperties = {
@@ -45,7 +53,10 @@ const buttonBase: CSSProperties = {
 
 interface RibbonButtonProps {
   ariaLabel: string;
-  title?: string;
+  /** Tooltip label; defaults to ariaLabel when the two diverge in wording. */
+  tooltipLabel?: string;
+  /** Tooltip shortcut suffix, e.g. "⌘O" (D-08). Omit for no shortcut. */
+  tooltipShortcut?: string;
   onClick: () => void;
   icon: React.ReactNode;
   active?: boolean;
@@ -55,7 +66,8 @@ interface RibbonButtonProps {
 
 function RibbonButton({
   ariaLabel,
-  title,
+  tooltipLabel,
+  tooltipShortcut,
   onClick,
   icon,
   active = false,
@@ -70,26 +82,27 @@ function RibbonButton({
     if (disabled) setHovering(false);
   }, [disabled]);
   return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      title={title ?? ariaLabel}
-      onClick={onClick}
-      disabled={disabled}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      style={{
-        ...buttonBase,
-        color: active ? "var(--color-accent)" : "var(--color-muted)",
-        background:
-          !disabled && hovering
-            ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
-            : "transparent",
-        ...style,
-      }}
-    >
-      {icon}
-    </button>
+    <Tooltip label={tooltipLabel ?? ariaLabel} shortcut={tooltipShortcut} side="bottom">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        onClick={onClick}
+        disabled={disabled}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        style={{
+          ...buttonBase,
+          color: active ? "var(--color-accent)" : "var(--color-muted)",
+          background:
+            !disabled && hovering
+              ? "color-mix(in srgb, var(--color-fg) 8%, transparent)"
+              : "transparent",
+          ...style,
+        }}
+      >
+        {icon}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -121,7 +134,7 @@ export function ActivityRibbon({
           width: 30,
           height: 30,
           borderRadius: 6,
-          marginBottom: 10,
+          marginBottom: 8,
           background:
             "color-mix(in srgb, var(--color-accent) 16%, var(--color-surface-ribbon))",
           color: "var(--color-accent)",
@@ -137,7 +150,7 @@ export function ActivityRibbon({
 
       <RibbonButton
         ariaLabel="Quick switcher"
-        title={`Quick switcher (${mod}O)`}
+        tooltipShortcut={`${mod}O`}
         onClick={() => {
           const s = useTreeStore.getState();
           s.setPaletteMode("notes");
@@ -148,7 +161,8 @@ export function ActivityRibbon({
 
       <RibbonButton
         ariaLabel="Open today's daily note"
-        title={`Today (${mod}${shift}D)`}
+        tooltipLabel="Today"
+        tooltipShortcut={`${mod}${shift}D`}
         onClick={openToday}
         disabled={todayLoading}
         icon={<CalendarDays size={16} aria-hidden="true" />}
@@ -160,7 +174,8 @@ export function ActivityRibbon({
 
       <RibbonButton
         ariaLabel="Open command palette"
-        title={`Command palette (${mod}P)`}
+        tooltipLabel="Command palette"
+        tooltipShortcut={`${mod}P`}
         onClick={() => {
           const s = useTreeStore.getState();
           s.setPaletteMode("commands");
@@ -173,7 +188,6 @@ export function ActivityRibbon({
 
       <RibbonButton
         ariaLabel="Settings"
-        title="Settings"
         onClick={() => setSettingsOpen(true)}
         icon={<Settings size={16} aria-hidden="true" />}
       />

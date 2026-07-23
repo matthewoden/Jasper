@@ -8,6 +8,8 @@
  */
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { ReactElement } from "react";
+import { TooltipProvider } from "./Tooltip";
 
 const mockSetPaletteMode = vi.fn();
 const mockSetPaletteOpen = vi.fn();
@@ -48,6 +50,22 @@ vi.mock("../lib/useVaultPicker", () => ({
 import { ActivityRibbon } from "./ActivityRibbon";
 import { mod, shift } from "../lib/shortcutsRegistry";
 
+function renderRibbon() {
+  return render(
+    <TooltipProvider>
+      <ActivityRibbon />
+    </TooltipProvider>,
+  );
+}
+
+function rerenderRibbon(rerender: (ui: ReactElement) => void) {
+  rerender(
+    <TooltipProvider>
+      <ActivityRibbon />
+    </TooltipProvider>,
+  );
+}
+
 describe("ActivityRibbon", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -56,7 +74,7 @@ describe("ActivityRibbon", () => {
   });
 
   it("renders the Activity ribbon nav landmark", () => {
-    render(<ActivityRibbon />);
+    renderRibbon();
     expect(
       screen.getByRole("navigation", { name: "Activity ribbon" }),
     ).toBeInTheDocument();
@@ -64,37 +82,37 @@ describe("ActivityRibbon", () => {
 
   it("shows the uppercased first letter of the vault display_name in the badge", () => {
     mockDisplayName = "jasper vault";
-    render(<ActivityRibbon />);
+    renderRibbon();
     expect(screen.getByLabelText("Vault: jasper vault").textContent).toBe("J");
   });
 
   it("falls back to 'J' when display_name is empty", () => {
     mockDisplayName = "";
-    render(<ActivityRibbon />);
+    renderRibbon();
     expect(screen.getByLabelText(/^Vault:/).textContent).toBe("J");
   });
 
   it("falls back to 'J' when there is no current vault (null)", () => {
     mockDisplayName = null;
-    render(<ActivityRibbon />);
+    renderRibbon();
     expect(screen.getByLabelText(/^Vault:/).textContent).toBe("J");
   });
 
   it("shows the whole code point for an emoji-led vault name, not a broken half-surrogate (IN-01)", () => {
     mockDisplayName = "📓 Notes";
-    render(<ActivityRibbon />);
+    renderRibbon();
     expect(screen.getByLabelText(/^Vault:/).textContent).toBe("📓");
   });
 
   it("exposes the vault badge to assistive tech via role=img (IN-02)", () => {
-    render(<ActivityRibbon />);
+    renderRibbon();
     expect(
       screen.getByRole("img", { name: /^Vault:/ }).textContent,
     ).toBe("M");
   });
 
   it("NAV-02: renders exactly one quick-switcher button, no Files/Search toggles", () => {
-    render(<ActivityRibbon />);
+    renderRibbon();
     expect(
       screen.getByRole("button", { name: "Quick switcher" }),
     ).toBeInTheDocument();
@@ -103,7 +121,7 @@ describe("ActivityRibbon", () => {
   });
 
   it("Phase 27 follow-up item 4: quick-switcher icon is distinct from the sidebar Search tab's Search glyph", () => {
-    render(<ActivityRibbon />);
+    renderRibbon();
     const btn = screen.getByRole("button", { name: "Quick switcher" });
     const svg = btn.querySelector("svg");
     expect(svg).not.toBeNull();
@@ -113,14 +131,14 @@ describe("ActivityRibbon", () => {
   });
 
   it("D-10: clicking the quick-switcher sets paletteMode('notes') then paletteOpen(true)", () => {
-    render(<ActivityRibbon />);
+    renderRibbon();
     fireEvent.click(screen.getByRole("button", { name: "Quick switcher" }));
     expect(mockSetPaletteMode).toHaveBeenCalledWith("notes");
     expect(mockSetPaletteOpen).toHaveBeenCalledWith(true);
   });
 
   it("Daily button: clicking calls the mocked openToday", () => {
-    render(<ActivityRibbon />);
+    renderRibbon();
     fireEvent.click(
       screen.getByRole("button", { name: "Open today's daily note" }),
     );
@@ -129,14 +147,14 @@ describe("ActivityRibbon", () => {
 
   it("Daily button: disabled while isLoading", () => {
     mockTodayLoading = true;
-    render(<ActivityRibbon />);
+    renderRibbon();
     expect(
       screen.getByRole("button", { name: "Open today's daily note" }),
     ).toBeDisabled();
   });
 
   it("mock parity: renders the command palette and a bottom Settings gear", () => {
-    render(<ActivityRibbon />);
+    renderRibbon();
     expect(
       screen.getByRole("button", { name: "Open command palette" }),
     ).toBeInTheDocument();
@@ -146,7 +164,7 @@ describe("ActivityRibbon", () => {
   });
 
   it("command palette button sets paletteMode('commands') then paletteOpen(true)", () => {
-    render(<ActivityRibbon />);
+    renderRibbon();
     fireEvent.click(
       screen.getByRole("button", { name: "Open command palette" }),
     );
@@ -155,7 +173,7 @@ describe("ActivityRibbon", () => {
   });
 
   it("RibbonButton: hover tint clears when the button becomes disabled mid-hover (IN-01)", () => {
-    const { rerender } = render(<ActivityRibbon />);
+    const { rerender } = renderRibbon();
     const btn = screen.getByRole("button", { name: "Open today's daily note" });
 
     fireEvent.mouseEnter(btn);
@@ -164,41 +182,60 @@ describe("ActivityRibbon", () => {
     );
 
     mockTodayLoading = true;
-    rerender(<ActivityRibbon />);
+    rerenderRibbon(rerender);
 
     expect(btn.style.background).toBe("transparent");
   });
 
   it("RibbonButton: hover tint stays cleared after a disable/re-enable cycle when the pointer left while disabled (IN-01)", () => {
-    const { rerender } = render(<ActivityRibbon />);
+    const { rerender } = renderRibbon();
     const btn = screen.getByRole("button", { name: "Open today's daily note" });
 
     fireEvent.mouseEnter(btn);
     mockTodayLoading = true;
-    rerender(<ActivityRibbon />);
+    rerenderRibbon(rerender);
     // Pointer leaves while disabled: the browser suppresses mouse events on
     // disabled buttons, so no mouseLeave is fired here.
     mockTodayLoading = false;
-    rerender(<ActivityRibbon />);
+    rerenderRibbon(rerender);
 
     expect(btn.style.background).toBe("transparent");
   });
 
+  it("D-07: ribbon buttons have no native title (Tooltip-migrated), aria-labels preserved", () => {
+    renderRibbon();
+    for (const name of [
+      "Quick switcher",
+      "Open today's daily note",
+      "Open command palette",
+      "Settings",
+    ]) {
+      const btn = screen.getByRole("button", { name });
+      expect(btn).not.toHaveAttribute("title");
+    }
+  });
+
   it("tooltips derive the modifier glyphs from the shared shortcuts registry, not hardcoded ⌘ (IN-05)", () => {
-    render(<ActivityRibbon />);
-    expect(
-      screen.getByRole("button", { name: "Quick switcher" }).title,
-    ).toBe(`Quick switcher (${mod}O)`);
-    expect(
-      screen.getByRole("button", { name: "Open today's daily note" }).title,
-    ).toBe(`Today (${mod}${shift}D)`);
-    expect(
-      screen.getByRole("button", { name: "Open command palette" }).title,
-    ).toBe(`Command palette (${mod}P)`);
+    renderRibbon();
+    fireEvent.focus(screen.getByRole("button", { name: "Quick switcher" }));
+    expect(screen.getByText("Quick switcher")).toBeInTheDocument();
+    expect(screen.getByText(`${mod}O`)).toBeInTheDocument();
+
+    fireEvent.focus(
+      screen.getByRole("button", { name: "Open today's daily note" }),
+    );
+    expect(screen.getByText("Today")).toBeInTheDocument();
+    expect(screen.getByText(`${mod}${shift}D`)).toBeInTheDocument();
+
+    fireEvent.focus(
+      screen.getByRole("button", { name: "Open command palette" }),
+    );
+    expect(screen.getByText("Command palette")).toBeInTheDocument();
+    expect(screen.getByText(`${mod}P`)).toBeInTheDocument();
   });
 
   it("Palette button: clicking calls setPaletteMode('commands') then setPaletteOpen(true)", () => {
-    render(<ActivityRibbon />);
+    renderRibbon();
     fireEvent.click(
       screen.getByRole("button", { name: "Open command palette" }),
     );
