@@ -9,6 +9,7 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useTreeStore } from "../lib/useTreeStore";
 import { ToastProvider } from "./Toast";
+import { TooltipProvider } from "./Tooltip";
 
 
 vi.mock("../lib/useFileTree", () => ({
@@ -100,9 +101,11 @@ function defaultTree() {
 
 function renderFileTree(onSelectNote = vi.fn()) {
   return render(
-    <ToastProvider>
-      <FileTree onSelectNote={onSelectNote} />
-    </ToastProvider>,
+    <TooltipProvider>
+      <ToastProvider>
+        <FileTree onSelectNote={onSelectNote} />
+      </ToastProvider>
+    </TooltipProvider>,
   );
 }
 
@@ -183,9 +186,11 @@ describe("FileTree — flat-list mode (Phase 6 activeTagFilter branch)", () => {
     useTreeStore.setState({ activeTagFilter: "foo" });
 
     render(
-      <ToastProvider>
-        <FileTree onSelectNote={onSelectNote} />
-      </ToastProvider>,
+      <TooltipProvider>
+        <ToastProvider>
+          <FileTree onSelectNote={onSelectNote} />
+        </ToastProvider>
+      </TooltipProvider>,
     );
 
     await waitFor(() => {

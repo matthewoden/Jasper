@@ -2,7 +2,10 @@
  * FileTree tests — state branches, toasts, and drag-drop.
  *
  * Mocks useFileTree + useTreeMutations to drive each state branch
- * deterministically. Wraps in <ToastProvider> for toast surfacing.
+ * deterministically. Wraps in <ToastProvider> for toast surfacing and
+ * <TooltipProvider> (UAT gap-closure group B, item 8: note rows with
+ * updated_at/created now conditionally mount the shared Tooltip, which
+ * throws without a provider ancestor).
  *
  * react-arborist renders into the DOM under jsdom — its virtualization
  * (react-window) mounts the visible window of rows synchronously at finite height.
@@ -43,6 +46,7 @@ import {
 import type { TreeRowData } from "./TreeRow";
 import type { NodeApi, TreeApi } from "react-arborist";
 import { ToastProvider } from "./Toast";
+import { TooltipProvider } from "./Tooltip";
 
 
 vi.mock("../lib/useFileTree", () => ({
@@ -115,7 +119,11 @@ function renderWithProvider(
   options?: RenderOptions,
 ) {
   return render(ui, {
-    wrapper: ({ children }) => <ToastProvider>{children}</ToastProvider>,
+    wrapper: ({ children }) => (
+      <TooltipProvider>
+        <ToastProvider>{children}</ToastProvider>
+      </TooltipProvider>
+    ),
     ...options,
   });
 }

@@ -31,6 +31,7 @@ vi.mock("../lib/useMcpGrants", () => ({
 
 import { useTreeStore } from "../lib/useTreeStore";
 import { TreeRow } from "./TreeRow";
+import { TooltipProvider } from "./Tooltip";
 
 
 import treeRowSource from "./TreeRow.tsx?raw";
@@ -77,6 +78,8 @@ function makeNoteNode(overrides: {
   title?: string;
   level?: number;
   handleClick?: (e: unknown) => void;
+  created?: string;
+  updated_at?: string;
 } = {}) {
   return {
     data: {
@@ -84,6 +87,8 @@ function makeNoteNode(overrides: {
       id: overrides.id ?? "uuid-1",
       path: overrides.path ?? "scratchpad.md",
       title: overrides.title ?? "Scratchpad",
+      created: overrides.created,
+      updated_at: overrides.updated_at,
     },
     level: overrides.level ?? 0,
     isOpen: false,
@@ -1393,5 +1398,98 @@ describe("<TreeRow />", () => {
       fireEvent.click(bookmarkItem);
       expect(onToggleNoteBookmark).toHaveBeenCalledWith("uuid-1");
     });
+  });
+});
+
+describe("UAT gap-closure group B, item 8: note-row created/modified hover tooltip", () => {
+  it("shows Created + Modified in local time when both dates are present", () => {
+    const created = "2026-01-05T12:00:00.000Z";
+    const updatedAt = "2026-07-22T18:30:00.000Z";
+    const node = makeNoteNode({ id: "uuid-1", created, updated_at: updatedAt });
+    const { container } = render(
+      <TooltipProvider>
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+    const label = container.querySelector(
+      "[data-tree-row-label]",
+    ) as HTMLElement;
+    // A rich Tooltip wraps the label instead of the plain native title.
+    expect(label.hasAttribute("title")).toBe(false);
+
+    fireEvent.focus(label);
+
+    const expectedCreated = new Date(created).toLocaleString();
+    const expectedModified = new Date(updatedAt).toLocaleString();
+    expect(screen.getByText(`Created ${expectedCreated}`)).toBeInTheDocument();
+    expect(screen.getByText(`Modified ${expectedModified}`)).toBeInTheDocument();
+  });
+
+  it("shows Modified only when `created` is missing", () => {
+    const updatedAt = "2026-07-22T18:30:00.000Z";
+    const node = makeNoteNode({ id: "uuid-1", updated_at: updatedAt });
+    const { container } = render(
+      <TooltipProvider>
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+    const label = container.querySelector(
+      "[data-tree-row-label]",
+    ) as HTMLElement;
+    fireEvent.focus(label);
+
+    expect(
+      screen.getByText(`Modified ${new Date(updatedAt).toLocaleString()}`),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Created /)).not.toBeInTheDocument();
+  });
+
+  it("renders no tooltip (plain native title survives) when both dates are missing", () => {
+    const node = makeNoteNode({ id: "uuid-1", title: "No Dates" });
+    const { container } = render(
+      <TooltipProvider>
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+    const label = container.querySelector(
+      "[data-tree-row-label]",
+    ) as HTMLElement;
+    expect(label.getAttribute("title")).toBe("No Dates");
+    fireEvent.focus(label);
+    expect(screen.queryByText(/^Created /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Modified /)).not.toBeInTheDocument();
+  });
+
+  it("folder rows are unaffected — no Tooltip wiring, native title still present", () => {
+    const node = makeFolderNode({ path: "projects", name: "projects" });
+    const { container } = render(
+      <TooltipProvider>
+        <TreeRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node={node as any}
+          style={{}}
+          onSelectNote={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+    const label = container.querySelector(
+      "[data-tree-row-label]",
+    ) as HTMLElement;
+    expect(label.getAttribute("title")).toBe("projects");
   });
 });

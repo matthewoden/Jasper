@@ -56,6 +56,7 @@ import { useReveal } from "../lib/useReveal";
 import { useMcpGrants } from "../lib/useMcpGrants";
 import { usePaneStore } from "../lib/usePaneStore";
 import { RenameInput } from "./RenameInput";
+import { Tooltip } from "./Tooltip";
 import {
   TreeRowContextMenu,
   TreeRowDropdownMenu,
@@ -501,6 +502,48 @@ export function TreeRow({
           ? data.title
           : data.name; // bookmark-folder
 
+  // Note-row hover tooltip (UAT gap-closure group B, item 8): created/modified
+  // in the user's LOCAL timezone via toLocaleString(). Missing `created`
+  // (older notes / filesystems without reliable birthtime, D-04) shows
+  // Modified only; missing both renders no tooltip at all. Built here (not
+  // inline in the JSX below) so we can decide whether to drop the native
+  // `title=` ellipsis attribute — showing both a native title AND this rich
+  // Radix tooltip on hover would double up, so the native title only survives
+  // on non-note rows / dateless notes (D-07's own ellipsis carve-out).
+  const noteDateTooltipContent =
+    data.kind === "note" && (data.created != null || data.updated_at != null) ? (
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {data.created != null && (
+          <span style={{ color: "var(--color-muted)", fontSize: 12 }}>
+            Created {new Date(data.created).toLocaleString()}
+          </span>
+        )}
+        {data.updated_at != null && (
+          <span style={{ color: "var(--color-muted)", fontSize: 12 }}>
+            Modified {new Date(data.updated_at).toLocaleString()}
+          </span>
+        )}
+      </div>
+    ) : null;
+
+  const labelSpan = (
+    <span
+      style={{
+        flex: 1,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        fontSize: 14,
+        fontWeight: 400,
+        color: isActive ? "var(--color-fg-title)" : "var(--color-fg)",
+      }}
+      title={noteDateTooltipContent === null ? displayLabel : undefined}
+      data-tree-row-label
+    >
+      {displayLabel}
+    </span>
+  );
+
   const labelOrInput = isRenamingThis ? (
     <RenameInput
       initialValue={renameInitial}
@@ -516,22 +559,15 @@ export function TreeRow({
       }}
       onCancel={() => { void handleCancelRename(); }}
     />
+  ) : noteDateTooltipContent !== null ? (
+    // DnD SAFETY: wraps ONLY this inner label span, never the draggable row
+    // container — react-arborist's drag source, inline rename, and the
+    // right-click context menu all live on `rowContent` below, untouched.
+    <Tooltip content={noteDateTooltipContent} side="right">
+      {labelSpan}
+    </Tooltip>
   ) : (
-    <span
-      style={{
-        flex: 1,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-        fontSize: 14,
-        fontWeight: 400,
-        color: isActive ? "var(--color-fg-title)" : "var(--color-fg)",
-      }}
-      title={displayLabel}
-      data-tree-row-label
-    >
-      {displayLabel}
-    </span>
+    labelSpan
   );
 
   // "Show in file manager" only ever applies to a real filesystem path.
