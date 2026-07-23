@@ -99,36 +99,22 @@ describe("<NotesSortMenu /> — item rendering", () => {
   });
 });
 
-describe("<NotesSortMenu /> — order-reflecting trigger glyph (D-16)", () => {
-  /** Lucide's generated svg class, e.g. "lucide-clock-arrow-up". */
-  const GLYPH_CLASS: Record<NotesSortOrder, string> = {
-    "name-asc": "lucide-arrow-down-az",
-    "name-desc": "lucide-arrow-up-za",
-    "modified-desc": "lucide-clock-arrow-down",
-    "modified-asc": "lucide-clock-arrow-up",
-    "created-desc": "lucide-calendar-arrow-down",
-    "created-asc": "lucide-calendar-arrow-up",
-  };
+describe("<NotesSortMenu /> — constant trigger glyph (D-16 reversed by UAT)", () => {
+  /**
+   * D-16 (order-reflecting six-glyph trigger) was reversed by owner UAT
+   * gap-closure: a changing icon read as confusing; consistency was
+   * preferred. The trigger renders one constant glyph (`ArrowUpDown`)
+   * regardless of the selected order.
+   */
+  const CONSTANT_GLYPH_CLASS = "lucide-arrow-up-down";
 
-  it("shows the ClockArrowUp glyph when value is 'modified-asc'", () => {
-    renderMenu(<NotesSortMenu value="modified-asc" onSelect={vi.fn()} />);
-    const trigger = screen.getByRole("button", { name: "Sort notes" });
-    expect(trigger.querySelector("svg")).toHaveClass(GLYPH_CLASS["modified-asc"]);
-  });
-
-  it("shows the ArrowUpZA glyph when value is 'name-desc' (not a hardcoded ArrowDownAZ)", () => {
-    renderMenu(<NotesSortMenu value="name-desc" onSelect={vi.fn()} />);
-    const trigger = screen.getByRole("button", { name: "Sort notes" });
-    expect(trigger.querySelector("svg")).toHaveClass(GLYPH_CLASS["name-desc"]);
-  });
-
-  it("swaps among all six glyphs, one per NotesSortOrder", () => {
+  it("renders the same constant glyph across every NotesSortOrder", () => {
     for (const order of ALL_ORDERS) {
       const { unmount } = renderMenu(
         <NotesSortMenu value={order} onSelect={vi.fn()} />,
       );
       const trigger = screen.getByRole("button", { name: "Sort notes" });
-      expect(trigger.querySelector("svg")).toHaveClass(GLYPH_CLASS[order]);
+      expect(trigger.querySelector("svg")).toHaveClass(CONSTANT_GLYPH_CLASS);
       unmount();
     }
   });

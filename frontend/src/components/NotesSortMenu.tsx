@@ -6,18 +6,15 @@
  * from TreeRowMenu.tsx (not imported — those constants are module-private
  * there) per the 29-05 plan's interfaces note: reuse the visual language
  * verbatim rather than inventing new menu CSS.
+ *
+ * The trigger glyph is a single constant `ArrowUpDown` regardless of the
+ * selected order — Phase 31's D-16 (order-reflecting six-glyph trigger) was
+ * reversed by owner UAT gap-closure: a changing icon read as confusing;
+ * consistency was preferred. The order itself is still chosen from the
+ * dropdown below, unchanged.
  */
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import {
-  ArrowDownAZ,
-  ArrowUpZA,
-  CalendarArrowDown,
-  CalendarArrowUp,
-  Check,
-  ClockArrowDown,
-  ClockArrowUp,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowUpDown, Check } from "lucide-react";
 import { useState, type CSSProperties } from "react";
 
 import type { NotesSortOrder } from "../lib/useTreeStore";
@@ -92,16 +89,6 @@ const SORT_ITEMS: ReadonlyArray<{ order: NotesSortOrder; label: string }> = [
   { order: "created-asc", label: "Created (old → new)" },
 ];
 
-/** D-16: trigger glyph reflects the active order, one of six distinct icons. */
-const SORT_ICONS: Record<NotesSortOrder, LucideIcon> = {
-  "name-asc": ArrowDownAZ,
-  "name-desc": ArrowUpZA,
-  "modified-desc": ClockArrowDown,
-  "modified-asc": ClockArrowUp,
-  "created-desc": CalendarArrowDown,
-  "created-asc": CalendarArrowUp,
-};
-
 export function NotesSortMenu({
   value,
   onSelect,
@@ -115,8 +102,6 @@ export function NotesSortMenu({
     onOpenChange?.(next);
   };
 
-  const SortIcon = SORT_ICONS[value];
-
   return (
     <DropdownMenu.Root open={open} onOpenChange={handleOpenChange}>
       <Tooltip label="Sort notes" side="bottom">
@@ -129,7 +114,7 @@ export function NotesSortMenu({
               color: open ? "var(--color-accent)" : "var(--color-muted)",
             }}
           >
-            <SortIcon size={16} aria-hidden="true" />
+            <ArrowUpDown size={16} aria-hidden="true" />
           </button>
         </DropdownMenu.Trigger>
       </Tooltip>
