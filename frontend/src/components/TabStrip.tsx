@@ -62,7 +62,10 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 //   computeHiddenTabIds, ONLY when overflow occurs.
 const LEFT_CLUSTER = 37;
 export const RESERVED = 8 + 26 + LEFT_CLUSTER;
-const OVERFLOW_BTN = 28;
+// D-14 shrank the overflow-dropdown trigger to a square 24x24 hit area
+// (TabOverflowDropdown.tsx's triggerButtonStyle) — was 28x24. Keeping this at
+// 28 over-reserved 4px the trigger no longer occupies (WR-01, 31-REVIEW.md).
+const OVERFLOW_BTN = 24;
 // Right-cluster rail-reopen toggle width: 1 (borderLeft) + 8 (paddingLeft) +
 // 4 (flex gap) + 28 (button) — adapted from the pre-30-13 RightClusterToggle
 // (git show e1f59f1d^:frontend/src/components/TabStrip.tsx). Only occupies

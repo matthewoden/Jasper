@@ -1,9 +1,8 @@
 /**
  * tagSort — shared count-desc/alpha-tie comparator for tag lists (D-09).
  *
- * Used by both NoteTagsSection.tsx (active-note tags) and
- * RightRailTagsPanel.tsx (vault-wide tag list) so the two Tags-tab sections
- * always order identically.
+ * Used by RightRailTagsPanel.tsx (the Tags tab's single vault-wide tag list,
+ * D-03 — the prior active-note NoteTagsSection.tsx was deleted per D-05).
  */
 export interface TagCountItem {
   name: string;
