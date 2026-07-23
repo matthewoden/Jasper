@@ -195,6 +195,14 @@ describe("<TabStrip /> rendering (Task 1)", () => {
     expect(screen.getByTestId("new-tab-button")).toBeInTheDocument();
   });
 
+  it("UAT gap-closure group B (item 6): new-tab button is vertically centered (alignSelf overrides the strip's flex-end) with L/R margin", () => {
+    renderStrip();
+    const btn = screen.getByTestId("new-tab-button");
+    expect(btn.style.alignSelf).toBe("center");
+    expect(btn.style.marginLeft).toBe("4px");
+    expect(btn.style.marginRight).toBe("4px");
+  });
+
   it("clicking a pill calls onSelectTab with that tab id", () => {
     const h = renderStrip();
     fireEvent.click(screen.getByText("Title b"));
@@ -255,6 +263,14 @@ describe("<TabStrip /> rendering (Task 1)", () => {
     const item = await screen.findByRole("menuitem", { name: /Title c/i });
     await user.click(item);
     await waitFor(() => expect(h.onSelectTab).toHaveBeenCalledWith("c"));
+  });
+
+  it("UAT gap-closure group B (item 6): overflow trigger is vertically centered with L/R margin", () => {
+    renderStrip({ forceHiddenTabIds: new Set(["c"]) });
+    const trigger = screen.getByRole("button", { name: "Show hidden tabs" });
+    expect(trigger.style.alignSelf).toBe("center");
+    expect(trigger.style.marginLeft).toBe("4px");
+    expect(trigger.style.marginRight).toBe("4px");
   });
 });
 

@@ -97,13 +97,13 @@ const closeButtonStyle: CSSProperties = {
   color: "var(--color-muted)",
   borderRadius: 2,
   flexShrink: 0,
-  // Bottom-pin so the X center sits 16px above the strip bottom (6 + 20/2),
-  // co-centered with the new-tab + and overflow chevron (both 24px buttons
-  // bottom-pinned with 4px margin → 16px). Independent of the active pill's
-  // 2px accent top-border, which would otherwise shift a center-aligned X.
-  // (UAT-15.1-ALIGN 3-way co-centering contract.)
-  alignSelf: "flex-end",
-  marginBottom: 6,
+  // UAT gap-closure (group B, item 5): the owner expects the close-× vertically
+  // centered on the tab's LABEL text, not bottom-pinned. tabPillStyle's row
+  // already uses alignItems:"center", so simply not overriding alignSelf here
+  // lets the button share the label's vertical center (this REVERSES the prior
+  // UAT-15.1-ALIGN bottom-pin/co-centering contract with the new-tab + and
+  // overflow chevron — TabStrip.tsx/TabOverflowDropdown.tsx were re-centered
+  // to match, see their own comments).
   // D-11 optical centering: lineHeight:0 strips the inherited text-line strut
   // an inline-flex button otherwise reserves around its SVG child, which was
   // nudging the 12px X glyph a hair below true vertical center.

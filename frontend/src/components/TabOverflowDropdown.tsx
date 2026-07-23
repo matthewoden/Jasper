@@ -21,15 +21,21 @@ export interface TabOverflowDropdownProps {
 }
 
 // D-14: square 24×24 hit area (NotesSortMenu.triggerButtonStyle treatment,
-// copied verbatim) — was 28×24 (not square, owner complaint). Height 24 +
-// marginBottom 4 still matches the new-tab button, so all three trailing icon
-// centers (pill X, new-tab +, overflow chevron) align at ~16px above the
-// strip bottom on the 36px flex-end strip.
+// copied verbatim) — was 28×24 (not square, owner complaint).
+//
+// UAT gap-closure (group B, item 6): owner wants L/R breathing room plus
+// vertical centering in the tab-strip row (see TabStrip.tsx's
+// newTabButtonStyle comment for the full rationale — this REVERSES the prior
+// bottom-pin/co-centering contract with TabPill's close-× and the new-tab +).
+// `alignSelf:"center"` overrides the strip's `alignItems:"flex-end"` so this
+// trigger centers in the full 40px row; `marginLeft`/`marginRight` give the
+// requested horizontal padding.
 const triggerButtonStyle: React.CSSProperties = {
   width: 24,
   height: 24,
   padding: 4,
-  margin: "0 0 4px 0",
+  margin: "0 4px",
+  alignSelf: "center",
   background: "transparent",
   border: "none",
   color: "var(--color-muted)",

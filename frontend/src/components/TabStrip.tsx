@@ -50,9 +50,13 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 }
 
 // Reserved strip chrome that is never available to tabs:
-//   strip horizontal padding (8) + pinned new-tab button (26) + the tab-bar
+//   strip horizontal padding (8) + pinned new-tab button (32) + the tab-bar
 //   left cluster (37).
 //   Left cluster: 28 (left toggle) + 8 (paddingRight) + 1 (borderRight) = 37.
+//   New-tab button footprint grew 26→32 in UAT gap-closure group B (item 6):
+//   newTabButtonStyle's margin went from "0 0 4px 2px" (2px total) to
+//   "0 4px" (8px total, L/R padding) when it was re-centered vertically
+//   instead of bottom-pinned — 24 (width) + 8 (margin) = 32.
 //   RESERVED itself stays a static constant — it does NOT include the
 //   right-cluster rail-reopen toggle (260721-cjt), because that toggle is
 //   CONDITIONAL (collapsed rail AND rightmost leaf only). Its width
@@ -61,11 +65,16 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 //   dropdown trigger (28px) is reserved separately, inside
 //   computeHiddenTabIds, ONLY when overflow occurs.
 const LEFT_CLUSTER = 37;
-export const RESERVED = 8 + 26 + LEFT_CLUSTER;
+export const RESERVED = 8 + 32 + LEFT_CLUSTER;
 // D-14 shrank the overflow-dropdown trigger to a square 24x24 hit area
 // (TabOverflowDropdown.tsx's triggerButtonStyle) — was 28x24. Keeping this at
 // 28 over-reserved 4px the trigger no longer occupies (WR-01, 31-REVIEW.md).
-const OVERFLOW_BTN = 24;
+// UAT gap-closure group B (item 6) added "0 4px" L/R margin to the trigger
+// for vertical-centering + padding (see TabOverflowDropdown.tsx's
+// triggerButtonStyle comment), growing its true horizontal footprint back to
+// 32 (24 + 8 margin) — bumped here too so this stays accurate (same WR-01
+// drift class this constant exists to prevent).
+const OVERFLOW_BTN = 32;
 // Right-cluster rail-reopen toggle width: 1 (borderLeft) + 8 (paddingLeft) +
 // 4 (flex gap) + 28 (button) — adapted from the pre-30-13 RightClusterToggle
 // (git show e1f59f1d^:frontend/src/components/TabStrip.tsx). Only occupies
@@ -111,12 +120,29 @@ export interface TabStripProps {
 /** + button styled like SidebarToolbar's icon buttons; pinned at the strip's
  *  right edge (flexShrink:0) so it survives tab overflow. D-14: square 24×24
  *  hit area + rounded hover background (NotesSortMenu.triggerButtonStyle
- *  treatment) — owner's "no hover state" complaint. */
+ *  treatment) — owner's "no hover state" complaint.
+ *
+ *  UAT gap-closure (group B, item 6): owner wants L/R breathing room plus
+ *  vertical centering in the tab-strip row, aligned on roughly the same axis
+ *  as the left-rail/right-rail icon rows (ActivityRibbon / RightRailTabRow —
+ *  both center a 16px glyph in a ~30x32px button). `alignSelf:"center"`
+ *  overrides the strip's own `alignItems:"flex-end"` (tabStripStyle) so this
+ *  button centers in the full 40px row instead of bottom-pinning against the
+ *  40px-tall TabPills — this REVERSES the prior UAT-15.1-ALIGN bottom-pin
+ *  contract that co-centered this button with TabPill's close-× (see
+ *  TabPill.tsx's closeButtonStyle comment; that × is now itself centered on
+ *  the label instead). `marginLeft`/`marginRight` give the L/R padding the
+ *  owner asked for. NOTE: exact cross-region pixel alignment with the rail
+ *  icon axis is NOT guaranteed — the tab strip and the rails are different
+ *  DOM regions with independent top offsets (same deferral ActivityRibbon's
+ *  own D-13 comment documents); only the vertical-centering + padding
+ *  ask is guaranteed here. */
 const newTabButtonStyle: CSSProperties = {
   width: 24,
   height: 24,
   padding: 4,
-  margin: "0 0 4px 2px",
+  margin: "0 4px",
+  alignSelf: "center",
   border: "none",
   color: "var(--color-muted)",
   cursor: "pointer",

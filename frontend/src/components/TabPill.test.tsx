@@ -327,4 +327,22 @@ describe("<TabPill />", () => {
     const pill = screen.getByRole("tab");
     expect(pill.style.userSelect).toBe("none");
   });
+
+  it("UAT gap-closure group B (item 5): close-× is centered on the label, not bottom-pinned", () => {
+    render(
+      <TabPill
+        title="note.md"
+        isActive={false}
+        isDeleted={false}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const closeBtn = screen.getByRole("button", { name: "Close note.md" });
+    // The prior UAT-15.1-ALIGN bottom-pin hack (alignSelf:"flex-end" +
+    // marginBottom:6) is gone — the button now shares the pill row's own
+    // alignItems:"center", landing on the same vertical center as the label.
+    expect(closeBtn.style.alignSelf).toBe("");
+    expect(closeBtn.style.marginBottom).toBe("");
+  });
 });
