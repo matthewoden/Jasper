@@ -1141,10 +1141,15 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
               })}
             </div>
           </nav>
-          {/* Right-pinned cluster (star -> ⋯, UAT round 3 #3): flush against
-              the bar's true right edge (offset matches the bar's own outer
-              padding, --editor-content-x, so ⋯ sits truly at the edge) — the
-              ⋯ menu is NEVER hidden; the star hides first as the bar narrows
+          {/* Right-pinned cluster (star -> ⋯, UAT round 3 #3; flush + tab-strip
+              alignment, Phase 31 UAT #4): pinned `right: 8px` — NOT
+              --editor-content-x (56px, that inset was read as "too far from
+              the edge") — matching the tab strip's own pinned-right button
+              offset (TabStrip.tsx's newTabButtonStyle / TabOverflowDropdown's
+              triggerButtonStyle: 4px strip padding + 4px button margin = 8px
+              from the strip's true right edge). Same 8px offset here puts ⋯
+              directly beneath the tab strip's +/⌄ buttons above it. The ⋯
+              menu is NEVER hidden; the star hides first as the bar narrows
               (computeChromeVisibility). Word count moved out of this cluster
               entirely — it now lives in the bottom StatusBar (UAT round 3 #6). */}
           <div
@@ -1152,7 +1157,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
             data-testid="editor-top-chrome-cluster"
             style={{
               position: "absolute",
-              right: "var(--editor-content-x)",
+              right: 8,
               top: "50%",
               transform: "translateY(-50%)",
               display: "flex",
@@ -1219,9 +1224,13 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           width: "100%",
           maxWidth: zen ? 700 : 760,
           margin: "0 auto",
-          // paddingBottom keeps a small gap between the title and the editor
-          // shell below (which starts flush at the wrapper's edge).
-          padding: zen ? "0 32px 6px" : "0 56px 6px",
+          // paddingTop (Phase 31 UAT #5) gives the title a little breathing
+          // room below the chrome bar — a modest bump off the prior flush 0,
+          // on the 4px spacing scale. paddingBottom is untouched: it still
+          // combines with .cm-content's own top padding (themeBridge.ts) for
+          // the ~28px title->body gap tightened in UAT round 3 #7 — don't
+          // touch that math here.
+          padding: zen ? "8px 32px 6px" : "8px 56px 6px",
           boxSizing: "border-box",
         }}
       >
