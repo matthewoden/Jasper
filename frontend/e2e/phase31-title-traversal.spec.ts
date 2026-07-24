@@ -584,6 +584,99 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
     });
   }
 
+  // UAT round 4: clicking the visual gap between the title and body, then
+  // pressing Delete/Backspace, silently did nothing. Root cause: the click
+  // resolves the caret to a position inside the hidden first-H1 region
+  // (firstH1AtomicRanges only guards INCREMENTAL motion, not an absolute
+  // click-set selection); Delete/Backspace there hit the atomic guard and
+  // no-op. Fixed by firstH1SelectionClamp (snaps the caret to the first
+  // visible body line on any absolute selection landing before it) +
+  // firstH1BackspaceGuardKeymap (guards Backspace at that boundary without
+  // silently eating keystrokes elsewhere) — see firstH1HidePlugin.ts.
+  for (const [label, content] of [
+    ["H1 + blank line + body, no frontmatter", NOTE_NO_FRONTMATTER_BLANK_AFTER_H1],
+    ["H1 + body, no blank line, no frontmatter", NOTE_NO_FRONTMATTER_NO_BLANK],
+    ["frontmatter + H1 + blank line + body", NOTE_FRONTMATTER_BLANK_AFTER_H1],
+  ] as const) {
+    test(`UAT round 4: clicking the gap then Delete removes the first body character — ${label}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1512, height: 944 });
+
+      const noteId = await apiCreateNote(
+        page,
+        jasper.baseURL,
+        `uat4-delete-${label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.md`,
+        "",
+        content,
+      );
+
+      await page.goto(jasper.baseURL);
+      await waitForConnected(page);
+      await openNoteInEditor(page, noteId);
+
+      // Baseline AFTER creation — a frontmatter-less doc gets a scaffold
+      // injected server-side, so the persisted content can already differ
+      // from the literal `content` constant (see round-3 loop above).
+      const contentBefore = await getNoteContent(page, jasper.baseURL, noteId);
+      const bodyIdx = contentBefore.indexOf("Body paragraph");
+      expect(bodyIdx).toBeGreaterThanOrEqual(0);
+
+      await clickGapAboveFirstBodyLine(page);
+      await expect(page.locator(".cm-content:visible")).toBeFocused();
+
+      await page.keyboard.press("Delete");
+
+      // The caret must have landed EXACTLY at the first visible body line's
+      // start: forward Delete there removes precisely the first body
+      // character, proving the click resolved to a real, visible position
+      // (not a no-op inside the hidden preamble).
+      const expected = contentBefore.slice(0, bodyIdx) + contentBefore.slice(bodyIdx + 1);
+      await expect
+        .poll(async () => getNoteContent(page, jasper.baseURL, noteId), { timeout: 5_000 })
+        .toBe(expected);
+    });
+
+    test(`UAT round 4: clicking the gap then Backspace is a guarded no-op — title stays intact, focus stays in the body — ${label}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1512, height: 944 });
+
+      const noteId = await apiCreateNote(
+        page,
+        jasper.baseURL,
+        `uat4-backspace-${label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.md`,
+        "",
+        content,
+      );
+
+      await page.goto(jasper.baseURL);
+      await waitForConnected(page);
+      await openNoteInEditor(page, noteId);
+
+      const contentBefore = await getNoteContent(page, jasper.baseURL, noteId);
+      const titleTextBefore = await page.getByTestId("editor-title-element").innerText();
+      const bodyTextBefore = await page.locator(".cm-content:visible").innerText();
+
+      await clickGapAboveFirstBodyLine(page);
+      await expect(page.locator(".cm-content:visible")).toBeFocused();
+
+      await page.keyboard.press("Backspace");
+
+      // D-19: Backspace at body-start does NOT cross to the title — it is a
+      // guarded no-op. Focus stays in the body; nothing changes anywhere.
+      await expect(page.locator(".cm-content:visible")).toBeFocused();
+      const bodyTextAfter = await page.locator(".cm-content:visible").innerText();
+      expect(bodyTextAfter).toBe(bodyTextBefore);
+      const titleTextAfter = await page.getByTestId("editor-title-element").innerText();
+      expect(titleTextAfter).toBe(titleTextBefore);
+
+      await expect
+        .poll(async () => getNoteContent(page, jasper.baseURL, noteId), { timeout: 3_000 })
+        .toBe(contentBefore);
+    });
+  }
+
   test("UAT round-2 regression (superseded by round 3 #4): title/body column stays left-edge-aligned with itself in a wide pane", async ({
     page,
   }) => {

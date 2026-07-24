@@ -26,14 +26,22 @@
  * state-level decoration range (`findFirstH1HideRange`) rather than a class.
  */
 import { describe, expect, it, afterEach } from "vitest";
-import { EditorView } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
-import { cursorCharLeft } from "@codemirror/commands";
+import { cursorCharLeft, defaultKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { syntaxTree } from "@codemirror/language";
-import { firstH1HideExtension, findFirstH1HideRange } from "./firstH1HidePlugin";
-import { frontmatterHideExtension } from "./frontmatterHidePlugin";
+import {
+  firstH1HideExtension,
+  findFirstH1HideRange,
+  firstH1BackspaceGuardKeymap,
+} from "./firstH1HidePlugin";
+import {
+  frontmatterHideExtension,
+  frontmatterBackspaceGuardKeymap,
+} from "./frontmatterHidePlugin";
+import { firstVisibleBodyLine } from "./titleBodyTraversal";
 
 function makeView(doc: string): EditorView {
   const parent = document.createElement("div");
@@ -317,5 +325,257 @@ describe("firstH1HideExtension — outline/tree integrity is unaffected", () => 
     const range = findH1Range(view);
     expect(range).not.toBeNull();
     expect(view.state.doc.sliceString(range!.from, range!.to)).toBe("# Repro Title");
+  });
+});
+
+// UAT round 4: clicking the visual gap between the title and body then
+// pressing Delete/Backspace did nothing — a click ABOVE the first rendered
+// line (posAtCoords) can resolve to a position strictly inside the hidden
+// H1's collapsed range, which firstH1AtomicRanges only guards for
+// INCREMENTAL motion, not an absolute selection set. firstH1SelectionClamp
+// (a transactionFilter) and firstH1BackspaceGuardKeymap close that gap.
+describe("firstH1SelectionClamp — snaps an absolute selection landing inside the hidden H1 out to the first visible body line", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  it("a selection dispatched to position 0 (inside the hidden H1) clamps to firstVisibleBodyLine().from, not the raw doc start", () => {
+    const view = makeView(DOC_H1_THEN_BLANK_THEN_BODY);
+    views.push(view);
+
+    view.dispatch({ selection: { anchor: 0 } });
+
+    const target = firstVisibleBodyLine(view.state);
+    expect(target).not.toBeNull();
+    expect(view.state.selection.main.head).toBe(target!.from);
+    expect(view.state.doc.sliceString(target!.from)).toBe("Some real paragraph here.");
+  });
+
+  it("a selection dispatched strictly inside the H1's own range (mid-heading) clamps out to the first visible body line", () => {
+    const view = makeView(DOC_H1_DIRECTLY_ABOVE_BODY);
+    views.push(view);
+
+    const h1Range = findH1Range(view);
+    expect(h1Range).not.toBeNull();
+    const insidePos = h1Range!.from + 3; // strictly inside "# Repro Title"
+
+    view.dispatch({ selection: { anchor: insidePos } });
+
+    const target = firstVisibleBodyLine(view.state);
+    expect(view.state.selection.main.head).toBe(target!.from);
+  });
+
+  it("frontmatter + H1 + blank line: a selection at position 0 clamps past BOTH hidden regions to the real first body line (D-21 compose)", () => {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: DOC_WITH_FRONTMATTER,
+        extensions: [
+          yamlFrontmatter({ content: markdown() }),
+          frontmatterHideExtension,
+          firstH1HideExtension,
+        ],
+      }),
+    });
+    views.push(view);
+
+    view.dispatch({ selection: { anchor: 0 } });
+
+    const target = firstVisibleBodyLine(view.state);
+    expect(target).not.toBeNull();
+    expect(view.state.selection.main.head).toBe(target!.from);
+    expect(view.state.doc.sliceString(target!.from)).toBe("Some real paragraph here.");
+  });
+
+  it("a selection already AT or past the first visible body line is left untouched", () => {
+    const view = makeView(DOC_H1_THEN_BLANK_THEN_BODY);
+    views.push(view);
+
+    const target = firstVisibleBodyLine(view.state)!;
+    view.dispatch({ selection: { anchor: target.from + 5 } });
+
+    expect(view.state.selection.main.head).toBe(target.from + 5);
+  });
+
+  it("select-all (extends past the boundary) is NOT clamped — passes through untouched", () => {
+    const view = makeView(DOC_H1_THEN_BLANK_THEN_BODY);
+    views.push(view);
+
+    view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
+
+    expect(view.state.selection.main.anchor).toBe(0);
+    expect(view.state.selection.main.head).toBe(view.state.doc.length);
+  });
+
+  it("doc with no H1 at all: clamp is a no-op beyond frontmatter's own boundary (nothing extra to skip)", () => {
+    const view = makeView(DOC_NO_H1);
+    views.push(view);
+
+    view.dispatch({ selection: { anchor: 0 } });
+
+    expect(view.state.selection.main.head).toBe(0);
+  });
+});
+
+/**
+ * Mount a view with both guard keymaps (mirroring MarkdownEditor.tsx's real
+ * extensions slot: frontmatterBackspaceGuardKeymap THEN
+ * firstH1BackspaceGuardKeymap, both BEFORE defaultKeymap) so pressBackspace
+ * exercises the exact CM6 conflict-resolution path used in production.
+ */
+function makeViewWithGuards(doc: string, withFrontmatter: boolean): EditorView {
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  return new EditorView({
+    parent,
+    state: EditorState.create({
+      doc,
+      extensions: [
+        yamlFrontmatter({ content: markdown() }),
+        ...(withFrontmatter ? [frontmatterHideExtension, frontmatterBackspaceGuardKeymap] : []),
+        firstH1HideExtension,
+        firstH1BackspaceGuardKeymap,
+        keymap.of(defaultKeymap),
+      ],
+    }),
+  });
+}
+
+function pressKey(view: EditorView, key: string, keyCode: number): boolean {
+  const event = new KeyboardEvent("keydown", {
+    key,
+    code: key,
+    keyCode,
+    which: keyCode,
+    cancelable: true,
+    bubbles: true,
+  });
+  view.contentDOM.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+function pressBackspace(view: EditorView): boolean {
+  return pressKey(view, "Backspace", 8);
+}
+
+function pressDelete(view: EditorView): boolean {
+  return pressKey(view, "Delete", 46);
+}
+
+describe("firstH1BackspaceGuardKeymap — UAT round 4 boundary guard", () => {
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  it("cursor at the first-visible-body-line boundary, Backspace → swallowed (guarded no-op), doc unchanged, title intact", () => {
+    const view = makeViewWithGuards(DOC_H1_THEN_BLANK_THEN_BODY, false);
+    views.push(view);
+
+    const target = firstVisibleBodyLine(view.state)!;
+    view.dispatch({ selection: { anchor: target.from } });
+
+    const docBefore = view.state.doc.toString();
+    const handled = pressBackspace(view);
+
+    expect(handled).toBe(true);
+    expect(view.state.doc.toString()).toBe(docBefore);
+    expect(view.state.doc.toString()).toContain("# Repro Title");
+  });
+
+  it("cursor at the boundary, Delete (forward) → NOT guarded — deletes the first real body character", () => {
+    const view = makeViewWithGuards(DOC_H1_THEN_BLANK_THEN_BODY, false);
+    views.push(view);
+
+    const target = firstVisibleBodyLine(view.state)!;
+    view.dispatch({ selection: { anchor: target.from } });
+
+    const docBefore = view.state.doc.toString();
+    const handled = pressDelete(view);
+
+    expect(handled).toBe(true);
+    expect(view.state.doc.toString()).not.toBe(docBefore);
+    expect(view.state.doc.toString()).toBe(
+      docBefore.slice(0, target.from) + docBefore.slice(target.from + 1),
+    );
+  });
+
+  it("cursor strictly past the boundary (mid-body), Backspace → not guarded, normal deletion occurs", () => {
+    const view = makeViewWithGuards(DOC_H1_THEN_BLANK_THEN_BODY, false);
+    views.push(view);
+
+    const target = firstVisibleBodyLine(view.state)!;
+    view.dispatch({ selection: { anchor: target.from + 5 } });
+
+    const docBefore = view.state.doc.toString();
+    const handled = pressBackspace(view);
+
+    expect(handled).toBe(true);
+    expect(view.state.doc.toString().length).toBe(docBefore.length - 1);
+  });
+
+  it("Backspace with a range selection reaching back into the hidden H1 is swallowed", () => {
+    const view = makeViewWithGuards(DOC_H1_THEN_BLANK_THEN_BODY, false);
+    views.push(view);
+
+    const target = firstVisibleBodyLine(view.state)!;
+    view.dispatch({ selection: { anchor: target.from, head: 0 } });
+
+    const docBefore = view.state.doc.toString();
+    pressBackspace(view);
+    expect(view.state.doc.toString()).toBe(docBefore);
+  });
+
+  it("frontmatter + H1 + blank line: Backspace at the combined boundary is guarded by firstH1's guard even when frontmatter's own guard also fires first (D-21 compose)", () => {
+    const view = makeViewWithGuards(DOC_WITH_FRONTMATTER, true);
+    views.push(view);
+
+    const target = firstVisibleBodyLine(view.state)!;
+    view.dispatch({ selection: { anchor: target.from } });
+
+    const docBefore = view.state.doc.toString();
+    const handled = pressBackspace(view);
+
+    expect(handled).toBe(true);
+    expect(view.state.doc.toString()).toBe(docBefore);
+    expect(view.state.doc.toString()).toContain("tags: [alpha]");
+    expect(view.state.doc.toString()).toContain("# Repro Title");
+  });
+
+  it("frontmatter + H1 + blank line: Delete at the combined boundary still deletes the first real body character (guards compose without over-blocking)", () => {
+    const view = makeViewWithGuards(DOC_WITH_FRONTMATTER, true);
+    views.push(view);
+
+    const target = firstVisibleBodyLine(view.state)!;
+    view.dispatch({ selection: { anchor: target.from } });
+
+    const docBefore = view.state.doc.toString();
+    const handled = pressDelete(view);
+
+    expect(handled).toBe(true);
+    expect(view.state.doc.toString()).toBe(
+      docBefore.slice(0, target.from) + docBefore.slice(target.from + 1),
+    );
+  });
+
+  it("doc with no H1 at all: firstH1's own guard is a no-op (findFirstH1Range null) — normal Backspace behavior at doc-start", () => {
+    const view = makeViewWithGuards(DOC_NO_H1, false);
+    views.push(view);
+
+    view.dispatch({ selection: { anchor: 0 } });
+    const docBefore = view.state.doc.toString();
+    pressBackspace(view);
+
+    // No character before position 0 to delete — defaultKeymap's own
+    // deleteCharBackward is a no-op there (not this guard's doing; this
+    // guard returns false immediately since findFirstH1Range is null).
+    expect(view.state.doc.toString()).toBe(docBefore);
   });
 });

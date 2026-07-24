@@ -74,10 +74,11 @@
  * derived from the document's TEXT, never from rendered decorations, so
  * the heading node stays fully visible to tree-walking code either way.
  */
-import { Decoration, type DecorationSet, EditorView } from "@codemirror/view";
-import { StateField, RangeSetBuilder } from "@codemirror/state";
-import type { EditorState, Transaction, Extension } from "@codemirror/state";
+import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
+import { EditorState, StateField, RangeSetBuilder } from "@codemirror/state";
+import type { Transaction, Extension } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
+import { firstVisibleBodyLine } from "./titleBodyTraversal";
 
 /** Finds the first ATXHeading1 node's [from, to) range, or null when absent. */
 function findFirstH1Range(state: EditorState): { from: number; to: number } | null {
@@ -148,12 +149,91 @@ const firstH1AtomicRanges = EditorView.atomicRanges.of(
 );
 
 /**
+ * firstH1SelectionClamp — mirrors frontmatterHidePlugin.ts's own
+ * frontmatterSelectionClamp, but keyed off firstVisibleBodyLine()
+ * (titleBodyTraversal.ts) rather than this H1's own boundary alone: that
+ * helper already computes the boundary past BOTH hidden regions (frontmatter
+ * + this hidden H1) plus the CM6 "merge line" rendering artifact documented
+ * at the top of this file (an immediately-following blank line gets folded
+ * into the H1's own hidden block and never renders its own `.cm-line`).
+ * firstH1AtomicRanges only guards INCREMENTAL cursor motion (arrow keys,
+ * word-jumps) — an absolute selection set directly (a mouse click via
+ * posAtCoords, or a programmatic jump) can still resolve inside the
+ * collapsed preamble. Clicking in the visual gap between the title and body
+ * is exactly this case: the click Y-coordinate falls above the first
+ * rendered line, and CM6 resolves it to a position in the collapsed region
+ * rather than onto the first VISIBLE line — this is the root cause of the
+ * "Delete/Backspace does nothing after clicking the gap" bug (Phase 31 UAT
+ * round 4). Clamp any selection that falls ENTIRELY before the boundary out
+ * to the boundary itself; selections that extend past it (select-all) pass
+ * through untouched, matching frontmatterSelectionClamp's contract exactly.
+ */
+const firstH1SelectionClamp = EditorState.transactionFilter.of((tr) => {
+  if (!tr.selection) return tr;
+  const target = firstVisibleBodyLine(tr.state);
+  const boundary = target ? target.from : tr.state.doc.length;
+  const main = tr.newSelection.main;
+  if (main.anchor >= boundary || main.head >= boundary) return tr;
+  return [tr, { selection: { anchor: boundary } }];
+});
+
+/**
+ * guardHiddenFirstH1Delete — Backspace/Delete guard mirroring
+ * frontmatterHidePlugin.ts's guardHiddenFrontmatterDelete, but keyed off the
+ * SAME combined firstVisibleBodyLine() boundary firstH1SelectionClamp uses
+ * above (frontmatter + hidden H1 + merge lines) rather than this H1's own
+ * range alone. With firstH1SelectionClamp in place the caret always lands
+ * EXACTLY at that boundary after a gap-click, never strictly inside the
+ * hidden H1 — but CM6's delete commands still consume an atomic range WHOLE
+ * when a Backspace/Delete's naive motion would land inside one: a Backspace
+ * at the boundary would otherwise delete the entire hidden H1 (erasing the
+ * title); a Delete or selection reaching back into the collapsed preamble
+ * would do the same. D-19: Backspace at body-start is a GUARDED NO-OP, not a
+ * cross-to-title (ArrowUp, titleBodyTraversal.ts, already owns that
+ * gesture) — so this guard only ever blocks, never redirects.
+ */
+function guardHiddenFirstH1Delete(view: EditorView, forward: boolean): boolean {
+  if (!findFirstH1Range(view.state)) return false;
+
+  const target = firstVisibleBodyLine(view.state);
+  const boundary = target ? target.from : view.state.doc.length;
+
+  const { main } = view.state.selection;
+  if (!main.empty) return main.from < boundary;
+  return forward ? main.head < boundary : main.head <= boundary;
+}
+
+/**
+ * firstH1BackspaceGuardKeymap — no-ops Backspace/Delete keystrokes that
+ * would erase the hidden first H1 (see guardHiddenFirstH1Delete above);
+ * otherwise falls through to defaultKeymap. Place in the SAME extensions-
+ * array slot as frontmatterBackspaceGuardKeymap (before defaultKeymap) —
+ * MarkdownEditor.tsx registers both; each guards its own boundary
+ * independently and neither interferes with the other (D-19/D-21 compose:
+ * whichever boundary the caret is at or before triggers its own guard, and
+ * a Delete/Backspace genuinely past BOTH boundaries falls through to normal
+ * editing in either order).
+ */
+export const firstH1BackspaceGuardKeymap = keymap.of([
+  {
+    key: "Backspace",
+    run: (view: EditorView) => guardHiddenFirstH1Delete(view, false),
+  },
+  {
+    key: "Delete",
+    run: (view: EditorView) => guardHiddenFirstH1Delete(view, true),
+  },
+]);
+
+/**
  * firstH1HideExtension — hides the first ATX H1 line's rendered DOM.
  * The heading remains in the syntax tree (outline, onH1Change, save path
  * all keep working unchanged); only the CM6-rendered line is suppressed,
- * and the caret can no longer land inside it (firstH1AtomicRanges).
+ * and the caret can no longer land inside it (firstH1AtomicRanges covers
+ * incremental motion; firstH1SelectionClamp covers absolute jumps/clicks).
  */
 export const firstH1HideExtension: Extension = [
   firstH1DecoField,
   firstH1AtomicRanges,
+  firstH1SelectionClamp,
 ];

@@ -52,7 +52,7 @@ import {
   frontmatterToggleKeymap,
   frontmatterBackspaceGuardKeymap,
 } from "../editor/frontmatterHidePlugin";
-import { firstH1HideExtension } from "../editor/firstH1HidePlugin";
+import { firstH1HideExtension, firstH1BackspaceGuardKeymap } from "../editor/firstH1HidePlugin";
 import { firstVisibleBodyLine, makeTitleBodyTraversalKeymap } from "../editor/titleBodyTraversal";
 import { calloutFoldExtension } from "../editor/calloutFoldField";
 import { tableWidgetExtension } from "../editor/tableWidgetPlugin";
@@ -449,6 +449,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             ),
             frontmatterToggleKeymap, // Cmd-Shift-Y toggles raw frontmatter view
             frontmatterBackspaceGuardKeymap, // D-23: no-ops Backspace at the hidden-frontmatter boundary
+            firstH1BackspaceGuardKeymap, // UAT round 4: no-ops Backspace/Delete that would erase the hidden first H1 (compose with the frontmatter guard above, D-21)
             makeTitleBodyTraversalKeymap((x) => cbRef.current.onCrossToTitle?.(x)), // D-19/D-20/D-21: ArrowUp from the first visible body line hands off to the title
             codeblockExpand,
             keymap.of([...jasperKeymap, indentWithTab, ...defaultKeymap, ...historyKeymap]), // jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap; indentWithTab before defaultKeymap so Tab→indent wins
