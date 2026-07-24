@@ -8,7 +8,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isLastVisualRow, TitleElement } from "./TitleElement";
+import { isLastVisualRow } from "../editor/titleBodyTraversal";
+import { TitleElement } from "./TitleElement";
 
 describe("<TitleElement />", () => {
   it("C1: renders the current H1 text at 33px/700 with the title test id", () => {

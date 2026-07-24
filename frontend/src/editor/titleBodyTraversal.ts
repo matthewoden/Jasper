@@ -17,6 +17,22 @@ import type { EditorState, Extension, Line } from "@codemirror/state";
 import { FRONTMATTER_NODE_NAME } from "./frontmatterPlugin";
 
 /**
+ * Pure geometry check (CR-01, extracted for unit-testability): is the caret's
+ * bottom edge within one line-height of the element's own bottom edge? That is
+ * "last visual row" — the title wraps a long name across multiple visual rows
+ * (pre-wrap), and ArrowDown should only cross to the body once there is no
+ * wrapped row below the caret's own row. Lives here (not in TitleElement) so
+ * the component file only exports components (react-refresh).
+ */
+export function isLastVisualRow(
+  caretBottom: number,
+  elementBottom: number,
+  lineHeight: number,
+): boolean {
+  return elementBottom - caretBottom < lineHeight;
+}
+
+/**
  * Returns the frontmatter node's `.to` boundary, or null when the doc has
  * none. Mirrors frontmatterHidePlugin.ts's own (unexported) helper of the
  * same name/shape — duplicated rather than imported since that module does

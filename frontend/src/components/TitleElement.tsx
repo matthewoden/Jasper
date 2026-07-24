@@ -25,9 +25,12 @@
  * visual row (CR-01) — the title is `white-space: pre-wrap` and any long
  * enough note title wraps across multiple visual rows; hijacking every
  * ArrowDown regardless of row broke ordinary in-title downward navigation.
- * See caretOnLastVisualRow()/isLastVisualRow() below.
+ * See caretOnLastVisualRow() below (delegates to isLastVisualRow from
+ * titleBodyTraversal).
  */
 import { useEffect, useRef } from "react";
+
+import { isLastVisualRow } from "../editor/titleBodyTraversal";
 
 const PLACEHOLDER_TEXT = "Untitled";
 
@@ -37,17 +40,6 @@ function measureCaretX(): number {
   if (!sel || sel.rangeCount === 0) return 0;
   const rects = sel.getRangeAt(0).getClientRects();
   return rects.length > 0 ? rects[0].left : 0;
-}
-
-/**
- * Pure geometry check (CR-01, extracted for unit-testability): is the
- * caret's bottom edge within one line-height of the element's own bottom
- * edge? That is "last visual row" — the title wraps a long name across
- * multiple visual rows (pre-wrap), and ArrowDown should only cross to the
- * body once there is no wrapped row below the caret's own row.
- */
-export function isLastVisualRow(caretBottom: number, elementBottom: number, lineHeight: number): boolean {
-  return elementBottom - caretBottom < lineHeight;
 }
 
 /**
