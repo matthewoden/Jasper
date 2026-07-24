@@ -36,20 +36,16 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
 
 const contentStyle: CSSProperties = {
   background: "var(--color-surface)",
-  // UAT round 2 (caret-connection fix): a hard 1px border here would draw a
-  // line straight across the base of the Arrow (Radix renders the arrow
-  // OUTSIDE the Content's border box), making the caret look severed from
-  // the body. Dropping the border and defining the tooltip edge with
-  // box-shadow alone means there is no border line to intersect — the arrow
-  // (same solid fill, no border/shadow of its own) reads as one continuous
-  // shape with the body in both light and dark. The shadow is deliberately
-  // a bit stronger than the old `0 4px 12px rgba(0,0,0,0.10)` plus a tight
-  // near-0-blur pass, so the surface still reads as a distinct floating
-  // panel without a hairline border.
+  // UAT round 3 (bordered-caret fix): the border is back on the body (owner
+  // feedback — round 2's borderless-body-plus-solid-caret combo read as an
+  // outline-less blob). The caret now carries the SAME 1px border on its
+  // own outer edges (see arrowStyle below) so the two pieces read as one
+  // continuous outlined shape rather than a border abruptly stopping at the
+  // Arrow's seam.
+  border: "1px solid var(--color-border)",
   borderRadius: 6,
   padding: "4px 8px",
-  boxShadow:
-    "0 0 0 1px rgba(0, 0, 0, 0.30), 0 4px 16px rgba(0, 0, 0, 0.35)",
+  boxShadow: "0 4px 16px rgba(0, 0, 0, 0.35)",
   fontSize: 12,
   display: "flex",
   alignItems: "baseline",
@@ -60,11 +56,33 @@ const contentStyle: CSSProperties = {
   pointerEvents: "none",
 };
 
+// UAT round 3 (bordered-caret fix): Radix's Arrow renders a single SVG
+// <polygon> (viewBox "0 0 30 10", non-uniform x/y scale via
+// preserveAspectRatio="none") flush against the Content edge it's anchored
+// to — the polygon's flat edge touches/overlaps the Content border exactly,
+// and its two slanted edges + apex are the visible "caret" poking out past
+// it. `fill`/`stroke`/`strokeWidth` are inheritable SVG presentation
+// properties, so setting them on the outer <svg> (this style prop) cascades
+// onto Radix's default polygon without needing a custom `asChild` shape.
+// `vectorEffect: "non-scaling-stroke"` is the key trick: it makes
+// strokeWidth resolve in real screen pixels rather than the 30x10 viewBox's
+// local units (which would otherwise render a near-invisible sliver once
+// scaled down to the 10x5 rendered box) — so this reliably draws a true 1px
+// line, matching the Content border's own 1px weight exactly. The polygon's
+// flat (hidden/overlapped) edge gets stroked too, but since it sits flush
+// against the Content border at the same color/width, it simply merges into
+// the seam rather than doubling it. `overflow: visible` on the <svg> stops
+// the UA default (`overflow: hidden` on root <svg>) from clipping the
+// outward half of the centered stroke. Same rule works unmodified for both
+// side="bottom" (most controls) and side="right" (ribbon) since it's driven
+// by Radix's own per-side Arrow rotation, not any bespoke per-side math.
 const arrowStyle: CSSProperties = {
-  // Solid fill matching the body, no border/drop-shadow of its own — the
-  // caret is a flush extension of the Content surface, not a separately
-  // outlined shape (UAT round 2: caret was reading as dim/detached).
   fill: "var(--color-surface)",
+  stroke: "var(--color-border)",
+  strokeWidth: 1,
+  strokeLinejoin: "round",
+  vectorEffect: "non-scaling-stroke",
+  overflow: "visible",
 };
 
 const labelStyle: CSSProperties = {
