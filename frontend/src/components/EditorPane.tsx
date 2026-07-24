@@ -862,8 +862,8 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
             width: "100%",
             maxWidth: zen ? 700 : 760,
             margin: "0 auto",
-            // 40px top matches the live editor's own top padding (31-03).
-            padding: zen ? "64px 32px" : "40px 56px 200px",
+            // 22px top matches the live editor's own top padding (31-03, tightened UAT round 3 #7).
+            padding: zen ? "64px 32px" : "22px 56px 200px",
             boxSizing: "border-box",
           }}
         >

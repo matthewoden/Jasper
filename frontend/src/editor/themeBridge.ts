@@ -37,11 +37,15 @@ export const jasperEditorTheme = EditorView.theme(
     ".cm-content": {
       // D-14/D-15/D-17: 760px centered col (margin:auto+border-box). P0 fix:
       // explicit fontFamily so .cm-line stops inheriting monospace from .cm-scroller.
-      // Padding matches Vault.dc.html's single-pane colStyle ("40px 56px 200px",
-      // Phase 31 D-17 — top tightened from 44px; horizontal gutter unchanged).
+      // Horizontal gutter unchanged (56px, D-17). Top padding tightened
+      // 40px -> 22px (UAT round 3 #7): combined with the title wrapper's own
+      // 6px bottom padding, the title->body gap is now ~28px — matching
+      // Vault.dc.html's title `marginBottom: 28px` (colStyle's 40px was the
+      // BAR-to-title gap in the mock, not the title-to-body gap; the old 40px
+      // here double-counted it as an extra, over-wide title-body gap).
       maxWidth: "760px",
       margin: "0 auto",
-      padding: "40px 56px 200px",
+      padding: "22px 56px 200px",
       boxSizing: "border-box",
       caretColor: "var(--color-fg)",
       fontFamily: "var(--font-reading)",
