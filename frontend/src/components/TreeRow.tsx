@@ -663,8 +663,15 @@ export function TreeRow({
               top: 0,
               bottom: 0,
               width: 1,
+              // UAT round 3 (D-15 brighten): owner feedback — the guide lines
+              // following open folders read too faint. Swapped from
+              // --color-border (#2a2a2e, the structural-divider token) to
+              // --color-border-input (#34343a, the already-established
+              // "slightly stronger" token used for input/scrollbar-thumb
+              // borders) at the same 70% mix — a small, deliberate brightness
+              // bump that stays well under a full divider's contrast.
               background:
-                "color-mix(in srgb, var(--color-border) 70%, transparent)",
+                "color-mix(in srgb, var(--color-border-input) 70%, transparent)",
             }}
           />
         ))}
