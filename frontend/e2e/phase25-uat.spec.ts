@@ -223,12 +223,18 @@ test.describe("@phase25 WS-03: independent tab strips", () => {
 
 // ─── WS-03 (UAT-4) — each pane renders its OWN metadata bar, even when inactive ──
 //
-// Locks the round-4 fix: the breadcrumb + word-count row is sourced from each
-// pane's own note controller (getNotePath, seeded by that pane's getNote load)
-// rather than the per-pane useFileTree() fetch, so it appears atomically with
-// the note content and is present regardless of which pane is active. Before
-// the fix, an inactive/freshly-split pane could render its note body while its
+// Locks the round-4 fix: the breadcrumb row is sourced from each pane's own
+// note controller (getNotePath, seeded by that pane's getNote load) rather
+// than the per-pane useFileTree() fetch, so it appears atomically with the
+// note content and is present regardless of which pane is active. Before the
+// fix, an inactive/freshly-split pane could render its note body while its
 // metadata bar was still absent (the reported bug).
+//
+// UAT round 3 (#6): word count moved OUT of the per-pane breadcrumb bar
+// entirely and into the single, shared bottom StatusBar — it tracks the
+// FOCUSED pane's note (activeNoteId), not a per-pane value, so this test now
+// asserts the status bar's count follows whichever pane is active/focused
+// instead of each leaf rendering its own word-count element.
 
 test.describe("@phase25 WS-03 UAT-4: per-pane metadata bar", () => {
   let jasper: JasperHandle;
@@ -241,7 +247,7 @@ test.describe("@phase25 WS-03 UAT-4: per-pane metadata bar", () => {
     if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
   });
 
-  test("both panes show their own breadcrumb + word-count, including the inactive one — WS-03/UAT-4", async ({
+  test("both panes show their own breadcrumb, including the inactive one; the status bar's word count follows the ACTIVE pane — WS-03/UAT-4, UAT round 3 #6", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -249,6 +255,17 @@ test.describe("@phase25 WS-03 UAT-4: per-pane metadata bar", () => {
 
     const idA = await apiCreateNote(page, jasper.baseURL, "meta-alpha");
     const idB = await apiCreateNote(page, jasper.baseURL, "meta-beta");
+
+    // Distinguishable word counts so the status bar assertion below proves
+    // FOCUS-tracking, not a coincidental match: "meta-alpha" (1 word, hyphen
+    // joins) + "one two three" (3) = 4; "meta-beta" (1) + "one two three four
+    // five" (5) = 6.
+    await page.request.put(`${jasper.baseURL}/api/v1/notes/${idA}`, {
+      data: { content: "# meta-alpha\n\none two three" },
+    });
+    await page.request.put(`${jasper.baseURL}/api/v1/notes/${idB}`, {
+      data: { content: "# meta-beta\n\none two three four five" },
+    });
 
     await openNoteFromTree(page, idA);
     await runCommand(page, "Split right");
@@ -263,13 +280,16 @@ test.describe("@phase25 WS-03 UAT-4: per-pane metadata bar", () => {
       tabPillsFor(rightLeaf).filter({ hasText: "meta-beta" }),
     ).toHaveAttribute("aria-selected", "true");
 
+    // Right pane is active (just opened B) — status bar reflects B's count.
+    await expect(page.getByTestId("status-bar-word-count")).toHaveText("6 words");
+
     // Make the LEFT pane active so the RIGHT pane is now INACTIVE — this is the
     // exact state where the metadata bar previously went missing.
     await activatePane(leftLeaf);
     await expect(leftLeaf).toHaveAttribute("data-active-pane", "true");
     await expect(rightLeaf).toHaveAttribute("data-active-pane", "false");
 
-    // The INACTIVE right pane must still show its OWN breadcrumb + word-count.
+    // The INACTIVE right pane must still show its OWN breadcrumb.
     await expect(
       rightLeaf.locator('[data-testid="note-breadcrumb"]:visible'),
     ).toBeVisible();
@@ -278,19 +298,15 @@ test.describe("@phase25 WS-03 UAT-4: per-pane metadata bar", () => {
         .locator('[data-testid="note-breadcrumb"]:visible')
         .getByTestId("breadcrumb-segment"),
     ).toHaveText(["meta-beta"]);
-    await expect(
-      rightLeaf.locator('[data-testid="word-count"]:visible'),
-    ).toHaveCount(1);
 
-    // The active left pane shows its own metadata bar too (its OWN note).
+    // The active left pane shows its own breadcrumb too (its OWN note), and
+    // the status bar's word count has followed focus to A's count.
     await expect(
       leftLeaf
         .locator('[data-testid="note-breadcrumb"]:visible')
         .getByTestId("breadcrumb-segment"),
     ).toHaveText(["meta-alpha"]);
-    await expect(
-      leftLeaf.locator('[data-testid="word-count"]:visible'),
-    ).toHaveCount(1);
+    await expect(page.getByTestId("status-bar-word-count")).toHaveText("4 words");
   });
 });
 

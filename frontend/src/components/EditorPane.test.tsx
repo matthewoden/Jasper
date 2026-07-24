@@ -3151,7 +3151,7 @@ describe("<EditorPane /> responsive top-chrome cluster (31 UAT round 2)", () => 
         restoreClientWidth = null;
     });
 
-    it("renders a right-pinned cluster containing word count, star, and the note-options menu, in order", async () => {
+    it("renders a right-pinned cluster containing star and the note-options menu, in order (UAT round 3: word count moved to StatusBar)", async () => {
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
 
@@ -3162,28 +3162,15 @@ describe("<EditorPane /> responsive top-chrome cluster (31 UAT round 2)", () => 
         const testIds = Array.from(
             cluster.querySelectorAll("[data-testid], button"),
         ).map((el) => el.getAttribute("data-testid") ?? el.getAttribute("aria-label"));
-        // word-count, then bookmark-star, then the Note options trigger.
-        expect(testIds.indexOf("word-count")).toBeGreaterThanOrEqual(0);
-        expect(testIds.indexOf("word-count")).toBeLessThan(testIds.indexOf("bookmark-star"));
+        // word-count no longer lives in this cluster at all.
+        expect(testIds.indexOf("word-count")).toBe(-1);
+        // bookmark-star, then the Note options trigger.
+        expect(testIds.indexOf("bookmark-star")).toBeGreaterThanOrEqual(0);
         expect(testIds.indexOf("bookmark-star")).toBeLessThan(testIds.indexOf("Note options"));
     });
 
-    it("wide bar: word count and star both show", async () => {
+    it("wide bar: star shows, word count is never rendered here", async () => {
         mockBarWidth(900);
-        getNoteMock.mockResolvedValue(okGet("# note"));
-        getTreeMock.mockResolvedValue(okTree("note.md"));
-
-        render(<EditorPane noteId={ScratchpadUUID} />);
-        await flushMicrotasks();
-
-        await screen.findByTestId("note-breadcrumb");
-        expect(screen.getByTestId("word-count")).toBeInTheDocument();
-        expect(screen.getByTestId("bookmark-star")).toBeInTheDocument();
-        expect(screen.getByLabelText("Note options")).toBeInTheDocument();
-    });
-
-    it("medium bar: word count hides, star and ⋯ stay visible", async () => {
-        mockBarWidth(420);
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
 
@@ -3196,7 +3183,7 @@ describe("<EditorPane /> responsive top-chrome cluster (31 UAT round 2)", () => 
         expect(screen.getByLabelText("Note options")).toBeInTheDocument();
     });
 
-    it("narrow bar: word count AND star hide — the ⋯ note-options menu is NEVER hidden", async () => {
+    it("narrow bar: star hides — the ⋯ note-options menu is NEVER hidden", async () => {
         mockBarWidth(300);
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));

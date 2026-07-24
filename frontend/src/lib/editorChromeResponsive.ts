@@ -1,71 +1,72 @@
 /**
  * editorChromeResponsive — pure width-driven layout decisions for the
- * editor's top-chrome bar (breadcrumb + right-pinned word count / favorite
- * star / note-options menu, Phase 31 UAT round 2).
+ * editor's top-chrome bar (breadcrumb + right-pinned favorite star / note-
+ * options menu, Phase 31 UAT rounds 2-3).
  *
- * Mirrors the tabOverflow.ts pattern: visibility/reserve is arithmetic over
+ * Mirrors the tabOverflow.ts pattern: visibility/max-width is arithmetic over
  * measured widths, deterministically testable without ResizeObserver or
  * layout timing. EditorPane only feeds these functions a measured
  * `clientWidth`; everything else is pure.
+ *
+ * UAT round 3 (#3/#6): word count moved out of this cluster entirely (now
+ * lives in the bottom StatusBar, focused-note aware) — the right cluster is
+ * just [favorite, ⋯], so there is no more word-count breakpoint here.
  */
 
-/** Below this bar width, the word count hides first (star + ⋯ still show). */
-export const WORD_COUNT_HIDE_WIDTH = 480;
-/** Below this bar width, the favorite star ALSO hides — only ⋯ remains (⋯ is never hidden). */
+/** Below this bar width, the favorite star hides — only ⋯ remains (⋯ is never hidden). */
 export const STAR_HIDE_WIDTH = 380;
 
 export interface ChromeVisibility {
-  showWordCount: boolean;
   showStar: boolean;
 }
 
 /**
- * Decide which right-cluster items show at the given bar width.
+ * Decide whether the favorite star shows at the given bar width (⋯ always
+ * shows — it is never gated by this function).
  *
  * barWidth <= 0 (jsdom / pre-layout escape hatch, same convention as
- * tabOverflow's computeHiddenTabIds) shows everything rather than
- * over-hiding against a zero/negative measurement.
+ * tabOverflow's computeHiddenTabIds) shows the star rather than over-hiding
+ * against a zero/negative measurement.
  */
 export function computeChromeVisibility(barWidth: number): ChromeVisibility {
   if (barWidth <= 0) {
-    return { showWordCount: true, showStar: true };
+    return { showStar: true };
   }
   return {
-    showWordCount: barWidth >= WORD_COUNT_HIDE_WIDTH,
     showStar: barWidth >= STAR_HIDE_WIDTH,
   };
 }
 
-export interface BreadcrumbReserveInput {
+export interface BreadcrumbMaxWidthInput {
   /** Measured width of the top-chrome bar (the full-width row). */
   barWidth: number;
-  /** Measured width of the right-pinned cluster (word count + star + ⋯, whichever are visible). */
+  /** Measured width of the right-pinned cluster (favorite + ⋯, whichever are visible). */
   clusterWidth: number;
-  /** The breadcrumb's own centered reading column cap (matches the title/body column, D-12). */
-  columnMaxWidth?: number;
-  /** Breathing room between the title's last character and the cluster. */
+  /** Breathing room between the centered breadcrumb and the cluster. */
   gap?: number;
 }
 
 /**
- * Extra right-padding (px) the breadcrumb's segment row must reserve so its
- * content never renders under the absolutely-positioned right cluster.
+ * Maximum width (px) the FULLY-CENTERED breadcrumb content may occupy
+ * without colliding with the right-pinned cluster (UAT round 3 #4 — the
+ * breadcrumb centers in the bar's full width, not a fixed 760px column).
  *
- * The breadcrumb nav is centered at `columnMaxWidth` (760) via its own
- * maxWidth+margin:auto (unchanged, body-column alignment) — once the bar is
- * wider than that column, there is already a natural gap on each side before
- * the true bar edge (where the cluster is pinned), and no extra reserve is
- * needed. Once the bar narrows to (or below) the column width, that natural
- * gap collapses to zero and the column's own content would otherwise run
- * straight under the cluster — the reserve exactly closes that gap.
+ * Only the right side is physically obstructed by the cluster, but capping
+ * symmetrically (`barWidth - 2*(clusterWidth+gap)`) keeps the breadcrumb's
+ * OWN centering intact: as long as its content fits inside this cap, its
+ * center coincides with the bar's center and neither edge reaches the
+ * cluster. Content wider than the cap falls back to the existing
+ * per-segment ellipsis truncation (folder segments give way first, the
+ * title segment truncates only as a last resort).
+ *
+ * barWidth <= 0 (jsdom / pre-layout escape hatch) returns undefined — "no
+ * cap" — matching the same convention as computeChromeVisibility.
  */
-export function computeBreadcrumbReserve({
+export function computeBreadcrumbMaxWidth({
   barWidth,
   clusterWidth,
-  columnMaxWidth = 760,
   gap = 8,
-}: BreadcrumbReserveInput): number {
-  if (barWidth <= 0) return 0;
-  const naturalGap = barWidth > columnMaxWidth ? (barWidth - columnMaxWidth) / 2 : 0;
-  return Math.max(0, clusterWidth + gap - naturalGap);
+}: BreadcrumbMaxWidthInput): number | undefined {
+  if (barWidth <= 0) return undefined;
+  return Math.max(0, barWidth - 2 * (clusterWidth + gap));
 }

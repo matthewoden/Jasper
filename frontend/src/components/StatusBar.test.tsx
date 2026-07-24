@@ -1,14 +1,18 @@
 /**
  * StatusBar tests.
  *
- * Layout: [ConnectionStatusDot] [vault segment?] [spacer] [SaveIndicator-button] [SettingsMenu]
+ * Layout: [ConnectionStatusDot] [vault segment?] [word count?] [spacer] [SaveIndicator-button] [SettingsMenu]
  *
  * Positive assertions: footer styles, ConnectionStatusDot, spacer, SettingsMenu placement,
- * zIndex, SaveIndicator-button presence and click behavior, vault segment.
+ * zIndex, SaveIndicator-button presence and click behavior, vault segment, focused-note word count.
  * Negative assertions: no standalone "Reindex notes" button.
  */
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  __resetAllControllersForTest,
+  getOrCreateController,
+} from "../lib/noteBufferController";
 import { useTreeStore } from "../lib/useTreeStore";
 
 
@@ -253,5 +257,81 @@ describe("StatusBar — Phase 22 Plan 03 zen toggle button (ZEN-01)", () => {
     const btn = screen.getByLabelText("Toggle zen mode");
     expect(btn.querySelector("svg")).not.toBeNull();
     expect((btn as HTMLButtonElement).style.color).toBe("var(--color-muted)");
+  });
+});
+
+
+describe("StatusBar — focused-note word count (UAT round 3 #6)", () => {
+  beforeEach(() => {
+    useTreeStore.setState({ activeNoteId: null });
+  });
+  afterEach(() => {
+    useTreeStore.setState({ activeNoteId: null });
+    __resetAllControllersForTest();
+  });
+
+  it("SB-WC-1: renders no word count when no note is focused (blank state)", () => {
+    renderStatusBar();
+    expect(screen.queryByTestId("status-bar-word-count")).not.toBeInTheDocument();
+  });
+
+  it("SB-WC-2: renders the focused note's word count", () => {
+    const noteId = "note-a";
+    getOrCreateController(noteId).hydrate("one two three", "note-a.md");
+    useTreeStore.setState({ activeNoteId: noteId });
+
+    renderStatusBar();
+
+    expect(screen.getByTestId("status-bar-word-count")).toHaveTextContent("3 words");
+  });
+
+  it("SB-WC-3: updates live as the focused pane's content changes", () => {
+    const noteId = "note-a";
+    const controller = getOrCreateController(noteId);
+    controller.hydrate("one two", "note-a.md");
+    useTreeStore.setState({ activeNoteId: noteId });
+
+    renderStatusBar();
+    expect(screen.getByTestId("status-bar-word-count")).toHaveTextContent("2 words");
+
+    act(() => {
+      controller.handleEditorChange("one two three four");
+    });
+
+    expect(screen.getByTestId("status-bar-word-count")).toHaveTextContent("4 words");
+  });
+
+  it("SB-WC-4: with two split panes open on different notes, reflects the FOCUSED pane's note — not a sum — and updates when focus switches", () => {
+    const noteA = "note-a";
+    const noteB = "note-b";
+    const controllerA = getOrCreateController(noteA);
+    const controllerB = getOrCreateController(noteB);
+    controllerA.hydrate("alpha beta", "note-a.md"); // 2 words
+    controllerB.hydrate("gamma delta epsilon four", "note-b.md"); // 4 words
+
+    // Pane A is focused first.
+    useTreeStore.setState({ activeNoteId: noteA });
+    renderStatusBar();
+    expect(screen.getByTestId("status-bar-word-count")).toHaveTextContent("2 words");
+
+    // Focus switches to pane B (e.g. the user clicks into the split's other
+    // pane) — the status bar must show B's count, NOT 2+4=6 (a sum).
+    act(() => {
+      useTreeStore.setState({ activeNoteId: noteB });
+    });
+    expect(screen.getByTestId("status-bar-word-count")).toHaveTextContent("4 words");
+
+    // An edit in the now-unfocused pane A must NOT move the displayed count —
+    // it stays pinned to the focused pane (B)'s live count.
+    act(() => {
+      controllerA.handleEditorChange("alpha beta gamma delta epsilon");
+    });
+    expect(screen.getByTestId("status-bar-word-count")).toHaveTextContent("4 words");
+
+    // Switching focus back to A reflects A's (now-edited) count.
+    act(() => {
+      useTreeStore.setState({ activeNoteId: noteA });
+    });
+    expect(screen.getByTestId("status-bar-word-count")).toHaveTextContent("5 words");
   });
 });

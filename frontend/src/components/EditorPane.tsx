@@ -37,7 +37,7 @@ import {
   type BreadcrumbSegment,
 } from "../lib/breadcrumbPrefix";
 import {
-  computeBreadcrumbReserve,
+  computeBreadcrumbMaxWidth,
   computeChromeVisibility,
 } from "../lib/editorChromeResponsive";
 import { extractH1FromContent } from "../lib/h1Extract";
@@ -55,7 +55,6 @@ import { useFileTree } from "../lib/useFileTree";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useBookmarks } from "../lib/useBookmarks";
 import { useOutlineStore } from "../lib/useOutlineStore";
-import { countWords, formatWordCount } from "../lib/wordCount";
 import type { HeadingInfo } from "../editor/outlineExtract";
 import type { components } from "../api/schema";
 import type { SearchQuery } from "@codemirror/search";
@@ -228,9 +227,6 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     () => controller?.getNotePath() ?? "",
   );
 
-  // Hook must run unconditionally (rules-of-hooks) — placed before the
-  // component's later conditional early returns (activeFilePath / noteId null).
-  const wordCount = useMemo(() => countWords(content), [content]);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const { tree, refresh: refreshTree } = useFileTree();
 
@@ -251,12 +247,13 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   const bookmarked = noteId !== null && isBookmarked(noteId);
   const showBookmarkStar = !hidden && noteId !== null;
 
-  // Responsive top-chrome (31 UAT round 2): word count + star hide first at
-  // narrow bar widths, the ⋯ menu never hides. Widths are measured (not
-  // guessed from viewport) so split-pane layouts respond to THEIR OWN pane
-  // width, not the window's. computeChromeVisibility/computeBreadcrumbReserve
-  // are pure — the effect below only feeds them a measured clientWidth
-  // (mirrors TabStrip's ResizeObserver + pure-function split).
+  // Responsive top-chrome (31 UAT round 2, word count moved out in round 3
+  // #3/#6): the star hides first at narrow bar widths, the ⋯ menu never
+  // hides. Widths are measured (not guessed from viewport) so split-pane
+  // layouts respond to THEIR OWN pane width, not the window's.
+  // computeChromeVisibility/computeBreadcrumbMaxWidth are pure — the effect
+  // below only feeds them a measured clientWidth (mirrors TabStrip's
+  // ResizeObserver + pure-function split).
   const chromeBarRef = useRef<HTMLDivElement>(null);
   const chromeClusterRef = useRef<HTMLDivElement>(null);
   const [chromeBarWidth, setChromeBarWidth] = useState(0);
@@ -265,9 +262,9 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     () => computeChromeVisibility(chromeBarWidth),
     [chromeBarWidth],
   );
-  const breadcrumbReserve = useMemo(
+  const breadcrumbMaxWidth = useMemo(
     () =>
-      computeBreadcrumbReserve({
+      computeBreadcrumbMaxWidth({
         barWidth: chromeBarWidth,
         clusterWidth: chromeClusterWidth,
       }),
@@ -1040,12 +1037,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
         </div>
       )}
       {!zen && notePath && breadcrumbSegments(notePath).length > 0 && (
-        // Full-pane-width top-chrome bar (31 UAT round 2): the breadcrumb
-        // <nav> below keeps its OWN maxWidth:760 + margin:auto body-column
-        // alignment (D-12, untouched) — this wrapper only adds a
-        // position:relative anchor so the right cluster can pin to the
-        // BAR's true right edge (mirrors the mock's header/controls split,
-        // Vault.dc.html ~826, rather than living inside the 760 column).
+        // Full-pane-width top-chrome bar: this wrapper is the position:relative
+        // anchor both the breadcrumb (absolutely centered in the FULL bar,
+        // UAT round 3 #4) and the right cluster (pinned to the bar's true
+        // right edge) position against — neither is constrained to the
+        // 760px reading column anymore (that column framing was removed;
+        // the title/body column below stays untouched and independent).
         <div
           ref={chromeBarRef}
           data-testid="editor-top-chrome"
@@ -1055,47 +1052,34 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
             data-testid="note-breadcrumb"
             aria-label="Note path"
             style={{
-              // D-12: height matched to the mock's measured breadcrumb/header
-              // bar (Vault.dc.html:813, height: "40px") — was 26px pre-plan.
-              height: 40,
+              // Spans the full bar (inset:0) and centers its single child via
+              // justify-content — this is the "relative container with the
+              // breadcrumb absolutely centered" shape called for by UAT round
+              // 3 #4, replacing the old maxWidth:760 + margin:auto column
+              // framing (which centered the breadcrumb against the title/body
+              // column, not the bar itself).
+              position: "absolute",
+              inset: 0,
               display: "flex",
               alignItems: "center",
+              justifyContent: "center",
               padding: "0 var(--editor-content-x)",
               boxSizing: "border-box",
-              // Constrained + centered to the SAME 760px reading column as the
-              // title wrapper and `.cm-content` below it — without this, the
-              // breadcrumb spans the full (uncapped) pane width, so its left
-              // edge drifts away from the title/body's left edge in any pane
-              // wider than 760px + 2*56px (visible as "things don't line up",
-              // Phase 31 UAT round 2 — title and body were already correctly
-              // aligned with EACH OTHER; the breadcrumb chrome above them was
-              // the piece drifting). `width: "100%"` is REQUIRED alongside
-              // maxWidth: this nav is a flex child of the pane's column flex
-              // container, and `margin: auto` on a flex item's cross axis
-              // cancels the default stretch behavior, falling back to
-              // content-based (shrink-to-fit) sizing unless width is pinned
-              // explicitly — the same pattern the title wrapper below already
-              // uses for this exact reason.
-              width: "100%",
-              maxWidth: 760,
-              margin: "0 auto",
             }}
           >
             <div
+              data-testid="breadcrumb-content"
               style={{
                 display: "flex",
                 alignItems: "center",
                 minWidth: 0,
                 overflow: "hidden",
-                width: "100%",
                 boxSizing: "border-box",
                 fontSize: 12,
-                // Reserves room for the right cluster once the bar narrows
-                // enough that this centered column would otherwise render
-                // underneath it (computeBreadcrumbReserve, UAT round 2) —
-                // zero at wide widths where the column's own natural gap to
-                // the bar edge already clears the cluster.
-                paddingRight: breadcrumbReserve,
+                // Caps the centered block's width so it never grows into the
+                // right cluster (computeBreadcrumbMaxWidth, UAT round 3 #4) —
+                // undefined at jsdom's pre-layout escape hatch means no cap.
+                ...(breadcrumbMaxWidth !== undefined ? { maxWidth: breadcrumbMaxWidth } : {}),
               }}
             >
               {breadcrumbSegments(notePath).map((seg, i, arr) => {
@@ -1157,11 +1141,12 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
               })}
             </div>
           </nav>
-          {/* Right-pinned cluster (word count -> star -> ⋯, UAT round 2):
-              pinned to the BAR's true right edge, not the 760 column, so it
-              never travels with the breadcrumb's own centering — the ⋯ menu
-              is NEVER hidden; word count then the star hide first as the bar
-              narrows (computeChromeVisibility). */}
+          {/* Right-pinned cluster (star -> ⋯, UAT round 3 #3): flush against
+              the bar's true right edge (offset matches the bar's own outer
+              padding, --editor-content-x, so ⋯ sits truly at the edge) — the
+              ⋯ menu is NEVER hidden; the star hides first as the bar narrows
+              (computeChromeVisibility). Word count moved out of this cluster
+              entirely — it now lives in the bottom StatusBar (UAT round 3 #6). */}
           <div
             ref={chromeClusterRef}
             data-testid="editor-top-chrome-cluster"
@@ -1175,18 +1160,6 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
               gap: 8,
             }}
           >
-            {chromeVisibility.showWordCount && (
-              <span
-                data-testid="word-count"
-                style={{
-                  fontSize: 12,
-                  color: "var(--color-muted)",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {formatWordCount(wordCount)}
-              </span>
-            )}
             {showBookmarkStar && chromeVisibility.showStar && noteId !== null && (
               <Tooltip label={bookmarked ? "Remove bookmark" : "Bookmark this note"} side="bottom">
                 <button

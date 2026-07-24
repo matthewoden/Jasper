@@ -584,13 +584,15 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
     });
   }
 
-  test("UAT round-2 regression: title/body column stays left-edge-aligned with the breadcrumb chrome above it in a wide pane", async ({
+  test("UAT round-2 regression (superseded by round 3 #4): title/body column stays left-edge-aligned with itself in a wide pane", async ({
     page,
   }) => {
     // Wide viewport so the 760px reading column is well short of the full
-    // pane width — this is exactly the condition under which the
-    // breadcrumb's un-constrained (no maxWidth/centering) box previously
-    // drifted away from the title/body column beneath it.
+    // pane width. Round 2 had additionally pinned the breadcrumb to this SAME
+    // left edge; round 3 (#4) explicitly reversed that — the breadcrumb now
+    // centers in the FULL bar instead (see the dedicated centering test
+    // below) — so this test only re-asserts the still-unchanged title/body
+    // alignment with EACH OTHER.
     await page.setViewportSize({ width: 1900, height: 944 });
 
     const noteId = await apiCreateNote(
@@ -605,20 +607,62 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
     await waitForConnected(page);
     await openNoteInEditor(page, noteId);
 
-    const breadcrumbSegBox = await page.getByTestId("breadcrumb-segment").first().boundingBox();
     const titleBox = await page.getByTestId("editor-title-element").boundingBox();
     const paragraphLine = page
       .locator(".cm-content:visible .cm-line", { hasText: "Some real paragraph here." })
       .first();
     const paragraphBox = await paragraphLine.boundingBox();
 
-    if (!breadcrumbSegBox || !titleBox || !paragraphBox) {
-      throw new Error("missing bounding box for one of breadcrumb/title/body");
+    if (!titleBox || !paragraphBox) {
+      throw new Error("missing bounding box for title/body");
     }
 
-    // All three share the same left edge (within 1px of layout rounding).
-    expect(Math.abs(breadcrumbSegBox.x - titleBox.x)).toBeLessThanOrEqual(1);
+    // Title and body share the same left edge (within 1px of layout rounding).
     expect(Math.abs(titleBox.x - paragraphBox.x)).toBeLessThanOrEqual(1);
+  });
+
+  test("UAT round 3 (#4): breadcrumb centers in the FULL top-chrome bar, independent of the title/body column", async ({
+    page,
+  }) => {
+    // Wide viewport so the 760px title/body column sits well left of the
+    // bar's true horizontal center — the exact condition that would catch a
+    // regression back to round 2's column-left-aligned breadcrumb.
+    await page.setViewportSize({ width: 1900, height: 944 });
+
+    const noteId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "uat3-breadcrumb-center.md",
+      "",
+      NOTE_CONTENT_BLANK_AFTER_H1,
+    );
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+    await openNoteInEditor(page, noteId);
+
+    const barBox = await page.getByTestId("editor-top-chrome").boundingBox();
+    const contentBox = await page.getByTestId("breadcrumb-content").boundingBox();
+    const clusterBox = await page.getByTestId("editor-top-chrome-cluster").boundingBox();
+    const titleBox = await page.getByTestId("editor-title-element").boundingBox();
+
+    if (!barBox || !contentBox || !clusterBox || !titleBox) {
+      throw new Error("missing bounding box for bar/breadcrumb-content/cluster/title");
+    }
+
+    // Centered in the FULL bar (within a couple px of rounding), not aligned
+    // to the title's left edge.
+    const barCenter = barBox.x + barBox.width / 2;
+    const contentCenter = contentBox.x + contentBox.width / 2;
+    expect(Math.abs(barCenter - contentCenter)).toBeLessThanOrEqual(2);
+
+    // Proves this is genuinely a DIFFERENT alignment from round 2 (which
+    // pinned the breadcrumb's left edge to the title's left edge) — at this
+    // wide viewport the two must differ substantially.
+    expect(Math.abs(contentBox.x - titleBox.x)).toBeGreaterThan(50);
+
+    // Never overlaps the right-pinned cluster ([favorite, ⋯]).
+    expect(contentBox.x + contentBox.width).toBeLessThanOrEqual(clusterBox.x);
   });
 
   test("UAT round 3 (#5): the title's first GLYPH lines up with the body's first GLYPH, not just their container boxes", async ({
@@ -681,7 +725,7 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
     ).toBeLessThanOrEqual(1);
   });
 
-  test("UAT round-2: responsive top-chrome cluster — word count + star hide at narrow pane widths, the ⋯ note-options menu never hides", async ({
+  test("UAT round 3 (#3): responsive top-chrome cluster — star hides at narrow pane widths, the ⋯ note-options menu never hides; word count lives in the status bar and is NOT gated by the editor pane's width", async ({
     page,
   }) => {
     const noteId = await apiCreateNote(
@@ -692,15 +736,17 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
       NOTE_CONTENT_BLANK_AFTER_H1,
     );
 
-    // Wide viewport: word count + star + ⋯ all show.
+    // Wide viewport: star + ⋯ both show. Word count no longer lives in this
+    // per-pane cluster at all (moved to the status bar, UAT round 3 #6).
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
     await openNoteInEditor(page, noteId);
 
-    await expect(page.getByTestId("word-count")).toBeVisible();
+    await expect(page.getByTestId("editor-top-chrome-cluster").getByTestId("word-count")).toHaveCount(0);
     await expect(page.getByTestId("bookmark-star")).toBeVisible();
     await expect(page.getByRole("button", { name: "Note options" })).toBeVisible();
+    await expect(page.getByTestId("status-bar-word-count")).toBeVisible();
 
     // Collapse the left sidebar so the editor pane's own width (what
     // computeChromeVisibility actually measures via ResizeObserver on the
@@ -713,14 +759,16 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
 
     await page.setViewportSize({ width: 360, height: 900 });
 
-    await expect(page.getByTestId("word-count")).toBeHidden();
     await expect(page.getByTestId("bookmark-star")).toBeHidden();
     await expect(page.getByRole("button", { name: "Note options" })).toBeVisible();
+    // Status bar word count is driven by the WINDOW-level status bar, not the
+    // editor pane's own measured width — it stays visible even once the
+    // pane's own top-chrome cluster has shed the star.
+    await expect(page.getByTestId("status-bar-word-count")).toBeVisible();
 
-    // Widen back out — both reappear (proves this is width-driven, not a
+    // Widen back out — the star reappears (proves this is width-driven, not a
     // one-way/sticky hide).
     await page.setViewportSize({ width: 1280, height: 900 });
-    await expect(page.getByTestId("word-count")).toBeVisible();
     await expect(page.getByTestId("bookmark-star")).toBeVisible();
     await expect(page.getByRole("button", { name: "Note options" })).toBeVisible();
   });

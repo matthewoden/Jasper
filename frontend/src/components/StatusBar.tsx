@@ -1,16 +1,28 @@
 /**
- * StatusBar — layout: [ConnectionStatusDot] [vault segment?] [spacer] [SaveIndicator-button] [SettingsMenu]
+ * StatusBar — layout: [ConnectionStatusDot] [vault segment?] [word count?] [spacer] [SaveIndicator-button] [SettingsMenu]
  *
  * SaveIndicator doubles as a manual-reindex trigger — clicking it calls
  * postAdminReindex('incremental'). When paused (WebSocket offline), clicking
  * forces a WS reconnect instead.
+ *
+ * Word count (UAT round 3 #6): moved here from the editor's top-chrome
+ * cluster — reflects the currently FOCUSED pane's note, not a sum across
+ * split panes. `activeNoteId` already mirrors the active pane's active tab
+ * (App.tsx's usePaneStore -> useTreeStore sync, D-07), so reading it here
+ * gets split-pane-aware focus tracking for free. The note's live content
+ * comes from its noteBufferController (one singleton per open note,
+ * shared by every pane showing it) via the SAME subscribe/getContent
+ * bridge EditorPane itself uses — updates on every keystroke in the
+ * focused pane and re-targets automatically when focus moves panes.
  */
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { CSSProperties } from "react";
 import { Focus } from "lucide-react";
+import { getOrCreateController } from "../lib/noteBufferController";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useVaultPicker } from "../lib/useVaultPicker";
 import { postAdminReindex } from "../lib/adminApi";
+import { countWords, formatWordCount } from "../lib/wordCount";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
 import { SaveIndicator } from "./SaveIndicator";
 import { SettingsMenu } from "./SettingsMenu";
@@ -48,6 +60,7 @@ export function StatusBar() {
   const saveState = useTreeStore((s) => s.saveState);
   const zen = useTreeStore((s) => s.zen);
   const toggleZen = useTreeStore((s) => s.toggleZen);
+  const activeNoteId = useTreeStore((s) => s.activeNoteId);
 
   const { current, open, refresh } = useVaultPicker();
   const setRefreshVaultCurrent = useTreeStore((s) => s.setRefreshVaultCurrent);
@@ -55,6 +68,27 @@ export function StatusBar() {
   useEffect(() => {
     setRefreshVaultCurrent(refresh);
   }, [refresh, setRefreshVaultCurrent]);
+
+  // Focused-note word count (UAT round 3 #6): getOrCreateController is
+  // idempotent — by the time activeNoteId points at a note, that note's own
+  // EditorPane has already created (and keeps alive) its controller, so this
+  // call just returns the SAME singleton rather than creating a duplicate.
+  const activeController = activeNoteId !== null ? getOrCreateController(activeNoteId) : null;
+  const subscribeActiveController = useCallback(
+    (onStoreChange: () => void) => {
+      if (!activeController) return () => {};
+      return activeController.subscribe(onStoreChange);
+    },
+    [activeController],
+  );
+  const activeContent = useSyncExternalStore(
+    subscribeActiveController,
+    () => activeController?.getContent() ?? "",
+  );
+  const focusedWordCount = useMemo(
+    () => (activeNoteId !== null ? countWords(activeContent) : null),
+    [activeNoteId, activeContent],
+  );
 
   const forceWsReconnect = useTreeStore((s) => s.forceWsReconnect);
   const handleRefresh = useCallback(async () => {
@@ -92,6 +126,21 @@ export function StatusBar() {
             {current.display_name}
           </button>
         </Tooltip>
+      )}
+      {/* Focused-note word count (UAT round 3 #6) — hidden entirely when no
+          pane has a note focused (blank state), rather than a placeholder. */}
+      {focusedWordCount !== null && (
+        <span
+          data-testid="status-bar-word-count"
+          style={{
+            fontSize: 12,
+            color: "var(--color-muted)",
+            whiteSpace: "nowrap",
+            padding: "0 4px",
+          }}
+        >
+          {formatWordCount(focusedWordCount)}
+        </span>
       )}
       <div style={{ flex: 1 }} data-testid="status-bar-spacer" />
       <SaveIndicator state={saveState} onClick={handleRefresh} />

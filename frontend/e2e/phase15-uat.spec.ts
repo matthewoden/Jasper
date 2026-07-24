@@ -1169,12 +1169,13 @@ test.describe("@phase15 UAT-15.1-BREADCRUMB: centered breadcrumb trail", () => {
       "breadcrumbs",
     );
 
-    // Open root note (only 1 tab — 1 breadcrumb element). The v1.2 breadcrumb is
-    // a space-between nav — interactive path segments on the left, a word-count on
-    // the right — not a single centered text node. Assert the path via the
-    // per-segment buttons (feature survived) rather than the nav's whole
-    // textContent (which now also includes the word-count), and drop the stale
-    // text-align:center check: the trail is left-aligned in the redesigned chrome.
+    // Open root note (only 1 tab — 1 breadcrumb element). The breadcrumb's
+    // interactive path segments live in their own child row (word count moved
+    // out entirely, to the bottom StatusBar — Phase 31 UAT round 3 #6), which
+    // as of Phase 31 UAT round 3 (#4) is horizontally centered in the FULL
+    // top-chrome bar rather than left-aligned to the title/body column.
+    // Assert the path via the per-segment buttons (feature survived) rather
+    // than any whole-nav textContent/alignment assumption.
     await openNoteFromTree(page, rootId);
     const rootBc = page.getByTestId("note-breadcrumb");
     await expect(rootBc).toBeVisible({ timeout: 5_000 });
