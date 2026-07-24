@@ -62,6 +62,13 @@ interface RibbonButtonProps {
   active?: boolean;
   disabled?: boolean;
   style?: CSSProperties;
+  /**
+   * Optional E2E-stable selector. Used on the Settings button (Phase 31 UAT
+   * #3) so the widely-referenced `settings-menu-trigger` testid keeps
+   * resolving after StatusBar's duplicate gear (SettingsMenu) was removed —
+   * this ribbon button is now the sole Settings entry point.
+   */
+  testId?: string;
 }
 
 function RibbonButton({
@@ -73,6 +80,7 @@ function RibbonButton({
   active = false,
   disabled = false,
   style,
+  testId,
 }: RibbonButtonProps): React.JSX.Element {
   const [hovering, setHovering] = useState(false);
   // Disabled buttons suppress mouse events: if the pointer leaves while
@@ -86,6 +94,7 @@ function RibbonButton({
       <button
         type="button"
         aria-label={ariaLabel}
+        data-testid={testId}
         onClick={onClick}
         disabled={disabled}
         onMouseEnter={() => setHovering(true)}
@@ -188,11 +197,13 @@ export function ActivityRibbon({
 
       <RibbonButton
         ariaLabel="Settings"
+        testId="settings-menu-trigger"
         onClick={() => setSettingsOpen(true)}
         icon={<Settings size={16} aria-hidden="true" />}
       />
-      {/* Mount only when open so we don't double-fetch config alongside the
-          StatusBar's own SettingsDialog instance. */}
+      {/* Mount only when open so we don't fetch config before the user
+          actually opens Settings — this is now the SOLE Settings entry
+          point (Phase 31 UAT #3 removed StatusBar's duplicate gear). */}
       {settingsOpen && (
         <SettingsDialog open onOpenChange={setSettingsOpen} />
       )}

@@ -1,11 +1,15 @@
 /**
  * StatusBar tests.
  *
- * Layout: [ConnectionStatusDot] [vault segment?] [word count?] [spacer] [SaveIndicator-button] [SettingsMenu]
+ * Layout: [ConnectionStatusDot] [vault segment?] [word count?] [spacer] [SaveIndicator-button] [zen toggle]
  *
- * Positive assertions: footer styles, ConnectionStatusDot, spacer, SettingsMenu placement,
+ * Phase 31 UAT #3: the duplicate Settings gear (SettingsMenu) was removed
+ * from the status bar — ActivityRibbon's own gear is the sole entry point
+ * now (see ActivityRibbon.test.tsx for its coverage).
+ *
+ * Positive assertions: footer styles, ConnectionStatusDot, spacer, zen-toggle placement,
  * zIndex, SaveIndicator-button presence and click behavior, vault segment, focused-note word count.
- * Negative assertions: no standalone "Reindex notes" button.
+ * Negative assertions: no standalone "Reindex notes" button, no settings-menu-trigger.
  */
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -89,6 +93,16 @@ describe("<StatusBar />", () => {
     expect(dot).toBeInTheDocument();
   });
 
+  it("Test2b_DotColumnMatchesRibbonWidth (Phase 31 UAT #2 — ribbon-column alignment)", () => {
+    renderStatusBar();
+    const column = screen.getByTestId("status-bar-dot-column");
+    // 48px matches ActivityRibbon's own column width; -8px marginLeft
+    // cancels the footer's 8px left padding so the column starts flush at
+    // the true left edge, same as the ribbon.
+    expect(column.style.width).toBe("48px");
+    expect(column.style.marginLeft).toBe("-8px");
+  });
+
   it("Test3_RendersFlex1SpacerBetweenConnectionDotAndSettings", () => {
     const { container } = renderStatusBar();
     const spacer = container.querySelector("[data-testid='status-bar-spacer']");
@@ -100,14 +114,19 @@ describe("<StatusBar />", () => {
     ).toBeTruthy();
   });
 
-  it("Test4_RendersSettingsMenuAsRightmostElement", () => {
+  it("Test4_DoesNotRenderSettingsMenuInStatusBar (Phase 31 UAT #3 — duplicate gear removed)", () => {
+    renderStatusBar();
+    expect(screen.queryByTestId("settings-menu-trigger")).not.toBeInTheDocument();
+  });
+
+  it("Test4b_RendersZenToggleAsRightmostElement", () => {
     const { container } = renderStatusBar();
-    const settingsTrigger = screen.getByTestId("settings-menu-trigger");
-    expect(settingsTrigger).toBeInTheDocument();
+    const zenToggle = screen.getByTestId("zen-toggle-button");
+    expect(zenToggle).toBeInTheDocument();
     const spacer = container.querySelector("[data-testid='status-bar-spacer']");
     expect(spacer).not.toBeNull();
     expect(
-      spacer!.compareDocumentPosition(settingsTrigger) & Node.DOCUMENT_POSITION_FOLLOWING,
+      spacer!.compareDocumentPosition(zenToggle) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 

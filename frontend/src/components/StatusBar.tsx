@@ -1,5 +1,10 @@
 /**
- * StatusBar — layout: [ConnectionStatusDot] [vault segment?] [word count?] [spacer] [SaveIndicator-button] [SettingsMenu]
+ * StatusBar — layout: [ConnectionStatusDot] [vault segment?] [word count?] [spacer] [SaveIndicator-button] [zen toggle]
+ *
+ * Phase 31 UAT #3: the duplicate Settings gear (SettingsMenu) that used to
+ * sit at the far right was removed — ActivityRibbon's own gear is now the
+ * sole Settings entry point (it keeps the `settings-menu-trigger` testid so
+ * existing E2E selectors keep resolving).
  *
  * SaveIndicator doubles as a manual-reindex trigger — clicking it calls
  * postAdminReindex('incremental'). When paused (WebSocket offline), clicking
@@ -25,7 +30,6 @@ import { postAdminReindex } from "../lib/adminApi";
 import { countWords, formatWordCount } from "../lib/wordCount";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
 import { SaveIndicator } from "./SaveIndicator";
-import { SettingsMenu } from "./SettingsMenu";
 import { Tooltip } from "./Tooltip";
 import { VaultPicker } from "./VaultPicker";
 
@@ -38,6 +42,23 @@ const statusBarStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 8,
+  flexShrink: 0,
+};
+
+// Phase 31 UAT #2: ActivityRibbon is a 48px-wide column flush against the
+// window's left edge (App.tsx grid column 1), with every RibbonButton
+// horizontally centered inside it (32px button in 48px column -> icon
+// center at x=24). This wrapper mirrors that same 48px width so
+// ConnectionStatusDot's icon footprint centers on the SAME x-column,
+// lining the dot up vertically under the ribbon's icons. marginLeft
+// cancels the footer's own 8px left padding so the column's left edge
+// starts flush at x=0, matching the ribbon's own left edge.
+const dotColumnStyle: CSSProperties = {
+  width: 48,
+  marginLeft: -8,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
   flexShrink: 0,
 };
 
@@ -105,7 +126,9 @@ export function StatusBar() {
 
   return (
     <footer style={statusBarStyle} data-testid="status-bar" aria-label="Status bar">
-      <ConnectionStatusDot />
+      <div style={dotColumnStyle} data-testid="status-bar-dot-column">
+        <ConnectionStatusDot />
+      </div>
       {/* Vault display_name; click opens vault picker in switch mode */}
       {current && (
         <Tooltip label="Click to switch vault" side="bottom">
@@ -158,7 +181,6 @@ export function StatusBar() {
           <Focus size={16} aria-hidden="true" />
         </button>
       </Tooltip>
-      <SettingsMenu />
       {/* VaultPicker in switch mode — persistent modal */}
       <VaultPicker mode="switch" />
     </footer>

@@ -307,10 +307,12 @@ test("S4 @UX-CHROME-02-refresh: refresh button briefly disables during reindex; 
   await expect(refreshBtn).toBeEnabled({ timeout: 10_000 });
   void observedDisabled;
 
-  const allStatusBarBtns = statusBar.locator("button");
-  const lastBtn = allStatusBarBtns.last();
-  await expect(lastBtn).toBeVisible({ timeout: 3_000 });
-  await lastBtn.click();
+  // Settings gear (Phase 31 UAT #3): the StatusBar's duplicate gear was
+  // removed — ActivityRibbon's own gear is now the sole entry point,
+  // reachable via the same E2E-stable `settings-menu-trigger` testid.
+  const settingsBtn = page.getByTestId("settings-menu-trigger");
+  await expect(settingsBtn).toBeVisible({ timeout: 3_000 });
+  await settingsBtn.click();
   await page.waitForTimeout(300);
 
   const settingsContent = page.locator(
