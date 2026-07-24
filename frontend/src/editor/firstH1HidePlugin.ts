@@ -12,12 +12,9 @@
  * Block decorations must come from a StateField, not a ViewPlugin (CM6
  * constraint: "Block decorations may not be specified via plugins").
  *
- * Mirrors frontmatterHidePlugin's own successful pattern exactly: a
- * `Decoration.replace({widget, block: true})` over a range that spans
- * THROUGH the line's own trailing newline (ending at the START of the next
- * line, not at the H1 node's own `.to`). Two earlier approaches were tried
- * and rejected — both discovered via a real Phase 31 UAT round-2 bug
- * ("ArrowUp from the top of the body doesn't reach the title"):
+ * The replace range spans THROUGH the line's own trailing newline (ending
+ * at the START of the next line, not at the H1 node's own `.to`). Three
+ * approaches were tried, in order, all discovered via real Phase 31 UAT bugs:
  *
  * 1. A bare `Decoration.replace({block: true})` over just the H1 NODE's own
  *    range (node.from..node.to, EXCLUDING its trailing newline) hides the
@@ -40,85 +37,96 @@
  *    frontmatter with no blank line between them — also a common shape).
  *    CM6 does not combine a zero-length line decoration positioned exactly
  *    at another source's block-replace boundary reliably.
+ * 3. A `Decoration.replace({widget, block: true})` — mirroring
+ *    frontmatterHidePlugin's own FrontmatterEmptyWidget pattern exactly —
+ *    DOES collapse height correctly AND combines fine with frontmatter's own
+ *    decorations, BUT it corrupts live typing: while the user is actively
+ *    typing INTO the still-being-recognized H1 line (e.g. immediately after
+ *    a select-all+retype), the widget-based replace decoration + this same
+ *    range marked atomic (firstH1AtomicRanges) causes CM6's DOM/state
+ *    reconciliation for the in-progress edit to desync from its own model —
+ *    the rendered DOM shows the freshly typed heading as a normal (unhidden)
+ *    line while `view.state.doc` silently keeps the note's ORIGINAL
+ *    pre-edit content. onH1Change / the tree's live label then never fires
+ *    for the real edit (phase3-uat.spec.ts Scenario G, phase5_5-uat.spec.ts
+ *    UX-08 — Phase 31 UAT round-2 regression). Confirmed via isolated
+ *    real-browser repro: removing ONLY the widget — keeping the
+ *    newline-extended range AND firstH1AtomicRanges exactly as coded for the
+ *    ArrowUp fix below — resolves the corruption; the widget itself, not the
+ *    range extension or the atomic marking, was the culprit (a second
+ *    WidgetType-based block-replace instance alongside frontmatter's own,
+ *    both recomputed on every keystroke, is what CM6's view/state
+ *    reconciliation cannot handle reliably here).
  *
- * The fix used here avoids both failure modes: extending the SAME
- * `Decoration.replace({widget, block: true})` range through the trailing
- * newline (so it behaves like frontmatter's own multi-line collapse, not a
- * partial single-line one) reliably collapses height AND reliably combines
- * with frontmatterHidePlugin's decorations regardless of adjacency.
+ * The fix used here is #1's bare `Decoration.replace({block: true})` (no
+ * widget — CM6 supplies its own zero-height placeholder DOM node for a
+ * widget-less block replace) extended through the trailing newline like
+ * frontmatter's own multi-line collapse (avoiding failure mode 1), plus
+ * firstH1AtomicRanges (below) for the ArrowUp fix — without introducing a
+ * second WidgetType instance alongside frontmatter's own (avoiding failure
+ * mode 3). A widget-less block replace renders NO `.cm-line` for the hidden
+ * range at all (it is fully consumed by the replace) — so there is no DOM
+ * node left to attach a CSS class to; `findFirstH1HideRange` below exposes
+ * the exact [from, to) range the state-level decoration covers so
+ * test/introspection code can assert against the model directly instead.
  *
  * Adding this does NOT affect outlineExtract.ts: the syntax tree is
  * derived from the document's TEXT, never from rendered decorations, so
  * the heading node stays fully visible to tree-walking code either way.
  */
-import {
-  Decoration,
-  type DecorationSet,
-  EditorView,
-  WidgetType,
-} from "@codemirror/view";
+import { Decoration, type DecorationSet, EditorView } from "@codemirror/view";
 import { StateField, RangeSetBuilder } from "@codemirror/state";
 import type { EditorState, Transaction, Extension } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 
-/** CSS class kept for test/introspection purposes — no longer drives hiding directly (see header comment). */
-export const FIRST_H1_HIDDEN_LINE_CLASS = "cm-first-h1-hidden";
-
-/**
- * H1EmptyWidget — invisible <span> that takes zero visual space, mirroring
- * frontmatterHidePlugin's FrontmatterEmptyWidget.
- */
-class H1EmptyWidget extends WidgetType {
-  toDOM(): HTMLElement {
-    const span = document.createElement("span");
-    span.setAttribute("aria-hidden", "true");
-    span.style.display = "none";
-    span.className = FIRST_H1_HIDDEN_LINE_CLASS;
-    return span;
-  }
-
-  eq(other: WidgetType): boolean {
-    return other instanceof H1EmptyWidget;
-  }
-
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
-
-function buildDecorations(state: EditorState): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
-  const tree = syntaxTree(state);
-  let done = false;
-
-  tree.iterate({
+/** Finds the first ATXHeading1 node's [from, to) range, or null when absent. */
+function findFirstH1Range(state: EditorState): { from: number; to: number } | null {
+  let range: { from: number; to: number } | null = null;
+  syntaxTree(state).iterate({
     enter(node) {
-      if (done || node.name !== "ATXHeading1") return;
-      done = true;
-      // Extend through the line's own trailing newline (up to the START of
-      // the next line) so the replace spans a COMPLETE line the same way
-      // frontmatterHidePlugin's multi-line block does — required for CM6 to
-      // collapse the row to zero height (see header comment, failure mode 1).
-      // Capped at doc length for a doc-final H1 with no following newline.
-      const end = Math.min(node.to + 1, state.doc.length);
-      builder.add(
-        node.from,
-        end,
-        Decoration.replace({ widget: new H1EmptyWidget(), block: true }),
-      );
+      if (range === null && node.name === "ATXHeading1") {
+        range = { from: node.from, to: node.to };
+      }
     },
   });
+  return range;
+}
 
+/**
+ * findFirstH1HideRange — the exact [from, to) range firstH1DecoField hides
+ * (the H1 node extended through its own trailing newline), or null when the
+ * doc has no first H1. Exported for test/introspection use only (see header
+ * comment) — production code never needs this; onH1Change/h1Extract.ts read
+ * the doc's TEXT, not this decoration range.
+ */
+export function findFirstH1HideRange(state: EditorState): { from: number; to: number } | null {
+  const range = findFirstH1Range(state);
+  if (!range) return null;
+  return { from: range.from, to: Math.min(range.to + 1, state.doc.length) };
+}
+
+function buildHideDecorations(state: EditorState): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  const range = findFirstH1Range(state);
+  if (range) {
+    // Extend through the line's own trailing newline (up to the START of
+    // the next line) so the replace spans a COMPLETE line the same way
+    // frontmatterHidePlugin's multi-line block does — required for CM6 to
+    // collapse the row to zero height (see header comment, failure mode 1).
+    // Capped at doc length for a doc-final H1 with no following newline.
+    const end = Math.min(range.to + 1, state.doc.length);
+    builder.add(range.from, end, Decoration.replace({ block: true }));
+  }
   return builder.finish();
 }
 
 const firstH1DecoField = StateField.define<{ decos: DecorationSet }>({
   create(state) {
-    return { decos: buildDecorations(state) };
+    return { decos: buildHideDecorations(state) };
   },
   update(prev, tr: Transaction) {
     if (tr.docChanged) {
-      return { decos: buildDecorations(tr.state) };
+      return { decos: buildHideDecorations(tr.state) };
     }
     return { decos: prev.decos.map(tr.changes) };
   },
