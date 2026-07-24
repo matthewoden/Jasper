@@ -76,6 +76,60 @@ ${WRAPPED_BODY_LINE}
 Body line two.
 `;
 
+// Phase 31 UAT round 3 — owner gesture repro shapes (#1): the user CLICKS in
+// the visual empty gap between the title and the first body text (not
+// typing, not arrow-navigating), landing the caret at the top of the body,
+// then presses ArrowUp expecting the title to focus. Three doc shapes, since
+// the earlier click-ON-the-line E2E cases above did not reproduce this.
+// (a) H1 + blank line + body, NO frontmatter (common shape without a YAML
+//     block at all).
+const NOTE_NO_FRONTMATTER_BLANK_AFTER_H1 = `# Gap Test A
+
+Body paragraph A.
+`;
+// (b) H1 immediately followed by body, no blank line, NO frontmatter.
+const NOTE_NO_FRONTMATTER_NO_BLANK = `# Gap Test B
+Body paragraph B.
+`;
+// (c) frontmatter + H1 + blank line + body (the full scaffold shape,
+// byte-identical in structure to NOTE_CONTENT_BLANK_AFTER_H1 above — kept as
+// its own named constant here so the three round-3 cases read as a self-
+// contained group).
+const NOTE_FRONTMATTER_BLANK_AFTER_H1 = `---
+tags: [alpha]
+---
+# Gap Test C
+
+Body paragraph C.
+`;
+
+/**
+ * Clicks in the visual empty gap between the title element and the first
+ * rendered `.cm-line` — the vertical midpoint of the space between the
+ * title's own bottom edge and the first body line's top edge. This is
+ * DISTINCT from clicking directly ON the first `.cm-line` (already covered
+ * by the round-2 regression tests above): the gap is `.cm-content`'s own
+ * padding-top (40px, themeBridge.ts) plus the title wrapper's paddingBottom
+ * (6px, EditorPane.tsx) — real rendered space with no `.cm-line` of its own,
+ * which is exactly the area the owner describes clicking into.
+ */
+async function clickGapAboveFirstBodyLine(page: Page): Promise<void> {
+  const titleBox = await page.getByTestId("editor-title-element").boundingBox();
+  const firstLine = page.locator(".cm-content:visible .cm-line").first();
+  await expect(firstLine).toBeVisible({ timeout: 5_000 });
+  const lineBox = await firstLine.boundingBox();
+  if (!titleBox || !lineBox) {
+    throw new Error("clickGapAboveFirstBodyLine: missing title or first-line bounding box");
+  }
+  const gapTop = titleBox.y + titleBox.height;
+  const gapBottom = lineBox.y;
+  if (gapBottom <= gapTop) {
+    throw new Error("clickGapAboveFirstBodyLine: no measurable gap between title and body");
+  }
+  const gapY = (gapTop + gapBottom) / 2;
+  await page.mouse.click(lineBox.x + 20, gapY);
+}
+
 async function openNoteInEditor(page: Page, noteId: string): Promise<void> {
   const row = page.locator(`[data-tree-row="${noteId}"][data-tree-row-kind="note"]`);
   await expect(row).toBeVisible({ timeout: 10_000 });
@@ -479,6 +533,56 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
 
     await expect(page.getByTestId("editor-title-element")).toBeFocused();
   });
+
+  for (const [label, content] of [
+    ["H1 + blank line + body, no frontmatter", NOTE_NO_FRONTMATTER_BLANK_AFTER_H1],
+    ["H1 + body, no blank line, no frontmatter", NOTE_NO_FRONTMATTER_NO_BLANK],
+    ["frontmatter + H1 + blank line + body", NOTE_FRONTMATTER_BLANK_AFTER_H1],
+  ] as const) {
+    test(`UAT round 3 (#1): clicking the gap above the first body line then ArrowUp reaches the title — ${label}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1512, height: 944 });
+
+      const noteId = await apiCreateNote(
+        page,
+        jasper.baseURL,
+        `uat3-gap-${label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.md`,
+        "",
+        content,
+      );
+
+      await page.goto(jasper.baseURL);
+      await waitForConnected(page);
+      await openNoteInEditor(page, noteId);
+
+      // Baseline read AFTER creation, not the literal `content` constant: a
+      // frontmatter-less doc gets a scaffold injected server-side on save
+      // (backend/internal/markdown frontmatter normalization), so the
+      // persisted content can already differ from what was POSTed.
+      const contentBefore = await getNoteContent(page, jasper.baseURL, noteId);
+
+      await clickGapAboveFirstBodyLine(page);
+
+      // Precondition matching the owner's report: the click lands the caret
+      // at the top of the body (focus on the CM6 editor, not the title).
+      await expect(page.locator(".cm-content:visible")).toBeFocused();
+
+      await page.keyboard.press("ArrowUp");
+
+      const titleFocused = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="editor-title-element"]');
+        return el !== null && document.activeElement === el;
+      });
+      expect(titleFocused).toBe(true);
+      await expect(page.getByTestId("editor-title-element")).toBeFocused();
+
+      // No side-effect edit from the crossover itself.
+      await expect
+        .poll(async () => getNoteContent(page, jasper.baseURL, noteId), { timeout: 3_000 })
+        .toBe(contentBefore);
+    });
+  }
 
   test("UAT round-2 regression: title/body column stays left-edge-aligned with the breadcrumb chrome above it in a wide pane", async ({
     page,

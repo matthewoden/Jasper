@@ -114,12 +114,33 @@ export function firstVisibleBodyLine(state: EditorState): Line | null {
 /**
  * makeTitleBodyTraversalKeymap — ArrowUp handoff (D-19/D-20/D-21). No-ops
  * (returns false, falls through to CM6's normal Up) unless the selection is
- * empty AND the caret sits on the FIRST VISUAL ROW of the first visible body
- * line (CR-01: gating on the logical line alone hijacks Up on any wrapped
- * first line before the caret reaches its own top row). Otherwise reads the
- * caret's pixel X (column preservation is coordinate-based, not
- * character-index — the title renders at a different font size, see
- * 31-RESEARCH.md Pitfall 3) and hands off to the title via the callback.
+ * empty AND the caret sits AT OR BEFORE the first visible body line (CR-01:
+ * gating on the logical line alone hijacks Up on any wrapped first line
+ * before the caret reaches its own top row). Otherwise reads the caret's
+ * pixel X (column preservation is coordinate-based, not character-index —
+ * the title renders at a different font size, see 31-RESEARCH.md Pitfall 3)
+ * and hands off to the title via the callback.
+ *
+ * "At or before" (not "on", Phase 31 UAT round 3): clicking the mouse in the
+ * visual empty gap ABOVE the first visible line — real, un-decorated
+ * `.cm-content` padding, or one of the emergent zero-length "merge" lines
+ * frontmatterBoundary()/firstH1To() already document (a blank line sitting
+ * exactly on the boundary between two block-replace decorations, which CM6
+ * folds into neither decoration's own rendered block and never gives its own
+ * `.cm-line` row) — can resolve CM6's OWN model caret to a position on one of
+ * those earlier, effectively invisible lines instead of onto
+ * firstVisibleBodyLine() itself. The DOM/Selection API still reports the
+ * caret as visually inside the first rendered row (confirmed via real-browser
+ * repro), but `view.state.selection` disagrees, so the strict
+ * `curLine.number !== target.number` equality silently no-opped ArrowUp for
+ * this click-then-Up gesture specifically (never reached by any
+ * keyboard-only path, which is why the round-2 fix's keyboard-driven E2E
+ * coverage didn't catch it). Any caret line ABOVE the target is, by
+ * construction, inside the collapsed preamble (frontmatter and/or the hidden
+ * H1, plus their merge-artifact blank lines) — there is no real content
+ * there for the user to be "in", so crossing to the title is always correct
+ * regardless of visual row. A caret line BELOW the target is genuinely
+ * further into the body and must never cross.
  */
 export function makeTitleBodyTraversalKeymap(
   onCrossToTitle: (measuredX: number) => void,
@@ -132,7 +153,24 @@ export function makeTitleBodyTraversalKeymap(
       const target = firstVisibleBodyLine(view.state);
       if (!target) return false;
       const curLine = view.state.doc.lineAt(sel.head);
-      if (curLine.number !== target.number) return false;
+      if (curLine.number > target.number) return false;
+
+      // Caret is strictly ABOVE the first visible line (the click-in-the-gap
+      // case above) — no wrapped-row concept applies there (it isn't real,
+      // rendered body content), so cross unconditionally rather than running
+      // the CR-01 moveVertically gate below (which assumes curLine IS the
+      // target line).
+      if (curLine.number < target.number) {
+        let x = 0;
+        try {
+          const coords = view.coordsAtPos(sel.head);
+          if (coords) x = coords.left;
+        } catch {
+          x = 0;
+        }
+        onCrossToTitle(x);
+        return true;
+      }
 
       // CR-01 visual-row gate: compute where one visual row up would land
       // via CM6's own vertical-motion primitive (moveVertically uses
