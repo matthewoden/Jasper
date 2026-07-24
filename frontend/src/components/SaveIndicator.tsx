@@ -13,7 +13,10 @@
  *   saved  → "Saved"          title="Saved at HH:MM:SS"
  *   error  → "Save failed"    title="Save failed — your edit is still in the editor. Press ⌘S to retry."
  *
- * Button-mode tooltip: state copy + " — click to refresh"
+ * Button-mode tooltip: state copy + " — click to refresh", rendered through
+ * the shared Tooltip system (Phase 31 UAT #1) rather than a native `title`
+ * — matches every other status-bar icon control's Tooltip migration this
+ * phase. aria-label is kept for accessibility/E2E stability.
  */
 
 import type { CSSProperties } from "react";
@@ -21,6 +24,7 @@ import { AlertCircle, Check, Cloud, CloudOff, Loader2 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
 import type { SaveState } from "../lib/saveStateMachine";
+import { Tooltip } from "./Tooltip";
 
 interface Props {
   state: SaveState;
@@ -111,25 +115,26 @@ export function SaveIndicator({ state, onClick }: Props) {
     const tooltip = `${legacyTooltipFor(state)} — click to refresh`;
     const isDisabled = state.status === "saving";
     return (
-      <button
-        type="button"
-        title={tooltip}
-        aria-label={tooltip}
-        data-save-state={state.status}
-        onClick={onClick}
-        disabled={isDisabled}
-        style={{
-          ...BUTTON_STYLE,
-          opacity: isDisabled ? 0.6 : 1,
-          cursor: isDisabled ? "wait" : "pointer",
-        }}
-      >
-        <Icon
-          size={14}
-          aria-hidden="true"
-          className={spin ? "animate-spin" : undefined}
-        />
-      </button>
+      <Tooltip label={tooltip}>
+        <button
+          type="button"
+          aria-label={tooltip}
+          data-save-state={state.status}
+          onClick={onClick}
+          disabled={isDisabled}
+          style={{
+            ...BUTTON_STYLE,
+            opacity: isDisabled ? 0.6 : 1,
+            cursor: isDisabled ? "wait" : "pointer",
+          }}
+        >
+          <Icon
+            size={14}
+            aria-hidden="true"
+            className={spin ? "animate-spin" : undefined}
+          />
+        </button>
+      </Tooltip>
     );
   }
 

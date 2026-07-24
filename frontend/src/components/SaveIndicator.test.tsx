@@ -7,9 +7,11 @@
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type React from "react";
 
 import type { SaveState } from "../lib/saveStateMachine";
 import { SaveIndicator } from "./SaveIndicator";
+import { TooltipProvider } from "./Tooltip";
 
 describe("<SaveIndicator />", () => {
   it("C1: idle renders nothing (no layout space, no icon, no text)", () => {
@@ -90,10 +92,17 @@ describe("<SaveIndicator />", () => {
 });
 
 
+// Button mode always renders inside the shared Tooltip system (Phase 31 UAT
+// #1) — every render in this describe block needs a TooltipProvider
+// ancestor or Radix throws.
+function renderButton(ui: React.ReactElement) {
+  return render(<TooltipProvider>{ui}</TooltipProvider>);
+}
+
 describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", () => {
   it("SI-BTN-1: with onClick prop, renders as a <button>", () => {
     const handler = vi.fn();
-    const { container } = render(
+    const { container } = renderButton(
       <SaveIndicator state={{ status: "idle" }} onClick={handler} />,
     );
     const btn = container.querySelector("button[data-save-state]");
@@ -109,7 +118,7 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
   });
 
   it("SI-BTN-3: idle (button mode) renders Cloud icon (visible always-present button)", () => {
-    const { container } = render(
+    const { container } = renderButton(
       <SaveIndicator state={{ status: "idle" }} onClick={vi.fn()} />,
     );
     const btn = container.querySelector("button[data-save-state='idle']");
@@ -120,7 +129,7 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
   });
 
   it("SI-BTN-4: saving renders Loader2 with animate-spin class", () => {
-    const { container } = render(
+    const { container } = renderButton(
       <SaveIndicator
         state={{ status: "saving", startedAt: new Date() }}
         onClick={vi.fn()}
@@ -135,7 +144,7 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
   });
 
   it("SI-BTN-5: saved renders Check icon", () => {
-    const { container } = render(
+    const { container } = renderButton(
       <SaveIndicator
         state={{ status: "saved", savedAt: new Date(2025, 0, 1, 14, 30, 5) }}
         onClick={vi.fn()}
@@ -149,7 +158,7 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
   });
 
   it("SI-BTN-6: error renders AlertCircle icon", () => {
-    const { container } = render(
+    const { container } = renderButton(
       <SaveIndicator
         state={{ status: "error", error: "boom" }}
         onClick={vi.fn()}
@@ -163,7 +172,7 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
   });
 
   it("SI-BTN-7: paused renders CloudOff icon", () => {
-    const { container } = render(
+    const { container } = renderButton(
       <SaveIndicator state={{ status: "paused" }} onClick={vi.fn()} />,
     );
     const btn = container.querySelector("button[data-save-state='paused']");
@@ -173,18 +182,17 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
     expect(svg?.getAttribute("class") ?? "").toMatch(/lucide-cloud-off/);
   });
 
-  it("SI-BTN-8: tooltip is state copy + ' — click to refresh' when onClick is set", () => {
-    const { container } = render(
-      <SaveIndicator state={{ status: "idle" }} onClick={vi.fn()} />,
-    );
-    const btn = container.querySelector("button[data-save-state]");
-    expect(btn).not.toBeNull();
-    expect(btn?.getAttribute("title") ?? "").toMatch(/click to refresh/i);
-    expect(btn?.getAttribute("aria-label") ?? "").toMatch(/click to refresh/i);
+  it("SI-BTN-8: aria-label is state copy + ' — click to refresh'; the tooltip (shared Tooltip, Phase 31 UAT #1) shows the same copy, no native title", () => {
+    renderButton(<SaveIndicator state={{ status: "idle" }} onClick={vi.fn()} />);
+    const btn = screen.getByRole("button");
+    expect(btn.getAttribute("aria-label") ?? "").toMatch(/click to refresh/i);
+    expect(btn).not.toHaveAttribute("title");
+    fireEvent.focus(btn);
+    expect(screen.getByText(/click to refresh/i)).toBeInTheDocument();
   });
 
   it("SI-BTN-9a: button is disabled while status === 'saving' (DoS guard T-37-01)", () => {
-    const { container } = render(
+    const { container } = renderButton(
       <SaveIndicator
         state={{ status: "saving", startedAt: new Date() }}
         onClick={vi.fn()}
@@ -205,7 +213,7 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
       { status: "paused" },
     ];
     for (const state of states) {
-      const { container, unmount } = render(
+      const { container, unmount } = renderButton(
         <SaveIndicator state={state} onClick={vi.fn()} />,
       );
       const btn = container.querySelector(
@@ -219,7 +227,7 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
 
   it("SI-BTN-10: clicking the button calls the onClick handler", () => {
     const handler = vi.fn();
-    const { container } = render(
+    const { container } = renderButton(
       <SaveIndicator state={{ status: "idle" }} onClick={handler} />,
     );
     const btn = container.querySelector(
@@ -232,7 +240,7 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
 
   it("SI-BTN-11: clicking while disabled (saving) does NOT call onClick", () => {
     const handler = vi.fn();
-    const { container } = render(
+    const { container } = renderButton(
       <SaveIndicator
         state={{ status: "saving", startedAt: new Date() }}
         onClick={handler}
