@@ -420,6 +420,45 @@ describe("firstH1SelectionClamp — snaps an absolute selection landing inside t
 
     expect(view.state.selection.main.head).toBe(0);
   });
+
+  // Phase 31 UAT round 5 regression: a note with frontmatter but NO H1 has a
+  // real, user-authored blank line right after the frontmatter's closing
+  // "---". Without the `findFirstH1Range` gate, firstH1SelectionClamp used
+  // firstVisibleBodyLine() unconditionally — which (via its "resolved line is
+  // exhausted, skip to the next" merge-line adjustment, intended ONLY for the
+  // emergent CM6 rendering merge between an H1's OWN hide decoration and an
+  // immediately-following zero-length line) silently swallowed that real
+  // blank line and clamped straight through to the line AFTER it, even
+  // though nothing there is actually hidden. Confirmed via a real Playwright
+  // E2E repro: Control+Home on `"---\ntags: []\n---\n\n- [ ] Task...\n"`
+  // landed the caret on the task line instead of the blank line, corrupting
+  // subsequent Tab/Shift-Tab indent operations.
+  it("REGRESSION (round 5): doc with frontmatter + a real blank line but NO H1 — clamp never skips past the blank line to the next line", () => {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: "---\ntags: []\n---\n\n- [ ] Task to indent\n",
+        extensions: [
+          yamlFrontmatter({ content: markdown() }),
+          frontmatterHideExtension,
+          firstH1HideExtension,
+        ],
+      }),
+    });
+    views.push(view);
+
+    expect(findFirstH1HideRange(view.state)).toBeNull();
+
+    view.dispatch({ selection: { anchor: 0 } });
+
+    // Must land on the real blank line (frontmatter's own boundary), NOT be
+    // pushed an extra line forward onto "- [ ] Task to indent".
+    const landedLine = view.state.doc.lineAt(view.state.selection.main.head);
+    expect(landedLine.text).toBe("");
+    expect(view.state.doc.sliceString(landedLine.to + 1)).toBe("- [ ] Task to indent\n");
+  });
 });
 
 /**
@@ -531,6 +570,28 @@ describe("firstH1BackspaceGuardKeymap — UAT round 4 boundary guard", () => {
     const docBefore = view.state.doc.toString();
     pressBackspace(view);
     expect(view.state.doc.toString()).toBe(docBefore);
+  });
+
+  // Phase 31 UAT round 5 regression: a non-empty selection whose far edge
+  // extends PAST the boundary (e.g. Cmd/Ctrl-A select-all) must be allowed
+  // through even though its near edge starts before the boundary — mirrors
+  // firstH1SelectionClamp's own "extends past it (select-all) pass through
+  // untouched" contract. Without this, a real-browser select-all + Delete
+  // silently swallowed the ENTIRE delete (title included), leaving the full
+  // original document selected so the next typed character replaced
+  // everything and ate its own first character in the process.
+  it("REGRESSION (round 5): a non-empty selection extending PAST the boundary (select-all) is NOT swallowed by Backspace/Delete", () => {
+    const view = makeViewWithGuards(DOC_H1_THEN_BLANK_THEN_BODY, false);
+    views.push(view);
+
+    view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
+
+    const handled = pressDelete(view);
+
+    // Not guarded by firstH1BackspaceGuardKeymap — falls through to
+    // defaultKeymap's own deleteCharForward, which DOES clear the doc.
+    expect(handled).toBe(true);
+    expect(view.state.doc.toString()).toBe("");
   });
 
   it("frontmatter + H1 + blank line: Backspace at the combined boundary is guarded by firstH1's guard even when frontmatter's own guard also fires first (D-21 compose)", () => {

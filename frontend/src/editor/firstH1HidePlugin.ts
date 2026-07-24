@@ -167,9 +167,32 @@ const firstH1AtomicRanges = EditorView.atomicRanges.of(
  * round 4). Clamp any selection that falls ENTIRELY before the boundary out
  * to the boundary itself; selections that extend past it (select-all) pass
  * through untouched, matching frontmatterSelectionClamp's contract exactly.
+ *
+ * GATE (Phase 31 UAT round 5 regression fix): mirrors
+ * frontmatterSelectionClamp's own `if (!hidden) return tr` fast-gate — a doc
+ * with NO first H1 at all must leave this filter completely inert.
+ * firstVisibleBodyLine() falls back to `frontmatterBoundary(state) ?? 0`
+ * when there is no H1, which is a perfectly valid boundary for OTHER
+ * purposes (titleBodyTraversal.ts's ArrowUp handoff) but is the WRONG
+ * boundary for this clamp specifically: for a note with frontmatter-only (or
+ * no hidden regions at all) followed by a real blank line, that blank line
+ * can land EXACTLY on firstVisibleBodyLine()'s "resolved line is exhausted,
+ * skip to the next one" merge-line adjustment (intended ONLY for the
+ * emergent CM6 rendering merge between a hide decoration and an immediately
+ * following zero-length line) even though nothing is actually hidden there —
+ * silently eating a real, user-authored blank line and shifting every
+ * subsequent selection one line forward. Confirmed via a real Playwright
+ * regression: a note with NO H1 (`"- [ ] Task to indent\n"`, backend-injected
+ * frontmatter only) had Control+Home clamped past its own real blank line
+ * onto the task line, and Tab/Shift-Tab then indented/de-indented the WRONG
+ * position, corrupting the saved content. Without a first H1 present,
+ * frontmatterSelectionClamp (frontmatterHidePlugin.ts) already owns the
+ * frontmatter-only boundary correctly (via frontmatterBoundary() alone, with
+ * no merge-line skip) — this filter has nothing left to guard.
  */
 const firstH1SelectionClamp = EditorState.transactionFilter.of((tr) => {
   if (!tr.selection) return tr;
+  if (!findFirstH1Range(tr.state)) return tr;
   const target = firstVisibleBodyLine(tr.state);
   const boundary = target ? target.from : tr.state.doc.length;
   const main = tr.newSelection.main;
@@ -191,6 +214,27 @@ const firstH1SelectionClamp = EditorState.transactionFilter.of((tr) => {
  * would do the same. D-19: Backspace at body-start is a GUARDED NO-OP, not a
  * cross-to-title (ArrowUp, titleBodyTraversal.ts, already owns that
  * gesture) — so this guard only ever blocks, never redirects.
+ *
+ * EXTENDS-PAST CARVE-OUT (Phase 31 UAT round 5 regression fix): a
+ * non-empty selection whose far edge (`.to`) reaches AT OR PAST the
+ * boundary is a legitimate broader edit — e.g. Cmd/Ctrl-A "select all" on a
+ * note whose first REAL DOM-selectable position (native browser selection
+ * can't land inside a hidden, zero-DOM block-replace decoration) is the
+ * combined boundary's own near edge — and must be allowed through even
+ * though `.from` is technically "before" the boundary, mirroring
+ * firstH1SelectionClamp's own existing "extends past it (select-all) pass
+ * through untouched" contract. Without this carve-out, a real-browser
+ * select-all + Delete on any note whose first H1 is followed by more
+ * heading-shaped body content (confirmed via the default scratchpad note:
+ * frontmatter + blank + H1 + blank + a body line starting with `# `) had
+ * its Delete SILENTLY SWALLOWED entirely (guard saw `main.from < boundary`
+ * and blocked, since the combined boundary skips past the merge-adjacent
+ * blank line to the NEXT real content line) — leaving the full original
+ * document selected, so the next typed character replaced the ENTIRE
+ * selection (title included) instead of only the intended body text,
+ * silently eating the first character of the retype in the process. Only a
+ * `!main.empty` selection can trigger this — a collapsed caret always has
+ * `main.to === main.from` and is unaffected.
  */
 function guardHiddenFirstH1Delete(view: EditorView, forward: boolean): boolean {
   if (!findFirstH1Range(view.state)) return false;
@@ -199,7 +243,7 @@ function guardHiddenFirstH1Delete(view: EditorView, forward: boolean): boolean {
   const boundary = target ? target.from : view.state.doc.length;
 
   const { main } = view.state.selection;
-  if (!main.empty) return main.from < boundary;
+  if (!main.empty) return main.to <= boundary;
   return forward ? main.head < boundary : main.head <= boundary;
 }
 
