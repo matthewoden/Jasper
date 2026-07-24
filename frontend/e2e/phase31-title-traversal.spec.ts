@@ -621,6 +621,66 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
     expect(Math.abs(titleBox.x - paragraphBox.x)).toBeLessThanOrEqual(1);
   });
 
+  test("UAT round 3 (#5): the title's first GLYPH lines up with the body's first GLYPH, not just their container boxes", async ({
+    page,
+  }) => {
+    // Deliberately measures TEXT (Range.getClientRects()), not element
+    // boundingBox(): CM6's own baseTheme applies `.cm-line { padding: 0 2px 0
+    // 6px }` unconditionally (themeBridge.ts) — a 6px left inset on the
+    // BODY'S TEXT that TitleElement.tsx's 0-padding contentEditable div
+    // doesn't share. That inset lives INSIDE `.cm-line`'s own box, so
+    // `.cm-line`'s boundingBox().x is unaffected and stays aligned even while
+    // the actual rendered ink is shifted 6px right — exactly why the
+    // existing box-based alignment test above did not catch this.
+    await page.setViewportSize({ width: 1512, height: 944 });
+
+    const noteId = await apiCreateNote(
+      page,
+      jasper.baseURL,
+      "uat3-glyph-align.md",
+      "",
+      NOTE_CONTENT_BLANK_AFTER_H1,
+    );
+
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+    await openNoteInEditor(page, noteId);
+
+    const textLeftEdges = await page.evaluate(() => {
+      const titleEl = document.querySelector('[data-testid="editor-title-element"]');
+      // v1.2 keep-alive tabs can leave hidden `.cm-content` nodes mounted
+      // (mirrors openNoteInEditor's own `:visible` scoping above) — plain
+      // `document.querySelector` has no `:visible` pseudo-class, so filter
+      // by `offsetParent` (null when the element or an ancestor is
+      // display:none) to find the ACTIVE pane's content.
+      const lineEl = Array.from(document.querySelectorAll(".cm-content .cm-line")).find(
+        (el) => (el as HTMLElement).offsetParent !== null,
+      );
+      if (!titleEl || !lineEl) return null;
+
+      const titleRange = document.createRange();
+      titleRange.selectNodeContents(titleEl);
+      const titleRect = titleRange.getClientRects()[0];
+
+      const lineRange = document.createRange();
+      lineRange.selectNodeContents(lineEl);
+      const lineRect = lineRange.getClientRects()[0];
+
+      return {
+        titleTextLeft: titleRect?.left ?? null,
+        lineTextLeft: lineRect?.left ?? null,
+      };
+    });
+
+    if (!textLeftEdges || textLeftEdges.titleTextLeft === null || textLeftEdges.lineTextLeft === null) {
+      throw new Error("could not measure title/body text rects");
+    }
+
+    expect(
+      Math.abs(textLeftEdges.titleTextLeft - textLeftEdges.lineTextLeft),
+    ).toBeLessThanOrEqual(1);
+  });
+
   test("UAT round-2: responsive top-chrome cluster — word count + star hide at narrow pane widths, the ⋯ note-options menu never hides", async ({
     page,
   }) => {

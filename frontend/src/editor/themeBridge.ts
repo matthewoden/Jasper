@@ -46,6 +46,19 @@ export const jasperEditorTheme = EditorView.theme(
       caretColor: "var(--color-fg)",
       fontFamily: "var(--font-reading)",
     },
+    // Phase 31 UAT round 3 (#5): CM6's OWN baseTheme applies
+    // `.cm-line { padding: 0 2px 0 6px }` unconditionally — a 6px left inset
+    // with no equivalent on TitleElement.tsx's 0-padding contentEditable div.
+    // The two share the SAME `.cm-content`/title-wrapper left edge (both
+    // 760px-max, margin:auto, 56px horizontal padding — D-12), so that
+    // inherited 6px was the entire visible misalignment between the title's
+    // first glyph and the body's first glyph. Zeroing only the LEFT side
+    // (right 2px is cosmetic breathing room before wrapped/long lines and
+    // not part of this bug) makes both columns' text start at the identical
+    // x-coordinate.
+    ".cm-line": {
+      paddingLeft: "0",
+    },
     ".cm-cursor, .cm-dropCursor": {
       borderLeftColor: "var(--color-fg)",
     },
