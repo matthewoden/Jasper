@@ -4,18 +4,15 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-)
 
-var (
-	buildVersion = "0.1.0-phase1"
-	buildCommit  = ""
+	"github.com/matthewoden/jasper/backend/internal/buildinfo"
 )
 
 func versionString() string {
-	if buildCommit == "" {
-		return fmt.Sprintf("jasper %s", buildVersion)
+	if buildinfo.Commit == "" {
+		return fmt.Sprintf("jasper %s", buildinfo.Version)
 	}
-	return fmt.Sprintf("jasper %s (commit %s)", buildVersion, buildCommit)
+	return fmt.Sprintf("jasper %s (commit %s)", buildinfo.Version, buildinfo.Commit)
 }
 
 var versionCmd = &cobra.Command{
