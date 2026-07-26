@@ -55,14 +55,12 @@ func (s *Server) PutConfig(
 		return nil, errors.New("could not save config")
 	}
 
-	// Sync display_name to app.json so GET /vault/current reflects the new name.
+	// Sync display name to app.json so GET /vault/current reflects the new name.
 	// Best-effort: log on failure but do not fail the request (config.json is the primary store).
+	// D-05: config.Config.DisplayName is gone; the vault's name is its folder name.
 	if appJSONPath, err := vault.AppJSONPath(); err == nil {
 		if state, err := vault.LoadAppJSON(appJSONPath); err == nil {
-			dn := cfg.DisplayName
-			if dn == "" {
-				dn = filepath.Base(s.dataDir)
-			}
+			dn := filepath.Base(s.dataDir)
 			for i := range state.RecentVaults {
 				if state.RecentVaults[i].Path == s.dataDir {
 					state.RecentVaults[i].DisplayName = dn
@@ -89,23 +87,30 @@ func toWireConfig(c config.Config) Config {
 		DataDir: c.Server.DataDir,
 		Port:    c.Server.Port,
 	}
+	auditLog := c.MCP.AuditLog
 	mcp := struct {
-		Bind string `json:"bind"`
-		Port int    `json:"port"`
+		AuditLog *bool  `json:"auditLog,omitempty"`
+		Bind     string `json:"bind"`
+		Port     int    `json:"port"`
 	}{
-		Bind: c.MCP.Bind,
-		Port: c.MCP.Port,
+		AuditLog: &auditLog,
+		Bind:     c.MCP.Bind,
+		Port:     c.MCP.Port,
 	}
-	var displayName *string
-	if c.DisplayName != "" {
-		dn := c.DisplayName
-		displayName = &dn
+	templates := struct {
+		Folder string `json:"folder"`
+	}{
+		Folder: c.Templates.Folder,
 	}
 	accent := ConfigAccent(c.Accent)
 	readingFont := ConfigReadingFont(c.ReadingFont)
+	showProperties := c.Editor.ShowProperties
+	autoPair := c.Editor.AutoPair
+	foldGutter := c.Editor.FoldGutter
+	lineNumbers := c.Editor.LineNumbers
+	lineWidth := c.Editor.LineWidth
 	return Config{
 		AppName:     c.AppName,
-		DisplayName: displayName,
 		Theme:       ConfigTheme(c.Theme),
 		Accent:      &accent,
 		ReadingFont: &readingFont,
@@ -117,42 +122,67 @@ func toWireConfig(c config.Config) Config {
 			Template: c.DailyNotes.Template,
 		},
 		Editor: struct {
-			AutosaveMs int     `json:"autosaveMs"`
-			FontSize   int     `json:"fontSize"`
-			LineHeight float64 `json:"lineHeight"`
-			VimMode    bool    `json:"vimMode"`
+			AutoPair       *bool   `json:"autoPair,omitempty"`
+			AutosaveMs     int     `json:"autosaveMs"`
+			FoldGutter     *bool   `json:"foldGutter,omitempty"`
+			FontSize       int     `json:"fontSize"`
+			LineHeight     float64 `json:"lineHeight"`
+			LineNumbers    *bool   `json:"lineNumbers,omitempty"`
+			LineWidth      *int    `json:"lineWidth,omitempty"`
+			ShowProperties *bool   `json:"showProperties,omitempty"`
 		}{
-			AutosaveMs: c.Editor.AutosaveMs,
-			FontSize:   c.Editor.FontSize,
-			LineHeight: c.Editor.LineHeight,
-			VimMode:    c.Editor.VimMode,
+			AutoPair:       &autoPair,
+			AutosaveMs:     c.Editor.AutosaveMs,
+			FoldGutter:     &foldGutter,
+			FontSize:       c.Editor.FontSize,
+			LineHeight:     c.Editor.LineHeight,
+			LineNumbers:    &lineNumbers,
+			LineWidth:      &lineWidth,
+			ShowProperties: &showProperties,
 		},
-		Server: &server,
-		Mcp:    &mcp,
+		Server:    &server,
+		Mcp:       &mcp,
+		Templates: &templates,
 	}
 }
 
 func fromWireConfig(w Config) config.Config {
-	var displayName string
-	if w.DisplayName != nil {
-		displayName = *w.DisplayName
-	}
+	defaults := config.Defaults()
 	out := config.Config{
-		AppName:     w.AppName,
-		DisplayName: displayName,
-		Theme:       string(w.Theme),
+		AppName: w.AppName,
+		Theme:   string(w.Theme),
 		DailyNotes: config.DailyNotes{
 			Folder:   w.DailyNotes.Folder,
 			Template: w.DailyNotes.Template,
 		},
 		Editor: config.Editor{
-			AutosaveMs: w.Editor.AutosaveMs,
-			FontSize:   w.Editor.FontSize,
-			LineHeight: w.Editor.LineHeight,
-			VimMode:    w.Editor.VimMode,
+			AutosaveMs:     w.Editor.AutosaveMs,
+			FontSize:       w.Editor.FontSize,
+			LineHeight:     w.Editor.LineHeight,
+			ShowProperties: defaults.Editor.ShowProperties,
+			AutoPair:       defaults.Editor.AutoPair,
+			FoldGutter:     defaults.Editor.FoldGutter,
+			LineNumbers:    defaults.Editor.LineNumbers,
+			LineWidth:      defaults.Editor.LineWidth,
 		},
-		Server: config.ServerConfig{Port: 6683, DataDir: "", Bind: "127.0.0.1"},
-		MCP:    config.MCPConfig{Port: 6684, Bind: "127.0.0.1"},
+		Server:    config.ServerConfig{Port: 6683, DataDir: "", Bind: "127.0.0.1"},
+		MCP:       config.MCPConfig{Port: 6684, Bind: "127.0.0.1", AuditLog: defaults.MCP.AuditLog},
+		Templates: config.Templates{Folder: defaults.Templates.Folder},
+	}
+	if w.Editor.ShowProperties != nil {
+		out.Editor.ShowProperties = *w.Editor.ShowProperties
+	}
+	if w.Editor.AutoPair != nil {
+		out.Editor.AutoPair = *w.Editor.AutoPair
+	}
+	if w.Editor.FoldGutter != nil {
+		out.Editor.FoldGutter = *w.Editor.FoldGutter
+	}
+	if w.Editor.LineNumbers != nil {
+		out.Editor.LineNumbers = *w.Editor.LineNumbers
+	}
+	if w.Editor.LineWidth != nil {
+		out.Editor.LineWidth = *w.Editor.LineWidth
 	}
 	if w.Accent != nil {
 		out.Accent = string(*w.Accent)
@@ -180,6 +210,12 @@ func fromWireConfig(w Config) config.Config {
 		if out.MCP.Bind == "" {
 			out.MCP.Bind = "127.0.0.1"
 		}
+		if w.Mcp.AuditLog != nil {
+			out.MCP.AuditLog = *w.Mcp.AuditLog
+		}
+	}
+	if w.Templates != nil {
+		out.Templates.Folder = w.Templates.Folder
 	}
 	return out
 }

@@ -13,13 +13,7 @@ package config
 // to match the OpenAPI Config schema declared in api/openapi.yaml.
 // Drift here breaks GET /config + PUT /config round-trips.
 type Config struct {
-	AppName string `json:"appName"`
-	// DisplayName is the human-readable vault name. Optional on disk
-	// (`omitempty`) — legacy configs without this field still parse cleanly
-	// under the strict decoder. CreateVault populates it from
-	// CreateOpts.DisplayName (or filepath.Base(canonical)); readers fall
-	// back to filepath.Base at display time when the field is "".
-	DisplayName string       `json:"display_name,omitempty"`
+	AppName     string       `json:"appName"`
 	DailyNotes  DailyNotes   `json:"dailyNotes"`
 	Editor      Editor       `json:"editor"`
 	Theme       string       `json:"theme"`                 // "dark" | "light" (D-02: pinned to "dark" at load)
@@ -27,6 +21,12 @@ type Config struct {
 	ReadingFont string       `json:"readingFont,omitempty"` // "sans"|"serif"; default "sans"
 	Server      ServerConfig `json:"server"`                // port (6683) + dataDir source of truth
 	MCP         MCPConfig    `json:"mcp"`                   // optional MCP listener
+	Templates   Templates    `json:"templates"`             // Phase 35 / TPL-01 templates folder
+}
+
+// Templates — Phase 35 / TPL-01 templates block.
+type Templates struct {
+	Folder string `json:"folder"`
 }
 
 // DailyNotes — DESIGN.md §11 dailyNotes block.
@@ -41,8 +41,18 @@ type DailyNotes struct {
 type Editor struct {
 	FontSize   int     `json:"fontSize"`
 	LineHeight float64 `json:"lineHeight"`
-	VimMode    bool    `json:"vimMode"`
 	AutosaveMs int     `json:"autosaveMs"`
+	// ShowProperties toggles the properties table above the note body (Phase 34).
+	ShowProperties bool `json:"showProperties"`
+	// AutoPair auto-closes brackets/quotes in the CM6 editor (Phase 37 / EDIT-01).
+	AutoPair bool `json:"autoPair"`
+	// FoldGutter shows the heading/list code-folding gutter (Phase 37 / EDIT-03).
+	FoldGutter bool `json:"foldGutter"`
+	// LineNumbers shows the CM6 line-number gutter (Phase 37 / EDIT-03).
+	LineNumbers bool `json:"lineNumbers"`
+	// LineWidth is the maximum width of the writing column, in CSS pixels
+	// (Phase 37 / EDIT-04). Range 400-2000.
+	LineWidth int `json:"lineWidth"`
 }
 
 // ServerConfig holds the HTTP listener's port and the user's data directory.
@@ -70,12 +80,11 @@ type ServerConfig struct {
 type MCPConfig struct {
 	Port int    `json:"port"`
 	Bind string `json:"bind"`
-	// Enabled is a deprecated no-op. Before Phase 24 the wizard always
-	// persisted "mcp":{"enabled":...}, so every pre-24 config.json on disk
-	// carries this key. It is retained (`omitempty`) only so those legacy
-	// files still parse under the strict decoder (DisallowUnknownFields) —
-	// dropping it would send every upgrading user down the malformed-fallback
-	// path and silently reset their settings. The listener is now always-on
-	// (D-06); this field is read and ignored. Do not reintroduce a toggle.
-	Enabled bool `json:"enabled,omitempty"`
+	// AuditLog toggles the MCP tool-call audit log (Phase 36 / MCP2-02).
+	AuditLog bool `json:"auditLog"`
+	// NOTE (Phase 32, closes RESEARCH.md Open Question 2): the old on/off
+	// toggle field is deleted here — its only justification was the strict
+	// decoder (DisallowUnknownFields), which Phase 32-03 removes. A legacy
+	// on-disk mcp.enabled key becomes an unknown nested key — dropped on
+	// lenient read, preserved on write.
 }

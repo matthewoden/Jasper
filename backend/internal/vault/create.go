@@ -64,7 +64,6 @@ func CreateVault(ctx context.Context, canonical string, opts CreateOpts) (*AppSt
 	cfg := config.Defaults()
 	cfg.Server.DataDir = canonical
 	cfg.Theme = theme
-	cfg.DisplayName = displayName
 	if opts.DailyTemplate != "" {
 		cfg.DailyNotes.Template = opts.DailyTemplate
 	}

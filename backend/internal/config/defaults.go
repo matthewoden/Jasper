@@ -45,10 +45,14 @@ func Defaults() Config {
 			Template: "# {{date}}\n\n",
 		},
 		Editor: Editor{
-			FontSize:   15,
-			LineHeight: 1.45,
-			VimMode:    false,
-			AutosaveMs: 2000,
+			FontSize:       15,
+			LineHeight:     1.45,
+			AutosaveMs:     2000,
+			ShowProperties: true,
+			AutoPair:       true,
+			FoldGutter:     true,
+			LineNumbers:    false,
+			LineWidth:      700,
 		},
 		Theme:       "dark",
 		Accent:      "purple",
@@ -59,8 +63,12 @@ func Defaults() Config {
 			Bind:    "127.0.0.1",
 		},
 		MCP: MCPConfig{
-			Port: 6684,
-			Bind: "127.0.0.1",
+			Port:     6684,
+			Bind:     "127.0.0.1",
+			AuditLog: false,
+		},
+		Templates: Templates{
+			Folder: "Templates",
 		},
 	}
 }
