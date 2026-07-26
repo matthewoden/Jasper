@@ -141,6 +141,12 @@ describe("<SettingsDialogShell />", () => {
     expect(screen.getByText("Accent and typography")).toBeInTheDocument();
   });
 
+  it("renders the NavColumn footer caption using GET /vault/about data (WR-01)", async () => {
+    renderShell();
+    await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("my-vault · v1.4.0")).toBeInTheDocument());
+  });
+
   it("clicking each nav item swaps the pane content", async () => {
     renderShell();
     await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());

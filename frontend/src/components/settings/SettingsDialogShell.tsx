@@ -15,6 +15,7 @@ import {
   persistReadingFontBootstrap,
 } from "../../lib/useAccent";
 import { useConfig, type Config } from "../../lib/useConfig";
+import { getVaultAbout, type VaultAbout } from "../../lib/vaultAboutApi";
 import { AboutSection } from "./AboutSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { DailyNotesSection } from "./DailyNotesSection";
@@ -99,6 +100,24 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
       bootBaselineRef.current = config;
     }
   }, [config]);
+
+  // NavColumn's footer caption (UI-SPEC "{vault} · v{app version}") needs
+  // to be visible from any pane, not just About — reuse the same typed
+  // GET /vault/about call AboutSection makes (no new endpoint, no second
+  // useConfig instance) and fire it once per dialog open.
+  const [vaultAbout, setVaultAbout] = useState<VaultAbout | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    getVaultAbout().then((res) => {
+      if (!cancelled && res.data) {
+        setVaultAbout(res.data);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const showBindBadge =
     bootBaselineRef.current !== null &&
@@ -227,6 +246,8 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
             activeSection={activeSection}
             onSelect={setActiveSection}
             serverRestartPending={showBindBadge}
+            vaultName={vaultAbout?.vaultName}
+            appVersion={vaultAbout?.appVersion}
           />
 
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
