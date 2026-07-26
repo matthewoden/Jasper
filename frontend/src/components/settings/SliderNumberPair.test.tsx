@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { SliderNumberPair } from "./SliderNumberPair";
 
@@ -147,6 +147,25 @@ describe("SliderNumberPair", () => {
     renderPair();
     expect(screen.getAllByRole("slider")).toHaveLength(1);
     expect(screen.getAllByRole("spinbutton")).toHaveLength(1);
+  });
+
+  it("renders the unit slot at a fixed width even when unit is empty", () => {
+    renderPair({ unit: "" });
+    const unitSlot = screen.getByTestId("settings-font-size-unit");
+    expect(unitSlot).toBeInTheDocument();
+    expect(unitSlot).toHaveStyle({ width: "24px" });
+    expect(unitSlot.textContent).toBe("");
+  });
+
+  it("renders the same element-child count in the control row regardless of unit presence", () => {
+    renderPair({ unit: "px" });
+    const rowWithUnit = screen.getByRole("slider", { name: "Font size" }).parentElement;
+    const childCountWithUnit = rowWithUnit?.children.length;
+    cleanup();
+
+    renderPair({ unit: "" });
+    const rowWithoutUnit = screen.getByRole("slider", { name: "Font size" }).parentElement;
+    expect(rowWithoutUnit?.children.length).toBe(childCountWithUnit);
   });
 
   it("resets the CSS var to the prop-derived value when value prop changes (revert-on-failed-save)", () => {

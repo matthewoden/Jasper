@@ -156,7 +156,12 @@ export function SliderNumberPair({
           }}
           style={{ ...inputStyle, width: 72 }}
         />
-        {unit && <span style={{ fontSize: 14, color: "var(--color-muted)" }}>{unit}</span>}
+        <span
+          data-testid={`${id}-unit`}
+          style={{ fontSize: 14, color: "var(--color-muted)", width: 24, flexShrink: 0 }}
+        >
+          {unit}
+        </span>
       </div>
       {displayedError && (
         <span role="alert" style={{ fontSize: 12, color: "var(--color-destructive)" }}>
