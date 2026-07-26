@@ -19,17 +19,20 @@ describe("DEFAULT_CONFIG", () => {
 });
 
 describe("SECTIONS", () => {
-  it("has exactly five entries, with templates absent this phase", () => {
-    expect(SECTIONS).toHaveLength(5);
+  it("has exactly four entries, with templates and server absent this phase", () => {
+    expect(SECTIONS).toHaveLength(4);
     expect(SECTIONS.some((s) => s.id === "templates")).toBe(false);
+    expect(SECTIONS.some((s) => s.id === "server")).toBe(false);
   });
 
   it("gives About no Reset button", () => {
     expect(SECTIONS.find((s) => s.id === "about")?.hasReset).toBe(false);
   });
 
-  it("types SectionId to accept the hidden sixth section", () => {
-    const hiddenSection: SectionId = "templates";
-    expect(hiddenSection).toBe("templates");
+  it("types SectionId to accept both hidden ids (templates, server)", () => {
+    const hiddenTemplates: SectionId = "templates";
+    const hiddenServer: SectionId = "server";
+    expect(hiddenTemplates).toBe("templates");
+    expect(hiddenServer).toBe("server");
   });
 });

@@ -9,7 +9,6 @@ function renderNav(overrides: Partial<React.ComponentProps<typeof NavColumn>> = 
     <NavColumn
       activeSection="appearance"
       onSelect={onSelect}
-      serverRestartPending={false}
       vaultName="my-vault"
       appVersion="1.4.0"
       {...overrides}
@@ -19,14 +18,19 @@ function renderNav(overrides: Partial<React.ComponentProps<typeof NavColumn>> = 
 }
 
 describe("NavColumn", () => {
-  it("renders exactly five nav rows", () => {
+  it("renders exactly four nav rows", () => {
     renderNav();
-    expect(screen.getAllByRole("button")).toHaveLength(5);
+    expect(screen.getAllByRole("button")).toHaveLength(4);
   });
 
   it("does not render a Templates row", () => {
     renderNav();
     expect(screen.queryByRole("button", { name: /Templates/i })).toBeNull();
+  });
+
+  it("does not render a Server row", () => {
+    renderNav();
+    expect(screen.queryByRole("button", { name: /Server/i })).toBeNull();
   });
 
   it("calls onSelect with the section id when a row is clicked", () => {
@@ -43,25 +47,8 @@ describe("NavColumn", () => {
     expect(appearanceButton).not.toHaveAttribute("aria-current");
   });
 
-  it("hides the restart marker when serverRestartPending is false", () => {
-    renderNav({ serverRestartPending: false });
-    expect(screen.queryByLabelText("Restart required")).toBeNull();
-  });
-
-  it("shows the restart marker on the Server row when serverRestartPending is true", () => {
-    renderNav({ activeSection: "server", serverRestartPending: true });
-    const marker = screen.getByLabelText("Restart required");
-    expect(marker).toBeInTheDocument();
-    const serverButton = screen.getByRole("button", { name: /Server/ });
-    expect(serverButton).toContainElement(marker);
-    // Renders even when Server is BOTH active and pending — independent dots.
-    expect(serverButton).toHaveAttribute("aria-current", "page");
-  });
-
   it("renders a 216px-wide column", () => {
-    const { container } = render(
-      <NavColumn activeSection="appearance" onSelect={vi.fn()} serverRestartPending={false} />,
-    );
+    const { container } = render(<NavColumn activeSection="appearance" onSelect={vi.fn()} />);
     expect(container.firstChild).toHaveStyle({ width: "216px" });
   });
 });

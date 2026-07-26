@@ -126,12 +126,12 @@ beforeEach(() => {
 });
 
 describe("<SettingsDialogShell />", () => {
-  it("opens on Appearance, and reopening after switching to Server lands back on Appearance", async () => {
+  it("opens on Appearance, and reopening after switching to Daily notes lands back on Appearance", async () => {
     render(<Harness />);
     await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /Server/ }));
-    await waitFor(() => expect(screen.getByLabelText("Bind address")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /Daily notes/ }));
+    await waitFor(() => expect(screen.getByLabelText("Daily notes folder")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -156,9 +156,6 @@ describe("<SettingsDialogShell />", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Daily notes/ }));
     await waitFor(() => expect(screen.getByLabelText("Daily notes folder")).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole("button", { name: /Server/ }));
-    await waitFor(() => expect(screen.getByLabelText("Bind address")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /About/ }));
     await waitFor(() => expect(screen.getByText("Vault name")).toBeInTheDocument());
@@ -195,24 +192,14 @@ describe("<SettingsDialogShell />", () => {
     expect(saveButtons).toHaveLength(0);
   });
 
-  it("no restart marker/badge shown on first open, before any field changes (ported from SET2-03)", async () => {
-    renderShell();
-    await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
-    expect(screen.queryByLabelText("Restart required")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: /Server/ }));
-    await waitFor(() => expect(screen.getByLabelText("Bind address")).toBeInTheDocument());
-    expect(screen.queryByLabelText("Requires reload to apply")).toBeNull();
-  });
-
   it("the Dialog.Content inline width/height stay 920/628 across a section switch", async () => {
     renderShell();
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
     const dialogEl = screen.getByRole("dialog");
     expect(dialogEl).toHaveStyle({ width: "920px", height: "628px" });
 
-    fireEvent.click(screen.getByRole("button", { name: /Server/ }));
-    await waitFor(() => expect(screen.getByLabelText("Bind address")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /Daily notes/ }));
+    await waitFor(() => expect(screen.getByLabelText("Daily notes folder")).toBeInTheDocument());
     expect(dialogEl).toHaveStyle({ width: "920px", height: "628px" });
   });
 
@@ -234,10 +221,10 @@ describe("<SettingsDialogShell />", () => {
     renderShell();
     await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /Server/ }));
-    const bindInput = await screen.findByLabelText("Bind address");
-    fireEvent.change(bindInput, { target: { value: "0.0.0.0" } });
-    fireEvent.keyDown(bindInput, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: /Daily notes/ }));
+    const folderInput = await screen.findByLabelText("Daily notes folder");
+    fireEvent.change(folderInput, { target: { value: "journal" } });
+    fireEvent.keyDown(folderInput, { key: "Enter" });
 
     await waitFor(() => {
       expect(screen.getAllByRole("alert")).toHaveLength(1);
@@ -246,28 +233,6 @@ describe("<SettingsDialogShell />", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-  });
-
-  it("the Server nav restart marker renders while the ACTIVE section is Appearance", async () => {
-    mockClient.PUT.mockResolvedValueOnce({
-      data: { ...mockConfig, server: { ...mockConfig.server, bind: "0.0.0.0" } },
-      response: { status: 200 },
-    });
-
-    renderShell();
-    await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole("button", { name: /Server/ }));
-    const bindInput = await screen.findByLabelText("Bind address");
-    fireEvent.change(bindInput, { target: { value: "0.0.0.0" } });
-    fireEvent.keyDown(bindInput, { key: "Enter" });
-    await waitFor(() => expect(mockClient.PUT).toHaveBeenCalled());
-
-    fireEvent.click(screen.getByRole("button", { name: /Appearance/ }));
-    await waitFor(() => {
-      const marker = screen.getByLabelText("Restart required");
-      expect(marker).toBeInTheDocument();
-    });
   });
 
   describe("per-section Reset", () => {
@@ -327,23 +292,6 @@ describe("<SettingsDialogShell />", () => {
           "1.45",
         );
       });
-    });
-
-    it("Server: reset changes only bind, leaving port/dataDir/mcp byte-identical", async () => {
-      renderShell();
-      fireEvent.click(screen.getByRole("button", { name: /Server/ }));
-      await screen.findByLabelText("Bind address");
-
-      fireEvent.click(screen.getByRole("button", { name: "Reset" }));
-      const dialog = await screen.findByRole("alertdialog");
-      fireEvent.click(within(dialog).getByRole("button", { name: "Reset" }));
-
-      await waitFor(() => expect(mockClient.PUT).toHaveBeenCalledTimes(1));
-      const saved = mockClient.PUT.mock.calls[0][1].body as Config;
-      expect(saved.server?.bind).toBe("127.0.0.1"); // DEFAULT_CONFIG.server.bind
-      expect(saved.server?.port).toBe(mockConfig.server.port);
-      expect(saved.server?.dataDir).toBe(mockConfig.server.dataDir);
-      expect(saved.mcp).toEqual(mockConfig.mcp);
     });
 
     it("a failing reset renders the save-error banner", async () => {

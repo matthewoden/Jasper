@@ -92,7 +92,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     }
   });
 
-  test("nav: five sections, no Templates, fixed geometry across a switch, reopen lands on Appearance (SET3-01, D-20)", async ({
+  test("nav: four sections, no Templates or Server, fixed geometry across a switch, reopen lands on Appearance (SET3-01, D-20)", async ({
     page,
   }) => {
     jasper = await spawnJasper();
@@ -105,10 +105,11 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     await expect(dialog).toBeVisible({ timeout: 10_000 });
 
     const navButtons = dialog.locator("nav button");
-    await expect(navButtons).toHaveCount(5);
+    await expect(navButtons).toHaveCount(4);
     const labels = (await navButtons.allTextContents()).map((l) => l.trim());
-    expect(labels).toEqual(["Appearance", "Editor", "Daily notes", "Server", "About"]);
+    expect(labels).toEqual(["Appearance", "Editor", "Daily notes", "About"]);
     expect(labels.some((l) => /templates/i.test(l))).toBe(false);
+    expect(labels.some((l) => /server/i.test(l))).toBe(false);
 
     // D-20: Settings always opens on Appearance.
     await expect(
@@ -118,8 +119,8 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     const boxBefore = await dialog.boundingBox();
     if (!boxBefore) throw new Error("Settings dialog has no bounding box");
 
-    await dialog.getByRole("button", { name: "Server" }).click();
-    await expect(dialog.getByRole("textbox", { name: "Bind address" })).toBeVisible();
+    await dialog.getByRole("button", { name: "Daily notes" }).click();
+    await expect(dialog.getByRole("textbox", { name: "Daily notes folder" })).toBeVisible();
 
     const boxAfter = await dialog.boundingBox();
     if (!boxAfter) throw new Error("Settings dialog has no bounding box after switching panes");
@@ -148,13 +149,16 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
 
-    // Reset scoping: change the Server bind address FIRST, then prove the
-    // Editor Reset below never touches it.
-    await dialog.getByRole("button", { name: "Server" }).click();
-    const bindInput = dialog.getByRole("textbox", { name: "Bind address" });
-    await bindInput.fill("0.0.0.0");
-    await bindInput.blur();
-    await expect(bindInput).toHaveValue("0.0.0.0");
+    // Reset scoping: change the Daily notes folder FIRST, then prove the
+    // Editor Reset below never touches it. Daily notes is a stronger scoping
+    // vehicle than the retired Server bind field it replaces (ADR-002,
+    // 2026-07-26) — Daily notes IS a section with its own Reset, so an
+    // over-broad Editor Reset has a live target it could wrongly clobber.
+    await dialog.getByRole("button", { name: "Daily notes" }).click();
+    const folderInput = dialog.getByRole("textbox", { name: "Daily notes folder" });
+    await folderInput.fill("journal");
+    await folderInput.blur();
+    await expect(folderInput).toHaveValue("journal");
 
     await dialog.getByRole("button", { name: "Editor", exact: true }).click();
     const autosaveInput = dialog.getByRole("spinbutton", { name: "Autosave interval" });
@@ -189,10 +193,13 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     const cfg = await cfgResp.json();
     expect(cfg.editor.autosaveMs).toBe(defaults.editor.autosaveMs);
 
-    // Reset scoping: the Server bind address set before the Editor Reset
-    // must survive untouched.
-    await dialog.getByRole("button", { name: "Server" }).click();
-    await expect(bindInput).toHaveValue("0.0.0.0");
+    // Reset scoping: the Daily notes folder set before the Editor Reset
+    // must survive untouched — both in the UI and, more strongly, in the
+    // already-fetched server-side config (server-side proof, matching how
+    // cfg.editor.autosaveMs is checked above).
+    await dialog.getByRole("button", { name: "Daily notes" }).click();
+    await expect(folderInput).toHaveValue("journal");
+    expect(cfg.dailyNotes.folder).toBe("journal");
   });
 
   test("about: all six vault facts render with real seeded values; copy matches the displayed path (SET3-04)", async ({
