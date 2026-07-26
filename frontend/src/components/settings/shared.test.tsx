@@ -4,7 +4,7 @@
  */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { ControlRow } from "./shared";
+import { ControlRow, controlDescriptionId } from "./shared";
 
 describe("ControlRow", () => {
   it("wires the label's for attribute to the child control's id", () => {
@@ -50,6 +50,41 @@ describe("ControlRow", () => {
     const label = screen.getByText("Font size");
     expect(label.tagName).toBe("LABEL");
     expect(label).toHaveAttribute("for", "test-font-size");
+  });
+
+  it("gives the description an id a control can point aria-describedby at (32-REVIEW WR-02)", () => {
+    render(
+      <ControlRow
+        label="Font size"
+        htmlFor="test-font-size"
+        description="Body text size in the editor · 8–32px"
+      >
+        <input
+          id="test-font-size"
+          aria-label="Font size"
+          aria-describedby={controlDescriptionId("test-font-size")}
+        />
+      </ControlRow>,
+    );
+
+    const input = screen.getByLabelText("Font size");
+    const descId = input.getAttribute("aria-describedby");
+    expect(descId).toBe("test-font-size-desc");
+    expect(document.getElementById(descId!)).toHaveTextContent(
+      "Body text size in the editor · 8–32px",
+    );
+  });
+
+  it("omits the description id when there is no htmlFor to derive it from", () => {
+    render(
+      <ControlRow label="Accent color" description="Used for links, tags, highlights and selection">
+        <div />
+      </ControlRow>,
+    );
+
+    expect(
+      screen.getByText("Used for links, tags, highlights and selection"),
+    ).not.toHaveAttribute("id");
   });
 
   it("renders the primary label as a non-<label> element when htmlFor is omitted", () => {

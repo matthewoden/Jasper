@@ -130,6 +130,22 @@ describe("AppearanceSection", () => {
     ).toBeInTheDocument();
   });
 
+  it("points both halves of each slider pair at the caption carrying the validator bounds (32-REVIEW WR-02)", () => {
+    renderSection(makeConfig());
+
+    for (const [name, caption] of [
+      ["Font size", "Body text size in the editor · 8–32px"],
+      ["Line height", "Vertical rhythm of paragraphs and lists · 1.0–3.0"],
+    ] as const) {
+      for (const role of ["slider", "spinbutton"] as const) {
+        const control = screen.getByRole(role, { name });
+        const descId = control.getAttribute("aria-describedby");
+        expect(descId).toBeTruthy();
+        expect(document.getElementById(descId!)).toHaveTextContent(caption);
+      }
+    }
+  });
+
   it("drag events on the font-size slider update --editor-font-size without calling saveConfig", () => {
     const config = makeConfig();
     const { saveConfig } = renderSection(config);

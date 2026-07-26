@@ -9,7 +9,7 @@
  * single-write pane Reset silently partial.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Eyebrow, ControlRow } from "./shared";
+import { Eyebrow, ControlRow, controlDescriptionId } from "./shared";
 import { SliderNumberPair } from "./SliderNumberPair";
 import { TypePreviewPanel } from "./TypePreviewPanel";
 import {
@@ -207,6 +207,7 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
           step={1}
           unit="px"
           cssVar="--editor-font-size"
+          describedBy={controlDescriptionId("settings-font-size")}
           formatCssValue={formatPx}
           onCommit={(v) => {
             void commitFontSize(v);
@@ -230,6 +231,7 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
           step={0.05}
           unit=""
           cssVar="--editor-line-height"
+          describedBy={controlDescriptionId("settings-line-height")}
           formatCssValue={formatUnitless}
           onCommit={(v) => {
             void commitLineHeight(v);

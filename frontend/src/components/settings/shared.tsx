@@ -78,6 +78,12 @@ export function Eyebrow({ text }: { text: string }) {
 }
 
 // ─── Control label row ────────────────────────────────────────────────────
+// The id ControlRow gives its description element. Consumers pass this to
+// their control's aria-describedby rather than hardcoding the suffix.
+export function controlDescriptionId(htmlFor: string) {
+  return `${htmlFor}-desc`;
+}
+
 export function ControlRow({
   label,
   htmlFor,
@@ -93,6 +99,12 @@ export function ControlRow({
     fontSize: 14,
     color: "var(--color-fg)",
   };
+
+  // Captions carry the real validator bounds ("8–32px"), so they must be
+  // announced when focus lands on the control, not discovered by tripping
+  // validation. Consumers point their control's aria-describedby at
+  // `${htmlFor}-desc` (see `describedById`).
+  const descId = htmlFor && description ? controlDescriptionId(htmlFor) : undefined;
 
   return (
     <div
@@ -113,6 +125,7 @@ export function ControlRow({
         )}
         {description && (
           <div
+            id={descId}
             style={{
               fontSize: 12,
               color: "var(--color-muted)",

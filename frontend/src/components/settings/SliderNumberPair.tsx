@@ -31,6 +31,9 @@ export interface SliderNumberPairProps {
   formatCssValue: (value: number) => string;
   onCommit: (value: number) => void;
   error?: string | null;
+  /** id of the ControlRow caption stating the real validator bounds; applied
+   *  to BOTH halves so either focus target announces them. */
+  describedBy?: string;
 }
 
 export function SliderNumberPair({
@@ -47,6 +50,7 @@ export function SliderNumberPair({
   formatCssValue,
   onCommit,
   error,
+  describedBy,
 }: SliderNumberPairProps) {
   const [sliderValue, setSliderValue] = useState(value);
   const [numberInput, setNumberInput] = useState(String(value));
@@ -149,6 +153,7 @@ export function SliderNumberPair({
         <input
           type="range"
           aria-label={label}
+          aria-describedby={describedBy}
           min={sliderMin}
           max={sliderMax}
           step={step}
@@ -165,6 +170,7 @@ export function SliderNumberPair({
           max={numberMax}
           step={step}
           aria-label={label}
+          aria-describedby={describedBy}
           value={numberInput}
           onChange={handleNumberChange}
           onBlur={commitNumber}
