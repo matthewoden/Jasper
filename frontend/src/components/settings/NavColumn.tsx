@@ -1,0 +1,143 @@
+/**
+ * NavColumn — the 216px fixed left nav (D-19 locked geometry). Renders
+ * `SECTIONS` (never a hardcoded list — Phase 35 adds Templates by editing
+ * the manifest alone). The Server row carries an independent trailing
+ * warning-dot (D-21) driven off the same `bootBaselineRef` mechanism as the
+ * per-field restart badges, distinct from the leading active-section dot so
+ * both can render simultaneously without overlapping.
+ */
+import { SECTIONS, type SectionId } from "./sections";
+
+export interface NavColumnProps {
+  activeSection: SectionId;
+  onSelect: (id: SectionId) => void;
+  serverRestartPending: boolean;
+  vaultName?: string;
+  appVersion?: string;
+}
+
+export function NavColumn({
+  activeSection,
+  onSelect,
+  serverRestartPending,
+  vaultName,
+  appVersion,
+}: NavColumnProps) {
+  const footerText =
+    vaultName && appVersion
+      ? `${vaultName} · v${appVersion}`
+      : (vaultName ?? (appVersion ? `v${appVersion}` : ""));
+
+  return (
+    <div
+      style={{
+        width: 216,
+        flexShrink: 0,
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--color-surface)",
+        borderRight: "1px solid var(--color-border)",
+        minHeight: 0,
+      }}
+    >
+      <div
+        style={{
+          height: 56,
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          padding: "0 16px",
+          borderBottom: "1px solid var(--color-border)",
+        }}
+      >
+        <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-fg-title)" }}>
+          Settings
+        </span>
+      </div>
+
+      <nav
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          padding: "8px 0",
+        }}
+      >
+        {SECTIONS.map((section) => {
+          const active = section.id === activeSection;
+          const showRestartDot = section.id === "server" && serverRestartPending;
+          return (
+            <button
+              key={section.id}
+              type="button"
+              aria-current={active ? "page" : undefined}
+              onClick={() => onSelect(section.id)}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                padding: "8px 16px",
+                background: active
+                  ? "color-mix(in srgb, var(--color-accent) 14%, transparent)"
+                  : "transparent",
+                border: "none",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 4,
+                    height: 4,
+                    borderRadius: "50%",
+                    flexShrink: 0,
+                    background: active ? "var(--color-accent)" : "transparent",
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 14,
+                    fontWeight: active ? 600 : 400,
+                    color: active ? "var(--color-fg-title)" : "var(--color-muted)",
+                  }}
+                >
+                  {section.label}
+                </span>
+              </span>
+              {showRestartDot && (
+                <span
+                  aria-label="Restart required"
+                  style={{
+                    width: 4,
+                    height: 4,
+                    borderRadius: "50%",
+                    flexShrink: 0,
+                    background: "var(--color-warning)",
+                  }}
+                />
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
+      {footerText && (
+        <div
+          style={{
+            flexShrink: 0,
+            padding: "8px 16px 16px",
+            fontSize: 12,
+            fontWeight: 400,
+            color: "var(--color-muted)",
+          }}
+        >
+          {footerText}
+        </div>
+      )}
+    </div>
+  );
+}
