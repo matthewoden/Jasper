@@ -10,7 +10,7 @@
 import { useState } from "react";
 import { Settings } from "lucide-react";
 import type React from "react";
-import { SettingsDialog } from "./SettingsDialog";
+import { SettingsDialog } from "./settings";
 import { Tooltip } from "./Tooltip";
 
 const buttonBase: React.CSSProperties = {

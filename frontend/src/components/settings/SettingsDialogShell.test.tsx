@@ -171,6 +171,34 @@ describe("<SettingsDialogShell />", () => {
     expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
   });
 
+  it("does not render a dialog role when open=false (ported from SD-2)", async () => {
+    renderShell({ open: false });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // useConfig's GET still fires even while closed (the shell mounts a
+    // single instance regardless of `open`) — let it settle so the
+    // subsequent state update doesn't leak into the next test's act scope.
+    await waitFor(() => expect(mockClient.GET).toHaveBeenCalled());
+  });
+
+  it("renders no Save button anywhere in the dialog (ported: auto-persist, no Save button)", async () => {
+    renderShell();
+    await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
+    const saveButtons = screen
+      .getAllByRole("button")
+      .filter((b) => b.textContent?.toLowerCase().includes("save"));
+    expect(saveButtons).toHaveLength(0);
+  });
+
+  it("no restart marker/badge shown on first open, before any field changes (ported from SET2-03)", async () => {
+    renderShell();
+    await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
+    expect(screen.queryByLabelText("Restart required")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Server/ }));
+    await waitFor(() => expect(screen.getByLabelText("Bind address")).toBeInTheDocument());
+    expect(screen.queryByLabelText("Requires reload to apply")).toBeNull();
+  });
+
   it("the Dialog.Content inline width/height stay 920/628 across a section switch", async () => {
     renderShell();
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());

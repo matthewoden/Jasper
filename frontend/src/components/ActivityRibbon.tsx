@@ -23,7 +23,7 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { useDailyNote } from "../lib/useDailyNote";
 import { useVaultPicker } from "../lib/useVaultPicker";
 import { mod, shift } from "../lib/shortcutsRegistry";
-import { SettingsDialog } from "./SettingsDialog";
+import { SettingsDialog } from "./settings";
 import { Tooltip } from "./Tooltip";
 
 const ribbonStyle: CSSProperties = {
