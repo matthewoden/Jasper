@@ -252,6 +252,31 @@ describe("<SettingsDialogShell />", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 
+  it("clears a stale save-error banner on close so a still-mounted reopen starts clean (32-REVIEW IN-03)", async () => {
+    mockClient.PUT.mockResolvedValueOnce({
+      error: { code: "invalid_request", message: "offline" },
+      response: { status: 400 },
+    });
+
+    // Harness keeps the shell mounted across close, matching SettingsMenu's
+    // entry point (ActivityRibbon unmounts instead).
+    render(<Harness />);
+    await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /Daily notes/ }));
+    const folderInput = await screen.findByLabelText("Daily notes folder");
+    fireEvent.change(folderInput, { target: { value: "journal" } });
+    fireEvent.keyDown(folderInput, { key: "Enter" });
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("offline"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "test-reopen" }));
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   describe("per-section Reset", () => {
     it("Editor: Cancel calls saveConfig 0 times", async () => {
       renderShell();

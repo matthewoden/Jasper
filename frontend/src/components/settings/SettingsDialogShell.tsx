@@ -116,10 +116,16 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
   // Settings always opens on Appearance (D-20) — no persisted or
   // session-remembered active section. Resetting on close (rather than on
   // open) means a mid-session reopen never flashes the previous section.
+  //
+  // saveError is cleared here too: a caller that keeps the shell mounted
+  // across close (SettingsMenu) would otherwise reopen onto a stale error
+  // banner from the previous session. ActivityRibbon unmounts the dialog
+  // instead, so both entry points now behave identically (32-REVIEW IN-03).
   const handleOpenChange = useCallback(
     (next: boolean) => {
       if (!next) {
         setActiveSection("appearance");
+        setSaveError(null);
       }
       onOpenChange(next);
     },
