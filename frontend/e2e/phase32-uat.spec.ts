@@ -381,6 +381,18 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
       dialog.getByText("Vertical rhythm of paragraphs and lists · 1.0–3.0", { exact: true }),
     ).toBeVisible();
 
+    // Direct guard on the cause, not just the symptom: the slider-parity
+    // assertion below only catches a widened label column indirectly. G-02
+    // fixed the column at 160px, so assert that literally (32-REVIEW IN-01).
+    const labelColumn = dialog
+      .getByText("Body text size in the editor · 8–32px", { exact: true })
+      .locator("..");
+    await expect(async () => {
+      const box = await labelColumn.boundingBox();
+      if (!box) throw new Error("Font size label column has no bounding box");
+      expect(box.width).toBeCloseTo(160, 0);
+    }).toPass({ timeout: 3_000 });
+
     const fontSizeSlider = dialog.getByRole("slider", { name: "Font size" });
     const lineHeightSlider = dialog.getByRole("slider", { name: "Line height" });
     await expect(fontSizeSlider).toBeVisible();

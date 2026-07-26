@@ -87,6 +87,36 @@ describe("ControlRow", () => {
     ).not.toHaveAttribute("id");
   });
 
+  // G-02: the column is `width: 160`, NOT `minWidth: 160`. A caption long
+  // enough to grow the column would desynchronise the slider tracks beside
+  // it — the exact regression 32-12 closed. Asserted for both the captioned
+  // and uncaptioned row so a future long label in Editor / Daily notes is
+  // covered too (32-REVIEW IN-01).
+  it("hard-caps the label column at 160px whether or not a description is present", () => {
+    const { unmount } = render(
+      <ControlRow
+        label="Font size"
+        htmlFor="test-font-size"
+        description="Body text size in the editor · 8–32px"
+      >
+        <input id="test-font-size" aria-label="Font size" />
+      </ControlRow>,
+    );
+    const captionedColumn = screen.getByText("Font size").parentElement!;
+    expect(captionedColumn).toHaveStyle({ width: "160px", flexShrink: "0" });
+    expect(captionedColumn.style.minWidth).toBe("");
+    unmount();
+
+    render(
+      <ControlRow label="Autosave interval" htmlFor="test-autosave">
+        <input id="test-autosave" aria-label="Autosave interval" />
+      </ControlRow>,
+    );
+    const plainColumn = screen.getByText("Autosave interval").parentElement!;
+    expect(plainColumn).toHaveStyle({ width: "160px", flexShrink: "0" });
+    expect(plainColumn.style.minWidth).toBe("");
+  });
+
   it("renders the primary label as a non-<label> element when htmlFor is omitted", () => {
     render(
       <ControlRow label="Accent color">
