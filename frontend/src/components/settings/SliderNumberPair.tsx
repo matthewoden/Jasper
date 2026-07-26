@@ -52,6 +52,9 @@ export function SliderNumberPair({
   const [numberInput, setNumberInput] = useState(String(value));
   const [localError, setLocalError] = useState<string | null>(null);
   const keyCommitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingCommitRef = useRef<number | null>(null);
+  const onCommitRef = useRef(onCommit);
+  onCommitRef.current = onCommit;
 
   // A failed save reverts `value`; roll the live CSS var and both inputs back
   // in step so the preview never lags behind the persisted config.
@@ -62,11 +65,16 @@ export function SliderNumberPair({
     document.documentElement.style.setProperty(cssVar, formatCssValue(value));
   }, [value, cssVar, formatCssValue]);
 
-  // Clear any pending debounced keyboard commit on unmount so it never
-  // fires against an unmounted component.
+  // Flush (not drop) a pending debounced keyboard commit on unmount:
+  // handleRangeChange already applied the value to document.documentElement
+  // as a whole-app restyle, so dropping the write leaves the app rendering a
+  // value the persisted config does not have until the next reload.
   useEffect(() => {
     return () => {
       if (keyCommitTimer.current) clearTimeout(keyCommitTimer.current);
+      if (pendingCommitRef.current !== null) {
+        onCommitRef.current(pendingCommitRef.current);
+      }
     };
   }, []);
 
@@ -88,6 +96,7 @@ export function SliderNumberPair({
     if (keyCommitTimer.current) {
       clearTimeout(keyCommitTimer.current);
       keyCommitTimer.current = null;
+      pendingCommitRef.current = null;
     }
     commitSlider();
   };
@@ -97,8 +106,10 @@ export function SliderNumberPair({
   // coalesce into the single trailing commit once input settles.
   const handleKeyUpCommit = () => {
     if (keyCommitTimer.current) clearTimeout(keyCommitTimer.current);
+    pendingCommitRef.current = sliderValue;
     keyCommitTimer.current = setTimeout(() => {
       keyCommitTimer.current = null;
+      pendingCommitRef.current = null;
       commitSlider();
     }, KEY_COMMIT_DEBOUNCE_MS);
   };
