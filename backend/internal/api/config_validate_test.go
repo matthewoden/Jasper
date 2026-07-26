@@ -223,7 +223,7 @@ func TestConfigStrictBody_RejectsLineWidthOutOfRange(t *testing.T) {
 // they are named types or anonymous inline structs.
 func collectJSONPaths(t reflect.Type, prefix string) map[string]bool {
 	paths := map[string]bool{}
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -244,7 +244,7 @@ func collectJSONPaths(t reflect.Type, prefix string) map[string]bool {
 			fieldPath = prefix + "." + name
 		}
 		ft := f.Type
-		for ft.Kind() == reflect.Ptr {
+		for ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 		if ft.Kind() == reflect.Struct {
