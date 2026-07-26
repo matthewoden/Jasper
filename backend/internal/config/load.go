@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,13 +34,205 @@ func configPath(dataDir string) string {
 	return filepath.Join(dataDir, ".jasper", "config.json")
 }
 
-// Load reads the persisted config. Behavior on edge cases:
+// decodeField unmarshals raw[jsonKey], if present, into *target. On
+// unmarshal failure (wrong JSON type) target is left at whatever value the
+// caller seeded it with — Load always starts from DefaultConfig(), so a bad
+// field simply keeps its default while every sibling field keeps decoding
+// independently.
+//
+// This is the per-field leniency primitive at the heart of SET3-06/D-13/
+// D-14: callers must NEVER decode a whole struct (Config or any nested
+// block) via a single json.Unmarshal/Decoder.Decode call — that fails the
+// ENTIRE struct the instant one field has the wrong JSON type, which is
+// exactly the data-loss bug this package exists to close. Decoding one
+// scalar field at a time via json.RawMessage is what makes the fallback
+// local to that one field.
+func decodeField[T any](raw map[string]json.RawMessage, jsonKey, fieldPath, path string, target *T, log *slog.Logger) {
+	v, ok := raw[jsonKey]
+	if !ok {
+		return
+	}
+	if err := json.Unmarshal(v, target); err != nil {
+		log.Warn("config: field fell back to default",
+			"field", fieldPath, "reason", "type mismatch", "path", path, "err", err)
+	}
+}
+
+// decodeSection unmarshals raw[jsonKey] into its own map[string]json.RawMessage
+// for a subsequent per-field pass, or returns nil if the key is absent or is
+// not itself a JSON object. A malformed section degrades to nil — every
+// field inside it keeps its Defaults() seed — rather than failing the whole
+// document; this is the D-13 guarantee applied one level deeper, matching
+// the nested-object recursion the interfaces contract requires for
+// dailyNotes/editor/server/mcp/templates.
+func decodeSection(raw map[string]json.RawMessage, jsonKey, path string, log *slog.Logger) map[string]json.RawMessage {
+	v, ok := raw[jsonKey]
+	if !ok {
+		return nil
+	}
+	var nested map[string]json.RawMessage
+	if err := json.Unmarshal(v, &nested); err != nil {
+		log.Warn("config: section fell back to defaults",
+			"field", jsonKey, "reason", "type mismatch", "path", path, "err", err)
+		return nil
+	}
+	return nested
+}
+
+// warnOutOfRange logs the D-15 fallback warning for a well-typed value that
+// fails its range/enum check. D-14 forbids clamping to the nearest bound —
+// the caller must revert the field to its own Defaults() value, never a
+// value the user did not type.
+func warnOutOfRange(log *slog.Logger, fieldPath, path string) {
+	log.Warn("config: field fell back to default",
+		"field", fieldPath, "reason", "out of range", "path", path)
+}
+
+// decodeDailyNotes decodes and range-validates the dailyNotes section.
+// Bounds: folder 1-64 chars, template max 1024 chars.
+func decodeDailyNotes(raw map[string]json.RawMessage, path string, log *slog.Logger, cfg *DailyNotes) {
+	nested := decodeSection(raw, "dailyNotes", path, log)
+	if nested == nil {
+		return
+	}
+	decodeField(nested, "folder", "dailyNotes.folder", path, &cfg.Folder, log)
+	decodeField(nested, "template", "dailyNotes.template", path, &cfg.Template, log)
+
+	if len(cfg.Folder) < 1 || len(cfg.Folder) > 64 {
+		warnOutOfRange(log, "dailyNotes.folder", path)
+		cfg.Folder = Defaults().DailyNotes.Folder
+	}
+	if len(cfg.Template) > 1024 {
+		warnOutOfRange(log, "dailyNotes.template", path)
+		cfg.Template = Defaults().DailyNotes.Template
+	}
+}
+
+// decodeEditor decodes and range-validates the editor section. Bounds:
+// fontSize 8-32, lineHeight 1.0-3.0, autosaveMs 250-10000, lineWidth
+// 400-2000. The boolean fields have no range to enforce.
+func decodeEditor(raw map[string]json.RawMessage, path string, log *slog.Logger, cfg *Editor) {
+	nested := decodeSection(raw, "editor", path, log)
+	if nested == nil {
+		return
+	}
+	decodeField(nested, "fontSize", "editor.fontSize", path, &cfg.FontSize, log)
+	decodeField(nested, "lineHeight", "editor.lineHeight", path, &cfg.LineHeight, log)
+	decodeField(nested, "autosaveMs", "editor.autosaveMs", path, &cfg.AutosaveMs, log)
+	decodeField(nested, "showProperties", "editor.showProperties", path, &cfg.ShowProperties, log)
+	decodeField(nested, "autoPair", "editor.autoPair", path, &cfg.AutoPair, log)
+	decodeField(nested, "foldGutter", "editor.foldGutter", path, &cfg.FoldGutter, log)
+	decodeField(nested, "lineNumbers", "editor.lineNumbers", path, &cfg.LineNumbers, log)
+	decodeField(nested, "lineWidth", "editor.lineWidth", path, &cfg.LineWidth, log)
+
+	def := Defaults().Editor
+	if cfg.FontSize < 8 || cfg.FontSize > 32 {
+		warnOutOfRange(log, "editor.fontSize", path)
+		cfg.FontSize = def.FontSize
+	}
+	if cfg.LineHeight < 1.0 || cfg.LineHeight > 3.0 {
+		warnOutOfRange(log, "editor.lineHeight", path)
+		cfg.LineHeight = def.LineHeight
+	}
+	if cfg.AutosaveMs < 250 || cfg.AutosaveMs > 10000 {
+		warnOutOfRange(log, "editor.autosaveMs", path)
+		cfg.AutosaveMs = def.AutosaveMs
+	}
+	if cfg.LineWidth < 400 || cfg.LineWidth > 2000 {
+		warnOutOfRange(log, "editor.lineWidth", path)
+		cfg.LineWidth = def.LineWidth
+	}
+}
+
+// decodeServerConfig decodes and range-validates the server section. Port
+// 0/absent silently defaults to 6683 (the pre-existing back-compat
+// contract, not a leniency fallback); a present-but-out-of-range port
+// reverts to 6683 with a warn. Bind "" silently defaults to "127.0.0.1".
+func decodeServerConfig(raw map[string]json.RawMessage, path string, log *slog.Logger, cfg *ServerConfig) {
+	nested := decodeSection(raw, "server", path, log)
+	if nested == nil {
+		return
+	}
+	decodeField(nested, "port", "server.port", path, &cfg.Port, log)
+	decodeField(nested, "dataDir", "server.dataDir", path, &cfg.DataDir, log)
+	decodeField(nested, "bind", "server.bind", path, &cfg.Bind, log)
+
+	switch {
+	case cfg.Port == 0:
+		cfg.Port = 6683
+	case cfg.Port < 1 || cfg.Port > 65535:
+		warnOutOfRange(log, "server.port", path)
+		cfg.Port = 6683
+	}
+	if cfg.Bind == "" {
+		cfg.Bind = "127.0.0.1"
+	}
+}
+
+// decodeMCPConfig decodes and range-validates the mcp section. Port
+// 0/absent silently defaults to 6684; a present-but-out-of-range port
+// reverts to 6684 with a warn. Bind "" silently defaults to "127.0.0.1".
+// A legacy on-disk "enabled" key (MCPConfig.Enabled was deleted in 32-01)
+// is simply an unrecognized key within this section's raw map — it is
+// never referenced below, so it is silently dropped, not fallback-warned.
+func decodeMCPConfig(raw map[string]json.RawMessage, path string, log *slog.Logger, cfg *MCPConfig) {
+	nested := decodeSection(raw, "mcp", path, log)
+	if nested == nil {
+		return
+	}
+	decodeField(nested, "port", "mcp.port", path, &cfg.Port, log)
+	decodeField(nested, "bind", "mcp.bind", path, &cfg.Bind, log)
+	decodeField(nested, "auditLog", "mcp.auditLog", path, &cfg.AuditLog, log)
+
+	switch {
+	case cfg.Port == 0:
+		cfg.Port = 6684
+	case cfg.Port < 1 || cfg.Port > 65535:
+		warnOutOfRange(log, "mcp.port", path)
+		cfg.Port = 6684
+	}
+	if cfg.Bind == "" {
+		cfg.Bind = "127.0.0.1"
+	}
+}
+
+// decodeTemplates decodes and range-validates the templates section.
+// Bounds: folder max 64 chars.
+func decodeTemplates(raw map[string]json.RawMessage, path string, log *slog.Logger, cfg *Templates) {
+	nested := decodeSection(raw, "templates", path, log)
+	if nested == nil {
+		return
+	}
+	decodeField(nested, "folder", "templates.folder", path, &cfg.Folder, log)
+
+	if len(cfg.Folder) > 64 {
+		warnOutOfRange(log, "templates.folder", path)
+		cfg.Folder = Defaults().Templates.Folder
+	}
+}
+
+// Load reads the persisted config with per-field leniency (SET3-06/D-13/
+// D-14). Behavior on edge cases:
 //   - File missing: returns DefaultConfig() AND writes it to disk so
 //     subsequent reads succeed with the canonical shape.
-//   - File present but malformed (invalid JSON OR unknown fields — strict
-//     decoding): logs a WARN and returns DefaultConfig() WITHOUT overwriting
-//     the bad file (preserves the user's state for forensics).
-//   - File present and valid: returns the parsed Config.
+//   - File present but genuinely unparseable JSON: logs a WARN and returns
+//     DefaultConfig() WITHOUT overwriting the bad file (preserves the
+//     user's state for forensics).
+//   - File present and valid JSON but with an unrecognized key (top-level
+//     or nested): the key is silently dropped; every recognized field
+//     keeps its on-disk value.
+//   - File present with a known field of the wrong JSON type, or a
+//     well-typed value outside its documented range/enum: that field
+//     alone reverts to its own Defaults() value (never clamped to a
+//     bound — D-14) and a slog.Warn names the field and the reason; every
+//     sibling field, including siblings in the same nested section, keeps
+//     its on-disk value (D-13).
+//
+// This read path is intentionally lenient; the write path
+// (ConfigStrictBodyMiddleware / strictConfigValidator, PUT /config) stays
+// strict (D-16) — a malformed or unknown field is rejected before it ever
+// reaches disk, so leniency here only ever has to absorb a hand-edited or
+// cross-version file, never a fresh write from the current binary.
 //
 // Returns an error ONLY when the disk is unreadable for non-not-exist
 // reasons (permission denied, I/O error). The caller logs and continues;
@@ -63,43 +254,53 @@ func Load(dataDir string, log *slog.Logger) (Config, error) {
 		return Config{}, fmt.Errorf("config read: %w", err)
 	}
 
-	cfg := DefaultConfig()
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&cfg); err != nil {
-		log.Warn("config: malformed; falling back to defaults",
+	// Two-pass decode: unmarshal into a raw key->bytes map first. There is
+	// no strict-decoder option enabled here — that would only solve
+	// unknown-key leniency; see decodeField's doc comment for why a
+	// single-shot Decode/Unmarshal against the full Config struct cannot
+	// satisfy D-13 regardless of any decoder option.
+	var topRaw map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &topRaw); err != nil {
+		// Genuinely unparseable JSON (not merely "wrong shape") — the
+		// whole-document fallback still applies here; the file is left
+		// untouched on disk for forensics.
+		log.Warn("config: malformed JSON; falling back to defaults",
 			"path", path, "err", err)
 		return withEnvMCPPort(DefaultConfig()), nil
 	}
 
-	if cfg.Server.Port == 0 {
-		cfg.Server.Port = 6683
-	}
-	if cfg.Server.Bind == "" {
-		cfg.Server.Bind = "127.0.0.1"
-	}
-	if cfg.MCP.Port == 0 {
-		cfg.MCP.Port = 6684
-	}
-	if cfg.MCP.Bind == "" {
-		cfg.MCP.Bind = "127.0.0.1"
+	cfg := DefaultConfig()
+
+	decodeField(topRaw, "appName", "appName", path, &cfg.AppName, log)
+	if len(cfg.AppName) < 1 || len(cfg.AppName) > 64 {
+		warnOutOfRange(log, "appName", path)
+		cfg.AppName = Defaults().AppName
 	}
 
-	// D-02: runtime is always dark. The "light" value remains in the
-	// OpenAPI enum (wire-compat) but is coerced here so no component
-	// needs to branch on theme.
-	cfg.Theme = "dark"
+	decodeDailyNotes(topRaw, path, log, &cfg.DailyNotes)
+	decodeEditor(topRaw, path, log, &cfg.Editor)
+	decodeServerConfig(topRaw, path, log, &cfg.Server)
+	decodeMCPConfig(topRaw, path, log, &cfg.MCP)
+	decodeTemplates(topRaw, path, log, &cfg.Templates)
 
-	// Normalize accent to one of the valid enum values; unknown → "purple".
-	validAccents := map[string]bool{"purple": true, "sky": true, "green": true, "orange": true}
-	if !validAccents[cfg.Accent] {
+	decodeField(topRaw, "accent", "accent", path, &cfg.Accent, log)
+	switch cfg.Accent {
+	case "purple", "sky", "green", "orange":
+	default:
+		warnOutOfRange(log, "accent", path)
 		cfg.Accent = "purple"
 	}
 
-	// Normalize readingFont to "sans" or "serif"; unknown → "sans".
+	decodeField(topRaw, "readingFont", "readingFont", path, &cfg.ReadingFont, log)
 	if cfg.ReadingFont != "sans" && cfg.ReadingFont != "serif" {
+		warnOutOfRange(log, "readingFont", path)
 		cfg.ReadingFont = "sans"
 	}
+
+	// D-02: runtime is always dark, unconditionally — a pin, not a
+	// leniency fallback, so this is not gated on decode success and never
+	// warns. The "light" value stays in the OpenAPI enum for wire-compat.
+	cfg.Theme = "dark"
 
 	return withEnvMCPPort(cfg), nil
 }

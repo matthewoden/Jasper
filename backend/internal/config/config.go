@@ -5,7 +5,14 @@
 // (temp + fsync + rename + fsync(parent)).
 //
 // No filesystem watcher / hot-reload; restart picks up changes.
-// Strict JSON decoding: unknown fields → malformed fallback.
+//
+// Read/write asymmetry (D-16): Load is lenient — a hand-edited, older-, or
+// newer-binary config.json degrades per-field (unrecognized keys are
+// dropped; a wrong-typed or out-of-range known field reverts to its own
+// default) instead of nuking the whole document. The write path
+// (ConfigStrictBodyMiddleware's strictConfigValidator, PUT /config) stays
+// strict — a malformed or unknown field there is rejected before it ever
+// reaches disk. This asymmetry is intentional and must not be blurred.
 package config
 
 // Config mirrors the DESIGN.md §11 schema.
