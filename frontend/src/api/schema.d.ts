@@ -1019,6 +1019,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vault/about": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get server-assembled vault facts for the Settings About pane (Phase 32 / SET3-04, D-22)
+         * @description Assembles every About-pane fact server-side in one response: vault
+         *     name, note count, folder count, on-disk path, app version, MCP port,
+         *     and MCP write-grant count. Degrades individual fields to their zero
+         *     value (never 500) when a subsystem (index, MCP ACL) is nil, so tests
+         *     and a not-yet-fully-booted server still get a 200.
+         */
+        get: operations["getVaultAbout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/fs/mkdir": {
         parameters: {
             query?: never;
@@ -1956,6 +1980,27 @@ export interface components {
             error: "vault_switch_in_progress";
             /** @description The vault path that was being switched to when the 409 fired. */
             current_target: string;
+        };
+        /**
+         * @description Phase 32 / SET3-04 / D-22. Server-assembled facts for the Settings
+         *     About pane. All seven fields are required — a nil subsystem (index,
+         *     mcpACL) degrades its field to zero rather than omitting it.
+         */
+        VaultAbout: {
+            /** @description filepath.Base of the vault's on-disk data directory. */
+            vaultName: string;
+            /** @description Count of indexed notes (len of the index's note-summary list); 0 when the index is nil. */
+            noteCount: number;
+            /** @description Recursive count of folder nodes in the tree projection, vault root excluded; 0 when the index is nil or not an *index.Indexer. */
+            folderCount: number;
+            /** @description Absolute on-disk path of the vault's data directory. */
+            path: string;
+            /** @description The running binary's version string (internal/buildinfo.Version). */
+            appVersion: string;
+            /** @description The loaded config's mcp.port. */
+            mcpPort: number;
+            /** @description Count of MCP write grants; 0 when the MCP ACL is nil. */
+            mcpGrantCount: number;
         };
         FsMkdirRequest: {
             /** @description Absolute path of the directory to create. */
@@ -3942,6 +3987,35 @@ export interface operations {
             };
             /** @description Unrecognized notesSort/searchSort/rightPanel enum value */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getVaultAbout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Vault facts for the About pane */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultAbout"];
+                };
+            };
+            /** @description Internal error assembling vault facts */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

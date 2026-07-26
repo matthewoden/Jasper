@@ -1663,6 +1663,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /vault/about:
+    get:
+      tags: [vault]
+      operationId: getVaultAbout
+      summary: Get server-assembled vault facts for the Settings About pane (Phase 32 / SET3-04, D-22)
+      description: |
+        Assembles every About-pane fact server-side in one response: vault
+        name, note count, folder count, on-disk path, app version, MCP port,
+        and MCP write-grant count. Degrades individual fields to their zero
+        value (never 500) when a subsystem (index, MCP ACL) is nil, so tests
+        and a not-yet-fully-booted server still get a 200.
+      responses:
+        "200":
+          description: Vault facts for the About pane
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultAbout"
+        "500":
+          description: Internal error assembling vault facts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /fs/mkdir:
     post:
       tags: [fs]
@@ -3032,6 +3056,36 @@ components:
         current_target:
           type: string
           description: The vault path that was being switched to when the 409 fired.
+    VaultAbout:
+      type: object
+      required:
+        [vaultName, noteCount, folderCount, path, appVersion, mcpPort, mcpGrantCount]
+      description: |
+        Phase 32 / SET3-04 / D-22. Server-assembled facts for the Settings
+        About pane. All seven fields are required — a nil subsystem (index,
+        mcpACL) degrades its field to zero rather than omitting it.
+      properties:
+        vaultName:
+          type: string
+          description: filepath.Base of the vault's on-disk data directory.
+        noteCount:
+          type: integer
+          description: Count of indexed notes (len of the index's note-summary list); 0 when the index is nil.
+        folderCount:
+          type: integer
+          description: Recursive count of folder nodes in the tree projection, vault root excluded; 0 when the index is nil or not an *index.Indexer.
+        path:
+          type: string
+          description: Absolute on-disk path of the vault's data directory.
+        appVersion:
+          type: string
+          description: The running binary's version string (internal/buildinfo.Version).
+        mcpPort:
+          type: integer
+          description: The loaded config's mcp.port.
+        mcpGrantCount:
+          type: integer
+          description: Count of MCP write grants; 0 when the MCP ACL is nil.
     FsMkdirRequest:
       type: object
       required: [path]
