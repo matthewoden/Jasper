@@ -185,9 +185,13 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.5)" }} />
+        {/* No hand-written id / aria-describedby here: Dialog.Description
+            spreads its props AFTER its own `id`, so overriding it detaches
+            Radix's DescriptionWarning lookup and logs a "Missing
+            Description" warning on every open. Letting Radix wire both ends
+            keeps the a11y tree identical and the console clean. */}
         <Dialog.Content
           aria-label="Settings"
-          aria-describedby="settings-dialog-desc"
           style={{
             position: "fixed",
             top: "50%",
@@ -210,7 +214,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
               satisfies Radix's a11y expectation of a Dialog.Title without a
               second visible heading. */}
           <Dialog.Title style={hiddenStyle}>Settings</Dialog.Title>
-          <Dialog.Description id="settings-dialog-desc" style={hiddenStyle}>
+          <Dialog.Description style={hiddenStyle}>
             Change application settings — appearance, editor, and daily notes.
           </Dialog.Description>
 

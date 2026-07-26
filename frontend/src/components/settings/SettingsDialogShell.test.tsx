@@ -203,6 +203,23 @@ describe("<SettingsDialogShell />", () => {
     expect(dialogEl).toHaveStyle({ width: "920px", height: "628px" });
   });
 
+  it("opening Settings logs no console warning, and the description resolves to a real element (32-REVIEW WR-04)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      renderShell();
+      await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
+
+      const descId = screen.getByRole("dialog").getAttribute("aria-describedby");
+      expect(descId).toBeTruthy();
+      expect(document.getElementById(descId!)).toHaveTextContent(
+        "Change application settings",
+      );
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("the scroll container carries minHeight: 0", () => {
     // Source-level assertion, matching the plan's own acceptance grep.
     const src = readFileSync(
