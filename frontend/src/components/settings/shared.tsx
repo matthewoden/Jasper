@@ -1,12 +1,23 @@
 /**
- * Row primitives shared by every Settings section file (D-06). Extracted
- * verbatim from `SettingsDialog.tsx` — no logic or style changes, only the
- * `export` keyword and a one-level-deeper relative import path.
+ * Row primitives shared by every Settings section file (D-06). Originally
+ * lifted from `SettingsDialog.tsx`; `ControlRow` has since been restructured
+ * (fixed 160px label column + optional description slot) so the two are no
+ * longer identical.
+ *
+ * ControlRow's left column is deliberately `width: 160`, not `minWidth: 160`
+ * — a growing caption must not widen the column and desynchronise the
+ * slider tracks beside it (G-02). Guarded by shared.test.tsx and by the
+ * slider-width parity assertion in e2e/phase32-uat.spec.ts.
  */
 import { AlertCircle } from "lucide-react";
 
 // ─── Restart badge ─────────────────────────────────────────────────────────
 // aria-label ensures screen readers announce it (not color only).
+//
+// ORPHANED 2026-07-26 (ADR-002 v2): ServerSection was its only consumer and
+// was removed with the Server pane. Kept — not deleted — because Phase 36's
+// mcp.port control needs the same restart-signal primitive. If Phase 36
+// lands without adopting it, delete this and the AlertCircle import above.
 export function RestartBadge() {
   return (
     <span

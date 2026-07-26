@@ -48,6 +48,11 @@ export const DEFAULT_CONFIG: DefaultConfigShape = {
   mcp: {
     auditLog: false,
   },
+  // ORPHANED 2026-07-26 (ADR-002 v2): buildResetPatch's `case "server"` went
+  // with the Server pane, so no reset path writes server.* any more.
+  // Retained for Phase 36's Server pane; delete (with DefaultConfigShape's
+  // `server` field and the parked defaults.test.ts assertions) if Phase 36
+  // lands without it.
   server: {
     bind: "127.0.0.1",
   },
