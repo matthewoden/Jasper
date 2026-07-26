@@ -5,9 +5,17 @@
  * key-up (D-26). The number half enforces the real validator bounds
  * (numberMin/numberMax), which may be wider than the slider's comfortable
  * sub-range (D-27).
+ *
+ * Keyboard commits are debounced (KEY_COMMIT_DEBOUNCE_MS): arrow-key
+ * auto-repeat would otherwise fire one PUT /config per key event — an
+ * overwrite storm D-26 explicitly rules out for drag-steps. A single
+ * discrete key press still commits shortly after release; a held/repeated
+ * key coalesces into one commit once key activity settles.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { inputStyle } from "./shared";
+
+const KEY_COMMIT_DEBOUNCE_MS = 250;
 
 export interface SliderNumberPairProps {
   id: string;
@@ -43,6 +51,7 @@ export function SliderNumberPair({
   const [sliderValue, setSliderValue] = useState(value);
   const [numberInput, setNumberInput] = useState(String(value));
   const [localError, setLocalError] = useState<string | null>(null);
+  const keyCommitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // A failed save reverts `value`; roll the live CSS var and both inputs back
   // in step so the preview never lags behind the persisted config.
@@ -53,6 +62,14 @@ export function SliderNumberPair({
     document.documentElement.style.setProperty(cssVar, formatCssValue(value));
   }, [value, cssVar, formatCssValue]);
 
+  // Clear any pending debounced keyboard commit on unmount so it never
+  // fires against an unmounted component.
+  useEffect(() => {
+    return () => {
+      if (keyCommitTimer.current) clearTimeout(keyCommitTimer.current);
+    };
+  }, []);
+
   const handleRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = Number(e.target.value);
     setSliderValue(next);
@@ -62,6 +79,28 @@ export function SliderNumberPair({
 
   const commitSlider = () => {
     onCommit(sliderValue);
+  };
+
+  // Pointer-driven commit stays immediate (D-26: commit on pointer-up).
+  // Cancel any pending debounced keyboard commit so a drag right after a
+  // key press can't double-fire.
+  const handlePointerUpCommit = () => {
+    if (keyCommitTimer.current) {
+      clearTimeout(keyCommitTimer.current);
+      keyCommitTimer.current = null;
+    }
+    commitSlider();
+  };
+
+  // Keyboard-driven commit is debounced: each key event reschedules the
+  // commit rather than firing immediately, so auto-repeat/rapid presses
+  // coalesce into the single trailing commit once input settles.
+  const handleKeyUpCommit = () => {
+    if (keyCommitTimer.current) clearTimeout(keyCommitTimer.current);
+    keyCommitTimer.current = setTimeout(() => {
+      keyCommitTimer.current = null;
+      commitSlider();
+    }, KEY_COMMIT_DEBOUNCE_MS);
   };
 
   const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -98,8 +137,8 @@ export function SliderNumberPair({
           step={step}
           value={sliderValue}
           onChange={handleRangeChange}
-          onPointerUp={commitSlider}
-          onKeyUp={commitSlider}
+          onPointerUp={handlePointerUpCommit}
+          onKeyUp={handleKeyUpCommit}
           style={{ accentColor: "var(--color-accent)", flex: 1 }}
         />
         <input

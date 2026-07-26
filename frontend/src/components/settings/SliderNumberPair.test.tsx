@@ -49,15 +49,75 @@ describe("SliderNumberPair", () => {
     expect(onCommit).toHaveBeenCalledWith(20);
   });
 
-  it("keyUp after adjusting the range via keyboard also commits exactly once", () => {
-    const { onCommit } = renderPair();
-    const range = screen.getByRole("slider", { name: "Font size" });
+  it("keyUp after adjusting the range via keyboard commits exactly once, after a short settle delay (WR-02 debounce)", () => {
+    vi.useFakeTimers();
+    try {
+      const { onCommit } = renderPair();
+      const range = screen.getByRole("slider", { name: "Font size" });
 
-    fireEvent.change(range, { target: { value: "17" } });
-    fireEvent.keyUp(range, { key: "ArrowRight" });
+      fireEvent.change(range, { target: { value: "17" } });
+      fireEvent.keyUp(range, { key: "ArrowRight" });
 
-    expect(onCommit).toHaveBeenCalledTimes(1);
-    expect(onCommit).toHaveBeenCalledWith(17);
+      // Not committed synchronously -- a single discrete key press debounces
+      // rather than firing immediately, but still commits once settled.
+      expect(onCommit).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(300);
+      expect(onCommit).toHaveBeenCalledTimes(1);
+      expect(onCommit).toHaveBeenCalledWith(17);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rapid/repeated arrow-key events coalesce into a single trailing commit, never one PUT per key event (WR-02)", () => {
+    vi.useFakeTimers();
+    try {
+      const { onCommit } = renderPair();
+      const range = screen.getByRole("slider", { name: "Font size" });
+
+      // Simulate auto-repeat: several change+keyUp pairs in quick
+      // succession, each well inside the debounce window.
+      fireEvent.change(range, { target: { value: "16" } });
+      fireEvent.keyUp(range, { key: "ArrowRight" });
+      vi.advanceTimersByTime(50);
+      fireEvent.change(range, { target: { value: "17" } });
+      fireEvent.keyUp(range, { key: "ArrowRight" });
+      vi.advanceTimersByTime(50);
+      fireEvent.change(range, { target: { value: "18" } });
+      fireEvent.keyUp(range, { key: "ArrowRight" });
+
+      expect(onCommit).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(300);
+      expect(onCommit).toHaveBeenCalledTimes(1);
+      expect(onCommit).toHaveBeenCalledWith(18);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("pointerUp right after a key press cancels the pending debounced commit and fires exactly once", () => {
+    vi.useFakeTimers();
+    try {
+      const { onCommit } = renderPair();
+      const range = screen.getByRole("slider", { name: "Font size" });
+
+      fireEvent.change(range, { target: { value: "17" } });
+      fireEvent.keyUp(range, { key: "ArrowRight" });
+      fireEvent.change(range, { target: { value: "19" } });
+      fireEvent.pointerUp(range);
+
+      // pointerUp commits immediately with the latest value and cancels the
+      // still-pending keyboard debounce timer.
+      expect(onCommit).toHaveBeenCalledTimes(1);
+      expect(onCommit).toHaveBeenCalledWith(19);
+
+      vi.advanceTimersByTime(300);
+      expect(onCommit).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("typing an out-of-range number and blurring reverts, shows the error, and never commits", () => {
