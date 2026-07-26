@@ -81,12 +81,19 @@ export function Eyebrow({ text }: { text: string }) {
 export function ControlRow({
   label,
   htmlFor,
+  description,
   children,
 }: {
   label: string;
   htmlFor?: string;
+  description?: string;
   children: React.ReactNode;
 }) {
+  const labelStyle: React.CSSProperties = {
+    fontSize: 14,
+    color: "var(--color-fg)",
+  };
+
   return (
     <div
       style={{
@@ -96,18 +103,27 @@ export function ControlRow({
         marginBottom: 8,
       }}
     >
-      <label
-        htmlFor={htmlFor}
-        style={{
-          fontSize: 14,
-          color: "var(--color-fg)",
-          minWidth: 160,
-          paddingTop: 8,
-          flexShrink: 0,
-        }}
-      >
-        {label}
-      </label>
+      <div style={{ minWidth: 160, paddingTop: 8, flexShrink: 0 }}>
+        {htmlFor ? (
+          <label htmlFor={htmlFor} style={labelStyle}>
+            {label}
+          </label>
+        ) : (
+          <div style={labelStyle}>{label}</div>
+        )}
+        {description && (
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--color-muted)",
+              marginTop: 2,
+              lineHeight: 1.45,
+            }}
+          >
+            {description}
+          </div>
+        )}
+      </div>
       <div style={{ flex: 1 }}>{children}</div>
     </div>
   );

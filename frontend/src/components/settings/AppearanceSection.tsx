@@ -115,39 +115,46 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
   return (
     <section>
       <Eyebrow text="COLOR" />
-      <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
-        {ACCENT_SWATCHES.map(({ id, label, hex }) => {
-          const selected = config.accent === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-label={label}
-              aria-pressed={selected}
-              onClick={() => {
-                void handleAccentChange(id);
-              }}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: "50%",
-                background: hex,
-                border: selected ? "2px solid var(--color-fg)" : "2px solid transparent",
-                outline: selected ? `2px solid ${hex}` : "none",
-                outlineOffset: 2,
-                cursor: "pointer",
-                padding: 0,
-                flexShrink: 0,
-              }}
-            />
-          );
-        })}
+      <div style={{ marginBottom: 16 }}>
+        <ControlRow
+          label="Accent color"
+          description="Used for links, tags, highlights and selection"
+        >
+          <div style={{ display: "flex", gap: 8 }}>
+            {ACCENT_SWATCHES.map(({ id, label, hex }) => {
+              const selected = config.accent === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-label={label}
+                  aria-pressed={selected}
+                  onClick={() => {
+                    void handleAccentChange(id);
+                  }}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: "50%",
+                    background: hex,
+                    border: selected ? "2px solid var(--color-fg)" : "2px solid transparent",
+                    outline: selected ? `2px solid ${hex}` : "none",
+                    outlineOffset: 2,
+                    cursor: "pointer",
+                    padding: 0,
+                    flexShrink: 0,
+                  }}
+                />
+              );
+            })}
+          </div>
+        </ControlRow>
       </div>
 
       <Eyebrow text="TYPOGRAPHY" />
 
-      <div style={{ marginBottom: 16 }}>
-        <div role="group" aria-label="Reading font" style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+      <ControlRow label="Reading font" description="Typeface for note body text">
+        <div role="group" aria-label="Reading font" style={{ display: "flex", gap: 4 }}>
           {(["sans", "serif"] as const).map((rf) => {
             const active = config.readingFont === rf;
             return (
@@ -177,10 +184,13 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
             );
           })}
         </div>
-        <span style={{ fontSize: 12, color: "var(--color-muted)" }}>Applies to note content only</span>
-      </div>
+      </ControlRow>
 
-      <ControlRow label="Font size" htmlFor="settings-font-size">
+      <ControlRow
+        label="Font size"
+        htmlFor="settings-font-size"
+        description="Body text size in the editor · 8–32px"
+      >
         <SliderNumberPair
           id="settings-font-size"
           label="Font size"
@@ -199,7 +209,11 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
         />
       </ControlRow>
 
-      <ControlRow label="Line height" htmlFor="settings-line-height">
+      <ControlRow
+        label="Line height"
+        htmlFor="settings-line-height"
+        description="Vertical rhythm of paragraphs and lists · 1.0–3.0"
+      >
         <SliderNumberPair
           id="settings-line-height"
           label="Line height"

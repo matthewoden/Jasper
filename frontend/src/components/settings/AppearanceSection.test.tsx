@@ -117,6 +117,17 @@ describe("AppearanceSection", () => {
   it("does not render the removed inline reading-font preview paragraph", () => {
     renderSection(makeConfig());
     expect(screen.queryByText(/quick brown fox/i)).toBeNull();
+    expect(screen.queryByText("Applies to note content only")).toBeNull();
+  });
+
+  it("renders all four Appearance row captions", () => {
+    renderSection(makeConfig());
+    expect(screen.getByText("Used for links, tags, highlights and selection")).toBeInTheDocument();
+    expect(screen.getByText("Typeface for note body text")).toBeInTheDocument();
+    expect(screen.getByText("Body text size in the editor · 8–32px")).toBeInTheDocument();
+    expect(
+      screen.getByText("Vertical rhythm of paragraphs and lists · 1.0–3.0"),
+    ).toBeInTheDocument();
   });
 
   it("drag events on the font-size slider update --editor-font-size without calling saveConfig", () => {
