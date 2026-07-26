@@ -13,10 +13,9 @@ vi.mock("../api/client", () => ({
     GET: vi.fn().mockResolvedValue({
       data: {
         appName: "Jasper",
-        display_name: "My Notes",
         theme: "dark",
         dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
-        editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
+        editor: { fontSize: 15, lineHeight: 1.6, autosaveMs: 2000, showProperties: true, autoPair: true, foldGutter: true, lineNumbers: false, lineWidth: 700 },
       },
       response: { status: 200 },
     }),
