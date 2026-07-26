@@ -95,11 +95,17 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    getVaultAbout().then((res) => {
-      if (!cancelled && res.data) {
-        setVaultAbout(res.data);
-      }
-    });
+    getVaultAbout()
+      .then((res) => {
+        if (cancelled) return;
+        if (res.data) setVaultAbout(res.data);
+        // The footer caption is decorative — a failure leaves it blank rather
+        // than blocking the pane, but it must at least reach the console.
+        else console.warn("GET /vault/about failed", res.error);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) console.warn("GET /vault/about threw", err);
+      });
     return () => {
       cancelled = true;
     };

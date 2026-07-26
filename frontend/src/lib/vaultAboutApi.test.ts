@@ -54,4 +54,13 @@ describe("getVaultAbout", () => {
       status: 500,
     });
   });
+
+  it("returns error instead of rejecting when the transport itself throws (32-REVIEW WR-05)", async () => {
+    mockClient.GET.mockRejectedValue(new TypeError("Failed to fetch"));
+    const result = await getVaultAbout();
+    expect(result.data).toBeUndefined();
+    expect(result.error?.code).toBe("network");
+    expect(result.error?.status).toBe(0);
+    expect(result.error?.message).toContain("Failed to fetch");
+  });
 });

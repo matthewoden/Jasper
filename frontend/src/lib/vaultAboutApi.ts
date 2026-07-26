@@ -23,10 +23,17 @@ function asApiError(error: unknown, status: number): ApiError {
 }
 
 export async function getVaultAbout(): Promise<{ data?: VaultAbout; error?: ApiError }> {
-  const res = await client.GET("/vault/about");
-  if (!res.data) {
-    const status = (res.response as { status?: number } | undefined)?.status ?? 0;
-    return { error: asApiError(res.error, status) };
+  // The transport itself rejects on a connection reset or the vault hot-swap
+  // 503 window; without this catch the "never throws" contract above is a
+  // comment, not a guarantee, and callers get an unhandled rejection.
+  try {
+    const res = await client.GET("/vault/about");
+    if (!res.data) {
+      const status = (res.response as { status?: number } | undefined)?.status ?? 0;
+      return { error: asApiError(res.error, status) };
+    }
+    return { data: res.data };
+  } catch (err) {
+    return { error: { code: "network", message: String(err), status: 0 } };
   }
-  return { data: res.data };
 }
