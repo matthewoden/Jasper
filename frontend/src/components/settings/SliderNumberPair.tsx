@@ -1,6 +1,6 @@
 /**
- * SliderNumberPair — paired <input type="range"> + <input type="number">
- * bound to one value (SET3-07). Dragging the slider restyles live via a CSS
+ * SliderNumberPair — paired range + number input bound to one value
+ * (SET3-07). Dragging the slider restyles live via a CSS
  * custom property but commits to the network exactly once, on pointer-up /
  * key-up (D-26). The number half enforces the real validator bounds
  * (numberMin/numberMax), which may be wider than the slider's comfortable
