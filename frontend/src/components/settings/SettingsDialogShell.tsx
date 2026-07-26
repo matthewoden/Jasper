@@ -26,7 +26,7 @@ import { EditorSection } from "./EditorSection";
 import { NavColumn } from "./NavColumn";
 import { PaneHeader } from "./PaneHeader";
 import { ResetConfirmDialog } from "./ResetConfirmDialog";
-import { SECTIONS, type SectionId } from "./sections";
+import { SECTIONS, isResettable, type ResettableSectionId, type SectionId } from "./sections";
 
 // Fields a per-section Reset (D-07/D-10/D-12) is allowed to overwrite, built
 // from the CURRENT config with only the named fields swapped to
@@ -36,7 +36,11 @@ import { SECTIONS, type SectionId } from "./sections";
 // MCP write grants live in the `mcp_write_grants` SQLite table with no
 // representation in `Config` (D-09) — a Config-only write structurally
 // cannot reach them, so no defensive "skip grants" branch is needed here.
-function buildResetPatch(section: SectionId, config: Config): Partial<Config> {
+//
+// Exhaustive over ResettableSectionId with NO default arm: a section that
+// gains a Reset button without gaining a patch case must fail `tsc`, not
+// fall through to an empty patch and issue a successful no-op PUT.
+function buildResetPatch(section: ResettableSectionId, config: Config): Partial<Config> {
   switch (section) {
     case "appearance":
       return {
@@ -59,8 +63,6 @@ function buildResetPatch(section: SectionId, config: Config): Partial<Config> {
           template: DEFAULT_CONFIG.dailyNotes.template,
         },
       };
-    default:
-      return {};
   }
 }
 
@@ -126,7 +128,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
 
   const handleResetSection = useCallback(
     async (section: SectionId) => {
-      if (!config) return;
+      if (!config || !isResettable(section)) return;
       const patch = buildResetPatch(section, config);
       const { error } = await saveConfig({ ...config, ...patch });
       if (error) {
@@ -235,7 +237,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
             <PaneHeader
               title={activeMeta?.label ?? ""}
               subtitle={activeMeta?.subtitle ?? ""}
-              showReset={activeMeta?.hasReset ?? false}
+              showReset={isResettable(activeSection)}
               onReset={() => setResetDialogOpen(true)}
               onClose={() => handleOpenChange(false)}
             />
