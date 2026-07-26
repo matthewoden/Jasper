@@ -118,4 +118,87 @@ describe("AppearanceSection", () => {
     renderSection(makeConfig());
     expect(screen.queryByText(/quick brown fox/i)).toBeNull();
   });
+
+  it("drag events on the font-size slider update --editor-font-size without calling saveConfig", () => {
+    const config = makeConfig();
+    const { saveConfig } = renderSection(config);
+    const slider = screen.getByRole("slider", { name: "Font size" });
+
+    fireEvent.change(slider, { target: { value: "16" } });
+    expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("16px");
+    fireEvent.change(slider, { target: { value: "18" } });
+    expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("18px");
+    fireEvent.change(slider, { target: { value: "20" } });
+    expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("20px");
+
+    expect(saveConfig).toHaveBeenCalledTimes(0);
+  });
+
+  it("releasing the font-size slider calls saveConfig exactly once, preserving editor.autosaveMs", () => {
+    const config = makeConfig();
+    const { saveConfig } = renderSection(config);
+    const slider = screen.getByRole("slider", { name: "Font size" });
+
+    fireEvent.change(slider, { target: { value: "20" } });
+    fireEvent.pointerUp(slider);
+
+    expect(saveConfig).toHaveBeenCalledTimes(1);
+    const saved = saveConfig.mock.calls[0][0] as Config;
+    expect(saved.editor.fontSize).toBe(20);
+    expect(saved.editor.autosaveMs).toBe(config.editor.autosaveMs);
+  });
+
+  it("drag events on the line-height slider update --editor-line-height without calling saveConfig, release commits once", () => {
+    const config = makeConfig();
+    const { saveConfig } = renderSection(config);
+    const slider = screen.getByRole("slider", { name: "Line height" });
+
+    fireEvent.change(slider, { target: { value: "1.5" } });
+    expect(document.documentElement.style.getPropertyValue("--editor-line-height")).toBe("1.5");
+    expect(saveConfig).toHaveBeenCalledTimes(0);
+
+    fireEvent.pointerUp(slider);
+    expect(saveConfig).toHaveBeenCalledTimes(1);
+    const saved = saveConfig.mock.calls[0][0] as Config;
+    expect(saved.editor.lineHeight).toBe(1.5);
+  });
+
+  it("TypePreviewPanel reflects the live just-committed font size before the persisted config catches up", () => {
+    const config = makeConfig({ editor: { ...makeConfig().editor, fontSize: 15 } });
+    let resolveSave: (v: { error?: undefined }) => void = () => {};
+    const saveConfig = vi.fn(
+      () => new Promise<{ error?: undefined }>((resolve) => { resolveSave = resolve; }),
+    );
+    renderSection(config, saveConfig);
+
+    const slider = screen.getByRole("slider", { name: "Font size" });
+    fireEvent.change(slider, { target: { value: "22" } });
+    fireEvent.pointerUp(slider);
+
+    const preview = screen.getByText(/Type styling applies instantly/);
+    expect(preview).toHaveStyle({ fontSize: "22px" });
+
+    resolveSave({});
+  });
+
+  it("reverts both the live preview value and --editor-font-size on a rejected font-size save", async () => {
+    const config = makeConfig({ editor: { ...makeConfig().editor, fontSize: 15 } });
+    const saveConfig = vi.fn().mockResolvedValue({ error: { message: "offline" } });
+    const { onSaveError } = renderSection(config, saveConfig);
+
+    const slider = screen.getByRole("slider", { name: "Font size" });
+    fireEvent.change(slider, { target: { value: "22" } });
+    fireEvent.pointerUp(slider);
+
+    await waitFor(() => expect(onSaveError).toHaveBeenCalled());
+
+    const preview = screen.getByText(/Type styling applies instantly/);
+    expect(preview).toHaveStyle({ fontSize: "15px" });
+    expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("15px");
+  });
+
+  it("renders exactly one TypePreviewPanel", () => {
+    renderSection(makeConfig());
+    expect(screen.getAllByText(/Type styling applies instantly/)).toHaveLength(1);
+  });
 });

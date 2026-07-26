@@ -8,8 +8,10 @@
  * which would create a second independent config state and make D-10's
  * single-write pane Reset silently partial.
  */
-import { useCallback } from "react";
-import { Eyebrow } from "./shared";
+import { useCallback, useEffect, useState } from "react";
+import { Eyebrow, ControlRow } from "./shared";
+import { SliderNumberPair } from "./SliderNumberPair";
+import { TypePreviewPanel } from "./TypePreviewPanel";
 import {
   applyAccent,
   persistAccentBootstrap,
@@ -53,6 +55,55 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
       if (error) {
         applyReadingFont(prev);
         persistReadingFontBootstrap(prev); // WR-01: revert the bootstrap key, else next reload flashes the rejected font
+        onSaveError(`Couldn't save your changes: ${error.message}.`);
+      } else {
+        onSaveError(null);
+      }
+    },
+    [config, saveConfig, onSaveError],
+  );
+
+  // Live values for the type preview: seeded from the persisted config, then
+  // re-seeded whenever it changes underneath us (e.g. a pane Reset landing
+  // from the shell), so the preview reflects a just-committed value while
+  // `config` itself is still catching up to the in-flight save.
+  const [fontSize, setFontSize] = useState(config.editor.fontSize);
+  const [lineHeight, setLineHeight] = useState(config.editor.lineHeight);
+
+  useEffect(() => {
+    setFontSize(config.editor.fontSize);
+  }, [config.editor.fontSize]);
+
+  useEffect(() => {
+    setLineHeight(config.editor.lineHeight);
+  }, [config.editor.lineHeight]);
+
+  const commitFontSize = useCallback(
+    async (value: number) => {
+      setFontSize(value);
+      const { error } = await saveConfig({
+        ...config,
+        editor: { ...config.editor, fontSize: value },
+      });
+      if (error) {
+        setFontSize(config.editor.fontSize);
+        onSaveError(`Couldn't save your changes: ${error.message}.`);
+      } else {
+        onSaveError(null);
+      }
+    },
+    [config, saveConfig, onSaveError],
+  );
+
+  const commitLineHeight = useCallback(
+    async (value: number) => {
+      setLineHeight(value);
+      const { error } = await saveConfig({
+        ...config,
+        editor: { ...config.editor, lineHeight: value },
+      });
+      if (error) {
+        setLineHeight(config.editor.lineHeight);
         onSaveError(`Couldn't save your changes: ${error.message}.`);
       } else {
         onSaveError(null);
@@ -128,6 +179,50 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
         </div>
         <span style={{ fontSize: 12, color: "var(--color-muted)" }}>Applies to note content only</span>
       </div>
+
+      <ControlRow label="Font size" htmlFor="settings-font-size">
+        <SliderNumberPair
+          id="settings-font-size"
+          label="Font size"
+          value={fontSize}
+          sliderMin={12}
+          sliderMax={24}
+          numberMin={8}
+          numberMax={32}
+          step={1}
+          unit="px"
+          cssVar="--editor-font-size"
+          formatCssValue={(v) => `${v}px`}
+          onCommit={(v) => {
+            void commitFontSize(v);
+          }}
+        />
+      </ControlRow>
+
+      <ControlRow label="Line height" htmlFor="settings-line-height">
+        <SliderNumberPair
+          id="settings-line-height"
+          label="Line height"
+          value={lineHeight}
+          sliderMin={1.2}
+          sliderMax={2.0}
+          numberMin={1.0}
+          numberMax={3.0}
+          step={0.05}
+          unit=""
+          cssVar="--editor-line-height"
+          formatCssValue={(v) => `${v}`}
+          onCommit={(v) => {
+            void commitLineHeight(v);
+          }}
+        />
+      </ControlRow>
+
+      {/* SliderNumberPair writes --editor-font-size / --editor-line-height onto
+          document.documentElement, so the real note editor behind this dialog
+          restyles in step (D-26) — a whole-app restyle by design, not a
+          scoping leak. */}
+      <TypePreviewPanel fontSize={fontSize} lineHeight={lineHeight} />
     </section>
   );
 }
