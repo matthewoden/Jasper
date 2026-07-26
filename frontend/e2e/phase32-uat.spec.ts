@@ -160,6 +160,25 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     await folderInput.blur();
     await expect(folderInput).toHaveValue("journal");
 
+    // The blur above fires PUT /config, but toHaveValue only proves the
+    // input's own local state -- without this poll, the folder write races
+    // the Editor Reset below. Polling AFTER the reset instead would pass
+    // even if the folder PUT landed late, which would silently destroy the
+    // reset-scoping proof this test exists to provide.
+    await expect.poll(
+      async () => {
+        try {
+          const resp = await page.request.get(`${baseURL}/api/v1/config`);
+          if (!resp.ok()) return null;
+          const body = (await resp.json()) as { dailyNotes?: { folder?: string } };
+          return body.dailyNotes?.folder ?? null;
+        } catch {
+          return null;
+        }
+      },
+      { timeout: 5000, message: "waiting for dailyNotes.folder PUT to land server-side" },
+    ).toBe("journal");
+
     await dialog.getByRole("button", { name: "Editor", exact: true }).click();
     const autosaveInput = dialog.getByRole("spinbutton", { name: "Autosave interval" });
     const nonDefaultAutosaveMs = "4500";
