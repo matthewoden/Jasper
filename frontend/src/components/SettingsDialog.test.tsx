@@ -4,7 +4,7 @@
  * SD-1: renders Dialog.Title "Settings" when open=true
  * SD-2: dialog does NOT render when open=false
  * SD-3: Close button calls onOpenChange(false)
- * SD-4: all five section eyebrows present (APPEARANCE/EDITOR/DAILY NOTES/GENERAL/NETWORK)
+ * SD-4: all four section eyebrows present (APPEARANCE/EDITOR/DAILY NOTES/NETWORK)
  * SD-5: blurring "Editor font size" input sets --editor-font-size CSS var
  * SD-6: ≥2 elements with aria-label "Requires reload to apply"
  * SD-7: four accent swatches present with correct aria-labels
@@ -16,18 +16,28 @@
 import { fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+const testEditorConfig = {
+  fontSize: 15,
+  lineHeight: 1.6,
+  autosaveMs: 2000,
+  showProperties: true,
+  autoPair: true,
+  foldGutter: true,
+  lineNumbers: false,
+  lineWidth: 700,
+};
+
 // Mock the API client — same pattern as SettingsMenu.test.tsx
 vi.mock("../api/client", () => ({
   client: {
     GET: vi.fn().mockResolvedValue({
       data: {
         appName: "Jasper",
-        display_name: "My Notes",
         theme: "dark",
         accent: "purple",
         readingFont: "sans",
         dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
-        editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
+        editor: { fontSize: 15, lineHeight: 1.6, autosaveMs: 2000, showProperties: true, autoPair: true, foldGutter: true, lineNumbers: false, lineWidth: 700 },
         server: { port: 6683, dataDir: "/home/user/.jasper", bind: "127.0.0.1" },
       },
       response: { status: 200 },
@@ -35,12 +45,11 @@ vi.mock("../api/client", () => ({
     PUT: vi.fn().mockResolvedValue({
       data: {
         appName: "Jasper",
-        display_name: "My Notes",
         theme: "dark",
         accent: "purple",
         readingFont: "sans",
         dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
-        editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
+        editor: { fontSize: 15, lineHeight: 1.6, autosaveMs: 2000, showProperties: true, autoPair: true, foldGutter: true, lineNumbers: false, lineWidth: 700 },
         server: { port: 6683, dataDir: "/home/user/.jasper", bind: "127.0.0.1" },
       },
       response: { status: 200 },
@@ -51,12 +60,11 @@ vi.mock("../api/client", () => ({
 // Base config shape reused across tests (must match the mock above)
 const baseMockConfig = {
   appName: "Jasper",
-  display_name: "My Notes",
   theme: "dark",
   accent: "purple",
   readingFont: "sans",
   dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
-  editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
+  editor: testEditorConfig,
   server: { port: 6683, dataDir: "/home/user/.jasper", bind: "127.0.0.1" },
 };
 
@@ -98,13 +106,12 @@ describe("<SettingsDialog />", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("SD-4: APPEARANCE, EDITOR, DAILY NOTES, GENERAL, NETWORK eyebrows all present", async () => {
+  it("SD-4: APPEARANCE, EDITOR, DAILY NOTES, NETWORK eyebrows all present", async () => {
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByText("APPEARANCE")).toBeInTheDocument();
       expect(screen.getByText("EDITOR")).toBeInTheDocument();
       expect(screen.getByText("DAILY NOTES")).toBeInTheDocument();
-      expect(screen.getByText("GENERAL")).toBeInTheDocument();
       expect(screen.getByText("NETWORK")).toBeInTheDocument();
     });
   });
@@ -160,11 +167,11 @@ describe("<SettingsDialog />", () => {
     });
   });
 
-  it("honest vim copy: 'not yet active' text is present", async () => {
+  it("D-04/D-05: Vim mode and Display name controls are absent (deleted, not hidden)", async () => {
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
-    await waitFor(() => {
-      expect(screen.getByText(/not yet active/i)).toBeInTheDocument();
-    });
+    await waitFor(() => screen.getByText("NETWORK"));
+    expect(screen.queryByLabelText("Vim mode")).toBeNull();
+    expect(screen.queryByLabelText("Display name")).toBeNull();
   });
 
   it("no Save button rendered", async () => {
@@ -360,19 +367,17 @@ describe("<SettingsDialog />", () => {
 
   // ─── SET2-03: deferred restart badge ─────────────────────────────────────
   //
-  // RED scaffold: badge is currently always rendered for autosaveMs, vimMode,
-  // and bind (3 badges unconditionally). After plan 02, badge is deferred:
-  // only shown when the field differs from the boot-baseline config captured
-  // at first load (D-05 honest-signal rule).
+  // Badge is deferred: only shown for autosaveMs and bind when the field
+  // differs from the boot-baseline config captured at first load (D-05
+  // honest-signal rule). Vim mode is deleted (D-04) and no longer contributes
+  // a badge.
 
   describe("SET2-03: deferred restart badge (boot baseline)", () => {
     it("SET2-03: no restart badge shown on first open (badge deferred against boot baseline)", async () => {
       render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
       await waitFor(() => screen.getByLabelText("Autosave interval"));
 
-      // RED: currently RestartBadge is unconditionally rendered for autosaveMs,
-      // vimMode, and bind — so queryAllByLabelText returns 3 elements.
-      // After fix: all 3 badges are deferred; 0 shown until user changes a field.
+      // Both badges (autosaveMs, bind) are deferred; 0 shown until user changes a field.
       expect(screen.queryAllByLabelText("Requires reload to apply")).toHaveLength(0);
     });
 
@@ -386,7 +391,7 @@ describe("<SettingsDialog />", () => {
       render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
       await waitFor(() => screen.getByLabelText("Autosave interval"));
 
-      // Initially: no badge (RED: 3 badges shown unconditionally right now)
+      // Initially: no badge (deferred against boot baseline)
       expect(screen.queryAllByLabelText("Requires reload to apply")).toHaveLength(0);
 
       // Change autosaveMs to a value that differs from boot baseline (2000 ms)

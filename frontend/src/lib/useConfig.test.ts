@@ -28,7 +28,16 @@ const sampleConfig = {
   accent: "purple" as const,
   readingFont: "sans" as const,
   dailyNotes: { folder: "daily", template: "" },
-  editor: { fontSize: 15, lineHeight: 1.6, vimMode: false, autosaveMs: 2000 },
+  editor: {
+    fontSize: 15,
+    lineHeight: 1.6,
+    autosaveMs: 2000,
+    showProperties: true,
+    autoPair: true,
+    foldGutter: true,
+    lineNumbers: false,
+    lineWidth: 700,
+  },
 };
 
 beforeEach(() => {
