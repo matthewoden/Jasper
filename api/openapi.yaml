@@ -2137,13 +2137,6 @@ components:
           minLength: 1
           maxLength: 64
           default: "Jasper"
-        display_name:
-          type: string
-          description: |
-            Optional display name for this vault (defaults to base name of the
-            vault path). Persisted in <vault>/.jasper/config.json per
-            Phase 9 D-04. Optional on the wire — `omitempty` on the Go side
-            means legacy configs without the key decode cleanly.
         theme:
           type: string
           enum: [dark, light]
@@ -2164,7 +2157,7 @@ components:
               default: ""
         editor:
           type: object
-          required: [fontSize, lineHeight, vimMode, autosaveMs]
+          required: [fontSize, lineHeight, autosaveMs]
           additionalProperties: false
           properties:
             fontSize:
@@ -2178,9 +2171,6 @@ components:
               minimum: 1
               maximum: 3
               default: 1.6
-            vimMode:
-              type: boolean
-              default: false
             autosaveMs:
               type: integer
               minimum: 250
@@ -2190,6 +2180,30 @@ components:
                 Autosave debounce interval in milliseconds. Replaces the
                 hard-coded 2000ms constant in EditorPane.tsx (Phase 11 D-08).
                 Read at mount; requires reload to apply (D-07).
+            showProperties:
+              # Phase 34 (PROPS UI) — toggles visibility of the properties
+              # table above the note body. Optional; defaults true.
+              type: boolean
+              default: true
+            autoPair:
+              # Phase 37 (EDIT-01) — auto-close brackets/quotes in CM6.
+              type: boolean
+              default: true
+            foldGutter:
+              # Phase 37 (EDIT-03) — heading/list code-folding gutter.
+              type: boolean
+              default: true
+            lineNumbers:
+              # Phase 37 (EDIT-03) — CM6 line-number gutter.
+              type: boolean
+              default: false
+            lineWidth:
+              # Phase 37 / EDIT-04 — maximum width of the writing column,
+              # in CSS pixels.
+              type: integer
+              minimum: 400
+              maximum: 2000
+              default: 700
         accent:
           type: string
           enum: [purple, sky, green, orange]
@@ -2253,6 +2267,20 @@ components:
             bind:
               type: string
               default: "127.0.0.1"
+            auditLog:
+              # Phase 36 / MCP2-02 — tool-call audit-log toggle.
+              type: boolean
+              default: false
+        templates:
+          # Phase 35 / TPL-01 — vault-relative folder holding templates.
+          type: object
+          required: [folder]
+          additionalProperties: false
+          properties:
+            folder:
+              type: string
+              maxLength: 64
+              default: "Templates"
     Error:
       type: object
       required: [code, message]
