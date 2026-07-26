@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -421,18 +422,20 @@ func TestDefaults_AccentAndReadingFont(t *testing.T) {
 	}
 }
 
-// TestLoad_UnknownFieldsFallBackToDefaults — strict decoding: a
-// config.json with an undeclared field triggers the malformed path;
-// Load returns DefaultConfig (does NOT silently ignore the unknown key).
-func TestLoad_UnknownFieldsFallBackToDefaults(t *testing.T) {
+// TestLoad_UnknownFieldsAreDroppedNotFatal — D-13: an unrecognized key,
+// top-level or nested, is silently dropped; every recognized field
+// (including nested siblings of the unrecognized key) keeps its on-disk
+// value. This replaces the prior strict-decoding contract, which asserted
+// the exact opposite behavior D-13 inverts.
+func TestLoad_UnknownFieldsAreDroppedNotFatal(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
-	bad := []byte(`{"appName":"Jasper","theme":"dark","unknownKey":42,` +
+	raw := []byte(`{"appName":"Jasper","theme":"dark","someFutureField":42,` +
 		`"dailyNotes":{"folder":"daily","template":""},` +
-		`"editor":{"fontSize":15,"lineHeight":1.6}}`)
-	if err := os.WriteFile(path, bad, 0o644); err != nil {
+		`"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":3000,"someFutureNested":true}}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -440,22 +443,22 @@ func TestLoad_UnknownFieldsFallBackToDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want := DefaultConfig()
-	if cfg != want {
-		t.Errorf("got %+v, want defaults (strict decoding) %+v", cfg, want)
+	if cfg.AppName != "Jasper" {
+		t.Errorf("AppName: got %q, want %q (unrecognized top-level key must not fail the document)", cfg.AppName, "Jasper")
+	}
+	if cfg.Editor.AutosaveMs != 3000 {
+		t.Errorf("Editor.AutosaveMs: got %d, want 3000 (recognized nested value must survive an unrecognized nested sibling key)", cfg.Editor.AutosaveMs)
 	}
 }
 
-// TestLoad_LegacyMCPEnabledKeyFallsBackToDefaults — Phase 32 (RESEARCH.md Open
-// Question 2) deletes the deprecated ignored MCPConfig.Enabled field: its only
-// justification was letting a legacy on-disk "mcp":{"enabled":...} key parse
-// under the strict decoder (DisallowUnknownFields). With the field gone and
-// config.Load() still strict in this plan (leniency is Phase 32-03's job), a
-// legacy key now trips the malformed-fallback path instead of surviving —
-// an accepted transitional regression, closed by 32-03's lenient per-field
-// decode. This test documents the current (32-01) behavior rather than the
-// pre-32 guarantee it replaces.
-func TestLoad_LegacyMCPEnabledKeyFallsBackToDefaults(t *testing.T) {
+// TestLoad_LegacyMCPEnabledKeyIsDroppedNotFatal — closes the transitional
+// regression 32-01's SUMMARY documented: MCPConfig.Enabled was deleted
+// there, and until this plan's leniency landed, a legacy on-disk
+// mcp.enabled key tripped the (then still-strict) malformed fallback. Now
+// it is just an unrecognized key inside the mcp section: silently
+// dropped, every other field (including its own mcp siblings and every
+// other top-level section) survives.
+func TestLoad_LegacyMCPEnabledKeyIsDroppedNotFatal(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	mkdirStorage(t, dir)
@@ -473,8 +476,171 @@ func TestLoad_LegacyMCPEnabledKeyFallsBackToDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want := DefaultConfig()
-	if cfg != want {
-		t.Errorf("got %+v, want defaults %+v (legacy mcp.enabled now trips strict decode until Phase 32-03)", cfg, want)
+	if cfg.Accent != "sky" {
+		t.Errorf("Accent: got %q, want %q (legacy mcp.enabled must not wipe sibling sections)", cfg.Accent, "sky")
+	}
+	if cfg.DailyNotes.Folder != "journal" {
+		t.Errorf("DailyNotes.Folder: got %q, want %q", cfg.DailyNotes.Folder, "journal")
+	}
+	if cfg.Editor.AutosaveMs != 3000 {
+		t.Errorf("Editor.AutosaveMs: got %d, want 3000", cfg.Editor.AutosaveMs)
+	}
+	if cfg.MCP.Port != 7000 {
+		t.Errorf("MCP.Port: got %d, want 7000 (legacy enabled key is dropped, not the whole mcp section)", cfg.MCP.Port)
+	}
+	if cfg.MCP.Bind != "127.0.0.1" {
+		t.Errorf("MCP.Bind: got %q, want %q", cfg.MCP.Bind, "127.0.0.1")
+	}
+}
+
+// TestLoad_WrongTypedFieldFallsBackPerField — the Pitfall-1 case: a
+// wrong-typed known field (editor.fontSize as a string) reverts to only
+// its own default, while a well-typed sibling field in the same nested
+// section (editor.autosaveMs) survives, in one Load call. A single-shot
+// Decode/Unmarshal against the whole editor struct cannot satisfy this.
+func TestLoad_WrongTypedFieldFallsBackPerField(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{"appName":"Jasper","theme":"dark",` +
+		`"dailyNotes":{"folder":"daily","template":""},` +
+		`"editor":{"fontSize":"big","lineHeight":1.6,"autosaveMs":3000}}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	wantFontSize := Defaults().Editor.FontSize
+	if cfg.Editor.FontSize != wantFontSize {
+		t.Errorf("Editor.FontSize: got %d, want default %d (wrong-typed field must revert to its own default)", cfg.Editor.FontSize, wantFontSize)
+	}
+	if cfg.Editor.AutosaveMs != 3000 {
+		t.Errorf("Editor.AutosaveMs: got %d, want 3000 (sibling field must survive fontSize's type mismatch)", cfg.Editor.AutosaveMs)
+	}
+}
+
+// TestLoad_OutOfRangeFallsBackNotClamped — D-14: a well-typed but
+// out-of-range value reverts to the field's default, never clamped to the
+// nearest bound.
+func TestLoad_OutOfRangeFallsBackNotClamped(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{"appName":"Jasper","theme":"dark",` +
+		`"dailyNotes":{"folder":"daily","template":""},` +
+		`"editor":{"fontSize":500,"lineHeight":1.6,"autosaveMs":2000,"lineWidth":9999}}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Editor.FontSize != 15 {
+		t.Errorf("Editor.FontSize: got %d, want default 15 (must NOT be clamped to the 32 upper bound)", cfg.Editor.FontSize)
+	}
+	if cfg.Editor.LineWidth != 700 {
+		t.Errorf("Editor.LineWidth: got %d, want default 700 (must NOT be clamped to the 2000 upper bound)", cfg.Editor.LineWidth)
+	}
+}
+
+// TestLoad_BadFieldPreservesOtherSections — a bad field in one section
+// (editor.lineHeight) must not disturb sibling sections' user-set values
+// (dailyNotes, accent, server, templates).
+func TestLoad_BadFieldPreservesOtherSections(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{"appName":"Jasper","theme":"dark","accent":"sky",` +
+		`"dailyNotes":{"folder":"journal","template":""},` +
+		`"editor":{"fontSize":15,"lineHeight":"tall","autosaveMs":2000},` +
+		`"server":{"port":6683,"dataDir":"/tmp/j","bind":"0.0.0.0"},` +
+		`"templates":{"folder":"MyTemplates"}}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Editor.LineHeight != Defaults().Editor.LineHeight {
+		t.Errorf("Editor.LineHeight: got %v, want default %v", cfg.Editor.LineHeight, Defaults().Editor.LineHeight)
+	}
+	if cfg.DailyNotes.Folder != "journal" {
+		t.Errorf("DailyNotes.Folder: got %q, want %q (must survive editor's bad field)", cfg.DailyNotes.Folder, "journal")
+	}
+	if cfg.Accent != "sky" {
+		t.Errorf("Accent: got %q, want %q (must survive editor's bad field)", cfg.Accent, "sky")
+	}
+	if cfg.Server.Bind != "0.0.0.0" {
+		t.Errorf("Server.Bind: got %q, want %q (must survive editor's bad field)", cfg.Server.Bind, "0.0.0.0")
+	}
+	if cfg.Templates.Folder != "MyTemplates" {
+		t.Errorf("Templates.Folder: got %q, want %q (must survive editor's bad field)", cfg.Templates.Folder, "MyTemplates")
+	}
+}
+
+// TestLoad_InvalidEnumFallsBackToDefault — an invalid accent/readingFont
+// enum member is treated like an out-of-range value: revert to default,
+// while a non-default sibling field in the same document survives.
+func TestLoad_InvalidEnumFallsBackToDefault(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{"appName":"Jasper","theme":"dark","accent":"chartreuse","readingFont":"comic",` +
+		`"dailyNotes":{"folder":"daily","template":""},` +
+		`"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":3000}}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Accent != "purple" {
+		t.Errorf("Accent: got %q, want %q (invalid enum falls back)", cfg.Accent, "purple")
+	}
+	if cfg.ReadingFont != "sans" {
+		t.Errorf("ReadingFont: got %q, want %q (invalid enum falls back)", cfg.ReadingFont, "sans")
+	}
+	if cfg.Editor.AutosaveMs != 3000 {
+		t.Errorf("Editor.AutosaveMs: got %d, want 3000 (survives sibling enum fallbacks)", cfg.Editor.AutosaveMs)
+	}
+}
+
+// TestLoad_FallbackLogsWarn — D-15: a per-field fallback logs a warning
+// naming the offending field path, and that log is the only surfacing
+// mechanism (no other side channel is asserted or expected here).
+func TestLoad_FallbackLogsWarn(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{"appName":"Jasper","theme":"dark",` +
+		`"dailyNotes":{"folder":"daily","template":""},` +
+		`"editor":{"fontSize":"big","lineHeight":1.6,"autosaveMs":2000}}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, nil))
+	if _, err := Load(dir, log); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "editor.fontSize") {
+		t.Errorf("warn log missing offending field path %q; got:\n%s", "editor.fontSize", out)
 	}
 }

@@ -8,10 +8,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
@@ -211,4 +215,84 @@ func TestConfigStrictBody_RejectsLineWidthOutOfRange(t *testing.T) {
 	if !bytes.Contains(respBody, []byte(`"invalid_request"`)) {
 		t.Errorf("lineWidth=3000: body missing invalid_request code; body=%s", respBody)
 	}
+}
+
+// collectJSONPaths walks t (a struct type, following pointer indirection at
+// every level) and returns the set of dotted json-tag paths for every leaf
+// field, recursing into nested struct-typed fields regardless of whether
+// they are named types or anonymous inline structs.
+func collectJSONPaths(t reflect.Type, prefix string) map[string]bool {
+	paths := map[string]bool{}
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return paths
+	}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		tag := f.Tag.Get("json")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		name := strings.Split(tag, ",")[0]
+		if name == "" {
+			continue
+		}
+		fieldPath := name
+		if prefix != "" {
+			fieldPath = prefix + "." + name
+		}
+		ft := f.Type
+		for ft.Kind() == reflect.Ptr {
+			ft = ft.Elem()
+		}
+		if ft.Kind() == reflect.Struct {
+			for k := range collectJSONPaths(ft, fieldPath) {
+				paths[k] = true
+			}
+			continue
+		}
+		paths[fieldPath] = true
+	}
+	return paths
+}
+
+// TestStrictConfigValidatorMatchesConfigStruct is the D-16 safety net: it
+// converts a drift between config.Config and strictConfigValidator from
+// "400s at runtime on the user's first save of a new field" into "fails in
+// CI the moment the second file is edited without the third". The three-file
+// lockstep this phase relies on is api/openapi.yaml -> config.Config ->
+// strictConfigValidator; this test cannot see api/openapi.yaml (the third
+// file) — it only proves the two Go-side structs agree with each other.
+func TestStrictConfigValidatorMatchesConfigStruct(t *testing.T) {
+	t.Parallel()
+	cfgPaths := collectJSONPaths(reflect.TypeOf(config.Config{}), "")
+	validatorPaths := collectJSONPaths(reflect.TypeOf(strictConfigValidator{}), "")
+
+	var missingFromValidator, missingFromConfig []string
+	for p := range cfgPaths {
+		if !validatorPaths[p] {
+			missingFromValidator = append(missingFromValidator, p)
+		}
+	}
+	for p := range validatorPaths {
+		if !cfgPaths[p] {
+			missingFromConfig = append(missingFromConfig, p)
+		}
+	}
+	sort.Strings(missingFromValidator)
+	sort.Strings(missingFromConfig)
+
+	if len(missingFromValidator) == 0 && len(missingFromConfig) == 0 {
+		return
+	}
+	var b strings.Builder
+	for _, p := range missingFromValidator {
+		b.WriteString(p + " present in config.Config but missing from strictConfigValidator\n")
+	}
+	for _, p := range missingFromConfig {
+		b.WriteString(p + " present in strictConfigValidator but missing from config.Config\n")
+	}
+	t.Errorf("config.Config and strictConfigValidator have drifted:\n%s", b.String())
 }
