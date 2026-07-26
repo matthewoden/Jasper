@@ -52,6 +52,15 @@ func decodeField[T any](raw map[string]json.RawMessage, jsonKey, fieldPath, path
 	if !ok {
 		return
 	}
+	// A literal JSON null unmarshals into most Go destinations as a
+	// successful no-op (err == nil, target left untouched) rather than a
+	// type-mismatch error, so it must be checked explicitly — otherwise
+	// this exact fallback happens with zero D-15 warning.
+	if string(v) == "null" {
+		log.Warn("config: field fell back to default",
+			"field", fieldPath, "reason", "null value", "path", path)
+		return
+	}
 	if err := json.Unmarshal(v, target); err != nil {
 		log.Warn("config: field fell back to default",
 			"field", fieldPath, "reason", "type mismatch", "path", path, "err", err)
@@ -68,6 +77,15 @@ func decodeField[T any](raw map[string]json.RawMessage, jsonKey, fieldPath, path
 func decodeSection(raw map[string]json.RawMessage, jsonKey, path string, log *slog.Logger) map[string]json.RawMessage {
 	v, ok := raw[jsonKey]
 	if !ok {
+		return nil
+	}
+	// A literal JSON null unmarshals into a nil map with err == nil (a
+	// successful no-op), not a type-mismatch error — check for it
+	// explicitly so every field in this section still gets its D-15
+	// fallback warning instead of silently keeping its Defaults() seed.
+	if string(v) == "null" {
+		log.Warn("config: section fell back to defaults",
+			"field", jsonKey, "reason", "null value", "path", path)
 		return nil
 	}
 	var nested map[string]json.RawMessage

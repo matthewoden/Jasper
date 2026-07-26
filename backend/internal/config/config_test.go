@@ -644,3 +644,85 @@ func TestLoad_FallbackLogsWarn(t *testing.T) {
 		t.Errorf("warn log missing offending field path %q; got:\n%s", "editor.fontSize", out)
 	}
 }
+
+// TestLoad_NullScalarFieldWarnsAndFallsBack — CR-01: a literal JSON null on
+// a single scalar field is a successful no-op for encoding/json (err == nil,
+// target untouched), so it must be checked explicitly or D-15's "every
+// fallback is logged" guarantee has a silent hole. Sibling fields in the
+// same section must still decode normally.
+func TestLoad_NullScalarFieldWarnsAndFallsBack(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{"appName":"Jasper","theme":"dark",` +
+		`"dailyNotes":{"folder":"daily","template":""},` +
+		`"editor":{"fontSize":null,"lineHeight":1.6,"autosaveMs":3000}}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, nil))
+	cfg, err := Load(dir, log)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	wantFontSize := Defaults().Editor.FontSize
+	if cfg.Editor.FontSize != wantFontSize {
+		t.Errorf("Editor.FontSize: got %d, want default %d (null must fall back like any other fallback)", cfg.Editor.FontSize, wantFontSize)
+	}
+	if cfg.Editor.AutosaveMs != 3000 {
+		t.Errorf("Editor.AutosaveMs: got %d, want 3000 (sibling field must survive fontSize's null)", cfg.Editor.AutosaveMs)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "editor.fontSize") || !strings.Contains(out, "null value") {
+		t.Errorf("warn log missing null-value fallback for %q; got:\n%s", "editor.fontSize", out)
+	}
+}
+
+// TestLoad_NullSectionWarnsAndFallsBack — CR-01: "server": null must revert
+// the whole ServerConfig block (including DataDir) to defaults with a warn,
+// not silently — a silent revert of dataDir is indistinguishable from data
+// loss to the user. Sibling top-level sections must survive.
+func TestLoad_NullSectionWarnsAndFallsBack(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{"appName":"Jasper","theme":"dark","accent":"sky",` +
+		`"dailyNotes":{"folder":"journal","template":""},` +
+		`"server":null}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, nil))
+	cfg, err := Load(dir, log)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	wantServer := Defaults().Server
+	wantServer.Port = 6683 // Load's port-normalization pass always applies
+	if cfg.Server.DataDir != wantServer.DataDir {
+		t.Errorf("Server.DataDir: got %q, want default %q (null section must fall back, not silently keep a stale value)", cfg.Server.DataDir, wantServer.DataDir)
+	}
+	if cfg.Server.Bind != "127.0.0.1" {
+		t.Errorf("Server.Bind: got %q, want %q (null section falls back)", cfg.Server.Bind, "127.0.0.1")
+	}
+	if cfg.DailyNotes.Folder != "journal" {
+		t.Errorf("DailyNotes.Folder: got %q, want %q (must survive server's null section)", cfg.DailyNotes.Folder, "journal")
+	}
+	if cfg.Accent != "sky" {
+		t.Errorf("Accent: got %q, want %q (must survive server's null section)", cfg.Accent, "sky")
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "field=server") || !strings.Contains(out, "null value") {
+		t.Errorf("warn log missing null-value fallback for %q; got:\n%s", "server", out)
+	}
+}
