@@ -259,9 +259,9 @@ func TestPostReveal_VaultRootScope_SymlinkRejected(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink creation requires elevated privileges on Windows")
 	}
-	real := t.TempDir()
+	realDir := t.TempDir()
 	linkedRoot := filepath.Join(t.TempDir(), "vault-link")
-	if err := os.Symlink(real, linkedRoot); err != nil {
+	if err := os.Symlink(realDir, linkedRoot); err != nil {
 		t.Fatalf("Symlink: %v", err)
 	}
 	s := &Server{log: slog.New(slog.NewTextHandler(io.Discard, nil)), dataDir: linkedRoot}
