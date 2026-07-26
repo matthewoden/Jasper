@@ -75,7 +75,11 @@ test.describe("Phase 11 Settings panel (@phase11)", () => {
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
 
-    const fontInput = page.getByLabel("Editor font size");
+    // Phase 32 replaced the old single-field "Editor font size" label with
+    // the Appearance pane's SliderNumberPair (aria-label "Font size", role
+    // spinbutton for the number half) — settings always opens on Appearance
+    // (D-20), so no extra nav click is needed.
+    const fontInput = page.getByRole("spinbutton", { name: "Font size" });
     await fontInput.clear();
     await fontInput.fill("18");
 
@@ -99,7 +103,13 @@ test.describe("Phase 11 Settings panel (@phase11)", () => {
    * then change a setting via the panel and assert the unmanaged key survives
    * the round-trip (SaveMerged must not clobber unknown fields).
    *
-   * Polling reads config.json until display_name is updated, bounded at 5s.
+   * Phase 32 removed config.Config.DisplayName entirely (D-05 — a vault's
+   * name is its folder name, not a stored field), so the "Display name"
+   * field this test originally drove no longer exists. The Editor pane's
+   * autosave-interval field is the smallest still-existing control that
+   * triggers the same PUT /config round-trip this test is actually about.
+   *
+   * Polling reads config.json until autosaveMs is updated, bounded at 5s.
    */
   test("SET-E2E-3: unmanaged config field survives settings round-trip @phase11", async ({
     page,
@@ -125,33 +135,34 @@ test.describe("Phase 11 Settings panel (@phase11)", () => {
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
 
-    const displayInput = page.getByLabel("Display name");
-    await displayInput.clear();
-    await displayInput.fill("Test Vault E2E");
+    await dialog.getByRole("button", { name: "Editor", exact: true }).click();
+    const autosaveInput = page.getByRole("spinbutton", { name: "Autosave interval" });
+    await autosaveInput.clear();
+    await autosaveInput.fill("3500");
 
-    await displayInput.blur();
+    await autosaveInput.blur();
 
     await page.getByRole("button", { name: "Close" }).click();
     await expect(dialog).not.toBeVisible();
 
-    // Poll until config.json reflects the new display_name — PUT is async from
+    // Poll until config.json reflects the new autosaveMs — PUT is async from
     // the server's perspective. Bounded at 5s to catch genuine failures.
     await expect.poll(
       async () => {
         try {
-          const saved = JSON.parse(
-            await fs.readFile(configPath, "utf8"),
-          ) as Record<string, unknown>;
-          return (saved.display_name as string | undefined) ?? "";
+          const saved = JSON.parse(await fs.readFile(configPath, "utf8")) as {
+            editor?: { autosaveMs?: number };
+          };
+          return saved.editor?.autosaveMs ?? 0;
         } catch {
-          return "";
+          return 0;
         }
       },
       {
         timeout: 5000,
-        message: "config.json should contain updated display_name 'Test Vault E2E'",
+        message: "config.json should contain updated editor.autosaveMs 3500",
       },
-    ).toBe("Test Vault E2E");
+    ).toBe(3500);
 
     const saved = JSON.parse(
       await fs.readFile(configPath, "utf8"),

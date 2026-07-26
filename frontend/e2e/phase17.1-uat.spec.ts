@@ -50,8 +50,16 @@ test.describe("SET2-01: sticky Settings dialog (@phase17.1)", () => {
   });
 
   test(
-    "SET2-01: dialog height ≤ viewport − 48px and header+Done button remain visible after body scroll @SET2-01",
+    "SET2-01: dialog height ≤ viewport − 48px and header+Close button remain visible after body scroll @SET2-01",
     async ({ page }) => {
+      // Phase 32 replaced the single scrollable-body dialog with a locked
+      // 920x628 frame (D-19) whose PaneHeader (56px, flexShrink: 0) and
+      // NavColumn are structurally OUTSIDE the per-pane scroll region — only
+      // the content div below PaneHeader scrolls. A small viewport forces
+      // the maxHeight: 82vh cap well below the natural 628px height,
+      // guaranteeing the active pane's content overflows so this test
+      // exercises a real scroll, not a no-op.
+      await page.setViewportSize({ width: 1200, height: 500 });
       await waitConnected(page, jasper.baseURL);
 
       // Open Settings
@@ -63,110 +71,53 @@ test.describe("SET2-01: sticky Settings dialog (@phase17.1)", () => {
       const viewportHeight = page.viewportSize()?.height ?? 800;
       const dialogBox = await dialog.boundingBox();
       expect(dialogBox).not.toBeNull();
-      // RED: dialog currently has max-height: 85vh without accounting for a
-      // 48px toolbar clearance; assert the more precise ≤ viewport − 48px contract.
       expect(dialogBox!.height).toBeLessThanOrEqual(viewportHeight - 48);
 
-      // Scroll the dialog body to the very bottom (simulates full content load)
+      // PaneHeader's subtitle for the default Appearance pane (D-20) — the
+      // element to prove stays put while the pane's OWN content scrolls.
+      const paneSubtitle = dialog.getByText("Accent and typography", { exact: true });
+      const closeBtn = dialog.getByRole("button", { name: "Close settings" });
+      await expect(paneSubtitle).toBeInViewport({ timeout: 3_000 });
+      await expect(closeBtn).toBeInViewport({ timeout: 3_000 });
+      const subtitleBoxBefore = await paneSubtitle.boundingBox();
+      const closeBoxBefore = await closeBtn.boundingBox();
+
+      // Scroll the pane's OWN content region (not the whole dialog, not the
+      // nav column) to the very bottom.
       await page.evaluate(() => {
-        const content = document.querySelector('[role="dialog"]');
-        if (content) {
-          // Find the inner scrollable div (currently the entire Dialog.Content)
-          const scrollable = Array.from(content.querySelectorAll("*")).find(
-            (el) => (el as HTMLElement).scrollHeight > (el as HTMLElement).clientHeight,
-          ) as HTMLElement | undefined;
-          if (scrollable) scrollable.scrollTop = scrollable.scrollHeight;
-        }
+        const dialogEl = document.querySelector('[role="dialog"]');
+        if (!dialogEl) return;
+        const scrollable = Array.from(dialogEl.querySelectorAll("*")).find(
+          (el) => (el as HTMLElement).scrollHeight > (el as HTMLElement).clientHeight,
+        ) as HTMLElement | undefined;
+        if (scrollable) scrollable.scrollTop = scrollable.scrollHeight;
       });
 
-      // After scroll: header "Settings" title must still be in viewport
-      // RED: currently the header is inside the scroll area and scrolls away.
-      const heading = page.getByRole("heading", { name: "Settings" });
-      await expect(heading).toBeInViewport({ timeout: 3_000 });
-
-      // After scroll: footer "Done" button must still be in viewport
-      // RED: currently the button is labelled "Close" and not sticky.
-      // Plan 02 renames it "Done" and pins it to a sticky footer.
-      const doneBtn = page.getByRole("button", { name: "Done" });
-      await expect(doneBtn).toBeInViewport({ timeout: 3_000 });
+      // After scroll: PaneHeader subtitle and Close control must still be
+      // visible AND at the exact same position — proving they live outside
+      // the scrolled region entirely, not merely "still on screen".
+      await expect(paneSubtitle).toBeInViewport({ timeout: 3_000 });
+      await expect(closeBtn).toBeInViewport({ timeout: 3_000 });
+      expect(await paneSubtitle.boundingBox()).toEqual(subtitleBoxBefore);
+      expect(await closeBtn.boundingBox()).toEqual(closeBoxBefore);
     },
   );
 });
 
 // ---------------------------------------------------------------------------
 // SET2-05: display_name persists across page reload
+//
+// RETIRED (Phase 32, plan 32-11 gap-closure): Phase 32 plan 32-01 deleted
+// config.Config.DisplayName entirely (D-05) — a vault's display name is now
+// always the derived filepath.Base of its data directory (see
+// PutConfig's app.json sync in backend/internal/api/config_handler.go),
+// never a free-text field the user can set. There is no remaining Settings
+// control this test could target; the capability itself, not just its UI,
+// no longer exists. Per this project's "Orphaned Code as Design Signal"
+// convention, retiring the test with this note rather than force-fitting
+// new behavior onto a removed feature. SET2-01 and SET2-06 above/below are
+// unaffected and remain in force.
 // ---------------------------------------------------------------------------
-
-test.describe("SET2-05: display_name persists across reload (@phase17.1)", () => {
-  let jasper: JasperHandle;
-
-  test.beforeAll(async () => {
-    jasper = await spawnJasper();
-  });
-
-  test.afterAll(async () => {
-    if (jasper) await jasper.kill();
-  });
-
-  test(
-    "SET2-05: display_name set in Settings appears in StatusBar and survives page reload @SET2-05",
-    async ({ page }) => {
-      await waitConnected(page, jasper.baseURL);
-
-      // Unique name to rule out stale-state false positives
-      const newName = `TestVault-${Date.now()}`;
-
-      // Open Settings → set Display name
-      await page.getByTestId("settings-menu-trigger").click();
-      const dialog = page.getByRole("dialog", { name: "Settings" });
-      await expect(dialog).toBeVisible({ timeout: 5_000 });
-
-      const displayNameInput = page.getByLabel("Display name");
-      await displayNameInput.clear();
-      await displayNameInput.fill(newName);
-      await displayNameInput.blur();
-
-      // Wait for the save to settle (PUT fires on blur; poll for it)
-      await expect
-        .poll(
-          async () => {
-            const resp = await fetch(`${jasper.baseURL}/api/v1/vault/current`);
-            if (!resp.ok) return "";
-            const data = (await resp.json()) as { vault?: { display_name?: string } };
-            return data.vault?.display_name ?? "";
-          },
-          { message: "Expected GET /vault/current to return new display_name after PUT", timeout: 8_000 },
-        )
-        .toBe(newName);
-
-      // Close the dialog (click the footer Done button specifically)
-      await page.getByRole("button", { name: "Done" }).click();
-
-      // StatusBar must reflect the new name immediately
-      await expect(page.getByTestId("status-bar-vault")).toHaveText(newName, {
-        timeout: 5_000,
-      });
-
-      // Reload the page
-      await page.reload();
-      await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
-        "data-status",
-        "connected",
-        { timeout: 10_000 },
-      );
-
-      // RED: after reload, StatusBar still shows old name (app.json not synced)
-      await expect(page.getByTestId("status-bar-vault")).toHaveText(newName, {
-        timeout: 5_000,
-      });
-
-      // RED: re-opening Settings also shows old name in the input
-      await page.getByTestId("settings-menu-trigger").click();
-      await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible({ timeout: 5_000 });
-      await expect(page.getByLabel("Display name")).toHaveValue(newName);
-    },
-  );
-});
 
 // ---------------------------------------------------------------------------
 // SET2-06: breadcrumb segment reveals note in Files sidebar
