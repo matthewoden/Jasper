@@ -1737,8 +1737,22 @@ export interface components {
             current_updated_at: string;
         };
         RevealRequest: {
-            /** @description Vault-relative path of the file to reveal (canonical NFC+lowercase). */
+            /**
+             * @description Vault-relative path of the file to reveal (canonical NFC+lowercase).
+             *     Required even in vaultRoot scope (send "."); vaultRoot scope
+             *     ignores this value entirely and never resolves client input.
+             */
             path: string;
+            /**
+             * @description Phase 32 / D-24. "note" (default) reveals `path` under the vault's
+             *     notes/ directory, same behavior as before this field existed.
+             *     "vaultRoot" ignores `path` and reveals the vault's data directory
+             *     itself — resolved entirely server-side from configuration, never
+             *     from client input.
+             * @default note
+             * @enum {string}
+             */
+            scope: "note" | "vaultRoot";
         };
         RevealResponse: {
             /**

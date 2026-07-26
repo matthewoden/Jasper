@@ -134,6 +134,158 @@ func TestPostReveal_PathValidation_RejectsBadPaths(t *testing.T) {
 	}
 }
 
+// TestPostReveal_DotPath_DefaultScope_StillRejected pins the CURRENT
+// (pre-vaultRoot-scope) behavior: a "." path in the default (note) scope
+// is rejected with 400 invalid_path. After the vaultRoot scope is added,
+// this stays true — a "." path outside vaultRoot scope must still be
+// rejected. This is the containment guarantee referenced in the plan.
+func TestPostReveal_DotPath_DefaultScope_StillRejected(t *testing.T) {
+	s, _ := newRevealServer(t)
+	darwinCall, wslCall, restore := stubDispatchers(t, nil, nil)
+	defer restore()
+
+	body := &PostRevealJSONRequestBody{Path: "."}
+	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: body})
+	if err != nil {
+		t.Fatalf("PostReveal returned error: %v", err)
+	}
+	r400, ok := resp.(PostReveal400JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostReveal400JSONResponse, got %T", resp)
+	}
+	if r400.Code != "invalid_path" {
+		t.Fatalf("Code=%q, want invalid_path", r400.Code)
+	}
+	if darwinCall.called || wslCall.called {
+		t.Fatalf("dispatch must NOT be called when path resolves empty")
+	}
+}
+
+// TestPostReveal_VaultRootScope_HappyPath asserts a vaultRoot-scope request
+// resolves to filepath.Clean(dataDir) and dispatches to the platform
+// function with that path, bypassing resolveRevealPath entirely.
+func TestPostReveal_VaultRootScope_HappyPath(t *testing.T) {
+	s, dataDir := newRevealServer(t)
+	darwinCall, wslCall, restore := stubDispatchers(t, nil, nil)
+	defer restore()
+
+	scope := RevealRequestScopeVaultRoot
+	body := &PostRevealJSONRequestBody{Path: ".", Scope: &scope}
+	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: body})
+	if err != nil {
+		t.Fatalf("PostReveal returned error: %v", err)
+	}
+	if _, ok := resp.(PostReveal200JSONResponse); !ok {
+		t.Fatalf("expected PostReveal200JSONResponse, got %T (resp=%+v)", resp, resp)
+	}
+
+	want := filepath.Clean(dataDir)
+	switch runtime.GOOS {
+	case "darwin":
+		if !darwinCall.called || darwinCall.abs != want {
+			t.Fatalf("darwin dispatch: called=%v abs=%q, want abs=%q", darwinCall.called, darwinCall.abs, want)
+		}
+	case "linux":
+		if !wslCall.called && !darwinCall.called {
+			t.Fatalf("expected a dispatch call on linux (wsl2 stub); none fired")
+		}
+	}
+}
+
+// TestPostReveal_VaultRootScope_EmptyDataDir_Returns400 asserts the
+// no-vault-open guard: an empty s.dataDir must 400, never dispatch.
+func TestPostReveal_VaultRootScope_EmptyDataDir_Returns400(t *testing.T) {
+	s := &Server{log: slog.New(slog.NewTextHandler(io.Discard, nil)), dataDir: ""}
+	darwinCall, wslCall, restore := stubDispatchers(t, nil, nil)
+	defer restore()
+
+	scope := RevealRequestScopeVaultRoot
+	body := &PostRevealJSONRequestBody{Path: ".", Scope: &scope}
+	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: body})
+	if err != nil {
+		t.Fatalf("PostReveal returned error: %v", err)
+	}
+	r400, ok := resp.(PostReveal400JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostReveal400JSONResponse, got %T", resp)
+	}
+	if r400.Code != "invalid_path" {
+		t.Fatalf("Code=%q, want invalid_path", r400.Code)
+	}
+	if darwinCall.called || wslCall.called {
+		t.Fatalf("dispatch must NOT be called when no vault is open")
+	}
+}
+
+// TestPostReveal_VaultRootScope_IgnoresHostilePath is the T-32-05 pin: a
+// hostile path in vaultRoot scope must be completely ignored — the
+// platform function must receive filepath.Clean(dataDir), never a
+// traversed path derived from the request body.
+func TestPostReveal_VaultRootScope_IgnoresHostilePath(t *testing.T) {
+	s, dataDir := newRevealServer(t)
+	darwinCall, wslCall, restore := stubDispatchers(t, nil, nil)
+	defer restore()
+
+	scope := RevealRequestScopeVaultRoot
+	body := &PostRevealJSONRequestBody{Path: "../../etc/passwd", Scope: &scope}
+	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: body})
+	if err != nil {
+		t.Fatalf("PostReveal returned error: %v", err)
+	}
+	if _, ok := resp.(PostReveal200JSONResponse); !ok {
+		t.Fatalf("expected PostReveal200JSONResponse, got %T (resp=%+v)", resp, resp)
+	}
+
+	want := filepath.Clean(dataDir)
+	switch runtime.GOOS {
+	case "darwin":
+		if !darwinCall.called || darwinCall.abs != want {
+			t.Fatalf("darwin dispatch abs=%q, want %q (hostile path must be ignored)", darwinCall.abs, want)
+		}
+		if strings.Contains(darwinCall.abs, "etc") || strings.Contains(darwinCall.abs, "passwd") {
+			t.Fatalf("dispatch received a traversed path: %q", darwinCall.abs)
+		}
+	case "linux":
+		if wslCall.called && (strings.Contains(wslCall.abs, "etc") || strings.Contains(wslCall.abs, "passwd")) {
+			t.Fatalf("dispatch received a traversed path: %q", wslCall.abs)
+		}
+	}
+}
+
+// TestPostReveal_VaultRootScope_SymlinkRejected mirrors
+// TestPostReveal_PathValidation_SymlinkRejected for the vaultRoot branch —
+// a symlinked dataDir must be rejected the same way a symlinked note is.
+func TestPostReveal_VaultRootScope_SymlinkRejected(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on Windows")
+	}
+	real := t.TempDir()
+	linkedRoot := filepath.Join(t.TempDir(), "vault-link")
+	if err := os.Symlink(real, linkedRoot); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+	s := &Server{log: slog.New(slog.NewTextHandler(io.Discard, nil)), dataDir: linkedRoot}
+	darwinCall, wslCall, restore := stubDispatchers(t, nil, nil)
+	defer restore()
+
+	scope := RevealRequestScopeVaultRoot
+	body := &PostRevealJSONRequestBody{Path: ".", Scope: &scope}
+	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: body})
+	if err != nil {
+		t.Fatalf("PostReveal returned error: %v", err)
+	}
+	r400, ok := resp.(PostReveal400JSONResponse)
+	if !ok {
+		t.Fatalf("expected PostReveal400JSONResponse, got %T", resp)
+	}
+	if r400.Code != "invalid_path" || !strings.Contains(r400.Message, "symlink") {
+		t.Fatalf("Code=%q Message=%q, want invalid_path + 'symlink'", r400.Code, r400.Message)
+	}
+	if darwinCall.called || wslCall.called {
+		t.Fatalf("symlink rejection must short-circuit BEFORE dispatch")
+	}
+}
+
 func TestPostReveal_PathValidation_MissingBody(t *testing.T) {
 	s, _ := newRevealServer(t)
 	resp, err := s.PostReveal(context.Background(), PostRevealRequestObject{Body: nil})
