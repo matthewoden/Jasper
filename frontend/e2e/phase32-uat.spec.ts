@@ -329,6 +329,47 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     }
   });
 
+  test("appearance: every row carries its helper caption and the two typography sliders measure equal width (G-01, G-02)", async ({
+    page,
+  }) => {
+    jasper = await spawnJasper();
+    await page.setViewportSize({ width: 1512, height: 944 });
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    await page.getByTestId("settings-menu-trigger").click();
+    const dialog = page.getByRole("dialog", { name: "Settings" });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+
+    // Settings always opens on Appearance (D-20) — no nav click needed.
+    await expect(
+      dialog.getByText("Used for links, tags, highlights and selection", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByText("Typeface for note body text", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByText("Body text size in the editor · 8–32px", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByText("Vertical rhythm of paragraphs and lists · 1.0–3.0", { exact: true }),
+    ).toBeVisible();
+
+    const fontSizeSlider = dialog.getByRole("slider", { name: "Font size" });
+    const lineHeightSlider = dialog.getByRole("slider", { name: "Line height" });
+    await expect(fontSizeSlider).toBeVisible();
+    await expect(lineHeightSlider).toBeVisible();
+
+    await expect(async () => {
+      const fontSizeBox = await fontSizeSlider.boundingBox();
+      const lineHeightBox = await lineHeightSlider.boundingBox();
+      if (!fontSizeBox || !lineHeightBox) {
+        throw new Error("Font size or Line height slider has no bounding box");
+      }
+      expect(Math.abs(fontSizeBox.width - lineHeightBox.width)).toBeLessThanOrEqual(0.5);
+    }).toPass({ timeout: 3_000 });
+  });
+
   test("type preview: real-mouse font-size drag restyles the live editor before mouse-up, commits exactly once (SET3-07)", async ({
     page,
   }) => {

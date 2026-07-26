@@ -103,7 +103,7 @@ export function ControlRow({
         marginBottom: 8,
       }}
     >
-      <div style={{ minWidth: 160, paddingTop: 8, flexShrink: 0 }}>
+      <div style={{ width: 160, paddingTop: 8, flexShrink: 0 }}>
         {htmlFor ? (
           <label htmlFor={htmlFor} style={labelStyle}>
             {label}
