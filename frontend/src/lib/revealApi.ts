@@ -38,7 +38,7 @@ export interface RevealResult {
  */
 export async function revealPath(path: string): Promise<RevealResult> {
   const { data, error, response } = await client.POST("/reveal", {
-    body: { path },
+    body: { path, scope: "note" },
   });
   if (error || !data) {
     const errObj = error as { message?: string } | undefined;
