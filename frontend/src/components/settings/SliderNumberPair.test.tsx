@@ -4,7 +4,7 @@ import { SliderNumberPair } from "./SliderNumberPair";
 
 function renderPair(overrides: Partial<React.ComponentProps<typeof SliderNumberPair>> = {}) {
   const onCommit = vi.fn();
-  render(
+  const { unmount } = render(
     <SliderNumberPair
       id="settings-font-size"
       label="Font size"
@@ -21,7 +21,7 @@ function renderPair(overrides: Partial<React.ComponentProps<typeof SliderNumberP
       {...overrides}
     />,
   );
-  return { onCommit };
+  return { onCommit, unmount };
 }
 
 describe("SliderNumberPair", () => {
@@ -114,6 +114,52 @@ describe("SliderNumberPair", () => {
       expect(onCommit).toHaveBeenCalledWith(19);
 
       vi.advanceTimersByTime(300);
+      expect(onCommit).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("unmounting inside the debounce window flushes the pending keyboard commit instead of dropping it (32-REVIEW CR-01)", () => {
+    vi.useFakeTimers();
+    try {
+      const { onCommit, unmount } = renderPair();
+      const range = screen.getByRole("slider", { name: "Font size" });
+
+      fireEvent.change(range, { target: { value: "17" } });
+      fireEvent.keyUp(range, { key: "ArrowRight" });
+
+      // Still inside the 250ms debounce window -- nothing committed yet.
+      expect(onCommit).not.toHaveBeenCalled();
+
+      unmount();
+
+      expect(onCommit).toHaveBeenCalledTimes(1);
+      expect(onCommit).toHaveBeenCalledWith(17);
+
+      // The flushed commit must not be replayed by the timer that was
+      // supposed to fire it, once cleared.
+      vi.advanceTimersByTime(300);
+      expect(onCommit).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a keyboard commit that already fired normally does not re-fire on a later unmount", () => {
+    vi.useFakeTimers();
+    try {
+      const { onCommit, unmount } = renderPair();
+      const range = screen.getByRole("slider", { name: "Font size" });
+
+      fireEvent.change(range, { target: { value: "17" } });
+      fireEvent.keyUp(range, { key: "ArrowRight" });
+      vi.advanceTimersByTime(300);
+
+      expect(onCommit).toHaveBeenCalledTimes(1);
+
+      unmount();
+
       expect(onCommit).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
