@@ -1,28 +1,18 @@
 /**
  * NavColumn — the 216px fixed left nav (D-19 locked geometry). Renders
- * `SECTIONS` (never a hardcoded list — Phase 35 adds Templates by editing
- * the manifest alone). The Server row carries an independent trailing
- * warning-dot (D-21) driven off the same `bootBaselineRef` mechanism as the
- * per-field restart badges, distinct from the leading active-section dot so
- * both can render simultaneously without overlapping.
+ * `SECTIONS` (never a hardcoded list — Phase 35 adds Templates and Phase 36
+ * adds Server back by editing the manifest alone).
  */
 import { SECTIONS, type SectionId } from "./sections";
 
 export interface NavColumnProps {
   activeSection: SectionId;
   onSelect: (id: SectionId) => void;
-  serverRestartPending: boolean;
   vaultName?: string;
   appVersion?: string;
 }
 
-export function NavColumn({
-  activeSection,
-  onSelect,
-  serverRestartPending,
-  vaultName,
-  appVersion,
-}: NavColumnProps) {
+export function NavColumn({ activeSection, onSelect, vaultName, appVersion }: NavColumnProps) {
   const footerText =
     vaultName && appVersion
       ? `${vaultName} · v${appVersion}`
@@ -65,7 +55,6 @@ export function NavColumn({
       >
         {SECTIONS.map((section) => {
           const active = section.id === activeSection;
-          const showRestartDot = section.id === "server" && serverRestartPending;
           return (
             <button
               key={section.id}
@@ -108,18 +97,6 @@ export function NavColumn({
                   {section.label}
                 </span>
               </span>
-              {showRestartDot && (
-                <span
-                  aria-label="Restart required"
-                  style={{
-                    width: 4,
-                    height: 4,
-                    borderRadius: "50%",
-                    flexShrink: 0,
-                    background: "var(--color-warning)",
-                  }}
-                />
-              )}
             </button>
           );
         })}

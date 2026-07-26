@@ -1,13 +1,15 @@
 /**
  * SettingsDialogShell — composes the persistent left-nav Settings dialog
  * (D-19 locked 920x628 frame, 216px nav column, 56px header rows) around the
- * five section panes. Owns the single `useConfig` instance, the save-error
- * banner, and the boot-baseline restart signal (D-21) — replaces the retired
- * `SettingsDialog.tsx`.
+ * four section panes. Owns the single `useConfig` instance and the
+ * save-error banner — replaces the retired `SettingsDialog.tsx`. The Server
+ * section and its restart-pending signal were retired by ADR-002
+ * (2026-07-26); Phase 36 reintroduces a Server pane with a different control
+ * set.
  */
 import * as Dialog from "@radix-ui/react-dialog";
 import { AlertCircle } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   applyAccent,
   applyReadingFont,
@@ -25,7 +27,6 @@ import { NavColumn } from "./NavColumn";
 import { PaneHeader } from "./PaneHeader";
 import { ResetConfirmDialog } from "./ResetConfirmDialog";
 import { SECTIONS, type SectionId } from "./sections";
-import { ServerSection } from "./ServerSection";
 
 // Fields a per-section Reset (D-07/D-10/D-12) is allowed to overwrite, built
 // from the CURRENT config with only the named fields swapped to
@@ -58,10 +59,6 @@ function buildResetPatch(section: SectionId, config: Config): Partial<Config> {
           template: DEFAULT_CONFIG.dailyNotes.template,
         },
       };
-    case "server":
-      return config.server
-        ? { server: { ...config.server, bind: DEFAULT_CONFIG.server.bind } }
-        : {};
     default:
       return {};
   }
@@ -90,17 +87,6 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
   const [saveError, setSaveError] = useState<string | null>(null);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
-  // Boot-baseline capture: assigned once on first non-null config, never
-  // updated again. Restart badges compare current values against this
-  // baseline (D-21 honest-signal) — a second baseline would let a switch
-  // away and back reset the pending-restart signal.
-  const bootBaselineRef = useRef<Config | null>(null);
-  useEffect(() => {
-    if (config && bootBaselineRef.current === null) {
-      bootBaselineRef.current = config;
-    }
-  }, [config]);
-
   // NavColumn's footer caption (UI-SPEC "{vault} · v{app version}") needs
   // to be visible from any pane, not just About — reuse the same typed
   // GET /vault/about call AboutSection makes (no new endpoint, no second
@@ -118,11 +104,6 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
       cancelled = true;
     };
   }, [open]);
-
-  const showBindBadge =
-    bootBaselineRef.current !== null &&
-    !!config &&
-    config.server?.bind !== bootBaselineRef.current.server?.bind;
 
   // Settings always opens on Appearance (D-20) — no persisted or
   // session-remembered active section. Resetting on close (rather than on
@@ -186,15 +167,6 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
         return (
           <DailyNotesSection config={config} saveConfig={saveConfig} onSaveError={setSaveError} />
         );
-      case "server":
-        return (
-          <ServerSection
-            config={config}
-            saveConfig={saveConfig}
-            onSaveError={setSaveError}
-            showBindBadge={showBindBadge}
-          />
-        );
       case "about":
         return (
           <AboutSection
@@ -239,13 +211,12 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
               second visible heading. */}
           <Dialog.Title style={hiddenStyle}>Settings</Dialog.Title>
           <Dialog.Description id="settings-dialog-desc" style={hiddenStyle}>
-            Change application settings — appearance, editor, daily notes, and server preferences.
+            Change application settings — appearance, editor, and daily notes.
           </Dialog.Description>
 
           <NavColumn
             activeSection={activeSection}
             onSelect={setActiveSection}
-            serverRestartPending={showBindBadge}
             vaultName={vaultAbout?.vaultName}
             appVersion={vaultAbout?.appVersion}
           />
