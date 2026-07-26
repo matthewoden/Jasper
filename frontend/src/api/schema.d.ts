@@ -1369,13 +1369,6 @@ export interface components {
             /** @default Jasper */
             appName: string;
             /**
-             * @description Optional display name for this vault (defaults to base name of the
-             *     vault path). Persisted in <vault>/.jasper/config.json per
-             *     Phase 9 D-04. Optional on the wire — `omitempty` on the Go side
-             *     means legacy configs without the key decode cleanly.
-             */
-            display_name?: string;
-            /**
              * @default dark
              * @enum {string}
              */
@@ -1394,8 +1387,6 @@ export interface components {
                  * @default 1.6
                  */
                 lineHeight: number;
-                /** @default false */
-                vimMode: boolean;
                 /**
                  * @description Autosave debounce interval in milliseconds. Replaces the
                  *     hard-coded 2000ms constant in EditorPane.tsx (Phase 11 D-08).
@@ -1403,6 +1394,16 @@ export interface components {
                  * @default 2000
                  */
                 autosaveMs: number;
+                /** @default true */
+                showProperties: boolean;
+                /** @default true */
+                autoPair: boolean;
+                /** @default true */
+                foldGutter: boolean;
+                /** @default false */
+                lineNumbers: boolean;
+                /** @default 700 */
+                lineWidth: number;
             };
             /**
              * @description UI accent color. Applied to interactive elements (links, buttons,
@@ -1439,6 +1440,12 @@ export interface components {
                 port: number;
                 /** @default 127.0.0.1 */
                 bind: string;
+                /** @default false */
+                auditLog: boolean;
+            };
+            templates?: {
+                /** @default Templates */
+                folder: string;
             };
         };
         Error: {

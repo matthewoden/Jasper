@@ -39,7 +39,7 @@ func validConfigBodyWithAutosave(autosaveMs int) []byte {
 	body := []byte(`{
 		"appName":"Jasper","theme":"dark",
 		"dailyNotes":{"folder":"daily","template":""},
-		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":` +
+		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":` +
 		itoa(autosaveMs) + `}
 	}`)
 	return body
@@ -101,24 +101,19 @@ func TestConfigMiddleware_AutosaveMs(t *testing.T) {
 	}
 }
 
-// TestConfigMiddleware_DisplayName_TooLong — display_name > 64 chars → 400.
-func TestConfigMiddleware_DisplayName_TooLong(t *testing.T) {
+// TestConfigMiddleware_DisplayNameField_Rejected400 — D-05: display_name is
+// deleted from the Config schema; the strictConfigValidator no longer
+// declares it, so any body carrying the legacy key is rejected as an
+// unknown field.
+func TestConfigMiddleware_DisplayNameField_Rejected400(t *testing.T) {
 	ts := setupValidateServer(t)
 	defer ts.Close()
 
-	long65 := `"` + string(make([]byte, 65)) + `"` // 65 bytes of null chars is > 64
-	_ = long65
-	// Use a real 65-character string:
-	name65 := "A"
-	for i := 1; i < 65; i++ {
-		name65 += "A"
-	}
-
 	body := []byte(`{
 		"appName":"Jasper","theme":"dark",
-		"display_name":"` + name65 + `",
+		"display_name":"My Notes",
 		"dailyNotes":{"folder":"daily","template":""},
-		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000}
+		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -129,7 +124,7 @@ func TestConfigMiddleware_DisplayName_TooLong(t *testing.T) {
 	respBody, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if resp.StatusCode != 400 {
-		t.Errorf("display_name 65 chars: got %d, want 400; body=%s", resp.StatusCode, respBody)
+		t.Errorf("display_name field: got %d, want 400 (unknown field); body=%s", resp.StatusCode, respBody)
 	}
 }
 
@@ -143,7 +138,7 @@ func TestConfigMiddleware_ServerBindAccepted(t *testing.T) {
 	body := []byte(`{
 		"appName":"Jasper","theme":"dark",
 		"dailyNotes":{"folder":"daily","template":""},
-		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/x","bind":"0.0.0.0"}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
@@ -156,5 +151,64 @@ func TestConfigMiddleware_ServerBindAccepted(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode == 400 {
 		t.Errorf("server.bind rejected as unknown field: got 400; body=%s", respBody)
+	}
+}
+
+// TestConfigStrictBody_AcceptsAllV14Fields — a PUT body carrying every new
+// D-17 field (templates.folder, editor.{showProperties,autoPair,foldGutter,
+// lineNumbers,lineWidth}, mcp.auditLog) alongside the existing required
+// fields must pass the strict-body middleware (no 400).
+func TestConfigStrictBody_AcceptsAllV14Fields(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{
+		"appName":"Jasper","theme":"dark",
+		"dailyNotes":{"folder":"daily","template":""},
+		"editor":{
+			"fontSize":15,"lineHeight":1.6,"autosaveMs":2000,
+			"showProperties":false,"autoPair":false,"foldGutter":false,
+			"lineNumbers":true,"lineWidth":900
+		},
+		"mcp":{"port":6684,"bind":"127.0.0.1","auditLog":true},
+		"templates":{"folder":"MyTemplates"}
+	}`)
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode == 400 {
+		t.Errorf("v1.4 fields rejected: got 400; body=%s", respBody)
+	}
+}
+
+// TestConfigStrictBody_RejectsLineWidthOutOfRange — editor.lineWidth outside
+// the 400-2000 range must be rejected with 400 invalid_request.
+func TestConfigStrictBody_RejectsLineWidthOutOfRange(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{
+		"appName":"Jasper","theme":"dark",
+		"dailyNotes":{"folder":"daily","template":""},
+		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000,"lineWidth":3000}
+	}`)
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("lineWidth=3000: got %d, want 400; body=%s", resp.StatusCode, respBody)
+	}
+	if !bytes.Contains(respBody, []byte(`"invalid_request"`)) {
+		t.Errorf("lineWidth=3000: body missing invalid_request code; body=%s", respBody)
 	}
 }

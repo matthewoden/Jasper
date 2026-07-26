@@ -98,10 +98,16 @@ func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"editor.autosaveMs must be 250–10000"}`))
 			return
 		}
-		if tmp.DisplayName != nil && len(*tmp.DisplayName) > 64 {
+		if tmp.Editor.LineWidth != nil && (*tmp.Editor.LineWidth < 400 || *tmp.Editor.LineWidth > 2000) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"display_name must be at most 64 chars"}`))
+			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"editor.lineWidth must be 400–2000"}`))
+			return
+		}
+		if tmp.Templates != nil && len(tmp.Templates.Folder) > 64 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"templates.folder must be at most 64 chars"}`))
 			return
 		}
 		if tmp.Accent != nil {
@@ -131,7 +137,6 @@ func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 
 type strictConfigValidator struct {
 	AppName     string  `json:"appName"`
-	DisplayName *string `json:"display_name,omitempty"`
 	Theme       string  `json:"theme"`
 	Accent      *string `json:"accent,omitempty"`
 	ReadingFont *string `json:"readingFont,omitempty"`
@@ -140,10 +145,14 @@ type strictConfigValidator struct {
 		Template string `json:"template"`
 	} `json:"dailyNotes"`
 	Editor struct {
-		FontSize   int     `json:"fontSize"`
-		LineHeight float64 `json:"lineHeight"`
-		VimMode    bool    `json:"vimMode"`
-		AutosaveMs int     `json:"autosaveMs"`
+		FontSize       int     `json:"fontSize"`
+		LineHeight     float64 `json:"lineHeight"`
+		AutosaveMs     int     `json:"autosaveMs"`
+		ShowProperties *bool   `json:"showProperties,omitempty"`
+		AutoPair       *bool   `json:"autoPair,omitempty"`
+		FoldGutter     *bool   `json:"foldGutter,omitempty"`
+		LineNumbers    *bool   `json:"lineNumbers,omitempty"`
+		LineWidth      *int    `json:"lineWidth,omitempty"`
 	} `json:"editor"`
 	Server *struct {
 		Port    int    `json:"port"`
@@ -151,8 +160,11 @@ type strictConfigValidator struct {
 		Bind    string `json:"bind"`
 	} `json:"server,omitempty"`
 	Mcp *struct {
-		Enabled bool   `json:"enabled"`
-		Port    int    `json:"port"`
-		Bind    string `json:"bind"`
+		Port     int    `json:"port"`
+		Bind     string `json:"bind"`
+		AuditLog *bool  `json:"auditLog,omitempty"`
 	} `json:"mcp,omitempty"`
+	Templates *struct {
+		Folder string `json:"folder"`
+	} `json:"templates,omitempty"`
 }

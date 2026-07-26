@@ -70,12 +70,13 @@ func TestLoad_RoundTrip(t *testing.T) {
 	in := Config{
 		AppName:     "Jasper",
 		DailyNotes:  DailyNotes{Folder: "journal", Template: "## {{date}}"},
-		Editor:      Editor{FontSize: 16, LineHeight: 1.7, VimMode: true, AutosaveMs: 3000},
+		Editor:      Editor{FontSize: 16, LineHeight: 1.7, AutosaveMs: 3000, LineWidth: 900},
 		Theme:       "dark",
 		Accent:      "sky",
 		ReadingFont: "serif",
 		Server:      ServerConfig{Port: 6683, DataDir: "/tmp/jasper-test", Bind: "127.0.0.1"},
 		MCP:         MCPConfig{Port: 6684, Bind: "127.0.0.1"},
+		Templates:   Templates{Folder: "Templates"},
 	}
 	if err := Save(dir, in); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -217,7 +218,7 @@ func TestLoad_OldConfigWithoutServerOrMCP_BackCompat(t *testing.T) {
 	old := []byte(`{
 		"appName":"Jasper","theme":"dark",
 		"dailyNotes":{"folder":"daily","template":""},
-		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false}
+		"editor":{"fontSize":15,"lineHeight":1.6}
 	}`)
 	if err := os.WriteFile(path, old, 0o644); err != nil {
 		t.Fatal(err)
@@ -252,7 +253,7 @@ func TestLoad_ThemeLightCoercedToDark(t *testing.T) {
 	raw := []byte(`{
 		"appName":"Jasper","theme":"light",
 		"dailyNotes":{"folder":"daily","template":""},
-		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
 		"mcp":{"port":6684,"bind":"127.0.0.1"}
 	}`)
@@ -279,7 +280,7 @@ func TestLoad_MissingAccentDefaultsToPurple(t *testing.T) {
 	raw := []byte(`{
 		"appName":"Jasper","theme":"dark",
 		"dailyNotes":{"folder":"daily","template":""},
-		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
 		"mcp":{"port":6684,"bind":"127.0.0.1"}
 	}`)
@@ -306,7 +307,7 @@ func TestLoad_MissingReadingFontDefaultsToSans(t *testing.T) {
 	raw := []byte(`{
 		"appName":"Jasper","theme":"dark",
 		"dailyNotes":{"folder":"daily","template":""},
-		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
 		"mcp":{"port":6684,"bind":"127.0.0.1"}
 	}`)
@@ -333,7 +334,7 @@ func TestLoad_BogusAccentNormalizedToPurple(t *testing.T) {
 	raw := []byte(`{
 		"appName":"Jasper","theme":"dark","accent":"bogus",
 		"dailyNotes":{"folder":"daily","template":""},
-		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
 		"mcp":{"port":6684,"bind":"127.0.0.1"}
 	}`)
@@ -360,7 +361,7 @@ func TestLoad_BogusReadingFontNormalizedToSans(t *testing.T) {
 	raw := []byte(`{
 		"appName":"Jasper","theme":"dark","readingFont":"bogus",
 		"dailyNotes":{"folder":"daily","template":""},
-		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
 		"mcp":{"port":6684,"bind":"127.0.0.1"}
 	}`)
@@ -387,7 +388,7 @@ func TestLoad_ValidAccentAndReadingFontPreserved(t *testing.T) {
 	raw := []byte(`{
 		"appName":"Jasper","theme":"dark","accent":"sky","readingFont":"serif",
 		"dailyNotes":{"folder":"daily","template":""},
-		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
 		"mcp":{"port":6684,"bind":"127.0.0.1"}
 	}`)
@@ -430,7 +431,7 @@ func TestLoad_UnknownFieldsFallBackToDefaults(t *testing.T) {
 	path := filepath.Join(dir, ".jasper", "config.json")
 	bad := []byte(`{"appName":"Jasper","theme":"dark","unknownKey":42,` +
 		`"dailyNotes":{"folder":"daily","template":""},` +
-		`"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false}}`)
+		`"editor":{"fontSize":15,"lineHeight":1.6}}`)
 	if err := os.WriteFile(path, bad, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -445,20 +446,23 @@ func TestLoad_UnknownFieldsFallBackToDefaults(t *testing.T) {
 	}
 }
 
-// TestLoad_LegacyMCPEnabledKeyParses — every pre-Phase-24 config.json on disk
-// carries "mcp":{"enabled":...} (the field was required + always persisted).
-// Phase 24 removed the runtime toggle but keeps a deprecated ignored Enabled
-// field so the strict decoder still accepts the key. Regression guard: an
-// upgrading user's custom settings (accent, editor, mcp.port) MUST survive the
-// load rather than being silently reset to defaults via the malformed path.
-func TestLoad_LegacyMCPEnabledKeyParses(t *testing.T) {
+// TestLoad_LegacyMCPEnabledKeyFallsBackToDefaults — Phase 32 (RESEARCH.md Open
+// Question 2) deletes the deprecated ignored MCPConfig.Enabled field: its only
+// justification was letting a legacy on-disk "mcp":{"enabled":...} key parse
+// under the strict decoder (DisallowUnknownFields). With the field gone and
+// config.Load() still strict in this plan (leniency is Phase 32-03's job), a
+// legacy key now trips the malformed-fallback path instead of surviving —
+// an accepted transitional regression, closed by 32-03's lenient per-field
+// decode. This test documents the current (32-01) behavior rather than the
+// pre-32 guarantee it replaces.
+func TestLoad_LegacyMCPEnabledKeyFallsBackToDefaults(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	legacy := []byte(`{"appName":"Jasper","theme":"dark","accent":"sky",` +
 		`"dailyNotes":{"folder":"journal","template":""},` +
-		`"editor":{"fontSize":18,"lineHeight":1.7,"vimMode":true,"autosaveMs":3000},` +
+		`"editor":{"fontSize":18,"lineHeight":1.7,"autosaveMs":3000},` +
 		`"server":{"port":6683,"dataDir":"/tmp/jasper-legacy","bind":"127.0.0.1"},` +
 		`"mcp":{"port":7000,"bind":"127.0.0.1","enabled":true}}`)
 	if err := os.WriteFile(path, legacy, 0o644); err != nil {
@@ -469,15 +473,8 @@ func TestLoad_LegacyMCPEnabledKeyParses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	// If the legacy key had triggered the malformed fallback, these would all
-	// be default values instead of the user's.
-	if cfg.Accent != "sky" {
-		t.Errorf("Accent: got %q, want %q (settings wiped — legacy mcp.enabled rejected?)", cfg.Accent, "sky")
-	}
-	if cfg.Editor.FontSize != 18 {
-		t.Errorf("Editor.FontSize: got %d, want 18 (settings wiped?)", cfg.Editor.FontSize)
-	}
-	if cfg.MCP.Port != 7000 {
-		t.Errorf("MCP.Port: got %d, want 7000 (custom port wiped?)", cfg.MCP.Port)
+	want := DefaultConfig()
+	if cfg != want {
+		t.Errorf("got %+v, want defaults %+v (legacy mcp.enabled now trips strict decode until Phase 32-03)", cfg, want)
 	}
 }

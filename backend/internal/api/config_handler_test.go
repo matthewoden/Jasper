@@ -68,7 +68,7 @@ func TestPutConfig_RoundTrip(t *testing.T) {
 		"appName": "Jasper",
 		"theme": "light",
 		"dailyNotes": {"folder": "daily", "template": ""},
-		"editor": {"fontSize": 16, "lineHeight": 1.7, "vimMode": false, "autosaveMs": 2000}
+		"editor": {"fontSize": 16, "lineHeight": 1.7, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -114,7 +114,7 @@ func TestPutConfig_UnknownField_400(t *testing.T) {
 
 	body := []byte(`{
 		"appName": "Jasper", "theme": "dark", "dailyNotes": {"folder": "daily", "template": ""},
-		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000},
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000},
 		"unknownField": 42
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
@@ -137,7 +137,7 @@ func TestPutConfig_ThemeEnum_400(t *testing.T) {
 	body := []byte(`{
 		"appName": "Jasper", "theme": "neon-purple",
 		"dailyNotes": {"folder": "daily", "template": ""},
-		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000}
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -151,9 +151,11 @@ func TestPutConfig_ThemeEnum_400(t *testing.T) {
 	}
 }
 
-// TestPutConfig_DisplayName — PUT a config with display_name; the response
-// and a subsequent GET must both return it.
-func TestPutConfig_DisplayName(t *testing.T) {
+// TestPutConfig_DisplayNameField_Rejected400 — D-05: config.Config.DisplayName
+// is deleted; the Config schema is additionalProperties:false, so a body
+// carrying the legacy "display_name" key is now an unknown field and must be
+// rejected with 400, not silently accepted.
+func TestPutConfig_DisplayNameField_Rejected400(t *testing.T) {
 	ts, _ := setupConfigServer(t)
 	defer ts.Close()
 
@@ -161,7 +163,40 @@ func TestPutConfig_DisplayName(t *testing.T) {
 		"appName": "Jasper", "theme": "dark",
 		"display_name": "My Notes",
 		"dailyNotes": {"folder": "daily", "template": ""},
-		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000}
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
+	}`)
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatalf("PUT with display_name: got %d, want 400 (unknown field); body: %s", resp.StatusCode, putBody)
+	}
+}
+
+// TestPutConfig_V14FieldsRoundTrip — PUTs every new D-17 field with
+// non-default values and asserts the 200 response echoes them back
+// unchanged, and that a subsequent GET /config returns the same values.
+// This is the runtime proof that the three-file lockstep (openapi.yaml,
+// config.Config, strictConfigValidator) is actually complete.
+func TestPutConfig_V14FieldsRoundTrip(t *testing.T) {
+	ts, _ := setupConfigServer(t)
+	defer ts.Close()
+
+	body := []byte(`{
+		"appName": "Jasper", "theme": "dark",
+		"dailyNotes": {"folder": "daily", "template": ""},
+		"editor": {
+			"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000,
+			"showProperties": false, "autoPair": false, "foldGutter": false,
+			"lineNumbers": true, "lineWidth": 900
+		},
+		"mcp": {"port": 6684, "bind": "127.0.0.1", "auditLog": true},
+		"templates": {"folder": "MyTemplates"}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -174,13 +209,37 @@ func TestPutConfig_DisplayName(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("PUT status: got %d, want 200; body: %s", resp.StatusCode, putBody)
 	}
+
+	assertV14Fields := func(t *testing.T, cfg Config, label string) {
+		t.Helper()
+		if cfg.Editor.ShowProperties == nil || *cfg.Editor.ShowProperties != false {
+			t.Errorf("%s: Editor.ShowProperties = %v, want false", label, cfg.Editor.ShowProperties)
+		}
+		if cfg.Editor.AutoPair == nil || *cfg.Editor.AutoPair != false {
+			t.Errorf("%s: Editor.AutoPair = %v, want false", label, cfg.Editor.AutoPair)
+		}
+		if cfg.Editor.FoldGutter == nil || *cfg.Editor.FoldGutter != false {
+			t.Errorf("%s: Editor.FoldGutter = %v, want false", label, cfg.Editor.FoldGutter)
+		}
+		if cfg.Editor.LineNumbers == nil || *cfg.Editor.LineNumbers != true {
+			t.Errorf("%s: Editor.LineNumbers = %v, want true", label, cfg.Editor.LineNumbers)
+		}
+		if cfg.Editor.LineWidth == nil || *cfg.Editor.LineWidth != 900 {
+			t.Errorf("%s: Editor.LineWidth = %v, want 900", label, cfg.Editor.LineWidth)
+		}
+		if cfg.Mcp == nil || cfg.Mcp.AuditLog == nil || *cfg.Mcp.AuditLog != true {
+			t.Errorf("%s: Mcp.AuditLog = %v, want true", label, cfg.Mcp)
+		}
+		if cfg.Templates == nil || cfg.Templates.Folder != "MyTemplates" {
+			t.Errorf("%s: Templates.Folder = %v, want MyTemplates", label, cfg.Templates)
+		}
+	}
+
 	var echoed Config
 	if err := json.Unmarshal(putBody, &echoed); err != nil {
 		t.Fatalf("PUT response unmarshal: %v", err)
 	}
-	if echoed.DisplayName == nil || *echoed.DisplayName != "My Notes" {
-		t.Errorf("PUT response: DisplayName = %v, want \"My Notes\"", echoed.DisplayName)
-	}
+	assertV14Fields(t, echoed, "PUT response")
 
 	resp2, err := http.Get(ts.URL + "/api/v1/config")
 	if err != nil {
@@ -188,13 +247,14 @@ func TestPutConfig_DisplayName(t *testing.T) {
 	}
 	getBody, _ := io.ReadAll(resp2.Body)
 	_ = resp2.Body.Close()
+	if resp2.StatusCode != 200 {
+		t.Fatalf("GET status: got %d, want 200; body: %s", resp2.StatusCode, getBody)
+	}
 	var got Config
 	if err := json.Unmarshal(getBody, &got); err != nil {
 		t.Fatalf("GET response unmarshal: %v", err)
 	}
-	if got.DisplayName == nil || *got.DisplayName != "My Notes" {
-		t.Errorf("GET after PUT: DisplayName = %v, want \"My Notes\"", got.DisplayName)
-	}
+	assertV14Fields(t, got, "GET after PUT")
 }
 
 // TestLineHeightRoundTrip_Precision — toWireConfig / fromWireConfig must
@@ -208,7 +268,7 @@ func TestLineHeightRoundTrip_Precision(t *testing.T) {
 		"appName": "Jasper",
 		"theme": "dark",
 		"dailyNotes": {"folder": "daily", "template": ""},
-		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000}
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -242,17 +302,14 @@ func TestLineHeightRoundTrip_Precision(t *testing.T) {
 	}
 }
 
-// TestPutConfig_DisplayNameSyncsAppJSON — PUT /config with display_name must sync
-// the new name into app.json (RecentVaults entry for the server's dataDir) so that
-// GET /vault/current subsequently returns the updated display_name.
-//
-// RED scaffold: PutConfig currently only calls config.SaveMerged and does NOT
-// call vault.TouchOpened / vault.SaveAppJSON. This test FAILS until plan 04 adds
-// the sync call. Leave this test unchanged — fix the production handler.
+// TestPutConfig_SyncsAppJSONToDirBasename — D-05: config.Config.DisplayName is
+// gone; PUT /config unconditionally syncs the app.json RecentVaults entry's
+// display name to filepath.Base(dataDir), regardless of any prior value. The
+// vault's name is its folder name — there is no client-supplied override.
 //
 // Isolation: t.Setenv("JASPER_APP_HOME", t.TempDir()) prevents any writes to
 // the real ~/.jasper/app.json (T-17.1-01).
-func TestPutConfig_DisplayNameSyncsAppJSON(t *testing.T) {
+func TestPutConfig_SyncsAppJSONToDirBasename(t *testing.T) {
 	// Isolate app.json writes to a test-controlled directory.
 	appHome := t.TempDir()
 	t.Setenv("JASPER_APP_HOME", appHome)
@@ -260,8 +317,8 @@ func TestPutConfig_DisplayNameSyncsAppJSON(t *testing.T) {
 	ts, dataDir := setupConfigServer(t)
 	defer ts.Close()
 
-	// Seed app.json with the server's dataDir as the current vault.
-	// This establishes the RecentVaultEntry that PutConfig should update.
+	// Seed app.json with the server's dataDir as the current vault, carrying
+	// a stale name that PUT /config must overwrite unconditionally.
 	appJSONPath, err := vault.AppJSONPath()
 	if err != nil {
 		t.Fatalf("AppJSONPath: %v", err)
@@ -279,13 +336,10 @@ func TestPutConfig_DisplayNameSyncsAppJSON(t *testing.T) {
 		t.Fatalf("seed app.json: %v", err)
 	}
 
-	// PUT /config with a new display_name.
-	newName := "SyncedVaultName"
 	body := []byte(`{
 		"appName": "Jasper", "theme": "dark",
-		"display_name": "` + newName + `",
 		"dailyNotes": {"folder": "daily", "template": ""},
-		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000}
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -299,8 +353,7 @@ func TestPutConfig_DisplayNameSyncsAppJSON(t *testing.T) {
 		t.Fatalf("PUT /config status: got %d, want 200; body: %s", resp.StatusCode, putBody)
 	}
 
-	// RED: PutConfig does not sync app.json → app.json still has "OldName".
-	// After plan 04 fix: app.json will have display_name = newName.
+	wantName := filepath.Base(dataDir)
 	afterState, err := vault.LoadAppJSON(appJSONPath)
 	if err != nil {
 		t.Fatalf("load app.json after PUT: %v", err)
@@ -315,11 +368,11 @@ func TestPutConfig_DisplayNameSyncsAppJSON(t *testing.T) {
 	if updatedEntry == nil {
 		t.Fatalf("RecentVaults entry for %q not found after PUT", dataDir)
 	}
-	if updatedEntry.DisplayName != newName {
-		t.Errorf("app.json display_name after PUT: got %q, want %q (SET2-05: PutConfig must sync app.json)", updatedEntry.DisplayName, newName)
+	if updatedEntry.DisplayName != wantName {
+		t.Errorf("app.json display_name after PUT: got %q, want %q (D-05: vault name is its folder name)", updatedEntry.DisplayName, wantName)
 	}
 
-	// GET /vault/current must also return the new display_name.
+	// GET /vault/current must also reflect the folder-basename name.
 	resp2, err := http.Get(ts.URL + "/api/v1/vault/current")
 	if err != nil {
 		t.Fatal(err)
@@ -330,7 +383,6 @@ func TestPutConfig_DisplayNameSyncsAppJSON(t *testing.T) {
 		t.Fatalf("GET /vault/current status: got %d, want 200; body: %s", resp2.StatusCode, getBody)
 	}
 
-	// Decode vault/current response
 	var vaultResp struct {
 		Vault *struct {
 			DisplayName string `json:"display_name"`
@@ -342,46 +394,8 @@ func TestPutConfig_DisplayNameSyncsAppJSON(t *testing.T) {
 	if vaultResp.Vault == nil {
 		t.Fatal("GET /vault/current returned null vault; expected an entry for the current vault")
 	}
-	if vaultResp.Vault.DisplayName != newName {
-		t.Errorf("GET /vault/current display_name: got %q, want %q (SET2-05: GET /vault/current must reflect updated app.json)", vaultResp.Vault.DisplayName, newName)
-	}
-
-	// A2: empty-string display_name clears back to the directory basename.
-	wantFallback := filepath.Base(dataDir)
-	clearBody := []byte(`{
-		"appName": "Jasper", "theme": "dark",
-		"display_name": "",
-		"dailyNotes": {"folder": "daily", "template": ""},
-		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000}
-	}`)
-	req2, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(clearBody))
-	req2.Header.Set("Content-Type", "application/json")
-	resp3, err := http.DefaultClient.Do(req2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	clearRespBody, _ := io.ReadAll(resp3.Body)
-	_ = resp3.Body.Close()
-	if resp3.StatusCode != 200 {
-		t.Fatalf("PUT /config (clear) status: got %d, want 200; body: %s", resp3.StatusCode, clearRespBody)
-	}
-
-	clearState, err := vault.LoadAppJSON(appJSONPath)
-	if err != nil {
-		t.Fatalf("load app.json after clear PUT: %v", err)
-	}
-	var clearedEntry *vault.RecentVaultEntry
-	for i := range clearState.RecentVaults {
-		if clearState.RecentVaults[i].Path == dataDir {
-			clearedEntry = &clearState.RecentVaults[i]
-			break
-		}
-	}
-	if clearedEntry == nil {
-		t.Fatalf("RecentVaults entry for %q not found after clear PUT", dataDir)
-	}
-	if clearedEntry.DisplayName != wantFallback {
-		t.Errorf("app.json display_name after empty PUT: got %q, want %q (A3: empty clears to filepath.Base(dataDir))", clearedEntry.DisplayName, wantFallback)
+	if vaultResp.Vault.DisplayName != wantName {
+		t.Errorf("GET /vault/current display_name: got %q, want %q", vaultResp.Vault.DisplayName, wantName)
 	}
 }
 
@@ -396,7 +410,7 @@ func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 		"appName":"Jasper","theme":"dark",
 		"_jasper_unmanaged":"preserve-me",
 		"dailyNotes":{"folder":"daily","template":""},
-		"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false,"autosaveMs":2000},
+		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":""},
 		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
 	}`)
@@ -407,7 +421,7 @@ func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 	body := []byte(`{
 		"appName": "Jasper", "theme": "light",
 		"dailyNotes": {"folder": "daily", "template": ""},
-		"editor": {"fontSize": 15, "lineHeight": 1.6, "vimMode": false, "autosaveMs": 2000}
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
