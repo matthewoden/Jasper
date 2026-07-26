@@ -2,22 +2,17 @@
  * SettingsDialog — in-app settings panel (Radix Dialog modal).
  *
  * Fixed-header / scrolling-body / fixed-footer layout capped at the viewport
- * (SET2-01). Four sections (APPEARANCE / EDITOR / DAILY NOTES / GENERAL /
- * NETWORK), auto-persist on blur/Enter (no Save button), live CSS-var apply
+ * (SET2-01). Sections (APPEARANCE / EDITOR / DAILY NOTES / NETWORK),
+ * auto-persist on blur/Enter (no Save button), live CSS-var apply
  * for font/line height, deferred restart badges shown only when a
  * restart-pending field differs from the boot-baseline config captured at
  * first load (SET2-03).
- *
- * CRITICAL: Vim copy is HONEST — "not yet active — they will be enabled in a
- * future update." The preference is saved; key bindings are not yet wired.
  */
 import * as Dialog from "@radix-ui/react-dialog";
-import * as Switch from "@radix-ui/react-switch";
 import { AlertCircle, X } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useConfig, type Config } from "../lib/useConfig";
 import { useAccent } from "../lib/useAccent";
-import { useTreeStore } from "../lib/useTreeStore";
 
 export interface SettingsDialogProps {
   open: boolean;
@@ -165,7 +160,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [autosaveMsError, setAutosaveMsError] = useState<string | null>(null);
   const [dailyFolder, setDailyFolder] = useState("");
   const [dailyTemplate, setDailyTemplate] = useState("");
-  const [displayName, setDisplayName] = useState("");
   const [bindAddress, setBindAddress] = useState("");
 
   // ── Save error banner: shown when PUT /config fails ──
@@ -180,7 +174,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     setAutosaveMsInput(String(config.editor.autosaveMs));
     setDailyFolder(config.dailyNotes.folder);
     setDailyTemplate(config.dailyNotes.template);
-    setDisplayName(config.display_name ?? "");
     setBindAddress(config.server?.bind ?? "127.0.0.1");
   }, [config]);
 
@@ -321,17 +314,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   }, [config, dailyTemplate, saveConfig]);
 
-  const handleDisplayNameCommit = useCallback(async () => {
-    if (!config) return;
-    const { error } = await saveConfig({ ...config, display_name: displayName });
-    if (error) {
-      setSaveError(error.message);
-    } else {
-      setSaveError(null);
-      useTreeStore.getState().refreshVaultCurrent?.();
-    }
-  }, [config, displayName, saveConfig]);
-
   const handleBindAddressCommit = useCallback(async () => {
     if (!config?.server) return;
     const { error } = await saveConfig({
@@ -345,34 +327,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   }, [config, bindAddress, saveConfig]);
 
-  const handleVimModeChange = useCallback(
-    async (checked: boolean) => {
-      if (!config) return;
-      const { error } = await saveConfig({ ...config, editor: { ...config.editor, vimMode: checked } });
-      if (error) {
-        setSaveError(error.message);
-      } else {
-        setSaveError(null);
-      }
-    },
-    [config, saveConfig],
-  );
-
-  const vimMode = config?.editor.vimMode ?? false;
-
   // ── Deferred restart-badge visibility (SET2-03) ──────────────────────
   // Badges shown only when current value differs from the boot baseline.
   // Live-apply fields (accent, readingFont, fontSize, lineHeight) never show a badge.
   // autosaveMsInput and bindAddress use input state so the badge appears immediately
-  // on typing (before blur/save). vimMode is a toggle that saves synchronously,
-  // so comparing config (optimistically updated) is sufficient.
+  // on typing (before blur/save).
   const showAutosaveBadge =
     bootBaselineRef.current !== null &&
     Number(autosaveMsInput) !== bootBaselineRef.current.editor.autosaveMs;
-
-  const showVimModeBadge =
-    bootBaselineRef.current !== null &&
-    config?.editor.vimMode !== bootBaselineRef.current.editor.vimMode;
 
   const showBindBadge =
     bootBaselineRef.current !== null &&
@@ -757,71 +719,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   </span>
                 )}
               </ControlRow>
-
-              {/* Vim mode — deferred restart badge + HONEST COPY */}
-              <div style={{ marginBottom: 8 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    marginBottom: 4,
-                  }}
-                >
-                  <Switch.Root
-                    checked={vimMode}
-                    onCheckedChange={(checked) => { void handleVimModeChange(checked); }}
-                    aria-label="Vim mode"
-                    aria-describedby="vim-mode-helper"
-                    style={{
-                      width: 32,
-                      height: 20,
-                      backgroundColor: vimMode
-                        ? "var(--color-accent)"
-                        : "var(--color-border)",
-                      borderRadius: 10,
-                      border: "none",
-                      cursor: "pointer",
-                      position: "relative",
-                      flexShrink: 0,
-                      padding: 0,
-                    }}
-                  >
-                    <Switch.Thumb
-                      style={{
-                        display: "block",
-                        width: 16,
-                        height: 16,
-                        backgroundColor: "var(--color-bg)",
-                        borderRadius: "50%",
-                        transition: "transform 150ms",
-                        transform: vimMode
-                          ? "translateX(14px)"
-                          : "translateX(2px)",
-                      }}
-                    />
-                  </Switch.Root>
-                  <span
-                    style={{ fontSize: 14, color: "var(--color-fg)", flex: 1 }}
-                  >
-                    Vim mode
-                  </span>
-                  {showVimModeBadge && <RestartBadge />}
-                </div>
-                {/* CRITICAL HONEST COPY: vim key bindings are NOT yet wired */}
-                <p
-                  id="vim-mode-helper"
-                  style={{
-                    fontSize: 12,
-                    color: "var(--color-muted)",
-                    margin: "0 0 8px 40px",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Your preference is saved. Vim key bindings are not yet active
-                  — they will be enabled in a future update.
-                </p>
-              </div>
             </section>
 
             {/* ── DAILY NOTES ─────────────────────────────────────────────── */}
@@ -921,41 +818,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   </button>
                 </p>
               </div>
-            </section>
-
-            {/* ── GENERAL ─────────────────────────────────────────────────── */}
-            <SectionDivider />
-            <section>
-              <Eyebrow text="GENERAL" />
-
-              {/* Display name */}
-              <ControlRow label="Display name" htmlFor="settings-display-name">
-                <input
-                  id="settings-display-name"
-                  type="text"
-                  placeholder="vault name"
-                  aria-label="Display name"
-                  aria-describedby="settings-display-name-helper"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  onBlur={() => { void handleDisplayNameCommit(); }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void handleDisplayNameCommit();
-                  }}
-                  style={{ ...inputStyle, width: "100%" }}
-                />
-                <span
-                  id="settings-display-name-helper"
-                  style={{
-                    fontSize: 12,
-                    color: "var(--color-muted)",
-                    display: "block",
-                    marginTop: 4,
-                  }}
-                >
-                  Shown in the status bar and vault switcher.
-                </span>
-              </ControlRow>
             </section>
 
             {/* ── NETWORK ─────────────────────────────────────────────────── */}
